@@ -254,7 +254,7 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
                 },
                 "sizes": { "type": "string", "description": "Override file sizes as comma-separated list. A BARE NUMBER MEANS MEBIBYTES ('1,100,1024'); K/M/G suffixes are explicit ('1M,100M,1G'). Replaces the sizes of the chosen level, at any level." },
                 "runs": { "type": "integer", "description": "Override timed runs per (operation, size) tuple. Replaces the runs of the chosen level, at any level." },
-                "operations": { "type": "string", "description": "Comma-separated operations subset: upload,download,list,stat,delete. Replaces the operations of the chosen level, at any level." },
+                "operations": { "type": "string", "description": "Comma-separated operations subset: upload,download,latency,list,stat,delete. Replaces the operations of the chosen level, at any level." },
                 "file_count": { "type": "integer", "description": "Many-small-files workload: number of files to exercise (e.g. 100, 1000). This is the workload where per-file overhead dominates. On its own it REPLACES the single-file size sweep; pass 'sizes' as well to run both axes." },
                 "file_size": { "type": "string", "description": "Size of each file in the many-small-files workload. A BARE NUMBER MEANS MEBIBYTES (1 = 1 MiB); K/M/G suffixes are explicit ('64K', '4M'). Default: 64K. Total payload (file_count x file_size) is capped at 5 GiB." },
                 "all_protocols": { "type": "boolean", "description": "Benchmark the profile once per transport mode of its provider instead of once overall: a Koofr account is measured over both its REST API and its WebDAV surface. Changes the RESULT SHAPE to {reports: [...], skipped: [...]}, where each report carries a 'mode' field ('api', 'webdav', 's3', 'ftp') and 'skipped' explains every mode that could not be measured (modes needing their own credentials, or an S3 surface needing a bucket of its own). Without this flag the result stays a single report object. Multi-mode providers: Koofr, OpenDrive, FileLu, Filen. Default: false." },
@@ -799,20 +799,28 @@ async fn run_benchmark_via_subprocess(
         .await
         .map_err(|e| format!("Cannot spawn benchmark subprocess: {}", e))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!(
-            "benchmark subprocess exited with status {}: {}",
-            output.status,
-            stderr.trim().chars().take(800).collect::<String>()
-        ));
-    }
-
     // The CLI writes the schema-v1 JSON report to stdout when invoked with
     // `--format json`. We parse and pass it through as a JSON value so the
-    // agent sees structured fields instead of an opaque string.
-    let parsed = serde_json::from_slice::<Value>(&output.stdout)
-        .map_err(|e| format!("Cannot parse benchmark JSON output: {}", e))?;
+    // agent sees structured fields instead of an opaque string. Exit 4 (a
+    // measured operation failed, or some profiles of a fan-out did) and 8
+    // (the profile timeout ended the run) still come with a report, whose
+    // `summary.errors` say what happened: the report is the result, not an
+    // error.
+    let parsed = serde_json::from_slice::<Value>(&output.stdout);
+    let partial = matches!(output.status.code(), Some(4) | Some(8));
+    let parsed = match parsed {
+        Ok(value) if output.status.success() || partial => value,
+        _ if !output.status.success() => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!(
+                "benchmark subprocess exited with status {}: {}",
+                output.status,
+                stderr.trim().chars().take(800).collect::<String>()
+            ));
+        }
+        Err(e) => return Err(format!("Cannot parse benchmark JSON output: {}", e)),
+        Ok(value) => value,
+    };
 
     if !all_protocols {
         return Ok(parsed);

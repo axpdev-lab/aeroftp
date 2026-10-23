@@ -50,9 +50,9 @@ result.
 
 | Level | Approximate time | Default payloads | Runs | Operations |
 | ----- | ---------------- | ---------------- | ---- | ---------- |
-| `quick` | About 30 seconds | 10 MB | 1 | upload, download |
-| `standard` | About 5 minutes | 1 MB, 100 MB, 1 GB | 3 plus warm-up | upload, download, list, stat, delete |
-| `deep` | About 30 minutes | 1 MB, 10 MB, 100 MB, 1 GB, 5 GB | 5 plus warm-up | upload, download, list, stat, delete |
+| `quick` | About 30 seconds | 10 MB | 1 | upload, download, latency |
+| `standard` | About 5 minutes | 1 MB, 100 MB, 1 GB | 3 plus warm-up | upload, download, latency, list, stat, delete |
+| `deep` | About 30 minutes | 1 MB, 10 MB, 100 MB, 1 GB, 5 GB | 5 plus warm-up | upload, download, latency, list, stat, delete |
 | `custom` | You decide | configurable | configurable | configurable |
 
 The actual duration depends on provider rate limits and your connection.
@@ -131,9 +131,11 @@ overhead dominates and S3 typically beats WebDAV and FTP):
 aeroftp-cli --profile "SFTP Lab" benchmark --file-count 1000 --file-size 64K
 ```
 
-This adds `upload-all`, `list-dir`, `stat-all`, `download-all`, and `delete-all`
-results, each reporting `files_per_second` and per-file latency. It runs
-alongside the size sweep and is never averaged into the single-file numbers.
+This runs `upload-all`, `list-dir`, `stat-all`, `download-all`, and `delete-all`,
+each reporting `files_per_second` and per-file latency. On its own it replaces
+the single-file size sweep; add explicit `--sizes` to run both. It is never
+averaged into the single-file numbers, and its files per second count the time
+spent in the provider calls only, not the time spent preparing each file.
 
 ## What Happens Remotely
 
@@ -151,10 +153,25 @@ Use a non-critical test profile if you are running `standard` or `deep` on a
 free-tier provider. The CLI keeps the operation surface small, but provider rate
 limits are controlled by the provider.
 
-After a run, the scratch base directory is removed (guarded), honouring any
-`--test-root-prefix` you passed. The scratch tree is created with parent
-directories in one step, which fixes pCloud WebDAV refusing a nested collection
-whose parent did not yet exist.
+After a run, the scratch base directory is removed when it is empty. With
+`--test-root-prefix`, the folders of the prefix that the run itself created
+(they did not exist before it) are removed too, deepest first and only when
+empty; a folder that was already there is never touched. The scratch tree is
+created with parent directories in one step, which fixes pCloud WebDAV refusing
+a nested collection whose parent did not yet exist.
+
+Cleanup also runs when the run stops early. Ctrl+C stops the benchmark after
+its current step, removes the scratch folder and exits with 130 (a second
+Ctrl+C quits at once, without cleanup). `--profile-timeout` ends every
+provider call at the deadline, so a server that stops answering cannot hold the
+run past it; the run then keeps what it measured, cleans up (each cleanup step
+has its own two-minute bound) and exits with 8.
+
+On providers whose delete is a soft delete, the run folder is also purged from
+the trash where the provider allows it. pCloud does not allow it through an
+OAuth login, and Dropbox only with the `files.permanent_delete` permission
+granted at authorization; in those cases the report says so and the folder
+stays in the trash until you empty it or the provider's retention does.
 
 ## Reading the run
 
@@ -177,14 +194,70 @@ A few presentation details make multi-profile runs easier to read:
   different address), since that breaks the apples-to-apples comparison.
 - Multi-profile runs show `[k/N]` progress per profile, plus the per-operation
   run `k/N` within each profile.
-- On a Yandex endpoint error, the output adds a region hint.
+- On a Yandex endpoint error, or a Yandex run that timed out, the output adds
+  a region hint.
 - The connection-type field is clarified as downstream Mbps.
+
+### Latency and signal bars
+
+Every level measures latency: five `stat` round trips on the file the run just
+uploaded, after one untimed request that may open a connection or warm a cache.
+A metadata round trip is what a sync of many small changes waits on, so a
+service can be fast for 10 MB files and still slow for notes that change every
+few minutes.
+
+The report shows the median round trip as signal bars, like a phone's: four
+bars up to 80 ms, three up to 200 ms, two up to 500 ms, one up to 1.5 s, none
+above. A service whose slow requests stray more than its median (p95 above
+twice the median) loses one bar. The bars describe the service from your
+network, not the service in general.
+
+A local bridge (MEGAcmd, Filen Desktop, any profile aimed at `localhost` or
+`127.0.0.1`) gets no bars: its round trip ends on your machine, so it measures
+the bridge, not the service behind it. The native MEGA client gets none
+either: it keeps the account's tree in memory and answers `stat` from it, so
+its round trip never leaves your machine.
+
+The time to open the session (DNS, TCP, TLS and the login) is reported as a
+`connect` row.
+
+### Comparison and recommendations
+
+The comparison table shows latency next to upload and download throughput, at
+the largest payload size of the run. Below it, two short tables say what the
+figures mean for you:
+
+- **From this network**: the most responsive service (lowest latency, for
+  frequent syncs of small changes), the fastest for backups (upload) and the
+  fastest for restores (download).
+- **Best protocol per service**: for a service measured over two or more
+  protocols (for example Koofr over its REST API and WebDAV, or MEGA over its
+  REST API and MEGAcmd), which protocol did best at latency, upload and
+  download.
+
+There is no single recommended protocol for everybody: it depends on where you
+are, your line and your account. The recommendation comes from your own run.
+
+### Exit codes and skipped profiles
+
+| Code | Meaning |
+| ---- | ------- |
+| 0 | Every measured operation succeeded |
+| 4 | A measured operation failed, or in a comparison some profiles were measured and others failed |
+| 8 | The profile timeout ended the run; what was measured is in the report |
+| 130 | Stopped with Ctrl+C |
+
+A profile that cannot be benchmarked (authentication refused, scratch folder
+not creatable) is listed under `Skipped` with the reason, and a `skipped
+<profile>: <reason>` line is written to stderr in every output format.
+`--report` and `--consent-publish` work with `--compare`, `--all` and the
+pickers too: they write and print the whole comparison as one JSON array.
 
 ## Report Format
 
 Reports use schema version 1. The authoritative field set is the serialized
-`BenchmarkReport` struct in `src-tauri/src/bin/aeroftp_cli.rs`, but contributors
-do not need to read the full spec.
+`BenchmarkReport` struct in `src-tauri/src/community_benchmark/mod.rs`, but
+contributors do not need to read the full spec.
 
 At a high level, each report contains:
 
@@ -199,6 +272,7 @@ At a high level, each report contains:
 | `consent` | Whether publish mode and extra anonymization were enabled |
 | `results` | One entry per protocol, operation, and payload size |
 | `summary` | Total runs, total bytes, duration, and warnings |
+| `signal` | Median and jitter of the latency probe, its signal bars, and whether the endpoint is a local bridge |
 
 Each result entry records:
 
@@ -206,13 +280,13 @@ Each result entry records:
 | ----- | ------- |
 | `protocol` | Protocol family, for example `SFTP`, `WebDAV`, `S3`, `Google Drive` |
 | `provider_hint` | Coarse provider hint, or `null` with `--anonymize-extra` |
-| `operation` | Single-file: `upload`, `download`, `list`, `stat`, `delete`. Many-files: `upload-all`, `download-all`, `list-dir`, `stat-all`, `delete-all` |
+| `operation` | Single-file: `upload`, `download`, `list`, `stat`, `delete`. Round trips: `connect`, `latency`. Many-files: `upload-all`, `download-all`, `list-dir`, `stat-all`, `delete-all` |
 | `payload_size_bytes` | Payload size for that measurement (per-file size for the many-files axis) |
-| `runs` | Number of measured runs, excluding warm-up (files processed for the many-files axis) |
+| `runs` | Number of measured runs, excluding warm-up (files processed for the many-files axis). `0` means the operation was attempted and failed |
 | `file_count` | Many-files axis only: number of files exercised by the batch operation |
 | `files_per_second` | Many-files axis only: throughput in files/second over the whole batch |
 | `throughput_mbps` | p50, p95, stddev, min, max for transfer operations |
-| `latency_ms` | p50, p95, stddev, min, max for operation latency (per-file latency on the many-files axis; p50 is the mean per-file time) |
+| `latency_ms` | p50, p95, stddev, min, max for operation latency (per-file latency on the many-files axis; p50 is the median per-file time) |
 | `errors` | Transient and fatal operation counts |
 | `raw_runs` | Per-run measurements so aggregation can be recomputed |
 
@@ -236,9 +310,17 @@ revealing account details.
 | Time-of-day bucket | Exact timestamp, city, postal code |
 | Optional coarse region selected in the GitHub Issue form | Local network topology |
 
-The CLI runs a sanitization sweep before writing or printing the report. If it
-detects common credential prefixes, email addresses, local paths, or IP address
-patterns, it refuses to write the report.
+The CLI replaces the run's remote paths (the profile's start path and the
+scratch folders) with placeholders such as `<run-folder>`, then substitutes
+URLs, IPv4 and IPv6 addresses, email addresses, local user folders and common
+credential prefixes, wherever they appear, provider error messages included.
+A final sweep checks the result: if any of those patterns is still there, it
+refuses to write the report.
+
+To detect a network change during the run, the benchmark asks
+`api.ipify.org` for your public IP at the start and at the end. The address is
+only compared on your machine and never written to the report; if the request
+fails, the check is skipped.
 
 If the CLI has to choose between producing a useful report and avoiding a leak,
 it must avoid the leak.
@@ -353,9 +435,9 @@ That gate prevents us from maintaining empty infrastructure.
 If the command says the report failed sanitization, do not bypass it. Open a bug
 report and include the error message. The sweep is intentionally strict.
 
-If cleanup fails, delete the `aeroftp-bench/` directory manually from that
-profile (under the profile's base path, or under your `--test-root-prefix`)
-before running another benchmark.
+If cleanup fails, delete the leftover folder manually before running another
+benchmark: `aeroftp-bench/` under the profile's base path, or the run folder
+under your `--test-root-prefix`. The report names it in its warnings.
 
 If a provider returns rate-limit or quota errors, retry later with `quick` or a
 smaller custom run:

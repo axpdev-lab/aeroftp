@@ -1,25 +1,28 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-//! The run itself: scratch tree, single-file size sweep, many-small-files
-//! workload, cleanup, report.
+//! The run itself: scratch tree, single-file size sweep, latency probe,
+//! many-small-files workload, cleanup, report.
 //!
 //! The engine prints nothing. What a surface shows while it runs (the CLI's
 //! phase lines and progress bars, AeroAgent's tool progress) comes from a
 //! [`BenchmarkObserver`], so the measurement is the same code on every
 //! surface and only the narration differs.
 
-use std::time::Instant;
+use std::future::Future;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use tempfile::NamedTempFile;
 use tokio_util::sync::CancellationToken;
 
 use super::{
     benchmark_mkdir_ladder, benchmark_provider_hint, benchmark_public_ip, benchmark_remote_roots,
-    benchmark_remote_roots_from_prefix, benchmark_rounded_hour_utc, benchmark_stats_from,
-    benchmark_tod_bucket, note_trash_purge, BenchmarkCliMeta, BenchmarkConfig, BenchmarkConsent,
-    BenchmarkEnvironment, BenchmarkErrors, BenchmarkLevel, BenchmarkRawRun, BenchmarkReport,
-    BenchmarkResult, BenchmarkStats, BenchmarkSummary, ManyFilesConfig,
+    benchmark_remote_roots_from_prefix, benchmark_rounded_hour_utc, benchmark_signal_from,
+    benchmark_stats_from, benchmark_tod_bucket, note_trash_purge, BenchmarkCliMeta,
+    BenchmarkConfig, BenchmarkConsent, BenchmarkEnvironment, BenchmarkErrors, BenchmarkLevel,
+    BenchmarkRawRun, BenchmarkReport, BenchmarkResult, BenchmarkSummary, ManyFilesConfig,
     BENCHMARK_IP_CHANGED_WARNING,
 };
 use crate::providers::{ProviderError, StorageProvider};
@@ -28,6 +31,15 @@ use crate::transfer_dag_single_file::{
     pick_single_file_route, run_single_file_on_route, MultipartFailure, ProgressCallback,
 };
 use crate::util::size::format_size;
+
+/// Timed round trips of the latency probe, after one untimed request that
+/// may open a connection or warm a cache.
+pub const BENCHMARK_LATENCY_SAMPLES: u32 = 5;
+
+/// Longest one cleanup step may take. Cleanup runs after the profile timeout
+/// too, so it has its own bound: an unreachable server must not hold the run
+/// open forever after it has been stopped.
+const CLEANUP_STEP_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// What happened during a run, for the surface to narrate.
 #[derive(Debug, Clone, Copy)]
@@ -45,6 +57,8 @@ pub enum BenchmarkEvent<'a> {
         total: u32,
         warmup: bool,
     },
+    /// The latency probe is about to send its round trips.
+    LatencyProbe { samples: u32 },
     /// The many-small-files workload is starting.
     ManyFiles { file_count: u32, file_size: u64 },
     /// A many-small-files batch (`upload-all`, `download-all`) is starting.
@@ -102,6 +116,13 @@ pub struct BenchmarkOptions {
     /// The service identity of the profile, see
     /// [`super::benchmark_service_label`].
     pub service: String,
+    /// How long the caller took to open the session (DNS, TCP, TLS and the
+    /// login), reported as the `connect` row. `None` when not measured.
+    pub connect_ms: Option<f64>,
+    /// The profile's host is this machine (see
+    /// [`super::benchmark_is_loopback_host`]): its round trip measures a
+    /// local bridge, not the service behind it.
+    pub local_endpoint: bool,
     /// Raised by the surface to stop the run. The run ends after the current
     /// step, cleans its scratch tree up, and returns what it measured.
     pub cancel: Option<CancellationToken>,
@@ -115,21 +136,41 @@ pub struct BenchmarkOutcome {
     pub early_abort: bool,
     /// The run was stopped through [`BenchmarkOptions::cancel`].
     pub cancelled: bool,
-}
-
-fn is_cancelled(cancel: &Option<CancellationToken>) -> bool {
-    cancel.as_ref().is_some_and(CancellationToken::is_cancelled)
+    /// The run reached [`BenchmarkOptions::profile_timeout_secs`] and stopped
+    /// there, keeping what it had measured.
+    pub timed_out: bool,
+    /// A measured operation failed: an upload, a timed download, a file of
+    /// the many-small-files workload. A failure the report shows as a row
+    /// with no runs, not only as a line among the warnings.
+    pub failed: bool,
 }
 
 const CANCELLED_NOTE: &str =
     "benchmark cancelled before the end; the results cover the runs completed until then";
 
-fn single_run_result(
+/// `f`, unless `stop` is raised first (or already is). `None` means stopped:
+/// the operation was abandoned where it stood.
+async fn until_stopped<F: Future>(stop: &CancellationToken, f: F) -> Option<F::Output> {
+    tokio::select! {
+        biased;
+        _ = stop.cancelled() => None,
+        out = f => Some(out),
+    }
+}
+
+/// `f` with the cleanup bound, see [`CLEANUP_STEP_TIMEOUT`].
+async fn bounded<F: Future>(f: F) -> Option<F::Output> {
+    tokio::time::timeout(CLEANUP_STEP_TIMEOUT, f).await.ok()
+}
+
+/// A result row from metadata round trips (connect, latency, list, stat,
+/// delete): the latency distribution of `samples_ms`, no payload.
+fn probe_result(
     protocol: &str,
     anonymize_extra: bool,
     report_id: &str,
     operation: &str,
-    ms: f64,
+    samples_ms: &[f64],
 ) -> BenchmarkResult {
     let (h, hh) = benchmark_provider_hint(protocol, anonymize_extra, report_id);
     BenchmarkResult {
@@ -138,28 +179,56 @@ fn single_run_result(
         provider_hash: hh,
         operation: operation.into(),
         payload_size_bytes: 0,
-        runs: 1,
+        runs: samples_ms.len() as u32,
         warmup_runs_discarded: 0,
         file_count: None,
         files_per_second: None,
         throughput_mbps: None,
-        latency_ms: BenchmarkStats {
-            p50: ms,
-            p95: ms,
-            stddev: 0.0,
-            min: ms,
-            max: ms,
-        },
+        latency_ms: benchmark_stats_from(samples_ms),
         tls_handshake_ms: None,
         errors: BenchmarkErrors {
             transient: 0,
             fatal: 0,
         },
-        raw_runs: vec![BenchmarkRawRun {
-            duration_ms: ms as u64,
-            bytes: 0,
-            throughput_mbps: None,
-        }],
+        raw_runs: samples_ms
+            .iter()
+            .map(|ms| BenchmarkRawRun {
+                duration_ms: *ms as u64,
+                bytes: 0,
+                throughput_mbps: None,
+            })
+            .collect(),
+    }
+}
+
+/// The row of an operation that failed before any run of it succeeded:
+/// zero runs and the failures counted, so the report says "failed" rather
+/// than dropping the operation or showing it as a 0 ms success.
+fn failed_result(
+    protocol: &str,
+    anonymize_extra: bool,
+    report_id: &str,
+    operation: &str,
+    payload_size_bytes: u64,
+    warmup_runs_discarded: u32,
+    errors: BenchmarkErrors,
+) -> BenchmarkResult {
+    let (h, hh) = benchmark_provider_hint(protocol, anonymize_extra, report_id);
+    BenchmarkResult {
+        protocol: protocol.to_string(),
+        provider_hint: h,
+        provider_hash: hh,
+        operation: operation.into(),
+        payload_size_bytes,
+        runs: 0,
+        warmup_runs_discarded,
+        file_count: None,
+        files_per_second: None,
+        throughput_mbps: None,
+        latency_ms: benchmark_stats_from(&[]),
+        tls_handshake_ms: None,
+        errors,
+        raw_runs: Vec::new(),
     }
 }
 
@@ -172,15 +241,18 @@ fn single_run_result(
 async fn wait_until_upload_readable(
     provider: &mut Box<dyn StorageProvider>,
     remote_path: &str,
+    stop: &CancellationToken,
     observer: &dyn BenchmarkObserver,
 ) {
-    if let Ok(Some(waited)) = provider.wait_until_readable(remote_path).await {
+    if let Some(Ok(Some(waited))) =
+        until_stopped(stop, provider.wait_until_readable(remote_path)).await
+    {
         observer.event(BenchmarkEvent::WaitedForReadable { waited });
     }
 }
 
 /// One timed transfer, through the router unless the run asked for direct
-/// provider calls.
+/// provider calls. Both paths end at `stop`.
 #[allow(clippy::too_many_arguments)]
 async fn timed_transfer(
     provider: Box<dyn StorageProvider>,
@@ -191,14 +263,20 @@ async fn timed_transfer(
     size: u64,
     warmup: bool,
     opts: &BenchmarkOptions,
+    stop: &CancellationToken,
     observer: &dyn BenchmarkObserver,
 ) -> (Box<dyn StorageProvider>, Result<(), ProviderError>) {
     if opts.direct_transfers {
         let mut provider = provider;
-        let result = match direction {
-            TransferDirection::Upload => provider.upload(local, remote, None).await,
-            TransferDirection::Download => provider.download(remote, local, None).await,
+        let transfer = async {
+            match direction {
+                TransferDirection::Upload => provider.upload(local, remote, None).await,
+                TransferDirection::Download => provider.download(remote, local, None).await,
+            }
         };
+        let result = until_stopped(stop, transfer)
+            .await
+            .unwrap_or_else(|| Err(ProviderError::Other("benchmark stopped".into())));
         return (provider, result);
     }
     let decision = pick_single_file_route(
@@ -216,7 +294,7 @@ async fn timed_transfer(
         remote,
         local,
         progress,
-        opts.cancel.clone(),
+        Some(stop.clone()),
         // The payload is a temp file: a failed multipart upload will never be
         // resumed, so its provider session is aborted rather than left open.
         MultipartFailure::Abort,
@@ -224,6 +302,11 @@ async fn timed_transfer(
     .await;
     observer.transfer_finished();
     (provider, result)
+}
+
+/// Throughput in megabits per second of `size` bytes moved in `ms`.
+fn mbps(size: u64, ms: f64) -> f64 {
+    (size as f64 * 8.0) / 1_000_000.0 / (ms / 1000.0).max(1e-6)
 }
 
 /// Run the benchmark on `provider`, already connected, whose start path is
@@ -242,6 +325,33 @@ pub async fn run(
     let anonymize_extra = opts.anonymize_extra;
     let profile_timeout_secs = opts.profile_timeout_secs;
 
+    // One stop signal for the whole run: the surface's cancel, or the
+    // profile timeout. Every provider call below ends at it, so a server that
+    // stops answering cannot hold the run past its timeout (#368: a Yandex
+    // request that never returned held a whole comparison for ten minutes).
+    let stop = opts
+        .cancel
+        .as_ref()
+        .map(CancellationToken::child_token)
+        .unwrap_or_default();
+    let timed_out = Arc::new(AtomicBool::new(false));
+    // The surface's cancel reaches `stop` at once (a child token); the
+    // timeout reaches it from this task.
+    let stopper = {
+        let stop = stop.clone();
+        let timed_out = timed_out.clone();
+        let limit = Duration::from_secs(profile_timeout_secs);
+        tokio::spawn(async move {
+            tokio::select! {
+                _ = stop.cancelled() => {}
+                _ = tokio::time::sleep(limit) => {
+                    timed_out.store(true, Ordering::SeqCst);
+                    stop.cancel();
+                }
+            }
+        })
+    };
+
     // IP fairness check (issue #368 #1): snapshot the public IP at the start
     // so we can warn if it changes mid-run (a VPN switch makes the numbers
     // incomparable).
@@ -252,6 +362,7 @@ pub async fn run(
     };
 
     let protocol = provider.provider_type().to_string();
+    let protocol_is_mega = provider.provider_type() == crate::providers::ProviderType::Mega;
     // Access-method label for the "Protocol" column (issue #277): computed from
     // the live provider type so it reflects the transport the factory actually
     // built (e.g. a Koofr-over-WebDAV profile reports `WebDAV`, native `REST API`).
@@ -271,17 +382,43 @@ pub async fn run(
     };
     // Create the scratch directory tree before any upload. `bench_base` may
     // already exist from a prior run (`AlreadyExists` is fine), but `test_root`
-    // is unique per run. The mkdir -p below also creates the base with
-    // parents; doing it here first lets the surface warn clearly if the
-    // profile root is not writable. The final cleanup needs no "did we create
-    // it" flag: in the no-prefix case `bench_base` is always our own
+    // is unique per run. In the no-prefix case `bench_base` is always our own
     // `aeroftp-bench` folder and is safe to remove when empty (issue #368: the
     // reporter had to delete it by hand on every drive afterwards).
-    match provider.mkdir(&bench_base).await {
-        Ok(()) | Err(ProviderError::AlreadyExists(_)) => {}
-        Err(e) => observer.event(BenchmarkEvent::BaseDirNotCreated {
-            error: &e.to_string(),
-        }),
+    //
+    // With `--test-root-prefix` the folders of the prefix are the user's
+    // unless this run made them, so each one is checked first: a folder that
+    // was absent and that this run created is removed at the end once empty;
+    // one that existed is never touched.
+    let mut created_by_run: Vec<String> = Vec::new();
+    if opts.test_root_prefix.is_some() {
+        let mut last_error: Option<ProviderError> = None;
+        for dir in benchmark_mkdir_ladder(&bench_base) {
+            let existed = until_stopped(&stop, provider.exists(&dir)).await;
+            match until_stopped(&stop, provider.mkdir(&dir)).await {
+                None => break,
+                Some(Ok(())) => {
+                    last_error = None;
+                    if matches!(existed, Some(Ok(false))) {
+                        created_by_run.push(dir);
+                    }
+                }
+                Some(Err(ProviderError::AlreadyExists(_))) => last_error = None,
+                Some(Err(e)) => last_error = Some(e),
+            }
+        }
+        if let Some(e) = last_error {
+            observer.event(BenchmarkEvent::BaseDirNotCreated {
+                error: &e.to_string(),
+            });
+        }
+    } else {
+        match until_stopped(&stop, provider.mkdir(&bench_base)).await {
+            None | Some(Ok(())) | Some(Err(ProviderError::AlreadyExists(_))) => {}
+            Some(Err(e)) => observer.event(BenchmarkEvent::BaseDirNotCreated {
+                error: &e.to_string(),
+            }),
+        }
     }
     // Create `test_root` with parents (mkdir -p). Some WebDAV servers (pCloud,
     // issue #368) refuse a folder whose parent collection does not yet exist
@@ -289,15 +426,27 @@ pub async fn run(
     // scratch path failed with "Parent directory does not exist" even though
     // the base creation above had also been rejected. Creating each component
     // in turn makes the scratch tree robust across all 22 backends.
-    if let Err(e) = mkdir_p(&mut provider, &test_root).await {
-        if !matches!(e, ProviderError::AlreadyExists(_)) {
-            let _ = provider.disconnect().await;
+    let scratch_created = match until_stopped(&stop, mkdir_p(&mut provider, &test_root)).await {
+        Some(Ok(())) | Some(Err(ProviderError::AlreadyExists(_))) => true,
+        // Stopped before the run began: nothing to measure, nothing made.
+        None if !timed_out.load(Ordering::SeqCst) => false,
+        None => {
+            stopper.abort();
+            let _ = bounded(provider.disconnect()).await;
+            return Err(format!(
+                "benchmark timed out after {}s creating its scratch folder; the server did not answer",
+                profile_timeout_secs
+            ));
+        }
+        Some(Err(e)) => {
+            stopper.abort();
+            let _ = bounded(provider.disconnect()).await;
             return Err(format!(
                 "benchmark cannot create scratch dir '{}': {}. Provider may not allow folder creation in the configured root (try --test-root-prefix to point at a writable sub-path).",
                 test_root, e
             ));
         }
-    }
+    };
 
     let total_start = Instant::now();
     let mut results: Vec<BenchmarkResult> = Vec::new();
@@ -305,19 +454,24 @@ pub async fn run(
     let mut total_runs: u32 = 0;
     let mut errors: Vec<String> = Vec::new();
     let mut early_abort = false;
-    let mut cancelled = false;
+    let mut stopped = stop.is_cancelled();
+    let mut fatal_failures: u32 = 0;
+    let mut latency_done = false;
+
+    // The time it took to open the session, measured by the caller.
+    if let Some(ms) = opts.connect_ms {
+        results.push(probe_result(
+            &protocol,
+            anonymize_extra,
+            &report_id,
+            "connect",
+            &[ms],
+        ));
+    }
 
     'outer: for &size in &cfg.sizes_bytes {
-        if is_cancelled(&opts.cancel) {
-            cancelled = true;
-            early_abort = true;
-            break;
-        }
-        if total_start.elapsed().as_secs() > profile_timeout_secs {
-            errors.push(format!(
-                "benchmark hit profile-timeout cap ({}s), aborting",
-                profile_timeout_secs
-            ));
+        if stop.is_cancelled() {
+            stopped = true;
             early_abort = true;
             break;
         }
@@ -359,6 +513,7 @@ pub async fn run(
         let mut download_fatal = 0u32;
         let mut upload_raw: Vec<BenchmarkRawRun> = Vec::new();
         let mut download_raw: Vec<BenchmarkRawRun> = Vec::new();
+        let mut upload_failed = false;
 
         let total_iters = cfg.warmup_runs + cfg.runs_per_size;
         let needs_upload = cfg.operations.contains(&"upload");
@@ -377,8 +532,8 @@ pub async fn run(
                     total: total_iters,
                     warmup: is_warmup,
                 });
-                if is_cancelled(&opts.cancel) {
-                    cancelled = true;
+                if stop.is_cancelled() {
+                    stopped = true;
                     early_abort = true;
                     break 'runs;
                 }
@@ -389,7 +544,7 @@ pub async fn run(
                 // and on transient deletes (the upload itself will reveal
                 // any real failure).
                 if opts.pre_delete && iter > 0 {
-                    let _ = provider.delete(&remote_path).await;
+                    let _ = until_stopped(&stop, provider.delete(&remote_path)).await;
                 }
 
                 let start = Instant::now();
@@ -403,6 +558,7 @@ pub async fn run(
                     size,
                     is_warmup,
                     &opts,
+                    &stop,
                     observer,
                 )
                 .await;
@@ -412,58 +568,31 @@ pub async fn run(
                     Ok(()) => {
                         if !is_warmup {
                             upload_durations_ms.push(elapsed_ms);
-                            let mbps =
-                                (size as f64 * 8.0) / 1_000_000.0 / (elapsed_ms / 1000.0).max(1e-6);
-                            upload_throughput_mbps.push(mbps);
+                            let rate = mbps(size, elapsed_ms);
+                            upload_throughput_mbps.push(rate);
                             upload_raw.push(BenchmarkRawRun {
                                 duration_ms: elapsed_ms as u64,
                                 bytes: size,
-                                throughput_mbps: Some(mbps),
+                                throughput_mbps: Some(rate),
                             });
                             total_bytes_transferred += size;
                             total_runs += 1;
                         }
                     }
-                    // A transfer the cancel cut short is not a failure of the
+                    // A transfer the stop cut short is not a failure of the
                     // provider: it is not counted, and the runs of this size
                     // measured before it are still reported.
-                    Err(_) if is_cancelled(&opts.cancel) => {
-                        cancelled = true;
+                    Err(_) if stop.is_cancelled() => {
+                        stopped = true;
                         early_abort = true;
                         break 'runs;
                     }
                     Err(e) => {
                         upload_fatal += 1;
-                        let (h, hh) =
-                            benchmark_provider_hint(&protocol, anonymize_extra, &report_id);
-                        results.push(BenchmarkResult {
-                            protocol: protocol.clone(),
-                            provider_hint: h,
-                            provider_hash: hh,
-                            operation: "upload".into(),
-                            payload_size_bytes: size,
-                            runs: 0,
-                            warmup_runs_discarded: cfg.warmup_runs,
-                            file_count: None,
-                            files_per_second: None,
-                            throughput_mbps: None,
-                            latency_ms: BenchmarkStats {
-                                p50: 0.0,
-                                p95: 0.0,
-                                stddev: 0.0,
-                                min: 0.0,
-                                max: 0.0,
-                            },
-                            tls_handshake_ms: None,
-                            errors: BenchmarkErrors {
-                                transient: upload_transient,
-                                fatal: upload_fatal,
-                            },
-                            raw_runs: Vec::new(),
-                        });
-                        errors.push(format!("upload {} bytes failed: {}", format_size(size), e));
+                        errors.push(format!("upload of {} failed: {}", format_size(size), e));
+                        upload_failed = true;
                         early_abort = true;
-                        break 'outer;
+                        break 'runs;
                     }
                 }
             }
@@ -477,12 +606,12 @@ pub async fn run(
                     total: total_iters,
                     warmup: is_warmup,
                 });
-                if is_cancelled(&opts.cancel) {
-                    cancelled = true;
+                if stop.is_cancelled() {
+                    stopped = true;
                     early_abort = true;
                     break 'runs;
                 }
-                wait_until_upload_readable(&mut provider, &remote_path, observer).await;
+                wait_until_upload_readable(&mut provider, &remote_path, &stop, observer).await;
                 let start = Instant::now();
                 let local_download_path = local_download.path().to_string_lossy().to_string();
                 let (returned, dl_result) = timed_transfer(
@@ -494,6 +623,7 @@ pub async fn run(
                     size,
                     is_warmup,
                     &opts,
+                    &stop,
                     observer,
                 )
                 .await;
@@ -503,20 +633,19 @@ pub async fn run(
                     Ok(()) => {
                         if !is_warmup {
                             download_durations_ms.push(elapsed_ms);
-                            let mbps =
-                                (size as f64 * 8.0) / 1_000_000.0 / (elapsed_ms / 1000.0).max(1e-6);
-                            download_throughput_mbps.push(mbps);
+                            let rate = mbps(size, elapsed_ms);
+                            download_throughput_mbps.push(rate);
                             download_raw.push(BenchmarkRawRun {
                                 duration_ms: elapsed_ms as u64,
                                 bytes: size,
-                                throughput_mbps: Some(mbps),
+                                throughput_mbps: Some(rate),
                             });
                             total_bytes_transferred += size;
                             total_runs += 1;
                         }
                     }
-                    Err(_) if is_cancelled(&opts.cancel) => {
-                        cancelled = true;
+                    Err(_) if stop.is_cancelled() => {
+                        stopped = true;
                         early_abort = true;
                         break 'runs;
                     }
@@ -526,7 +655,7 @@ pub async fn run(
                         } else {
                             download_transient += 1;
                         }
-                        errors.push(format!("download {} bytes failed: {}", size, e));
+                        errors.push(format!("download of {} failed: {}", format_size(size), e));
                     }
                 }
             }
@@ -555,6 +684,19 @@ pub async fn run(
                 },
                 raw_runs: upload_raw,
             });
+        } else if upload_fatal > 0 {
+            results.push(failed_result(
+                &protocol,
+                anonymize_extra,
+                &report_id,
+                "upload",
+                size,
+                cfg.warmup_runs,
+                BenchmarkErrors {
+                    transient: upload_transient,
+                    fatal: upload_fatal,
+                },
+            ));
         }
         if needs_download && !download_durations_ms.is_empty() {
             results.push(BenchmarkResult {
@@ -576,77 +718,114 @@ pub async fn run(
                 },
                 raw_runs: download_raw,
             });
+        } else if download_fatal > 0 {
+            results.push(failed_result(
+                &protocol,
+                anonymize_extra,
+                &report_id,
+                "download",
+                size,
+                cfg.warmup_runs,
+                BenchmarkErrors {
+                    transient: download_transient,
+                    fatal: download_fatal,
+                },
+            ));
+        }
+        fatal_failures += upload_fatal + download_fatal;
+
+        // A stop keeps the runs of this size measured above and ends here:
+        // the remaining probes would be measured after the user said stop.
+        // A failed upload ends the sweep too: there is no payload to probe.
+        if stopped || upload_failed {
+            break 'outer;
         }
 
-        // A cancel keeps the runs of this size measured above and stops here:
-        // the remaining one-shot probes would be measured after the user said
-        // stop.
-        if cancelled {
-            break;
+        // Latency probe, once per run, on the payload this size uploaded: a
+        // metadata round trip is what a sync of many small changes waits on,
+        // and what the signal bars show.
+        if !latency_done && cfg.operations.contains(&"latency") && !upload_durations_ms.is_empty() {
+            latency_done = true;
+            observer.event(BenchmarkEvent::LatencyProbe {
+                samples: BENCHMARK_LATENCY_SAMPLES,
+            });
+            // One untimed request first: it may open a connection or warm a
+            // cache, which a sync pays once and not on every request.
+            let _ = until_stopped(&stop, provider.stat(&remote_path)).await;
+            let mut round_trips: Vec<f64> = Vec::new();
+            for _ in 0..BENCHMARK_LATENCY_SAMPLES {
+                let start = Instant::now();
+                match until_stopped(&stop, provider.stat(&remote_path)).await {
+                    None => {
+                        stopped = true;
+                        early_abort = true;
+                        break;
+                    }
+                    Some(Ok(_)) => round_trips.push(start.elapsed().as_secs_f64() * 1000.0),
+                    Some(Err(e)) => {
+                        errors.push(format!("latency probe failed: {}", e));
+                        break;
+                    }
+                }
+            }
+            if !round_trips.is_empty() {
+                total_runs += round_trips.len() as u32;
+                results.push(probe_result(
+                    &protocol,
+                    anonymize_extra,
+                    &report_id,
+                    "latency",
+                    &round_trips,
+                ));
+            }
+            if stopped {
+                break 'outer;
+            }
         }
 
         // list / stat / delete are measured once per size since they do not
         // benefit from multiple runs in the same way as throughput tests.
-        if cfg.operations.contains(&"list") {
-            let start = Instant::now();
-            match provider.list(&test_root).await {
-                Ok(_) => {
-                    let ms = start.elapsed().as_secs_f64() * 1000.0;
-                    results.push(single_run_result(
-                        &protocol,
-                        anonymize_extra,
-                        &report_id,
-                        "list",
-                        ms,
-                    ));
-                    total_runs += 1;
-                }
-                Err(e) => errors.push(format!("list failed: {}", e)),
+        for operation in ["list", "stat", "delete"] {
+            if !cfg.operations.contains(&operation) {
+                continue;
             }
-        }
-
-        if cfg.operations.contains(&"stat") {
             let start = Instant::now();
-            match provider.stat(&remote_path).await {
-                Ok(_) => {
+            let outcome = match operation {
+                "list" => until_stopped(&stop, provider.list(&test_root))
+                    .await
+                    .map(|r| r.map(|_| ())),
+                "stat" => until_stopped(&stop, provider.stat(&remote_path))
+                    .await
+                    .map(|r| r.map(|_| ())),
+                _ => until_stopped(&stop, provider.delete(&remote_path)).await,
+            };
+            match outcome {
+                None => {
+                    stopped = true;
+                    early_abort = true;
+                    break 'outer;
+                }
+                Some(Ok(())) => {
                     let ms = start.elapsed().as_secs_f64() * 1000.0;
-                    results.push(single_run_result(
+                    results.push(probe_result(
                         &protocol,
                         anonymize_extra,
                         &report_id,
-                        "stat",
-                        ms,
+                        operation,
+                        &[ms],
                     ));
                     total_runs += 1;
                 }
-                Err(e) => errors.push(format!("stat failed: {}", e)),
-            }
-        }
-
-        if cfg.operations.contains(&"delete") {
-            let start = Instant::now();
-            match provider.delete(&remote_path).await {
-                Ok(()) => {
-                    let ms = start.elapsed().as_secs_f64() * 1000.0;
-                    results.push(single_run_result(
-                        &protocol,
-                        anonymize_extra,
-                        &report_id,
-                        "delete",
-                        ms,
-                    ));
-                    total_runs += 1;
-                }
-                Err(e) => errors.push(format!("delete failed: {}", e)),
+                Some(Err(e)) => errors.push(format!("{} failed: {}", operation, e)),
             }
         }
     }
 
     // Many-small-files axis (separate from the size sweep above): only run when
     // requested and when the size sweep did not already abort on a
-    // fatal/connection error or a cancel.
+    // fatal/connection error or a stop.
     if let Some(mf) = opts.many_files {
-        if !early_abort && total_start.elapsed().as_secs() <= profile_timeout_secs {
+        if !early_abort && !stop.is_cancelled() && scratch_created {
             let outcome = run_many_files_workload(
                 &mut provider,
                 mf,
@@ -654,40 +833,83 @@ pub async fn run(
                 &protocol,
                 anonymize_extra,
                 &report_id,
-                profile_timeout_secs,
-                total_start,
-                &opts.cancel,
+                &stop,
                 observer,
             )
             .await;
             total_bytes_transferred += outcome.bytes_transferred;
             total_runs += outcome.runs;
+            fatal_failures += outcome.fatal;
             results.extend(outcome.results);
             errors.extend(outcome.errors);
-            if outcome.cancelled {
-                cancelled = true;
+            if outcome.stopped {
+                stopped = true;
                 early_abort = true;
             }
         }
     }
-    if cancelled {
+
+    // The measurement is over: the stop signal no longer applies to cleanup,
+    // which has its own bound per step.
+    stopper.abort();
+    let timed_out = timed_out.load(Ordering::SeqCst);
+    let cancelled = stopped && !timed_out;
+    if timed_out {
+        early_abort = true;
+        errors.push(format!(
+            "benchmark hit profile-timeout cap ({}s), aborting",
+            profile_timeout_secs
+        ));
+    } else if cancelled {
         errors.push(CANCELLED_NOTE.to_string());
     }
 
     // Final cleanup: remove the test root recursively. Best-effort; any
     // residual is logged as an error but does not invalidate the run. It runs
-    // after a cancel too: a stopped run leaves nothing behind.
-    let rmdir_ok = match provider.rmdir_recursive(&test_root).await {
-        Ok(()) => true,
-        Err(e) => {
-            // Some providers may not implement rmdir_recursive against a path
-            // they did not auto-create. We still try to delete the parent.
-            errors.push(format!(
-                "cleanup of {} returned error (manual review may be needed): {}",
-                test_root, e
-            ));
-            false
+    // after a stop too: a stopped run leaves nothing behind.
+    let rmdir_ok = if scratch_created {
+        match bounded(provider.rmdir_recursive(&test_root)).await {
+            Some(Ok(())) => true,
+            Some(Err(e)) => {
+                errors.push(format!(
+                    "cleanup of {} returned error (manual review may be needed): {}",
+                    test_root, e
+                ));
+                false
+            }
+            None => {
+                errors.push(format!(
+                    "cleanup of {} did not finish within {} s (manual review may be needed)",
+                    test_root,
+                    CLEANUP_STEP_TIMEOUT.as_secs()
+                ));
+                false
+            }
         }
+    } else {
+        false
+    };
+    // A transfer the stop cut short can still complete on the server after
+    // the removal above, and several servers (Koofr) create the folders of an
+    // upload's path: the run folder came back, empty, after a Ctrl+C. Look
+    // once more after the request has had time to settle.
+    let rmdir_ok = if rmdir_ok && stopped {
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        match bounded(provider.exists(&test_root)).await {
+            Some(Ok(true)) => match bounded(provider.rmdir_recursive(&test_root)).await {
+                Some(Ok(())) => true,
+                _ => {
+                    errors.push(format!(
+                        "cleanup of {} after the stop: it came back and could not be removed again (manual review may be needed)",
+                        test_root
+                    ));
+                    false
+                }
+            },
+            _ => true,
+        }
+    } else {
+        rmdir_ok
     };
     // Trash purge: rmdir_recursive on consumer cloud providers (Google Drive,
     // Dropbox, OneDrive, Box, MEGA, Yandex, FileLu, Internxt, kDrive, Zoho,
@@ -695,57 +917,34 @@ pub async fn run(
     // up in the recycle bin. Hard-purge it so quotas do not silently fill up
     // across repeated benchmark runs. No-op for FTP/SFTP/S3/plain WebDAV.
     if rmdir_ok {
-        let outcome = provider.delete_permanent(&test_root).await;
-        if note_trash_purge(&test_root, outcome, &mut errors) {
-            observer.event(BenchmarkEvent::TrashPurged { path: &test_root });
-        }
+        purge_from_trash(&mut provider, &test_root, &mut errors, observer).await;
     }
 
-    // Remove the shared `aeroftp-bench` base dir too (issue #368: the reporter
-    // had to delete it by hand on Google Drive, MEGA and kDrive). ONLY in the
-    // no-prefix case: there `bench_base` is always OUR `aeroftp-bench` folder, so
-    // it is always safe to remove when empty. With a test-root prefix,
-    // `bench_base` IS the user's own chosen directory (see
-    // benchmark_remote_roots_from_prefix), which we must never auto-remove.
-    // We intentionally do not gate on whether this run created the base: on a
-    // second run the base already exists but the folder is still ours to
-    // clean, which is exactly why it accumulated empty on Drive/kDrive/MEGA
-    // before. Emptiness-guarded so a folder that unexpectedly still holds data
-    // (soft-delete lag) is left in place and reported, never force-deleted.
     if opts.test_root_prefix.is_none() {
-        let base_empty = match provider.list(&bench_base).await {
-            Ok(entries) => entries.is_empty(),
-            // If we cannot confirm emptiness, leave the base dir in place
-            // rather than risk deleting non-benchmark data.
-            Err(_) => false,
-        };
-        if base_empty {
-            if provider.rmdir_recursive(&bench_base).await.is_ok() {
-                // Hard-purge the soft-deleted base on consumer clouds, mirroring
-                // the test_root trash purge above, refusal included: its result
-                // used to be dropped, so a base left in the bin said nothing (#368).
-                let outcome = provider.delete_permanent(&bench_base).await;
-                if note_trash_purge(&bench_base, outcome, &mut errors) {
-                    observer.event(BenchmarkEvent::TrashPurged { path: &bench_base });
-                }
-            } else {
-                errors.push(format!(
-                    "note: empty scratch folder '{}' could not be removed automatically; delete it manually",
-                    bench_base
-                ));
+        // Remove the shared `aeroftp-bench` base dir too (issue #368: the
+        // reporter had to delete it by hand on Google Drive, MEGA and
+        // kDrive). Here `bench_base` is always OUR `aeroftp-bench` folder, so
+        // it is safe to remove when empty, whether this run created it or a
+        // previous one did: that is exactly why it accumulated empty on
+        // Drive/kDrive/MEGA before. Emptiness-guarded so a folder that
+        // unexpectedly still holds data (soft-delete lag) is left in place
+        // and reported, never force-deleted.
+        remove_if_empty(&mut provider, &bench_base, &mut errors, observer).await;
+    } else {
+        // The prefix folders this run created, deepest first, each only when
+        // empty: a folder the user already had is not in the list, and the
+        // first one still holding something stops the walk up.
+        for dir in created_by_run.iter().rev() {
+            if !remove_if_empty(&mut provider, dir, &mut errors, observer).await {
+                break;
             }
-        } else {
-            errors.push(format!(
-                "note: scratch folder '{}' left in place (not empty after cleanup)",
-                bench_base
-            ));
         }
     }
     let notes = provider
         .measurement_note()
         .map(|note| vec![note.to_string()])
         .unwrap_or_default();
-    let _ = provider.disconnect().await;
+    let _ = bounded(provider.disconnect()).await;
 
     // Close the IP fairness check (issue #368 #1): if the public IP changed
     // since the start, flag the run as not comparable.
@@ -759,9 +958,12 @@ pub async fn run(
 
     // Yandex region hint (issue #368 #3): Yandex Disk endpoints are unreachable
     // from some countries and VPN exit nodes and the request hangs until the
-    // timeout. If any error references a Yandex host, add a one-line hint so the
-    // user understands the failure is region/VPN related, not an AeroFTP bug.
-    if errors.iter().any(|e| e.to_lowercase().contains("yandex")) {
+    // timeout. If any error references a Yandex host, or a Yandex run timed
+    // out, add a one-line hint so the user understands the failure is
+    // region/VPN related, not an AeroFTP bug.
+    if errors.iter().any(|e| e.to_lowercase().contains("yandex"))
+        || (timed_out && opts.service.to_lowercase().contains("yandex"))
+    {
         errors.push(
             "hint: Yandex Disk is unreachable from some countries and VPN exit nodes; if it hangs or fails to connect, switch your VPN region and re-run".to_string(),
         );
@@ -780,6 +982,26 @@ pub async fn run(
         os_arch: std::env::consts::ARCH.into(),
         cpu_class: super::benchmark_cpu_class(),
     };
+
+    // A round trip that ends on this machine measures the bridge: MEGAcmd
+    // (its own local server), a Filen Desktop preset (the note says so), or
+    // any profile aimed at a loopback host.
+    let local_bridge = opts.local_endpoint || access == "CLI" || !notes.is_empty();
+    // The native MEGA client keeps the account's node tree in memory and
+    // answers `stat` from it: its round trip is a lookup in this process
+    // (measured: 0.04 ms), not the service.
+    let metadata_cached = !local_bridge && protocol_is_mega;
+    let signal = benchmark_signal_from(&results, local_bridge, metadata_cached);
+
+    let mut private_paths: Vec<(String, &'static str)> = vec![
+        (test_root.clone(), "<run-folder>"),
+        (bench_base.clone(), "<bench-folder>"),
+        (initial_path.to_string(), "<start-path>"),
+    ];
+    if let Some(prefix) = opts.test_root_prefix.as_deref() {
+        private_paths.push((prefix.to_string(), "<bench-folder>"));
+    }
+    private_paths.extend(created_by_run.iter().map(|d| (d.clone(), "<bench-folder>")));
 
     let report = BenchmarkReport {
         schema_version: 1,
@@ -811,13 +1033,75 @@ pub async fn run(
             errors,
         },
         notes,
+        signal,
+        private_paths,
     };
 
     Ok(BenchmarkOutcome {
         report,
         early_abort,
         cancelled,
+        timed_out,
+        failed: fatal_failures > 0,
     })
+}
+
+/// Purge `path` from the provider's trash after a soft delete, and say so.
+async fn purge_from_trash(
+    provider: &mut Box<dyn StorageProvider>,
+    path: &str,
+    errors: &mut Vec<String>,
+    observer: &dyn BenchmarkObserver,
+) {
+    match bounded(provider.delete_permanent(path)).await {
+        Some(outcome) => {
+            if note_trash_purge(path, outcome, errors) {
+                observer.event(BenchmarkEvent::TrashPurged { path });
+            }
+        }
+        None => errors.push(format!(
+            "trash purge of {} did not finish within {} s, check the provider's trash",
+            path,
+            CLEANUP_STEP_TIMEOUT.as_secs()
+        )),
+    }
+}
+
+/// Remove the scratch folder `dir` and purge it from the trash, only when it
+/// is empty. `true` when it is gone. A folder that still holds something, or
+/// whose emptiness cannot be confirmed, is left in place.
+async fn remove_if_empty(
+    provider: &mut Box<dyn StorageProvider>,
+    dir: &str,
+    errors: &mut Vec<String>,
+    observer: &dyn BenchmarkObserver,
+) -> bool {
+    let empty = match bounded(provider.list(dir)).await {
+        Some(Ok(entries)) => entries.is_empty(),
+        // If we cannot confirm emptiness, leave the folder in place rather
+        // than risk deleting non-benchmark data.
+        _ => false,
+    };
+    if !empty {
+        errors.push(format!(
+            "note: scratch folder '{}' left in place (not empty after cleanup)",
+            dir
+        ));
+        return false;
+    }
+    if matches!(bounded(provider.rmdir_recursive(dir)).await, Some(Ok(()))) {
+        // Hard-purge the soft-deleted folder on consumer clouds, mirroring the
+        // test_root trash purge, refusal included: its result used to be
+        // dropped, so a folder left in the bin said nothing (#368).
+        purge_from_trash(provider, dir, errors, observer).await;
+        true
+    } else {
+        errors.push(format!(
+            "note: empty scratch folder '{}' could not be removed automatically; delete it manually",
+            dir
+        ));
+        false
+    }
 }
 
 /// Create a remote directory and every missing parent (mkdir -p semantics).
@@ -852,12 +1136,23 @@ struct ManyFilesOutcome {
     bytes_transferred: u64,
     runs: u32,
     errors: Vec<String>,
-    cancelled: bool,
+    /// Files of a batch that failed.
+    fatal: u32,
+    stopped: bool,
+}
+
+/// Files per second of a batch, from the time spent in the provider calls
+/// alone: preparing each file's content and waiting for a written-back upload
+/// to become readable are not part of what the batch measures.
+fn files_per_second(per_file_ms: &[f64]) -> f64 {
+    let secs = per_file_ms.iter().sum::<f64>() / 1000.0;
+    per_file_ms.len() as f64 / secs.max(1e-6)
 }
 
 /// Build a single batch-operation result for the many-small-files axis.
-/// `per_file_ms` carries the per-file latency distribution (its p50 is the mean
-/// per-file time); `files_per_second` is the headline rate over the whole batch.
+/// `per_file_ms` carries the per-file latency distribution (its p50 is the
+/// median per-file time); `files_per_second` is the headline rate over the
+/// whole batch.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn many_files_result(
     protocol: &str,
@@ -914,9 +1209,9 @@ pub(super) fn many_files_result(
 /// mirror a real transfer), these ops call the provider directly so the numbers
 /// isolate the protocol's raw per-file cost, the dimension being compared.
 ///
-/// A cancel stops the upload, stat and download loops after the current file;
-/// delete-all still runs over every file that landed, so the scratch tree is
-/// left empty for the final cleanup.
+/// A stop ends the upload, stat and download loops after the current file;
+/// delete-all still runs over every file that landed, each call bounded, so
+/// the scratch tree is left empty for the final cleanup.
 #[allow(clippy::too_many_arguments)]
 async fn run_many_files_workload(
     provider: &mut Box<dyn StorageProvider>,
@@ -925,9 +1220,7 @@ async fn run_many_files_workload(
     protocol: &str,
     anonymize_extra: bool,
     report_id: &str,
-    deadline_secs: u64,
-    total_start: Instant,
-    cancel: &Option<CancellationToken>,
+    stop: &CancellationToken,
     observer: &dyn BenchmarkObserver,
 ) -> ManyFilesOutcome {
     let mut out = ManyFilesOutcome {
@@ -935,12 +1228,18 @@ async fn run_many_files_workload(
         bytes_transferred: 0,
         runs: 0,
         errors: Vec::new(),
-        cancelled: false,
+        fatal: 0,
+        stopped: false,
     };
 
     let many_dir = format!("{}/manyfiles", test_root);
-    if let Err(e) = provider.mkdir(&many_dir).await {
-        if !matches!(e, ProviderError::AlreadyExists(_)) {
+    match until_stopped(stop, provider.mkdir(&many_dir)).await {
+        None => {
+            out.stopped = true;
+            return out;
+        }
+        Some(Ok(())) | Some(Err(ProviderError::AlreadyExists(_))) => {}
+        Some(Err(e)) => {
             out.errors.push(format!(
                 "many-files: cannot create scratch dir '{}': {}",
                 many_dir, e
@@ -971,19 +1270,13 @@ async fn run_many_files_workload(
     let mut up_mbps: Vec<f64> = Vec::new();
     let mut up_fatal = 0u32;
     let mut uploaded = 0u32;
-    let up_start = Instant::now();
     observer.event(BenchmarkEvent::BatchStarted {
         operation: "upload-all",
         total: mf.file_count as u64,
     });
     for i in 0..mf.file_count {
-        if is_cancelled(cancel) {
-            out.cancelled = true;
-            break;
-        }
-        if total_start.elapsed().as_secs() > deadline_secs {
-            out.errors
-                .push("many-files: hit profile-timeout during upload-all".into());
+        if stop.is_cancelled() {
+            out.stopped = true;
             break;
         }
         // Fresh random content per file (untimed) so content-dedup backends
@@ -994,11 +1287,15 @@ async fn run_many_files_workload(
         }
         let remote = remote_name(i);
         let start = Instant::now();
-        match provider.upload(&local_up_path, &remote, None).await {
-            Ok(()) => {
+        match until_stopped(stop, provider.upload(&local_up_path, &remote, None)).await {
+            None => {
+                out.stopped = true;
+                break;
+            }
+            Some(Ok(())) => {
                 let ms = start.elapsed().as_secs_f64() * 1000.0;
                 up_ms.push(ms);
-                up_mbps.push((size as f64 * 8.0) / 1_000_000.0 / (ms / 1000.0).max(1e-6));
+                up_mbps.push(mbps(size, ms));
                 uploaded += 1;
                 out.bytes_transferred += size;
                 out.runs += 1;
@@ -1006,7 +1303,7 @@ async fn run_many_files_workload(
                     operation: "upload-all",
                 });
             }
-            Err(e) => {
+            Some(Err(e)) => {
                 up_fatal += 1;
                 out.errors
                     .push(format!("many-files: upload of file {} failed: {}", i, e));
@@ -1017,8 +1314,8 @@ async fn run_many_files_workload(
     observer.event(BenchmarkEvent::BatchFinished {
         operation: "upload-all",
     });
-    if uploaded > 0 {
-        let secs = up_start.elapsed().as_secs_f64().max(1e-6);
+    out.fatal += up_fatal;
+    if uploaded > 0 || up_fatal > 0 {
         out.results.push(many_files_result(
             protocol,
             anonymize_extra,
@@ -1026,9 +1323,13 @@ async fn run_many_files_workload(
             "upload-all",
             size,
             uploaded,
-            uploaded as f64 / secs,
+            if uploaded > 0 {
+                files_per_second(&up_ms)
+            } else {
+                0.0
+            },
             &up_ms,
-            Some(&up_mbps),
+            (uploaded > 0).then_some(up_mbps.as_slice()),
             up_fatal,
         ));
     }
@@ -1038,10 +1339,11 @@ async fn run_many_files_workload(
     }
 
     // ── list-dir (one call, returns N entries) ──────────────────────
-    if !out.cancelled {
+    if !out.stopped {
         let list_start = Instant::now();
-        match provider.list(&many_dir).await {
-            Ok(entries) => {
+        match until_stopped(stop, provider.list(&many_dir)).await {
+            None => out.stopped = true,
+            Some(Ok(entries)) => {
                 let ms = list_start.elapsed().as_secs_f64() * 1000.0;
                 let listed = entries.iter().filter(|e| !e.is_dir).count() as u32;
                 let fps = listed as f64 / (ms / 1000.0).max(1e-6);
@@ -1059,7 +1361,7 @@ async fn run_many_files_workload(
                 ));
                 out.runs += 1;
             }
-            Err(e) => out
+            Some(Err(e)) => out
                 .errors
                 .push(format!("many-files: list-dir failed: {}", e)),
         }
@@ -1068,29 +1370,27 @@ async fn run_many_files_workload(
     // ── stat-all ────────────────────────────────────────────────────
     let mut stat_ms: Vec<f64> = Vec::new();
     let mut stat_fatal = 0u32;
-    let stat_start = Instant::now();
     for i in 0..uploaded {
-        if out.cancelled || is_cancelled(cancel) {
-            out.cancelled = true;
-            break;
-        }
-        if total_start.elapsed().as_secs() > deadline_secs {
-            out.errors
-                .push("many-files: hit profile-timeout during stat-all".into());
+        if out.stopped || stop.is_cancelled() {
+            out.stopped = true;
             break;
         }
         let start = Instant::now();
-        match provider.stat(&remote_name(i)).await {
-            Ok(_) => stat_ms.push(start.elapsed().as_secs_f64() * 1000.0),
-            Err(e) => {
+        match until_stopped(stop, provider.stat(&remote_name(i))).await {
+            None => {
+                out.stopped = true;
+                break;
+            }
+            Some(Ok(_)) => stat_ms.push(start.elapsed().as_secs_f64() * 1000.0),
+            Some(Err(e)) => {
                 stat_fatal += 1;
                 out.errors
                     .push(format!("many-files: stat of file {} failed: {}", i, e));
             }
         }
     }
+    out.fatal += stat_fatal;
     if !stat_ms.is_empty() {
-        let secs = stat_start.elapsed().as_secs_f64().max(1e-6);
         out.results.push(many_files_result(
             protocol,
             anonymize_extra,
@@ -1098,7 +1398,7 @@ async fn run_many_files_workload(
             "stat-all",
             0,
             stat_ms.len() as u32,
-            stat_ms.len() as f64 / secs,
+            files_per_second(&stat_ms),
             &stat_ms,
             None,
             stat_fatal,
@@ -1107,7 +1407,7 @@ async fn run_many_files_workload(
     }
 
     // ── download-all ────────────────────────────────────────────────
-    let local_dn = if out.cancelled {
+    let local_dn = if out.stopped {
         None
     } else {
         match NamedTempFile::new() {
@@ -1124,38 +1424,38 @@ async fn run_many_files_workload(
         let mut dn_ms: Vec<f64> = Vec::new();
         let mut dn_mbps: Vec<f64> = Vec::new();
         let mut dn_fatal = 0u32;
-        let dn_start = Instant::now();
         observer.event(BenchmarkEvent::BatchStarted {
             operation: "download-all",
             total: uploaded as u64,
         });
         for i in 0..uploaded {
-            if is_cancelled(cancel) {
-                out.cancelled = true;
+            if stop.is_cancelled() {
+                out.stopped = true;
                 break;
             }
-            if total_start.elapsed().as_secs() > deadline_secs {
-                out.errors
-                    .push("many-files: hit profile-timeout during download-all".into());
-                break;
-            }
-            wait_until_upload_readable(provider, &remote_name(i), observer).await;
+            wait_until_upload_readable(provider, &remote_name(i), stop, observer).await;
             let start = Instant::now();
-            match provider
-                .download(&remote_name(i), &local_dn_path, None)
-                .await
+            match until_stopped(
+                stop,
+                provider.download(&remote_name(i), &local_dn_path, None),
+            )
+            .await
             {
-                Ok(()) => {
+                None => {
+                    out.stopped = true;
+                    break;
+                }
+                Some(Ok(())) => {
                     let ms = start.elapsed().as_secs_f64() * 1000.0;
                     dn_ms.push(ms);
-                    dn_mbps.push((size as f64 * 8.0) / 1_000_000.0 / (ms / 1000.0).max(1e-6));
+                    dn_mbps.push(mbps(size, ms));
                     out.bytes_transferred += size;
                     out.runs += 1;
                     observer.event(BenchmarkEvent::BatchItem {
                         operation: "download-all",
                     });
                 }
-                Err(e) => {
+                Some(Err(e)) => {
                     dn_fatal += 1;
                     out.errors
                         .push(format!("many-files: download of file {} failed: {}", i, e));
@@ -1165,8 +1465,8 @@ async fn run_many_files_workload(
         observer.event(BenchmarkEvent::BatchFinished {
             operation: "download-all",
         });
+        out.fatal += dn_fatal;
         if !dn_ms.is_empty() {
-            let secs = dn_start.elapsed().as_secs_f64().max(1e-6);
             out.results.push(many_files_result(
                 protocol,
                 anonymize_extra,
@@ -1174,7 +1474,7 @@ async fn run_many_files_workload(
                 "download-all",
                 size,
                 dn_ms.len() as u32,
-                dn_ms.len() as f64 / secs,
+                files_per_second(&dn_ms),
                 &dn_ms,
                 Some(&dn_mbps),
                 dn_fatal,
@@ -1183,22 +1483,30 @@ async fn run_many_files_workload(
     }
 
     // ── delete-all (also clears the scratch files) ──────────────────
+    // Runs after a stop too, each call bounded: it is the cleanup of what
+    // landed, and the final recursive removal is the fallback.
     let mut del_ms: Vec<f64> = Vec::new();
     let mut del_fatal = 0u32;
-    let del_start = Instant::now();
     for i in 0..uploaded {
         let start = Instant::now();
-        match provider.delete(&remote_name(i)).await {
-            Ok(()) => del_ms.push(start.elapsed().as_secs_f64() * 1000.0),
-            Err(e) => {
+        match bounded(provider.delete(&remote_name(i))).await {
+            Some(Ok(())) => del_ms.push(start.elapsed().as_secs_f64() * 1000.0),
+            Some(Err(e)) => {
                 del_fatal += 1;
                 out.errors
                     .push(format!("many-files: delete of file {} failed: {}", i, e));
             }
+            None => {
+                out.errors.push(format!(
+                    "many-files: delete of file {} did not finish within {} s",
+                    i,
+                    CLEANUP_STEP_TIMEOUT.as_secs()
+                ));
+                break;
+            }
         }
     }
     if !del_ms.is_empty() {
-        let secs = del_start.elapsed().as_secs_f64().max(1e-6);
         out.results.push(many_files_result(
             protocol,
             anonymize_extra,
@@ -1206,7 +1514,7 @@ async fn run_many_files_workload(
             "delete-all",
             0,
             del_ms.len() as u32,
-            del_ms.len() as f64 / secs,
+            files_per_second(&del_ms),
             &del_ms,
             None,
             del_fatal,

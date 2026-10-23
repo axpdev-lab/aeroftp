@@ -939,7 +939,7 @@ export const AGENT_TOOLS: AITool[] = [
             { name: 'level', type: 'string', description: "Preset level (default: 'quick')", required: false, enum: ['quick', 'standard', 'deep', 'custom'] },
             { name: 'sizes', type: 'string', description: "Comma-separated sizes; a bare number is MiB ('1,100'), K/M/G explicit ('64K,4M')", required: false },
             { name: 'runs', type: 'integer', description: 'Timed runs per operation and size', required: false },
-            { name: 'operations', type: 'string', description: 'Subset of upload,download,list,stat,delete', required: false },
+            { name: 'operations', type: 'string', description: 'Subset of upload,download,latency,list,stat,delete', required: false },
             { name: 'file_count', type: 'integer', description: 'Many-small-files workload: number of files (replaces the size sweep unless sizes is set)', required: false },
             { name: 'file_size', type: 'string', description: 'Size of each small file (default 64K; bare number is MiB)', required: false },
             { name: 'anonymize_extra', type: 'boolean', description: 'Hash the provider hint too (default: false)', required: false },

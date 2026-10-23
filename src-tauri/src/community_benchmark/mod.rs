@@ -19,7 +19,10 @@
 
 mod engine;
 
-pub use engine::{run, BenchmarkEvent, BenchmarkObserver, BenchmarkOptions, BenchmarkOutcome};
+pub use engine::{
+    run, BenchmarkEvent, BenchmarkObserver, BenchmarkOptions, BenchmarkOutcome,
+    BENCHMARK_LATENCY_SAMPLES,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -102,6 +105,114 @@ pub struct BenchmarkReport {
     // never user text. Absent when empty. Additive to schema v1.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<String>,
+    // How responsive the service is from where the run stands (#368): the
+    // round trip of a metadata request, as signal bars. Absent when the run
+    // measured no round trip. Additive to schema v1.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signal: Option<BenchmarkSignal>,
+    // Remote paths of this run (start path, scratch folders). Shown in the
+    // local text report, replaced by placeholders in every JSON that leaves
+    // the process: a start path can carry an account name
+    // (`/remote.php/dav/files/<user>`).
+    #[serde(skip)]
+    pub private_paths: Vec<(String, &'static str)>,
+}
+
+/// The responsiveness of a service, from the round trip of a metadata request
+/// (`stat` of the file the run just uploaded).
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct BenchmarkSignal {
+    /// 0 to 4 bars, see [`benchmark_signal_bars`]. Absent for a local bridge,
+    /// whose round trip ends on this machine and says nothing about the
+    /// service behind it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bars: Option<u8>,
+    /// Median round trip.
+    pub latency_ms: f64,
+    /// p95 minus median: how much one request can stray from the usual one.
+    pub jitter_ms: f64,
+    /// Timed round trips the figures come from.
+    pub samples: u32,
+    /// The endpoint is a bridge on this machine (MEGAcmd, Filen Desktop, a
+    /// loopback WebDAV or S3 server).
+    pub local_bridge: bool,
+    /// The client answers metadata from a tree it keeps in memory (the
+    /// native MEGA client), so its round trip never reaches the service.
+    /// No bars either. Absent when false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub metadata_cached: bool,
+}
+
+/// Median round trip at or under which a service gets N bars, best first.
+pub const BENCHMARK_SIGNAL_THRESHOLDS_MS: [f64; 4] = [80.0, 200.0, 500.0, 1500.0];
+
+/// Signal bars for a metadata round trip: 4 at or under 80 ms, 3 under
+/// 200 ms, 2 under 500 ms, 1 under 1.5 s, 0 above. A service whose slow
+/// requests stray further from its median than the median itself (p95 more
+/// than twice p50) loses one bar: an unsteady service feels slower than its
+/// median says.
+pub fn benchmark_signal_bars(p50_ms: f64, p95_ms: f64) -> u8 {
+    let mut bars = BENCHMARK_SIGNAL_THRESHOLDS_MS
+        .iter()
+        .position(|&limit| p50_ms <= limit)
+        .map_or(0, |i| 4 - i as u8);
+    if bars > 0 && p95_ms - p50_ms > p50_ms.max(1.0) {
+        bars -= 1;
+    }
+    bars
+}
+
+/// The signal of a run, from its latency probe, or from the per-file `stat`
+/// of the many-small-files workload when the run had no size sweep.
+pub fn benchmark_signal_from(
+    results: &[BenchmarkResult],
+    local_bridge: bool,
+    metadata_cached: bool,
+) -> Option<BenchmarkSignal> {
+    let source = results
+        .iter()
+        .find(|r| r.operation == "latency" && r.runs > 0)
+        .or_else(|| {
+            results
+                .iter()
+                .find(|r| r.operation == "stat-all" && r.runs > 0)
+        })?;
+    let stats = &source.latency_ms;
+    Some(BenchmarkSignal {
+        bars: (!local_bridge && !metadata_cached)
+            .then(|| benchmark_signal_bars(stats.p50, stats.p95)),
+        latency_ms: stats.p50,
+        jitter_ms: (stats.p95 - stats.p50).max(0.0),
+        samples: source.runs,
+        local_bridge,
+        metadata_cached,
+    })
+}
+
+/// Whether a profile's host is this machine: a local bridge (MEGAcmd WebDAV,
+/// Filen Desktop, a test server) rather than the service it fronts.
+pub fn benchmark_is_loopback_host(host: &str) -> bool {
+    let h = host.trim();
+    let h = h
+        .split_once("://")
+        .map_or(h, |(_, rest)| rest)
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("");
+    // Strip the port: `[::1]:4443`, `127.0.0.1:4443`, `localhost:8080`.
+    let h = if let Some(rest) = h.strip_prefix('[') {
+        rest.split(']').next().unwrap_or("")
+    } else if h.matches(':').count() == 1 {
+        h.split(':').next().unwrap_or("")
+    } else {
+        h
+    };
+    let h = h.to_ascii_lowercase();
+    h == "localhost"
+        || h.ends_with(".localhost")
+        || h == "::1"
+        || h.parse::<std::net::Ipv4Addr>()
+            .is_ok_and(|ip| ip.is_loopback())
 }
 
 #[derive(Serialize)]
@@ -219,24 +330,24 @@ pub fn resolve_benchmark_config(
         u32,
         Vec<&'static str>,
     ) = match level {
-        BenchmarkLevel::Quick => (vec![10 * mib], 1, 0, vec!["upload", "download"]),
+        BenchmarkLevel::Quick => (vec![10 * mib], 1, 0, vec!["upload", "download", "latency"]),
         BenchmarkLevel::Standard => (
             vec![mib, 100 * mib, gib],
             3,
             1,
-            vec!["upload", "download", "list", "stat", "delete"],
+            vec!["upload", "download", "latency", "list", "stat", "delete"],
         ),
         BenchmarkLevel::Deep => (
             vec![mib, 10 * mib, 100 * mib, gib, 5 * gib],
             5,
             1,
-            vec!["upload", "download", "list", "stat", "delete"],
+            vec!["upload", "download", "latency", "list", "stat", "delete"],
         ),
         BenchmarkLevel::Custom => (
             vec![100 * mib],
             3,
             1,
-            vec!["upload", "download", "list", "stat", "delete"],
+            vec!["upload", "download", "latency", "list", "stat", "delete"],
         ),
     };
 
@@ -279,6 +390,7 @@ pub fn resolve_benchmark_config(
             match trimmed {
                 "upload" => out.push("upload"),
                 "download" => out.push("download"),
+                "latency" => out.push("latency"),
                 "list" => out.push("list"),
                 "stat" => out.push("stat"),
                 "delete" => out.push("delete"),
@@ -717,18 +829,26 @@ fn benchmark_pii_patterns() -> &'static [(&'static str, &'static str, &'static s
             "<redacted-ip>",
             "IPv4 address",
         ),
+        // Any URL: a provider error quotes the request it failed on
+        // (`for url (https://host/path)`), which names the host of a
+        // self-hosted server and the remote path.
         (
-            r"/home/[a-zA-Z0-9._-]+/",
-            "/home/<redacted>/",
-            "Linux home path",
+            r#"\b[A-Za-z][A-Za-z0-9+.-]{1,15}://[^\s"'<>\\]+"#,
+            "<redacted-url>",
+            "URL",
         ),
+        // IPv6 has its own pass, see `redact_ipv6`: a pattern cannot tell
+        // every compressed form from a clock time or a Rust path.
+        // OS user folders. The name runs to the next separator, so a name
+        // with a space (`/home/John Smith/`) is redacted whole.
+        (r#"/home/[^/"<]+/"#, "/home/<redacted>/", "Linux home path"),
         (
-            r"C:\\\\Users\\\\[a-zA-Z0-9._-]+",
+            r#"[A-Za-z]:\\\\Users\\\\[^\\"<]+"#,
             r"C:\\Users\\<redacted>",
             "Windows user path",
         ),
         (
-            r"/Users/[a-zA-Z0-9._-]+/",
+            r#"/Users/[^/"<]+/"#,
             "/Users/<redacted>/",
             "macOS user path",
         ),
@@ -740,6 +860,93 @@ fn benchmark_pii_patterns() -> &'static [(&'static str, &'static str, &'static s
     ]
 }
 
+/// Runs of characters an IPv6 address is written with: hex digits, `:`, the
+/// dots of an IPv4 tail and a `%` zone. Letters beyond `f` are included so a
+/// word such as `std::fmt` is one run that does not parse, instead of a run
+/// `::f` cut out of it.
+fn ipv6_run_regex() -> &'static regex::Regex {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"[0-9A-Za-z:.%]+").expect("static regex"))
+}
+
+/// The first IPv6 address in a run, as a byte range inside it. A candidate
+/// starts at the run's start or right after a `:` or a `.` (`host:2001:db8::1`,
+/// `foo.2001:db8::1`), the earliest start first, and ends at the run's end or
+/// before one of its `:` or `.`, the longest first, so the colon of
+/// `"{addr}: {err}"` is left out (`2001:db8::1: Connection refused`), and so
+/// is a word glued to the address by a dot (`fe80::1.local`), while an IPv4
+/// tail stays whole because the longest end wins. A candidate is an address
+/// when the standard parser accepts it with its trailing dots and `%zone`
+/// removed, and it has two colons at least, so a clock time (`12:00:00`)
+/// never is one. Every compressed form counts: `::1`, `fe80::1`,
+/// `2001:db8::`, `::ffff:192.0.2.1`. So does a Rust path whose two segments
+/// are hex (`abc::def`), which is redacted too: in a public report a word too
+/// many is better than an address left in.
+///
+/// A candidate is at most [`IPV6_CANDIDATE_MAX`] bytes long, so the scan of a
+/// run costs its length times that bound: a provider error can carry a long
+/// hex dump, and an unbounded scan of every start and end was cubic in it.
+fn ipv6_in_run(run: &str) -> Option<std::ops::Range<usize>> {
+    let starts = std::iter::once(0).chain(
+        run.char_indices()
+            .filter(|(_, c)| *c == ':' || *c == '.')
+            .map(|(i, _)| i + 1)
+            .filter(|&i| i < run.len()),
+    );
+    for start in starts {
+        let tail = &run[start..];
+        // The run is ASCII (the regex class), so a byte bound is a char one.
+        let window = &tail[..tail.len().min(IPV6_CANDIDATE_MAX)];
+        let ends = (tail.len() <= IPV6_CANDIDATE_MAX)
+            .then_some(tail.len())
+            .into_iter()
+            .chain(
+                window
+                    .char_indices()
+                    .rev()
+                    .filter(|(_, c)| *c == ':' || *c == '.')
+                    .map(|(i, _)| i),
+            );
+        for end in ends {
+            let candidate = tail[..end].trim_end_matches('.');
+            let address = candidate.split('%').next().unwrap_or("");
+            if address.matches(':').count() >= 2 && address.parse::<std::net::Ipv6Addr>().is_ok() {
+                return Some(start..start + candidate.len());
+            }
+        }
+    }
+    None
+}
+
+/// Longest text an IPv6 candidate is tried at: a written address is 45
+/// bytes at most (`ffff:...:255.255.255.255`), plus room for a `%zone`.
+const IPV6_CANDIDATE_MAX: usize = 64;
+
+/// The byte range of the first IPv6 address in `text`, if any.
+fn first_ipv6_span(text: &str) -> Option<std::ops::Range<usize>> {
+    ipv6_run_regex()
+        .find_iter(text)
+        .find_map(|m| ipv6_in_run(m.as_str()).map(|r| m.start() + r.start..m.start() + r.end))
+}
+
+/// `text` with every IPv6 address replaced by `<redacted-ip>`, all of them
+/// in a run that holds several (a hex dump), not only the first.
+pub(crate) fn redact_ipv6(text: &str) -> String {
+    ipv6_run_regex()
+        .replace_all(text, |caps: &regex::Captures<'_>| {
+            let mut out = String::new();
+            let mut rest = &caps[0];
+            while let Some(r) = ipv6_in_run(rest) {
+                out.push_str(&rest[..r.start]);
+                out.push_str("<redacted-ip>");
+                rest = &rest[r.end..];
+            }
+            out.push_str(rest);
+            out
+        })
+        .into_owned()
+}
+
 /// Replacement pass: substitutes any PII match with a fixed placeholder so
 /// the rest of the report (provider hint, error strings, summary) stays
 /// usable. Errors emitted by remote providers often contain the username
@@ -747,7 +954,9 @@ fn benchmark_pii_patterns() -> &'static [(&'static str, &'static str, &'static s
 /// this pass, those reports were silently rejected by the sweep on otherwise
 /// good runs (FeliCloud, Filen S3 in the 2026-05-07 community sweep).
 pub fn benchmark_sanitize(serialized: String) -> String {
-    let mut out = serialized;
+    // IPv6 first, so an address with an IPv4 tail (`::ffff:192.0.2.1`) goes
+    // whole rather than losing only its tail to the IPv4 pattern.
+    let mut out = redact_ipv6(&serialized);
     for (pat, replacement, _label) in benchmark_pii_patterns() {
         match regex::Regex::new(pat) {
             Ok(re) => {
@@ -770,6 +979,9 @@ pub fn benchmark_sanitize(serialized: String) -> String {
 /// case (e.g. a new pattern was added to the table without a placeholder)
 /// and we still refuse to write the report rather than risk leaking PII.
 pub fn benchmark_sanitization_sweep(serialized: &str) -> Result<(), String> {
+    if first_ipv6_span(serialized).is_some() {
+        return Err("sanitization sweep matched IPv6 address".to_string());
+    }
     for (pat, _repl, label) in benchmark_pii_patterns() {
         let re = regex::Regex::new(pat)
             .map_err(|e| format!("internal: bad sweep regex {}: {}", pat, e))?;
@@ -784,8 +996,54 @@ pub fn benchmark_sanitization_sweep(serialized: &str) -> Result<(), String> {
 /// every PII pattern substituted, then swept. The error is the reason the
 /// payload was refused, and nothing is returned with it.
 pub fn sanitized_report_json<T: Serialize + ?Sized>(value: &T) -> Result<String, String> {
+    sanitized_report_json_scrubbing(value, &[])
+}
+
+/// [`sanitized_report_json`] for the reports of one or more runs: the remote
+/// paths those runs used (see [`BenchmarkReport::private_paths`]) are replaced
+/// by their placeholders first, wherever they appear, error text included.
+pub fn sanitized_reports_json<T: Serialize + ?Sized>(
+    value: &T,
+    reports: &[&BenchmarkReport],
+) -> Result<String, String> {
+    let paths: Vec<(String, &'static str)> = reports
+        .iter()
+        .flat_map(|r| r.private_paths.iter().cloned())
+        .collect();
+    sanitized_report_json_scrubbing(value, &paths)
+}
+
+/// Replace each remote path in `serialized` by its placeholder, longest path
+/// first so a run folder is not half-replaced by the base folder that
+/// prefixes it. A path is matched in its JSON-escaped form, the form it has
+/// in `serialized`. The root and one-character paths are left alone: they
+/// would match everywhere and identify nothing.
+pub fn scrub_private_paths(serialized: String, paths: &[(String, &'static str)]) -> String {
+    let mut ordered: Vec<(String, &'static str)> = paths
+        .iter()
+        .map(|(path, placeholder)| (path.trim().trim_end_matches('/').to_string(), *placeholder))
+        .filter(|(path, _)| path.trim_start_matches('/').chars().count() > 1)
+        .collect();
+    ordered.sort_by_key(|(path, _)| std::cmp::Reverse(path.len()));
+    ordered.dedup_by(|a, b| a.0 == b.0);
+    let mut out = serialized;
+    for (path, placeholder) in ordered {
+        let escaped = serde_json::to_string(&path).unwrap_or_default();
+        let escaped = escaped.trim_matches('"');
+        if !escaped.is_empty() {
+            out = out.replace(escaped, placeholder);
+        }
+    }
+    out
+}
+
+fn sanitized_report_json_scrubbing<T: Serialize + ?Sized>(
+    value: &T,
+    private_paths: &[(String, &'static str)],
+) -> Result<String, String> {
     let serialized = serde_json::to_string_pretty(value)
         .map_err(|e| format!("could not serialize report: {}", e))?;
+    let serialized = scrub_private_paths(serialized, private_paths);
     // First pass: substitute any PII (emails, IPs, OS path prefixes, cloud
     // tokens) with placeholders. Provider error strings frequently embed the
     // account email or a server IP that has no place in a public benchmark

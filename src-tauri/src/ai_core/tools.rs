@@ -2194,7 +2194,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                     "level": {"type": "string", "enum": ["quick", "standard", "deep", "custom"], "description": "Preset level. Default: 'quick'. 'deep' may take 30+ minutes."},
                     "sizes": {"type": "string", "description": "Override file sizes as comma-separated list. A BARE NUMBER MEANS MEBIBYTES ('1,100,1024'); K/M/G suffixes are explicit ('1M,100M,1G'). Replaces the sizes of the chosen level, at any level."},
                     "runs": {"type": "integer", "description": "Override timed runs per (operation, size) tuple. Replaces the runs of the chosen level, at any level."},
-                    "operations": {"type": "string", "description": "Comma-separated operations subset: upload,download,list,stat,delete. Replaces the operations of the chosen level, at any level."},
+                    "operations": {"type": "string", "description": "Comma-separated operations subset: upload,download,latency,list,stat,delete. Replaces the operations of the chosen level, at any level."},
                     "file_count": {"type": "integer", "description": "Many-small-files workload: number of files to exercise (e.g. 100, 1000). On its own it REPLACES the single-file size sweep; pass 'sizes' as well to run both axes."},
                     "file_size": {"type": "string", "description": "Size of each file in the many-small-files workload. A BARE NUMBER MEANS MEBIBYTES; K/M/G suffixes are explicit ('64K', '4M'). Default: 64K. Total payload (file_count x file_size) is capped at 5 GiB."},
                     "anonymize_extra": {"type": "boolean", "description": "Hash the provider hint as well (extra anonymization). Default: false."}
