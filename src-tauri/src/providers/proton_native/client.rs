@@ -40,7 +40,49 @@ const NODES_BATCH_SIZE: usize = 100;
 struct MyFilesResponse {
     volume: MyFilesVolume,
     share: MyFilesShare,
-    link: MyFilesLinkWrapper,
+    /// The root folder: `FolderDetailsDto`, the shape `POST links` answers.
+    link: serde_json::Value,
+}
+
+/// The answer of `GET drive/v2/shares/my-files`, read before the client that
+/// decrypts it exists (see [`load_account_and_my_files`]).
+pub struct MyFilesAnswer(MyFilesResponse);
+
+/// `GET drive/v2/shares/my-files` (spec 1). A missing volume is an error:
+/// AeroFTP does not create the default volume behind the user's back.
+pub async fn fetch_my_files(api: &ProtonApi) -> Result<MyFilesAnswer, ProtonError> {
+    api.get("drive/v2/shares/my-files", &[])
+        .await
+        .map(MyFilesAnswer)
+        .map_err(|error| match error {
+            ProtonError::Api { code: 2501, .. } => ProtonError::NotFound(
+                "this Proton account has no Drive volume yet; open Proton Drive once to create it"
+                    .into(),
+            ),
+            other => other,
+        })
+}
+
+/// The account's keys and My Files, asked together: what a connection needs
+/// before its first Drive request. Nothing is decrypted here; the share is
+/// opened with the keys afterwards ([`DriveClient::open_with`]). A failure
+/// is reported as a sequential connect reported it: the keys' first, then
+/// My Files'.
+pub async fn load_account_and_my_files(
+    api: &ProtonApi,
+    key_password: &secrecy::SecretString,
+) -> Result<
+    (
+        ProtonAccount<impl PGPProviderSync + Send + Sync + 'static>,
+        MyFilesAnswer,
+    ),
+    ProtonError,
+> {
+    let (account, my_files) = tokio::join!(
+        super::account::load_account(api, key_password),
+        fetch_my_files(api)
+    );
+    Ok((account?, my_files?))
 }
 
 #[derive(Deserialize)]
@@ -61,18 +103,6 @@ struct MyFilesShare {
     passphrase_signature: Option<String>,
     #[serde(rename = "AddressID")]
     address_id: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "PascalCase")]
-struct MyFilesLinkWrapper {
-    link: MyFilesLink,
-}
-
-#[derive(Deserialize)]
-struct MyFilesLink {
-    #[serde(rename = "LinkID")]
-    link_id: String,
 }
 
 /// `GET drive/v2/volumes/{v}/folders/{l}/children` (spec 2.1).
@@ -277,21 +307,33 @@ fn import_public_keys<P: PGPProviderSync>(provider: &P, keys: &[AllKeysKey]) -> 
 }
 
 impl<P: PGPProviderSync> DriveClient<P> {
-    /// Loads My Files (spec 1) and decrypts its share key with the own
-    /// address that owns the share, verifying the passphrase signature with
-    /// the share creator's keys. A missing volume is an error: AeroFTP does
-    /// not create the default volume behind the user's back.
+    /// Loads My Files (spec 1) and opens it, see [`Self::open_with`].
     pub async fn open(api: Arc<ProtonApi>, account: ProtonAccount<P>) -> Result<Self, ProtonError> {
-        let response: MyFilesResponse = api
-            .get("drive/v2/shares/my-files", &[])
-            .await
-            .map_err(|error| match error {
-                ProtonError::Api { code: 2501, .. } => ProtonError::NotFound(
-                    "this Proton account has no Drive volume yet; open Proton Drive once to create it"
-                        .into(),
-                ),
-                other => other,
-            })?;
+        let my_files = fetch_my_files(&api).await?;
+        Self::open_with(api, account, my_files, machine_client_uid()).await
+    }
+
+    /// Decrypts the share key of My Files with the own address that owns the
+    /// share, verifying the passphrase signature with the share creator's
+    /// keys.
+    pub async fn open_with(
+        api: Arc<ProtonApi>,
+        account: ProtonAccount<P>,
+        my_files: MyFilesAnswer,
+        client_uid: String,
+    ) -> Result<Self, ProtonError> {
+        let response = my_files.0;
+        let root_link_id = response.link["Link"]["LinkID"]
+            .as_str()
+            .ok_or_else(|| ProtonError::Decode("My Files has no root link".into()))?
+            .to_string();
+        // Its details when the answer carries them whole; without, the root
+        // is read by its link ID as before.
+        let root_details = serde_json::from_value::<LinkDetails>(response.link.clone())
+            .ok()
+            .filter(|details| {
+                details.link.link_id == root_link_id && details.link.parent_link_id.is_none()
+            });
         let share = response.share;
 
         let verification_keys = match account.address(&share.creator_email) {
@@ -320,12 +362,12 @@ impl<P: PGPProviderSync> DriveClient<P> {
             log::warn!("Proton: the My Files share passphrase signature did not verify");
         }
 
-        Ok(Self {
+        let client = Self {
             api,
             my_files: MyFiles {
                 volume_id: response.volume.volume_id,
                 share_id: share.share_id,
-                root_link_id: response.link.link.link_id,
+                root_link_id,
                 address_id: share.address_id,
                 share_key,
                 share_verified,
@@ -333,9 +375,19 @@ impl<P: PGPProviderSync> DriveClient<P> {
             account,
             nodes: Mutex::new(HashMap::new()),
             other_public_keys: Mutex::new(HashMap::new()),
-            client_uid: machine_client_uid(),
+            client_uid,
             block_uploads: tokio::sync::Semaphore::new(super::upload::MAX_BLOCK_UPLOADS_IN_FLIGHT),
-        })
+        };
+        // Decrypted exactly as a root read by link ID is (`node`: the share
+        // key as its parent key, the same signature checks), and kept as it
+        // comes out, a degraded node included: a root that does not decrypt
+        // is not read again behind the caller's back.
+        if let Some(details) = root_details {
+            let share_key = client.my_files.share_key.clone();
+            let root = client.decrypt_node(details, &share_key).await;
+            client.remember_node(root).await;
+        }
+        Ok(client)
     }
 
     /// A client over `my_files` without the `my-files` request, and with a
@@ -964,5 +1016,204 @@ mod tests {
             serde_json::from_str(r#"{"Code":1000,"LinkIDs":[],"AnchorID":null,"More":false}"#)
                 .unwrap();
         assert!(!last.more && last.anchor_id.is_none());
+    }
+}
+
+#[cfg(test)]
+mod my_files_tests {
+    use super::super::account::test_account_with_json;
+    use super::super::test_drive::{MyFilesRoot, TestDrive, ROOT};
+    use super::*;
+    use std::time::Duration;
+
+    fn key_password() -> secrecy::SecretString {
+        secrecy::SecretString::from("pw".to_string())
+    }
+
+    /// My Files is asked while the account's keys are still on their way,
+    /// not after them: a connection waits one round trip less.
+    #[tokio::test]
+    async fn my_files_is_asked_while_the_keys_load() {
+        let (account, users, addresses) = test_account_with_json();
+        let drive = TestDrive::start(&account).await;
+        let delay = Duration::from_millis(400);
+        drive.serve_account(users, addresses, delay);
+        let (_, _) = load_account_and_my_files(&drive.api, &key_password())
+            .await
+            .expect("keys and My Files");
+        let keys = drive.first_arrival("users").unwrap();
+        let my_files = drive.first_arrival("my-files").unwrap();
+        assert!(
+            my_files < keys + delay,
+            "My Files asked at {my_files:?}, the keys asked at {keys:?} and answered {delay:?} later"
+        );
+    }
+
+    /// Either failure is the one a sequential connect reports: the account's
+    /// first, then My Files'.
+    #[tokio::test]
+    async fn a_failed_connect_reports_the_same_error_as_before() {
+        let (account, users, addresses) = test_account_with_json();
+        let drive = TestDrive::start(&account).await;
+
+        // No usable user key, and no volume: the keys' error wins.
+        let unusable = json!({ "Code": 1000, "User": { "ID": "u1", "Keys": [] } });
+        drive.serve_account(unusable, addresses.clone(), Duration::ZERO);
+        drive.without_volume();
+        let error = load_account_and_my_files(&drive.api, &key_password())
+            .await
+            .err()
+            .expect("no user key");
+        assert!(matches!(error, ProtonError::Crypto(_)), "{error:?}");
+
+        // Keys fine, no volume: the volume's error.
+        drive.serve_account(users, addresses, Duration::ZERO);
+        let error = load_account_and_my_files(&drive.api, &key_password())
+            .await
+            .err()
+            .expect("no volume");
+        assert!(
+            matches!(&error, ProtonError::NotFound(message) if message.contains("no Drive volume")),
+            "{error:?}"
+        );
+    }
+
+    /// A client of the drive in `drive`, opened from its My Files answer.
+    async fn opened<P: PGPProviderSync>(
+        drive: &TestDrive<P>,
+        account: ProtonAccount<P>,
+    ) -> DriveClient<P> {
+        let answer = fetch_my_files(&drive.api).await.expect("My Files");
+        DriveClient::open_with(
+            Arc::clone(&drive.api),
+            account,
+            answer,
+            "aeroftp-test".into(),
+        )
+        .await
+        .expect("open")
+    }
+
+    fn asked_for_the_root(drive: &TestDrive<impl PGPProviderSync>) -> bool {
+        drive
+            .log()
+            .iter()
+            .any(|line| line == &format!("links {ROOT}"))
+    }
+
+    /// The root folder comes decrypted from the My Files answer, which holds
+    /// its details: nothing asks for it again.
+    #[tokio::test]
+    async fn the_root_comes_from_my_files() {
+        let account = super::super::account::test_account();
+        let mut drive = TestDrive::start(&account).await;
+        drive.add_file(account.provider(), ROOT, "a.txt", &[b"a"]);
+        let client = opened(&drive, account).await;
+        drive.reset_counts();
+
+        let root = client.root().await.expect("root");
+        assert!(root.node_key.is_some() && root.hash_key.is_some());
+        let names: Vec<String> = client
+            .children(&root)
+            .await
+            .expect("children")
+            .iter()
+            .filter_map(|child| child.display_name().map(str::to_string))
+            .collect();
+        assert_eq!(names, vec!["a.txt"]);
+        assert!(!asked_for_the_root(&drive), "{:?}", drive.log());
+    }
+
+    /// The root read from My Files and the root read by link ID are the same
+    /// node: same name, keys, hash key, verification and children.
+    #[tokio::test]
+    async fn the_root_from_my_files_is_the_root_from_links() {
+        let account = super::super::account::test_account();
+        let mut drive = TestDrive::start(&account).await;
+        drive.add_folder(account.provider(), ROOT, "docs");
+        let client = opened(&drive, account).await;
+
+        let a = client.root().await.unwrap();
+        let names_a: Vec<String> = client
+            .children(&a)
+            .await
+            .unwrap()
+            .iter()
+            .filter_map(|child| child.display_name().map(str::to_string))
+            .collect();
+        client.forget(&[ROOT]).await;
+        drive.reset_counts();
+        let b = client.root().await.unwrap();
+        assert!(asked_for_the_root(&drive), "read again by link ID");
+        let names_b: Vec<String> = client
+            .children(&b)
+            .await
+            .unwrap()
+            .iter()
+            .filter_map(|child| child.display_name().map(str::to_string))
+            .collect();
+
+        assert_eq!(a.link_id, b.link_id);
+        assert_eq!(a.parent_link_id, b.parent_link_id);
+        assert_eq!(a.name, b.name);
+        assert_eq!(a.name_hash, b.name_hash);
+        assert_eq!(a.kind, b.kind);
+        assert_eq!(a.hash_key, b.hash_key);
+        assert_eq!(a.armored_node_passphrase, b.armored_node_passphrase);
+        assert!(a.name_verified.is_valid() && b.name_verified.is_valid());
+        assert!(a.key_verified.is_valid() && b.key_verified.is_valid());
+        assert_eq!(a.errors, b.errors);
+        assert_eq!(names_a, names_b);
+        assert_eq!(names_a, vec!["docs"]);
+    }
+
+    /// A root in My Files whose key does not open with the share key is not
+    /// replaced by another reading: the root has no key, and writing or
+    /// listing in it fails, as it would for a root read by link ID.
+    #[tokio::test]
+    async fn a_root_in_my_files_that_does_not_decrypt_is_not_read_again() {
+        let account = super::super::account::test_account();
+        let mut drive = TestDrive::start(&account).await;
+        drive.add_folder(account.provider(), ROOT, "docs");
+        drive.set_my_files_root(MyFilesRoot::WrongPassphrase);
+        let client = opened(&drive, account).await;
+        drive.reset_counts();
+
+        let root = client.root().await.expect("the root, degraded");
+        assert!(root.node_key.is_none(), "{root:?}");
+        let error = client.children(&root).await.unwrap_err();
+        assert!(matches!(error, ProtonError::Crypto(_)), "{error:?}");
+        assert!(!asked_for_the_root(&drive), "{:?}", drive.log());
+    }
+
+    /// A root in My Files signed by another key is marked unverified, as a
+    /// root read by link ID with that signature is, and not read again.
+    #[tokio::test]
+    async fn a_root_in_my_files_with_a_foreign_signature_is_unverified() {
+        let account = super::super::account::test_account();
+        let mut drive = TestDrive::start(&account).await;
+        drive.add_folder(account.provider(), ROOT, "docs");
+        drive.set_my_files_root(MyFilesRoot::WrongSignature);
+        let client = opened(&drive, account).await;
+        drive.reset_counts();
+
+        let root = client.root().await.expect("root");
+        assert!(!root.key_verified.is_valid(), "{root:?}");
+        assert!(!asked_for_the_root(&drive), "{:?}", drive.log());
+    }
+
+    /// A My Files answer without the root's details: the root is read by its
+    /// link ID, as before.
+    #[tokio::test]
+    async fn without_its_details_the_root_is_read_by_link_id() {
+        let account = super::super::account::test_account();
+        let drive = TestDrive::start(&account).await;
+        drive.set_my_files_root(MyFilesRoot::IdOnly);
+        let client = opened(&drive, account).await;
+        drive.reset_counts();
+
+        let root = client.root().await.expect("root");
+        assert!(root.node_key.is_some() && root.key_verified.is_valid());
+        assert!(asked_for_the_root(&drive), "{:?}", drive.log());
     }
 }

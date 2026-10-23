@@ -240,6 +240,32 @@ pub(crate) fn test_account() -> ProtonAccount<impl PGPProviderSync + Send + Sync
     .expect("the generated account unlocks")
 }
 
+/// [`test_account`] with the `/core/v4/users` and `/core/v4/addresses`
+/// answers that unlock to it with the key password `pw`.
+#[cfg(test)]
+pub(crate) fn test_account_with_json() -> (
+    ProtonAccount<impl PGPProviderSync + Send + Sync + 'static>,
+    serde_json::Value,
+    serde_json::Value,
+) {
+    let (user, addresses) = tests::generated_account_json(b"pw", 1, false);
+    let account = unlock_account(
+        proton_crypto_account::proton_crypto::new_pgp_provider(),
+        serde_json::from_value(user.clone()).unwrap(),
+        addresses
+            .iter()
+            .map(|address| serde_json::from_value(address.clone()).unwrap())
+            .collect(),
+        &KeySecret::new(b"pw".to_vec()),
+    )
+    .expect("the generated account unlocks");
+    (
+        account,
+        serde_json::json!({ "Code": 1000, "User": user }),
+        serde_json::json!({ "Code": 1000, "Addresses": addresses }),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -284,6 +310,23 @@ mod tests {
         addresses: usize,
         swap_signatures: bool,
     ) -> (ApiUser, Vec<ApiAddress>) {
+        let (user, addresses) = generated_account_json(password, addresses, swap_signatures);
+        (
+            serde_json::from_value(user).unwrap(),
+            addresses
+                .into_iter()
+                .map(|address| serde_json::from_value(address).unwrap())
+                .collect(),
+        )
+    }
+
+    /// [`generated_account`] as the API sends it: the `User` and the
+    /// `Addresses` JSON.
+    pub(super) fn generated_account_json(
+        password: &[u8],
+        addresses: usize,
+        swap_signatures: bool,
+    ) -> (serde_json::Value, Vec<serde_json::Value>) {
         use proton_crypto_account::keys::{LocalAddressKey, LocalUserKey};
         use proton_crypto_account::proton_crypto::crypto::KeyGeneratorAlgorithm;
 
@@ -291,14 +334,14 @@ mod tests {
         let secret = KeySecret::new(password.to_vec());
         let user_key = LocalUserKey::generate(&provider, KeyGeneratorAlgorithm::ECC, &secret)
             .expect("user key generation");
-        let user: ApiUser = serde_json::from_value(serde_json::json!({
+        let user_json = serde_json::json!({
             "ID": "u1",
             "Keys": [{
                 "ID": "uk1", "Version": 3, "Primary": 1, "Active": 1,
                 "PrivateKey": user_key.private_key,
             }],
-        }))
-        .unwrap();
+        });
+        let user: ApiUser = serde_json::from_value(user_json.clone()).unwrap();
 
         let mut unlocked = UserKeys::new(user.keys.clone()).unlock(&provider, &secret);
         assert!(
@@ -329,7 +372,7 @@ mod tests {
                 } else {
                     &key.signature
                 };
-                serde_json::from_value(serde_json::json!({
+                serde_json::json!({
                     "ID": format!("a{i}"),
                     "Email": format!("me{i}@example.com"),
                     "Keys": [{
@@ -339,11 +382,10 @@ mod tests {
                         "Token": key.token,
                         "Signature": signature,
                     }],
-                }))
-                .unwrap()
+                })
             })
             .collect();
-        (user, api_addresses)
+        (user_json, api_addresses)
     }
 
     /// The whole unlock path on real keys: user key with the password, then
