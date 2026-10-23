@@ -61,11 +61,22 @@ jobs:
         with:
           toolchain: 1.97.1
           components: clippy
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - name: Rust cache
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        # Blank only for rust-cache: RUST_BACKTRACE changes no artefact but would
+        # put this job's key outside the `linux-dev` family (see
+        # delta-sync-integration.yml). CARGO_TERM_COLOR stays: every job already
+        # has it as `always` from dtolnay/rust-toolchain, and cargo refuses an
+        # empty value, which fails rust-cache's `cargo metadata` and drops
+        # Cargo.toml from the key (seen on #1336: 3de865b5-545dcdc9 against
+        # 906c399b-837f71fc).
+        env:
+          RUST_BACKTRACE: ''
         with:
-          workspaces: src-tauri
-          # PRs restore; only main saves (Actions cache quota is 10 GB).
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          workspaces: './src-tauri -> target'
+          # Restore-only member of `linux-dev` (see delta-sync-integration.yml).
+          shared-key: linux-dev
+          save-if: false
       - name: Install Linux system deps
         run: |
           # Runner-image extras: the preinstalled microsoft*, azure-cli* and google-chrome*

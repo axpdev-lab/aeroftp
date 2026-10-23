@@ -74,10 +74,21 @@ jobs:
         with:
           toolchain: 1.97.1
           components: clippy
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - name: Rust cache
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        # Blank only for rust-cache: RUST_BACKTRACE changes no artefact but would
+        # put this job's key outside the `linux-dev` family (see
+        # delta-sync-integration.yml). CARGO_TERM_COLOR stays: every job already
+        # has it as `always` from dtolnay/rust-toolchain, and cargo refuses an
+        # empty value, which fails rust-cache's `cargo metadata` and drops
+        # Cargo.toml from the key (seen on #1336: 3de865b5-545dcdc9 against
+        # 906c399b-837f71fc).
+        env:
+          RUST_BACKTRACE: ''
         with:
-          workspaces: src-tauri
-          # PRs restore; only main saves (Actions cache quota is 10 GB).
+          workspaces: './src-tauri -> target'
+          # Saver of the `linux-dev` family (see delta-sync-integration.yml).
+          shared-key: linux-dev
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # The 74 MB .deb download of this stack is what cancelled this workflow
       # twice on 2026-10-22: `check` spent 1801s in apt (run 39788705535) and
@@ -148,11 +159,22 @@ jobs:
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           toolchain: 1.97.1
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - name: Rust cache
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        # Blank only for rust-cache: RUST_BACKTRACE changes no artefact but would
+        # put this job's key outside the `linux-dev` family (see
+        # delta-sync-integration.yml). CARGO_TERM_COLOR stays: every job already
+        # has it as `always` from dtolnay/rust-toolchain, and cargo refuses an
+        # empty value, which fails rust-cache's `cargo metadata` and drops
+        # Cargo.toml from the key (seen on #1336: 3de865b5-545dcdc9 against
+        # 906c399b-837f71fc).
+        env:
+          RUST_BACKTRACE: ''
         with:
-          workspaces: src-tauri
-          # PRs restore; only main saves (Actions cache quota is 10 GB).
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          workspaces: './src-tauri -> target'
+          # Restore-only member of `linux-dev` (see delta-sync-integration.yml).
+          shared-key: linux-dev
+          save-if: false
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
@@ -264,11 +286,26 @@ jobs:
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           toolchain: 1.97.1
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      # Restore-only member of `linux-dev` (see delta-sync-integration.yml):
+      # it costs no quota. The first test step builds with RUSTFLAGS='--cfg
+      # ci_lane3' and recompiles everything whatever is restored; the
+      # real-rsync step builds without it, with `check`'s features, and is the
+      # one the restored dependencies serve.
+      - name: Rust cache
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        # Blank only for rust-cache: RUST_BACKTRACE changes no artefact but would
+        # put this job's key outside the `linux-dev` family (see
+        # delta-sync-integration.yml). CARGO_TERM_COLOR stays: every job already
+        # has it as `always` from dtolnay/rust-toolchain, and cargo refuses an
+        # empty value, which fails rust-cache's `cargo metadata` and drops
+        # Cargo.toml from the key (seen on #1336: 3de865b5-545dcdc9 against
+        # 906c399b-837f71fc).
+        env:
+          RUST_BACKTRACE: ''
         with:
-          workspaces: src-tauri
-          # PRs restore; only main saves (Actions cache quota is 10 GB).
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          workspaces: './src-tauri -> target'
+          shared-key: linux-dev
+          save-if: false
       # Same reclaim step delta-sync-integration.yml, cli-smoke.yml and
       # build.yml already use: the lib in test profile plus the Docker
       # fixture do not fit in the runner's free disk on a cold cache.

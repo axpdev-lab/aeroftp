@@ -52,11 +52,13 @@ jobs:
         with:
           toolchain: 1.97.1
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Rust cache
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
         with:
-          workspaces: src-tauri
-          # PRs restore; only main saves (Actions cache quota is 10 GB).
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          workspaces: './src-tauri -> target'
+          # Restore-only member of `linux-dev` (see delta-sync-integration.yml).
+          shared-key: linux-dev
+          save-if: false
 
       # The test target links the Tauri crate, so the GTK/WebKit stack has to be
       # present or the glib-sys build script fails before a single test runs.
@@ -159,11 +161,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           toolchain: 1.97.1
-      - uses: Swatinem/rust-cache@v2
+      - name: Rust cache
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
         with:
-          workspaces: src-tauri
-          # PRs restore; only main saves (Actions cache quota is 10 GB).
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          workspaces: './src-tauri -> target'
+          # Restore-only member of `linux-dev` (see delta-sync-integration.yml).
+          shared-key: linux-dev
+          save-if: false
 
       # The install below is copied from the `mlsd` job, deliberately and
       # in full. This job was added beside that one and inherits nothing from
