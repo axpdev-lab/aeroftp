@@ -137,21 +137,8 @@ async fn publish_remote_edit_on_ftp_manager(
     path: &str,
     allow_non_atomic: bool,
 ) -> Result<(), String> {
-    struct Lent<'a> {
-        slot: &'a mut crate::ftp::FtpManager,
-        session: super::ftp_manager_provider::FtpManagerProvider,
-    }
-    impl Drop for Lent<'_> {
-        fn drop(&mut self) {
-            std::mem::swap(self.slot, &mut self.session.0);
-        }
-    }
-    let session = std::mem::take(manager);
-    let mut lent = Lent {
-        slot: manager,
-        session: super::ftp_manager_provider::FtpManagerProvider(session),
-    };
-    publish_remote_edit(&mut lent.session, local_temp, path, allow_non_atomic).await
+    let mut lease = super::ftp_manager_provider::FtpManagerProvider::borrow(manager);
+    publish_remote_edit(&mut lease.provider, local_temp, path, allow_non_atomic).await
 }
 
 pub async fn dispatch_gui_tool(

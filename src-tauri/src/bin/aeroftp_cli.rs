@@ -7781,7 +7781,9 @@ fn remote_size_is_exact(provider: &dyn StorageProvider, entry: &RemoteEntry) -> 
 /// proceeding, but not for a `stat` that lost the connection
 /// ([`connection_lost_reading`]): the write that would follow dials again by
 /// itself (SFTP's `ensure_connected`) and overwrites the file the flag
-/// protects, so it fails closed as `--immutable` does.
+/// protects, so it fails closed as `--immutable` does. A provider whose
+/// listing can omit stored files also fails closed: its inability to verify
+/// a name is a backend capability limit, not an intermittent stat failure.
 async fn skip_if_destination_exists(
     provider: &mut dyn StorageProvider,
     target: &str,
@@ -7790,6 +7792,14 @@ async fn skip_if_destination_exists(
     cli: &Cli,
     format: OutputFormat,
 ) -> Option<i32> {
+    if !cli.immutable && provider.supports_upload_if_absent() {
+        if put_run_left_incomplete(target) {
+            put_run_note_refused();
+            print_error(format, &left_incomplete_refusal(target), 4);
+            return Some(4);
+        }
+        return None;
+    }
     match provider.stat(target).await {
         Ok(entry) => {
             let refusal = if put_run_left_incomplete(target) {
@@ -7805,7 +7815,11 @@ async fn skip_if_destination_exists(
             }
         }
         Err(ProviderError::NotFound(_)) => return None,
-        Err(e) if cli.immutable || connection_lost_reading(&*provider, &e, &[target]) => {
+        Err(e)
+            if cli.immutable
+                || !provider.listing_is_authoritative()
+                || connection_lost_reading(&*provider, &e, &[target]) =>
+        {
             let code = provider_error_to_exit_code(&e);
             print_error(
                 format,
@@ -11208,8 +11222,18 @@ async fn upload_transfer_on(
         ));
     }
 
+    let native_guard = no_clobber && !cli.immutable && provider.supports_upload_if_absent();
+    if native_guard && put_run_left_incomplete(&remote_path) {
+        put_run_note_refused();
+        return Err(TransferOnError {
+            message: left_incomplete_refusal(&remote_path),
+            session_lost: false,
+            retry_safe: false,
+            untouched: false,
+        });
+    }
     // --immutable / --no-clobber: never overwrite a remote file.
-    if cli.immutable || no_clobber {
+    if cli.immutable || (no_clobber && !native_guard) {
         match provider.stat(&remote_path).await {
             Ok(entry) => {
                 let local_size = std::fs::metadata(&local_path).map(|m| m.len()).ok();
@@ -11240,7 +11264,8 @@ async fn upload_transfer_on(
             Err(ProviderError::NotFound(_)) => {}
             // As a single `put` does: under `--immutable` a `stat` that fails
             // for another reason fails closed, and `--no-clobber` proceeds,
-            // unless the check lost the session. A worker's connection can end
+            // unless the check lost the session or the provider cannot prove
+            // absence from its listing. A worker's connection can end
             // between two jobs, and its `stat` then fails at once (SFTP's does
             // not dial again) while the upload dials again by itself and would
             // truncate the very file `--no-clobber` protects. Nothing is
@@ -11257,7 +11282,7 @@ async fn upload_transfer_on(
                     );
                     return Err(err);
                 }
-                if err.session_lost {
+                if err.session_lost || !provider.listing_is_authoritative() {
                     err.message = format!(
                         "--no-clobber: cannot verify that {} does not exist ({}); not written",
                         remote_path, err.message
@@ -11295,7 +11320,21 @@ async fn upload_transfer_on(
         }
         None => (None, None),
     };
-    let result = upload_with_resume(provider, &local_path, &remote_path, cli, progress_cb).await;
+    let result = if native_guard {
+        provider
+            .upload_if_absent(&local_path, &remote_path, progress_cb)
+            .await
+    } else {
+        upload_with_resume(provider, &local_path, &remote_path, cli, progress_cb).await
+    };
+    if native_guard && matches!(result, Err(ProviderError::AlreadyExists(_))) {
+        if let Some(attempt) = attempt {
+            attempt.take_back();
+        }
+        return Err(TransferOnError::skipped(format!(
+            "{UPLOAD_SKIP_PREFIX}--no-clobber): {remote_path}"
+        )));
+    }
     if let (Err(_), Some(attempt)) = (&result, &attempt) {
         attempt.take_back();
     }
@@ -12402,8 +12441,9 @@ fn put_screens_targets_by_listing(
     files: &[(String, String, u64)],
     cli: &Cli,
 ) -> bool {
-    provider.transfer_capabilities().bulk_upload
-        == ftp_client_gui_lib::transfer_dag::Capability::Supported
+    provider.listing_is_authoritative()
+        && provider.transfer_capabilities().bulk_upload
+            == ftp_client_gui_lib::transfer_dag::Capability::Supported
         && native_bulk_upload_pays(files, effective_parallel_workers(cli))
 }
 
@@ -12414,6 +12454,8 @@ enum PutParentListing {
     Listed(HashMap<String, RemoteEntry>),
     /// The folder does not exist, so none of its targets do.
     Missing,
+    /// The provider discovered that its listing can omit stored files.
+    Unverified,
     /// The listing failed another way, and verifies nothing in the folder.
     Failed {
         message: String,
@@ -12483,11 +12525,15 @@ fn filter_put_targets_by_listing(
                 // A folder absent from the map was never listed, which
                 // verifies no more than a listing that lost the session, and
                 // is held to the same rule.
-                let (message, session_lost) = match unread {
+                let (message, refuse_unverified) = match unread {
                     Some(PutParentListing::Failed {
                         message,
                         session_lost,
                     }) => (message.as_str(), *session_lost),
+                    Some(PutParentListing::Unverified) => (
+                        "the listing can omit stored files; absence is unverified",
+                        true,
+                    ),
                     _ => ("its folder was not listed", true),
                 };
                 if cli.immutable {
@@ -12497,7 +12543,7 @@ fn filter_put_targets_by_listing(
                     ));
                     continue;
                 }
-                if session_lost {
+                if refuse_unverified {
                     screen.errors.push(format!(
                         "--no-clobber: cannot verify that {} does not exist ({}); not written",
                         remote_path, message
@@ -12552,6 +12598,7 @@ async fn screen_put_targets_by_listing(
             return None;
         }
         let listing = match provider.list(parent).await {
+            Ok(_) if !provider.listing_is_authoritative() => PutParentListing::Unverified,
             Ok(entries) => {
                 let mut by_name = HashMap::with_capacity(entries.len());
                 for entry in entries {
@@ -34998,7 +35045,7 @@ async fn collect_cli_list_entries<B: RemoteBase + ?Sized>(
     .map_err(CliListError::RemotePath)?;
     let effective_path = resolved_path;
 
-    let entries = match provider.list(&effective_path).await {
+    let entries = match provider.list_for_display(&effective_path).await {
         Ok(entries) => entries,
         Err(err) => return Err(CliListError::Provider(err)),
     };
@@ -37181,7 +37228,7 @@ async fn cmd_put(
     // signals a security-relevant fault (host-key mismatch, etc.) that the
     // operator must see.
     let not_finished = format!("the upload did not finish, {remote_path} may be incomplete");
-    if delta {
+    if delta && !(no_clobber && !cli.immutable && provider.supports_upload_if_absent()) {
         let attempt = run_until_interrupted(
             &cancelled,
             ftp_client_gui_lib::delta_sync_rsync::try_delta_transfer(
@@ -37263,7 +37310,16 @@ async fn cmd_put(
     // DAG-ENGINE: route the plain classic single-file upload through the
     // graph engine. `--partial` keeps the legacy `upload_with_resume` (its
     // resume branch is not the plain leaf). Both stop on Ctrl-C.
-    let (mut provider, up_result) = if !cli.partial {
+    let native_guard = no_clobber && !cli.immutable && provider.supports_upload_if_absent();
+    let (mut provider, up_result) = if native_guard {
+        let result = run_until_interrupted(
+            &cancelled,
+            provider.upload_if_absent(local, remote_path, progress_cb),
+        )
+        .await
+        .unwrap_or_else(|| Err(interrupted_by_user()));
+        (provider, result)
+    } else if !cli.partial {
         cli_run_single_file_dag(
             provider,
             ftp_client_gui_lib::transfer_dag::TransferDirection::Upload,
@@ -37346,6 +37402,20 @@ async fn cmd_put(
             }
             let _ = provider.disconnect().await;
             0
+        }
+        Err(ProviderError::AlreadyExists(_)) if native_guard => {
+            if let Some(pb) = pb {
+                pb.finish_and_clear();
+            }
+            if matches!(format, OutputFormat::Json) {
+                print_json(
+                    &serde_json::json!({"status":"skipped","reason":"already_exists","path":remote_path}),
+                );
+            } else if !cli.quiet {
+                eprintln!("Skipped: {remote_path} (already exists, --no-clobber)");
+            }
+            let _ = provider.disconnect().await;
+            9
         }
         Err(e) => {
             // It may have left a partial at the target: a later attempt of
@@ -38089,24 +38159,11 @@ enum DryRunOutcome {
     NeedsRecursive { children: usize },
 }
 
-/// Some providers (FTP, WebDAV) answer a missing path with `ServerError`
-/// instead of `NotFound`, so the message has to be sniffed too. Shared by the
-/// real delete and by `--dry-run`, which must agree on what "absent" means.
-/// The typed variant first, and the shared vocabulary for everything else.
-///
-/// The list that used to be inline here matched a bare `404`, three digits
-/// anywhere in the message. `message_names_a_missing_path` carries the record
-/// of why that is wrong and the note that the needle came FROM this file; the
-/// tightening was made there and never came back. Asking that function is what
-/// stops the two from drifting apart again.
-///
-/// The variant gate stays: only a `ServerError` or an `Other` has a message
-/// worth reading, and letting every variant's text be searched would find
-/// "not found" inside errors that are about something else entirely.
+/// Only the provider's typed absence permits force-delete to ignore a failure
+/// or a caller-named speed test to write. Error details can mention a missing
+/// service, credentials or metadata without saying this path is absent.
 fn is_not_found_error(e: &ProviderError) -> bool {
     matches!(e, ProviderError::NotFound(_))
-        || (matches!(e, ProviderError::ServerError(_) | ProviderError::Other(_))
-            && ftp_client_gui_lib::providers::types::message_names_a_missing_path(&e.to_string()))
 }
 
 /// The delete scope of `rm`/`purge`, assembled from the GLOBAL filter flags:
@@ -46134,7 +46191,12 @@ async fn cmd_lsjson(
                 let _ = err.flush();
                 spin_i += 1;
             }
-            let entries = match provider.list(&dir_path).await {
+            let listed = if recursive {
+                provider.list(&dir_path).await
+            } else {
+                provider.list_for_display(&dir_path).await
+            };
+            let entries = match listed {
                 Ok(e) => e,
                 Err(e) => {
                     if is_root_list {
@@ -49738,6 +49800,27 @@ fn benchmark_throughput_at(
         })
 }
 
+/// The protocol of a service that did best at one figure, `lowest` for a
+/// latency and highest for a throughput, among the protocols that measured it.
+/// `None` unless two different protocols measured it: a figure that one
+/// protocol alone measured compares nothing (a `cache` or `local` client has
+/// no latency to set against it), and two profiles over the same protocol are
+/// still one protocol.
+fn benchmark_best_protocol(measured: &[(String, f64)], lowest: bool) -> Option<String> {
+    let mut protocols: Vec<&str> = measured.iter().map(|(p, _)| p.as_str()).collect();
+    protocols.sort_unstable();
+    protocols.dedup();
+    if protocols.len() < 2 {
+        return None;
+    }
+    let best = if lowest {
+        measured.iter().min_by(|a, b| a.1.total_cmp(&b.1))
+    } else {
+        measured.iter().max_by(|a, b| a.1.total_cmp(&b.1))
+    };
+    best.map(|(protocol, _)| protocol.clone())
+}
+
 /// What the comparison says for this network, from the measured figures
 /// only: the most responsive service for frequent syncs of small changes,
 /// the fastest for backups (upload) and for restores (download), and for a
@@ -49829,24 +49912,22 @@ fn print_benchmark_recommendations(
         if protocols.len() < 2 {
             continue;
         }
-        let pick_low = members
+        let measured_latency: Vec<(String, f64)> = members
             .iter()
             .filter_map(|r| latency(r).map(|v| (benchmark_report_access(r), v)))
-            .min_by(|a, b| a.1.total_cmp(&b.1))
-            .map(|(p, _)| p);
-        let pick_high = |op: &str| {
+            .collect();
+        let measured = |op: &str| -> Vec<(String, f64)> {
             members
                 .iter()
                 .filter_map(|r| throughput(r, op).map(|v| (benchmark_report_access(r), v)))
-                .max_by(|a, b| a.1.total_cmp(&b.1))
-                .map(|(p, _)| p)
+                .collect()
         };
         let dash = || "-".to_string();
         rows.push(vec![
             service,
-            pick_low.unwrap_or_else(dash),
-            pick_high("upload").unwrap_or_else(dash),
-            pick_high("download").unwrap_or_else(dash),
+            benchmark_best_protocol(&measured_latency, true).unwrap_or_else(dash),
+            benchmark_best_protocol(&measured("upload"), false).unwrap_or_else(dash),
+            benchmark_best_protocol(&measured("download"), false).unwrap_or_else(dash),
         ]);
     }
     if !rows.is_empty() {
@@ -49914,6 +49995,13 @@ fn benchmark_profile_identity(p: &serde_json::Value) -> (String, String) {
                     || p.pointer("/options/mega_mode").and_then(|v| v.as_str()) == Some("megacmd"))
             {
                 "CLI".to_string()
+            } else if pt == ProviderType::Proton
+                && (p.pointer("/options/proton_mode").and_then(|v| v.as_str()) == Some("native")
+                    || p.pointer("/options/protonMode").and_then(|v| v.as_str()) == Some("native"))
+            {
+                // AeroFTP's own Proton client speaks Proton's API; a profile
+                // without the option drives Proton's official CLI.
+                "REST API".to_string()
             } else {
                 pt.access_label().to_string()
             },
@@ -78111,6 +78199,21 @@ fn effective_max_attempts(cli: &Cli, format: OutputFormat) -> u32 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn probe_contract_cli_requires_typed_absence() {
+        assert!(super::is_not_found_error(&super::ProviderError::NotFound(
+            "/file".into()
+        )));
+        for error in [
+            super::ProviderError::AuthenticationFailed("404 not found".into()),
+            super::ProviderError::PermissionDenied("no such file".into()),
+            super::ProviderError::ServerError("404 not found: metadata service".into()),
+            super::ProviderError::Other("cannot find credentials".into()),
+        ] {
+            assert!(!super::is_not_found_error(&error), "{error}");
+        }
+    }
+
     use super::*;
     use ftp_client_gui_lib::profile_loader::insert_profile_option;
 
@@ -84731,6 +84834,38 @@ mod tests {
     // ── Community Benchmark unit tests ────────────────────────────────
 
     #[test]
+    fn a_best_protocol_needs_two_measured_protocols() {
+        // Proton Drive: the CLI measured a round trip, AeroFTP's client answers
+        // from its cache and measured none. One figure compares nothing.
+        let latency = vec![("CLI".to_string(), 2110.0)];
+        assert_eq!(benchmark_best_protocol(&latency, true), None);
+        // Two profiles over the same protocol are still one protocol.
+        let upload = vec![("WebDAV".to_string(), 30.0), ("WebDAV".to_string(), 40.0)];
+        assert_eq!(benchmark_best_protocol(&upload, false), None);
+        assert_eq!(benchmark_best_protocol(&[], false), None);
+    }
+
+    #[test]
+    fn a_best_protocol_is_named_between_two_measured_protocols() {
+        let latency = vec![
+            ("REST API".to_string(), 100.1),
+            ("WebDAV".to_string(), 101.3),
+        ];
+        assert_eq!(
+            benchmark_best_protocol(&latency, true).as_deref(),
+            Some("REST API")
+        );
+        let download = vec![
+            ("REST API".to_string(), 39.15),
+            ("WebDAV".to_string(), 22.6),
+        ];
+        assert_eq!(
+            benchmark_best_protocol(&download, false).as_deref(),
+            Some("REST API")
+        );
+    }
+
+    #[test]
     fn benchmark_identity_names_pcloud_drive_and_distinguishes_megacmd() {
         assert_eq!(
             benchmark_profile_identity(&json!({"protocol":"pcloud"})),
@@ -84752,6 +84887,26 @@ mod tests {
             benchmark_profile_identity(&json!({"protocol":"webdav","providerId":"megacmd-webdav"}))
                 .1,
             "WebDAV"
+        );
+        // Proton: AeroFTP's own client speaks Proton's API, the other mode
+        // drives Proton's official CLI.
+        assert_eq!(
+            benchmark_profile_identity(
+                &json!({"protocol":"proton","options":{"proton_mode":"native"}})
+            )
+            .1,
+            "REST API"
+        );
+        assert_eq!(
+            benchmark_profile_identity(
+                &json!({"protocol":"proton","options":{"protonMode":"native"}})
+            )
+            .1,
+            "REST API"
+        );
+        assert_eq!(
+            benchmark_profile_identity(&json!({"protocol":"proton"})).1,
+            "CLI"
         );
     }
 
@@ -88820,6 +88975,13 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         .await
         .unwrap();
         part.write_all(&[b'b'; 100]).await.unwrap();
+        // tokio hands a write to a blocking thread, and the writer keeps its
+        // claim on the part until that write lands: without a flush the drop
+        // can come first, and the `get` below found the part empty or still
+        // claimed and downloaded the whole file (seen on loaded CI runners).
+        tokio::io::AsyncWriteExt::flush(part.file_mut())
+            .await
+            .unwrap();
         drop(part);
         assert_eq!(partial_get_out_of_place(&local).await, (vec![100], 0));
     }
@@ -88884,6 +89046,9 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         stat_errors: std::collections::HashSet<String>,
         /// The provider type the fake reports (SFTP when unset).
         kind: Option<ProviderType>,
+        /// A backend such as ImageKit cannot prove absence from its list.
+        refuse_unlisted_absence: bool,
+        conditional_uploads: bool,
         /// `reports_exact_size` says no, as the size-changing overlays do.
         inexact_sizes: bool,
         /// Paths whose `stat` loses the session, and how many times. The
@@ -88996,6 +89161,29 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
 
     #[async_trait::async_trait]
     impl StorageProvider for WorkerFake {
+        fn supports_upload_if_absent(&self) -> bool {
+            self.state.lock().unwrap().conditional_uploads
+        }
+        async fn upload_if_absent(
+            &mut self,
+            local: &str,
+            remote: &str,
+            _cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            let bytes = tokio::fs::read(local)
+                .await
+                .map_err(ProviderError::IoError)?;
+            let mut state = self.state.lock().unwrap();
+            if state.files.contains_key(remote) {
+                return Err(ProviderError::AlreadyExists(remote.into()));
+            }
+            state.files.insert(remote.into(), bytes);
+            state.served.push((self.id, remote.into()));
+            Ok(())
+        }
+        fn listing_is_authoritative(&self) -> bool {
+            !self.state.lock().unwrap().refuse_unlisted_absence
+        }
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
             self
         }
@@ -89161,10 +89349,15 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 let name = path.rsplit('/').next().unwrap_or(path).to_string();
                 return Ok(RemoteEntry::directory(name, path.to_string()));
             }
-            let bytes = st
-                .files
-                .get(path)
-                .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+            let bytes = st.files.get(path).ok_or_else(|| {
+                if st.refuse_unlisted_absence {
+                    ProviderError::NotSupported(
+                        "ImageKit cannot verify absence from its listing".into(),
+                    )
+                } else {
+                    ProviderError::NotFound(path.to_string())
+                }
+            })?;
             let name = path.rsplit('/').next().unwrap_or(path).to_string();
             let mut entry = RemoteEntry::file(name, path.to_string(), bytes.len() as u64);
             entry.modified = Some(FIXTURE_MTIME.to_string());
@@ -89180,6 +89373,9 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             Ok(self.stat(path).await?.size)
         }
         async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+            if self.state.lock().unwrap().refuse_unlisted_absence {
+                return self.stat(path).await.map(|_| true);
+            }
             Ok(self.state.lock().unwrap().files.contains_key(path))
         }
         async fn keep_alive(&mut self) -> Result<(), ProviderError> {
@@ -90996,6 +91192,128 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 // one and refused; a refusal ends the retries, so no third.
                 assert_eq!(st.dials, 1, "{case}: two attempts, not three");
             }
+        }
+    }
+
+    #[test]
+    fn probe_contract_cli_imagekit_plain_put_and_put_r_keep_uploading() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        for recursive in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let (folder, cli) = local_batch(&directory, 1);
+            let single = format!("{folder}/f1.txt");
+            let state = WorkerFake::state();
+            {
+                let mut st = state.lock().unwrap();
+                st.kind = Some(ProviderType::ImageKit);
+                st.refuse_unlisted_absence = true;
+            }
+            let code = run_on_fake(&state, || {
+                cmd_put(
+                    "memory://",
+                    if recursive { &folder } else { &single },
+                    Some(if recursive { "/root" } else { "/root/f1.txt" }),
+                    recursive,
+                    false,
+                    false,
+                    None,
+                    &cli,
+                    OutputFormat::Json,
+                    Arc::new(AtomicBool::new(false)),
+                )
+            });
+            assert_eq!(code, 0, "recursive={recursive}");
+            let st = state.lock().unwrap();
+            assert_eq!(st.files.len(), if recursive { 5 } else { 1 });
+            assert_eq!(st.files["/root/f1.txt"], b"file 1");
+            assert_eq!(st.served.len(), if recursive { 5 } else { 1 });
+        }
+    }
+
+    #[test]
+    fn probe_contract_cli_native_no_clobber_accepts_fresh_and_skips_existing() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        for recursive in [false, true] {
+            for taken in [false, true] {
+                let dir = tempfile::tempdir().unwrap();
+                let (folder, cli) = local_batch(&dir, 1);
+                let single = format!("{folder}/f1.txt");
+                let state = WorkerFake::state();
+                {
+                    let mut st = state.lock().unwrap();
+                    st.kind = Some(ProviderType::ImageKit);
+                    st.refuse_unlisted_absence = true;
+                    st.conditional_uploads = true;
+                    if taken {
+                        st.files.insert("/root/f1.txt".into(), b"original".to_vec());
+                    }
+                }
+                let code = run_on_fake(&state, || {
+                    cmd_put(
+                        "memory://",
+                        if recursive { &folder } else { &single },
+                        Some(if recursive { "/root" } else { "/root/f1.txt" }),
+                        recursive,
+                        true,
+                        false,
+                        None,
+                        &cli,
+                        OutputFormat::Json,
+                        Arc::new(AtomicBool::new(false)),
+                    )
+                });
+                assert_eq!(
+                    code,
+                    if taken && !recursive { 9 } else { 0 },
+                    "recursive={recursive} taken={taken}"
+                );
+                let st = state.lock().unwrap();
+                assert_eq!(st.files.len(), if recursive { 5 } else { 1 });
+                assert_eq!(
+                    st.files["/root/f1.txt"],
+                    if taken {
+                        b"original".as_slice()
+                    } else {
+                        b"file 1".as_slice()
+                    }
+                );
+                assert_eq!(
+                    st.served.len(),
+                    if recursive { 5 } else { 1 } - usize::from(taken)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn probe_contract_cli_imagekit_no_clobber_refuses_an_unknown_destination() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        for recursive in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let (folder, cli) = local_batch(&directory, 1);
+            let single = format!("{folder}/f1.txt");
+            let state = WorkerFake::state();
+            {
+                let mut st = state.lock().unwrap();
+                st.kind = Some(ProviderType::ImageKit);
+                st.refuse_unlisted_absence = true;
+            }
+            let code = run_on_fake(&state, || {
+                cmd_put(
+                    "memory://",
+                    if recursive { &folder } else { &single },
+                    Some("/root"),
+                    recursive,
+                    true,
+                    false,
+                    None,
+                    &cli,
+                    OutputFormat::Json,
+                    Arc::new(AtomicBool::new(false)),
+                )
+            });
+            assert_ne!(code, 0, "recursive={recursive}");
+            assert!(state.lock().unwrap().served.is_empty());
         }
     }
 

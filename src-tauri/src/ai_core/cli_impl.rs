@@ -338,6 +338,34 @@ impl RemoteBackend for CliRemoteBackend {
         p.list(path).await.map_err(|e| e.to_string())
     }
 
+    async fn list_for_display(&self, path: &str) -> Result<Vec<RemoteEntry>, String> {
+        let mut guard = self.provider.lock().await;
+        let p = guard.as_mut().ok_or("Not connected to any server")?;
+        p.list_for_display(path).await.map_err(|e| e.to_string())
+    }
+
+    async fn supports_upload_if_absent(&self) -> bool {
+        self.provider
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|p| p.supports_upload_if_absent())
+    }
+    async fn upload_if_absent(&self, local: &str, remote: &str) -> Result<bool, String> {
+        let mut guard = self.provider.lock().await;
+        let provider = guard.as_mut().ok_or("Not connected")?;
+        crate::providers::create_only_upload(provider.as_mut(), local, remote)
+            .await
+            .map_err(|e| e.to_string())
+    }
+    async fn listing_is_authoritative(&self) -> bool {
+        self.provider
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|p| p.listing_is_authoritative())
+    }
+
     async fn stat(&self, path: &str) -> Result<RemoteEntry, String> {
         let mut guard = self.provider.lock().await;
         let p = guard.as_mut().ok_or("Not connected")?;

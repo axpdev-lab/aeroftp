@@ -462,7 +462,8 @@ impl KoofrProvider {
     /// Pure status+body -> ProviderError classifier (extracted from `parse_error`
     /// so it can be unit-tested without a live `reqwest::Response`). The Koofr API
     /// returns a JSON `{ "error": { "code", "message" } }`; the body-level code
-    /// drives the mapping, falling back to the HTTP status for the message shape.
+    /// drives the mapping, but absence also needs HTTP 404: a body cannot
+    /// erase a permission, rate-limit or server failure.
     fn classify_koofr_error(status: u16, body: &str) -> ProviderError {
         // Preserve the original message shape: `reqwest::StatusCode` Displays as
         // "<code> <reason>" (e.g. "404 Not Found"), so reconstruct it from the u16.
@@ -475,7 +476,7 @@ impl KoofrProvider {
                 let code = inner.code.as_deref().unwrap_or("Unknown");
                 let message = inner.message.as_deref().unwrap_or("Unknown error");
                 return match code {
-                    "NotFound" => ProviderError::NotFound(message.to_string()),
+                    "NotFound" if status == 404 => ProviderError::NotFound(message.to_string()),
                     // A rename or move onto a taken name (409).
                     "AlreadyExists" => ProviderError::AlreadyExists(message.to_string()),
                     "Forbidden" => ProviderError::PermissionDenied(message.to_string()),
@@ -595,8 +596,18 @@ impl KoofrProvider {
     }
 }
 
+/// Koofr keeps every deleted item in its trash; its API purges the whole trash
+/// or nothing, so AeroFTP does not purge a single item there yet. Shared with
+/// the Koofr preset over WebDAV, whose deletes land in the same trash.
+pub(crate) const KOOFR_TRASH_NOT_PURGED: &str =
+    "Koofr keeps deleted items in its trash and AeroFTP cannot purge a single one there yet; empty it from Koofr to free the space";
+
 #[async_trait]
 impl StorageProvider for KoofrProvider {
+    fn trash_left_unpurged(&self) -> Option<&'static str> {
+        Some(KOOFR_TRASH_NOT_PURGED)
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
@@ -2061,6 +2072,26 @@ pub async fn koofr_empty_trash(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn probe_contract_koofr_does_not_erase_http_failures() {
+        let body = r#"{"error":{"code":"NotFound","message":"missing"}}"#;
+        for status in [403, 429, 500] {
+            let error = KoofrProvider::classify_koofr_error(status, body);
+            assert!(
+                !matches!(error, ProviderError::NotFound(_)),
+                "HTTP {status}: {error:?}"
+            );
+        }
+        assert!(matches!(
+            KoofrProvider::classify_koofr_error(404, body),
+            ProviderError::NotFound(_)
+        ));
+        assert!(!matches!(
+            KoofrProvider::classify_koofr_error(404, "<html>proxy error</html>"),
+            ProviderError::NotFound(_)
+        ));
+    }
+
     use super::*;
 
     /// A byte cut inside a multibyte character panics: masking must cut on a

@@ -18,12 +18,13 @@ use tempfile::NamedTempFile;
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    benchmark_effective_prefix, benchmark_mkdir_ladder, benchmark_provider_hint,
-    benchmark_public_ip, benchmark_remote_roots, benchmark_remote_roots_from_prefix,
-    benchmark_rounded_hour_utc, benchmark_signal_from, benchmark_stats_from, benchmark_tod_bucket,
-    note_trash_purge, BenchmarkCliMeta, BenchmarkConfig, BenchmarkConsent, BenchmarkEnvironment,
-    BenchmarkErrors, BenchmarkLevel, BenchmarkRawRun, BenchmarkReport, BenchmarkResult,
-    BenchmarkSummary, ManyFilesConfig, BENCHMARK_IP_CHANGED_WARNING,
+    benchmark_effective_prefix, benchmark_endpoint_kind, benchmark_mkdir_ladder,
+    benchmark_provider_hint, benchmark_public_ip, benchmark_remote_roots,
+    benchmark_remote_roots_from_prefix, benchmark_rounded_hour_utc, benchmark_signal_from,
+    benchmark_stats_from, benchmark_tod_bucket, note_trash_purge, BenchmarkCliMeta,
+    BenchmarkClient, BenchmarkConfig, BenchmarkConsent, BenchmarkEnvironment, BenchmarkErrors,
+    BenchmarkLevel, BenchmarkRawRun, BenchmarkReport, BenchmarkResult, BenchmarkSummary,
+    ManyFilesConfig, BENCHMARK_IP_CHANGED_WARNING,
 };
 use crate::providers::{ProviderError, ProviderType, StorageProvider};
 use crate::transfer_dag::TransferDirection;
@@ -362,18 +363,29 @@ pub async fn run(
     };
 
     let protocol = provider.provider_type().to_string();
-    let protocol_is_mega = provider.provider_type() == crate::providers::ProviderType::Mega;
-    // Access-method label for the "Protocol" column (issue #277): computed from
-    // the live provider type so it reflects the transport the factory actually
-    // built (e.g. a Koofr-over-WebDAV profile reports `WebDAV`, native `REST API`).
-    let access = if crate::crypt_overlay_provider::concrete_provider_mut(&mut *provider)
-        .as_any_mut()
-        .is::<crate::providers::mega::MegaCmdProvider>()
-    {
-        "CLI".to_string()
-    } else {
-        provider.provider_type().access_label().to_string()
+    // The client the factory actually built, behind any crypt overlay: the
+    // provider type alone does not tell MEGAcmd from AeroFTP's own MEGA
+    // client, or Proton's official CLI from AeroFTP's own Proton client.
+    let client = {
+        let concrete =
+            crate::crypt_overlay_provider::concrete_provider_mut(&mut *provider).as_any_mut();
+        if concrete.is::<crate::providers::mega::MegaCmdProvider>() {
+            BenchmarkClient::MegaCmd
+        } else if concrete.is::<crate::providers::proton::ProtonCliProvider>() {
+            BenchmarkClient::ProtonCli
+        } else if proton_native(concrete) {
+            BenchmarkClient::ProtonNative
+        } else if provider.provider_type() == crate::providers::ProviderType::Mega {
+            BenchmarkClient::MegaNative
+        } else {
+            BenchmarkClient::Other
+        }
     };
+    // Access-method label for the "Protocol" column (issue #277): computed from
+    // the live client so it reflects the transport the factory actually built
+    // (a Koofr-over-WebDAV profile reports `WebDAV`, the native one `REST API`).
+    let provider_access_label = provider.provider_type().access_label();
+    let (access, _, _) = benchmark_endpoint_kind(client, provider_access_label, false, false);
 
     let report_id = uuid::Uuid::new_v4().to_string();
     // A relative prefix on Proton Drive lands where the session starts (see
@@ -883,7 +895,7 @@ pub async fn run(
     // residual is logged as an error but does not invalidate the run. It runs
     // after a stop too: a stopped run leaves nothing behind.
     let rmdir_ok = if scratch_created {
-        match bounded(provider.rmdir_recursive(&test_root)).await {
+        match remove_and_purge(&mut provider, &test_root, &mut errors, observer).await {
             Some(Ok(())) => true,
             Some(Err(e)) => {
                 errors.push(format!(
@@ -908,31 +920,19 @@ pub async fn run(
     // the removal above, and several servers (Koofr) create the folders of an
     // upload's path: the run folder came back, empty, after a Ctrl+C. Look
     // once more after the request has had time to settle.
-    let rmdir_ok = if rmdir_ok && stopped {
+    if rmdir_ok && stopped {
         tokio::time::sleep(Duration::from_secs(3)).await;
-        match bounded(provider.exists(&test_root)).await {
-            Some(Ok(true)) => match bounded(provider.rmdir_recursive(&test_root)).await {
-                Some(Ok(())) => true,
-                _ => {
-                    errors.push(format!(
-                        "cleanup of {} after the stop: it came back and could not be removed again (manual review may be needed)",
-                        test_root
-                    ));
-                    false
-                }
-            },
-            _ => true,
+        if let Some(Ok(true)) = bounded(provider.exists(&test_root)).await {
+            if !matches!(
+                remove_and_purge(&mut provider, &test_root, &mut errors, observer).await,
+                Some(Ok(()))
+            ) {
+                errors.push(format!(
+                    "cleanup of {} after the stop: it came back and could not be removed again (manual review may be needed)",
+                    test_root
+                ));
+            }
         }
-    } else {
-        rmdir_ok
-    };
-    // Trash purge: rmdir_recursive on consumer cloud providers (Google Drive,
-    // Dropbox, OneDrive, Box, MEGA, Yandex, FileLu, Internxt, kDrive, Zoho,
-    // pCloud, Jottacloud, OpenDrive) is a soft delete and the test root ends
-    // up in the recycle bin. Hard-purge it so quotas do not silently fill up
-    // across repeated benchmark runs. No-op for FTP/SFTP/S3/plain WebDAV.
-    if rmdir_ok {
-        purge_from_trash(&mut provider, &test_root, &mut errors, observer).await;
     }
 
     if opts.test_root_prefix.is_none() {
@@ -1001,11 +1001,16 @@ pub async fn run(
     // A round trip that ends on this machine measures the bridge: MEGAcmd
     // (its own local server), a Filen Desktop preset (the note says so), or
     // any profile aimed at a loopback host.
-    let local_bridge = opts.local_endpoint || access == "CLI" || !notes.is_empty();
-    // The native MEGA client keeps the account's node tree in memory and
-    // answers `stat` from it: its round trip is a lookup in this process
-    // (measured: 0.04 ms), not the service.
-    let metadata_cached = !local_bridge && protocol_is_mega;
+    // A round trip that ends on this machine measures the bridge (MEGAcmd,
+    // a Filen Desktop preset, a loopback host). AeroFTP's own MEGA and Proton
+    // clients keep the account tree in memory and answer `stat` from it, so
+    // theirs is a lookup in this process (measured: 0.002 to 0.04 ms).
+    let (_, local_bridge, metadata_cached) = benchmark_endpoint_kind(
+        client,
+        provider_access_label,
+        opts.local_endpoint,
+        !notes.is_empty(),
+    );
     let signal = benchmark_signal_from(&results, local_bridge, metadata_cached);
 
     let mut private_paths: Vec<(String, &'static str)> = vec![
@@ -1061,6 +1066,17 @@ pub async fn run(
     })
 }
 
+/// Whether the concrete client is AeroFTP's own Proton Drive client.
+#[cfg(feature = "proton-native")]
+fn proton_native(concrete: &dyn std::any::Any) -> bool {
+    concrete.is::<crate::providers::proton_native::provider::ProtonNativeProvider>()
+}
+
+#[cfg(not(feature = "proton-native"))]
+fn proton_native(_concrete: &dyn std::any::Any) -> bool {
+    false
+}
+
 /// Purge `path` from the provider's trash after a soft delete, and say so.
 async fn purge_from_trash(
     provider: &mut Box<dyn StorageProvider>,
@@ -1069,6 +1085,14 @@ async fn purge_from_trash(
     observer: &dyn BenchmarkObserver,
 ) {
     match bounded(provider.delete_permanent(path)).await {
+        // `Ok(false)` means "no trash" by contract, unless the provider says
+        // it keeps one it cannot purge: then the folder stays there, and the
+        // report says so instead of passing over it.
+        Some(Ok(false)) => {
+            if let Some(note) = provider.trash_left_unpurged() {
+                errors.push(format!("trash purge of {} not done: {}", path, note));
+            }
+        }
         Some(outcome) => {
             if note_trash_purge(path, outcome, errors) {
                 observer.event(BenchmarkEvent::TrashPurged { path });
@@ -1080,6 +1104,55 @@ async fn purge_from_trash(
             CLEANUP_STEP_TIMEOUT.as_secs()
         )),
     }
+}
+
+/// Remove the folder `path` with everything in it, and purge it from the
+/// trash where the client can. A recursive delete on consumer clouds (Google
+/// Drive, Dropbox, OneDrive, Box, MEGA, Yandex, FileLu, Internxt, kDrive,
+/// Zoho, pCloud, Jottacloud, OpenDrive) is a soft delete, so the folder is
+/// purged after it, or quotas fill up across repeated runs. A client whose
+/// purge works on a live path (Proton's CLI) is asked to remove and purge in
+/// one step instead: after a plain delete its purge finds nothing, and the
+/// folder stayed in the trash without a word. `None` when the removal did not
+/// finish within the cleanup bound; purge outcomes go to `errors`.
+async fn remove_and_purge(
+    provider: &mut Box<dyn StorageProvider>,
+    path: &str,
+    errors: &mut Vec<String>,
+    observer: &dyn BenchmarkObserver,
+) -> Option<Result<(), ProviderError>> {
+    let live = provider.purges_live_path();
+    let mut live_purge_failed = false;
+    if live {
+        match bounded(provider.delete_permanent(path)).await {
+            Some(Ok(true)) => {
+                observer.event(BenchmarkEvent::TrashPurged { path });
+                return Some(Ok(()));
+            }
+            // Nothing at that path any more: nothing to remove.
+            Some(Ok(false)) => return Some(Ok(())),
+            // The purge failed: remove it plainly, so the folder at least
+            // leaves the drive, and say where it went.
+            Some(Err(e)) => {
+                live_purge_failed = true;
+                errors.push(format!(
+                    "trash purge of {} failed, check the provider's trash: {}",
+                    path, e
+                ));
+            }
+            None => return None,
+        }
+    }
+    let removed = bounded(provider.rmdir_recursive(path)).await;
+    // A live purge can fail after it moved the folder to the trash: then the
+    // path is gone, which the purge error above already reports.
+    if live_purge_failed && matches!(removed, Some(Err(ProviderError::NotFound(_)))) {
+        return Some(Ok(()));
+    }
+    if !live && matches!(removed, Some(Ok(()))) {
+        purge_from_trash(provider, path, errors, observer).await;
+    }
+    removed
 }
 
 /// Remove the scratch folder `dir` and purge it from the trash, only when it
@@ -1104,11 +1177,13 @@ async fn remove_if_empty(
         ));
         return false;
     }
-    if matches!(bounded(provider.rmdir_recursive(dir)).await, Some(Ok(()))) {
-        // Hard-purge the soft-deleted folder on consumer clouds, mirroring the
-        // test_root trash purge, refusal included: its result used to be
-        // dropped, so a folder left in the bin said nothing (#368).
-        purge_from_trash(provider, dir, errors, observer).await;
+    // Removed and hard-purged from the trash on consumer clouds, mirroring
+    // the test_root, refusal included: its result used to be dropped, so a
+    // folder left in the bin said nothing (#368).
+    if matches!(
+        remove_and_purge(provider, dir, errors, observer).await,
+        Some(Ok(()))
+    ) {
         true
     } else {
         errors.push(format!(
@@ -1264,7 +1339,9 @@ async fn run_many_files_workload(
     }
 
     let size = mf.file_size_bytes;
-    let remote_name = |i: u32| crate::speed_payload::name(&format!("{}/f{:06}", many_dir, i));
+    let run_id = report_id.get(..8).unwrap_or(report_id);
+    let remote_name =
+        |i: u32| crate::speed_payload::name(&format!("{}/f{:06}-{}", many_dir, i, run_id));
 
     observer.event(BenchmarkEvent::ManyFiles {
         file_count: mf.file_count,
@@ -1497,15 +1574,55 @@ async fn run_many_files_workload(
         }
     }
 
+    // Capture stable identities in one provider batch, outside every measured
+    // phase. A missing identity never turns into a name-only purge later.
+    let live_paths: Vec<String> = (0..uploaded).map(&remote_name).collect();
+    let mut identities = match bounded(provider.capture_trash_identities(&live_paths)).await {
+        Some(captured) if captured.len() == uploaded as usize => captured,
+        Some(captured) => {
+            out.errors.push(format!(
+                "many-files: identity capture returned {} results for {} files",
+                captured.len(),
+                uploaded
+            ));
+            Vec::new()
+        }
+        None => {
+            out.errors
+                .push("many-files: identity capture exceeded its cleanup bound".into());
+            Vec::new()
+        }
+    };
+    identities.resize_with(uploaded as usize, || {
+        Err(ProviderError::Other("identity was not captured".into()))
+    });
+    let mut identities: Vec<Option<String>> = identities
+        .into_iter()
+        .enumerate()
+        .map(|(i, captured)| match captured {
+            Ok(identity) => identity,
+            Err(error) => {
+                out.errors.push(format!(
+                    "many-files: identity capture of file {i} failed: {error}"
+                ));
+                None
+            }
+        })
+        .collect();
+
     // ── delete-all (also clears the scratch files) ──────────────────
     // Runs after a stop too, each call bounded: it is the cleanup of what
     // landed, and the final recursive removal is the fallback.
     let mut del_ms: Vec<f64> = Vec::new();
     let mut del_fatal = 0u32;
+    let mut deleted: Vec<u32> = Vec::new();
     for i in 0..uploaded {
         let start = Instant::now();
         match bounded(provider.delete(&remote_name(i))).await {
-            Some(Ok(())) => del_ms.push(start.elapsed().as_secs_f64() * 1000.0),
+            Some(Ok(())) => {
+                del_ms.push(start.elapsed().as_secs_f64() * 1000.0);
+                deleted.push(i);
+            }
             Some(Err(e)) => {
                 del_fatal += 1;
                 out.errors
@@ -1537,5 +1654,115 @@ async fn run_many_files_workload(
         out.runs += del_ms.len() as u32;
     }
 
+    // The purge costs about what a delete does: as long as delete-all took,
+    // plus one step bound for a slow start.
+    let budget =
+        CLEANUP_STEP_TIMEOUT + Duration::from_secs_f64(del_ms.iter().sum::<f64>() / 1000.0);
+    purge_deleted_files_with_identities(
+        provider,
+        &deleted,
+        &remote_name,
+        &mut identities,
+        stop,
+        budget,
+        &mut out.errors,
+    )
+    .await;
+
     out
+}
+
+/// After the measured delete-all pass, purge from the trash each file it
+/// deleted: on a soft-delete provider every one is a separate trash item, up
+/// to 5 GiB per run, and purging the run folder later does not take them.
+/// The purge stays outside the timing, so delete-all keeps measuring plain
+/// deletes. Providers with captured identities purge those exact items;
+/// path-based providers keep their existing flow. Anything not verifiably
+/// purged is counted in the report.
+///
+/// The whole pass ends at `budget` and at `stop`, a cancel or the profile
+/// timeout: a server that stops answering must not hold the report one
+/// cleanup bound per file. What was not purged is counted in the report.
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn purge_deleted_files_with_identities(
+    provider: &mut Box<dyn StorageProvider>,
+    deleted: &[u32],
+    remote_name: &(dyn Fn(u32) -> String + Sync),
+    identities: &mut [Option<String>],
+    stop: &CancellationToken,
+    budget: Duration,
+    errors: &mut Vec<String>,
+) {
+    if deleted.is_empty() {
+        return;
+    }
+    if let Some(reason) = provider.trash_left_unpurged() {
+        errors.push(format!(
+            "{} files the many-files workload deleted stay in the provider's trash: {}",
+            deleted.len(),
+            reason
+        ));
+        return;
+    }
+    let deadline = tokio::time::Instant::now() + budget;
+    let mut failed = 0usize;
+    let mut first_error: Option<String> = None;
+    let mut not_purged: Option<(usize, String)> = None;
+    for (n, &i) in deleted.iter().enumerate() {
+        let left = deleted.len() - n;
+        if stop.is_cancelled() {
+            not_purged = Some((left, "the run was stopped".into()));
+            break;
+        }
+        let path = remote_name(i);
+        let identity = identities.get(i as usize).and_then(Option::as_deref);
+        let purge = until_stopped(
+            stop,
+            provider.delete_permanent_with_identity(&path, identity),
+        );
+        match tokio::time::timeout_at(deadline, purge).await {
+            Ok(Some(Ok(true))) => {}
+            Ok(Some(Ok(false))) if provider.purges_live_path() => {
+                failed += 1;
+                first_error.get_or_insert_with(|| {
+                    "the live-path client found no captured identity to purge".into()
+                });
+            }
+            Ok(Some(Ok(false))) => {}
+            Ok(Some(Err(e))) => {
+                failed += 1;
+                first_error.get_or_insert_with(|| e.to_string());
+            }
+            Ok(None) => {
+                not_purged = Some((left, "the run was stopped".into()));
+                break;
+            }
+            Err(_) => {
+                not_purged = Some((
+                    left,
+                    format!(
+                        "the purge took longer than its {} s limit",
+                        budget.as_secs()
+                    ),
+                ));
+                break;
+            }
+        }
+    }
+    if let Some(first) = first_error {
+        errors.push(format!(
+            "trash purge of {} of the {} files the many-files workload deleted failed, check the provider's trash: {}",
+            failed,
+            deleted.len(),
+            first
+        ));
+    }
+    if let Some((left, why)) = not_purged {
+        errors.push(format!(
+            "{} of the {} files the many-files workload deleted were not purged and stay in the provider's trash: {}",
+            left,
+            deleted.len(),
+            why
+        ));
+    }
 }

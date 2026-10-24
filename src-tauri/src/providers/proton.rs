@@ -126,6 +126,7 @@ pub struct ProtonCliProvider {
     /// size; an entry stays for every retry, goes once the file is
     /// published, and expires after [`BULK_CLAIMED_SIZE_TTL`].
     bulk_claimed_sizes: std::collections::HashMap<String, (u64, std::time::Instant)>,
+    trash_listing: Option<(String, Vec<RemoteEntry>)>,
 }
 
 /// How long a claimed size from a bulk's listing still describes the file a
@@ -525,6 +526,7 @@ impl ProtonCliProvider {
             account_email: None,
             binary,
             bulk_claimed_sizes: std::collections::HashMap::new(),
+            trash_listing: None,
         }
     }
 
@@ -1504,6 +1506,85 @@ fn extract_url(stdout: &str) -> Option<String> {
     })
 }
 
+impl ProtonCliProvider {
+    async fn capture_uid(&mut self, abs: &str) -> Result<String, ProviderError> {
+        let stdout = self
+            .run_cli(&["filesystem", "info", abs, "-j"], META_TIMEOUT_SECS)
+            .await?;
+        let entry = parse_info_json(&stdout, &parent_of(abs))?;
+        entry_uid(&entry)
+    }
+
+    async fn purge_trash_by_name(
+        &mut self,
+        trash_root: &str,
+        name: &str,
+        captured_uid: Option<&str>,
+        use_snapshot: bool,
+    ) -> Result<bool, ProviderError> {
+        if use_snapshot && !matches!(&self.trash_listing, Some((root, _)) if root == trash_root) {
+            let listed = self
+                .run_cli(&["filesystem", "list", trash_root, "-j"], META_TIMEOUT_SECS)
+                .await?;
+            self.trash_listing = Some((
+                trash_root.to_string(),
+                parse_list_json(&listed, trash_root)?,
+            ));
+        }
+        let entries = match (&self.trash_listing, use_snapshot) {
+            (Some((_, entries)), true) => entries.clone(),
+            _ => {
+                let listed = self
+                    .run_cli(&["filesystem", "list", trash_root, "-j"], META_TIMEOUT_SECS)
+                    .await?;
+                parse_list_json(&listed, trash_root)?
+            }
+        };
+        let matches: Vec<RemoteEntry> = entries
+            .into_iter()
+            .filter(|entry| entry.name == name)
+            .collect();
+        let uid_matches = match captured_uid {
+            Some(uid) => matches
+                .iter()
+                .filter(|entry| entry.metadata.get("uid").map(String::as_str) == Some(uid))
+                .count(),
+            None => matches.len(),
+        };
+        if matches.len() != 1 || uid_matches != 1 {
+            return Err(ProviderError::ServerError(format!(
+                "Moved to trash, not purged: {} items in trash have this name and {} match the captured UID. Proton Drive CLI 0.9.0 resolves trash paths by name only; refusing an ambiguous purge",
+                matches.len(),
+                uid_matches
+            )));
+        }
+
+        let purged_uid = matches[0].metadata.get("uid").cloned();
+        let purge = join_path(trash_root, name);
+        self.run_cli(&["filesystem", "delete", &purge], META_TIMEOUT_SECS)
+            .await?;
+        if use_snapshot {
+            if let Some((_, entries)) = &mut self.trash_listing {
+                entries.retain(|entry| entry.metadata.get("uid") != purged_uid.as_ref());
+            }
+        }
+        Ok(true)
+    }
+}
+
+fn entry_uid(entry: &RemoteEntry) -> Result<String, ProviderError> {
+    let uid = entry
+        .metadata
+        .get("uid")
+        .ok_or_else(|| ProviderError::ParseError("Proton CLI node metadata has no UID".into()))?;
+    if !valid_cli_node_uid(uid) {
+        return Err(ProviderError::ParseError(
+            "Proton CLI node metadata has an invalid UID".into(),
+        ));
+    }
+    Ok(uid.clone())
+}
+
 #[async_trait]
 impl StorageProvider for ProtonCliProvider {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -1885,7 +1966,75 @@ impl StorageProvider for ProtonCliProvider {
         self.delete(path).await
     }
 
+    fn purges_live_path(&self) -> bool {
+        true
+    }
+
+    async fn capture_trash_identities(
+        &mut self,
+        paths: &[String],
+    ) -> Vec<Result<Option<String>, ProviderError>> {
+        self.trash_listing = None;
+        let absolute: Vec<String> = paths.iter().map(|path| self.resolve_path(path)).collect();
+        let Some(first) = absolute.first() else {
+            return Vec::new();
+        };
+        let parent = parent_of(first);
+        let one_parent = absolute.iter().all(|path| parent_of(path) == parent);
+        let listed = if one_parent {
+            match self.list(&parent).await {
+                Ok(entries) => Some(entries),
+                Err(error) => {
+                    let message = error.to_string();
+                    return absolute
+                        .iter()
+                        .map(|_| Err(ProviderError::Other(message.clone())))
+                        .collect();
+                }
+            }
+        } else {
+            None
+        };
+        let mut by_name = std::collections::HashMap::new();
+        for entry in listed.into_iter().flatten() {
+            let name = entry.name.clone();
+            by_name
+                .entry(name)
+                .and_modify(|uid| *uid = None)
+                .or_insert_with(|| entry_uid(&entry).ok());
+        }
+        let mut captured = Vec::with_capacity(absolute.len());
+        for abs in &absolute {
+            let uid = match by_name.get(&basename(abs)) {
+                Some(Some(uid)) => Ok(uid.clone()),
+                _ => self.capture_uid(abs).await,
+            };
+            captured.push(uid.map(Some));
+        }
+        captured
+    }
+
+    async fn delete_permanent_with_identity(
+        &mut self,
+        path: &str,
+        identity: Option<&str>,
+    ) -> Result<bool, ProviderError> {
+        let Some(uid) = identity else {
+            return self.delete_permanent(path).await;
+        };
+        let abs = self.resolve_path(path);
+        ensure_not_section(&abs)?;
+        let trash_root = if first_segment(&abs) == "photos-trash" {
+            "/photos-trash"
+        } else {
+            "/trash"
+        };
+        self.purge_trash_by_name(trash_root, &basename(&abs), Some(uid), true)
+            .await
+    }
+
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
+        self.trash_listing = None;
         let abs = self.resolve_path(path);
         ensure_not_section(&abs)?;
         let in_trash = is_in_trash_path(&abs);
@@ -1897,13 +2046,8 @@ impl StorageProvider for ProtonCliProvider {
         let name = basename(&abs);
 
         let captured_uid = if !in_trash {
-            match self
-                .run_cli(&["filesystem", "info", &abs, "-j"], META_TIMEOUT_SECS)
-                .await
-            {
-                Ok(stdout) => parse_info_json(&stdout, &parent_of(&abs))
-                    .ok()
-                    .and_then(|e| e.metadata.get("uid").cloned()),
+            match self.capture_uid(&abs).await {
+                Ok(uid) => Some(uid),
                 Err(ProviderError::NotFound(_)) => return Ok(false),
                 Err(e) => return Err(e),
             }
@@ -1922,35 +2066,8 @@ impl StorageProvider for ProtonCliProvider {
             }
         }
 
-        let listed_stdout = self
-            .run_cli(&["filesystem", "list", trash_root, "-j"], META_TIMEOUT_SECS)
-            .await?;
-        let matches: Vec<RemoteEntry> = parse_list_json(&listed_stdout, trash_root)?
-            .into_iter()
-            .filter(|e| e.name == name)
-            .collect();
-        let uid_matches = match captured_uid.as_deref() {
-            Some(uid) => matches
-                .iter()
-                .filter(|e| e.metadata.get("uid").map(String::as_str) == Some(uid))
-                .count(),
-            None => matches.len(),
-        };
-        if matches.len() != 1 || uid_matches != 1 {
-            return Err(ProviderError::ServerError(format!(
-                "Moved to trash, not purged: {} items in trash have this name. Proton Drive CLI 0.8.0 can only address trash by name.",
-                matches.len()
-            )));
-        }
-
-        let purge = join_path(trash_root, &name);
-        match self
-            .run_cli(&["filesystem", "delete", &purge], META_TIMEOUT_SECS)
+        self.purge_trash_by_name(trash_root, &name, captured_uid.as_deref(), false)
             .await
-        {
-            Ok(_) => Ok(true),
-            Err(e) => Err(e),
-        }
     }
 
     /// A rename in place, or a move to the new folder (which keeps the name)
@@ -2197,6 +2314,7 @@ impl StorageProvider for ProtonCliProvider {
             binary: self.binary.clone(),
             // A listing clone downloads nothing.
             bulk_claimed_sizes: std::collections::HashMap::new(),
+            trash_listing: None,
         }))
     }
 }
@@ -3950,48 +4068,40 @@ mod cli_sequence_tests {
     }
 
     #[tokio::test]
-    async fn delete_permanent_refuses_when_trash_name_is_ambiguous() {
+    async fn delete_permanent_refuses_a_duplicate_trash_name_even_with_a_captured_uid() {
         let dir = workdir();
         let shim = link_shim(&dir);
         std::fs::write(
             dir.join("trash.json"),
-            r#"[{"name":{"ok":true,"value":"dup.txt"},"uid":"UID-OLD","type":"file"},{"name":{"ok":true,"value":"dup.txt"},"uid":"UID-CAPTURED","type":"file"}]"#,
+            r#"[{"name":{"ok":true,"value":"dup.txt"},"uid":"CCCCCCCCCCCCCCCCCCCCCC~DDDDDDDDDDDDDDDDDDDDDD","type":"file"},{"name":{"ok":true,"value":"dup.txt"},"uid":"AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB","type":"file"}]"#,
         )
         .unwrap();
         let mut p = provider(&shim);
-        let err = p
+        let error = p
             .delete_permanent("/my-files/scratch/dup.txt")
             .await
-            .expect_err("ambiguous trash must not report a successful purge");
-        let msg = err.to_string();
-        assert!(
-            msg.contains("not purged") && msg.contains("2"),
-            "honest refuse, got: {msg}"
-        );
+            .unwrap_err();
+        assert!(error.to_string().contains("name only"), "{error}");
         let argv = read_argv(&dir);
-        assert!(
-            verbs(&argv, "delete").is_empty(),
-            "must not purge by name when trash is ambiguous: {argv:?}"
-        );
+        assert!(verbs(&argv, "delete").is_empty(), "{argv:?}");
         assert_eq!(verbs(&argv, "trash").len(), 1, "{argv:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
-    async fn delete_permanent_purges_when_unique_trash_name_matches_uid() {
+    async fn delete_permanent_purges_by_name_when_unique_trash_uid_matches() {
         let dir = workdir();
         let shim = link_shim(&dir);
         std::fs::write(
             dir.join("trash.json"),
-            r#"[{"name":{"ok":true,"value":"dup.txt"},"uid":"UID-CAPTURED","type":"file"}]"#,
+            r#"[{"name":{"ok":true,"value":"dup.txt"},"uid":"AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB","type":"file"}]"#,
         )
         .unwrap();
         let mut p = provider(&shim);
-        let purged = p
+        assert!(p
             .delete_permanent("/my-files/scratch/dup.txt")
             .await
-            .unwrap();
-        assert!(purged);
+            .unwrap());
         let argv = read_argv(&dir);
         let deletes = verbs(&argv, "delete");
         assert_eq!(deletes.len(), 1, "{argv:?}");
@@ -3999,6 +4109,117 @@ mod cli_sequence_tests {
             deletes[0].last().map(|s| s.as_str()),
             Some("/trash/dup.txt")
         );
+        assert_eq!(argv.iter().filter(|args| args[0] == "version").count(), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn trash_identity_capture_uses_one_listing_and_info_only_for_missing_names() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        std::fs::write(
+            dir.join("my-files_scratch_manyfiles.json"),
+            r#"[{"name":{"ok":true,"value":"listed.dat"},"uid":"AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB","type":"file"}]"#,
+        )
+        .unwrap();
+        let mut p = provider(&shim);
+        let paths = vec![
+            "/my-files/scratch/manyfiles/listed.dat".to_string(),
+            "/my-files/scratch/manyfiles/missing.dat".to_string(),
+        ];
+        let captured = p.capture_trash_identities(&paths).await;
+        assert_eq!(captured.len(), 2);
+        assert!(captured.iter().all(|uid| matches!(uid, Ok(Some(_)))));
+        let argv = read_argv(&dir);
+        assert_eq!(verbs(&argv, "list").len(), 1, "{argv:?}");
+        let infos = verbs(&argv, "info");
+        assert_eq!(infos.len(), 1, "{argv:?}");
+        assert!(infos[0].iter().any(|arg| arg.ends_with("missing.dat")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn identity_purges_verify_name_and_uid_with_one_trash_listing() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        std::fs::write(
+            dir.join("trash.json"),
+            r#"[{"name":{"ok":true,"value":"dup.txt"},"uid":"AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB","type":"file"},{"name":{"ok":true,"value":"other.txt"},"uid":"CCCCCCCCCCCCCCCCCCCCCC~DDDDDDDDDDDDDDDDDDDDDD","type":"file"}]"#,
+        )
+        .unwrap();
+        let mut p = provider(&shim);
+        for (name, uid) in [
+            ("dup.txt", "AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB"),
+            ("other.txt", "CCCCCCCCCCCCCCCCCCCCCC~DDDDDDDDDDDDDDDDDDDDDD"),
+        ] {
+            assert!(p
+                .delete_permanent_with_identity(&format!("/my-files/scratch/{name}"), Some(uid))
+                .await
+                .unwrap());
+        }
+        let argv = read_argv(&dir);
+        let deletes = verbs(&argv, "delete");
+        assert_eq!(deletes.len(), 2, "{argv:?}");
+        assert_eq!(
+            deletes[0].last().map(|s| s.as_str()),
+            Some("/trash/dup.txt")
+        );
+        assert_eq!(
+            deletes[1].last().map(|s| s.as_str()),
+            Some("/trash/other.txt")
+        );
+        let trash_lists: Vec<_> = verbs(&argv, "list")
+            .into_iter()
+            .filter(|args| args.iter().any(|arg| arg == "/trash"))
+            .collect();
+        assert_eq!(trash_lists.len(), 1, "{argv:?}");
+        assert_eq!(argv.iter().filter(|args| args[0] == "version").count(), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn identity_purge_refuses_duplicate_names_without_deleting() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        std::fs::write(
+            dir.join("trash.json"),
+            r#"[{"name":{"ok":true,"value":"dup.txt"},"uid":"CCCCCCCCCCCCCCCCCCCCCC~DDDDDDDDDDDDDDDDDDDDDD","type":"file"},{"name":{"ok":true,"value":"dup.txt"},"uid":"AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB","type":"file"}]"#,
+        )
+        .unwrap();
+        let mut p = provider(&shim);
+        let error = p
+            .delete_permanent_with_identity(
+                "/my-files/scratch/dup.txt",
+                Some("AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB"),
+            )
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("name only"), "{error}");
+        let argv = read_argv(&dir);
+        assert!(verbs(&argv, "delete").is_empty(), "{argv:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn identity_purge_refuses_a_uid_mismatch_without_deleting() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        std::fs::write(
+            dir.join("trash.json"),
+            r#"[{"name":{"ok":true,"value":"dup.txt"},"uid":"CCCCCCCCCCCCCCCCCCCCCC~DDDDDDDDDDDDDDDDDDDDDD","type":"file"}]"#,
+        )
+        .unwrap();
+        let mut p = provider(&shim);
+        let error = p
+            .delete_permanent_with_identity(
+                "/my-files/scratch/dup.txt",
+                Some("AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB"),
+            )
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("name only"), "{error}");
+        let argv = read_argv(&dir);
+        assert!(verbs(&argv, "delete").is_empty(), "{argv:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

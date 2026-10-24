@@ -223,6 +223,21 @@ impl FtpManager {
 
     /// List files in current directory
     pub async fn list_files(&mut self) -> Result<Vec<RemoteFile>> {
+        self.list_files_opts(false, false).await
+    }
+
+    pub(crate) async fn list_files_for_probe(
+        &mut self,
+        include_hidden: bool,
+    ) -> Result<Vec<RemoteFile>> {
+        self.list_files_opts(include_hidden, true).await
+    }
+
+    async fn list_files_opts(
+        &mut self,
+        include_hidden: bool,
+        require_complete: bool,
+    ) -> Result<Vec<RemoteFile>> {
         let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
 
         debug!("Listing files in: {}", self.current_path);
@@ -237,10 +252,13 @@ impl FtpManager {
         // Use LIST without explicit path argument: relies on CWD already being set.
         // Passing the path explicitly (LIST /path/with spaces/#chars) causes FTP servers
         // to misinterpret paths containing #, spaces, or other special characters.
-        let files = tokio::time::timeout(self.timeouts.list_timeout, stream.list(None))
-            .await
-            .context("List operation timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+        let files = tokio::time::timeout(
+            self.timeouts.list_timeout,
+            stream.list(if include_hidden { Some("-a") } else { None }),
+        )
+        .await
+        .context("List operation timeout")?
+        .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
 
         // The three filters that used to stand here (blank and `total ` lines,
         // `path:` headers, and `.` / `..` by name) are gone: the shared module
@@ -272,9 +290,9 @@ impl FtpManager {
         // The offending row is left to the warning above and kept out of the
         // error: it is raw server text, and `sync::classify_sync_error` reads
         // error messages by searching them for words.
-        if listing.entries.is_empty() && listing.unreadable > 0 {
+        if listing.unreadable > 0 && (require_complete || listing.entries.is_empty()) {
             return Err(FtpManagerError::OperationFailed(format!(
-                "LIST {}: none of the {} row(s) could be read (see the log for the first)",
+                "LIST {}: {} row(s) could not be read (see the log for the first)",
                 self.current_path, listing.unreadable
             ))
             .into());
@@ -396,7 +414,7 @@ impl FtpManager {
         {
             Ok(()) => {}
             Err(FtpError::UnexpectedResponse(r)) if r.status == Status::FileUnavailable => {
-                return Ok(false)
+                return self.exists_in_parent_listing(path).await
             }
             Err(e) => return Err(FtpManagerError::OperationFailed(e.to_string()).into()),
         }
@@ -416,6 +434,14 @@ impl FtpManager {
             Some(i) => (&trimmed[..i], &trimmed[i + 1..]),
             None => (".", trimmed),
         };
+        if name.starts_with('.') {
+            let previous = self.current_path.clone();
+            self.change_dir(parent).await?;
+            let listed = self.list_files_for_probe(true).await;
+            let restored = self.change_dir(&previous).await;
+            restored?;
+            return listed.map(|items| items.iter().any(|entry| entry.name == name));
+        }
         let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
         match tokio::time::timeout(self.timeouts.list_timeout, stream.nlst(Some(parent)))
             .await
@@ -424,9 +450,6 @@ impl FtpManager {
             Ok(names) => Ok(names
                 .iter()
                 .any(|n| n.trim_end_matches('/').rsplit('/').next() == Some(name))),
-            Err(FtpError::UnexpectedResponse(r)) if r.status == Status::FileUnavailable => {
-                Ok(false)
-            }
             Err(e) => Err(FtpManagerError::OperationFailed(e.to_string()).into()),
         }
     }
@@ -434,11 +457,18 @@ impl FtpManager {
     /// Get file size
     pub async fn get_file_size(&mut self, path: &str) -> Result<u64> {
         let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
-
-        match stream.size(path).await {
-            Ok(size) => Ok(size as u64),
-            Err(_) => Ok(0), // Return 0 if size cannot be determined
-        }
+        tokio::time::timeout(
+            self.timeouts.command_timeout,
+            stream.transfer_type(FileType::Binary),
+        )
+        .await
+        .context("TYPE timeout")?
+        .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+        let size = tokio::time::timeout(self.timeouts.command_timeout, stream.size(path))
+            .await
+            .context("SIZE timeout")?
+            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+        Ok(size as u64)
     }
 
     /// Download a file (legacy, without progress)
@@ -1103,14 +1133,37 @@ LIST "drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 ."
 }
 
 #[cfg(test)]
-mod exists_tests {
+pub(crate) mod exists_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn probe_contract_ftp_manager_refuses_an_unverified_missing_answer() {
+        let addr = vsftpd_like().await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        let outcome = ftp.exists("/denied/target").await;
+        assert!(
+            outcome.is_err(),
+            "a refused parent listing is not absence: {outcome:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn probe_contract_ftp_manager_never_reports_a_failed_size_as_zero() {
+        let addr = vsftpd_like().await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        assert!(ftp.get_file_size("/missing").await.is_err());
+    }
+
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
     /// A control connection that answers like vsftpd: the session starts in
     /// ASCII, and SIZE is refused with 550 in ASCII mode whether or not the
     /// file is there. `/a.txt` is a file and `/d` a folder.
-    async fn vsftpd_like() -> String {
+    pub(crate) async fn vsftpd_like() -> String {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap().to_string();
         tokio::spawn(async move {
@@ -1118,13 +1171,15 @@ mod exists_tests {
             let (read, mut write) = socket.into_split();
             let mut lines = BufReader::new(read).lines();
             let mut binary = false;
+            let mut cwd = "/".to_string();
+            let mut data_listener = None;
             write.write_all(b"220 ready\r\n").await.unwrap();
             while let Ok(Some(line)) = lines.next_line().await {
                 let (cmd, arg) = line.split_once(' ').unwrap_or((line.as_str(), ""));
                 let reply = match cmd {
                     "USER" => "331 password\r\n".to_string(),
                     "PASS" => "230 in\r\n".to_string(),
-                    "PWD" => "257 \"/\"\r\n".to_string(),
+                    "PWD" => format!("257 \"{cwd}\"\r\n"),
                     "TYPE" => {
                         binary = arg == "I";
                         "200 type set\r\n".to_string()
@@ -1132,7 +1187,36 @@ mod exists_tests {
                     "SIZE" if !binary => "550 Could not get file size.\r\n".to_string(),
                     "SIZE" if arg == "/a.txt" => "213 5\r\n".to_string(),
                     "SIZE" => "550 Could not get file size.\r\n".to_string(),
-                    "CWD" if arg == "/d" || arg == "/" => "250 ok\r\n".to_string(),
+                    "NOOP" => "200 ok\r\n".to_string(),
+                    "PASV" => {
+                        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                        let port = listener.local_addr().unwrap().port();
+                        data_listener = Some(listener);
+                        format!(
+                            "227 Entering Passive Mode (127,0,0,1,{},{})\r\n",
+                            port / 256,
+                            port % 256
+                        )
+                    }
+                    "NLST" | "LIST" if arg == "/denied" => "550 Access denied\r\n".to_string(),
+                    "NLST" | "LIST" => {
+                        write.write_all(b"150 listing\r\n").await.unwrap();
+                        let (mut data, _) = data_listener.take().unwrap().accept().await.unwrap();
+                        let listing = if cmd == "NLST" {
+                            "a.txt\r\nd\r\n"
+                        } else if arg == "-a" {
+                            "-rw-r--r-- 1 user group 5 Jan 20 10:00 .hidden\r\n"
+                        } else {
+                            "-rw-r--r-- 1 user group 5 Jan 20 10:00 a.txt\r\ndrwxr-xr-x 1 user group 0 Jan 20 10:00 denied\r\n"
+                        };
+                        data.write_all(listing.as_bytes()).await.unwrap();
+                        data.shutdown().await.unwrap();
+                        "226 done\r\n".to_string()
+                    }
+                    "CWD" if arg == "/d" || arg == "/" => {
+                        cwd = arg.to_string();
+                        "250 ok\r\n".to_string()
+                    }
                     "CWD" => "550 Failed to change directory.\r\n".to_string(),
                     "QUIT" => {
                         let _ = write.write_all(b"221 bye\r\n").await;

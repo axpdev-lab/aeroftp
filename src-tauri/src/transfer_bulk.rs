@@ -451,6 +451,112 @@ pub(crate) async fn execute_provider_bulk(
         .collect()
 }
 
+/// The two directions a connected provider moves through its native bulk,
+/// by the rule the GUI batch executors apply: a provider that resumes a
+/// transfer keeps its single-file path, which owns the resume.
+pub(crate) fn bulk_directions(caps: &crate::transfer_dag::TransferCapabilities) -> (bool, bool) {
+    use crate::transfer_dag::Capability;
+    (
+        caps.bulk_upload == Capability::Supported && !caps.resume_upload.is_available(),
+        caps.bulk_download == Capability::Supported && !caps.resume_download.is_available(),
+    )
+}
+
+/// One file of an AeroSync run offered to the native bulk.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncBulkItem {
+    pub local_path: String,
+    pub remote_path: String,
+    pub size: u64,
+    /// The remote time a download gives the local copy, as the single-file
+    /// download does.
+    #[serde(default)]
+    pub modified: Option<String>,
+}
+
+/// What became of one file of [`run_sync_bulk`], in the order the run sent
+/// them.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum SyncBulkResult {
+    Completed,
+    /// Final: the file was handed to the native program (and to one
+    /// single-file attempt when nothing of it reached the wire), and may have
+    /// reached the server, so the run does not send it again.
+    Failed {
+        message: String,
+    },
+    /// Back to the run's own single-file path, which keeps its retries and
+    /// timeouts: the bulk cannot carry the file (a name the native program
+    /// would rename, a file alone in its folder), or a Stop came before its
+    /// group started.
+    NotAttempted,
+}
+
+/// AeroSync's native bulk: the files a sync run sends in a row, grouped as
+/// the GUI batch and the CLI group them, one native call per group, with one
+/// outcome per file in the run's order. `token` is the session's live cancel
+/// token, never a fresh one: the run resets it once when it starts, and a
+/// reset here would swallow a Stop that came in between.
+pub(crate) async fn run_sync_bulk(
+    provider: &Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+    sink: &Arc<dyn TransferEventSink>,
+    items: &[SyncBulkItem],
+    upload: bool,
+    token: &CancellationToken,
+    timeout_seconds: u64,
+) -> Vec<SyncBulkResult> {
+    let run = chrono::Utc::now().timestamp_millis();
+    let entries: Vec<TransferEntry> = items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| TransferEntry {
+            id: format!("sync-bulk-{run}-{index}"),
+            display_name: item
+                .remote_path
+                .rsplit('/')
+                .next()
+                .unwrap_or_default()
+                .to_string(),
+            remote_path: item.remote_path.clone(),
+            local_path: item.local_path.clone(),
+            size: item.size,
+            modified: item.modified.clone(),
+        })
+        .collect();
+    let mut results = vec![SyncBulkResult::NotAttempted; items.len()];
+    // The run's own Stop goes through `token`; this flag is the batch's
+    // "start no further file", which a sync run does not use.
+    let no_batch_stop = AtomicBool::new(false);
+    for group in plan_groups_by_key(&entries, |entry| group_key(entry, upload)) {
+        if group.len() < 2 || token.is_cancelled() {
+            continue;
+        }
+        let members: Vec<TransferEntry> = group.iter().map(|&i| entries[i].clone()).collect();
+        let outcomes = execute_provider_bulk(
+            provider,
+            sink,
+            &members,
+            upload,
+            token,
+            &no_batch_stop,
+            timeout_seconds,
+        )
+        .await;
+        for (&index, outcome) in group.iter().zip(outcomes) {
+            results[index] = match outcome {
+                TransferOutcome::Success => SyncBulkResult::Completed,
+                TransferOutcome::Failed(failure) => SyncBulkResult::Failed {
+                    message: failure.message,
+                },
+                TransferOutcome::Skipped { reason } => SyncBulkResult::Failed { message: reason },
+            };
+        }
+    }
+    results
+}
+
 fn bulk_timeout(per_file_seconds: u64, files: usize, bytes: u64) -> Duration {
     Duration::from_secs(
         per_file_seconds
@@ -792,6 +898,300 @@ mod tests {
         );
         assert_eq!(*e.calls.lock().unwrap(), vec![256]);
     }
+    /// A provider with a native bulk whose answer for a file depends on its
+    /// name: `fail` fails, `unsure` comes back uncertain, `skip` was not
+    /// attempted; anything else completes. `hang` keeps the bulk running.
+    #[derive(Default)]
+    struct ScriptedBulk {
+        bulks: Arc<std::sync::Mutex<Vec<Vec<String>>>>,
+        singles: Arc<std::sync::Mutex<Vec<String>>>,
+        hang: bool,
+    }
+
+    #[async_trait]
+    impl StorageProvider for ScriptedBulk {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> crate::providers::ProviderType {
+            crate::providers::ProviderType::Sftp
+        }
+        fn display_name(&self) -> String {
+            "scripted bulk".into()
+        }
+        async fn connect(&mut self) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(
+            &mut self,
+            _: &str,
+        ) -> Result<Vec<crate::providers::RemoteEntry>, crate::providers::ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, crate::providers::ProviderError> {
+            Ok("/".into())
+        }
+        async fn cd(&mut self, _: &str) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            remote: &str,
+            _: &str,
+            _: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), crate::providers::ProviderError> {
+            self.singles.lock().unwrap().push(remote.to_string());
+            Ok(())
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _: &str,
+        ) -> Result<Vec<u8>, crate::providers::ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn upload(
+            &mut self,
+            _: &str,
+            remote: &str,
+            _: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), crate::providers::ProviderError> {
+            self.singles.lock().unwrap().push(remote.to_string());
+            Ok(())
+        }
+        async fn mkdir(&mut self, _: &str) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, _: &str) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _: &str) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(
+            &mut self,
+            _: &str,
+        ) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn rename(
+            &mut self,
+            _: &str,
+            _: &str,
+        ) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn stat(
+            &mut self,
+            path: &str,
+        ) -> Result<crate::providers::RemoteEntry, crate::providers::ProviderError> {
+            Err(crate::providers::ProviderError::NotFound(path.into()))
+        }
+        async fn size(&mut self, _: &str) -> Result<u64, crate::providers::ProviderError> {
+            Ok(0)
+        }
+        async fn exists(&mut self, _: &str) -> Result<bool, crate::providers::ProviderError> {
+            Ok(false)
+        }
+        async fn keep_alive(&mut self) -> Result<(), crate::providers::ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, crate::providers::ProviderError> {
+            Ok(String::new())
+        }
+        fn supports_bulk_upload(&self) -> bool {
+            true
+        }
+        fn supports_bulk_download(&self) -> bool {
+            true
+        }
+        async fn upload_bulk(
+            &mut self,
+            items: &[BulkTransferItem],
+            _: Option<BulkProgress>,
+        ) -> Result<Vec<BulkTransferOutcome>, crate::providers::ProviderError> {
+            self.scripted(items).await
+        }
+        async fn download_bulk(
+            &mut self,
+            items: &[BulkTransferItem],
+            _: Option<BulkProgress>,
+        ) -> Result<Vec<BulkTransferOutcome>, crate::providers::ProviderError> {
+            self.scripted(items).await
+        }
+    }
+
+    impl ScriptedBulk {
+        async fn scripted(
+            &self,
+            items: &[BulkTransferItem],
+        ) -> Result<Vec<BulkTransferOutcome>, crate::providers::ProviderError> {
+            self.bulks
+                .lock()
+                .unwrap()
+                .push(items.iter().map(|i| i.remote_path.clone()).collect());
+            if self.hang {
+                std::future::pending::<()>().await;
+            }
+            Ok(items
+                .iter()
+                .map(|item| match &item.remote_path {
+                    p if p.contains("fail") => BulkTransferOutcome::Failed(
+                        crate::providers::ProviderError::PermissionDenied("refused".into()),
+                    ),
+                    p if p.contains("unsure") => {
+                        BulkTransferOutcome::Uncertain("the program stopped".into())
+                    }
+                    p if p.contains("skip") => {
+                        BulkTransferOutcome::NotAttempted("not handed over".into())
+                    }
+                    _ => BulkTransferOutcome::Completed,
+                })
+                .collect())
+        }
+    }
+
+    fn sync_items(remote: &[&str]) -> Vec<SyncBulkItem> {
+        remote
+            .iter()
+            .map(|path| SyncBulkItem {
+                local_path: format!("/tmp/sync-bulk{path}"),
+                remote_path: format!("/r{path}"),
+                size: 4,
+                modified: None,
+            })
+            .collect()
+    }
+
+    async fn sync_bulk(
+        provider: ScriptedBulk,
+        items: &[SyncBulkItem],
+        upload: bool,
+        token: &CancellationToken,
+    ) -> Vec<SyncBulkResult> {
+        let provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>> =
+            Arc::new(Mutex::new(Some(Box::new(provider))));
+        let sink: Arc<dyn TransferEventSink> = Arc::new(NoopTransferSink);
+        run_sync_bulk(&provider, &sink, items, upload, token, 30).await
+    }
+
+    /// AeroSync sent one `provider_upload_file` per file, so on Proton Drive
+    /// in CLI mode every file paid a native program's start (Requested 77).
+    /// The files of one folder go in one call, also when the run interleaves
+    /// folders; a file alone in its folder goes back to the run, and the
+    /// answers keep the run's order.
+    #[tokio::test]
+    async fn a_sync_run_sends_each_folder_in_one_bulk_and_keeps_its_order() {
+        for upload in [true, false] {
+            let provider = ScriptedBulk::default();
+            let (bulks, singles) = (provider.bulks.clone(), provider.singles.clone());
+            let items = sync_items(&[
+                "/a/1.txt", "/b/1.txt", "/a/2.txt", "/b/2.txt", "/a/3.txt", "/c/1.txt",
+            ]);
+            let results = sync_bulk(provider, &items, upload, &CancellationToken::new()).await;
+            use SyncBulkResult::*;
+            assert_eq!(
+                results,
+                [
+                    Completed,
+                    Completed,
+                    Completed,
+                    Completed,
+                    Completed,
+                    NotAttempted
+                ]
+            );
+            assert_eq!(
+                *bulks.lock().unwrap(),
+                [
+                    vec!["/r/a/1.txt", "/r/a/2.txt", "/r/a/3.txt"],
+                    vec!["/r/b/1.txt", "/r/b/2.txt"],
+                ]
+            );
+            assert!(
+                singles.lock().unwrap().is_empty(),
+                "the lone file is the run's"
+            );
+        }
+    }
+
+    /// A file the native program never took gets one single-file attempt
+    /// here; one it failed or may have sent is final, never sent again.
+    #[tokio::test]
+    async fn a_file_the_bulk_did_not_send_gets_one_attempt_and_a_doubtful_one_none() {
+        let provider = ScriptedBulk::default();
+        let singles = provider.singles.clone();
+        let items = sync_items(&["/a/ok.txt", "/a/skip.txt", "/a/fail.txt", "/a/unsure.txt"]);
+        let results = sync_bulk(provider, &items, true, &CancellationToken::new()).await;
+        assert_eq!(results[0], SyncBulkResult::Completed);
+        assert_eq!(results[1], SyncBulkResult::Completed);
+        assert!(matches!(&results[2], SyncBulkResult::Failed { .. }));
+        assert!(
+            matches!(&results[3], SyncBulkResult::Failed { message } if message.contains("stopped"))
+        );
+        assert_eq!(*singles.lock().unwrap(), ["/r/a/skip.txt"]);
+    }
+
+    /// A Stop before a group leaves its files to the run, which records them
+    /// as not sent; a Stop during a group ends it at once, and its files are
+    /// failed, since some may have reached the server.
+    #[tokio::test]
+    async fn a_stop_before_a_group_leaves_it_and_a_stop_during_it_ends_it() {
+        let provider = ScriptedBulk::default();
+        let bulks = provider.bulks.clone();
+        let stopped = CancellationToken::new();
+        stopped.cancel();
+        let items = sync_items(&["/a/1.txt", "/a/2.txt"]);
+        let results = sync_bulk(provider, &items, true, &stopped).await;
+        assert_eq!(
+            results,
+            [SyncBulkResult::NotAttempted, SyncBulkResult::NotAttempted]
+        );
+        assert!(bulks.lock().unwrap().is_empty());
+
+        let provider = ScriptedBulk {
+            hang: true,
+            ..Default::default()
+        };
+        let token = CancellationToken::new();
+        let stop = token.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            stop.cancel();
+        });
+        let results = tokio::time::timeout(
+            Duration::from_secs(10),
+            sync_bulk(provider, &items, true, &token),
+        )
+        .await
+        .expect("a Stop ends a running bulk");
+        assert!(results.iter().all(
+            |r| matches!(r, SyncBulkResult::Failed { message } if message.contains("cancelled"))
+        ));
+    }
+
+    #[test]
+    fn a_provider_that_resumes_keeps_its_single_file_path() {
+        let mut caps = TransferCapabilities {
+            bulk_upload: Capability::Supported,
+            bulk_download: Capability::Supported,
+            ..Default::default()
+        };
+        assert_eq!(bulk_directions(&caps), (true, true));
+        caps.resume_upload = Capability::Supported;
+        assert_eq!(bulk_directions(&caps), (false, true));
+        caps.bulk_download = Capability::Unsupported;
+        assert_eq!(bulk_directions(&caps), (false, false));
+    }
+
     #[tokio::test]
     async fn bulk_graph_fault_settles_every_started_file() {
         let mut e = executor();

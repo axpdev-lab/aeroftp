@@ -15,7 +15,9 @@ use crate::cloud_provider_factory;
 use crate::compress_overlay_provider::CompressOverlayProvider;
 use crate::credential_store;
 use crate::crypt_overlay_provider;
-use crate::providers::{ProviderError, RemoteEntry as ProviderRemoteEntry, StorageProvider};
+use crate::providers::{
+    ProviderError, ProviderType, RemoteEntry as ProviderRemoteEntry, StorageProvider,
+};
 use crate::sync::{
     build_comparison_results_with_index, classify_with_summary, decide_sync_action,
     normalize_relative_key, save_sync_index, validate_relative_path, CompareDirection,
@@ -32,6 +34,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{mpsc, Mutex, RwLock};
 
+mod bulk;
 mod incremental;
 pub use incremental::{
     prepare_incremental, run_pair_incremental_cycle, IncrementalHints, IncrementalPlan,
@@ -272,6 +275,24 @@ struct LocalFileState {
     len: u64,
     modified: Option<DateTime<Utc>>,
     identity: (u64, i64, i64),
+}
+
+/// The size `entry` gives of the file it describes, when it can be compared
+/// with a local file: none for an FTP size that could not be read, and on
+/// Proton Drive none without the size the uploader claimed, since the listed
+/// size is then the stored, encrypted one, which never matches.
+fn comparable_remote_size(provider_type: ProviderType, entry: &ProviderRemoteEntry) -> Option<u64> {
+    if crate::providers::ftp_listing::size_is_unreadable(entry) {
+        return None;
+    }
+    if let Some(claimed) = entry
+        .metadata
+        .get("claimed_size")
+        .and_then(|size| size.parse().ok())
+    {
+        return Some(claimed);
+    }
+    (provider_type != ProviderType::Proton).then_some(entry.size)
 }
 
 /// How many times one cycle sends a file that keeps changing while it goes
@@ -1220,6 +1241,7 @@ impl CloudService {
         let mut last_status_update = std::time::Instant::now();
         let status_interval = std::time::Duration::from_millis(500);
         self.forget_landed();
+        let mut ahead = bulk::BulkAhead::default();
         for (index, comparison) in comparisons.iter().enumerate() {
             // Update progress (throttled)
             let is_last = index == comparisons.len() - 1;
@@ -1235,7 +1257,7 @@ impl CloudService {
             }
 
             match self
-                .process_comparison_with_provider(provider, &config, comparison)
+                .next_outcome(provider, &config, comparisons, index, &mut ahead)
                 .await
             {
                 Ok(action) => match action {
@@ -1788,6 +1810,77 @@ impl CloudService {
     }
 
     /// Process a single file comparison using any StorageProvider
+    /// What an upload the remote now holds leaves for the baseline, from the
+    /// remote entry read right after it (a `stat`, or the listing of its
+    /// folder after a bulk) and the local state `sent` that went up, unchanged
+    /// since. `exact_sizes` is the provider's type when it reports the size of
+    /// what it stores exactly.
+    fn settle_upload(
+        &self,
+        relative_path: &str,
+        local_path: &Path,
+        sent: LocalFileState,
+        uploaded: Option<&ProviderRemoteEntry>,
+        exact_sizes: Option<ProviderType>,
+    ) {
+        if let Some(provider_type) = exact_sizes {
+            if uploaded
+                .and_then(|entry| comparable_remote_size(provider_type, entry))
+                .is_some_and(|size| size != sent.len)
+            {
+                // The remote is not what was sent: another client
+                // wrote it between the end of the upload and the
+                // stat (an overlay that reports the size on the
+                // wire, compressed or encrypted, never matches, and
+                // is not asked, nor is an FTP size that could not
+                // be read). The local file is not stamped with a time
+                // that belongs to that write, and the baseline
+                // records what was sent: the next cycle reads the
+                // remote as changed.
+                tracing::info!(
+                    "AeroCloud: '{}' changed on the remote right after the upload",
+                    relative_path
+                );
+                if let Some(modified) = sent.modified {
+                    self.note_landed_as(
+                        relative_path,
+                        Landed {
+                            size: Some(sent.len),
+                            modified,
+                        },
+                    );
+                }
+                return;
+            }
+        }
+        let server_time = uploaded
+            .and_then(|entry| entry.modified.as_deref())
+            .and_then(crate::parse_remote_datetime)
+            .and_then(|dt| DateTime::<Utc>::from_timestamp(dt.timestamp(), 0));
+        let stamped = server_time.filter(|dt| {
+            filetime::set_file_mtime(
+                local_path,
+                filetime::FileTime::from_unix_time(dt.timestamp(), 0),
+            )
+            .is_ok()
+        });
+        // A remote that gives no time, or a stamp that could
+        // not be applied, leaves the time the file had when it
+        // was sent: the remote's own time then differs from it,
+        // and the next cycle downloads the same content once
+        // more (a local edit made before that cycle reads as a
+        // conflict).
+        if let Some(modified) = stamped.or(sent.modified) {
+            self.note_landed_as(
+                relative_path,
+                Landed {
+                    size: Some(sent.len),
+                    modified,
+                },
+            );
+        }
+    }
+
     async fn process_comparison_with_provider<P: StorageProvider + ?Sized>(
         &self,
         provider: &mut P,
@@ -1886,12 +1979,6 @@ impl CloudService {
                                 e
                             );
                         }
-                        let server_time = uploaded
-                            .as_ref()
-                            .ok()
-                            .and_then(|entry| entry.modified.as_deref())
-                            .and_then(crate::parse_remote_datetime)
-                            .and_then(|dt| DateTime::<Utc>::from_timestamp(dt.timestamp(), 0));
                         let Some(sent) = sent.filter(|sent| {
                             Self::local_file_state(local_path).as_ref() == Some(sent)
                         }) else {
@@ -1924,58 +2011,15 @@ impl CloudService {
                             }
                             break;
                         };
-                        if provider.reports_exact_size()
-                            && uploaded.as_ref().is_ok_and(|entry| {
-                                !crate::providers::ftp_listing::size_is_unreadable(entry)
-                                    && entry.size != sent.len
-                            })
-                        {
-                            // The remote is not what was sent: another client
-                            // wrote it between the end of the upload and the
-                            // stat (an overlay that reports the size on the
-                            // wire, compressed or encrypted, never matches, and
-                            // is not asked, nor is an FTP size that could not
-                            // be read). The local file is not stamped with a time
-                            // that belongs to that write, and the baseline
-                            // records what was sent: the next cycle reads the
-                            // remote as changed.
-                            tracing::info!(
-                                "AeroCloud: '{}' changed on the remote right after the upload",
-                                comparison.relative_path
-                            );
-                            if let Some(modified) = sent.modified {
-                                self.note_landed_as(
-                                    &comparison.relative_path,
-                                    Landed {
-                                        size: Some(sent.len),
-                                        modified,
-                                    },
-                                );
-                            }
-                            break;
-                        }
-                        let stamped = server_time.filter(|dt| {
-                            filetime::set_file_mtime(
-                                local_path,
-                                filetime::FileTime::from_unix_time(dt.timestamp(), 0),
-                            )
-                            .is_ok()
-                        });
-                        // A remote that gives no time, or a stamp that could
-                        // not be applied, leaves the time the file had when it
-                        // was sent: the remote's own time then differs from it,
-                        // and the next cycle downloads the same content once
-                        // more (a local edit made before that cycle reads as a
-                        // conflict).
-                        if let Some(modified) = stamped.or(sent.modified) {
-                            self.note_landed_as(
-                                &comparison.relative_path,
-                                Landed {
-                                    size: Some(sent.len),
-                                    modified,
-                                },
-                            );
-                        }
+                        self.settle_upload(
+                            &comparison.relative_path,
+                            local_path,
+                            sent,
+                            uploaded.as_ref().ok(),
+                            provider
+                                .reports_exact_size()
+                                .then(|| provider.provider_type()),
+                        );
                         break;
                     }
                 }

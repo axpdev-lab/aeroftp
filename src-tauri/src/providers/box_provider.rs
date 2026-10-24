@@ -140,6 +140,26 @@ async fn box_error_from_response(
     }
     ProviderError::Other(msg)
 }
+/// A lookup is absent only on the endpoint's explicit 404 answer.
+async fn box_lookup_response(
+    response: reqwest::Response,
+    path: &str,
+) -> Result<reqwest::Response, ProviderError> {
+    let status = response.status();
+    if status.is_success() {
+        return Ok(response);
+    }
+    if status == reqwest::StatusCode::NOT_FOUND {
+        return Err(ProviderError::NotFound(path.to_string()));
+    }
+    let error = box_error_from_response(response, "Box lookup failed:").await;
+    Err(match status.as_u16() {
+        401 => ProviderError::AuthenticationFailed(error.to_string()),
+        403 => ProviderError::PermissionDenied(error.to_string()),
+        _ => error,
+    })
+}
+
 const UPLOAD_BASE: &str = "https://upload.box.com/api/2.0";
 
 /// Box watermark info (returned by fields=watermark_info)
@@ -541,6 +561,59 @@ impl BoxProvider {
         Ok(())
     }
 
+    /// A positive exact-name match is conclusive: Box enforces sibling-name
+    /// uniqueness (case-insensitive; https://developer.box.com/reference/post-folders).
+    /// Only absence needs all pages; a short/empty slot page may not be last.
+    async fn lookup_items(
+        &mut self,
+        folder_id: &str,
+        path: &str,
+        encoded_name: &str,
+    ) -> Result<Vec<BoxItem>, ProviderError> {
+        let mut offset = 0u64;
+        loop {
+            let token = self.get_token().await?;
+            let response = self
+                .client
+                .get(format!(
+                    "{}/folders/{}/items?fields=name,type,id&limit=1000&offset={offset}",
+                    self.api_base(),
+                    folder_id
+                ))
+                .header(AUTHORIZATION, Self::bearer_header(&token)?)
+                .send()
+                .await
+                .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            let response = box_lookup_response(response, path).await?;
+            let page: BoxItemCollection = response
+                .json()
+                .await
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+            if page.offset != offset || (page.limit == 0 && offset < page.total_count) {
+                return Err(ProviderError::ParseError(
+                    "Incomplete Box lookup listing".to_string(),
+                ));
+            }
+            offset = offset
+                // Box offsets count slots, including inaccessible/deleted entries.
+                // A short or empty page can still have a following page.
+                .checked_add(page.limit)
+                .ok_or_else(|| {
+                    ProviderError::ParseError("Box listing offset overflow".to_string())
+                })?;
+            if let Some(item) = page
+                .entries
+                .into_iter()
+                .find(|item| item.name == encoded_name)
+            {
+                return Ok(vec![item]);
+            }
+            if offset >= page.total_count {
+                return Ok(Vec::new());
+            }
+        }
+    }
+
     /// Resolve a path to a folder ID, using cache or API calls
     async fn resolve_folder_id(&mut self, path: &str) -> Result<String, ProviderError> {
         let normalized = Self::normalize_path(path);
@@ -562,37 +635,13 @@ impl BoxProvider {
                 continue;
             }
 
-            // List folder to find child
-            let token = self.get_token().await?;
-            let url = format!(
-                "{}/folders/{}/items?fields=name,type,id&limit=1000",
-                self.api_base(),
-                current_id
-            );
-            let resp = self
-                .client
-                .get(&url)
-                .header(AUTHORIZATION, Self::bearer_header(&token)?)
-                .send()
-                .await
-                .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-            if !resp.status().is_success() {
-                return Err(ProviderError::NotFound(path.to_string()));
-            }
-
-            let items: BoxItemCollection = resp
-                .json()
-                .await
-                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
-
             // Box returns names in their stored ENCODED form (a name a user
             // could not otherwise create round-trips via reversible encoding),
             // so match the encoded leaf. The `id_cache` and error text keep the
             // user's original spelling.
             let encoded_part = crate::restricted_chars::encode_leaf(ProviderType::Box, part);
+            let items = self.lookup_items(&current_id, path, &encoded_part).await?;
             let found = items
-                .entries
                 .iter()
                 .find(|item| item.name == encoded_part && item.item_type == "folder");
 
@@ -617,31 +666,11 @@ impl BoxProvider {
         };
 
         let parent_id = self.resolve_folder_id(parent_path).await?;
-        let token = self.get_token().await?;
-
-        let url = format!(
-            "{}/folders/{}/items?fields=name,type,id&limit=1000",
-            self.api_base(),
-            parent_id
-        );
-        let resp = self
-            .client
-            .get(&url)
-            .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-        let items: BoxItemCollection = resp
-            .json()
-            .await
-            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
-
         let encoded_name = crate::restricted_chars::encode_leaf(ProviderType::Box, file_name);
+        let items = self.lookup_items(&parent_id, path, &encoded_name).await?;
         items
-            .entries
             .iter()
-            .find(|item| item.name == encoded_name)
+            .find(|item| item.name == encoded_name && item.item_type == "file")
             .map(|item| item.id.clone())
             .ok_or_else(|| ProviderError::NotFound(file_name.to_string()))
     }
@@ -671,29 +700,9 @@ impl BoxProvider {
         };
 
         let parent_id = self.resolve_folder_id(parent_path).await?;
-        let token = self.get_token().await?;
-
-        let url = format!(
-            "{}/folders/{}/items?fields=name,type,id&limit=1000",
-            self.api_base(),
-            parent_id
-        );
-        let resp = self
-            .client
-            .get(&url)
-            .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-        let items: BoxItemCollection = resp
-            .json()
-            .await
-            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
-
         let encoded_name = crate::restricted_chars::encode_leaf(ProviderType::Box, item_name);
+        let items = self.lookup_items(&parent_id, path, &encoded_name).await?;
         items
-            .entries
             .iter()
             .find(|item| item.name == encoded_name)
             .map(|item| (item.id.clone(), item.item_type.clone()))
@@ -2381,6 +2390,8 @@ impl StorageProvider for BoxProvider {
             .await
             .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
+        let resp = box_lookup_response(resp, path).await?;
+
         let item: BoxItem = resp
             .json()
             .await
@@ -3198,6 +3209,107 @@ fn rename_refused(body: &str, to: &str) -> ProviderError {
 
 #[cfg(test)]
 mod tests {
+
+    #[tokio::test]
+    async fn r47_review_box_stops_after_an_exact_encoded_match() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let requests = Arc::new(AtomicUsize::new(0));
+        let seen = requests.clone();
+        let encoded = crate::restricted_chars::encode_leaf(ProviderType::Box, "target:name");
+        let app = axum::Router::new().fallback(axum::routing::get(move || {
+            let seen = seen.clone(); let encoded = encoded.clone();
+            async move {
+                let first = seen.fetch_add(1, Ordering::SeqCst) == 0;
+                (if first { axum::http::StatusCode::OK } else { axum::http::StatusCode::FORBIDDEN },
+                 axum::Json(serde_json::json!({"entries":[{"type":"folder","id":"target","name":encoded}],"offset":0,"limit":1,"total_count":99})))
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = fixture_connected();
+        p.api_base_override = Some(format!("http://{addr}"));
+        let result = p.resolve_folder_id("/target:name").await;
+        server.abort();
+        assert_eq!(result.unwrap(), "target");
+        assert_eq!(requests.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn probe_contract_box_uses_declared_offsets_even_with_short_pages() {
+        for empty_first in [false, true] {
+            let app = axum::Router::new().fallback(axum::routing::get(
+                move |uri: axum::http::Uri| async move {
+                    let offset: u64 = uri.query().unwrap_or("").split('&')
+                        .find_map(|q| q.strip_prefix("offset=")).unwrap_or("0").parse().unwrap();
+                    let entries = if offset == 2 {
+                        serde_json::json!([{"type":"folder","id":"target","name":"target"}])
+                    } else if offset == 0 && !empty_first {
+                        serde_json::json!([{"type":"folder","id":"first","name":"first"}])
+                    } else { serde_json::json!([]) };
+                    axum::Json(serde_json::json!({"entries":entries,"offset":offset,"limit":2,"total_count":3}))
+                }
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut p = fixture_connected();
+            p.api_base_override = Some(format!("http://{addr}"));
+            let outcome = p.resolve_folder_id("/target").await;
+            server.abort();
+            assert_eq!(outcome.unwrap(), "target");
+        }
+    }
+
+    #[tokio::test]
+    async fn probe_contract_box_searches_beyond_the_first_page() {
+        let app = axum::Router::new().fallback(axum::routing::get(
+            |uri: axum::http::Uri| async move {
+                let second = uri.query().unwrap_or("").split('&').any(|q| q == "offset=1");
+                let entries = if second {
+                    serde_json::json!([{"type":"folder","id":"target","name":"target"}])
+                } else {
+                    serde_json::json!([{"type":"folder","id":"first","name":"first"}])
+                };
+                axum::Json(serde_json::json!({"entries":entries,"offset":if second {1} else {0},"limit":1,"total_count":2}))
+            }
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = fixture_connected();
+        p.api_base_override = Some(format!("http://{addr}"));
+        let outcome = p.resolve_folder_id("/target").await;
+        server.abort();
+        assert_eq!(outcome.unwrap(), "target");
+    }
+
+    #[tokio::test]
+    async fn probe_contract_box_preserves_ancestor_errors() {
+        for status in [401, 403, 429, 500] {
+            let app = axum::Router::new().fallback(axum::routing::get(move || async move {
+                (
+                    axum::http::StatusCode::from_u16(status).unwrap(),
+                    axum::Json(serde_json::json!({"type":"error","code":"access_denied"})),
+                )
+            }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut p = fixture_connected();
+            p.api_base_override = Some(format!("http://{addr}"));
+            let outcome = p.exists("/parent/target").await;
+            server.abort();
+            assert!(
+                matches!(outcome, Err(ref e) if !matches!(e, ProviderError::NotFound(_))),
+                "HTTP {status} was not an absence: {outcome:?}"
+            );
+        }
+    }
+
     use super::*;
     use secrecy::{ExposeSecret, SecretString};
 

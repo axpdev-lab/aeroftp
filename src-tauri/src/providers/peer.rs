@@ -177,9 +177,12 @@ impl PeerProvider {
     /// that contains them; refusing the escape keeps "browse a friend's drive"
     /// from turning into "browse my own disk through their share".
     fn contained(&self, fs: &Path) -> Result<PathBuf, ProviderError> {
-        let canon = fs
-            .canonicalize()
-            .map_err(|e| ProviderError::NotFound(format!("{}: {e}", fs.display())))?;
+        let canon = fs.canonicalize().map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => {
+                ProviderError::NotFound(format!("{}: {e}", fs.display()))
+            }
+            _ => ProviderError::IoError(e),
+        })?;
         if !canon.starts_with(self.root()?) {
             return Err(ProviderError::InvalidPath(
                 "path resolves outside the AeroShare replica".to_string(),
@@ -298,7 +301,8 @@ impl StorageProvider for PeerProvider {
             // symlink_metadata: report links instead of following them.
             let meta = match tokio::fs::symlink_metadata(item.path()).await {
                 Ok(m) => m,
-                Err(_) => continue, // raced away mid-listing
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e) => return Err(ProviderError::IoError(e)),
             };
             let ventry = Self::join_virtual(&vpath, &name);
             entries.push(self.entry_for(name, ventry, &meta));
@@ -314,9 +318,10 @@ impl StorageProvider for PeerProvider {
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
         let vpath = self.virtual_path(path)?;
         let fs = self.contained(&self.fs_path(&vpath)?)?;
-        let meta = tokio::fs::metadata(&fs)
-            .await
-            .map_err(|e| ProviderError::NotFound(format!("{vpath}: {e}")))?;
+        let meta = tokio::fs::metadata(&fs).await.map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => ProviderError::NotFound(format!("{vpath}: {e}")),
+            _ => ProviderError::IoError(e),
+        })?;
         if !meta.is_dir() {
             return Err(ProviderError::InvalidPath(format!(
                 "{vpath} is not a directory"
@@ -341,7 +346,10 @@ impl StorageProvider for PeerProvider {
         let src = self.contained(&self.fs_path(&vpath)?)?;
         let meta = tokio::fs::metadata(&src)
             .await
-            .map_err(|e| ProviderError::NotFound(format!("{vpath}: {e}")))?;
+            .map_err(|e| match e.kind() {
+                std::io::ErrorKind::NotFound => ProviderError::NotFound(format!("{vpath}: {e}")),
+                _ => ProviderError::IoError(e),
+            })?;
         if meta.is_dir() {
             return Err(ProviderError::InvalidPath(format!(
                 "{vpath} is a directory"
@@ -428,7 +436,10 @@ impl StorageProvider for PeerProvider {
         let fs = self.contained(&self.fs_path(&vpath)?)?;
         let meta = tokio::fs::symlink_metadata(&fs)
             .await
-            .map_err(|e| ProviderError::NotFound(format!("{vpath}: {e}")))?;
+            .map_err(|e| match e.kind() {
+                std::io::ErrorKind::NotFound => ProviderError::NotFound(format!("{vpath}: {e}")),
+                _ => ProviderError::IoError(e),
+            })?;
         let name = vpath.rsplit('/').next().unwrap_or("").to_string();
         let name = if name.is_empty() {
             "/".to_string()
@@ -441,9 +452,10 @@ impl StorageProvider for PeerProvider {
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
         let vpath = self.virtual_path(path)?;
         let fs = self.contained(&self.fs_path(&vpath)?)?;
-        let meta = tokio::fs::metadata(&fs)
-            .await
-            .map_err(|e| ProviderError::NotFound(format!("{vpath}: {e}")))?;
+        let meta = tokio::fs::metadata(&fs).await.map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => ProviderError::NotFound(format!("{vpath}: {e}")),
+            _ => ProviderError::IoError(e),
+        })?;
         Ok(meta.len())
     }
 
@@ -473,6 +485,41 @@ impl StorageProvider for PeerProvider {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn probe_contract_peer_cannot_hide_an_unreadable_item() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::geteuid() } == 0 {
+            return;
+        }
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("present"), b"data").unwrap();
+        let mut provider = connected_provider(root.path()).await;
+        let original = std::fs::metadata(root.path()).unwrap().permissions();
+        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o400)).unwrap();
+        let outcome = provider.list("/").await;
+        std::fs::set_permissions(root.path(), original).unwrap();
+        assert!(
+            matches!(outcome, Err(ProviderError::IoError(_))),
+            "{outcome:?}"
+        );
+        assert_eq!(provider.list("/").await.unwrap().len(), 1);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn probe_contract_peer_preserves_filesystem_errors() {
+        let root = tempfile::tempdir().unwrap();
+        let mut p = connected_provider(root.path()).await;
+        std::os::unix::fs::symlink("loop", root.path().join("loop")).unwrap();
+        let outcome = p.exists("/loop").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::IoError(_))),
+            "an unresolvable symlink is not an absent name: {outcome:?}"
+        );
+        assert!(!p.exists("/missing").await.unwrap());
+    }
+
     use super::*;
 
     fn test_config(root: &Path) -> PeerProviderConfig {

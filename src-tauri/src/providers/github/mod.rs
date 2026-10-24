@@ -1025,6 +1025,11 @@ impl StorageProvider for GitHubProvider {
             .await
             .map_err(ProviderError::from)?;
 
+        if items.len() >= 1000 {
+            return Err(ProviderError::ParseError(
+                "GitHub Contents listing reached the 1000-entry cap; completeness cannot be verified".into()
+            ));
+        }
         let mut entries = Vec::with_capacity(items.len());
         for item in &items {
             let is_dir = item.content_type == "dir";
@@ -1665,11 +1670,34 @@ impl StorageProvider for GitHubProvider {
 
         let url = self.contents_query_url(&resolved);
 
-        let content: GitHubContent = self
+        #[derive(serde::Deserialize)]
+        #[serde(untagged)]
+        enum Contents {
+            File(Box<GitHubContent>),
+            Directory(Vec<GitHubContent>),
+        }
+        let response: Contents = self
             .client
-            .get_json(&url)
+            .get_json_at(&url, &resolved)
             .await
             .map_err(ProviderError::from)?;
+        let content = match response {
+            Contents::File(content) => content,
+            Contents::Directory(children) => {
+                // The successful directory response proves the directory itself,
+                // even when its children exceed the Contents listing cap.
+                drop(children);
+                let name = resolved
+                    .rsplit('/')
+                    .next()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("/");
+                return Ok(RemoteEntry::directory(
+                    name.to_string(),
+                    format!("/{resolved}"),
+                ));
+            }
+        };
 
         self.cache_sha(&content.path, &content.sha);
 
@@ -1918,6 +1946,57 @@ impl StorageProvider for GitHubProvider {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn probe_contract_github_directory_metadata_is_not_a_parse_error() {
+        use axum::response::IntoResponse;
+        let app = axum::Router::new().fallback(axum::routing::get(|uri: axum::http::Uri| async move {
+            if uri.path().ends_with("/missing") {
+                (axum::http::StatusCode::NOT_FOUND, axum::Json(serde_json::json!({"message":"Not Found"}))).into_response()
+            } else if uri.path().ends_with("/denied") {
+                (axum::http::StatusCode::FORBIDDEN, axum::Json(serde_json::json!({"message":"Forbidden"}))).into_response()
+            } else if uri.path().ends_with("/file") {
+                axum::Json(serde_json::json!({"name":"file","path":"file","type":"file","sha":"s","size":3})).into_response()
+            } else { axum::Json(serde_json::json!([])).into_response() }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = GitHubProvider::new(
+            GitHubConfig::from_provider_config(&provider_config("o/r", None, Some("/"))).unwrap(),
+        )
+        .unwrap();
+        provider.connected = true;
+        provider.client.api_origin_override = Some(format!("http://{addr}"));
+        assert!(provider.stat("/dir").await.unwrap().is_dir);
+        assert!(provider.stat("/").await.unwrap().is_dir);
+        assert!(!provider.stat("/file").await.unwrap().is_dir);
+        assert!(!provider.exists("/missing").await.unwrap());
+        assert!(provider.exists("/denied").await.is_err());
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn probe_contract_github_full_contents_page_does_not_prove_absence() {
+        let app = axum::Router::new().fallback(axum::routing::get(|| async {
+            let items: Vec<_> = (0..1000).map(|i| serde_json::json!({"name":format!("f{i}"),"path":format!("f{i}"),"type":"file","sha":"s","size":1})).collect();
+            axum::Json(serde_json::json!(items))
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = GitHubProvider::new(
+            GitHubConfig::from_provider_config(&provider_config("o/r", None, Some("/"))).unwrap(),
+        )
+        .unwrap();
+        provider.connected = true;
+        provider.client.api_origin_override = Some(format!("http://{addr}"));
+        let outcome = provider.list("/").await;
+        server.abort();
+        assert!(
+            matches!(outcome, Err(ProviderError::ParseError(_))),
+            "a full capped page is incomplete"
+        );
+    }
     use super::*;
 
     fn provider_config(

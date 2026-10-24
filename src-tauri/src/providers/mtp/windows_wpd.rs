@@ -99,17 +99,7 @@ impl Drop for ComGuard {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 fn map_com(err: windows::core::Error, ctx: &str) -> ProviderError {
-    let msg = err.message();
-    let lower = msg.to_ascii_lowercase();
-    if lower.contains("access") || lower.contains("denied") || lower.contains("busy") {
-        ProviderError::ConnectionFailed(format!(
-            "{ctx}: device busy or access denied ({msg}). Close other apps using the phone and retry."
-        ))
-    } else if lower.contains("not found") || lower.contains("removed") {
-        ProviderError::NotFound(format!("{ctx}: {msg}"))
-    } else {
-        ProviderError::ConnectionFailed(format!("{ctx}: {msg}"))
-    }
+    super::backend::native_command_error(ctx, &err.message())
 }
 
 fn transfer_err(err: windows::core::Error, ctx: &str) -> ProviderError {
@@ -487,19 +477,38 @@ fn list_objects_on(
         let mut batch = [PWSTR::null(); 32];
         let mut fetched = 0u32;
         let hr = unsafe { enumerator.Next(&mut batch, &mut fetched) };
+        let mut operation_error = hr.ok().err().map(|e| {
+            ProviderError::ConnectionFailed(format!(
+                "MTP folder enumeration failed: {}",
+                e.message()
+            ))
+        });
         if fetched == 0 {
-            break;
+            return super::backend::checked_object_listing(out, operation_error);
         }
-        // S_OK / S_FALSE both fine when fetched > 0
-        let _ = hr;
         for slot in batch.iter().take(fetched as usize) {
             let obj_id = unsafe { pwstr_to_string(*slot) };
             unsafe { free_pwstr(*slot) };
-            let Some(obj_id) = obj_id else { continue };
+            let Some(obj_id) = obj_id else {
+                if operation_error.is_none() {
+                    operation_error = Some(ProviderError::ParseError(
+                        "MTP object ID could not be read".into(),
+                    ));
+                }
+                continue;
+            };
             let h_obj = HSTRING::from(obj_id.as_str());
-            let name = get_string_prop(&props, &h_obj, &WPD_OBJECT_ORIGINAL_FILE_NAME)
-                .or_else(|| get_string_prop(&props, &h_obj, &WPD_OBJECT_NAME))
-                .unwrap_or_else(|| obj_id.clone());
+            let decoded = get_string_prop(&props, &h_obj, &WPD_OBJECT_ORIGINAL_FILE_NAME)
+                .or_else(|| get_string_prop(&props, &h_obj, &WPD_OBJECT_NAME));
+            let name = match super::backend::checked_object_name(decoded) {
+                Ok(name) => name,
+                Err(error) => {
+                    if operation_error.is_none() {
+                        operation_error = Some(error);
+                    }
+                    String::new()
+                }
+            };
             let content_type = get_guid_prop(&props, &h_obj, &WPD_OBJECT_CONTENT_TYPE);
             let is_dir = content_type
                 .map(|g| g == WPD_CONTENT_TYPE_FOLDER || g == WPD_CONTENT_TYPE_FUNCTIONAL_OBJECT)
@@ -520,6 +529,7 @@ fn list_objects_on(
                 modified: None,
             });
         }
+        out = super::backend::checked_object_listing(out, operation_error)?;
         if fetched < batch.len() as u32 {
             break;
         }

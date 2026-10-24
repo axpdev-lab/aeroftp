@@ -1013,13 +1013,15 @@ pub async fn execute_tool(
 
     // T3 Gate 2 Area C: prefer the unified core dispatcher for the remote
     // tools that have been migrated. Advanced MCP-only tools still fall
-    // through to the mature legacy match below.
+    // through to the mature legacy match below; so do GUI-only core definitions
+    // whose MCP implementation lives here (benchmark and transfer stats).
     {
         let ctx = crate::ai_core::mcp_impl::McpToolCtx::new(Arc::clone(pool), notifier.cloned());
         match crate::ai_core::tools::dispatch_tool(&ctx, tool_name, args).await {
             Ok(value) => return finish(tool_name, None, None, ok(value), start),
             Err(crate::ai_core::tools::ToolError::Unknown(_))
-            | Err(crate::ai_core::tools::ToolError::NotMigrated(_)) => {}
+            | Err(crate::ai_core::tools::ToolError::NotMigrated(_))
+            | Err(crate::ai_core::tools::ToolError::NotOnSurface { .. }) => {}
             Err(e) => return finish(tool_name, None, None, err(e.to_string()), start),
         }
     }
@@ -3148,6 +3150,30 @@ mod tests {
                 "{key} applies at every level, its description says otherwise: {doc}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn benchmark_reaches_the_mcp_handler_when_the_core_tool_is_gui_only() {
+        let pool = std::sync::Arc::new(super::super::pool::ConnectionPool::new(
+            10,
+            std::time::Duration::from_secs(300),
+        ));
+        let limiter = super::security::RateLimiter::new();
+        let (result, is_error) = super::execute_tool(
+            "aeroftp_benchmark",
+            &serde_json::json!({}),
+            &pool,
+            &limiter,
+            None,
+        )
+        .await;
+        assert!(is_error, "{result}");
+        assert!(
+            result
+                .to_string()
+                .contains("Missing required argument: profile"),
+            "{result}"
+        );
     }
 
     #[test]

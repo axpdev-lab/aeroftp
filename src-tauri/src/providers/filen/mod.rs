@@ -405,6 +405,44 @@ impl FilenAuthSnapshot {
 }
 
 /// Filen Storage Provider
+/// A positive readable match is useful even if an unrelated sibling cannot
+/// be decrypted. A missing match or a complete walk needs all names.
+struct CheckedFilenListing {
+    entries: Vec<RemoteEntry>,
+    unreadable: usize,
+}
+
+impl CheckedFilenListing {
+    fn incomplete_error() -> ProviderError {
+        ProviderError::ParseError(
+            "Filen listing has unreadable entries; cannot verify absence or completeness".into(),
+        )
+    }
+
+    fn complete(self) -> Result<Vec<RemoteEntry>, ProviderError> {
+        if self.unreadable > 0 {
+            Err(Self::incomplete_error())
+        } else {
+            Ok(self.entries)
+        }
+    }
+
+    fn find(self, name: &str, file_only: bool) -> Result<RemoteEntry, ProviderError> {
+        if let Some(entry) = self
+            .entries
+            .into_iter()
+            .find(|e| e.name == name && (!file_only || !e.is_dir))
+        {
+            return Ok(entry);
+        }
+        if self.unreadable > 0 {
+            Err(Self::incomplete_error())
+        } else {
+            Err(ProviderError::NotFound(name.into()))
+        }
+    }
+}
+
 pub struct FilenProvider {
     /// Shared immutable config (password/email/optional API key). Arc so transfer
     /// clones do not independently copy secret material.
@@ -1392,6 +1430,158 @@ impl FilenProvider {
         Ok(())
     }
 
+    async fn read_listing(&mut self, path: &str) -> Result<CheckedFilenListing, ProviderError> {
+        // F-LIST-01: Filen API does not support server-side pagination for dir/content.
+        // The entire folder listing is returned in a single response. This is inherent
+        // to Filen's zero-knowledge design: the server cannot sort/page encrypted entries.
+        let folder_uuid = if path == "." || path.is_empty() {
+            self.current_folder_uuid.clone()
+        } else {
+            self.resolve_folder_uuid(path).await?
+        };
+
+        let request = self
+            .client
+            .post(format!("{}/v3/dir/content", self.gateway_base()))
+            .header(
+                "Authorization",
+                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
+                    .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
+            )
+            .json(&serde_json::json!({"uuid": folder_uuid}))
+            .build()
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp = self.send_retry(request).await?;
+
+        let resp_text = resp
+            .text()
+            .await
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+        // F-LOG-01: Log raw response at debug level, truncated to 200 chars max
+        let preview_len = resp_text.floor_char_boundary(200);
+        let preview = &resp_text[..preview_len];
+        filen_log(&format!(
+            "dir/content uuid={} response ({}B): {}",
+            folder_uuid,
+            resp_text.len(),
+            preview
+        ));
+
+        let content: DirContentResponse = serde_json::from_str(&resp_text)
+            .map_err(|e| ProviderError::ParseError(format!("json: {e} - response: {preview}")))?;
+
+        if !content.status {
+            return Err(ProviderError::ServerError(
+                content.message.unwrap_or_else(|| "List failed".to_string()),
+            ));
+        }
+
+        let data = content.data.ok_or_else(|| {
+            ProviderError::ParseError("Filen directory response has no data".to_string())
+        })?;
+        filen_log(&format!(
+            "list '{}' uuid={}: {} folders, {} files",
+            path,
+            folder_uuid,
+            data.folders.len(),
+            data.uploads.len()
+        ));
+        let mut entries = Vec::new();
+        let mut unreadable = 0;
+
+        let base_path = if path == "." || path.is_empty() {
+            self.current_path.clone()
+        } else {
+            Self::normalize_path(path)
+        };
+
+        // Preserve readable siblings, but carry incomplete status to every
+        // absence-sensitive caller instead of treating an omitted name as free.
+        for folder in data.folders {
+            let Some(name) = self.decrypt_folder_name(&folder.name) else {
+                unreadable += 1;
+                continue;
+            };
+            let entry_path = if base_path == "/" {
+                format!("/{name}")
+            } else {
+                format!("{base_path}/{name}")
+            };
+            self.dir_cache_insert(
+                entry_path.clone(),
+                DirInfo {
+                    uuid: folder.uuid.clone(),
+                    name: name.clone(),
+                },
+            );
+            entries.push(RemoteEntry {
+                name,
+                path: entry_path,
+                is_dir: true,
+                size: 0,
+                modified: chrono::DateTime::from_timestamp(folder.timestamp as i64, 0)
+                    .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()),
+                permissions: None,
+                owner: None,
+                group: None,
+                is_symlink: false,
+                link_target: None,
+                mime_type: None,
+                metadata: HashMap::from([("uuid".to_string(), folder.uuid)]),
+            });
+        }
+        for file in data.uploads {
+            let Some(plaintext) = self.decrypt_metadata(&file.metadata) else {
+                unreadable += 1;
+                continue;
+            };
+            // Never include plaintext metadata or key material in warnings/errors.
+            let Ok(meta) = serde_json::from_str::<FileMetadata>(&plaintext) else {
+                unreadable += 1;
+                continue;
+            };
+            let entry_path = if base_path == "/" {
+                format!("/{}", meta.name)
+            } else {
+                format!("{}/{}", base_path, meta.name)
+            };
+            let modified = meta.last_modified.and_then(|ts| {
+                chrono::DateTime::from_timestamp(ts as i64 / 1000, 0)
+                    .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+            });
+            self.file_key_cache_insert(file.uuid.clone(), meta.key);
+            entries.push(RemoteEntry {
+                name: meta.name,
+                path: entry_path,
+                is_dir: false,
+                size: meta.size,
+                modified,
+                permissions: None,
+                owner: None,
+                group: None,
+                is_symlink: false,
+                link_target: None,
+                mime_type: if meta.mime.is_empty() {
+                    None
+                } else {
+                    Some(meta.mime)
+                },
+                metadata: HashMap::from([
+                    ("uuid".to_string(), file.uuid),
+                    ("bucket".to_string(), file.bucket),
+                    ("region".to_string(), file.region),
+                    ("chunks".to_string(), file.chunks.to_string()),
+                ]),
+            });
+        }
+
+        Ok(CheckedFilenListing {
+            entries,
+            unreadable,
+        })
+    }
+
     /// Resolve a folder path to its UUID
     async fn resolve_folder_uuid(&mut self, path: &str) -> Result<String, ProviderError> {
         let normalized = Self::normalize_path(path);
@@ -1437,34 +1627,44 @@ impl FilenProvider {
                 .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             if !content.status {
-                return Err(ProviderError::NotFound(path.to_string()));
+                return Err(ProviderError::ServerError(
+                    content
+                        .message
+                        .unwrap_or_else(|| "Folder lookup failed".to_string()),
+                ));
             }
 
-            let data = content.data.unwrap_or(DirContentData {
-                folders: vec![],
-                uploads: vec![],
-            });
+            let data = content.data.ok_or_else(|| {
+                ProviderError::ParseError("Filen directory response has no data".to_string())
+            })?;
 
             let mut found = false;
+            let mut unreadable = false;
             for folder in &data.folders {
-                if let Some(name) = self.decrypt_folder_name(&folder.name) {
-                    if name == part {
-                        current_uuid = folder.uuid.clone();
-                        self.dir_cache_insert(
-                            built_path.clone(),
-                            DirInfo {
-                                uuid: folder.uuid.clone(),
-                                name: name.clone(),
-                            },
-                        );
-                        found = true;
-                        break;
-                    }
+                let Some(name) = self.decrypt_folder_name(&folder.name) else {
+                    unreadable = true;
+                    continue;
+                };
+                if name == part {
+                    current_uuid = folder.uuid.clone();
+                    self.dir_cache_insert(
+                        built_path.clone(),
+                        DirInfo {
+                            uuid: folder.uuid.clone(),
+                            name: name.clone(),
+                        },
+                    );
+                    found = true;
+                    break;
                 }
             }
 
             if !found {
-                return Err(ProviderError::NotFound(part.to_string()));
+                return Err(if unreadable {
+                    CheckedFilenListing::incomplete_error()
+                } else {
+                    ProviderError::NotFound(part.to_string())
+                });
             }
         }
 
@@ -1487,11 +1687,10 @@ impl FilenProvider {
                 normalized.trim_start_matches('/').to_string(),
             ),
         };
-        let entries = self.list(&parent_path).await?;
-        let file_entry = entries
-            .iter()
-            .find(|e| !e.is_dir && e.name == file_name)
-            .ok_or_else(|| ProviderError::NotFound(file_name.to_string()))?;
+        let file_entry = self
+            .read_listing(&parent_path)
+            .await?
+            .find(&file_name, true)?;
         file_entry
             .metadata
             .get("uuid")
@@ -1846,173 +2045,20 @@ impl StorageProvider for FilenProvider {
     }
 
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        // F-LIST-01: Filen API does not support server-side pagination for dir/content.
-        // The entire folder listing is returned in a single response. This is inherent
-        // to Filen's zero-knowledge design: the server cannot sort/page encrypted entries.
-        let folder_uuid = if path == "." || path.is_empty() {
-            self.current_folder_uuid.clone()
-        } else {
-            self.resolve_folder_uuid(path).await?
-        };
+        self.read_listing(path).await?.complete()
+    }
 
-        let request = self
-            .client
-            .post(format!("{}/v3/dir/content", self.gateway_base()))
-            .header(
-                "Authorization",
-                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
-                    .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
-            )
-            .json(&serde_json::json!({"uuid": folder_uuid}))
-            .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        let resp = self.send_retry(request).await?;
-
-        let resp_text = resp
-            .text()
-            .await
-            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
-
-        // F-LOG-01: Log raw response at debug level, truncated to 200 chars max
-        let preview_len = resp_text.floor_char_boundary(200);
-        let preview = &resp_text[..preview_len];
-        filen_log(&format!(
-            "dir/content uuid={} response ({}B): {}",
-            folder_uuid,
-            resp_text.len(),
-            preview
-        ));
-
-        let content: DirContentResponse = serde_json::from_str(&resp_text)
-            .map_err(|e| ProviderError::ParseError(format!("json: {e} - response: {preview}")))?;
-
-        if !content.status {
-            return Err(ProviderError::ServerError(
-                content.message.unwrap_or_else(|| "List failed".to_string()),
-            ));
+    async fn list_for_display(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        let listing = self.read_listing(path).await?;
+        if listing.unreadable > 0 {
+            let warning = format!(
+                "Filen: {} unreadable entries were omitted; this listing is incomplete",
+                listing.unreadable
+            );
+            tracing::warn!("{warning}");
+            super::report_warning(warning);
         }
-
-        let data = content.data.unwrap_or(DirContentData {
-            folders: vec![],
-            uploads: vec![],
-        });
-        filen_log(&format!(
-            "list '{}' uuid={}: {} folders, {} files",
-            path,
-            folder_uuid,
-            data.folders.len(),
-            data.uploads.len()
-        ));
-        let mut entries = Vec::new();
-
-        let base_path = if path == "." || path.is_empty() {
-            self.current_path.clone()
-        } else {
-            Self::normalize_path(path)
-        };
-
-        // Folders
-        for folder in data.folders {
-            if let Some(name) = self.decrypt_folder_name(&folder.name) {
-                let entry_path = if base_path == "/" {
-                    format!("/{}", name)
-                } else {
-                    format!("{}/{}", base_path, name)
-                };
-
-                self.dir_cache_insert(
-                    entry_path.clone(),
-                    DirInfo {
-                        uuid: folder.uuid.clone(),
-                        name: name.clone(),
-                    },
-                );
-
-                entries.push(RemoteEntry {
-                    name,
-                    path: entry_path,
-                    is_dir: true,
-                    size: 0,
-                    modified: Some(
-                        chrono::DateTime::from_timestamp(folder.timestamp as i64, 0)
-                            .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
-                            .unwrap_or_default(),
-                    ),
-                    permissions: None,
-                    owner: None,
-                    group: None,
-                    is_symlink: false,
-                    link_target: None,
-                    mime_type: None,
-                    metadata: {
-                        let mut m = HashMap::new();
-                        m.insert("uuid".to_string(), folder.uuid);
-                        m
-                    },
-                });
-            } else {
-                filen_log(&format!(
-                    "FAILED decrypt folder: uuid={}, encrypted_len={}",
-                    folder.uuid,
-                    folder.name.len()
-                ));
-            }
-        }
-
-        // Files
-        for file in data.uploads {
-            if let Some(meta_str) = self.decrypt_metadata(&file.metadata) {
-                if let Ok(meta) = serde_json::from_str::<FileMetadata>(&meta_str) {
-                    let entry_path = if base_path == "/" {
-                        format!("/{}", meta.name)
-                    } else {
-                        format!("{}/{}", base_path, meta.name)
-                    };
-
-                    let modified = meta.last_modified.and_then(|ts| {
-                        chrono::DateTime::from_timestamp(ts as i64 / 1000, 0)
-                            .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
-                    });
-
-                    entries.push(RemoteEntry {
-                        name: meta.name,
-                        path: entry_path,
-                        is_dir: false,
-                        size: meta.size,
-                        modified,
-                        permissions: None,
-                        owner: None,
-                        group: None,
-                        is_symlink: false,
-                        link_target: None,
-                        mime_type: if meta.mime.is_empty() {
-                            None
-                        } else {
-                            Some(meta.mime)
-                        },
-                        metadata: {
-                            let file_uuid = file.uuid.clone();
-                            // Store encryption key in backend-only cache (never sent to frontend via IPC)
-                            self.file_key_cache_insert(file_uuid.clone(), meta.key);
-                            let mut m = HashMap::new();
-                            m.insert("uuid".to_string(), file_uuid);
-                            m.insert("bucket".to_string(), file.bucket);
-                            m.insert("region".to_string(), file.region);
-                            m.insert("chunks".to_string(), file.chunks.to_string());
-                            m
-                        },
-                    });
-                }
-            } else {
-                filen_log(&format!(
-                    "FAILED decrypt file: uuid={}, encrypted_len={}",
-                    file.uuid,
-                    file.metadata.len()
-                ));
-            }
-        }
-
-        Ok(entries)
+        Ok(listing.entries)
     }
 
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -2062,11 +2108,10 @@ impl StorageProvider for FilenProvider {
             _ => ("/", normalized.trim_start_matches('/')),
         };
 
-        let entries = self.list(parent_path).await?;
-        let file_entry = entries
-            .iter()
-            .find(|e| !e.is_dir && e.name == file_name)
-            .ok_or_else(|| ProviderError::NotFound(file_name.to_string()))?;
+        let file_entry = self
+            .read_listing(parent_path)
+            .await?
+            .find(file_name, true)?;
 
         let uuid = file_entry
             .metadata
@@ -2169,11 +2214,10 @@ impl StorageProvider for FilenProvider {
             _ => ("/", normalized.trim_start_matches('/')),
         };
 
-        let entries = self.list(parent_path).await?;
-        let file_entry = entries
-            .iter()
-            .find(|e| !e.is_dir && e.name == file_name)
-            .ok_or_else(|| ProviderError::NotFound(file_name.to_string()))?;
+        let file_entry = self
+            .read_listing(parent_path)
+            .await?
+            .find(file_name, true)?;
 
         let uuid = file_entry
             .metadata
@@ -2534,11 +2578,10 @@ impl StorageProvider for FilenProvider {
             _ => ("/", normalized.trim_start_matches('/')),
         };
 
-        let entries = self.list(parent_path).await?;
-        let entry = entries
-            .iter()
-            .find(|e| e.name == file_name)
-            .ok_or_else(|| ProviderError::NotFound(file_name.to_string()))?;
+        let entry = self
+            .read_listing(parent_path)
+            .await?
+            .find(file_name, false)?;
 
         let uuid = entry
             .metadata
@@ -2625,16 +2668,21 @@ impl StorageProvider for FilenProvider {
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let normalized = Self::normalize_path(path);
+        if normalized == "/" {
+            if !self.connected {
+                return Err(ProviderError::NotConnected);
+            }
+            // The virtual root is not a child named "" in its own listing.
+            // Verify the listing so authentication/server failures stay errors.
+            self.read_listing("/").await?;
+            return Ok(RemoteEntry::directory("/".to_string(), "/".to_string()));
+        }
         let (parent_path, name) = match normalized.rfind('/') {
             Some(pos) if pos > 0 => (&normalized[..pos], &normalized[pos + 1..]),
             _ => ("/", normalized.trim_start_matches('/')),
         };
 
-        let entries = self.list(parent_path).await?;
-        entries
-            .into_iter()
-            .find(|e| e.name == name)
-            .ok_or_else(|| ProviderError::NotFound(name.to_string()))
+        self.read_listing(parent_path).await?.find(name, false)
     }
 
     async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
@@ -2736,11 +2784,7 @@ impl StorageProvider for FilenProvider {
             _ => ("/", normalized.trim_start_matches('/')),
         };
 
-        let entries = self.list(parent_path).await?;
-        let entry = entries
-            .iter()
-            .find(|e| e.name == name)
-            .ok_or_else(|| ProviderError::NotFound(name.to_string()))?;
+        let entry = self.read_listing(parent_path).await?.find(name, false)?;
 
         let uuid = entry
             .metadata
@@ -2876,11 +2920,7 @@ impl StorageProvider for FilenProvider {
             _ => ("/", normalized.trim_start_matches('/')),
         };
 
-        let entries = self.list(parent_path).await?;
-        let entry = entries
-            .iter()
-            .find(|e| e.name == name)
-            .ok_or_else(|| ProviderError::NotFound(name.to_string()))?;
+        let entry = self.read_listing(parent_path).await?.find(name, false)?;
 
         let uuid = entry
             .metadata
@@ -3719,6 +3759,172 @@ impl ChunkError {
 
 #[cfg(test)]
 mod tests {
+
+    async fn r47_review_filen_mixed_listing() -> (FilenProvider, tokio::task::JoinHandle<()>) {
+        let app = axum::Router::new().route("/v3/dir/content", axum::routing::post(|| async {
+            let seal = |plain: String| FilenProvider::encrypt_metadata_with_key(&plain, TEST_MASTER_KEY).unwrap();
+            let body = serde_json::json!({"status":true,"data":{
+                "folders":[
+                    {"uuid":"opaque","parent":"root","timestamp":0,"name":"003unsupported"},
+                    {"uuid":"readable-dir","parent":"root","timestamp":0,"name":seal(serde_json::json!({"name":"visible"}).to_string())}
+                ],
+                "uploads":[
+                    {"uuid":"bad-file","metadata":"003unsupported","bucket":"b","region":"r","parent":"root","timestamp":0,"chunks":1,"size":3},
+                    {"uuid":"readable-file","metadata":seal(serde_json::json!({"name":"visible.txt","size":3,"mime":"text/plain","key":"k".repeat(32),"lastModified":0}).to_string()),"bucket":"b","region":"r","parent":"root","timestamp":0,"chunks":1,"size":3}
+                ]
+            }});
+            serde_json::from_value::<DirContentResponse>(body.clone()).expect("valid mixed listing fixture");
+            axum::Json(body)
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = FilenProvider::connected_for_test(demo_cfg());
+        p.gateway_base_override = Some(format!("http://{addr}"));
+        (p, server)
+    }
+
+    #[tokio::test]
+    async fn r47_review_filen_browsing_keeps_readable_siblings_with_a_warning() {
+        let (mut p, server) = r47_review_filen_mixed_listing().await;
+        let warnings = crate::providers::CallWarnings::default();
+        let result = warnings.scope(p.list_for_display("/")).await;
+        server.abort();
+        let entries = result.unwrap();
+        assert_eq!(
+            entries.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(),
+            ["visible", "visible.txt"]
+        );
+        assert!(warnings
+            .take()
+            .iter()
+            .any(|w| w.contains("2") && w.contains("Filen")));
+    }
+
+    #[tokio::test]
+    async fn r47_review_filen_positive_probes_survive_an_unreadable_sibling() {
+        let (mut p, server) = r47_review_filen_mixed_listing().await;
+        assert_eq!(
+            p.resolve_folder_uuid("/visible").await.unwrap(),
+            "readable-dir"
+        );
+        assert_eq!(p.stat("/visible.txt").await.unwrap().size, 3);
+        assert!(p.exists("/visible").await.unwrap());
+        assert_eq!(
+            p.resolve_file_uuid("/visible.txt").await.unwrap(),
+            "readable-file"
+        );
+        assert!(p.file_key_cache.contains_key("readable-file"));
+        assert!(matches!(
+            p.stat("/missing").await,
+            Err(ProviderError::ParseError(_))
+        ));
+        assert!(matches!(
+            p.resolve_folder_uuid("/missing-parent").await,
+            Err(ProviderError::ParseError(_))
+        ));
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn r47_review_filen_incomplete_walk_and_nonrecursive_delete_stay_closed() {
+        let (mut p, server) = r47_review_filen_mixed_listing().await;
+        assert!(matches!(
+            p.list("/").await,
+            Err(ProviderError::ParseError(_))
+        ));
+        assert!(matches!(
+            p.find("/", "*").await,
+            Err(ProviderError::ParseError(_))
+        ));
+        assert!(matches!(
+            p.rmdir("/").await,
+            Err(ProviderError::ParseError(_))
+        ));
+        assert!(matches!(
+            crate::providers::delete_non_recursive(&mut p, "/").await,
+            Err(ProviderError::ParseError(_))
+        ));
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn probe_contract_filen_root_is_not_a_missing_child() {
+        let (mut provider, server) = listing_gateway(&[]).await;
+        assert!(provider.list("/").await.unwrap().is_empty());
+        let outcome = provider.stat("/").await;
+        server.abort();
+        assert!(
+            matches!(outcome, Ok(ref root) if root.is_dir),
+            "{outcome:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn probe_contract_filen_does_not_prove_absence_with_unreadable_names() {
+        let app = axum::Router::new().route("/v3/dir/content", axum::routing::post(|| async {
+            axum::Json(serde_json::json!({"status":true,"data":{
+                "folders":[{"uuid":"opaque","parent":"root","timestamp":0,"name":"unreadable-ciphertext"}],
+                "uploads":[]
+            }}))
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = FilenProvider::new(demo_cfg());
+        p.gateway_base_override = Some(format!("http://{addr}"));
+        for path in ["/target", "/parent/target"] {
+            let outcome = p.exists(path).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::ParseError(_))),
+                "{path}: {outcome:?}"
+            );
+        }
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn probe_contract_filen_requires_a_complete_directory_response() {
+        let app = axum::Router::new().route(
+            "/v3/dir/content",
+            axum::routing::post(|| async {
+                axum::Json(serde_json::json!({"status":true,"data":null}))
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = FilenProvider::new(demo_cfg());
+        p.gateway_base_override = Some(format!("http://{addr}"));
+        let outcome = p.exists("/target").await;
+        server.abort();
+        assert!(
+            matches!(outcome, Err(ProviderError::ParseError(_))),
+            "{outcome:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn probe_contract_filen_preserves_ancestor_errors() {
+        let app = axum::Router::new().route(
+            "/v3/dir/content",
+            axum::routing::post(|| async {
+                axum::Json(serde_json::json!({"status":false,"message":"access denied"}))
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = FilenProvider::new(demo_cfg());
+        p.gateway_base_override = Some(format!("http://{addr}"));
+        let outcome = p.exists("/parent/target").await;
+        server.abort();
+        assert!(
+            matches!(outcome, Err(ref e) if !matches!(e, ProviderError::NotFound(_))),
+            "an unsuccessful directory response was not an absence: {outcome:?}"
+        );
+    }
+
     use super::*;
 
     fn impatient_client() -> reqwest::Client {

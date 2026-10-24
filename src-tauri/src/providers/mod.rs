@@ -982,6 +982,13 @@ pub trait StorageProvider: Send + Sync {
     /// List files and directories in the given path
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError>;
 
+    /// Readable entries for an interactive listing. Partial results must report
+    /// a warning. Never use this method to prove absence, completeness or emptiness;
+    /// internal walks and protected operations keep using `list`.
+    async fn list_for_display(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        self.list(path).await
+    }
+
     /// Get current working directory
     async fn pwd(&mut self) -> Result<String, ProviderError>;
 
@@ -1086,6 +1093,25 @@ pub trait StorageProvider: Send + Sync {
     /// Create a directory
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError>;
 
+    /// Whether uploads can atomically refuse an occupied destination.
+    /// This is independent of stat/list completeness and immutable size checks.
+    fn supports_upload_if_absent(&self) -> bool {
+        false
+    }
+
+    /// Create a file without replacing an existing destination. No fallback
+    /// to an ordinary upload is permitted when this operation is unsupported.
+    async fn upload_if_absent(
+        &mut self,
+        _local_path: &str,
+        _remote_path: &str,
+        _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        Err(ProviderError::NotSupported(
+            "Conditional create-only upload is unavailable".into(),
+        ))
+    }
+
     /// Delete a file
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError>;
 
@@ -1127,14 +1153,19 @@ pub trait StorageProvider: Send + Sync {
     /// takes a directory's content along: lists `path` and refuses it with
     /// [`ProviderError::DirectoryNotEmpty`] when the listing shows anything,
     /// dotfiles included. A listing that fails is that failure, with nothing
-    /// removed.
+    /// removed. A non-authoritative empty listing cannot prove emptiness and
+    /// is refused before the provider's recursive native delete.
     async fn refuse_non_empty_dir(&mut self, path: &str) -> Result<(), ProviderError> {
         let children = self.list(path).await?;
-        if children.is_empty() {
-            Ok(())
-        } else {
-            Err(directory_not_empty(path, children.len()))
+        if !children.is_empty() {
+            return Err(directory_not_empty(path, children.len()));
         }
+        if !self.listing_is_authoritative() {
+            return Err(ProviderError::NotSupported(format!(
+                "Cannot verify that {path} is empty: the listing can omit stored files; refusing non-recursive removal"
+            )));
+        }
+        Ok(())
     }
 
     /// Delete a directory recursively (with all contents)
@@ -1247,6 +1278,25 @@ pub trait StorageProvider: Send + Sync {
         None
     }
 
+    /// A sentence for a provider that keeps deleted items in a trash which
+    /// [`Self::delete_permanent`] cannot purge yet. Without it, the
+    /// `Ok(false)` of `delete_permanent` reads as "no trash", and a benchmark
+    /// or a cleanup would leave its folders in the trash without a word.
+    /// `None` when deletes are final or the purge is implemented.
+    fn trash_left_unpurged(&self) -> Option<&'static str> {
+        None
+    }
+
+    /// Whether [`Self::delete_permanent`] removes a LIVE path itself (it
+    /// trashes the item and purges exactly that one, as Proton's CLI does by
+    /// node UID), rather than looking for an item a `delete()` already sent
+    /// to the trash. A cleanup then calls it in place of the delete: after a
+    /// delete the path is gone, the purge finds nothing and answers
+    /// `Ok(false)`, and the item stays in the trash.
+    fn purges_live_path(&self) -> bool {
+        false
+    }
+
     /// Whether [`replace`] puts a file over an existing one by setting the
     /// previous item aside first: it is renamed to [`set_aside_name`], the
     /// new one moves into its place, and only then is the old one deleted.
@@ -1336,6 +1386,27 @@ pub trait StorageProvider: Send + Sync {
     /// - `Err(_)` only when the provider has trash but the purge call failed.
     async fn delete_permanent(&mut self, _path: &str) -> Result<bool, ProviderError> {
         Ok(false)
+    }
+
+    /// Capture stable trash identities for live paths before they are deleted.
+    /// The default preserves path-based purges and performs no remote calls.
+    async fn capture_trash_identities(
+        &mut self,
+        paths: &[String],
+    ) -> Vec<Result<Option<String>, ProviderError>> {
+        paths.iter().map(|_| Ok(None)).collect()
+    }
+
+    /// Verify a post-delete purge with an identity captured before deletion.
+    /// Name-addressed trash implementations must require both the name and the
+    /// identity to match. Providers without identity support retain their
+    /// path-based behavior.
+    async fn delete_permanent_with_identity(
+        &mut self,
+        path: &str,
+        _identity: Option<&str>,
+    ) -> Result<bool, ProviderError> {
+        self.delete_permanent(path).await
     }
 
     /// Check if provider supports chmod
@@ -2136,6 +2207,19 @@ pub(crate) fn the_one_trashed_item<T>(
 
 /// The refusal of a directory that holds `entries` entries, as every backend
 /// whose `rmdir` lists first says it.
+/// A native conditional upload's confirmed create/skip result for agent backends.
+pub(crate) async fn create_only_upload(
+    provider: &mut dyn StorageProvider,
+    local: &str,
+    remote: &str,
+) -> Result<bool, ProviderError> {
+    match provider.upload_if_absent(local, remote, None).await {
+        Ok(()) => Ok(true),
+        Err(ProviderError::AlreadyExists(_)) => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
 pub fn directory_not_empty(path: &str, entries: usize) -> ProviderError {
     ProviderError::DirectoryNotEmpty(format!(
         "{path} holds {entries} entr{}; delete it recursively to remove it with its content",

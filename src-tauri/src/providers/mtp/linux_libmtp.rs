@@ -1137,14 +1137,32 @@ fn list_objects_on_locked(
     };
 
     ensure_init();
+    unsafe { LIBMTP_Clear_Errorstack(device) };
     let head = unsafe { LIBMTP_Get_Files_And_Folders(device, storage, parent_handle) };
-    // NULL can mean empty folder or error; empty is fine.
+    let mut operation_error = if unsafe { LIBMTP_Get_Errorstack(device) }.is_null() {
+        None
+    } else {
+        Some(ProviderError::ConnectionFailed(format!(
+            "MTP folder enumeration failed: {}",
+            device_error_message(device)
+        )))
+    };
+    // NULL is empty only with a clear error stack. Also refuse partial
+    // results accompanied by an error; they cannot prove absence.
     let mut out = Vec::new();
     unsafe {
         let mut cur = head;
         while !cur.is_null() {
             let f = &*cur;
-            let name = cstr_opt(f.filename).unwrap_or_else(|| format!("object-{}", f.item_id));
+            let name = match super::backend::checked_object_name(cstr_opt(f.filename)) {
+                Ok(name) => name,
+                Err(error) => {
+                    if operation_error.is_none() {
+                        operation_error = Some(error);
+                    }
+                    String::new()
+                }
+            };
             let is_dir = f.filetype == LIBMTP_FILETYPE_FOLDER;
             let modified = if f.modificationdate > 0 {
                 Some(f.modificationdate.to_string())
@@ -1166,7 +1184,7 @@ fn list_objects_on_locked(
             cur = next;
         }
     }
-    Ok(out)
+    super::backend::checked_object_listing(out, operation_error)
 }
 
 fn run_with_progress(

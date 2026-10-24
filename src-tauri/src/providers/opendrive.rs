@@ -797,12 +797,43 @@ impl OpenDriveProvider {
         // in the user's original form internally; encoding happens only here, at
         // the wire. (Decoding happens in the `*_to_entry` helpers.)
         let encoded = crate::restricted_chars::encode_path(ProviderType::OpenDrive, &normalized);
-        let response: FolderIdByPathResponse = self
+        let response: Result<FolderIdByPathResponse, ProviderError> = self
             .post_form(
                 "folder/idbypath.json",
                 &[("session_id", self.session_id.clone()), ("path", encoded)],
             )
-            .await?;
+            .await;
+        let response = match response {
+            Ok(response) => response,
+            // OpenDrive also uses 400 for a missing or unsupported path.
+            // It is not absence by itself. Ask the parent independently,
+            // and only a successful exact listing can settle this lookup.
+            Err(ProviderError::InvalidPath(_)) => {
+                let (parent, name) = split_parent_child(&normalized);
+                let parent_id = Box::pin(self.folder_id_by_path(&parent)).await?;
+                let listing = self.list_folder_response(&parent_id).await?;
+                let encoded_name =
+                    crate::restricted_chars::encode_leaf(ProviderType::OpenDrive, &name);
+                let found = listing
+                    .folders
+                    .iter()
+                    .find(|f| f.name.as_deref() == Some(encoded_name.as_str()));
+                if let Some(folder) = found {
+                    return folder.folder_id.clone().ok_or_else(|| {
+                        ProviderError::ParseError(
+                            "Missing folder ID in exact parent listing".into(),
+                        )
+                    });
+                }
+                if listing.folders.iter().any(|f| f.name.is_none()) {
+                    return Err(ProviderError::ParseError(
+                        "Unnamed folder in parent listing".into(),
+                    ));
+                }
+                return Err(ProviderError::NotFound(normalized));
+            }
+            Err(error) => return Err(error),
+        };
 
         response
             .folder_id
@@ -818,7 +849,7 @@ impl OpenDriveProvider {
     async fn folder_id_if_folder(&self, path: &str) -> Result<Option<String>, ProviderError> {
         match self.folder_id_by_path(path).await {
             Ok(folder_id) => Ok(Some(folder_id)),
-            Err(ProviderError::NotFound(_)) | Err(ProviderError::InvalidPath(_)) => Ok(None),
+            Err(ProviderError::NotFound(_)) => Ok(None),
             Err(e) => Err(e),
         }
     }
@@ -900,10 +931,16 @@ impl OpenDriveProvider {
     async fn resolve_file_id(&self, path: &str) -> Result<String, ProviderError> {
         let normalized = normalize_path(path)?;
 
-        if let Ok(file_lookup) = self.file_id_by_path(&normalized).await {
-            if let Some(file_id) = file_lookup.file_id {
-                return Ok(file_id);
+        match self.file_id_by_path(&normalized).await {
+            Ok(file_lookup) => {
+                if let Some(file_id) = file_lookup.file_id {
+                    return Ok(file_id);
+                }
             }
+            // A 400 can be an unsupported path form, not proof of absence.
+            // Only the independent exact parent listing below can settle it.
+            Err(ProviderError::NotFound(_) | ProviderError::InvalidPath(_)) => {}
+            Err(error) => return Err(error),
         }
 
         let file = self.find_file_in_parent_by_name(&normalized).await?;
@@ -1189,9 +1226,12 @@ impl OpenDriveProvider {
                 let to_name = to_name.clone();
                 let from_parent_path = from_parent_path.clone();
                 Box::pin(async move {
-                    let folder_id = match this.folder_id_by_path(&from_resolved).await {
-                        Ok(id) => id,
-                        Err(_) => return Ok::<Option<()>, ProviderError>(None),
+                    // Only a proven "not a folder" falls through to the file
+                    // path; a server, auth or parse error stays an error, or
+                    // an existing folder would end in NotFound below.
+                    let folder_id = match this.folder_id_if_folder(&from_resolved).await? {
+                        Some(id) => id,
+                        None => return Ok::<Option<()>, ProviderError>(None),
                     };
                     if from_parent_path == to_parent_path {
                         this.post_form_unit(
@@ -2668,6 +2708,80 @@ impl StorageProvider for OpenDriveProvider {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn probe_contract_opendrive_settles_400_with_an_exact_parent_listing() {
+        use crate::providers::upload_progress::fixture::{serve, Route};
+        for (listing, expected) in [
+            (r#"{"Folders":[],"Files":[]}"#, None),
+            (
+                r#"{"Folders":[{"FolderID":"id","Name":"target"}],"Files":[]}"#,
+                Some("id"),
+            ),
+        ] {
+            let (base, server) = serve(vec![
+                Route::post(
+                    "/api/v1/folder/idbypath.json",
+                    400,
+                    r#"{"error":{"code":400,"message":"Invalid folder path"}}"#,
+                ),
+                Route::get("/api/v1/folder/list.json/sid/0", 200, listing),
+            ])
+            .await;
+            let mut p = OpenDriveProvider::new(OpenDriveConfig {
+                host: base,
+                username: "u".into(),
+                password: SecretString::from("p".to_string()),
+                initial_path: None,
+                default_privacy: None,
+            });
+            p.connected = true;
+            p.session_id = "sid".into();
+            let outcome = p.folder_id_by_path("/target").await;
+            server.abort();
+            if let Some(id) = expected {
+                assert_eq!(outcome.unwrap(), id);
+            } else {
+                assert!(
+                    matches!(outcome, Err(ProviderError::NotFound(_))),
+                    "{outcome:?}"
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn probe_contract_opendrive_preserves_file_lookup_errors() {
+        use crate::providers::upload_progress::fixture::{serve, Route};
+        let (base, server) = serve(vec![
+            Route::post(
+                "/api/v1/file/idbypath.json",
+                503,
+                r#"{"error":{"code":503,"message":"busy"}}"#,
+            ),
+            Route::get(
+                "/api/v1/folder/list.json/sid/0",
+                200,
+                r#"{"Folders":[],"Files":[]}"#,
+            ),
+        ])
+        .await;
+        let mut p = OpenDriveProvider::new(OpenDriveConfig {
+            host: base,
+            username: "u".into(),
+            password: SecretString::from("p".to_string()),
+            initial_path: None,
+            default_privacy: None,
+        });
+        p.connected = true;
+        p.session_id = "sid".into();
+        let outcome = p.resolve_file_id("/target").await;
+        server.abort();
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(_))),
+            "{outcome:?}"
+        );
+    }
+
     use super::*;
 
     /// An OpenDrive API double for `rename("/src/f.txt", "/dst/f.txt")`:
@@ -2821,6 +2935,49 @@ mod tests {
         provider.session_id = "sid".to_string();
 
         let outcome = provider.stat("/docs").await;
+        server.abort();
+
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(_))),
+            "{outcome:?}"
+        );
+    }
+
+    /// CodeRabbit on #1350: a rename read every folder-lookup error as
+    /// "not a folder" and went on to the file lookup, so a server error on
+    /// an existing folder ended in NotFound. The lookup error is returned.
+    #[tokio::test]
+    async fn a_rename_does_not_turn_a_failed_folder_lookup_into_not_found() {
+        use crate::providers::upload_progress::fixture::{serve, Route};
+        let (base, server) = serve(vec![
+            Route::get(
+                "/api/v1/folder/list.json/sid/0",
+                200,
+                r#"{"Folders":[],"Files":[]}"#,
+            ),
+            Route::post(
+                "/api/v1/folder/idbypath.json",
+                503,
+                r#"{"error":{"code":503,"message":"busy"}}"#,
+            ),
+            Route::post(
+                "/api/v1/file/idbypath.json",
+                404,
+                r#"{"error":{"code":404,"message":"not found"}}"#,
+            ),
+        ])
+        .await;
+        let mut provider = OpenDriveProvider::new(OpenDriveConfig {
+            host: base,
+            username: "u".to_string(),
+            password: SecretString::from("p".to_string()),
+            initial_path: None,
+            default_privacy: None,
+        });
+        provider.connected = true;
+        provider.session_id = "sid".to_string();
+
+        let outcome = provider.rename("/docs", "/docs2").await;
         server.abort();
 
         assert!(

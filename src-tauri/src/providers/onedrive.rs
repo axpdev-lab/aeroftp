@@ -672,8 +672,11 @@ impl OneDriveProvider {
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
-        if !response.status().is_success() {
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(ProviderError::NotFound(item_id.to_string()));
+        }
+        if !response.status().is_success() {
+            return Err(onedrive_error_from_response(response, "Item lookup failed").await);
         }
 
         response
@@ -2774,6 +2777,27 @@ fn rmdir_condition(item: &serde_json::Value) -> Option<&str> {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn probe_contract_onedrive_preserves_id_lookup_errors() {
+        let app = axum::Router::new().fallback(axum::routing::get(|| async {
+            (
+                axum::http::StatusCode::FORBIDDEN,
+                axum::Json(serde_json::json!({"error":{"code":"accessDenied","message":"denied"}})),
+            )
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = test_provider();
+        p.api_origin_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("test".into());
+        let outcome = p.get_item_by_id("target").await;
+        server.abort();
+        assert!(
+            matches!(outcome, Err(ref e) if !matches!(e, ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+    }
 
     // Both trash refusals, OneDrive's and pCloud's, rest on recognising what a
     // vendor answers: Graph's `invalidRequest` plus "special folder identifier"

@@ -15,6 +15,8 @@ pub(crate) struct ProbeFake {
     pub files: HashMap<String, u64>,
     pub probe_error: Option<fn() -> ProviderError>,
     pub list_error: Option<fn() -> ProviderError>,
+    pub listing_authoritative: bool,
+    pub lose_listing_authority: bool,
     /// `upload <path>`, `mkdir <path>`, `delete <path>`, `rename <from> <to>`.
     pub writes: Vec<String>,
     /// With folders on, `mkdir` follows a real filesystem: it refuses a
@@ -31,6 +33,8 @@ impl ProbeFake {
             files: HashMap::new(),
             probe_error: None,
             list_error: None,
+            listing_authoritative: true,
+            lose_listing_authority: false,
             writes: Vec::new(),
             folders: None,
             refuse_mkdir: None,
@@ -67,6 +71,9 @@ impl ProbeFake {
 
 #[async_trait]
 impl StorageProvider for ProbeFake {
+    fn listing_is_authoritative(&self) -> bool {
+        self.listing_authoritative
+    }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
@@ -86,6 +93,9 @@ impl StorageProvider for ProbeFake {
         true
     }
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        if self.lose_listing_authority {
+            self.listing_authoritative = false;
+        }
         if let Some(error) = self.list_error {
             return Err(error());
         }
