@@ -919,6 +919,18 @@ pub fn log_dir() -> Option<PathBuf> {
     installed_log_dir()
 }
 
+/// Whether the log file in `dir` opens the way tauri-plugin-log opens it, for
+/// append and created when missing. The plugin turns a failure there into a
+/// setup error that stops the app, as for a portable copy moved to read-only
+/// media after a run that left `data/logs` behind.
+pub fn log_file_opens(dir: &Path) -> bool {
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join(APP_LOG_FILE))
+        .is_ok()
+}
+
 /// The app log file: where the log target writes, and where the diagnostic
 /// bundle and the MCP debug snapshot read its tail.
 pub fn app_log_file() -> Option<PathBuf> {
@@ -1351,7 +1363,7 @@ mod tests {
             String::from_utf8_lossy(&out.stderr)
         );
         assert!(String::from_utf8_lossy(&out.stdout).contains("portable logs verified"));
-        assert!(root.path().join("cli/data/logs/AeroFTP.log").is_file());
+        assert!(root.path().join("cli/data/logs").is_dir());
     }
 
     #[test]
@@ -1418,6 +1430,18 @@ mod tests {
         )
         .unwrap();
         assert!(tail.ends_with("portable log probe for ***@***"), "{tail}");
+
+        // A log file the target cannot open, as on read-only media where an
+        // earlier run left data\logs behind, must cost the file target only:
+        // tauri-plugin-log turns that failure into a setup error that stops
+        // the app. A folder in the file's place fails the open for any user.
+        assert!(matches!(
+            crate::gui_log_file_target(),
+            Some(tauri_plugin_log::TargetKind::Folder { path, .. }) if path == logs
+        ));
+        std::fs::remove_file(&file).unwrap();
+        std::fs::create_dir(&file).unwrap();
+        assert!(crate::gui_log_file_target().is_none());
         println!("portable logs verified");
     }
 

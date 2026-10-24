@@ -21370,10 +21370,12 @@ pub fn run() {
 /// default `LogDir`, which follows the configured identifier and moved to an
 /// empty folder with the #814 rename: `portable::log_dir` keeps the folder
 /// every earlier installed release wrote to, and gives a portable copy its own
-/// `data/logs`. A portable copy that cannot make that folder logs to no file
-/// rather than into the host's folder, which belongs to an installed copy.
+/// `data/logs`. A portable copy that cannot make that folder, or open the log
+/// file in it, logs to no file: never into the host's folder, which belongs to
+/// an installed copy, and never with a target whose setup would stop the app.
 fn gui_log_file_target() -> Option<tauri_plugin_log::TargetKind> {
     match portable::log_dir() {
+        Some(path) if portable::is_portable() && !portable::log_file_opens(&path) => None,
         Some(path) => Some(tauri_plugin_log::TargetKind::Folder {
             path,
             file_name: None,
