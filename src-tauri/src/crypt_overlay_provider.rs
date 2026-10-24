@@ -1360,6 +1360,27 @@ impl StorageProvider for CryptOverlayProvider {
         self.inner.purges_live_path()
     }
 
+    async fn capture_trash_identities(
+        &mut self,
+        paths: &[String],
+    ) -> Vec<Result<Option<String>, ProviderError>> {
+        let mapped = paths
+            .iter()
+            .map(|path| self.map(path, false, AccessKind::Write))
+            .collect::<Result<Vec<_>, _>>();
+        match mapped {
+            Ok(paths) => self.inner.capture_trash_identities(&paths).await,
+            Err(error) => paths
+                .iter()
+                .map(|_| {
+                    Err(ProviderError::Other(format!(
+                        "cannot map trash identity path: {error}"
+                    )))
+                })
+                .collect(),
+        }
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let (enc, _) = self.map_existing(path, AccessKind::Read).await?;
         let mut entry = self.inner.stat(&enc).await?;
@@ -1433,6 +1454,29 @@ impl StorageProvider for CryptOverlayProvider {
         self.inner.server_info().await
     }
 
+    async fn delete_permanent_with_identity(
+        &mut self,
+        path: &str,
+        identity: Option<&str>,
+    ) -> Result<bool, ProviderError> {
+        let enc_file = self.map(path, false, AccessKind::Write)?;
+        if self
+            .inner
+            .delete_permanent_with_identity(&enc_file, identity)
+            .await?
+        {
+            return Ok(true);
+        }
+        if identity.is_some() {
+            return Ok(false);
+        }
+        let enc_dir = self.map(path, true, AccessKind::Write)?;
+        if enc_dir == enc_file {
+            return Ok(false);
+        }
+        self.inner.delete_permanent(&enc_dir).await
+    }
+
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
         // Under rclone `off`+suffix a folder is `name` on the wire and a file
         // `name.bin`. No probe picks the form: an item purged from the trash
@@ -1440,15 +1484,7 @@ impl StorageProvider for CryptOverlayProvider {
         // would win over it. The file form goes first, and the folder form
         // only when nothing answered to it (a live folder purged where it
         // stands, as Proton's CLI does, or a folder in the trash).
-        let enc_file = self.map(path, false, AccessKind::Write)?;
-        if self.inner.delete_permanent(&enc_file).await? {
-            return Ok(true);
-        }
-        let enc_dir = self.map(path, true, AccessKind::Write)?;
-        if enc_dir == enc_file {
-            return Ok(false);
-        }
-        self.inner.delete_permanent(&enc_dir).await
+        self.delete_permanent_with_identity(path, None).await
     }
 
     fn supports_chmod(&self) -> bool {
@@ -4240,19 +4276,36 @@ pub(crate) mod tests {
     /// holds, which is the overlay: a Proton CLI behind encryption must still
     /// purge a live path, and a Koofr behind it must still say its trash was
     /// left.
-    #[test]
-    fn the_overlay_forwards_the_trash_hooks_of_the_inner_provider() {
+    #[tokio::test]
+    async fn the_overlay_forwards_the_trash_hooks_of_the_inner_provider() {
         for (label, keys) in both_kinds() {
             let mut inner = MemProvider::new();
             inner.trash_note = Some("kept in the trash");
             inner.purge_live = true;
-            let provider = CryptOverlayProvider::new(Box::new(inner), keys, "/Vault");
+            let mut provider = CryptOverlayProvider::new(Box::new(inner), keys, "/Vault");
             assert_eq!(
                 provider.trash_left_unpurged(),
                 Some("kept in the trash"),
                 "{label}"
             );
             assert!(provider.purges_live_path(), "{label}");
+            let captured = provider
+                .capture_trash_identities(&["/Vault/x".to_string()])
+                .await;
+            let identity = captured[0].as_ref().unwrap().as_deref();
+            provider
+                .delete_permanent_with_identity("/Vault/x", identity)
+                .await
+                .unwrap();
+            let mem = provider
+                .inner
+                .as_any_mut()
+                .downcast_mut::<MemProvider>()
+                .unwrap();
+            let calls = mem.identity_calls.lock().unwrap();
+            assert_eq!(calls.len(), 2, "{label}: {calls:?}");
+            assert!(calls[0].starts_with("capture:/Vault/"), "{label}");
+            assert!(calls[1].starts_with("purge:UID:/Vault/"), "{label}");
         }
     }
 
@@ -5036,6 +5089,7 @@ pub(crate) mod tests {
         /// Wire paths of items already in the trash, which `delete_permanent`
         /// finds by the path they had.
         trash: Mutex<Vec<String>>,
+        identity_calls: Mutex<Vec<String>>,
     }
 
     impl MemProvider {
@@ -5055,6 +5109,7 @@ pub(crate) mod tests {
                 trash_note: None,
                 purge_live: false,
                 trash: Mutex::new(Vec::new()),
+                identity_calls: Mutex::new(Vec::new()),
             }
         }
         fn hidden(&self, path: &str) -> bool {
@@ -5110,6 +5165,32 @@ pub(crate) mod tests {
         }
         fn purges_live_path(&self) -> bool {
             self.purge_live
+        }
+        async fn capture_trash_identities(
+            &mut self,
+            paths: &[String],
+        ) -> Vec<Result<Option<String>, ProviderError>> {
+            paths
+                .iter()
+                .map(|path| {
+                    self.identity_calls
+                        .lock()
+                        .unwrap()
+                        .push(format!("capture:{path}"));
+                    Ok(Some("UID".to_string()))
+                })
+                .collect()
+        }
+        async fn delete_permanent_with_identity(
+            &mut self,
+            path: &str,
+            identity: Option<&str>,
+        ) -> Result<bool, ProviderError> {
+            self.identity_calls
+                .lock()
+                .unwrap()
+                .push(format!("purge:{}:{path}", identity.unwrap_or("none")));
+            self.delete_permanent(path).await
         }
         /// A live item is trashed and purged in one step; an item already in
         /// the trash is found by the path it had.

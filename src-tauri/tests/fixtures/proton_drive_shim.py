@@ -128,6 +128,11 @@ if verb == "filesystem" and sub == "upload":
         "transferredItems": len(positional) - 1, "transferredBytes": 0,
         "skippedItems": 0, "failedItems": 0, "failures": []}))
     sys.exit(1 if bulk_summary and bulk_summary.get("failedItems", 0) else 0)
+if verb == "version":
+    version = pathlib.Path(HERE, "cli-version.txt")
+    sys.stdout.write(version.read_text() if version.exists() else
+                     "Proton Drive CLI cli-drive@0.9.0+75612299\n")
+    sys.exit(0)
 if verb == "filesystem" and sub == "info":
     path = next((a for a in args[2:] if not a.startswith("-")), "/x")
     name = pathlib.Path(path).name
@@ -140,7 +145,7 @@ if verb == "filesystem" and sub == "info":
         sys.exit(1)
     print(json.dumps({
         "name": {"ok": True, "value": name},
-        "uid": "UID-CAPTURED",
+        "uid": "AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB",
         "type": "file",
         "path": path
     }))

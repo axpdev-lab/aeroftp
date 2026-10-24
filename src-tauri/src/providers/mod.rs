@@ -1388,6 +1388,27 @@ pub trait StorageProvider: Send + Sync {
         Ok(false)
     }
 
+    /// Capture stable trash identities for live paths before they are deleted.
+    /// The default preserves path-based purges and performs no remote calls.
+    async fn capture_trash_identities(
+        &mut self,
+        paths: &[String],
+    ) -> Vec<Result<Option<String>, ProviderError>> {
+        paths.iter().map(|_| Ok(None)).collect()
+    }
+
+    /// Verify a post-delete purge with an identity captured before deletion.
+    /// Name-addressed trash implementations must require both the name and the
+    /// identity to match. Providers without identity support retain their
+    /// path-based behavior.
+    async fn delete_permanent_with_identity(
+        &mut self,
+        path: &str,
+        _identity: Option<&str>,
+    ) -> Result<bool, ProviderError> {
+        self.delete_permanent(path).await
+    }
+
     /// Check if provider supports chmod
     fn supports_chmod(&self) -> bool {
         false

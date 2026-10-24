@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-use super::engine::{many_files_result, purge_deleted_files};
+use super::engine::{many_files_result, purge_deleted_files_with_identities};
 use super::*;
 
 #[test]
@@ -861,9 +861,9 @@ mod engine_runs {
     }
 
     /// A remote with a trash. `Unpurgeable`: deletes go to a trash this
-    /// client cannot purge (Koofr). `LivePath`: a recursive delete moves the
-    /// folder to the trash, and the purge works only on a live path, by
-    /// trashing and then purging what it finds there (Proton's CLI).
+    /// client cannot purge (Koofr). `LivePath`: a recursive delete purges a
+    /// live folder, while many-files uses identities captured before deletion
+    /// (Proton's CLI).
     #[derive(Clone, Copy, PartialEq)]
     enum TrashKind {
         Unpurgeable,
@@ -982,6 +982,32 @@ mod engine_runs {
         }
         fn purges_live_path(&self) -> bool {
             self.kind == TrashKind::LivePath
+        }
+        async fn capture_trash_identities(
+            &mut self,
+            paths: &[String],
+        ) -> Vec<Result<Option<String>, ProviderError>> {
+            if self.kind == TrashKind::LivePath {
+                paths
+                    .iter()
+                    .map(|path| Ok(Some(format!("uid:{path}"))))
+                    .collect()
+            } else {
+                paths.iter().map(|_| Ok(None)).collect()
+            }
+        }
+        async fn delete_permanent_with_identity(
+            &mut self,
+            p: &str,
+            identity: Option<&str>,
+        ) -> Result<bool, ProviderError> {
+            if self.kind == TrashKind::LivePath && identity == Some(format!("uid:{p}").as_str()) {
+                let mut trash = self.trash.lock().unwrap();
+                let before = trash.len();
+                trash.retain(|item| item != p);
+                return Ok(trash.len() < before);
+            }
+            self.delete_permanent(p).await
         }
         async fn delete_permanent(&mut self, p: &str) -> Result<bool, ProviderError> {
             self.purge_calls.lock().unwrap().push(p.to_string());
@@ -1157,21 +1183,70 @@ mod engine_runs {
     }
 
     #[tokio::test]
+    async fn the_many_files_workload_purges_a_live_path_clients_files_by_identity() {
+        let (_state, trash, provider) = trash_remote(TrashKind::LivePath);
+        let outcome = run(provider, "/data", many_files_options(), &Silent)
+            .await
+            .unwrap();
+        assert!(trash.lock().unwrap().is_empty(), "{trash:?}");
+        assert!(
+            outcome.report.summary.errors.is_empty(),
+            "{:?}",
+            outcome.report.summary.errors
+        );
+    }
+
+    #[tokio::test]
     async fn the_many_files_workload_says_when_its_files_stay_in_the_trash() {
-        for kind in [TrashKind::LivePath, TrashKind::Unpurgeable] {
-            let (_state, _trash, provider) = trash_remote(kind);
-            let outcome = run(provider, "/data", many_files_options(), &Silent)
-                .await
-                .unwrap();
-            assert!(
-                outcome
-                    .report
-                    .summary
-                    .errors
-                    .iter()
-                    .any(|e| e.contains("3 files the many-files workload deleted")),
-                "{:?}",
-                outcome.report.summary.errors
+        let (_state, _trash, provider) = trash_remote(TrashKind::Unpurgeable);
+        let outcome = run(provider, "/data", many_files_options(), &Silent)
+            .await
+            .unwrap();
+        assert!(
+            outcome
+                .report
+                .summary
+                .errors
+                .iter()
+                .any(|e| e.contains("3 files the many-files workload deleted")),
+            "{:?}",
+            outcome.report.summary.errors
+        );
+    }
+
+    #[tokio::test]
+    async fn two_many_files_runs_never_reuse_a_trash_file_name() {
+        let (state, trash, provider) = trash_remote(TrashKind::Unpurgeable);
+        let first = run(provider, "/data", many_files_options(), &Silent)
+            .await
+            .unwrap();
+        let provider = Box::new(TrashKeepingRemote {
+            inner: MemRemote(state),
+            kind: TrashKind::Unpurgeable,
+            trash: trash.clone(),
+            purge_calls: Arc::default(),
+            hang_purge: false,
+            cancel_on_purge: None,
+            fail_live_purge: false,
+        });
+        let second = run(provider, "/data", many_files_options(), &Silent)
+            .await
+            .unwrap();
+        let names: Vec<String> = trash
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|path| path.ends_with(".dat"))
+            .map(|path| path.rsplit('/').next().unwrap().to_string())
+            .collect();
+        assert_eq!(names.len(), 6, "{names:?}");
+        assert_eq!(names.iter().collect::<BTreeSet<_>>().len(), 6, "{names:?}");
+        for report in [first.report, second.report] {
+            let run_id = &report.report_id[..8];
+            assert_eq!(
+                names.iter().filter(|name| name.contains(run_id)).count(),
+                3,
+                "run {run_id}: {names:?}"
             );
         }
     }
@@ -1202,10 +1277,11 @@ mod engine_runs {
         let mut errors = Vec::new();
         tokio::time::timeout(
             std::time::Duration::from_secs(10),
-            purge_deleted_files(
+            purge_deleted_files_with_identities(
                 &mut provider,
                 &[0, 1, 2],
                 &|i| format!("/data/f{i}"),
+                &mut vec![None; 3],
                 &CancellationToken::new(),
                 std::time::Duration::from_millis(200),
                 &mut errors,
@@ -1230,10 +1306,11 @@ mod engine_runs {
         let stop = CancellationToken::new();
         let (calls, mut provider) = purging_remote(false, Some(stop.clone()));
         let mut errors = Vec::new();
-        purge_deleted_files(
+        purge_deleted_files_with_identities(
             &mut provider,
             &[0, 1, 2],
             &|i| format!("/data/f{i}"),
+            &mut vec![None; 3],
             &stop,
             std::time::Duration::from_secs(120),
             &mut errors,
