@@ -1247,6 +1247,25 @@ pub trait StorageProvider: Send + Sync {
         None
     }
 
+    /// A sentence for a provider that keeps deleted items in a trash which
+    /// [`Self::delete_permanent`] cannot purge yet. Without it, the
+    /// `Ok(false)` of `delete_permanent` reads as "no trash", and a benchmark
+    /// or a cleanup would leave its folders in the trash without a word.
+    /// `None` when deletes are final or the purge is implemented.
+    fn trash_left_unpurged(&self) -> Option<&'static str> {
+        None
+    }
+
+    /// Whether [`Self::delete_permanent`] removes a LIVE path itself (it
+    /// trashes the item and purges exactly that one, as Proton's CLI does by
+    /// node UID), rather than looking for an item a `delete()` already sent
+    /// to the trash. A cleanup then calls it in place of the delete: after a
+    /// delete the path is gone, the purge finds nothing and answers
+    /// `Ok(false)`, and the item stays in the trash.
+    fn purges_live_path(&self) -> bool {
+        false
+    }
+
     /// Whether [`replace`] puts a file over an existing one by setting the
     /// previous item aside first: it is renamed to [`set_aside_name`], the
     /// new one moves into its place, and only then is the old one deleted.

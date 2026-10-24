@@ -1352,6 +1352,14 @@ impl StorageProvider for CryptOverlayProvider {
         self.inner.measurement_note()
     }
 
+    fn trash_left_unpurged(&self) -> Option<&'static str> {
+        self.inner.trash_left_unpurged()
+    }
+
+    fn purges_live_path(&self) -> bool {
+        self.inner.purges_live_path()
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let (enc, _) = self.map_existing(path, AccessKind::Read).await?;
         let mut entry = self.inner.stat(&enc).await?;
@@ -1426,8 +1434,21 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
-        let enc = self.map(path, false, AccessKind::Write)?;
-        self.inner.delete_permanent(&enc).await
+        // Under rclone `off`+suffix a folder is `name` on the wire and a file
+        // `name.bin`. No probe picks the form: an item purged from the trash
+        // by the path it had is not live, and a live folder of the same name
+        // would win over it. The file form goes first, and the folder form
+        // only when nothing answered to it (a live folder purged where it
+        // stands, as Proton's CLI does, or a folder in the trash).
+        let enc_file = self.map(path, false, AccessKind::Write)?;
+        if self.inner.delete_permanent(&enc_file).await? {
+            return Ok(true);
+        }
+        let enc_dir = self.map(path, true, AccessKind::Write)?;
+        if enc_dir == enc_file {
+            return Ok(false);
+        }
+        self.inner.delete_permanent(&enc_dir).await
     }
 
     fn supports_chmod(&self) -> bool {
@@ -4215,6 +4236,26 @@ pub(crate) mod tests {
     /// bound scope is encrypted in full by the mapper, so it must classify as
     /// encrypted; absolutizing it first compared a fake `/name` against the
     /// anchor and made download/stat skip the decrypt step.
+    /// The benchmark's cleanup reads these two hooks from the provider it
+    /// holds, which is the overlay: a Proton CLI behind encryption must still
+    /// purge a live path, and a Koofr behind it must still say its trash was
+    /// left.
+    #[test]
+    fn the_overlay_forwards_the_trash_hooks_of_the_inner_provider() {
+        for (label, keys) in both_kinds() {
+            let mut inner = MemProvider::new();
+            inner.trash_note = Some("kept in the trash");
+            inner.purge_live = true;
+            let provider = CryptOverlayProvider::new(Box::new(inner), keys, "/Vault");
+            assert_eq!(
+                provider.trash_left_unpurged(),
+                Some("kept in the trash"),
+                "{label}"
+            );
+            assert!(provider.purges_live_path(), "{label}");
+        }
+    }
+
     #[test]
     fn target_is_encrypted_mirrors_mapper_for_relative_targets() {
         for (label, keys) in both_kinds() {
@@ -4327,6 +4368,64 @@ pub(crate) mod tests {
 
             let _ = tokio::fs::remove_dir_all(&dir).await;
         }
+    }
+
+    /// rclone `off`+suffix, both forms of one name on the wire: `x.bin` in the
+    /// trash and a live folder `x`. The purge asked for `x` takes the trashed
+    /// file and never the live folder.
+    #[tokio::test]
+    async fn off_mode_purge_takes_the_trashed_file_not_a_live_directory() {
+        let keys = rclone_keys(FilenameEncryption::Off, true, ".bin");
+        let mut mem = MemProvider::new();
+        mem.seed_raw_dir("/Vault");
+        mem.seed_raw_dir("/Vault/x");
+        mem.trash.lock().unwrap().push("/Vault/x.bin".into());
+        let mut provider = CryptOverlayProvider::new(Box::new(mem), keys, "/Vault");
+
+        assert!(provider.delete_permanent("/Vault/x").await.unwrap());
+
+        let mem = provider
+            .inner
+            .as_any_mut()
+            .downcast_mut::<MemProvider>()
+            .unwrap();
+        assert!(mem.trash.lock().unwrap().is_empty());
+        assert!(
+            mem.dirs.lock().unwrap().contains(&"/Vault/x".to_string()),
+            "the live folder stays"
+        );
+    }
+
+    /// rclone `off`+suffix: a folder is `name` on the wire and a file
+    /// `name.bin`. A purge reaches a folder live (Proton's CLI purges there)
+    /// and one already in the trash under the path it had, and a file that is
+    /// in the trash still by its suffixed name.
+    #[tokio::test]
+    async fn off_mode_purge_reaches_a_directory_live_or_in_the_trash() {
+        let keys = rclone_keys(FilenameEncryption::Off, true, ".bin");
+        let mut mem = MemProvider::new();
+        mem.seed_raw_dir("/Vault");
+        mem.seed_raw_dir("/Vault/live");
+        mem.trash.lock().unwrap().push("/Vault/gone".into());
+        mem.trash.lock().unwrap().push("/Vault/old.txt.bin".into());
+        let mut provider = CryptOverlayProvider::new(Box::new(mem), keys, "/Vault");
+
+        assert!(provider.delete_permanent("/Vault/live").await.unwrap());
+        assert!(provider.delete_permanent("/Vault/gone").await.unwrap());
+        assert!(provider.delete_permanent("/Vault/old.txt").await.unwrap());
+        assert!(!provider.delete_permanent("/Vault/never").await.unwrap());
+
+        let mem = provider
+            .inner
+            .as_any_mut()
+            .downcast_mut::<MemProvider>()
+            .unwrap();
+        assert!(!mem
+            .dirs
+            .lock()
+            .unwrap()
+            .contains(&"/Vault/live".to_string()));
+        assert!(mem.trash.lock().unwrap().is_empty());
     }
 
     /// V8 regression (pre-tag audit): rclone `off`+suffix encodes file leaves
@@ -4931,6 +5030,12 @@ pub(crate) mod tests {
         before_upload_read: Option<fn(&str)>,
         /// Isolated account-switch regression hook at the first remote await.
         switch_user_on_probe: Option<i64>,
+        /// Trash hooks of the inner provider, to check the overlay forwards them.
+        trash_note: Option<&'static str>,
+        purge_live: bool,
+        /// Wire paths of items already in the trash, which `delete_permanent`
+        /// finds by the path they had.
+        trash: Mutex<Vec<String>>,
     }
 
     impl MemProvider {
@@ -4947,6 +5052,9 @@ pub(crate) mod tests {
                 download_targets: Mutex::new(Vec::new()),
                 before_upload_read: None,
                 switch_user_on_probe: None,
+                trash_note: None,
+                purge_live: false,
+                trash: Mutex::new(Vec::new()),
             }
         }
         fn hidden(&self, path: &str) -> bool {
@@ -4996,6 +5104,31 @@ pub(crate) mod tests {
     impl StorageProvider for MemProvider {
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
             self
+        }
+        fn trash_left_unpurged(&self) -> Option<&'static str> {
+            self.trash_note
+        }
+        fn purges_live_path(&self) -> bool {
+            self.purge_live
+        }
+        /// A live item is trashed and purged in one step; an item already in
+        /// the trash is found by the path it had.
+        async fn delete_permanent(&mut self, p: &str) -> Result<bool, ProviderError> {
+            let p = self.resolve(p);
+            let live_file = self.files.lock().unwrap().remove(&p).is_some();
+            let live_dir = {
+                let mut dirs = self.dirs.lock().unwrap();
+                let before = dirs.len();
+                dirs.retain(|d| d != &p);
+                dirs.len() < before
+            };
+            let trashed = {
+                let mut trash = self.trash.lock().unwrap();
+                let before = trash.len();
+                trash.retain(|t| t != &p);
+                trash.len() < before
+            };
+            Ok(live_file || live_dir || trashed)
         }
         fn provider_type(&self) -> ProviderType {
             ProviderType::Ftp
