@@ -53,6 +53,11 @@
 #           zbus 6.0.0 the same day. No published consumer requires zbus 6 yet and
 #           the plugin releases past the tauri =2.11.0 pin still require zbus ^5,
 #           so no upgrade clears them. Ignored the three IDs, see the section below.)
+# Reviewed: 2026-10-24 (RUSTSEC-2026-0387 freshly published 2026-10-23: crypto-bigint
+#           operations meant to be constant-time could branch on secrets. BUMPED the
+#           0.7 line 0.7.5 -> 0.7.6 (russh, rsa, ssh-key, elliptic-curve 0.14). The 0.5.5
+#           copy has no patched 0.5 release and its consumers are at their latest
+#           versions; ignored the ID for that copy only, see the section below.)
 
 [advisories]
 ignore = [
@@ -435,6 +440,43 @@ ignore = [
     "RUSTSEC-2026-0370",  # zvariant unmaintained (merged into zbus 6; zbus 5 Linux-only D-Bus client, zbus 4 lock-only)
     "RUSTSEC-2026-0371",  # zbus_names unmaintained (merged into zbus 6; same two paths)
     "RUSTSEC-2026-0372",  # zvariant_derive unmaintained (merged into zbus 6; same two paths)
+    # ----------------------------------------------------------------
+    # RUSTSEC-2026-0387 - crypto-bigint timing variability (0.5.5 copy only)
+    # ----------------------------------------------------------------
+    # The advisory: subtraction, zero counting, division and Montgomery
+    # multiplication could take secret-dependent branches, depending on the
+    # compiler and target CPU, so code running them on secret integers may leak
+    # through timing or microarchitectural side channels. Fixed in 0.7.6.
+    #
+    # The 0.7 line is bumped to 0.7.6 in Cargo.lock (russh, rsa, ssh-key,
+    # elliptic-curve 0.14), so this ID now matches only crypto-bigint 0.5.5:
+    #   - proton-srp 0.8.4 <- proton-crypto <- proton-crypto-account: the SRP
+    #     proof of the Proton Drive sign-in, computed on the user's machine
+    #     from the password-derived exponent. The secret-dependent work is a
+    #     handful of modular exponentiations per sign-in.
+    #   - elliptic-curve 0.13 and cx448 0.1.1 <- pgp 0.21 <- proton-rpgp:
+    #     Proton's end-to-end key operations (decrypting node keys, signing
+    #     uploads) on the user's machine.
+    #   - elliptic-curve 0.13 <- p256/p384 0.13 <- openidconnect 4.0.1 <-
+    #     sigstore 0.14: update signature verification, public inputs only, no
+    #     secret ever reaches it.
+    # Exposure: the two secret paths run locally, once per operation, on the
+    # user's own machine. Exploiting them needs an attacker who can measure
+    # those computations closely (co-resident code on the same CPU, or many
+    # precisely timed sign-ins observed from the network); such an attacker
+    # already sits beside the decrypted files. The verification path handles
+    # no secret.
+    #
+    # Why no upgrade clears it, measured 2026-10-24 against crates.io:
+    # proton-srp 0.8.4, pgp 0.21.0, cx448 0.1.1 and openidconnect 4.0.1 are
+    # the latest releases and all require the 0.13 elliptic-curve / 0.5
+    # crypto-bigint stack; there is no patched 0.5 release.
+    #
+    # Exit path: remove this ignore when proton-srp, pgp (through the vendored
+    # proton-rpgp) and openidconnect move to elliptic-curve 0.14 /
+    # crypto-bigint >= 0.7.6, i.e. when `cargo tree -i crypto-bigint@0.5.5`
+    # prints nothing.
+    "RUSTSEC-2026-0387",  # crypto-bigint timing variability (0.7 bumped to 0.7.6; 0.5.5 copy via proton-srp, pgp, openidconnect, no patched 0.5)
 ]
 
 # We do NOT ignore "informational" advisories blanket-style. Each ignore is
