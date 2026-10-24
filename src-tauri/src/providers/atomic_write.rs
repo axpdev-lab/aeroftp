@@ -269,9 +269,10 @@ mod part_settlement {
                         };
                         completion
                     };
-                    // Leave the shared recovery in the registry if this
-                    // waiter is cancelled or removal still fails. Only a
-                    // successful invalidation clears its own generation.
+                    // Progress recovery even if its only waiter is cancelled
+                    // after the blocking claim starts. The registry retains
+                    // failures; only successful invalidation clears them.
+                    drive(recovery.clone());
                     recovery
                         .await
                         .map_err(|error| super::copy_io_error(&error))?;
@@ -392,6 +393,10 @@ mod part_settlement {
                 completion: completion.clone(),
                 retry_record,
             });
+        drive(completion);
+    }
+
+    fn drive(completion: Completion) {
         // A runtime is not required at Drop: the next open also polls this
         // shared completion. If this task is aborted, the registry retains it.
         if let Ok(runtime) = tokio::runtime::Handle::try_current() {
@@ -3034,6 +3039,64 @@ mod resumable_settlement_tests {
     #[test]
     fn an_abandoned_failed_write_cannot_advertise_a_recorded_prefix() {
         runtime().block_on(a_failed_write_invalidates_its_record(false));
+    }
+
+    #[test]
+    fn a_cancelled_recovery_releases_its_claim_without_another_waiter() {
+        runtime().block_on(async {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("file");
+            let mut part = ResumableFile::open_fresh_in(path.to_str().unwrap(), false)
+                .await
+                .unwrap();
+            part.write_all(b"unsafe prefix").await.unwrap();
+            part.file_mut().flush().await.unwrap();
+            let record = part.record_path.clone();
+            let key = part.settlement_key.clone();
+            let temp = part.temp_path.clone();
+            std::fs::create_dir(&record).unwrap();
+            part.write_error = Some(std::io::Error::other("injected write failure"));
+            drop(part);
+            assert!(part_settlement::wait(&key).await.is_err());
+
+            std::fs::remove_dir(&record).unwrap();
+            std::fs::write(&record, b"failed-write record").unwrap();
+            let parked = ParkedIo::new().await;
+            let mut only_waiter = Box::pin(part_settlement::wait(&key));
+            // Start the recovery's blocking claim behind the parked worker,
+            // then abandon the only waiter before that claim can finish.
+            assert!(matches!(
+                futures_util::poll!(only_waiter.as_mut()),
+                Poll::Pending
+            ));
+            drop(only_waiter);
+            parked.finish().await;
+            tokio::task::spawn_blocking(|| ()).await.unwrap();
+
+            // Never poll wait again: only the recovery's own driver may
+            // finish invalidation and release the independent opener's claim.
+            let settled = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    if !record.exists() {
+                        if let Ok(claim) = temp_claim::open_to_append(&temp) {
+                            break claim;
+                        }
+                    }
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await;
+            let independent = settled.unwrap_or_else(|_| {
+                let probe = temp_claim::open_to_append(&temp);
+                panic!(
+                    "cancelled recovery requires another waiter: record_exists={}, independent_claim_error={:?}",
+                    record.exists(),
+                    probe.err()
+                );
+            });
+            assert!(!record.exists());
+            drop(independent);
+        });
     }
 
     async fn retry_after_failed_record_cleanup(replacement: u8) {
