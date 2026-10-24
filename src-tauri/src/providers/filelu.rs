@@ -924,6 +924,13 @@ impl FileLuProvider {
             parent_norm.clone()
         };
 
+        // A refreshed lookup must not fall back to a stale cached child when
+        // the new response no longer contains it. Fetch errors above preserve
+        // the positive cache, while incomplete absence still errors below.
+        if let Some(wanted) = cache_only {
+            self.path_cache.remove(wanted);
+        }
+
         for folder in &result.folders {
             let name = folder.name.clone().unwrap_or_else(|| "unnamed".to_string());
             let child_norm = Self::normalize_path(&format!("{}/{}", prefix, name));
@@ -1036,7 +1043,8 @@ impl FileLuProvider {
 
         if truncated
             && !for_display
-            && !cache_only.is_some_and(|wanted| entries.iter().any(|e| e.path == wanted))
+            && (require_complete
+                || !cache_only.is_some_and(|wanted| entries.iter().any(|e| e.path == wanted)))
         {
             return Err(incomplete_listing_error());
         }
@@ -1068,8 +1076,12 @@ impl FileLuProvider {
             });
         }
 
-        if let Some(entry) = self.path_cache.get(&norm) {
-            return Ok(entry.clone());
+        // Display and positive lookups may cache entries from a capped prefix.
+        // A protected destination needs a fresh, complete parent listing.
+        if !strict_leaf {
+            if let Some(entry) = self.path_cache.get(&norm) {
+                return Ok(entry.clone());
+            }
         }
 
         // Walk segment by segment from root
@@ -2557,6 +2569,7 @@ mod tests {
         server: tokio::task::JoinHandle<()>,
         lookaheads: std::sync::Arc<std::sync::atomic::AtomicUsize>,
         writes: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        mutations: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
         fallbacks: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     }
 
@@ -2569,11 +2582,13 @@ mod tests {
         let seen = lookaheads.clone();
         let writes = Arc::new(AtomicUsize::new(0));
         let changed = writes.clone();
+        let mutations = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mutation_seen = mutations.clone();
         let first_big = Arc::new(AtomicUsize::new(0));
         let fallbacks = Arc::new(AtomicUsize::new(0));
         let fallback_seen = fallbacks.clone();
         let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
-            let seen=seen.clone(); let changed=changed.clone(); let first_big=first_big.clone(); let fallback_seen=fallback_seen.clone();
+            let seen=seen.clone(); let changed=changed.clone(); let first_big=first_big.clone(); let fallback_seen=fallback_seen.clone(); let mutation_seen=mutation_seen.clone();
             async move {
                 let url = reqwest::Url::parse(&format!("http://fixture{uri}")).unwrap();
                 let q: HashMap<String,String> = url.query_pairs().into_owned().collect();
@@ -2583,6 +2598,7 @@ mod tests {
                 let is_folder = uri.path() == "/apiv2/folder/list";
                 if !is_files && !is_folder {
                     changed.fetch_add(1,Ordering::SeqCst);
+                    mutation_seen.lock().unwrap().push(uri.path().to_string());
                     return (axum::http::StatusCode::BAD_REQUEST, axum::Json(serde_json::json!({"status":400,"msg":"unexpected mutation"})));
                 }
                 let big = path == "/big" || (is_files && q.get("fld_id").is_some_and(|id| id == "1"));
@@ -2614,8 +2630,117 @@ mod tests {
             server,
             lookaheads,
             writes,
+            mutations,
             fallbacks,
         }
+    }
+
+    async fn cache_a_capped_child(f: &mut CapFixture, display: bool) -> String {
+        let target = if display {
+            // The last entry remains in the bounded cache after the display
+            // listing has evicted earlier entries.
+            f.provider.list_for_display("/big").await.unwrap();
+            "/big/file-100-99"
+        } else {
+            f.provider.stat("/big/file-1-0").await.unwrap();
+            "/big/file-1-0"
+        };
+        assert!(
+            f.provider.path_cache.contains_key(target),
+            "must hit the cached-leaf path"
+        );
+        target.to_string()
+    }
+
+    #[tokio::test]
+    async fn r47_strict_cache_does_not_authorize_a_destination() {
+        use std::sync::atomic::Ordering;
+        for display in [true, false] {
+            let mut f = cap_fixture(false).await;
+            let target = cache_a_capped_child(&mut f, display).await;
+            let before = f.lookaheads.load(Ordering::SeqCst);
+            let outcome = f.provider.path_is_taken(&target).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::ParseError(_))),
+                "cached prefix must not settle a strict destination: {outcome:?}"
+            );
+            assert!(
+                f.lookaheads.load(Ordering::SeqCst) > before,
+                "strict lookup must refresh the listing"
+            );
+            // Ordinary positive lookup retains its cache and browsing behavior.
+            assert!(f.provider.stat(&target).await.is_ok());
+            f.server.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn r47_strict_cache_upload_never_removes_a_cached_prefix_entry() {
+        for display in [true, false] {
+            let mut f = cap_fixture(false).await;
+            let target = cache_a_capped_child(&mut f, display).await;
+            let local = tempfile::NamedTempFile::new().unwrap();
+            let outcome = f
+                .provider
+                .upload(local.path().to_str().unwrap(), &target, None)
+                .await;
+            assert!(
+                f.mutations.lock().unwrap().is_empty(),
+                "strict upload sent mutations before verification: {:?}",
+                f.mutations.lock().unwrap()
+            );
+            assert!(
+                matches!(outcome, Err(ProviderError::ParseError(_))),
+                "{outcome:?}"
+            );
+            f.server.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn r47_strict_cache_replace_never_sets_aside_a_cached_prefix_entry() {
+        let mut f = cap_fixture(false).await;
+        let target = cache_a_capped_child(&mut f, true).await;
+        let outcome = f.provider.replace("/big/file-1-0", &target).await;
+        assert!(
+            f.mutations.lock().unwrap().is_empty(),
+            "strict replace sent mutations before verification: {:?}",
+            f.mutations.lock().unwrap()
+        );
+        assert!(
+            matches!(outcome, Err(ProviderError::ParseError(_))),
+            "{outcome:?}"
+        );
+        f.server.abort();
+    }
+
+    #[tokio::test]
+    async fn r47_strict_cache_discards_names_missing_from_a_complete_refresh() {
+        let (mut p, server) = r47_review_filelu_paged(true).await;
+        p.list_for_display("/").await.unwrap();
+        let mut stale = p.path_cache.get("/file-1-0").unwrap().clone();
+        stale.file_code = "deleted-file-code".into();
+        p.path_cache.insert("/gone".into(), stale.clone());
+        assert!(!p.path_is_taken("/gone").await.unwrap());
+        assert!(!p.path_cache.contains_key("/gone"));
+        // A stale ancestor must not let a strict lookup enter a folder which
+        // the complete root listing no longer contains.
+        stale.is_dir = true;
+        stale.fld_id = 99;
+        p.path_cache.insert("/gone-dir".into(), stale.clone());
+        p.path_cache.insert("/gone-dir/file-1-0".into(), stale);
+        assert!(!p.path_is_taken("/gone-dir/file-1-0").await.unwrap());
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn r47_strict_cache_complete_listing_still_settles_destinations() {
+        let (mut p, server) = r47_review_filelu_paged(true).await;
+        p.list_for_display("/").await.unwrap();
+        assert!(p.path_cache.contains_key("/file-1-0"));
+        assert!(p.path_is_taken("/file-1-0").await.unwrap());
+        assert!(!p.path_is_taken("/missing").await.unwrap());
+        server.abort();
     }
 
     async fn positive_cap_navigation(force_hybrid: bool) {
@@ -2808,6 +2933,23 @@ mod tests {
 
     use super::*;
 
+    fn tree_fixture_listing(tree: &[(String, String)], parent: &str) -> serde_json::Value {
+        let mut files = Vec::new();
+        let mut folders = Vec::new();
+        for (path, id) in tree {
+            let (dir, name) = path.rsplit_once('/').unwrap();
+            if (if dir.is_empty() { "/" } else { dir }) != parent {
+                continue;
+            }
+            if let Ok(fld_id) = id.parse::<u64>() {
+                folders.push(serde_json::json!({"name":name,"fld_id":fld_id}));
+            } else {
+                files.push(serde_json::json!({"name":name,"file_code":id}));
+            }
+        }
+        serde_json::json!({"status":200,"msg":"OK","result":{"files":files,"folders":folders}})
+    }
+
     /// A connected provider whose cache knows the folders `/src` (fld 11)
     /// and `/dst` (fld 22), pointed at a v1 API double that answers
     /// `folder/move` with `move_body`. Returns it and the query strings of
@@ -2832,10 +2974,18 @@ mod tests {
                 }),
             )
             .route(
-                // Every folder the test lists is empty.
                 "/apiv2/folder/list",
-                axum::routing::get(|| async {
-                    r#"{"status":200,"msg":"OK","result":{"files":[],"folders":[]}}"#
+                axum::routing::get(|uri: axum::http::Uri| async move {
+                    let url = reqwest::Url::parse(&format!("http://fixture{uri}")).unwrap();
+                    let parent = url
+                        .query_pairs()
+                        .find(|(key, _)| key == "folder_path")
+                        .map(|(_, value)| value.into_owned())
+                        .unwrap_or_else(|| "/".into());
+                    axum::Json(tree_fixture_listing(
+                        &[("/src".into(), "11".into()), ("/dst".into(), "22".into())],
+                        &parent,
+                    ))
                 }),
             );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -2876,19 +3026,8 @@ mod tests {
 
     #[tokio::test]
     async fn rename_refuses_an_existing_destination_before_moving() {
-        let (mut provider, moves) = provider_for_folder_move(r#"{"status":200,"msg":"OK"}"#).await;
-        provider.path_cache.insert(
-            "/dst/src".to_string(),
-            CacheEntry {
-                is_dir: true,
-                fld_id: 33,
-                fld_token: None,
-                file_code: String::new(),
-                size: 0,
-                modified: None,
-                hash: None,
-            },
-        );
+        let (mut provider, moves) =
+            provider_with_cached_tree(&[("/src", "11"), ("/dst", "22"), ("/dst/src", "33")]).await;
         let outcome = provider.rename("/src", "/dst/src").await;
         assert!(
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
@@ -2899,7 +3038,7 @@ mod tests {
 
     /// A connected provider whose cache knows `tree` (`path`, and the fld_id
     /// of a folder or the file code of a file), pointed at a double that
-    /// lists every folder as empty and answers every other call Ok. Returns
+    /// lists the same tree and answers every other call Ok. Returns
     /// it and the `path?query` of every call that is not a listing.
     async fn provider_with_cached_tree(
         tree: &[(&str, &str)],
@@ -2936,6 +3075,11 @@ mod tests {
         use std::sync::{Arc, Mutex};
         let calls: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&calls);
+        let live_tree = Arc::new(Mutex::new(
+            tree.iter()
+                .map(|(path, id)| (path.to_string(), id.to_string()))
+                .collect::<Vec<_>>(),
+        ));
         let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
             let listing = uri.path().ends_with("/list");
             if !listing {
@@ -2943,17 +3087,30 @@ mod tests {
                 seen.lock().unwrap().push(format!("{}?{query}", uri.path()));
             }
             let refuse = !refused.is_empty() && uri.path() == refused;
-            async move {
-                if listing && listings_fail {
-                    r#"{"status":403,"msg":"denied"}"#
-                } else if listing {
-                    r#"{"status":200,"msg":"OK","result":{"files":[],"folders":[]}}"#
-                } else if refuse {
-                    r#"{"status":403,"msg":"denied"}"#
-                } else {
-                    r#"{"status":200,"msg":"OK"}"#
+            let url = reqwest::Url::parse(&format!("http://fixture{uri}")).unwrap();
+            let parent = url
+                .query_pairs()
+                .find(|(key, _)| key == "folder_path")
+                .map(|(_, value)| value.into_owned())
+                .unwrap_or_else(|| "/".into());
+            let query: HashMap<String, String> = url.query_pairs().into_owned().collect();
+            let mut live_tree = live_tree.lock().unwrap();
+            if !refuse && uri.path() == "/api/file/rename" {
+                if let (Some(code), Some(name)) = (query.get("file_code"), query.get("name")) {
+                    if let Some((path, _)) = live_tree.iter_mut().find(|(_, id)| id == code) {
+                        let dir = path.rsplit_once('/').unwrap().0;
+                        *path = format!("{dir}/{name}");
+                    }
                 }
             }
+            let response = if listing && listings_fail || refuse {
+                serde_json::json!({"status":403,"msg":"denied"})
+            } else if listing {
+                tree_fixture_listing(&live_tree, &parent)
+            } else {
+                serde_json::json!({"status":200,"msg":"OK"})
+            };
+            async move { axum::Json(response) }
         }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
