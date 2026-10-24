@@ -4615,6 +4615,7 @@ async fn scan_ftp_download_entries(
             vec![(remote_path.to_string(), local_folder_path.to_path_buf())];
         let mut last_scan_emit = std::time::Instant::now();
         let mut file_index: u32 = 0;
+        let mut local_targets = crate::provider_commands::LocalTargetGuard::new(local_folder_path);
 
         while let Some((remote_dir, local_dir)) = dirs_to_scan.pop() {
             if cancel_flag.load(Ordering::Relaxed) {
@@ -4646,6 +4647,7 @@ async fn scan_ftp_download_entries(
                 }
             };
 
+            let mut staged = Vec::new();
             for file in files {
                 let safe_name = match crate::provider_commands::sanitize_remote_filename(&file.name)
                 {
@@ -4663,9 +4665,9 @@ async fn scan_ftp_download_entries(
                 } else {
                     scope.locate(&remote_dir, &remote_file_path)
                 };
-                match step {
-                    crate::sync_core::WalkStep::Follow => {}
-                    crate::sync_core::WalkStep::AlreadyListed => continue,
+                let follow = match step {
+                    crate::sync_core::WalkStep::Follow => true,
+                    crate::sync_core::WalkStep::AlreadyListed => false,
                     step => {
                         warn!(
                             "Not downloading {}: the listing of {} names it, but {}",
@@ -4676,14 +4678,26 @@ async fn scan_ftp_download_entries(
                         result.scan_errors += 1;
                         continue;
                     }
-                }
-                if !file.is_dir
-                    && !planned.insert(crate::sync_core::walk_path_key(&remote_file_path))
-                {
+                };
+                let local_file_path = local_dir.join(&safe_name);
+                staged.push((file, safe_name, remote_file_path, local_file_path, follow));
+            }
+
+            let claims: Vec<crate::provider_commands::LocalTargetClaim> = staged
+                .iter()
+                .map(|(_, _, remote_path, local_path, _)| {
+                    crate::provider_commands::LocalTargetClaim {
+                        remote_path: remote_path.clone(),
+                        local_path: local_path.clone(),
+                    }
+                })
+                .collect();
+            local_targets.claim_listing(&claims)?;
+
+            for (file, safe_name, remote_file_path, local_file_path, follow) in staged {
+                if !follow {
                     continue;
                 }
-                let local_file_path = local_dir.join(&safe_name);
-
                 if file.is_dir {
                     if let Err(e) = tokio::fs::create_dir_all(&local_file_path).await {
                         warn!(
@@ -4710,6 +4724,9 @@ async fn scan_ftp_download_entries(
                     }
 
                     dirs_to_scan.push((remote_file_path, local_file_path));
+                    continue;
+                }
+                if !planned.insert(crate::sync_core::walk_path_key(&remote_file_path)) {
                     continue;
                 }
 
@@ -25522,7 +25539,8 @@ mod legacy_ftp_walk_tests {
     /// `/x` finds: through `d/..` it went down to its depth cap, and through
     /// `up/../..`, `up/../../y` and `../keep.txt` it planned files outside
     /// the folder. It plans each file under the folder once, and an entry it
-    /// does not follow is one of the scan's errors.
+    /// does not follow is one of the scan's errors. Two rows naming the same
+    /// local target are refused before a file or folder is created.
     #[tokio::test]
     async fn the_ftp_folder_download_plans_only_what_is_under_the_folder() {
         for (case, listings, refused) in STRAY_NAMES {
@@ -25542,8 +25560,14 @@ mod legacy_ftp_walk_tests {
                 ),
             )
             .await
-            .unwrap_or_else(|_| panic!("{case}: the scan does not end"))
-            .unwrap_or_else(|e| panic!("{case}: {e}"));
+            .unwrap_or_else(|_| panic!("{case}: the scan does not end"));
+            if matches!(case, "a folder named twice" | "a file named twice") {
+                let error = planned.expect_err(case);
+                assert!(error.contains("Ambiguous local target"), "{case}: {error}");
+                assert_eq!(std::fs::read_dir(local.path()).unwrap().count(), 0);
+                continue;
+            }
+            let planned = planned.unwrap_or_else(|e| panic!("{case}: {e}"));
             let remote: Vec<String> = planned
                 .entries
                 .iter()
@@ -25713,5 +25737,79 @@ mod legacy_ftp_walk_tests {
             let omitted: u32 = result.truncated_parents.iter().map(|t| t.omitted).sum();
             assert_eq!(omitted as usize, refused, "{case}");
         }
+    }
+
+    #[allow(clippy::await_holding_lock)]
+    async fn requested97_legacy_scan(
+        listings: Listings,
+        fold_case: bool,
+    ) -> (Result<FtpDownloadScanResult, String>, tempfile::TempDir) {
+        let _env = crate::test_env::lock();
+        if fold_case {
+            std::env::set_var("AEROFTP_TEST_LOCAL_CASE_FOLD", "1");
+        }
+        let mut session = session_on(listings).await;
+        let local = tempfile::tempdir().expect("temp dir");
+        let outcome = tokio::time::timeout(
+            LIMIT,
+            scan_ftp_download_entries(
+                &|_| {},
+                &Arc::new(AtomicBool::new(false)),
+                &mut session,
+                "/x",
+                local.path(),
+                "",
+                "t",
+                "x",
+            ),
+        )
+        .await
+        .expect("the download scan ends");
+        std::env::remove_var("AEROFTP_TEST_LOCAL_CASE_FOLD");
+        (outcome, local)
+    }
+
+    async fn assert_requested97_legacy_refusal(listings: Listings, fold_case: bool) {
+        let (outcome, local) = requested97_legacy_scan(listings, fold_case).await;
+        let error = outcome.expect_err("ambiguous local targets must be refused");
+        assert!(error.contains("Ambiguous local target"), "{error}");
+        assert!(error.contains("/x/"), "{error}");
+        assert_eq!(std::fs::read_dir(local.path()).unwrap().count(), 0);
+    }
+
+    #[tokio::test]
+    async fn requested97_legacy_download_refuses_duplicate_local_names_before_writing() {
+        assert_requested97_legacy_refusal(
+            &[("/", &["x/"]), ("/x", &["same.txt", "same.txt"])],
+            false,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn requested97_legacy_download_refuses_sanitized_local_aliases_before_writing() {
+        assert_requested97_legacy_refusal(&[("/", &["x/"]), ("/x", &["a/b", "b"])], false).await;
+    }
+
+    #[tokio::test]
+    async fn requested97_legacy_download_refuses_casefolded_local_aliases_before_writing() {
+        assert_requested97_legacy_refusal(&[("/", &["x/"]), ("/x", &["A.txt", "a.txt"])], true)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn requested97_legacy_download_refuses_file_directory_aliases_before_writing() {
+        assert_requested97_legacy_refusal(&[("/", &["x/"]), ("/x", &["a/b", "b/"])], false).await;
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    #[tokio::test]
+    async fn requested97_legacy_download_allows_case_distinct_names_on_case_sensitive_destination()
+    {
+        let (outcome, local) =
+            requested97_legacy_scan(&[("/", &["x/"]), ("/x", &["A.txt", "a.txt"])], false).await;
+        let planned = outcome.expect("case-distinct names on a case-sensitive destination");
+        assert_eq!(planned.entries.len(), 2);
+        assert_eq!(std::fs::read_dir(local.path()).unwrap().count(), 0);
     }
 }
