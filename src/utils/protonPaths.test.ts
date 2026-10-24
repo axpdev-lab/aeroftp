@@ -13,6 +13,21 @@ describe('usedScanRoot', () => {
         expect(usedScanRoot({ currentRemotePath: '/my-files/docs', automatic: false, protocol: 'proton' })).toBe('/my-files/docs');
     });
 
+    it('scans the sections on connect even when the profile saves a folder in My Files', () => {
+        expect(usedScanRoot({
+            currentRemotePath: '/my-files/docs',
+            automatic: true,
+            protocol: 'proton',
+            profileRoot: '/my-files/docs',
+        })).toBe('/');
+    });
+
+    it('starts from the profile folder for a scan asked from the status bar and for other providers', () => {
+        expect(usedScanRoot({ currentRemotePath: '/my-files', automatic: false, protocol: 'proton', profileRoot: '/my-files/docs' }))
+            .toBe('/my-files/docs');
+        expect(usedScanRoot({ currentRemotePath: '/', automatic: true, protocol: 'sftp', profileRoot: '/data' })).toBe('/data');
+    });
+
     it('keeps the current folder for the native client and other providers', () => {
         expect(usedScanRoot({
             currentRemotePath: '/',

@@ -43,22 +43,26 @@ function fixture(mode: Mode, options: {
   listen?: () => Promise<() => void>;
   /** Queue functional updates until `flush`, as React may until it renders. */
   deferUpdates?: boolean;
+  /** The saved profile's protocol and initial folder (default WebDAV at /A). */
+  protocol?: string;
+  initialPath?: string;
 } = {}) {
   const holdFirstProfileRead = options.holdFirstProfileRead ?? true;
   let profilesRequested!: () => void;
   const profilesReady = new Promise<void>(resolve => { profilesRequested = resolve; });
   let release!: (value: unknown[]) => void;
   const profilesPending = new Promise<unknown[]>(resolve => { release = resolve; });
-  const profile = { id: 'A', protocol: 'webdav', initialPath: '/A',
+  const protocol = options.protocol ?? 'webdav';
+  const profile = { id: 'A', protocol, initialPath: options.initialPath ?? '/A',
     options: { autoScanUsedOnConnect: true } };
-  const params = { protocol: 'webdav', savedServerId: 'A',
+  const params = { protocol, savedServerId: 'A',
     providerId: mode === 'InfiniCloud' ? 'infinicloud' : undefined,
     options: { ...profile.options, apiKey: 'fixture', infinicloudNode: 'fixture' } };
   // React closures belong to render A; changing the backend does not magically
   // update their captured session values. Only the refs are shared.
   let backend: string | null = 'A';
   const commands: Array<{ command: string; backend: string | null }> = [];
-  const invoke = vi.fn(async (command: string) => {
+  const invoke = vi.fn(async (command: string, _args?: unknown) => {
     commands.push({ command, backend });
     if (command === 'provider_storage_info') {
       return mode === 'usable quota' ? { used: 5, total: 100, free: 95 } : { used: 0, total: 0, free: 0 };
@@ -109,7 +113,7 @@ function fixture(mode: Mode, options: {
     fetchQuota: (protocol: string) => Promise<void>;
     scan: () => Promise<void>;
   };
-  return { runtime, commands, persist, display, quota, flush, profiles, profilesReady, version, connection,
+  return { runtime, invoke, commands, persist, display, quota, flush, profiles, profilesReady, version, connection,
     activityLog, notify,
     release: () => release([profile]),
     // A switch or a disconnect changes the connection; both also invalidate
@@ -301,3 +305,23 @@ describe('App used-storage scan display', () => {
     await running;
   });
 });
+
+describe('App used-storage scan root', () => {
+  // A Proton Drive profile on the CLI opens in My Files (Requested 79), so its
+  // saved folder is under My Files: the scan it runs by itself on connect still
+  // counts every section from `/`, while a scan asked from the status bar starts
+  // where the profile does, as for every other provider.
+  it.each([
+    ['proton', true, '/'],
+    ['proton', false, '/my-files/docs'],
+    ['webdav', true, '/my-files/docs'],
+  ] as const)('a %s profile with a saved folder, automatic %s, scans from %s', async (protocol, automatic, root) => {
+    const f = fixture('no quota API', { holdFirstProfileRead: false, protocol, initialPath: '/my-files/docs' });
+    await (f.runtime.scan as (options: { automatic: boolean }) => Promise<void>)({ automatic });
+    const roots = f.invoke.mock.calls
+      .filter(([command]) => command === 'provider_scan_used')
+      .map(([, args]) => (args as { path: string }).path);
+    expect(roots).toEqual([root]);
+  });
+});
+

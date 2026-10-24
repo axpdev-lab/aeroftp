@@ -3558,12 +3558,13 @@ const App: React.FC = () => {
     // NOT persisted (profileId stays undefined) rather than corrupting
     // another card.
     let manualTotal: number | undefined;
-    let scanRoot = usedScanRoot({
+    const scanRootArgs = {
       currentRemotePath,
       automatic: scanOptions?.automatic === true,
       protocol: cp.protocol,
       options: opts,
-    });
+    };
+    let scanRoot = usedScanRoot(scanRootArgs);
     let profileId: string | undefined;
     let quotaProfile: ServerProfile | undefined;
     try {
@@ -3575,7 +3576,10 @@ const App: React.FC = () => {
         profileId = prof.id;
         if (prof.initialPath?.trim()) {
           const resolved = resolveUsernameTemplate(prof.initialPath.trim(), cp.username);
-          scanRoot = stripLegacyNextcloudWebdavRoot(resolved, prof.providerId, cp.username) || resolved || prof.initialPath.trim();
+          scanRoot = usedScanRoot({
+            ...scanRootArgs,
+            profileRoot: stripLegacyNextcloudWebdavRoot(resolved, prof.providerId, cp.username) || resolved || prof.initialPath.trim(),
+          });
         }
         const m = prof.options?.manualTotalBytes;
         if (typeof m === 'number' && m > 0) manualTotal = m;
