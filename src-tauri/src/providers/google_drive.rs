@@ -141,6 +141,7 @@ struct DriveFile {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct DriveFileList {
+    #[serde(default)]
     files: Vec<DriveFile>,
     next_page_token: Option<String>,
     #[serde(default)]
@@ -3283,6 +3284,118 @@ mod tests {
 
     fn test_provider() -> GoogleDriveProvider {
         GoogleDriveProvider::new(GoogleDriveConfig::new("cid", "csec"))
+    }
+
+    #[test]
+    fn requested86_empty_response_is_an_empty_file_list() {
+        let list: DriveFileList = serde_json::from_str("{}").expect("valid empty Drive response");
+        assert!(list.files.is_empty());
+        assert!(list.next_page_token.is_none());
+        assert!(!list.incomplete_search);
+        list.require_complete().expect("complete empty list");
+    }
+
+    #[test]
+    fn requested86_malformed_files_are_not_an_empty_list() {
+        for response in [
+            r#"{"files":null}"#,
+            r#"{"files":{}}"#,
+            r#"{"files":"invalid"}"#,
+            r#"{"files":[{}]}"#,
+        ] {
+            assert!(
+                serde_json::from_str::<DriveFileList>(response).is_err(),
+                "{response}"
+            );
+        }
+    }
+
+    /// Exercise the actual purge path with Drive search pages that may omit
+    /// `files`. Record every request, including any irreversible DELETE.
+    async fn requested86_purge_with_search_pages(
+        pages: Vec<serde_json::Value>,
+    ) -> (Result<bool, ProviderError>, Vec<String>) {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+
+        let requests: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&requests);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                let pages = pages.clone();
+                async move {
+                    if req.method() == axum::http::Method::GET
+                        && req.uri().path() == "/drive/v3/files"
+                    {
+                        let url =
+                            reqwest::Url::parse(&format!("http://fixture{}", req.uri())).unwrap();
+                        let page = url
+                            .query_pairs()
+                            .find(|(key, _)| key == "pageToken")
+                            .map(|(_, value)| value.parse::<usize>().unwrap())
+                            .unwrap_or(0);
+                        seen.lock().unwrap().push(format!("GET page {page}"));
+                        return axum::Json(pages[page].clone()).into_response();
+                    }
+                    seen.lock()
+                        .unwrap()
+                        .push(format!("{} {}", req.method(), req.uri().path()));
+                    if req.method() == axum::http::Method::DELETE {
+                        axum::http::StatusCode::NO_CONTENT.into_response()
+                    } else {
+                        axum::http::StatusCode::BAD_REQUEST.into_response()
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("t".into());
+        let outcome = provider.delete_permanent("/missing.txt").await;
+        server.abort();
+        let requests = requests.lock().unwrap().clone();
+        (outcome, requests)
+    }
+
+    #[tokio::test]
+    async fn requested86_empty_trash_search_does_not_delete() {
+        let (outcome, requests) =
+            requested86_purge_with_search_pages(vec![serde_json::json!({})]).await;
+        assert!(!outcome.expect("empty search is already purged"));
+        assert_eq!(requests, ["GET page 0"]);
+    }
+
+    #[tokio::test]
+    async fn requested86_empty_page_still_follows_next_page() {
+        let (outcome, requests) = requested86_purge_with_search_pages(vec![
+            serde_json::json!({"nextPageToken":"1"}),
+            serde_json::json!({"files":[{
+                "id":"TARGET", "name":"missing.txt", "mimeType":"text/plain"
+            }]}),
+        ])
+        .await;
+        assert!(outcome.expect("purge the exact item on the next page"));
+        assert_eq!(
+            requests,
+            ["GET page 0", "GET page 1", "DELETE /drive/v3/files/TARGET"]
+        );
+    }
+
+    #[tokio::test]
+    async fn requested86_incomplete_empty_search_still_refuses_purge() {
+        let (outcome, requests) =
+            requested86_purge_with_search_pages(vec![serde_json::json!({"incompleteSearch":true})])
+                .await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ParseError(ref message))
+            if message.contains("incomplete search")),
+            "{outcome:?}"
+        );
+        assert_eq!(requests, ["GET page 0"]);
     }
 
     /// Upload a 300 KB file through the multipart upload to a local double
