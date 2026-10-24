@@ -1339,7 +1339,9 @@ async fn run_many_files_workload(
     }
 
     let size = mf.file_size_bytes;
-    let remote_name = |i: u32| crate::speed_payload::name(&format!("{}/f{:06}", many_dir, i));
+    let run_id = report_id.get(..8).unwrap_or(report_id);
+    let remote_name =
+        |i: u32| crate::speed_payload::name(&format!("{}/f{:06}-{}", many_dir, i, run_id));
 
     observer.event(BenchmarkEvent::ManyFiles {
         file_count: mf.file_count,

@@ -126,7 +126,7 @@ pub struct ProtonCliProvider {
     /// size; an entry stays for every retry, goes once the file is
     /// published, and expires after [`BULK_CLAIMED_SIZE_TTL`].
     bulk_claimed_sizes: std::collections::HashMap<String, (u64, std::time::Instant)>,
-    cli_version: Option<Result<semver::Version, String>>,
+    trash_listing: Option<(String, Vec<RemoteEntry>)>,
 }
 
 /// How long a claimed size from a bulk's listing still describes the file a
@@ -526,7 +526,7 @@ impl ProtonCliProvider {
             account_email: None,
             binary,
             bulk_claimed_sizes: std::collections::HashMap::new(),
-            cli_version: None,
+            trash_listing: None,
         }
     }
 
@@ -1507,36 +1507,6 @@ fn extract_url(stdout: &str) -> Option<String> {
 }
 
 impl ProtonCliProvider {
-    async fn cli_version(&mut self) -> Result<semver::Version, ProviderError> {
-        if let Some(cached) = &self.cli_version {
-            return cached.clone().map_err(ProviderError::ServerError);
-        }
-        let parsed = self
-            .run_cli(&["version"], META_TIMEOUT_SECS)
-            .await
-            .and_then(|stdout| {
-                let raw = stdout
-                    .split("cli-drive@")
-                    .nth(1)
-                    .and_then(|tail| tail.split('+').next())
-                    .map(str::trim)
-                    .filter(|raw| !raw.is_empty())
-                    .ok_or_else(|| {
-                        ProviderError::ParseError(
-                            "Proton Drive CLI version has no cli-drive@ version".into(),
-                        )
-                    })?;
-                semver::Version::parse(raw).map_err(|error| {
-                    ProviderError::ParseError(format!(
-                        "Cannot parse Proton Drive CLI version '{raw}': {error}"
-                    ))
-                })
-            })
-            .map_err(|error| error.to_string());
-        self.cli_version = Some(parsed.clone());
-        parsed.map_err(ProviderError::ServerError)
-    }
-
     async fn capture_uid(&mut self, abs: &str) -> Result<String, ProviderError> {
         let stdout = self
             .run_cli(&["filesystem", "info", abs, "-j"], META_TIMEOUT_SECS)
@@ -1545,25 +1515,59 @@ impl ProtonCliProvider {
         entry_uid(&entry)
     }
 
-    async fn purge_trash_uid(
+    async fn purge_trash_by_name(
         &mut self,
         trash_root: &str,
-        uid: &str,
+        name: &str,
+        captured_uid: Option<&str>,
+        use_snapshot: bool,
     ) -> Result<bool, ProviderError> {
-        if !valid_cli_node_uid(uid) {
-            return Err(ProviderError::InvalidPath(
-                "Refusing trash purge with an invalid Proton node UID".into(),
+        if use_snapshot && !matches!(&self.trash_listing, Some((root, _)) if root == trash_root) {
+            let listed = self
+                .run_cli(&["filesystem", "list", trash_root, "-j"], META_TIMEOUT_SECS)
+                .await?;
+            self.trash_listing = Some((
+                trash_root.to_string(),
+                parse_list_json(&listed, trash_root)?,
             ));
         }
-        let version = self.cli_version().await?;
-        if version < semver::Version::new(0, 9, 0) {
-            return Err(ProviderError::NotSupported(format!(
-                "Proton Drive CLI 0.9.0 or newer is required to purge trash by UID; found {version}. Nothing was deleted"
+        let entries = match (&self.trash_listing, use_snapshot) {
+            (Some((_, entries)), true) => entries.clone(),
+            _ => {
+                let listed = self
+                    .run_cli(&["filesystem", "list", trash_root, "-j"], META_TIMEOUT_SECS)
+                    .await?;
+                parse_list_json(&listed, trash_root)?
+            }
+        };
+        let matches: Vec<RemoteEntry> = entries
+            .into_iter()
+            .filter(|entry| entry.name == name)
+            .collect();
+        let uid_matches = match captured_uid {
+            Some(uid) => matches
+                .iter()
+                .filter(|entry| entry.metadata.get("uid").map(String::as_str) == Some(uid))
+                .count(),
+            None => matches.len(),
+        };
+        if matches.len() != 1 || uid_matches != 1 {
+            return Err(ProviderError::ServerError(format!(
+                "Moved to trash, not purged: {} items in trash have this name and {} match the captured UID. Proton Drive CLI 0.9.0 resolves trash paths by name only; refusing an ambiguous purge",
+                matches.len(),
+                uid_matches
             )));
         }
-        let purge = join_path(trash_root, uid);
+
+        let purged_uid = matches[0].metadata.get("uid").cloned();
+        let purge = join_path(trash_root, name);
         self.run_cli(&["filesystem", "delete", &purge], META_TIMEOUT_SECS)
             .await?;
+        if use_snapshot {
+            if let Some((_, entries)) = &mut self.trash_listing {
+                entries.retain(|entry| entry.metadata.get("uid") != purged_uid.as_ref());
+            }
+        }
         Ok(true)
     }
 }
@@ -1970,6 +1974,7 @@ impl StorageProvider for ProtonCliProvider {
         &mut self,
         paths: &[String],
     ) -> Vec<Result<Option<String>, ProviderError>> {
+        self.trash_listing = None;
         let absolute: Vec<String> = paths.iter().map(|path| self.resolve_path(path)).collect();
         let Some(first) = absolute.first() else {
             return Vec::new();
@@ -2024,10 +2029,12 @@ impl StorageProvider for ProtonCliProvider {
         } else {
             "/trash"
         };
-        self.purge_trash_uid(trash_root, uid).await
+        self.purge_trash_by_name(trash_root, &basename(&abs), Some(uid), true)
+            .await
     }
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
+        self.trash_listing = None;
         let abs = self.resolve_path(path);
         ensure_not_section(&abs)?;
         let in_trash = is_in_trash_path(&abs);
@@ -2048,20 +2055,6 @@ impl StorageProvider for ProtonCliProvider {
             None
         };
 
-        if let Some(uid) = captured_uid.as_deref() {
-            let version = self.cli_version().await?;
-            if version >= semver::Version::new(0, 9, 0) {
-                match self
-                    .run_cli(&["filesystem", "trash", &abs], META_TIMEOUT_SECS)
-                    .await
-                {
-                    Ok(_) => return self.purge_trash_uid(trash_root, uid).await,
-                    Err(ProviderError::NotFound(_)) => return Ok(false),
-                    Err(e) => return Err(e),
-                }
-            }
-        }
-
         if !in_trash {
             match self
                 .run_cli(&["filesystem", "trash", &abs], META_TIMEOUT_SECS)
@@ -2073,35 +2066,8 @@ impl StorageProvider for ProtonCliProvider {
             }
         }
 
-        let listed_stdout = self
-            .run_cli(&["filesystem", "list", trash_root, "-j"], META_TIMEOUT_SECS)
-            .await?;
-        let matches: Vec<RemoteEntry> = parse_list_json(&listed_stdout, trash_root)?
-            .into_iter()
-            .filter(|e| e.name == name)
-            .collect();
-        let uid_matches = match captured_uid.as_deref() {
-            Some(uid) => matches
-                .iter()
-                .filter(|e| e.metadata.get("uid").map(String::as_str) == Some(uid))
-                .count(),
-            None => matches.len(),
-        };
-        if matches.len() != 1 || uid_matches != 1 {
-            return Err(ProviderError::ServerError(format!(
-                "Moved to trash, not purged: {} items in trash have this name. A name-only purge is ambiguous; Proton Drive CLI 0.9.0 or newer can purge the captured UID instead",
-                matches.len()
-            )));
-        }
-
-        let purge = join_path(trash_root, &name);
-        match self
-            .run_cli(&["filesystem", "delete", &purge], META_TIMEOUT_SECS)
+        self.purge_trash_by_name(trash_root, &name, captured_uid.as_deref(), false)
             .await
-        {
-            Ok(_) => Ok(true),
-            Err(e) => Err(e),
-        }
     }
 
     /// A rename in place, or a move to the new folder (which keeps the name)
@@ -2348,7 +2314,7 @@ impl StorageProvider for ProtonCliProvider {
             binary: self.binary.clone(),
             // A listing clone downloads nothing.
             bulk_claimed_sizes: std::collections::HashMap::new(),
-            cli_version: None,
+            trash_listing: None,
         }))
     }
 }
@@ -4102,12 +4068,33 @@ mod cli_sequence_tests {
     }
 
     #[tokio::test]
-    async fn delete_permanent_purges_captured_uid_when_trash_name_is_ambiguous() {
+    async fn delete_permanent_refuses_a_duplicate_trash_name_even_with_a_captured_uid() {
         let dir = workdir();
         let shim = link_shim(&dir);
         std::fs::write(
             dir.join("trash.json"),
-            r#"[{"name":{"ok":true,"value":"dup.txt"},"uid":"UID-OLD","type":"file"},{"name":{"ok":true,"value":"dup.txt"},"uid":"AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB","type":"file"}]"#,
+            r#"[{"name":{"ok":true,"value":"dup.txt"},"uid":"CCCCCCCCCCCCCCCCCCCCCC~DDDDDDDDDDDDDDDDDDDDDD","type":"file"},{"name":{"ok":true,"value":"dup.txt"},"uid":"AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB","type":"file"}]"#,
+        )
+        .unwrap();
+        let mut p = provider(&shim);
+        let error = p
+            .delete_permanent("/my-files/scratch/dup.txt")
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("name only"), "{error}");
+        let argv = read_argv(&dir);
+        assert!(verbs(&argv, "delete").is_empty(), "{argv:?}");
+        assert_eq!(verbs(&argv, "trash").len(), 1, "{argv:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn delete_permanent_purges_by_name_when_unique_trash_uid_matches() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        std::fs::write(
+            dir.join("trash.json"),
+            r#"[{"name":{"ok":true,"value":"dup.txt"},"uid":"AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB","type":"file"}]"#,
         )
         .unwrap();
         let mut p = provider(&shim);
@@ -4120,34 +4107,9 @@ mod cli_sequence_tests {
         assert_eq!(deletes.len(), 1, "{argv:?}");
         assert_eq!(
             deletes[0].last().map(|s| s.as_str()),
-            Some("/trash/AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB")
+            Some("/trash/dup.txt")
         );
-        assert_eq!(verbs(&argv, "trash").len(), 1, "{argv:?}");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[tokio::test]
-    async fn delete_permanent_purges_by_uid_when_unique_trash_name_matches() {
-        let dir = workdir();
-        let shim = link_shim(&dir);
-        std::fs::write(
-            dir.join("trash.json"),
-            r#"[{"name":{"ok":true,"value":"dup.txt"},"uid":"AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB","type":"file"}]"#,
-        )
-        .unwrap();
-        let mut p = provider(&shim);
-        let purged = p
-            .delete_permanent("/my-files/scratch/dup.txt")
-            .await
-            .unwrap();
-        assert!(purged);
-        let argv = read_argv(&dir);
-        let deletes = verbs(&argv, "delete");
-        assert_eq!(deletes.len(), 1, "{argv:?}");
-        assert_eq!(
-            deletes[0].last().map(|s| s.as_str()),
-            Some("/trash/AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB")
-        );
+        assert_eq!(argv.iter().filter(|args| args[0] == "version").count(), 0);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -4177,105 +4139,87 @@ mod cli_sequence_tests {
     }
 
     #[tokio::test]
-    async fn identity_purge_refuses_an_old_cli_without_deleting_by_name() {
+    async fn identity_purges_verify_name_and_uid_with_one_trash_listing() {
         let dir = workdir();
         let shim = link_shim(&dir);
         std::fs::write(
-            dir.join("cli-version.txt"),
-            "Proton Drive CLI cli-drive@0.8.0+06e8c605",
+            dir.join("trash.json"),
+            r#"[{"name":{"ok":true,"value":"dup.txt"},"uid":"AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB","type":"file"},{"name":{"ok":true,"value":"other.txt"},"uid":"CCCCCCCCCCCCCCCCCCCCCC~DDDDDDDDDDDDDDDDDDDDDD","type":"file"}]"#,
         )
         .unwrap();
         let mut p = provider(&shim);
-        for _ in 0..2 {
-            let error = p
-                .delete_permanent_with_identity(
-                    "/my-files/scratch/dup.txt",
-                    Some("AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB"),
-                )
-                .await
-                .unwrap_err();
-            assert!(error.to_string().contains("0.9.0 or newer"));
-        }
-        let argv = read_argv(&dir);
-        assert!(verbs(&argv, "delete").is_empty(), "{argv:?}");
-        assert_eq!(argv.iter().filter(|args| args[0] == "version").count(), 1);
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[tokio::test]
-    async fn identity_purge_refuses_an_unparseable_version_and_caches_the_refusal() {
-        let dir = workdir();
-        let shim = link_shim(&dir);
-        std::fs::write(dir.join("cli-version.txt"), "not a version").unwrap();
-        let mut p = provider(&shim);
-        for _ in 0..2 {
+        for (name, uid) in [
+            ("dup.txt", "AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB"),
+            ("other.txt", "CCCCCCCCCCCCCCCCCCCCCC~DDDDDDDDDDDDDDDDDDDDDD"),
+        ] {
             assert!(p
-                .delete_permanent_with_identity(
-                    "/my-files/scratch/dup.txt",
-                    Some("AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB"),
-                )
+                .delete_permanent_with_identity(&format!("/my-files/scratch/{name}"), Some(uid))
                 .await
-                .is_err());
+                .unwrap());
         }
         let argv = read_argv(&dir);
-        assert!(verbs(&argv, "delete").is_empty(), "{argv:?}");
-        assert_eq!(argv.iter().filter(|args| args[0] == "version").count(), 1);
+        let deletes = verbs(&argv, "delete");
+        assert_eq!(deletes.len(), 2, "{argv:?}");
+        assert_eq!(
+            deletes[0].last().map(|s| s.as_str()),
+            Some("/trash/dup.txt")
+        );
+        assert_eq!(
+            deletes[1].last().map(|s| s.as_str()),
+            Some("/trash/other.txt")
+        );
+        let trash_lists: Vec<_> = verbs(&argv, "list")
+            .into_iter()
+            .filter(|args| args.iter().any(|arg| arg == "/trash"))
+            .collect();
+        assert_eq!(trash_lists.len(), 1, "{argv:?}");
+        assert_eq!(argv.iter().filter(|args| args[0] == "version").count(), 0);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
-    async fn identity_purge_accepts_a_crlf_version_output() {
+    async fn identity_purge_refuses_duplicate_names_without_deleting() {
         let dir = workdir();
         let shim = link_shim(&dir);
         std::fs::write(
-            dir.join("cli-version.txt"),
-            "Proton Drive CLI cli-drive@0.9.0+75612299\r\n",
+            dir.join("trash.json"),
+            r#"[{"name":{"ok":true,"value":"dup.txt"},"uid":"CCCCCCCCCCCCCCCCCCCCCC~DDDDDDDDDDDDDDDDDDDDDD","type":"file"},{"name":{"ok":true,"value":"dup.txt"},"uid":"AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB","type":"file"}]"#,
         )
         .unwrap();
         let mut p = provider(&shim);
-        assert!(p
+        let error = p
             .delete_permanent_with_identity(
                 "/my-files/scratch/dup.txt",
                 Some("AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB"),
             )
             .await
-            .unwrap());
+            .unwrap_err();
+        assert!(error.to_string().contains("name only"), "{error}");
         let argv = read_argv(&dir);
-        let deletes = verbs(&argv, "delete");
-        assert_eq!(deletes.len(), 1, "{argv:?}");
-        assert_eq!(
-            deletes[0].last().map(|s| s.as_str()),
-            Some("/trash/AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB")
-        );
+        assert!(verbs(&argv, "delete").is_empty(), "{argv:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
-    async fn an_old_cli_keeps_the_unambiguous_legacy_name_purge() {
+    async fn identity_purge_refuses_a_uid_mismatch_without_deleting() {
         let dir = workdir();
         let shim = link_shim(&dir);
         std::fs::write(
-            dir.join("cli-version.txt"),
-            "Proton Drive CLI cli-drive@0.8.0+06e8c605",
-        )
-        .unwrap();
-        std::fs::write(
             dir.join("trash.json"),
-            r#"[{"name":{"ok":true,"value":"dup.txt"},"uid":"AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB","type":"file"}]"#,
+            r#"[{"name":{"ok":true,"value":"dup.txt"},"uid":"CCCCCCCCCCCCCCCCCCCCCC~DDDDDDDDDDDDDDDDDDDDDD","type":"file"}]"#,
         )
         .unwrap();
         let mut p = provider(&shim);
-        assert!(p
-            .delete_permanent("/my-files/scratch/dup.txt")
+        let error = p
+            .delete_permanent_with_identity(
+                "/my-files/scratch/dup.txt",
+                Some("AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB"),
+            )
             .await
-            .unwrap());
+            .unwrap_err();
+        assert!(error.to_string().contains("name only"), "{error}");
         let argv = read_argv(&dir);
-        let deletes = verbs(&argv, "delete");
-        assert_eq!(deletes.len(), 1, "{argv:?}");
-        assert_eq!(
-            deletes[0].last().map(|s| s.as_str()),
-            Some("/trash/dup.txt")
-        );
+        assert!(verbs(&argv, "delete").is_empty(), "{argv:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

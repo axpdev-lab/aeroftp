@@ -1214,6 +1214,43 @@ mod engine_runs {
         );
     }
 
+    #[tokio::test]
+    async fn two_many_files_runs_never_reuse_a_trash_file_name() {
+        let (state, trash, provider) = trash_remote(TrashKind::Unpurgeable);
+        let first = run(provider, "/data", many_files_options(), &Silent)
+            .await
+            .unwrap();
+        let provider = Box::new(TrashKeepingRemote {
+            inner: MemRemote(state),
+            kind: TrashKind::Unpurgeable,
+            trash: trash.clone(),
+            purge_calls: Arc::default(),
+            hang_purge: false,
+            cancel_on_purge: None,
+            fail_live_purge: false,
+        });
+        let second = run(provider, "/data", many_files_options(), &Silent)
+            .await
+            .unwrap();
+        let names: Vec<String> = trash
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|path| path.ends_with(".dat"))
+            .map(|path| path.rsplit('/').next().unwrap().to_string())
+            .collect();
+        assert_eq!(names.len(), 6, "{names:?}");
+        assert_eq!(names.iter().collect::<BTreeSet<_>>().len(), 6, "{names:?}");
+        for report in [first.report, second.report] {
+            let run_id = &report.report_id[..8];
+            assert_eq!(
+                names.iter().filter(|name| name.contains(run_id)).count(),
+                3,
+                "run {run_id}: {names:?}"
+            );
+        }
+    }
+
     /// A remote with the many-files workload's three files in its trash, the
     /// paths its purge was asked for, and the provider.
     fn purging_remote(

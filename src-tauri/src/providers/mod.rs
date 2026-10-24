@@ -1397,8 +1397,10 @@ pub trait StorageProvider: Send + Sync {
         paths.iter().map(|_| Ok(None)).collect()
     }
 
-    /// Purge using an identity captured before deletion when one is available.
-    /// Providers without identity support retain their path-based behavior.
+    /// Verify a post-delete purge with an identity captured before deletion.
+    /// Name-addressed trash implementations must require both the name and the
+    /// identity to match. Providers without identity support retain their
+    /// path-based behavior.
     async fn delete_permanent_with_identity(
         &mut self,
         path: &str,
