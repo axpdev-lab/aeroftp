@@ -36756,15 +36756,10 @@ fn ambiguous_alias_error(target: &str) -> String {
 /// on disk, from the twin the alias would have joined. Nothing of the alias
 /// was written.
 fn ambiguous_alias_with_landed(target: &str, landed: &HashMap<String, (u64, String)>) -> String {
-    let under = format!(
-        "{}{}",
-        target.trim_end_matches(['/', '\\']),
-        std::path::MAIN_SEPARATOR
-    );
     let mut written: Vec<&str> = landed
         .keys()
         .map(String::as_str)
-        .filter(|local| *local == target || local.starts_with(&under))
+        .filter(|local| local_path_at_or_under(local, target, LOCAL_PATH_SEPARATORS))
         .collect();
     let mut message = ambiguous_alias_error(target);
     if !written.is_empty() {
@@ -36775,6 +36770,24 @@ fn ambiguous_alias_with_landed(target: &str, landed: &HashMap<String, (u64, Stri
         ));
     }
     message
+}
+
+/// What separates the parts of a local path: on Windows both slashes, as a
+/// local path joined from a remote relative one keeps its `/`
+/// (`C:\tmp\d2/y.txt`); elsewhere only `/`, a backslash being part of a
+/// name.
+const LOCAL_PATH_SEPARATORS: &[char] = if cfg!(windows) { &['\\', '/'] } else { &['/'] };
+
+/// True when `local` is `dir` or a path under it, with `separators` between
+/// the parts.
+fn local_path_at_or_under(local: &str, dir: &str, separators: &[char]) -> bool {
+    if local == dir {
+        return true;
+    }
+    local
+        .strip_prefix(dir.trim_end_matches(separators))
+        .and_then(|rest| rest.chars().next())
+        .is_some_and(|next| separators.contains(&next))
 }
 
 /// `get -r`: download a directory tree. The exit code answers what the
@@ -95562,16 +95575,43 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         let served = tree.0.lock().unwrap().served.clone();
         assert_eq!(served, ["/home/u/docs/d2/y.txt"], "each file written once");
 
+        // Keyed as the run keys a download: the destination joined with the
+        // remote relative path, `/` kept.
         let twin = local.path().join("d2");
-        let landed = HashMap::from([(
-            twin.join("y.txt").to_string_lossy().into_owned(),
-            (4, String::new()),
-        )]);
+        let written = local.path().join("d2/y.txt").to_string_lossy().into_owned();
+        let landed = HashMap::from([(written.clone(), (4, String::new()))]);
         let message = ambiguous_alias_with_landed(&twin.to_string_lossy(), &landed);
-        assert!(
-            message.contains(&*twin.join("y.txt").to_string_lossy()),
-            "{message}"
-        );
+        assert!(message.contains(&written), "{message}");
+    }
+
+    /// The refusal names the twin's files by their local path under the
+    /// twin's folder. On Windows that path keeps the `/` of the remote
+    /// relative path after the folder (`C:\tmp\d2/y.txt`), and a prefix
+    /// test with `\` alone missed it; on Unix a backslash is part of a
+    /// name, never a separator.
+    #[test]
+    fn a_local_path_under_a_folder_is_found_with_either_windows_slash() {
+        let windows = &['\\', '/'];
+        for local in [
+            "C:\\tmp\\d2/y.txt",
+            "C:\\tmp\\d2\\y.txt",
+            "C:\\tmp\\d2/sub/y.txt",
+            "C:\\tmp\\d2",
+        ] {
+            assert!(
+                local_path_at_or_under(local, "C:\\tmp\\d2", windows),
+                "{local}"
+            );
+        }
+        assert!(!local_path_at_or_under(
+            "C:\\tmp\\d20/y.txt",
+            "C:\\tmp\\d2",
+            windows
+        ));
+        let unix = &['/'];
+        assert!(local_path_at_or_under("/tmp/d2/y.txt", "/tmp/d2/", unix));
+        assert!(!local_path_at_or_under("/tmp/d2\\y.txt", "/tmp/d2", unix));
+        assert!(!local_path_at_or_under("/tmp/d20/y.txt", "/tmp/d2", unix));
     }
 
     #[tokio::test]
