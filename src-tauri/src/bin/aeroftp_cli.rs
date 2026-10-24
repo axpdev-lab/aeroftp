@@ -49800,6 +49800,27 @@ fn benchmark_throughput_at(
         })
 }
 
+/// The protocol of a service that did best at one figure, `lowest` for a
+/// latency and highest for a throughput, among the protocols that measured it.
+/// `None` unless two different protocols measured it: a figure that one
+/// protocol alone measured compares nothing (a `cache` or `local` client has
+/// no latency to set against it), and two profiles over the same protocol are
+/// still one protocol.
+fn benchmark_best_protocol(measured: &[(String, f64)], lowest: bool) -> Option<String> {
+    let mut protocols: Vec<&str> = measured.iter().map(|(p, _)| p.as_str()).collect();
+    protocols.sort_unstable();
+    protocols.dedup();
+    if protocols.len() < 2 {
+        return None;
+    }
+    let best = if lowest {
+        measured.iter().min_by(|a, b| a.1.total_cmp(&b.1))
+    } else {
+        measured.iter().max_by(|a, b| a.1.total_cmp(&b.1))
+    };
+    best.map(|(protocol, _)| protocol.clone())
+}
+
 /// What the comparison says for this network, from the measured figures
 /// only: the most responsive service for frequent syncs of small changes,
 /// the fastest for backups (upload) and for restores (download), and for a
@@ -49891,24 +49912,22 @@ fn print_benchmark_recommendations(
         if protocols.len() < 2 {
             continue;
         }
-        let pick_low = members
+        let measured_latency: Vec<(String, f64)> = members
             .iter()
             .filter_map(|r| latency(r).map(|v| (benchmark_report_access(r), v)))
-            .min_by(|a, b| a.1.total_cmp(&b.1))
-            .map(|(p, _)| p);
-        let pick_high = |op: &str| {
+            .collect();
+        let measured = |op: &str| -> Vec<(String, f64)> {
             members
                 .iter()
                 .filter_map(|r| throughput(r, op).map(|v| (benchmark_report_access(r), v)))
-                .max_by(|a, b| a.1.total_cmp(&b.1))
-                .map(|(p, _)| p)
+                .collect()
         };
         let dash = || "-".to_string();
         rows.push(vec![
             service,
-            pick_low.unwrap_or_else(dash),
-            pick_high("upload").unwrap_or_else(dash),
-            pick_high("download").unwrap_or_else(dash),
+            benchmark_best_protocol(&measured_latency, true).unwrap_or_else(dash),
+            benchmark_best_protocol(&measured("upload"), false).unwrap_or_else(dash),
+            benchmark_best_protocol(&measured("download"), false).unwrap_or_else(dash),
         ]);
     }
     if !rows.is_empty() {
@@ -84813,6 +84832,38 @@ mod tests {
     }
 
     // ── Community Benchmark unit tests ────────────────────────────────
+
+    #[test]
+    fn a_best_protocol_needs_two_measured_protocols() {
+        // Proton Drive: the CLI measured a round trip, AeroFTP's client answers
+        // from its cache and measured none. One figure compares nothing.
+        let latency = vec![("CLI".to_string(), 2110.0)];
+        assert_eq!(benchmark_best_protocol(&latency, true), None);
+        // Two profiles over the same protocol are still one protocol.
+        let upload = vec![("WebDAV".to_string(), 30.0), ("WebDAV".to_string(), 40.0)];
+        assert_eq!(benchmark_best_protocol(&upload, false), None);
+        assert_eq!(benchmark_best_protocol(&[], false), None);
+    }
+
+    #[test]
+    fn a_best_protocol_is_named_between_two_measured_protocols() {
+        let latency = vec![
+            ("REST API".to_string(), 100.1),
+            ("WebDAV".to_string(), 101.3),
+        ];
+        assert_eq!(
+            benchmark_best_protocol(&latency, true).as_deref(),
+            Some("REST API")
+        );
+        let download = vec![
+            ("REST API".to_string(), 39.15),
+            ("WebDAV".to_string(), 22.6),
+        ];
+        assert_eq!(
+            benchmark_best_protocol(&download, false).as_deref(),
+            Some("REST API")
+        );
+    }
 
     #[test]
     fn benchmark_identity_names_pcloud_drive_and_distinguishes_megacmd() {
