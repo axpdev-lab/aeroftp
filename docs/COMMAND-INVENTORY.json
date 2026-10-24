@@ -574,7 +574,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 40,
     "mcp_tools_total": 78,
-    "tauri_commands": 788
+    "tauri_commands": 789
   },
   "mcp": {
     "count": 78,
@@ -998,6 +998,7 @@
       "is_rar_encrypted",
       "file_associations_status",
       "file_associations_set_integration",
+      "take_open_requests",
       "file_associations_set_default",
       "file_associations_open_settings",
       "preview_remote_file",
@@ -1300,7 +1301,7 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "name_unmatched_count": 325,
+    "name_unmatched_count": 326,
     "note": "Name-based structural diff, not a semantic one. `name_matched` are Tauri commands whose token set matches a CLI/MCP/agent command (a LOWER bound on real coverage, since differently-named equivalents are missed). `name_unmatched` is the remainder: an UPPER bound for manual triage, dominated by GUI, OS-integration and internal commands with no command-line meaning, plus real capabilities named differently. Neither figure is a capability-gap count; curating genuine gaps stays manual (tracker #9)."
   },
   "schema_version": 1,
@@ -1369,6 +1370,7 @@
       "resolve_unique_extract_dir",
       "file_associations_status",
       "file_associations_set_integration",
+      "take_open_requests",
       "file_associations_set_default",
       "file_associations_open_settings",
       "ftp_read_file_base64",
@@ -2095,6 +2097,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 788
+    "count": 789
   }
 }

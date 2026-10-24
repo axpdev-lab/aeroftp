@@ -37,7 +37,7 @@ import {
   AeroVaultOverlaySession,
   DeltaEligibilityProbeResult,
   SyncDirection, VerifyPolicy, DeltaTransferStats,
-  CompareReport, RetryPolicy, SyncJournal
+  CompareReport, RetryPolicy, SyncJournal, OpenRequest
 } from './types';
 import { profileOverlayApplyParams } from './utils/profileOverlayUnlock';
 import { cryptUnlockTargetKey, overlayAnchor, type CryptUnlockTarget } from './utils/cryptUnlockTarget';
@@ -215,6 +215,7 @@ import { trashLocalPaths, type HomeCopyChoice, type LocalTrashDeps } from './uti
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
 import { previewRouteFor } from './utils/previewRoute';
+import { useOpenRequests } from './hooks/useOpenRequests';
 import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, isConnectCancelledError, isConnectHardTimeoutError } from './utils/connectCancel';
 import { shouldPersistUsedScan } from './utils/usedScanPersist';
 import { usedScanBoundKey } from './utils/usedScanBound';
@@ -5335,14 +5336,6 @@ const App: React.FC = () => {
     }
   });
 
-  // OS file association: listen for .aerovault/.aerozip files opened via double-click or single-instance forwarding
-  useTauriListener<string>('vault-open-file', (event) => {
-    const vaultPath = event.payload;
-    if (vaultPath && (vaultPath.endsWith('.aerovault') || vaultPath.endsWith('.aerozip'))) {
-      setShowVaultPanel({ mode: 'open', path: vaultPath });
-    }
-  });
-
   // MEGAcmd warmup notice (#275, W1.4): the provider emits this when it has to
   // (re)start the local MEGAcmd server, so the first-call delay is explained
   // rather than mysterious. Same wording as the CLI stderr line; routed through
@@ -5351,54 +5344,6 @@ const App: React.FC = () => {
     window.dispatchEvent(new CustomEvent('aeroftp-toast', {
       detail: { type: 'info', title: t('toast.megacmdWarmup'), duration: 6000 },
     }));
-  });
-
-  // OS file association: a double-clicked .aeroftp-keystore opens Settings
-  // on the Backup tab with the file preloaded for import, instead of just
-  // raising the window (issue #214 pt.4a). SettingsPanel selects the Backup
-  // tab itself from initialKeystoreImportPath.
-  useTauriListener<string>('keystore-open-file', (event) => {
-    const ksPath = event.payload;
-    if (ksPath && ksPath.endsWith('.aeroftp-keystore')) {
-      setSettingsInitialKeystorePath(ksPath);
-      setShowSettingsPanel(true);
-    }
-  });
-
-  // OS file association: a double-clicked plain .aeroftp server-profiles
-  // export opens the import flow (password prompt -> import_server_profiles)
-  // instead of just raising the window (issue #214 pt.4a, plain .aeroftp).
-  // The explicit !endsWith('.aeroftp-keystore') guard keeps a keystore file
-  // from ever reaching the profiles importer, mirroring the backend filter.
-  useTauriListener<string>('servers-open-file', (event) => {
-    const p = event.payload;
-    if (p && p.endsWith('.aeroftp') && !p.endsWith('.aeroftp-keystore')) {
-      importAeroFtpProfileFile(p);
-    }
-  });
-
-  // OS file association / "Open with AeroFTP": general compressed archives
-  // via the shared AeroFTP.Archive ProgID (Deliverable G). Opens the in-app
-  // ArchiveBrowser (with encryption probe) instead of a bare window.
-  useTauriListener<string>('archive-open-file', async (event) => {
-    const archivePath = event.payload;
-    if (!archivePath) return;
-    const lower = archivePath.toLowerCase();
-    let archType: import('./types').ArchiveType = 'zip';
-    if (lower.endsWith('.7z')) archType = '7z';
-    else if (lower.endsWith('.rar')) archType = 'rar';
-    else if (lower.endsWith('.tar') || lower.endsWith('.tgz') || lower.endsWith('.tar.gz') || lower.endsWith('.tar.xz') || lower.endsWith('.tar.bz2')) archType = 'tar';
-    // Probe encryption (best-effort; non-fatal)
-    let encrypted = false;
-    try {
-      if (archType === 'zip') encrypted = await invoke<boolean>('is_zip_encrypted', { archivePath });
-      else if (archType === '7z') encrypted = await invoke<boolean>('is_7z_encrypted', { archivePath });
-      else if (archType === 'rar') encrypted = await invoke<boolean>('is_rar_encrypted', { archivePath });
-      // tar family: unencrypted by definition for our purposes
-    } catch {
-      /* ignore probe failure; open browser anyway */
-    }
-    setArchiveBrowserState({ path: archivePath, type: archType, encrypted });
   });
 
   // Auto-enable debug mode when Cyber theme is active, disable when switching away
@@ -16187,6 +16132,75 @@ const App: React.FC = () => {
   };
 
   const openInFileManager = async (path: string) => { try { await invoke('open_in_file_manager', { path }); } catch { } };
+
+  // Files the OS hands to AeroFTP (double-click on an associated format,
+  // "Open with AeroFTP" on any file, `aeroftp <path>`, a macOS open event),
+  // drained by useOpenRequests once the vault boot is done and the app is
+  // unlocked.
+  const openArchiveInBrowser = async (archivePath: string) => {
+    const lower = archivePath.toLowerCase();
+    let archType: import('./types').ArchiveType = 'zip';
+    if (lower.endsWith('.7z')) archType = '7z';
+    else if (lower.endsWith('.rar')) archType = 'rar';
+    else if (lower.endsWith('.tar') || lower.endsWith('.tgz') || lower.endsWith('.tar.gz') || lower.endsWith('.tar.xz') || lower.endsWith('.tar.bz2')) archType = 'tar';
+    // Probe encryption (best-effort; non-fatal)
+    let encrypted = false;
+    try {
+      if (archType === 'zip') encrypted = await invoke<boolean>('is_zip_encrypted', { archivePath });
+      else if (archType === '7z') encrypted = await invoke<boolean>('is_7z_encrypted', { archivePath });
+      else if (archType === 'rar') encrypted = await invoke<boolean>('is_rar_encrypted', { archivePath });
+      // tar family: unencrypted by definition for our purposes
+    } catch {
+      /* ignore probe failure; open browser anyway */
+    }
+    setArchiveBrowserState({ path: archivePath, type: archType, encrypted });
+  };
+
+  // Any other file opens in AeroFile on its folder, in the active panel of
+  // the dual view, with the file selected and previewed as a double-click
+  // would (AeroImage for a picture, the text preview with its Edit button for
+  // text and code). A folder opens on itself (Ehud, #347).
+  const openLocalPathInAeroFile = async (request: OpenRequest) => {
+    setShowConnectionScreen(false);
+    // A live session stays connected; only its remote panel steps aside.
+    if (isConnected) setShowRemotePanel(false);
+    const panelId: 'local' | 'local2' = showDualLocalPanel ? activeLocalPanelId : 'local';
+    const target = panelId === 'local2'
+      ? await changeLocalDirectory2(request.folder)
+      : await changeLocalDirectory(request.folder);
+    if (target === null || target === undefined) return;
+    setActivePanel('local');
+    setActiveLocalPanelId(panelId);
+    if (request.isDir) return;
+    (panelId === 'local2' ? setSelectedLocalFiles2 : setSelectedLocalFiles)(new Set([request.name]));
+    if (previewRouteFor(request.name) !== 'universal-preview') return;
+    const listed = await invoke<LocalFile[]>('get_local_files', { path: request.folder, showHidden: true }).catch(() => []);
+    const file = listed.find(entry => entry.name === request.name);
+    if (file) await openUniversalPreview(file, false);
+  };
+
+  const handleOpenRequest = async (request: OpenRequest) => {
+    switch (request.kind) {
+      case 'vault':
+        setShowVaultPanel({ mode: 'open', path: request.path });
+        break;
+      case 'keystore':
+        // SettingsPanel selects the Backup tab itself from the preloaded path.
+        setSettingsInitialKeystorePath(request.path);
+        setShowSettingsPanel(true);
+        break;
+      case 'profiles':
+        importAeroFtpProfileFile(request.path);
+        break;
+      case 'archive':
+        await openArchiveInBrowser(request.path);
+        break;
+      case 'local':
+        await openLocalPathInAeroFile(request);
+        break;
+    }
+  };
+  useOpenRequests(vaultBootComplete && !isAppLocked && accountLockState === 'ready', handleOpenRequest);
 
   const profileConnector = useRef<ProfileConnector | null>(null);
   const registerProfileConnector = useCallback<RegisterProfileConnector>(connector => {
