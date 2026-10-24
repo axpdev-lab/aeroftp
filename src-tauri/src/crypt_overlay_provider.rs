@@ -1434,8 +1434,19 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
-        let enc = self.map(path, false, AccessKind::Write)?;
-        self.inner.delete_permanent(&enc).await
+        // Under rclone `off`+suffix a folder is `name` on the wire, not
+        // `name.bin`: a live one resolves by probing. An item already gone
+        // from its path (purged from the trash by the path it had) cannot be
+        // probed, so after the file form the folder form is tried too.
+        let (enc, is_dir) = self.map_existing(path, AccessKind::Write).await?;
+        if self.inner.delete_permanent(&enc).await? {
+            return Ok(true);
+        }
+        let enc_dir = self.map(path, true, AccessKind::Write)?;
+        if is_dir || enc_dir == enc {
+            return Ok(false);
+        }
+        self.inner.delete_permanent(&enc_dir).await
     }
 
     fn supports_chmod(&self) -> bool {
@@ -4357,6 +4368,38 @@ pub(crate) mod tests {
         }
     }
 
+    /// rclone `off`+suffix: a folder is `name` on the wire and a file
+    /// `name.bin`. A purge reaches a folder live (Proton's CLI purges there)
+    /// and one already in the trash under the path it had, and a file that is
+    /// in the trash still by its suffixed name.
+    #[tokio::test]
+    async fn off_mode_purge_reaches_a_directory_live_or_in_the_trash() {
+        let keys = rclone_keys(FilenameEncryption::Off, true, ".bin");
+        let mut mem = MemProvider::new();
+        mem.seed_raw_dir("/Vault");
+        mem.seed_raw_dir("/Vault/live");
+        mem.trash.lock().unwrap().push("/Vault/gone".into());
+        mem.trash.lock().unwrap().push("/Vault/old.txt.bin".into());
+        let mut provider = CryptOverlayProvider::new(Box::new(mem), keys, "/Vault");
+
+        assert!(provider.delete_permanent("/Vault/live").await.unwrap());
+        assert!(provider.delete_permanent("/Vault/gone").await.unwrap());
+        assert!(provider.delete_permanent("/Vault/old.txt").await.unwrap());
+        assert!(!provider.delete_permanent("/Vault/never").await.unwrap());
+
+        let mem = provider
+            .inner
+            .as_any_mut()
+            .downcast_mut::<MemProvider>()
+            .unwrap();
+        assert!(!mem
+            .dirs
+            .lock()
+            .unwrap()
+            .contains(&"/Vault/live".to_string()));
+        assert!(mem.trash.lock().unwrap().is_empty());
+    }
+
     /// V8 regression (pre-tag audit): rclone `off`+suffix encodes file leaves
     /// as `name.bin` and directories as `name`; the type-agnostic ops
     /// (stat/exists/rename/chmod) must resolve the directory form instead of
@@ -4962,6 +5005,9 @@ pub(crate) mod tests {
         /// Trash hooks of the inner provider, to check the overlay forwards them.
         trash_note: Option<&'static str>,
         purge_live: bool,
+        /// Wire paths of items already in the trash, which `delete_permanent`
+        /// finds by the path they had.
+        trash: Mutex<Vec<String>>,
     }
 
     impl MemProvider {
@@ -4980,6 +5026,7 @@ pub(crate) mod tests {
                 switch_user_on_probe: None,
                 trash_note: None,
                 purge_live: false,
+                trash: Mutex::new(Vec::new()),
             }
         }
         fn hidden(&self, path: &str) -> bool {
@@ -5035,6 +5082,25 @@ pub(crate) mod tests {
         }
         fn purges_live_path(&self) -> bool {
             self.purge_live
+        }
+        /// A live item is trashed and purged in one step; an item already in
+        /// the trash is found by the path it had.
+        async fn delete_permanent(&mut self, p: &str) -> Result<bool, ProviderError> {
+            let p = self.resolve(p);
+            let live_file = self.files.lock().unwrap().remove(&p).is_some();
+            let live_dir = {
+                let mut dirs = self.dirs.lock().unwrap();
+                let before = dirs.len();
+                dirs.retain(|d| d != &p);
+                dirs.len() < before
+            };
+            let trashed = {
+                let mut trash = self.trash.lock().unwrap();
+                let before = trash.len();
+                trash.retain(|t| t != &p);
+                trash.len() < before
+            };
+            Ok(live_file || live_dir || trashed)
         }
         fn provider_type(&self) -> ProviderType {
             ProviderType::Ftp

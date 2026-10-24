@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-use super::engine::many_files_result;
+use super::engine::{many_files_result, purge_deleted_files};
 use super::*;
 
 #[test]
@@ -846,6 +846,12 @@ mod engine_runs {
         inner: MemRemote,
         kind: TrashKind,
         trash: Arc<Mutex<Vec<String>>>,
+        /// Every path `delete_permanent` was called with, in call order.
+        purge_calls: Arc<Mutex<Vec<String>>>,
+        /// `delete_permanent` never answers, as a server that stopped.
+        hang_purge: bool,
+        /// `delete_permanent` raises this token, as a Ctrl+C during the purge.
+        cancel_on_purge: Option<CancellationToken>,
     }
 
     #[async_trait]
@@ -940,6 +946,13 @@ mod engine_runs {
             self.kind == TrashKind::LivePath
         }
         async fn delete_permanent(&mut self, p: &str) -> Result<bool, ProviderError> {
+            self.purge_calls.lock().unwrap().push(p.to_string());
+            if self.hang_purge {
+                std::future::pending::<()>().await;
+            }
+            if let Some(token) = &self.cancel_on_purge {
+                token.cancel();
+            }
             if self.kind == TrashKind::OriginalPath {
                 let mut trash = self.trash.lock().unwrap();
                 let before = trash.len();
@@ -970,6 +983,9 @@ mod engine_runs {
             inner: MemRemote(state.clone()),
             kind,
             trash: trash.clone(),
+            purge_calls: Arc::default(),
+            hang_purge: false,
+            cancel_on_purge: None,
         });
         (state, trash, provider)
     }
@@ -1075,6 +1091,79 @@ mod engine_runs {
                 outcome.report.summary.errors
             );
         }
+    }
+
+    /// A remote with the many-files workload's three files in its trash, the
+    /// paths its purge was asked for, and the provider.
+    fn purging_remote(
+        hang_purge: bool,
+        cancel_on_purge: Option<CancellationToken>,
+    ) -> (Arc<Mutex<Vec<String>>>, Box<dyn StorageProvider>) {
+        let (state, _) = remote();
+        let purge_calls = Arc::new(Mutex::new(Vec::new()));
+        let provider = Box::new(TrashKeepingRemote {
+            inner: MemRemote(state),
+            kind: TrashKind::OriginalPath,
+            trash: Arc::new(Mutex::new((0..3).map(|i| format!("/data/f{i}")).collect())),
+            purge_calls: purge_calls.clone(),
+            hang_purge,
+            cancel_on_purge,
+        });
+        (purge_calls, provider)
+    }
+
+    #[tokio::test]
+    async fn the_many_files_purge_ends_at_its_budget_not_one_bound_per_file() {
+        let (calls, mut provider) = purging_remote(true, None);
+        let mut errors = Vec::new();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            purge_deleted_files(
+                &mut provider,
+                &[0, 1, 2],
+                &|i| format!("/data/f{i}"),
+                &CancellationToken::new(),
+                std::time::Duration::from_millis(200),
+                &mut errors,
+            ),
+        )
+        .await
+        .expect("the purge ends at its budget");
+        // The first purge never answered: the pass gave up there instead of
+        // waiting the same bound on each file after it.
+        assert_eq!(calls.lock().unwrap().len(), 1);
+        assert!(
+            errors
+                .iter()
+                .any(|e| e
+                    .contains("3 of the 3 files the many-files workload deleted were not purged")),
+            "{errors:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_many_files_purge_ends_at_a_stop() {
+        let stop = CancellationToken::new();
+        let (calls, mut provider) = purging_remote(false, Some(stop.clone()));
+        let mut errors = Vec::new();
+        purge_deleted_files(
+            &mut provider,
+            &[0, 1, 2],
+            &|i| format!("/data/f{i}"),
+            &stop,
+            std::time::Duration::from_secs(120),
+            &mut errors,
+        )
+        .await;
+        // The stop came during the first purge, which finished; the other
+        // two were not started.
+        assert_eq!(calls.lock().unwrap().len(), 1);
+        assert!(
+            errors.iter().any(|e| e
+                .contains("2 of the 3 files the many-files workload deleted were not purged")
+                && e.contains("stopped")),
+            "{errors:?}"
+        );
     }
 
     #[tokio::test]

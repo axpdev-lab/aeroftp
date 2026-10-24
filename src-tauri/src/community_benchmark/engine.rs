@@ -1591,7 +1591,19 @@ async fn run_many_files_workload(
         out.runs += del_ms.len() as u32;
     }
 
-    purge_deleted_files(provider, &deleted, &remote_name, &mut out.errors).await;
+    // The purge costs about what a delete does: as long as delete-all took,
+    // plus one step bound for a slow start.
+    let budget =
+        CLEANUP_STEP_TIMEOUT + Duration::from_secs_f64(del_ms.iter().sum::<f64>() / 1000.0);
+    purge_deleted_files(
+        provider,
+        &deleted,
+        &remote_name,
+        stop,
+        budget,
+        &mut out.errors,
+    )
+    .await;
 
     out
 }
@@ -1602,10 +1614,16 @@ async fn run_many_files_workload(
 /// The purge stays outside the timing, so delete-all keeps measuring plain
 /// deletes. A client that purges only a live path (Proton's CLI) or cannot
 /// purge (Koofr) leaves them there, and the report says so.
-async fn purge_deleted_files(
+///
+/// The whole pass ends at `budget` and at `stop`, a cancel or the profile
+/// timeout: a server that stops answering must not hold the report one
+/// cleanup bound per file. What was not purged is counted in the report.
+pub(super) async fn purge_deleted_files(
     provider: &mut Box<dyn StorageProvider>,
     deleted: &[u32],
     remote_name: &(dyn Fn(u32) -> String + Sync),
+    stop: &CancellationToken,
+    budget: Duration,
     errors: &mut Vec<String>,
 ) {
     if deleted.is_empty() {
@@ -1624,20 +1642,37 @@ async fn purge_deleted_files(
         ));
         return;
     }
+    let deadline = tokio::time::Instant::now() + budget;
     let mut failed = 0usize;
     let mut first_error: Option<String> = None;
-    for &i in deleted {
-        match bounded(provider.delete_permanent(&remote_name(i))).await {
-            Some(Ok(_)) => {}
-            Some(Err(e)) => {
+    let mut not_purged: Option<(usize, String)> = None;
+    for (n, &i) in deleted.iter().enumerate() {
+        let left = deleted.len() - n;
+        if stop.is_cancelled() {
+            not_purged = Some((left, "the run was stopped".into()));
+            break;
+        }
+        let path = remote_name(i);
+        let purge = until_stopped(stop, provider.delete_permanent(&path));
+        match tokio::time::timeout_at(deadline, purge).await {
+            Ok(Some(Ok(_))) => {}
+            Ok(Some(Err(e))) => {
                 failed += 1;
                 first_error.get_or_insert_with(|| e.to_string());
             }
-            None => {
-                failed += 1;
-                first_error.get_or_insert_with(|| {
-                    format!("no answer within {} s", CLEANUP_STEP_TIMEOUT.as_secs())
-                });
+            Ok(None) => {
+                not_purged = Some((left, "the run was stopped".into()));
+                break;
+            }
+            Err(_) => {
+                not_purged = Some((
+                    left,
+                    format!(
+                        "the purge took longer than its {} s limit",
+                        budget.as_secs()
+                    ),
+                ));
+                break;
             }
         }
     }
@@ -1647,6 +1682,14 @@ async fn purge_deleted_files(
             failed,
             deleted.len(),
             first
+        ));
+    }
+    if let Some((left, why)) = not_purged {
+        errors.push(format!(
+            "{} of the {} files the many-files workload deleted were not purged and stay in the provider's trash: {}",
+            left,
+            deleted.len(),
+            why
         ));
     }
 }
