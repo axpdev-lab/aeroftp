@@ -36658,8 +36658,14 @@ impl CliGetScan {
                     elsewhere.push(planned);
                 }
             }
-            for subdir in &subdirs {
-                let Some(relative) = self.scope.relative_path(subdir) else {
+            // A folder is followed only under a local path its files could be
+            // written to: the checks each file gets, applied to the folder. One
+            // that fails them is not listed, and it is an error of the run, as
+            // a folder the scan cannot list is: what it holds is not
+            // downloaded.
+            let mut followed: Vec<String> = Vec::with_capacity(subdirs.len());
+            for subdir in subdirs {
+                let Some(relative) = self.scope.relative_path(&subdir) else {
                     self.listing_errors
                         .push(format!("cannot map {} under {}", subdir, self.remote_dir));
                     continue;
@@ -36668,12 +36674,18 @@ impl CliGetScan {
                     if !self.quiet {
                         eprintln!("Warning: skipping unsafe directory path: {}", subdir);
                     }
+                    self.listing_errors
+                        .push(format!("unsafe local path for {}", subdir));
                     continue;
                 };
                 let local_dir = self.local_base.join(relative);
-                if verify_path_within_root(&local_dir, &self.local_base).is_ok() {
-                    listing.dirs.push(local_dir);
+                if let Err(refusal) = verify_path_within_root(&local_dir, &self.local_base) {
+                    self.listing_errors
+                        .push(format!("not following {}: {}", subdir, refusal));
+                    continue;
                 }
+                listing.dirs.push(local_dir);
+                followed.push(subdir);
             }
 
             // Different provider root aliases must never publish two sources
@@ -36698,9 +36710,9 @@ impl CliGetScan {
             }
             self.targets.extend(named);
 
-            self.dirs += subdirs.len();
+            self.dirs += followed.len();
             self.queue
-                .extend(subdirs.into_iter().map(|subdir| (subdir, depth + 1)));
+                .extend(followed.into_iter().map(|subdir| (subdir, depth + 1)));
             for file in listing.files.iter().chain(&elsewhere) {
                 self.planned += 1;
                 self.planned_bytes += file.size;
@@ -95425,6 +95437,39 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             !served.iter().any(|path| path.ends_with("/x.txt")),
             "nothing of the refused folder was fetched: {served:?}"
         );
+    }
+
+    /// A folder whose local path is refused (a drive letter) is not
+    /// listed: nothing under it could be written, and its listing spent a
+    /// request and the scan's entry budget for files dropped one by one. It
+    /// stays an error of the run (exit 4), as a folder not followed is.
+    #[test]
+    fn get_recursive_does_not_list_a_folder_it_cannot_write_locally() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let tree = LiveTree::of(listed_remote(
+            &[
+                (
+                    "/root",
+                    &[
+                        ("a.txt", "/root/a.txt", Some(4)),
+                        ("C:x", "/root/C:x", None),
+                    ],
+                ),
+                ("/root/C:x", &[("f.txt", "/root/C:x/f.txt", Some(4))]),
+            ],
+            &[("/root/a.txt", b"aaaa"), ("/root/C:x/f.txt", b"ffff")],
+        ));
+        let (code, local) = get_recursive_from_live_tree(
+            &tree,
+            "/root",
+            &live_cli(),
+            Arc::new(AtomicBool::new(false)),
+            |_| {},
+        );
+        let listed = tree.0.lock().unwrap().listed.clone();
+        assert_eq!(listed, ["/root"], "the refused folder is not listed");
+        assert_eq!(code, 4, "a folder not followed makes the run partial");
+        assert_eq!(std::fs::read(local.path().join("a.txt")).unwrap(), b"aaaa");
     }
 
     /// A file a listing names outside its own folder waits for the end of the
