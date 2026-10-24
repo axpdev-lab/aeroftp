@@ -5037,7 +5037,8 @@
             "closeTab": "Isara ang Tab",
             "home": "Home",
             "maxReached": "Naabot na ang pinakamataas na bilang ng mga tab",
-            "newTab": "Bagong Tab"
+            "newTab": "Bagong Tab",
+            "foldersNotOpened": "Mga folder na hindi nabuksan: {count}"
         },
         "tags": {
             "addTag": "Magdagdag ng Tag",

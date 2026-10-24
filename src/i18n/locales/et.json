@@ -5037,7 +5037,8 @@
             "closeTab": "Sulge vahekaart",
             "home": "Avaleht",
             "maxReached": "Vahekaartide maksimaalne arv on saavutatud",
-            "newTab": "Uus vahekaart"
+            "newTab": "Uus vahekaart",
+            "foldersNotOpened": "Avamata kaustad: {count}"
         },
         "tags": {
             "addTag": "Lisa silt",

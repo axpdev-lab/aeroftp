@@ -5037,7 +5037,8 @@
             "closeTab": "Tutup Tab",
             "home": "Laman Utama",
             "maxReached": "Had maksimum tab telah dicapai",
-            "newTab": "Tab Baharu"
+            "newTab": "Tab Baharu",
+            "foldersNotOpened": "Folder tidak dibuka: {count}"
         },
         "tags": {
             "addTag": "Tambah Tag",

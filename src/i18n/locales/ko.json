@@ -5037,7 +5037,8 @@
             "closeTab": "탭 닫기",
             "home": "홈",
             "maxReached": "최대 탭 수에 도달했습니다",
-            "newTab": "새 탭"
+            "newTab": "새 탭",
+            "foldersNotOpened": "열지 못한 폴더: {count}"
         },
         "tags": {
             "addTag": "태그 추가",

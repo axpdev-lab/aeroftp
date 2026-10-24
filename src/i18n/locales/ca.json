@@ -5037,7 +5037,8 @@
             "closeTab": "Tanca la pestanya",
             "home": "Inici",
             "maxReached": "S'ha arribat al màxim de pestanyes",
-            "newTab": "Nova pestanya"
+            "newTab": "Nova pestanya",
+            "foldersNotOpened": "Carpetes no obertes: {count}"
         },
         "tags": {
             "addTag": "Afegeix etiqueta",

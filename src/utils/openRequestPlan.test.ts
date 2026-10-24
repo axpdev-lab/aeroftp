@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import type { OpenRequest } from '../types';
 import type { LocalTab } from '../types/aerofile';
-import { addFolderTabs, findTabFor, mergeOpenBatch, openInFolderTab, planLocalOpen, sameLocalFolder, takeTabSelection } from './openRequestPlan';
+import { addFolderTabs, findTabFor, mergeOpenBatch, openInFolderTab, planLocalOpen, sameLocalFolder, settleReusedTab, takeTabSelection } from './openRequestPlan';
 
 const file = (folder: string, name: string): OpenRequest => ({
     kind: 'local', path: `${folder}/${name}`, folder, name, isDir: false,
@@ -70,9 +70,37 @@ it('reuses the tab a folder already has instead of opening a second one', () => 
         { folder: '/b', names: ['y.png', 'z.txt'], preview: 'y.png' },
         { folder: '/c', names: ['w.png'], preview: 'w.png' },
     ], newTab);
-    expect(next.map(t => t.id)).toEqual(['a', 'b', 'new-/c']);
-    expect(next[1].select).toEqual(['y.png', 'z.txt']);
-    expect(addFolderTabs(tabs, [{ folder: '/d', names: [], preview: null }], newTab, 2)).toEqual(tabs);
+    expect(next.tabs.map(t => t.id)).toEqual(['a', 'b', 'new-/c']);
+    expect(next.tabs[1].select).toEqual(['y.png', 'z.txt']);
+    expect(next.skipped).toBe(0);
+});
+
+it('counts the folders left out at the tab limit', () => {
+    const tabs: LocalTab[] = [{ id: 'a', path: '/a', label: 'a', scrollTop: 0 }];
+    const newTab = (g: { folder: string }): LocalTab => ({ id: `new-${g.folder}`, path: g.folder, label: g.folder, scrollTop: 0 });
+    const placed = addFolderTabs(tabs, [
+        { folder: '/a', names: ['x.png'], preview: 'x.png' },
+        { folder: '/b', names: [], preview: null },
+        { folder: '/c', names: [], preview: null },
+        { folder: '/d', names: [], preview: null },
+    ], newTab, 2);
+    expect(placed.tabs.map(t => t.id)).toEqual(['a', 'new-/b']);
+    // The existing /a tab takes its files; /c and /d find no room.
+    expect(placed.skipped).toBe(2);
+});
+
+it('gives the tab active before a reuse its own folder back', () => {
+    // The panel reached /b while tab a was still active, so a followed it.
+    const tabs: LocalTab[] = [
+        { id: 'a', path: '/b', label: 'b', scrollTop: 0 },
+        { id: 'b', path: '/b', label: 'b', scrollTop: 0, select: ['x.png'] },
+    ];
+    expect(settleReusedTab(tabs, 'b', { id: 'a', path: '/home/me/a' })).toEqual([
+        { id: 'a', path: '/home/me/a', label: 'a', scrollTop: 0 },
+        { id: 'b', path: '/b', label: 'b', scrollTop: 0 },
+    ]);
+    // Reusing the active tab itself changes nothing else.
+    expect(settleReusedTab(tabs, 'b', { id: 'b', path: '/old' })[1]).toEqual({ id: 'b', path: '/b', label: 'b', scrollTop: 0 });
 });
 
 it('compares folders the way each platform names them', () => {

@@ -5037,7 +5037,8 @@
             "closeTab": "Cau Tab",
             "home": "Cartref",
             "maxReached": "Cyrhaeddwyd y nifer mwyaf o dabiau",
-            "newTab": "Tab Newydd"
+            "newTab": "Tab Newydd",
+            "foldersNotOpened": "Ffolderi heb eu hagor: {count}"
         },
         "tags": {
             "addTag": "Ychwanegu Tag",

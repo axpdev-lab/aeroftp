@@ -5037,7 +5037,8 @@
             "closeTab": "关闭标签页",
             "home": "主页",
             "maxReached": "已达到最大标签页数量",
-            "newTab": "新建标签页"
+            "newTab": "新建标签页",
+            "foldersNotOpened": "未打开的文件夹：{count}"
         },
         "tags": {
             "addTag": "添加标签",

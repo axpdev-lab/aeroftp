@@ -5037,7 +5037,8 @@
             "closeTab": "टैब बंद करें",
             "home": "होम",
             "maxReached": "अधिकतम टैब सीमा पहुंच गई",
-            "newTab": "नया टैब"
+            "newTab": "नया टैब",
+            "foldersNotOpened": "न खोले गए फ़ोल्डर: {count}"
         },
         "tags": {
             "addTag": "टैग जोड़ें",

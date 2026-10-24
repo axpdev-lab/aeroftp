@@ -17,7 +17,7 @@
 
 import type { OpenRequest } from '../types';
 import type { LocalTab } from '../types/aerofile';
-import { isWindowsLocalPath, normalizeLocalPath } from './localPath';
+import { isWindowsLocalPath, localPathBasename, normalizeLocalPath } from './localPath';
 
 export interface LocalOpenGroup {
     folder: string;
@@ -104,14 +104,16 @@ export function findTabFor(tabs: readonly LocalTab[], folder: string): LocalTab 
 
 /** The tabs with one more per further folder of a batch, each selecting its
  *  files when first shown; a folder that already has a tab gets the files
- *  added to that tab instead. At most `max` tabs in all. */
+ *  added to that tab instead. At most `max` tabs in all: `skipped` counts the
+ *  folders left out, for the caller to say so. */
 export function addFolderTabs(
     tabs: readonly LocalTab[],
     groups: readonly LocalOpenGroup[],
     newTab: (group: LocalOpenGroup) => LocalTab,
     max = 12,
-): LocalTab[] {
+): { tabs: LocalTab[]; skipped: number } {
     const next = [...tabs];
+    let skipped = 0;
     for (const group of groups) {
         const index = next.findIndex(tab => sameLocalFolder(tab.path, group.folder));
         if (index >= 0) {
@@ -120,9 +122,11 @@ export function addFolderTabs(
             if (select.length > 0) next[index] = { ...next[index], select };
         } else if (next.length < max) {
             next.push(newTab(group));
+        } else {
+            skipped++;
         }
     }
-    return next;
+    return { tabs: next, skipped };
 }
 
 /** Opening `names` of `folder` in the tab that already shows it: the names
@@ -138,4 +142,20 @@ export function openInFolderTab(
     if (!tab) return { tab, names: [...names], tabs: [...tabs] };
     const taken = takeTabSelection(tabs, tab.id);
     return { tab, names: [...taken.select, ...names.filter(name => !taken.select.includes(name))], tabs: taken.tabs };
+}
+
+/** The tabs once the panel has reached a folder in the tab that already
+ *  showed it: that tab drops the files it was waiting to select, and the tab
+ *  active before gets its own folder back. The panel moved while that tab was
+ *  still the active one, so it briefly followed the panel. */
+export function settleReusedTab(
+    tabs: readonly LocalTab[],
+    reusedId: string,
+    previous: { id: string | null; path: string },
+): LocalTab[] {
+    return takeTabSelection(tabs, reusedId).tabs.map(tab => (
+        tab.id === previous.id && tab.id !== reusedId && previous.path
+            ? { ...tab, path: previous.path, label: localPathBasename(previous.path) || '/' }
+            : tab
+    ));
 }

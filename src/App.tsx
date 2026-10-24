@@ -216,7 +216,7 @@ import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
 import { previewRouteFor } from './utils/previewRoute';
 import { useOpenRequests } from './hooks/useOpenRequests';
-import { addFolderTabs, mergeOpenBatch, openInFolderTab, planLocalOpen, sameLocalFolder, takeTabSelection, type LastLocalOpen } from './utils/openRequestPlan';
+import { addFolderTabs, mergeOpenBatch, openInFolderTab, planLocalOpen, sameLocalFolder, settleReusedTab, takeTabSelection, type LastLocalOpen, type LocalOpenGroup } from './utils/openRequestPlan';
 import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, isConnectCancelledError, isConnectHardTimeoutError } from './utils/connectCancel';
 import { shouldPersistUsedScan } from './utils/usedScanPersist';
 import { usedScanBoundKey } from './utils/usedScanBound';
@@ -16215,18 +16215,19 @@ const App: React.FC = () => {
     if (!merged) {
       // A folder that already has a tab opens in that tab, not in a copy,
       // and the files that tab was still waiting to select stay selected.
+      // The tab switches only once the folder has loaded: a failed load
+      // leaves every tab where it was.
       const activeTabId = panelId === 'local2' ? activeLocalTabId2 : activeLocalTabId;
+      const previous = { id: activeTabId, path: shownPath };
       const reuse = openInFolderTab(tabs, plan.folder, plan.names);
-      if (reuse.tab && reuse.tab.id !== activeTabId) {
-        (panelId === 'local2' ? setActiveLocalTabId2 : setActiveLocalTabId)(reuse.tab.id);
-      }
       const target = panelId === 'local2'
         ? await changeLocalDirectory2(plan.folder)
         : await changeLocalDirectory(plan.folder, { localOnly: true });
       if (target === null || target === undefined) return;
       if (reuse.tab) {
         const reusedId = reuse.tab.id;
-        setTabs(prev => takeTabSelection(prev, reusedId).tabs);
+        if (reusedId !== activeTabId) (panelId === 'local2' ? setActiveLocalTabId2 : setActiveLocalTabId)(reusedId);
+        setTabs(prev => settleReusedTab(prev, reusedId, previous));
       }
       opened = reuse.names;
     }
@@ -16236,13 +16237,17 @@ const App: React.FC = () => {
     lastLocalOpenRef.current = { panelId, folder: plan.folder, names, at: now };
     if (others.length > 0) {
       const prefix = panelId === 'local2' ? 'tab2' : 'tab';
-      setTabs(prev => addFolderTabs(prev, others, group => ({
+      const newTab = (group: LocalOpenGroup): LocalTab => ({
         id: `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         path: group.folder,
         label: localPathBasename(group.folder) || '/',
         scrollTop: 0,
         ...(group.names.length > 0 ? { select: group.names } : {}),
-      })));
+      });
+      setTabs(prev => addFolderTabs(prev, others, newTab).tabs);
+      // Folders past the tab limit are not opened; say how many.
+      const { skipped } = addFolderTabs(tabs, others, newTab);
+      if (skipped > 0) notify.warning(t('localTabs.maxReached'), t('localTabs.foldersNotOpened', { count: skipped }));
     }
     if (names.length === 0) return;
     // A search or tag filter left on the panel would hide the opened rows.

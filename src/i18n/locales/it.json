@@ -5432,7 +5432,8 @@
             "closeTab": "Chiudi scheda",
             "home": "Home",
             "maxReached": "Numero massimo di schede raggiunto",
-            "newTab": "Nuova scheda"
+            "newTab": "Nuova scheda",
+            "foldersNotOpened": "Cartelle non aperte: {count}"
         },
         "tags": {
             "addTag": "Aggiungi etichetta",

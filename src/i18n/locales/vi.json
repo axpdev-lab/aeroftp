@@ -5037,7 +5037,8 @@
             "closeTab": "Đóng tab",
             "home": "Trang chủ",
             "maxReached": "Đã đạt số lượng tab tối đa",
-            "newTab": "Tab mới"
+            "newTab": "Tab mới",
+            "foldersNotOpened": "Thư mục chưa mở: {count}"
         },
         "tags": {
             "addTag": "Thêm nhãn",

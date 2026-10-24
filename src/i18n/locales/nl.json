@@ -5037,7 +5037,8 @@
             "closeTab": "Tabblad sluiten",
             "home": "Start",
             "maxReached": "Maximum aantal tabbladen bereikt",
-            "newTab": "Nieuw tabblad"
+            "newTab": "Nieuw tabblad",
+            "foldersNotOpened": "Niet geopende mappen: {count}"
         },
         "tags": {
             "addTag": "Tag toevoegen",

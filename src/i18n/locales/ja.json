@@ -5037,7 +5037,8 @@
             "closeTab": "タブを閉じる",
             "home": "ホーム",
             "maxReached": "タブの最大数に達しました",
-            "newTab": "新しいタブ"
+            "newTab": "新しいタブ",
+            "foldersNotOpened": "開かれなかったフォルダー：{count}"
         },
         "tags": {
             "addTag": "タグを追加",

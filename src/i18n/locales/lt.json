@@ -5037,7 +5037,8 @@
             "closeTab": "Uždaryti skirtuką",
             "home": "Pagrindinis",
             "maxReached": "Pasiektas didžiausias skirtukų skaičius",
-            "newTab": "Naujas skirtukas"
+            "newTab": "Naujas skirtukas",
+            "foldersNotOpened": "Neatidaryti aplankai: {count}"
         },
         "tags": {
             "addTag": "Pridėti žymą",

@@ -5037,7 +5037,8 @@
             "closeTab": "Pechar lapela",
             "home": "Inicio",
             "maxReached": "Alcanzouse o número máximo de lapelas",
-            "newTab": "Nova lapela"
+            "newTab": "Nova lapela",
+            "foldersNotOpened": "Cartafoles sen abrir: {count}"
         },
         "tags": {
             "addTag": "Engadir etiqueta",

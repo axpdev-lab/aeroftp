@@ -5037,7 +5037,8 @@
             "closeTab": "Închide fila",
             "home": "Acasă",
             "maxReached": "Numărul maxim de file a fost atins",
-            "newTab": "Filă nouă"
+            "newTab": "Filă nouă",
+            "foldersNotOpened": "Foldere nedeschise: {count}"
         },
         "tags": {
             "addTag": "Adaugă etichetă",

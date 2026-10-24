@@ -5037,7 +5037,8 @@
             "closeTab": "Fermer l'onglet",
             "home": "Accueil",
             "maxReached": "Nombre maximum d'onglets atteint",
-            "newTab": "Nouvel onglet"
+            "newTab": "Nouvel onglet",
+            "foldersNotOpened": "Dossiers non ouverts : {count}"
         },
         "tags": {
             "addTag": "Ajouter un tag",

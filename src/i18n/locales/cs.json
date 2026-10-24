@@ -5037,7 +5037,8 @@
             "closeTab": "Zavřít kartu",
             "home": "Domů",
             "maxReached": "Byl dosažen maximální počet karet",
-            "newTab": "Nová karta"
+            "newTab": "Nová karta",
+            "foldersNotOpened": "Neotevřené složky: {count}"
         },
         "tags": {
             "addTag": "Přidat štítek",

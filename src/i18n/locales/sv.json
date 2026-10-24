@@ -5037,7 +5037,8 @@
             "closeTab": "Stäng flik",
             "home": "Hem",
             "maxReached": "Maximalt antal flikar uppnått",
-            "newTab": "Ny flik"
+            "newTab": "Ny flik",
+            "foldersNotOpened": "Ej öppnade mappar: {count}"
         },
         "tags": {
             "addTag": "Lägg till tagg",
