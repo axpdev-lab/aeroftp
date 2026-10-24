@@ -36,6 +36,10 @@ const MAX_LIST_PAGES: u32 = 100;
 
 /// A full final page needs one lookahead to distinguish exactly the cap
 /// from truncation. Display may warn and retain the capped prefix; probes may not.
+fn incomplete_listing_error() -> ProviderError {
+    ProviderError::ParseError("FileLu listing page limit reached before completion".into())
+}
+
 fn listing_is_truncated(
     page: u32,
     has_entries: bool,
@@ -178,6 +182,19 @@ struct FolderListResult {
     files: Vec<FileEntry>,
     #[serde(default)]
     folders: Vec<FolderEntry>,
+    /// Derived locally, never accepted from the API response.
+    #[serde(skip)]
+    truncated: bool,
+}
+
+impl FolderListResult {
+    fn require_complete(self) -> Result<Self, ProviderError> {
+        if self.truncated {
+            Err(incomplete_listing_error())
+        } else {
+            Ok(self)
+        }
+    }
 }
 
 /// Top-level upload server response from /upload/server
@@ -642,13 +659,14 @@ impl FileLuProvider {
     /// Support confirmed on 2026-03-28: the response includes both files and folders,
     /// plus file `hash` and `direct_link` metadata.
     async fn list_folder_v2(&self, folder_path: &str) -> Result<FolderListResult, ProviderError> {
-        self.list_folder_v2_mode(folder_path, false).await
+        self.list_folder_v2_with_status(folder_path)
+            .await?
+            .require_complete()
     }
 
-    async fn list_folder_v2_mode(
+    async fn list_folder_v2_with_status(
         &self,
         folder_path: &str,
-        for_display: bool,
     ) -> Result<FolderListResult, ProviderError> {
         let path = if folder_path.is_empty() || folder_path == "/" {
             "/".to_string()
@@ -658,6 +676,7 @@ impl FileLuProvider {
         let per_page = "100";
         let mut all_files: Vec<FileEntry> = Vec::new();
         let mut all_folders: Vec<FolderEntry> = Vec::new();
+        let mut truncated = false;
 
         for page in 1..=MAX_LIST_PAGES + 1 {
             let page_str = page.to_string();
@@ -673,7 +692,8 @@ impl FileLuProvider {
             let result = Self::parse_api::<FolderListResult>(resp).await?;
             let file_count = result.files.len();
             let folder_count = result.folders.len();
-            if listing_is_truncated(page, file_count > 0 || folder_count > 0, for_display)? {
+            if page > MAX_LIST_PAGES && (file_count > 0 || folder_count > 0) {
+                truncated = true;
                 break;
             }
             all_files.extend(result.files);
@@ -686,6 +706,7 @@ impl FileLuProvider {
         Ok(FolderListResult {
             files: all_files,
             folders: all_folders,
+            truncated,
         })
     }
 
@@ -696,15 +717,15 @@ impl FileLuProvider {
         folder_path: &str,
         fld_id: u64,
     ) -> Result<FolderListResult, ProviderError> {
-        self.list_folder_legacy_hybrid_mode(folder_path, fld_id, false)
-            .await
+        self.list_folder_legacy_hybrid_with_status(folder_path, fld_id)
+            .await?
+            .require_complete()
     }
 
-    async fn list_folder_legacy_hybrid_mode(
+    async fn list_folder_legacy_hybrid_with_status(
         &self,
         folder_path: &str,
         fld_id: u64,
-        for_display: bool,
     ) -> Result<FolderListResult, ProviderError> {
         let fld_id_str = fld_id.to_string();
         let path = if folder_path.is_empty() || folder_path == "/" {
@@ -716,6 +737,7 @@ impl FileLuProvider {
 
         let files_fut = async {
             let mut all_files: Vec<FileEntry> = Vec::new();
+            let mut truncated = false;
             for page in 1..=MAX_LIST_PAGES + 1 {
                 let page_str = page.to_string();
                 let url = self.api_url_with(
@@ -729,7 +751,8 @@ impl FileLuProvider {
                 let resp = self.get_with_retry(&url).await?;
                 let result = Self::parse_api::<FileListResult>(resp).await?;
                 let count = result.files.len();
-                if listing_is_truncated(page, count > 0, for_display)? {
+                if page > MAX_LIST_PAGES && count > 0 {
+                    truncated = true;
                     break;
                 }
                 all_files.extend(
@@ -742,11 +765,12 @@ impl FileLuProvider {
                     break;
                 }
             }
-            Ok::<_, ProviderError>(all_files)
+            Ok::<_, ProviderError>((all_files, truncated))
         };
 
         let folders_fut = async {
             let mut all_folders: Vec<FolderEntry> = Vec::new();
+            let mut truncated = false;
             for page in 1..=MAX_LIST_PAGES + 1 {
                 let page_str = page.to_string();
                 let url = self.api_v2_url(
@@ -760,7 +784,8 @@ impl FileLuProvider {
                 let resp = self.get_with_retry(&url).await?;
                 let result = Self::parse_api::<FolderListResult>(resp).await?;
                 let count = result.folders.len();
-                if listing_is_truncated(page, count > 0, for_display)? {
+                if page > MAX_LIST_PAGES && count > 0 {
+                    truncated = true;
                     break;
                 }
                 all_folders.extend(result.folders);
@@ -768,14 +793,17 @@ impl FileLuProvider {
                     break;
                 }
             }
-            Ok::<_, ProviderError>(all_folders)
+            Ok::<_, ProviderError>((all_folders, truncated))
         };
 
         let (files_result, folders_result) = tokio::join!(files_fut, folders_fut);
 
+        let (files, files_truncated) = files_result?;
+        let (folders, folders_truncated) = folders_result?;
         Ok(FolderListResult {
-            files: files_result?,
-            folders: folders_result?,
+            files,
+            folders,
+            truncated: files_truncated || folders_truncated,
         })
     }
 
@@ -839,6 +867,7 @@ impl FileLuProvider {
         Ok(FolderListResult {
             files: all_files,
             folders: all_folders,
+            truncated: false,
         })
     }
 
@@ -847,7 +876,7 @@ impl FileLuProvider {
         parent_path: &str,
         parent_fld_id: u64,
     ) -> Result<Vec<RemoteEntry>, ProviderError> {
-        self.populate_cache_for_mode(parent_path, parent_fld_id, false, None)
+        self.populate_cache_for_mode(parent_path, parent_fld_id, false, None, true)
             .await
     }
 
@@ -857,9 +886,11 @@ impl FileLuProvider {
         parent_fld_id: u64,
         for_display: bool,
         cache_only: Option<&str>,
+        require_complete: bool,
     ) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let result = match if for_display {
-            self.list_folder_v2_mode(parent_path, true).await
+        let allow_partial = for_display || (!require_complete && cache_only.is_some());
+        let result = match if allow_partial {
+            self.list_folder_v2_with_status(parent_path).await
         } else {
             self.list_folder_v2(parent_path).await
         } {
@@ -869,8 +900,8 @@ impl FileLuProvider {
                     "v2 folder/list failed for '{}', falling back to legacy hybrid listing: {}",
                     parent_path, error
                 ));
-                if for_display {
-                    self.list_folder_legacy_hybrid_mode(parent_path, parent_fld_id, true)
+                if allow_partial {
+                    self.list_folder_legacy_hybrid_with_status(parent_path, parent_fld_id)
                         .await?
                 } else {
                     self.list_folder_legacy_hybrid(parent_path, parent_fld_id)
@@ -878,6 +909,12 @@ impl FileLuProvider {
                 }
             }
         };
+        let truncated = result.truncated;
+        if for_display && truncated {
+            let warning = "FileLu listing truncated at the page limit; unlisted names are not confirmed absent";
+            tracing::warn!("{warning}");
+            super::report_warning(warning.into());
+        }
         let mut entries: Vec<RemoteEntry> = Vec::new();
 
         let parent_norm = Self::normalize_path(parent_path);
@@ -997,10 +1034,26 @@ impl FileLuProvider {
             });
         }
 
+        if truncated
+            && !for_display
+            && !cache_only.is_some_and(|wanted| entries.iter().any(|e| e.path == wanted))
+        {
+            return Err(incomplete_listing_error());
+        }
         Ok(entries)
     }
 
     async fn resolve_path_entry(&mut self, path: &str) -> Result<CacheEntry, ProviderError> {
+        self.resolve_path_entry_mode(path, false).await
+    }
+
+    /// A positive ancestor may be followed from a capped prefix. Protected
+    /// destination checks require the leaf's parent listing to be complete.
+    async fn resolve_path_entry_mode(
+        &mut self,
+        path: &str,
+        strict_leaf: bool,
+    ) -> Result<CacheEntry, ProviderError> {
         let norm = Self::normalize_path(path);
 
         if norm == "/" {
@@ -1039,6 +1092,7 @@ impl FileLuProvider {
                 current_fld_id,
                 false,
                 Some(&child_virtual),
+                strict_leaf && i == segments.len() - 1,
             )
             .await?;
             let entry = self
@@ -1208,7 +1262,7 @@ impl FileLuProvider {
 
     /// Whether `path` names an item, file or folder.
     async fn path_is_taken(&mut self, path: &str) -> Result<bool, ProviderError> {
-        match self.resolve_path_entry(path).await {
+        match self.resolve_path_entry_mode(path, true).await {
             Ok(_) => Ok(true),
             Err(ProviderError::NotFound(_)) => Ok(false),
             Err(e) => Err(e),
@@ -1656,7 +1710,7 @@ impl StorageProvider for FileLuProvider {
         }
         let norm = self.resolve_path(path);
         let fld_id = self.resolve_fld_id(&norm).await?;
-        self.populate_cache_for_mode(&norm, fld_id, true, None)
+        self.populate_cache_for_mode(&norm, fld_id, true, None, false)
             .await
     }
 
@@ -1826,7 +1880,7 @@ impl StorageProvider for FileLuProvider {
         // (FileLu creates a new file_code on every upload, never overwrites).
         // A lookup that fails for any reason but NotFound stops the upload:
         // going on would leave a second file with the same name.
-        let existing = match self.resolve_path_entry(&norm).await {
+        let existing = match self.resolve_path_entry_mode(&norm, true).await {
             Ok(existing) => Some(existing),
             Err(ProviderError::NotFound(_)) => None,
             Err(e) => return Err(e),
@@ -2177,7 +2231,7 @@ impl StorageProvider for FileLuProvider {
         if norm_from == norm_to {
             return Ok(());
         }
-        let occupant = match self.resolve_path_entry(&norm_to).await {
+        let occupant = match self.resolve_path_entry_mode(&norm_to, true).await {
             Ok(occupant) => occupant,
             Err(ProviderError::NotFound(_)) => return self.rename(from, to).await,
             Err(e) => return Err(e),
@@ -2497,6 +2551,150 @@ fn mime_from_ext(ext: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+
+    struct CapFixture {
+        provider: FileLuProvider,
+        server: tokio::task::JoinHandle<()>,
+        lookaheads: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        writes: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        fallbacks: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    async fn cap_fixture(force_hybrid: bool) -> CapFixture {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let lookaheads = Arc::new(AtomicUsize::new(0));
+        let seen = lookaheads.clone();
+        let writes = Arc::new(AtomicUsize::new(0));
+        let changed = writes.clone();
+        let first_big = Arc::new(AtomicUsize::new(0));
+        let fallbacks = Arc::new(AtomicUsize::new(0));
+        let fallback_seen = fallbacks.clone();
+        let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
+            let seen=seen.clone(); let changed=changed.clone(); let first_big=first_big.clone(); let fallback_seen=fallback_seen.clone();
+            async move {
+                let url = reqwest::Url::parse(&format!("http://fixture{uri}")).unwrap();
+                let q: HashMap<String,String> = url.query_pairs().into_owned().collect();
+                let page: u32 = q.get("page").map(String::as_str).unwrap_or("1").parse().unwrap();
+                let path = q.get("folder_path").map(String::as_str).unwrap_or("/");
+                let is_files = uri.path() == "/api/file/list";
+                let is_folder = uri.path() == "/apiv2/folder/list";
+                if !is_files && !is_folder {
+                    changed.fetch_add(1,Ordering::SeqCst);
+                    return (axum::http::StatusCode::BAD_REQUEST, axum::Json(serde_json::json!({"status":400,"msg":"unexpected mutation"})));
+                }
+                let big = path == "/big" || (is_files && q.get("fld_id").is_some_and(|id| id == "1"));
+                if big && page == 101 { seen.fetch_add(1,Ordering::SeqCst); }
+                if force_hybrid && is_folder && path == "/big" && first_big.fetch_add(1,Ordering::SeqCst) == 0 {
+                    fallback_seen.fetch_add(1,Ordering::SeqCst);
+                    return (axum::http::StatusCode::BAD_REQUEST, axum::Json(serde_json::json!({"status":400,"msg":"use legacy listing"})));
+                }
+                let files: Vec<_> = if big {
+                    (0..100).map(|i| serde_json::json!({"name":format!("file-{page}-{i}"),"file_code":format!("code-{page}-{i}"),"fld_id":1})).collect()
+                } else {vec![]};
+                let folders = if is_folder && path == "/" { serde_json::json!([{"fld_id":1,"name":"big"}]) }
+                    else if is_folder && path == "/big" && page == 1 { serde_json::json!([{"fld_id":2,"name":"child"}]) }
+                    else {serde_json::json!([])};
+                (axum::http::StatusCode::OK, axum::Json(serde_json::json!({"status":200,"msg":"OK","result":{"files":files,"folders":folders}})))
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = FileLuProvider::new(FileLuConfig {
+            api_key: secrecy::SecretString::from("k".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        CapFixture {
+            provider,
+            server,
+            lookaheads,
+            writes,
+            fallbacks,
+        }
+    }
+
+    async fn positive_cap_navigation(force_hybrid: bool) {
+        use std::sync::atomic::Ordering;
+        let mut f = cap_fixture(force_hybrid).await;
+        let outcome = f.provider.cd("/big/child").await;
+        assert!(
+            f.lookaheads.load(Ordering::SeqCst) > 0,
+            "must reach the nonempty lookahead"
+        );
+        if force_hybrid {
+            assert!(
+                f.fallbacks.load(Ordering::SeqCst) > 0,
+                "must exercise legacy fallback"
+            );
+        }
+        outcome.unwrap();
+        assert_eq!(f.provider.pwd().await.unwrap(), "/big/child");
+        assert!(f
+            .provider
+            .list_for_display("/big/child")
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(f.provider.exists("/big/file-1-0").await.unwrap());
+        assert_eq!(f.writes.load(Ordering::SeqCst), 0);
+        f.server.abort();
+    }
+
+    #[tokio::test]
+    async fn r47_cap_v2_positive_navigation_uses_the_capped_prefix() {
+        positive_cap_navigation(false).await;
+    }
+
+    #[tokio::test]
+    async fn r47_cap_hybrid_positive_navigation_uses_the_capped_prefix() {
+        positive_cap_navigation(true).await;
+    }
+
+    #[tokio::test]
+    async fn r47_cap_missing_names_and_occupant_guards_stay_uncertain() {
+        use std::sync::atomic::Ordering;
+        for force_hybrid in [false, true] {
+            let mut f = cap_fixture(force_hybrid).await;
+            assert!(matches!(
+                f.provider.exists("/big/not-in-prefix").await,
+                Err(ProviderError::ParseError(_))
+            ));
+            assert!(matches!(
+                f.provider.path_is_taken("/big/not-in-prefix").await,
+                Err(ProviderError::ParseError(_))
+            ));
+            assert!(matches!(
+                f.provider.path_is_taken("/big/child").await,
+                Err(ProviderError::ParseError(_))
+            ));
+            assert!(matches!(
+                f.provider.rename("/big/child", "/big/new-child").await,
+                Err(ProviderError::ParseError(_))
+            ));
+            assert!(matches!(
+                f.provider.list("/big").await,
+                Err(ProviderError::ParseError(_))
+            ));
+            let local = tempfile::NamedTempFile::new().unwrap();
+            assert!(matches!(
+                f.provider
+                    .upload(local.path().to_str().unwrap(), "/big/new-file", None)
+                    .await,
+                Err(ProviderError::ParseError(_))
+            ));
+            assert!(matches!(
+                f.provider.replace("/big/file-1-1", "/big/file-1-0").await,
+                Err(ProviderError::ParseError(_))
+            ));
+            assert_eq!(f.writes.load(Ordering::SeqCst), 0);
+            f.server.abort();
+        }
+    }
 
     async fn r47_review_filelu_paged(
         empty_after_cap: bool,
