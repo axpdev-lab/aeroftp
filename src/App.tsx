@@ -216,7 +216,7 @@ import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
 import { previewRouteFor } from './utils/previewRoute';
 import { useOpenRequests } from './hooks/useOpenRequests';
-import { planLocalOpen } from './utils/openRequestPlan';
+import { planLocalOpen, takeTabSelection } from './utils/openRequestPlan';
 import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, isConnectCancelledError, isConnectHardTimeoutError } from './utils/connectCancel';
 import { shouldPersistUsedScan } from './utils/usedScanPersist';
 import { usedScanBoundKey } from './utils/usedScanBound';
@@ -4523,7 +4523,16 @@ const App: React.FC = () => {
     const target = localTabs.find(t => t.id === tabId);
     if (target) {
       setActiveLocalTabId(tabId);
-      changeLocalDirectory(target.path);
+      void changeLocalDirectory(target.path).then(done => {
+        // A tab opened for a further folder of an OS open batch selects its
+        // files once, with no panel filter hiding them.
+        if (done === null || !target.select?.length) return;
+        const taken = takeTabSelection(localTabs, tabId);
+        setLocalTabs(prev => takeTabSelection(prev, tabId).tabs);
+        setLocalSearchFilter('');
+        fileTags.setActiveTagFilter(null);
+        setSelectedLocalFiles(new Set(taken.select));
+      });
     }
   }, [activeLocalTabId, currentLocalPath, localTabs]);
 
@@ -5474,9 +5483,16 @@ const App: React.FC = () => {
     const target = localTabs2.find(t => t.id === tabId);
     if (target) {
       setActiveLocalTabId2(tabId);
-      changeLocalDirectory2(target.path);
+      void changeLocalDirectory2(target.path).then(done => {
+        // See switchLocalTab: an OS open batch tab selects its files once.
+        if (done === null || !target.select?.length) return;
+        const taken = takeTabSelection(localTabs2, tabId);
+        setLocalTabs2(prev => takeTabSelection(prev, tabId).tabs);
+        setLocalSearchFilter2('');
+        setSelectedLocalFiles2(new Set(taken.select));
+      });
     }
-  }, [activeLocalTabId2, currentLocalPath2, localTabs2, changeLocalDirectory2, setLocalTabs2, setActiveLocalTabId2]);
+  }, [activeLocalTabId2, currentLocalPath2, localTabs2, changeLocalDirectory2, setLocalTabs2, setActiveLocalTabId2, setLocalSearchFilter2, setSelectedLocalFiles2]);
 
   const closeLocalTab2 = useCallback((tabId: string) => {
     setLocalTabs2(prev => {
@@ -16171,7 +16187,7 @@ const App: React.FC = () => {
   // opened at once arrives together: the files of the first folder are all
   // selected, and any other folder of the batch gets a tab of its own.
   const openLocalPathsInAeroFile = async (requests: OpenRequest[]) => {
-    const plan = planLocalOpen(requests, name => previewRouteFor(name) === 'universal-preview');
+    const [plan, ...others] = planLocalOpen(requests, name => previewRouteFor(name) === 'universal-preview');
     if (!plan) return;
     setShowConnectionScreen(false);
     // A live session stays connected; only its remote panel steps aside.
@@ -16191,15 +16207,16 @@ const App: React.FC = () => {
     if (target === null || target === undefined) return;
     setActivePanel('local');
     setActiveLocalPanelId(panelId);
-    if (plan.otherFolders.length > 0) {
+    if (others.length > 0) {
       const setTabs = panelId === 'local2' ? setLocalTabs2 : setLocalTabs;
       const prefix = panelId === 'local2' ? 'tab2' : 'tab';
       setTabs(prev => {
-        const added: LocalTab[] = plan.otherFolders.slice(0, Math.max(0, 12 - prev.length)).map(path => ({
+        const added: LocalTab[] = others.slice(0, Math.max(0, 12 - prev.length)).map(group => ({
           id: `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          path,
-          label: localPathBasename(path) || '/',
+          path: group.folder,
+          label: localPathBasename(group.folder) || '/',
           scrollTop: 0,
+          ...(group.names.length > 0 ? { select: group.names } : {}),
         }));
         return [...prev, ...added];
       });

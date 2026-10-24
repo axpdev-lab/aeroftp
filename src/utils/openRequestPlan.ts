@@ -6,29 +6,48 @@
 // A file manager's multi-selection comes from one folder, but a shell can
 // pass files from several (`aeroftp /a/x.png /b/y.png`). The first folder
 // opens in the active panel with its files selected and the first previewable
-// one shown; every other folder gets a tab of its own, so nothing the batch
-// drained from the backend queue is dropped.
+// one shown; every other folder gets a tab of its own that selects its files
+// the first time it is shown, so nothing the batch drained from the backend
+// queue is dropped.
 
 import type { OpenRequest } from '../types';
+import type { LocalTab } from '../types/aerofile';
 
-export interface LocalOpenPlan {
-    /** The folder the active panel navigates to. */
+export interface LocalOpenGroup {
     folder: string;
-    /** Entries of `folder` to select; empty when only a folder was opened. */
+    /** Entries of `folder` to select; empty when only the folder was opened. */
     names: string[];
     /** The entry to preview, the first previewable one of `names`. */
     preview: string | null;
-    /** The other folders, in order, each for a new tab. */
-    otherFolders: string[];
 }
 
-export function planLocalOpen(requests: readonly OpenRequest[], previewable: (name: string) => boolean): LocalOpenPlan | null {
-    if (requests.length === 0) return null;
-    const folder = requests[0].folder;
-    const names = requests.filter(r => !r.isDir && r.folder === folder).map(r => r.name);
-    const otherFolders: string[] = [];
+/** One group per folder, in the order the batch names them; the first is
+ *  the one the active panel opens. */
+export function planLocalOpen(requests: readonly OpenRequest[], previewable: (name: string) => boolean): LocalOpenGroup[] {
+    const groups: LocalOpenGroup[] = [];
     for (const request of requests) {
-        if (request.folder !== folder && !otherFolders.includes(request.folder)) otherFolders.push(request.folder);
+        let group = groups.find(g => g.folder === request.folder);
+        if (!group) {
+            group = { folder: request.folder, names: [], preview: null };
+            groups.push(group);
+        }
+        if (!request.isDir && !group.names.includes(request.name)) group.names.push(request.name);
     }
-    return { folder, names, preview: names.find(previewable) ?? null, otherFolders };
+    for (const group of groups) group.preview = group.names.find(previewable) ?? null;
+    return groups;
+}
+
+/** The entries a tab was created to select, and the tabs without them: the
+ *  selection applies once, the first time the tab is shown. */
+export function takeTabSelection(tabs: readonly LocalTab[], id: string): { select: string[]; tabs: LocalTab[] } {
+    const select = tabs.find(tab => tab.id === id)?.select ?? [];
+    if (select.length === 0) return { select, tabs: [...tabs] };
+    return {
+        select,
+        tabs: tabs.map(tab => {
+            if (tab.id !== id) return tab;
+            const { select: _taken, ...rest } = tab;
+            return rest;
+        }),
+    };
 }
