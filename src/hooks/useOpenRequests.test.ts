@@ -26,8 +26,9 @@ const request = (name: string): OpenRequest => ({
     kind: 'local', path: `/pictures/${name}`, folder: '/pictures', name, isDir: false,
 });
 const handled: OpenRequest[] = [];
+let handler: (requests: OpenRequest[]) => Promise<void> | void = (requests) => { handled.push(...requests); };
 const Probe = ({ ready }: { ready: boolean }) => {
-    useOpenRequests(ready, r => { handled.push(r); });
+    useOpenRequests(ready, requests => handler(requests));
     return null;
 };
 let root: Root;
@@ -43,6 +44,7 @@ beforeEach(() => {
     bridge.queue.length = 0;
     bridge.invoke.mockClear();
     handled.length = 0;
+    handler = (requests) => { handled.push(...requests); };
     host = document.createElement('div'); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
@@ -76,4 +78,27 @@ it('takes nothing while the app is locked again', async () => {
     expect(bridge.invoke).not.toHaveBeenCalled();
     await render(true);
     expect(handled).toEqual([request('c.png')]);
+});
+
+it('runs one drain at a time and takes what arrived during it afterwards', async () => {
+    // The first navigation is still in flight when the second file arrives.
+    let release!: () => void;
+    let active = 0;
+    let peak = 0;
+    const batches: string[][] = [];
+    handler = async (requests) => {
+        active++; peak = Math.max(peak, active);
+        batches.push(requests.map(r => r.name));
+        if (batches.length === 1) await new Promise<void>(resolve => { release = resolve; });
+        active--;
+    };
+    await render(true);
+    bridge.queue.push(request('first.png'));
+    await emit();
+    bridge.queue.push(request('second.png'));
+    await emit();
+    expect(batches).toEqual([['first.png']]);
+    await act(async () => release());
+    expect(peak).toBe(1);
+    expect(batches).toEqual([['first.png'], ['second.png']]);
 });

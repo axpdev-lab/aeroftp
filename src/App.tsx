@@ -786,6 +786,10 @@ const App: React.FC = () => {
   // === Splash Screen Readiness ===
   const vaultInitDone = useRef(false);
   const localFilesInitDone = useRef(false);
+  // The same milestone as state, for what must wait for it: a file the OS
+  // opened navigates only after the saved or default folder has loaded, or
+  // that later load would replace it.
+  const [localFilesBootstrapped, setLocalFilesBootstrapped] = useState(false);
   const appReadySignaled = useRef(false);
   const signalAppReady = useCallback(() => {
     if (appReadySignaled.current) return;
@@ -6559,6 +6563,7 @@ const App: React.FC = () => {
       catch { try { await loadLocalFiles(await downloadDir()); } catch { } }
     })().finally(() => {
       localFilesInitDone.current = true;
+      setLocalFilesBootstrapped(true);
       signalAppReady();
     });
   }, [loadLocalFiles, signalAppReady]);
@@ -16155,48 +16160,69 @@ const App: React.FC = () => {
   // Any other file opens in AeroFile on its folder, in the active panel of
   // the dual view, with the file selected and previewed as a double-click
   // would (AeroImage for a picture, the text preview with its Edit button for
-  // text and code). A folder opens on itself (Ehud, #347).
-  const openLocalPathInAeroFile = async (request: OpenRequest) => {
+  // text and code). A folder opens on itself (Ehud, #347). A multi-selection
+  // opened at once arrives together: the files of the first one's folder are
+  // all selected and the first previewable one is shown.
+  const openLocalPathsInAeroFile = async (requests: OpenRequest[]) => {
+    const folder = requests[0].folder;
+    const names = requests.filter(r => !r.isDir && r.folder === folder).map(r => r.name);
     setShowConnectionScreen(false);
     // A live session stays connected; only its remote panel steps aside.
     if (isConnected) setShowRemotePanel(false);
     const panelId: 'local' | 'local2' = showDualLocalPanel ? activeLocalPanelId : 'local';
     const target = panelId === 'local2'
-      ? await changeLocalDirectory2(request.folder)
-      : await changeLocalDirectory(request.folder);
+      ? await changeLocalDirectory2(folder)
+      : await changeLocalDirectory(folder);
     if (target === null || target === undefined) return;
     setActivePanel('local');
     setActiveLocalPanelId(panelId);
-    if (request.isDir) return;
-    (panelId === 'local2' ? setSelectedLocalFiles2 : setSelectedLocalFiles)(new Set([request.name]));
-    if (previewRouteFor(request.name) !== 'universal-preview') return;
-    const listed = await invoke<LocalFile[]>('get_local_files', { path: request.folder, showHidden: true }).catch(() => []);
-    const file = listed.find(entry => entry.name === request.name);
+    if (names.length === 0) return;
+    // A search or tag filter left on the panel would hide the opened rows.
+    // Hidden files stay governed by the user's own setting; their preview
+    // still opens below.
+    if (panelId === 'local2') {
+      setLocalSearchFilter2('');
+    } else {
+      setLocalSearchFilter('');
+      fileTags.setActiveTagFilter(null);
+    }
+    (panelId === 'local2' ? setSelectedLocalFiles2 : setSelectedLocalFiles)(new Set(names));
+    const shown = names.find(name => previewRouteFor(name) === 'universal-preview');
+    if (!shown) return;
+    const listed = await invoke<LocalFile[]>('get_local_files', { path: folder, showHidden: true }).catch(() => []);
+    const file = listed.find(entry => entry.name === shown);
     if (file) await openUniversalPreview(file, false);
   };
 
-  const handleOpenRequest = async (request: OpenRequest) => {
-    switch (request.kind) {
-      case 'vault':
-        setShowVaultPanel({ mode: 'open', path: request.path });
-        break;
-      case 'keystore':
-        // SettingsPanel selects the Backup tab itself from the preloaded path.
-        setSettingsInitialKeystorePath(request.path);
-        setShowSettingsPanel(true);
-        break;
-      case 'profiles':
-        importAeroFtpProfileFile(request.path);
-        break;
-      case 'archive':
-        await openArchiveInBrowser(request.path);
-        break;
-      case 'local':
-        await openLocalPathInAeroFile(request);
-        break;
+  const handleOpenRequests = async (requests: OpenRequest[]) => {
+    const local: OpenRequest[] = [];
+    for (const request of requests) {
+      switch (request.kind) {
+        case 'vault':
+          setShowVaultPanel({ mode: 'open', path: request.path });
+          break;
+        case 'keystore':
+          // SettingsPanel selects the Backup tab itself from the preloaded path.
+          setSettingsInitialKeystorePath(request.path);
+          setShowSettingsPanel(true);
+          break;
+        case 'profiles':
+          importAeroFtpProfileFile(request.path);
+          break;
+        case 'archive':
+          await openArchiveInBrowser(request.path);
+          break;
+        case 'local':
+          local.push(request);
+          break;
+      }
     }
+    if (local.length > 0) await openLocalPathsInAeroFile(local);
   };
-  useOpenRequests(vaultBootComplete && !isAppLocked && accountLockState === 'ready', handleOpenRequest);
+  useOpenRequests(
+    vaultBootComplete && !isAppLocked && accountLockState === 'ready' && localFilesBootstrapped,
+    handleOpenRequests,
+  );
 
   const profileConnector = useRef<ProfileConnector | null>(null);
   const registerProfileConnector = useCallback<RegisterProfileConnector>(connector => {

@@ -24,8 +24,9 @@ use tauri::{AppHandle, Emitter, Manager};
 /// Window event telling the main window that the queue has new entries.
 pub const OPEN_REQUEST_EVENT: &str = "open-request";
 
-/// A long queue only means nobody is draining it; the newest entries win.
-const MAX_PENDING: usize = 16;
+/// A multi-selection opened at once arrives as one argument list; past this
+/// the queue only means nobody is draining it, and the newest entries win.
+const MAX_PENDING: usize = 256;
 
 static PENDING: Mutex<Vec<OpenRequest>> = Mutex::new(Vec::new());
 
@@ -100,23 +101,32 @@ fn without_verbatim_prefix(path: &Path) -> PathBuf {
 /// with" from a deb, rpm or AppImage was dropped here. Other URLs are not
 /// files and yield `None`; a Windows drive path (`C:\x`) parses as a URL with
 /// the scheme `c`, so only the `file` scheme is read as one.
-fn local_path(raw: &str) -> Option<PathBuf> {
+///
+/// A relative path is joined to `cwd`, the folder the launching process ran
+/// in: a second instance hands its arguments to the running one, whose own
+/// folder may differ (`aeroftp ./photo.png` from a shell).
+fn local_path(raw: &str, cwd: Option<&Path>) -> Option<PathBuf> {
     if raw
         .get(..7)
         .is_some_and(|scheme| scheme.eq_ignore_ascii_case("file://"))
     {
         return url::Url::parse(raw).ok()?.to_file_path().ok();
     }
-    Some(PathBuf::from(raw))
+    let path = PathBuf::from(raw);
+    Some(match cwd {
+        Some(cwd) if path.is_relative() => cwd.join(path),
+        _ => path,
+    })
 }
 
-/// Classify one argument. `None` for a flag, a URL, or anything that is not
-/// an existing regular file or folder once symlinks are resolved.
-pub fn classify(raw: &str) -> Option<OpenRequest> {
+/// Classify one argument, a relative path read against `cwd` (the current
+/// folder when `None`). `None` for a flag, a URL, or anything that is not an
+/// existing regular file or folder once symlinks are resolved.
+pub fn classify(raw: &str, cwd: Option<&Path>) -> Option<OpenRequest> {
     if raw.is_empty() || raw.starts_with("--") {
         return None;
     }
-    let canonical = without_verbatim_prefix(&std::fs::canonicalize(local_path(raw)?).ok()?);
+    let canonical = without_verbatim_prefix(&std::fs::canonicalize(local_path(raw, cwd)?).ok()?);
     let meta = std::fs::metadata(&canonical).ok()?;
     let path = canonical.to_string_lossy().to_string();
     if meta.is_dir() {
@@ -142,10 +152,14 @@ pub fn classify(raw: &str) -> Option<OpenRequest> {
     })
 }
 
-/// The first openable path among the process arguments (`argv[0]` skipped).
-/// The extract verbs are handled before this and never reach it.
-pub fn from_argv<S: AsRef<str>>(argv: &[S]) -> Option<OpenRequest> {
-    argv.iter().skip(1).find_map(|arg| classify(arg.as_ref()))
+/// Every openable path among the process arguments (`argv[0]` skipped), in
+/// order: `%U` passes one argument per file of a multi-selection. The
+/// extract verbs are handled before this and never reach it.
+pub fn from_argv<S: AsRef<str>>(argv: &[S], cwd: Option<&Path>) -> Vec<OpenRequest> {
+    argv.iter()
+        .skip(1)
+        .filter_map(|arg| classify(arg.as_ref(), cwd))
+        .collect()
 }
 
 fn push(request: OpenRequest) {
@@ -155,18 +169,35 @@ fn push(request: OpenRequest) {
     pending.drain(..overflow);
 }
 
-/// Queue a request and tell the main window, which drains it now if it is
-/// ready, or at the end of its boot or unlock otherwise.
-pub fn deliver(app: &AppHandle, request: OpenRequest) {
-    // The entry name only, a folder's own name for a folder: no full path.
-    let shown = Path::new(&request.path)
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_default();
-    log::info!("OS open request: {:?} ({shown})", request.kind);
-    push(request);
+/// Queue requests and tell the main window once, which drains them now if
+/// it is ready, or at the end of its boot or unlock otherwise.
+pub fn deliver(app: &AppHandle, requests: Vec<OpenRequest>) {
+    if requests.is_empty() {
+        return;
+    }
+    for request in requests {
+        // The entry name only, a folder's own name for a folder: no full path.
+        let shown = Path::new(&request.path)
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_default();
+        log::info!("OS open request: {:?} ({shown})", request.kind);
+        push(request);
+    }
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.emit(OPEN_REQUEST_EVENT, ());
+    }
+}
+
+/// Bring the main window forward for a file opened while the app runs,
+/// including from the tray: what the file opens must be visible. Window
+/// calls go through Tauri's main-thread message path, so this is safe from
+/// the single-instance D-Bus thread.
+pub fn raise_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
     }
 }
 
@@ -216,7 +247,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("photo one.png");
         std::fs::write(&file, b"x").unwrap();
-        let request = classify(file.to_str().unwrap()).unwrap();
+        let request = classify(file.to_str().unwrap(), None).unwrap();
         let folder = without_verbatim_prefix(&std::fs::canonicalize(dir.path()).unwrap());
         assert_eq!(request.kind, OpenKind::Local);
         assert_eq!(request.name, "photo one.png");
@@ -228,7 +259,7 @@ mod tests {
     #[test]
     fn a_folder_opens_on_itself_and_flags_urls_and_missing_paths_are_ignored() {
         let dir = tempfile::tempdir().unwrap();
-        let request = classify(dir.path().to_str().unwrap()).unwrap();
+        let request = classify(dir.path().to_str().unwrap(), None).unwrap();
         assert!(request.is_dir);
         assert_eq!(request.folder, request.path);
         assert!(request.name.is_empty());
@@ -239,11 +270,11 @@ mod tests {
             "sftp://host/path",
             missing.to_str().unwrap(),
         ];
-        assert_eq!(from_argv(&argv), None);
+        assert!(from_argv(&argv, None).is_empty());
     }
 
     #[test]
-    fn the_first_openable_argument_wins() {
+    fn every_file_of_a_multi_selection_is_kept_in_order() {
         let dir = tempfile::tempdir().unwrap();
         let archive = dir.path().join("a.zip");
         let image = dir.path().join("b.png");
@@ -255,7 +286,26 @@ mod tests {
             archive.to_string_lossy().to_string(),
             image.to_string_lossy().to_string(),
         ];
-        assert_eq!(from_argv(&argv).unwrap().kind, OpenKind::Archive);
+        let kinds: Vec<_> = from_argv(&argv, None).into_iter().map(|r| r.kind).collect();
+        assert_eq!(kinds, [OpenKind::Archive, OpenKind::Local]);
+    }
+
+    #[test]
+    fn a_relative_path_is_read_against_the_launching_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        std::fs::write(dir.path().join("sub").join("photo.png"), b"x").unwrap();
+        // The running instance's own folder does not hold the file; the
+        // second instance's does.
+        let request = classify("sub/photo.png", Some(dir.path())).unwrap();
+        assert_eq!(request.name, "photo.png");
+        assert_eq!(classify("sub/photo.png", Some(Path::new("/"))), None);
+        // An absolute path ignores the launching folder.
+        let absolute = dir.path().join("sub").join("photo.png");
+        assert_eq!(
+            classify(absolute.to_str().unwrap(), Some(Path::new("/"))).unwrap(),
+            request
+        );
     }
 
     #[test]
@@ -265,18 +315,18 @@ mod tests {
         std::fs::write(&file, b"x").unwrap();
         let uri = url::Url::from_file_path(&file).unwrap().to_string();
         assert!(uri.contains("a%20b.zip"), "{uri}");
-        let request = classify(&uri).unwrap();
+        let request = classify(&uri, None).unwrap();
         assert_eq!(request.kind, OpenKind::Archive);
         assert_eq!(request.name, "a b.zip");
         // What the 4.2.x packages really pass: argv[0], then the URI.
-        assert_eq!(from_argv(&["aeroftp".to_string(), uri]).unwrap(), request);
+        assert_eq!(from_argv(&["aeroftp".to_string(), uri], None), [request]);
         assert_eq!(
-            local_path("sftp://host/a.zip"),
+            local_path("sftp://host/a.zip", None),
             Some(PathBuf::from("sftp://host/a.zip"))
         );
-        assert_eq!(classify("sftp://host/a.zip"), None);
+        assert_eq!(classify("sftp://host/a.zip", None), None);
         // A multi-byte start must not split a character while probing.
-        assert_eq!(classify("èèèè.png"), None);
+        assert_eq!(classify("èèèè.png", None), None);
     }
 
     #[test]

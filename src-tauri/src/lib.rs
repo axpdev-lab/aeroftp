@@ -19288,7 +19288,7 @@ pub fn run() {
             // autostart entry and (optionally) start hidden in the system tray.
             Some(vec!["--autostart"]),
         ))
-        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             // LT1 / tracker Known #7: this callback runs on the zbus single-instance
             // thread (Linux), not the GTK main thread. open_extract_window already
             // marshals its WebviewWindowBuilder::build; window show/unminimize/focus
@@ -19302,16 +19302,17 @@ pub fn run() {
                 return;
             }
             // When a second instance is launched, show and focus the existing window
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.unminimize();
-                let _ = window.set_focus();
-            }
-            // Any openable path: an associated format, or "Open with AeroFTP" on
-            // any other file, which opens in AeroFile (#347).
-            if let Some(request) = open_request::from_argv(&argv) {
-                open_request::deliver(app, request);
-            }
+            open_request::raise_main_window(app);
+            // Every openable path: an associated format, or "Open with AeroFTP"
+            // on any other file, which opens in AeroFile (#347). A relative path
+            // is the second instance's, read against its folder.
+            open_request::deliver(
+                app,
+                open_request::from_argv(
+                    &argv,
+                    (!cwd.is_empty()).then(|| std::path::Path::new(&cwd)),
+                ),
+            );
         }))
         .plugin(
             tauri_plugin_window_state::Builder::new()
@@ -20260,12 +20261,13 @@ pub fn run() {
                 );
             }
 
-            // A path passed on the first launch. The window drains the queue
+            // Paths passed on the first launch. The window drains the queue
             // when its boot is done and the app is unlocked, so no delay is
             // guessed here.
-            if let Some(request) = open_request::from_argv(&std::env::args().collect::<Vec<_>>()) {
-                open_request::deliver(app.handle(), request);
-            }
+            open_request::deliver(
+                app.handle(),
+                open_request::from_argv(&std::env::args().collect::<Vec<_>>(), None),
+            );
 
             Ok(())
         })
@@ -21221,14 +21223,15 @@ pub fn run() {
             // a Finder double-click or "Open With" lands here, cold or warm.
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { urls } = &_event {
-                for url in urls {
-                    if let Some(request) = url
-                        .to_file_path()
-                        .ok()
-                        .and_then(|path| open_request::classify(&path.to_string_lossy()))
-                    {
-                        open_request::deliver(_app, request);
-                    }
+                let requests: Vec<_> = urls
+                    .iter()
+                    .filter_map(|url| url.to_file_path().ok())
+                    .filter_map(|path| open_request::classify(&path.to_string_lossy(), None))
+                    .collect();
+                if !requests.is_empty() {
+                    // A window hidden to the tray must come back to show it.
+                    open_request::raise_main_window(_app);
+                    open_request::deliver(_app, requests);
                 }
             }
         });
