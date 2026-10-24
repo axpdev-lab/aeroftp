@@ -385,6 +385,20 @@ interface TransferOutcome {
     error?: SyncErrorInfo;
 }
 
+/** What `provider_sync_transfer_bulk` answers for one file, in the order sent. */
+type SyncBulkResult =
+    | { status: 'completed' }
+    /** Final for this run: the file may have reached the server. */
+    | { status: 'failed'; message: string }
+    /** Back to the file's single-file command. */
+    | { status: 'not_attempted' };
+
+/** A file of a bulk group, after its preparation and its transfer. */
+type BulkPrepared = SyncBulkResult | { status: 'backup_failed'; error: unknown };
+
+/** Files sent in one `provider_sync_transfer_bulk` call at most. */
+const BULK_CHUNK_FILES = 256;
+
 /**
  * The connected-remote sync engine. Executes every entry in `files` with
  * configurable retry, post-transfer verification, archive-before-mutation,
@@ -529,11 +543,16 @@ export const runRemoteSync = async (
         } catch (e) {
             throw new Error(`Backup failed for ${relativePath}: ${String(e)}`);
         }
-        // Only files the compare saw on the destination reach this point, so
-        // "nothing to keep" means the backend could not find it: a server
-        // that answers "not there" for a file it holds. Writing anyway would
-        // lose the one copy the user asked to keep.
         if (kept == null) {
+            // On the local disk "nothing to keep" is a fact: the file is not
+            // there, and the transfer replaces nothing. A resumed download
+            // meets it when the stopped run had already moved its copy into
+            // the backup folder (a resume archives every download again).
+            if (side === 'local' || config.isLocalLocal) return;
+            // On a remote it can be a server that answers "not there" for a
+            // file it holds: only files the compare saw on the destination
+            // reach this point, and writing anyway would lose the one copy
+            // the user asked to keep.
             throw new Error(`Backup failed for ${relativePath}: the destination copy was not found, so it was left as it is`);
         }
         // The `.aerocorrect` parity sidecar belongs to the copy just kept, so
@@ -697,6 +716,119 @@ export const runRemoteSync = async (
 
     callbacks.onProgress?.(0, files.length);
 
+    // ── Native bulk (Requested 77) ─────────────────────────────────────────
+    // A provider that sends several files in one native call (Proton Drive
+    // in CLI mode starts one program per call) gets the uploads and the
+    // downloads of the run that come in a row as one call per group. The
+    // capability is not in the run's config, so it is asked once here: a
+    // provider without the bulk pays this one call, and every file of the
+    // run keeps its single-file command.
+    let bulk: { upload: boolean; download: boolean } | null = null;
+    if (config.isProvider && !config.isFtp && !config.isLocalLocal) {
+        const support = await invoke<{ upload: boolean; download: boolean } | null>('provider_bulk_support')
+            .catch(() => null);
+        bulk = support && (support.upload || support.download) ? support : null;
+    }
+    const bulkEligible = (f: SyncRunFile): boolean =>
+        bulk !== null
+        && !f.isDir
+        // A source spelled differently (keep-both, Unicode counterpart) keeps
+        // the single-file command, which writes under the destination name.
+        && f.sourcePath == null
+        && ((f.action === 'upload' && bulk.upload) || (f.action === 'download' && bulk.download));
+    const bulkPrepared = new Map<string, BulkPrepared>();
+    /**
+     * Send the files from `start` on that go the same way and can travel
+     * together, up to the one that reaches the transfer budget (the last file
+     * the budget lets through, as on the single-file path). Each is prepared
+     * as its single-file transfer would be (backup of the copy it replaces,
+     * the local state an upload records), then one call sends them. The main
+     * loop reads the outcomes in plan order and finishes each file as before.
+     */
+    const runBulkGroup = async (start: number): Promise<void> => {
+        const action = files[start].action;
+        const group: SyncRunFile[] = [];
+        let bytes = totalBytes;
+        for (let j = start; j < files.length && group.length < BULK_CHUNK_FILES; j++) {
+            const f = files[j];
+            if (f.action !== action || !bulkEligible(f) || bulkPrepared.has(f.relativePath)) break;
+            const idx = journalEntryMap.get(f.relativePath);
+            if (deps.resumeJournal && idx !== undefined && journal.entries[idx].status === 'completed') break;
+            if (config.transferBudget > 0 && bytes >= config.transferBudget) break;
+            bytes += f.size;
+            group.push(f);
+        }
+        if (group.length < 2) {
+            bulkPrepared.set(files[start].relativePath, { status: 'not_attempted' });
+            return;
+        }
+        const send: SyncRunFile[] = [];
+        for (const f of group) {
+            // A Stop during the preparation leaves the files not prepared yet
+            // as they are: nothing moved into the backup folder, nothing
+            // marked in progress.
+            if (isCancelled()) break;
+            const idx = journalEntryMap.get(f.relativePath);
+            setStatus(f.relativePath, 'syncing');
+            if (idx !== undefined) journal.entries[idx].status = 'in_progress';
+            if (config.versionedBackup && f.overwritesExisting) {
+                try {
+                    await archiveBeforeMutation(action === 'upload' ? 'remote' : 'local', f.relativePath);
+                } catch (error) {
+                    bulkPrepared.set(f.relativePath, { status: 'backup_failed', error });
+                    continue;
+                }
+            }
+            if (action === 'upload' && deps.writeIndex && f.mtime == null) {
+                landedStates.set(f.relativePath, await readLocalState(`${localBase}/${f.relativePath}`));
+            }
+            send.push(f);
+        }
+        await saveJournal();
+        let results: SyncBulkResult[] | null = null;
+        // Nor does anything go after a Stop. The files prepared stay pending
+        // for a resume, their replaced copies in the backup folder.
+        if (send.length > 0 && !isCancelled()) {
+            try {
+                results = await invoke<SyncBulkResult[]>('provider_sync_transfer_bulk', {
+                    upload: action === 'upload',
+                    items: send.map((f) => ({
+                        localPath: `${localBase}/${f.relativePath}`,
+                        remotePath: `${remoteBase}/${f.relativePath}`,
+                        size: f.size,
+                        modified: action === 'download' ? (f.mtime || null) : null,
+                    })),
+                    // The single-file timeout, per file: the bulk's own limit
+                    // grows with its files. No race here: a timer in the page
+                    // would leave the native program running.
+                    timeoutSeconds: config.retryPolicy.timeout_ms > 0
+                        ? Math.ceil(config.retryPolicy.timeout_ms / 1000)
+                        : null,
+                });
+            } catch {
+                // Refused before any file went (connection changed, no bulk
+                // any more): these files and the rest of the run go one by one.
+                bulk = null;
+            }
+        }
+        send.forEach((f, k) => {
+            bulkPrepared.set(f.relativePath, results?.[k] ?? { status: 'not_attempted' });
+        });
+    };
+    /** The outcome of a file the bulk sent or failed, as the single-file path reports it. */
+    const bulkOutcome = async (result: SyncBulkResult, filePath: string): Promise<TransferOutcome> => {
+        if (result.status === 'completed') return { success: true, attempts: 1 };
+        const rawError = result.status === 'failed' ? result.message : 'Not sent';
+        const error = await invoke<SyncErrorInfo>('classify_transfer_error', { rawError, filePath })
+            .catch(() => ({
+                kind: 'unknown' as SyncErrorKind,
+                message: rawError,
+                retryable: false,
+                file_path: filePath,
+            }));
+        return { success: false, attempts: 1, error };
+    };
+
     // ── Pre-create parent directories for file transfers ───────────────────
     const remoteParentDirs = new Set<string>();
     const localParentDirs = new Set<string>();
@@ -802,11 +934,21 @@ export const runRemoteSync = async (
             continue;
         }
 
+        // A file the bulk already sent (or failed) is finished below as it
+        // is, whatever happened since: it went before the budget or a Stop.
+        if (bulkEligible(item) && !bulkPrepared.has(item.relativePath)
+            && !(config.transferBudget > 0 && totalBytes >= config.transferBudget) && !isCancelled()) {
+            await runBulkGroup(i);
+        }
+        const fromBulk = bulkPrepared.get(item.relativePath);
+        const sentByBulk = fromBulk !== undefined && fromBulk.status !== 'not_attempted';
+        const preparedByBulk = fromBulk !== undefined;
+
         // Transfer budget: stop once the cap is reached.
         const budgetReached =
             config.transferBudget > 0 && totalBytes >= config.transferBudget;
 
-        if (budgetReached || isCancelled()) {
+        if (!sentByBulk && (budgetReached || isCancelled())) {
             runCancelled = true;
             for (let j = i; j < files.length; j++) {
                 // Leave journal entries pending so a later resume transfers
@@ -834,7 +976,13 @@ export const runRemoteSync = async (
         let didTransfer = false;
 
         if (item.action === 'upload') {
-            if (config.versionedBackup && item.overwritesExisting) {
+            if (fromBulk?.status === 'backup_failed') {
+                failBackup(item, journalEntry, fromBulk.error);
+                completed++;
+                callbacks.onProgress?.(completed, files.length);
+                continue;
+            }
+            if (!preparedByBulk && config.versionedBackup && item.overwritesExisting) {
                 try {
                     await archiveBeforeMutation('remote', item.relativePath);
                 } catch (e) {
@@ -859,10 +1007,12 @@ export const runRemoteSync = async (
             }
             // A run resumed from its journal knows no time of the file it
             // uploads: read it before the upload, the copy that goes up.
-            if (deps.writeIndex && item.mtime == null) {
+            if (!preparedByBulk && deps.writeIndex && item.mtime == null) {
                 landedStates.set(item.relativePath, await readLocalState(localFilePath));
             }
-            const result = await executeTransferWithRetry(cmd, args, item.relativePath);
+            const result = sentByBulk
+                ? await bulkOutcome(fromBulk, item.relativePath)
+                : await executeTransferWithRetry(cmd, args, item.relativePath);
             if (journalEntry) {
                 journalEntry.attempts = result.attempts;
                 if (result.attempts > 1) retried++;
@@ -909,7 +1059,13 @@ export const runRemoteSync = async (
                 setStatus(item.relativePath, 'error', errInfo.message);
             }
         } else if (item.action === 'download') {
-            if (config.versionedBackup && item.overwritesExisting) {
+            if (fromBulk?.status === 'backup_failed') {
+                failBackup(item, journalEntry, fromBulk.error);
+                completed++;
+                callbacks.onProgress?.(completed, files.length);
+                continue;
+            }
+            if (!preparedByBulk && config.versionedBackup && item.overwritesExisting) {
                 try {
                     await archiveBeforeMutation('local', item.relativePath);
                 } catch (e) {
@@ -932,7 +1088,9 @@ export const runRemoteSync = async (
                 cmd = 'download_file';
                 args = { params: { remote_path: remoteFilePath, local_path: localFilePath, modified: item.mtime || undefined, use_delta: config.deltaSyncEnabled } };
             }
-            const result = await executeTransferWithRetry(cmd, args, item.relativePath);
+            const result = sentByBulk
+                ? await bulkOutcome(fromBulk, item.relativePath)
+                : await executeTransferWithRetry(cmd, args, item.relativePath);
             if (journalEntry) {
                 journalEntry.attempts = result.attempts;
                 if (result.attempts > 1) retried++;

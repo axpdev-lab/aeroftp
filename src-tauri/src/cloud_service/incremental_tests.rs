@@ -36,6 +36,9 @@ struct RemoteState {
     downloads: Vec<String>,
     deletes: Vec<String>,
     renames: Vec<(String, String)>,
+    /// A native bulk, as Proton Drive's in CLI mode, and its calls.
+    bulk: bool,
+    bulks: Vec<Vec<String>>,
 }
 
 /// A remote in memory, shared so a test still reads it once an overlay owns
@@ -263,6 +266,29 @@ impl StorageProvider for MemRemote {
     async fn server_info(&mut self) -> Result<String, ProviderError> {
         Ok("memory".to_string())
     }
+    fn supports_bulk_upload(&self) -> bool {
+        self.state().bulk
+    }
+    async fn upload_bulk(
+        &mut self,
+        items: &[crate::providers::bulk::BulkTransferItem],
+        _progress: Option<crate::providers::bulk::BulkProgress>,
+    ) -> Result<Vec<crate::providers::bulk::BulkTransferOutcome>, ProviderError> {
+        let mut state = self.state();
+        state
+            .bulks
+            .push(items.iter().map(|i| i.remote_path.clone()).collect());
+        Ok(items
+            .iter()
+            .map(|item| {
+                let bytes = std::fs::read(&item.local_path).unwrap();
+                state.clock += 10;
+                let at = state.clock;
+                state.files.insert(item.remote_path.clone(), (bytes, at));
+                crate::providers::bulk::BulkTransferOutcome::Completed
+            })
+            .collect())
+    }
 }
 
 fn pair(root: &Path) -> CloudConfig {
@@ -421,6 +447,44 @@ async fn the_baseline_of_a_pass_records_its_profile() {
     let (run, saved) = execute(&config, plan, &mut remote, None).await;
     assert_eq!(done(run).0.uploaded, 1);
     assert_eq!(saved.profile_id.as_deref(), Some("srv_p1"));
+}
+
+/// On a provider with a native bulk (Proton Drive in CLI mode starts one
+/// program per call) the new files of a pass go up in one call, and one
+/// listing of their folder replaces the `stat` after each upload.
+#[tokio::test]
+async fn a_pass_sends_its_new_files_in_one_bulk() {
+    let root = tempfile::tempdir().unwrap();
+    let config = pair(root.path());
+    let mut remote = MemRemote::new();
+    remote.state().bulk = true;
+    let names = ["a.txt", "b.txt", "c.txt"];
+    for name in names {
+        std::fs::write(root.path().join(name), name).unwrap();
+    }
+    let index = empty_index(&config);
+
+    let plan = work(prep(&config, &index, &names));
+    let (run, saved) = execute(&config, plan, &mut remote, None).await;
+    let (result, failed) = done(run);
+    assert_eq!(result.uploaded, 3);
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    assert!(failed.is_empty());
+    for name in names {
+        assert_eq!(
+            remote.calls_to(&format!("/remote/{name}")),
+            1,
+            "only the stat before"
+        );
+        assert!(saved.files.contains_key(name));
+    }
+    let state = remote.state();
+    assert_eq!(
+        state.bulks,
+        [vec!["/remote/a.txt", "/remote/b.txt", "/remote/c.txt"]]
+    );
+    assert!(state.uploads.is_empty(), "no single-file upload");
+    assert_eq!(state.lists, 1, "one listing instead of a stat per file");
 }
 
 /// A file the watcher reports but that matches its baseline (written by the

@@ -267,6 +267,7 @@ mod trash_guard;
 // consent, and they share the predicate with the S3 provider rather than
 // re-deciding it. The module stays private; only the predicate is re-exported.
 pub use profile_export::endpoint_needs_cleartext_consent;
+mod provider_bulk_commands;
 mod provider_commands;
 // PD-CLI-CONV-B: the next four modules are exposed for the `aeroftp-cli`
 // bin so the CLI file-level batch can converge on the same provider
@@ -21003,6 +21004,8 @@ pub fn run() {
             provider_commands::provider_upload_folder,
             provider_commands::provider_download_files_batch,
             provider_commands::provider_upload_files_batch,
+            provider_bulk_commands::provider_bulk_support,
+            provider_bulk_commands::provider_sync_transfer_bulk,
             provider_commands::provider_upload_file,
             provider_commands::provider_mkdir,
             provider_commands::provider_delete_file,
