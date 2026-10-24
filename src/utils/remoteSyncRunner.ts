@@ -543,11 +543,16 @@ export const runRemoteSync = async (
         } catch (e) {
             throw new Error(`Backup failed for ${relativePath}: ${String(e)}`);
         }
-        // Only files the compare saw on the destination reach this point, so
-        // "nothing to keep" means the backend could not find it: a server
-        // that answers "not there" for a file it holds. Writing anyway would
-        // lose the one copy the user asked to keep.
         if (kept == null) {
+            // On the local disk "nothing to keep" is a fact: the file is not
+            // there, and the transfer replaces nothing. A resumed download
+            // meets it when the stopped run had already moved its copy into
+            // the backup folder (a resume archives every download again).
+            if (side === 'local' || config.isLocalLocal) return;
+            // On a remote it can be a server that answers "not there" for a
+            // file it holds: only files the compare saw on the destination
+            // reach this point, and writing anyway would lose the one copy
+            // the user asked to keep.
             throw new Error(`Backup failed for ${relativePath}: the destination copy was not found, so it was left as it is`);
         }
         // The `.aerocorrect` parity sidecar belongs to the copy just kept, so
@@ -759,6 +764,10 @@ export const runRemoteSync = async (
         }
         const send: SyncRunFile[] = [];
         for (const f of group) {
+            // A Stop during the preparation leaves the files not prepared yet
+            // as they are: nothing moved into the backup folder, nothing
+            // marked in progress.
+            if (isCancelled()) break;
             const idx = journalEntryMap.get(f.relativePath);
             setStatus(f.relativePath, 'syncing');
             if (idx !== undefined) journal.entries[idx].status = 'in_progress';
@@ -777,7 +786,9 @@ export const runRemoteSync = async (
         }
         await saveJournal();
         let results: SyncBulkResult[] | null = null;
-        if (send.length > 0) {
+        // Nor does anything go after a Stop. The files prepared stay pending
+        // for a resume, their replaced copies in the backup folder.
+        if (send.length > 0 && !isCancelled()) {
             try {
                 results = await invoke<SyncBulkResult[]>('provider_sync_transfer_bulk', {
                     upload: action === 'upload',

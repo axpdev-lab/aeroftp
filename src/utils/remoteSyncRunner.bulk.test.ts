@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+    filesFromJournal,
     runRemoteSync,
     type SyncRunFile,
     type RemoteSyncConfig,
@@ -227,5 +228,68 @@ describe('remoteSyncRunner on a native bulk', () => {
         const report = await runRemoteSync(run, { remote: [], local: [] }, config(), {}, { ...h.deps, resumeJournal });
         expect(h.sent()).toEqual([['/my-files/work/docs/f2.txt', '/my-files/work/docs/f3.txt']]);
         expect(report.uploaded).toBe(4);
+    });
+
+    // From the review: the copy a transfer replaces is moved into the backup
+    // folder before the group goes. A Stop during the preparation used to let
+    // it go on moving the copies of the files after it, then send nothing.
+    it('stops preparing a group at a Stop, sends nothing, and leaves the rest untouched', async () => {
+        let stopped = false;
+        const h = harness({
+            sync_backup_run_stamp: () => 'stamp',
+            sync_backup_archive_remote: (args) => {
+                if (String(args?.rel).endsWith('.aerocorrect')) return null;
+                stopped = true; // the Stop comes while the first copy is kept
+                return `kept/${String(args?.rel)}`;
+            },
+        });
+        const run = files(3, 'upload').map((f) => ({ ...f, overwritesExisting: true }));
+        const report = await runRemoteSync(run, { remote: [], local: [] }, config({ versionedBackup: { dir: '.v' } }), {
+            isCancelled: () => stopped,
+        }, h.deps);
+        const kept = h.of('sync_backup_archive_remote').map((c) => String(c.args?.rel)).filter((rel) => !rel.endsWith('.aerocorrect'));
+        expect(kept).toEqual(['docs/f0.txt']);
+        expect(h.of('provider_sync_transfer_bulk')).toHaveLength(0);
+        expect(h.of('provider_upload_file')).toHaveLength(0);
+        expect(report.cancelled).toBe(true);
+        const status = Object.fromEntries(h.journal().entries.map((e) => [e.relative_path, e.status]));
+        expect(status).toEqual({ 'docs/f0.txt': 'in_progress', 'docs/f1.txt': 'pending', 'docs/f2.txt': 'pending' });
+    });
+
+    // A resume archives every download again, and a stopped run had already
+    // moved those copies into the backup folder: on the local disk nothing
+    // there is a fact, and the download goes on (it failed on every resume).
+    it('resumes downloads whose copies a stopped run already kept, on the bulk and one by one', async () => {
+        for (const support of [{ upload: true, download: true }, { upload: false, download: false }]) {
+            const h = harness({ sync_backup_run_stamp: () => 'stamp', sync_backup_archive_local: () => null }, support);
+            const run = files(3, 'download');
+            const resumeJournal: SyncJournal = {
+                id: 'resume',
+                created_at: '2026-10-24T05:00:00Z',
+                updated_at: '2026-10-24T05:00:00Z',
+                local_path: '/home/u/work',
+                remote_path: '/my-files/work',
+                direction: 'bidirectional',
+                retry_policy: config().retryPolicy,
+                verify_policy: 'none',
+                entries: run.map((f) => ({
+                    relative_path: f.relativePath,
+                    source_path: null,
+                    action: 'download',
+                    status: 'in_progress',
+                    attempts: 0,
+                    last_error: null,
+                    verified: null,
+                    bytes_transferred: 1024,
+                    ec_status: null,
+                })),
+                completed: false,
+            };
+            const report = await runRemoteSync(filesFromJournal(resumeJournal), { remote: [], local: [] },
+                config({ versionedBackup: { dir: '.v' } }), {}, { ...h.deps, resumeJournal });
+            expect(report.errors).toEqual([]);
+            expect(report.downloaded).toBe(3);
+            expect(h.of('sync_backup_archive_local')).toHaveLength(3);
+        }
     });
 });
