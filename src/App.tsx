@@ -216,6 +216,7 @@ import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
 import { previewRouteFor } from './utils/previewRoute';
 import { useOpenRequests } from './hooks/useOpenRequests';
+import { planLocalOpen } from './utils/openRequestPlan';
 import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, isConnectCancelledError, isConnectHardTimeoutError } from './utils/connectCancel';
 import { shouldPersistUsedScan } from './utils/usedScanPersist';
 import { usedScanBoundKey } from './utils/usedScanBound';
@@ -9551,9 +9552,11 @@ const App: React.FC = () => {
     })();
   };
 
-  const changeLocalDirectory = async (path: string) => {
+  // `localOnly` leaves Navigation Sync out of it: no base guard, no remote
+  // mirror. A file the OS opened is not a step inside the paired tree.
+  const changeLocalDirectory = async (path: string, opts: { localOnly?: boolean } = {}) => {
     // Sync navigation guard: prevent navigating above the sync base path
-    if (isSyncNavigation && syncBasePaths) {
+    if (!opts.localOnly && isSyncNavigation && syncBasePaths) {
       const norm = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
       const normBase = norm(syncBasePaths.local);
       const normTarget = norm(path);
@@ -9590,7 +9593,7 @@ const App: React.FC = () => {
     // own spelling. A listing failure is not a missing folder. FTP and crypt
     // keep the previous join. The mirror shares remoteNavCounter and owns the
     // spinner, or a superseded navigation would leave it running.
-    if (isSyncNavigation && syncBasePaths && isConnected) {
+    if (!opts.localOnly && isSyncNavigation && syncBasePaths && isConnected) {
       const protocol = (liveConnectionParams.protocol) as ProviderType | undefined;
       const isProvider = usesProviderApi(protocol);
       const cryptActive = cryptSyncBoundaryActive({
@@ -16165,22 +16168,43 @@ const App: React.FC = () => {
   // the dual view, with the file selected and previewed as a double-click
   // would (AeroImage for a picture, the text preview with its Edit button for
   // text and code). A folder opens on itself (Ehud, #347). A multi-selection
-  // opened at once arrives together: the files of the first one's folder are
-  // all selected and the first previewable one is shown.
+  // opened at once arrives together: the files of the first folder are all
+  // selected, and any other folder of the batch gets a tab of its own.
   const openLocalPathsInAeroFile = async (requests: OpenRequest[]) => {
-    const folder = requests[0].folder;
-    const names = requests.filter(r => !r.isDir && r.folder === folder).map(r => r.name);
+    const plan = planLocalOpen(requests, name => previewRouteFor(name) === 'universal-preview');
+    if (!plan) return;
     setShowConnectionScreen(false);
     // A live session stays connected; only its remote panel steps aside.
     if (isConnected) setShowRemotePanel(false);
+    // The local panel leaves the paired tree, so Navigation Sync ends here
+    // the way its toggle ends it, and the navigation below stays local.
+    if (isSyncNavigation) {
+      setSyncBasePaths(null);
+      setIsSyncNavigation(false);
+      notify.info(t('toast.navSyncDisabled'));
+      humanLog.logRaw('activity.nav_sync_disabled', 'NAVIGATE', {}, undefined);
+    }
     const panelId: 'local' | 'local2' = showDualLocalPanel ? activeLocalPanelId : 'local';
     const target = panelId === 'local2'
-      ? await changeLocalDirectory2(folder)
-      : await changeLocalDirectory(folder);
+      ? await changeLocalDirectory2(plan.folder)
+      : await changeLocalDirectory(plan.folder, { localOnly: true });
     if (target === null || target === undefined) return;
     setActivePanel('local');
     setActiveLocalPanelId(panelId);
-    if (names.length === 0) return;
+    if (plan.otherFolders.length > 0) {
+      const setTabs = panelId === 'local2' ? setLocalTabs2 : setLocalTabs;
+      const prefix = panelId === 'local2' ? 'tab2' : 'tab';
+      setTabs(prev => {
+        const added: LocalTab[] = plan.otherFolders.slice(0, Math.max(0, 12 - prev.length)).map(path => ({
+          id: `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          path,
+          label: localPathBasename(path) || '/',
+          scrollTop: 0,
+        }));
+        return [...prev, ...added];
+      });
+    }
+    if (plan.names.length === 0) return;
     // A search or tag filter left on the panel would hide the opened rows.
     // Hidden files stay governed by the user's own setting; their preview
     // still opens below.
@@ -16190,11 +16214,10 @@ const App: React.FC = () => {
       setLocalSearchFilter('');
       fileTags.setActiveTagFilter(null);
     }
-    (panelId === 'local2' ? setSelectedLocalFiles2 : setSelectedLocalFiles)(new Set(names));
-    const shown = names.find(name => previewRouteFor(name) === 'universal-preview');
-    if (!shown) return;
-    const listed = await invoke<LocalFile[]>('get_local_files', { path: folder, showHidden: true }).catch(() => []);
-    const file = listed.find(entry => entry.name === shown);
+    (panelId === 'local2' ? setSelectedLocalFiles2 : setSelectedLocalFiles)(new Set(plan.names));
+    if (!plan.preview) return;
+    const listed = await invoke<LocalFile[]>('get_local_files', { path: plan.folder, showHidden: true }).catch(() => []);
+    const file = listed.find(entry => entry.name === plan.preview);
     if (file) await openUniversalPreview(file, false);
   };
 

@@ -42,20 +42,22 @@ export function useOpenRequests(ready: boolean, handle: (requests: OpenRequest[]
         }
         running.current = true;
         void (async () => {
-            try {
-                do {
-                    again.current = false;
+            do {
+                again.current = false;
+                // A failed take or handling is logged inside the loop, so an
+                // event that arrived meanwhile still gets its turn instead of
+                // leaving its files in the backend queue.
+                try {
                     const requests = await invoke<OpenRequest[]>('take_open_requests');
                     // Taken entries have left the queue, so they are handled
                     // even if the app locks meanwhile: what they open sits
                     // under the lock screen.
                     if (requests.length > 0) await handleRef.current(requests);
-                } while (again.current && readyRef.current);
-            } catch (err) {
-                logger.error('[OpenRequest] could not open the queued files', err);
-            } finally {
-                running.current = false;
-            }
+                } catch (err) {
+                    logger.error('[OpenRequest] could not open the queued files', err);
+                }
+            } while (again.current && readyRef.current);
+            running.current = false;
         })();
     }, [ready, signal]);
 }

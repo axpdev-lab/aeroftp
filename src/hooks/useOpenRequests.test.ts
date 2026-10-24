@@ -102,3 +102,20 @@ it('runs one drain at a time and takes what arrived during it afterwards', async
     expect(peak).toBe(1);
     expect(batches).toEqual([['first.png'], ['second.png']]);
 });
+
+it('a failed drain still takes what arrived during it', async () => {
+    let fail!: (err: Error) => void;
+    const batches: string[][] = [];
+    handler = async (requests) => {
+        batches.push(requests.map(r => r.name));
+        if (batches.length === 1) await new Promise<void>((_, reject) => { fail = reject; });
+    };
+    await render(true);
+    bridge.queue.push(request('first.png'));
+    await emit();
+    bridge.queue.push(request('second.png'));
+    await emit();
+    await act(async () => fail(new Error('navigation refused')));
+    expect(batches).toEqual([['first.png'], ['second.png']]);
+    expect(bridge.queue).toEqual([]);
+});

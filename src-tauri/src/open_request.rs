@@ -80,18 +80,29 @@ pub fn kind_for_file_name(name: &str) -> OpenKind {
     }
 }
 
-/// `\\?\C:\x` is how `canonicalize` spells `C:\x` on Windows. It is a valid
-/// path for Rust, but the path bar, tabs and breadcrumbs would show the
-/// prefix, so it is removed (`\\?\UNC\host\share` becomes `\\host\share`).
+/// `\\?\C:\x` is how `canonicalize` spells `C:\x` on Windows. The path bar,
+/// tabs and breadcrumbs would show the prefix, so it is removed from a drive
+/// path and from a share (`\\?\UNC\host\share` becomes `\\host\share`).
+/// Every consumer of the result is a Rust command, and the standard library
+/// adds the prefix back on its own for a path past `MAX_PATH`, so a long path
+/// keeps working. Any other verbatim form (`\\?\Volume{...}\`,
+/// `\\?\GLOBALROOT\...`) has no plain spelling and is kept whole.
 fn without_verbatim_prefix(path: &Path) -> PathBuf {
     let text = path.to_string_lossy();
     if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
-        PathBuf::from(format!(r"\\{rest}"))
-    } else if let Some(rest) = text.strip_prefix(r"\\?\") {
-        PathBuf::from(rest)
-    } else {
-        path.to_path_buf()
+        return PathBuf::from(format!(r"\\{rest}"));
     }
+    if let Some(rest) = text.strip_prefix(r"\\?\") {
+        let bytes = rest.as_bytes();
+        let is_drive = bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && bytes[2] == b'\\';
+        if is_drive {
+            return PathBuf::from(rest);
+        }
+    }
+    path.to_path_buf()
 }
 
 /// The local path an argument names. The Linux packages launch
@@ -343,6 +354,17 @@ mod tests {
             without_verbatim_prefix(Path::new("/home/a")),
             PathBuf::from("/home/a")
         );
+        // No plain spelling exists for these: stripping would break them.
+        for kept in [
+            r"\\?\Volume{0b1e2c3d-0000-0000-0000-100000000000}\a",
+            r"\\?\GLOBALROOT\Device\HarddiskVolume2\a",
+            r"\\?\C:",
+        ] {
+            assert_eq!(
+                without_verbatim_prefix(Path::new(kept)),
+                PathBuf::from(kept)
+            );
+        }
     }
 
     #[test]
