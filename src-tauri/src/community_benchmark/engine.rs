@@ -1122,6 +1122,7 @@ async fn remove_and_purge(
     observer: &dyn BenchmarkObserver,
 ) -> Option<Result<(), ProviderError>> {
     let live = provider.purges_live_path();
+    let mut live_purge_failed = false;
     if live {
         match bounded(provider.delete_permanent(path)).await {
             Some(Ok(true)) => {
@@ -1132,14 +1133,22 @@ async fn remove_and_purge(
             Some(Ok(false)) => return Some(Ok(())),
             // The purge failed: remove it plainly, so the folder at least
             // leaves the drive, and say where it went.
-            Some(Err(e)) => errors.push(format!(
-                "trash purge of {} failed, check the provider's trash: {}",
-                path, e
-            )),
+            Some(Err(e)) => {
+                live_purge_failed = true;
+                errors.push(format!(
+                    "trash purge of {} failed, check the provider's trash: {}",
+                    path, e
+                ));
+            }
             None => return None,
         }
     }
     let removed = bounded(provider.rmdir_recursive(path)).await;
+    // A live purge can fail after it moved the folder to the trash: then the
+    // path is gone, which the purge error above already reports.
+    if live_purge_failed && matches!(removed, Some(Err(ProviderError::NotFound(_)))) {
+        return Some(Ok(()));
+    }
     if !live && matches!(removed, Some(Ok(()))) {
         purge_from_trash(provider, path, errors, observer).await;
     }

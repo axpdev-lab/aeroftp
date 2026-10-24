@@ -883,6 +883,9 @@ mod engine_runs {
         hang_purge: bool,
         /// `delete_permanent` raises this token, as a Ctrl+C during the purge.
         cancel_on_purge: Option<CancellationToken>,
+        /// A live purge moves the item to the trash and then fails to purge
+        /// it there, as Proton's CLI can.
+        fail_live_purge: bool,
     }
 
     #[async_trait]
@@ -948,6 +951,10 @@ mod engine_runs {
             self.inner.rmdir(p).await
         }
         async fn rmdir_recursive(&mut self, p: &str) -> Result<(), ProviderError> {
+            // A real provider answers for a path that is not there.
+            if !self.inner.exists(p).await? {
+                return Err(ProviderError::NotFound(p.to_string()));
+            }
             self.trash.lock().unwrap().push(p.to_string());
             self.inner.rmdir_recursive(p).await
         }
@@ -996,6 +1003,10 @@ mod engine_runs {
             }
             // Trashed and purged in one step: nothing stays in the trash.
             self.inner.rmdir_recursive(p).await?;
+            if self.fail_live_purge {
+                self.trash.lock().unwrap().push(p.to_string());
+                return Err(ProviderError::Other("purge refused".into()));
+            }
             Ok(true)
         }
     }
@@ -1017,6 +1028,7 @@ mod engine_runs {
             purge_calls: Arc::default(),
             hang_purge: false,
             cancel_on_purge: None,
+            fail_live_purge: false,
         });
         (state, trash, provider)
     }
@@ -1064,6 +1076,46 @@ mod engine_runs {
         );
         let r = state.lock().unwrap();
         assert_eq!(r.dirs, BTreeSet::from(["/data".to_string()]));
+    }
+
+    #[tokio::test]
+    async fn a_live_purge_that_fails_after_the_trash_is_one_error_not_three() {
+        let (state, _) = remote();
+        let trash = Arc::new(Mutex::new(Vec::new()));
+        let provider = Box::new(TrashKeepingRemote {
+            inner: MemRemote(state.clone()),
+            kind: TrashKind::LivePath,
+            trash: trash.clone(),
+            purge_calls: Arc::default(),
+            hang_purge: false,
+            cancel_on_purge: None,
+            fail_live_purge: true,
+        });
+        let outcome = run(
+            provider,
+            "/data",
+            options(BenchmarkLevel::Quick, "1K", None),
+            &Silent,
+        )
+        .await
+        .unwrap();
+        let errors = &outcome.report.summary.errors;
+        // The folders left the drive and sit in the trash, which the purge
+        // error says; the plain removal after it found nothing to remove.
+        assert!(
+            errors.iter().any(|e| e.starts_with("trash purge of")),
+            "{errors:?}"
+        );
+        assert!(
+            !errors
+                .iter()
+                .any(|e| e.starts_with("cleanup of") || e.contains("could not be removed")),
+            "{errors:?}"
+        );
+        assert_eq!(
+            state.lock().unwrap().dirs,
+            BTreeSet::from(["/data".to_string()])
+        );
     }
 
     fn many_files_options() -> BenchmarkOptions {
@@ -1139,6 +1191,7 @@ mod engine_runs {
             purge_calls: purge_calls.clone(),
             hang_purge,
             cancel_on_purge,
+            fail_live_purge: false,
         });
         (purge_calls, provider)
     }
