@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import type { OpenRequest } from '../types';
 import type { LocalTab } from '../types/aerofile';
-import { addFolderTabs, findTabFor, mergeOpenBatch, planLocalOpen, sameLocalFolder, takeTabSelection } from './openRequestPlan';
+import { addFolderTabs, findTabFor, mergeOpenBatch, openInFolderTab, planLocalOpen, sameLocalFolder, takeTabSelection } from './openRequestPlan';
 
 const file = (folder: string, name: string): OpenRequest => ({
     kind: 'local', path: `${folder}/${name}`, folder, name, isDir: false,
@@ -91,4 +91,18 @@ it('compares folders the way each platform names them', () => {
     expect(mergeOpenBatch({ panelId: 'local', folder: 'C:\\Pics', names: ['a.png'], at: 0 }, 'local', 'c:/pics/', ['b.png'], 100))
         .toEqual(['a.png', 'b.png']);
     expect(findTabFor([{ id: 't', path: 'C:/Pics/', label: 'Pics', scrollTop: 0 }], 'c:\\pics')?.id).toBe('t');
+});
+
+it('keeps the files a tab was waiting to select when a later open reuses it', () => {
+    // A batch made a tab for x in /b; y in /b is opened before the tab is shown.
+    const tabs: LocalTab[] = [
+        { id: 'a', path: '/a', label: 'a', scrollTop: 0 },
+        { id: 'b', path: '/b', label: 'b', scrollTop: 0, select: ['x.png'] },
+    ];
+    const opened = openInFolderTab(tabs, '/b/', ['y.png']);
+    expect(opened.tab?.id).toBe('b');
+    expect(opened.names).toEqual(['x.png', 'y.png']);
+    expect(openInFolderTab(tabs, '/b', ['x.png', 'y.png']).names).toEqual(['x.png', 'y.png']);
+    expect(opened.tabs[1]).toEqual({ id: 'b', path: '/b', label: 'b', scrollTop: 0 });
+    expect(openInFolderTab(tabs, '/c', ['z.png'])).toEqual({ tab: undefined, names: ['z.png'], tabs });
 });

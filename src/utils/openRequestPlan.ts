@@ -124,3 +124,18 @@ export function addFolderTabs(
     }
     return next;
 }
+
+/** Opening `names` of `folder` in the tab that already shows it: the names
+ *  that tab still had waiting for its first showing join them, and the tabs
+ *  come back without them. The caller applies `tabs` only once the panel has
+ *  reached the folder, so a failed navigation keeps them waiting. */
+export function openInFolderTab(
+    tabs: readonly LocalTab[],
+    folder: string,
+    names: readonly string[],
+): { tab: LocalTab | undefined; names: string[]; tabs: LocalTab[] } {
+    const tab = findTabFor(tabs, folder);
+    if (!tab) return { tab, names: [...names], tabs: [...tabs] };
+    const taken = takeTabSelection(tabs, tab.id);
+    return { tab, names: [...taken.select, ...names.filter(name => !taken.select.includes(name))], tabs: taken.tabs };
+}

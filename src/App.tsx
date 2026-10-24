@@ -216,7 +216,7 @@ import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
 import { previewRouteFor } from './utils/previewRoute';
 import { useOpenRequests } from './hooks/useOpenRequests';
-import { addFolderTabs, findTabFor, mergeOpenBatch, planLocalOpen, sameLocalFolder, takeTabSelection, type LastLocalOpen } from './utils/openRequestPlan';
+import { addFolderTabs, mergeOpenBatch, openInFolderTab, planLocalOpen, sameLocalFolder, takeTabSelection, type LastLocalOpen } from './utils/openRequestPlan';
 import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, isConnectCancelledError, isConnectHardTimeoutError } from './utils/connectCancel';
 import { shouldPersistUsedScan } from './utils/usedScanPersist';
 import { usedScanBoundKey } from './utils/usedScanBound';
@@ -16211,22 +16211,28 @@ const App: React.FC = () => {
     const merged = sameLocalFolder(shownPath, plan.folder)
       ? mergeOpenBatch(lastLocalOpenRef.current, panelId, plan.folder, plan.names, now)
       : null;
+    let opened: string[] = plan.names;
     if (!merged) {
-      // A folder that already has a tab opens in that tab, not in a copy.
+      // A folder that already has a tab opens in that tab, not in a copy,
+      // and the files that tab was still waiting to select stay selected.
       const activeTabId = panelId === 'local2' ? activeLocalTabId2 : activeLocalTabId;
-      const existing = findTabFor(tabs, plan.folder);
-      if (existing && existing.id !== activeTabId) {
-        (panelId === 'local2' ? setActiveLocalTabId2 : setActiveLocalTabId)(existing.id);
-        setTabs(prev => takeTabSelection(prev, existing.id).tabs);
+      const reuse = openInFolderTab(tabs, plan.folder, plan.names);
+      if (reuse.tab && reuse.tab.id !== activeTabId) {
+        (panelId === 'local2' ? setActiveLocalTabId2 : setActiveLocalTabId)(reuse.tab.id);
       }
       const target = panelId === 'local2'
         ? await changeLocalDirectory2(plan.folder)
         : await changeLocalDirectory(plan.folder, { localOnly: true });
       if (target === null || target === undefined) return;
+      if (reuse.tab) {
+        const reusedId = reuse.tab.id;
+        setTabs(prev => takeTabSelection(prev, reusedId).tabs);
+      }
+      opened = reuse.names;
     }
     setActivePanel('local');
     setActiveLocalPanelId(panelId);
-    const names = merged ?? plan.names;
+    const names = merged ?? opened;
     lastLocalOpenRef.current = { panelId, folder: plan.folder, names, at: now };
     if (others.length > 0) {
       const prefix = panelId === 'local2' ? 'tab2' : 'tab';
