@@ -296,9 +296,12 @@ With `--json` it carries everything an agent needs before planning a path:
   "protocol": "sftp",
   "host": "nas.example.com",
   "base": "/srv/data/",
-  "resolved_root": "/srv/data"
+  "resolved_root": "/srv/data",
+  "start_folder": null
 }
 ```
+
+`start_folder` is where a relative path, or a command given no path, lands when that is not the root: `/my-files` for a Proton Drive profile in CLI mode that saves no initial folder, whose `/` lists the account's sections. It is `null` otherwise, and the text output then prints the root.
 
 The selector follows Profile Matching above, and is optional: without one, `pwd` uses the global `--profile`.
 
@@ -1659,6 +1662,8 @@ aeroftp-cli benchmark --profile "Koofr" --all-protocols
 
 The comparison tables and the profile pickers show a **Server** column (who and where: `Koofr`, `TAB.DIGITAL`, `MEGA`, or `Custom` for a plain transport aimed at a host of your own) next to a **Protocol** column (how: `WebDAV`, `SFTP`, `S3`, `OAuth 2.0`, `REST API`). A preconfigured Koofr profile connected over WebDAV reads `Koofr / WebDAV`; a custom WebDAV server reads `Custom / WebDAV`.
 
+On Proton Drive in CLI mode, whose root lists the account's sections where nothing can be written, the scratch folder of a run without `--test-root-prefix`, a relative or empty prefix, and the file `speed` generates all go under My Files, where the session starts; an absolute prefix such as `/my-files/bench` is taken as given.
+
 #### v4.1.0 improvements (#368)
 
 - The scratch base directory is removed after a run (guarded), honouring `--test-root-prefix`.
@@ -1998,6 +2003,8 @@ aeroftp-cli profile-add \
 `--protocol` accepts the lowercase protocol identifier: `ftp`, `ftps`, `sftp`, `webdav`, `webdavs`, `s3`, `mega`, `dropbox`, `googledrive`, `onedrive`, `box`, `pcloud`, `zohoworkdrive`, `fourshared`, `filen`, `internxt`, `kdrive`, `koofr`, `drime`, `filelu`, `yandexdisk`, `opendrive`, `jottacloud`, `azure`, `b2`, `backblaze`, `imagekit`, `uploadcare`, `cloudinary`, `tabdigital`, `felicloud`, `github`, `gitlab`, `immich`, `pixelunion`, `proton`, `blomp`. Cloud providers that resolve their endpoint from the protocol alone do not require `--host`.
 
 A Proton Drive profile (`--protocol proton`) takes `--proton-mode`, the API and CLI tabs of the GUI form: `native` is AeroFTP's own client, signed in with [`proton sign-in`](#proton---sign-a-native-proton-drive-profile-in-or-out); `cli` drives Proton's official `proton-drive` CLI, signed in with `proton-drive auth login`. Without the flag the profile gets the native client in a build that has it, as the GUI form and `import rclone` do. The flag is refused on any other protocol.
+
+Both modes open in My Files. In native mode paths start there, so My Files is `/`. In CLI mode absolute paths start from the account's sections, so My Files is `/my-files`, `ls /` lists the sections and the others (`/devices`, `/shared-with-me`, ...) stay reachable; a relative path, and a command given no path, resolve in My Files. For a CLI-mode profile that saves no initial folder `pwd` prints `/my-files`, and its `--json` gives `resolved_root` `/` and `start_folder` `/my-files`. To move a profile between the two modes with its saved paths, see [`profile-convert-mode`](#profile-duplicate-mode--profile-convert-mode---switch-a-profiles-mode).
 
 ```bash
 aeroftp-cli profile-add --name "Proton" --protocol proton --proton-mode native
@@ -2364,8 +2371,8 @@ region, and website. `--free` / `--paid` filter by pricing tier.
 ### `profile-duplicate-mode` / `profile-convert-mode` - switch a profile's mode
 
 ```bash
-aeroftp-cli profile-duplicate-mode SELECTOR --mode <api|webdav|s3|ftp> [--name NAME] [--username USER] [--password-stdin]
-aeroftp-cli profile-convert-mode   SELECTOR --mode <api|webdav|s3|ftp> [--name NAME] [--username USER] [--password-stdin] [--yes]
+aeroftp-cli profile-duplicate-mode SELECTOR --mode <api|webdav|s3|ftp|native|cli> [--name NAME] [--username USER] [--password-stdin]
+aeroftp-cli profile-convert-mode   SELECTOR --mode <api|webdav|s3|ftp|native|cli> [--name NAME] [--username USER] [--password-stdin] [--yes]
 ```
 
 `profile-duplicate-mode` creates a second profile for the same account in a
@@ -2375,6 +2382,32 @@ credential when the modes share one. `profile-convert-mode` does the same but
 button; it prompts for confirmation on a TTY unless `--yes` is given. Prefer
 `--password-env VAR` or `--password-stdin` over inline `--password` so the secret
 never lands in argv or shell history.
+
+Proton Drive takes `--mode native` (AeroFTP's client) or `--mode cli` (the
+official `proton-drive` CLI). The two spell My Files differently: the CLI shows
+the account's sections at its root, so My Files is `/my-files`; the native
+client is rooted in My Files, so the same folder is `/`. A Proton convert keeps
+the profile, its id and everything bound to it, and moves every path saved for
+it to the other spelling: the initial folder, the AeroCloud folders that sync
+with it, and the sync histories (index and resumable journal) that record it.
+The prompt lists them before anything is written; `--json` reports them as
+`translated`, and a folder in another section (`/shared-with-me/...`), which
+has no native equivalent, as `without_equivalent`, kept as it is. Sync histories
+written before they recorded a profile cannot be told apart from another
+server's with the same folders and are not moved (`legacy_histories`): the next
+sync of their folders compares without history, which deletes nothing because
+of it. The convert is refused, with nothing changed, while an AeroCloud sync
+uses the profile (disable it with `aeroftp-cli aerocloud disable`, switch, enable
+it again, or switch from the app, which holds AeroCloud for the time of the
+switch) or while a sync of one of its folders is pending. A Proton duplicate
+gets the initial folder translated and leaves the source's histories and
+AeroCloud where they are. `--username` and `--password` do not apply: sign the
+native mode in with `aeroftp-cli proton sign-in`, the CLI with `proton-drive auth
+login`.
+
+```bash
+aeroftp-cli profile-convert-mode "Proton" --mode native --yes --json
+```
 
 ### `profile-copy-user` / `profile-move-user` - relocate a profile between users
 

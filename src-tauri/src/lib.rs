@@ -279,6 +279,7 @@ pub mod copy_fallback;
 mod mtime_parse_audit;
 pub mod progress_cadence;
 pub mod progress_governor;
+pub mod proton_mode_switch;
 pub mod provider_transfer_executor;
 pub mod providers;
 mod pty;
@@ -12145,9 +12146,9 @@ fn relabel_installed_menu(
 use cloud_config::{CloudConfig, CloudSyncStatus};
 use sync::{
     classify_sync_error, classify_with_summary, delete_sync_journal, load_sync_index,
-    load_sync_journal, save_sync_index, save_sync_journal, select_canary_sample, verify_local_file,
-    CanaryResult, CanarySampleResult, CanarySummary, CompareOptions, CompareReport, FileInfo,
-    SyncEcStatus, SyncErrorInfo, SyncIndex, SyncJournal, VerifyPolicy, VerifyResult,
+    save_sync_index, save_sync_journal, select_canary_sample, verify_local_file, CanaryResult,
+    CanarySampleResult, CanarySummary, CompareOptions, CompareReport, FileInfo, SyncEcStatus,
+    SyncErrorInfo, SyncIndex, SyncJournal, VerifyPolicy, VerifyResult,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -12410,6 +12411,7 @@ async fn compare_directories(
     remote_path: String,
     options: Option<CompareOptions>,
     progress_id: Option<String>,
+    profile_id: Option<String>,
 ) -> Result<CompareReport, String> {
     let mut options = options.unwrap_or_default();
     sync::apply_error_correction_excludes(&mut options);
@@ -12506,8 +12508,11 @@ async fn compare_directories(
         }),
     );
 
-    // Load sync index if available for conflict detection
-    let index = load_sync_index(&local_path, &remote_path).ok().flatten();
+    // Load sync index if available for conflict detection, unless another
+    // profile wrote it (see `sync::history_serves`).
+    let index = sync::load_sync_index_for_profile(&local_path, &remote_path, profile_id.as_deref())
+        .ok()
+        .flatten();
     let report = classify_walked_pair(
         &local_path,
         None,
@@ -13194,20 +13199,26 @@ async fn get_remote_files_recursive_with_progress(
 async fn load_sync_index_cmd(
     local_path: String,
     remote_path: String,
+    profile_id: Option<String>,
 ) -> Result<Option<SyncIndex>, String> {
-    tokio::task::spawn_blocking(move || load_sync_index_cmd_blocking(local_path, remote_path))
-        .await
-        .unwrap_or_else(|err| Err(format!("load_sync_index_cmd task failed: {err}")))
+    tokio::task::spawn_blocking(move || {
+        load_sync_index_cmd_blocking(local_path, remote_path, profile_id)
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("load_sync_index_cmd task failed: {err}")))
 }
 
-/// The body of `load_sync_index_cmd`, kept synchronous and run on the blocking pool.
+/// The body of `load_sync_index_cmd`, kept synchronous and run on the blocking
+/// pool. With `profile_id`, an index another profile wrote is not returned
+/// (see `sync::history_serves`).
 fn load_sync_index_cmd_blocking(
     local_path: String,
     remote_path: String,
+    profile_id: Option<String>,
 ) -> Result<Option<SyncIndex>, String> {
     validate_path(&local_path)?;
     validate_path(&remote_path)?;
-    load_sync_index(&local_path, &remote_path)
+    sync::load_sync_index_for_profile(&local_path, &remote_path, profile_id.as_deref())
 }
 
 #[tauri::command]
@@ -13229,20 +13240,26 @@ fn save_sync_index_cmd_blocking(index: SyncIndex) -> Result<(), String> {
 async fn load_sync_journal_cmd(
     local_path: String,
     remote_path: String,
+    profile_id: Option<String>,
 ) -> Result<Option<SyncJournal>, String> {
-    tokio::task::spawn_blocking(move || load_sync_journal_cmd_blocking(local_path, remote_path))
-        .await
-        .unwrap_or_else(|err| Err(format!("load_sync_journal_cmd task failed: {err}")))
+    tokio::task::spawn_blocking(move || {
+        load_sync_journal_cmd_blocking(local_path, remote_path, profile_id)
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("load_sync_journal_cmd task failed: {err}")))
 }
 
-/// The body of `load_sync_journal_cmd`, kept synchronous and run on the blocking pool.
+/// The body of `load_sync_journal_cmd`, kept synchronous and run on the
+/// blocking pool. With `profile_id`, a journal another profile wrote is not
+/// resumed (see `sync::history_serves`).
 fn load_sync_journal_cmd_blocking(
     local_path: String,
     remote_path: String,
+    profile_id: Option<String>,
 ) -> Result<Option<SyncJournal>, String> {
     validate_path(&local_path)?;
     validate_path(&remote_path)?;
-    load_sync_journal(&local_path, &remote_path)
+    sync::load_sync_journal_for_profile(&local_path, &remote_path, profile_id.as_deref())
 }
 
 #[tauri::command]
@@ -16218,12 +16235,14 @@ static SYNC_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 /// RAII guard ensuring SYNC_IN_PROGRESS is always reset to false when the
 /// owning scope ends (success, error return, or panic unwind). Acquire via
 /// `acquire()` which returns None (and does nothing) if already held.
-struct CloudSyncGuard(());
+pub(crate) struct CloudSyncGuard(());
 
 impl CloudSyncGuard {
     /// Swap true and take ownership if it was previously false.
     /// Returns Some(guard) iff we set the flag (previous value was false).
-    fn acquire() -> Option<Self> {
+    /// Also held by a Proton Drive mode switch while it moves the AeroCloud
+    /// folders, so no sync starts on the old ones (Requested 79).
+    pub(crate) fn acquire() -> Option<Self> {
         if SYNC_IN_PROGRESS.swap(true, Ordering::SeqCst) {
             None
         } else {
@@ -20570,6 +20589,9 @@ pub fn run() {
             compare_directories,
             compare_local_directories,
             cancel_compare,
+            proton_mode_switch::proton_mode_switch_plan,
+            proton_mode_switch::proton_mode_switch_apply,
+            proton_mode_switch::proton_translate_path,
             load_sync_index_cmd,
             save_sync_index_cmd,
             load_sync_journal_cmd,

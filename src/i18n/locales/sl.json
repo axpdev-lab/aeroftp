@@ -377,7 +377,24 @@
                 "fetchUrl": "Pridobi URL",
                 "megacmdWebdavHint": "Uporabniško ime in geslo sta namenoma izpuščena. AeroFTP ob povezovanju sam zažene »{cmd}«, da zažene most in prebere ta naslov: polje lahko ostane prazno. »Pridobi URL« je neobvezna ročna osvežitev; tukaj spremenite vrata, če MEGAcmd uporablja svoja."
             },
-            "manualStorageUnitLabel": "Enota {label}"
+            "manualStorageUnitLabel": "Enota {label}",
+            "protonSwitch": {
+                "title": "Preklopim {name} na {mode}?",
+                "intro": "CLI zapiše My Files kot /my-files, API pa kot /. Te shranjene poti se premaknejo skupaj s profilom:",
+                "initialPath": "Začetna mapa",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "Par AeroCloud {name}",
+                "syncHistory": "Zgodovina sinhronizacije za {folder}",
+                "pendingSync": "Sinhronizacija na čakanju za {folder}",
+                "noEquivalent": "V načinu {mode} ni ustreznice, ohranjeno nespremenjeno:",
+                "legacy_one": "1 zgodovina sinhronizacije je bila zapisana, preden so zgodovine beležile profil, in se ne premakne. Naslednja sinhronizacija njenih map primerja brez zgodovine in zato ničesar ne izbriše.",
+                "legacy_many": "Zgodovine sinhronizacije ({count}) so bile zapisane, preden so zgodovine beležile profil, in se ne premaknejo. Naslednja sinhronizacija njihovih map primerja brez zgodovine in zato ničesar ne izbriše.",
+                "nothing": "Nobene shranjene poti ni treba spremeniti.",
+                "confirm": "Preklopi način",
+                "refused": "Način ni bil preklopljen",
+                "copyKeptTitle": "Začetna mapa ohranjena",
+                "copyKept": "Začetna mapa {path} nima ustreznice v načinu {mode} in je bila ohranjena nespremenjena."
+            }
         },
         "browser": {
             "remote": "Oddaljeno",
@@ -6879,7 +6896,9 @@
                 "proton": {
                     "headerDescription": "Shramba v oblaku Proton s šifriranjem od konca do konca",
                     "apiDescription": "Lasten odjemalec Proton Drive v AeroFTP: prijavite se na Protonovi strani v brskalniku, datoteke se šifrirajo in dešifrirajo na tem računalniku in nobena druga aplikacija ni potrebna.",
-                    "cliDescription": "Upravlja uradni CLI Proton Drive, nameščen in prijavljen na tem računalniku. Prijavite se v brskalniku; AeroFTP nikoli ne vidi vašega gesla za Proton."
+                    "cliDescription": "Upravlja uradni CLI Proton Drive, nameščen in prijavljen na tem računalniku. Prijavite se v brskalniku; AeroFTP nikoli ne vidi vašega gesla za Proton.",
+                    "apiPaths": "Poti se začnejo v My Files: My Files je /.",
+                    "cliPaths": "Absolutne poti se začnejo pri razdelkih: My Files je /my-files, kjer se odpre seja."
                 },
                 "opendrive": {
                     "headerDescription": "Shramba v oblaku OpenDrive (5 GB brezplačno)",

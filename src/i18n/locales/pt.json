@@ -377,7 +377,24 @@
                 "fetchUrl": "Obter URL",
                 "megacmdWebdavHint": "O nome de utilizador e a palavra-passe são omitidos de propósito. O AeroFTP executa ele próprio \"{cmd}\" ao ligar para iniciar a ponte e ler este endereço: pode deixá-lo em branco. \"Obter URL\" é uma atualização manual opcional; altere aqui a porta se o MEGAcmd usar uma personalizada."
             },
-            "manualStorageUnitLabel": "Unidade de {label}"
+            "manualStorageUnitLabel": "Unidade de {label}",
+            "protonSwitch": {
+                "title": "Mudar {name} para {mode}?",
+                "intro": "A CLI escreve My Files como /my-files e a API como /. Estes caminhos armazenados acompanham o perfil:",
+                "initialPath": "Pasta inicial",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "Par AeroCloud {name}",
+                "syncHistory": "Histórico de sincronização de {folder}",
+                "pendingSync": "Sincronização pendente de {folder}",
+                "noEquivalent": "Sem equivalente no modo {mode}, mantido como está:",
+                "legacy_one": "1 histórico de sincronização foi gravado antes de os históricos registrarem um perfil e não é movido. A próxima sincronização das suas pastas compara sem histórico e, por isso, não exclui nada.",
+                "legacy_many": "{count} históricos de sincronização foram gravados antes de os históricos registrarem um perfil e não são movidos. A próxima sincronização das suas pastas compara sem histórico e, por isso, não exclui nada.",
+                "nothing": "Nenhum caminho salvo precisa ser alterado.",
+                "confirm": "Alternar modo",
+                "refused": "O modo não foi alternado",
+                "copyKeptTitle": "Pasta inicial mantida",
+                "copyKept": "A pasta inicial {path} não tem equivalente no modo {mode} e foi mantida como está."
+            }
         },
         "browser": {
             "remote": "Remoto",
@@ -6879,7 +6896,9 @@
                 "proton": {
                     "headerDescription": "Armazenamento em nuvem Proton com criptografia de ponta a ponta",
                     "apiDescription": "O cliente Proton Drive próprio do AeroFTP: você entra na página da Proton no navegador, os arquivos são criptografados e descriptografados neste computador e nenhum outro aplicativo é necessário.",
-                    "cliDescription": "Controla a CLI oficial do Proton Drive instalada e com sessão iniciada nesta máquina. Você entra no navegador; o AeroFTP nunca vê sua senha da Proton."
+                    "cliDescription": "Controla a CLI oficial do Proton Drive instalada e com sessão iniciada nesta máquina. Você entra no navegador; o AeroFTP nunca vê sua senha da Proton.",
+                    "apiPaths": "Os caminhos começam em My Files: My Files é /.",
+                    "cliPaths": "Os caminhos absolutos começam nas seções: My Files é /my-files, onde uma sessão é aberta."
                 },
                 "opendrive": {
                     "headerDescription": "Armazenamento em nuvem OpenDrive (5 GB grátis)",

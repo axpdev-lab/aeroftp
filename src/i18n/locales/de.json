@@ -377,7 +377,24 @@
                 "fetchUrl": "URL abrufen",
                 "megacmdWebdavHint": "Benutzername und Passwort werden absichtlich weggelassen. AeroFTP führt beim Verbinden selbst „{cmd}“ aus, um die Brücke zu starten und diese Adresse zu lesen: Das Feld darf leer bleiben. „URL abrufen“ ist eine optionale manuelle Aktualisierung; ändern Sie hier den Port, falls MEGAcmd einen eigenen verwendet."
             },
-            "manualStorageUnitLabel": "{label}-Einheit"
+            "manualStorageUnitLabel": "{label}-Einheit",
+            "protonSwitch": {
+                "title": "{name} auf {mode} umstellen?",
+                "intro": "Die CLI schreibt My Files als /my-files, die API als /. Diese gespeicherten Pfade wandern mit dem Profil:",
+                "initialPath": "Startordner",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "AeroCloud-Paar {name}",
+                "syncHistory": "Synchronisierungsverlauf von {folder}",
+                "pendingSync": "Ausstehende Synchronisierung von {folder}",
+                "noEquivalent": "Keine Entsprechung im {mode}-Modus, bleibt unverändert:",
+                "legacy_one": "1 Synchronisierungsverlauf wurde geschrieben, bevor Verläufe ein Profil erfassten, und wird nicht verschoben. Die nächste Synchronisierung seiner Ordner vergleicht ohne Verlauf und löscht deswegen nichts.",
+                "legacy_many": "{count} Synchronisierungsverläufe wurden geschrieben, bevor Verläufe ein Profil erfassten, und werden nicht verschoben. Die nächste Synchronisierung ihrer Ordner vergleicht ohne Verlauf und löscht deswegen nichts.",
+                "nothing": "Kein gespeicherter Pfad muss geändert werden.",
+                "confirm": "Modus wechseln",
+                "refused": "Der Modus wurde nicht gewechselt",
+                "copyKeptTitle": "Startordner beibehalten",
+                "copyKept": "Der Startordner {path} hat im Modus {mode} keine Entsprechung und wurde unverändert beibehalten."
+            }
         },
         "browser": {
             "remote": "Remote",
@@ -6879,7 +6896,9 @@
                 "proton": {
                     "headerDescription": "Proton-Cloudspeicher mit Ende-zu-Ende-Verschlüsselung",
                     "apiDescription": "AeroFTPs eigener Proton-Drive-Client: Sie melden sich im Browser auf der Seite von Proton an, Dateien werden auf diesem Computer ver- und entschlüsselt, und keine weitere App ist nötig.",
-                    "cliDescription": "Steuert die offizielle Proton-Drive-CLI, die auf diesem Rechner installiert und angemeldet ist. Sie melden sich im Browser an; AeroFTP sieht Ihr Proton-Passwort nie."
+                    "cliDescription": "Steuert die offizielle Proton-Drive-CLI, die auf diesem Rechner installiert und angemeldet ist. Sie melden sich im Browser an; AeroFTP sieht Ihr Proton-Passwort nie.",
+                    "apiPaths": "Pfade beginnen in My Files: My Files ist /.",
+                    "cliPaths": "Absolute Pfade beginnen bei den Bereichen: My Files ist /my-files, wo eine Sitzung startet."
                 },
                 "opendrive": {
                     "headerDescription": "OpenDrive-Cloudspeicher (5 GB kostenlos)",

@@ -404,6 +404,25 @@ async fn a_new_file_is_sent_after_one_stat_and_no_listing() {
     );
 }
 
+/// The baseline a pass leaves records the profile it synced with, as the full
+/// sync's does: one that recorded none would serve any profile, so another
+/// server's sync of the same folders would read it as its own and turn files
+/// only that server holds into deletions.
+#[tokio::test]
+async fn the_baseline_of_a_pass_records_its_profile() {
+    let root = tempfile::tempdir().unwrap();
+    let mut config = pair(root.path());
+    config.server_profile_id = Some("srv_p1".to_string());
+    let mut remote = MemRemote::new();
+    std::fs::write(root.path().join("new.txt"), b"hello").unwrap();
+    let index = empty_index(&config);
+
+    let plan = work(prep(&config, &index, &["new.txt"]));
+    let (run, saved) = execute(&config, plan, &mut remote, None).await;
+    assert_eq!(done(run).0.uploaded, 1);
+    assert_eq!(saved.profile_id.as_deref(), Some("srv_p1"));
+}
+
 /// A file the watcher reports but that matches its baseline (written by the
 /// last cycle, touched without a change) needs nothing from the remote.
 #[tokio::test]

@@ -337,6 +337,37 @@ fn benchmark_remote_roots_stay_relative_without_initial_path() {
     assert_eq!(root, "aeroftp-bench/rid");
 }
 
+/// Requested 79: on Proton Drive a relative or empty `--test-root-prefix`
+/// lands where the session starts (My Files in CLI mode), not between the
+/// account's sections; an absolute prefix, and any prefix on another
+/// provider, is taken as given, as before.
+#[test]
+fn a_relative_prefix_lands_in_the_proton_start_folder() {
+    use crate::providers::ProviderType::{Proton, Sftp};
+    let prefix = benchmark_effective_prefix("AeroFTP-live-tests/r83", Proton, "/my-files");
+    assert_eq!(prefix, "/my-files/AeroFTP-live-tests/r83");
+    assert_eq!(
+        benchmark_remote_roots_from_prefix(&prefix, "id"),
+        (
+            "/my-files/AeroFTP-live-tests/r83".to_string(),
+            "/my-files/AeroFTP-live-tests/r83/id".to_string()
+        )
+    );
+    assert_eq!(
+        benchmark_effective_prefix("", Proton, "/my-files"),
+        "/my-files"
+    );
+    assert_eq!(
+        benchmark_effective_prefix("/my-files/x", Proton, "/my-files"),
+        "/my-files/x"
+    );
+    // Native mode starts at its root, My Files.
+    assert_eq!(benchmark_effective_prefix("x", Proton, "/"), "/x");
+    // Another provider: unchanged.
+    assert_eq!(benchmark_effective_prefix("x", Sftp, ""), "x");
+    assert_eq!(benchmark_effective_prefix("", Sftp, ""), "");
+}
+
 #[test]
 fn benchmark_remote_roots_from_prefix_keeps_user_subpath() {
     let (base, root) = benchmark_remote_roots_from_prefix("/Drive/aeroftp-bench", "rid");

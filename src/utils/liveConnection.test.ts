@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { ConnectionParams } from '../types';
-import { isSameConnection, resolveLiveConnectionParams } from './liveConnection';
+import { isSameConnection, resolveLiveConnectionParams, savedProfileIdOf } from './liveConnection';
 
 const EMPTY_FORM: ConnectionParams = { server: '', username: '', password: '' };
 
@@ -67,6 +67,21 @@ describe('resolveLiveConnectionParams', () => {
         // An id that names no tab is no active session: it must not erase
         // what the app is connected with.
         expect(resolveLiveConnectionParams([{ id: 's1', connectionParams: webdav }], 'gone', sftp)).toBe(sftp);
+    });
+});
+
+describe('savedProfileIdOf', () => {
+    const quick: ConnectionParams = { server: 'files.example.com:22', username: 'u', password: '', protocol: 'sftp' };
+
+    it('gives the saved profile of the connection or of its session', () => {
+        expect(savedProfileIdOf({ ...quick, savedServerId: 'srv_1' }, null)).toBe('srv_1');
+        expect(savedProfileIdOf(quick, { savedServerId: 'srv_2' })).toBe('srv_2');
+    });
+
+    it('is null for a connection opened without a saved profile, never its host', () => {
+        expect(savedProfileIdOf(quick, null)).toBeNull();
+        expect(savedProfileIdOf(quick, { savedServerId: null })).toBeNull();
+        expect(savedProfileIdOf({ ...quick, savedServerId: '' }, undefined)).toBeNull();
     });
 });
 

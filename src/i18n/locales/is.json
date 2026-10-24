@@ -377,7 +377,24 @@
                 "fetchUrl": "Sækja vefslóð",
                 "megacmdWebdavHint": "Notandanafni og lykilorði er sleppt viljandi. AeroFTP keyrir sjálft „{cmd}“ við tengingu til að ræsa brúna og lesa þetta vistfang: það má vera autt. „Sækja vefslóð“ er valfrjáls handvirk uppfærsla; breyttu gáttinni hér ef MEGAcmd notar sérsniðna gátt."
             },
-            "manualStorageUnitLabel": "{label}-eining"
+            "manualStorageUnitLabel": "{label}-eining",
+            "protonSwitch": {
+                "title": "Skipta {name} yfir í {mode}?",
+                "intro": "CLI skrifar My Files sem /my-files, API sem /. Þessar vistuðu slóðir færast með sniðinu:",
+                "initialPath": "Upphafsmappa",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "AeroCloud-par {name}",
+                "syncHistory": "Samstillingarferill {folder}",
+                "pendingSync": "Samstilling í bið fyrir {folder}",
+                "noEquivalent": "Engin samsvörun í {mode}-ham, haldið óbreyttu:",
+                "legacy_one": "1 samstillingarferill var skrifaður áður en ferlar skráðu prófíl og er ekki færður. Næsta samstilling á möppum hans ber saman án ferils og eyðir þess vegna engu.",
+                "legacy_many": "{count} samstillingarferlar voru skrifaðir áður en ferlar skráðu prófíl og eru ekki færðir. Næsta samstilling á möppum þeirra ber saman án ferils og eyðir þess vegna engu.",
+                "nothing": "Engri vistaðri slóð þarf að breyta.",
+                "confirm": "Skipta um ham",
+                "refused": "Ekki var skipt um ham",
+                "copyKeptTitle": "Upphafsmöppu haldið",
+                "copyKept": "Upphafsmappan {path} á sér enga samsvörun í {mode}-ham og var haldið óbreyttri."
+            }
         },
         "browser": {
             "remote": "Fjartengdur",
@@ -6898,7 +6915,9 @@
                 "proton": {
                     "headerDescription": "Skýjageymsla Proton með enda-til-enda dulkóðun",
                     "apiDescription": "Eigin Proton Drive biðlari AeroFTP: þú skráir þig inn á síðu Proton í vafranum, skrár eru dulkóðaðar og afkóðaðar á þessari tölvu og ekkert annað forrit þarf.",
-                    "cliDescription": "Stýrir opinberu Proton Drive CLI sem er uppsett og innskráð á þessari vél. Þú skráir þig inn í vafranum; AeroFTP sér aldrei Proton-lykilorðið þitt."
+                    "cliDescription": "Stýrir opinberu Proton Drive CLI sem er uppsett og innskráð á þessari vél. Þú skráir þig inn í vafranum; AeroFTP sér aldrei Proton-lykilorðið þitt.",
+                    "apiPaths": "Slóðir byrja í My Files: My Files er /.",
+                    "cliPaths": "Algildar slóðir byrja frá hlutunum: My Files er /my-files, þar sem lota opnast."
                 },
                 "opendrive": {
                     "headerDescription": "Skýjageymsla OpenDrive (5 GB ókeypis)",

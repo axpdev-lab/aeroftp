@@ -515,6 +515,13 @@
       "folded": "kita",
       "twin": "kitą",
       "reason": "Kita is the nominative heading for the Other section; kitą is the accusative case, which this heading does not use."
+    },
+    "es\u001fconnection.protonSwitch.intro\u001fLa CLI escribe My Files como /my-files y la API como /. Estas rutas guardadas se mueven con el perfil:": {
+      "locale": "es",
+      "key": "connection.protonSwitch.intro",
+      "folded": "estas",
+      "twin": "estás",
+      "reason": "Estas is the demonstrative (these saved paths); estás is the verb (you are), which this sentence does not use."
     }
   }
 }
