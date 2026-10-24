@@ -173,11 +173,14 @@ pub fn from_argv<S: AsRef<str>>(argv: &[S], cwd: Option<&Path>) -> Vec<OpenReque
         .collect()
 }
 
-fn push(request: OpenRequest) {
-    let mut pending = PENDING.lock().unwrap_or_else(|e| e.into_inner());
-    pending.push(request);
-    let overflow = pending.len().saturating_sub(MAX_PENDING);
-    pending.drain(..overflow);
+/// Add one delivery to the queue. The bound trims only what was already
+/// waiting: every file of the delivery just made is kept, even past
+/// MAX_PENDING (a command line bounds it anyway).
+fn enqueue(pending: &mut Vec<OpenRequest>, batch: Vec<OpenRequest>) {
+    let keep_waiting = MAX_PENDING.saturating_sub(batch.len());
+    let dropped = pending.len().saturating_sub(keep_waiting);
+    pending.drain(..dropped);
+    pending.extend(batch);
 }
 
 /// Queue requests and tell the main window once, which drains them now if
@@ -186,15 +189,18 @@ pub fn deliver(app: &AppHandle, requests: Vec<OpenRequest>) {
     if requests.is_empty() {
         return;
     }
-    for request in requests {
+    for request in &requests {
         // The entry name only, a folder's own name for a folder: no full path.
         let shown = Path::new(&request.path)
             .file_name()
             .map(|name| name.to_string_lossy().to_string())
             .unwrap_or_default();
         log::info!("OS open request: {:?} ({shown})", request.kind);
-        push(request);
     }
+    enqueue(
+        &mut PENDING.lock().unwrap_or_else(|e| e.into_inner()),
+        requests,
+    );
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.emit(OPEN_REQUEST_EVENT, ());
     }
@@ -376,13 +382,39 @@ mod tests {
             name: n.to_string(),
             is_dir: false,
         };
-        std::mem::take(&mut *PENDING.lock().unwrap());
-        for n in 0..MAX_PENDING + 3 {
-            push(entry(n));
+        {
+            let mut pending = PENDING.lock().unwrap();
+            pending.clear();
+            for n in 0..MAX_PENDING + 3 {
+                enqueue(&mut pending, vec![entry(n)]);
+            }
         }
         let taken = tauri::async_runtime::block_on(take_open_requests());
         assert_eq!(taken.len(), MAX_PENDING);
         assert_eq!(taken[0], entry(3));
         assert!(tauri::async_runtime::block_on(take_open_requests()).is_empty());
+    }
+
+    #[test]
+    fn the_bound_trims_what_waited_never_the_delivery_just_made() {
+        let entry = |n: usize| OpenRequest {
+            kind: OpenKind::Local,
+            path: format!("/q/{n}"),
+            folder: "/q".into(),
+            name: n.to_string(),
+            is_dir: false,
+        };
+        // A full queue, then a selection larger than the bound.
+        let mut pending: Vec<_> = (0..MAX_PENDING).map(entry).collect();
+        let batch: Vec<_> = (1000..1000 + MAX_PENDING + 44).map(entry).collect();
+        enqueue(&mut pending, batch.clone());
+        assert_eq!(pending, batch);
+        // Room left: the newest waiting entries stay ahead of the delivery.
+        let mut pending: Vec<_> = (0..10).map(entry).collect();
+        let batch: Vec<_> = (1000..1000 + MAX_PENDING - 4).map(entry).collect();
+        enqueue(&mut pending, batch.clone());
+        assert_eq!(pending.len(), MAX_PENDING);
+        assert_eq!(pending[..4], [entry(6), entry(7), entry(8), entry(9)]);
+        assert_eq!(pending[4..], batch[..]);
     }
 }

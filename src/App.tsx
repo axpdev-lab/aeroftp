@@ -16211,31 +16211,10 @@ const App: React.FC = () => {
     const merged = sameLocalFolder(shownPath, plan.folder)
       ? mergeOpenBatch(lastLocalOpenRef.current, panelId, plan.folder, plan.names, now)
       : null;
-    let opened: string[] = plan.names;
-    if (!merged) {
-      // A folder that already has a tab opens in that tab, not in a copy,
-      // and the files that tab was still waiting to select stay selected.
-      // The tab switches only once the folder has loaded: a failed load
-      // leaves every tab where it was.
-      const activeTabId = panelId === 'local2' ? activeLocalTabId2 : activeLocalTabId;
-      const previous = { id: activeTabId, path: shownPath };
-      const reuse = openInFolderTab(tabs, plan.folder, plan.names);
-      const target = panelId === 'local2'
-        ? await changeLocalDirectory2(plan.folder)
-        : await changeLocalDirectory(plan.folder, { localOnly: true });
-      if (target === null || target === undefined) return;
-      if (reuse.tab) {
-        const reusedId = reuse.tab.id;
-        if (reusedId !== activeTabId) (panelId === 'local2' ? setActiveLocalTabId2 : setActiveLocalTabId)(reusedId);
-        setTabs(prev => settleReusedTab(prev, reusedId, previous));
-      }
-      opened = reuse.names;
-    }
-    setActivePanel('local');
-    setActiveLocalPanelId(panelId);
-    const names = merged ?? opened;
-    lastLocalOpenRef.current = { panelId, folder: plan.folder, names, at: now };
-    if (others.length > 0) {
+    // Every further folder of the batch gets its tab, whether or not the
+    // first one loads: the batch has already left the queue.
+    const openOtherFolders = () => {
+      if (others.length === 0) return;
       const prefix = panelId === 'local2' ? 'tab2' : 'tab';
       const newTab = (group: LocalOpenGroup): LocalTab => ({
         id: `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -16248,7 +16227,35 @@ const App: React.FC = () => {
       // Folders past the tab limit are not opened; say how many.
       const { skipped } = addFolderTabs(tabs, others, newTab);
       if (skipped > 0) notify.warning(t('localTabs.maxReached'), t('localTabs.foldersNotOpened', { count: skipped }));
+    };
+    let opened: string[] = plan.names;
+    if (!merged) {
+      // A folder that already has a tab opens in that tab, not in a copy,
+      // and the files that tab was still waiting to select stay selected.
+      // The tab switches only once the folder has loaded: a failed load
+      // leaves every tab where it was.
+      const activeTabId = panelId === 'local2' ? activeLocalTabId2 : activeLocalTabId;
+      const previous = { id: activeTabId, path: shownPath };
+      const reuse = openInFolderTab(tabs, plan.folder, plan.names);
+      const target = panelId === 'local2'
+        ? await changeLocalDirectory2(plan.folder)
+        : await changeLocalDirectory(plan.folder, { localOnly: true });
+      if (target === null || target === undefined) {
+        openOtherFolders();
+        return;
+      }
+      if (reuse.tab) {
+        const reusedId = reuse.tab.id;
+        if (reusedId !== activeTabId) (panelId === 'local2' ? setActiveLocalTabId2 : setActiveLocalTabId)(reusedId);
+        setTabs(prev => settleReusedTab(prev, reusedId, previous));
+      }
+      opened = reuse.names;
     }
+    setActivePanel('local');
+    setActiveLocalPanelId(panelId);
+    const names = merged ?? opened;
+    lastLocalOpenRef.current = { panelId, folder: plan.folder, names, at: now };
+    openOtherFolders();
     if (names.length === 0) return;
     // A search or tag filter left on the panel would hide the opened rows.
     // Hidden files stay governed by the user's own setting; their preview
