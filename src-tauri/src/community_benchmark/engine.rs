@@ -1572,6 +1572,42 @@ async fn run_many_files_workload(
         }
     }
 
+    // Capture stable identities in one provider batch, outside every measured
+    // phase. A missing identity never turns into a name-only purge later.
+    let live_paths: Vec<String> = (0..uploaded).map(&remote_name).collect();
+    let mut identities = match bounded(provider.capture_trash_identities(&live_paths)).await {
+        Some(captured) if captured.len() == uploaded as usize => captured,
+        Some(captured) => {
+            out.errors.push(format!(
+                "many-files: identity capture returned {} results for {} files",
+                captured.len(),
+                uploaded
+            ));
+            Vec::new()
+        }
+        None => {
+            out.errors
+                .push("many-files: identity capture exceeded its cleanup bound".into());
+            Vec::new()
+        }
+    };
+    identities.resize_with(uploaded as usize, || {
+        Err(ProviderError::Other("identity was not captured".into()))
+    });
+    let mut identities: Vec<Option<String>> = identities
+        .into_iter()
+        .enumerate()
+        .map(|(i, captured)| match captured {
+            Ok(identity) => identity,
+            Err(error) => {
+                out.errors.push(format!(
+                    "many-files: identity capture of file {i} failed: {error}"
+                ));
+                None
+            }
+        })
+        .collect();
+
     // ── delete-all (also clears the scratch files) ──────────────────
     // Runs after a stop too, each call bounded: it is the cleanup of what
     // landed, and the final recursive removal is the fallback.
@@ -1620,10 +1656,11 @@ async fn run_many_files_workload(
     // plus one step bound for a slow start.
     let budget =
         CLEANUP_STEP_TIMEOUT + Duration::from_secs_f64(del_ms.iter().sum::<f64>() / 1000.0);
-    purge_deleted_files(
+    purge_deleted_files_with_identities(
         provider,
         &deleted,
         &remote_name,
+        &mut identities,
         stop,
         budget,
         &mut out.errors,
@@ -1637,16 +1674,19 @@ async fn run_many_files_workload(
 /// deleted: on a soft-delete provider every one is a separate trash item, up
 /// to 5 GiB per run, and purging the run folder later does not take them.
 /// The purge stays outside the timing, so delete-all keeps measuring plain
-/// deletes. A client that purges only a live path (Proton's CLI) or cannot
-/// purge (Koofr) leaves them there, and the report says so.
+/// deletes. Providers with captured identities purge those exact items;
+/// path-based providers keep their existing flow. Anything not verifiably
+/// purged is counted in the report.
 ///
 /// The whole pass ends at `budget` and at `stop`, a cancel or the profile
 /// timeout: a server that stops answering must not hold the report one
 /// cleanup bound per file. What was not purged is counted in the report.
-pub(super) async fn purge_deleted_files(
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn purge_deleted_files_with_identities(
     provider: &mut Box<dyn StorageProvider>,
     deleted: &[u32],
     remote_name: &(dyn Fn(u32) -> String + Sync),
+    identities: &mut [Option<String>],
     stop: &CancellationToken,
     budget: Duration,
     errors: &mut Vec<String>,
@@ -1654,12 +1694,7 @@ pub(super) async fn purge_deleted_files(
     if deleted.is_empty() {
         return;
     }
-    let reason = if provider.purges_live_path() {
-        Some("this client purges an item only before it is deleted")
-    } else {
-        provider.trash_left_unpurged()
-    };
-    if let Some(reason) = reason {
+    if let Some(reason) = provider.trash_left_unpurged() {
         errors.push(format!(
             "{} files the many-files workload deleted stay in the provider's trash: {}",
             deleted.len(),
@@ -1678,9 +1713,20 @@ pub(super) async fn purge_deleted_files(
             break;
         }
         let path = remote_name(i);
-        let purge = until_stopped(stop, provider.delete_permanent(&path));
+        let identity = identities.get(i as usize).and_then(Option::as_deref);
+        let purge = until_stopped(
+            stop,
+            provider.delete_permanent_with_identity(&path, identity),
+        );
         match tokio::time::timeout_at(deadline, purge).await {
-            Ok(Some(Ok(_))) => {}
+            Ok(Some(Ok(true))) => {}
+            Ok(Some(Ok(false))) if provider.purges_live_path() => {
+                failed += 1;
+                first_error.get_or_insert_with(|| {
+                    "the live-path client found no captured identity to purge".into()
+                });
+            }
+            Ok(Some(Ok(false))) => {}
             Ok(Some(Err(e))) => {
                 failed += 1;
                 first_error.get_or_insert_with(|| e.to_string());

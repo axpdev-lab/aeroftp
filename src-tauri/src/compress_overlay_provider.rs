@@ -516,6 +516,23 @@ impl StorageProvider for CompressOverlayProvider {
         self.inner.purges_live_path()
     }
 
+    async fn capture_trash_identities(
+        &mut self,
+        paths: &[String],
+    ) -> Vec<Result<Option<String>, ProviderError>> {
+        self.inner.capture_trash_identities(paths).await
+    }
+
+    async fn delete_permanent_with_identity(
+        &mut self,
+        path: &str,
+        identity: Option<&str>,
+    ) -> Result<bool, ProviderError> {
+        self.inner
+            .delete_permanent_with_identity(path, identity)
+            .await
+    }
+
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
         // Without it every purge behind compression was the trait's no-op:
         // a benchmark or a cleanup left its items in the provider's trash.
@@ -850,7 +867,22 @@ mod tests {
         assert_eq!(provider.trash_left_unpurged(), Some("kept in the trash"));
         assert!(provider.purges_live_path());
         assert!(provider.delete_permanent("/run/f.txt").await.unwrap());
-        assert_eq!(*purged.lock().unwrap(), vec!["/run/f.txt".to_string()]);
+        let identities = provider
+            .capture_trash_identities(&["/run/f.txt".to_string()])
+            .await;
+        let identity = identities[0].as_ref().unwrap().as_deref();
+        assert!(provider
+            .delete_permanent_with_identity("/run/f.txt", identity)
+            .await
+            .unwrap());
+        assert_eq!(
+            *purged.lock().unwrap(),
+            vec![
+                "/run/f.txt".to_string(),
+                "capture:/run/f.txt".to_string(),
+                "purge:UID:/run/f.txt".to_string()
+            ]
+        );
     }
 
     /// A minimal inner provider whose `download` writes its canned content to
@@ -874,6 +906,29 @@ mod tests {
         }
         fn purges_live_path(&self) -> bool {
             self.purge_live
+        }
+        async fn capture_trash_identities(
+            &mut self,
+            paths: &[String],
+        ) -> Vec<Result<Option<String>, ProviderError>> {
+            paths
+                .iter()
+                .map(|path| {
+                    self.purged.lock().unwrap().push(format!("capture:{path}"));
+                    Ok(Some("UID".to_string()))
+                })
+                .collect()
+        }
+        async fn delete_permanent_with_identity(
+            &mut self,
+            path: &str,
+            identity: Option<&str>,
+        ) -> Result<bool, ProviderError> {
+            self.purged
+                .lock()
+                .unwrap()
+                .push(format!("purge:{}:{path}", identity.unwrap_or("none")));
+            Ok(true)
         }
         async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
             self.purged.lock().unwrap().push(path.to_string());
