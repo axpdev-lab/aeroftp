@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, State};
@@ -29,7 +29,9 @@ use crate::sftp_download_tuning::SftpDownloadPreset;
 use crate::transfer_dag::{DagObserver, TransferDagBuilder};
 use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEntry};
 use crate::transfer_event_sink::{AppHandleSink, GuiDagObserver, TransferEventSink};
-use crate::transfer_orchestrator::{execute_batch, ProgressObserver, TransferBatch};
+use crate::transfer_orchestrator::{
+    execute_batch, execute_batch_live, ProgressObserver, TransferBatch,
+};
 use crate::transfer_settings::{
     download_segments_preference_for, resolve_download_segments, DownloadSegmentsRequest,
     TransferSettingsInput, DEFAULT_MULTI_THREAD_CUTOFF_BYTES,
@@ -4561,9 +4563,95 @@ async fn provider_download_folder_inner(
     file_exists_action: Option<String>,
     transfer_settings: TransferSettingsInput,
 ) -> Result<crate::transfer_domain::FolderTransferOutcome, String> {
-    let file_exists_action = file_exists_action.unwrap_or_default();
+    let cancel_token = state.reset_cancel_state().await;
+    run_provider_folder_download(
+        FolderDownloadRun {
+            provider: state.provider.clone(),
+            sink: Arc::new(AppHandleSink::new(app.clone())),
+            lifecycle: gui_lifecycle_emitter(app),
+            cancel_flag: state.cancel_flag.clone(),
+            batch_stop_flag: state.batch_stop_flag.clone(),
+            cancel_token,
+        },
+        remote_path,
+        local_path,
+        &file_exists_action.unwrap_or_default(),
+        transfer_settings,
+    )
+    .await
+}
+
+/// What a folder download runs on besides its paths and settings.
+pub(crate) struct FolderDownloadRun {
+    provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+    sink: Arc<dyn TransferEventSink>,
+    lifecycle: LifecycleEmitter,
+    /// The hard cancel: the scan ends at once.
+    cancel_flag: Arc<AtomicBool>,
+    /// The first Stop: no further file starts, files in flight finish.
+    batch_stop_flag: Arc<AtomicBool>,
+    cancel_token: CancellationToken,
+}
+
+/// Counts a folder download's scan and batch share.
+#[derive(Default)]
+struct FolderDownloadTally {
+    /// Files the scan found, kept or skipped.
+    found: AtomicU32,
+    /// Files `file_exists_action` left as they are.
+    skipped: AtomicU32,
+    /// Files the batch has downloaded so far.
+    downloaded: AtomicU32,
+}
+
+/// Where the scan hands each file: a list the batch takes once the scan
+/// ends, or a batch already running.
+enum FolderFeed {
+    Known(Vec<TransferEntry>),
+    Live(tokio::sync::mpsc::Sender<TransferEntry>),
+}
+
+impl FolderFeed {
+    /// False once a running batch takes no more files.
+    async fn take(&mut self, entry: TransferEntry) -> bool {
+        match self {
+            Self::Known(entries) => {
+                entries.push(entry);
+                true
+            }
+            Self::Live(tx) => tx.send(entry).await.is_ok(),
+        }
+    }
+}
+
+/// How a folder scan ended.
+enum FolderScanEnd {
+    Listed,
+    /// The hard cancel arrived.
+    Cancelled,
+    /// The batch was stopped and takes no more files.
+    Stopped,
+}
+
+/// Files a running folder batch can be handed ahead of the ones it admits.
+const LIVE_FOLDER_FEED: usize = 256;
+
+/// Tauri-free core of [`provider_download_folder`], so a test can run it
+/// against a scripted provider.
+///
+/// Where each file runs on a session of its own
+/// ([`ProviderDownloadExecutor::takes_files_while_listing`]), the batch starts
+/// with the first folder listed and takes each further folder's files as the
+/// scan reaches them. Elsewhere the scan ends before the batch starts.
+pub(crate) async fn run_provider_folder_download(
+    run: FolderDownloadRun,
+    remote_path: &str,
+    local_path: &str,
+    file_exists_action: &str,
+    transfer_settings: TransferSettingsInput,
+) -> Result<crate::transfer_domain::FolderTransferOutcome, String> {
     {
-        let mut provider_lock = state.provider.lock().await;
+        let mut provider_lock = run.provider.lock().await;
         let provider = provider_lock
             .as_mut()
             .ok_or("Not connected to any provider")?;
@@ -4574,9 +4662,7 @@ async fn provider_download_folder_inner(
         );
     }
     let (runtime_settings, session_model, capabilities) =
-        resolve_provider_transfer_runtime(&state.provider, transfer_settings).await;
-
-    let cancel_token = state.reset_cancel_state().await;
+        resolve_provider_transfer_runtime(&run.provider, transfer_settings).await;
 
     let folder_name = std::path::Path::new(remote_path)
         .file_name()
@@ -4596,309 +4682,224 @@ async fn provider_download_folder_inner(
     );
 
     // Emit start event
-    crate::transfer_event_sink::emit_gui_transfer_event(
-        app,
-        crate::TransferEvent {
-            event_type: "start".to_string(),
-            transfer_id: transfer_id.clone(),
-            filename: folder_name.clone(),
-            direction: "download".to_string(),
-            message: Some(format!("Starting folder download: {}", folder_name)),
-            progress: None,
-            path: Some(remote_path.to_string()),
-            delta_stats: None,
-            fallback_reason: None,
-        },
-    );
+    (run.lifecycle)(crate::TransferEvent {
+        event_type: "start".to_string(),
+        transfer_id: transfer_id.clone(),
+        filename: folder_name.clone(),
+        direction: "download".to_string(),
+        message: Some(format!("Starting folder download: {}", folder_name)),
+        progress: None,
+        path: Some(remote_path.to_string()),
+        delta_stats: None,
+        fallback_reason: None,
+    });
 
     // Create local folder
     tokio::fs::create_dir_all(local_path)
         .await
         .map_err(|e| format!("Failed to create local folder: {}", e))?;
 
-    // ── Streaming scan + transfer: directory-by-directory interleaving ──
-    //
-    // Instead of scanning ALL files first, then downloading ALL files,
-    // we scan one directory at a time and download its files immediately.
-    // This means the first file starts downloading after scanning just the
-    // root directory, not after the entire recursive scan completes.
-    //
-    // Pattern (like an audio player buffer):
-    //   scan dir A → transfer files from A
-    //   scan dir B → transfer files from B
-    //   ...until all directories are exhausted.
-
-    let mut folders_to_scan: Vec<(String, String)> =
-        vec![(remote_path.to_string(), local_path.to_string())];
-    let mut walk = DownloadWalk::new(remote_path);
-    let mut files_downloaded = 0u32;
-    let mut files_skipped = 0u32;
-    let mut total_files_discovered = 0u32;
-    let mut dirs_scanned = 0u32;
-    let mut file_global_index = 0u32;
-    let mut last_scan_emit = std::time::Instant::now();
-    let base_local = std::path::Path::new(local_path);
-    let mut transfer_entries: Vec<TransferEntry> = Vec::new();
-
-    while let Some((remote_folder, local_folder)) = folders_to_scan.pop() {
-        // ── Check cancel before scanning next directory ──
-        if provider_transfer_cancelled(state) {
-            info!(
-                "Provider folder download cancelled by user after {} files",
-                files_downloaded
-            );
-            crate::transfer_event_sink::emit_gui_transfer_event(
-                app,
-                crate::TransferEvent {
-                    event_type: "cancelled".to_string(),
-                    transfer_id: transfer_id.clone(),
-                    filename: folder_name.clone(),
-                    direction: "download".to_string(),
-                    message: Some(format!(
-                        "Download cancelled after {} files",
-                        files_downloaded
-                    )),
-                    progress: None,
-                    path: None,
-                    delta_stats: None,
-                    fallback_reason: None,
-                },
-            );
-            return Ok(crate::transfer_domain::FolderTransferOutcome::cancelled(
-                files_downloaded,
-                files_skipped,
-                0,
-                format!("Download cancelled after {} files", files_downloaded),
-            ));
-        }
-
-        // ── Scan this directory (acquire lock, list, release) ──
-        let dir_files: Vec<DownloadEntry> = {
-            let mut provider_lock = state.provider.lock().await;
-            let provider = provider_lock
-                .as_mut()
-                .ok_or("Not connected to any provider")?;
-
-            provider
-                .cd(&remote_folder)
-                .await
-                .map_err(|e| format!("Failed to change to folder {}: {}", remote_folder, e))?;
-
-            let files = provider
-                .list(".")
-                .await
-                .map_err(|e| format!("Failed to list files in {}: {}", remote_folder, e))?;
-
-            let listed =
-                take_download_listing(&mut walk, &remote_folder, &local_folder, base_local, files)
-                    .await?;
-            folders_to_scan.extend(listed.folders);
-            listed.files
-        }; // ← provider lock released: ready to transfer this batch
-
-        dirs_scanned += 1;
-        total_files_discovered += dir_files.len() as u32;
-
-        // Emit scanning progress
-        if last_scan_emit.elapsed().as_millis() > 500 || dirs_scanned <= 1 {
-            crate::transfer_event_sink::emit_gui_transfer_event(
-                app,
-                crate::TransferEvent {
-                    event_type: "scanning".to_string(),
-                    transfer_id: transfer_id.clone(),
-                    filename: folder_name.clone(),
-                    direction: "download".to_string(),
-                    message: Some(format!(
-                        "Scanning... {} files found, {} downloaded ({} dirs queued)",
-                        total_files_discovered,
-                        files_downloaded,
-                        folders_to_scan.len()
-                    )),
-                    progress: None,
-                    path: None,
-                    delta_stats: None,
-                    fallback_reason: None,
-                },
-            );
-            last_scan_emit = std::time::Instant::now();
-        }
-
-        // ── Transfer files from this directory immediately ──
-        for entry in &dir_files {
-            // Check cancel before each file
-            if provider_transfer_cancelled(state) {
-                info!(
-                    "Provider folder download cancelled by user after {} files",
-                    files_downloaded
-                );
-                crate::transfer_event_sink::emit_gui_transfer_event(
-                    app,
-                    crate::TransferEvent {
-                        event_type: "cancelled".to_string(),
-                        transfer_id: transfer_id.clone(),
-                        filename: folder_name.clone(),
-                        direction: "download".to_string(),
-                        message: Some(format!(
-                            "Download cancelled after {} files",
-                            files_downloaded
-                        )),
-                        progress: None,
-                        path: None,
-                        delta_stats: None,
-                        fallback_reason: None,
-                    },
-                );
-                return Ok(crate::transfer_domain::FolderTransferOutcome::cancelled(
-                    files_downloaded,
-                    files_skipped,
-                    0,
-                    format!("Download cancelled after {} files", files_downloaded),
-                ));
-            }
-
-            file_global_index += 1;
-
-            // Check if local file exists and should be skipped
-            if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
-                let local_p = std::path::Path::new(&entry.local_path);
-                if let Ok(local_meta) = std::fs::metadata(local_p) {
-                    if local_meta.is_file() {
-                        let remote_modified = entry
-                            .modified
-                            .as_deref()
-                            .and_then(crate::parse_remote_datetime);
-                        if crate::should_skip_file_download(
-                            &file_exists_action,
-                            remote_modified,
-                            entry.size,
-                            &local_meta,
-                        ) {
-                            files_skipped += 1;
-                            crate::transfer_event_sink::emit_gui_transfer_event(
-                                app,
-                                crate::TransferEvent {
-                                    event_type: "file_skip".to_string(),
-                                    transfer_id: format!("{}-{}", transfer_id, file_global_index),
-                                    filename: entry.name.clone(),
-                                    direction: "download".to_string(),
-                                    message: Some(format!("Skipped (identical): {}", entry.name)),
-                                    progress: None,
-                                    path: Some(entry.remote_path.clone()),
-                                    delta_stats: None,
-                                    fallback_reason: None,
-                                },
-                            );
-                            continue;
-                        }
-                    }
-                }
-            }
-
-            let file_transfer_id = format!("{}-{}", transfer_id, file_global_index);
-
-            transfer_entries.push(TransferEntry {
-                id: file_transfer_id,
-                display_name: entry.name.clone(),
-                remote_path: entry.remote_path.clone(),
-                local_path: entry.local_path.clone(),
-                size: entry.size,
-                modified: entry.modified.clone(),
-            });
-        }
-    }
-
-    let batch = TransferBatch {
+    let config = TransferBatchConfig {
+        max_concurrent: runtime_settings.max_concurrent,
+        max_retries: runtime_settings.retry_count,
+        timeout_ms: runtime_settings.timeout_seconds * 1000,
+        max_backlog: crate::transfer_domain::default_transfer_max_backlog(),
+        schedule: Default::default(),
+    };
+    // On the live path the workers clone from a clone of the connection, so
+    // a listing in progress on the connection itself never holds up a file
+    // that is about to start.
+    let clone_source = if crate::provider_transfer_executor::download_takes_files_while_listing(
+        &session_model,
+        &capabilities,
+    ) {
+        run.provider
+            .lock()
+            .await
+            .as_ref()
+            .and_then(|provider| provider.clone_for_transfer().ok())
+            .map(|clone| Arc::new(Mutex::new(Some(clone))))
+    } else {
+        None
+    };
+    let executor = Arc::new(ProviderDownloadExecutor::new(
+        run.sink.clone(),
+        clone_source.clone().unwrap_or_else(|| run.provider.clone()),
+        runtime_settings,
+        run.cancel_token.clone(),
+        session_model,
+        capabilities,
+    ));
+    let mut batch = TransferBatch {
         id: transfer_id.clone(),
         display_name: folder_name.clone(),
         direction: TransferDirection::Download,
-        config: TransferBatchConfig {
-            max_concurrent: runtime_settings.max_concurrent,
-            max_retries: runtime_settings.retry_count,
-            timeout_ms: runtime_settings.timeout_seconds * 1000,
-            max_backlog: crate::transfer_domain::default_transfer_max_backlog(),
-            schedule: Default::default(),
-        },
-        entries: transfer_entries,
+        config,
+        entries: Vec::new(),
     };
 
-    let progress_app = app.clone();
-    let progress_transfer_id = transfer_id.clone();
-    let progress_folder_name = folder_name.clone();
-    let progress_remote_path = remote_path.to_string();
-    let total_files_for_progress = total_files_discovered;
-    let initial_skipped = files_skipped;
-    let progress_observer: ProgressObserver = Arc::new(move |snapshot| {
-        let processed = initial_skipped + snapshot.completed + snapshot.failed + snapshot.skipped;
-        let percentage = if total_files_for_progress > 0 {
-            ((processed as f64 / total_files_for_progress as f64) * 100.0) as u8
-        } else {
-            100
-        };
+    let tally = Arc::new(FolderDownloadTally::default());
+    let progress_observer: ProgressObserver = {
+        let lifecycle = run.lifecycle.clone();
+        let tally = tally.clone();
+        let transfer_id = transfer_id.clone();
+        let folder_name = folder_name.clone();
+        let remote_path = remote_path.to_string();
+        Arc::new(move |snapshot| {
+            tally
+                .downloaded
+                .store(snapshot.completed, Ordering::Relaxed);
+            // A running scan still adds files: the total is what it found so far.
+            let skipped = tally.skipped.load(Ordering::Relaxed);
+            let total = skipped + snapshot.total;
+            let processed = skipped + snapshot.completed + snapshot.failed + snapshot.skipped;
+            let percentage = if total > 0 {
+                ((processed as f64 / total as f64) * 100.0) as u8
+            } else {
+                100
+            };
 
-        crate::transfer_event_sink::emit_gui_transfer_event(
-            &progress_app,
-            crate::TransferEvent {
+            lifecycle(crate::TransferEvent {
                 event_type: "progress".to_string(),
-                transfer_id: progress_transfer_id.clone(),
-                filename: progress_folder_name.clone(),
+                transfer_id: transfer_id.clone(),
+                filename: folder_name.clone(),
                 direction: "download".to_string(),
                 message: Some(format!(
                     "Downloaded {} / {} files ({} skipped, {} errors)",
-                    snapshot.completed, total_files_for_progress, initial_skipped, snapshot.failed
+                    snapshot.completed, total, skipped, snapshot.failed
                 )),
                 progress: Some(crate::TransferProgress {
-                    transfer_id: progress_transfer_id.clone(),
-                    filename: progress_folder_name.clone(),
+                    transfer_id: transfer_id.clone(),
+                    filename: folder_name.clone(),
                     transferred: processed as u64,
-                    total: total_files_for_progress as u64,
+                    total: total as u64,
                     percentage,
                     speed_bps: 0,
                     eta_seconds: 0,
                     direction: "download".to_string(),
-                    total_files: Some(total_files_for_progress as u64),
-                    path: Some(progress_remote_path.clone()),
+                    total_files: Some(total as u64),
+                    path: Some(remote_path.clone()),
                 }),
-                path: Some(progress_remote_path.clone()),
+                path: Some(remote_path.clone()),
                 delta_stats: None,
                 fallback_reason: None,
-            },
+            });
+        })
+    };
+
+    let scan = FolderScan {
+        run: &run,
+        remote_path,
+        local_path,
+        file_exists_action,
+        transfer_id: &transfer_id,
+        folder_name: &folder_name,
+        tally: &tally,
+    };
+    let (batch_result, scan_error, scan_stopped) = if clone_source.is_some() {
+        let (tx, rx) = tokio::sync::mpsc::channel(LIVE_FOLDER_FEED);
+        // The batch's own stop: a scan that fails starts no further file, and
+        // the user's Stop reaches it through the watcher. The shared flag is
+        // left alone, other batches read it.
+        let stop = Arc::new(AtomicBool::new(false));
+        let _watcher = {
+            let user_stop = run.batch_stop_flag.clone();
+            let stop = stop.clone();
+            AbortOnDrop::spawn(async move {
+                while !user_stop.load(Ordering::Relaxed) {
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+                stop.store(true, Ordering::Relaxed);
+            })
+        };
+        let listing = async {
+            let mut feed = FolderFeed::Live(tx);
+            let scanned = scan.run(&mut feed).await;
+            drop(feed);
+            if scanned.is_err() {
+                stop.store(true, Ordering::Relaxed);
+            }
+            scanned
+        };
+        let (scanned, result) = tokio::join!(
+            listing,
+            execute_batch_live(
+                run.sink.clone(),
+                batch,
+                rx,
+                executor,
+                stop.clone(),
+                Some(progress_observer),
+            )
         );
-    });
+        // The scan may end at a Stop before the watcher passed it on.
+        let stopped = matches!(
+            scanned,
+            Ok(FolderScanEnd::Cancelled | FolderScanEnd::Stopped)
+        );
+        (result, scanned.err(), stopped)
+    } else {
+        let mut feed = FolderFeed::Known(Vec::new());
+        if let FolderScanEnd::Cancelled = scan.run(&mut feed).await? {
+            let skipped = tally.skipped.load(Ordering::Relaxed);
+            (run.lifecycle)(crate::TransferEvent {
+                event_type: "cancelled".to_string(),
+                transfer_id: transfer_id.clone(),
+                filename: folder_name.clone(),
+                direction: "download".to_string(),
+                message: Some("Download cancelled after 0 files".to_string()),
+                progress: None,
+                path: None,
+                delta_stats: None,
+                fallback_reason: None,
+            });
+            return Ok(crate::transfer_domain::FolderTransferOutcome::cancelled(
+                0,
+                skipped,
+                0,
+                "Download cancelled after 0 files".to_string(),
+            ));
+        }
+        if let FolderFeed::Known(entries) = feed {
+            batch.entries = entries;
+        }
+        let result = execute_batch(
+            run.sink.clone(),
+            batch,
+            executor,
+            // The first Stop starts no further file and lets in-flight ones end.
+            run.batch_stop_flag.clone(),
+            Some(progress_observer),
+        )
+        .await;
+        (result, None, false)
+    };
 
-    let sink: Arc<dyn TransferEventSink> = Arc::new(AppHandleSink::new(app.clone()));
-    let executor = Arc::new(ProviderDownloadExecutor::new(
-        sink.clone(),
-        state.provider.clone(),
-        runtime_settings,
-        cancel_token,
-        session_model,
-        capabilities,
-    ));
-
-    let batch_result = execute_batch(
-        sink,
-        batch,
-        executor,
-        // The first Stop starts no further file and lets in-flight ones end.
-        state.batch_stop_flag.clone(),
-        Some(progress_observer),
-    )
-    .await;
-
-    files_downloaded = batch_result.completed;
+    let cancelled = batch_result.cancelled || scan_stopped;
+    let files_downloaded = batch_result.completed;
+    let files_skipped = tally.skipped.load(Ordering::Relaxed);
     let files_errored = batch_result.failed;
+
+    // A scan that failed with files already downloaded says so: those files
+    // are on disk, and the folder is not complete.
+    if let Some(error) = scan_error {
+        return Err(format!(
+            "{error}. {files_downloaded} files were downloaded before the scan stopped \
+             ({files_skipped} skipped, {files_errored} errors); no further file was started"
+        ));
+    }
 
     info!(
         "Provider folder download completed via orchestrator: {} ({} downloaded, {} skipped, {} errors)",
         folder_name, files_downloaded, files_skipped, files_errored
     );
 
-    let event_type = if batch_result.cancelled {
+    let event_type = if cancelled {
         "cancelled".to_string()
     } else {
         "complete".to_string()
     };
-    let result_message = if batch_result.cancelled {
+    let result_message = if cancelled {
         format!(
             "Download cancelled after {} files",
             files_downloaded + files_skipped + files_errored
@@ -4910,28 +4911,190 @@ async fn provider_download_folder_inner(
         )
     };
 
-    crate::transfer_event_sink::emit_gui_transfer_event(
-        app,
-        crate::TransferEvent {
-            event_type,
-            transfer_id,
-            filename: folder_name.clone(),
-            direction: "download".to_string(),
-            message: Some(result_message.clone()),
-            progress: None,
-            path: None,
-            delta_stats: None,
-            fallback_reason: None,
-        },
-    );
+    (run.lifecycle)(crate::TransferEvent {
+        event_type,
+        transfer_id,
+        filename: folder_name.clone(),
+        direction: "download".to_string(),
+        message: Some(result_message.clone()),
+        progress: None,
+        path: None,
+        delta_stats: None,
+        fallback_reason: None,
+    });
 
     Ok(crate::transfer_domain::FolderTransferOutcome {
         completed: files_downloaded,
         skipped: files_skipped,
         failed: files_errored,
-        cancelled: batch_result.cancelled,
+        cancelled,
         message: result_message,
     })
+}
+
+/// The scan of one folder download.
+struct FolderScan<'a> {
+    run: &'a FolderDownloadRun,
+    remote_path: &'a str,
+    local_path: &'a str,
+    file_exists_action: &'a str,
+    transfer_id: &'a str,
+    folder_name: &'a str,
+    tally: &'a FolderDownloadTally,
+}
+
+impl FolderScan<'_> {
+    /// List the folder one folder at a time and hand each file
+    /// `file_exists_action` keeps to `feed`. A folder's files go out only
+    /// once its whole listing is taken ([`take_download_listing`]), so a
+    /// listing it refuses sends nothing of that folder.
+    async fn run(&self, feed: &mut FolderFeed) -> Result<FolderScanEnd, String> {
+        let live = matches!(feed, FolderFeed::Live(_));
+        let mut folders_to_scan: Vec<(String, String)> =
+            vec![(self.remote_path.to_string(), self.local_path.to_string())];
+        let mut walk = DownloadWalk::new(self.remote_path);
+        let mut dirs_scanned = 0u32;
+        let mut file_global_index = 0u32;
+        let mut last_scan_emit = std::time::Instant::now();
+        let base_local = std::path::Path::new(self.local_path);
+
+        while let Some((remote_folder, local_folder)) = folders_to_scan.pop() {
+            if self.run.cancel_flag.load(Ordering::Relaxed) {
+                info!("Provider folder download cancelled by user during the scan");
+                return Ok(FolderScanEnd::Cancelled);
+            }
+            if live && self.run.batch_stop_flag.load(Ordering::Relaxed) {
+                return Ok(FolderScanEnd::Stopped);
+            }
+
+            // ── Scan this directory (acquire lock, list, release) ──
+            let dir_files: Vec<DownloadEntry> = {
+                let mut provider_lock = self.run.provider.lock().await;
+                let provider = provider_lock
+                    .as_mut()
+                    .ok_or("Not connected to any provider")?;
+
+                provider
+                    .cd(&remote_folder)
+                    .await
+                    .map_err(|e| format!("Failed to change to folder {}: {}", remote_folder, e))?;
+
+                let files = provider
+                    .list(".")
+                    .await
+                    .map_err(|e| format!("Failed to list files in {}: {}", remote_folder, e))?;
+
+                let listed = take_download_listing(
+                    &mut walk,
+                    &remote_folder,
+                    &local_folder,
+                    base_local,
+                    files,
+                )
+                .await?;
+                folders_to_scan.extend(listed.folders);
+                listed.files
+            }; // ← provider lock released
+
+            dirs_scanned += 1;
+            self.tally
+                .found
+                .fetch_add(dir_files.len() as u32, Ordering::Relaxed);
+
+            // Emit scanning progress
+            if last_scan_emit.elapsed().as_millis() > 500 || dirs_scanned <= 1 {
+                self.emit_scanning(folders_to_scan.len());
+                last_scan_emit = std::time::Instant::now();
+            }
+
+            for entry in dir_files {
+                if self.run.cancel_flag.load(Ordering::Relaxed) {
+                    info!("Provider folder download cancelled by user during the scan");
+                    return Ok(FolderScanEnd::Cancelled);
+                }
+
+                file_global_index += 1;
+
+                // Check if local file exists and should be skipped
+                if self.skips(&entry) {
+                    self.tally.skipped.fetch_add(1, Ordering::Relaxed);
+                    (self.run.lifecycle)(crate::TransferEvent {
+                        event_type: "file_skip".to_string(),
+                        transfer_id: format!("{}-{}", self.transfer_id, file_global_index),
+                        filename: entry.name.clone(),
+                        direction: "download".to_string(),
+                        message: Some(format!("Skipped (identical): {}", entry.name)),
+                        progress: None,
+                        path: Some(entry.remote_path.clone()),
+                        delta_stats: None,
+                        fallback_reason: None,
+                    });
+                    continue;
+                }
+
+                let taken = feed
+                    .take(TransferEntry {
+                        id: format!("{}-{}", self.transfer_id, file_global_index),
+                        display_name: entry.name,
+                        remote_path: entry.remote_path,
+                        local_path: entry.local_path,
+                        size: entry.size,
+                        modified: entry.modified,
+                    })
+                    .await;
+                if !taken {
+                    return Ok(FolderScanEnd::Stopped);
+                }
+            }
+        }
+        if live {
+            // Nothing is queued any more: the toast stops showing a scan.
+            self.emit_scanning(0);
+        }
+        Ok(FolderScanEnd::Listed)
+    }
+
+    /// True when `file_exists_action` keeps the local copy of `entry`.
+    fn skips(&self, entry: &DownloadEntry) -> bool {
+        if self.file_exists_action.is_empty() || self.file_exists_action == "overwrite" {
+            return false;
+        }
+        let Ok(local_meta) = std::fs::metadata(&entry.local_path) else {
+            return false;
+        };
+        if !local_meta.is_file() {
+            return false;
+        }
+        let remote_modified = entry
+            .modified
+            .as_deref()
+            .and_then(crate::parse_remote_datetime);
+        crate::should_skip_file_download(
+            self.file_exists_action,
+            remote_modified,
+            entry.size,
+            &local_meta,
+        )
+    }
+
+    fn emit_scanning(&self, dirs_queued: usize) {
+        (self.run.lifecycle)(crate::TransferEvent {
+            event_type: "scanning".to_string(),
+            transfer_id: self.transfer_id.to_string(),
+            filename: self.folder_name.to_string(),
+            direction: "download".to_string(),
+            message: Some(format!(
+                "Scanning... {} files found, {} downloaded ({} dirs queued)",
+                self.tally.found.load(Ordering::Relaxed),
+                self.tally.downloaded.load(Ordering::Relaxed),
+                dirs_queued
+            )),
+            progress: None,
+            path: None,
+            delta_stats: None,
+            fallback_reason: None,
+        });
+    }
 }
 
 /// One folder's listing for the folder upload's conflict scan. A folder that
@@ -18138,5 +18301,378 @@ mod walk_scope_tests {
             fetched.sort();
             assert_eq!(fetched, shape.file_paths(), "{case}");
         }
+    }
+}
+
+#[cfg(test)]
+mod folder_download_live_tests {
+    //! Requested 81 in the GUI: a folder download on a provider whose files
+    //! each run on a session of their own takes each folder's files while
+    //! the scan goes on ([`run_provider_folder_download`]).
+    use super::*;
+
+    /// One folder of a [`FolderTree`]: the `(name, size)` of its files and
+    /// the names of its folders.
+    type FolderListing = (Vec<(String, u64)>, Vec<String>);
+
+    /// What a [`FolderTree`] holds and what a run did to it, shared by every
+    /// clone.
+    #[derive(Default)]
+    struct FolderTreeState {
+        /// Folder path to its listing.
+        dirs: HashMap<String, FolderListing>,
+        listed: Vec<String>,
+        served: Vec<String>,
+        /// A listing of this folder answers once a download was served, or
+        /// after 3 s.
+        held: Option<String>,
+        served_at_held: Option<usize>,
+        failing: std::collections::HashSet<String>,
+        /// Raised when a download starts, as the first Stop raises it.
+        stop_on_download: Option<Arc<AtomicBool>>,
+    }
+
+    /// A remote tree on a transfer pool. The GUI scan lists the folder it
+    /// changed into, so each clone keeps its own current folder.
+    struct FolderTree {
+        state: Arc<std::sync::Mutex<FolderTreeState>>,
+        cwd: String,
+    }
+
+    impl FolderTree {
+        /// Files at `/r/<path>`, the folders on their way listed too.
+        fn new(files: &[&str]) -> (Self, Arc<std::sync::Mutex<FolderTreeState>>) {
+            let mut state = FolderTreeState::default();
+            state.dirs.entry("/r".to_string()).or_default();
+            for file in files {
+                let mut parent = "/r".to_string();
+                let mut parts = file.split('/').peekable();
+                while let Some(part) = parts.next() {
+                    let full = format!("{parent}/{part}");
+                    let listing = state.dirs.entry(parent.clone()).or_default();
+                    if parts.peek().is_some() {
+                        if !listing.1.iter().any(|name| name == part) {
+                            listing.1.push(part.to_string());
+                        }
+                        state.dirs.entry(full.clone()).or_default();
+                    } else {
+                        listing.0.push((part.to_string(), 4));
+                    }
+                    parent = full;
+                }
+            }
+            let state = Arc::new(std::sync::Mutex::new(state));
+            (
+                Self {
+                    state: state.clone(),
+                    cwd: "/".to_string(),
+                },
+                state,
+            )
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for FolderTree {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::WebDav
+        }
+        fn display_name(&self) -> String {
+            format!("folder-tree-{:p}", Arc::as_ptr(&self.state))
+        }
+        fn transfer_capabilities(&self) -> crate::transfer_dag::TransferCapabilities {
+            crate::transfer_dag::TransferCapabilities {
+                file_parallel: crate::transfer_dag::Capability::Supported,
+                session_pool: crate::transfer_dag::Capability::Supported,
+                max_file_slots: Some(4),
+                ..Default::default()
+            }
+        }
+        fn transfer_executor_kind(&self) -> crate::providers::ProviderTransferExecutorKind {
+            crate::providers::ProviderTransferExecutorKind::HttpClonePool
+        }
+        fn transfer_executor_max_sessions(&self) -> u16 {
+            4
+        }
+        fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+            Ok(Box::new(Self {
+                state: self.state.clone(),
+                cwd: self.cwd.clone(),
+            }))
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            let path = if path == "." {
+                self.cwd.clone()
+            } else {
+                path.to_string()
+            };
+            let held = self.state.lock().unwrap().held.as_deref() == Some(path.as_str());
+            if held {
+                let deadline = Instant::now() + Duration::from_secs(3);
+                while self.state.lock().unwrap().served.is_empty() && Instant::now() < deadline {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+                let mut st = self.state.lock().unwrap();
+                st.served_at_held = Some(st.served.len());
+            }
+            let mut st = self.state.lock().unwrap();
+            st.listed.push(path.clone());
+            if st.failing.contains(&path) {
+                return Err(ProviderError::Other(format!("cannot list {path}")));
+            }
+            let (files, folders) = st.dirs.get(&path).cloned().unwrap_or_default();
+            Ok(files
+                .into_iter()
+                .map(|(name, size)| {
+                    let full = format!("{path}/{name}");
+                    RemoteEntry::file(name, full, size)
+                })
+                .chain(folders.into_iter().map(|name| {
+                    let full = format!("{path}/{name}");
+                    RemoteEntry::directory(name, full)
+                }))
+                .collect())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok(self.cwd.clone())
+        }
+        async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.cwd = path.to_string();
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            remote_path: &str,
+            local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            tokio::task::yield_now().await;
+            {
+                let mut st = self.state.lock().unwrap();
+                st.served.push(remote_path.to_string());
+                if let Some(flag) = &st.stop_on_download {
+                    flag.store(true, Ordering::SeqCst);
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            std::fs::write(local_path, b"data").map_err(ProviderError::IoError)
+        }
+        async fn download_to_bytes(&mut self, path: &str) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::PermissionDenied(remote_path.to_string()))
+        }
+        async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::PermissionDenied(path.to_string()))
+        }
+        async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::PermissionDenied(path.to_string()))
+        }
+        async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::PermissionDenied(path.to_string()))
+        }
+        async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::PermissionDenied(path.to_string()))
+        }
+        async fn rename(&mut self, from: &str, _to: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::PermissionDenied(from.to_string()))
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
+            Ok(4)
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("folder-tree".to_string())
+        }
+    }
+
+    /// What a folder download returned and the lifecycle events it sent.
+    struct Ran {
+        result: Result<crate::transfer_domain::FolderTransferOutcome, String>,
+        events: Vec<crate::TransferEvent>,
+        local: tempfile::TempDir,
+    }
+
+    async fn download_folder(
+        tree: FolderTree,
+        file_exists_action: &str,
+        batch_stop_flag: Arc<AtomicBool>,
+        before: impl FnOnce(&std::path::Path),
+    ) -> Ran {
+        let local = tempfile::tempdir().expect("temp dir");
+        let target = local.path().join("r");
+        std::fs::create_dir_all(&target).unwrap();
+        before(&target);
+        let events = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let recorded = events.clone();
+        let result = run_provider_folder_download(
+            FolderDownloadRun {
+                provider: Arc::new(Mutex::new(Some(Box::new(tree)))),
+                sink: Arc::new(crate::transfer_event_sink::NoopTransferSink),
+                lifecycle: Arc::new(move |event: crate::TransferEvent| {
+                    recorded.lock().unwrap().push(event);
+                }),
+                cancel_flag: Arc::new(AtomicBool::new(false)),
+                batch_stop_flag,
+                cancel_token: CancellationToken::new(),
+            },
+            "/r",
+            &target.to_string_lossy(),
+            file_exists_action,
+            TransferSettingsInput {
+                max_concurrent: Some(4),
+                retry_count: Some(0),
+                timeout_seconds: Some(30),
+                download_segments: None.into(),
+                sftp_download_preset: None,
+            },
+        )
+        .await;
+        let events = std::mem::take(&mut *events.lock().unwrap());
+        Ran {
+            result,
+            events,
+            local,
+        }
+    }
+
+    fn scanning_messages(events: &[crate::TransferEvent]) -> Vec<String> {
+        events
+            .iter()
+            .filter(|event| event.event_type == "scanning")
+            .filter_map(|event| event.message.clone())
+            .collect()
+    }
+
+    /// The first folder's files download while the scan lists the next one,
+    /// and once the scan is over the toast is told no folder is queued.
+    #[tokio::test]
+    async fn folder_download_takes_files_while_its_scan_runs() {
+        let (tree, state) = FolderTree::new(&["a.txt", "d1/b.txt"]);
+        state.lock().unwrap().held = Some("/r/d1".to_string());
+        let ran = download_folder(tree, "", Arc::new(AtomicBool::new(false)), |_| {}).await;
+        let outcome = ran.result.expect("folder download");
+        assert_eq!((outcome.completed, outcome.failed), (2, 0));
+        assert!(
+            state.lock().unwrap().served_at_held.unwrap_or(0) >= 1,
+            "a.txt must download while /r/d1 is still being listed"
+        );
+        assert!(ran.local.path().join("r/d1/b.txt").exists());
+        let scanning = scanning_messages(&ran.events);
+        assert!(
+            scanning
+                .last()
+                .is_some_and(|m| m.ends_with("(0 dirs queued)")),
+            "{scanning:?}"
+        );
+    }
+
+    /// A folder the scan cannot list after files were downloaded fails the
+    /// download, and the error says how many files are already on disk.
+    #[tokio::test]
+    async fn folder_scan_error_after_downloads_says_what_is_on_disk() {
+        let (tree, state) = FolderTree::new(&["a.txt", "d1/b.txt", "d1/d2/c.txt"]);
+        {
+            let mut st = state.lock().unwrap();
+            st.held = Some("/r/d1".to_string());
+            st.failing.insert("/r/d1/d2".to_string());
+        }
+        let ran = download_folder(tree, "", Arc::new(AtomicBool::new(false)), |_| {}).await;
+        let error = ran
+            .result
+            .expect_err("an unlisted folder fails the download");
+        assert!(
+            error.contains("Failed to list files in /r/d1/d2"),
+            "{error}"
+        );
+        // b.txt may or may not have started when the scan failed: the error
+        // counts what is on disk.
+        let on_disk = walkdir::WalkDir::new(ran.local.path())
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_type().is_file())
+            .count();
+        assert!(ran.local.path().join("r/a.txt").exists());
+        assert!(
+            error.contains(&format!(
+                "{on_disk} files were downloaded before the scan stopped"
+            )),
+            "{error}"
+        );
+    }
+
+    /// The first Stop while the scan runs ends the scan too: no further
+    /// folder is listed, the files in flight finish, and the outcome says
+    /// cancelled.
+    #[tokio::test]
+    async fn folder_download_stopped_during_its_scan_lists_no_further() {
+        let (tree, state) = FolderTree::new(&["a.txt", "d1/b.txt", "d1/d2/c.txt"]);
+        let stop = Arc::new(AtomicBool::new(false));
+        {
+            let mut st = state.lock().unwrap();
+            st.held = Some("/r/d1".to_string());
+            st.stop_on_download = Some(stop.clone());
+        }
+        let ran = download_folder(tree, "", stop, |_| {}).await;
+        let outcome = ran.result.expect("folder download");
+        assert!(outcome.cancelled);
+        let listed = state.lock().unwrap().listed.clone();
+        assert!(
+            !listed.iter().any(|dir| dir == "/r/d1/d2"),
+            "the scan must stop at Stop: {listed:?}"
+        );
+        assert!(ran.local.path().join("r/a.txt").exists());
+    }
+
+    /// "skip" keeps a file already there, and the counts add up while the
+    /// scan and the batch overlap.
+    #[tokio::test]
+    async fn folder_download_skip_keeps_local_files_while_scanning() {
+        let (tree, state) = FolderTree::new(&["a.txt", "d1/b.txt"]);
+        state.lock().unwrap().held = Some("/r/d1".to_string());
+        let ran = download_folder(tree, "skip", Arc::new(AtomicBool::new(false)), |target| {
+            std::fs::create_dir_all(target.join("d1")).unwrap();
+            std::fs::write(target.join("d1/b.txt"), b"mine").unwrap();
+        })
+        .await;
+        let outcome = ran.result.expect("folder download");
+        assert_eq!(
+            (outcome.completed, outcome.skipped, outcome.failed),
+            (1, 1, 0)
+        );
+        assert_eq!(
+            std::fs::read(ran.local.path().join("r/d1/b.txt")).unwrap(),
+            b"mine"
+        );
+        assert_eq!(state.lock().unwrap().served, ["/r/a.txt"]);
     }
 }

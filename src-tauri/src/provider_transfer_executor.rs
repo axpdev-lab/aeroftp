@@ -1075,6 +1075,26 @@ impl WarmWorkerPool {
     }
 }
 
+/// [`ProviderDownloadExecutor::takes_files_while_listing`] for an executor
+/// built from `model` and `capabilities`, before it exists.
+pub fn download_takes_files_while_listing(
+    model: &ProviderExecutorSessionModel,
+    capabilities: &TransferCapabilities,
+) -> bool {
+    model.is_clone_pool()
+        && !download_groups_bulk(&finalize_capabilities_for_session_model(
+            capabilities,
+            model,
+        ))
+}
+
+/// True when downloads go out in native bulks
+/// ([`TransferExecutor::bulk_group_key`]).
+fn download_groups_bulk(capabilities: &TransferCapabilities) -> bool {
+    capabilities.bulk_download == Capability::Supported
+        && !capabilities.resume_download.is_available()
+}
+
 pub struct ProviderDownloadExecutor {
     sink: Arc<dyn TransferEventSink>,
     provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
@@ -1117,6 +1137,16 @@ impl ProviderDownloadExecutor {
             attempt_counts: AttemptCounts::default(),
             warm_workers: WarmWorkerPool::default(),
         }
+    }
+
+    /// True when a folder's files can start while the folder is still being
+    /// listed ([`crate::transfer_orchestrator::execute_batch_live`]): each
+    /// file runs on a session of its own, so a listing on the connected one
+    /// overlaps them. A single shared session runs the listing and the files
+    /// one after the other anyway, and a native bulk plans its groups over the
+    /// whole list, so both keep the known list.
+    pub fn takes_files_while_listing(&self) -> bool {
+        self.session_model.is_clone_pool() && !download_groups_bulk(&self.capabilities)
     }
 
     /// Apply a caller's segmented-download cutoff. The default
@@ -1907,9 +1937,7 @@ impl TransferExecutor for ProviderDownloadExecutor {
     }
 
     fn bulk_group_key(&self, entry: &TransferEntry) -> Option<String> {
-        if self.capabilities.bulk_download != Capability::Supported
-            || self.capabilities.resume_download.is_available()
-        {
+        if !download_groups_bulk(&self.capabilities) {
             return None;
         }
         crate::transfer_bulk::group_key(entry, false)

@@ -180,7 +180,35 @@ pub async fn execute_batch_dag<E>(
 where
     E: TransferExecutor + Send + Sync + 'static,
 {
-    execute_batch_dag_inner(sink, batch, executor, cancel, progress_observer, None).await
+    execute_batch_dag_body(sink, batch, None, executor, cancel, progress_observer, None).await
+}
+
+/// Run a batch whose entries arrive while it runs: a folder download whose
+/// scan is still listing sends each file as it finds it, and the batch ends
+/// once `entries` closes and every file it sent is settled. `batch.entries`
+/// are taken first. Totals grow with the entries; the result counts every
+/// entry that arrived.
+pub async fn execute_batch_dag_live<E>(
+    sink: Arc<dyn TransferEventSink>,
+    batch: TransferBatch,
+    entries: tokio::sync::mpsc::Receiver<TransferEntry>,
+    executor: Arc<E>,
+    cancel: Arc<AtomicBool>,
+    progress_observer: Option<ProgressObserver>,
+) -> TransferBatchResult
+where
+    E: TransferExecutor + Send + Sync + 'static,
+{
+    execute_batch_dag_body(
+        sink,
+        batch,
+        Some(entries),
+        executor,
+        cancel,
+        progress_observer,
+        None,
+    )
+    .await
 }
 
 /// DAG-P2-06: the single construction point for the batch/sync whole-file AIMD
@@ -220,12 +248,24 @@ async fn execute_batch_dag_with_aimd<E>(
 where
     E: TransferExecutor + Send + Sync + 'static,
 {
-    execute_batch_dag_inner(sink, batch, executor, cancel, progress_observer, Some(aimd)).await
+    execute_batch_dag_body(
+        sink,
+        batch,
+        None,
+        executor,
+        cancel,
+        progress_observer,
+        Some(aimd),
+    )
+    .await
 }
 
-async fn execute_batch_dag_inner<E>(
+/// The batch body. `live`, when present, keeps feeding entries after
+/// `batch.entries`; see [`execute_batch_dag_live`].
+async fn execute_batch_dag_body<E>(
     sink: Arc<dyn TransferEventSink>,
     batch: TransferBatch,
+    live: Option<tokio::sync::mpsc::Receiver<TransferEntry>>,
     executor: Arc<E>,
     cancel: Arc<AtomicBool>,
     progress_observer: Option<ProgressObserver>,
@@ -300,7 +340,7 @@ where
         }
     };
 
-    let entries = Arc::new(entries);
+    let store = Arc::new(BatchEntries::new(entries));
 
     // Everything shared across the whole batch. Only a file's subgraph, its
     // node bindings, and its multipart runtime are built fresh on admission.
@@ -310,7 +350,7 @@ where
         cancel: Arc::clone(&cancel),
         progress: Arc::clone(&progress),
         progress_observer,
-        entries: Arc::clone(&entries),
+        entries: Arc::clone(&store),
         session_pool,
         resource_manager,
         aimd,
@@ -318,39 +358,58 @@ where
         dag_direction,
     });
 
-    // Stream the known entry list through a bounded backlog and a bounded
-    // active set. A file's transfer subgraph exists only while it is admitted.
-    let groups = Arc::new(crate::transfer_bulk::plan_groups(
-        &entries,
-        executor.as_ref(),
-    ));
-    let source = BatchGroupsWorkSource {
-        entries: Arc::clone(&entries),
-        groups: Arc::clone(&groups),
-        direction: dag_direction,
-        next: 0,
-    };
     let streaming_config = batch_streaming_config(&config, &ctx.caps);
     // DAG-P2-07 (block C, job-level attribution): the owning TTFB guard wraps
     // the whole frontier, so every per-file subgraph's execute_dag nests and
     // each real HTTP first-byte sample is counted exactly once for the job
     // (per-file subgraph metrics report ttfb_samples == 0). Folded below.
     let ttfb_guard = crate::transfer_dag::ttfb::TtfbRecorder::install();
-    let mut streaming_summary =
-        crate::transfer_dag::run_streaming(source, streaming_config, move |item, admission| {
-            let ctx = Arc::clone(&ctx);
-            let group = groups[item.index].clone();
-            async move {
-                if group.len() > 1 {
-                    run_bulk_batch_group(group, admission, ctx).await
-                } else {
-                    let mut item = item;
-                    item.index = group[0];
-                    run_one_batch_file(item, admission, ctx).await
+    let mut streaming_summary = match live {
+        // Stream the known entry list through a bounded backlog and a bounded
+        // active set. A file's transfer subgraph exists only while it is
+        // admitted.
+        None => {
+            let known = store.snapshot();
+            let groups = Arc::new(crate::transfer_bulk::plan_groups(&known, executor.as_ref()));
+            let source = BatchGroupsWorkSource {
+                entries: Arc::new(known),
+                groups: Arc::clone(&groups),
+                direction: dag_direction,
+                next: 0,
+            };
+            crate::transfer_dag::run_streaming(source, streaming_config, move |item, admission| {
+                let ctx = Arc::clone(&ctx);
+                let group = groups[item.index].clone();
+                async move {
+                    if group.len() > 1 {
+                        run_bulk_batch_group(group, admission, ctx).await
+                    } else {
+                        let mut item = item;
+                        item.index = group[0];
+                        run_one_batch_file(item, admission, ctx).await
+                    }
                 }
-            }
-        })
-        .await;
+            })
+            .await
+        }
+        // Entries still arriving go one file at a time: a native bulk plans
+        // its groups over the whole list, so a caller with a bulk-capable
+        // executor runs the known-list path instead.
+        Some(rx) => {
+            let source = BatchLiveWorkSource {
+                store: Arc::clone(&store),
+                rx,
+                progress: Arc::clone(&progress),
+                cancel: Arc::clone(&cancel),
+                direction: dag_direction,
+                next: 0,
+            };
+            crate::transfer_dag::run_streaming(source, streaming_config, move |item, admission| {
+                run_one_batch_file(item, admission, Arc::clone(&ctx))
+            })
+            .await
+        }
+    };
     let (ttfb_nanos, ttfb_samples) = ttfb_guard.totals();
     drop(ttfb_guard);
     streaming_summary.metrics.ttfb_nanos_total = streaming_summary
@@ -416,7 +475,7 @@ struct BatchStreamContext<E> {
     cancel: Arc<AtomicBool>,
     progress: Arc<Mutex<BatchProgressSnapshot>>,
     progress_observer: Option<ProgressObserver>,
-    entries: Arc<Vec<TransferEntry>>,
+    entries: Arc<BatchEntries>,
     session_pool: Arc<TransferSessionPoolHandle>,
     resource_manager: TransferResourceManager,
     aimd: Arc<AimdController>,
@@ -453,6 +512,92 @@ impl WorkSource for BatchEntriesWorkSource {
         Some(self.entries.len())
     }
 }
+
+/// The entries of one batch, by index. A live batch appends as its entries
+/// arrive; a file reads its own entry once admitted.
+struct BatchEntries(std::sync::RwLock<Vec<TransferEntry>>);
+
+impl BatchEntries {
+    fn new(entries: Vec<TransferEntry>) -> Self {
+        Self(std::sync::RwLock::new(entries))
+    }
+
+    fn read(&self) -> std::sync::RwLockReadGuard<'_, Vec<TransferEntry>> {
+        self.0
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn get(&self, index: usize) -> TransferEntry {
+        self.read()[index].clone()
+    }
+
+    fn snapshot(&self) -> Vec<TransferEntry> {
+        self.read().clone()
+    }
+
+    /// Appends `entry`; returns its index.
+    fn push(&self, entry: TransferEntry) -> usize {
+        let mut entries = self
+            .0
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        entries.push(entry);
+        entries.len() - 1
+    }
+
+    fn len(&self) -> usize {
+        self.read().len()
+    }
+}
+
+/// A [`WorkSource`] over the entries a batch already has, then over the ones
+/// still arriving on `rx`. Each arrival joins the store and the batch totals
+/// before it is handed to the frontier. A stop ends the source at once, even
+/// while the sender is still open.
+struct BatchLiveWorkSource {
+    store: Arc<BatchEntries>,
+    rx: tokio::sync::mpsc::Receiver<TransferEntry>,
+    progress: Arc<Mutex<BatchProgressSnapshot>>,
+    cancel: Arc<AtomicBool>,
+    direction: TransferDirection,
+    next: usize,
+}
+
+#[async_trait]
+impl WorkSource for BatchLiveWorkSource {
+    async fn next_item(&mut self) -> Option<TransferWorkItem> {
+        if self.next >= self.store.len() {
+            let entry = loop {
+                if self.cancel.load(Ordering::Relaxed) {
+                    return None;
+                }
+                tokio::select! {
+                    received = self.rx.recv() => break received?,
+                    _ = tokio::time::sleep(LIVE_SOURCE_STOP_POLL) => {}
+                }
+            };
+            {
+                let mut progress = self.progress.lock().await;
+                progress.total = progress.total.saturating_add(1);
+                progress.bytes_total = progress.bytes_total.saturating_add(entry.size);
+            }
+            self.store.push(entry);
+        }
+        let index = self.next;
+        let entry = self.store.get(index);
+        self.next += 1;
+        Some(TransferWorkItem::new(
+            entry.id,
+            index,
+            entry.size,
+            self.direction,
+        ))
+    }
+}
+
+/// How often a live source waiting for its next entry looks at the stop flag.
+const LIVE_SOURCE_STOP_POLL: Duration = Duration::from_millis(50);
 
 /// Native bulks are one wire work unit in the same bounded DAG frontier.
 /// They retain file-level identities/results, with one session/governor lease
@@ -497,7 +642,7 @@ where
     let group = Arc::new(
         indices
             .iter()
-            .map(|&i| ctx.entries[i].clone())
+            .map(|&i| ctx.entries.get(i))
             .collect::<Vec<_>>(),
     );
     let shaped = TransferDagBuilder::single_file(ctx.dag_direction);
@@ -721,7 +866,7 @@ where
         return TransferDagMetrics::default();
     }
 
-    let entry = ctx.entries[item.index].clone();
+    let entry = ctx.entries.get(item.index);
 
     // Expand the file subgraph template only now, on admission.
     let shaped = TransferDagBuilder::shaped_file(ctx.dag_direction, &ctx.caps, entry.size);
@@ -2346,6 +2491,90 @@ mod tests {
         let data: Vec<u8> = (0..bytes).map(|i| (i % 256) as u8).collect();
         std::fs::write(&path, data).expect("write");
         (dir, path)
+    }
+
+    /// A live batch transfers the files it already has while its entries
+    /// are still arriving: the first file runs before the sender closes.
+    #[tokio::test]
+    async fn a_live_batch_starts_before_its_entries_end() {
+        let executor = Arc::new(MockExecutor::new(4));
+        let (tx, rx) = tokio::sync::mpsc::channel(16);
+        let run = tokio::spawn(execute_batch_dag_live(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            batch(Vec::new(), 4),
+            rx,
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        ));
+        tx.send(entry("a", 100)).await.unwrap();
+        // Wall time bounds only a red run: a green one sees the file at once.
+        let mut started = false;
+        for _ in 0..3000 {
+            if executor.executed().contains(&"a".to_string()) {
+                started = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        tx.send(entry("b", 200)).await.unwrap();
+        drop(tx);
+        let result = run.await.unwrap();
+        assert!(started, "the first file waited for the last entry");
+        assert_eq!((result.total, result.completed), (2, 2));
+        assert_eq!(executor.executed().len(), 2);
+    }
+
+    /// A live batch stopped while its entries are still open ends without
+    /// waiting for them to close, and says it was cancelled.
+    #[tokio::test]
+    async fn a_stopped_live_batch_ends_while_its_entries_are_open() {
+        let executor = Arc::new(MockExecutor::new(4));
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (tx, rx) = tokio::sync::mpsc::channel(16);
+        let run = tokio::spawn(execute_batch_dag_live(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            batch(Vec::new(), 4),
+            rx,
+            Arc::clone(&executor),
+            Arc::clone(&cancel),
+            None,
+        ));
+        tx.send(entry("a", 100)).await.unwrap();
+        cancel.store(true, AtomicOrdering::SeqCst);
+        let result = tokio::time::timeout(Duration::from_secs(30), run)
+            .await
+            .expect("the stopped batch waited for its entries to close")
+            .unwrap();
+        assert!(result.cancelled);
+        drop(tx);
+    }
+
+    /// Entries that end early, as when the scan feeding them fails, leave a
+    /// batch of what arrived: every arrived file is counted, and an outcome
+    /// other than success (a skip, as no-clobber gives) is counted as such.
+    #[tokio::test]
+    async fn a_live_batch_counts_what_arrived() {
+        let mut executor = MockExecutor::new(2);
+        executor.skip.insert("b".to_string());
+        let executor = Arc::new(executor);
+        let (tx, rx) = tokio::sync::mpsc::channel(16);
+        let run = tokio::spawn(execute_batch_dag_live(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            batch(vec![entry("a", 100)], 2),
+            rx,
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        ));
+        tx.send(entry("b", 200)).await.unwrap();
+        tx.send(entry("c", 300)).await.unwrap();
+        drop(tx);
+        let result = run.await.unwrap();
+        assert_eq!(result.total, 3);
+        assert_eq!((result.completed, result.skipped, result.failed), (2, 1, 0));
+        let stats = result.engine_stats.expect("engine stats");
+        assert_eq!(stats.metrics.bytes_transferred, 400);
     }
 
     #[tokio::test]
@@ -4061,7 +4290,7 @@ mod tests {
                 ..BatchProgressSnapshot::default()
             })),
             progress_observer: None,
-            entries,
+            entries: Arc::new(BatchEntries::new(entries.as_ref().clone())),
             session_pool,
             resource_manager,
             aimd,
