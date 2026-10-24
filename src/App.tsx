@@ -216,7 +216,7 @@ import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
 import { previewRouteFor } from './utils/previewRoute';
 import { useOpenRequests } from './hooks/useOpenRequests';
-import { planLocalOpen, takeTabSelection } from './utils/openRequestPlan';
+import { addFolderTabs, findTabFor, mergeOpenBatch, planLocalOpen, takeTabSelection, type LastLocalOpen } from './utils/openRequestPlan';
 import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, isConnectCancelledError, isConnectHardTimeoutError } from './utils/connectCancel';
 import { shouldPersistUsedScan } from './utils/usedScanPersist';
 import { usedScanBoundKey } from './utils/usedScanBound';
@@ -16186,6 +16186,7 @@ const App: React.FC = () => {
   // text and code). A folder opens on itself (Ehud, #347). A multi-selection
   // opened at once arrives together: the files of the first folder are all
   // selected, and any other folder of the batch gets a tab of its own.
+  const lastLocalOpenRef = useRef<LastLocalOpen | null>(null);
   const openLocalPathsInAeroFile = async (requests: OpenRequest[]) => {
     const [plan, ...others] = planLocalOpen(requests, name => previewRouteFor(name) === 'universal-preview');
     if (!plan) return;
@@ -16201,27 +16202,43 @@ const App: React.FC = () => {
       humanLog.logRaw('activity.nav_sync_disabled', 'NAVIGATE', {}, undefined);
     }
     const panelId: 'local' | 'local2' = showDualLocalPanel ? activeLocalPanelId : 'local';
-    const target = panelId === 'local2'
-      ? await changeLocalDirectory2(plan.folder)
-      : await changeLocalDirectory(plan.folder, { localOnly: true });
-    if (target === null || target === undefined) return;
+    const tabs = panelId === 'local2' ? localTabs2 : localTabs;
+    const setTabs = panelId === 'local2' ? setLocalTabs2 : setLocalTabs;
+    const now = Date.now();
+    // Explorer's one-process-per-file batches for the folder just opened join
+    // its selection instead of replacing it.
+    const shownPath = panelId === 'local2' ? currentLocalPath2 : currentLocalPath;
+    const merged = shownPath === plan.folder
+      ? mergeOpenBatch(lastLocalOpenRef.current, panelId, plan.folder, plan.names, now)
+      : null;
+    if (!merged) {
+      // A folder that already has a tab opens in that tab, not in a copy.
+      const activeTabId = panelId === 'local2' ? activeLocalTabId2 : activeLocalTabId;
+      const existing = findTabFor(tabs, plan.folder);
+      if (existing && existing.id !== activeTabId) {
+        (panelId === 'local2' ? setActiveLocalTabId2 : setActiveLocalTabId)(existing.id);
+        setTabs(prev => takeTabSelection(prev, existing.id).tabs);
+      }
+      const target = panelId === 'local2'
+        ? await changeLocalDirectory2(plan.folder)
+        : await changeLocalDirectory(plan.folder, { localOnly: true });
+      if (target === null || target === undefined) return;
+    }
     setActivePanel('local');
     setActiveLocalPanelId(panelId);
+    const names = merged ?? plan.names;
+    lastLocalOpenRef.current = { panelId, folder: plan.folder, names, at: now };
     if (others.length > 0) {
-      const setTabs = panelId === 'local2' ? setLocalTabs2 : setLocalTabs;
       const prefix = panelId === 'local2' ? 'tab2' : 'tab';
-      setTabs(prev => {
-        const added: LocalTab[] = others.slice(0, Math.max(0, 12 - prev.length)).map(group => ({
-          id: `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          path: group.folder,
-          label: localPathBasename(group.folder) || '/',
-          scrollTop: 0,
-          ...(group.names.length > 0 ? { select: group.names } : {}),
-        }));
-        return [...prev, ...added];
-      });
+      setTabs(prev => addFolderTabs(prev, others, group => ({
+        id: `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        path: group.folder,
+        label: localPathBasename(group.folder) || '/',
+        scrollTop: 0,
+        ...(group.names.length > 0 ? { select: group.names } : {}),
+      })));
     }
-    if (plan.names.length === 0) return;
+    if (names.length === 0) return;
     // A search or tag filter left on the panel would hide the opened rows.
     // Hidden files stay governed by the user's own setting; their preview
     // still opens below.
@@ -16231,8 +16248,10 @@ const App: React.FC = () => {
       setLocalSearchFilter('');
       fileTags.setActiveTagFilter(null);
     }
-    (panelId === 'local2' ? setSelectedLocalFiles2 : setSelectedLocalFiles)(new Set(plan.names));
-    if (!plan.preview) return;
+    (panelId === 'local2' ? setSelectedLocalFiles2 : setSelectedLocalFiles)(new Set(names));
+    // One preview per selection: a joined batch keeps the one already open,
+    // and shows its own only if the user has closed it.
+    if (!plan.preview || (merged && universalPreviewOpen)) return;
     const listed = await invoke<LocalFile[]>('get_local_files', { path: plan.folder, showHidden: true }).catch(() => []);
     const file = listed.find(entry => entry.name === plan.preview);
     if (file) await openUniversalPreview(file, false);

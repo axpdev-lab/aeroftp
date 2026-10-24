@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import type { OpenRequest } from '../types';
 import type { LocalTab } from '../types/aerofile';
-import { planLocalOpen, takeTabSelection } from './openRequestPlan';
+import { addFolderTabs, findTabFor, mergeOpenBatch, planLocalOpen, takeTabSelection } from './openRequestPlan';
 
 const file = (folder: string, name: string): OpenRequest => ({
     kind: 'local', path: `${folder}/${name}`, folder, name, isDir: false,
@@ -39,4 +39,38 @@ it('applies a tab selection once and keeps every other tab as it is', () => {
     expect(first.tabs).toEqual([tabs[0], { id: 'b', path: '/b', label: 'b', scrollTop: 0 }]);
     expect(takeTabSelection(first.tabs, 'b').select).toEqual([]);
     expect(takeTabSelection(tabs, 'a')).toEqual({ select: [], tabs });
+});
+
+it('joins the one-process-per-file batches of an Explorer multi-selection', () => {
+    // Three processes a moment apart, as Explorer launches them with "%1".
+    const first = { panelId: 'local', folder: 'C:\\Pics', names: ['a.png'], at: 1000 };
+    const second = mergeOpenBatch(first, 'local', 'C:\\Pics', ['b.png'], 1400);
+    expect(second).toEqual(['a.png', 'b.png']);
+    expect(mergeOpenBatch({ ...first, names: second!, at: 1400 }, 'local', 'C:\\Pics', ['data.bin', 'a.png'], 2100))
+        .toEqual(['a.png', 'b.png', 'data.bin']);
+});
+
+it('keeps a batch alone in another folder or panel, after the window, or for a folder', () => {
+    const last = { panelId: 'local', folder: '/a', names: ['x.png'], at: 1000 };
+    expect(mergeOpenBatch(last, 'local', '/b', ['y.png'], 1100)).toBeNull();
+    expect(mergeOpenBatch(last, 'local2', '/a', ['y.png'], 1100)).toBeNull();
+    expect(mergeOpenBatch(last, 'local', '/a', ['y.png'], 4001)).toBeNull();
+    expect(mergeOpenBatch(last, 'local', '/a', [], 1100)).toBeNull();
+    expect(mergeOpenBatch(null, 'local', '/a', ['y.png'], 1100)).toBeNull();
+});
+
+it('reuses the tab a folder already has instead of opening a second one', () => {
+    const tabs: LocalTab[] = [
+        { id: 'a', path: '/a', label: 'a', scrollTop: 0 },
+        { id: 'b', path: '/b/', label: 'b', scrollTop: 0, select: ['y.png'] },
+    ];
+    expect(findTabFor(tabs, '/b')?.id).toBe('b');
+    const newTab = (g: { folder: string; names: string[] }): LocalTab => ({ id: `new-${g.folder}`, path: g.folder, label: g.folder, scrollTop: 0, select: g.names });
+    const next = addFolderTabs(tabs, [
+        { folder: '/b', names: ['y.png', 'z.txt'], preview: 'y.png' },
+        { folder: '/c', names: ['w.png'], preview: 'w.png' },
+    ], newTab);
+    expect(next.map(t => t.id)).toEqual(['a', 'b', 'new-/c']);
+    expect(next[1].select).toEqual(['y.png', 'z.txt']);
+    expect(addFolderTabs(tabs, [{ folder: '/d', names: [], preview: null }], newTab, 2)).toEqual(tabs);
 });
