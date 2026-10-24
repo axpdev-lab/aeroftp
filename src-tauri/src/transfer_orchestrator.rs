@@ -213,3 +213,31 @@ where
     crate::transfer_dag_batch::execute_batch_dag(sink, batch, executor, cancel, progress_observer)
         .await
 }
+
+/// [`execute_batch`] for a batch whose entries keep arriving on `entries`
+/// while it runs, such as a folder download whose scan is still listing: each
+/// file can start as soon as it is found. The batch ends once `entries`
+/// closes and every file sent is settled, or at once on a stop. Native bulk
+/// grouping needs the whole list, so a caller whose executor groups files
+/// calls [`execute_batch`] with the full list instead.
+pub async fn execute_batch_live<E>(
+    sink: Arc<dyn TransferEventSink>,
+    batch: TransferBatch,
+    entries: tokio::sync::mpsc::Receiver<TransferEntry>,
+    executor: Arc<E>,
+    cancel: Arc<AtomicBool>,
+    progress_observer: Option<ProgressObserver>,
+) -> TransferBatchResult
+where
+    E: TransferExecutor + Send + Sync + 'static,
+{
+    crate::transfer_dag_batch::execute_batch_dag_live(
+        sink,
+        batch,
+        entries,
+        executor,
+        cancel,
+        progress_observer,
+    )
+    .await
+}
