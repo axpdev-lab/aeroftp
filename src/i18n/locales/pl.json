@@ -5037,7 +5037,8 @@
             "closeTab": "Zamknij kartę",
             "home": "Strona główna",
             "maxReached": "Osiągnięto maksymalną liczbę kart",
-            "newTab": "Nowa karta"
+            "newTab": "Nowa karta",
+            "foldersNotOpened": "Nieotwarte foldery: {count}"
         },
         "tags": {
             "addTag": "Dodaj tag",

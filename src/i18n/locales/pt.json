@@ -5037,7 +5037,8 @@
             "closeTab": "Fechar Aba",
             "home": "Início",
             "maxReached": "Número máximo de abas atingido",
-            "newTab": "Nova Aba"
+            "newTab": "Nova Aba",
+            "foldersNotOpened": "Pastas não abertas: {count}"
         },
         "tags": {
             "addTag": "Adicionar Tag",

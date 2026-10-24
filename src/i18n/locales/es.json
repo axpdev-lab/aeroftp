@@ -5037,7 +5037,8 @@
             "closeTab": "Cerrar pestaña",
             "home": "Inicio",
             "maxReached": "Se ha alcanzado el máximo de pestañas",
-            "newTab": "Nueva pestaña"
+            "newTab": "Nueva pestaña",
+            "foldersNotOpened": "Carpetas sin abrir: {count}"
         },
         "tags": {
             "addTag": "Agregar etiqueta",

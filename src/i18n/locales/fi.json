@@ -5037,7 +5037,8 @@
             "closeTab": "Sulje välilehti",
             "home": "Koti",
             "maxReached": "Välilehtien enimmäismäärä saavutettu",
-            "newTab": "Uusi välilehti"
+            "newTab": "Uusi välilehti",
+            "foldersNotOpened": "Avaamattomat kansiot: {count}"
         },
         "tags": {
             "addTag": "Lisää tunniste",

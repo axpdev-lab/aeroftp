@@ -534,6 +534,17 @@ export interface LocalFile {
   modified: string | null;
 }
 
+// A file or folder the OS handed to the app (`open_request.rs`).
+export interface OpenRequest {
+  kind: 'vault' | 'keystore' | 'profiles' | 'archive' | 'local';
+  path: string;
+  /** The folder AeroFile shows: the parent of a file, a folder itself. */
+  folder: string;
+  /** The entry to select in `folder`; empty for a folder. */
+  name: string;
+  isDir: boolean;
+}
+
 // Transfer progress event from backend
 export interface TransferProgress {
   transfer_id: string;

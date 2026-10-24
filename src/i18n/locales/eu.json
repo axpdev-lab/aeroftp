@@ -5037,7 +5037,8 @@
             "closeTab": "Itxi fitxa",
             "home": "Hasiera",
             "maxReached": "Fitxa gehieneko muga iritsita",
-            "newTab": "Fitxa berria"
+            "newTab": "Fitxa berria",
+            "foldersNotOpened": "Irekitu gabeko karpetak: {count}"
         },
         "tags": {
             "addTag": "Gehitu etiketa",

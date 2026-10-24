@@ -5037,7 +5037,8 @@
             "closeTab": "Zapri zavihek",
             "home": "Domov",
             "maxReached": "Doseženo največje število zavihkov",
-            "newTab": "Nov zavihek"
+            "newTab": "Nov zavihek",
+            "foldersNotOpened": "Neodprte mape: {count}"
         },
         "tags": {
             "addTag": "Dodaj oznako",

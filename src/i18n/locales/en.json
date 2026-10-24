@@ -4613,7 +4613,8 @@
             "closeTab": "Close Tab",
             "home": "Home",
             "maxReached": "Maximum tabs reached",
-            "newTab": "New Tab"
+            "newTab": "New Tab",
+            "foldersNotOpened": "Folders not opened: {count}"
         },
         "tags": {
             "addTag": "Add Tag",

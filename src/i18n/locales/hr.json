@@ -5037,7 +5037,8 @@
             "closeTab": "Zatvori karticu",
             "home": "Početna",
             "maxReached": "Dostignut je maksimalan broj kartica",
-            "newTab": "Nova kartica"
+            "newTab": "Nova kartica",
+            "foldersNotOpened": "Neotvorene mape: {count}"
         },
         "tags": {
             "addTag": "Dodaj oznaku",

@@ -5037,7 +5037,8 @@
             "closeTab": "Loka flipa",
             "home": "Heim",
             "maxReached": "Hámarksfjöldi flipa náð",
-            "newTab": "Nýr flipi"
+            "newTab": "Nýr flipi",
+            "foldersNotOpened": "Möppur ekki opnaðar: {count}"
         },
         "tags": {
             "addTag": "Bæta við merki",

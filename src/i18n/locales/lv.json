@@ -5037,7 +5037,8 @@
             "closeTab": "Aizvērt cilni",
             "home": "Sākums",
             "maxReached": "Sasniegts maksimālais cilņu skaits",
-            "newTab": "Jauna cilne"
+            "newTab": "Jauna cilne",
+            "foldersNotOpened": "Neatvērtās mapes: {count}"
         },
         "tags": {
             "addTag": "Pievienot birku",

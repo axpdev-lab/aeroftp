@@ -5037,7 +5037,8 @@
             "closeTab": "Sekmeyi Kapat",
             "home": "Ana Sayfa",
             "maxReached": "Maksimum sekme sayısına ulaşıldı",
-            "newTab": "Yeni Sekme"
+            "newTab": "Yeni Sekme",
+            "foldersNotOpened": "Açılmayan klasörler: {count}"
         },
         "tags": {
             "addTag": "Etiket Ekle",

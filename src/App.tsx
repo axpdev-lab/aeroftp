@@ -37,7 +37,7 @@ import {
   AeroVaultOverlaySession,
   DeltaEligibilityProbeResult,
   SyncDirection, VerifyPolicy, DeltaTransferStats,
-  CompareReport, RetryPolicy, SyncJournal
+  CompareReport, RetryPolicy, SyncJournal, OpenRequest
 } from './types';
 import { profileOverlayApplyParams } from './utils/profileOverlayUnlock';
 import { cryptUnlockTargetKey, overlayAnchor, type CryptUnlockTarget } from './utils/cryptUnlockTarget';
@@ -215,6 +215,8 @@ import { trashLocalPaths, type HomeCopyChoice, type LocalTrashDeps } from './uti
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
 import { previewRouteFor } from './utils/previewRoute';
+import { useOpenRequests } from './hooks/useOpenRequests';
+import { addFolderTabs, mergeOpenBatch, openInFolderTab, planLocalOpen, sameLocalFolder, settleReusedTab, takeTabSelection, type LastLocalOpen, type LocalOpenGroup } from './utils/openRequestPlan';
 import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, isConnectCancelledError, isConnectHardTimeoutError } from './utils/connectCancel';
 import { shouldPersistUsedScan } from './utils/usedScanPersist';
 import { usedScanBoundKey } from './utils/usedScanBound';
@@ -785,6 +787,10 @@ const App: React.FC = () => {
   // === Splash Screen Readiness ===
   const vaultInitDone = useRef(false);
   const localFilesInitDone = useRef(false);
+  // The same milestone as state, for what must wait for it: a file the OS
+  // opened navigates only after the saved or default folder has loaded, or
+  // that later load would replace it.
+  const [localFilesBootstrapped, setLocalFilesBootstrapped] = useState(false);
   const appReadySignaled = useRef(false);
   const signalAppReady = useCallback(() => {
     if (appReadySignaled.current) return;
@@ -4517,7 +4523,16 @@ const App: React.FC = () => {
     const target = localTabs.find(t => t.id === tabId);
     if (target) {
       setActiveLocalTabId(tabId);
-      changeLocalDirectory(target.path);
+      void changeLocalDirectory(target.path).then(done => {
+        // A tab opened for a further folder of an OS open batch selects its
+        // files once, with no panel filter hiding them.
+        if (done === null || !target.select?.length) return;
+        const taken = takeTabSelection(localTabs, tabId);
+        setLocalTabs(prev => takeTabSelection(prev, tabId).tabs);
+        setLocalSearchFilter('');
+        fileTags.setActiveTagFilter(null);
+        setSelectedLocalFiles(new Set(taken.select));
+      });
     }
   }, [activeLocalTabId, currentLocalPath, localTabs]);
 
@@ -5335,14 +5350,6 @@ const App: React.FC = () => {
     }
   });
 
-  // OS file association: listen for .aerovault/.aerozip files opened via double-click or single-instance forwarding
-  useTauriListener<string>('vault-open-file', (event) => {
-    const vaultPath = event.payload;
-    if (vaultPath && (vaultPath.endsWith('.aerovault') || vaultPath.endsWith('.aerozip'))) {
-      setShowVaultPanel({ mode: 'open', path: vaultPath });
-    }
-  });
-
   // MEGAcmd warmup notice (#275, W1.4): the provider emits this when it has to
   // (re)start the local MEGAcmd server, so the first-call delay is explained
   // rather than mysterious. Same wording as the CLI stderr line; routed through
@@ -5351,54 +5358,6 @@ const App: React.FC = () => {
     window.dispatchEvent(new CustomEvent('aeroftp-toast', {
       detail: { type: 'info', title: t('toast.megacmdWarmup'), duration: 6000 },
     }));
-  });
-
-  // OS file association: a double-clicked .aeroftp-keystore opens Settings
-  // on the Backup tab with the file preloaded for import, instead of just
-  // raising the window (issue #214 pt.4a). SettingsPanel selects the Backup
-  // tab itself from initialKeystoreImportPath.
-  useTauriListener<string>('keystore-open-file', (event) => {
-    const ksPath = event.payload;
-    if (ksPath && ksPath.endsWith('.aeroftp-keystore')) {
-      setSettingsInitialKeystorePath(ksPath);
-      setShowSettingsPanel(true);
-    }
-  });
-
-  // OS file association: a double-clicked plain .aeroftp server-profiles
-  // export opens the import flow (password prompt -> import_server_profiles)
-  // instead of just raising the window (issue #214 pt.4a, plain .aeroftp).
-  // The explicit !endsWith('.aeroftp-keystore') guard keeps a keystore file
-  // from ever reaching the profiles importer, mirroring the backend filter.
-  useTauriListener<string>('servers-open-file', (event) => {
-    const p = event.payload;
-    if (p && p.endsWith('.aeroftp') && !p.endsWith('.aeroftp-keystore')) {
-      importAeroFtpProfileFile(p);
-    }
-  });
-
-  // OS file association / "Open with AeroFTP": general compressed archives
-  // via the shared AeroFTP.Archive ProgID (Deliverable G). Opens the in-app
-  // ArchiveBrowser (with encryption probe) instead of a bare window.
-  useTauriListener<string>('archive-open-file', async (event) => {
-    const archivePath = event.payload;
-    if (!archivePath) return;
-    const lower = archivePath.toLowerCase();
-    let archType: import('./types').ArchiveType = 'zip';
-    if (lower.endsWith('.7z')) archType = '7z';
-    else if (lower.endsWith('.rar')) archType = 'rar';
-    else if (lower.endsWith('.tar') || lower.endsWith('.tgz') || lower.endsWith('.tar.gz') || lower.endsWith('.tar.xz') || lower.endsWith('.tar.bz2')) archType = 'tar';
-    // Probe encryption (best-effort; non-fatal)
-    let encrypted = false;
-    try {
-      if (archType === 'zip') encrypted = await invoke<boolean>('is_zip_encrypted', { archivePath });
-      else if (archType === '7z') encrypted = await invoke<boolean>('is_7z_encrypted', { archivePath });
-      else if (archType === 'rar') encrypted = await invoke<boolean>('is_rar_encrypted', { archivePath });
-      // tar family: unencrypted by definition for our purposes
-    } catch {
-      /* ignore probe failure; open browser anyway */
-    }
-    setArchiveBrowserState({ path: archivePath, type: archType, encrypted });
   });
 
   // Auto-enable debug mode when Cyber theme is active, disable when switching away
@@ -5524,9 +5483,16 @@ const App: React.FC = () => {
     const target = localTabs2.find(t => t.id === tabId);
     if (target) {
       setActiveLocalTabId2(tabId);
-      changeLocalDirectory2(target.path);
+      void changeLocalDirectory2(target.path).then(done => {
+        // See switchLocalTab: an OS open batch tab selects its files once.
+        if (done === null || !target.select?.length) return;
+        const taken = takeTabSelection(localTabs2, tabId);
+        setLocalTabs2(prev => takeTabSelection(prev, tabId).tabs);
+        setLocalSearchFilter2('');
+        setSelectedLocalFiles2(new Set(taken.select));
+      });
     }
-  }, [activeLocalTabId2, currentLocalPath2, localTabs2, changeLocalDirectory2, setLocalTabs2, setActiveLocalTabId2]);
+  }, [activeLocalTabId2, currentLocalPath2, localTabs2, changeLocalDirectory2, setLocalTabs2, setActiveLocalTabId2, setLocalSearchFilter2, setSelectedLocalFiles2]);
 
   const closeLocalTab2 = useCallback((tabId: string) => {
     setLocalTabs2(prev => {
@@ -6614,6 +6580,7 @@ const App: React.FC = () => {
       catch { try { await loadLocalFiles(await downloadDir()); } catch { } }
     })().finally(() => {
       localFilesInitDone.current = true;
+      setLocalFilesBootstrapped(true);
       signalAppReady();
     });
   }, [loadLocalFiles, signalAppReady]);
@@ -9601,9 +9568,11 @@ const App: React.FC = () => {
     })();
   };
 
-  const changeLocalDirectory = async (path: string) => {
+  // `localOnly` leaves Navigation Sync out of it: no base guard, no remote
+  // mirror. A file the OS opened is not a step inside the paired tree.
+  const changeLocalDirectory = async (path: string, opts: { localOnly?: boolean } = {}) => {
     // Sync navigation guard: prevent navigating above the sync base path
-    if (isSyncNavigation && syncBasePaths) {
+    if (!opts.localOnly && isSyncNavigation && syncBasePaths) {
       const norm = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
       const normBase = norm(syncBasePaths.local);
       const normTarget = norm(path);
@@ -9640,7 +9609,7 @@ const App: React.FC = () => {
     // own spelling. A listing failure is not a missing folder. FTP and crypt
     // keep the previous join. The mirror shares remoteNavCounter and owns the
     // spinner, or a superseded navigation would leave it running.
-    if (isSyncNavigation && syncBasePaths && isConnected) {
+    if (!opts.localOnly && isSyncNavigation && syncBasePaths && isConnected) {
       const protocol = (liveConnectionParams.protocol) as ProviderType | undefined;
       const isProvider = usesProviderApi(protocol);
       const cryptActive = cryptSyncBoundaryActive({
@@ -16187,6 +16156,154 @@ const App: React.FC = () => {
   };
 
   const openInFileManager = async (path: string) => { try { await invoke('open_in_file_manager', { path }); } catch { } };
+
+  // Files the OS hands to AeroFTP (double-click on an associated format,
+  // "Open with AeroFTP" on any file, `aeroftp <path>`, a macOS open event),
+  // drained by useOpenRequests once the vault boot is done and the app is
+  // unlocked.
+  const openArchiveInBrowser = async (archivePath: string) => {
+    const lower = archivePath.toLowerCase();
+    let archType: import('./types').ArchiveType = 'zip';
+    if (lower.endsWith('.7z')) archType = '7z';
+    else if (lower.endsWith('.rar')) archType = 'rar';
+    else if (lower.endsWith('.tar') || lower.endsWith('.tgz') || lower.endsWith('.tar.gz') || lower.endsWith('.tar.xz') || lower.endsWith('.tar.bz2')) archType = 'tar';
+    // Probe encryption (best-effort; non-fatal)
+    let encrypted = false;
+    try {
+      if (archType === 'zip') encrypted = await invoke<boolean>('is_zip_encrypted', { archivePath });
+      else if (archType === '7z') encrypted = await invoke<boolean>('is_7z_encrypted', { archivePath });
+      else if (archType === 'rar') encrypted = await invoke<boolean>('is_rar_encrypted', { archivePath });
+      // tar family: unencrypted by definition for our purposes
+    } catch {
+      /* ignore probe failure; open browser anyway */
+    }
+    setArchiveBrowserState({ path: archivePath, type: archType, encrypted });
+  };
+
+  // Any other file opens in AeroFile on its folder, in the active panel of
+  // the dual view, with the file selected and previewed as a double-click
+  // would (AeroImage for a picture, the text preview with its Edit button for
+  // text and code). A folder opens on itself (Ehud, #347). A multi-selection
+  // opened at once arrives together: the files of the first folder are all
+  // selected, and any other folder of the batch gets a tab of its own.
+  const lastLocalOpenRef = useRef<LastLocalOpen | null>(null);
+  const openLocalPathsInAeroFile = async (requests: OpenRequest[]) => {
+    const [plan, ...others] = planLocalOpen(requests, name => previewRouteFor(name) === 'universal-preview');
+    if (!plan) return;
+    setShowConnectionScreen(false);
+    // A live session stays connected; only its remote panel steps aside.
+    if (isConnected) setShowRemotePanel(false);
+    // The local panel leaves the paired tree, so Navigation Sync ends here
+    // the way its toggle ends it, and the navigation below stays local.
+    if (isSyncNavigation) {
+      setSyncBasePaths(null);
+      setIsSyncNavigation(false);
+      notify.info(t('toast.navSyncDisabled'));
+      humanLog.logRaw('activity.nav_sync_disabled', 'NAVIGATE', {}, undefined);
+    }
+    const panelId: 'local' | 'local2' = showDualLocalPanel ? activeLocalPanelId : 'local';
+    const tabs = panelId === 'local2' ? localTabs2 : localTabs;
+    const setTabs = panelId === 'local2' ? setLocalTabs2 : setLocalTabs;
+    const now = Date.now();
+    // Explorer's one-process-per-file batches for the folder just opened join
+    // its selection instead of replacing it.
+    const shownPath = panelId === 'local2' ? currentLocalPath2 : currentLocalPath;
+    const merged = sameLocalFolder(shownPath, plan.folder)
+      ? mergeOpenBatch(lastLocalOpenRef.current, panelId, plan.folder, plan.names, now)
+      : null;
+    // Every further folder of the batch gets its tab, whether or not the
+    // first one loads: the batch has already left the queue.
+    const openOtherFolders = () => {
+      if (others.length === 0) return;
+      const prefix = panelId === 'local2' ? 'tab2' : 'tab';
+      const newTab = (group: LocalOpenGroup): LocalTab => ({
+        id: `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        path: group.folder,
+        label: localPathBasename(group.folder) || '/',
+        scrollTop: 0,
+        ...(group.names.length > 0 ? { select: group.names } : {}),
+      });
+      setTabs(prev => addFolderTabs(prev, others, newTab).tabs);
+      // Folders past the tab limit are not opened; say how many.
+      const { skipped } = addFolderTabs(tabs, others, newTab);
+      if (skipped > 0) notify.warning(t('localTabs.maxReached'), t('localTabs.foldersNotOpened', { count: skipped }));
+    };
+    let opened: string[] = plan.names;
+    if (!merged) {
+      // A folder that already has a tab opens in that tab, not in a copy,
+      // and the files that tab was still waiting to select stay selected.
+      // The tab switches only once the folder has loaded: a failed load
+      // leaves every tab where it was.
+      const activeTabId = panelId === 'local2' ? activeLocalTabId2 : activeLocalTabId;
+      const previous = { id: activeTabId, path: shownPath };
+      const reuse = openInFolderTab(tabs, plan.folder, plan.names);
+      const target = panelId === 'local2'
+        ? await changeLocalDirectory2(plan.folder)
+        : await changeLocalDirectory(plan.folder, { localOnly: true });
+      if (target === null || target === undefined) {
+        openOtherFolders();
+        return;
+      }
+      if (reuse.tab) {
+        const reusedId = reuse.tab.id;
+        if (reusedId !== activeTabId) (panelId === 'local2' ? setActiveLocalTabId2 : setActiveLocalTabId)(reusedId);
+        setTabs(prev => settleReusedTab(prev, reusedId, previous));
+      }
+      opened = reuse.names;
+    }
+    setActivePanel('local');
+    setActiveLocalPanelId(panelId);
+    const names = merged ?? opened;
+    lastLocalOpenRef.current = { panelId, folder: plan.folder, names, at: now };
+    openOtherFolders();
+    if (names.length === 0) return;
+    // A search or tag filter left on the panel would hide the opened rows.
+    // Hidden files stay governed by the user's own setting; their preview
+    // still opens below.
+    if (panelId === 'local2') {
+      setLocalSearchFilter2('');
+    } else {
+      setLocalSearchFilter('');
+      fileTags.setActiveTagFilter(null);
+    }
+    (panelId === 'local2' ? setSelectedLocalFiles2 : setSelectedLocalFiles)(new Set(names));
+    // One preview per selection: a joined batch keeps the one already open,
+    // and shows its own only if the user has closed it.
+    if (!plan.preview || (merged && universalPreviewOpen)) return;
+    const listed = await invoke<LocalFile[]>('get_local_files', { path: plan.folder, showHidden: true }).catch(() => []);
+    const file = listed.find(entry => entry.name === plan.preview);
+    if (file) await openUniversalPreview(file, false);
+  };
+
+  const handleOpenRequests = async (requests: OpenRequest[]) => {
+    const local: OpenRequest[] = [];
+    for (const request of requests) {
+      switch (request.kind) {
+        case 'vault':
+          setShowVaultPanel({ mode: 'open', path: request.path });
+          break;
+        case 'keystore':
+          // SettingsPanel selects the Backup tab itself from the preloaded path.
+          setSettingsInitialKeystorePath(request.path);
+          setShowSettingsPanel(true);
+          break;
+        case 'profiles':
+          importAeroFtpProfileFile(request.path);
+          break;
+        case 'archive':
+          await openArchiveInBrowser(request.path);
+          break;
+        case 'local':
+          local.push(request);
+          break;
+      }
+    }
+    if (local.length > 0) await openLocalPathsInAeroFile(local);
+  };
+  useOpenRequests(
+    vaultBootComplete && !isAppLocked && accountLockState === 'ready' && localFilesBootstrapped,
+    handleOpenRequests,
+  );
 
   const profileConnector = useRef<ProfileConnector | null>(null);
   const registerProfileConnector = useCallback<RegisterProfileConnector>(connector => {

@@ -5037,7 +5037,8 @@
             "closeTab": "Funga Kichupo",
             "home": "Nyumbani",
             "maxReached": "Idadi ya juu ya vichupo imefikiwa",
-            "newTab": "Kichupo Kipya"
+            "newTab": "Kichupo Kipya",
+            "foldersNotOpened": "Folda ambazo hazikufunguliwa: {count}"
         },
         "tags": {
             "addTag": "Ongeza Lebo",

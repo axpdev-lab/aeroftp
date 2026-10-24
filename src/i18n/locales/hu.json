@@ -5037,7 +5037,8 @@
             "closeTab": "Lap bezárása",
             "home": "Kezdőlap",
             "maxReached": "Elérte a lapok maximális számát",
-            "newTab": "Új lap"
+            "newTab": "Új lap",
+            "foldersNotOpened": "Meg nem nyitott mappák: {count}"
         },
         "tags": {
             "addTag": "Címke hozzáadása",

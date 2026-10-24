@@ -5037,7 +5037,8 @@
             "closeTab": "Tab schließen",
             "home": "Startseite",
             "maxReached": "Maximale Anzahl an Tabs erreicht",
-            "newTab": "Neuer Tab"
+            "newTab": "Neuer Tab",
+            "foldersNotOpened": "Nicht geöffnete Ordner: {count}"
         },
         "tags": {
             "addTag": "Tag hinzufügen",

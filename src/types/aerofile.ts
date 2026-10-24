@@ -136,6 +136,9 @@ export interface LocalTab {
   path: string;
   label: string;           // last path segment (folder name)
   scrollTop: number;
+  /** Entries to select the first time the tab is shown: the files of a
+   *  further folder in one OS open batch (`openRequestPlan.ts`). */
+  select?: string[];
 }
 
 /** Physical panel slot in the unified dual-panel surface. */

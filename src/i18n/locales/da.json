@@ -5037,7 +5037,8 @@
             "closeTab": "Luk fane",
             "home": "Hjem",
             "maxReached": "Maksimalt antal faner nået",
-            "newTab": "Ny fane"
+            "newTab": "Ny fane",
+            "foldersNotOpened": "Mapper der ikke blev åbnet: {count}"
         },
         "tags": {
             "addTag": "Tilføj tag",
