@@ -165,6 +165,286 @@ async fn remove_part_record(record: &Path) {
     }
 }
 
+/// Completion of abandoned resumable writes. A shared future keeps cleanup
+/// alive if its runtime or an awaiting retry is cancelled; another retry can
+/// drive the same attempt. Independently live writers are never registered.
+mod part_settlement {
+    use std::collections::HashMap;
+    use std::io;
+    use std::path::{Path, PathBuf};
+    use std::sync::{Arc, Mutex, OnceLock};
+
+    use futures_util::future::{BoxFuture, Shared};
+    use futures_util::FutureExt;
+
+    use super::{fs, ClaimedWriter};
+    use tokio::io::AsyncWriteExt;
+
+    type Completion = Shared<BoxFuture<'static, Result<(), Arc<io::Error>>>>;
+
+    #[derive(Clone)]
+    struct Pending {
+        attempt: Arc<()>,
+        completion: Completion,
+        retry_record: Option<PathBuf>,
+    }
+
+    fn pending() -> &'static Mutex<HashMap<PathBuf, Vec<Pending>>> {
+        static PENDING: OnceLock<Mutex<HashMap<PathBuf, Vec<Pending>>>> = OnceLock::new();
+        PENDING.get_or_init(Mutex::default)
+    }
+
+    /// Resolve the parent, never the part itself: aliases of the directory
+    /// share a barrier, and a symlink at the part is still refused by open.
+    pub(super) async fn key(path: &Path) -> io::Result<PathBuf> {
+        let parent = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        let parent = fs::canonicalize(parent).await?;
+        Ok(parent.join(path.file_name().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidInput, "download path has no filename")
+        })?))
+    }
+
+    pub(super) async fn wait(key: &Path) -> io::Result<()> {
+        loop {
+            let work: Vec<_> = pending()
+                .lock()
+                .expect("part settlement mutex poisoned")
+                .get(key)
+                .cloned()
+                .unwrap_or_default();
+            if work.is_empty() {
+                return Ok(());
+            }
+            for part in work {
+                if let Err(error) = part.completion.await {
+                    let Some(record) = part.retry_record else {
+                        return Err(super::copy_io_error(&error));
+                    };
+                    let recovery = {
+                        let mut pending = pending().lock().expect("part settlement mutex poisoned");
+                        let Some(parts) = pending.get_mut(key) else {
+                            continue;
+                        };
+                        let Some(current) = parts
+                            .iter_mut()
+                            .find(|p| Arc::ptr_eq(&p.attempt, &part.attempt))
+                        else {
+                            // Another waiter already owns recovery. Join its
+                            // generation on the next pass instead of removing
+                            // a record that may belong to a newer writer.
+                            continue;
+                        };
+                        let attempt = Arc::new(());
+                        let retry_record = record.clone();
+                        let temp = key.to_path_buf();
+                        let claim_path = temp.clone();
+                        let operation = async move {
+                            // Another process may have claimed the part since
+                            // the failed owner closed. Invalidate only while
+                            // holding the same filesystem claim as an opener.
+                            let owner = super::claimed(move || {
+                                match super::temp_claim::open_to_append(&claim_path) {
+                                    Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                                        super::temp_claim::create(&claim_path)
+                                    }
+                                    result => result,
+                                }
+                            })
+                            .await
+                            .map_err(Arc::new)?;
+                            let result = super::forget_part_record(&record).await;
+                            drop(owner);
+                            result.map_err(Arc::new)?;
+                            discard_invalid_part(temp).await.map_err(Arc::new)
+                        }
+                        .boxed()
+                        .shared();
+                        let completion =
+                            tracked_completion(key.to_path_buf(), attempt.clone(), operation, true);
+                        *current = Pending {
+                            attempt,
+                            completion: completion.clone(),
+                            retry_record: Some(retry_record),
+                        };
+                        completion
+                    };
+                    // Progress recovery even if its only waiter is cancelled
+                    // after the blocking claim starts. The registry retains
+                    // failures; only successful invalidation clears them.
+                    drive(recovery.clone());
+                    recovery
+                        .await
+                        .map_err(|error| super::copy_io_error(&error))?;
+                }
+            }
+        }
+    }
+
+    pub(super) fn register(
+        key: PathBuf,
+        mut writer: ClaimedWriter,
+        record: Option<PathBuf>,
+        write_failed: bool,
+    ) {
+        let path = key.clone();
+        let retry_record = record.clone();
+        let completion = async move {
+            let flushed = writer.flush().await;
+            let discard = record.is_some() && (write_failed || flushed.is_err());
+            // A delayed write error invalidates the recorded prefix. Keep
+            // the claim until this record is gone, before a retry can open.
+            let invalidated = if write_failed || flushed.is_err() {
+                if let Some(record) = record {
+                    super::forget_part_record(&record).await
+                } else {
+                    Ok(())
+                }
+            } else {
+                Ok(())
+            };
+            if let Err(error) = &flushed {
+                tracing::warn!(
+                    "abandoned download write failed at {}: {error}",
+                    path.display()
+                );
+            }
+            // flush joined the local operation. Closing this owner now
+            // explicitly unlocks even if a child inherited its descriptor.
+            drop(writer);
+            invalidated.map_err(Arc::new)?;
+            if discard {
+                discard_invalid_part(path).await.map_err(Arc::new)?;
+            }
+            Ok(())
+        }
+        .boxed()
+        .shared();
+        register_completion(key, completion, retry_record);
+    }
+
+    /// An invalidated failed-write prefix cannot be resumed. Remove it
+    /// before clearing the barrier: AtomicFile must not have to guess its
+    /// ownership on Windows or filesystems without usable locks. The owner
+    /// has closed first, and the existing removal guard refuses live writers.
+    async fn discard_invalid_part(temp: PathBuf) -> io::Result<()> {
+        // The record is already invalidated: do not unlink it again after
+        // removing the part, when a different writer could have its name.
+        tokio::task::spawn_blocking(move || super::temp_claim::remove_unless_live(&temp))
+            .await
+            .map_err(io::Error::other)?
+    }
+
+    /// Finalization owns sync/rename/unlink as well as the file. Those local
+    /// operations cannot be rolled back by dropping their await, so retain
+    /// their entire owner until they end. An independently live operation is
+    /// not registered; only abandoning this await installs its barrier.
+    pub(super) async fn finish(
+        key: PathBuf,
+        operation: impl std::future::Future<Output = io::Result<()>> + Send + 'static,
+    ) -> io::Result<()> {
+        let completion = operation
+            .map(|result| result.map_err(Arc::new))
+            .boxed()
+            .shared();
+        let mut abandoned = Abandoned {
+            key,
+            completion: Some(completion.clone()),
+        };
+        let result = completion.await;
+        abandoned.completion = None;
+        result.map_err(|error| super::copy_io_error(&error))
+    }
+
+    struct Abandoned {
+        key: PathBuf,
+        completion: Option<Completion>,
+    }
+
+    impl Drop for Abandoned {
+        fn drop(&mut self) {
+            if let Some(completion) = self.completion.take() {
+                register_completion(self.key.clone(), completion, None);
+            }
+        }
+    }
+
+    fn tracked_completion(
+        path: PathBuf,
+        generation: Arc<()>,
+        operation: Completion,
+        retain_failure: bool,
+    ) -> Completion {
+        async move {
+            let result = operation.await;
+            if result.is_ok() || !retain_failure {
+                let mut pending = pending().lock().expect("part settlement mutex poisoned");
+                if let Some(parts) = pending.get_mut(&path) {
+                    parts.retain(|part| !Arc::ptr_eq(&part.attempt, &generation));
+                    if parts.is_empty() {
+                        pending.remove(&path);
+                    }
+                }
+            }
+            result
+        }
+        .boxed()
+        .shared()
+    }
+
+    fn register_completion(key: PathBuf, operation: Completion, retry_record: Option<PathBuf>) {
+        let attempt = Arc::new(());
+        let completion = tracked_completion(
+            key.clone(),
+            attempt.clone(),
+            operation,
+            retry_record.is_some(),
+        );
+        pending()
+            .lock()
+            .expect("part settlement mutex poisoned")
+            .entry(key)
+            .or_default()
+            .push(Pending {
+                attempt,
+                completion: completion.clone(),
+                retry_record,
+            });
+        drive(completion);
+    }
+
+    fn drive(completion: Completion) {
+        // A runtime is not required at Drop: the next open also polls this
+        // shared completion. If this task is aborted, the registry retains it.
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            runtime.spawn(async move {
+                if let Err(error) = completion.await {
+                    // A later waiter retries record invalidation. Until it
+                    // succeeds, the failed-write prefix stays refused. Normal
+                    // finalization errors have already closed their owner.
+                    tracing::warn!("could not settle abandoned download part: {error}");
+                }
+            });
+        }
+    }
+}
+
+fn copy_io_error(error: &std::io::Error) -> std::io::Error {
+    error
+        .raw_os_error()
+        .map(std::io::Error::from_raw_os_error)
+        .unwrap_or_else(|| std::io::Error::new(error.kind(), error.to_string()))
+}
+
+async fn forget_part_record(record: &Path) -> std::io::Result<()> {
+    match fs::remove_file(record).await {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error),
+        _ => Ok(()),
+    }
+}
+
 /// The length of the part a download of `final_path` goes on from: its
 /// `.aerotmp`, when that keeps a record of the version it was started from.
 /// The download then checks the record against the file as it is now, and
@@ -177,6 +457,13 @@ async fn remove_part_record(record: &Path) {
 /// two versions, or wrote a tail behind a run of zeros.
 pub async fn resumable_part_len(final_path: &Path) -> u64 {
     let temp = AtomicFile::temp_path_for(final_path);
+    let Ok(key) = part_settlement::key(&temp).await else {
+        return 0;
+    };
+    if let Err(error) = part_settlement::wait(&key).await {
+        tracing::warn!("download part is not safe to resume: {error}");
+        return 0;
+    }
     let Ok(meta) = fs::symlink_metadata(&temp).await else {
         return 0;
     };
@@ -1326,6 +1613,8 @@ impl AtomicFile {
             fs::create_dir_all(parent).await?;
         }
 
+        let settlement_key = part_settlement::key(&temp_path).await?;
+        part_settlement::wait(&settlement_key).await?;
         let file = if inplace {
             ClaimedWriter::unclaimed(
                 fs::OpenOptions::new()
@@ -1397,7 +1686,8 @@ impl Drop for AtomicFile {
 ///
 /// On fresh download: writes to `.aerotmp` (like `AtomicFile`).
 /// On resume: detects existing `.aerotmp`, opens in append mode at the existing offset.
-/// On failure: keeps `.aerotmp` intact so the next download can resume from where it left off.
+/// On failure: settles and keeps `.aerotmp` for resume. A failed local write
+/// invalidates its version record so that it cannot be resumed as healthy.
 /// On success: renames `.aerotmp` to the final path (same as `AtomicFile`).
 ///
 /// Out of place a part keeps a record of the version of the file it was
@@ -1412,6 +1702,9 @@ pub struct ResumableFile {
     final_path: PathBuf,
     record_path: PathBuf,
     file: ClaimedWriter,
+    settlement_key: PathBuf,
+    needs_settlement: bool,
+    write_error: Option<std::io::Error>,
     committed: bool,
     /// Byte offset we are resuming from (0 = fresh download).
     offset: u64,
@@ -1579,6 +1872,9 @@ impl ResumableFile {
             fs::create_dir_all(parent).await?;
         }
 
+        let settlement_key = part_settlement::key(&temp_path).await?;
+        part_settlement::wait(&settlement_key).await?;
+
         // A part another writer commits between the look and the open is gone
         // by then: the download starts fresh instead of failing on NotFound.
         let resumed = match fs::symlink_metadata(&temp_path).await {
@@ -1658,6 +1954,9 @@ impl ResumableFile {
             final_path,
             record_path,
             file,
+            settlement_key,
+            needs_settlement: false,
+            write_error: None,
             committed: false,
             offset,
             recorded,
@@ -1687,6 +1986,8 @@ impl ResumableFile {
             fs::create_dir_all(parent).await?;
         }
 
+        let settlement_key = part_settlement::key(&temp_path).await?;
+        part_settlement::wait(&settlement_key).await?;
         let file = if inplace {
             ClaimedWriter::unclaimed(
                 fs::OpenOptions::new()
@@ -1713,6 +2014,9 @@ impl ResumableFile {
             record_path: part_record_path_for(&final_path_buf),
             final_path: final_path_buf,
             file,
+            settlement_key,
+            needs_settlement: false,
+            write_error: None,
             committed: false,
             offset: 0,
             recorded: None,
@@ -1750,43 +2054,87 @@ impl ResumableFile {
 
     /// Write data to the temp file (appending after any existing partial data).
     pub async fn write_all(&mut self, buf: &[u8]) -> Result<(), std::io::Error> {
-        self.file.write_all(buf).await
+        self.needs_settlement = true;
+        let written = self.file.write_all(buf).await;
+        if let Err(error) = &written {
+            self.write_error = Some(copy_io_error(error));
+        }
+        written
     }
 
     /// Get a mutable reference to the underlying file for writing.
     pub fn file_mut(&mut self) -> &mut tokio::fs::File {
+        self.needs_settlement = true;
         &mut self.file
     }
 
-    /// Flush and commit: rename temp file to final path.
-    /// In inplace mode, no rename is needed.
-    pub async fn commit(mut self) -> Result<(), std::io::Error> {
-        self.file.flush().await?;
-        self.file.sync_all().await?;
-        self.file.shutdown().await?;
+    /// Join outstanding local writes without publishing or removing the part.
+    /// A delayed disk error invalidates its record and overrides the transport
+    /// error: the caller must not retry an unreported failed local write.
+    pub async fn keep_for_resume(mut self) -> std::io::Result<()> {
+        self.flush_for_resume().await
+    }
 
-        if !self.inplace {
-            // The record goes first, while this writer still holds the part:
-            // after the rename the name is free, and a record removed then
-            // could be the next download's.
-            remove_part_record(&self.record_path).await;
-            fs::rename(&self.temp_path, &self.final_path).await?;
+    async fn flush_for_resume(&mut self) -> std::io::Result<()> {
+        if let Err(error) = self.file.flush().await {
+            self.write_error = Some(error);
         }
-        self.committed = true;
+        if self.write_error.is_some() && !self.inplace {
+            // Leave needs_settlement set until invalidation completes. A
+            // cancellation here hands that obligation to the Drop barrier.
+            forget_part_record(&self.record_path).await?;
+            self.recorded = None;
+        }
+        if let Some(error) = &self.write_error {
+            // After closing this owner, the shared cleanup also removes the
+            // unusable part. In-place mode must retain the destination itself.
+            self.needs_settlement = !self.inplace;
+            return Err(copy_io_error(error));
+        }
+        self.needs_settlement = false;
         Ok(())
     }
 
-    /// Discard partial data and remove the temp file.
+    /// Flush and commit: rename temp file to final path.
+    /// In inplace mode, no rename is needed. Once local finalization starts,
+    /// dropping its await lets it finish; a retry waits before taking the name.
+    pub async fn commit(mut self) -> Result<(), std::io::Error> {
+        self.flush_for_resume().await?;
+        let key = self.settlement_key.clone();
+        part_settlement::finish(key, async move {
+            self.file.sync_all().await?;
+            self.file.shutdown().await?;
+            if !self.inplace {
+                // The record goes first, while this writer still holds the
+                // part: a record removed after rename could be a new writer's.
+                remove_part_record(&self.record_path).await;
+                fs::rename(&self.temp_path, &self.final_path).await?;
+            }
+            self.committed = true;
+            drop(self);
+            Ok(())
+        })
+        .await
+    }
+
+    /// Discard partial data and remove the temp file. If its await is dropped
+    /// during local removal, the owner still finishes before a retry can open.
     pub async fn discard(mut self) -> Result<(), std::io::Error> {
-        self.committed = true; // prevent Drop from running
-        let _ = self.file.shutdown().await;
-        if !self.inplace {
-            remove_part_record(&self.record_path).await;
-            fs::remove_file(&self.temp_path).await
-        } else {
-            // In inplace mode, the temp file IS the final file: remove it
-            fs::remove_file(&self.final_path).await
-        }
+        self.flush_for_resume().await?;
+        let key = self.settlement_key.clone();
+        part_settlement::finish(key, async move {
+            self.committed = true;
+            self.file.shutdown().await?;
+            let removed = if !self.inplace {
+                remove_part_record(&self.record_path).await;
+                fs::remove_file(&self.temp_path).await
+            } else {
+                fs::remove_file(&self.final_path).await
+            };
+            drop(self);
+            removed
+        })
+        .await
     }
 }
 
@@ -1800,8 +2148,26 @@ impl Drop for ResumableFile {
                 self.temp_path.display()
             );
         }
-        // The claim on the part ends with `file`, dropped after this: the
-        // next download of the file can go on from it at once.
+        // Drop cannot await. An error/cancel/abort may leave a write still
+        // landing, so move its owner into registered cleanup before releasing
+        // this guard. The next same-process measurement/open awaits only this
+        // abandoned attempt; an independent live writer is still refused.
+        if self.needs_settlement {
+            if let Some(file) = self.file.file.take() {
+                let writer = ClaimedWriter {
+                    file: Some(file),
+                    locked: self.file.locked,
+                };
+                part_settlement::register(
+                    self.settlement_key.clone(),
+                    writer,
+                    (!self.inplace).then(|| self.record_path.clone()),
+                    self.write_error.is_some(),
+                );
+            }
+        }
+        // Explicit keep_for_resume joins and closes before it returns. A
+        // process/runtime crash instead leaves the usual recoverable part.
     }
 }
 
@@ -2443,5 +2809,563 @@ mod tests {
         std::fs::remove_file(&record).unwrap();
         std::os::unix::fs::symlink(&target, &record).unwrap();
         assert!(read_part_record(&record).await.is_none());
+    }
+}
+
+/// Requested 95: a retry must observe settled local writes, including when
+/// cancellation drops the future rather than returning through its error arm.
+#[cfg(test)]
+mod resumable_settlement_tests {
+    use super::*;
+    #[cfg(target_os = "linux")]
+    use std::future::pending;
+    use std::task::Poll;
+
+    fn runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .max_blocking_threads(1)
+            .build()
+            .unwrap()
+    }
+
+    /// Queue file writes behind a worker controlled by the test. Always
+    /// release it on unwind so a failed assertion cannot hang runtime Drop.
+    struct ParkedIo {
+        release: Option<std::sync::mpsc::Sender<()>>,
+        worker: tokio::task::JoinHandle<()>,
+    }
+
+    impl ParkedIo {
+        async fn new() -> Self {
+            let (release, wait) = std::sync::mpsc::channel();
+            let (started, ready) = tokio::sync::oneshot::channel();
+            let worker = tokio::task::spawn_blocking(move || {
+                let _ = started.send(());
+                let _ = wait.recv();
+            });
+            ready.await.unwrap();
+            Self {
+                release: Some(release),
+                worker,
+            }
+        }
+
+        async fn finish(mut self) {
+            self.release.take().unwrap().send(()).unwrap();
+            (&mut self.worker).await.unwrap();
+        }
+    }
+
+    impl Drop for ParkedIo {
+        fn drop(&mut self) {
+            if let Some(release) = self.release.take() {
+                let _ = release.send(());
+            }
+        }
+    }
+
+    fn broken_response() -> reqwest::Response {
+        let body = reqwest::Body::wrap_stream(futures_util::stream::iter([
+            Ok::<_, std::io::Error>(b"accepted prefix".to_vec()),
+            Err(std::io::Error::other("injected response failure")),
+        ]));
+        http::Response::builder()
+            .status(200)
+            .header("Content-Length", 100)
+            .header("ETag", "\"recorded-version\"")
+            .body(body)
+            .unwrap()
+            .into()
+    }
+
+    /// Runs the real HTTP owner. In-place mode avoids a record write before
+    /// the streamed bytes, letting the fixture park exactly the last write.
+    async fn failed_http_attempt(
+        path: &str,
+    ) -> (
+        bool,
+        Result<super::super::HttpResumeStep, crate::providers::ProviderError>,
+    ) {
+        let part = ResumableFile::open_fresh_in(path, true).await.unwrap();
+        let response = broken_response();
+        let parked = ParkedIo::new().await;
+        let mut progress = None;
+        let mut attempt =
+            Box::pin(super::super::HttpResume { part }.accept(response, path, &mut progress));
+        let first = futures_util::poll!(attempt.as_mut());
+        let returned_early = first.is_ready();
+        parked.finish().await;
+        let outcome = match first {
+            Poll::Ready(result) => result,
+            Poll::Pending => attempt.await,
+        };
+        (returned_early, outcome)
+    }
+
+    #[test]
+    fn a_failed_http_download_settles_its_last_write_before_returning() {
+        runtime().block_on(async {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("file");
+            let (early, result) = failed_http_attempt(path.to_str().unwrap()).await;
+            let resumed = ResumableFile::open_resume_in(path.to_str().unwrap(), true)
+                .await
+                .unwrap();
+            assert!(result.is_err());
+            assert!(
+                !early,
+                "the HTTP error escaped while its last write was queued"
+            );
+            assert_eq!(resumed.offset(), b"accepted prefix".len() as u64);
+            assert_eq!(std::fs::read(path).unwrap(), b"accepted prefix");
+        });
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_failed_http_download_reports_a_delayed_local_write_error() {
+        runtime().block_on(async {
+            let (_, result) = failed_http_attempt("/dev/full").await;
+            assert!(
+                matches!(result, Err(crate::providers::ProviderError::IoError(_))),
+                "the HTTP body error hid the delayed disk error"
+            );
+        });
+    }
+
+    #[cfg(target_os = "linux")]
+    async fn cancelled_part_retry(abort_task: bool, replacement: u8) {
+        use std::os::fd::AsFd;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("file");
+        let name = path.to_str().unwrap();
+        let mut entry = crate::providers::RemoteEntry::directory("file".into(), "/file".into());
+        entry.is_dir = false;
+        entry.size = 100;
+        entry.metadata.insert("etag".into(), "\"v1\"".into());
+        let version = RangeSourceFingerprint::of(&entry);
+        let source = ResumeSource::new("test", "fixture", "account", "/file");
+        let mut part = ResumableFile::open_for_source(name, &version, &source, false)
+            .await
+            .unwrap();
+        // As with a child spawned before exec, this copy keeps a lock held
+        // after the background write closes unless the writer unlocks it.
+        let inherited = part.file_mut().as_fd().try_clone_to_owned().unwrap();
+        let key = part.settlement_key.clone();
+        let parked = ParkedIo::new().await;
+        let (written, accepted) = tokio::sync::oneshot::channel();
+        let transfer = async move {
+            part.write_all(b"accepted prefix").await.unwrap();
+            let _ = written.send(());
+            pending::<()>().await;
+            drop(part);
+        };
+        if abort_task {
+            let task = tokio::spawn(transfer);
+            accepted.await.unwrap();
+            task.abort();
+            assert!(task.await.unwrap_err().is_cancelled());
+        } else {
+            tokio::pin!(transfer);
+            tokio::select! {
+                biased;
+                _ = &mut transfer => unreachable!(),
+                _ = accepted => {},
+            }
+            // transfer drops at the end of this branch, as in a timeout.
+        }
+        let mut cancelled_waiter = Box::pin(part_settlement::wait(&key));
+        assert!(matches!(
+            futures_util::poll!(cancelled_waiter.as_mut()),
+            Poll::Pending
+        ));
+        drop(cancelled_waiter);
+        let alias = dir.path().join("alias");
+        std::os::unix::fs::symlink(dir.path(), &alias).unwrap();
+        let alias_path = alias.join("file");
+        let mut retry = Box::pin(async {
+            let length = resumable_part_len(&path).await;
+            let opened = match replacement {
+                0 => {
+                    ResumableFile::open_for_source(
+                        alias_path.to_str().unwrap(),
+                        &version,
+                        &source,
+                        false,
+                    )
+                    .await
+                }
+                1 => ResumableFile::open_fresh(name).await,
+                _ => {
+                    let file = AtomicFile::new(name).await?;
+                    file.commit().await?;
+                    return Ok::<_, std::io::Error>((length, 0));
+                }
+            }?;
+            Ok((length, opened.offset()))
+        });
+        // Measure/open while the old write is still pending. No sleeps, no
+        // timeout: only release the worker after polling the retry once.
+        assert!(matches!(futures_util::poll!(retry.as_mut()), Poll::Pending));
+        parked.finish().await;
+        let result = retry.await;
+        drop(inherited);
+        let (length, offset) = result.expect("the abandoned writer kept its claim");
+        assert_eq!(length, b"accepted prefix".len() as u64);
+        assert_eq!(offset, if replacement == 0 { length } else { 0 });
+    }
+
+    #[cfg(target_os = "linux")]
+    async fn a_failed_write_invalidates_its_record(explicit: bool) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("file");
+        std::fs::write(&path, b"previous complete file").unwrap();
+        let mut entry = crate::providers::RemoteEntry::directory("file".into(), "/file".into());
+        entry.is_dir = false;
+        entry.size = 100;
+        entry.metadata.insert("etag".into(), "\"v1\"".into());
+        let version = RangeSourceFingerprint::of(&entry);
+        let source = ResumeSource::new("test", "fixture", "account", "/file");
+        let mut part =
+            ResumableFile::open_for_source(path.to_str().unwrap(), &version, &source, false)
+                .await
+                .unwrap();
+        part.write_all(b"valid prefix").await.unwrap();
+        part.file_mut().flush().await.unwrap();
+        // Test-only fault injection: keep the part/record on disk but direct
+        // its next write to a real device that reports a delayed ENOSPC.
+        let full = std::fs::OpenOptions::new()
+            .write(true)
+            .open("/dev/full")
+            .unwrap();
+        part.file = ClaimedWriter::unclaimed(fs::File::from_std(full));
+        part.write_all(b"unwritten tail").await.unwrap();
+        if explicit {
+            assert!(part.keep_for_resume().await.is_err());
+        } else {
+            drop(part);
+        }
+        assert_eq!(resumable_part_len(&path).await, 0);
+        assert!(!part_record_path_for(&path).exists());
+        assert_eq!(std::fs::read(path).unwrap(), b"previous complete file");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_explicit_failed_write_cannot_advertise_a_recorded_prefix() {
+        runtime().block_on(a_failed_write_invalidates_its_record(true));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_abandoned_failed_write_cannot_advertise_a_recorded_prefix() {
+        runtime().block_on(a_failed_write_invalidates_its_record(false));
+    }
+
+    #[test]
+    fn an_inplace_failed_write_keeps_its_destination() {
+        runtime().block_on(async {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("file");
+            let mut part = ResumableFile::open_fresh_in(path.to_str().unwrap(), true)
+                .await
+                .unwrap();
+            part.write_all(b"inplace prefix").await.unwrap();
+            part.file_mut().flush().await.unwrap();
+            let key = part.settlement_key.clone();
+            part.write_error = Some(std::io::Error::other("injected write failure"));
+            assert!(part.keep_for_resume().await.is_err());
+            part_settlement::wait(&key).await.unwrap();
+            assert_eq!(std::fs::read(&path).unwrap(), b"inplace prefix");
+        });
+    }
+
+    async fn failed_write_discards_unsafe_part(explicit: bool, recover_record: bool) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("file");
+        std::fs::write(&path, b"previous complete file").unwrap();
+        let mut part = ResumableFile::open_fresh_in(path.to_str().unwrap(), false)
+            .await
+            .unwrap();
+        part.write_all(b"unsafe prefix").await.unwrap();
+        part.file_mut().flush().await.unwrap();
+        let record = part.record_path.clone();
+        let temp = part.temp_path.clone();
+        let key = part.settlement_key.clone();
+        if recover_record {
+            std::fs::create_dir(&record).unwrap();
+        } else {
+            std::fs::write(&record, b"failed-write record").unwrap();
+        }
+        part.write_error = Some(std::io::Error::other("injected write failure"));
+        if explicit {
+            assert!(part.keep_for_resume().await.is_err());
+        } else {
+            drop(part);
+        }
+        if recover_record {
+            assert!(part_settlement::wait(&key).await.is_err());
+            assert!(temp.exists(), "failed invalidation discarded a held part");
+            std::fs::remove_dir(&record).unwrap();
+            std::fs::write(&record, b"failed-write record").unwrap();
+        }
+        part_settlement::wait(&key).await.unwrap();
+        assert!(!record.exists());
+        assert!(
+            !temp.exists(),
+            "record cleanup left an unsafe part that an unknown-lock filesystem cannot replace"
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), b"previous complete file");
+        let fresh = AtomicFile::new(path.to_str().unwrap()).await.unwrap();
+        fresh.commit().await.unwrap();
+    }
+
+    #[test]
+    fn an_explicit_failed_write_discards_its_unsafe_part() {
+        runtime().block_on(failed_write_discards_unsafe_part(true, false));
+    }
+
+    #[test]
+    fn an_abandoned_failed_write_discards_its_unsafe_part() {
+        runtime().block_on(failed_write_discards_unsafe_part(false, false));
+    }
+
+    #[test]
+    fn a_recovered_record_cleanup_discards_its_unsafe_part() {
+        runtime().block_on(failed_write_discards_unsafe_part(false, true));
+    }
+
+    #[test]
+    fn a_cancelled_recovery_releases_its_claim_without_another_waiter() {
+        runtime().block_on(async {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("file");
+            let mut part = ResumableFile::open_fresh_in(path.to_str().unwrap(), false)
+                .await
+                .unwrap();
+            part.write_all(b"unsafe prefix").await.unwrap();
+            part.file_mut().flush().await.unwrap();
+            let record = part.record_path.clone();
+            let key = part.settlement_key.clone();
+            let temp = part.temp_path.clone();
+            std::fs::create_dir(&record).unwrap();
+            part.write_error = Some(std::io::Error::other("injected write failure"));
+            drop(part);
+            assert!(part_settlement::wait(&key).await.is_err());
+
+            std::fs::remove_dir(&record).unwrap();
+            std::fs::write(&record, b"failed-write record").unwrap();
+            let parked = ParkedIo::new().await;
+            let mut only_waiter = Box::pin(part_settlement::wait(&key));
+            // Start the recovery's blocking claim behind the parked worker,
+            // then abandon the only waiter before that claim can finish.
+            assert!(matches!(
+                futures_util::poll!(only_waiter.as_mut()),
+                Poll::Pending
+            ));
+            drop(only_waiter);
+            parked.finish().await;
+            tokio::task::spawn_blocking(|| ()).await.unwrap();
+
+            // Never poll wait again: only the recovery's own driver may
+            // finish invalidation and release the independent opener's claim.
+            let settled = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    if !record.exists() && !temp.exists() {
+                        if let Ok(claim) = temp_claim::create(&temp) {
+                            break claim;
+                        }
+                    }
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await;
+            let independent = settled.unwrap_or_else(|_| {
+                let probe = temp_claim::open_to_append(&temp);
+                panic!(
+                    "cancelled recovery requires another waiter: record_exists={}, independent_claim_error={:?}",
+                    record.exists(),
+                    probe.err()
+                );
+            });
+            assert!(!record.exists());
+            drop(independent);
+        });
+    }
+
+    async fn retry_after_failed_record_cleanup(replacement: u8) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("file");
+        let name = path.to_str().unwrap();
+        std::fs::write(&path, b"previous complete file").unwrap();
+        let mut entry = crate::providers::RemoteEntry::directory("file".into(), "/file".into());
+        entry.is_dir = false;
+        entry.size = 100;
+        entry.metadata.insert("etag".into(), "\"v1\"".into());
+        let version = RangeSourceFingerprint::of(&entry);
+        let source = ResumeSource::new("test", "fixture", "account", "/file");
+        let mut part = ResumableFile::open_for_source(name, &version, &source, false)
+            .await
+            .unwrap();
+        part.write_all(b"unsafe prefix").await.unwrap();
+        part.file_mut().flush().await.unwrap();
+        let record = part.record_path.clone();
+        let original_record = std::fs::read(&record).unwrap();
+        // A directory deterministically refuses remove_file on every platform,
+        // including privileged CI users. The failed write must stay refused.
+        std::fs::remove_file(&record).unwrap();
+        std::fs::create_dir(&record).unwrap();
+        part.write_error = Some(std::io::Error::other("injected write failure"));
+        let key = part.settlement_key.clone();
+        drop(part);
+        for _ in 0..2 {
+            assert!(ResumableFile::open_fresh(name).await.is_err());
+            assert!(
+                ResumableFile::open_for_source(name, &version, &source, false)
+                    .await
+                    .is_err()
+            );
+            assert_eq!(resumable_part_len(&path).await, 0);
+            assert!(record.is_dir(), "failed invalidation cleared the refusal");
+        }
+        // Restore removability without deleting the stale source record. The
+        // next attempt must invalidate it itself, then permit a fresh owner.
+        std::fs::remove_dir(&record).unwrap();
+        std::fs::write(&record, &original_record).unwrap();
+        #[cfg(target_os = "linux")]
+        {
+            // Model an independent process that bypasses this registry. Its
+            // live claim must protect its source record during recovery too.
+            let temp = AtomicFile::temp_path_for(&path);
+            let live = claimed(move || temp_claim::open_to_append(&temp))
+                .await
+                .unwrap();
+            if live.locked {
+                assert!(ResumableFile::open_fresh(name).await.is_err());
+                assert_eq!(std::fs::read(&record).unwrap(), original_record);
+            }
+            drop(live);
+        }
+        let parked = ParkedIo::new().await;
+        let mut cancelled = Box::pin(part_settlement::wait(&key));
+        assert!(matches!(
+            futures_util::poll!(cancelled.as_mut()),
+            Poll::Pending
+        ));
+        let mut late_waiter = Box::pin(part_settlement::wait(&key));
+        assert!(matches!(
+            futures_util::poll!(late_waiter.as_mut()),
+            Poll::Pending
+        ));
+        drop(cancelled);
+        parked.finish().await;
+        let part = match replacement {
+            0 => ResumableFile::open_for_source(name, &version, &source, false).await,
+            1 => ResumableFile::open_fresh(name).await,
+            _ => {
+                let atomic = AtomicFile::new(name)
+                    .await
+                    .expect("resolved record cleanup still blocks an atomic replacement");
+                assert!(!record.exists());
+                late_waiter.await.unwrap();
+                atomic.commit().await.unwrap();
+                return;
+            }
+        }
+        .expect("resolved record cleanup still blocks the next download");
+        assert_eq!(part.offset(), 0, "resumed a failed-write prefix");
+        assert_eq!(std::fs::metadata(&part.temp_path).unwrap().len(), 0);
+        // Another lookup cannot remove the new attempt's source record.
+        let new_record = std::fs::read(&record).ok();
+        late_waiter.await.unwrap();
+        part_settlement::wait(&key).await.unwrap();
+        assert_eq!(std::fs::read(&record).ok(), new_record);
+        assert_eq!(std::fs::read(&path).unwrap(), b"previous complete file");
+        part.discard().await.unwrap();
+    }
+
+    #[test]
+    fn a_resume_recovers_after_failed_record_cleanup() {
+        runtime().block_on(retry_after_failed_record_cleanup(0));
+    }
+
+    #[test]
+    fn a_fresh_download_recovers_after_failed_record_cleanup() {
+        runtime().block_on(retry_after_failed_record_cleanup(1));
+    }
+
+    #[test]
+    fn an_atomic_download_recovers_after_failed_record_cleanup() {
+        runtime().block_on(retry_after_failed_record_cleanup(2));
+    }
+
+    /// A cancellation may also arrive during the local finalization, after
+    /// the write flush but while sync_all still has the descriptor in a worker.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_retry_waits_for_an_abandoned_local_commit() {
+        use std::os::fd::AsFd;
+        runtime().block_on(async {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("file");
+            let mut part = ResumableFile::open_in(path.to_str().unwrap(), false)
+                .await
+                .unwrap();
+            part.write_all(b"complete object").await.unwrap();
+            part.file_mut().flush().await.unwrap();
+            let inherited = part.file_mut().as_fd().try_clone_to_owned().unwrap();
+            let key = part_settlement::key(&AtomicFile::temp_path_for(&path))
+                .await
+                .unwrap();
+            let parked = ParkedIo::new().await;
+            let mut commit = Box::pin(part.commit());
+            assert!(matches!(
+                futures_util::poll!(commit.as_mut()),
+                Poll::Pending
+            ));
+            drop(commit);
+            // Drive cleanup while the metadata job is definitely still queued.
+            let mut settlement = Box::pin(part_settlement::wait(&key));
+            let first = futures_util::poll!(settlement.as_mut());
+            let settled_early = first.is_ready();
+            parked.finish().await;
+            match first {
+                Poll::Ready(result) => result,
+                Poll::Pending => settlement.await,
+            }
+            .unwrap();
+            let reopened = ResumableFile::open_fresh(path.to_str().unwrap()).await;
+            drop(inherited);
+            assert!(
+                !settled_early,
+                "the barrier forgot the pending local finalization"
+            );
+            reopened.expect("the cancelled commit kept its old claim held");
+        });
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_cancelled_part_can_be_resumed_with_an_inherited_descriptor_open() {
+        runtime().block_on(cancelled_part_retry(false, 0));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_aborted_part_can_be_resumed_with_an_inherited_descriptor_open() {
+        runtime().block_on(cancelled_part_retry(true, 0));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_fresh_download_waits_for_an_abandoned_parts_write() {
+        runtime().block_on(cancelled_part_retry(false, 1));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_atomic_download_waits_for_an_abandoned_parts_write() {
+        runtime().block_on(cancelled_part_retry(false, 2));
     }
 }
