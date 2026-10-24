@@ -182,9 +182,11 @@ mod part_settlement {
 
     type Completion = Shared<BoxFuture<'static, Result<(), Arc<io::Error>>>>;
 
+    #[derive(Clone)]
     struct Pending {
         attempt: Arc<()>,
         completion: Completion,
+        retry_record: Option<PathBuf>,
     }
 
     fn pending() -> &'static Mutex<HashMap<PathBuf, Vec<Pending>>> {
@@ -211,15 +213,69 @@ mod part_settlement {
                 .lock()
                 .expect("part settlement mutex poisoned")
                 .get(key)
-                .map(|parts| parts.iter().map(|p| p.completion.clone()).collect())
+                .cloned()
                 .unwrap_or_default();
             if work.is_empty() {
                 return Ok(());
             }
-            for completion in work {
-                completion
-                    .await
-                    .map_err(|error| super::copy_io_error(&error))?;
+            for part in work {
+                if let Err(error) = part.completion.await {
+                    let Some(record) = part.retry_record else {
+                        return Err(super::copy_io_error(&error));
+                    };
+                    let recovery = {
+                        let mut pending = pending().lock().expect("part settlement mutex poisoned");
+                        let Some(parts) = pending.get_mut(key) else {
+                            continue;
+                        };
+                        let Some(current) = parts
+                            .iter_mut()
+                            .find(|p| Arc::ptr_eq(&p.attempt, &part.attempt))
+                        else {
+                            // Another waiter already owns recovery. Join its
+                            // generation on the next pass instead of removing
+                            // a record that may belong to a newer writer.
+                            continue;
+                        };
+                        let attempt = Arc::new(());
+                        let retry_record = record.clone();
+                        let temp = key.to_path_buf();
+                        let operation = async move {
+                            // Another process may have claimed the part since
+                            // the failed owner closed. Invalidate only while
+                            // holding the same filesystem claim as an opener.
+                            let owner = super::claimed(move || {
+                                match super::temp_claim::open_to_append(&temp) {
+                                    Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                                        super::temp_claim::create(&temp)
+                                    }
+                                    result => result,
+                                }
+                            })
+                            .await
+                            .map_err(Arc::new)?;
+                            let result = super::forget_part_record(&record).await;
+                            drop(owner);
+                            result.map_err(Arc::new)
+                        }
+                        .boxed()
+                        .shared();
+                        let completion =
+                            tracked_completion(key.to_path_buf(), attempt.clone(), operation, true);
+                        *current = Pending {
+                            attempt,
+                            completion: completion.clone(),
+                            retry_record: Some(retry_record),
+                        };
+                        completion
+                    };
+                    // Leave the shared recovery in the registry if this
+                    // waiter is cancelled or removal still fails. Only a
+                    // successful invalidation clears its own generation.
+                    recovery
+                        .await
+                        .map_err(|error| super::copy_io_error(&error))?;
+                }
             }
         }
     }
@@ -231,6 +287,7 @@ mod part_settlement {
         write_failed: bool,
     ) {
         let path = key.clone();
+        let retry_record = record.clone();
         let completion = async move {
             let flushed = writer.flush().await;
             // A delayed write error invalidates the recorded prefix. Keep
@@ -257,7 +314,7 @@ mod part_settlement {
         }
         .boxed()
         .shared();
-        register_completion(key, completion, true);
+        register_completion(key, completion, retry_record);
     }
 
     /// Finalization owns sync/rename/unlink as well as the file. Those local
@@ -289,16 +346,18 @@ mod part_settlement {
     impl Drop for Abandoned {
         fn drop(&mut self) {
             if let Some(completion) = self.completion.take() {
-                register_completion(self.key.clone(), completion, false);
+                register_completion(self.key.clone(), completion, None);
             }
         }
     }
 
-    fn register_completion(key: PathBuf, operation: Completion, retain_failure: bool) {
-        let attempt = Arc::new(());
-        let generation = attempt.clone();
-        let path = key.clone();
-        let completion = async move {
+    fn tracked_completion(
+        path: PathBuf,
+        generation: Arc<()>,
+        operation: Completion,
+        retain_failure: bool,
+    ) -> Completion {
+        async move {
             let result = operation.await;
             if result.is_ok() || !retain_failure {
                 let mut pending = pending().lock().expect("part settlement mutex poisoned");
@@ -312,7 +371,17 @@ mod part_settlement {
             result
         }
         .boxed()
-        .shared();
+        .shared()
+    }
+
+    fn register_completion(key: PathBuf, operation: Completion, retry_record: Option<PathBuf>) {
+        let attempt = Arc::new(());
+        let completion = tracked_completion(
+            key.clone(),
+            attempt.clone(),
+            operation,
+            retry_record.is_some(),
+        );
         pending()
             .lock()
             .expect("part settlement mutex poisoned")
@@ -321,15 +390,15 @@ mod part_settlement {
             .push(Pending {
                 attempt,
                 completion: completion.clone(),
+                retry_record,
             });
         // A runtime is not required at Drop: the next open also polls this
         // shared completion. If this task is aborted, the registry retains it.
         if let Ok(runtime) = tokio::runtime::Handle::try_current() {
             runtime.spawn(async move {
                 if let Err(error) = completion.await {
-                    // Retain this completed failure in the registry: a part
-                    // whose failed-write record could not be removed must not
-                    // be advertised or reopened as a healthy prefix. Normal
+                    // A later waiter retries record invalidation. Until it
+                    // succeeds, the failed-write prefix stays refused. Normal
                     // finalization errors have already closed their owner.
                     tracing::warn!("could not settle abandoned download part: {error}");
                 }
@@ -2965,6 +3034,112 @@ mod resumable_settlement_tests {
     #[test]
     fn an_abandoned_failed_write_cannot_advertise_a_recorded_prefix() {
         runtime().block_on(a_failed_write_invalidates_its_record(false));
+    }
+
+    async fn retry_after_failed_record_cleanup(replacement: u8) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("file");
+        let name = path.to_str().unwrap();
+        std::fs::write(&path, b"previous complete file").unwrap();
+        let mut entry = crate::providers::RemoteEntry::directory("file".into(), "/file".into());
+        entry.is_dir = false;
+        entry.size = 100;
+        entry.metadata.insert("etag".into(), "\"v1\"".into());
+        let version = RangeSourceFingerprint::of(&entry);
+        let source = ResumeSource::new("test", "fixture", "account", "/file");
+        let mut part = ResumableFile::open_for_source(name, &version, &source, false)
+            .await
+            .unwrap();
+        part.write_all(b"unsafe prefix").await.unwrap();
+        part.file_mut().flush().await.unwrap();
+        let record = part.record_path.clone();
+        let original_record = std::fs::read(&record).unwrap();
+        // A directory deterministically refuses remove_file on every platform,
+        // including privileged CI users. The failed write must stay refused.
+        std::fs::remove_file(&record).unwrap();
+        std::fs::create_dir(&record).unwrap();
+        part.write_error = Some(std::io::Error::other("injected write failure"));
+        let key = part.settlement_key.clone();
+        drop(part);
+        for _ in 0..2 {
+            assert!(ResumableFile::open_fresh(name).await.is_err());
+            assert!(
+                ResumableFile::open_for_source(name, &version, &source, false)
+                    .await
+                    .is_err()
+            );
+            assert_eq!(resumable_part_len(&path).await, 0);
+            assert!(record.is_dir(), "failed invalidation cleared the refusal");
+        }
+        // Restore removability without deleting the stale source record. The
+        // next attempt must invalidate it itself, then permit a fresh owner.
+        std::fs::remove_dir(&record).unwrap();
+        std::fs::write(&record, &original_record).unwrap();
+        #[cfg(target_os = "linux")]
+        {
+            // Model an independent process that bypasses this registry. Its
+            // live claim must protect its source record during recovery too.
+            let temp = AtomicFile::temp_path_for(&path);
+            let live = claimed(move || temp_claim::open_to_append(&temp))
+                .await
+                .unwrap();
+            if live.locked {
+                assert!(ResumableFile::open_fresh(name).await.is_err());
+                assert_eq!(std::fs::read(&record).unwrap(), original_record);
+            }
+            drop(live);
+        }
+        let parked = ParkedIo::new().await;
+        let mut cancelled = Box::pin(part_settlement::wait(&key));
+        assert!(matches!(
+            futures_util::poll!(cancelled.as_mut()),
+            Poll::Pending
+        ));
+        let mut late_waiter = Box::pin(part_settlement::wait(&key));
+        assert!(matches!(
+            futures_util::poll!(late_waiter.as_mut()),
+            Poll::Pending
+        ));
+        drop(cancelled);
+        parked.finish().await;
+        let part = match replacement {
+            0 => ResumableFile::open_for_source(name, &version, &source, false).await,
+            1 => ResumableFile::open_fresh(name).await,
+            _ => {
+                let atomic = AtomicFile::new(name)
+                    .await
+                    .expect("resolved record cleanup still blocks an atomic replacement");
+                assert!(!record.exists());
+                late_waiter.await.unwrap();
+                atomic.commit().await.unwrap();
+                return;
+            }
+        }
+        .expect("resolved record cleanup still blocks the next download");
+        assert_eq!(part.offset(), 0, "resumed a failed-write prefix");
+        assert_eq!(std::fs::metadata(&part.temp_path).unwrap().len(), 0);
+        // Another lookup cannot remove the new attempt's source record.
+        let new_record = std::fs::read(&record).ok();
+        late_waiter.await.unwrap();
+        part_settlement::wait(&key).await.unwrap();
+        assert_eq!(std::fs::read(&record).ok(), new_record);
+        assert_eq!(std::fs::read(&path).unwrap(), b"previous complete file");
+        part.discard().await.unwrap();
+    }
+
+    #[test]
+    fn a_resume_recovers_after_failed_record_cleanup() {
+        runtime().block_on(retry_after_failed_record_cleanup(0));
+    }
+
+    #[test]
+    fn a_fresh_download_recovers_after_failed_record_cleanup() {
+        runtime().block_on(retry_after_failed_record_cleanup(1));
+    }
+
+    #[test]
+    fn an_atomic_download_recovers_after_failed_record_cleanup() {
+        runtime().block_on(retry_after_failed_record_cleanup(2));
     }
 
     /// A cancellation may also arrive during the local finalization, after
