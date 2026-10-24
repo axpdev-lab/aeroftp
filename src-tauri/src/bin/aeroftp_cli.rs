@@ -11832,7 +11832,7 @@ struct CliBatchSink {
     errors: Mutex<Vec<String>>,
     /// Download targets, remote path to local path: each completed download
     /// is read back from disk the moment its `file_complete` arrives.
-    targets: HashMap<String, String>,
+    targets: Mutex<HashMap<String, String>>,
     /// Local path to the state each download left, read when it completed.
     landed: Mutex<HashMap<String, (u64, String)>>,
 }
@@ -11841,20 +11841,16 @@ impl CliBatchSink {
     fn new() -> Self {
         Self {
             errors: Mutex::new(Vec::new()),
-            targets: HashMap::new(),
+            targets: Mutex::new(HashMap::new()),
             landed: Mutex::new(HashMap::new()),
         }
     }
 
-    /// A sink that also notes what each of these downloads, `(remote, local,
-    /// size)`, left on disk when it completed.
-    fn for_downloads(files: &[(String, String, u64)]) -> Self {
-        Self {
-            targets: files
-                .iter()
-                .map(|(remote, local, _)| (remote.clone(), local.clone()))
-                .collect(),
-            ..Self::new()
+    /// Note what the download of `remote` to `local` leaves on disk when it
+    /// completes.
+    fn expect_download(&self, remote: &str, local: &str) {
+        if let Ok(mut g) = self.targets.lock() {
+            g.insert(remote.to_string(), local.to_string());
         }
     }
 
@@ -11878,14 +11874,16 @@ impl ftp_client_gui_lib::transfer_event_sink::TransferEventSink for CliBatchSink
         if event.event_type == "file_complete" {
             // Emitted after the file is committed and its time stamped, so
             // this is the state the download left.
-            let local = event
-                .path
-                .as_ref()
-                .and_then(|remote| self.targets.get(remote));
+            let local = event.path.as_ref().and_then(|remote| {
+                self.targets
+                    .lock()
+                    .ok()
+                    .and_then(|g| g.get(remote).cloned())
+            });
             if let Some(local) = local {
-                if let Some(state) = sync_local_state(local) {
+                if let Some(state) = sync_local_state(&local) {
                     if let Ok(mut g) = self.landed.lock() {
-                        g.insert(local.clone(), state);
+                        g.insert(local, state);
                     }
                 }
             }
@@ -11933,54 +11931,21 @@ async fn run_shared_provider_download_batch(
     overall_pb: Option<ProgressBar>,
     cancelled: Arc<AtomicBool>,
 ) -> Result<SharedDownloadOutcome, Box<dyn StorageProvider>> {
-    use ftp_client_gui_lib::provider_transfer_executor::{
-        resolve_provider_transfer_runtime, ProviderDownloadExecutor, ProviderExecutorSessionModel,
-        SegmentCutoff,
-    };
-    use ftp_client_gui_lib::transfer_domain::{
-        TransferBatchConfig, TransferDirection, TransferEntry,
-    };
-    use ftp_client_gui_lib::transfer_event_sink::TransferEventSink;
-    use ftp_client_gui_lib::transfer_orchestrator::{
-        execute_batch, ProgressObserver, TransferBatch,
-    };
-    use ftp_client_gui_lib::transfer_settings::TransferSettingsInput;
+    let runtime = SharedDownloadRuntime::resolve(base, cli).await;
+    run_shared_download_of_known_files(runtime, files, remote_mtimes, cli, overall_pb, cancelled)
+        .await
+}
 
-    let workers = effective_parallel_workers(cli);
-    let provider_kind = base.provider_type();
-    let provider_floor = base.multi_thread_cutoff_floor();
-    let sftp_tuning = resolve_cli_sftp_download_tuning(cli, provider_kind == ProviderType::Sftp)
-        .unwrap_or_else(|error| invalid_usage_exit(&error));
-    let (streams, cutoff) = resolve_cli_download_tuning(cli, sftp_tuning)
-        .unwrap_or_else(|error| invalid_usage_exit(&error));
-    let provider_arc = Arc::new(AsyncMutex::new(Some(base)));
-
-    // DAG-P1-02: one live snapshot owns capability-aware settings and the
-    // executor session model, so requested/effective/pool cannot diverge.
-    let (runtime_settings, model, capabilities) = resolve_provider_transfer_runtime(
-        &provider_arc,
-        TransferSettingsInput {
-            max_concurrent: Some(workers as u32),
-            retry_count: None,
-            timeout_seconds: None,
-            download_segments:
-                ftp_client_gui_lib::transfer_settings::DownloadSegmentsRequest::Explicit(
-                    streams as u32,
-                ),
-            // CLI preset/concurrency precedence is resolved above. Passing the
-            // preset again would override --sftp-concurrency in the executor.
-            // The connected provider and its clones already carry read-ahead.
-            sftp_download_preset: None,
-        },
-    )
-    .await;
-    let is_pool_backed = matches!(
-        model,
-        ProviderExecutorSessionModel::HttpClonePool { .. }
-            | ProviderExecutorSessionModel::SftpConnectionPool { .. }
-            | ProviderExecutorSessionModel::FtpConnectionPool { .. }
-    );
-    let native_bulk_is_useful = capabilities.bulk_download
+/// [`run_shared_provider_download_batch`] on a runtime already resolved.
+async fn run_shared_download_of_known_files(
+    runtime: SharedDownloadRuntime,
+    files: &[(String, String, u64)],
+    remote_mtimes: &HashMap<String, String>,
+    cli: &Cli,
+    overall_pb: Option<ProgressBar>,
+    cancelled: Arc<AtomicBool>,
+) -> Result<SharedDownloadOutcome, Box<dyn StorageProvider>> {
+    let native_bulk_is_useful = runtime.capabilities.bulk_download
         == ftp_client_gui_lib::transfer_dag::Capability::Supported
         && ftp_client_gui_lib::providers::bulk::reduces_cli_invocations(
             &files
@@ -11994,105 +11959,209 @@ async fn run_shared_provider_download_batch(
                 })
                 .collect::<Vec<_>>(),
             false,
-            workers,
+            runtime.workers,
         );
-    if !is_pool_backed && !native_bulk_is_useful {
+    if !runtime.is_pool_backed() && !native_bulk_is_useful {
         // Not pool-backed: return the still-connected provider so the
         // caller runs the legacy independent-connection batch.
-        let base = provider_arc
-            .lock()
-            .await
-            .take()
-            .expect("base provider must still be present");
-        return Err(base);
+        return Err(runtime.into_base().await);
     }
-    // The ceiling is the shared executor's: the legacy fallback above opens
-    // its own connections, `--parallel` of them, and does not reach it.
-    note_parallel_ceiling(cli, &runtime_settings);
+    Ok(runtime
+        .run(
+            SharedDownloadFiles::Known {
+                files,
+                remote_mtimes,
+            },
+            cli,
+            overall_pb,
+            cancelled,
+        )
+        .await)
+}
 
-    if !cli.quiet && !cli.json && !cli.machine {
-        use ftp_client_gui_lib::transfer_dag::Capability;
-        let ceiling = if matches!(
-            capabilities.strict_concurrent_range_download,
-            Capability::Supported | Capability::SupportedAfterProbe
-        ) {
-            streams.min(model.max_leases())
-        } else {
-            1
-        };
-        // G3: print the threshold the executor will actually apply (explicit
-        // cutoff folded with the provider floor), with the reason when it
-        // differs from what the user asked for.
-        let effective_cutoff = SegmentCutoff::Explicit(cutoff).threshold(provider_floor);
-        let cutoff_note = if effective_cutoff > cutoff {
-            format!(
-                " (requested {}, {:?} floor {})",
-                format_size(cutoff),
-                provider_kind,
-                format_size(provider_floor)
-            )
-        } else {
-            String::new()
-        };
-        eprintln!(
-            "Download policy: up to {} streams per file (requested {}, cutoff {}{}); files under 2 MiB use 1 stream (1 MiB minimum window)",
-            ceiling,
+/// One file `get -r` hands to a running batch, with the remote time the
+/// executor stamps on the local copy.
+struct PlannedDownload {
+    remote_path: String,
+    local_path: String,
+    size: u64,
+    modified: Option<String>,
+}
+
+/// The files of a shared download batch.
+enum SharedDownloadFiles<'a> {
+    /// The whole list, known before the batch starts.
+    Known {
+        files: &'a [(String, String, u64)],
+        remote_mtimes: &'a HashMap<String, String>,
+    },
+    /// Files still arriving from a scan. `stop` starts no further file: the
+    /// scan raises it when it refuses the run.
+    Live {
+        files: tokio::sync::mpsc::Receiver<PlannedDownload>,
+        stop: Arc<AtomicBool>,
+    },
+}
+
+/// The shared executor's settings for one CLI download, resolved from the
+/// connected provider before any file is known, so `get -r` can choose to
+/// hand files to the batch while its scan still runs.
+struct SharedDownloadRuntime {
+    provider_arc: Arc<AsyncMutex<Option<Box<dyn StorageProvider>>>>,
+    runtime_settings: ftp_client_gui_lib::transfer_settings::ResolvedTransferSettings,
+    model: ftp_client_gui_lib::provider_transfer_executor::ProviderExecutorSessionModel,
+    capabilities: ftp_client_gui_lib::transfer_dag::TransferCapabilities,
+    workers: usize,
+    streams: usize,
+    cutoff: u64,
+    provider_kind: ProviderType,
+    provider_floor: u64,
+}
+
+impl SharedDownloadRuntime {
+    async fn resolve(base: Box<dyn StorageProvider>, cli: &Cli) -> Self {
+        use ftp_client_gui_lib::provider_transfer_executor::resolve_provider_transfer_runtime;
+        use ftp_client_gui_lib::transfer_settings::TransferSettingsInput;
+
+        let workers = effective_parallel_workers(cli);
+        let provider_kind = base.provider_type();
+        let provider_floor = base.multi_thread_cutoff_floor();
+        let sftp_tuning =
+            resolve_cli_sftp_download_tuning(cli, provider_kind == ProviderType::Sftp)
+                .unwrap_or_else(|error| invalid_usage_exit(&error));
+        let (streams, cutoff) = resolve_cli_download_tuning(cli, sftp_tuning)
+            .unwrap_or_else(|error| invalid_usage_exit(&error));
+        let provider_arc = Arc::new(AsyncMutex::new(Some(base)));
+
+        // DAG-P1-02: one live snapshot owns capability-aware settings and the
+        // executor session model, so requested/effective/pool cannot diverge.
+        let (runtime_settings, model, capabilities) = resolve_provider_transfer_runtime(
+            &provider_arc,
+            TransferSettingsInput {
+                max_concurrent: Some(workers as u32),
+                retry_count: None,
+                timeout_seconds: None,
+                download_segments:
+                    ftp_client_gui_lib::transfer_settings::DownloadSegmentsRequest::Explicit(
+                        streams as u32,
+                    ),
+                // CLI preset/concurrency precedence is resolved above. Passing the
+                // preset again would override --sftp-concurrency in the executor.
+                // The connected provider and its clones already carry read-ahead.
+                sftp_download_preset: None,
+            },
+        )
+        .await;
+        Self {
+            provider_arc,
+            runtime_settings,
+            model,
+            capabilities,
+            workers,
             streams,
-            format_size(effective_cutoff),
-            cutoff_note
-        );
-    }
-
-    // --max-transfer: pre-flight truncate to the remaining session budget
-    // (file-granular, the legacy `session_transfer_exceeded` semantics) so
-    // the flag is enforced on the converged path, never a silent no-op.
-    let (capped, max_transfer_skipped) = cap_files_to_max_transfer(files, cli);
-    if max_transfer_skipped > 0 && !cli.quiet {
-        eprintln!(
-            "Note: --max-transfer reached, skipped {} file(s) (session byte limit)",
-            max_transfer_skipped
-        );
-    }
-    let files = &capped;
-
-    // The shared executor writes `<local>.aerotmp` then atomically
-    // renames; it does not mkdir parents. Pre-create them (idempotent),
-    // matching the legacy per-file `create_dir_all`.
-    for (_, local_path, _) in files {
-        if let Some(parent) = Path::new(local_path).parent() {
-            let _ = std::fs::create_dir_all(parent);
+            cutoff,
+            provider_kind,
+            provider_floor,
         }
     }
 
-    let entries: Vec<TransferEntry> = files
-        .iter()
-        .enumerate()
-        .map(|(i, (remote_path, local_path, size))| {
-            let display_name = remote_path
-                .rsplit('/')
-                .next()
-                .unwrap_or(remote_path)
-                .to_string();
-            TransferEntry {
-                id: format!("cli-get-{i}"),
-                display_name,
-                remote_path: remote_path.clone(),
-                local_path: local_path.clone(),
-                size: *size,
-                // The executor stamps this on the local copy after the
-                // download (`preserve_remote_mtime`), as the GUI does. Left
-                // `None`, every CLI download carried the time of download and
-                // a later `sync --direction both` took it for a local edit.
-                modified: remote_mtimes.get(remote_path).cloned(),
-            }
-        })
-        .collect();
+    fn is_pool_backed(&self) -> bool {
+        use ftp_client_gui_lib::provider_transfer_executor::ProviderExecutorSessionModel;
+        matches!(
+            self.model,
+            ProviderExecutorSessionModel::HttpClonePool { .. }
+                | ProviderExecutorSessionModel::SftpConnectionPool { .. }
+                | ProviderExecutorSessionModel::FtpConnectionPool { .. }
+        )
+    }
 
-    let batch = TransferBatch {
-        id: "cli-get-recursive".to_string(),
-        display_name: "aeroftp get -r".to_string(),
-        direction: TransferDirection::Download,
-        config: TransferBatchConfig {
+    /// See [`ProviderDownloadExecutor::takes_files_while_listing`].
+    ///
+    /// [`ProviderDownloadExecutor::takes_files_while_listing`]: ftp_client_gui_lib::provider_transfer_executor::ProviderDownloadExecutor::takes_files_while_listing
+    fn takes_files_while_listing(&self) -> bool {
+        ftp_client_gui_lib::provider_transfer_executor::download_takes_files_while_listing(
+            &self.model,
+            &self.capabilities,
+        )
+    }
+
+    /// The connected provider, handed back for the legacy path.
+    async fn into_base(self) -> Box<dyn StorageProvider> {
+        self.provider_arc
+            .lock()
+            .await
+            .take()
+            .expect("base provider must still be present")
+    }
+
+    async fn run(
+        self,
+        files: SharedDownloadFiles<'_>,
+        cli: &Cli,
+        overall_pb: Option<ProgressBar>,
+        cancelled: Arc<AtomicBool>,
+    ) -> SharedDownloadOutcome {
+        use ftp_client_gui_lib::provider_transfer_executor::{
+            ProviderDownloadExecutor, SegmentCutoff,
+        };
+        use ftp_client_gui_lib::transfer_domain::{
+            TransferBatchConfig, TransferDirection, TransferEntry,
+        };
+        use ftp_client_gui_lib::transfer_event_sink::TransferEventSink;
+        use ftp_client_gui_lib::transfer_orchestrator::{
+            execute_batch, execute_batch_live, ProgressObserver, TransferBatch,
+        };
+
+        let Self {
+            provider_arc,
+            runtime_settings,
+            model,
+            capabilities,
+            workers: _,
+            streams,
+            cutoff,
+            provider_kind,
+            provider_floor,
+        } = self;
+
+        // The ceiling is the shared executor's: the legacy fallback opens
+        // its own connections, `--parallel` of them, and does not reach it.
+        note_parallel_ceiling(cli, &runtime_settings);
+
+        if !cli.quiet && !cli.json && !cli.machine {
+            use ftp_client_gui_lib::transfer_dag::Capability;
+            let ceiling = if matches!(
+                capabilities.strict_concurrent_range_download,
+                Capability::Supported | Capability::SupportedAfterProbe
+            ) {
+                streams.min(model.max_leases())
+            } else {
+                1
+            };
+            // G3: print the threshold the executor will actually apply (explicit
+            // cutoff folded with the provider floor), with the reason when it
+            // differs from what the user asked for.
+            let effective_cutoff = SegmentCutoff::Explicit(cutoff).threshold(provider_floor);
+            let cutoff_note = if effective_cutoff > cutoff {
+                format!(
+                    " (requested {}, {:?} floor {})",
+                    format_size(cutoff),
+                    provider_kind,
+                    format_size(provider_floor)
+                )
+            } else {
+                String::new()
+            };
+            eprintln!(
+                "Download policy: up to {} streams per file (requested {}, cutoff {}{}); files under 2 MiB use 1 stream (1 MiB minimum window)",
+                ceiling,
+                streams,
+                format_size(effective_cutoff),
+                cutoff_note
+            );
+        }
+
+        let batch_config = TransferBatchConfig {
             max_concurrent: runtime_settings.max_concurrent,
             max_retries: runtime_settings.retry_count,
             timeout_ms: runtime_settings.timeout_seconds.saturating_mul(1000),
@@ -12101,83 +12170,223 @@ async fn run_shared_provider_download_batch(
             // DAG-P2-08: --schedule fifo|size (default fifo).
             schedule: ftp_client_gui_lib::transfer_dag::AdmissionPolicy::parse(&cli.schedule)
                 .unwrap_or_default(),
-        },
-        entries,
-    };
+        };
 
-    // Bridge Ctrl+C (AtomicBool) to the executor's CancellationToken so an
-    // in-flight file aborts, matching the GUI executor behaviour.
-    let cancel_token = tokio_util::sync::CancellationToken::new();
-    let watcher = {
-        let ct = cancel_token.clone();
-        let flag = cancelled.clone();
-        tokio::spawn(async move {
-            while !flag.load(Ordering::Relaxed) {
-                tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        // Bridge Ctrl+C (AtomicBool) to the executor's CancellationToken so an
+        // in-flight file aborts, matching the GUI executor behaviour.
+        let cancel_token = tokio_util::sync::CancellationToken::new();
+        let watcher = {
+            let ct = cancel_token.clone();
+            let flag = cancelled.clone();
+            tokio::spawn(async move {
+                while !flag.load(Ordering::Relaxed) {
+                    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                }
+                ct.cancel();
+            })
+        };
+
+        let sink = Arc::new(CliBatchSink::new());
+        let dyn_sink: Arc<dyn TransferEventSink> = sink.clone();
+
+        let resolved_download_segments = runtime_settings.download_segments.clone();
+        let executor = Arc::new(
+            ProviderDownloadExecutor::new(
+                dyn_sink.clone(),
+                provider_arc.clone(),
+                runtime_settings,
+                cancel_token,
+                model,
+                capabilities,
+            )
+            .with_download_cutoff(SegmentCutoff::Explicit(cutoff)),
+        );
+
+        // `BatchProgressSnapshot.bytes_transferred` is monotonic (sum of
+        // succeeded `entry.size`); the observer fires after every task, so the
+        // max observed value is the true transferred total, post-accounted
+        // into the session counter for --max-transfer / exit-code-8.
+        let transferred = Arc::new(AtomicU64::new(0));
+        let live = matches!(files, SharedDownloadFiles::Live { .. });
+        let progress_observer: ProgressObserver = {
+            let overall_pb = overall_pb.clone();
+            let transferred = transferred.clone();
+            Arc::new(move |snapshot| {
+                if let Some(pb) = overall_pb.as_ref() {
+                    // A running scan still adds files: the bar grows with it.
+                    if live {
+                        pb.set_length(snapshot.bytes_total);
+                    }
+                    pb.set_position(snapshot.bytes_transferred);
+                }
+                transferred.fetch_max(snapshot.bytes_transferred, Ordering::Relaxed);
+            })
+        };
+
+        // The shared executor writes `<local>.aerotmp` then atomically
+        // renames; it does not mkdir parents. Pre-create them (idempotent),
+        // matching the legacy per-file `create_dir_all`.
+        let prepare = |remote_path: &str, local_path: &str| {
+            if let Some(parent) = Path::new(local_path).parent() {
+                let _ = std::fs::create_dir_all(parent);
             }
-            ct.cancel();
-        })
-    };
-
-    let sink = Arc::new(CliBatchSink::for_downloads(files));
-    let dyn_sink: Arc<dyn TransferEventSink> = sink.clone();
-
-    let resolved_download_segments = runtime_settings.download_segments.clone();
-    let executor = Arc::new(
-        ProviderDownloadExecutor::new(
-            dyn_sink.clone(),
-            provider_arc.clone(),
-            runtime_settings,
-            cancel_token,
-            model,
-            capabilities,
-        )
-        .with_download_cutoff(SegmentCutoff::Explicit(cutoff)),
-    );
-
-    // `BatchProgressSnapshot.bytes_transferred` is monotonic (sum of
-    // succeeded `entry.size`); the observer fires after every task, so the
-    // max observed value is the true transferred total, post-accounted
-    // into the session counter for --max-transfer / exit-code-8.
-    let transferred = Arc::new(AtomicU64::new(0));
-    let progress_observer: ProgressObserver = {
-        let overall_pb = overall_pb.clone();
-        let transferred = transferred.clone();
-        Arc::new(move |snapshot| {
-            if let Some(pb) = overall_pb.as_ref() {
-                pb.set_position(snapshot.bytes_transferred);
+            sink.expect_download(remote_path, local_path);
+        };
+        let entry = |index: usize, planned: PlannedDownload| {
+            let display_name = planned
+                .remote_path
+                .rsplit('/')
+                .next()
+                .unwrap_or(&planned.remote_path)
+                .to_string();
+            TransferEntry {
+                id: format!("cli-get-{index}"),
+                display_name,
+                remote_path: planned.remote_path,
+                local_path: planned.local_path,
+                size: planned.size,
+                // The executor stamps this on the local copy after the
+                // download (`preserve_remote_mtime`), as the GUI does. Left
+                // `None`, every CLI download carried the time of download and
+                // a later `sync --direction both` took it for a local edit.
+                modified: planned.modified,
             }
-            transferred.fetch_max(snapshot.bytes_transferred, Ordering::Relaxed);
-        })
-    };
+        };
+        let mut batch = TransferBatch {
+            id: "cli-get-recursive".to_string(),
+            display_name: "aeroftp get -r".to_string(),
+            direction: TransferDirection::Download,
+            config: batch_config,
+            entries: Vec::new(),
+        };
 
-    let batch_result = execute_batch(
-        dyn_sink,
-        batch,
-        executor,
-        cancelled.clone(),
-        Some(progress_observer),
-    )
-    .await;
+        let (batch_result, over_budget) = match files {
+            SharedDownloadFiles::Known {
+                files,
+                remote_mtimes,
+            } => {
+                // --max-transfer: pre-flight truncate to the remaining session
+                // budget (file-granular, the legacy `session_transfer_exceeded`
+                // semantics) so the flag is enforced on the converged path,
+                // never a silent no-op.
+                let (capped, max_transfer_skipped) = cap_files_to_max_transfer(files, cli);
+                note_max_transfer_skips(cli, max_transfer_skipped);
+                batch.entries = capped
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, (remote_path, local_path, size))| {
+                        prepare(&remote_path, &local_path);
+                        let modified = remote_mtimes.get(&remote_path).cloned();
+                        entry(
+                            i,
+                            PlannedDownload {
+                                remote_path,
+                                local_path,
+                                size,
+                                modified,
+                            },
+                        )
+                    })
+                    .collect();
+                let result = execute_batch(
+                    dyn_sink,
+                    batch,
+                    executor,
+                    cancelled.clone(),
+                    Some(progress_observer),
+                )
+                .await;
+                (result, max_transfer_skipped)
+            }
+            SharedDownloadFiles::Live { mut files, stop } => {
+                // Ctrl+C, or the scan refusing the run, starts no further file.
+                let batch_stop = Arc::new(AtomicBool::new(false));
+                let stop_watcher = {
+                    let batch_stop = batch_stop.clone();
+                    let cancelled = cancelled.clone();
+                    tokio::spawn(async move {
+                        while !cancelled.load(Ordering::Relaxed) && !stop.load(Ordering::Relaxed) {
+                            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                        }
+                        batch_stop.store(true, Ordering::Relaxed);
+                    })
+                };
+                let (tx, rx) = tokio::sync::mpsc::channel(LIVE_DOWNLOAD_FEED);
+                // --max-transfer, file by file as the files arrive: the same
+                // cut as `cap_files_to_max_transfer`, which keeps files while
+                // the running total is under the budget.
+                let feed = async {
+                    let limit = resolve_max_transfer(cli);
+                    let mut running = SESSION_TRANSFERRED_BYTES.load(Ordering::Relaxed);
+                    let mut over_budget = 0usize;
+                    let mut index = 0usize;
+                    while let Some(planned) = files.recv().await {
+                        if limit.is_some_and(|limit| running >= limit) {
+                            over_budget += 1;
+                            continue;
+                        }
+                        running = running.saturating_add(planned.size);
+                        prepare(&planned.remote_path, &planned.local_path);
+                        if tx.send(entry(index, planned)).await.is_err() {
+                            break;
+                        }
+                        index += 1;
+                    }
+                    drop(tx);
+                    // The scan's own count of what it planned stays exact:
+                    // the rest of what it sends is not read.
+                    while files.recv().await.is_some() {}
+                    over_budget
+                };
+                let (over_budget, result) = tokio::join!(
+                    feed,
+                    execute_batch_live(
+                        dyn_sink,
+                        batch,
+                        rx,
+                        executor,
+                        batch_stop,
+                        Some(progress_observer),
+                    )
+                );
+                stop_watcher.abort();
+                note_max_transfer_skips(cli, over_budget);
+                (result, over_budget)
+            }
+        };
 
-    watcher.abort();
+        watcher.abort();
 
-    // The base provider was only the clone-pool spec source; clone workers
-    // each ran on their own independent connection. Disconnect it.
-    if let Some(mut base) = provider_arc.lock().await.take() {
-        let _ = base.disconnect().await;
+        // The base provider was only the clone-pool spec source; clone workers
+        // each ran on their own independent connection. Disconnect it.
+        if let Some(mut base) = provider_arc.lock().await.take() {
+            let _ = base.disconnect().await;
+        }
+
+        session_transfer_add(transferred.load(Ordering::Relaxed));
+
+        SharedDownloadOutcome {
+            downloaded: batch_result.completed,
+            landed: sink.take_landed(),
+            errors: sink.take_errors(),
+            download_segments: resolved_download_segments,
+            over_budget: over_budget as u32,
+            engine_stats: batch_result.engine_stats,
+        }
     }
+}
 
-    session_transfer_add(transferred.load(Ordering::Relaxed));
+/// Files a running download batch can be handed ahead of the ones it admits.
+const LIVE_DOWNLOAD_FEED: usize = 256;
 
-    Ok(SharedDownloadOutcome {
-        downloaded: batch_result.completed,
-        landed: sink.take_landed(),
-        errors: sink.take_errors(),
-        download_segments: resolved_download_segments,
-        over_budget: max_transfer_skipped as u32,
-        engine_stats: batch_result.engine_stats,
-    })
+/// The note a `--max-transfer` cut leaves on stderr.
+fn note_max_transfer_skips(cli: &Cli, skipped: usize) {
+    if skipped > 0 && !cli.quiet {
+        eprintln!(
+            "Note: --max-transfer reached, skipped {} file(s) (session byte limit)",
+            skipped
+        );
+    }
 }
 
 /// Outcome of the converged shared-executor upload batch.
@@ -36252,6 +36461,335 @@ async fn pget_fallback_single(
     }
 }
 
+/// The scan of `get -r`, one listing at a time. Only folders strictly under
+/// the one asked for are listed, each once, and each file is planned once
+/// ([`cli_walk_step`]). A folder the scan does not follow is an error of the
+/// run, as one it could not list is: what it holds was not downloaded.
+struct CliGetScan {
+    remote_dir: String,
+    local_base: PathBuf,
+    quiet: bool,
+    immutable: bool,
+    files_from: Option<std::collections::HashSet<String>>,
+    max_depth: usize,
+    queue: Vec<(String, usize)>,
+    scope: ftp_client_gui_lib::sync_core::WalkScope,
+    fetched: std::collections::HashSet<String>,
+    /// Local paths planned so far, of files and folders.
+    targets: std::collections::HashSet<String>,
+    /// Folders found under the one asked for.
+    dirs: usize,
+    /// Files planned, and their bytes.
+    planned: usize,
+    planned_bytes: u64,
+    /// True once Ctrl-C ended the scan with folders still to list: the run
+    /// did not see the whole tree, whatever it downloaded.
+    stopped: bool,
+    /// Files a listing named outside its own folder, held back to the end of
+    /// the scan (see [`CliGetScan::step`]).
+    deferred: Vec<PlannedDownload>,
+    /// G108: folders the scan could not read or did not follow, and paths it
+    /// could not map. Each is an error of the run.
+    listing_errors: Vec<String>,
+}
+
+/// What one listing adds to `get -r`.
+struct CliGetListing {
+    /// Local folders to create.
+    dirs: Vec<PathBuf>,
+    files: Vec<PlannedDownload>,
+}
+
+enum CliGetStep {
+    Listing(CliGetListing),
+    /// Two remote paths map to this local path: the run is refused.
+    Ambiguous(String),
+    Done,
+}
+
+impl CliGetScan {
+    fn new(remote_dir: &str, local_base: &str, cli: &Cli, quiet: bool) -> Self {
+        Self {
+            remote_dir: remote_dir.to_string(),
+            local_base: PathBuf::from(local_base),
+            quiet,
+            immutable: cli.immutable,
+            files_from: load_files_from(cli),
+            max_depth: cli.max_depth.unwrap_or(MAX_SCAN_DEPTH as u32) as usize,
+            queue: vec![(remote_dir.to_string(), 0)],
+            scope: ftp_client_gui_lib::sync_core::WalkScope::new(remote_dir),
+            fetched: std::collections::HashSet::new(),
+            targets: std::collections::HashSet::new(),
+            dirs: 0,
+            planned: 0,
+            planned_bytes: 0,
+            stopped: false,
+            deferred: Vec::new(),
+            listing_errors: Vec::new(),
+        }
+    }
+
+    /// List the next folder. Every local path a listing names is checked
+    /// against the others and against every path planned before, before any
+    /// is handed out: two remote paths that map to one local path are
+    /// siblings in one listing (a file and an alias of it, or two folders
+    /// everything under them depends on), so a refused listing hands out
+    /// nothing of its branch. A listing may also name a file outside its own
+    /// folder, under the root: that file is handed out only once every folder
+    /// is listed, so the twin another listing may hold is seen first.
+    async fn step(
+        &mut self,
+        provider: &mut dyn StorageProvider,
+        cancelled: &AtomicBool,
+    ) -> CliGetStep {
+        while let Some((dir, depth)) = self.queue.pop() {
+            if cancelled.load(Ordering::Relaxed) {
+                self.stopped = true;
+                return CliGetStep::Done;
+            }
+            if depth >= self.max_depth {
+                if !self.quiet {
+                    eprintln!("Warning: max depth {} reached at {}", self.max_depth, dir);
+                }
+                continue;
+            }
+            if self.planned + self.dirs >= MAX_SCAN_ENTRIES {
+                if !self.quiet {
+                    eprintln!(
+                        "Warning: max entries {} reached, stopping scan",
+                        MAX_SCAN_ENTRIES
+                    );
+                }
+                // What was planned still goes, held-back files included.
+                self.queue.clear();
+                continue;
+            }
+            let entries = match provider.list(&dir).await {
+                Ok(entries) => entries,
+                Err(e) => {
+                    // G108: a directory that could not be listed is not an
+                    // empty directory. Until now the only difference between
+                    // the two was this line on stderr, so `get -r` on an
+                    // unreadable path exited 0 with "Downloaded 0/0" and an
+                    // agent reading the exit code could not tell "nothing to
+                    // do" from "I could not look". Recorded as an error, which
+                    // is what it is: the caller asked for a subtree and part
+                    // of it was never seen.
+                    if !self.quiet {
+                        eprintln!("Warning: cannot list {}: {}", dir, e);
+                    }
+                    self.listing_errors.push(format!("list {}: {}", dir, e));
+                    continue;
+                }
+            };
+            if depth == 0 {
+                self.scope.learn_root_listing(&entries);
+            }
+            let mut listing = CliGetListing {
+                dirs: Vec::new(),
+                files: Vec::new(),
+            };
+            let mut elsewhere: Vec<PlannedDownload> = Vec::new();
+            let listed_relative = self.scope.relative_path(&dir).unwrap_or_default();
+            let mut subdirs: Vec<String> = Vec::new();
+            for e in entries {
+                // Never walk (nor recreate locally) a symlink-to-dir:
+                // it would copy the target's tree twice, or cycle.
+                if e.is_dir && !e.is_walkable_dir() {
+                    continue;
+                }
+                match cli_walk_step(&mut self.scope, &dir, &e.path, e.is_dir) {
+                    Ok(true) => {}
+                    Ok(false) => continue,
+                    Err(refusal) => {
+                        if !self.quiet {
+                            eprintln!("Warning: {refusal}");
+                        }
+                        self.listing_errors.push(refusal);
+                        continue;
+                    }
+                }
+                if e.is_dir {
+                    subdirs.push(e.path);
+                    continue;
+                }
+                if !self
+                    .fetched
+                    .insert(ftp_client_gui_lib::sync_core::walk_path_key(&e.path))
+                {
+                    continue;
+                }
+                let Some(relative) = self.scope.relative_path(&e.path) else {
+                    self.listing_errors
+                        .push(format!("cannot map {} under {}", e.path, self.remote_dir));
+                    continue;
+                };
+                let Some(relative) = validate_relative_path(&relative) else {
+                    continue;
+                };
+                // --files-from: skip files not in the list
+                if let Some(ref set) = self.files_from {
+                    if !set.contains(relative) {
+                        continue;
+                    }
+                }
+                let local_path_buf = self.local_base.join(relative);
+                if verify_path_within_root(&local_path_buf, &self.local_base).is_err() {
+                    continue;
+                }
+                // --immutable: skip if local file already exists
+                if self.immutable && local_path_buf.exists() {
+                    if !self.quiet {
+                        eprintln!("Skipping (immutable): {}", relative);
+                    }
+                    continue;
+                }
+                let in_place =
+                    relative.rsplit_once('/').map_or("", |(parent, _)| parent) == listed_relative;
+                let planned = PlannedDownload {
+                    remote_path: e.path,
+                    local_path: local_path_buf.to_string_lossy().to_string(),
+                    size: e.size,
+                    modified: e.modified,
+                };
+                if in_place {
+                    listing.files.push(planned);
+                } else {
+                    elsewhere.push(planned);
+                }
+            }
+            // A folder is followed only under a local path its files could be
+            // written to: the checks each file gets, applied to the folder. One
+            // that fails them is not listed, and it is an error of the run, as
+            // a folder the scan cannot list is: what it holds is not
+            // downloaded.
+            let mut followed: Vec<String> = Vec::with_capacity(subdirs.len());
+            for subdir in subdirs {
+                let Some(relative) = self.scope.relative_path(&subdir) else {
+                    self.listing_errors
+                        .push(format!("cannot map {} under {}", subdir, self.remote_dir));
+                    continue;
+                };
+                let Some(relative) = validate_relative_path(&relative) else {
+                    if !self.quiet {
+                        eprintln!("Warning: skipping unsafe directory path: {}", subdir);
+                    }
+                    self.listing_errors
+                        .push(format!("unsafe local path for {}", subdir));
+                    continue;
+                };
+                let local_dir = self.local_base.join(relative);
+                if let Err(refusal) = verify_path_within_root(&local_dir, &self.local_base) {
+                    self.listing_errors
+                        .push(format!("not following {}: {}", subdir, refusal));
+                    continue;
+                }
+                listing.dirs.push(local_dir);
+                followed.push(subdir);
+            }
+
+            // Different provider root aliases must never publish two sources
+            // onto the same local path. Refuse before anything of this
+            // listing is created or downloaded.
+            let mut named = std::collections::HashSet::new();
+            let targets = listing
+                .dirs
+                .iter()
+                .map(|dir| dir.to_string_lossy().to_string())
+                .chain(
+                    listing
+                        .files
+                        .iter()
+                        .chain(&elsewhere)
+                        .map(|file| file.local_path.clone()),
+                );
+            for target in targets {
+                if self.targets.contains(&target) || !named.insert(target.clone()) {
+                    return CliGetStep::Ambiguous(target);
+                }
+            }
+            self.targets.extend(named);
+
+            self.dirs += followed.len();
+            self.queue
+                .extend(followed.into_iter().map(|subdir| (subdir, depth + 1)));
+            for file in listing.files.iter().chain(&elsewhere) {
+                self.planned += 1;
+                self.planned_bytes += file.size;
+            }
+            self.deferred.extend(elsewhere);
+            return CliGetStep::Listing(listing);
+        }
+        if !self.deferred.is_empty() {
+            if cancelled.load(Ordering::Relaxed) {
+                self.stopped = true;
+                return CliGetStep::Done;
+            }
+            return CliGetStep::Listing(CliGetListing {
+                dirs: Vec::new(),
+                files: std::mem::take(&mut self.deferred),
+            });
+        }
+        CliGetStep::Done
+    }
+}
+
+/// Create the local folders a listing names, as the downloads into them
+/// expect.
+fn create_listed_dirs(dirs: &[PathBuf]) {
+    for dir in dirs {
+        let _ = std::fs::create_dir_all(dir);
+    }
+}
+
+/// The error that refuses a `get -r` whose remote paths map two sources onto
+/// one local path.
+fn ambiguous_alias_error(target: &str) -> String {
+    format!(
+        "Ambiguous remote root aliases map multiple files to {}",
+        target
+    )
+}
+
+/// [`ambiguous_alias_error`] for a refusal that came while files were
+/// already downloading: it names the ones at `target` or under it that are
+/// on disk, from the twin the alias would have joined. Nothing of the alias
+/// was written.
+fn ambiguous_alias_with_landed(target: &str, landed: &HashMap<String, (u64, String)>) -> String {
+    let mut written: Vec<&str> = landed
+        .keys()
+        .map(String::as_str)
+        .filter(|local| local_path_at_or_under(local, target, LOCAL_PATH_SEPARATORS))
+        .collect();
+    let mut message = ambiguous_alias_error(target);
+    if !written.is_empty() {
+        written.sort_unstable();
+        message.push_str(&format!(
+            "; already downloaded there before the refusal: {}",
+            written.join(", ")
+        ));
+    }
+    message
+}
+
+/// What separates the parts of a local path: on Windows both slashes, as a
+/// local path joined from a remote relative one keeps its `/`
+/// (`C:\tmp\d2/y.txt`); elsewhere only `/`, a backslash being part of a
+/// name.
+const LOCAL_PATH_SEPARATORS: &[char] = if cfg!(windows) { &['\\', '/'] } else { &['/'] };
+
+/// True when `local` is `dir` or a path under it, with `separators` between
+/// the parts.
+fn local_path_at_or_under(local: &str, dir: &str, separators: &[char]) -> bool {
+    if local == dir {
+        return true;
+    }
+    local
+        .strip_prefix(dir.trim_end_matches(separators))
+        .and_then(|rest| rest.chars().next())
+        .is_some_and(|next| separators.contains(&next))
+}
+
 /// `get -r`: download a directory tree. The exit code answers what the
 /// counters cannot: 0 when every file landed, 130 ("interrupted" in the
 /// JSON) when Ctrl-C stopped the run, 8 for an intentional --max-transfer
@@ -36274,188 +36812,34 @@ async fn cmd_get_recursive(
         None
     };
 
-    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+    let (provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
     };
 
     let remote_dir = &resolve_cli_remote_path(&initial_path, remote_dir);
-    let files_from_set = load_files_from(cli);
-    let scan_max_depth = cli.max_depth.unwrap_or(MAX_SCAN_DEPTH as u32) as usize;
-    let mut queue: Vec<(String, usize)> = vec![(remote_dir.to_string(), 0)];
-    let mut files: Vec<(String, String, u64)> = Vec::new();
-    let mut remote_mtimes: HashMap<String, String> = HashMap::new();
-    let mut dirs: Vec<String> = Vec::new();
-    // G108: directories the scan could not read. Collected here because the
-    // run's error list is built further down, and folded into it below.
-    let mut listing_errors: Vec<String> = Vec::new();
-    // Only folders strictly under `remote_dir` are listed, each once, and each
-    // file is fetched once ([`cli_walk_step`]). A folder the scan does not
-    // follow is an error of the run, as one it could not list is: what it
-    // holds was not downloaded.
-    let mut scope = ftp_client_gui_lib::sync_core::WalkScope::new(remote_dir);
-    let mut fetched: std::collections::HashSet<String> = std::collections::HashSet::new();
-
-    while let Some((dir, depth)) = queue.pop() {
-        if cancelled.load(Ordering::Relaxed) {
-            break;
+    let mut scan = CliGetScan::new(remote_dir, local_base, cli, quiet);
+    let workers = effective_parallel_workers(cli);
+    let found = |scan: &CliGetScan| {
+        if !quiet {
+            eprintln!(
+                "Found {} files ({}) in {} directories using {} workers",
+                scan.planned,
+                format_size(scan.planned_bytes),
+                scan.dirs + 1,
+                workers
+            );
         }
-        if depth >= scan_max_depth {
-            if !quiet {
-                eprintln!("Warning: max depth {} reached at {}", scan_max_depth, dir);
-            }
-            continue;
-        }
-        if files.len() + dirs.len() >= MAX_SCAN_ENTRIES {
-            if !quiet {
-                eprintln!(
-                    "Warning: max entries {} reached, stopping scan",
-                    MAX_SCAN_ENTRIES
-                );
-            }
-            break;
-        }
-        match provider.list(&dir).await {
-            Ok(entries) => {
-                if depth == 0 {
-                    scope.learn_root_listing(&entries);
-                }
-                for e in entries {
-                    // Never walk (nor recreate locally) a symlink-to-dir:
-                    // it would copy the target's tree twice, or cycle.
-                    if e.is_dir && !e.is_walkable_dir() {
-                        continue;
-                    }
-                    match cli_walk_step(&mut scope, &dir, &e.path, e.is_dir) {
-                        Ok(true) => {}
-                        Ok(false) => continue,
-                        Err(refusal) => {
-                            if !quiet {
-                                eprintln!("Warning: {refusal}");
-                            }
-                            listing_errors.push(refusal);
-                            continue;
-                        }
-                    }
-                    if e.is_dir {
-                        queue.push((e.path.clone(), depth + 1));
-                        dirs.push(e.path);
-                    } else {
-                        if !fetched.insert(ftp_client_gui_lib::sync_core::walk_path_key(&e.path)) {
-                            continue;
-                        }
-                        let Some(relative) = scope.relative_path(&e.path) else {
-                            listing_errors
-                                .push(format!("cannot map {} under {}", e.path, remote_dir));
-                            continue;
-                        };
-                        let Some(relative) = validate_relative_path(&relative) else {
-                            continue;
-                        };
-                        // --files-from: skip files not in the list
-                        if let Some(ref set) = files_from_set {
-                            if !set.contains(relative) {
-                                continue;
-                            }
-                        }
-                        let local_path_buf = Path::new(local_base).join(relative);
-                        if verify_path_within_root(&local_path_buf, Path::new(local_base)).is_ok() {
-                            // --immutable: skip if local file already exists
-                            if cli.immutable && local_path_buf.exists() {
-                                if !quiet {
-                                    eprintln!("Skipping (immutable): {}", relative);
-                                }
-                                continue;
-                            }
-                            if let Some(modified) = e.modified {
-                                remote_mtimes.insert(e.path.clone(), modified);
-                            }
-                            files.push((
-                                e.path,
-                                local_path_buf.to_string_lossy().to_string(),
-                                e.size,
-                            ));
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                // G108: a directory that could not be listed is not an empty
-                // directory. Until now the only difference between the two was
-                // this line on stderr, so `get -r` on an unreadable path exited
-                // 0 with "Downloaded 0/0" and an agent reading the exit code
-                // could not tell "nothing to do" from "I could not look".
-                // Recorded as an error, which is what it is: the caller asked
-                // for a subtree and part of it was never seen.
-                if !quiet {
-                    eprintln!("Warning: cannot list {}: {}", dir, e);
-                }
-                listing_errors.push(format!("list {}: {}", dir, e));
-            }
-        }
-    }
-
-    if let Some(sp) = spinner {
-        sp.finish_and_clear();
-    }
-
-    // Different provider root aliases must never publish two sources onto
-    // the same local file. Refuse the plan before creating any destination.
-    {
-        let mut targets = std::collections::HashSet::new();
-        for (_, target, _) in &files {
-            if !targets.insert(target.as_str()) {
-                print_error(
-                    format,
-                    &format!(
-                        "Ambiguous remote root aliases map multiple files to {}",
-                        target
-                    ),
-                    4,
-                );
-                let _ = provider.disconnect().await;
-                return 4;
-            }
-        }
-    }
-
-    for dir in &dirs {
-        let Some(relative) = scope.relative_path(dir) else {
-            listing_errors.push(format!("cannot map {} under {}", dir, remote_dir));
-            continue;
-        };
-        let Some(relative) = validate_relative_path(&relative) else {
-            if !quiet {
-                eprintln!("Warning: skipping unsafe directory path: {}", dir);
-            }
-            continue;
-        };
-        let local_dir = Path::new(local_base).join(relative);
-        if verify_path_within_root(&local_dir, Path::new(local_base)).is_ok() {
-            let _ = std::fs::create_dir_all(&local_dir);
-        }
-    }
-
-    let total_bytes: u64 = files.iter().map(|(_, _, size)| *size).sum();
-    let total_files = files.len();
-    if !quiet {
-        eprintln!(
-            "Found {} files ({}) in {} directories using {} workers",
-            total_files,
-            format_size(total_bytes),
-            dirs.len() + 1,
-            effective_parallel_workers(cli)
-        );
-    }
-
-    let start = Instant::now();
-    let aggregate = Arc::new(AtomicU64::new(0));
-    let overall_pb = if !quiet && total_bytes > 0 {
-        Some(mp.add(create_overall_progress_bar(total_files, total_bytes)))
-    } else {
-        None
     };
+    // The scan lists on the connected provider; on the shared path its
+    // captured connection spec also backs the clone-pool workers.
+    let runtime = SharedDownloadRuntime::resolve(provider, cli).await;
+    let provider_arc = runtime.provider_arc.clone();
 
+    let start: Instant;
+    let overall_pb: Option<ProgressBar>;
+    let total_files: usize;
+    let total_bytes: u64;
     let mut downloaded: u32 = 0;
     // What arrived, for the summary (see `batch_bytes_summary`).
     let mut done_bytes: u64 = 0;
@@ -36464,112 +36848,270 @@ async fn cmd_get_recursive(
     // A folder the scan could not read or did not follow makes the run
     // partial whatever the transfers do: the subtree asked for was not all
     // downloaded.
-    let unlisted_folders = listing_errors.len();
-    let mut errors: Vec<String> = listing_errors;
+    let unlisted_folders: usize;
+    let scan_stopped: bool;
+    let mut errors: Vec<String>;
     // DAG-P2-07 (block E): engine-level stats when this folder download ran on
     // the converged DAG-engine path; stays `None` on the legacy fallback.
     let mut engine_stats: Option<ftp_client_gui_lib::transfer_dag::EngineTransferStats> = None;
     let mut download_segments = None;
 
-    // PD-CLI-CONV-B: converge the file-level batch on the shared provider
-    // executor + orchestrator (sink-agnostic) for pool-backed providers
-    // (clone-pool: SFTP / FTP / S3 / Azure / WebDAV / Koofr). The scan provider
-    // stays connected so its captured secure connection spec backs the
-    // clone-pool workers. Non-pool-backed providers (single-conn
-    // APIs) fall back to the legacy independent-connection batch below:
-    // honest fallback, no overclaim.
-    match run_shared_provider_download_batch(
-        provider,
-        &files,
-        &remote_mtimes,
-        cli,
-        overall_pb.clone(),
-        cancelled.clone(),
-    )
-    .await
-    {
-        Ok(outcome) => {
-            downloaded = outcome.downloaded;
-            done_bytes = shared_batch_bytes(
-                downloaded as usize == total_files,
-                total_bytes,
-                outcome.engine_stats.as_ref(),
-            );
-            over_budget = outcome.over_budget;
-            // G108, and the reason this is `extend` and not `=`: `errors`
-            // starts as `listing_errors`, the directories the scan could not
-            // read. Assigning the batch outcome over it threw those away, so a
-            // run that failed to list one directory and downloaded everything
-            // in another reported success: the exact defect this branch exists
-            // to close, reintroduced one line later. Raised by CodeRabbit.
-            errors.extend(outcome.errors);
-            engine_stats = outcome.engine_stats;
-            download_segments = Some(outcome.download_segments);
-        }
-        Err(base) => {
-            // One connection per worker, starting with the scan connection,
-            // instead of one per file (see `run_on_worker_connections`).
-            let results = run_on_worker_connections(
-                Some(base),
-                effective_parallel_workers(cli),
-                files,
-                &cancelled,
-                resolve_max_transfer(cli),
-                || connect_transfer_worker(url, cli, format),
-                |conn, (remote_path, local_path, size)| {
-                    let cancelled = cancelled.clone();
-                    let aggregate = aggregate.clone();
-                    let overall_pb = overall_pb.clone();
-                    let remote_modified = remote_mtimes.get(&remote_path).cloned();
-                    async move {
-                        if cancelled.load(Ordering::Relaxed) {
-                            return WorkerJobDone::without_transfer(
-                                conn.ok(),
-                                "Cancelled by user".to_string(),
-                            );
+    if runtime.takes_files_while_listing() {
+        // Each file runs on a session of its own, so the batch starts with
+        // the first folder listed and takes each further folder's files as
+        // the scan reaches them. The run's time includes the scan.
+        start = Instant::now();
+        overall_pb = if !quiet {
+            Some(mp.add(create_overall_progress_bar(0, 0)))
+        } else {
+            None
+        };
+        // The scan keeps the connection and the workers clone from a clone
+        // of it, so a listing in progress never holds up a file about to
+        // start. Without a clone the scan lists through the shared slot.
+        let mut lister: Option<Box<dyn StorageProvider>> = {
+            let mut slot = provider_arc.lock().await;
+            let clone = slot
+                .as_ref()
+                .and_then(|base| base.clone_for_transfer().ok());
+            clone.and_then(|clone| slot.replace(clone))
+        };
+        let stop = Arc::new(AtomicBool::new(false));
+        let (tx, rx) = tokio::sync::mpsc::channel(LIVE_DOWNLOAD_FEED);
+        let scanning = async {
+            let tx = tx;
+            let refused = loop {
+                let step = match lister.as_mut() {
+                    Some(lister) => scan.step(lister.as_mut(), &cancelled).await,
+                    None => {
+                        let mut guard = provider_arc.lock().await;
+                        match guard.as_mut() {
+                            Some(provider) => scan.step(provider.as_mut(), &cancelled).await,
+                            None => CliGetStep::Done,
                         }
-                        let mut conn = match conn {
-                            Ok(conn) => conn,
-                            Err(err) => return WorkerJobDone::without_transfer(None, err),
-                        };
-                        if let Some(parent) = Path::new(&local_path).parent() {
-                            let _ = std::fs::create_dir_all(parent);
-                        }
-                        let outcome = download_transfer_on(
-                            &mut *conn,
-                            remote_path.clone(),
-                            local_path,
-                            remote_modified,
-                            cli,
-                            Some(aggregate),
-                            overall_pb,
-                            resolve_max_transfer(cli),
-                        )
-                        .await;
-                        WorkerJobDone::from_transfer(conn, outcome, |_| size, |err| err)
                     }
+                };
+                match step {
+                    CliGetStep::Listing(listing) => {
+                        create_listed_dirs(&listing.dirs);
+                        for file in listing.files {
+                            if tx.send(file).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                    CliGetStep::Ambiguous(target) => {
+                        // No further file starts; nothing of this branch
+                        // was handed out.
+                        stop.store(true, Ordering::Relaxed);
+                        break Some(target);
+                    }
+                    CliGetStep::Done => break None,
+                }
+            };
+            if let Some(sp) = spinner.as_ref() {
+                sp.finish_and_clear();
+            }
+            if refused.is_none() {
+                found(&scan);
+            }
+            refused
+        };
+        let (refused, outcome) = tokio::join!(
+            scanning,
+            runtime.run(
+                SharedDownloadFiles::Live {
+                    files: rx,
+                    stop: stop.clone(),
                 },
+                cli,
+                overall_pb.clone(),
+                cancelled.clone(),
             )
-            .await;
-
-            for result in results {
-                match result {
-                    Ok(bytes) => {
-                        downloaded += 1;
-                        done_bytes += bytes;
+        );
+        if let Some(mut lister) = lister {
+            let _ = lister.disconnect().await;
+        }
+        if let Some(target) = refused {
+            if let Some(pb) = overall_pb {
+                pb.finish_and_clear();
+            }
+            print_error(
+                format,
+                &ambiguous_alias_with_landed(&target, &outcome.landed),
+                4,
+            );
+            return 4;
+        }
+        total_files = scan.planned;
+        total_bytes = scan.planned_bytes;
+        unlisted_folders = scan.listing_errors.len();
+        scan_stopped = scan.stopped;
+        errors = std::mem::take(&mut scan.listing_errors);
+        downloaded = outcome.downloaded;
+        done_bytes = shared_batch_bytes(
+            downloaded as usize == total_files,
+            total_bytes,
+            outcome.engine_stats.as_ref(),
+        );
+        over_budget = outcome.over_budget;
+        // `extend`, not `=`: see the known-list path below.
+        errors.extend(outcome.errors);
+        engine_stats = outcome.engine_stats;
+        download_segments = Some(outcome.download_segments);
+    } else {
+        let mut files: Vec<(String, String, u64)> = Vec::new();
+        let mut remote_mtimes: HashMap<String, String> = HashMap::new();
+        let mut dirs: Vec<PathBuf> = Vec::new();
+        loop {
+            let step = {
+                let mut guard = provider_arc.lock().await;
+                match guard.as_mut() {
+                    Some(provider) => scan.step(provider.as_mut(), &cancelled).await,
+                    None => CliGetStep::Done,
+                }
+            };
+            match step {
+                CliGetStep::Listing(listing) => {
+                    dirs.extend(listing.dirs);
+                    for file in listing.files {
+                        if let Some(modified) = file.modified {
+                            remote_mtimes.insert(file.remote_path.clone(), modified);
+                        }
+                        files.push((file.remote_path, file.local_path, file.size));
                     }
-                    Err(err) => errors.push(err),
+                }
+                // Refused before any destination is created.
+                CliGetStep::Ambiguous(target) => {
+                    print_error(format, &ambiguous_alias_error(&target), 4);
+                    let _ = runtime.into_base().await.disconnect().await;
+                    return 4;
+                }
+                CliGetStep::Done => break,
+            }
+        }
+
+        if let Some(sp) = spinner {
+            sp.finish_and_clear();
+        }
+        create_listed_dirs(&dirs);
+        found(&scan);
+
+        total_bytes = files.iter().map(|(_, _, size)| *size).sum();
+        total_files = files.len();
+        unlisted_folders = scan.listing_errors.len();
+        scan_stopped = scan.stopped;
+        errors = std::mem::take(&mut scan.listing_errors);
+
+        start = Instant::now();
+        let aggregate = Arc::new(AtomicU64::new(0));
+        overall_pb = if !quiet && total_bytes > 0 {
+            Some(mp.add(create_overall_progress_bar(total_files, total_bytes)))
+        } else {
+            None
+        };
+
+        // PD-CLI-CONV-B: converge the file-level batch on the shared provider
+        // executor + orchestrator (sink-agnostic) for pool-backed providers
+        // (clone-pool: SFTP / FTP / S3 / Azure / WebDAV / Koofr) and for a
+        // native bulk. Non-pool-backed providers (single-conn APIs) fall back
+        // to the legacy independent-connection batch below: honest fallback,
+        // no overclaim.
+        match run_shared_download_of_known_files(
+            runtime,
+            &files,
+            &remote_mtimes,
+            cli,
+            overall_pb.clone(),
+            cancelled.clone(),
+        )
+        .await
+        {
+            Ok(outcome) => {
+                downloaded = outcome.downloaded;
+                done_bytes = shared_batch_bytes(
+                    downloaded as usize == total_files,
+                    total_bytes,
+                    outcome.engine_stats.as_ref(),
+                );
+                over_budget = outcome.over_budget;
+                // G108, and the reason this is `extend` and not `=`: `errors`
+                // starts as `listing_errors`, the directories the scan could not
+                // read. Assigning the batch outcome over it threw those away, so a
+                // run that failed to list one directory and downloaded everything
+                // in another reported success: the exact defect this branch exists
+                // to close, reintroduced one line later. Raised by CodeRabbit.
+                errors.extend(outcome.errors);
+                engine_stats = outcome.engine_stats;
+                download_segments = Some(outcome.download_segments);
+            }
+            Err(base) => {
+                // One connection per worker, starting with the scan connection,
+                // instead of one per file (see `run_on_worker_connections`).
+                let results = run_on_worker_connections(
+                    Some(base),
+                    effective_parallel_workers(cli),
+                    files,
+                    &cancelled,
+                    resolve_max_transfer(cli),
+                    || connect_transfer_worker(url, cli, format),
+                    |conn, (remote_path, local_path, size)| {
+                        let cancelled = cancelled.clone();
+                        let aggregate = aggregate.clone();
+                        let overall_pb = overall_pb.clone();
+                        let remote_modified = remote_mtimes.get(&remote_path).cloned();
+                        async move {
+                            if cancelled.load(Ordering::Relaxed) {
+                                return WorkerJobDone::without_transfer(
+                                    conn.ok(),
+                                    "Cancelled by user".to_string(),
+                                );
+                            }
+                            let mut conn = match conn {
+                                Ok(conn) => conn,
+                                Err(err) => return WorkerJobDone::without_transfer(None, err),
+                            };
+                            if let Some(parent) = Path::new(&local_path).parent() {
+                                let _ = std::fs::create_dir_all(parent);
+                            }
+                            let outcome = download_transfer_on(
+                                &mut *conn,
+                                remote_path.clone(),
+                                local_path,
+                                remote_modified,
+                                cli,
+                                Some(aggregate),
+                                overall_pb,
+                                resolve_max_transfer(cli),
+                            )
+                            .await;
+                            WorkerJobDone::from_transfer(conn, outcome, |_| size, |err| err)
+                        }
+                    },
+                )
+                .await;
+
+                for result in results {
+                    match result {
+                        Ok(bytes) => {
+                            downloaded += 1;
+                            done_bytes += bytes;
+                        }
+                        Err(err) => errors.push(err),
+                    }
                 }
             }
         }
     }
-
     if let Some(pb) = overall_pb {
         pb.finish_and_clear();
     }
 
     let elapsed = start.elapsed();
-    let interrupted = cancelled.load(Ordering::Relaxed) && downloaded < total_files as u32;
+    // A scan Ctrl-C cut short planned only part of the tree: the files it
+    // planned may all be down, and the run is still interrupted.
+    let interrupted =
+        cancelled.load(Ordering::Relaxed) && (downloaded < total_files as u32 || scan_stopped);
     match format {
         OutputFormat::Text => {
             if !cli.quiet {
@@ -36623,7 +37165,7 @@ async fn cmd_get_recursive(
         }
     }
 
-    if downloaded == total_files as u32 && unlisted_folders == 0 {
+    if downloaded == total_files as u32 && unlisted_folders == 0 && !scan_stopped {
         0
     } else if interrupted {
         130
@@ -94484,6 +95026,592 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             "two distinct sources must not overwrite the same mapped target"
         );
         assert!(!local.path().join("a.txt").exists());
+    }
+
+    /// What a [`LiveTree`] holds and what a run did to it, shared by every
+    /// clone.
+    #[derive(Default)]
+    struct LiveTreeState {
+        dirs: HashMap<String, Vec<RemoteEntry>>,
+        contents: HashMap<String, Vec<u8>>,
+        /// Every folder listed, in order.
+        listed: Vec<String>,
+        /// Every download served, in order.
+        served: Vec<String>,
+        /// A listing of this folder answers once a download was served, or
+        /// after 3 s.
+        held: Option<String>,
+        /// Downloads served when the held listing answered.
+        served_at_held: Option<usize>,
+        /// Folders whose listing fails.
+        failing: std::collections::HashSet<String>,
+        /// Raised when a download starts, as Ctrl-C raises it.
+        cancel_on_download: Option<Arc<AtomicBool>>,
+    }
+
+    /// A remote tree on a transfer pool: every clone shares one state, so
+    /// `get -r` takes the path that downloads while it scans.
+    #[derive(Clone, Default)]
+    struct LiveTree(Arc<Mutex<LiveTreeState>>);
+
+    impl LiveTree {
+        /// The listings and file bodies of `tree`.
+        fn of(tree: MemTreeProvider) -> Self {
+            Self(Arc::new(Mutex::new(LiveTreeState {
+                dirs: tree.dirs,
+                contents: tree.contents,
+                ..Default::default()
+            })))
+        }
+
+        fn with(self, change: impl FnOnce(&mut LiveTreeState)) -> Self {
+            change(&mut self.0.lock().unwrap());
+            self
+        }
+
+        fn served_at_held(&self) -> Option<usize> {
+            self.0.lock().unwrap().served_at_held
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for LiveTree {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::WebDav
+        }
+        fn display_name(&self) -> String {
+            "live-tree".to_string()
+        }
+        fn transfer_executor_kind(
+            &self,
+        ) -> ftp_client_gui_lib::providers::ProviderTransferExecutorKind {
+            ftp_client_gui_lib::providers::ProviderTransferExecutorKind::HttpClonePool
+        }
+        fn transfer_executor_max_sessions(&self) -> u16 {
+            4
+        }
+        fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+            Ok(Box::new(self.clone()))
+        }
+        fn transfer_capabilities(&self) -> ftp_client_gui_lib::transfer_dag::TransferCapabilities {
+            use ftp_client_gui_lib::transfer_dag::{Capability, TransferCapabilities};
+            TransferCapabilities {
+                file_parallel: Capability::Supported,
+                session_pool: Capability::Supported,
+                max_file_slots: Some(4),
+                ..TransferCapabilities::default()
+            }
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            let held = self.0.lock().unwrap().held.as_deref() == Some(path);
+            if held {
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+                while self.0.lock().unwrap().served.is_empty()
+                    && std::time::Instant::now() < deadline
+                {
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+                let mut st = self.0.lock().unwrap();
+                st.served_at_held = Some(st.served.len());
+            }
+            let mut st = self.0.lock().unwrap();
+            st.listed.push(path.to_string());
+            if st.failing.contains(path) {
+                return Err(ProviderError::Other(format!("cannot list {path}")));
+            }
+            Ok(st.dirs.get(path).cloned().unwrap_or_default())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            remote_path: &str,
+            local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            tokio::task::yield_now().await;
+            let body = {
+                let mut st = self.0.lock().unwrap();
+                st.served.push(remote_path.to_string());
+                if let Some(flag) = &st.cancel_on_download {
+                    flag.store(true, Ordering::Relaxed);
+                }
+                st.contents.get(remote_path).cloned()
+            };
+            let body = body.ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
+            std::fs::write(local_path, body).map_err(|e| ProviderError::Other(e.to_string()))
+        }
+        async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotFound(remote_path.to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::PermissionDenied(remote_path.to_string()))
+        }
+        async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::PermissionDenied(path.to_string()))
+        }
+        async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::PermissionDenied(path.to_string()))
+        }
+        async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::PermissionDenied(path.to_string()))
+        }
+        async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::PermissionDenied(path.to_string()))
+        }
+        async fn rename(&mut self, from: &str, _to: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::PermissionDenied(from.to_string()))
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("live-tree".to_string())
+        }
+    }
+
+    /// `get -r` of `remote_dir` from `tree` into a fresh folder: the exit
+    /// code and that folder.
+    fn get_recursive_from_live_tree(
+        tree: &LiveTree,
+        remote_dir: &str,
+        cli: &Cli,
+        cancelled: Arc<AtomicBool>,
+        before: impl FnOnce(&std::path::Path),
+    ) -> (i32, tempfile::TempDir) {
+        let local = tempfile::tempdir().expect("temp dir");
+        before(local.path());
+        let base = local.path().to_string_lossy().into_owned();
+        let remote = tree.clone();
+        let code = std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .name("live-get-command".to_string())
+                .stack_size(64 * 1024 * 1024)
+                .spawn_scoped(scope, || {
+                    TEST_CONNECTED_PROVIDER
+                        .with(|slot| *slot.borrow_mut() = Some(Box::new(remote)));
+                    tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .expect("test runtime")
+                        .block_on(cmd_get_recursive(
+                            "memory://",
+                            remote_dir,
+                            Some(&base),
+                            cli,
+                            OutputFormat::Json,
+                            cancelled,
+                        ))
+                })
+                .expect("spawn the command thread")
+                .join()
+                .expect("the command thread panicked")
+        });
+        (code, local)
+    }
+
+    fn live_cli() -> Cli {
+        Cli {
+            quiet: true,
+            parallel: 4,
+            ..test_cli()
+        }
+    }
+
+    /// `/root/a.txt` and `/root/d1/b.txt`, the listing of `/root/d1` held
+    /// until a download was served.
+    fn live_two_level_tree() -> LiveTree {
+        LiveTree::of(MemTreeProvider {
+            contents: HashMap::from([
+                ("/root/a.txt".to_string(), b"aaaa".to_vec()),
+                ("/root/d1/b.txt".to_string(), b"bbbb".to_vec()),
+            ]),
+            ..MemTreeProvider::tree(&[("a.txt", 4), ("d1/b.txt", 4)])
+        })
+        .with(|st| st.held = Some("/root/d1".to_string()))
+    }
+
+    /// Requested 81: on a provider whose files each run on their own session,
+    /// `get -r` scanned the whole tree before the first download. The first
+    /// folder's files now download while the scan lists the next one.
+    #[test]
+    fn get_recursive_downloads_while_its_scan_runs() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let tree = live_two_level_tree();
+        let (code, local) = get_recursive_from_live_tree(
+            &tree,
+            "/root",
+            &live_cli(),
+            Arc::new(AtomicBool::new(false)),
+            |_| {},
+        );
+        assert_eq!(code, 0);
+        assert_eq!(std::fs::read(local.path().join("a.txt")).unwrap(), b"aaaa");
+        assert_eq!(
+            std::fs::read(local.path().join("d1/b.txt")).unwrap(),
+            b"bbbb"
+        );
+        assert!(
+            tree.served_at_held().unwrap_or(0) >= 1,
+            "a.txt must download while /root/d1 is still being listed"
+        );
+    }
+
+    /// A folder the scan cannot list after downloads started still makes the
+    /// run partial (exit 4), and what was planned before it is downloaded.
+    #[test]
+    fn get_recursive_scan_error_after_downloads_started_is_partial() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let tree = LiveTree::of(MemTreeProvider {
+            contents: HashMap::from([
+                ("/root/a.txt".to_string(), b"aaaa".to_vec()),
+                ("/root/d1/b.txt".to_string(), b"bbbb".to_vec()),
+                ("/root/d2/c.txt".to_string(), b"cccc".to_vec()),
+            ]),
+            ..MemTreeProvider::tree(&[("a.txt", 4), ("d1/b.txt", 4), ("d2/c.txt", 4)])
+        })
+        .with(|st| {
+            // `/root/d2` is listed first (the scan takes the last folder
+            // named), and held until a.txt is down; `/root/d1` then fails.
+            st.held = Some("/root/d2".to_string());
+            st.failing.insert("/root/d1".to_string());
+        });
+        let (code, local) = get_recursive_from_live_tree(
+            &tree,
+            "/root",
+            &live_cli(),
+            Arc::new(AtomicBool::new(false)),
+            |_| {},
+        );
+        assert_eq!(code, 4, "an unlisted folder makes the run partial");
+        assert!(
+            tree.served_at_held().unwrap_or(0) >= 1,
+            "downloads had started"
+        );
+        assert_eq!(std::fs::read(local.path().join("a.txt")).unwrap(), b"aaaa");
+        assert_eq!(
+            std::fs::read(local.path().join("d2/c.txt")).unwrap(),
+            b"cccc"
+        );
+        assert!(!local.path().join("d1/b.txt").exists());
+    }
+
+    /// Ctrl-C while the scan runs ends the scan too: the folders not listed
+    /// yet stay unlisted, and the run reports itself interrupted (130).
+    #[test]
+    fn get_recursive_interrupted_during_its_scan_lists_no_further() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let tree = LiveTree::of(MemTreeProvider {
+            contents: HashMap::from([
+                ("/root/a.txt".to_string(), b"aaaa".to_vec()),
+                ("/root/d1/b.txt".to_string(), b"bbbb".to_vec()),
+                ("/root/d1/d2/c.txt".to_string(), b"cccc".to_vec()),
+            ]),
+            ..MemTreeProvider::tree(&[("a.txt", 4), ("d1/b.txt", 4), ("d1/d2/c.txt", 4)])
+        })
+        .with(|st| {
+            st.held = Some("/root/d1".to_string());
+            st.cancel_on_download = Some(cancelled.clone());
+        });
+        let (code, _local) =
+            get_recursive_from_live_tree(&tree, "/root", &live_cli(), cancelled, |_| {});
+        assert_eq!(code, 130);
+        let listed = tree.0.lock().unwrap().listed.clone();
+        assert!(
+            !listed.iter().any(|dir| dir == "/root/d1/d2"),
+            "the scan must stop at Ctrl-C: {listed:?}"
+        );
+    }
+
+    /// `--immutable` and `--max-transfer` keep their meaning on the path that
+    /// downloads while it scans: an existing file is left as it is, and the
+    /// budget stops the run with exit 8 and counts what it left behind.
+    #[test]
+    fn get_recursive_while_scanning_keeps_immutable_and_max_transfer() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let tree = live_two_level_tree();
+        let cli = Cli {
+            immutable: true,
+            ..live_cli()
+        };
+        let (code, local) = get_recursive_from_live_tree(
+            &tree,
+            "/root",
+            &cli,
+            Arc::new(AtomicBool::new(false)),
+            |local| std::fs::write(local.join("a.txt"), b"mine").unwrap(),
+        );
+        assert_eq!(code, 0);
+        assert_eq!(std::fs::read(local.path().join("a.txt")).unwrap(), b"mine");
+        assert_eq!(
+            std::fs::read(local.path().join("d1/b.txt")).unwrap(),
+            b"bbbb"
+        );
+
+        SESSION_TRANSFERRED_BYTES.store(0, Ordering::Relaxed);
+        let tree = live_two_level_tree().with(|st| st.held = None);
+        let cli = Cli {
+            max_transfer: Some("1".to_string()),
+            ..live_cli()
+        };
+        let (code, local) = get_recursive_from_live_tree(
+            &tree,
+            "/root",
+            &cli,
+            Arc::new(AtomicBool::new(false)),
+            |_| {},
+        );
+        SESSION_TRANSFERRED_BYTES.store(0, Ordering::Relaxed);
+        assert_eq!(code, 8, "the budget, not a failure, stopped the run");
+        assert_eq!(tree.0.lock().unwrap().served.len(), 1);
+        assert_eq!(local_files(local.path()), 1);
+    }
+
+    /// Two remote paths that map to one local file in a deep folder: the run
+    /// is refused (exit 4) before anything of that folder is written, while
+    /// the files of other folders may already be down.
+    #[test]
+    fn get_recursive_refuses_a_deep_alias_before_its_branch_writes() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let tree = LiveTree::of(listed_remote(
+            &[
+                (
+                    "docs",
+                    &[
+                        ("a.txt", "/home/u/docs/a.txt", Some(4)),
+                        ("d1", "/docs/d1", None),
+                    ],
+                ),
+                ("/docs/d1", &[("d2", "/docs/d1/d2", None)]),
+                (
+                    "/docs/d1/d2",
+                    &[
+                        ("x.txt", "/docs/d1/d2/x.txt", Some(4)),
+                        ("x.txt", "/home/u/docs/d1/d2/x.txt", Some(4)),
+                    ],
+                ),
+            ],
+            &[
+                ("/home/u/docs/a.txt", b"aaaa"),
+                ("/docs/d1/d2/x.txt", b"left"),
+                ("/home/u/docs/d1/d2/x.txt", b"rght"),
+            ],
+        ))
+        .with(|st| st.held = Some("/docs/d1/d2".to_string()));
+        let (code, local) = get_recursive_from_live_tree(
+            &tree,
+            "docs",
+            &live_cli(),
+            Arc::new(AtomicBool::new(false)),
+            |_| {},
+        );
+        assert_eq!(code, 4);
+        assert!(
+            tree.served_at_held().unwrap_or(0) >= 1,
+            "a.txt was downloading"
+        );
+        assert!(!local.path().join("d1/d2/x.txt").exists());
+        let served = tree.0.lock().unwrap().served.clone();
+        assert!(
+            !served.iter().any(|path| path.ends_with("/x.txt")),
+            "nothing of the refused folder was fetched: {served:?}"
+        );
+    }
+
+    /// A folder whose local path is refused (a drive letter) is not
+    /// listed: nothing under it could be written, and its listing spent a
+    /// request and the scan's entry budget for files dropped one by one. It
+    /// stays an error of the run (exit 4), as a folder not followed is.
+    #[test]
+    fn get_recursive_does_not_list_a_folder_it_cannot_write_locally() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let tree = LiveTree::of(listed_remote(
+            &[
+                (
+                    "/root",
+                    &[
+                        ("a.txt", "/root/a.txt", Some(4)),
+                        ("C:x", "/root/C:x", None),
+                    ],
+                ),
+                ("/root/C:x", &[("f.txt", "/root/C:x/f.txt", Some(4))]),
+            ],
+            &[("/root/a.txt", b"aaaa"), ("/root/C:x/f.txt", b"ffff")],
+        ));
+        let (code, local) = get_recursive_from_live_tree(
+            &tree,
+            "/root",
+            &live_cli(),
+            Arc::new(AtomicBool::new(false)),
+            |_| {},
+        );
+        let listed = tree.0.lock().unwrap().listed.clone();
+        assert_eq!(listed, ["/root"], "the refused folder is not listed");
+        assert_eq!(code, 4, "a folder not followed makes the run partial");
+        assert_eq!(std::fs::read(local.path().join("a.txt")).unwrap(), b"aaaa");
+    }
+
+    /// A file a listing names outside its own folder waits for the end of the
+    /// scan: its twin, listed later in its own folder under another spelling
+    /// of the root, is seen first, and the run is refused before either is
+    /// fetched.
+    #[test]
+    fn get_recursive_holds_an_out_of_place_file_until_its_twin_is_seen() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let tree = LiveTree::of(listed_remote(
+            &[
+                (
+                    "docs",
+                    &[
+                        ("a.txt", "/docs/a.txt", Some(4)),
+                        ("d2", "/home/u/docs/d2", None),
+                        ("d1", "/docs/d1", None),
+                    ],
+                ),
+                // Listed first: names d2's file from outside d2.
+                ("/docs/d1", &[("y.txt", "/docs/d2/y.txt", Some(5))]),
+                (
+                    "/home/u/docs/d2",
+                    &[("y.txt", "/home/u/docs/d2/y.txt", Some(4))],
+                ),
+            ],
+            &[
+                ("/docs/a.txt", b"aaaa"),
+                ("/docs/d2/y.txt", b"alias"),
+                ("/home/u/docs/d2/y.txt", b"twin"),
+            ],
+        ))
+        .with(|st| st.held = Some("/home/u/docs/d2".to_string()));
+        let (code, local) = get_recursive_from_live_tree(
+            &tree,
+            "docs",
+            &live_cli(),
+            Arc::new(AtomicBool::new(false)),
+            |_| {},
+        );
+        assert_eq!(code, 4);
+        assert!(!local.path().join("d2/y.txt").exists());
+        let served = tree.0.lock().unwrap().served.clone();
+        assert!(
+            !served.iter().any(|path| path.ends_with("/y.txt")),
+            "neither y.txt was fetched: {served:?}"
+        );
+    }
+
+    /// The declared limit: a folder named outside its own listing, under
+    /// another spelling of the root, whose twin was already handed out. The
+    /// run is refused (exit 4) before the alias writes; the twin's file is
+    /// written once and stays as the twin left it, and the refusal names it.
+    #[test]
+    fn get_recursive_refuses_an_out_of_place_folder_alias_after_its_twin() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let tree = LiveTree::of(listed_remote(
+            &[
+                (
+                    "docs",
+                    &[("d1", "/docs/d1", None), ("d2", "/home/u/docs/d2", None)],
+                ),
+                // Listed first: the scan takes the last folder named.
+                (
+                    "/home/u/docs/d2",
+                    &[("y.txt", "/home/u/docs/d2/y.txt", Some(4))],
+                ),
+                // Names the twin of d2 under the other spelling.
+                ("/docs/d1", &[("d2", "/docs/d2", None)]),
+                ("/docs/d2", &[("y.txt", "/docs/d2/y.txt", Some(5))]),
+            ],
+            &[
+                ("/home/u/docs/d2/y.txt", b"twin"),
+                ("/docs/d2/y.txt", b"alias"),
+            ],
+        ))
+        .with(|st| st.held = Some("/docs/d1".to_string()));
+        let (code, local) = get_recursive_from_live_tree(
+            &tree,
+            "docs",
+            &live_cli(),
+            Arc::new(AtomicBool::new(false)),
+            |_| {},
+        );
+        assert_eq!(code, 4);
+        assert_eq!(
+            std::fs::read(local.path().join("d2/y.txt")).unwrap(),
+            b"twin"
+        );
+        let served = tree.0.lock().unwrap().served.clone();
+        assert_eq!(served, ["/home/u/docs/d2/y.txt"], "each file written once");
+
+        // Keyed as the run keys a download: the destination joined with the
+        // remote relative path, `/` kept.
+        let twin = local.path().join("d2");
+        let written = local.path().join("d2/y.txt").to_string_lossy().into_owned();
+        let landed = HashMap::from([(written.clone(), (4, String::new()))]);
+        let message = ambiguous_alias_with_landed(&twin.to_string_lossy(), &landed);
+        assert!(message.contains(&written), "{message}");
+    }
+
+    /// The refusal names the twin's files by their local path under the
+    /// twin's folder. On Windows that path keeps the `/` of the remote
+    /// relative path after the folder (`C:\tmp\d2/y.txt`), and a prefix
+    /// test with `\` alone missed it; on Unix a backslash is part of a
+    /// name, never a separator.
+    #[test]
+    fn a_local_path_under_a_folder_is_found_with_either_windows_slash() {
+        let windows = &['\\', '/'];
+        for local in [
+            "C:\\tmp\\d2/y.txt",
+            "C:\\tmp\\d2\\y.txt",
+            "C:\\tmp\\d2/sub/y.txt",
+            "C:\\tmp\\d2",
+        ] {
+            assert!(
+                local_path_at_or_under(local, "C:\\tmp\\d2", windows),
+                "{local}"
+            );
+        }
+        assert!(!local_path_at_or_under(
+            "C:\\tmp\\d20/y.txt",
+            "C:\\tmp\\d2",
+            windows
+        ));
+        let unix = &['/'];
+        assert!(local_path_at_or_under("/tmp/d2/y.txt", "/tmp/d2/", unix));
+        assert!(!local_path_at_or_under("/tmp/d2\\y.txt", "/tmp/d2", unix));
+        assert!(!local_path_at_or_under("/tmp/d20/y.txt", "/tmp/d2", unix));
     }
 
     #[tokio::test]
