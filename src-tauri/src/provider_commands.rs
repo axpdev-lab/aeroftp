@@ -661,7 +661,7 @@ pub struct TransferOperationGuard {
 }
 
 impl TransferOperationGuard {
-    fn acquire(state: &ProviderState) -> Self {
+    pub(crate) fn acquire(state: &ProviderState) -> Self {
         state.in_flight_transfers.fetch_add(1, Ordering::SeqCst);
         Self {
             counter: Arc::clone(&state.in_flight_transfers),
