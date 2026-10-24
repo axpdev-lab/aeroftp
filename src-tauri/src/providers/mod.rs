@@ -3494,6 +3494,18 @@ async fn stream_answer_to_part(
     Ok(overlap.is_none())
 }
 
+/// Finish an unsuccessful resumable attempt before returning its error. Disk
+/// errors discovered here take precedence over a network/cancellation error.
+async fn keep_failed_download<T>(
+    part: atomic_write::ResumableFile,
+    error: ProviderError,
+) -> Result<T, ProviderError> {
+    part.keep_for_resume()
+        .await
+        .map_err(ProviderError::IoError)?;
+    Err(error)
+}
+
 /// A resumable HTTP download, driven by the provider that sends its requests
 /// (each authenticates or signs its own): [`Self::range`] says what to ask
 /// for, [`Self::accept`] judges the answer against the part on disk and
@@ -3579,15 +3591,19 @@ impl HttpResume {
                 let started_over = match overlap {
                     Ok(byte) => {
                         let total = answer.as_ref().map_or(0, |a| a.size());
-                        if stream_answer_to_part(
+                        let continued = match stream_answer_to_part(
                             response,
                             &mut part,
                             Some(total),
                             Some(byte),
                             on_progress,
                         )
-                        .await?
+                        .await
                         {
+                            Ok(continued) => continued,
+                            Err(error) => return keep_failed_download(part, error).await,
+                        };
+                        if continued {
                             Self::publish(part).await?;
                             return Ok(HttpResumeStep::Done);
                         }
@@ -3609,7 +3625,11 @@ impl HttpResume {
                     part.record_source(answer).await;
                 }
                 let total = response.content_length();
-                stream_answer_to_part(response, &mut part, total, None, on_progress).await?;
+                if let Err(error) =
+                    stream_answer_to_part(response, &mut part, total, None, on_progress).await
+                {
+                    return keep_failed_download(part, error).await;
+                }
                 Self::publish(part).await?;
                 Ok(HttpResumeStep::Done)
             }
@@ -3618,10 +3638,16 @@ impl HttpResume {
                 Err(ProviderError::NotFound(what.to_string()))
             }
             // Kept: the part is still good for a later attempt.
-            status => Err(ProviderError::TransferFailed(format!(
-                "Download failed with status: {}",
-                status
-            ))),
+            status => {
+                keep_failed_download(
+                    part,
+                    ProviderError::TransferFailed(format!(
+                        "Download failed with status: {}",
+                        status
+                    )),
+                )
+                .await
+            }
         }
     }
 
@@ -3673,9 +3699,7 @@ impl HttpResume {
     }
 
     async fn publish(part: atomic_write::ResumableFile) -> Result<(), ProviderError> {
-        part.commit().await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
-        })
+        part.commit().await.map_err(ProviderError::IoError)
     }
 }
 
@@ -3697,7 +3721,10 @@ where
     let mut download = HttpResume::open(local_path, source).await?;
     loop {
         let resuming = download.range().is_some();
-        let response = send(download.range()).await?;
+        let response = match send(download.range()).await {
+            Ok(response) => response,
+            Err(error) => return keep_failed_download(download.part, error).await,
+        };
         match download.accept(response, what, &mut on_progress).await? {
             HttpResumeStep::Done => return Ok(()),
             HttpResumeStep::StartOver(next) if resuming => download = *next,

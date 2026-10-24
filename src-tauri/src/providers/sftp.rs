@@ -3134,7 +3134,11 @@ impl StorageProvider for SftpProvider {
         // failed local create, seek, read or write, and the early return for a
         // partial that already holds the whole file, all left it to Drop.
         let ended = sftp.ended.clone();
-        let streamed: Result<(super::atomic_write::ResumableFile, u64, bool), ProviderError> = {
+        struct StreamedDownload {
+            part: super::atomic_write::ResumableFile,
+            copied: Result<(u64, bool), ProviderError>,
+        }
+        let streamed: Result<StreamedDownload, ProviderError> = {
             // Moved in, not borrowed: a borrowed `on_progress` would make this
             // future require `Sync` from a callback that is only `Send`. The
             // remote handle is lent for the duration and closed right after.
@@ -3178,108 +3182,123 @@ impl StorageProvider for SftpProvider {
                     resume_offset = 0;
                 }
 
-                // The partial already holds the whole file: nothing to read.
-                if total_size > 0 && resume_offset == total_size {
-                    if let Some(ref progress) = on_progress {
-                        progress(total_size, total_size);
-                    }
-                    return Ok((resumable, total_size, true));
-                }
-
-                // Resume: seek the remote read to the partial's end so we append the
-                // correct bytes instead of re-fetching from zero.
-                if resume_offset > 0 {
-                    use tokio::io::AsyncSeekExt;
-                    remote_file
-                        .seek(std::io::SeekFrom::Start(resume_offset))
-                        .await
-                        .map_err(|e| {
-                            ProviderError::TransferFailed(format!(
-                                "Failed to seek for resume: {}",
-                                e
-                            ))
-                        })?;
-                    tracing::info!("SFTP: Resuming download from offset {}", resume_offset);
-                }
-
-                // Read and write in chunks with optional rate limiting
-                let mut buffer = vec![0u8; buffer_size];
-                let mut transferred: u64 = resume_offset;
-                if let Some(ref progress) = on_progress {
-                    progress(transferred, total_size);
-                }
-                let start = std::time::Instant::now();
-                // DAG-P2-01: shared process-global bandwidth bucket (no-op when unset).
-                let global_bw = crate::transfer_dag::governor::global();
-
-                loop {
-                    if total_size > 0 && transferred >= total_size {
-                        break;
-                    }
-                    // Reserve global tokens before the remote read so concurrent jobs
-                    // cannot put bytes on the wire before the shared cap admits them.
-                    // A short final read can over-reserve only the unused tail of one
-                    // buffer, which is conservative and never lets the cap burst.
-                    let remaining = total_size.saturating_sub(transferred);
-                    let allowance = if remaining == 0 {
-                        buffer.len() as u64
-                    } else {
-                        remaining.min(buffer.len() as u64)
-                    };
-                    global_bw
-                        .charge(
-                            crate::transfer_dag::governor::TransferDirection::Download,
-                            allowance,
-                        )
-                        .await;
-                    let bytes_read = until_sftp_ends(ended, remote_file.read(&mut buffer))
-                        .await
-                        .map_err(|e| {
-                            classify_russh_err(e, |s| {
-                                ProviderError::TransferFailed(format!("Read error: {}", s))
-                            })
-                        })?;
-
-                    if bytes_read == 0 {
-                        break;
-                    }
-
-                    resumable
-                        .write_all(&buffer[..bytes_read])
-                        .await
-                        .map_err(|e| {
-                            ProviderError::TransferFailed(format!("Write error: {}", e))
-                        })?;
-
-                    transferred += bytes_read as u64;
-
-                    if let Some(ref progress) = on_progress {
-                        progress(transferred, total_size);
-                    }
-
-                    // Apply bandwidth throttling on bytes moved THIS session, so a
-                    // resume does not over-sleep for already-downloaded data.
-                    if download_limit_bps > 0 {
-                        let session_bytes = transferred - resume_offset;
-                        let expected = std::time::Duration::from_secs_f64(
-                            session_bytes as f64 / download_limit_bps as f64,
-                        );
-                        let elapsed = start.elapsed();
-                        if expected > elapsed {
-                            tokio::time::sleep(expected - elapsed).await;
+                // Keep ownership outside the fallible read loop. The remote
+                // handle closes first; an error then settles the local writer
+                // before it is dropped and the attempt is reported failed.
+                let copied = {
+                    let resumable = &mut resumable;
+                    async move {
+                        // The partial already holds the whole file: nothing to read.
+                        if total_size > 0 && resume_offset == total_size {
+                            if let Some(ref progress) = on_progress {
+                                progress(total_size, total_size);
+                            }
+                            return Ok((total_size, true));
                         }
+
+                        // Resume: seek the remote read to the partial's end so we append the
+                        // correct bytes instead of re-fetching from zero.
+                        if resume_offset > 0 {
+                            use tokio::io::AsyncSeekExt;
+                            remote_file
+                                .seek(std::io::SeekFrom::Start(resume_offset))
+                                .await
+                                .map_err(|e| {
+                                    ProviderError::TransferFailed(format!(
+                                        "Failed to seek for resume: {}",
+                                        e
+                                    ))
+                                })?;
+                            tracing::info!("SFTP: Resuming download from offset {}", resume_offset);
+                        }
+
+                        // Read and write in chunks with optional rate limiting
+                        let mut buffer = vec![0u8; buffer_size];
+                        let mut transferred: u64 = resume_offset;
+                        if let Some(ref progress) = on_progress {
+                            progress(transferred, total_size);
+                        }
+                        let start = std::time::Instant::now();
+                        // DAG-P2-01: shared process-global bandwidth bucket (no-op when unset).
+                        let global_bw = crate::transfer_dag::governor::global();
+
+                        loop {
+                            if total_size > 0 && transferred >= total_size {
+                                break;
+                            }
+                            // Reserve global tokens before the remote read so concurrent jobs
+                            // cannot put bytes on the wire before the shared cap admits them.
+                            // A short final read can over-reserve only the unused tail of one
+                            // buffer, which is conservative and never lets the cap burst.
+                            let remaining = total_size.saturating_sub(transferred);
+                            let allowance = if remaining == 0 {
+                                buffer.len() as u64
+                            } else {
+                                remaining.min(buffer.len() as u64)
+                            };
+                            global_bw
+                                .charge(
+                                    crate::transfer_dag::governor::TransferDirection::Download,
+                                    allowance,
+                                )
+                                .await;
+                            let bytes_read = until_sftp_ends(ended, remote_file.read(&mut buffer))
+                                .await
+                                .map_err(|e| {
+                                    classify_russh_err(e, |s| {
+                                        ProviderError::TransferFailed(format!("Read error: {}", s))
+                                    })
+                                })?;
+
+                            if bytes_read == 0 {
+                                break;
+                            }
+
+                            resumable
+                                .write_all(&buffer[..bytes_read])
+                                .await
+                                .map_err(|e| {
+                                    ProviderError::TransferFailed(format!("Write error: {}", e))
+                                })?;
+
+                            transferred += bytes_read as u64;
+
+                            if let Some(ref progress) = on_progress {
+                                progress(transferred, total_size);
+                            }
+
+                            // Apply bandwidth throttling on bytes moved THIS session, so a
+                            // resume does not over-sleep for already-downloaded data.
+                            if download_limit_bps > 0 {
+                                let session_bytes = transferred - resume_offset;
+                                let expected = std::time::Duration::from_secs_f64(
+                                    session_bytes as f64 / download_limit_bps as f64,
+                                );
+                                let elapsed = start.elapsed();
+                                if expected > elapsed {
+                                    tokio::time::sleep(expected - elapsed).await;
+                                }
+                            }
+                        }
+                        Ok((transferred, false))
                     }
                 }
-                Ok((resumable, transferred, false))
+                .await;
+                Ok(StreamedDownload {
+                    part: resumable,
+                    copied,
+                })
             }
         }
         .await;
 
         close_sftp_file(remote_file, &ended).await;
-        let (resumable, transferred, from_partial) = streamed?;
-        resumable.commit().await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
-        })?;
+        let StreamedDownload { part, copied } = streamed?;
+        let (transferred, from_partial) = match copied {
+            Ok(copied) => copied,
+            Err(error) => return super::keep_failed_download(part, error).await,
+        };
+        part.commit().await.map_err(ProviderError::IoError)?;
 
         if from_partial {
             tracing::info!(
@@ -8421,6 +8440,9 @@ mod tests {
         first_cap: Option<usize>,
         /// Malformed DATA replies, including the first READ or a later chunk.
         oversize_from: Option<u64>,
+        /// One failed READ and a gate released by the awaited remote CLOSE.
+        read_error_at: Option<u64>,
+        release_on_close: Option<std::sync::mpsc::Sender<()>>,
         open_limit: Option<usize>,
         open_now: usize,
         max_open: Arc<std::sync::atomic::AtomicUsize>,
@@ -8438,6 +8460,8 @@ mod tests {
                 mtime: None,
                 first_cap: None,
                 oversize_from: None,
+                read_error_at: None,
+                release_on_close: None,
                 open_limit: None,
                 open_now: 0,
                 max_open: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
@@ -8551,6 +8575,9 @@ mod tests {
             id: u32,
             _handle: String,
         ) -> Result<russh_sftp::protocol::Status, Self::Error> {
+            if let Some(release) = self.release_on_close.take() {
+                let _ = release.send(());
+            }
             self.open_now = self.open_now.saturating_sub(1);
             let _ = self.live.fetch_update(
                 std::sync::atomic::Ordering::SeqCst,
@@ -8585,6 +8612,10 @@ mod tests {
             len: u32,
         ) -> Result<russh_sftp::protocol::Data, Self::Error> {
             self.reads.lock().expect("read log").push((offset, len));
+            if self.read_error_at.is_some_and(|at| offset >= at) {
+                self.read_error_at = None;
+                return Err(russh_sftp::protocol::StatusCode::Failure);
+            }
             let start = usize::try_from(offset).unwrap_or(usize::MAX);
             if start >= self.data.len() {
                 return Err(russh_sftp::protocol::StatusCode::Eof);
@@ -8602,6 +8633,78 @@ mod tests {
                 data: self.data[start..end].to_vec(),
             })
         }
+    }
+
+    /// Requested 95: the first writer is dropped with its disk write queued.
+    /// A retained descriptor models a concurrent child before exec. The remote
+    /// CLOSE releases the worker, making the error/flush ordering deterministic.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_failed_sftp_download_releases_its_settled_part_before_retry() {
+        use std::os::fd::{BorrowedFd, OwnedFd};
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .max_blocking_threads(1)
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let dir = tempfile::tempdir().unwrap();
+            let target = dir.path().join("target");
+            let temp = dir.path().join("target.aerotmp");
+            let bytes = pattern(4000);
+            let mut server = ReadCappingServer::new(&bytes, 100, false);
+            server.mtime = Some(1_700_000_000);
+            server.read_error_at = Some(100);
+            let (release, wait) = std::sync::mpsc::channel();
+            server.release_on_close = Some(release);
+            let live = server.live_handles();
+            let mut provider = server.serve().await;
+            let inherited: Arc<std::sync::Mutex<Option<OwnedFd>>> = Arc::default();
+            let held = inherited.clone();
+            let wait = std::sync::Mutex::new(Some(wait));
+            let progress = Box::new(move |transferred, _total| {
+                if transferred != 0 {
+                    return;
+                }
+                // The provider owns this descriptor throughout this callback.
+                // Clone that very open description, not a new open of its path.
+                let fd: i32 = std::fs::read_dir("/proc/self/fd")
+                    .unwrap()
+                    .filter_map(Result::ok)
+                    .find(|entry| std::fs::read_link(entry.path()).ok().as_ref() == Some(&temp))
+                    .unwrap()
+                    .file_name()
+                    .to_str()
+                    .unwrap()
+                    .parse()
+                    .unwrap();
+                // SAFETY: the active download owns this fd and cannot close it
+                // until its synchronous progress callback has returned.
+                *held.lock().unwrap() = Some(
+                    unsafe { BorrowedFd::borrow_raw(fd) }
+                        .try_clone_to_owned()
+                        .unwrap(),
+                );
+                let wait = wait.lock().unwrap().take().unwrap();
+                let (ready, started) = std::sync::mpsc::channel();
+                tokio::task::spawn_blocking(move || {
+                    let _ = ready.send(());
+                    let _ = wait.recv();
+                });
+                started.recv().unwrap();
+            });
+            let failed = provider
+                .download("/down.bin", target.to_str().unwrap(), Some(progress))
+                .await;
+            let retried = provider
+                .download("/down.bin", target.to_str().unwrap(), None)
+                .await;
+            drop(inherited);
+            assert!(failed.is_err(), "the injected READ error must escape");
+            retried.expect("the failed SFTP attempt left its claim held");
+            assert_eq!(std::fs::read(target).unwrap(), bytes);
+            assert_eq!(live.load(std::sync::atomic::Ordering::SeqCst), 0);
+        });
     }
 
     /// A file's bytes, distinct at every offset that matters.
