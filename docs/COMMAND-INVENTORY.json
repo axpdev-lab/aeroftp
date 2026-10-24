@@ -615,7 +615,7 @@
         "namespace": "aeroftp_"
       },
       {
-        "description": "Return a static diagnostic snapshot for triage: host/runtime info plus the last N redacted lines of aeroftp.log. Sensitive data (API keys, Bearer tokens, JWTs, inline-URL passwords, emails, non-loopback IPv4, home directories, 32+ char hex blobs) is replaced with ***REDACTED*** markers before return. Read-only, no external I/O. Use to triage a user-reported issue without asking them to attach files.",
+        "description": "Return a static diagnostic snapshot for triage: host/runtime info plus the last N redacted lines of AeroFTP.log. Sensitive data (API keys, Bearer tokens, JWTs, inline-URL passwords, emails, non-loopback IPv4, home directories, 32+ char hex blobs) is replaced with ***REDACTED*** markers before return. Read-only, no external I/O. Use to triage a user-reported issue without asking them to attach files.",
         "name": "aeroftp_debug_snapshot",
         "namespace": "aeroftp_"
       },

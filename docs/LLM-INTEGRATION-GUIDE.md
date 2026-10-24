@@ -312,7 +312,7 @@ The canonical MCP tool set uses the `aeroftp_` prefix. Each tool also ships a ma
 | `aeroftp_delete_many` | Destructive | Batch delete with caps + configurable backoff |
 | `aeroftp_cleanup` | Destructive | BFS scan for orphan `.aerotmp` partial-transfer files (dry-run by default) |
 | `aeroftp_benchmark` | ReadOnly | Run the community benchmark suite against a saved profile and return the schema-v1 JSON report |
-| `aeroftp_debug_snapshot` | ReadOnly | Static diagnostic snapshot for triage (host/runtime info plus the last N redacted lines of `aeroftp.log`) |
+| `aeroftp_debug_snapshot` | ReadOnly | Static diagnostic snapshot for triage (host/runtime info plus the last N redacted lines of `AeroFTP.log`) |
 | `aeroftp_debug_run_test` | ReadOnly | Execute one self-contained diagnostic probe (e.g. `known_hosts`) and return its result |
 | `aeroftp_correct_verify` | ReadOnly | Verify a local file against its `.aerocorrect` sidecar (never mutates the file) |
 | `aeroftp_correct_gen` | Mutative | Generate a detached `.aerocorrect` Reed-Solomon recovery sidecar for a local file (par2-style) |

@@ -898,10 +898,34 @@ fn installed_webview_data_dir() -> Option<PathBuf> {
     None
 }
 
-/// The folder the file log target writes to: Tauri's `app_log_dir()` for the
-/// legacy identifier, so the log a user or a bug report points at keeps its
-/// place across the rename. `None` only when the platform base is unknown.
+/// The file the log target writes in [`log_dir`]. tauri-plugin-log names it
+/// after `productName` in `tauri.conf.json`, which a test pins to this name.
+pub const APP_LOG_FILE: &str = "AeroFTP.log";
+
+/// The folder the file log target writes to.
+///
+/// A portable copy logs into `<exe-dir>/data/logs`, beside the rest of its
+/// data, and gets `None` when that folder cannot be made: it never falls back
+/// to the host's log folder, which belongs to an installed copy. Installed
+/// builds use Tauri's `app_log_dir()` for the legacy identifier, so the log a
+/// user or a bug report points at keeps its place across the rename; `None`
+/// there only when the platform base is unknown.
 pub fn log_dir() -> Option<PathBuf> {
+    if let Some(data_root) = portable_data_root() {
+        let dir = data_root.join("logs");
+        ensure_dir(&dir).ok()?;
+        return Some(dir);
+    }
+    installed_log_dir()
+}
+
+/// The app log file: where the log target writes, and where the diagnostic
+/// bundle and the MCP debug snapshot read its tail.
+pub fn app_log_file() -> Option<PathBuf> {
+    log_dir().map(|dir| dir.join(APP_LOG_FILE))
+}
+
+fn installed_log_dir() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
     {
         dirs::home_dir().map(|home| home.join("Library/Logs").join(LEGACY_APP_IDENTIFIER))
@@ -1303,6 +1327,98 @@ mod tests {
             expected
         );
         println!("private portable state verified");
+    }
+
+    /// A portable copy logs into its own folder, never into the host's, and
+    /// the two readers of the log (the diagnostic bundle and the MCP debug
+    /// snapshot) find what was written there.
+    #[test]
+    fn portable_logs_stay_in_the_portable_folder() {
+        let root = cli_integration_fixture::root();
+        let out = cli_integration_fixture::command(&std::env::current_exe().unwrap(), root.path())
+            .args([
+                "--exact",
+                "portable::tests::portable_logs_child_probe",
+                "--nocapture",
+            ])
+            .env("AEROFTP_TEST_PORTABLE_ROOT", root.path())
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(String::from_utf8_lossy(&out.stdout).contains("portable logs verified"));
+        assert!(root.path().join("cli/data/logs/AeroFTP.log").is_file());
+    }
+
+    #[test]
+    fn portable_logs_child_probe() {
+        if std::env::var_os("AEROFTP_TEST_PORTABLE_ROOT").is_none() {
+            return;
+        }
+        assert!(is_portable());
+        // Checked before anything is written: a wrong answer here names the
+        // host's log folder, which belongs to an installed copy.
+        let exe_dir = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        let logs = exe_dir.join("data").join("logs");
+        assert_eq!(log_dir(), Some(logs.clone()));
+
+        std::fs::create_dir_all(&logs).unwrap();
+        let file = logs.join("AeroFTP.log");
+        std::fs::write(
+            &file,
+            "first line\nportable log probe for user@example.com\n",
+        )
+        .unwrap();
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        let snapshot = runtime.block_on(crate::mcp::tools::build_debug_snapshot(1));
+        assert_eq!(
+            snapshot["log_path"].as_str(),
+            Some(file.to_string_lossy().as_ref()),
+            "{snapshot}"
+        );
+        assert_eq!(
+            snapshot["log_tail"].as_str(),
+            Some("portable log probe for ***@***")
+        );
+
+        let bundle = exe_dir.join("bundle.zip");
+        runtime
+            .block_on(crate::debug_tests::debug_export_bundle(
+                bundle.to_string_lossy().into_owned(),
+                crate::debug_tests::BundleInput {
+                    logs_ndjson: String::new(),
+                    network_ndjson: String::new(),
+                    system_info: serde_json::Value::Null,
+                    tests_state: serde_json::Value::Null,
+                    local_storage_keys: serde_json::Value::Null,
+                    app_version: String::new(),
+                },
+            ))
+            .unwrap();
+        let mut zip = zip::ZipArchive::new(std::fs::File::open(&bundle).unwrap()).unwrap();
+        let mut tail = String::new();
+        std::io::Read::read_to_string(
+            &mut zip
+                .by_name("aeroftp.log.tail")
+                .expect("log tail in the bundle"),
+            &mut tail,
+        )
+        .unwrap();
+        assert!(tail.ends_with("portable log probe for ***@***"), "{tail}");
+        println!("portable logs verified");
     }
 
     #[test]
@@ -2175,6 +2291,16 @@ mod identifier_scoped_state_tests {
             serde_json::from_str(include_str!("../tauri.conf.json")).expect("tauri.conf.json");
         assert_eq!(conf["identifier"].as_str(), Some(APP_IDENTIFIER));
         assert_ne!(APP_IDENTIFIER, LEGACY_APP_IDENTIFIER);
+    }
+
+    /// tauri-plugin-log names the file after the product name; the readers
+    /// of the log look for [`APP_LOG_FILE`].
+    #[test]
+    fn app_log_file_is_named_after_the_product() {
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).expect("tauri.conf.json");
+        let product = conf["productName"].as_str().expect("productName");
+        assert_eq!(APP_LOG_FILE, format!("{product}.log"));
     }
 
     #[test]

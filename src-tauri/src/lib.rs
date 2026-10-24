@@ -19260,25 +19260,17 @@ pub fn run() {
                 // a dozen lines on every start; its warnings and errors stay.
                 .filter(|metadata| gui_log_admits(metadata.target(), metadata.level()))
                 // Stdout, the log file and the Webview fan-out (the `log://log`
-                // event consumed by the in-app DebugPanel). The file target is
-                // an explicit folder rather than the default `LogDir`, which
-                // follows the configured identifier and moved to an empty
-                // folder with the #814 rename; `portable::log_dir` keeps the
-                // folder every earlier release wrote to.
-                .clear_targets()
-                .target(tauri_plugin_log::Target::new(
-                    tauri_plugin_log::TargetKind::Stdout,
-                ))
-                .target(tauri_plugin_log::Target::new(match portable::log_dir() {
-                    Some(path) => tauri_plugin_log::TargetKind::Folder {
-                        path,
-                        file_name: None,
-                    },
-                    None => tauri_plugin_log::TargetKind::LogDir { file_name: None },
-                }))
-                .target(tauri_plugin_log::Target::new(
-                    tauri_plugin_log::TargetKind::Webview,
-                ))
+                // event consumed by the in-app DebugPanel).
+                .targets(
+                    [
+                        Some(tauri_plugin_log::TargetKind::Stdout),
+                        gui_log_file_target(),
+                        Some(tauri_plugin_log::TargetKind::Webview),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .map(tauri_plugin_log::Target::new),
+                )
                 .build(),
         )
         .plugin(tauri_plugin_autostart::init(
@@ -21374,6 +21366,23 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
+/// The GUI's log file target. It is an explicit folder rather than the
+/// default `LogDir`, which follows the configured identifier and moved to an
+/// empty folder with the #814 rename: `portable::log_dir` keeps the folder
+/// every earlier installed release wrote to, and gives a portable copy its own
+/// `data/logs`. A portable copy that cannot make that folder logs to no file
+/// rather than into the host's folder, which belongs to an installed copy.
+fn gui_log_file_target() -> Option<tauri_plugin_log::TargetKind> {
+    match portable::log_dir() {
+        Some(path) => Some(tauri_plugin_log::TargetKind::Folder {
+            path,
+            file_name: None,
+        }),
+        None if portable::is_portable() => None,
+        None => Some(tauri_plugin_log::TargetKind::LogDir { file_name: None }),
+    }
+}
+
 /// Dependency targets the GUI log keeps only from WARN up: what they write at
 /// INFO is protocol chatter. `tracing::span` is where `tracing`'s log support
 /// writes span creation for crates such as zbus.
@@ -21427,7 +21436,7 @@ mod gui_log_filter_tests {
 // tauri-plugin-log only captures `log::*` macros. Providers (S3, WebDAV,
 // OAuth, sync, etc.) use `tracing::*` for structured events, so without
 // this bridge the entire provider layer is invisible to the in-app
-// DebugPanel and to the on-disk `aeroftp.log`. The bridge converts every
+// DebugPanel and to the on-disk `AeroFTP.log`. The bridge converts every
 // tracing Event into a `log::Record` and forwards it to whatever logger
 // `log::set_logger` installed (in our case, the tauri-plugin-log dispatch
 // which fans out to stdout, the log file, and the Webview target).

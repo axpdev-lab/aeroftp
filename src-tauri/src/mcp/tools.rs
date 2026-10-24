@@ -224,7 +224,7 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
         },
         McpToolDef {
             name: "aeroftp_debug_snapshot",
-            description: "Return a static diagnostic snapshot for triage: host/runtime info plus the last N redacted lines of aeroftp.log. Sensitive data (API keys, Bearer tokens, JWTs, inline-URL passwords, emails, non-loopback IPv4, home directories, 32+ char hex blobs) is replaced with ***REDACTED*** markers before return. Read-only, no external I/O. Use to triage a user-reported issue without asking them to attach files.",
+            description: "Return a static diagnostic snapshot for triage: host/runtime info plus the last N redacted lines of AeroFTP.log. Sensitive data (API keys, Bearer tokens, JWTs, inline-URL passwords, emails, non-loopback IPv4, home directories, 32+ char hex blobs) is replaced with ***REDACTED*** markers before return. Read-only, no external I/O. Use to triage a user-reported issue without asking them to attach files.",
             input_schema: json!({ "type": "object", "properties": {
                 "log_tail_lines": { "type": "integer", "description": "How many trailing log lines to include. Default: 200, max: 2000." }
             }, "required": [] }),
@@ -568,7 +568,7 @@ fn detect_binary_deleted() -> Option<bool> {
 // `aeroftp_debug_snapshot` MCP tool so an agent can triage without asking
 // the user to attach files.
 
-async fn build_debug_snapshot(tail_n: usize) -> Value {
+pub(crate) async fn build_debug_snapshot(tail_n: usize) -> Value {
     let pid = std::process::id();
     let version = env!("CARGO_PKG_VERSION");
     let os = std::env::consts::OS;
@@ -584,29 +584,10 @@ async fn build_debug_snapshot(tail_n: usize) -> Value {
         .map(|d| d.join(".ssh").join("known_hosts").exists())
         .unwrap_or(false);
 
-    let mut log_tail = String::new();
-    let mut log_path_used: Option<String> = None;
-    if let Some(cfg) = crate::portable::aeroftp_data_root() {
-        let candidates = [
-            cfg.join("logs").join("aeroftp.log"),
-            cfg.join("aeroftp.log"),
-        ];
-        for path in candidates.iter() {
-            if path.exists() {
-                if let Ok(content) = tokio::fs::read_to_string(path).await {
-                    let lines: Vec<&str> = content.lines().collect();
-                    let start = lines.len().saturating_sub(tail_n);
-                    log_tail = lines[start..]
-                        .iter()
-                        .map(|l| crate::debug_tests::redact(l))
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                }
-                log_path_used = Some(path.to_string_lossy().to_string());
-                break;
-            }
-        }
-    }
+    let (log_path_used, log_tail) = match crate::debug_tests::app_log_tail(tail_n).await {
+        Some((path, tail)) => (Some(path.to_string_lossy().to_string()), tail),
+        None => (None, String::new()),
+    };
 
     json!({
         "pid": pid,
