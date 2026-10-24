@@ -240,14 +240,15 @@ mod part_settlement {
                         let attempt = Arc::new(());
                         let retry_record = record.clone();
                         let temp = key.to_path_buf();
+                        let claim_path = temp.clone();
                         let operation = async move {
                             // Another process may have claimed the part since
                             // the failed owner closed. Invalidate only while
                             // holding the same filesystem claim as an opener.
                             let owner = super::claimed(move || {
-                                match super::temp_claim::open_to_append(&temp) {
+                                match super::temp_claim::open_to_append(&claim_path) {
                                     Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                                        super::temp_claim::create(&temp)
+                                        super::temp_claim::create(&claim_path)
                                     }
                                     result => result,
                                 }
@@ -256,7 +257,8 @@ mod part_settlement {
                             .map_err(Arc::new)?;
                             let result = super::forget_part_record(&record).await;
                             drop(owner);
-                            result.map_err(Arc::new)
+                            result.map_err(Arc::new)?;
+                            discard_invalid_part(temp).await.map_err(Arc::new)
                         }
                         .boxed()
                         .shared();
@@ -291,6 +293,7 @@ mod part_settlement {
         let retry_record = record.clone();
         let completion = async move {
             let flushed = writer.flush().await;
+            let discard = record.is_some() && (write_failed || flushed.is_err());
             // A delayed write error invalidates the recorded prefix. Keep
             // the claim until this record is gone, before a retry can open.
             let invalidated = if write_failed || flushed.is_err() {
@@ -311,11 +314,27 @@ mod part_settlement {
             // flush joined the local operation. Closing this owner now
             // explicitly unlocks even if a child inherited its descriptor.
             drop(writer);
-            invalidated.map_err(Arc::new)
+            invalidated.map_err(Arc::new)?;
+            if discard {
+                discard_invalid_part(path).await.map_err(Arc::new)?;
+            }
+            Ok(())
         }
         .boxed()
         .shared();
         register_completion(key, completion, retry_record);
+    }
+
+    /// An invalidated failed-write prefix cannot be resumed. Remove it
+    /// before clearing the barrier: AtomicFile must not have to guess its
+    /// ownership on Windows or filesystems without usable locks. The owner
+    /// has closed first, and the existing removal guard refuses live writers.
+    async fn discard_invalid_part(temp: PathBuf) -> io::Result<()> {
+        // The record is already invalidated: do not unlink it again after
+        // removing the part, when a different writer could have its name.
+        tokio::task::spawn_blocking(move || super::temp_claim::remove_unless_live(&temp))
+            .await
+            .map_err(io::Error::other)?
     }
 
     /// Finalization owns sync/rename/unlink as well as the file. Those local
@@ -2066,11 +2085,14 @@ impl ResumableFile {
             forget_part_record(&self.record_path).await?;
             self.recorded = None;
         }
-        self.needs_settlement = false;
-        match self.write_error.take() {
-            Some(error) => Err(error),
-            None => Ok(()),
+        if let Some(error) = &self.write_error {
+            // After closing this owner, the shared cleanup also removes the
+            // unusable part. In-place mode must retain the destination itself.
+            self.needs_settlement = !self.inplace;
+            return Err(copy_io_error(error));
         }
+        self.needs_settlement = false;
+        Ok(())
     }
 
     /// Flush and commit: rename temp file to final path.
@@ -3042,6 +3064,79 @@ mod resumable_settlement_tests {
     }
 
     #[test]
+    fn an_inplace_failed_write_keeps_its_destination() {
+        runtime().block_on(async {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("file");
+            let mut part = ResumableFile::open_fresh_in(path.to_str().unwrap(), true)
+                .await
+                .unwrap();
+            part.write_all(b"inplace prefix").await.unwrap();
+            part.file_mut().flush().await.unwrap();
+            let key = part.settlement_key.clone();
+            part.write_error = Some(std::io::Error::other("injected write failure"));
+            assert!(part.keep_for_resume().await.is_err());
+            part_settlement::wait(&key).await.unwrap();
+            assert_eq!(std::fs::read(&path).unwrap(), b"inplace prefix");
+        });
+    }
+
+    async fn failed_write_discards_unsafe_part(explicit: bool, recover_record: bool) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("file");
+        std::fs::write(&path, b"previous complete file").unwrap();
+        let mut part = ResumableFile::open_fresh_in(path.to_str().unwrap(), false)
+            .await
+            .unwrap();
+        part.write_all(b"unsafe prefix").await.unwrap();
+        part.file_mut().flush().await.unwrap();
+        let record = part.record_path.clone();
+        let temp = part.temp_path.clone();
+        let key = part.settlement_key.clone();
+        if recover_record {
+            std::fs::create_dir(&record).unwrap();
+        } else {
+            std::fs::write(&record, b"failed-write record").unwrap();
+        }
+        part.write_error = Some(std::io::Error::other("injected write failure"));
+        if explicit {
+            assert!(part.keep_for_resume().await.is_err());
+        } else {
+            drop(part);
+        }
+        if recover_record {
+            assert!(part_settlement::wait(&key).await.is_err());
+            assert!(temp.exists(), "failed invalidation discarded a held part");
+            std::fs::remove_dir(&record).unwrap();
+            std::fs::write(&record, b"failed-write record").unwrap();
+        }
+        part_settlement::wait(&key).await.unwrap();
+        assert!(!record.exists());
+        assert!(
+            !temp.exists(),
+            "record cleanup left an unsafe part that an unknown-lock filesystem cannot replace"
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), b"previous complete file");
+        let fresh = AtomicFile::new(path.to_str().unwrap()).await.unwrap();
+        fresh.commit().await.unwrap();
+    }
+
+    #[test]
+    fn an_explicit_failed_write_discards_its_unsafe_part() {
+        runtime().block_on(failed_write_discards_unsafe_part(true, false));
+    }
+
+    #[test]
+    fn an_abandoned_failed_write_discards_its_unsafe_part() {
+        runtime().block_on(failed_write_discards_unsafe_part(false, false));
+    }
+
+    #[test]
+    fn a_recovered_record_cleanup_discards_its_unsafe_part() {
+        runtime().block_on(failed_write_discards_unsafe_part(false, true));
+    }
+
+    #[test]
     fn a_cancelled_recovery_releases_its_claim_without_another_waiter() {
         runtime().block_on(async {
             let dir = tempfile::tempdir().unwrap();
@@ -3077,8 +3172,8 @@ mod resumable_settlement_tests {
             // finish invalidation and release the independent opener's claim.
             let settled = tokio::time::timeout(std::time::Duration::from_secs(5), async {
                 loop {
-                    if !record.exists() {
-                        if let Ok(claim) = temp_claim::open_to_append(&temp) {
+                    if !record.exists() && !temp.exists() {
+                        if let Ok(claim) = temp_claim::create(&temp) {
                             break claim;
                         }
                     }
