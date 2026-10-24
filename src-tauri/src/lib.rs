@@ -257,6 +257,7 @@ mod master_password;
 pub mod mc_import;
 pub mod mcp;
 mod mount_manager;
+mod open_request;
 mod plugin_registry;
 mod plugins;
 pub mod proc_stats;
@@ -19306,83 +19307,10 @@ pub fn run() {
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
-            // Forward .aerovault/.aerozip file argument to frontend
-            if let Some(vault_arg) = argv
-                .iter()
-                .skip(1)
-                .find(|a| a.ends_with(".aerovault") || a.ends_with(".aerozip"))
-            {
-                if let Ok(canonical) = std::fs::canonicalize(vault_arg) {
-                    let meta = std::fs::symlink_metadata(&canonical);
-                    if meta.map(|m| m.is_file()).unwrap_or(false) {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window
-                                .emit("vault-open-file", canonical.to_string_lossy().to_string());
-                        }
-                    }
-                }
-            }
-            // Forward .aeroftp-keystore file argument to frontend so a
-            // double-clicked keystore lands on the import/key-entry screen
-            // instead of just raising the window (issue #214 pt.4a). Same
-            // canonicalize + symlink_metadata validation as .aerovault.
-            if let Some(ks_arg) = argv
-                .iter()
-                .skip(1)
-                .find(|a| a.ends_with(".aeroftp-keystore"))
-            {
-                if let Ok(canonical) = std::fs::canonicalize(ks_arg) {
-                    let meta = std::fs::symlink_metadata(&canonical);
-                    if meta.map(|m| m.is_file()).unwrap_or(false) {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.emit(
-                                "keystore-open-file",
-                                canonical.to_string_lossy().to_string(),
-                            );
-                        }
-                    }
-                }
-            }
-            // Forward a double-clicked plain .aeroftp server-profiles export
-            // so it lands on the import/password screen instead of just
-            // raising the window (issue #214 pt.4a, plain .aeroftp).
-            // ends_with(".aeroftp") does not match ".aeroftp-keystore", so
-            // there is no collision with the block above.
-            if let Some(sp_arg) = argv.iter().skip(1).find(|a| a.ends_with(".aeroftp")) {
-                if let Ok(canonical) = std::fs::canonicalize(sp_arg) {
-                    let meta = std::fs::symlink_metadata(&canonical);
-                    if meta.map(|m| m.is_file()).unwrap_or(false) {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window
-                                .emit("servers-open-file", canonical.to_string_lossy().to_string());
-                        }
-                    }
-                }
-            }
-            // Forward general compressed archive opened via the AeroFTP.Archive
-            // ProgID (Deliverable G Windows opener registration). This lets
-            // "Open with AeroFTP" (and Default Apps choice) actually surface the
-            // in-app ArchiveBrowser instead of a bare main window.
-            if let Some(arch_arg) = argv.iter().skip(1).find(|a| {
-                let lower = a.to_ascii_lowercase();
-                lower.ends_with(".zip")
-                    || lower.ends_with(".7z")
-                    || lower.ends_with(".rar")
-                    || lower.ends_with(".tar")
-                    || lower.ends_with(".tgz")
-                    || lower.ends_with(".tar.gz")
-                    || lower.ends_with(".tar.xz")
-                    || lower.ends_with(".tar.bz2")
-            }) {
-                if let Ok(canonical) = std::fs::canonicalize(arch_arg) {
-                    let meta = std::fs::symlink_metadata(&canonical);
-                    if meta.map(|m| m.is_file()).unwrap_or(false) {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window
-                                .emit("archive-open-file", canonical.to_string_lossy().to_string());
-                        }
-                    }
-                }
+            // Any openable path: an associated format, or "Open with AeroFTP" on
+            // any other file, which opens in AeroFile (#347).
+            if let Some(request) = open_request::from_argv(&argv) {
+                open_request::deliver(app, request);
             }
         }))
         .plugin(
@@ -20332,96 +20260,11 @@ pub fn run() {
                 );
             }
 
-            // Handle .aerovault/.aerozip file passed as CLI argument on first launch
-            {
-                let args: Vec<String> = std::env::args().collect();
-                if let Some(vault_arg) = args
-                    .iter()
-                    .skip(1)
-                    .find(|a| a.ends_with(".aerovault") || a.ends_with(".aerozip"))
-                {
-                    if let Ok(canonical) = std::fs::canonicalize(vault_arg) {
-                        let meta = std::fs::symlink_metadata(&canonical);
-                        if meta.map(|m| m.is_file()).unwrap_or(false) {
-                            let vault_path = canonical.to_string_lossy().to_string();
-                            let app_handle = app.handle().clone();
-                            // Emit after a short delay to ensure frontend is ready
-                            std::thread::spawn(move || {
-                                std::thread::sleep(std::time::Duration::from_millis(1500));
-                                if let Some(window) = app_handle.get_webview_window("main") {
-                                    let _ = window.emit("vault-open-file", vault_path);
-                                }
-                            });
-                        }
-                    }
-                }
-                // Same for a double-clicked .aeroftp-keystore on first launch
-                // so it routes to the keystore import/key-entry screen
-                // instead of a bare window (issue #214 pt.4a).
-                if let Some(ks_arg) = args
-                    .iter()
-                    .skip(1)
-                    .find(|a| a.ends_with(".aeroftp-keystore"))
-                {
-                    if let Ok(canonical) = std::fs::canonicalize(ks_arg) {
-                        let meta = std::fs::symlink_metadata(&canonical);
-                        if meta.map(|m| m.is_file()).unwrap_or(false) {
-                            let ks_path = canonical.to_string_lossy().to_string();
-                            let app_handle = app.handle().clone();
-                            std::thread::spawn(move || {
-                                std::thread::sleep(std::time::Duration::from_millis(1500));
-                                if let Some(window) = app_handle.get_webview_window("main") {
-                                    let _ = window.emit("keystore-open-file", ks_path);
-                                }
-                            });
-                        }
-                    }
-                }
-                // Same for a double-clicked plain .aeroftp server-profiles
-                // export on first launch so it routes to the import/password
-                // screen instead of a bare window (issue #214 pt.4a, plain
-                // .aeroftp). ends_with(".aeroftp") excludes ".aeroftp-keystore".
-                if let Some(sp_arg) = args.iter().skip(1).find(|a| a.ends_with(".aeroftp")) {
-                    if let Ok(canonical) = std::fs::canonicalize(sp_arg) {
-                        let meta = std::fs::symlink_metadata(&canonical);
-                        if meta.map(|m| m.is_file()).unwrap_or(false) {
-                            let sp_path = canonical.to_string_lossy().to_string();
-                            let app_handle = app.handle().clone();
-                            std::thread::spawn(move || {
-                                std::thread::sleep(std::time::Duration::from_millis(1500));
-                                if let Some(window) = app_handle.get_webview_window("main") {
-                                    let _ = window.emit("servers-open-file", sp_path);
-                                }
-                            });
-                        }
-                    }
-                }
-                // Same for general archive on first launch (opener registration)
-                if let Some(arch_arg) = args.iter().skip(1).find(|a| {
-                    let lower = a.to_ascii_lowercase();
-                    lower.ends_with(".zip")
-                        || lower.ends_with(".7z")
-                        || lower.ends_with(".rar")
-                        || lower.ends_with(".tar")
-                        || lower.ends_with(".tgz")
-                        || lower.ends_with(".tar.gz")
-                        || lower.ends_with(".tar.xz")
-                        || lower.ends_with(".tar.bz2")
-                }) {
-                    if let Ok(canonical) = std::fs::canonicalize(arch_arg) {
-                        let meta = std::fs::symlink_metadata(&canonical);
-                        if meta.map(|m| m.is_file()).unwrap_or(false) {
-                            let arch_path = canonical.to_string_lossy().to_string();
-                            let app_handle = app.handle().clone();
-                            std::thread::spawn(move || {
-                                std::thread::sleep(std::time::Duration::from_millis(1500));
-                                if let Some(window) = app_handle.get_webview_window("main") {
-                                    let _ = window.emit("archive-open-file", arch_path);
-                                }
-                            });
-                        }
-                    }
-                }
+            // A path passed on the first launch. The window drains the queue
+            // when its boot is done and the app is unlocked, so no delay is
+            // guessed here.
+            if let Some(request) = open_request::from_argv(&std::env::args().collect::<Vec<_>>()) {
+                open_request::deliver(app.handle(), request);
             }
 
             Ok(())
@@ -20573,6 +20416,7 @@ pub fn run() {
             // File associations panel (Deliverable G #3)
             file_associations::file_associations_status,
             file_associations::file_associations_set_integration,
+            open_request::take_open_requests,
             file_associations::file_associations_set_default,
             file_associations::file_associations_open_settings,
             ftp_read_file_base64,
@@ -21370,8 +21214,24 @@ pub fn run() {
             transfer_dag::commands::checkpoint_endpoints,
             transfer_dag::commands::checkpoint_forget_endpoint,
         ])
-        .run(tauri::tauri_build_context!())
-        .expect("error while running tauri application");
+        .build(tauri::tauri_build_context!())
+        .expect("error while building tauri application")
+        .run(|_app, _event| {
+            // macOS hands files to a running app as an open event, not argv:
+            // a Finder double-click or "Open With" lands here, cold or warm.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = &_event {
+                for url in urls {
+                    if let Some(request) = url
+                        .to_file_path()
+                        .ok()
+                        .and_then(|path| open_request::classify(&path.to_string_lossy()))
+                    {
+                        open_request::deliver(_app, request);
+                    }
+                }
+            }
+        });
 }
 
 /// Dependency targets the GUI log keeps only from WARN up: what they write at
