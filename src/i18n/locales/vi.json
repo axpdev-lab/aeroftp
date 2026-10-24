@@ -377,7 +377,24 @@
                 "fetchUrl": "Lấy URL",
                 "megacmdWebdavHint": "Tên người dùng và mật khẩu được cố ý bỏ qua. AeroFTP tự chạy \"{cmd}\" khi kết nối để khởi động cầu nối và đọc địa chỉ này: có thể để trống. \"Lấy URL\" là thao tác làm mới thủ công tùy chọn; hãy đổi cổng tại đây nếu MEGAcmd dùng cổng tùy chỉnh."
             },
-            "manualStorageUnitLabel": "Đơn vị {label}"
+            "manualStorageUnitLabel": "Đơn vị {label}",
+            "protonSwitch": {
+                "title": "Chuyển {name} sang {mode}?",
+                "intro": "CLI ghi My Files là /my-files, còn API ghi là /. Các đường dẫn đã lưu này sẽ di chuyển cùng hồ sơ:",
+                "initialPath": "Thư mục ban đầu",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "Cặp AeroCloud {name}",
+                "syncHistory": "Lịch sử đồng bộ của {folder}",
+                "pendingSync": "Đồng bộ đang chờ của {folder}",
+                "noEquivalent": "Không có tương đương ở chế độ {mode}, giữ nguyên:",
+                "legacy_one": "1 lịch sử đồng bộ được ghi trước khi lịch sử lưu hồ sơ nên không được di chuyển. Lần đồng bộ tiếp theo của các thư mục của nó sẽ so sánh mà không có lịch sử, và vì vậy không xóa gì cả.",
+                "legacy_many": "{count} lịch sử đồng bộ được ghi trước khi lịch sử lưu hồ sơ nên không được di chuyển. Lần đồng bộ tiếp theo của các thư mục của chúng sẽ so sánh mà không có lịch sử, và vì vậy không xóa gì cả.",
+                "nothing": "Không có đường dẫn đã lưu nào cần thay đổi.",
+                "confirm": "Chuyển chế độ",
+                "refused": "Chế độ chưa được chuyển",
+                "copyKeptTitle": "Đã giữ thư mục ban đầu",
+                "copyKept": "Thư mục ban đầu {path} không có tương đương trong chế độ {mode} và được giữ nguyên."
+            }
         },
         "browser": {
             "remote": "Từ xa",
@@ -6874,7 +6891,9 @@
                 "proton": {
                     "headerDescription": "Lưu trữ đám mây Proton với mã hóa đầu cuối",
                     "apiDescription": "Ứng dụng khách Proton Drive riêng của AeroFTP: bạn đăng nhập trên trang của Proton trong trình duyệt, tệp được mã hóa và giải mã trên máy tính này, và không cần ứng dụng nào khác.",
-                    "cliDescription": "Điều khiển CLI Proton Drive chính thức đã cài đặt và đăng nhập trên máy này. Bạn đăng nhập trong trình duyệt; AeroFTP không bao giờ thấy mật khẩu Proton của bạn."
+                    "cliDescription": "Điều khiển CLI Proton Drive chính thức đã cài đặt và đăng nhập trên máy này. Bạn đăng nhập trong trình duyệt; AeroFTP không bao giờ thấy mật khẩu Proton của bạn.",
+                    "apiPaths": "Đường dẫn bắt đầu trong My Files: My Files là /.",
+                    "cliPaths": "Đường dẫn tuyệt đối bắt đầu từ các mục: My Files là /my-files, nơi phiên được mở."
                 },
                 "opendrive": {
                     "headerDescription": "Lưu trữ đám mây OpenDrive (5 GB miễn phí)",

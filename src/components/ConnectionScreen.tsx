@@ -9,6 +9,8 @@
 import { presetConnectionOptions, connectionProfileDefaults } from '../providers/connectionManifest';
 import React, { useState, useEffect, useRef, useMemo, useId } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { ProtonModeSwitchDialog } from './ProtonModeSwitchDialog';
+import { protonModeOf, runProtonModeSwitch, type ProtonSwitchPlan } from '../utils/protonModeSwitch';
 import { pickFile, pickSave } from '../utils/pickPath';
 import { FolderOpen, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft, RefreshCw, Usb } from 'lucide-react';
 import { ConnectionParams, ProviderType, ProviderOptions, DeviceFingerprint, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, providerServesQuota, providerSupportsCryptOverlay, ServerProfile } from '../types';
@@ -603,6 +605,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     }, [savedServersUpdate, serversRefreshKey]);
     const [securityInfoOpen, setSecurityInfoOpen] = useState(false);
     const [gitHubAlert, setGitHubAlert] = useState<{ title: string; message: string; type: 'warning' | 'error' | 'info' } | null>(null);
+    // Requested 79: the confirmation of a Proton Drive switch between the API
+    // and the CLI, answered by the dialog below.
+    const [protonSwitchPrompt, setProtonSwitchPrompt] = useState<{
+        name: string;
+        plan: ProtonSwitchPlan;
+        resolve: (confirmed: boolean) => void;
+    } | null>(null);
     const [gitHubDeviceFlow, setGitHubDeviceFlow] = useState<{ userCode: string; verificationUri: string; deviceCode: string; interval: number } | null>(null);
     const [gitHubDeviceFlowLoading, setGitHubDeviceFlowLoading] = useState(false);
     const [gitHubPemLoading, setGitHubPemLoading] = useState(false);
@@ -1350,6 +1359,33 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 setGitHubAlert({ title: t('toast.saveFailed'), message: t('toast.serverNotFound'), type: 'error' });
                 return;
             }
+            // Requested 79: a Proton Drive profile switched between the API and
+            // the CLI moves its saved paths to the other spelling of My Files.
+            // The plan is confirmed before anything is written; a cancel saves
+            // nothing and leaves the profile in its mode.
+            let protonInitialPath: string | undefined;
+            const storedProfile = existingServers.find((s) => s.id === editingProfileId);
+            if (protocol === 'proton' && storedProfile?.protocol === 'proton') {
+                const switched = await runProtonModeSwitch({
+                    invoke,
+                    confirm: (plan) => new Promise<boolean>((resolve) => {
+                        setProtonSwitchPrompt({ name: storedProfile.name, plan, resolve });
+                    }),
+                    profileId: editingProfileId,
+                    storedOptions: storedProfile.options,
+                    storedInitialPath: storedProfile.initialPath,
+                    formOptions: optionsToSave,
+                    formInitialPath: quickConnectDirs.remoteDir,
+                });
+                if (switched.kind === 'stop') {
+                    const reasons = switched.blockers ?? (switched.error ? [switched.error] : []);
+                    if (reasons.length > 0) {
+                        setGitHubAlert({ title: t('connection.protonSwitch.refused'), message: reasons.join('\n'), type: 'error' });
+                    }
+                    return;
+                }
+                if (switched.kind === 'switched') protonInitialPath = switched.initialPath;
+            }
             const credentialStored = await tryStoreCredential(`server_${editingProfileId}`, connectionParams.password, credentials.write);
             const prevProfile = existingServers.find((s) => s.id === editingProfileId);
             const filenKeyStored = await stashFilenApiKey(editingProfileId, optionsToSave, prevProfile?.hasStoredFilenApiKey, credentials.write);
@@ -1397,7 +1433,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         hasStoredFilenApiKey: filenKeyStored,
                         protocol: protocol as ProviderType,
                         options: protocol === 'mtp' ? undefined : optionsToSave,
-                        initialPath: quickConnectDirs.remoteDir,
+                        initialPath: protonInitialPath ?? quickConnectDirs.remoteDir,
                         localInitialPath: quickConnectDirs.localDir,
                         persistModeCredentials: protocol === 'mtp' ? false : (persistModeCredentials && inModeGroup),
                         // Swift decides its id from the auth URL and nothing
@@ -1884,6 +1920,28 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             delete optionsToSave.roleMfaTokenCode;
         }
 
+        // Requested 79: a copy into the other Proton Drive client keeps the
+        // same folder in that client's spelling of My Files. A folder with no
+        // equivalent there is kept as it is, and the editor says so.
+        let copyInitialPath = quickConnectDirs.remoteDir;
+        if (protocol === 'proton' && originalServer?.protocol === 'proton') {
+            const from = protonModeOf(originalServer.options);
+            const to = protonModeOf(optionsToSave);
+            if (from !== to && copyInitialPath === (originalServer.initialPath ?? '')) {
+                const translated = await invoke<string | null>('proton_translate_path', { path: copyInitialPath, from, to })
+                    .catch(() => copyInitialPath);
+                if (translated === null) {
+                    setGitHubAlert({
+                        title: t('connection.protonSwitch.copyKeptTitle'),
+                        message: t('connection.protonSwitch.copyKept', { path: copyInitialPath, mode: to === 'native' ? 'API' : 'CLI' }),
+                        type: 'info',
+                    });
+                } else {
+                    copyInitialPath = translated;
+                }
+            }
+        }
+
         const newId = `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
         const credentialStored = await tryStoreCredential(`server_${newId}`, connectionParams.password, credentials.write);
         const filenKeyStored = await stashFilenApiKey(newId, optionsToSave, undefined, credentials.write);
@@ -1906,7 +1964,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             hasStoredCredential: credentialStored,
             hasStoredFilenApiKey: filenKeyStored,
             protocol: protocol as ProviderType,
-            initialPath: quickConnectDirs.remoteDir,
+            initialPath: copyInitialPath,
             localInitialPath: quickConnectDirs.localDir,
             options: optionsToSave,
             providerId: selectedProviderId || undefined,
@@ -6407,6 +6465,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 {/* Skip to File Manager: accessible via status bar AeroFile button */}
             </div> {/* Close form wrapper */}
 
+            {active && protonSwitchPrompt && (
+                <ProtonModeSwitchDialog
+                    profileName={protonSwitchPrompt.name}
+                    plan={protonSwitchPrompt.plan}
+                    onConfirm={() => { protonSwitchPrompt.resolve(true); setProtonSwitchPrompt(null); }}
+                    onCancel={() => { protonSwitchPrompt.resolve(false); setProtonSwitchPrompt(null); }}
+                />
+            )}
             {active && gitHubAlert && (
                 <AlertDialog
                     title={gitHubAlert.title}

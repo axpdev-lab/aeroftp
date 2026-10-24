@@ -377,7 +377,24 @@
                 "fetchUrl": "Gauti URL",
                 "megacmdWebdavHint": "Naudotojo vardas ir slaptažodis praleisti tyčia. Jungiantis AeroFTP pats paleidžia „{cmd}“, kad paleistų tiltą ir nuskaitytų šį adresą: lauką galima palikti tuščią. „Gauti URL“ yra pasirenkamas rankinis atnaujinimas; pakeiskite prievadą čia, jei MEGAcmd naudoja pasirinktinį."
             },
-            "manualStorageUnitLabel": "{label} vienetas"
+            "manualStorageUnitLabel": "{label} vienetas",
+            "protonSwitch": {
+                "title": "Perjungti {name} į {mode}?",
+                "intro": "CLI rašo My Files kaip /my-files, API kaip /. Šie išsaugoti keliai keliauja kartu su profiliu:",
+                "initialPath": "Pradinis aplankas",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "AeroCloud pora {name}",
+                "syncHistory": "{folder} sinchronizavimo istorija",
+                "pendingSync": "Laukiantis {folder} sinchronizavimas",
+                "noEquivalent": "{mode} režime atitikmens nėra, paliekama kaip yra:",
+                "legacy_one": "1 sinchronizavimo istorija buvo įrašyta prieš istorijoms pradedant registruoti profilį ir nėra perkeliama. Kitas jos aplankų sinchronizavimas lygina be istorijos ir dėl to nieko neištrina.",
+                "legacy_many": "Sinchronizavimo istorijos ({count}) buvo įrašytos prieš istorijoms pradedant registruoti profilį ir nėra perkeliamos. Kitas jų aplankų sinchronizavimas lygina be istorijos ir dėl to nieko neištrina.",
+                "nothing": "Jokio išsaugoto kelio keisti nereikia.",
+                "confirm": "Perjungti režimą",
+                "refused": "Režimas nebuvo perjungtas",
+                "copyKeptTitle": "Pradinis aplankas išlaikytas",
+                "copyKept": "Pradinis aplankas {path} neturi atitikmens {mode} režime ir buvo paliktas toks, koks yra."
+            }
         },
         "browser": {
             "remote": "Nuotolinis",
@@ -6874,7 +6891,9 @@
                 "proton": {
                     "headerDescription": "Proton debesų saugykla su ištisiniu šifravimu",
                     "apiDescription": "AeroFTP nuosavas Proton Drive klientas: prisijungiate Proton puslapyje naršyklėje, failai šifruojami ir iššifruojami šiame kompiuteryje, ir jokios kitos programos nereikia.",
-                    "cliDescription": "Valdo oficialų Proton Drive CLI, įdiegtą ir prisijungusį šiame kompiuteryje. Prisijungiate naršyklėje; AeroFTP niekada nemato jūsų Proton slaptažodžio."
+                    "cliDescription": "Valdo oficialų Proton Drive CLI, įdiegtą ir prisijungusį šiame kompiuteryje. Prisijungiate naršyklėje; AeroFTP niekada nemato jūsų Proton slaptažodžio.",
+                    "apiPaths": "Keliai prasideda aplanke My Files: My Files yra /.",
+                    "cliPaths": "Absoliutūs keliai prasideda nuo skyrių: My Files yra /my-files, kur atsidaro seansas."
                 },
                 "opendrive": {
                     "headerDescription": "OpenDrive debesų saugykla (5 GB nemokamai)",

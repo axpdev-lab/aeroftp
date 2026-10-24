@@ -377,7 +377,24 @@
                 "fetchUrl": "Eskuratu URLa",
                 "megacmdWebdavHint": "Erabiltzaile-izena eta pasahitza nahita kendu dira. AeroFTPk berak exekutatzen du \"{cmd}\" konektatzean, zubia abiarazteko eta helbide hau irakurtzeko: hutsik utz dezakezu. \"Eskuratu URLa\" aukerako eskuzko freskatze bat da; aldatu ataka hemen MEGAcmd-ek ataka pertsonalizatu bat erabiltzen badu."
             },
-            "manualStorageUnitLabel": "{label} unitatea"
+            "manualStorageUnitLabel": "{label} unitatea",
+            "protonSwitch": {
+                "title": "{name} {mode} modura aldatu?",
+                "intro": "CLIak My Files /my-files gisa idazten du, eta APIak / gisa. Gordetako bide hauek profilarekin batera mugitzen dira:",
+                "initialPath": "Hasierako karpeta",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "AeroCloud bikotea {name}",
+                "syncHistory": "{folder} karpetaren sinkronizazio-historia",
+                "pendingSync": "{folder} karpetaren zain dagoen sinkronizazioa",
+                "noEquivalent": "Ez dago baliokiderik {mode} moduan, dagoen bezala mantentzen da:",
+                "legacy_one": "1 sinkronizazio-historia historiek profila erregistratu aurretik idatzi zen, eta ez da lekuz aldatzen. Haren karpeten hurrengo sinkronizazioak historiarik gabe konparatzen du, eta horregatik ez du ezer ezabatzen.",
+                "legacy_many": "{count} sinkronizazio-historia historiek profila erregistratu aurretik idatzi ziren, eta ez dira lekuz aldatzen. Haien karpeten hurrengo sinkronizazioak historiarik gabe konparatzen du, eta horregatik ez du ezer ezabatzen.",
+                "nothing": "Ez da gordetako bide-izenik aldatu behar.",
+                "confirm": "Aldatu modua",
+                "refused": "Ez da modua aldatu",
+                "copyKeptTitle": "Hasierako karpeta mantendu da",
+                "copyKept": "{path} hasierako karpetak ez du baliokiderik {mode} moduan, eta dagoen bezala mantendu da."
+            }
         },
         "browser": {
             "remote": "Urrunekoa",
@@ -6893,7 +6910,9 @@
                 "proton": {
                     "headerDescription": "Proton hodeiko biltegiratzea muturretik muturrerako zifratzearekin",
                     "apiDescription": "AeroFTPren Proton Drive bezero propioa: saioa nabigatzailean hasten duzu Protonen orrian, fitxategiak ordenagailu honetan zifratu eta deszifratzen dira, eta ez da beste aplikaziorik behar.",
-                    "cliDescription": "Makina honetan instalatuta eta saioa hasita dagoen Proton Drive CLI ofiziala gidatzen du. Saioa nabigatzailean hasten duzu; AeroFTPk ez du inoiz zure Proton pasahitza ikusten."
+                    "cliDescription": "Makina honetan instalatuta eta saioa hasita dagoen Proton Drive CLI ofiziala gidatzen du. Saioa nabigatzailean hasten duzu; AeroFTPk ez du inoiz zure Proton pasahitza ikusten.",
+                    "apiPaths": "Bide-izenak My Files karpetan hasten dira: My Files / da.",
+                    "cliPaths": "Bide-izen absolutuak ataletatik hasten dira: My Files /my-files da, saioa irekitzen den lekua."
                 },
                 "opendrive": {
                     "headerDescription": "OpenDrive hodeiko biltegiratzea (5 GB doan)",

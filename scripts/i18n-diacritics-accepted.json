@@ -522,6 +522,13 @@
       "folded": "kopier",
       "twin": "kopiér",
       "reason": "kopier is the plural noun (copies) after a count; kopiér is the imperative of the verb kopiere, used on Copy buttons."
+    },
+    "es\u001fconnection.protonSwitch.intro\u001fLa CLI escribe My Files como /my-files y la API como /. Estas rutas guardadas se mueven con el perfil:": {
+      "locale": "es",
+      "key": "connection.protonSwitch.intro",
+      "folded": "estas",
+      "twin": "estás",
+      "reason": "Estas is the demonstrative (these saved paths); estás is the verb (you are), which this sentence does not use."
     }
   }
 }

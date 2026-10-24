@@ -1793,8 +1793,8 @@ enum Commands {
         /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
-        /// Remote path (default: /)
-        #[arg(default_value = "/")]
+        /// Remote path (default: where the profile starts; `/` is the root)
+        #[arg(default_value = "", hide_default_value = true)]
         path: String,
         /// Long listing format (permissions, size, date)
         #[arg(short, long)]
@@ -2138,8 +2138,8 @@ enum Commands {
         /// Local directory
         #[arg(default_value = ".")]
         local: String,
-        /// Remote directory
-        #[arg(default_value = "/")]
+        /// Remote directory (default: where the profile starts; `/` is the root)
+        #[arg(default_value = "", hide_default_value = true)]
         remote: String,
         /// Use checksums instead of size/mtime
         #[arg(long)]
@@ -2156,8 +2156,8 @@ enum Commands {
         /// Local directory
         #[arg(default_value = ".")]
         local: String,
-        /// Remote directory
-        #[arg(default_value = "/")]
+        /// Remote directory (default: where the profile starts; `/` is the root)
+        #[arg(default_value = "", hide_default_value = true)]
         remote: String,
         /// Password for rclone crypt (can also be passed via AEROFTP_RCLONE_CRYPT_PASSWORD)
         #[arg(long, env = "AEROFTP_RCLONE_CRYPT_PASSWORD", hide_env_values = true)]
@@ -2197,8 +2197,8 @@ enum Commands {
         /// Local directory
         #[arg(default_value = ".")]
         local: String,
-        /// Remote directory
-        #[arg(default_value = "/")]
+        /// Remote directory (default: where the profile starts; `/` is the root)
+        #[arg(default_value = "", hide_default_value = true)]
         remote: String,
         /// Use checksums instead of size-only comparison where available
         #[arg(long)]
@@ -2282,8 +2282,8 @@ enum Commands {
         /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
-        /// Remote path (default: /)
-        #[arg(default_value = "/")]
+        /// Remote path (default: where the profile starts; `/` is the root)
+        #[arg(default_value = "", hide_default_value = true)]
         path: String,
     },
     /// Long listing: permissions, size, date, name (rclone-style `lsl`)
@@ -2291,8 +2291,8 @@ enum Commands {
         /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
-        /// Remote path (default: /)
-        #[arg(default_value = "/")]
+        /// Remote path (default: where the profile starts; `/` is the root)
+        #[arg(default_value = "", hide_default_value = true)]
         path: String,
     },
     /// Flat machine-parsable listing, one entry per line (rclone-style `lsf`)
@@ -2300,8 +2300,8 @@ enum Commands {
         /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
-        /// Remote path (default: /)
-        #[arg(default_value = "/")]
+        /// Remote path (default: where the profile starts; `/` is the root)
+        #[arg(default_value = "", hide_default_value = true)]
         path: String,
     },
     /// Machine-readable JSON listing with a stable record schema
@@ -2309,8 +2309,8 @@ enum Commands {
         /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
-        /// Remote path (default: /)
-        #[arg(default_value = "/")]
+        /// Remote path (default: where the profile starts; `/` is the root)
+        #[arg(default_value = "", hide_default_value = true)]
         path: String,
         /// Recurse into subdirectories
         #[arg(short = 'R', long)]
@@ -2386,8 +2386,8 @@ enum Commands {
         /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
-        /// Remote path to prune (default: /)
-        #[arg(default_value = "/")]
+        /// Remote path to prune (default: where the profile starts; `/` is the root)
+        #[arg(default_value = "", hide_default_value = true)]
         path: String,
         /// Actually remove the empty directories (default: dry-run)
         #[arg(long)]
@@ -2629,8 +2629,8 @@ enum Commands {
         /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
-        /// Remote path to scan (default: /)
-        #[arg(default_value = "/")]
+        /// Remote path to scan (default: where the profile starts; `/` is the root)
+        #[arg(default_value = "", hide_default_value = true)]
         path: String,
         /// Actually delete orphaned files (default: dry-run listing)
         #[arg(long)]
@@ -2646,8 +2646,8 @@ enum Commands {
         /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
-        /// Remote path to scan
-        #[arg(default_value = "/")]
+        /// Remote path to scan (default: where the profile starts; `/` is the root)
+        #[arg(default_value = "", hide_default_value = true)]
         path: String,
         /// Resolution mode: skip, delete, newest, oldest, largest, smallest, rename, interactive, list
         #[arg(long, default_value = "skip")]
@@ -2680,8 +2680,8 @@ enum Commands {
         /// Local directory path
         #[arg(default_value = ".")]
         local: String,
-        /// Remote directory path
-        #[arg(default_value = "/")]
+        /// Remote directory path (default: where the profile starts; `/` is the root)
+        #[arg(default_value = "", hide_default_value = true)]
         remote: String,
         /// Sync direction: upload, download, both
         #[arg(long, default_value = "both")]
@@ -2813,8 +2813,8 @@ enum Commands {
         /// Local directory path
         #[arg(default_value = ".")]
         local: String,
-        /// Remote directory path
-        #[arg(default_value = "/")]
+        /// Remote directory path (default: where the profile starts; `/` is the root)
+        #[arg(default_value = "", hide_default_value = true)]
         remote: String,
         /// Sync direction: upload, download, both
         #[arg(long, default_value = "both")]
@@ -2859,8 +2859,8 @@ enum Commands {
         /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
-        /// Remote path (default: /)
-        #[arg(default_value = "/")]
+        /// Remote path (default: where the profile starts; `/` is the root)
+        #[arg(default_value = "", hide_default_value = true)]
         path: String,
         /// Maximum depth to descend.
         // The field is named `depth` (not `max_depth`) to avoid colliding
@@ -2875,8 +2875,8 @@ enum Commands {
         /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
-        /// Remote path to scan (default: /)
-        #[arg(default_value = "/")]
+        /// Remote path to scan (default: where the profile starts; `/` is the root)
+        #[arg(default_value = "", hide_default_value = true)]
         path: String,
         /// Maximum scan depth (default: 50). See `Tree::depth` note: the
         /// field name must differ from the global `--max-depth` flag.
@@ -3500,12 +3500,18 @@ enum Commands {
     /// new profile in the target mode and INSERTS IT RIGHT AFTER the
     /// source. The source profile is preserved. Mode label values:
     /// `api` (native REST), `webdav`, `s3`, `ftp` (FileLu only).
+    ///
+    /// Proton Drive takes `native` (AeroFTP's client) or `cli` (the official
+    /// `proton-drive` CLI). The copy's initial folder is translated between
+    /// the two spellings of My Files (`/my-files/...` on the CLI, `/...`
+    /// natively); a folder in another section has no native equivalent and
+    /// is kept as it is, reported.
     ProfileDuplicateMode {
         /// Source profile selector (index, name, or id).
         #[arg(value_name = "SELECTOR")]
         selector: String,
         /// Target mode within the same provider group: `api`, `webdav`,
-        /// `s3`, `ftp`.
+        /// `s3`, `ftp`; `native` or `cli` for Proton Drive.
         #[arg(long, value_name = "MODE")]
         mode: String,
         /// Optional display name for the new profile.
@@ -3537,12 +3543,19 @@ enum Commands {
     /// keeping the slot index. Equivalent to the GUI's "Convert to ..."
     /// orange button. Requires `--yes` to skip confirmation; otherwise
     /// prompts on stderr when stdin is a TTY.
+    ///
+    /// Proton Drive (`native`, `cli`) is switched in place instead: the
+    /// profile, its id and what is bound to it stay, and every path saved for
+    /// it moves to the other spelling of My Files (initial folder, AeroCloud
+    /// folders, sync histories). The prompt lists them first. Refused while
+    /// AeroCloud syncs with the profile or a sync of one of its folders is
+    /// pending.
     ProfileConvertMode {
         /// Source profile selector (index, name, or id).
         #[arg(value_name = "SELECTOR")]
         selector: String,
         /// Target mode within the same provider group: `api`, `webdav`,
-        /// `s3`, `ftp`.
+        /// `s3`, `ftp`; `native` or `cli` for Proton Drive.
         #[arg(long, value_name = "MODE")]
         mode: String,
         /// Optional display name for the converted profile. Defaults to
@@ -9576,6 +9589,95 @@ static MEGACMD_WARMUP_NOTICE_PRINTED: AtomicBool = AtomicBool::new(false);
 /// see as JSON corruption. Surfaced by the 4-Sonnet agent
 /// friendliness audit (2026-04-26, all 4 batteries flagged this).
 static JSON_MODE: AtomicBool = AtomicBool::new(false);
+
+/// The base a command resolves remote paths against, with the rule of the
+/// provider it was connected to. On Proton Drive a command given no path goes
+/// to the provider's start folder (My Files) while a `/` it is given stays the
+/// root, where the CLI mode lists the account's sections (Requested 79); in
+/// native mode both are My Files. Every other provider sends both to its own
+/// start folder, as before. The rule travels with each connection, so two
+/// connections in one process (`transfer`, a batch, the TUI) never share it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CliBase {
+    path: String,
+    /// Proton Drive's start folder; `None` for every other provider.
+    start_folder: Option<String>,
+}
+
+impl CliBase {
+    fn with_start_folder(path: impl Into<String>, start_folder: Option<String>) -> Self {
+        Self {
+            path: path.into(),
+            start_folder,
+        }
+    }
+
+    /// The base of a connected provider: Proton Drive's start folder is where
+    /// its session stands right after connecting.
+    async fn for_provider(path: impl Into<String>, provider: &mut dyn StorageProvider) -> Self {
+        let start_folder = if provider.provider_type() == ProviderType::Proton {
+            Some(provider.pwd().await.unwrap_or_else(|_| "/".to_string()))
+        } else {
+            None
+        };
+        Self::with_start_folder(path, start_folder)
+    }
+}
+
+impl std::ops::Deref for CliBase {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.path
+    }
+}
+
+impl std::fmt::Display for CliBase {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.path)
+    }
+}
+
+impl PartialEq<&str> for CliBase {
+    fn eq(&self, other: &&str) -> bool {
+        self.path == *other
+    }
+}
+
+impl From<CliBase> for String {
+    fn from(base: CliBase) -> Self {
+        base.path
+    }
+}
+
+/// What the resolver reads from a base: its path and, on Proton Drive, its
+/// start folder. A plain string carries the rule of every other provider.
+trait RemoteBase {
+    fn base_path(&self) -> &str;
+    fn start_folder(&self) -> Option<&str> {
+        None
+    }
+}
+
+impl RemoteBase for str {
+    fn base_path(&self) -> &str {
+        self
+    }
+}
+
+impl RemoteBase for String {
+    fn base_path(&self) -> &str {
+        self
+    }
+}
+
+impl RemoteBase for CliBase {
+    fn base_path(&self) -> &str {
+        &self.path
+    }
+    fn start_folder(&self) -> Option<&str> {
+        self.start_folder.as_deref()
+    }
+}
 
 fn print_profile_banner_once(name: &str, details: String, quiet: bool) {
     if quiet || JSON_MODE.load(Ordering::Relaxed) {
@@ -18002,6 +18104,237 @@ fn compare_profiles(
     }
 }
 
+/// The base `pwd` reports, the folder the root resolves to, and the
+/// provider's start folder when it is known without connecting and is not the
+/// root: Proton Drive in CLI mode starts in My Files while `/` lists the
+/// sections (Requested 79), so a relative path lands in the first and `ls /`
+/// in the second.
+fn pwd_root(profile: &serde_json::Value) -> (&str, String, Option<&'static str>) {
+    let base = profile
+        .get("initialPath")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("/");
+    // The same resolver the transfer commands use, so this cannot drift from
+    // what a real path would do: asked for the root, it returns the base.
+    //
+    // With the note suppressed, because here it would be the noise this command
+    // exists to replace: "Note: path '/' resolved to ..." is how you had to
+    // learn the base before, as a side effect of doing something else, and
+    // printing it next to the answer would just say the same thing twice.
+    let start = ftp_client_gui_lib::proton_mode_switch::default_remote_base(profile);
+    let root = resolve_cli_remote_path_in(base, "/", false, (start != "/").then_some(start));
+    // With no base, the provider's own start folder answers a relative path.
+    // That of Proton Drive in CLI mode is My Files, known without connecting;
+    // the base stays "/" so that `/` and the other sections stay reachable.
+    let start_folder = (base == "/" && start != "/").then_some(start);
+    (base, root, start_folder)
+}
+
+#[cfg(test)]
+mod pwd_root_tests {
+    use super::pwd_root;
+    use serde_json::json;
+
+    #[test]
+    fn a_proton_cli_profile_without_a_base_starts_in_my_files() {
+        // The root stays the sections; relative paths start in My Files.
+        assert_eq!(
+            pwd_root(&json!({"protocol": "proton"})),
+            ("/", "/".to_string(), Some("/my-files"))
+        );
+        assert_eq!(
+            pwd_root(&json!({"protocol": "proton", "options": {"proton_mode": "native"}})),
+            ("/", String::new(), None)
+        );
+        assert_eq!(
+            pwd_root(&json!({"protocol": "sftp"})),
+            ("/", String::new(), None)
+        );
+        // A saved folder is still the answer.
+        assert_eq!(
+            pwd_root(&json!({"protocol": "proton", "initialPath": "/my-files/docs"})),
+            ("/my-files/docs", "/my-files/docs".to_string(), None)
+        );
+    }
+
+    /// The root rule belongs to each connection: a Proton Drive base and an
+    /// SFTP base made in the same process (as `transfer` does) each send a bare
+    /// `/` to its own place, in either order. A rule kept per process gave the
+    /// second connection the first one's.
+    #[test]
+    fn two_connections_keep_their_own_root_rule() {
+        use super::{resolve_cli_remote_path, CliBase};
+        let proton = CliBase::with_start_folder("/", Some("/my-files".to_string()));
+        let sftp = CliBase::with_start_folder("/", None);
+        assert_eq!(resolve_cli_remote_path(&proton, "/"), "/");
+        assert_eq!(resolve_cli_remote_path(&sftp, "/"), "");
+        assert_eq!(resolve_cli_remote_path(&proton, "/"), "/");
+        // A plain string base keeps the rule of every other provider.
+        assert_eq!(resolve_cli_remote_path("/", "/"), "");
+        assert_eq!(resolve_cli_remote_path(&proton, "docs"), "docs");
+        // No path: Proton's start folder, the other provider's own default.
+        assert_eq!(resolve_cli_remote_path(&proton, ""), "/my-files");
+        assert_eq!(resolve_cli_remote_path(&sftp, ""), "");
+    }
+
+    /// The TUI keeps its base as a plain string; the base it rebuilds from its
+    /// Proton Drive session keeps a bare `/` as the root, so the TUI's `/`
+    /// lists the sections and its children are looked up there, not in My
+    /// Files under a section's name.
+    #[tokio::test]
+    async fn the_tui_base_keeps_the_proton_root_rule() {
+        use super::cli_tui;
+        use ftp_client_gui_lib::providers::proton::{
+            ProtonCliProvider, ProtonConfig, ProtonConnectionMode,
+        };
+        let identity = cli_tui::session::TuiSessionIdentity {
+            user_name: "u".to_string(),
+            profile_selector: "p".to_string(),
+            profile_name: "p".to_string(),
+            protocol: "proton".to_string(),
+            host: "drive.proton.me".to_string(),
+        };
+        let provider = ProtonCliProvider::new(ProtonConfig {
+            display_name: "t".into(),
+            binary_path: None,
+            connection_mode: ProtonConnectionMode::Cli,
+            profile_id: None,
+            username: None,
+        });
+        let mut session = cli_tui::session::TuiSession::new(Box::new(provider), identity, "/");
+        let base = super::tui_base(&mut session).await;
+        assert_eq!(super::resolve_cli_remote_path(&base, "/"), "/");
+        assert_eq!(super::resolve_cli_remote_path(&base, ""), "/my-files");
+        assert_eq!(
+            super::resolve_cli_remote_path(&base, "/my-files/docs"),
+            "/my-files/docs"
+        );
+    }
+
+    /// Live on 2026-10-23 `ls --profile <proton cli> /` listed My Files: a bare
+    /// `/` went to the provider's start folder, as it does for every provider.
+    /// On Proton Drive it stays the root, where the sections are.
+    #[test]
+    fn a_bare_root_reaches_the_sections_on_proton() {
+        use super::resolve_cli_remote_path_in as resolve;
+        let proton = Some("/my-files");
+        assert_eq!(resolve("/", "/", false, proton), "/");
+        assert_eq!(resolve("", "//", false, proton), "/");
+        assert_eq!(resolve("/", "", false, proton), "/my-files");
+        assert_eq!(resolve("/", "docs", false, proton), "docs");
+        assert_eq!(resolve("/", "/devices", false, proton), "/devices");
+        // A saved folder still wins over the start folder.
+        assert_eq!(
+            resolve("/my-files/docs", "", false, proton),
+            "/my-files/docs"
+        );
+        // Every other provider sends "" and a bare `/` to its own start folder.
+        assert_eq!(resolve("/", "/", false, None), "");
+        assert_eq!(resolve("/", "", false, None), "");
+    }
+}
+
+/// Requested 79, the owner's choice C: the listing, tree and compare commands
+/// default their remote path to the profile's start folder instead of `/`, so
+/// on Proton Drive in CLI mode a command given no path works in My Files while
+/// a `/` it is given stays the root, where the sections are. For every other
+/// provider an empty path and `/` go to the same place, as before.
+#[cfg(test)]
+mod start_folder_default_tests {
+    use super::{resolve_cli_remote_path, Cli, CliBase, Commands};
+    use clap::Parser;
+
+    /// Runs `check` on a thread with room for clap's parse of the whole CLI,
+    /// which overflows a test thread's default stack in a debug build.
+    fn on_big_stack(check: impl FnOnce() + Send + 'static) {
+        let run = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(check)
+            .expect("test thread");
+        if let Err(panic) = run.join() {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
+    /// The remote path `args` gives its command, as clap parses it.
+    fn remote_arg(args: &[&str]) -> String {
+        let cli = Cli::try_parse_from(args).unwrap_or_else(|e| panic!("{args:?}: {e}"));
+        match cli.command {
+            Commands::Ls { path, .. }
+            | Commands::Lsd { path, .. }
+            | Commands::Lsl { path, .. }
+            | Commands::Lsf { path, .. }
+            | Commands::Lsjson { path, .. }
+            | Commands::Tree { path, .. }
+            | Commands::Ncdu { path, .. }
+            | Commands::Rmdirs { path, .. }
+            | Commands::Cleanup { path, .. }
+            | Commands::Dedupe { path, .. } => path,
+            Commands::Check { remote, .. }
+            | Commands::Cryptcheck { remote, .. }
+            | Commands::Reconcile { remote, .. }
+            | Commands::Sync { remote, .. }
+            | Commands::SyncDoctor { remote, .. } => remote,
+            _ => panic!("{args:?} is not one of the commands under test"),
+        }
+    }
+
+    /// Where `args` lands, given no remote path and given `/`, on a Proton
+    /// Drive CLI-mode connection and on any other one.
+    fn lands(command: &[&str]) {
+        let proton = CliBase::with_start_folder("/", Some("/my-files".to_string()));
+        let other = CliBase::with_start_folder("/", None);
+        let omitted = remote_arg(command);
+        assert_eq!(omitted, "", "{command:?} default");
+        let mut with_root = command.to_vec();
+        with_root.push("/");
+        let root = remote_arg(&with_root);
+        assert_eq!(
+            resolve_cli_remote_path(&proton, &omitted),
+            "/my-files",
+            "{command:?}"
+        );
+        assert_eq!(
+            resolve_cli_remote_path(&proton, &root),
+            "/",
+            "{command:?} /"
+        );
+        assert_eq!(
+            resolve_cli_remote_path(&other, &omitted),
+            resolve_cli_remote_path(&other, &root),
+            "{command:?}: another provider takes no path and / alike"
+        );
+    }
+
+    #[test]
+    fn listing_commands_default_to_the_start_folder() {
+        on_big_stack(|| {
+            for name in ["ls", "lsd", "lsl", "lsf", "lsjson"] {
+                lands(&["aeroftp-cli", name, "_"]);
+            }
+        });
+    }
+
+    #[test]
+    fn tree_and_scan_commands_default_to_the_start_folder() {
+        on_big_stack(|| {
+            for name in ["tree", "ncdu", "rmdirs", "cleanup", "dedupe"] {
+                lands(&["aeroftp-cli", name, "_"]);
+            }
+        });
+    }
+
+    #[test]
+    fn compare_and_sync_commands_default_to_the_start_folder() {
+        on_big_stack(|| {
+            for name in ["check", "cryptcheck", "reconcile", "sync", "sync-doctor"] {
+                lands(&["aeroftp-cli", name, "_", "./local"]);
+            }
+        });
+    }
+}
+
 /// `pwd`: the profile's base path, answered without a connection.
 ///
 /// The base is what `resolve_cli_remote_path` joins every relative path onto,
@@ -18043,19 +18376,7 @@ fn cmd_pwd(cli: &Cli, selector: Option<&str>, format: OutputFormat) -> i32 {
     };
     let profile = &profiles[idx];
     let field = |k: &str| profile.get(k).and_then(|v| v.as_str()).unwrap_or("");
-    let base = profile
-        .get("initialPath")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .unwrap_or("/");
-    // The same resolver the transfer commands use, so this cannot drift from
-    // what a real path would do: asked for the root, it returns the base.
-    //
-    // With the note suppressed, because here it would be the noise this command
-    // exists to replace: "Note: path '/' resolved to ..." is how you had to
-    // learn the base before, as a side effect of doing something else, and
-    // printing it next to the answer would just say the same thing twice.
-    let root = resolve_cli_remote_path_unchecked_with_note(base, "/", false);
+    let (base, root, start_folder) = pwd_root(profile);
 
     match format {
         OutputFormat::Json => {
@@ -18066,10 +18387,14 @@ fn cmd_pwd(cli: &Cli, selector: Option<&str>, format: OutputFormat) -> i32 {
                 "host": field("host"),
                 "base": base,
                 "resolved_root": root,
+                // Where a relative path or a command given no path lands,
+                // when that is not the root (null otherwise).
+                "start_folder": start_folder,
             }));
         }
         OutputFormat::Text => {
-            println!("{}", root);
+            // The folder a relative path resolves against.
+            println!("{}", start_folder.unwrap_or(&root));
             if !cli.quiet {
                 eprintln!(
                     "profile: {} ({}), base: {}",
@@ -18479,12 +18804,21 @@ async fn create_tui_session_via_cli_factory(
         .map_err(|code| format!("connect failed with exit code {}", code))
 }
 
+/// The TUI session's base with its provider's root rule (see [`CliBase`]):
+/// the session keeps the base as a plain string, and on Proton Drive in CLI
+/// mode a bare `/` must stay the root, or the TUI's `/` would show My Files
+/// and its children would be looked up outside it.
+async fn tui_base(session: &mut cli_tui::session::TuiSession) -> CliBase {
+    let path = session.initial_path().to_string();
+    CliBase::for_provider(path, session.provider_mut()).await
+}
+
 async fn list_tui_session_via_cli_handler(
     cli: &Cli,
     session: &mut cli_tui::session::TuiSession,
     path: &str,
 ) -> Result<(String, cli_tui::worker::TuiListResult), String> {
-    let initial_path = session.initial_path().to_string();
+    let initial_path = tui_base(session).await;
     let list = collect_cli_list_entries(
         session.provider_mut(),
         &initial_path,
@@ -18535,7 +18869,7 @@ async fn stat_tui_session_via_cli_handler(
     session: &mut cli_tui::session::TuiSession,
     path: &str,
 ) -> Result<(String, cli_tui::worker::TuiStatResult), String> {
-    let initial_path = session.initial_path().to_string();
+    let initial_path = tui_base(session).await;
     let resolved_path = try_resolve_cli_remote_path_with_note(&initial_path, path, false)
         .map_err(|err| err.to_string())?;
     let provider = session.provider_mut();
@@ -18573,7 +18907,7 @@ async fn mkdir_tui_session_via_cli_handler(
     session: &mut cli_tui::session::TuiSession,
     path: &str,
 ) -> Result<String, String> {
-    let initial_path = session.initial_path().to_string();
+    let initial_path = tui_base(session).await;
     let resolved = try_resolve_cli_remote_path_with_note(&initial_path, path, false)
         .map_err(|err| err.to_string())?;
     let provider = session.provider_mut();
@@ -18589,7 +18923,7 @@ async fn remove_tui_session_via_cli_handler(
     path: &str,
     recursive: bool,
 ) -> Result<String, String> {
-    let initial_path = session.initial_path().to_string();
+    let initial_path = tui_base(session).await;
     let resolved = try_resolve_cli_remote_path_with_note(&initial_path, path, false)
         .map_err(|err| err.to_string())?;
     // Mirror the CLI guard: never recursively wipe the remote root.
@@ -18612,7 +18946,7 @@ async fn rename_tui_session_via_cli_handler(
     from: &str,
     to: &str,
 ) -> Result<String, String> {
-    let initial_path = session.initial_path().to_string();
+    let initial_path = tui_base(session).await;
     let resolved_from = try_resolve_cli_remote_path_with_note(&initial_path, from, false)
         .map_err(|err| err.to_string())?;
     let resolved_to = try_resolve_cli_remote_path_with_note(&initial_path, to, false)
@@ -18632,7 +18966,7 @@ async fn download_tui_session_via_cli_handler(
     id: u64,
     event_tx: &cli_tui::worker::WorkerEventSender,
 ) -> Result<(), String> {
-    let initial_path = session.initial_path().to_string();
+    let initial_path = tui_base(session).await;
     let resolved = try_resolve_cli_remote_path_with_note(&initial_path, remote_path, false)
         .map_err(|err| err.to_string())?;
     let provider = session.provider_mut();
@@ -18658,7 +18992,7 @@ async fn upload_tui_session_via_cli_handler(
     id: u64,
     event_tx: &cli_tui::worker::WorkerEventSender,
 ) -> Result<(), String> {
-    let initial_path = session.initial_path().to_string();
+    let initial_path = tui_base(session).await;
     let resolved = try_resolve_cli_remote_path_with_note(&initial_path, remote_path, false)
         .map_err(|err| err.to_string())?;
     let provider = session.provider_mut();
@@ -18882,7 +19216,7 @@ async fn view_remote_file(
     session: &mut cli_tui::session::TuiSession,
     path: &str,
 ) -> Result<(String, bool, bool), String> {
-    let initial_path = session.initial_path().to_string();
+    let initial_path = tui_base(session).await;
     let resolved = try_resolve_cli_remote_path_with_note(&initial_path, path, false)
         .map_err(|err| err.to_string())?;
     let provider = session.provider_mut();
@@ -18954,7 +19288,7 @@ async fn size_remote_dir(
     session: &mut cli_tui::session::TuiSession,
     path: &str,
 ) -> Result<(u64, u64), String> {
-    let initial_path = session.initial_path().to_string();
+    let initial_path = tui_base(session).await;
     let resolved = try_resolve_cli_remote_path_with_note(&initial_path, path, false)
         .map_err(|err| err.to_string())?;
     let provider = session.provider_mut();
@@ -19039,7 +19373,7 @@ async fn touch_remote_file(
     session: &mut cli_tui::session::TuiSession,
     path: &str,
 ) -> Result<String, String> {
-    let initial_path = session.initial_path().to_string();
+    let initial_path = tui_base(session).await;
     let resolved = try_resolve_cli_remote_path_with_note(&initial_path, path, false)
         .map_err(|err| err.to_string())?;
     let provider = session.provider_mut();
@@ -19087,7 +19421,7 @@ async fn edit_fetch_remote(
     session: &mut cli_tui::session::TuiSession,
     remote_path: &str,
 ) -> Result<(String, String), String> {
-    let initial_path = session.initial_path().to_string();
+    let initial_path = tui_base(session).await;
     let resolved = try_resolve_cli_remote_path_with_note(&initial_path, remote_path, false)
         .map_err(|err| err.to_string())?;
     let name = resolved
@@ -27357,7 +27691,7 @@ fn duplicate_or_convert_mode_in_vault(
     let group = find_mode_group_of(&source_protocol, source_provider_id.as_deref())
         .ok_or_else(|| (
             format!(
-                "Profile '{}' (protocol={}) is not part of a multi-mode provider group. Supported groups: koofr, opendrive, filen, filelu.",
+                "Profile '{}' (protocol={}) is not part of a multi-mode provider group. Supported groups: koofr, opendrive, filen, filelu, proton (modes native, cli).",
                 source_name, source_protocol
             ),
             7,
@@ -27523,6 +27857,323 @@ fn duplicate_or_convert_mode_in_vault(
     Ok((source_id, new_id, source_name, mode_label.to_string()))
 }
 
+/// How `profile-convert-mode` and `profile-duplicate-mode` name a saved
+/// path in their report.
+fn proton_change_label(change: &ftp_client_gui_lib::proton_mode_switch::PathChange) -> String {
+    match change.kind {
+        "initialPath" => "initial folder".to_string(),
+        "aerocloud" => "AeroCloud".to_string(),
+        "aerocloudPair" => format!("AeroCloud pair {}", change.label),
+        "pendingSync" => format!("pending sync of {}", change.label),
+        _ => format!("sync history of {}", change.label),
+    }
+}
+
+fn print_proton_switch_plan(plan: &ftp_client_gui_lib::proton_mode_switch::SwitchPlan) {
+    for change in plan.translated() {
+        eprintln!(
+            "  {}: {} -> {}",
+            proton_change_label(change),
+            change.from,
+            change.to.as_deref().unwrap_or("")
+        );
+    }
+    for change in plan.without_equivalent() {
+        eprintln!(
+            "  {} {} has no equivalent in {} mode and is kept as it is",
+            proton_change_label(change),
+            change.from,
+            plan.to.label()
+        );
+    }
+    if plan.legacy_histories > 0 {
+        eprintln!(
+            "  {} sync histories were written before they recorded a profile and are not moved: the next sync of their folders compares without history, which deletes nothing because of it",
+            plan.legacy_histories
+        );
+    }
+}
+
+fn proton_switch_json(
+    plan: &ftp_client_gui_lib::proton_mode_switch::SwitchPlan,
+) -> (Vec<serde_json::Value>, Vec<serde_json::Value>) {
+    let translated = plan
+        .translated()
+        .map(|c| serde_json::json!({"kind": c.kind, "label": c.label, "from": c.from, "to": c.to}))
+        .collect();
+    let without = plan
+        .without_equivalent()
+        .map(|c| serde_json::json!({"kind": c.kind, "label": c.label, "from": c.from}))
+        .collect();
+    (translated, without)
+}
+
+/// `profile-convert-mode` and `profile-duplicate-mode` for Proton Drive, whose
+/// two modes (`native`, `cli`) share the `proton` protocol and spell My Files
+/// differently (Requested 79). A convert keeps the profile, its id and every
+/// binding to it, and translates the paths saved for it; a duplicate adds a
+/// profile in the other mode with its initial folder translated, and leaves
+/// the source's sync histories and AeroCloud where they are.
+#[allow(clippy::too_many_arguments)]
+fn cmd_proton_mode_switch(
+    cli: &Cli,
+    format: OutputFormat,
+    selector: &str,
+    mode_label: &str,
+    new_name: Option<&str>,
+    username: Option<&str>,
+    password: Option<&str>,
+    yes: bool,
+    duplicate: bool,
+) -> i32 {
+    use ftp_client_gui_lib::proton_mode_switch::{self as switch, ProtonMode};
+    let Some(to) = ProtonMode::parse(mode_label) else {
+        print_error(
+            format,
+            &format!("unknown Proton Drive mode '{mode_label}'"),
+            5,
+        );
+        return 5;
+    };
+    if username.is_some() || password.is_some() {
+        print_error(
+            format,
+            "a Proton Drive profile saves no username or password: after the switch, sign in to native mode with `aeroftp-cli proton sign-in`, to CLI mode with `proton-drive auth login`",
+            5,
+        );
+        return 5;
+    }
+    if !duplicate && new_name.is_some() {
+        print_error(
+            format,
+            "--name names the new profile of profile-duplicate-mode; a Proton Drive convert keeps the profile and its name",
+            5,
+        );
+        return 5;
+    }
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    let target = match ensure_active_user_unlocked(cli, &store) {
+        Ok(Some(t)) => t,
+        Ok(None) => {
+            print_error(format, "NO_ACTIVE_USER", 5);
+            return 5;
+        }
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    let mut profiles = match load_active_user_profiles(cli, &store) {
+        Ok(p) => p,
+        Err(e) => {
+            print_error(format, &format!("Failed to read profiles: {e}"), 5);
+            return 5;
+        }
+    };
+    let idx = match resolve_profile_selector(&profiles, selector) {
+        Ok(i) => i,
+        Err(e) => {
+            print_error(format, &format!("Profile lookup failed: {e}"), 2);
+            return 2;
+        }
+    };
+    let source = profiles[idx].clone();
+    let text = |k: &str| {
+        source
+            .get(k)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
+    if !switch::is_proton_profile(&source) {
+        print_error(
+            format,
+            &format!(
+                "the modes native and cli belong to Proton Drive; '{}' is a {} profile",
+                text("name"),
+                text("protocol")
+            ),
+            5,
+        );
+        return 5;
+    }
+    let from = ProtonMode::of_profile(&source);
+    if from == to {
+        print_error(
+            format,
+            &format!("'{}' is already in {} mode", text("name"), to.label()),
+            5,
+        );
+        return 5;
+    }
+
+    if duplicate {
+        let initial = text("initialPath");
+        let translated = switch::translate_path(&initial, from, to);
+        let new_id = format!(
+            "srv_{}_{}",
+            chrono::Utc::now().timestamp_millis().max(0),
+            uuid::Uuid::new_v4()
+                .simple()
+                .to_string()
+                .get(..9)
+                .unwrap_or("0")
+        );
+        let name = new_name
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("{} ({})", text("name"), to.label()));
+        let mut copy = source.clone();
+        copy["id"] = serde_json::Value::from(new_id.clone());
+        copy["name"] = serde_json::Value::from(name.clone());
+        if let Some(map) = copy.as_object_mut() {
+            map.remove("lastConnected");
+        }
+        switch::set_mode(
+            &mut copy,
+            to,
+            translated.as_deref().filter(|_| !initial.is_empty()),
+        );
+        profiles.insert(idx + 1, copy);
+        if let Err(e) = save_active_user_profiles(cli, &store, &profiles) {
+            print_error(format, &format!("Failed to write profiles: {e}"), 5);
+            return 5;
+        }
+        let source_id = text("id");
+        if !source_id.is_empty() {
+            let fav_raw = favs_blob_get(&store);
+            if let Ok(mut ids) = serde_json::from_str::<Vec<String>>(&fav_raw) {
+                if ids.iter().any(|id| id == &source_id) && !ids.iter().any(|id| id == &new_id) {
+                    ids.push(new_id.clone());
+                    if let Ok(payload) = serde_json::to_string(&ids) {
+                        let _ = favs_blob_put(&store, &payload);
+                    }
+                }
+            }
+        }
+        let no_equivalent = !initial.is_empty() && translated.is_none();
+        match format {
+            OutputFormat::Json => print_json(&serde_json::json!({
+                "id": new_id,
+                "source_id": source_id,
+                "source_name": text("name"),
+                "mode": to.label(),
+                "operation": "duplicate-mode",
+                "translated": if initial.is_empty() || no_equivalent { vec![] } else {
+                    vec![serde_json::json!({"kind": "initialPath", "label": "", "from": initial, "to": translated})]
+                },
+                "without_equivalent": if no_equivalent {
+                    vec![serde_json::json!({"kind": "initialPath", "label": "", "from": initial})]
+                } else { vec![] },
+            })),
+            _ => {
+                println!(
+                    "Duplicated '{}' into {} mode as '{}' (new id={}, source preserved)",
+                    text("name"),
+                    to.label(),
+                    name,
+                    new_id
+                );
+                if no_equivalent {
+                    eprintln!(
+                        "  initial folder {initial} has no equivalent in {} mode and is kept as it is",
+                        to.label()
+                    );
+                } else if let Some(path) = translated.filter(|_| !initial.is_empty()) {
+                    eprintln!("  initial folder: {initial} -> {path}");
+                }
+                if to == ProtonMode::Native {
+                    eprintln!("Next: aeroftp-cli proton sign-in \"{name}\"");
+                }
+            }
+        }
+        return 0;
+    }
+
+    let busy = switch::cli_aerocloud_refusal(&source);
+    let plan = match switch::plan(&source, to, busy) {
+        Ok(plan) => plan,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    if !plan.blockers.is_empty() {
+        print_error(
+            format,
+            &format!(
+                "switch refused, nothing was changed: {}",
+                plan.blockers.join("; ")
+            ),
+            5,
+        );
+        return 5;
+    }
+    {
+        use std::io::IsTerminal;
+        if !yes && std::io::stdin().is_terminal() {
+            eprintln!("Switch '{}' to {} mode:", text("name"), to.label());
+            print_proton_switch_plan(&plan);
+            eprintln!("Proceed? [y/N]");
+            let mut buf = String::new();
+            if std::io::stdin().read_line(&mut buf).is_err() {
+                print_error(format, "Aborted (stdin error).", 5);
+                return 5;
+            }
+            let ans = buf.trim().to_lowercase();
+            if ans != "y" && ans != "yes" {
+                print_error(format, "Aborted by user.", 0);
+                return 0;
+            }
+        }
+    }
+    let mut targets = switch::DiskTargets {
+        store: &store,
+        user_id: Some(target.id),
+    };
+    let busy = switch::cli_aerocloud_refusal(&source);
+    let plan = match switch::apply(&source, to, busy, &mut targets) {
+        Ok(plan) => plan,
+        Err(e) => {
+            print_error(format, &format!("switch refused: {e}"), 5);
+            return 5;
+        }
+    };
+    match format {
+        OutputFormat::Json => {
+            let (translated, without) = proton_switch_json(&plan);
+            print_json(&serde_json::json!({
+                "id": text("id"),
+                "source_id": text("id"),
+                "source_name": text("name"),
+                "mode": to.label(),
+                "operation": "convert-mode",
+                "translated": translated,
+                "without_equivalent": without,
+                "legacy_histories": plan.legacy_histories,
+            }));
+        }
+        _ => {
+            println!(
+                "Switched '{}' to {} mode (same profile, id={})",
+                text("name"),
+                to.label(),
+                text("id")
+            );
+            print_proton_switch_plan(&plan);
+            if to == ProtonMode::Native {
+                eprintln!("Next: aeroftp-cli proton sign-in \"{}\"", text("name"));
+            }
+        }
+    }
+    0
+}
+
 fn cmd_profile_duplicate_mode(
     cli: &Cli,
     format: OutputFormat,
@@ -27532,6 +28183,11 @@ fn cmd_profile_duplicate_mode(
     username: Option<&str>,
     password: Option<&str>,
 ) -> i32 {
+    if ftp_client_gui_lib::proton_mode_switch::ProtonMode::parse(mode_label).is_some() {
+        return cmd_proton_mode_switch(
+            cli, format, selector, mode_label, new_name, username, password, true, true,
+        );
+    }
     let store = match open_vault(cli) {
         Ok(s) => s,
         Err(e) => {
@@ -27582,6 +28238,11 @@ fn cmd_profile_convert_mode(
     yes: bool,
 ) -> i32 {
     use std::io::IsTerminal;
+    if ftp_client_gui_lib::proton_mode_switch::ProtonMode::parse(mode_label).is_some() {
+        return cmd_proton_mode_switch(
+            cli, format, selector, mode_label, new_name, username, password, yes, false,
+        );
+    }
     // Confirm before the destructive replace, just like profile-delete.
     if !yes && std::io::stdin().is_terminal() {
         eprintln!(
@@ -30541,14 +31202,17 @@ async fn create_and_connect(
     url: &str,
     cli: &Cli,
     format: OutputFormat,
-) -> Result<(Box<dyn StorageProvider>, String), i32> {
+) -> Result<(Box<dyn StorageProvider>, CliBase), i32> {
     #[cfg(test)]
-    if let Some(provider) = TEST_CONNECTED_PROVIDER.with(|slot| slot.borrow_mut().take()) {
-        return Ok((provider, "/".to_string()));
+    if let Some(mut provider) = TEST_CONNECTED_PROVIDER.with(|slot| slot.borrow_mut().take()) {
+        let base = CliBase::for_provider("/", provider.as_mut()).await;
+        return Ok((provider, base));
     }
     #[cfg(test)]
     if let Some(make) = TEST_PROVIDER_FACTORY.with(|slot| slot.borrow().clone()) {
-        return Ok((make(), "/".to_string()));
+        let mut provider = make();
+        let base = CliBase::for_provider("/", provider.as_mut()).await;
+        return Ok((provider, base));
     }
     create_and_connect_detailed(url, cli, format)
         .await
@@ -30559,7 +31223,7 @@ async fn create_and_connect_detailed(
     url: &str,
     cli: &Cli,
     format: OutputFormat,
-) -> Result<(Box<dyn StorageProvider>, String, ConnectMetadata), i32> {
+) -> Result<(Box<dyn StorageProvider>, CliBase, ConnectMetadata), i32> {
     create_and_connect_with(url, cli, cli.profile.as_deref(), format, true, None).await
 }
 
@@ -30572,10 +31236,11 @@ async fn create_and_connect_raw(
     url: &str,
     cli: &Cli,
     format: OutputFormat,
-) -> Result<(Box<dyn StorageProvider>, String), i32> {
+) -> Result<(Box<dyn StorageProvider>, CliBase), i32> {
     #[cfg(test)]
-    if let Some(provider) = TEST_CONNECTED_PROVIDER.with(|slot| slot.borrow_mut().take()) {
-        return Ok((provider, "/".to_string()));
+    if let Some(mut provider) = TEST_CONNECTED_PROVIDER.with(|slot| slot.borrow_mut().take()) {
+        let base = CliBase::for_provider("/", provider.as_mut()).await;
+        return Ok((provider, base));
     }
     create_and_connect_with(url, cli, cli.profile.as_deref(), format, false, None)
         .await
@@ -30594,6 +31259,29 @@ async fn create_and_connect_raw(
 /// WITHOUT writing throwaway profiles into the user's vault; everything after
 /// the lookup (factory, runtime knobs, crypt overlay) stays the shared path.
 async fn create_and_connect_with(
+    url: &str,
+    cli: &Cli,
+    profile_override: Option<&str>,
+    format: OutputFormat,
+    apply_overlay: bool,
+    synth_profile: Option<&serde_json::Value>,
+) -> Result<(Box<dyn StorageProvider>, CliBase, ConnectMetadata), i32> {
+    let (provider, path, metadata) = connect_with_base_path(
+        url,
+        cli,
+        profile_override,
+        format,
+        apply_overlay,
+        synth_profile,
+    )
+    .await?;
+    let mut provider = provider;
+    let base = CliBase::for_provider(path, provider.as_mut()).await;
+    Ok((provider, base, metadata))
+}
+
+/// [`create_and_connect_with`] before the base learns its provider's root rule.
+async fn connect_with_base_path(
     url: &str,
     cli: &Cli,
     profile_override: Option<&str>,
@@ -31313,15 +32001,15 @@ impl std::fmt::Display for RemotePathError {
 /// destructive call sites fail closed instead of operating on a substituted base
 /// path. [`resolve_cli_remote_path`] is the infallible wrapper used by the bulk
 /// of read paths.
-fn try_resolve_cli_remote_path(
-    initial_path: &str,
+fn try_resolve_cli_remote_path<B: RemoteBase + ?Sized>(
+    initial_path: &B,
     user_path: &str,
 ) -> Result<String, RemotePathError> {
     try_resolve_cli_remote_path_with_note(initial_path, user_path, true)
 }
 
-fn try_resolve_cli_remote_path_with_note(
-    initial_path: &str,
+fn try_resolve_cli_remote_path_with_note<B: RemoteBase + ?Sized>(
+    initial_path: &B,
     user_path: &str,
     emit_resolution_note: bool,
 ) -> Result<String, RemotePathError> {
@@ -31356,7 +32044,7 @@ fn check_remote_path_safe(user_path: &str) -> Result<(), RemotePathError> {
 /// let the command run to exit 0, silently operating on the wrong location. It
 /// now fails closed: a traversal/null-byte path prints a structured error
 /// (JSON-aware) and exits with code 5 before any provider operation runs.
-fn resolve_cli_remote_path(initial_path: &str, user_path: &str) -> String {
+fn resolve_cli_remote_path<B: RemoteBase + ?Sized>(initial_path: &B, user_path: &str) -> String {
     match try_resolve_cli_remote_path(initial_path, user_path) {
         Ok(resolved) => resolved,
         Err(e) => {
@@ -31371,10 +32059,27 @@ fn resolve_cli_remote_path(initial_path: &str, user_path: &str) -> String {
     }
 }
 
-fn resolve_cli_remote_path_unchecked_with_note(
+fn resolve_cli_remote_path_unchecked_with_note<B: RemoteBase + ?Sized>(
+    initial_path: &B,
+    user_path: &str,
+    emit_resolution_note: bool,
+) -> String {
+    resolve_cli_remote_path_in(
+        initial_path.base_path(),
+        user_path,
+        emit_resolution_note,
+        initial_path.start_folder(),
+    )
+}
+
+/// The resolver with the provider's rule given: a `start_folder` (Proton
+/// Drive, see [`CliBase`]) receives a command given no path, and a bare `/`
+/// then stays the root.
+fn resolve_cli_remote_path_in(
     initial_path: &str,
     user_path: &str,
     emit_resolution_note: bool,
+    start_folder: Option<&str>,
 ) -> String {
     let base = initial_path.trim();
     // No meaningful initial_path: pass user_path through with minimal
@@ -31388,9 +32093,12 @@ fn resolve_cli_remote_path_unchecked_with_note(
     //     filesystem root and `foo/bar` resolves against cwd.
     if base.is_empty() || base == "/" {
         if user_path.is_empty() {
-            return String::new();
+            return start_folder.map(str::to_string).unwrap_or_default();
         }
         if user_path.trim_start_matches('/').is_empty() {
+            if start_folder.is_some() {
+                return "/".to_string();
+            }
             return String::new();
         }
         return user_path.to_string();
@@ -34276,9 +34984,9 @@ impl From<ProviderError> for CliListError {
     }
 }
 
-async fn collect_cli_list_entries(
+async fn collect_cli_list_entries<B: RemoteBase + ?Sized>(
     provider: &mut dyn StorageProvider,
-    initial_path: &str,
+    initial_path: &B,
     options: &CliListOptions<'_>,
     cli: &Cli,
 ) -> Result<CliListEntries, CliListError> {
@@ -44492,7 +45200,7 @@ async fn cmd_df(url: &str, scan: bool, full: bool, cli: &Cli, format: OutputForm
         let root = if full || resolved_path.trim().is_empty() {
             "/".to_string()
         } else {
-            resolved_path.clone()
+            resolved_path.to_string()
         };
 
         // An API total still wins for the cap even in scan mode; the scan
@@ -46879,6 +47587,43 @@ async fn wait_until_upload_readable(
     }
 }
 
+/// Where `speed` writes its scratch file. The generated name sits at the root
+/// of every provider but Proton Drive, whose session starts in My Files while
+/// its root lists the account's sections, where no file can go (Requested 79):
+/// there it goes under the start folder. A `--remote-path` is used as given.
+fn speed_scratch_path(base: &CliBase, generated: &str, caller_named: bool) -> String {
+    match base.start_folder() {
+        Some(start) if !caller_named => format!(
+            "{}/{}",
+            start.trim_end_matches('/'),
+            generated.trim_start_matches('/')
+        ),
+        _ => generated.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod speed_scratch_tests {
+    use super::{speed_scratch_path, CliBase};
+
+    #[test]
+    fn the_generated_speed_file_goes_under_the_proton_start_folder() {
+        let proton = CliBase::with_start_folder("/", Some("/my-files".to_string()));
+        let other = CliBase::with_start_folder("/", None);
+        let generated = "/.aeroftp-speedtest-x.dat";
+        assert_eq!(
+            speed_scratch_path(&proton, generated, false),
+            "/my-files/.aeroftp-speedtest-x.dat"
+        );
+        // Native mode starts at its root, My Files.
+        let native = CliBase::with_start_folder("/", Some("/".to_string()));
+        assert_eq!(speed_scratch_path(&native, generated, false), generated);
+        // A path the caller named, and any other provider: as given.
+        assert_eq!(speed_scratch_path(&proton, "/x/y.dat", true), "/x/y.dat");
+        assert_eq!(speed_scratch_path(&other, generated, false), generated);
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_single_speed_test(
     url: &str,
@@ -46908,7 +47653,7 @@ async fn run_single_speed_test(
         NamedTempFile::new().map_err(|e| (format!("Cannot create download temp: {}", e), 5))?;
     let download_path = local_download.path().to_path_buf();
 
-    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+    let (mut provider, base) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => {
             return Err((
@@ -46917,6 +47662,7 @@ async fn run_single_speed_test(
             ))
         }
     };
+    let remote_test_path = &speed_scratch_path(&base, remote_test_path, path_is_caller_named);
 
     // Overwrite guard: the test uploads to remote_test_path and then deletes
     // it, so a path that already exists is a real user file about to be
@@ -51622,7 +52368,9 @@ fn is_local_to_local_sync(
     if explicit_local_flag {
         return true;
     }
-    if remote_arg != "/" {
+    // An omitted remote arrives empty since it defaults to the start folder
+    // (Requested 79); a `/` typed in its place still counts as omitted.
+    if !(remote_arg.is_empty() || remote_arg == "/") {
         return false;
     }
     if cli_profile.is_some() {
@@ -67284,7 +68032,7 @@ async fn connect_saved_profile(
     profile_name: &str,
     cli: &Cli,
     format: OutputFormat,
-) -> Result<(Box<dyn StorageProvider>, String), i32> {
+) -> Result<(Box<dyn StorageProvider>, CliBase), i32> {
     create_and_connect_with("", cli, Some(profile_name), format, true, None)
         .await
         .map(|(provider, initial_path, _metadata)| (provider, initial_path))
@@ -67297,7 +68045,7 @@ async fn batch_connect_profile(
     profile_name: &str,
     cli: &Cli,
     format: OutputFormat,
-) -> Result<(Box<dyn StorageProvider>, String), i32> {
+) -> Result<(Box<dyn StorageProvider>, CliBase), i32> {
     connect_saved_profile(profile_name, cli, format).await
 }
 
@@ -68945,8 +69693,8 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
 
     // Cross-profile transfer state (CONNECT_SOURCE_PROFILE / CONNECT_DEST_PROFILE / TRANSFER)
     // (provider, profile name, profile base path)
-    let mut cross_source: Option<(Box<dyn StorageProvider>, String, String)> = None;
-    let mut cross_dest: Option<(Box<dyn StorageProvider>, String, String)> = None;
+    let mut cross_source: Option<(Box<dyn StorageProvider>, String, CliBase)> = None;
+    let mut cross_dest: Option<(Box<dyn StorageProvider>, String, CliBase)> = None;
 
     /// The active connection as the command line passes it: the URL with the
     /// batch CLI, or "_" with the CLI whose `--profile` is the connected one.
@@ -81802,6 +82550,7 @@ mod tests {
         let b = tempfile::tempdir().unwrap();
         let (a, b) = (a.path().to_str().unwrap(), b.path().to_str().unwrap());
         assert!(is_local_to_local_sync(false, a, None, b, "/"));
+        assert!(is_local_to_local_sync(false, a, None, b, ""));
         assert!(!is_local_to_local_sync(false, a, None, b, "/2026"));
         assert!(is_local_to_local_sync(true, a, None, b, "/2026"));
         assert!(!is_local_to_local_sync(false, a, Some("NAS"), b, "/"));
@@ -92820,6 +93569,88 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 .find(|shape| shape.case == case)
                 .expect("a known shape"),
         )
+    }
+
+    /// Requested 79, choice C, on the listing path itself: with Proton Drive's
+    /// start folder, `ls` with no path lists My Files and `ls /` the sections;
+    /// another provider lists one place for both.
+    #[tokio::test]
+    async fn ls_lists_the_start_folder_without_a_path_and_the_sections_at_root() {
+        let dirs = HashMap::from([
+            (
+                "/".to_string(),
+                vec![
+                    RemoteEntry::directory("devices".to_string(), "/devices".to_string()),
+                    RemoteEntry::directory("my-files".to_string(), "/my-files".to_string()),
+                ],
+            ),
+            (
+                "/my-files".to_string(),
+                vec![RemoteEntry::file(
+                    "a.txt".to_string(),
+                    "/my-files/a.txt".to_string(),
+                    1,
+                )],
+            ),
+            (
+                String::new(),
+                vec![RemoteEntry::file(
+                    "home.txt".to_string(),
+                    "home.txt".to_string(),
+                    1,
+                )],
+            ),
+        ]);
+        // Parsed on a thread with room for clap (see the other parse tests).
+        let cli = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| Cli::try_parse_from(["aeroftp-cli", "ls", "_"]).expect("ls parses"))
+            .expect("parse thread")
+            .join()
+            .expect("parse thread finished");
+        let options = |path| CliListOptions {
+            path,
+            sort: "name",
+            reverse: false,
+            all: true,
+            limit: None,
+            files_only: false,
+            dirs_only: false,
+            emit_resolution_note: false,
+        };
+        let listed = |list: Result<CliListEntries, CliListError>| match list {
+            Ok(list) => (
+                list.effective_path,
+                list.entries.into_iter().map(|e| e.name).collect::<Vec<_>>(),
+            ),
+            Err(_) => panic!("listing failed"),
+        };
+        let mut proton = MemTreeProvider {
+            dirs: dirs.clone(),
+            kind: Some(ProviderType::Proton),
+            ..Default::default()
+        };
+        let base = CliBase::with_start_folder("/", Some("/my-files".to_string()));
+        assert_eq!(
+            listed(collect_cli_list_entries(&mut proton, &base, &options(""), &cli).await),
+            ("/my-files".to_string(), vec!["a.txt".to_string()])
+        );
+        assert_eq!(
+            listed(collect_cli_list_entries(&mut proton, &base, &options("/"), &cli).await),
+            (
+                "/".to_string(),
+                vec!["devices".to_string(), "my-files".to_string()]
+            )
+        );
+        let mut other = MemTreeProvider {
+            dirs,
+            ..Default::default()
+        };
+        let base = CliBase::with_start_folder("/", None);
+        let omitted = listed(collect_cli_list_entries(&mut other, &base, &options(""), &cli).await);
+        let root = listed(collect_cli_list_entries(&mut other, &base, &options("/"), &cli).await);
+        assert_eq!(omitted, root);
+        assert_eq!(omitted.1, vec!["home.txt".to_string()]);
     }
 
     /// The TUI size of a folder counted what a looping listing sent it

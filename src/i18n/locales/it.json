@@ -527,7 +527,24 @@
                 "fetchUrl": "Recupera URL",
                 "megacmdWebdavHint": "Nome utente e password sono omessi di proposito. AeroFTP esegue da solo \"{cmd}\" alla connessione per avviare il bridge e leggere questo indirizzo: puoi lasciarlo vuoto. Recupera URL è un aggiornamento manuale facoltativo; cambia qui la porta se MEGAcmd ne usa una personalizzata."
             },
-            "manualStorageUnitLabel": "Unità {label}"
+            "manualStorageUnitLabel": "Unità {label}",
+            "protonSwitch": {
+                "title": "Passare {name} a {mode}?",
+                "intro": "La CLI scrive My Files come /my-files, l'API come /. Questi percorsi salvati si spostano con il profilo:",
+                "initialPath": "Cartella iniziale",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "Coppia AeroCloud {name}",
+                "syncHistory": "Cronologia di sincronizzazione di {folder}",
+                "pendingSync": "Sincronizzazione in sospeso di {folder}",
+                "noEquivalent": "Nessun equivalente in modalità {mode}, lasciato così com'è:",
+                "legacy_one": "1 cronologia di sincronizzazione è stata scritta prima che le cronologie registrassero un profilo e non viene spostata. La prossima sincronizzazione delle sue cartelle confronta senza cronologia e, per questo, non elimina nulla.",
+                "legacy_many": "{count} cronologie di sincronizzazione sono state scritte prima che le cronologie registrassero un profilo e non vengono spostate. La prossima sincronizzazione delle loro cartelle confronta senza cronologia e, per questo, non elimina nulla.",
+                "nothing": "Nessun percorso salvato deve cambiare.",
+                "confirm": "Cambia modalità",
+                "refused": "La modalità non è stata cambiata",
+                "copyKeptTitle": "Cartella iniziale mantenuta",
+                "copyKept": "La cartella iniziale {path} non ha un equivalente in modalità {mode} ed è stata mantenuta così com'è."
+            }
         },
         "twoFactor": {
             "title": "Autenticazione a due fattori richiesta",
@@ -6874,7 +6891,9 @@
                 "proton": {
                     "headerDescription": "Archiviazione cloud Proton con crittografia end-to-end",
                     "apiDescription": "Il client Proton Drive di AeroFTP: accedi sulla pagina di Proton nel browser, i file vengono cifrati e decifrati su questo computer e non serve nessun'altra app.",
-                    "cliDescription": "Usa la CLI ufficiale di Proton Drive installata e con accesso effettuato su questo computer. Accedi nel browser; AeroFTP non vede mai la tua password Proton."
+                    "cliDescription": "Usa la CLI ufficiale di Proton Drive installata e con accesso effettuato su questo computer. Accedi nel browser; AeroFTP non vede mai la tua password Proton.",
+                    "apiPaths": "I percorsi partono da My Files: My Files è /.",
+                    "cliPaths": "I percorsi assoluti partono dalle sezioni: My Files è /my-files, dove si apre una sessione."
                 },
                 "opendrive": {
                     "headerDescription": "Archiviazione cloud OpenDrive (5 GB gratis)",
