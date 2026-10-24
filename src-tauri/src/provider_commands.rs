@@ -4361,6 +4361,7 @@ struct DownloadWalk {
     root: String,
     scope: crate::sync_core::WalkScope,
     fetched: std::collections::HashSet<String>,
+    local_targets: Option<LocalTargetGuard>,
 }
 
 impl DownloadWalk {
@@ -4369,8 +4370,125 @@ impl DownloadWalk {
             root: root.to_string(),
             scope: crate::sync_core::WalkScope::new(root),
             fetched: std::collections::HashSet::new(),
+            local_targets: None,
         }
     }
+}
+
+pub(crate) struct LocalTargetClaim {
+    pub(crate) remote_path: String,
+    pub(crate) local_path: std::path::PathBuf,
+}
+
+pub(crate) struct LocalTargetGuard {
+    fold_case: bool,
+    claimed: HashMap<String, String>,
+}
+
+impl LocalTargetGuard {
+    pub(crate) fn new(destination: &std::path::Path) -> Self {
+        Self {
+            fold_case: local_destination_folds_case(destination),
+            claimed: HashMap::new(),
+        }
+    }
+
+    fn key(&self, path: &std::path::Path) -> String {
+        let path = path.to_string_lossy();
+        if self.fold_case {
+            path.to_lowercase()
+        } else {
+            path.into_owned()
+        }
+    }
+
+    pub(crate) fn claim_listing(&mut self, claims: &[LocalTargetClaim]) -> Result<(), String> {
+        let mut listing = HashMap::new();
+        for claim in claims {
+            let key = self.key(&claim.local_path);
+            if let Some(first_remote) = listing.insert(key.clone(), claim.remote_path.clone()) {
+                return Err(ambiguous_local_target(
+                    &first_remote,
+                    &claim.remote_path,
+                    &claim.local_path,
+                ));
+            }
+            if let Some(first_remote) = self.claimed.get(&key) {
+                if crate::sync_core::walk_path_key(first_remote)
+                    != crate::sync_core::walk_path_key(&claim.remote_path)
+                {
+                    return Err(ambiguous_local_target(
+                        first_remote,
+                        &claim.remote_path,
+                        &claim.local_path,
+                    ));
+                }
+            }
+        }
+        for claim in claims {
+            self.claimed
+                .entry(self.key(&claim.local_path))
+                .or_insert_with(|| claim.remote_path.clone());
+        }
+        Ok(())
+    }
+}
+
+fn ambiguous_local_target(
+    first_remote: &str,
+    second_remote: &str,
+    local_path: &std::path::Path,
+) -> String {
+    format!(
+        "Ambiguous local target '{}': remote entries '{}' and '{}' both map to it",
+        local_path.display(),
+        first_remote,
+        second_remote
+    )
+}
+
+fn local_destination_folds_case(destination: &std::path::Path) -> bool {
+    #[cfg(test)]
+    if let Ok(value) = std::env::var("AEROFTP_TEST_LOCAL_CASE_FOLD") {
+        match value.as_str() {
+            "1" => return true,
+            "0" => return false,
+            _ => {}
+        }
+    }
+
+    static PROBE_ID: AtomicU64 = AtomicU64::new(0);
+    let fallback = cfg!(any(target_os = "windows", target_os = "macos"));
+    let probe_name = format!(
+        ".aeroftp-case-probe-{}-{}",
+        std::process::id(),
+        PROBE_ID.fetch_add(1, Ordering::Relaxed)
+    );
+    let folded_name = probe_name.to_uppercase();
+    let probe_path = destination.join(&probe_name);
+    let folded_path = destination.join(&folded_name);
+    let first = match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&probe_path)
+    {
+        Ok(file) => file,
+        Err(_) => return fallback,
+    };
+    let second = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&folded_path);
+    let fold_case = match &second {
+        Ok(_) => false,
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => true,
+        Err(_) => fallback,
+    };
+    drop(second);
+    drop(first);
+    let _ = std::fs::remove_file(&probe_path);
+    let _ = std::fs::remove_file(&folded_path);
+    fold_case
 }
 
 /// What one listing adds to a folder download: the folders to list next and
@@ -4400,10 +4518,7 @@ async fn take_download_listing(
     files: Vec<RemoteEntry>,
 ) -> Result<DownloadListing, String> {
     use crate::sync_core::WalkStep;
-    let mut listed = DownloadListing {
-        folders: Vec::new(),
-        files: Vec::new(),
-    };
+    let mut staged = Vec::new();
     let mut listing_scope = crate::sync_core::WalkScope::new(remote_folder);
     listing_scope.learn_root_listing(&files);
     for file in files {
@@ -4428,9 +4543,9 @@ async fn take_download_listing(
         } else {
             walk.scope.locate(remote_folder, &remote_file_path)
         };
-        match step {
-            WalkStep::Follow => {}
-            WalkStep::AlreadyListed => continue,
+        let follow = match step {
+            WalkStep::Follow => true,
+            WalkStep::AlreadyListed => false,
             step => {
                 return Err(crate::sync_core::refused_transfer(
                     &walk.root,
@@ -4439,16 +4554,38 @@ async fn take_download_listing(
                     step,
                 ))
             }
-        }
-        let local_file_path_buf = std::path::Path::new(local_folder).join(&safe_name);
-        let local_file_path = local_file_path_buf.to_string_lossy().to_string();
+        };
+        let local_path = std::path::Path::new(local_folder).join(&safe_name);
+        staged.push((file, safe_name, remote_file_path, local_path, follow));
+    }
 
+    let claims: Vec<LocalTargetClaim> = staged
+        .iter()
+        .map(|(_, _, remote_path, local_path, _)| LocalTargetClaim {
+            remote_path: remote_path.clone(),
+            local_path: local_path.clone(),
+        })
+        .collect();
+    walk.local_targets
+        .get_or_insert_with(|| LocalTargetGuard::new(base_local))
+        .claim_listing(&claims)?;
+
+    let mut listed = DownloadListing {
+        folders: Vec::new(),
+        files: Vec::new(),
+    };
+    for (file, safe_name, remote_file_path, local_path, follow) in staged {
+        if !follow {
+            continue;
+        }
         if file.is_dir {
-            tokio::fs::create_dir_all(&local_file_path)
+            tokio::fs::create_dir_all(&local_path)
                 .await
-                .map_err(|e| format!("Failed to create folder {}: {}", local_file_path, e))?;
-            verify_path_containment(base_local, &local_file_path_buf)?;
-            listed.folders.push((remote_file_path, local_file_path));
+                .map_err(|e| format!("Failed to create folder {}: {}", local_path.display(), e))?;
+            verify_path_containment(base_local, &local_path)?;
+            listed
+                .folders
+                .push((remote_file_path, local_path.to_string_lossy().into_owned()));
         } else {
             if !walk
                 .fetched
@@ -4456,14 +4593,14 @@ async fn take_download_listing(
             {
                 continue;
             }
-            if let Some(parent) = local_file_path_buf.parent() {
+            if let Some(parent) = local_path.parent() {
                 if parent.exists() {
-                    verify_path_containment(base_local, &local_file_path_buf)?;
+                    verify_path_containment(base_local, &local_path)?;
                 }
             }
             listed.files.push(DownloadEntry {
                 remote_path: remote_file_path,
-                local_path: local_file_path,
+                local_path: local_path.to_string_lossy().into_owned(),
                 name: safe_name,
                 size: file.size,
                 modified: file.modified.clone(),
@@ -18253,11 +18390,11 @@ mod walk_scope_tests {
     /// each remote path from the name the listing gives. Through `../d1` it
     /// fetched `b.txt` once per level down to its depth cap, through
     /// `d1/../..` and `up/../../elsewhere` it fetched the account root's
-    /// files and `/elsewhere/big.bin` into the destination, and a file named
-    /// twice was fetched twice. This drives the download's own listing step
-    /// (`take_download_listing`) the way the command walks: it fetches each
-    /// file under the folder once, and a listing that names a folder outside
-    /// it fails the download.
+    /// files and `/elsewhere/big.bin` into the destination. This drives the
+    /// download's own listing step (`take_download_listing`) the way the
+    /// command walks: it fetches each file under the folder once, a listing
+    /// that names a folder outside it fails the download, and two entries
+    /// claiming one local name are refused before anything is created.
     #[tokio::test]
     async fn a_folder_download_fetches_each_file_under_the_folder_once_or_fails() {
         for shape in stray_listings() {
@@ -18293,6 +18430,11 @@ mod walk_scope_tests {
                 assert!(err.contains("cannot transfer /root whole"), "{case}: {err}");
                 continue;
             }
+            if matches!(case, "a folder named twice" | "a file named twice") {
+                let error = outcome.expect_err(case);
+                assert!(error.contains("Ambiguous local target"), "{case}: {error}");
+                continue;
+            }
             outcome.unwrap_or_else(|e| panic!("{case}: {e}"));
             let mut fetched: Vec<String> = fetched
                 .iter()
@@ -18301,6 +18443,139 @@ mod walk_scope_tests {
             fetched.sort();
             assert_eq!(fetched, shape.file_paths(), "{case}");
         }
+    }
+
+    #[allow(clippy::await_holding_lock)]
+    async fn assert_requested97_refusal(files: Vec<RemoteEntry>, fold_case: bool) {
+        let _env = crate::test_env::lock();
+        if fold_case {
+            std::env::set_var("AEROFTP_TEST_LOCAL_CASE_FOLD", "1");
+        }
+        let remote_paths: Vec<String> = files
+            .iter()
+            .map(|file| format!("/root/{}", file.name))
+            .collect();
+        let local = tempfile::tempdir().expect("temp dir");
+        let mut walk = DownloadWalk::new("/root");
+        let outcome = take_download_listing(
+            &mut walk,
+            "/root",
+            local.path().to_str().unwrap(),
+            local.path(),
+            files,
+        )
+        .await;
+        std::env::remove_var("AEROFTP_TEST_LOCAL_CASE_FOLD");
+        let error = match outcome {
+            Err(error) => error,
+            Ok(_) => panic!("ambiguous local targets must be refused"),
+        };
+        assert!(error.contains("Ambiguous local target"), "{error}");
+        for remote_path in remote_paths {
+            assert!(error.contains(&remote_path), "{error}");
+        }
+        assert_eq!(std::fs::read_dir(local.path()).unwrap().count(), 0);
+    }
+
+    #[tokio::test]
+    async fn requested97_gui_download_refuses_duplicate_local_names_before_writing() {
+        assert_requested97_refusal(
+            vec![
+                RemoteEntry::file("same.txt".into(), "/root/same.txt#one".into(), 4),
+                RemoteEntry::file("same.txt".into(), "/root/same.txt#two".into(), 4),
+            ],
+            false,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn requested97_gui_download_refuses_sanitized_local_aliases_before_writing() {
+        assert_requested97_refusal(
+            vec![
+                RemoteEntry::file("a/b".into(), "/root/a/b".into(), 4),
+                RemoteEntry::file("b".into(), "/root/b".into(), 4),
+            ],
+            false,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn requested97_gui_download_refuses_casefolded_local_aliases_before_writing() {
+        assert_requested97_refusal(
+            vec![
+                RemoteEntry::file("A.txt".into(), "/root/A.txt".into(), 4),
+                RemoteEntry::file("a.txt".into(), "/root/a.txt".into(), 4),
+            ],
+            true,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn requested97_gui_download_refuses_file_directory_aliases_before_writing() {
+        assert_requested97_refusal(
+            vec![
+                RemoteEntry::file("a/b".into(), "/root/a/b".into(), 4),
+                RemoteEntry::directory("b".into(), "/root/b".into()),
+            ],
+            false,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn requested97_gui_download_refuses_aliases_across_listings() {
+        let local = tempfile::tempdir().expect("temp dir");
+        let mut walk = DownloadWalk::new("/root");
+        take_download_listing(
+            &mut walk,
+            "/root/one",
+            local.path().to_str().unwrap(),
+            local.path(),
+            vec![RemoteEntry::file("b".into(), "/root/one/b".into(), 4)],
+        )
+        .await
+        .expect("first listing");
+        let outcome = take_download_listing(
+            &mut walk,
+            "/root/two",
+            local.path().to_str().unwrap(),
+            local.path(),
+            vec![RemoteEntry::file("a/b".into(), "/root/two/a/b".into(), 4)],
+        )
+        .await;
+        let error = match outcome {
+            Err(error) => error,
+            Ok(_) => panic!("a cross-listing local alias must be refused"),
+        };
+        assert!(error.contains("/root/one/b"), "{error}");
+        assert!(error.contains("/root/two/a/b"), "{error}");
+        assert_eq!(std::fs::read_dir(local.path()).unwrap().count(), 0);
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn requested97_gui_download_allows_case_distinct_names_on_case_sensitive_destination() {
+        let _env = crate::test_env::lock();
+        let local = tempfile::tempdir().expect("temp dir");
+        let mut walk = DownloadWalk::new("/root");
+        let listed = take_download_listing(
+            &mut walk,
+            "/root",
+            local.path().to_str().unwrap(),
+            local.path(),
+            vec![
+                RemoteEntry::file("A.txt".into(), "/root/A.txt".into(), 4),
+                RemoteEntry::file("a.txt".into(), "/root/a.txt".into(), 4),
+            ],
+        )
+        .await
+        .expect("case-distinct names on a case-sensitive destination");
+        assert_eq!(listed.files.len(), 2);
+        assert_eq!(std::fs::read_dir(local.path()).unwrap().count(), 0);
     }
 }
 
@@ -18674,5 +18949,22 @@ mod folder_download_live_tests {
             b"mine"
         );
         assert_eq!(state.lock().unwrap().served, ["/r/a.txt"]);
+    }
+
+    #[tokio::test]
+    async fn requested97_live_batch_refuses_duplicate_targets_before_writing() {
+        let (tree, state) = FolderTree::new(&["same.txt", "same.txt"]);
+        let ran = download_folder(tree, "", Arc::new(AtomicBool::new(false)), |_| {}).await;
+        let error = ran
+            .result
+            .expect_err("the live-batch scan must refuse duplicate targets");
+        assert!(error.contains("Ambiguous local target"), "{error}");
+        assert!(state.lock().unwrap().served.is_empty());
+        assert_eq!(
+            std::fs::read_dir(ran.local.path().join("r"))
+                .unwrap()
+                .count(),
+            0
+        );
     }
 }
