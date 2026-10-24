@@ -98,7 +98,7 @@ pub fn install_with_helper(
         InstallFormat::Msi => (write_msi_helper(downloaded_path, &exe_path)?, None),
         InstallFormat::Nsis => (write_nsis_helper(downloaded_path, &exe_path)?, None),
         InstallFormat::Portable => {
-            let log_file = crate::portable::log_dir().map(|dir| dir.join(APP_LOG_FILE));
+            let log_file = crate::portable::app_log_file();
             let prepared =
                 prepare_portable(downloaded_path, &exe_path, &temp_dir(), log_file.as_deref())?;
             (prepared.script.clone(), Some(prepared))
@@ -354,10 +354,6 @@ fn companion_exes(current_exe: &Path) -> Vec<&'static str> {
     }
     names
 }
-
-/// The file the log plugin writes in `portable::log_dir()`, named after the
-/// product. The helper appends to it when it keeps an installed CLI exe.
-const APP_LOG_FILE: &str = "AeroFTP.log";
 
 /// Stages every exe of the update next to the one it replaces: the app exe
 /// and each of `companion_exes` the ZIP holds. Staging touches none of the
@@ -864,7 +860,7 @@ mod tests {
     fn fixture() -> Fixture {
         let root = tempfile::tempdir().expect("temp dir");
         std::fs::create_dir(root.path().join("logs")).expect("log dir");
-        let log = root.path().join("logs").join(APP_LOG_FILE);
+        let log = root.path().join("logs").join(crate::portable::APP_LOG_FILE);
         let app = root.path().join("app");
         std::fs::create_dir(&app).expect("app dir");
         let current = app.join("AeroFTP.exe");

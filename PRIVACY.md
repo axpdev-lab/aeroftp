@@ -1,6 +1,6 @@
 # AeroFTP Privacy Policy
 
-*Last updated: 2026-06-22*
+*Last updated: 2026-10-24*
 
 ## Overview
 
@@ -20,11 +20,12 @@ AeroFTP stores the following data **exclusively on your local machine**:
 - **Chat history**: AI assistant conversations, if used, are stored in a local SQLite database. You can delete all chat history at any time from Settings.
 - **Sync journals**: Transfer logs for the AeroSync feature. You can clear them at any time, or remove entries older than 30 days, from the journal history dialog.
 - **File tags**: Color labels assigned to local files. Stored in a local SQLite database.
+- **Logs**: The app's diagnostic log, one file named `AeroFTP.log`, which is deleted and started again once it reaches 40 KB. It is in `%LOCALAPPDATA%\com.aeroftp.AeroFTP\logs\` on Windows, `~/.local/share/com.aeroftp.AeroFTP/logs/` on Linux (under `$XDG_DATA_HOME` when that is set) and `~/Library/Logs/com.aeroftp.AeroFTP/` on macOS. The portable Windows build keeps it in `data\logs\` inside its own folder; versions up to 4.2.4 wrote it to the Windows path above instead. The command-line tool writes no log file: what `-v` asks for goes to the terminal.
 
 All local data can be deleted by removing the AeroFTP application data directories. After an update more than one of these can exist at the same time, because a directory named after the previous application identifier is left in place rather than moved or removed. Remove every one of them that exists, rather than choosing between them:
 - **Linux**: `~/.config/aeroftp/`, `~/.local/share/app.aeroftp.AeroFTP/`, and `~/.local/share/com.aeroftp.AeroFTP/` (installations made before the identifier changed)
-- **macOS**: `~/Library/Application Support/aeroftp/`
-- **Windows**: `%APPDATA%\aeroftp\`
+- **macOS**: `~/Library/Application Support/aeroftp/` and the log folder `~/Library/Logs/com.aeroftp.AeroFTP/`
+- **Windows**: `%APPDATA%\aeroftp\` and `%LOCALAPPDATA%\com.aeroftp.AeroFTP\`, which holds the log and the WebView data
 
 One thing is kept outside those directories and is not removed with them. If your vault is protected by the system keyring rather than by a master password, the key that opens it is held by the operating system's own credential store, and deleting the directories above leaves it there. AeroFTP removes it only when you switch the vault to a master password; no other action in the app deletes it.
 

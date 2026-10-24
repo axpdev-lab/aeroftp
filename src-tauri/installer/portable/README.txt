@@ -65,6 +65,12 @@ Delete this folder. There is no registry footprint, no service, no leftover
 file outside the folder. Your data dies with the folder unless you copy
 "data\" out first.
 
+Versions up to 4.2.4 wrote their log, AeroFTP.log, outside this folder, in
+%LOCALAPPDATA%\com.aeroftp.AeroFTP\logs. Newer versions log to "data\logs\"
+and leave that file where it is. An installed AeroFTP writes its own log to
+the same file: delete it only if AeroFTP is not also installed on this
+machine.
+
 
 SECURITY NOTES
 --------------
