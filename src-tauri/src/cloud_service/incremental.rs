@@ -887,6 +887,7 @@ impl CloudService {
 
         let total = comparisons.len();
         let mut done = Vec::with_capacity(total);
+        let mut ahead = super::bulk::BulkAhead::default();
         for (i, comparison) in comparisons.iter().enumerate() {
             self.set_status(CloudSyncStatus::Syncing {
                 current_file: comparison.relative_path.clone(),
@@ -896,7 +897,7 @@ impl CloudService {
             })
             .await;
             match self
-                .process_comparison_with_provider(provider, &config, comparison)
+                .next_outcome(provider, &config, &comparisons, i, &mut ahead)
                 .await
             {
                 Ok(SyncAction::AskUser) => {
