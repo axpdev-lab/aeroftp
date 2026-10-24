@@ -88924,6 +88924,13 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         .await
         .unwrap();
         part.write_all(&[b'b'; 100]).await.unwrap();
+        // tokio hands a write to a blocking thread, and the writer keeps its
+        // claim on the part until that write lands: without a flush the drop
+        // can come first, and the `get` below found the part empty or still
+        // claimed and downloaded the whole file (seen on loaded CI runners).
+        tokio::io::AsyncWriteExt::flush(part.file_mut())
+            .await
+            .unwrap();
         drop(part);
         assert_eq!(partial_get_out_of_place(&local).await, (vec![100], 0));
     }
