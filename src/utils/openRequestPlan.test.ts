@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import type { OpenRequest } from '../types';
 import type { LocalTab } from '../types/aerofile';
-import { addFolderTabs, findTabFor, mergeOpenBatch, planLocalOpen, takeTabSelection } from './openRequestPlan';
+import { addFolderTabs, findTabFor, mergeOpenBatch, planLocalOpen, sameLocalFolder, takeTabSelection } from './openRequestPlan';
 
 const file = (folder: string, name: string): OpenRequest => ({
     kind: 'local', path: `${folder}/${name}`, folder, name, isDir: false,
@@ -73,4 +73,22 @@ it('reuses the tab a folder already has instead of opening a second one', () => 
     expect(next.map(t => t.id)).toEqual(['a', 'b', 'new-/c']);
     expect(next[1].select).toEqual(['y.png', 'z.txt']);
     expect(addFolderTabs(tabs, [{ folder: '/d', names: [], preview: null }], newTab, 2)).toEqual(tabs);
+});
+
+it('compares folders the way each platform names them', () => {
+    // Windows: separators unified, case ignored, trailing separator dropped.
+    expect(sameLocalFolder('C:\\Users\\Me\\Pics', 'c:/users/me/pics/')).toBe(true);
+    expect(sameLocalFolder('C:\\Pics\\', 'C:\\Pics')).toBe(true);
+    expect(sameLocalFolder('\\\\host\\share\\A', '\\\\HOST\\share\\a\\')).toBe(true);
+    expect(sameLocalFolder('C:\\', 'c:/')).toBe(true);
+    expect(sameLocalFolder('C:\\Pics', 'C:\\Pics2')).toBe(false);
+    // Unix: a backslash is part of a name, and case matters.
+    expect(sameLocalFolder('/home/me/b\\', '/home/me/b')).toBe(false);
+    expect(sameLocalFolder('/home/me/b/', '/home/me/b')).toBe(true);
+    expect(sameLocalFolder('/home/Me', '/home/me')).toBe(false);
+    expect(sameLocalFolder('/', '/')).toBe(true);
+    // The join and the tab reuse go through the same comparison.
+    expect(mergeOpenBatch({ panelId: 'local', folder: 'C:\\Pics', names: ['a.png'], at: 0 }, 'local', 'c:/pics/', ['b.png'], 100))
+        .toEqual(['a.png', 'b.png']);
+    expect(findTabFor([{ id: 't', path: 'C:/Pics/', label: 'Pics', scrollTop: 0 }], 'c:\\pics')?.id).toBe('t');
 });

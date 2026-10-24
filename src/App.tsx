@@ -216,7 +216,7 @@ import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
 import { previewRouteFor } from './utils/previewRoute';
 import { useOpenRequests } from './hooks/useOpenRequests';
-import { addFolderTabs, findTabFor, mergeOpenBatch, planLocalOpen, takeTabSelection, type LastLocalOpen } from './utils/openRequestPlan';
+import { addFolderTabs, findTabFor, mergeOpenBatch, planLocalOpen, sameLocalFolder, takeTabSelection, type LastLocalOpen } from './utils/openRequestPlan';
 import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, isConnectCancelledError, isConnectHardTimeoutError } from './utils/connectCancel';
 import { shouldPersistUsedScan } from './utils/usedScanPersist';
 import { usedScanBoundKey } from './utils/usedScanBound';
@@ -16208,7 +16208,7 @@ const App: React.FC = () => {
     // Explorer's one-process-per-file batches for the folder just opened join
     // its selection instead of replacing it.
     const shownPath = panelId === 'local2' ? currentLocalPath2 : currentLocalPath;
-    const merged = shownPath === plan.folder
+    const merged = sameLocalFolder(shownPath, plan.folder)
       ? mergeOpenBatch(lastLocalOpenRef.current, panelId, plan.folder, plan.names, now)
       : null;
     if (!merged) {

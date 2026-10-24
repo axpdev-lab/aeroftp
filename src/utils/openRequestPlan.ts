@@ -17,6 +17,7 @@
 
 import type { OpenRequest } from '../types';
 import type { LocalTab } from '../types/aerofile';
+import { isWindowsLocalPath, normalizeLocalPath } from './localPath';
 
 export interface LocalOpenGroup {
     folder: string;
@@ -77,19 +78,28 @@ export function mergeOpenBatch(
     now: number,
     windowMs = OPEN_MERGE_WINDOW_MS,
 ): string[] | null {
-    if (!last || names.length === 0 || last.panelId !== panelId || last.folder !== folder) return null;
+    if (!last || names.length === 0 || last.panelId !== panelId || !sameLocalFolder(last.folder, folder)) return null;
     if (now - last.at > windowMs || now < last.at) return null;
     return [...last.names, ...names.filter(name => !last.names.includes(name))];
 }
 
-const samePath = (a: string, b: string) => {
-    const trim = (p: string) => (p.length > 1 && /[\\/]$/.test(p) ? p.slice(0, -1) : p);
-    return trim(a) === trim(b);
-};
+/** Whether two local folder paths name the same folder. On Windows the
+ *  separators are unified and case is ignored (`C:\\A` is `c:/a/`); on Unix a
+ *  backslash belongs to a name and only a trailing `/` is dropped. */
+export function sameLocalFolder(a: string, b: string): boolean {
+    const key = (path: string) => {
+        const normalized = normalizeLocalPath(path);
+        const trimmed = /^[A-Za-z]:\/$/.test(normalized) || normalized === '/'
+            ? normalized
+            : normalized.replace(/\/+$/, '');
+        return isWindowsLocalPath(path) ? trimmed.toLowerCase() : trimmed;
+    };
+    return key(a) === key(b);
+}
 
 /** The tab already showing `folder`, if any. */
 export function findTabFor(tabs: readonly LocalTab[], folder: string): LocalTab | undefined {
-    return tabs.find(tab => samePath(tab.path, folder));
+    return tabs.find(tab => sameLocalFolder(tab.path, folder));
 }
 
 /** The tabs with one more per further folder of a batch, each selecting its
@@ -103,7 +113,7 @@ export function addFolderTabs(
 ): LocalTab[] {
     const next = [...tabs];
     for (const group of groups) {
-        const index = next.findIndex(tab => samePath(tab.path, group.folder));
+        const index = next.findIndex(tab => sameLocalFolder(tab.path, group.folder));
         if (index >= 0) {
             const select = [...(next[index].select ?? [])];
             for (const name of group.names) if (!select.includes(name)) select.push(name);
