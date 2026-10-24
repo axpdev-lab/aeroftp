@@ -1334,7 +1334,7 @@
             "fontPresetDefault": "{font} (លំនាំដើម)",
             "fontPresetSystemDefault": "លំនាំដើមប្រព័ន្ធ",
             "duplicatesSkippedCount": "បានរំលងធាតុស្ទួន {count}",
-            "similarToExistingCount": "{count} ស្រដៀងនឹងប្រវត្តិរូបដែលមានស្រាប់",
+            "similarToExistingCount": "ស្រដៀងនឹងប្រវត្តិរូបដែលមានស្រាប់: {count}",
             "bridgeSkippedCount": "បានរំលង {count}",
             "selectedOfTotal": "បានជ្រើស {selected} / {total}",
             "serverCredentialsCount": "ព័ត៌មានសម្ងាត់ម៉ាស៊ីនមេ {count}",

@@ -745,9 +745,9 @@
                 "source": "Ffynhonnell",
                 "title": "Cynllun: {mode}"
             },
-            "stagedCount": "{count} wedi'u llwyfannu",
-            "pendingCount": "{count} Yn aros",
-            "failedCount": "{count} Wedi methu"
+            "stagedCount": "Wedi'u llwyfannu: {count}",
+            "pendingCount": "Yn aros: {count}",
+            "failedCount": "Wedi methu: {count}"
         },
         "settings": {
             "title": "Gosodiadau",
@@ -1334,9 +1334,9 @@
             "fontPresetDefault": "{font} (Rhagosodiad)",
             "fontPresetSystemDefault": "Rhagosodiad y system",
             "duplicatesSkippedCount": "{count} dyblyg wedi'u hepgor",
-            "similarToExistingCount": "{count} yn debyg i broffil presennol",
-            "bridgeSkippedCount": "{count} wedi'u hepgor",
-            "selectedOfTotal": "{selected} / {total} wedi'u dewis",
+            "similarToExistingCount": "Yn debyg i broffil presennol: {count}",
+            "bridgeSkippedCount": "Wedi'u hepgor: {count}",
+            "selectedOfTotal": "Wedi'u dewis: {selected} / {total}",
             "serverCredentialsCount": "Manylion mewngofnodi gweinydd: {count}",
             "serverProfilesCount": "{count} proffil gweinydd",
             "aiKeysCount": "{count} allwedd AI",
@@ -3355,7 +3355,7 @@
                 "vision": "Vision",
                 "bedrockDescription": "Modelau sy'n cael eu lletya gan AWS gyda mynediad drwy allwedd API ranbarthol. Ychwanegwch eich model ID â llaw.",
                 "bedrockHighlight": "Pwynt terfyn rhanbarthol AWS",
-                "availableCount": "{count} ar gael"
+                "availableCount": "Ar gael: {count}"
             },
             "history": {
                 "cancel": "Canslo",
@@ -4464,7 +4464,7 @@
                 "runAll": "Rhedeg pob un",
                 "runOne": "Rhedeg y prawf hwn",
                 "vaultRoundtrip": "Taith gron y gladdgell",
-                "passedCount": "{passed}/{total} wedi pasio"
+                "passedCount": "Wedi pasio: {passed}/{total}"
             },
             "bundle": {
                 "title": "Allforio bwndel diagnostig (ZIP)"
@@ -4514,7 +4514,7 @@
             "badges": {
                 "live": "BYW",
                 "synced": "WEDI CYDWEDDU",
-                "activeCount": "{count} AR WAITH"
+                "activeCount": "AR WAITH: {count}"
             },
             "clearLog": "Clirio'r log",
             "close": "Cau",
@@ -4538,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Hidlo gweithrediadau",
-                "selectedCount": "{count} wedi'u dewis"
+                "selectedCount": "Wedi'u dewis: {count}"
             },
             "save": "Cadw"
         },
@@ -5006,10 +5006,10 @@
             "close": "Cau",
             "allInSync": "Mae'r holl ffeiliau wedi'u cysoni",
             "errorsOccurred": "Bu rhai gwallau",
-            "vaultOnlyCount": "{count} Cell yn unig",
-            "localOnlyCount": "{count} Lleol yn unig",
+            "vaultOnlyCount": "Yn y gell yn unig: {count}",
+            "localOnlyCount": "Lleol yn unig: {count}",
             "conflictsCount": "{count} gwrthdaro",
-            "unchangedCount": "{count} heb newid",
+            "unchangedCount": "Heb newid: {count}",
             "filesToVaultCount": "{count} ffeil wedi'u cysoni i'r gell",
             "filesToLocalCount": "{count} ffeil wedi'u hechdynnu'n lleol",
             "filesSkippedCount": "{count} ffeil wedi'u hepgor"
@@ -5271,10 +5271,10 @@
             "batchChecking": "Wrthi'n gwirio {count} gweinydd, arhoswch...",
             "scoreLegend": "Sgôr 0-100, mae uwch yn well",
             "scoreLegendDetail": "80+ iach · 50-79 wedi diraddio · o dan 50 mae problemau",
-            "checkedCount": "{count} wedi'u gwirio",
-            "healthyCount": "{count} Iach",
-            "degradedCount": "{count} Wedi dirywio",
-            "unreachableCount": "{count} Analluog i gyrraedd"
+            "checkedCount": "Wedi'u gwirio: {count}",
+            "healthyCount": "Iach: {count}",
+            "degradedCount": "Wedi dirywio: {count}",
+            "unreachableCount": "Analluog i gyrraedd: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -6015,8 +6015,8 @@
             "copyHereFromOtherPanelTooltip": "Copïo {count} a ddewiswyd o'r panel arall i'r panel hwn (F5)",
             "moveHereFromOtherPanelTooltip": "Symud {count} a ddewiswyd o'r panel arall i'r panel hwn (F6)",
             "syncToOtherPanel": "Cysoni i'r panel arall (delta)",
-            "failedCount": "{count} wedi methu",
-            "skippedCount": "{count} wedi'u hepgor"
+            "failedCount": "Wedi methu: {count}",
+            "skippedCount": "Wedi'u hepgor: {count}"
         },
         "compare": {
             "title": "Cymharu paneli",
@@ -6323,8 +6323,8 @@
             "compareStartHint": "Mae'r gymhariaeth yn darllen y ddau ffolder a phob ffolder oddi tanynt. Ar goeden fawr gall gymryd amser, a gallwch ei stopio.",
             "progressDelta": "[delta]",
             "progressCopy": "[copi]",
-            "deleteCount": "{count} i'w dileu",
-            "overwriteCount": "{count} i'w trosysgrifo",
+            "deleteCount": "I'w dileu: {count}",
+            "overwriteCount": "I'w trosysgrifo: {count}",
             "conflictCount": "{count} gwrthdaro"
         },
         "accountLock": {

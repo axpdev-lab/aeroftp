@@ -745,9 +745,9 @@
                 "source": "Forrás",
                 "title": "Terv: {mode}"
             },
-            "stagedCount": "{count} előkészítve",
-            "pendingCount": "{count} Függőben",
-            "failedCount": "{count} Sikertelen"
+            "stagedCount": "Előkészítve: {count}",
+            "pendingCount": "Függőben: {count}",
+            "failedCount": "Sikertelen: {count}"
         },
         "settings": {
             "title": "Beállítások",
@@ -1334,9 +1334,9 @@
             "fontPresetDefault": "{font} (Alapértelmezett)",
             "fontPresetSystemDefault": "Rendszer alapértelmezett",
             "duplicatesSkippedCount": "{count} ismétlődés kihagyva",
-            "similarToExistingCount": "{count} hasonlít egy meglévő profilhoz",
-            "bridgeSkippedCount": "{count} kihagyva",
-            "selectedOfTotal": "{selected} / {total} kiválasztva",
+            "similarToExistingCount": "Meglévő profilhoz hasonló: {count}",
+            "bridgeSkippedCount": "Kihagyva: {count}",
+            "selectedOfTotal": "Kiválasztva: {selected} / {total}",
             "serverCredentialsCount": "{count} kiszolgálói hitelesítő adat",
             "serverProfilesCount": "{count} kiszolgálóprofil",
             "aiKeysCount": "{count} AI-kulcs",
@@ -3355,7 +3355,7 @@
                 "vision": "Vision",
                 "bedrockDescription": "AWS-en tárolt modellek regionális API-kulcsos hozzáféréssel. Adja hozzá kézzel a model ID értékét.",
                 "bedrockHighlight": "AWS regionális végpont",
-                "availableCount": "{count} elérhető"
+                "availableCount": "Elérhető: {count}"
             },
             "history": {
                 "cancel": "Mégse",
@@ -4464,7 +4464,7 @@
                 "runAll": "Összes futtatása",
                 "runOne": "Ezen teszt futtatása",
                 "vaultRoundtrip": "Széf oda-vissza",
-                "passedCount": "{passed}/{total} sikeres"
+                "passedCount": "Sikeres: {passed}/{total}"
             },
             "bundle": {
                 "title": "Diagnosztikai csomag exportálása (ZIP)"
@@ -4514,7 +4514,7 @@
             "badges": {
                 "live": "ÉLŐ",
                 "synced": "SZINKRONIZÁLVA",
-                "activeCount": "{count} AKTÍV"
+                "activeCount": "AKTÍV: {count}"
             },
             "clearLog": "Napló törlése",
             "close": "Bezárás",
@@ -4538,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Műveletek szűrése",
-                "selectedCount": "{count} kiválasztva"
+                "selectedCount": "Kiválasztva: {count}"
             },
             "save": "Mentés"
         },
@@ -5006,10 +5006,10 @@
             "close": "Bezárás",
             "allInSync": "Minden fájl szinkronban van",
             "errorsOccurred": "Néhány hiba történt",
-            "vaultOnlyCount": "{count} Csak a széfben",
-            "localOnlyCount": "{count} Csak helyi",
+            "vaultOnlyCount": "Csak a széfben: {count}",
+            "localOnlyCount": "Csak helyi: {count}",
             "conflictsCount": "{count} ütközés",
-            "unchangedCount": "{count} változatlan",
+            "unchangedCount": "Változatlan: {count}",
             "filesToVaultCount": "{count} fájl szinkronizálva a széfbe",
             "filesToLocalCount": "{count} fájl kibontva helyileg",
             "filesSkippedCount": "{count} fájl kihagyva"
@@ -5252,10 +5252,10 @@
             "batchChecking": "{count} szerver ellenőrzése, kérjük, várjon...",
             "scoreLegend": "Pontszám 0-100, magasabb a jobb",
             "scoreLegendDetail": "80+ egészséges · 50-79 csökkent · 50 alatt problémás",
-            "checkedCount": "{count} ellenőrizve",
-            "healthyCount": "{count} Kifogástalan",
-            "degradedCount": "{count} Leromlott",
-            "unreachableCount": "{count} Elérhetetlen"
+            "checkedCount": "Ellenőrizve: {count}",
+            "healthyCount": "Kifogástalan: {count}",
+            "degradedCount": "Leromlott: {count}",
+            "unreachableCount": "Elérhetetlen: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5996,8 +5996,8 @@
             "copyHereFromOtherPanelTooltip": "{count} kiválasztott elem másolása a másik panelről erre a panelre (F5)",
             "moveHereFromOtherPanelTooltip": "{count} kiválasztott elem áthelyezése a másik panelről erre a panelre (F6)",
             "syncToOtherPanel": "Szinkronizálás a másik panellel (delta)",
-            "failedCount": "{count} sikertelen",
-            "skippedCount": "{count} kihagyva"
+            "failedCount": "Sikertelen: {count}",
+            "skippedCount": "Kihagyva: {count}"
         },
         "compare": {
             "title": "Panelek összehasonlítása",
@@ -6304,8 +6304,8 @@
             "compareStartHint": "Az összehasonlítás beolvassa mindkét mappát és az alattuk lévő összes mappát. Nagy fa esetén ez eltarthat egy ideig, és leállíthatja.",
             "progressDelta": "[delta]",
             "progressCopy": "[másolat]",
-            "deleteCount": "{count} törlendő",
-            "overwriteCount": "{count} felülírandó",
+            "deleteCount": "Törlendő: {count}",
+            "overwriteCount": "Felülírandó: {count}",
             "conflictCount": "{count} ütközés"
         },
         "accountLock": {

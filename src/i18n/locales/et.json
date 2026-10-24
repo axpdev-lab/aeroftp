@@ -445,9 +445,9 @@
             "chooseRightPanelFolder": "Vali parema paneeli kaust",
             "chooseLeftPanelFolder": "Vali vasaku paneeli kaust",
             "localRight": "Kohalik (parem)",
-            "itemCount": "{count} üksus(t)",
-            "fileCount": "{count} fail(i)",
-            "folderCount": "{count} kaust(a)"
+            "itemCount": "Üksused: {count}",
+            "fileCount": "Failid: {count}",
+            "folderCount": "Kaustad: {count}"
         },
         "contextMenu": {
             "askAeroAgent": "Küsi AeroAgent-ilt...",
@@ -745,9 +745,9 @@
                 "source": "Allikas",
                 "title": "Plaan: {mode}"
             },
-            "stagedCount": "{count} ettevalmistatud",
-            "pendingCount": "{count} Ootel",
-            "failedCount": "{count} Ebaõnnestus"
+            "stagedCount": "Ettevalmistatud: {count}",
+            "pendingCount": "Ootel: {count}",
+            "failedCount": "Ebaõnnestunud: {count}"
         },
         "settings": {
             "title": "Seaded",
@@ -1333,10 +1333,10 @@
             "fontSizeIndicatorLabel": "Kiri",
             "fontPresetDefault": "{font} (vaikimisi)",
             "fontPresetSystemDefault": "Süsteemi vaikimisi",
-            "duplicatesSkippedCount": "{count} duplikaat(i) vahele jäetud",
-            "similarToExistingCount": "{count} sarnaneb olemasoleva profiiliga",
-            "bridgeSkippedCount": "{count} vahele jäetud",
-            "selectedOfTotal": "{selected} / {total} valitud",
+            "duplicatesSkippedCount": "Vahele jäetud duplikaadid: {count}",
+            "similarToExistingCount": "Sarnased olemasoleva profiiliga: {count}",
+            "bridgeSkippedCount": "Vahele jäetud: {count}",
+            "selectedOfTotal": "Valitud: {selected} / {total}",
             "serverCredentialsCount": "Serveri mandaadid: {count}",
             "serverProfilesCount": "Serveri profiilid: {count}",
             "aiKeysCount": "AI võtmed: {count}",
@@ -1559,7 +1559,7 @@
             "aerocloudEnabled": "AeroCloud lubatud",
             "selectPairLocalFolder": "Vali paari jaoks kohalik kaust",
             "secondsAgo": "{count}s tagasi",
-            "conflictsCount": "{count} konflikt(i) vajab tähelepanu"
+            "conflictsCount": "Tähelepanu vajavad konfliktid: {count}"
         },
         "statusBar": {
             "connected": "Ühendatud",
@@ -3035,7 +3035,7 @@
                 "done": "Valmis",
                 "failed": "Ebaõnnestus",
                 "allowThis": "Luba see tööriist",
-                "pendingApprovalCount": "{count} tööriistakutse(t) ootab kinnitust"
+                "pendingApprovalCount": "Kinnitust ootavad tööriistakutsed: {count}"
             },
             "diff": {
                 "title": "Erinevuste eelvaade",
@@ -3355,7 +3355,7 @@
                 "vision": "Vision",
                 "bedrockDescription": "AWS-is majutatud mudelid piirkondliku API-võtmega juurdepääsuks. Lisa oma model ID käsitsi.",
                 "bedrockHighlight": "AWS-i piirkondlik lõpp-punkt",
-                "availableCount": "{count} saadaval"
+                "availableCount": "Saadaval: {count}"
             },
             "history": {
                 "cancel": "Tühista",
@@ -3715,7 +3715,7 @@
             "preview": "Eelvaade",
             "extract": "Ekstrakti",
             "back": "Tagasi",
-            "filesSummary": "{count} fail(i), {size}"
+            "filesSummary": "Failid: {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "Lisati {files} faili {dirs} kataloogis",
@@ -4323,8 +4323,8 @@
             "modeExact": "Täpne",
             "modeLabel": "Režiim:",
             "modeNonIdentical": "Mitteidentne",
-            "groupsCount": "{count} rühm(a)",
-            "duplicateFilesCount": "{count} duplikaatfail(i)",
+            "groupsCount": "Rühmad: {count}",
+            "duplicateFilesCount": "Duplikaatfailid: {count}",
             "copiesCount": "{count} koopiat"
         },
         "diskUsage": {
@@ -4353,7 +4353,7 @@
             "status": "Olek",
             "footer": "Versioonid pärinevad crates.io API-st. Näidatud versioonid on lahendatud (Cargo.lock) versioonid.",
             "copyTitle": "AeroFTP sõltuvuste kontroll",
-            "cratesCount": "{count} kraat(i)"
+            "cratesCount": "Crate'id: {count}"
         },
         "debug": {
             "tabs": {
@@ -4437,7 +4437,7 @@
                 "userAgent": "Kasutajaagent",
                 "localStorageKeysTitle": "LocalStorage võtmed",
                 "localStorageEntrySummary": "{size} baiti · {preview}",
-                "keysCount": "{count} võti(t)"
+                "keysCount": "Võtmed: {count}"
             },
             "copyFileListToClipboard": "Kopeeri failide nimekiri lõikelauale",
             "filesCopied": "{count} failikirjet kopeeritud lõikelauale",
@@ -4464,7 +4464,7 @@
                 "runAll": "Käivita kõik",
                 "runOne": "Käivita see test",
                 "vaultRoundtrip": "Hoidla edasi-tagasi",
-                "passedCount": "{passed}/{total} läbitud"
+                "passedCount": "Läbitud: {passed}/{total}"
             },
             "bundle": {
                 "title": "Ekspordi diagnostikapakett (ZIP)"
@@ -4538,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Filtreeri toiminguid",
-                "selectedCount": "{count} valitud"
+                "selectedCount": "Valitud: {count}"
             },
             "save": "Salvesta"
         },
@@ -4755,7 +4755,7 @@
                 "zoomIn": "Suurenda",
                 "zoomOut": "Vähenda",
                 "htmlPreviewFrameTitle": "HTML-eelvaade",
-                "stats": "{lines} rida • {chars} märk(i)"
+                "stats": "Read: {lines} • märgid: {chars}"
             },
             "video": {
                 "exitFullscreen": "Välju täisekraanilt (F)",
@@ -5006,13 +5006,13 @@
             "close": "Sulge",
             "allInSync": "Kõik failid on sünkroniseeritud",
             "errorsOccurred": "Esines mõningaid vigu",
-            "vaultOnlyCount": "{count} Ainult hoidlas",
-            "localOnlyCount": "{count} Ainult lokaalne",
-            "conflictsCount": "{count} konflikt(i)",
-            "unchangedCount": "{count} muutmata",
-            "filesToVaultCount": "{count} fail(i) sünkroonitud hoidlasse",
-            "filesToLocalCount": "{count} fail(i) lahti pakitud kohalikku kausta",
-            "filesSkippedCount": "{count} fail(i) vahele jäetud"
+            "vaultOnlyCount": "Ainult hoidlas: {count}",
+            "localOnlyCount": "Ainult lokaalsed: {count}",
+            "conflictsCount": "Konfliktid: {count}",
+            "unchangedCount": "Muutmata: {count}",
+            "filesToVaultCount": "Hoidlasse sünkroonitud failid: {count}",
+            "filesToLocalCount": "Kohalikku kausta lahti pakitud failid: {count}",
+            "filesSkippedCount": "Vahele jäetud failid: {count}"
         },
         "localTabs": {
             "closeAll": "Sulge kõik vahekaardid",
@@ -5252,9 +5252,9 @@
             "batchChecking": "Kontrollitakse {count} serverit, palun oodake...",
             "scoreLegend": "Tulemus 0-100, kõrgem on parem",
             "scoreLegendDetail": "80+ tervis · 50-79 halvenenud · alla 50 probleemidega",
-            "checkedCount": "{count} kontrollitud",
-            "healthyCount": "{count} Korras",
-            "degradedCount": "{count} Halvenenud",
+            "checkedCount": "Kontrollitud: {count}",
+            "healthyCount": "Korras: {count}",
+            "degradedCount": "Halvenenud: {count}",
             "unreachableCount": "Kättesaamatud: {count}"
         },
         "speedTest": {
@@ -5996,8 +5996,8 @@
             "copyHereFromOtherPanelTooltip": "Kopeeri {count} valitut teisest paneelist sellesse paneeli (F5)",
             "moveHereFromOtherPanelTooltip": "Teisalda {count} valitut teisest paneelist sellesse paneeli (F6)",
             "syncToOtherPanel": "Sünkroniseeri teisele paneelile (delta)",
-            "failedCount": "{count} ebaõnnestus",
-            "skippedCount": "{count} vahele jäetud"
+            "failedCount": "Ebaõnnestunud: {count}",
+            "skippedCount": "Vahele jäetud: {count}"
         },
         "compare": {
             "title": "Võrdle paneele",
@@ -6306,7 +6306,7 @@
             "progressCopy": "[koopia]",
             "deleteCount": "{count} kustutamiseks",
             "overwriteCount": "{count} ülekirjutamiseks",
-            "conflictCount": "{count} konflikt(i)"
+            "conflictCount": "Konfliktid: {count}"
         },
         "accountLock": {
             "title": "Vali konto",

@@ -445,9 +445,9 @@
             "chooseRightPanelFolder": "Choisir le dossier du panneau droit",
             "chooseLeftPanelFolder": "Choisir le dossier du panneau gauche",
             "localRight": "Local (droite)",
-            "itemCount": "{count} élément(s)",
-            "fileCount": "{count} fichier(s)",
-            "folderCount": "{count} dossier(s)"
+            "itemCount": "Éléments : {count}",
+            "fileCount": "Fichiers : {count}",
+            "folderCount": "Dossiers : {count}"
         },
         "contextMenu": {
             "askAeroAgent": "Demander à AeroAgent...",
@@ -745,9 +745,9 @@
                 "source": "Source",
                 "title": "Plan : {mode}"
             },
-            "stagedCount": "{count} préparé(s)",
-            "pendingCount": "{count} En attente",
-            "failedCount": "{count} En échec"
+            "stagedCount": "Préparés : {count}",
+            "pendingCount": "En attente : {count}",
+            "failedCount": "Échecs : {count}"
         },
         "settings": {
             "title": "Paramètres",
@@ -1333,15 +1333,15 @@
             "fontSizeIndicatorLabel": "Police",
             "fontPresetDefault": "{font} (Par défaut)",
             "fontPresetSystemDefault": "Par défaut du système",
-            "duplicatesSkippedCount": "{count} doublon(s) ignoré(s)",
-            "similarToExistingCount": "{count} similaire(s) à un profil existant",
-            "bridgeSkippedCount": "{count} ignoré(s)",
-            "selectedOfTotal": "{selected} / {total} sélectionné(s)",
-            "serverCredentialsCount": "{count} identifiant(s) de serveur",
-            "serverProfilesCount": "{count} profil(s) de serveur",
-            "aiKeysCount": "{count} clé(s) AI",
-            "oauthTokensCount": "{count} jeton(s) OAuth",
-            "configEntriesCount": "{count} entrée(s) de configuration"
+            "duplicatesSkippedCount": "Doublons ignorés : {count}",
+            "similarToExistingCount": "Similaires à un profil existant : {count}",
+            "bridgeSkippedCount": "Ignorés : {count}",
+            "selectedOfTotal": "Sélectionnés : {selected} / {total}",
+            "serverCredentialsCount": "Identifiants de serveur : {count}",
+            "serverProfilesCount": "Profils de serveur : {count}",
+            "aiKeysCount": "Clés AI : {count}",
+            "oauthTokensCount": "Jetons OAuth : {count}",
+            "configEntriesCount": "Entrées de configuration : {count}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1559,7 +1559,7 @@
             "aerocloudEnabled": "AeroCloud activé",
             "selectPairLocalFolder": "Sélectionner le dossier local de la paire",
             "secondsAgo": "Il y a {count}s",
-            "conflictsCount": "{count} conflit(s) à traiter"
+            "conflictsCount": "Conflits à traiter : {count}"
         },
         "statusBar": {
             "connected": "Connecté",
@@ -3035,7 +3035,7 @@
                 "done": "Terminé",
                 "failed": "Échoué",
                 "allowThis": "Autoriser cet outil",
-                "pendingApprovalCount": "{count} appel(s) d'outil en attente d'approbation"
+                "pendingApprovalCount": "Appels d'outil en attente d'approbation : {count}"
             },
             "diff": {
                 "title": "Aperçu des différences",
@@ -3355,7 +3355,7 @@
                 "vision": "Vision",
                 "bedrockDescription": "Modèles hébergés sur AWS accessibles avec une clé API régionale. Ajoutez votre model ID manuellement.",
                 "bedrockHighlight": "Point de terminaison régional AWS",
-                "availableCount": "{count} disponible(s)"
+                "availableCount": "Disponibles : {count}"
             },
             "history": {
                 "cancel": "Annuler",
@@ -3715,7 +3715,7 @@
             "preview": "Aperçu",
             "extract": "Extraire",
             "back": "Retour",
-            "filesSummary": "{count} fichier(s), {size}"
+            "filesSummary": "Fichiers : {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "{files} fichiers ajoutés dans {dirs} répertoires",
@@ -4323,8 +4323,8 @@
             "modeExact": "Exact",
             "modeLabel": "Mode :",
             "modeNonIdentical": "Non identique",
-            "groupsCount": "{count} groupe(s)",
-            "duplicateFilesCount": "{count} fichier(s) en double",
+            "groupsCount": "Groupes : {count}",
+            "duplicateFilesCount": "Fichiers en double : {count}",
             "copiesCount": "{count} copies"
         },
         "diskUsage": {
@@ -4353,7 +4353,7 @@
             "status": "Statut",
             "footer": "Données de version provenant de l'API crates.io. Les versions affichées sont les versions résolues (Cargo.lock).",
             "copyTitle": "Vérification des dépendances AeroFTP",
-            "cratesCount": "{count} crate(s)"
+            "cratesCount": "Crates : {count}"
         },
         "debug": {
             "tabs": {
@@ -4437,7 +4437,7 @@
                 "userAgent": "Agent utilisateur",
                 "localStorageKeysTitle": "Clés du LocalStorage",
                 "localStorageEntrySummary": "{size} octets · {preview}",
-                "keysCount": "{count} clé(s)"
+                "keysCount": "Clés : {count}"
             },
             "copyFileListToClipboard": "Copier la liste des fichiers dans le presse-papiers",
             "filesCopied": "{count} entrées de fichiers copiées dans le presse-papiers",
@@ -4464,7 +4464,7 @@
                 "runAll": "Tout exécuter",
                 "runOne": "Exécuter ce test",
                 "vaultRoundtrip": "Aller-retour du coffre",
-                "passedCount": "{passed}/{total} réussi(s)"
+                "passedCount": "Réussis : {passed}/{total}"
             },
             "bundle": {
                 "title": "Exporter le paquet de diagnostic (ZIP)"
@@ -4514,7 +4514,7 @@
             "badges": {
                 "live": "EN DIRECT",
                 "synced": "SYNCHRONISÉ",
-                "activeCount": "{count} ACTIF(S)"
+                "activeCount": "ACTIFS : {count}"
             },
             "clearLog": "Effacer le journal",
             "close": "Fermer",
@@ -4538,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Filtrer les opérations",
-                "selectedCount": "{count} sélectionné(s)"
+                "selectedCount": "Sélectionnés : {count}"
             },
             "save": "Enregistrer"
         },
@@ -4755,7 +4755,7 @@
                 "zoomIn": "Zoom avant",
                 "zoomOut": "Zoom arrière",
                 "htmlPreviewFrameTitle": "Aperçu HTML",
-                "stats": "{lines} ligne(s) • {chars} caractère(s)"
+                "stats": "Lignes : {lines} • caractères : {chars}"
             },
             "video": {
                 "exitFullscreen": "Quitter le plein écran (F)",
@@ -5006,13 +5006,13 @@
             "close": "Fermer",
             "allInSync": "Tous les fichiers sont synchronisés",
             "errorsOccurred": "Des erreurs se sont produites",
-            "vaultOnlyCount": "{count} Vault uniquement",
-            "localOnlyCount": "{count} Local uniquement",
-            "conflictsCount": "{count} conflit(s)",
-            "unchangedCount": "{count} inchangé(s)",
-            "filesToVaultCount": "{count} fichier(s) synchronisé(s) vers le vault",
-            "filesToLocalCount": "{count} fichier(s) extrait(s) en local",
-            "filesSkippedCount": "{count} fichier(s) ignoré(s)"
+            "vaultOnlyCount": "Uniquement dans le vault : {count}",
+            "localOnlyCount": "Uniquement en local : {count}",
+            "conflictsCount": "Conflits : {count}",
+            "unchangedCount": "Inchangés : {count}",
+            "filesToVaultCount": "Fichiers synchronisés vers le vault : {count}",
+            "filesToLocalCount": "Fichiers extraits en local : {count}",
+            "filesSkippedCount": "Fichiers ignorés : {count}"
         },
         "localTabs": {
             "closeAll": "Fermer tous les onglets",
@@ -5252,10 +5252,10 @@
             "batchChecking": "Vérification de {count} serveurs, veuillez patienter...",
             "scoreLegend": "Score 0-100, plus haut est meilleur",
             "scoreLegendDetail": "80+ sain · 50-79 dégradé · en dessous de 50 a des problèmes",
-            "checkedCount": "{count} vérifié(s)",
-            "healthyCount": "{count} Opérationnel(s)",
-            "degradedCount": "{count} Dégradé(s)",
-            "unreachableCount": "{count} Inaccessible(s)"
+            "checkedCount": "Vérifiés : {count}",
+            "healthyCount": "Opérationnels : {count}",
+            "degradedCount": "Dégradés : {count}",
+            "unreachableCount": "Inaccessibles : {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5996,8 +5996,8 @@
             "copyHereFromOtherPanelTooltip": "Copier les {count} sélectionnés de l'autre panneau vers ce panneau (F5)",
             "moveHereFromOtherPanelTooltip": "Déplacer les {count} sélectionnés de l'autre panneau vers ce panneau (F6)",
             "syncToOtherPanel": "Synchroniser vers l'autre panneau (delta)",
-            "failedCount": "{count} échec(s)",
-            "skippedCount": "{count} ignoré(s)"
+            "failedCount": "Échecs : {count}",
+            "skippedCount": "Ignorés : {count}"
         },
         "compare": {
             "title": "Comparer les panneaux",
@@ -6199,7 +6199,7 @@
                 "resultDryRunOk": "Simulation terminée",
                 "resultDryRunPartial": "Simulation terminée avec des erreurs",
                 "resultDryRunCancelled": "Simulation annulée",
-                "errorDetailsCount": "{count} erreur(s), détails"
+                "errorDetailsCount": "Erreurs : {count}, détails"
             },
             "launcherTemplates": "Modèles",
             "launcherMultiPath": "Multi-chemin",
@@ -6306,7 +6306,7 @@
             "progressCopy": "[copie]",
             "deleteCount": "{count} à supprimer",
             "overwriteCount": "{count} à écraser",
-            "conflictCount": "{count} conflit(s)"
+            "conflictCount": "Conflits : {count}"
         },
         "accountLock": {
             "title": "Choisissez un compte",

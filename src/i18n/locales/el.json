@@ -445,9 +445,9 @@
             "chooseRightPanelFolder": "Επιλογή φακέλου δεξιού πλαισίου",
             "chooseLeftPanelFolder": "Επιλογή φακέλου αριστερού πλαισίου",
             "localRight": "Τοπικό (δεξιά)",
-            "itemCount": "{count} στοιχείο(-α)",
-            "fileCount": "{count} αρχείο(-α)",
-            "folderCount": "{count} φάκελος(-οι)"
+            "itemCount": "Στοιχεία: {count}",
+            "fileCount": "Αρχεία: {count}",
+            "folderCount": "Φάκελοι: {count}"
         },
         "contextMenu": {
             "askAeroAgent": "Ρωτήστε το AeroAgent...",
@@ -3715,7 +3715,7 @@
             "preview": "Προεπισκόπηση",
             "extract": "Εξαγωγή",
             "back": "Πίσω",
-            "filesSummary": "{count} αρχείο(-α), {size}"
+            "filesSummary": "Αρχεία: {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "Προστέθηκαν {files} αρχεία σε {dirs} καταλόγους",

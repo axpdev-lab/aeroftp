@@ -745,9 +745,9 @@
                 "source": "উৎস",
                 "title": "{mode} পরিকল্পনা"
             },
-            "stagedCount": "{count}টি স্টেজ করা",
-            "pendingCount": "{count}টি অপেক্ষমাণ",
-            "failedCount": "{count}টি ব্যর্থ"
+            "stagedCount": "স্টেজ করা: {count}",
+            "pendingCount": "অপেক্ষমাণ: {count}",
+            "failedCount": "ব্যর্থ: {count}"
         },
         "settings": {
             "title": "সেটিংস",
@@ -1334,9 +1334,9 @@
             "fontPresetDefault": "{font} (ডিফল্ট)",
             "fontPresetSystemDefault": "সিস্টেম ডিফল্ট",
             "duplicatesSkippedCount": "{count}টি ডুপ্লিকেট এড়িয়ে যাওয়া হয়েছে",
-            "similarToExistingCount": "{count}টি বিদ্যমান প্রোফাইলের মতো",
-            "bridgeSkippedCount": "{count}টি এড়িয়ে যাওয়া হয়েছে",
-            "selectedOfTotal": "{selected} / {total} নির্বাচিত",
+            "similarToExistingCount": "বিদ্যমান প্রোফাইলের মতো: {count}",
+            "bridgeSkippedCount": "এড়িয়ে যাওয়া: {count}",
+            "selectedOfTotal": "নির্বাচিত: {selected} / {total}",
             "serverCredentialsCount": "{count}টি সার্ভার ক্রেডেনশিয়াল",
             "serverProfilesCount": "{count}টি সার্ভার প্রোফাইল",
             "aiKeysCount": "{count}টি AI কী",
@@ -3355,7 +3355,7 @@
                 "vision": "Vision",
                 "bedrockDescription": "AWS-এ হোস্ট করা মডেল, আঞ্চলিক API কী দিয়ে অ্যাক্সেসযোগ্য। আপনার model ID নিজে যোগ করুন।",
                 "bedrockHighlight": "AWS আঞ্চলিক এন্ডপয়েন্ট",
-                "availableCount": "{count}টি উপলব্ধ"
+                "availableCount": "উপলব্ধ: {count}"
             },
             "history": {
                 "cancel": "বাতিল",
@@ -4464,7 +4464,7 @@
                 "runAll": "সব চালান",
                 "runOne": "এই পরীক্ষাটি চালান",
                 "vaultRoundtrip": "ভল্ট রাউন্ড-ট্রিপ",
-                "passedCount": "{passed}/{total} উত্তীর্ণ"
+                "passedCount": "উত্তীর্ণ: {passed}/{total}"
             },
             "bundle": {
                 "title": "ডায়াগনস্টিক বান্ডেল রপ্তানি করুন (ZIP)"
@@ -4514,7 +4514,7 @@
             "badges": {
                 "live": "লাইভ",
                 "synced": "সিঙ্কড",
-                "activeCount": "{count}টি সক্রিয়"
+                "activeCount": "সক্রিয়: {count}"
             },
             "clearLog": "লগ মুছুন",
             "close": "বন্ধ",
@@ -4538,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "অপারেশন ফিল্টার করুন",
-                "selectedCount": "{count}টি নির্বাচিত"
+                "selectedCount": "নির্বাচিত: {count}"
             },
             "save": "সংরক্ষণ করুন"
         },
@@ -5006,10 +5006,10 @@
             "close": "বন্ধ করুন",
             "allInSync": "সব ফাইল সিঙ্ক আছে",
             "errorsOccurred": "কিছু ত্রুটি ঘটেছে",
-            "vaultOnlyCount": "{count}টি শুধুমাত্র ভল্টে",
-            "localOnlyCount": "{count}টি শুধুমাত্র স্থানীয়",
+            "vaultOnlyCount": "শুধুমাত্র ভল্টে: {count}",
+            "localOnlyCount": "শুধুমাত্র স্থানীয়: {count}",
             "conflictsCount": "{count}টি দ্বন্দ্ব",
-            "unchangedCount": "{count}টি অপরিবর্তিত",
+            "unchangedCount": "অপরিবর্তিত: {count}",
             "filesToVaultCount": "{count}টি ফাইল ভল্টে সিঙ্ক করা হয়েছে",
             "filesToLocalCount": "{count}টি ফাইল স্থানীয়ভাবে এক্সট্র্যাক্ট করা হয়েছে",
             "filesSkippedCount": "{count}টি ফাইল এড়িয়ে যাওয়া হয়েছে"
@@ -5252,10 +5252,10 @@
             "batchChecking": "{count}টি সার্ভার পরীক্ষা করা হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন...",
             "scoreLegend": "স্কোর 0-100, বেশি ভালো",
             "scoreLegendDetail": "80+ স্বাস্থ্যকর · 50-79 অবনত · 50 এর নিচে সমস্যা আছে",
-            "checkedCount": "{count}টি পরীক্ষিত",
-            "healthyCount": "{count}টি সুস্থ",
-            "degradedCount": "{count}টি মন্থর",
-            "unreachableCount": "{count}টি অপ্রাপ্য"
+            "checkedCount": "পরীক্ষিত: {count}",
+            "healthyCount": "সুস্থ: {count}",
+            "degradedCount": "মন্থর: {count}",
+            "unreachableCount": "অপ্রাপ্য: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5996,8 +5996,8 @@
             "copyHereFromOtherPanelTooltip": "অন্য প্যানেল থেকে নির্বাচিত {count} এই প্যানেলে কপি করুন (F5)",
             "moveHereFromOtherPanelTooltip": "অন্য প্যানেল থেকে নির্বাচিত {count} এই প্যানেলে সরান (F6)",
             "syncToOtherPanel": "অন্য প্যানেলে সিঙ্ক করুন (delta)",
-            "failedCount": "{count}টি ব্যর্থ",
-            "skippedCount": "{count}টি এড়িয়ে যাওয়া হয়েছে"
+            "failedCount": "ব্যর্থ: {count}",
+            "skippedCount": "এড়িয়ে যাওয়া: {count}"
         },
         "compare": {
             "title": "প্যানেল তুলনা",
@@ -6304,8 +6304,8 @@
             "compareStartHint": "তুলনা দুটি ফোল্ডার এবং তাদের ভেতরের সব ফোল্ডার পড়ে। বড় ট্রিতে কিছুটা সময় লাগতে পারে, এবং আপনি এটি থামাতে পারেন।",
             "progressDelta": "[ডেল্টা]",
             "progressCopy": "[কপি]",
-            "deleteCount": "{count}টি মুছতে হবে",
-            "overwriteCount": "{count}টি ওভাররাইট করতে হবে",
+            "deleteCount": "মুছতে হবে: {count}",
+            "overwriteCount": "ওভাররাইট করতে হবে: {count}",
             "conflictCount": "{count}টি দ্বন্দ্ব"
         },
         "accountLock": {

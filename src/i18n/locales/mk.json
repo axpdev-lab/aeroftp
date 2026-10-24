@@ -445,9 +445,9 @@
             "chooseRightPanelFolder": "Изберете папка за десниот панел",
             "chooseLeftPanelFolder": "Изберете папка за левиот панел",
             "localRight": "Локално (десно)",
-            "itemCount": "{count} ставка(и)",
-            "fileCount": "{count} датотека(и)",
-            "folderCount": "{count} папка(и)"
+            "itemCount": "Ставки: {count}",
+            "fileCount": "Датотеки: {count}",
+            "folderCount": "Папки: {count}"
         },
         "contextMenu": {
             "askAeroAgent": "Прашај AeroAgent...",
@@ -3715,7 +3715,7 @@
             "preview": "Преглед",
             "extract": "Извлечи",
             "back": "Назад",
-            "filesSummary": "{count} датотека(и), {size}"
+            "filesSummary": "Датотеки: {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "Додадени {files} датотеки во {dirs} директориуми",
@@ -4323,7 +4323,7 @@
             "modeExact": "Точно",
             "modeLabel": "Режим:",
             "modeNonIdentical": "Неидентично",
-            "groupsCount": "{count} група(и)",
+            "groupsCount": "Групи: {count}",
             "duplicateFilesCount": "Дупликат датотеки: {count}",
             "copiesCount": "{count} копии"
         },
@@ -4437,7 +4437,7 @@
                 "userAgent": "Кориснички агент",
                 "localStorageKeysTitle": "LocalStorage клучеви",
                 "localStorageEntrySummary": "{size} бајти · {preview}",
-                "keysCount": "{count} клуч(еви)"
+                "keysCount": "Клучеви: {count}"
             },
             "copyFileListToClipboard": "Копирај листа на датотеки во клипборд",
             "filesCopied": "{count} записи на датотеки копирани во меморија",
@@ -4755,7 +4755,7 @@
                 "zoomIn": "Зголеми",
                 "zoomOut": "Намали",
                 "htmlPreviewFrameTitle": "HTML преглед",
-                "stats": "{lines} ред(ови) • {chars} знак(ци)"
+                "stats": "Редови: {lines} • знаци: {chars}"
             },
             "video": {
                 "exitFullscreen": "Излези од цел екран (F)",
@@ -4931,7 +4931,7 @@
             "argon2Derive": "Изведи",
             "argon2Phc": "PHC низа",
             "hashError": "Грешка: {error}",
-            "pwdBitsCount": "{count} бит(и)"
+            "pwdBitsCount": "Битови: {count}"
         },
         "dialog": {
             "deleteFile": "Избриши \"{name}\"?",
@@ -6218,7 +6218,7 @@
                 "resultDryRunOk": "Пробното извршување е завршено",
                 "resultDryRunPartial": "Пробното извршување е завршено со грешки",
                 "resultDryRunCancelled": "Пробното извршување е откажано",
-                "errorDetailsCount": "{count} грешка(и), детали"
+                "errorDetailsCount": "Грешки: {count}, детали"
             },
             "launcherTemplates": "Шаблони",
             "launcherMultiPath": "Повеќе патеки",
@@ -6325,7 +6325,7 @@
             "progressCopy": "[копија]",
             "deleteCount": "За бришење: {count}",
             "overwriteCount": "За презапишување: {count}",
-            "conflictCount": "{count} конфликт(и)"
+            "conflictCount": "Конфликти: {count}"
         },
         "accountLock": {
             "title": "Изберете сметка",

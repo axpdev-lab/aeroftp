@@ -745,9 +745,9 @@
                 "source": "Iturburua",
                 "title": "Plana: {mode}"
             },
-            "stagedCount": "{count} prestatuta",
-            "pendingCount": "{count} Zain",
-            "failedCount": "{count} Huts eginda"
+            "stagedCount": "Prestatuta: {count}",
+            "pendingCount": "Zain: {count}",
+            "failedCount": "Huts eginda: {count}"
         },
         "settings": {
             "title": "Ezarpenak",
@@ -1335,8 +1335,8 @@
             "fontPresetSystemDefault": "Sistemaren lehenetsia",
             "duplicatesSkippedCount": "{count} bikoiztu saltatuta",
             "similarToExistingCount": "Lehendik dagoen profil baten antzekoak: {count}",
-            "bridgeSkippedCount": "{count} saltatuta",
-            "selectedOfTotal": "{selected} / {total} hautatuta",
+            "bridgeSkippedCount": "Saltatuta: {count}",
+            "selectedOfTotal": "Hautatuta: {selected} / {total}",
             "serverCredentialsCount": "{count} zerbitzari-kredentzial",
             "serverProfilesCount": "{count} zerbitzari-profil",
             "aiKeysCount": "{count} AI gako",
@@ -3355,7 +3355,7 @@
                 "vision": "Vision",
                 "bedrockDescription": "AWSen ostatatutako modeloak, eskualdeko API gakoaren bidez atzitzeko. Gehitu zure model ID eskuz.",
                 "bedrockHighlight": "AWS eskualdeko amaiera-puntua",
-                "availableCount": "{count} eskuragarri"
+                "availableCount": "Eskuragarri: {count}"
             },
             "history": {
                 "cancel": "Utzi",
@@ -4464,7 +4464,7 @@
                 "runAll": "Exekutatu denak",
                 "runOne": "Exekutatu proba hau",
                 "vaultRoundtrip": "Kutxa gotorraren joan-etorria",
-                "passedCount": "{passed}/{total} gaindituta"
+                "passedCount": "Gaindituta: {passed}/{total}"
             },
             "bundle": {
                 "title": "Esportatu diagnostiko-sorta (ZIP)"
@@ -4514,7 +4514,7 @@
             "badges": {
                 "live": "ZUZENEAN",
                 "synced": "SINKRONIZATUTA",
-                "activeCount": "{count} AKTIBO"
+                "activeCount": "AKTIBO: {count}"
             },
             "clearLog": "Garbitu erregistroa",
             "close": "Itxi",
@@ -4538,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Iragazi eragiketak",
-                "selectedCount": "{count} hautatuta"
+                "selectedCount": "Hautatuta: {count}"
             },
             "save": "Gorde"
         },
@@ -5006,10 +5006,10 @@
             "close": "Itxi",
             "allInSync": "Fitxategi guztiak sinkronizatuta daude",
             "errorsOccurred": "Errore batzuk gertatu dira",
-            "vaultOnlyCount": "{count} Kutxan bakarrik",
-            "localOnlyCount": "{count} Tokikoa soilik",
+            "vaultOnlyCount": "Kutxan bakarrik: {count}",
+            "localOnlyCount": "Tokikoa soilik: {count}",
             "conflictsCount": "{count} gatazka",
-            "unchangedCount": "{count} aldatu gabe",
+            "unchangedCount": "Aldatu gabe: {count}",
             "filesToVaultCount": "{count} fitxategi kutxarekin sinkronizatuta",
             "filesToLocalCount": "{count} fitxategi tokian erauzita",
             "filesSkippedCount": "{count} fitxategi saltatuta"
@@ -5271,10 +5271,10 @@
             "batchChecking": "Egiaztatzen {count} zerbitzari, itxaron mesedez...",
             "scoreLegend": "Puntuazioa 0-100, altuagoa hobe",
             "scoreLegendDetail": "80+ osasuntsua · 50-79 degradatua · 50etik behera arazoekin",
-            "checkedCount": "{count} egiaztatuta",
-            "healthyCount": "{count} Osasuntsu",
-            "degradedCount": "{count} Degradatuta",
-            "unreachableCount": "{count} Eskuraezin"
+            "checkedCount": "Egiaztatuta: {count}",
+            "healthyCount": "Osasuntsu: {count}",
+            "degradedCount": "Degradatuta: {count}",
+            "unreachableCount": "Eskuraezin: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -6016,7 +6016,7 @@
             "moveHereFromOtherPanelTooltip": "Eraman beste paneletik hautatutako {count} panel honetara (F6)",
             "syncToOtherPanel": "Sinkronizatu beste paneletik (delta)",
             "failedCount": "{count} hutsegite",
-            "skippedCount": "{count} saltatuta"
+            "skippedCount": "Saltatuta: {count}"
         },
         "compare": {
             "title": "Konparatu paneletak",
@@ -6323,8 +6323,8 @@
             "compareStartHint": "Konparazioak bi karpetak eta haien azpiko karpeta guztiak irakurtzen ditu. Zuhaitz handi batean denbora pixka bat har dezake, eta gelditu dezakezu.",
             "progressDelta": "[delta]",
             "progressCopy": "[kopia]",
-            "deleteCount": "{count} ezabatzeko",
-            "overwriteCount": "{count} gainidazteko",
+            "deleteCount": "Ezabatzeko: {count}",
+            "overwriteCount": "Gainidazteko: {count}",
             "conflictCount": "{count} gatazka"
         },
         "accountLock": {

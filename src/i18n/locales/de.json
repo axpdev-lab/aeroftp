@@ -445,8 +445,8 @@
             "chooseRightPanelFolder": "Ordner für rechtes Panel wählen",
             "chooseLeftPanelFolder": "Ordner für linkes Panel wählen",
             "localRight": "Lokal (rechts)",
-            "itemCount": "{count} Element(e)",
-            "fileCount": "{count} Datei(en)",
+            "itemCount": "Elemente: {count}",
+            "fileCount": "Dateien: {count}",
             "folderCount": "{count} Ordner"
         },
         "contextMenu": {
@@ -745,9 +745,9 @@
                 "source": "Quelle",
                 "title": "Plan: {mode}"
             },
-            "stagedCount": "{count} vorgemerkt",
-            "pendingCount": "{count} Ausstehend",
-            "failedCount": "{count} Fehlgeschlagen"
+            "stagedCount": "Vorgemerkt: {count}",
+            "pendingCount": "Ausstehend: {count}",
+            "failedCount": "Fehlgeschlagen: {count}"
         },
         "settings": {
             "title": "Einstellungen",
@@ -1333,10 +1333,10 @@
             "fontSizeIndicatorLabel": "Schrift",
             "fontPresetDefault": "{font} (Standard)",
             "fontPresetSystemDefault": "Systemstandard",
-            "duplicatesSkippedCount": "{count} Duplikat(e) übersprungen",
-            "similarToExistingCount": "{count} ähnlich zu einem vorhandenen Profil",
-            "bridgeSkippedCount": "{count} übersprungen",
-            "selectedOfTotal": "{selected} / {total} ausgewählt",
+            "duplicatesSkippedCount": "Übersprungene Duplikate: {count}",
+            "similarToExistingCount": "Ähnlich wie ein vorhandenes Profil: {count}",
+            "bridgeSkippedCount": "Übersprungen: {count}",
+            "selectedOfTotal": "Ausgewählt: {selected} / {total}",
             "serverCredentialsCount": "Server-Zugangsdaten: {count}",
             "serverProfilesCount": "Serverprofile: {count}",
             "aiKeysCount": "AI-Schlüssel: {count}",
@@ -1559,7 +1559,7 @@
             "aerocloudEnabled": "AeroCloud aktiviert",
             "selectPairLocalFolder": "Lokalen Ordner für Paar auswählen",
             "secondsAgo": "vor {count}s",
-            "conflictsCount": "{count} Konflikt(e) zu prüfen"
+            "conflictsCount": "Zu prüfende Konflikte: {count}"
         },
         "statusBar": {
             "connected": "Verbunden",
@@ -3355,7 +3355,7 @@
                 "vision": "Vision",
                 "bedrockDescription": "Auf AWS gehostete Modelle mit Zugriff über einen regionalen API-Schlüssel. Fügen Sie Ihre model ID manuell hinzu.",
                 "bedrockHighlight": "Regionaler AWS-Endpunkt",
-                "availableCount": "{count} verfügbar"
+                "availableCount": "Verfügbar: {count}"
             },
             "history": {
                 "cancel": "Abbrechen",
@@ -3715,7 +3715,7 @@
             "preview": "Vorschau",
             "extract": "Extrahieren",
             "back": "Zurück",
-            "filesSummary": "{count} Datei(en), {size}"
+            "filesSummary": "Dateien: {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "{files} Dateien in {dirs} Verzeichnissen hinzugefügt",
@@ -3941,7 +3941,7 @@
             "securityAdvancedDescription": "Nonce-resistent · Verschlüsselte Dateinamen · 128 MB KDF",
             "securityParanoidDescription": "AES + ChaCha20-Kaskade · Doppelte Verschlüsselung",
             "securityArchiveDescription": "Dedupliziertes Archiv · zstd-Blöcke · v3",
-            "totalItemsCount": "{count} gesamt"
+            "totalItemsCount": "Gesamt: {count}"
         },
         "cryptomator": {
             "title": "Cryptomator-Tresor",
@@ -4323,8 +4323,8 @@
             "modeExact": "Exakt",
             "modeLabel": "Modus:",
             "modeNonIdentical": "Nicht identisch",
-            "groupsCount": "{count} Gruppe(n)",
-            "duplicateFilesCount": "{count} doppelte Datei(en)",
+            "groupsCount": "Gruppen: {count}",
+            "duplicateFilesCount": "Doppelte Dateien: {count}",
             "copiesCount": "{count} Kopien"
         },
         "diskUsage": {
@@ -4464,7 +4464,7 @@
                 "runAll": "Alle ausführen",
                 "runOne": "Diesen Test ausführen",
                 "vaultRoundtrip": "Tresor-Round-Trip",
-                "passedCount": "{passed}/{total} bestanden"
+                "passedCount": "Bestanden: {passed}/{total}"
             },
             "bundle": {
                 "title": "Diagnose-Bundle exportieren (ZIP)"
@@ -4514,7 +4514,7 @@
             "badges": {
                 "live": "LIVE",
                 "synced": "SYNCHRONISIERT",
-                "activeCount": "{count} AKTIV"
+                "activeCount": "AKTIV: {count}"
             },
             "clearLog": "Protokoll löschen",
             "close": "Schließen",
@@ -4538,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Vorgänge filtern",
-                "selectedCount": "{count} ausgewählt"
+                "selectedCount": "Ausgewählt: {count}"
             },
             "save": "Speichern"
         },
@@ -4755,7 +4755,7 @@
                 "zoomIn": "Vergrößern",
                 "zoomOut": "Verkleinern",
                 "htmlPreviewFrameTitle": "HTML-Vorschau",
-                "stats": "{lines} Zeile(n) • {chars} Zeichen"
+                "stats": "Zeilen: {lines} • Zeichen: {chars}"
             },
             "video": {
                 "exitFullscreen": "Vollbild beenden (F)",
@@ -5006,13 +5006,13 @@
             "close": "Schließen",
             "allInSync": "Alle Dateien sind synchron",
             "errorsOccurred": "Es sind einige Fehler aufgetreten",
-            "vaultOnlyCount": "{count} Nur im Vault",
-            "localOnlyCount": "{count} Nur lokal",
-            "conflictsCount": "{count} Konflikt(e)",
-            "unchangedCount": "{count} unverändert",
-            "filesToVaultCount": "{count} Datei(en) in den Vault synchronisiert",
-            "filesToLocalCount": "{count} Datei(en) lokal extrahiert",
-            "filesSkippedCount": "{count} Datei(en) übersprungen"
+            "vaultOnlyCount": "Nur im Vault: {count}",
+            "localOnlyCount": "Nur lokal: {count}",
+            "conflictsCount": "Konflikte: {count}",
+            "unchangedCount": "Unverändert: {count}",
+            "filesToVaultCount": "In den Vault synchronisierte Dateien: {count}",
+            "filesToLocalCount": "Lokal extrahierte Dateien: {count}",
+            "filesSkippedCount": "Übersprungene Dateien: {count}"
         },
         "localTabs": {
             "closeAll": "Alle Tabs schließen",
@@ -5252,10 +5252,10 @@
             "batchChecking": "{count} Server werden geprüft, bitte warten...",
             "scoreLegend": "Punktzahl 0-100, höher ist besser",
             "scoreLegendDetail": "80+ gesund · 50-79 beeinträchtigt · unter 50 mit Problemen",
-            "checkedCount": "{count} geprüft",
-            "healthyCount": "{count} Fehlerfrei",
-            "degradedCount": "{count} Beeinträchtigt",
-            "unreachableCount": "{count} Nicht erreichbar"
+            "checkedCount": "Geprüft: {count}",
+            "healthyCount": "Fehlerfrei: {count}",
+            "degradedCount": "Beeinträchtigt: {count}",
+            "unreachableCount": "Nicht erreichbar: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5996,8 +5996,8 @@
             "copyHereFromOtherPanelTooltip": "{count} ausgewählte aus dem anderen Panel in dieses Panel kopieren (F5)",
             "moveHereFromOtherPanelTooltip": "{count} ausgewählte aus dem anderen Panel in dieses Panel verschieben (F6)",
             "syncToOtherPanel": "Mit anderem Panel synchronisieren (delta)",
-            "failedCount": "{count} fehlgeschlagen",
-            "skippedCount": "{count} übersprungen"
+            "failedCount": "Fehlgeschlagen: {count}",
+            "skippedCount": "Übersprungen: {count}"
         },
         "compare": {
             "title": "Panels vergleichen",
@@ -6306,7 +6306,7 @@
             "progressCopy": "[Kopie]",
             "deleteCount": "{count} zu löschen",
             "overwriteCount": "{count} zu überschreiben",
-            "conflictCount": "{count} Konflikt(e)"
+            "conflictCount": "Konflikte: {count}"
         },
         "accountLock": {
             "title": "Konto auswählen",

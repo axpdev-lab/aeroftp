@@ -373,7 +373,7 @@
                 "pending": "pending approval",
                 "rejectAll": "Reject All",
                 "running": "Running...",
-                "pendingApprovalCount": "{count} tool call(s) pending approval"
+                "pendingApprovalCount": "Tool calls pending approval: {count}"
             },
             "branch": {
                 "branchFrom": "Branch from this point",
@@ -1351,7 +1351,7 @@
             "preview": "Preview",
             "extract": "Extract",
             "back": "Back",
-            "filesSummary": "{count} file(s), {size}"
+            "filesSummary": "Files: {count}, {size}"
         },
         "batchRename": {
             "addPrefix": "Add Prefix",
@@ -1472,9 +1472,9 @@
             "chooseRightPanelFolder": "Choose right panel folder",
             "chooseLeftPanelFolder": "Choose left panel folder",
             "localRight": "Local (right)",
-            "itemCount": "{count} item(s)",
-            "fileCount": "{count} file(s)",
-            "folderCount": "{count} folder(s)"
+            "itemCount": "Items: {count}",
+            "fileCount": "Files: {count}",
+            "folderCount": "Folders: {count}"
         },
         "cloud": {
             "cloudName": "Cloud Name",
@@ -1622,7 +1622,7 @@
             "aerocloudEnabled": "AeroCloud enabled",
             "selectPairLocalFolder": "Select local folder for pair",
             "secondsAgo": "{count}s ago",
-            "conflictsCount": "{count} conflict(s) need attention"
+            "conflictsCount": "Conflicts needing attention: {count}"
         },
         "common": {
             "about": "About",
@@ -2444,7 +2444,7 @@
                 "userAgent": "User Agent",
                 "windowSize": "Window Size",
                 "localStorageEntrySummary": "{size} bytes · {preview}",
-                "keysCount": "{count} key(s)"
+                "keysCount": "Keys: {count}"
             },
             "bundle": {
                 "title": "Export diagnostic bundle (ZIP)"
@@ -2683,8 +2683,8 @@
             "modeExact": "Exact",
             "modeLabel": "Mode:",
             "modeNonIdentical": "Non-identical",
-            "groupsCount": "{count} group(s)",
-            "duplicateFilesCount": "{count} duplicate file(s)",
+            "groupsCount": "Groups: {count}",
+            "duplicateFilesCount": "Duplicate files: {count}",
             "copiesCount": "{count} copies"
         },
         "error": {
@@ -3311,7 +3311,7 @@
                 "zoomIn": "Zoom In",
                 "zoomOut": "Zoom Out",
                 "htmlPreviewFrameTitle": "HTML Preview",
-                "stats": "{lines} line(s) • {chars} chars"
+                "stats": "Lines: {lines} • chars: {chars}"
             },
             "video": {
                 "exitFullscreen": "Exit Fullscreen (F)",
@@ -4393,7 +4393,7 @@
             "fontSizeIndicatorLabel": "Font",
             "fontPresetDefault": "{font} (Default)",
             "fontPresetSystemDefault": "System Default",
-            "duplicatesSkippedCount": "{count} duplicate(s) skipped",
+            "duplicatesSkippedCount": "Duplicates skipped: {count}",
             "similarToExistingCount": "{count} similar to an existing profile",
             "bridgeSkippedCount": "{count} skipped",
             "selectedOfTotal": "{selected} / {total} selected",
@@ -5559,9 +5559,9 @@
             "localOnlyCount": "{count} Local only",
             "conflictsCount": "{count} conflicts",
             "unchangedCount": "{count} unchanged",
-            "filesToVaultCount": "{count} file(s) synced to vault",
-            "filesToLocalCount": "{count} file(s) extracted to local",
-            "filesSkippedCount": "{count} file(s) skipped"
+            "filesToVaultCount": "Files synced to vault: {count}",
+            "filesToLocalCount": "Files extracted to local: {count}",
+            "filesSkippedCount": "Files skipped: {count}"
         },
         "versions": {
             "actions": "Actions",
@@ -6485,7 +6485,7 @@
                 "resultDryRunOk": "Dry run completed",
                 "resultDryRunPartial": "Dry run completed with errors",
                 "resultDryRunCancelled": "Dry run cancelled",
-                "errorDetailsCount": "{count} error(s), details"
+                "errorDetailsCount": "Errors: {count}, details"
             },
             "launcherTemplates": "Templates",
             "launcherMultiPath": "Multi-Path",
@@ -6590,7 +6590,7 @@
             "progressCopy": "[copy]",
             "deleteCount": "{count} to delete",
             "overwriteCount": "{count} to overwrite",
-            "conflictCount": "{count} conflict(s)"
+            "conflictCount": "Conflicts: {count}"
         },
         "aerocryptProfile": {
             "overlaysSection": "Wrappers / Overlays",

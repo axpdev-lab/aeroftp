@@ -445,9 +445,9 @@
             "chooseRightPanelFolder": "Escoller cartafol do panel dereito",
             "chooseLeftPanelFolder": "Escoller cartafol do panel esquerdo",
             "localRight": "Local (dereita)",
-            "itemCount": "{count} elemento(s)",
-            "fileCount": "{count} ficheiro(s)",
-            "folderCount": "{count} cartafol(es)"
+            "itemCount": "Elementos: {count}",
+            "fileCount": "Ficheiros: {count}",
+            "folderCount": "Cartafoles: {count}"
         },
         "contextMenu": {
             "askAeroAgent": "Preguntar a AeroAgent...",
@@ -745,9 +745,9 @@
                 "source": "Orixe",
                 "title": "Plan: {mode}"
             },
-            "stagedCount": "{count} preparado(s)",
-            "pendingCount": "{count} Pendente(s)",
-            "failedCount": "{count} Fallido(s)"
+            "stagedCount": "Preparados: {count}",
+            "pendingCount": "Pendentes: {count}",
+            "failedCount": "Fallidos: {count}"
         },
         "settings": {
             "title": "Axustes",
@@ -1333,15 +1333,15 @@
             "fontSizeIndicatorLabel": "Letra",
             "fontPresetDefault": "{font} (Predeterminado)",
             "fontPresetSystemDefault": "Predeterminado do sistema",
-            "duplicatesSkippedCount": "{count} duplicado(s) omitido(s)",
-            "similarToExistingCount": "{count} similar(es) a un perfil existente",
-            "bridgeSkippedCount": "{count} omitido(s)",
-            "selectedOfTotal": "{selected} / {total} seleccionado(s)",
+            "duplicatesSkippedCount": "Duplicados omitidos: {count}",
+            "similarToExistingCount": "Similares a un perfil existente: {count}",
+            "bridgeSkippedCount": "Omitidos: {count}",
+            "selectedOfTotal": "Seleccionados: {selected} / {total}",
             "serverCredentialsCount": "Credenciais de servidor: {count}",
             "serverProfilesCount": "Perfís de servidor: {count}",
-            "aiKeysCount": "{count} chave(s) de AI",
-            "oauthTokensCount": "{count} token(s) OAuth",
-            "configEntriesCount": "{count} entrada(s) de configuración"
+            "aiKeysCount": "Chaves de AI: {count}",
+            "oauthTokensCount": "Tokens OAuth: {count}",
+            "configEntriesCount": "Entradas de configuración: {count}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1559,7 +1559,7 @@
             "aerocloudEnabled": "AeroCloud activado",
             "selectPairLocalFolder": "Seleccionar cartafol local para o par",
             "secondsAgo": "hai {count}s",
-            "conflictsCount": "{count} conflito(s) por revisar"
+            "conflictsCount": "Conflitos por revisar: {count}"
         },
         "statusBar": {
             "connected": "Conectado",
@@ -3035,7 +3035,7 @@
                 "done": "Feito",
                 "failed": "Fallido",
                 "allowThis": "Permitir esta ferramenta",
-                "pendingApprovalCount": "{count} chamada(s) a ferramentas pendente(s) de aprobación"
+                "pendingApprovalCount": "Chamadas a ferramentas pendentes de aprobación: {count}"
             },
             "diff": {
                 "title": "Vista Previa de Diferenzas",
@@ -3355,7 +3355,7 @@
                 "vision": "Visión",
                 "bedrockDescription": "Modelos aloxados en AWS con acceso mediante unha chave API rexional. Engade o teu model ID manualmente.",
                 "bedrockHighlight": "Punto de conexión rexional de AWS",
-                "availableCount": "{count} dispoñible(s)"
+                "availableCount": "Dispoñibles: {count}"
             },
             "history": {
                 "cancel": "Cancelar",
@@ -3715,7 +3715,7 @@
             "preview": "Vista previa",
             "extract": "Extraer",
             "back": "Atrás",
-            "filesSummary": "{count} ficheiro(s), {size}"
+            "filesSummary": "Ficheiros: {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "Engadidos {files} ficheiros en {dirs} directorios",
@@ -4323,8 +4323,8 @@
             "modeExact": "Exacto",
             "modeLabel": "Modo:",
             "modeNonIdentical": "Non idéntico",
-            "groupsCount": "{count} grupo(s)",
-            "duplicateFilesCount": "{count} ficheiro(s) duplicado(s)",
+            "groupsCount": "Grupos: {count}",
+            "duplicateFilesCount": "Ficheiros duplicados: {count}",
             "copiesCount": "{count} copias"
         },
         "diskUsage": {
@@ -4353,7 +4353,7 @@
             "footer": "Datos de versións de crates.io.",
             "copyTitle": "Comprobación de dependencias",
             "copied": "Copiado!",
-            "cratesCount": "{count} crate(s)"
+            "cratesCount": "Crates: {count}"
         },
         "debug": {
             "tabs": {
@@ -4437,7 +4437,7 @@
                 "userAgent": "Axente de Usuario",
                 "localStorageKeysTitle": "Claves de LocalStorage",
                 "localStorageEntrySummary": "{size} bytes · {preview}",
-                "keysCount": "{count} chave(s)"
+                "keysCount": "Chaves: {count}"
             },
             "copyFileListToClipboard": "Copiar lista de ficheiros ao portapapeis",
             "filesCopied": "{count} entradas de ficheiros copiadas ao portapapeis",
@@ -4514,7 +4514,7 @@
             "badges": {
                 "live": "EN DIRECTO",
                 "synced": "SINCRONIZADO",
-                "activeCount": "{count} ACTIVO(S)"
+                "activeCount": "ACTIVOS: {count}"
             },
             "clearLog": "Limpar rexistro",
             "close": "Pechar",
@@ -4538,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Filtrar operacións",
-                "selectedCount": "{count} seleccionado(s)"
+                "selectedCount": "Seleccionados: {count}"
             },
             "save": "Gardar"
         },
@@ -4755,7 +4755,7 @@
                 "zoomIn": "Ampliar",
                 "zoomOut": "Reducir",
                 "htmlPreviewFrameTitle": "Vista previa HTML",
-                "stats": "{lines} liña(s) • {chars} car."
+                "stats": "Liñas: {lines} • caracteres: {chars}"
             },
             "video": {
                 "exitFullscreen": "Saír de pantalla completa (F)",
@@ -5006,13 +5006,13 @@
             "close": "Pechar",
             "allInSync": "Todos os ficheiros están sincronizados",
             "errorsOccurred": "Ocorreron algúns erros",
-            "vaultOnlyCount": "{count} Só na caixa forte",
-            "localOnlyCount": "{count} Só local",
-            "conflictsCount": "{count} conflito(s)",
+            "vaultOnlyCount": "Só na caixa forte: {count}",
+            "localOnlyCount": "Só local: {count}",
+            "conflictsCount": "Conflitos: {count}",
             "unchangedCount": "{count} sen cambios",
-            "filesToVaultCount": "{count} ficheiro(s) sincronizado(s) coa caixa forte",
-            "filesToLocalCount": "{count} ficheiro(s) extraído(s) a local",
-            "filesSkippedCount": "{count} ficheiro(s) omitido(s)"
+            "filesToVaultCount": "Ficheiros sincronizados coa caixa forte: {count}",
+            "filesToLocalCount": "Ficheiros extraídos a local: {count}",
+            "filesSkippedCount": "Ficheiros omitidos: {count}"
         },
         "localTabs": {
             "closeAll": "Pechar todas as lapelas",
@@ -5271,10 +5271,10 @@
             "batchChecking": "Comprobando {count} servidores, agarde...",
             "scoreLegend": "Puntuación 0-100, máis alto é mellor",
             "scoreLegendDetail": "80+ saudable · 50-79 degradado · por debaixo de 50 con problemas",
-            "checkedCount": "{count} comprobado(s)",
-            "healthyCount": "{count} Correcto(s)",
-            "degradedCount": "{count} Degradado(s)",
-            "unreachableCount": "{count} Inaccesible(s)"
+            "checkedCount": "Comprobados: {count}",
+            "healthyCount": "Correctos: {count}",
+            "degradedCount": "Degradados: {count}",
+            "unreachableCount": "Inaccesibles: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -6015,8 +6015,8 @@
             "copyHereFromOtherPanelTooltip": "Copiar {count} seleccionados do outro panel a este panel (F5)",
             "moveHereFromOtherPanelTooltip": "Mover {count} seleccionados do outro panel a este panel (F6)",
             "syncToOtherPanel": "Sincronizar co outro panel (delta)",
-            "failedCount": "{count} fallido(s)",
-            "skippedCount": "{count} omitido(s)"
+            "failedCount": "Fallidos: {count}",
+            "skippedCount": "Omitidos: {count}"
         },
         "compare": {
             "title": "Comparar paneis",
@@ -6218,7 +6218,7 @@
                 "resultDryRunOk": "Simulación completada",
                 "resultDryRunPartial": "Simulación completada con erros",
                 "resultDryRunCancelled": "Simulación cancelada",
-                "errorDetailsCount": "{count} erro(s), detalles"
+                "errorDetailsCount": "Erros: {count}, detalles"
             },
             "launcherTemplates": "Modelos",
             "launcherMultiPath": "Multi-ruta",
@@ -6325,7 +6325,7 @@
             "progressCopy": "[copia]",
             "deleteCount": "{count} para eliminar",
             "overwriteCount": "{count} para sobrescribir",
-            "conflictCount": "{count} conflito(s)"
+            "conflictCount": "Conflitos: {count}"
         },
         "accountLock": {
             "title": "Escolla unha conta",

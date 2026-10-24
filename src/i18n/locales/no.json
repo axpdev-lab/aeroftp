@@ -445,9 +445,9 @@
             "chooseRightPanelFolder": "Velg mappe for høyre panel",
             "chooseLeftPanelFolder": "Velg mappe for venstre panel",
             "localRight": "Lokal (høyre)",
-            "itemCount": "{count} element(er)",
-            "fileCount": "{count} fil(er)",
-            "folderCount": "{count} mappe(r)"
+            "itemCount": "Elementer: {count}",
+            "fileCount": "Filer: {count}",
+            "folderCount": "Mapper: {count}"
         },
         "contextMenu": {
             "askAeroAgent": "Spør AeroAgent...",
@@ -745,9 +745,9 @@
                 "source": "Kilde",
                 "title": "Plan: {mode}"
             },
-            "stagedCount": "{count} klargjort",
-            "pendingCount": "{count} venter",
-            "failedCount": "{count} mislyktes"
+            "stagedCount": "Klargjort: {count}",
+            "pendingCount": "Ventende: {count}",
+            "failedCount": "Mislykket: {count}"
         },
         "settings": {
             "title": "Innstillinger",
@@ -1333,15 +1333,15 @@
             "fontSizeIndicatorLabel": "Skrift",
             "fontPresetDefault": "{font} (standard)",
             "fontPresetSystemDefault": "Systemstandard",
-            "duplicatesSkippedCount": "{count} duplikat(er) hoppet over",
-            "similarToExistingCount": "{count} ligner på en eksisterende profil",
-            "bridgeSkippedCount": "{count} hoppet over",
-            "selectedOfTotal": "{selected} / {total} valgt",
+            "duplicatesSkippedCount": "Duplikater hoppet over: {count}",
+            "similarToExistingCount": "Ligner på en eksisterende profil: {count}",
+            "bridgeSkippedCount": "Hoppet over: {count}",
+            "selectedOfTotal": "Valgt: {selected} / {total}",
             "serverCredentialsCount": "Serverlegitimasjoner: {count}",
-            "serverProfilesCount": "{count} serverprofil(er)",
-            "aiKeysCount": "{count} AI-nøkkel(er)",
+            "serverProfilesCount": "Serverprofiler: {count}",
+            "aiKeysCount": "AI-nøkler: {count}",
             "oauthTokensCount": "{count} OAuth-token",
-            "configEntriesCount": "{count} konfigurasjonsoppføring(er)"
+            "configEntriesCount": "Konfigurasjonsoppføringer: {count}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1559,7 +1559,7 @@
             "aerocloudEnabled": "AeroCloud aktivert",
             "selectPairLocalFolder": "Velg lokal mappe for paret",
             "secondsAgo": "{count}s siden",
-            "conflictsCount": "{count} konflikt(er) krever oppmerksomhet"
+            "conflictsCount": "Konflikter som krever oppmerksomhet: {count}"
         },
         "statusBar": {
             "connected": "Tilkoblet",
@@ -3035,7 +3035,7 @@
                 "done": "Ferdig",
                 "failed": "Mislyktes",
                 "allowThis": "Tillat dette verktøyet",
-                "pendingApprovalCount": "{count} verktøykall venter på godkjenning"
+                "pendingApprovalCount": "Verktøykall som venter på godkjenning: {count}"
             },
             "diff": {
                 "title": "Diff-forhåndsvisning",
@@ -3715,7 +3715,7 @@
             "preview": "Forhåndsvisning",
             "extract": "Pakk ut",
             "back": "Tilbake",
-            "filesSummary": "{count} fil(er), {size}"
+            "filesSummary": "Filer: {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "Lagt til {files} filer i {dirs} kataloger",
@@ -4323,8 +4323,8 @@
             "modeExact": "Nøyaktig",
             "modeLabel": "Modus:",
             "modeNonIdentical": "Ikke identisk",
-            "groupsCount": "{count} gruppe(r)",
-            "duplicateFilesCount": "{count} duplikatfil(er)",
+            "groupsCount": "Grupper: {count}",
+            "duplicateFilesCount": "Duplikatfiler: {count}",
             "copiesCount": "{count} kopier"
         },
         "diskUsage": {
@@ -4437,7 +4437,7 @@
                 "userAgent": "User Agent",
                 "localStorageKeysTitle": "LocalStorage-nøkler",
                 "localStorageEntrySummary": "{size} byte · {preview}",
-                "keysCount": "{count} nøkkel(er)"
+                "keysCount": "Nøkler: {count}"
             },
             "copyFileListToClipboard": "Kopier filliste til utklippstavle",
             "filesCopied": "{count} filoppføringer kopiert til utklippstavlen",
@@ -4464,7 +4464,7 @@
                 "runAll": "Kjør alle",
                 "runOne": "Kjør denne testen",
                 "vaultRoundtrip": "Hvelv-rundtur",
-                "passedCount": "{passed}/{total} bestått"
+                "passedCount": "Bestått: {passed}/{total}"
             },
             "bundle": {
                 "title": "Eksporter diagnosepakke (ZIP)"
@@ -4538,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Filtrer handlinger",
-                "selectedCount": "{count} valgt"
+                "selectedCount": "Valgt: {count}"
             },
             "save": "Lagre"
         },
@@ -4755,7 +4755,7 @@
                 "zoomIn": "Zoom inn",
                 "zoomOut": "Zoom ut",
                 "htmlPreviewFrameTitle": "HTML-forhåndsvisning",
-                "stats": "{lines} linje(r) • {chars} tegn"
+                "stats": "Linjer: {lines} • tegn: {chars}"
             },
             "video": {
                 "exitFullscreen": "Avslutt fullskjerm (F)",
@@ -5008,11 +5008,11 @@
             "errorsOccurred": "Noen feil oppstod",
             "vaultOnlyCount": "{count} kun i hvelvet",
             "localOnlyCount": "{count} kun lokalt",
-            "conflictsCount": "{count} konflikt(er)",
+            "conflictsCount": "Konflikter: {count}",
             "unchangedCount": "Uendret: {count}",
-            "filesToVaultCount": "{count} fil(er) synkronisert til hvelvet",
-            "filesToLocalCount": "{count} fil(er) pakket ut lokalt",
-            "filesSkippedCount": "{count} fil(er) hoppet over"
+            "filesToVaultCount": "Filer synkronisert til hvelvet: {count}",
+            "filesToLocalCount": "Filer pakket ut lokalt: {count}",
+            "filesSkippedCount": "Filer hoppet over: {count}"
         },
         "localTabs": {
             "closeAll": "Lukk alle faner",
@@ -5271,7 +5271,7 @@
             "batchChecking": "Sjekker {count} servere, vennligst vent...",
             "scoreLegend": "Poengsum 0-100, høyere er bedre",
             "scoreLegendDetail": "80+ sunn · 50-79 forringet · under 50 har problemer",
-            "checkedCount": "{count} sjekket",
+            "checkedCount": "Sjekket: {count}",
             "healthyCount": "Friske: {count}",
             "degradedCount": "Reduserte: {count}",
             "unreachableCount": "Utilgjengelige: {count}"
@@ -6015,8 +6015,8 @@
             "copyHereFromOtherPanelTooltip": "Kopier {count} valgte fra det andre panelet til dette panelet (F5)",
             "moveHereFromOtherPanelTooltip": "Flytt {count} valgte fra det andre panelet til dette panelet (F6)",
             "syncToOtherPanel": "Synkroniser til andre panel (delta)",
-            "failedCount": "{count} mislyktes",
-            "skippedCount": "{count} hoppet over"
+            "failedCount": "Mislykket: {count}",
+            "skippedCount": "Hoppet over: {count}"
         },
         "compare": {
             "title": "Sammenlign paneler",
@@ -6323,9 +6323,9 @@
             "compareStartHint": "Sammenligningen leser begge mappene og alle mapper under dem. På et stort tre kan det ta en stund, og du kan stoppe den.",
             "progressDelta": "[delta]",
             "progressCopy": "[kopi]",
-            "deleteCount": "{count} skal slettes",
-            "overwriteCount": "{count} skal overskrives",
-            "conflictCount": "{count} konflikt(er)"
+            "deleteCount": "Til sletting: {count}",
+            "overwriteCount": "Til overskriving: {count}",
+            "conflictCount": "Konflikter: {count}"
         },
         "accountLock": {
             "title": "Velg en konto",

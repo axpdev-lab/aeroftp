@@ -446,7 +446,7 @@
             "chooseLeftPanelFolder": "Veldu möppu vinstri glugga",
             "localRight": "Staðbundið (hægri)",
             "itemCount": "{count} atriði",
-            "fileCount": "{count} skrá(r)",
+            "fileCount": "Skrár: {count}",
             "folderCount": "Möppur: {count}"
         },
         "contextMenu": {
@@ -3715,7 +3715,7 @@
             "preview": "Forskoðun",
             "extract": "Afþjappa",
             "back": "Til baka",
-            "filesSummary": "{count} skrá(r), {size}"
+            "filesSummary": "Skrár: {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "Bætt við {files} skrám í {dirs} möppum",
@@ -4931,7 +4931,7 @@
             "argon2Derive": "Leiða út",
             "argon2Phc": "PHC-strengur",
             "hashError": "Villa: {error}",
-            "pwdBitsCount": "{count} bitar"
+            "pwdBitsCount": "Bitar: {count}"
         },
         "dialog": {
             "deleteFile": "Eyða \"{name}\"?",
@@ -5562,7 +5562,7 @@
                 "richText": "Sniðinn texti",
                 "checklist": "Gátlisti"
             },
-            "participantsCount": "{count} þátttakendur"
+            "participantsCount": "Þátttakendur: {count}"
         },
         "shareLinkModal": {
             "title": "Deilitengill",
@@ -6015,7 +6015,7 @@
             "copyHereFromOtherPanelTooltip": "Afrita {count} valin atriði úr hinum glugganum yfir í þennan glugga (F5)",
             "moveHereFromOtherPanelTooltip": "Færa {count} valin atriði úr hinum glugganum yfir í þennan glugga (F6)",
             "syncToOtherPanel": "Samstilla við hinn glugga (delta)",
-            "failedCount": "{count} mistókst",
+            "failedCount": "Mistókst: {count}",
             "skippedCount": "Sleppt: {count}"
         },
         "compare": {

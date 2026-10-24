@@ -745,9 +745,9 @@
                 "source": "Nguồn",
                 "title": "Kế hoạch {mode}"
             },
-            "stagedCount": "{count} đã chuẩn bị",
-            "pendingCount": "{count} Đang chờ",
-            "failedCount": "{count} Thất bại"
+            "stagedCount": "Đã chuẩn bị: {count}",
+            "pendingCount": "Đang chờ: {count}",
+            "failedCount": "Thất bại: {count}"
         },
         "settings": {
             "title": "Cài đặt",
@@ -1334,8 +1334,8 @@
             "fontPresetDefault": "{font} (Mặc định)",
             "fontPresetSystemDefault": "Mặc định hệ thống",
             "duplicatesSkippedCount": "Đã bỏ qua {count} mục trùng lặp",
-            "similarToExistingCount": "{count} tương tự hồ sơ hiện có",
-            "bridgeSkippedCount": "{count} đã bỏ qua",
+            "similarToExistingCount": "Tương tự hồ sơ hiện có: {count}",
+            "bridgeSkippedCount": "Đã bỏ qua: {count}",
             "selectedOfTotal": "Đã chọn {selected} / {total}",
             "serverCredentialsCount": "{count} thông tin xác thực máy chủ",
             "serverProfilesCount": "{count} hồ sơ máy chủ",
@@ -3355,7 +3355,7 @@
                 "vision": "Vision",
                 "bedrockDescription": "Các mô hình lưu trữ trên AWS, truy cập bằng khóa API theo khu vực. Thêm model ID của bạn theo cách thủ công.",
                 "bedrockHighlight": "Điểm cuối AWS theo khu vực",
-                "availableCount": "{count} khả dụng"
+                "availableCount": "Khả dụng: {count}"
             },
             "history": {
                 "cancel": "Hủy",
@@ -4514,7 +4514,7 @@
             "badges": {
                 "live": "TRỰC TIẾP",
                 "synced": "ĐÃ ĐỒNG BỘ",
-                "activeCount": "{count} ĐANG CHẠY"
+                "activeCount": "ĐANG CHẠY: {count}"
             },
             "clearLog": "Xóa nhật ký",
             "close": "Đóng",
@@ -5006,10 +5006,10 @@
             "close": "Đóng",
             "allInSync": "Tất cả tệp đã được đồng bộ",
             "errorsOccurred": "Đã xảy ra một số lỗi",
-            "vaultOnlyCount": "{count} Chỉ trong vault",
-            "localOnlyCount": "{count} Chỉ cục bộ",
+            "vaultOnlyCount": "Chỉ trong vault: {count}",
+            "localOnlyCount": "Chỉ cục bộ: {count}",
             "conflictsCount": "{count} xung đột",
-            "unchangedCount": "{count} không thay đổi",
+            "unchangedCount": "Không thay đổi: {count}",
             "filesToVaultCount": "Đã đồng bộ {count} tệp vào vault",
             "filesToLocalCount": "Đã giải nén {count} tệp ra cục bộ",
             "filesSkippedCount": "Đã bỏ qua {count} tệp"
@@ -5253,9 +5253,9 @@
             "scoreLegend": "Điểm 0-100, cao hơn tốt hơn",
             "scoreLegendDetail": "80+ tốt · 50-79 giảm · dưới 50 có vấn đề",
             "checkedCount": "Đã kiểm tra {count}",
-            "healthyCount": "{count} Hoạt động tốt",
-            "degradedCount": "{count} Suy giảm",
-            "unreachableCount": "{count} Không thể truy cập"
+            "healthyCount": "Hoạt động tốt: {count}",
+            "degradedCount": "Suy giảm: {count}",
+            "unreachableCount": "Không thể truy cập: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5996,8 +5996,8 @@
             "copyHereFromOtherPanelTooltip": "Sao chép {count} đã chọn từ bảng khác vào bảng này (F5)",
             "moveHereFromOtherPanelTooltip": "Di chuyển {count} đã chọn từ bảng khác vào bảng này (F6)",
             "syncToOtherPanel": "Đồng bộ sang bảng khác (delta)",
-            "failedCount": "{count} thất bại",
-            "skippedCount": "{count} đã bỏ qua"
+            "failedCount": "Thất bại: {count}",
+            "skippedCount": "Đã bỏ qua: {count}"
         },
         "compare": {
             "title": "So sánh các bảng",
@@ -6304,8 +6304,8 @@
             "compareStartHint": "So sánh sẽ đọc cả hai thư mục và mọi thư mục bên dưới. Với cây thư mục lớn, quá trình này có thể mất một lúc, và bạn có thể dừng lại.",
             "progressDelta": "[delta]",
             "progressCopy": "[bản sao]",
-            "deleteCount": "{count} sẽ bị xóa",
-            "overwriteCount": "{count} sẽ bị ghi đè",
+            "deleteCount": "Sẽ bị xóa: {count}",
+            "overwriteCount": "Sẽ bị ghi đè: {count}",
             "conflictCount": "{count} xung đột"
         },
         "accountLock": {

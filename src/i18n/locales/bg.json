@@ -445,9 +445,9 @@
             "chooseRightPanelFolder": "Изберете папка за десния панел",
             "chooseLeftPanelFolder": "Изберете папка за левия панел",
             "localRight": "Локално (дясно)",
-            "itemCount": "{count} елемент(а)",
-            "fileCount": "{count} файл(а)",
-            "folderCount": "{count} папка(и)"
+            "itemCount": "Елементи: {count}",
+            "fileCount": "Файлове: {count}",
+            "folderCount": "Папки: {count}"
         },
         "contextMenu": {
             "askAeroAgent": "Питай AeroAgent...",
@@ -3715,7 +3715,7 @@
             "preview": "Преглед",
             "extract": "Извличане",
             "back": "Назад",
-            "filesSummary": "{count} файл(а), {size}"
+            "filesSummary": "Файлове: {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "Добавени {files} файла в {dirs} директории",

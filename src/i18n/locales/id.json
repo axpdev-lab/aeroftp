@@ -745,9 +745,9 @@
                 "source": "Sumber",
                 "title": "Rencana {mode}"
             },
-            "stagedCount": "{count} disiapkan",
-            "pendingCount": "{count} Menunggu",
-            "failedCount": "{count} Gagal"
+            "stagedCount": "Disiapkan: {count}",
+            "pendingCount": "Menunggu: {count}",
+            "failedCount": "Gagal: {count}"
         },
         "settings": {
             "title": "Pengaturan",
@@ -1334,9 +1334,9 @@
             "fontPresetDefault": "{font} (Bawaan)",
             "fontPresetSystemDefault": "Bawaan sistem",
             "duplicatesSkippedCount": "{count} duplikat dilewati",
-            "similarToExistingCount": "{count} mirip dengan profil yang ada",
-            "bridgeSkippedCount": "{count} dilewati",
-            "selectedOfTotal": "{selected} / {total} dipilih",
+            "similarToExistingCount": "Mirip dengan profil yang ada: {count}",
+            "bridgeSkippedCount": "Dilewati: {count}",
+            "selectedOfTotal": "Dipilih: {selected} / {total}",
             "serverCredentialsCount": "{count} kredensial server",
             "serverProfilesCount": "{count} profil server",
             "aiKeysCount": "{count} kunci AI",
@@ -3355,7 +3355,7 @@
                 "vision": "Vision",
                 "bedrockDescription": "Model yang dihosting di AWS dengan akses kunci API regional. Tambahkan model ID Anda secara manual.",
                 "bedrockHighlight": "Endpoint regional AWS",
-                "availableCount": "{count} tersedia"
+                "availableCount": "Tersedia: {count}"
             },
             "history": {
                 "cancel": "Batal",
@@ -4464,7 +4464,7 @@
                 "runAll": "Jalankan semua",
                 "runOne": "Jalankan tes ini",
                 "vaultRoundtrip": "Putaran brankas",
-                "passedCount": "{passed}/{total} lulus"
+                "passedCount": "Lulus: {passed}/{total}"
             },
             "bundle": {
                 "title": "Ekspor paket diagnostik (ZIP)"
@@ -4514,7 +4514,7 @@
             "badges": {
                 "live": "LANGSUNG",
                 "synced": "TERSINKRONISASI",
-                "activeCount": "{count} AKTIF"
+                "activeCount": "AKTIF: {count}"
             },
             "clearLog": "Hapus log",
             "close": "Tutup",
@@ -4538,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Filter operasi",
-                "selectedCount": "{count} dipilih"
+                "selectedCount": "Dipilih: {count}"
             },
             "save": "Simpan"
         },
@@ -5006,10 +5006,10 @@
             "close": "Tutup",
             "allInSync": "Semua file telah tersinkronisasi",
             "errorsOccurred": "Beberapa kesalahan terjadi",
-            "vaultOnlyCount": "{count} Hanya di brankas",
-            "localOnlyCount": "{count} Hanya lokal",
+            "vaultOnlyCount": "Hanya di brankas: {count}",
+            "localOnlyCount": "Hanya lokal: {count}",
             "conflictsCount": "{count} konflik",
-            "unchangedCount": "{count} tidak berubah",
+            "unchangedCount": "Tidak berubah: {count}",
             "filesToVaultCount": "{count} file disinkronkan ke brankas",
             "filesToLocalCount": "{count} file diekstrak ke lokal",
             "filesSkippedCount": "{count} file dilewati"
@@ -5252,10 +5252,10 @@
             "batchChecking": "Memeriksa {count} server, harap tunggu...",
             "scoreLegend": "Skor 0-100, lebih tinggi lebih baik",
             "scoreLegendDetail": "80+ sehat · 50-79 menurun · di bawah 50 bermasalah",
-            "checkedCount": "{count} diperiksa",
-            "healthyCount": "{count} Sehat",
-            "degradedCount": "{count} Menurun",
-            "unreachableCount": "{count} Tidak terjangkau"
+            "checkedCount": "Diperiksa: {count}",
+            "healthyCount": "Sehat: {count}",
+            "degradedCount": "Menurun: {count}",
+            "unreachableCount": "Tidak terjangkau: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5996,8 +5996,8 @@
             "copyHereFromOtherPanelTooltip": "Salin {count} yang dipilih dari panel lain ke panel ini (F5)",
             "moveHereFromOtherPanelTooltip": "Pindahkan {count} yang dipilih dari panel lain ke panel ini (F6)",
             "syncToOtherPanel": "Sinkronkan ke panel lain (delta)",
-            "failedCount": "{count} gagal",
-            "skippedCount": "{count} dilewati"
+            "failedCount": "Gagal: {count}",
+            "skippedCount": "Dilewati: {count}"
         },
         "compare": {
             "title": "Bandingkan panel",
@@ -6304,8 +6304,8 @@
             "compareStartHint": "Perbandingan membaca kedua folder dan semua folder di bawahnya. Pada pohon yang besar, proses ini bisa memakan waktu, dan Anda dapat menghentikannya.",
             "progressDelta": "[delta]",
             "progressCopy": "[salinan]",
-            "deleteCount": "{count} akan dihapus",
-            "overwriteCount": "{count} akan ditimpa",
+            "deleteCount": "Akan dihapus: {count}",
+            "overwriteCount": "Akan ditimpa: {count}",
             "conflictCount": "{count} konflik"
         },
         "accountLock": {

@@ -745,9 +745,9 @@
                 "source": "Pinagmulan",
                 "title": "Plano: {mode}"
             },
-            "stagedCount": "{count} naka-stage",
-            "pendingCount": "{count} Naghihintay",
-            "failedCount": "{count} Nabigo"
+            "stagedCount": "Naka-stage: {count}",
+            "pendingCount": "Naghihintay: {count}",
+            "failedCount": "Nabigo: {count}"
         },
         "settings": {
             "title": "Mga Setting",
@@ -1334,9 +1334,9 @@
             "fontPresetDefault": "{font} (Nakatakda)",
             "fontPresetSystemDefault": "Nakatakda ng sistema",
             "duplicatesSkippedCount": "{count} duplikado ang nilaktawan",
-            "similarToExistingCount": "{count} ang kahawig ng isang umiiral na profile",
-            "bridgeSkippedCount": "{count} ang nilaktawan",
-            "selectedOfTotal": "{selected} / {total} ang napili",
+            "similarToExistingCount": "Kahawig ng umiiral na profile: {count}",
+            "bridgeSkippedCount": "Nilaktawan: {count}",
+            "selectedOfTotal": "Napili: {selected} / {total}",
             "serverCredentialsCount": "{count} kredensyal ng server",
             "serverProfilesCount": "{count} profile ng server",
             "aiKeysCount": "{count} AI key",
@@ -3355,7 +3355,7 @@
                 "vision": "Vision",
                 "bedrockDescription": "Mga modelong naka-host sa AWS na maa-access gamit ang panrehiyong API key. Idagdag nang manu-mano ang iyong model ID.",
                 "bedrockHighlight": "Panrehiyong endpoint ng AWS",
-                "availableCount": "{count} ang magagamit"
+                "availableCount": "Magagamit: {count}"
             },
             "history": {
                 "cancel": "Kanselahin",
@@ -4464,7 +4464,7 @@
                 "runAll": "Patakbuhin lahat",
                 "runOne": "Patakbuhin ang pagsubok na ito",
                 "vaultRoundtrip": "Round-trip ng vault",
-                "passedCount": "{passed}/{total} ang pumasa"
+                "passedCount": "Pumasa: {passed}/{total}"
             },
             "bundle": {
                 "title": "I-export ang diagnostic bundle (ZIP)"
@@ -4514,7 +4514,7 @@
             "badges": {
                 "live": "LIVE",
                 "synced": "NA-SYNC",
-                "activeCount": "{count} AKTIBO"
+                "activeCount": "AKTIBO: {count}"
             },
             "clearLog": "Burahin ang log",
             "close": "Isara",
@@ -4538,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "I-filter ang mga operasyon",
-                "selectedCount": "{count} ang napili"
+                "selectedCount": "Napili: {count}"
             },
             "save": "I-save"
         },
@@ -5006,10 +5006,10 @@
             "close": "Isara",
             "allInSync": "Lahat ng mga file ay naka-sync",
             "errorsOccurred": "May ilang mga error na naganap",
-            "vaultOnlyCount": "{count} Sa vault lamang",
-            "localOnlyCount": "{count} Lokal lamang",
+            "vaultOnlyCount": "Sa vault lamang: {count}",
+            "localOnlyCount": "Lokal lamang: {count}",
             "conflictsCount": "{count} salungatan",
-            "unchangedCount": "{count} walang pagbabago",
+            "unchangedCount": "Walang pagbabago: {count}",
             "filesToVaultCount": "{count} file ang na-sync sa vault",
             "filesToLocalCount": "{count} file ang na-extract sa lokal",
             "filesSkippedCount": "{count} file ang nilaktawan"
@@ -5271,10 +5271,10 @@
             "batchChecking": "Sinusuri ang {count} server, pakihintay...",
             "scoreLegend": "Iskor 0-100, mas mataas mas mabuti",
             "scoreLegendDetail": "80+ malusog · 50-79 humina · mas mababa sa 50 may problema",
-            "checkedCount": "{count} ang nasuri",
-            "healthyCount": "{count} Maayos",
-            "degradedCount": "{count} Bumaba ang kalidad",
-            "unreachableCount": "{count} Hindi maabot"
+            "checkedCount": "Nasuri: {count}",
+            "healthyCount": "Maayos: {count}",
+            "degradedCount": "Bumaba ang kalidad: {count}",
+            "unreachableCount": "Hindi maabot: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -6015,8 +6015,8 @@
             "copyHereFromOtherPanelTooltip": "Kopyahin ang {count} napili mula sa kabilang panel papunta sa panel na ito (F5)",
             "moveHereFromOtherPanelTooltip": "Ilipat ang {count} napili mula sa kabilang panel papunta sa panel na ito (F6)",
             "syncToOtherPanel": "I-sync sa kabilang panel (delta)",
-            "failedCount": "{count} ang nabigo",
-            "skippedCount": "{count} ang nilaktawan"
+            "failedCount": "Nabigo: {count}",
+            "skippedCount": "Nilaktawan: {count}"
         },
         "compare": {
             "title": "Ihambing ang mga panel",
@@ -6323,8 +6323,8 @@
             "compareStartHint": "Binabasa ng paghahambing ang parehong folder at ang bawat folder sa ilalim ng mga ito. Sa malaking tree, maaari itong magtagal, at maaari mo itong ihinto.",
             "progressDelta": "[delta]",
             "progressCopy": "[kopya]",
-            "deleteCount": "{count} ang buburahin",
-            "overwriteCount": "{count} ang papatungan",
+            "deleteCount": "Buburahin: {count}",
+            "overwriteCount": "Papatungan: {count}",
             "conflictCount": "{count} salungatan"
         },
         "accountLock": {

@@ -1336,7 +1336,7 @@
             "duplicatesSkippedCount": "छोड़े गए डुप्लिकेट: {count}",
             "similarToExistingCount": "मौजूदा प्रोफ़ाइल के समान: {count}",
             "bridgeSkippedCount": "छोड़े गए: {count}",
-            "selectedOfTotal": "{selected} / {total} चयनित",
+            "selectedOfTotal": "चयनित: {selected} / {total}",
             "serverCredentialsCount": "सर्वर क्रेडेंशियल: {count}",
             "serverProfilesCount": "सर्वर प्रोफ़ाइल: {count}",
             "aiKeysCount": "AI कुंजियाँ: {count}",
@@ -3355,7 +3355,7 @@
                 "vision": "Vision",
                 "bedrockDescription": "क्षेत्रीय API कुंजी से उपलब्ध AWS पर होस्ट किए गए मॉडल। अपना model ID मैन्युअल रूप से जोड़ें।",
                 "bedrockHighlight": "AWS क्षेत्रीय एंडपॉइंट",
-                "availableCount": "{count} उपलब्ध"
+                "availableCount": "उपलब्ध: {count}"
             },
             "history": {
                 "cancel": "रद्द करें",
@@ -4464,7 +4464,7 @@
                 "runAll": "सभी चलाएँ",
                 "runOne": "यह परीक्षण चलाएँ",
                 "vaultRoundtrip": "वॉल्ट राउंड-ट्रिप",
-                "passedCount": "{passed}/{total} सफल"
+                "passedCount": "सफल: {passed}/{total}"
             },
             "bundle": {
                 "title": "डायग्नोस्टिक बंडल निर्यात करें (ZIP)"
@@ -4514,7 +4514,7 @@
             "badges": {
                 "live": "लाइव",
                 "synced": "सिंक हुआ",
-                "activeCount": "{count} सक्रिय"
+                "activeCount": "सक्रिय: {count}"
             },
             "clearLog": "लॉग साफ़ करें",
             "close": "बंद करें",
@@ -4538,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "ऑपरेशन फ़िल्टर करें",
-                "selectedCount": "{count} चयनित"
+                "selectedCount": "चयनित: {count}"
             },
             "save": "सहेजें"
         },
@@ -5996,7 +5996,7 @@
             "copyHereFromOtherPanelTooltip": "दूसरे पैनल से चयनित {count} को इस पैनल में कॉपी करें (F5)",
             "moveHereFromOtherPanelTooltip": "दूसरे पैनल से चयनित {count} को इस पैनल में स्थानांतरित करें (F6)",
             "syncToOtherPanel": "दूसरे पैनल में सिंक करें (delta)",
-            "failedCount": "{count} विफल",
+            "failedCount": "विफल: {count}",
             "skippedCount": "छोड़े गए: {count}"
         },
         "compare": {

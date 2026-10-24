@@ -445,9 +445,9 @@
             "chooseRightPanelFolder": "Vælg mappe til højre panel",
             "chooseLeftPanelFolder": "Vælg mappe til venstre panel",
             "localRight": "Lokal (højre)",
-            "itemCount": "{count} element(er)",
-            "fileCount": "{count} fil(er)",
-            "folderCount": "{count} mappe(r)"
+            "itemCount": "Elementer: {count}",
+            "fileCount": "Filer: {count}",
+            "folderCount": "Mapper: {count}"
         },
         "contextMenu": {
             "askAeroAgent": "Spørg AeroAgent...",
@@ -745,9 +745,9 @@
                 "source": "Kilde",
                 "title": "Plan: {mode}"
             },
-            "stagedCount": "{count} klargjort",
-            "pendingCount": "{count} Afventer",
-            "failedCount": "{count} Mislykkedes"
+            "stagedCount": "Klargjorte: {count}",
+            "pendingCount": "Afventende: {count}",
+            "failedCount": "Mislykkede: {count}"
         },
         "settings": {
             "title": "Indstillinger",
@@ -1333,10 +1333,10 @@
             "fontSizeIndicatorLabel": "Skrift",
             "fontPresetDefault": "{font} (standard)",
             "fontPresetSystemDefault": "Systemstandard",
-            "duplicatesSkippedCount": "{count} dublet(ter) sprunget over",
-            "similarToExistingCount": "{count} ligner en eksisterende profil",
-            "bridgeSkippedCount": "{count} sprunget over",
-            "selectedOfTotal": "{selected} / {total} valgt",
+            "duplicatesSkippedCount": "Dubletter sprunget over: {count}",
+            "similarToExistingCount": "Ligner en eksisterende profil: {count}",
+            "bridgeSkippedCount": "Sprunget over: {count}",
+            "selectedOfTotal": "Valgt: {selected} / {total}",
             "serverCredentialsCount": "Serverlegitimationsoplysninger: {count}",
             "serverProfilesCount": "Serverprofiler: {count}",
             "aiKeysCount": "AI-nøgler: {count}",
@@ -1559,7 +1559,7 @@
             "aerocloudEnabled": "AeroCloud aktiveret",
             "selectPairLocalFolder": "Vælg lokal mappe til parret",
             "secondsAgo": "{count}s siden",
-            "conflictsCount": "{count} konflikt(er) kræver opmærksomhed"
+            "conflictsCount": "Konflikter, der kræver opmærksomhed: {count}"
         },
         "statusBar": {
             "connected": "Forbundet",
@@ -3035,7 +3035,7 @@
                 "done": "Færdig",
                 "failed": "Mislykkedes",
                 "allowThis": "Tillad dette værktøj",
-                "pendingApprovalCount": "{count} værktøjskald afventer godkendelse"
+                "pendingApprovalCount": "Værktøjskald, der afventer godkendelse: {count}"
             },
             "diff": {
                 "title": "Diff-forhåndsvisning",
@@ -3355,7 +3355,7 @@
                 "vision": "Vision",
                 "bedrockDescription": "Modeller hostet på AWS med adgang via en regional API-nøgle. Tilføj dit model ID manuelt.",
                 "bedrockHighlight": "Regionalt AWS-slutpunkt",
-                "availableCount": "{count} tilgængelig(e)"
+                "availableCount": "Tilgængelige: {count}"
             },
             "history": {
                 "cancel": "Annullér",
@@ -3715,7 +3715,7 @@
             "preview": "Forhåndsvisning",
             "extract": "Udpak",
             "back": "Tilbage",
-            "filesSummary": "{count} fil(er), {size}"
+            "filesSummary": "Filer: {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "Tilføjet {files} filer i {dirs} mapper",
@@ -4323,8 +4323,8 @@
             "modeExact": "Nøjagtig",
             "modeLabel": "Tilstand:",
             "modeNonIdentical": "Ikke identisk",
-            "groupsCount": "{count} gruppe(r)",
-            "duplicateFilesCount": "{count} dubletfil(er)",
+            "groupsCount": "Grupper: {count}",
+            "duplicateFilesCount": "Dubletfiler: {count}",
             "copiesCount": "{count} kopier"
         },
         "diskUsage": {
@@ -4437,7 +4437,7 @@
                 "userAgent": "User Agent",
                 "localStorageKeysTitle": "LocalStorage-nøgler",
                 "localStorageEntrySummary": "{size} byte · {preview}",
-                "keysCount": "{count} nøgle(r)"
+                "keysCount": "Nøgler: {count}"
             },
             "copyFileListToClipboard": "Kopiér filliste til udklipsholder",
             "filesCopied": "{count} filposter kopieret til udklipsholder",
@@ -4464,7 +4464,7 @@
                 "runAll": "Kør alle",
                 "runOne": "Kør denne test",
                 "vaultRoundtrip": "Boks tur-retur",
-                "passedCount": "{passed}/{total} bestået"
+                "passedCount": "Bestået: {passed}/{total}"
             },
             "bundle": {
                 "title": "Eksportér diagnostisk pakke (ZIP)"
@@ -4514,7 +4514,7 @@
             "badges": {
                 "live": "LIVE",
                 "synced": "SYNKRONISERET",
-                "activeCount": "{count} AKTIV(E)"
+                "activeCount": "AKTIVE: {count}"
             },
             "clearLog": "Ryd log",
             "close": "Luk",
@@ -4538,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Filtrer handlinger",
-                "selectedCount": "{count} valgt"
+                "selectedCount": "Valgt: {count}"
             },
             "save": "Gem"
         },
@@ -4755,7 +4755,7 @@
                 "zoomIn": "Zoom ind",
                 "zoomOut": "Zoom ud",
                 "htmlPreviewFrameTitle": "HTML-forhåndsvisning",
-                "stats": "{lines} linje(r) • {chars} tegn"
+                "stats": "Linjer: {lines} • tegn: {chars}"
             },
             "video": {
                 "exitFullscreen": "Afslut fuldskærm (F)",
@@ -5006,13 +5006,13 @@
             "close": "Luk",
             "allInSync": "Alle filer er synkroniserede",
             "errorsOccurred": "Der opstod nogle fejl",
-            "vaultOnlyCount": "{count} Kun i boksen",
-            "localOnlyCount": "{count} Kun lokalt",
-            "conflictsCount": "{count} konflikt(er)",
-            "unchangedCount": "{count} uændret",
-            "filesToVaultCount": "{count} fil(er) synkroniseret til boksen",
-            "filesToLocalCount": "{count} fil(er) udpakket lokalt",
-            "filesSkippedCount": "{count} fil(er) sprunget over"
+            "vaultOnlyCount": "Kun i boksen: {count}",
+            "localOnlyCount": "Kun lokalt: {count}",
+            "conflictsCount": "Konflikter: {count}",
+            "unchangedCount": "Uændrede: {count}",
+            "filesToVaultCount": "Filer synkroniseret til boksen: {count}",
+            "filesToLocalCount": "Filer udpakket lokalt: {count}",
+            "filesSkippedCount": "Filer sprunget over: {count}"
         },
         "localTabs": {
             "closeAll": "Luk alle faner",
@@ -5252,10 +5252,10 @@
             "batchChecking": "Kontrollerer {count} servere, vent venligst...",
             "scoreLegend": "Score 0-100, højere er bedre",
             "scoreLegendDetail": "80+ sund · 50-79 forringet · under 50 har problemer",
-            "checkedCount": "{count} kontrolleret",
-            "healthyCount": "{count} Sund(e)",
-            "degradedCount": "{count} Forringet",
-            "unreachableCount": "{count} Utilgængelig(e)"
+            "checkedCount": "Kontrollerede: {count}",
+            "healthyCount": "Sunde: {count}",
+            "degradedCount": "Forringede: {count}",
+            "unreachableCount": "Utilgængelige: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5996,8 +5996,8 @@
             "copyHereFromOtherPanelTooltip": "Kopiér {count} valgte fra det andet panel til dette panel (F5)",
             "moveHereFromOtherPanelTooltip": "Flyt {count} valgte fra det andet panel til dette panel (F6)",
             "syncToOtherPanel": "Synkronisér til andet panel (delta)",
-            "failedCount": "{count} mislykkedes",
-            "skippedCount": "{count} sprunget over"
+            "failedCount": "Mislykkede: {count}",
+            "skippedCount": "Sprunget over: {count}"
         },
         "compare": {
             "title": "Sammenlign paneler",
@@ -6304,9 +6304,9 @@
             "compareStartHint": "Sammenligningen læser begge mapper og alle mapper under dem. På et stort træ kan det tage et stykke tid, og du kan stoppe den.",
             "progressDelta": "[delta]",
             "progressCopy": "[kopi]",
-            "deleteCount": "{count} skal slettes",
-            "overwriteCount": "{count} skal overskrives",
-            "conflictCount": "{count} konflikt(er)"
+            "deleteCount": "Til sletning: {count}",
+            "overwriteCount": "Til overskrivning: {count}",
+            "conflictCount": "Konflikter: {count}"
         },
         "accountLock": {
             "title": "Vælg en konto",

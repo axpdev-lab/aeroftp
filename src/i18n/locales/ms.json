@@ -745,9 +745,9 @@
                 "source": "Sumber",
                 "title": "Pelan {mode}"
             },
-            "stagedCount": "{count} disediakan",
-            "pendingCount": "{count} Menunggu",
-            "failedCount": "{count} Gagal"
+            "stagedCount": "Disediakan: {count}",
+            "pendingCount": "Menunggu: {count}",
+            "failedCount": "Gagal: {count}"
         },
         "settings": {
             "title": "Tetapan",
@@ -1334,9 +1334,9 @@
             "fontPresetDefault": "{font} (Lalai)",
             "fontPresetSystemDefault": "Lalai sistem",
             "duplicatesSkippedCount": "{count} pendua dilangkau",
-            "similarToExistingCount": "{count} serupa dengan profil sedia ada",
-            "bridgeSkippedCount": "{count} dilangkau",
-            "selectedOfTotal": "{selected} / {total} dipilih",
+            "similarToExistingCount": "Serupa dengan profil sedia ada: {count}",
+            "bridgeSkippedCount": "Dilangkau: {count}",
+            "selectedOfTotal": "Dipilih: {selected} / {total}",
             "serverCredentialsCount": "{count} kelayakan pelayan",
             "serverProfilesCount": "{count} profil pelayan",
             "aiKeysCount": "{count} kunci AI",
@@ -3355,7 +3355,7 @@
                 "vision": "Vision",
                 "bedrockDescription": "Model yang dihoskan di AWS dengan akses kunci API serantau. Tambahkan model ID anda secara manual.",
                 "bedrockHighlight": "Titik akhir serantau AWS",
-                "availableCount": "{count} tersedia"
+                "availableCount": "Tersedia: {count}"
             },
             "history": {
                 "cancel": "Batal",
@@ -4464,7 +4464,7 @@
                 "runAll": "Jalankan semua",
                 "runOne": "Jalankan ujian ini",
                 "vaultRoundtrip": "Pusingan peti besi",
-                "passedCount": "{passed}/{total} lulus"
+                "passedCount": "Lulus: {passed}/{total}"
             },
             "bundle": {
                 "title": "Eksport himpunan diagnostik (ZIP)"
@@ -4514,7 +4514,7 @@
             "badges": {
                 "live": "LANGSUNG",
                 "synced": "DISEGERAKKAN",
-                "activeCount": "{count} AKTIF"
+                "activeCount": "AKTIF: {count}"
             },
             "clearLog": "Kosongkan log",
             "close": "Tutup",
@@ -4538,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Tapis operasi",
-                "selectedCount": "{count} dipilih"
+                "selectedCount": "Dipilih: {count}"
             },
             "save": "Simpan"
         },
@@ -5006,10 +5006,10 @@
             "close": "Tutup",
             "allInSync": "Semua fail telah disegerakkan",
             "errorsOccurred": "Beberapa ralat berlaku",
-            "vaultOnlyCount": "{count} Peti besi sahaja",
-            "localOnlyCount": "{count} Setempat sahaja",
+            "vaultOnlyCount": "Peti besi sahaja: {count}",
+            "localOnlyCount": "Setempat sahaja: {count}",
             "conflictsCount": "{count} konflik",
-            "unchangedCount": "{count} tidak berubah",
+            "unchangedCount": "Tidak berubah: {count}",
             "filesToVaultCount": "{count} fail disegerakkan ke peti besi",
             "filesToLocalCount": "{count} fail diekstrak ke setempat",
             "filesSkippedCount": "{count} fail dilangkau"
@@ -5252,10 +5252,10 @@
             "batchChecking": "Menyemak {count} pelayan, sila tunggu...",
             "scoreLegend": "Skor 0-100, lebih tinggi lebih baik",
             "scoreLegendDetail": "80+ sihat · 50-79 merosot · bawah 50 ada masalah",
-            "checkedCount": "{count} disemak",
-            "healthyCount": "{count} Sihat",
-            "degradedCount": "{count} Merosot",
-            "unreachableCount": "{count} Tidak dapat dicapai"
+            "checkedCount": "Disemak: {count}",
+            "healthyCount": "Sihat: {count}",
+            "degradedCount": "Merosot: {count}",
+            "unreachableCount": "Tidak dapat dicapai: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5996,8 +5996,8 @@
             "copyHereFromOtherPanelTooltip": "Salin {count} yang dipilih dari panel lain ke panel ini (F5)",
             "moveHereFromOtherPanelTooltip": "Alih {count} yang dipilih dari panel lain ke panel ini (F6)",
             "syncToOtherPanel": "Segerakkan ke panel lain (delta)",
-            "failedCount": "{count} gagal",
-            "skippedCount": "{count} dilangkau"
+            "failedCount": "Gagal: {count}",
+            "skippedCount": "Dilangkau: {count}"
         },
         "compare": {
             "title": "Bandingkan panel",
@@ -6304,8 +6304,8 @@
             "compareStartHint": "Perbandingan membaca kedua-dua folder dan semua folder di bawahnya. Pada pokok yang besar, ia mungkin mengambil sedikit masa, dan anda boleh menghentikannya.",
             "progressDelta": "[delta]",
             "progressCopy": "[salinan]",
-            "deleteCount": "{count} untuk dipadam",
-            "overwriteCount": "{count} untuk ditulis ganti",
+            "deleteCount": "Untuk dipadam: {count}",
+            "overwriteCount": "Untuk ditulis ganti: {count}",
             "conflictCount": "{count} konflik"
         },
         "accountLock": {

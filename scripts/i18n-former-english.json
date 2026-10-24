@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "6194743dbd3c26eb5c5423c3a33347fd1eef3c8e7c1053e2df0b3aa42720b0bf",
+    "enHash": "b9bd8a48a23100c00ceb87189d65ede55df84ca3504c9937eb6e9fb32ad07ba6",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -102,6 +102,9 @@
         "aerocryptProfile.scopeHint": [
             "The Remote and Local paths above define the encrypted scope (leave Remote empty to encrypt the whole root)."
         ],
+        "aerosync.conflictCount": [
+            "{count} conflict(s)"
+        ],
         "aerosync.errorCorrectionHint": [
             "Stores a small .aerorec parity file next to each backed-up file so a bit-rotted remote copy can be repaired on the next pull, without the original."
         ],
@@ -117,6 +120,9 @@
         "aerosync.speedModeHint": [
             "Parallel streams + compression preset applied to the run."
         ],
+        "aerosync.sync.errorDetailsCount": [
+            "{count} error(s), details"
+        ],
         "aerosync.tabSync": [
             "Sync"
         ],
@@ -125,6 +131,9 @@
         ],
         "ai.apiKeyNotConfigured": [
             "API key not configured for {{provider}}. Open AI Settings to add one."
+        ],
+        "ai.batch.pendingApprovalCount": [
+            "{count} tool call(s) pending approval"
         ],
         "ai.codeContext": [
             "Regarding this code from `{{file}}`:"
@@ -210,8 +219,23 @@
         "ai.toolFailed": [
             "Tool failed: {{error}}"
         ],
+        "archive.filesSummary": [
+            "{count} file(s), {size}"
+        ],
+        "browser.fileCount": [
+            "{count} file(s)"
+        ],
+        "browser.folderCount": [
+            "{count} folder(s)"
+        ],
+        "browser.itemCount": [
+            "{count} item(s)"
+        ],
         "browser.syncPathMismatch": [
             "Paths are out of sync — navigate to matching folders or disable sync navigation"
+        ],
+        "cloud.conflictsCount": [
+            "{count} conflict(s) need attention"
         ],
         "cloud.error": [
             "Sync error"
@@ -314,6 +338,9 @@
         "cyberTools.pwdNotBip39": [
             "Not a valid BIP-39 mnemonic — do not use as a cryptocurrency wallet seed"
         ],
+        "debug.frontend.keysCount": [
+            "{count} key(s)"
+        ],
         "devtools.closeDevTools": [
             "Close DevTools"
         ],
@@ -326,8 +353,14 @@
         "devtools.title": [
             "DevTools"
         ],
+        "duplicates.duplicateFilesCount": [
+            "{count} duplicate file(s)"
+        ],
         "duplicates.everyCopyTickedHint": [
             "Untick one copy in each highlighted group: this would delete every copy."
+        ],
+        "duplicates.groupsCount": [
+            "{count} group(s)"
         ],
         "duplicates.title": [
             "Find Duplicates"
@@ -425,6 +458,9 @@
         ],
         "portable.banner.body": [
             "Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent — deleting a profile in one folder no longer affects the other."
+        ],
+        "preview.text.stats": [
+            "{lines} line(s) • {chars} chars"
         ],
         "properties.checksumCaveats.b2-unverified": [
             "Large files and uploads B2 recorded as unverified carry no usable SHA-1."
@@ -638,6 +674,9 @@
         "settings.downloadSegmentsDesc": [
             "Split each download into parallel byte ranges. Auto keeps today's single-stream behaviour. Effective on providers that support range requests (SFTP, S3, HTTP) for files large enough to benefit."
         ],
+        "settings.duplicatesSkippedCount": [
+            "{count} duplicate(s) skipped"
+        ],
         "settings.fontSizeDesc": [
             "Adjust the interface text size"
         ],
@@ -798,6 +837,15 @@
         "vault.zipPlaintextDesc": [
             ".aerozip provides high compression, integrity checks, and recovery. It is not encrypted; anyone with the file can read it.",
             "Not encrypted — no confidentiality. It will not open in a normal zip tool: it needs AeroFTP or the open-source aerovault crate. The format is open, so anyone motivated can recover the contents."
+        ],
+        "vaultSync.filesSkippedCount": [
+            "{count} file(s) skipped"
+        ],
+        "vaultSync.filesToLocalCount": [
+            "{count} file(s) extracted to local"
+        ],
+        "vaultSync.filesToVaultCount": [
+            "{count} file(s) synced to vault"
         ]
     }
 }

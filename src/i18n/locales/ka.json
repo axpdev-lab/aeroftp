@@ -745,9 +745,9 @@
                 "source": "წყარო",
                 "title": "გეგმა: {mode}"
             },
-            "stagedCount": "{count} მომზადებული",
-            "pendingCount": "{count} მოლოდინში",
-            "failedCount": "{count} ვერ მოხერხდა"
+            "stagedCount": "მომზადებული: {count}",
+            "pendingCount": "მოლოდინში: {count}",
+            "failedCount": "ვერ მოხერხდა: {count}"
         },
         "settings": {
             "title": "პარამეტრები",
@@ -1334,8 +1334,8 @@
             "fontPresetDefault": "{font} (ნაგულისხმევი)",
             "fontPresetSystemDefault": "სისტემის ნაგულისხმევი",
             "duplicatesSkippedCount": "გამოტოვებულია {count} დუბლიკატი",
-            "similarToExistingCount": "{count} მსგავსია არსებული პროფილის",
-            "bridgeSkippedCount": "{count} გამოტოვებულია",
+            "similarToExistingCount": "არსებული პროფილის მსგავსი: {count}",
+            "bridgeSkippedCount": "გამოტოვებულია: {count}",
             "selectedOfTotal": "არჩეულია {selected} / {total}",
             "serverCredentialsCount": "{count} სერვერის ავტორიზაციის მონაცემი",
             "serverProfilesCount": "{count} სერვერის პროფილი",
@@ -4464,7 +4464,7 @@
                 "runAll": "ყველას გაშვება",
                 "runOne": "ამ ტესტის გაშვება",
                 "vaultRoundtrip": "სეიფის მრგვალი მოგზაურობა",
-                "passedCount": "{passed}/{total} გავიდა"
+                "passedCount": "გავიდა: {passed}/{total}"
             },
             "bundle": {
                 "title": "დიაგნოსტიკური პაკეტის ექსპორტი (ZIP)"
@@ -4514,7 +4514,7 @@
             "badges": {
                 "live": "პირდაპირ",
                 "synced": "სინქრონიზებული",
-                "activeCount": "{count} აქტიური"
+                "activeCount": "აქტიური: {count}"
             },
             "clearLog": "ჟურნალის გასუფთავება",
             "close": "დახურვა",
@@ -5009,7 +5009,7 @@
             "vaultOnlyCount": "მხოლოდ საცავში: {count}",
             "localOnlyCount": "მხოლოდ ლოკალური: {count}",
             "conflictsCount": "{count} კონფლიქტი",
-            "unchangedCount": "{count} უცვლელი",
+            "unchangedCount": "უცვლელი: {count}",
             "filesToVaultCount": "{count} ფაილი სინქრონიზდა საცავში",
             "filesToLocalCount": "{count} ფაილი ამოღებულია ლოკალურად",
             "filesSkippedCount": "{count} ფაილი გამოტოვებულია"
@@ -5253,9 +5253,9 @@
             "scoreLegend": "ქულა 0-100, მაღალი უკეთესია",
             "scoreLegendDetail": "80+ ჯანსაღი · 50-79 დეგრადირებული · 50-ზე ქვემოთ პრობლემები",
             "checkedCount": "შემოწმებულია {count}",
-            "healthyCount": "{count} გამართული",
-            "degradedCount": "{count} გაუარესებული",
-            "unreachableCount": "{count} მიუწვდომელი"
+            "healthyCount": "გამართული: {count}",
+            "degradedCount": "გაუარესებული: {count}",
+            "unreachableCount": "მიუწვდომელი: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5996,8 +5996,8 @@
             "copyHereFromOtherPanelTooltip": "მეორე პანელიდან არჩეული {count}-ის კოპირება ამ პანელში (F5)",
             "moveHereFromOtherPanelTooltip": "მეორე პანელიდან არჩეული {count}-ის გადატანა ამ პანელში (F6)",
             "syncToOtherPanel": "სინქრონიზაცია მეორე პანელთან (delta)",
-            "failedCount": "{count} ვერ შესრულდა",
-            "skippedCount": "{count} გამოტოვებულია"
+            "failedCount": "ვერ შესრულდა: {count}",
+            "skippedCount": "გამოტოვებულია: {count}"
         },
         "compare": {
             "title": "პანელების შედარება",

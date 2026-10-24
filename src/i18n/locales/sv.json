@@ -446,8 +446,8 @@
             "chooseLeftPanelFolder": "Välj mapp för vänster panel",
             "localRight": "Lokal (höger)",
             "itemCount": "{count} objekt",
-            "fileCount": "{count} fil(er)",
-            "folderCount": "{count} mapp(ar)"
+            "fileCount": "Filer: {count}",
+            "folderCount": "Mappar: {count}"
         },
         "contextMenu": {
             "askAeroAgent": "Fråga AeroAgent...",
@@ -747,7 +747,7 @@
             },
             "stagedCount": "Förberedda: {count}",
             "pendingCount": "Väntande: {count}",
-            "failedCount": "{count} misslyckades"
+            "failedCount": "Misslyckade: {count}"
         },
         "settings": {
             "title": "Inställningar",
@@ -1333,12 +1333,12 @@
             "fontSizeIndicatorLabel": "Teckensnitt",
             "fontPresetDefault": "{font} (standard)",
             "fontPresetSystemDefault": "Systemstandard",
-            "duplicatesSkippedCount": "{count} dublett(er) hoppades över",
-            "similarToExistingCount": "{count} liknar en befintlig profil",
-            "bridgeSkippedCount": "{count} hoppades över",
+            "duplicatesSkippedCount": "Dubbletter som hoppades över: {count}",
+            "similarToExistingCount": "Liknar en befintlig profil: {count}",
+            "bridgeSkippedCount": "Överhoppade: {count}",
             "selectedOfTotal": "Valda: {selected} / {total}",
             "serverCredentialsCount": "Serverautentiseringsuppgifter: {count}",
-            "serverProfilesCount": "{count} serverprofil(er)",
+            "serverProfilesCount": "Serverprofiler: {count}",
             "aiKeysCount": "AI-nycklar: {count}",
             "oauthTokensCount": "OAuth-token: {count}",
             "configEntriesCount": "Konfigurationsposter: {count}"
@@ -1559,7 +1559,7 @@
             "aerocloudEnabled": "AeroCloud aktiverat",
             "selectPairLocalFolder": "Välj lokal mapp för paret",
             "secondsAgo": "{count}s sedan",
-            "conflictsCount": "{count} konflikt(er) kräver åtgärd"
+            "conflictsCount": "Konflikter som kräver åtgärd: {count}"
         },
         "statusBar": {
             "connected": "Ansluten",
@@ -3035,7 +3035,7 @@
                 "done": "Klar",
                 "failed": "Misslyckades",
                 "allowThis": "Tillåt detta verktyg",
-                "pendingApprovalCount": "{count} verktygsanrop väntar på godkännande"
+                "pendingApprovalCount": "Verktygsanrop som väntar på godkännande: {count}"
             },
             "diff": {
                 "title": "Diff-förhandsgranskning",
@@ -3715,7 +3715,7 @@
             "preview": "Förhandsvisa",
             "extract": "Extrahera",
             "back": "Tillbaka",
-            "filesSummary": "{count} fil(er), {size}"
+            "filesSummary": "Filer: {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "Lade till {files} filer i {dirs} kataloger",
@@ -4323,8 +4323,8 @@
             "modeExact": "Exakt",
             "modeLabel": "Läge:",
             "modeNonIdentical": "Ej identisk",
-            "groupsCount": "{count} grupp(er)",
-            "duplicateFilesCount": "{count} dubblettfil(er)",
+            "groupsCount": "Grupper: {count}",
+            "duplicateFilesCount": "Dubblettfiler: {count}",
             "copiesCount": "{count} kopior"
         },
         "diskUsage": {
@@ -4755,7 +4755,7 @@
                 "zoomIn": "Zooma in",
                 "zoomOut": "Zooma ut",
                 "htmlPreviewFrameTitle": "HTML-förhandsvisning",
-                "stats": "{lines} rad(er) • {chars} tecken"
+                "stats": "Rader: {lines} • tecken: {chars}"
             },
             "video": {
                 "exitFullscreen": "Avsluta helskärmsläge (F)",
@@ -5008,11 +5008,11 @@
             "errorsOccurred": "Några fel inträffade",
             "vaultOnlyCount": "{count} endast i valvet",
             "localOnlyCount": "{count} endast lokalt",
-            "conflictsCount": "{count} konflikt(er)",
+            "conflictsCount": "Konflikter: {count}",
             "unchangedCount": "Oförändrade: {count}",
-            "filesToVaultCount": "{count} fil(er) synkroniserades till valvet",
-            "filesToLocalCount": "{count} fil(er) extraherades lokalt",
-            "filesSkippedCount": "{count} fil(er) hoppades över"
+            "filesToVaultCount": "Filer synkroniserade till valvet: {count}",
+            "filesToLocalCount": "Filer extraherade lokalt: {count}",
+            "filesSkippedCount": "Filer som hoppades över: {count}"
         },
         "localTabs": {
             "closeAll": "Stäng alla flikar",
@@ -5996,8 +5996,8 @@
             "copyHereFromOtherPanelTooltip": "Kopiera {count} valda från den andra panelen till denna panel (F5)",
             "moveHereFromOtherPanelTooltip": "Flytta {count} valda från den andra panelen till denna panel (F6)",
             "syncToOtherPanel": "Synkronisera till andra panelen (delta)",
-            "failedCount": "{count} misslyckades",
-            "skippedCount": "{count} hoppades över"
+            "failedCount": "Misslyckade: {count}",
+            "skippedCount": "Överhoppade: {count}"
         },
         "compare": {
             "title": "Jämför paneler",
@@ -6306,7 +6306,7 @@
             "progressCopy": "[kopia]",
             "deleteCount": "{count} att radera",
             "overwriteCount": "{count} att skriva över",
-            "conflictCount": "{count} konflikt(er)"
+            "conflictCount": "Konflikter: {count}"
         },
         "accountLock": {
             "title": "Välj ett konto",

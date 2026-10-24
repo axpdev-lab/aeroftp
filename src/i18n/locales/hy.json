@@ -745,9 +745,9 @@
                 "source": "Աղբյուր",
                 "title": "Պլան՝ {mode}"
             },
-            "stagedCount": "{count} նախապատրաստված",
-            "pendingCount": "{count} Սպասող",
-            "failedCount": "{count} Ձախողված"
+            "stagedCount": "Նախապատրաստված՝ {count}",
+            "pendingCount": "Սպասող՝ {count}",
+            "failedCount": "Ձախողված՝ {count}"
         },
         "settings": {
             "title": "Կարգավորումներ",
@@ -1334,9 +1334,9 @@
             "fontPresetDefault": "{font} (Լռելյայն)",
             "fontPresetSystemDefault": "Համակարգի լռելյայն",
             "duplicatesSkippedCount": "{count} կրկնօրինակ բաց թողնված",
-            "similarToExistingCount": "{count} նման է առկա պրոֆիլին",
-            "bridgeSkippedCount": "{count} բաց թողնված",
-            "selectedOfTotal": "{selected} / {total} ընտրված",
+            "similarToExistingCount": "Առկա պրոֆիլին նման՝ {count}",
+            "bridgeSkippedCount": "Բաց թողնված՝ {count}",
+            "selectedOfTotal": "Ընտրված՝ {selected} / {total}",
             "serverCredentialsCount": "{count} սերվերի մուտքի տվյալ",
             "serverProfilesCount": "{count} սերվերի պրոֆիլ",
             "aiKeysCount": "{count} AI բանալի",
@@ -3348,7 +3348,7 @@
                 "vision": "Vision",
                 "bedrockDescription": "AWS-ում տեղակայված մոդելներ՝ տարածաշրջանային API բանալիով հասանելիությամբ։ Ձեռքով ավելացրեք ձեր model ID-ն։",
                 "bedrockHighlight": "AWS տարածաշրջանային վերջնակետ",
-                "availableCount": "{count} հասանելի"
+                "availableCount": "Հասանելի՝ {count}"
             },
             "history": {
                 "cancel": "Չեղարկել",
@@ -4457,7 +4457,7 @@
                 "runAll": "Կատարել բոլորը",
                 "runOne": "Կատարել այս թեստը",
                 "vaultRoundtrip": "Պահոցի շրջագայություն",
-                "passedCount": "{passed}/{total} անցած"
+                "passedCount": "Անցած՝ {passed}/{total}"
             },
             "bundle": {
                 "title": "Արտահանել ախտորոշիչ փաթեթը (ZIP)"
@@ -4507,7 +4507,7 @@
             "badges": {
                 "live": "ԸՆԹԱՑԻԿ",
                 "synced": "ՀԱՄԱԺԱՄԱՑՎԱԾ",
-                "activeCount": "{count} ԱԿՏԻՎ"
+                "activeCount": "ԱԿՏԻՎ՝ {count}"
             },
             "clearLog": "Մաքրել մատյանը",
             "close": "Փակել",
@@ -4531,7 +4531,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Ֆիլտրել գործողությունները",
-                "selectedCount": "{count} ընտրված"
+                "selectedCount": "Ընտրված՝ {count}"
             },
             "save": "Պահպանել"
         },
@@ -5006,10 +5006,10 @@
             "close": "Փակել",
             "allInSync": "Բոլոր ֆայլերը սինքրոնիզացված են",
             "errorsOccurred": "Որոշ սխալներ տեղի ունեցան",
-            "vaultOnlyCount": "{count} Միայն պահոցում",
-            "localOnlyCount": "{count} Միայն տեղական",
+            "vaultOnlyCount": "Միայն պահոցում՝ {count}",
+            "localOnlyCount": "Միայն տեղական՝ {count}",
             "conflictsCount": "{count} կոնֆլիկտ",
-            "unchangedCount": "{count} անփոփոխ",
+            "unchangedCount": "Անփոփոխ՝ {count}",
             "filesToVaultCount": "{count} ֆայլ համաժամեցվեց պահոցին",
             "filesToLocalCount": "{count} ֆայլ արտահանվեց տեղական թղթապանակ",
             "filesSkippedCount": "{count} ֆայլ բաց թողնվեց"
@@ -5252,10 +5252,10 @@
             "batchChecking": "{count} սերվերի ստուգում, խնդրում ենք սպասել...",
             "scoreLegend": "Միավոր 0-100, ավելի բարձրը ավելի լավ",
             "scoreLegendDetail": "80+ առողջ · 50-79 վատացած · 50-ից ցածր խնդիրներով",
-            "checkedCount": "{count} ստուգված",
-            "healthyCount": "{count} Առողջ",
-            "degradedCount": "{count} Վատթարացած",
-            "unreachableCount": "{count} Անհասանելի"
+            "checkedCount": "Ստուգված՝ {count}",
+            "healthyCount": "Առողջ՝ {count}",
+            "degradedCount": "Վատթարացած՝ {count}",
+            "unreachableCount": "Անհասանելի՝ {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5996,8 +5996,8 @@
             "copyHereFromOtherPanelTooltip": "Պատճենել մյուս վահանակից ընտրված {count}-ը այս վահանակում (F5)",
             "moveHereFromOtherPanelTooltip": "Տեղափոխել մյուս վահանակից ընտրված {count}-ը այս վահանակում (F6)",
             "syncToOtherPanel": "Համաժամացնել մյուս վահանակին (delta)",
-            "failedCount": "{count} ձախողված",
-            "skippedCount": "{count} բաց թողնված"
+            "failedCount": "Ձախողված՝ {count}",
+            "skippedCount": "Բաց թողնված՝ {count}"
         },
         "compare": {
             "title": "Համեմատել վահանակները",
@@ -6304,8 +6304,8 @@
             "compareStartHint": "Համեմատումը կարդում է երկու պանակները և դրանց տակ գտնվող բոլոր պանակները։ Մեծ ծառի դեպքում դա կարող է որոշ ժամանակ տևել, և դուք կարող եք այն կանգնեցնել։",
             "progressDelta": "[դելտա]",
             "progressCopy": "[պատճեն]",
-            "deleteCount": "{count} ջնջելու",
-            "overwriteCount": "{count} վերագրելու",
+            "deleteCount": "Ջնջելու՝ {count}",
+            "overwriteCount": "Վերագրելու՝ {count}",
             "conflictCount": "{count} կոնֆլիկտ"
         },
         "accountLock": {

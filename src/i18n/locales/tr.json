@@ -745,9 +745,9 @@
                 "source": "Kaynak",
                 "title": "Plan: {mode}"
             },
-            "stagedCount": "{count} hazırlandı",
-            "pendingCount": "{count} Bekliyor",
-            "failedCount": "{count} Başarısız"
+            "stagedCount": "Hazırlanan: {count}",
+            "pendingCount": "Bekleyen: {count}",
+            "failedCount": "Başarısız: {count}"
         },
         "settings": {
             "title": "Ayarlar",
@@ -1334,9 +1334,9 @@
             "fontPresetDefault": "{font} (Varsayılan)",
             "fontPresetSystemDefault": "Sistem varsayılanı",
             "duplicatesSkippedCount": "{count} yinelenen atlandı",
-            "similarToExistingCount": "{count} mevcut bir profile benziyor",
-            "bridgeSkippedCount": "{count} atlandı",
-            "selectedOfTotal": "{selected} / {total} seçili",
+            "similarToExistingCount": "Mevcut profile benzeyen: {count}",
+            "bridgeSkippedCount": "Atlanan: {count}",
+            "selectedOfTotal": "Seçili: {selected} / {total}",
             "serverCredentialsCount": "{count} sunucu kimlik bilgisi",
             "serverProfilesCount": "{count} sunucu profili",
             "aiKeysCount": "{count} AI anahtarı",
@@ -3355,7 +3355,7 @@
                 "vision": "Vision",
                 "bedrockDescription": "Bölgesel API anahtarıyla erişilen AWS üzerinde barındırılan modeller. model ID değerinizi elle ekleyin.",
                 "bedrockHighlight": "AWS bölgesel uç noktası",
-                "availableCount": "{count} kullanılabilir"
+                "availableCount": "Kullanılabilir: {count}"
             },
             "history": {
                 "cancel": "İptal",
@@ -4464,7 +4464,7 @@
                 "runAll": "Tümünü çalıştır",
                 "runOne": "Bu testi çalıştır",
                 "vaultRoundtrip": "Kasa gidiş-dönüş",
-                "passedCount": "{passed}/{total} başarılı"
+                "passedCount": "Başarılı: {passed}/{total}"
             },
             "bundle": {
                 "title": "Tanılama paketini dışa aktar (ZIP)"
@@ -4514,7 +4514,7 @@
             "badges": {
                 "live": "CANLI",
                 "synced": "SENKRONİZE",
-                "activeCount": "{count} ETKİN"
+                "activeCount": "ETKİN: {count}"
             },
             "clearLog": "Günlüğü temizle",
             "close": "Kapat",
@@ -4538,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "İşlemleri filtrele",
-                "selectedCount": "{count} seçili"
+                "selectedCount": "Seçili: {count}"
             },
             "save": "Kaydet"
         },
@@ -5006,10 +5006,10 @@
             "close": "Kapat",
             "allInSync": "Tüm dosyalar senkronize",
             "errorsOccurred": "Bazı hatalar oluştu",
-            "vaultOnlyCount": "{count} Yalnızca vault",
-            "localOnlyCount": "{count} Yalnızca yerel",
+            "vaultOnlyCount": "Yalnızca vault'ta: {count}",
+            "localOnlyCount": "Yalnızca yerel: {count}",
             "conflictsCount": "{count} çakışma",
-            "unchangedCount": "{count} değişmedi",
+            "unchangedCount": "Değişmeyen: {count}",
             "filesToVaultCount": "{count} dosya vault'a eşitlendi",
             "filesToLocalCount": "{count} dosya yerele çıkarıldı",
             "filesSkippedCount": "{count} dosya atlandı"
@@ -5252,10 +5252,10 @@
             "batchChecking": "{count} sunucu kontrol ediliyor, lütfen bekleyin...",
             "scoreLegend": "Skor 0-100, daha yüksek daha iyi",
             "scoreLegendDetail": "80+ sağlıklı · 50-79 düşük · 50 altı sorunlu",
-            "checkedCount": "{count} kontrol edildi",
-            "healthyCount": "{count} Sağlıklı",
-            "degradedCount": "{count} Düşük performans",
-            "unreachableCount": "{count} Erişilemiyor"
+            "checkedCount": "Kontrol edilen: {count}",
+            "healthyCount": "Sağlıklı: {count}",
+            "degradedCount": "Düşük performans: {count}",
+            "unreachableCount": "Erişilemeyen: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5996,8 +5996,8 @@
             "copyHereFromOtherPanelTooltip": "Diğer panelden seçilen {count} öğeyi bu panele kopyala (F5)",
             "moveHereFromOtherPanelTooltip": "Diğer panelden seçilen {count} öğeyi bu panele taşı (F6)",
             "syncToOtherPanel": "Diğer panele senkronize et (delta)",
-            "failedCount": "{count} başarısız",
-            "skippedCount": "{count} atlandı"
+            "failedCount": "Başarısız: {count}",
+            "skippedCount": "Atlanan: {count}"
         },
         "compare": {
             "title": "Panelleri karşılaştır",
@@ -6304,8 +6304,8 @@
             "compareStartHint": "Karşılaştırma her iki klasörü ve altındaki tüm klasörleri okur. Büyük bir ağaçta biraz zaman alabilir ve durdurabilirsiniz.",
             "progressDelta": "[delta]",
             "progressCopy": "[kopya]",
-            "deleteCount": "{count} silinecek",
-            "overwriteCount": "{count} üzerine yazılacak",
+            "deleteCount": "Silinecek: {count}",
+            "overwriteCount": "Üzerine yazılacak: {count}",
             "conflictCount": "{count} çakışma"
         },
         "accountLock": {

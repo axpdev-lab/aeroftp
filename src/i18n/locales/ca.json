@@ -445,9 +445,9 @@
             "chooseRightPanelFolder": "Tria la carpeta del panell dret",
             "chooseLeftPanelFolder": "Tria la carpeta del panell esquerre",
             "localRight": "Local (dreta)",
-            "itemCount": "{count} element(s)",
-            "fileCount": "{count} fitxer(s)",
-            "folderCount": "{count} carpeta(es)"
+            "itemCount": "Elements: {count}",
+            "fileCount": "Fitxers: {count}",
+            "folderCount": "Carpetes: {count}"
         },
         "contextMenu": {
             "askAeroAgent": "Pregunta a AeroAgent...",
@@ -745,9 +745,9 @@
                 "source": "Origen",
                 "title": "Pla: {mode}"
             },
-            "stagedCount": "{count} preparat(s)",
-            "pendingCount": "{count} Pendent(s)",
-            "failedCount": "{count} Fallit(s)"
+            "stagedCount": "Preparats: {count}",
+            "pendingCount": "Pendents: {count}",
+            "failedCount": "Fallits: {count}"
         },
         "settings": {
             "title": "Configuració",
@@ -1334,14 +1334,14 @@
             "fontPresetDefault": "{font} (Predeterminat)",
             "fontPresetSystemDefault": "Predeterminat del sistema",
             "duplicatesSkippedCount": "Duplicats omesos: {count}",
-            "similarToExistingCount": "{count} similar(s) a un perfil existent",
+            "similarToExistingCount": "Similars a un perfil existent: {count}",
             "bridgeSkippedCount": "Omesos: {count}",
-            "selectedOfTotal": "{selected} / {total} seleccionat(s)",
-            "serverCredentialsCount": "{count} credencial(s) de servidor",
-            "serverProfilesCount": "{count} perfil(s) de servidor",
-            "aiKeysCount": "{count} clau(s) d'AI",
-            "oauthTokensCount": "{count} token(s) OAuth",
-            "configEntriesCount": "{count} entrada(es) de configuració"
+            "selectedOfTotal": "Seleccionats: {selected} / {total}",
+            "serverCredentialsCount": "Credencials de servidor: {count}",
+            "serverProfilesCount": "Perfils de servidor: {count}",
+            "aiKeysCount": "Claus d'AI: {count}",
+            "oauthTokensCount": "Tokens OAuth: {count}",
+            "configEntriesCount": "Entrades de configuració: {count}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1559,7 +1559,7 @@
             "aerocloudEnabled": "AeroCloud activat",
             "selectPairLocalFolder": "Selecciona la carpeta local per a la parella",
             "secondsAgo": "fa {count}s",
-            "conflictsCount": "{count} conflicte(s) per revisar"
+            "conflictsCount": "Conflictes per revisar: {count}"
         },
         "statusBar": {
             "connected": "Connectat",
@@ -3035,7 +3035,7 @@
                 "done": "Fet",
                 "failed": "Fallat",
                 "allowThis": "Permetre aquesta eina",
-                "pendingApprovalCount": "{count} crida(es) d'eina pendent(s) d'aprovació"
+                "pendingApprovalCount": "Crides d'eina pendents d'aprovació: {count}"
             },
             "diff": {
                 "title": "Previsualització de diferències",
@@ -3355,7 +3355,7 @@
                 "vision": "Vision",
                 "bedrockDescription": "Models allotjats a AWS amb accés mitjançant una clau API regional. Afegiu el vostre model ID manualment.",
                 "bedrockHighlight": "Punt de connexió regional d'AWS",
-                "availableCount": "{count} disponible(s)"
+                "availableCount": "Disponibles: {count}"
             },
             "history": {
                 "cancel": "Cancel·la",
@@ -3715,7 +3715,7 @@
             "preview": "Vista prèvia",
             "extract": "Extreu",
             "back": "Enrere",
-            "filesSummary": "{count} fitxer(s), {size}"
+            "filesSummary": "Fitxers: {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "S'han afegit {files} fitxers en {dirs} directoris",
@@ -4323,8 +4323,8 @@
             "modeExact": "Exacte",
             "modeLabel": "Mode:",
             "modeNonIdentical": "No idèntic",
-            "groupsCount": "{count} grup(s)",
-            "duplicateFilesCount": "{count} fitxer(s) duplicat(s)",
+            "groupsCount": "Grups: {count}",
+            "duplicateFilesCount": "Fitxers duplicats: {count}",
             "copiesCount": "{count} còpies"
         },
         "diskUsage": {
@@ -4353,7 +4353,7 @@
             "status": "Estat",
             "footer": "Dades de versions de l'API de crates.io. Les versions mostrades són les versions resoltes (Cargo.lock).",
             "copyTitle": "Comprovació de dependències d'AeroFTP",
-            "cratesCount": "{count} crate(s)"
+            "cratesCount": "Crates: {count}"
         },
         "debug": {
             "tabs": {
@@ -4437,7 +4437,7 @@
                 "userAgent": "Agent d'usuari",
                 "localStorageKeysTitle": "Claus de LocalStorage",
                 "localStorageEntrySummary": "{size} bytes · {preview}",
-                "keysCount": "{count} clau(s)"
+                "keysCount": "Claus: {count}"
             },
             "copyFileListToClipboard": "Copiar llista de fitxers al porta-retalls",
             "filesCopied": "{count} entrades de fitxers copiades al porta-retalls",
@@ -4514,7 +4514,7 @@
             "badges": {
                 "live": "EN DIRECTE",
                 "synced": "SINCRONITZAT",
-                "activeCount": "{count} ACTIU(S)"
+                "activeCount": "ACTIUS: {count}"
             },
             "clearLog": "Esborrar registre",
             "close": "Tancar",
@@ -4538,7 +4538,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Filtra les operacions",
-                "selectedCount": "{count} seleccionat(s)"
+                "selectedCount": "Seleccionats: {count}"
             },
             "save": "Desa"
         },
@@ -4755,7 +4755,7 @@
                 "zoomIn": "Ampliar",
                 "zoomOut": "Reduir",
                 "htmlPreviewFrameTitle": "Previsualització HTML",
-                "stats": "{lines} línia(es) • {chars} car."
+                "stats": "Línies: {lines} • caràcters: {chars}"
             },
             "video": {
                 "exitFullscreen": "Sortir de pantalla completa (F)",
@@ -5006,12 +5006,12 @@
             "close": "Tancar",
             "allInSync": "Tots els fitxers estan sincronitzats",
             "errorsOccurred": "S'han produït alguns errors",
-            "vaultOnlyCount": "{count} Només a la caixa forta",
-            "localOnlyCount": "{count} Només local",
-            "conflictsCount": "{count} conflicte(s)",
+            "vaultOnlyCount": "Només a la caixa forta: {count}",
+            "localOnlyCount": "Només local: {count}",
+            "conflictsCount": "Conflictes: {count}",
             "unchangedCount": "{count} sense canvis",
-            "filesToVaultCount": "{count} fitxer(s) sincronitzat(s) amb la caixa forta",
-            "filesToLocalCount": "{count} fitxer(s) extret(s) a local",
+            "filesToVaultCount": "Fitxers sincronitzats amb la caixa forta: {count}",
+            "filesToLocalCount": "Fitxers extrets a local: {count}",
             "filesSkippedCount": "Fitxers omesos: {count}"
         },
         "localTabs": {
@@ -5271,10 +5271,10 @@
             "batchChecking": "S'estan comprovant {count} servidors, espereu...",
             "scoreLegend": "Puntuació 0-100, més alt és millor",
             "scoreLegendDetail": "80+ saludable · 50-79 degradat · per sota 50 té problemes",
-            "checkedCount": "{count} comprovat(s)",
-            "healthyCount": "{count} Correcte(s)",
-            "degradedCount": "{count} Degradat(s)",
-            "unreachableCount": "{count} Inaccessible(s)"
+            "checkedCount": "Comprovats: {count}",
+            "healthyCount": "Correctes: {count}",
+            "degradedCount": "Degradats: {count}",
+            "unreachableCount": "Inaccessibles: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -6015,7 +6015,7 @@
             "copyHereFromOtherPanelTooltip": "Copia {count} seleccionats de l'altre tauler en aquest tauler (F5)",
             "moveHereFromOtherPanelTooltip": "Mou {count} seleccionats de l'altre tauler en aquest tauler (F6)",
             "syncToOtherPanel": "Sincronitza amb l'altre panell (delta)",
-            "failedCount": "{count} fallit(s)",
+            "failedCount": "Fallits: {count}",
             "skippedCount": "Omesos: {count}"
         },
         "compare": {
@@ -6218,7 +6218,7 @@
                 "resultDryRunOk": "Simulació completada",
                 "resultDryRunPartial": "Simulació completada amb errors",
                 "resultDryRunCancelled": "Simulació cancel·lada",
-                "errorDetailsCount": "{count} error(s), detalls"
+                "errorDetailsCount": "Errors: {count}, detalls"
             },
             "launcherTemplates": "Plantilles",
             "launcherMultiPath": "Multi-ruta",
@@ -6325,7 +6325,7 @@
             "progressCopy": "[còpia]",
             "deleteCount": "{count} per eliminar",
             "overwriteCount": "{count} per sobreescriure",
-            "conflictCount": "{count} conflicte(s)"
+            "conflictCount": "Conflictes: {count}"
         },
         "accountLock": {
             "title": "Trieu un compte",
