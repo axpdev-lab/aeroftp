@@ -80,7 +80,8 @@
             "reset": "Palauta",
             "saved": "Tallennettu",
             "saving": "Tallennetaan...",
-            "creating": "Luodaan..."
+            "creating": "Luodaan...",
+            "minutesCount": "{count} min"
         },
         "connection": {
             "title": "Yhdistä palvelimeen",
@@ -159,7 +160,6 @@
             "saveChanges": "Tallenna muutokset",
             "createAccount": "Luo tili",
             "docs": "Dokumentaatio",
-            "minutes": "minuuttia",
             "localPathPlaceholder": "/home/user/projects",
             "fourshared": {
                 "backToExistingAccount": "Takaisin olemassa olevaan tiliin",
@@ -407,7 +407,6 @@
             "path": "Polku",
             "files": "tiedostoa",
             "folders": "kansiota",
-            "items": "kohdetta",
             "emptyFolder": "Tämä kansio on tyhjä",
             "parentFolder": "Yläkansio",
             "newFolder": "Uusi kansio",
@@ -462,7 +461,10 @@
             "rightPanelMarker": "Oikea paneeli",
             "chooseRightPanelFolder": "Valitse oikean paneelin kansio",
             "chooseLeftPanelFolder": "Valitse vasemman paneelin kansio",
-            "localRight": "Paikallinen (oikea)"
+            "localRight": "Paikallinen (oikea)",
+            "itemCount": "Kohteet: {count}",
+            "fileCount": "Tiedostot: {count}",
+            "folderCount": "Kansiot: {count}"
         },
         "contextMenu": {
             "askAeroAgent": "Kysy AeroAgent-ilta...",
@@ -625,7 +627,6 @@
             "copyError": "Kopiointivirhe",
             "copyQueueToClipboard": "Kopioi jono leikepöydälle",
             "fail": "EPÄONNISTUI",
-            "pending": "Odottaa",
             "remove": "Poista",
             "retry": "Yritä uudelleen",
             "stopAll": "Pysäytä kaikki",
@@ -690,7 +691,6 @@
                 "newTransfer": "Uusi siirto",
                 "preparing": "Valmistellaan siirtoa…"
             },
-            "staged": "jonossa",
             "start": "Aloita",
             "startAll": "Aloita kaikki",
             "restored": "Palautettu",
@@ -761,7 +761,10 @@
                 "size": "Koko",
                 "source": "Lähde",
                 "title": "Suunnitelma: {mode}"
-            }
+            },
+            "stagedCount": "Valmisteltu: {count}",
+            "pendingCount": "Odottaa: {count}",
+            "failedCount": "Epäonnistui: {count}"
         },
         "settings": {
             "title": "Asetukset",
@@ -946,7 +949,6 @@
             "migrationSkip": "Ohita toistaiseksi",
             "migrationFinish": "Valmis",
             "migrationStep": "Vaihe {current}/{total}",
-            "duplicatesSkipped": "kaksoiskappaleita ohitettu",
             "invalidPassword": "Virheellinen salasana",
             "backup": "Varmuuskopio",
             "visibleColumns": "Näkyvät sarakkeet",
@@ -1053,11 +1055,6 @@
             "consumerSecret": "Kuluttajan salaisuus",
             "privacyRespect": "AeroFTP suojaa yksityisyyttäsi. Tietoja ei kerätä, ei seurantaa, ei telemetriaa.",
             "keystoreEntries": "{count} merkintää",
-            "serverCredentials": "palvelimen tunnistetiedot",
-            "serverProfilesLabel": "palvelinprofiilit",
-            "aiKeysLabel": "tekoälyavaimet",
-            "oauthTokensLabel": "OAuth-tunnukset",
-            "configEntriesLabel": "määritys merkinnät",
             "session": "Istunto",
             "aeroftpBackupFiles": "AeroFTP-varmuuskopiotiedostot",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1116,7 +1113,6 @@
             "selectServersToExport": "Valitse vietävät palvelimet",
             "selectAll": "Valitse kaikki",
             "deselectAll": "Poista kaikkien valinta",
-            "selected": "valittu",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "Jos kuvaketta ei ole asetettu, palvelimen favicon tai icon.png havaitaan automaattisesti.",
             "protocolFilelu": "FileLu",
@@ -1279,7 +1275,6 @@
             "imagePreviewBgLight": "Vaalea",
             "imagePreviewBgCustom": "Mukautettu",
             "showTransferProgress": "Näytä siirron edistymispalkki",
-            "similarToExisting": "muistuttavat olemassa olevaa profiilia",
             "aerocloudCompress": "Ota pakkaus käyttöön (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: pakkaus + salaus (profiilissa on salaus)",
@@ -1354,7 +1349,16 @@
             "fontSystemInstallHint": "Vaatii järjestelmäasennuksen. AeroFTP käyttää automaattisesti varavaihtoehtoa, jos se ei ole saatavilla.",
             "fontSizeIndicatorLabel": "Fontti",
             "fontPresetDefault": "{font} (oletus)",
-            "fontPresetSystemDefault": "Järjestelmän oletus"
+            "fontPresetSystemDefault": "Järjestelmän oletus",
+            "duplicatesSkippedCount": "Ohitetut kaksoiskappaleet: {count}",
+            "similarToExistingCount": "Olemassa olevaa profiilia muistuttavat: {count}",
+            "bridgeSkippedCount": "Ohitettu: {count}",
+            "selectedOfTotal": "Valittu: {selected} / {total}",
+            "serverCredentialsCount": "Palvelimen tunnisteet: {count}",
+            "serverProfilesCount": "Palvelinprofiilit: {count}",
+            "aiKeysCount": "AI-avaimet: {count}",
+            "oauthTokensCount": "OAuth-tunnukset: {count}",
+            "configEntriesCount": "Määritysmerkinnät: {count}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1449,7 +1453,6 @@
             "starting": "Käynnistyy...",
             "pending": "Odottaa",
             "conflict": "Ristiriita",
-            "conflicts": "ristiriitaa vaatii huomiota",
             "error": "Synkronointivirhe",
             "never": "Ei koskaan",
             "justNow": "Juuri nyt",
@@ -1572,7 +1575,8 @@
             "countdownSoon": "Pian...",
             "aerocloudEnabled": "AeroCloud käytössä",
             "selectPairLocalFolder": "Valitse paikallinen kansio parille",
-            "secondsAgo": "{count}s sitten"
+            "secondsAgo": "{count}s sitten",
+            "conflictsCount": "Huomiota vaativat ristiriidat: {count}"
         },
         "statusBar": {
             "connected": "Yhdistetty",
@@ -2380,7 +2384,6 @@
         },
         "overwrite": {
             "title": "Tiedosto on jo olemassa",
-            "moreFiles": "lisää tiedosto(ja) jonossa",
             "remote": "Etä",
             "local": "Paikallinen",
             "sourceNewer": "Lähde on uudempi",
@@ -2817,7 +2820,6 @@
                 "approveThis": "Hyväksy tämä työkalukutsu",
                 "confirm": "Vahvista",
                 "confirmDangerous": "Vahvista vaarallinen toiminto",
-                "pendingApproval": "odottaa hyväksyntää",
                 "rejectAllCalls": "Hylkää kaikki työkalukutsut",
                 "rejectExecution": "Hylkää työkalun suoritus",
                 "toggleDetails": "Näytä/piilota tiedot",
@@ -3046,12 +3048,11 @@
                 "allowAll": "Salli kaikki",
                 "rejectAll": "Hylkää kaikki",
                 "pending": "odottaa hyväksyntää",
-                "toolCall": "työkalukutsu",
-                "toolCalls": "työkalukutsua",
                 "running": "Suoritetaan...",
                 "done": "Valmis",
                 "failed": "Epäonnistui",
-                "allowThis": "Salli tämä työkalu"
+                "allowThis": "Salli tämä työkalu",
+                "pendingApprovalCount": "Hyväksyntää odottavat työkalukutsut: {count}"
             },
             "diff": {
                 "title": "Erojen esikatselu",
@@ -3351,7 +3352,6 @@
                 "add": "Lisää",
                 "added": "Lisätty",
                 "all": "Kaikki",
-                "available": "saatavilla",
                 "browseProviders": "Selaa tarjoajia",
                 "chinese": "Kiinalainen",
                 "fast": "Nopea päättely",
@@ -3371,7 +3371,8 @@
                 "tools": "Tools",
                 "vision": "Vision",
                 "bedrockDescription": "AWS:ssä isännöidyt mallit, joita käytetään alueellisella API-avaimella. Lisää model ID käsin.",
-                "bedrockHighlight": "AWS:n alueellinen päätepiste"
+                "bedrockHighlight": "AWS:n alueellinen päätepiste",
+                "availableCount": "Saatavilla: {count}"
             },
             "history": {
                 "cancel": "Peruuta",
@@ -3726,12 +3727,12 @@
             "size": "Koko",
             "compressed": "Pakattu",
             "actions": "Toiminnot",
-            "files": "tiedostoa",
             "empty": "Arkisto on tyhjä",
             "extracting": "Puretaan",
             "preview": "Esikatselu",
             "extract": "Pura",
-            "back": "Takaisin"
+            "back": "Takaisin",
+            "filesSummary": "Tiedostot: {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "Lisätty {files} tiedostoa {dirs} hakemistossa",
@@ -3778,7 +3779,6 @@
             "filesAdded": "{count} tiedosto(a) lisätty",
             "folderName": "Kansion nimi",
             "itemDeleted": "{name} poistettu",
-            "items": "kohdetta",
             "itemsDeleted": "{count} kohdetta poistettu",
             "lastOpened": "Viimeksi avattu",
             "modified": "Muokattu",
@@ -3819,7 +3819,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - Vahva salaus",
-            "totalItems": "yhteensä",
             "unlock": "Avaa",
             "v1Standard": "AeroVault v1 (standardi)",
             "v2Advanced": "AeroVault v2 (edistynyt suojaus)",
@@ -3906,8 +3905,6 @@
             "extractAllHint": "Pura kaikki holvin tiedostot kansioon",
             "extractedAll": "Purettiin {count} tiedosto(a) sijaintiin {path}",
             "dropFilesHint": "Vedä tiedostoja tai kansioita tähän tai käytä alla olevia painikkeita",
-            "itemSingular": "kohde",
-            "itemPlural": "kohdetta",
             "reportExported": "Holvin raportti tallennettu sijaintiin {path}",
             "reportCopied": "Holvin raportti kopioitu leikepöydälle",
             "exportReportHint": "Vie täydellinen tekninen raportti: holvin metatiedot, salaus, virheenkorjaus ja täysi tiedostoluettelo",
@@ -3960,7 +3957,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Nopea",
             "securityAdvancedDescription": "Nonce-kestävä · Salatut tiedostonimet · 128 MB KDF",
             "securityParanoidDescription": "AES + ChaCha20 -kaskadi · Kaksinkertainen salaus",
-            "securityArchiveDescription": "Deduplikoitu arkisto · zstd-lohkot · v3"
+            "securityArchiveDescription": "Deduplikoitu arkisto · zstd-lohkot · v3",
+            "totalItemsCount": "{count} yhteensä"
         },
         "cryptomator": {
             "title": "Cryptomator-holvi",
@@ -3973,7 +3971,6 @@
             "empty": "Hakemisto on tyhjä",
             "name": "Nimi",
             "size": "Koko",
-            "items": "kohdetta",
             "readOnly": "Vain luku -tila - holvin luominen tulossa versiossa v2.1",
             "openAsVault": "Avaa Cryptomator-holvina",
             "decryptAndSave": "Pura salaus ja tallenna",
@@ -4006,8 +4003,6 @@
             "level": "Pakkauksen taso",
             "password": "Salasana (valinnainen, AES-256)",
             "passwordHint": "Jätä tyhjäksi ilman salausta",
-            "files": "tiedostoa",
-            "folders": "kansiota",
             "compress": "Pakkaa",
             "store": "Tallennus (ei pakkausta)",
             "fast": "Nopea",
@@ -4249,8 +4244,6 @@
             "modified": "Muokattu",
             "file": "Tiedosto",
             "folder": "Kansio",
-            "files": "tiedostoa",
-            "folders": "kansiota",
             "remote": "Etä",
             "local": "Paikallinen",
             "linkTarget": "Symbolisen linkin kohde",
@@ -4326,10 +4319,7 @@
             "deleted": "{count} kaksoiskappeletta poistettu",
             "scanFailed": "Skannaus epäonnistui",
             "retry": "Yritä uudelleen",
-            "groups": "ryhmää",
-            "duplicateFiles": "kaksoiskappeletta",
             "wasted": "hukkaan",
-            "copies": "kopiota",
             "delete": "POISTA",
             "skip": "OHITA",
             "deleteConfirm": "Haluatko varmasti poistaa {count} kaksoiskappeletta?",
@@ -4349,7 +4339,10 @@
             "similarityDistance": "{similarity}, etäis. {distance}",
             "modeExact": "Tarkka",
             "modeLabel": "Tila:",
-            "modeNonIdentical": "Ei identtinen"
+            "modeNonIdentical": "Ei identtinen",
+            "groupsCount": "{count} ryhmää",
+            "duplicateFilesCount": "Kaksoistiedostot: {count}",
+            "copiesCount": "Kopiot: {count}"
         },
         "diskUsage": {
             "title": "Levyn käyttö",
@@ -4357,20 +4350,16 @@
             "totalItems": "Yhteensä: {size} / {count} kohdetta",
             "percentOfParent": "{percent} % ylähakemistosta",
             "backToParent": "Takaisin ylähakemistoon",
-            "items": "kohdetta",
             "scanFailed": "Analyysi epäonnistui",
             "retry": "Yritä uudelleen",
             "drillDown": "Napsauta tutkiaksesi",
             "back": "Takaisin",
-            "total": "Yhteensä",
-            "across": "yli",
             "empty": "Tämä hakemisto on tyhjä",
             "hoverHint": "Vie hiiri lohkon päälle nähdäksesi tiedot",
             "scanUnknownError": "Tuntematon virhe levynkäytön tarkistuksessa"
         },
         "dependencies": {
             "title": "Riippuvuudet",
-            "crates": "cratea",
             "copy": "Kopioi",
             "copied": "Kopioitu!",
             "checkUpdates": "Tarkista päivitykset",
@@ -4380,7 +4369,8 @@
             "latest": "Uusin",
             "status": "Tila",
             "footer": "Versiotiedot crates.io API:stä. Näytetyt versiot ovat ratkaistuja (Cargo.lock) versioita.",
-            "copyTitle": "AeroFTP-riippuvuustarkistus"
+            "copyTitle": "AeroFTP-riippuvuustarkistus",
+            "cratesCount": "Crateja: {count}"
         },
         "debug": {
             "tabs": {
@@ -4440,7 +4430,6 @@
                 "warning": "Varoitus",
                 "info": "Info",
                 "debug": "Virheenkorjaus",
-                "entries": "merkintää",
                 "resume": "Jatka",
                 "pause": "Tauko",
                 "copyAll": "Kopioi kaikki",
@@ -4449,13 +4438,13 @@
                 "allSources": "Kaikki lähteet",
                 "sourceFilterTitle": "Suodata lähteen mukaan",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "Merkintöjä: {count}"
             },
             "frontend": {
                 "reactMode": "React-tila",
                 "language": "Kieli",
                 "localStorageKeys": "LocalStorage-avaimet",
-                "keys": "avainta",
                 "localStorageSize": "LocalStorage-koko",
                 "windowSize": "Ikkunan koko",
                 "devicePixelRatio": "Laitteen pikselisuhde",
@@ -4464,7 +4453,8 @@
                 "light": "Vaalea",
                 "userAgent": "Selaintunniste",
                 "localStorageKeysTitle": "LocalStorage-avaimet",
-                "localStorageEntrySummary": "{size} tavua · {preview}"
+                "localStorageEntrySummary": "{size} tavua · {preview}",
+                "keysCount": "Avaimet: {count}"
             },
             "copyFileListToClipboard": "Kopioi tiedostoluettelo leikepöydälle",
             "filesCopied": "{count} tiedostomerkintää kopioitu leikepöydälle",
@@ -4486,12 +4476,12 @@
                 "i18nSweep": "i18n-avainten läpikäynti",
                 "ipcSpeed": "IPC-nopeusnäyte",
                 "knownHosts": "known_hosts-luku",
-                "passed": "läpäisty",
                 "pluginIntegrity": "Liitännäisen eheys",
                 "providerSelftest": "Palveluntarjoajan itsetesti (vain luku)",
                 "runAll": "Suorita kaikki",
                 "runOne": "Suorita tämä testi",
-                "vaultRoundtrip": "Holvin edestakaisin"
+                "vaultRoundtrip": "Holvin edestakaisin",
+                "passedCount": "Läpäisty: {passed}/{total}"
             },
             "bundle": {
                 "title": "Vie diagnostiikkapaketti (ZIP)"
@@ -4539,9 +4529,9 @@
         "activityPanel": {
             "awaitingCommands": "Odotetaan komentoja...",
             "badges": {
-                "active": "AKTIIVINEN",
                 "live": "LIVE",
-                "synced": "SYNKRONOITU"
+                "synced": "SYNKRONOITU",
+                "activeCount": "AKTIIVISIA: {count}"
             },
             "clearLog": "Tyhjennä loki",
             "close": "Sulje",
@@ -4565,7 +4555,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Suodata toimintoja",
-                "selected": "valittu"
+                "selectedCount": "Valittu: {count}"
             },
             "save": "Tallenna"
         },
@@ -4757,14 +4747,12 @@
                 "auto": "Automaattinen",
                 "autoRefresh": "Automaattinen päivitys (3s)",
                 "browser": "Selain",
-                "chars": "merkkiä",
                 "copy": "Kopioi leikepöydälle",
                 "disableWrap": "Poista rivitys käytöstä",
                 "enableWrap": "Ota rivitys käyttöön",
                 "encoding": "Koodaus",
                 "errorLoading": "Virhe sisällön latauksessa",
                 "hex": "Hex",
-                "lines": "riviä",
                 "loadFailed": "Tekstisisällön lataus epäonnistui",
                 "noContent": "Sisältöä ei saatavilla",
                 "openBrowser": "Avaa järjestelmäselaimessa",
@@ -4783,7 +4771,8 @@
                 "wordWrap": "Rivitys",
                 "zoomIn": "Lähennä",
                 "zoomOut": "Loitonna",
-                "htmlPreviewFrameTitle": "HTML-esikatselu"
+                "htmlPreviewFrameTitle": "HTML-esikatselu",
+                "stats": "{lines} riviä • {chars} merkkiä"
             },
             "video": {
                 "exitFullscreen": "Poistu kokoruudusta (F)",
@@ -4908,7 +4897,6 @@
             "pwdBatchCount": "Luontimäärä",
             "pwdGenerate": "Luo",
             "pwdEntropy": "Entropia",
-            "pwdBits": "bittiä",
             "pwdWeak": "Heikko",
             "pwdFair": "Kohtalainen",
             "pwdGood": "Hyvä",
@@ -4959,7 +4947,8 @@
             "argon2DefaultsHint": "Oletukset: profiili, jota AeroVault ja AeroCrypt käyttävät (128 MiB, 4 iteraatiota, 4 kaistaa, 32 tavun tulos). Yllä oleva suola on sinun. Muistia enintään 2 GiB.",
             "argon2Derive": "Johda",
             "argon2Phc": "PHC-merkkijono",
-            "hashError": "Virhe: {error}"
+            "hashError": "Virhe: {error}",
+            "pwdBitsCount": "{count} bittiä"
         },
         "dialog": {
             "deleteFile": "Poista \"{name}\"?",
@@ -5019,8 +5008,6 @@
             "vaultOnly": "Vain holvissa",
             "localOnly": "Vain paikallisesti",
             "conflict": "Ristiriita",
-            "conflicts": "ristiriitoja",
-            "unchanged": "muuttumaton",
             "allToVault": "Kaikki holviin",
             "allToLocal": "Kaikki paikallisesti",
             "keepNewer": "Säilytä uudempi",
@@ -5035,10 +5022,14 @@
             "applySync": "Suorita synkronointi",
             "close": "Sulje",
             "allInSync": "Kaikki tiedostot ovat synkronoituja",
-            "filesToVault": "tiedosto(a) synkronoitu holviin",
-            "filesToLocal": "tiedosto(a) purettu paikallisesti",
-            "filesSkipped": "tiedosto(a) ohitettu",
-            "errorsOccurred": "Joitakin virheitä tapahtui"
+            "errorsOccurred": "Joitakin virheitä tapahtui",
+            "vaultOnlyCount": "Vain holvissa: {count}",
+            "localOnlyCount": "Vain paikallisesti: {count}",
+            "conflictsCount": "Ristiriidat: {count}",
+            "unchangedCount": "Muuttumattomat: {count}",
+            "filesToVaultCount": "Holviin synkronoidut tiedostot: {count}",
+            "filesToLocalCount": "Paikallisesti puretut tiedostot: {count}",
+            "filesSkippedCount": "Ohitetut tiedostot: {count}"
         },
         "localTabs": {
             "closeAll": "Sulje kaikki välilehdet",
@@ -5263,7 +5254,6 @@
             "checkAll": "Tarkista kaikki",
             "checkOne": "Tarkista tämä palvelin",
             "checking": "Tarkistetaan...",
-            "checked": "tarkistettu",
             "healthy": "Kunnossa",
             "degraded": "Heikentynyt",
             "unreachable": "Tavoittamaton",
@@ -5278,7 +5268,11 @@
             "copied": "Copied\\!",
             "batchChecking": "Tarkistetaan {count} palvelinta, odota...",
             "scoreLegend": "Pisteet 0-100, korkeampi on parempi",
-            "scoreLegendDetail": "80+ terve · 50-79 heikentynyt · alle 50 ongelmia"
+            "scoreLegendDetail": "80+ terve · 50-79 heikentynyt · alle 50 ongelmia",
+            "checkedCount": "Tarkistettu: {count}",
+            "healthyCount": "Kunnossa: {count}",
+            "degradedCount": "Heikentyneet: {count}",
+            "unreachableCount": "Tavoittamattomat: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5548,7 +5542,6 @@
                 "archived": "Arkistoidut",
                 "trash": "Roskakori"
             },
-            "participants": "osallistujaa",
             "saving": "Tallennetaan...",
             "saved": "Tallennettu",
             "saveNow": "Tallenna nyt",
@@ -5566,7 +5559,8 @@
                 "code": "Koodi",
                 "richText": "Muotoiltu teksti",
                 "checklist": "Tarkistuslista"
-            }
+            },
+            "participantsCount": "Osallistujat: {count}"
         },
         "shareLinkModal": {
             "title": "Jakolinkki",
@@ -6013,13 +6007,14 @@
             "moveToOtherPanel": "Siirrä toiseen paneeliin",
             "copiedToOtherPanel": "Kopioitu toiseen paneeliin",
             "movedToOtherPanel": "Siirretty toiseen paneeliin",
-            "itemsLower": "items",
             "resizePanels": "Resize panels",
             "copyHere": "Kopioi {count} tähän",
             "moveHere": "Siirrä {count} tähän",
             "copyHereFromOtherPanelTooltip": "Kopioi {count} valittua toisesta paneelista tähän paneeliin (F5)",
             "moveHereFromOtherPanelTooltip": "Siirrä {count} valittua toisesta paneelista tähän paneeliin (F6)",
-            "syncToOtherPanel": "Synkronoi toiseen paneeliin (delta)"
+            "syncToOtherPanel": "Synkronoi toiseen paneeliin (delta)",
+            "failedCount": "Epäonnistui: {count}",
+            "skippedCount": "Ohitettu: {count}"
         },
         "compare": {
             "title": "Vertaile paneeleita",
@@ -6163,9 +6158,6 @@
             "bucket": "Kategoria",
             "count": "Lukumäärä",
             "action": "Toiminto",
-            "delete": "poista",
-            "overwrite": "korvaa",
-            "conflicts": "ristiriita",
             "destructiveWarning": "Tämä esiasetus poistaa tai korvaa uudempia tiedostoja.",
             "confirmDestructive": "Olen tarkistanut tuhoavat toiminnot ja haluan jatkaa.",
             "executeHint": "Suorita asettaa valinnan jonoon ja lähettää sen yhtenäisen siirtosuunnittelijan kautta.",
@@ -6192,7 +6184,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "Tavut verkossa",
                 "savings": "Säästö",
-                "errorDetails": "virhe(itä), tiedot",
                 "errorPathsRequired": "Lähde ja kohde ovat pakollisia",
                 "deltaStatus": "Delta-synk.",
                 "deltaAuto": "AUTO PÄÄLLÄ",
@@ -6224,7 +6215,8 @@
                 "planned": "Suunnitellut kopiot",
                 "resultDryRunOk": "Testiajo valmis",
                 "resultDryRunPartial": "Testiajo valmis virheineen",
-                "resultDryRunCancelled": "Testiajo peruutettu"
+                "resultDryRunCancelled": "Testiajo peruutettu",
+                "errorDetailsCount": "{count} virhettä, tiedot"
             },
             "launcherTemplates": "Mallit",
             "launcherMultiPath": "Monireitti",
@@ -6328,7 +6320,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "Vertailu lukee molemmat kansiot ja kaikki niiden alla olevat kansiot. Suurella puulla se voi kestää hetken, ja voit pysäyttää sen.",
             "progressDelta": "[delta]",
-            "progressCopy": "[kopio]"
+            "progressCopy": "[kopio]",
+            "deleteCount": "Poistettavat: {count}",
+            "overwriteCount": "Korvattavat: {count}",
+            "conflictCount": "Ristiriidat: {count}"
         },
         "accountLock": {
             "title": "Valitse tili",

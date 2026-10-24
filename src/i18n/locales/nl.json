@@ -80,7 +80,8 @@
             "reset": "Resetten",
             "saved": "Opgeslagen",
             "saving": "Opslaan...",
-            "creating": "Bezig met maken..."
+            "creating": "Bezig met maken...",
+            "minutesCount": "{count} min"
         },
         "connection": {
             "title": "Verbinden met Server",
@@ -159,7 +160,6 @@
             "saveChanges": "Wijzigingen opslaan",
             "createAccount": "Account aanmaken",
             "docs": "Documentatie",
-            "minutes": "minuten",
             "localPathPlaceholder": "/home/gebruiker/projecten",
             "fourshared": {
                 "backToExistingAccount": "Terug naar bestaand account",
@@ -407,7 +407,6 @@
             "path": "Pad",
             "files": "bestanden",
             "folders": "mappen",
-            "items": "items",
             "emptyFolder": "Deze map is leeg",
             "parentFolder": "Bovenliggende map",
             "newFolder": "Nieuwe Map",
@@ -462,7 +461,10 @@
             "rightPanelMarker": "Rechterpaneel",
             "chooseRightPanelFolder": "Map voor rechterpaneel kiezen",
             "chooseLeftPanelFolder": "Map voor linkerpaneel kiezen",
-            "localRight": "Lokaal (rechts)"
+            "localRight": "Lokaal (rechts)",
+            "itemCount": "Items: {count}",
+            "fileCount": "Bestanden: {count}",
+            "folderCount": "Mappen: {count}"
         },
         "contextMenu": {
             "askAeroAgent": "Vraag AeroAgent...",
@@ -625,7 +627,6 @@
             "copyError": "Kopieerfout",
             "copyQueueToClipboard": "Wachtrij naar klembord kopiëren",
             "fail": "MISLUKT",
-            "pending": "Wachtend",
             "remove": "Verwijderen",
             "retry": "Opnieuw proberen",
             "stopAll": "Alles stoppen",
@@ -690,7 +691,6 @@
                 "newTransfer": "Nieuwe overdracht",
                 "preparing": "Overdracht voorbereiden…"
             },
-            "staged": "in wachtrij",
             "start": "Starten",
             "startAll": "Alle starten",
             "restored": "Hersteld",
@@ -761,7 +761,10 @@
                 "size": "Grootte",
                 "source": "Bron",
                 "title": "Plan: {mode}"
-            }
+            },
+            "stagedCount": "Klaargezet: {count}",
+            "pendingCount": "{count} in wachtrij",
+            "failedCount": "Mislukt: {count}"
         },
         "settings": {
             "title": "Instellingen",
@@ -946,7 +949,6 @@
             "migrationSkip": "Voorlopig overslaan",
             "migrationFinish": "Voltooien",
             "migrationStep": "Stap {current} van {total}",
-            "duplicatesSkipped": "duplicaten overgeslagen",
             "invalidPassword": "Ongeldig wachtwoord",
             "backup": "Back-up",
             "visibleColumns": "Zichtbare kolommen",
@@ -1053,11 +1055,6 @@
             "consumerSecret": "Consumer-geheim",
             "privacyRespect": "AeroFTP beschermt uw privacy. Er worden geen gegevens verzameld, geen tracking, geen telemetrie.",
             "keystoreEntries": "{count} items",
-            "serverCredentials": "serverinloggegevens",
-            "serverProfilesLabel": "serverprofielen",
-            "aiKeysLabel": "AI-sleutels",
-            "oauthTokensLabel": "OAuth-tokens",
-            "configEntriesLabel": "configuratie-items",
             "session": "Sessie",
             "aeroftpBackupFiles": "AeroFTP-back-upbestanden",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1116,7 +1113,6 @@
             "selectServersToExport": "Selecteer servers om te exporteren",
             "selectAll": "Alles selecteren",
             "deselectAll": "Alles deselecteren",
-            "selected": "geselecteerd",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "Als er geen pictogram is ingesteld, wordt de favicon of icon.png van de server automatisch gedetecteerd.",
             "protocolFilelu": "FileLu",
@@ -1279,7 +1275,6 @@
             "imagePreviewBgLight": "Licht",
             "imagePreviewBgCustom": "Aangepast",
             "showTransferProgress": "Voortgangsbalk voor overdracht weergeven",
-            "similarToExisting": "lijken op een bestaand profiel",
             "aerocloudCompress": "Compressie inschakelen (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: compressie + versleuteling (profiel heeft encryptie)",
@@ -1354,7 +1349,16 @@
             "fontSystemInstallHint": "Vereist systeeminstallatie. AeroFTP valt automatisch terug als het niet beschikbaar is.",
             "fontSizeIndicatorLabel": "Lettertype",
             "fontPresetDefault": "{font} (standaard)",
-            "fontPresetSystemDefault": "Systeemstandaard"
+            "fontPresetSystemDefault": "Systeemstandaard",
+            "duplicatesSkippedCount": "Duplicaten overgeslagen: {count}",
+            "similarToExistingCount": "Vergelijkbaar met een bestaand profiel: {count}",
+            "bridgeSkippedCount": "Overgeslagen: {count}",
+            "selectedOfTotal": "Geselecteerd: {selected} / {total}",
+            "serverCredentialsCount": "Serverreferenties: {count}",
+            "serverProfilesCount": "Serverprofielen: {count}",
+            "aiKeysCount": "AI-sleutels: {count}",
+            "oauthTokensCount": "OAuth-tokens: {count}",
+            "configEntriesCount": "Configuratie-items: {count}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1449,7 +1453,6 @@
             "starting": "Starten...",
             "pending": "In behandeling",
             "conflict": "Conflict",
-            "conflicts": "conflicten vereisen aandacht",
             "error": "Synchronisatiefout",
             "never": "Nooit",
             "justNow": "Zojuist",
@@ -1572,7 +1575,8 @@
             "countdownSoon": "Binnenkort...",
             "aerocloudEnabled": "AeroCloud ingeschakeld",
             "selectPairLocalFolder": "Lokale map voor paar selecteren",
-            "secondsAgo": "{count}s geleden"
+            "secondsAgo": "{count}s geleden",
+            "conflictsCount": "Conflicten die aandacht vereisen: {count}"
         },
         "statusBar": {
             "connected": "Verbonden",
@@ -2380,7 +2384,6 @@
         },
         "overwrite": {
             "title": "Bestand bestaat al",
-            "moreFiles": "meer bestand(en) in de wachtrij",
             "remote": "Extern",
             "local": "Lokaal",
             "sourceNewer": "Bron is nieuwer",
@@ -2817,7 +2820,6 @@
                 "approveThis": "Deze tooloproep goedkeuren",
                 "confirm": "Bevestigen",
                 "confirmDangerous": "Gevaarlijke actie bevestigen",
-                "pendingApproval": "wacht op goedkeuring",
                 "rejectAllCalls": "Alle tooloproepen afwijzen",
                 "rejectExecution": "Tooluitvoering afwijzen",
                 "toggleDetails": "Details in-/uitschakelen",
@@ -3046,12 +3048,11 @@
                 "allowAll": "Alles toestaan",
                 "rejectAll": "Alles weigeren",
                 "pending": "wacht op goedkeuring",
-                "toolCall": "toolaanroep",
-                "toolCalls": "toolaanroepen",
                 "running": "Uitvoeren...",
                 "done": "Klaar",
                 "failed": "Mislukt",
-                "allowThis": "Deze tool toestaan"
+                "allowThis": "Deze tool toestaan",
+                "pendingApprovalCount": "Toolaanroepen in afwachting van goedkeuring: {count}"
             },
             "diff": {
                 "title": "Diff-voorbeeld",
@@ -3351,7 +3352,6 @@
                 "add": "Toevoegen",
                 "added": "Toegevoegd",
                 "all": "Alle",
-                "available": "beschikbaar",
                 "browseProviders": "Aanbieders verkennen",
                 "chinese": "Chinees",
                 "fast": "Snelle inferentie",
@@ -3371,7 +3371,8 @@
                 "tools": "Gereedschappen",
                 "vision": "Vision",
                 "bedrockDescription": "Modellen gehost op AWS met toegang via een regionale API-sleutel. Voeg uw model ID handmatig toe.",
-                "bedrockHighlight": "Regionaal AWS-eindpunt"
+                "bedrockHighlight": "Regionaal AWS-eindpunt",
+                "availableCount": "Beschikbaar: {count}"
             },
             "history": {
                 "cancel": "Annuleren",
@@ -3726,12 +3727,12 @@
             "size": "Grootte",
             "compressed": "Gecomprimeerd",
             "actions": "Acties",
-            "files": "bestanden",
             "empty": "Archief is leeg",
             "extracting": "Uitpakken",
             "preview": "Voorbeeld",
             "extract": "Uitpakken",
-            "back": "Terug"
+            "back": "Terug",
+            "filesSummary": "Bestanden: {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "{files} bestanden toegevoegd in {dirs} mappen",
@@ -3778,7 +3779,6 @@
             "filesAdded": "{count} bestand(en) toegevoegd",
             "folderName": "Mapnaam",
             "itemDeleted": "Verwijderd {name}",
-            "items": "items",
             "itemsDeleted": "{count} item(s) verwijderd",
             "lastOpened": "Laatst geopend",
             "modified": "Gewijzigd",
@@ -3819,7 +3819,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - Sterke versleuteling",
-            "totalItems": "totaal",
             "unlock": "Ontgrendelen",
             "v1Standard": "AeroVault v1 (Standaard)",
             "v2Advanced": "AeroVault v2 (Geavanceerde beveiliging)",
@@ -3906,8 +3905,6 @@
             "extractAllHint": "Alle bestanden in de kluis naar een map uitpakken",
             "extractedAll": "{count} bestand(en) uitgepakt naar {path}",
             "dropFilesHint": "Sleep bestanden of mappen hierheen, of gebruik de knoppen hieronder",
-            "itemSingular": "item",
-            "itemPlural": "items",
             "reportExported": "Kluisrapport opgeslagen in {path}",
             "reportCopied": "Kluisrapport gekopieerd naar klembord",
             "exportReportHint": "Exporteer een volledig technisch rapport: kluismetadata, versleuteling, foutcorrectie en volledige bestandslijst",
@@ -3960,7 +3957,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Snel",
             "securityAdvancedDescription": "Nonce-bestendig · Versleutelde bestandsnamen · 128 MB KDF",
             "securityParanoidDescription": "AES + ChaCha20-cascade · Dubbele versleuteling",
-            "securityArchiveDescription": "Gededupliceerd archief · zstd-blokken · v3"
+            "securityArchiveDescription": "Gededupliceerd archief · zstd-blokken · v3",
+            "totalItemsCount": "Totaal: {count}"
         },
         "cryptomator": {
             "title": "Cryptomator-kluis",
@@ -3973,7 +3971,6 @@
             "empty": "Map is leeg",
             "name": "Naam",
             "size": "Grootte",
-            "items": "items",
             "readOnly": "Alleen-lezen modus - kluiscreatie komt in v2.1",
             "openAsVault": "Openen als Cryptomator-kluis",
             "decryptAndSave": "Ontsleutelen & opslaan",
@@ -4006,8 +4003,6 @@
             "level": "Compressieniveau",
             "password": "Wachtwoord (optioneel, AES-256)",
             "passwordHint": "Laat leeg voor geen versleuteling",
-            "files": "bestanden",
-            "folders": "mappen",
             "compress": "Comprimeren",
             "store": "Opslaan (geen compressie)",
             "fast": "Snel",
@@ -4249,8 +4244,6 @@
             "modified": "Gewijzigd",
             "file": "Bestand",
             "folder": "Map",
-            "files": "bestanden",
-            "folders": "mappen",
             "remote": "Extern",
             "local": "Lokaal",
             "linkTarget": "Symlink-doel",
@@ -4326,10 +4319,7 @@
             "deleted": "{count} dubbele bestanden verwijderd",
             "scanFailed": "Scan mislukt",
             "retry": "Opnieuw proberen",
-            "groups": "groepen",
-            "duplicateFiles": "dubbele bestanden",
             "wasted": "verspild",
-            "copies": "kopieën",
             "delete": "VERWIJDEREN",
             "skip": "OVERSLAAN",
             "deleteConfirm": "Weet u zeker dat u {count} dubbele bestanden wilt verwijderen?",
@@ -4349,7 +4339,10 @@
             "similarityDistance": "{similarity}, afst. {distance}",
             "modeExact": "Exact",
             "modeLabel": "Modus:",
-            "modeNonIdentical": "Niet identiek"
+            "modeNonIdentical": "Niet identiek",
+            "groupsCount": "Groepen: {count}",
+            "duplicateFilesCount": "Dubbele bestanden: {count}",
+            "copiesCount": "{count} kopieën"
         },
         "diskUsage": {
             "title": "Schijfgebruik",
@@ -4357,20 +4350,16 @@
             "totalItems": "Totaal: {size} over {count} items",
             "percentOfParent": "{percent}% van bovenliggende map",
             "backToParent": "Terug naar bovenliggende map",
-            "items": "items",
             "scanFailed": "Analyse mislukt",
             "retry": "Opnieuw proberen",
             "drillDown": "Klik om te verkennen",
             "back": "Terug",
-            "total": "Totaal",
-            "across": "over",
             "empty": "Deze map is leeg",
             "hoverHint": "Beweeg over een blok voor details",
             "scanUnknownError": "Onbekende fout bij scannen van schijfgebruik"
         },
         "dependencies": {
             "title": "Afhankelijkheden",
-            "crates": "crates",
             "copy": "Kopiëren",
             "copied": "Gekopieerd!",
             "checkUpdates": "Updates controleren",
@@ -4380,7 +4369,8 @@
             "latest": "Nieuwste",
             "status": "Status",
             "footer": "Versiegegevens van crates.io API. Weergegeven versies zijn opgeloste (Cargo.lock) versies.",
-            "copyTitle": "AeroFTP Afhankelijkhedencontrole"
+            "copyTitle": "AeroFTP Afhankelijkhedencontrole",
+            "cratesCount": "Crates: {count}"
         },
         "debug": {
             "tabs": {
@@ -4440,7 +4430,6 @@
                 "warning": "Waarschuwing",
                 "info": "Info",
                 "debug": "Debug",
-                "entries": "vermeldingen",
                 "resume": "Hervatten",
                 "pause": "Pauzeren",
                 "copyAll": "Alles kopiëren",
@@ -4449,13 +4438,13 @@
                 "allSources": "Alle bronnen",
                 "sourceFilterTitle": "Filteren op bron",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "Vermeldingen: {count}"
             },
             "frontend": {
                 "reactMode": "React-modus",
                 "language": "Taal",
                 "localStorageKeys": "LocalStorage-sleutels",
-                "keys": "sleutels",
                 "localStorageSize": "LocalStorage-grootte",
                 "windowSize": "Venstergrootte",
                 "devicePixelRatio": "Apparaat-pixelverhouding",
@@ -4464,7 +4453,8 @@
                 "light": "Licht",
                 "userAgent": "User Agent",
                 "localStorageKeysTitle": "LocalStorage-sleutels",
-                "localStorageEntrySummary": "{size} bytes · {preview}"
+                "localStorageEntrySummary": "{size} bytes · {preview}",
+                "keysCount": "Sleutels: {count}"
             },
             "copyFileListToClipboard": "Bestandslijst kopiëren naar klembord",
             "filesCopied": "{count} bestandsvermeldingen gekopieerd naar klembord",
@@ -4486,12 +4476,12 @@
                 "i18nSweep": "i18n-sleutelcontrole",
                 "ipcSpeed": "IPC-snelheidsmonster",
                 "knownHosts": "known_hosts lezen",
-                "passed": "geslaagd",
                 "pluginIntegrity": "Plug-in-integriteit",
                 "providerSelftest": "Provider-zelftest (alleen-lezen)",
                 "runAll": "Alles uitvoeren",
                 "runOne": "Deze test uitvoeren",
-                "vaultRoundtrip": "Kluis-retourrit"
+                "vaultRoundtrip": "Kluis-retourrit",
+                "passedCount": "Geslaagd: {passed}/{total}"
             },
             "bundle": {
                 "title": "Diagnostische bundel exporteren (ZIP)"
@@ -4539,9 +4529,9 @@
         "activityPanel": {
             "awaitingCommands": "Wacht op opdrachten...",
             "badges": {
-                "active": "ACTIEF",
                 "live": "LIVE",
-                "synced": "GESYNCHRONISEERD"
+                "synced": "GESYNCHRONISEERD",
+                "activeCount": "ACTIEF: {count}"
             },
             "clearLog": "Logboek wissen",
             "close": "Sluiten",
@@ -4565,7 +4555,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Bewerkingen filteren",
-                "selected": "geselecteerd"
+                "selectedCount": "Geselecteerd: {count}"
             },
             "save": "Opslaan"
         },
@@ -4757,14 +4747,12 @@
                 "auto": "Auto",
                 "autoRefresh": "Automatisch vernieuwen (3s)",
                 "browser": "Browser",
-                "chars": "tekens",
                 "copy": "Naar klembord kopiëren",
                 "disableWrap": "Woordterugloop uitschakelen",
                 "enableWrap": "Woordterugloop inschakelen",
                 "encoding": "Codering",
                 "errorLoading": "Fout bij laden van inhoud",
                 "hex": "Hex",
-                "lines": "regels",
                 "loadFailed": "Tekstinhoud laden mislukt",
                 "noContent": "Geen inhoud beschikbaar",
                 "openBrowser": "Openen in systeembrowser",
@@ -4783,7 +4771,8 @@
                 "wordWrap": "Woordterugloop",
                 "zoomIn": "Inzoomen",
                 "zoomOut": "Uitzoomen",
-                "htmlPreviewFrameTitle": "HTML-voorbeeld"
+                "htmlPreviewFrameTitle": "HTML-voorbeeld",
+                "stats": "Regels: {lines} • tekens: {chars}"
             },
             "video": {
                 "exitFullscreen": "Volledig scherm verlaten (F)",
@@ -4908,7 +4897,6 @@
             "pwdBatchCount": "Aantal genereren",
             "pwdGenerate": "Genereren",
             "pwdEntropy": "Entropie",
-            "pwdBits": "bits",
             "pwdWeak": "Zwak",
             "pwdFair": "Redelijk",
             "pwdGood": "Goed",
@@ -4959,7 +4947,8 @@
             "argon2DefaultsHint": "Standaardwaarden: het profiel dat AeroVault en AeroCrypt gebruiken (128 MiB, 4 iteraties, 4 lanes, uitvoer van 32 bytes). Het salt hierboven is van u. Geheugen tot 2 GiB.",
             "argon2Derive": "Afleiden",
             "argon2Phc": "PHC-tekenreeks",
-            "hashError": "Fout: {error}"
+            "hashError": "Fout: {error}",
+            "pwdBitsCount": "{count} bits"
         },
         "dialog": {
             "deleteFile": "\"{name}\" verwijderen?",
@@ -5019,8 +5008,6 @@
             "vaultOnly": "Alleen in vault",
             "localOnly": "Alleen lokaal",
             "conflict": "Conflict",
-            "conflicts": "conflicten",
-            "unchanged": "ongewijzigd",
             "allToVault": "Alles naar vault",
             "allToLocal": "Alles naar lokaal",
             "keepNewer": "Nieuwere behouden",
@@ -5035,10 +5022,14 @@
             "applySync": "Synchronisatie toepassen",
             "close": "Sluiten",
             "allInSync": "Alle bestanden zijn gesynchroniseerd",
-            "filesToVault": "bestand(en) gesynchroniseerd naar vault",
-            "filesToLocal": "bestand(en) lokaal uitgepakt",
-            "filesSkipped": "bestand(en) overgeslagen",
-            "errorsOccurred": "Er zijn enkele fouten opgetreden"
+            "errorsOccurred": "Er zijn enkele fouten opgetreden",
+            "vaultOnlyCount": "{count} alleen in vault",
+            "localOnlyCount": "{count} alleen lokaal",
+            "conflictsCount": "Conflicten: {count}",
+            "unchangedCount": "Ongewijzigd: {count}",
+            "filesToVaultCount": "Bestanden gesynchroniseerd naar vault: {count}",
+            "filesToLocalCount": "Bestanden uitgepakt naar lokaal: {count}",
+            "filesSkippedCount": "Bestanden overgeslagen: {count}"
         },
         "localTabs": {
             "closeAll": "Alle tabbladen sluiten",
@@ -5263,7 +5254,6 @@
             "checkAll": "Alles controleren",
             "checkOne": "Deze server controleren",
             "checking": "Controleren...",
-            "checked": "gecontroleerd",
             "healthy": "Gezond",
             "degraded": "Verslechterd",
             "unreachable": "Onbereikbaar",
@@ -5278,7 +5268,11 @@
             "copied": "Copied\\!",
             "batchChecking": "{count} servers worden gecontroleerd, even geduld...",
             "scoreLegend": "Score 0-100, hoger is beter",
-            "scoreLegendDetail": "80+ gezond · 50-79 verminderd · onder 50 problemen"
+            "scoreLegendDetail": "80+ gezond · 50-79 verminderd · onder 50 problemen",
+            "checkedCount": "Gecontroleerd: {count}",
+            "healthyCount": "Gezond: {count}",
+            "degradedCount": "Verslechterd: {count}",
+            "unreachableCount": "Onbereikbaar: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5548,7 +5542,6 @@
                 "archived": "Gearchiveerd",
                 "trash": "Prullenbak"
             },
-            "participants": "deelnemers",
             "saving": "Opslaan...",
             "saved": "Opgeslagen",
             "saveNow": "Nu opslaan",
@@ -5566,7 +5559,8 @@
                 "code": "Code",
                 "richText": "Opgemaakte tekst",
                 "checklist": "Controlelijst"
-            }
+            },
+            "participantsCount": "{count} deelnemers"
         },
         "shareLinkModal": {
             "title": "Deellink",
@@ -6013,13 +6007,14 @@
             "moveToOtherPanel": "Verplaatsen naar ander paneel",
             "copiedToOtherPanel": "Gekopieerd naar ander paneel",
             "movedToOtherPanel": "Verplaatst naar ander paneel",
-            "itemsLower": "items",
             "resizePanels": "Panelen formaat wijzigen",
             "copyHere": "{count} hierheen kopiëren",
             "moveHere": "{count} hierheen verplaatsen",
             "copyHereFromOtherPanelTooltip": "{count} geselecteerde items uit het andere paneel naar dit paneel kopiëren (F5)",
             "moveHereFromOtherPanelTooltip": "{count} geselecteerde items uit het andere paneel naar dit paneel verplaatsen (F6)",
-            "syncToOtherPanel": "Synchroniseren met ander paneel (delta)"
+            "syncToOtherPanel": "Synchroniseren met ander paneel (delta)",
+            "failedCount": "Mislukt: {count}",
+            "skippedCount": "Overgeslagen: {count}"
         },
         "compare": {
             "title": "Vergelijk panelen",
@@ -6163,9 +6158,6 @@
             "bucket": "Categorie",
             "count": "Aantal",
             "action": "Actie",
-            "delete": "verwijderen",
-            "overwrite": "overschrijven",
-            "conflicts": "conflict",
             "destructiveWarning": "Deze preset zal nieuwere bestanden verwijderen of overschrijven.",
             "confirmDestructive": "Ik heb de destructieve acties beoordeeld en wil doorgaan.",
             "executeHint": "Uitvoeren bereidt de selectie voor en verzendt deze via de geünificeerde overdrachtsplanner.",
@@ -6192,7 +6184,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "Bytes op het netwerk",
                 "savings": "Besparing",
-                "errorDetails": "fout(en), details",
                 "errorPathsRequired": "Bron en bestemming zijn vereist",
                 "deltaStatus": "Delta-synchronisatie",
                 "deltaAuto": "AUTO AAN",
@@ -6224,7 +6215,8 @@
                 "planned": "Geplande kopieën",
                 "resultDryRunOk": "Proefrun voltooid",
                 "resultDryRunPartial": "Proefrun voltooid met fouten",
-                "resultDryRunCancelled": "Proefrun geannuleerd"
+                "resultDryRunCancelled": "Proefrun geannuleerd",
+                "errorDetailsCount": "Fouten: {count}, details"
             },
             "launcherTemplates": "Sjablonen",
             "launcherMultiPath": "Meerdere paden",
@@ -6328,7 +6320,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "De vergelijking leest beide mappen en alle mappen daaronder. Bij een grote boomstructuur kan dit even duren, en je kunt het stoppen.",
             "progressDelta": "[delta]",
-            "progressCopy": "[kopie]"
+            "progressCopy": "[kopie]",
+            "deleteCount": "{count} te verwijderen",
+            "overwriteCount": "{count} te overschrijven",
+            "conflictCount": "Conflicten: {count}"
         },
         "accountLock": {
             "title": "Kies een account",

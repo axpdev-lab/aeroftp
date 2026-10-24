@@ -80,7 +80,8 @@
             "reset": "Restablir",
             "saved": "Desat",
             "saving": "Guardant...",
-            "creating": "S'està creant..."
+            "creating": "S'està creant...",
+            "minutesCount": "{count} min"
         },
         "connection": {
             "title": "Connectar al Servidor",
@@ -159,7 +160,6 @@
             "saveChanges": "Desar canvis",
             "createAccount": "Crea un compte",
             "docs": "Docs",
-            "minutes": "minuts",
             "localPathPlaceholder": "/home/usuari/projectes",
             "fourshared": {
                 "backToExistingAccount": "Tornar al compte existent",
@@ -407,7 +407,6 @@
             "path": "Ruta",
             "files": "fitxers",
             "folders": "carpetes",
-            "items": "elements",
             "emptyFolder": "Aquesta carpeta està buida",
             "parentFolder": "Carpeta pare",
             "newFolder": "Nova Carpeta",
@@ -462,7 +461,10 @@
             "rightPanelMarker": "Tauler dret",
             "chooseRightPanelFolder": "Tria la carpeta del panell dret",
             "chooseLeftPanelFolder": "Tria la carpeta del panell esquerre",
-            "localRight": "Local (dreta)"
+            "localRight": "Local (dreta)",
+            "itemCount": "Elements: {count}",
+            "fileCount": "Fitxers: {count}",
+            "folderCount": "Carpetes: {count}"
         },
         "contextMenu": {
             "askAeroAgent": "Pregunta a AeroAgent...",
@@ -625,7 +627,6 @@
             "copyError": "Error de còpia",
             "copyQueueToClipboard": "Copiar cua al porta-retalls",
             "fail": "ERROR",
-            "pending": "Pendent",
             "remove": "Eliminar",
             "retry": "Reintentar",
             "stopAll": "Aturar tot",
@@ -690,7 +691,6 @@
                 "newTransfer": "Nova Transferència",
                 "preparing": "Preparant la transferència…"
             },
-            "staged": "en cua",
             "start": "Inicia",
             "startAll": "Inicia-ho tot",
             "restored": "Restaurat",
@@ -761,7 +761,10 @@
                 "size": "Mida",
                 "source": "Origen",
                 "title": "Pla: {mode}"
-            }
+            },
+            "stagedCount": "Preparats: {count}",
+            "pendingCount": "Pendents: {count}",
+            "failedCount": "Fallits: {count}"
         },
         "settings": {
             "title": "Configuració",
@@ -946,7 +949,6 @@
             "migrationSkip": "Ometre per ara",
             "migrationFinish": "Completar",
             "migrationStep": "Pas {current} de {total}",
-            "duplicatesSkipped": "duplicats omesos",
             "invalidPassword": "Contrasenya no vàlida",
             "backup": "Còpia de seguretat",
             "visibleColumns": "Columnes visibles",
@@ -1053,11 +1055,6 @@
             "consumerSecret": "Secret de Consumidor",
             "privacyRespect": "AeroFTP protegeix la teva privacitat. No es recopilen dades, sense seguiment, sense telemetria.",
             "keystoreEntries": "{count} entrades",
-            "serverCredentials": "credencials del servidor",
-            "serverProfilesLabel": "perfils de servidor",
-            "aiKeysLabel": "claus d'IA",
-            "oauthTokensLabel": "tokens OAuth",
-            "configEntriesLabel": "entrades de configuració",
             "session": "Sessió",
             "aeroftpBackupFiles": "Fitxers de còpia de seguretat d'AeroFTP",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1116,7 +1113,6 @@
             "selectServersToExport": "Seleccioneu servidors per exportar",
             "selectAll": "Selecciona-ho tot",
             "deselectAll": "Desselecciona-ho tot",
-            "selected": "seleccionat",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "Si no s'ha definit cap icona, el favicon o l'icon.png del servidor es detecta automàticament.",
             "protocolFilelu": "FileLu",
@@ -1279,7 +1275,6 @@
             "imagePreviewBgLight": "Clar",
             "imagePreviewBgCustom": "Personalitzat",
             "showTransferProgress": "Mostra la barra de progrés de transferència",
-            "similarToExisting": "s'assemblen a un perfil existent",
             "aerocloudCompress": "Habilita la compressió (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: compressió + xifratge (el perfil té encriptació)",
@@ -1354,7 +1349,16 @@
             "fontSystemInstallHint": "Requereix instal·lació al sistema. AeroFTP recorre automàticament a una alternativa si no està disponible.",
             "fontSizeIndicatorLabel": "Lletra",
             "fontPresetDefault": "{font} (Predeterminat)",
-            "fontPresetSystemDefault": "Predeterminat del sistema"
+            "fontPresetSystemDefault": "Predeterminat del sistema",
+            "duplicatesSkippedCount": "Duplicats omesos: {count}",
+            "similarToExistingCount": "Similars a un perfil existent: {count}",
+            "bridgeSkippedCount": "Omesos: {count}",
+            "selectedOfTotal": "Seleccionats: {selected} / {total}",
+            "serverCredentialsCount": "Credencials de servidor: {count}",
+            "serverProfilesCount": "Perfils de servidor: {count}",
+            "aiKeysCount": "Claus d'AI: {count}",
+            "oauthTokensCount": "Tokens OAuth: {count}",
+            "configEntriesCount": "Entrades de configuració: {count}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1449,7 +1453,6 @@
             "starting": "Iniciant...",
             "pending": "Pendent",
             "conflict": "Conflicte",
-            "conflicts": "conflictes necessiten atencio",
             "error": "Error de sincronització",
             "never": "Mai",
             "justNow": "Ara mateix",
@@ -1572,7 +1575,8 @@
             "countdownSoon": "Aviat...",
             "aerocloudEnabled": "AeroCloud activat",
             "selectPairLocalFolder": "Selecciona la carpeta local per a la parella",
-            "secondsAgo": "fa {count}s"
+            "secondsAgo": "fa {count}s",
+            "conflictsCount": "Conflictes per revisar: {count}"
         },
         "statusBar": {
             "connected": "Connectat",
@@ -2380,7 +2384,6 @@
         },
         "overwrite": {
             "title": "El fitxer ja existeix",
-            "moreFiles": "més fitxer(s) a la cua",
             "remote": "Remot",
             "local": "Local",
             "sourceNewer": "L’origen és més recent",
@@ -2817,7 +2820,6 @@
                 "approveThis": "Aprovar aquesta crida d'eina",
                 "confirm": "Confirmar",
                 "confirmDangerous": "Confirmar acció perillosa",
-                "pendingApproval": "pendent d'aprovació",
                 "rejectAllCalls": "Rebutjar totes les crides d'eines",
                 "rejectExecution": "Rebutjar l'execució de l'eina",
                 "toggleDetails": "Alternar detalls",
@@ -3046,12 +3048,11 @@
                 "allowAll": "Permetre tot",
                 "rejectAll": "Rebutjar tot",
                 "pending": "pendent d'aprovació",
-                "toolCall": "crida d'eina",
-                "toolCalls": "crides d'eina",
                 "running": "Executant...",
                 "done": "Fet",
                 "failed": "Fallat",
-                "allowThis": "Permetre aquesta eina"
+                "allowThis": "Permetre aquesta eina",
+                "pendingApprovalCount": "Crides d'eina pendents d'aprovació: {count}"
             },
             "diff": {
                 "title": "Previsualització de diferències",
@@ -3351,7 +3352,6 @@
                 "add": "Afegir",
                 "added": "Afegit",
                 "all": "Tots",
-                "available": "disponible",
                 "browseProviders": "Explorar proveïdors",
                 "chinese": "Xinès",
                 "fast": "Inferència ràpida",
@@ -3371,7 +3371,8 @@
                 "tools": "Tools",
                 "vision": "Vision",
                 "bedrockDescription": "Models allotjats a AWS amb accés mitjançant una clau API regional. Afegiu el vostre model ID manualment.",
-                "bedrockHighlight": "Punt de connexió regional d'AWS"
+                "bedrockHighlight": "Punt de connexió regional d'AWS",
+                "availableCount": "Disponibles: {count}"
             },
             "history": {
                 "cancel": "Cancel·la",
@@ -3726,12 +3727,12 @@
             "size": "Mida",
             "compressed": "Comprimit",
             "actions": "Accions",
-            "files": "fitxers",
             "empty": "L'arxiu és buit",
             "extracting": "Extraient",
             "preview": "Vista prèvia",
             "extract": "Extreu",
-            "back": "Enrere"
+            "back": "Enrere",
+            "filesSummary": "Fitxers: {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "S'han afegit {files} fitxers en {dirs} directoris",
@@ -3778,7 +3779,6 @@
             "filesAdded": "{count} fitxer(s) afegit(s)",
             "folderName": "Nom de la carpeta",
             "itemDeleted": "{name} eliminat",
-            "items": "elements",
             "itemsDeleted": "{count} element(s) eliminat(s)",
             "lastOpened": "Darrera obertura",
             "modified": "Modificat",
@@ -3819,7 +3819,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - Xifratge fort",
-            "totalItems": "total",
             "unlock": "Desbloquejar",
             "v1Standard": "AeroVault v1 (Estàndard)",
             "v2Advanced": "AeroVault v2 (Seguretat avançada)",
@@ -3906,8 +3905,6 @@
             "extractAllHint": "Extreu tots els fitxers de la caixa forta a una carpeta",
             "extractedAll": "S'han extret {count} fitxer(s) a {path}",
             "dropFilesHint": "Arrossega fitxers o carpetes aquí, o utilitza els botons de sota",
-            "itemSingular": "element",
-            "itemPlural": "elements",
             "reportExported": "Informe del cofre desat a {path}",
             "reportCopied": "Informe del cofre copiat al porta-retalls",
             "exportReportHint": "Exporta un informe tècnic complet: metadades del cofre, xifratge, correcció d'errors i llista completa de fitxers",
@@ -3960,7 +3957,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Ràpid",
             "securityAdvancedDescription": "Resistent al nonce · Noms de fitxer xifrats · KDF de 128 MB",
             "securityParanoidDescription": "Cascada AES + ChaCha20 · Doble xifratge",
-            "securityArchiveDescription": "Arxiu deduplicat · fragments zstd · v3"
+            "securityArchiveDescription": "Arxiu deduplicat · fragments zstd · v3",
+            "totalItemsCount": "{count} en total"
         },
         "cryptomator": {
             "title": "Caixa forta Cryptomator",
@@ -3973,7 +3971,6 @@
             "empty": "El directori és buit",
             "name": "Nom",
             "size": "Mida",
-            "items": "elements",
             "readOnly": "Mode de només lectura - la creació de caixes fortes arriba a la v2.1",
             "openAsVault": "Obrir com a caixa forta Cryptomator",
             "decryptAndSave": "Desxifrar i desar",
@@ -4006,8 +4003,6 @@
             "level": "Nivell de compressió",
             "password": "Contrasenya (opcional, AES-256)",
             "passwordHint": "Deixeu buit per no xifrar",
-            "files": "fitxers",
-            "folders": "carpetes",
             "compress": "Comprimir",
             "store": "Emmagatzemar (sense compressió)",
             "fast": "Ràpid",
@@ -4249,8 +4244,6 @@
             "modified": "Modificat",
             "file": "Fitxer",
             "folder": "Carpeta",
-            "files": "fitxers",
-            "folders": "carpetes",
             "remote": "Remot",
             "local": "Local",
             "linkTarget": "Destinació de l'enllaç simbòlic",
@@ -4326,10 +4319,7 @@
             "deleted": "{count} fitxers duplicats eliminats",
             "scanFailed": "L'escaneig ha fallat",
             "retry": "Reintentar",
-            "groups": "grups",
-            "duplicateFiles": "fitxers duplicats",
             "wasted": "desaprofitat",
-            "copies": "còpies",
             "delete": "ELIMINAR",
             "skip": "OMETRE",
             "deleteConfirm": "Esteu segur que voleu eliminar {count} fitxers duplicats?",
@@ -4349,7 +4339,10 @@
             "similarityDistance": "{similarity}, dist. {distance}",
             "modeExact": "Exacte",
             "modeLabel": "Mode:",
-            "modeNonIdentical": "No idèntic"
+            "modeNonIdentical": "No idèntic",
+            "groupsCount": "Grups: {count}",
+            "duplicateFilesCount": "Fitxers duplicats: {count}",
+            "copiesCount": "{count} còpies"
         },
         "diskUsage": {
             "title": "Ús del disc",
@@ -4357,20 +4350,16 @@
             "totalItems": "Total: {size} en {count} elements",
             "percentOfParent": "{percent}% del directori pare",
             "backToParent": "Tornar al directori pare",
-            "items": "elements",
             "scanFailed": "L'anàlisi ha fallat",
             "retry": "Reintentar",
             "drillDown": "Feu clic per explorar",
             "back": "Enrere",
-            "total": "Total",
-            "across": "en",
             "empty": "Aquest directori és buit",
             "hoverHint": "Passeu el cursor sobre un bloc per veure els detalls",
             "scanUnknownError": "Error desconegut en analitzar l'ús del disc"
         },
         "dependencies": {
             "title": "Dependències",
-            "crates": "crates",
             "copy": "Copiar",
             "copied": "Copiat!",
             "checkUpdates": "Comprovar actualitzacions",
@@ -4380,7 +4369,8 @@
             "latest": "Més recent",
             "status": "Estat",
             "footer": "Dades de versions de l'API de crates.io. Les versions mostrades són les versions resoltes (Cargo.lock).",
-            "copyTitle": "Comprovació de dependències d'AeroFTP"
+            "copyTitle": "Comprovació de dependències d'AeroFTP",
+            "cratesCount": "Crates: {count}"
         },
         "debug": {
             "tabs": {
@@ -4440,7 +4430,6 @@
                 "warning": "Advertència",
                 "info": "Informació",
                 "debug": "Depuració",
-                "entries": "entrades",
                 "resume": "Reprendre",
                 "pause": "Pausar",
                 "copyAll": "Copiar-ho tot",
@@ -4449,13 +4438,13 @@
                 "allSources": "Totes les fonts",
                 "sourceFilterTitle": "Filtra per font",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "Entrades: {count}"
             },
             "frontend": {
                 "reactMode": "Mode React",
                 "language": "Idioma",
                 "localStorageKeys": "Claus de LocalStorage",
-                "keys": "claus",
                 "localStorageSize": "Mida de LocalStorage",
                 "windowSize": "Mida de la finestra",
                 "devicePixelRatio": "Relació de píxels del dispositiu",
@@ -4464,7 +4453,8 @@
                 "light": "Clar",
                 "userAgent": "Agent d'usuari",
                 "localStorageKeysTitle": "Claus de LocalStorage",
-                "localStorageEntrySummary": "{size} bytes · {preview}"
+                "localStorageEntrySummary": "{size} bytes · {preview}",
+                "keysCount": "Claus: {count}"
             },
             "copyFileListToClipboard": "Copiar llista de fitxers al porta-retalls",
             "filesCopied": "{count} entrades de fitxers copiades al porta-retalls",
@@ -4486,12 +4476,12 @@
                 "i18nSweep": "Escombrada de claus i18n",
                 "ipcSpeed": "Mostra de velocitat IPC",
                 "knownHosts": "lectura de known_hosts",
-                "passed": "superats",
                 "pluginIntegrity": "Integritat del connector",
                 "providerSelftest": "Autotest del proveïdor (només lectura)",
                 "runAll": "Executa-ho tot",
                 "runOne": "Executa aquesta prova",
-                "vaultRoundtrip": "Anada i tornada de la caixa forta"
+                "vaultRoundtrip": "Anada i tornada de la caixa forta",
+                "passedCount": "Superades: {passed}/{total}"
             },
             "bundle": {
                 "title": "Exporta el paquet de diagnòstic (ZIP)"
@@ -4539,9 +4529,9 @@
         "activityPanel": {
             "awaitingCommands": "Esperant comandes...",
             "badges": {
-                "active": "ACTIU",
                 "live": "EN DIRECTE",
-                "synced": "SINCRONITZAT"
+                "synced": "SINCRONITZAT",
+                "activeCount": "ACTIUS: {count}"
             },
             "clearLog": "Esborrar registre",
             "close": "Tancar",
@@ -4565,7 +4555,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Filtra les operacions",
-                "selected": "seleccionats"
+                "selectedCount": "Seleccionats: {count}"
             },
             "save": "Desa"
         },
@@ -4757,14 +4747,12 @@
                 "auto": "Automàtic",
                 "autoRefresh": "Actualització automàtica (3s)",
                 "browser": "Navegador",
-                "chars": "caràcters",
                 "copy": "Copiar al porta-retalls",
                 "disableWrap": "Desactivar ajust de línia",
                 "enableWrap": "Activar ajust de línia",
                 "encoding": "Codificació",
                 "errorLoading": "Error en carregar el contingut",
                 "hex": "Hex",
-                "lines": "línies",
                 "loadFailed": "Error en carregar el contingut de text",
                 "noContent": "Cap contingut disponible",
                 "openBrowser": "Obrir al navegador del sistema",
@@ -4783,7 +4771,8 @@
                 "wordWrap": "Ajust de línia",
                 "zoomIn": "Ampliar",
                 "zoomOut": "Reduir",
-                "htmlPreviewFrameTitle": "Previsualització HTML"
+                "htmlPreviewFrameTitle": "Previsualització HTML",
+                "stats": "Línies: {lines} • caràcters: {chars}"
             },
             "video": {
                 "exitFullscreen": "Sortir de pantalla completa (F)",
@@ -4908,7 +4897,6 @@
             "pwdBatchCount": "Quantitat a generar",
             "pwdGenerate": "Generar",
             "pwdEntropy": "Entropia",
-            "pwdBits": "bits",
             "pwdWeak": "Feble",
             "pwdFair": "Acceptable",
             "pwdGood": "Bo",
@@ -4959,7 +4947,8 @@
             "argon2DefaultsHint": "Valors per defecte: el perfil que utilitzen AeroVault i AeroCrypt (128 MiB, 4 iteracions, 4 carrils, sortida de 32 bytes). La sal de dalt és vostra. Memòria fins a 2 GiB.",
             "argon2Derive": "Derivar",
             "argon2Phc": "Cadena PHC",
-            "hashError": "Error: {error}"
+            "hashError": "Error: {error}",
+            "pwdBitsCount": "{count} bits"
         },
         "dialog": {
             "deleteFile": "Eliminar \"{name}\"?",
@@ -5019,8 +5008,6 @@
             "vaultOnly": "Només a la caixa forta",
             "localOnly": "Només local",
             "conflict": "Conflicte",
-            "conflicts": "conflictes",
-            "unchanged": "sense canvis",
             "allToVault": "Tot a la caixa forta",
             "allToLocal": "Tot al local",
             "keepNewer": "Mantenir el més recent",
@@ -5035,10 +5022,14 @@
             "applySync": "Aplicar sincronització",
             "close": "Tancar",
             "allInSync": "Tots els fitxers estan sincronitzats",
-            "filesToVault": "fitxer(s) sincronitzat(s) a la caixa forta",
-            "filesToLocal": "fitxer(s) extret(s) al local",
-            "filesSkipped": "fitxer(s) omès(os)",
-            "errorsOccurred": "S'han produït alguns errors"
+            "errorsOccurred": "S'han produït alguns errors",
+            "vaultOnlyCount": "Només a la caixa forta: {count}",
+            "localOnlyCount": "Només local: {count}",
+            "conflictsCount": "Conflictes: {count}",
+            "unchangedCount": "{count} sense canvis",
+            "filesToVaultCount": "Fitxers sincronitzats amb la caixa forta: {count}",
+            "filesToLocalCount": "Fitxers extrets a local: {count}",
+            "filesSkippedCount": "Fitxers omesos: {count}"
         },
         "localTabs": {
             "closeAll": "Tanca totes les pestanyes",
@@ -5282,7 +5273,6 @@
             "checkAll": "Comprova tots",
             "checkOne": "Comprova aquest servidor",
             "checking": "Comprovant...",
-            "checked": "comprovat",
             "healthy": "Correcte",
             "degraded": "Degradat",
             "unreachable": "Inaccessible",
@@ -5297,7 +5287,11 @@
             "copied": "Copied\\!",
             "batchChecking": "S'estan comprovant {count} servidors, espereu...",
             "scoreLegend": "Puntuació 0-100, més alt és millor",
-            "scoreLegendDetail": "80+ saludable · 50-79 degradat · per sota 50 té problemes"
+            "scoreLegendDetail": "80+ saludable · 50-79 degradat · per sota 50 té problemes",
+            "checkedCount": "Comprovats: {count}",
+            "healthyCount": "Correctes: {count}",
+            "degradedCount": "Degradats: {count}",
+            "unreachableCount": "Inaccessibles: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5567,7 +5561,6 @@
                 "archived": "Arxiud",
                 "trash": "Paperera"
             },
-            "participants": "participants",
             "saving": "Desant...",
             "saved": "Desat",
             "saveNow": "Desar ara",
@@ -5585,7 +5578,8 @@
                 "code": "Codi",
                 "richText": "Text enriquit",
                 "checklist": "Llista de verificació"
-            }
+            },
+            "participantsCount": "{count} participants"
         },
         "shareLinkModal": {
             "title": "Enllaç per compartir",
@@ -6032,13 +6026,14 @@
             "moveToOtherPanel": "Mou a l'altre panell",
             "copiedToOtherPanel": "Copiat a l'altre panell",
             "movedToOtherPanel": "Mogut a l'altre panell",
-            "itemsLower": "items",
             "resizePanels": "Resize panels",
             "copyHere": "Copia {count} aquí",
             "moveHere": "Mou {count} aquí",
             "copyHereFromOtherPanelTooltip": "Copia {count} seleccionats de l'altre tauler en aquest tauler (F5)",
             "moveHereFromOtherPanelTooltip": "Mou {count} seleccionats de l'altre tauler en aquest tauler (F6)",
-            "syncToOtherPanel": "Sincronitza amb l'altre panell (delta)"
+            "syncToOtherPanel": "Sincronitza amb l'altre panell (delta)",
+            "failedCount": "Fallits: {count}",
+            "skippedCount": "Omesos: {count}"
         },
         "compare": {
             "title": "Compara panells",
@@ -6182,9 +6177,6 @@
             "bucket": "Categoria",
             "count": "Recompte",
             "action": "Acció",
-            "delete": "eliminar",
-            "overwrite": "sobreescriure",
-            "conflicts": "conflicte",
             "destructiveWarning": "Aquest preset eliminarà o sobreescriurà fitxers més recents.",
             "confirmDestructive": "He revisat les accions destructives i vull continuar.",
             "executeHint": "Executar encua la selecció i la despatxa mitjançant el planificador de transferències unificat.",
@@ -6211,7 +6203,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "Bytes a la xarxa",
                 "savings": "Estalvi",
-                "errorDetails": "error(s), detalls",
                 "errorPathsRequired": "L'origen i la destinació són obligatoris",
                 "deltaStatus": "Sync delta",
                 "deltaAuto": "AUTO ACTIVAT",
@@ -6243,7 +6234,8 @@
                 "planned": "Còpies previstes",
                 "resultDryRunOk": "Simulació completada",
                 "resultDryRunPartial": "Simulació completada amb errors",
-                "resultDryRunCancelled": "Simulació cancel·lada"
+                "resultDryRunCancelled": "Simulació cancel·lada",
+                "errorDetailsCount": "Errors: {count}, detalls"
             },
             "launcherTemplates": "Plantilles",
             "launcherMultiPath": "Multi-ruta",
@@ -6347,7 +6339,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "La comparació llegeix les dues carpetes i totes les carpetes que contenen. En un arbre gran pot trigar una estona, i la pots aturar.",
             "progressDelta": "[delta]",
-            "progressCopy": "[còpia]"
+            "progressCopy": "[còpia]",
+            "deleteCount": "{count} per eliminar",
+            "overwriteCount": "{count} per sobreescriure",
+            "conflictCount": "Conflictes: {count}"
         },
         "accountLock": {
             "title": "Trieu un compte",

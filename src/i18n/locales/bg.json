@@ -80,7 +80,8 @@
             "reset": "Нулирай",
             "saved": "Запазено",
             "saving": "Запазване...",
-            "creating": "Създаване..."
+            "creating": "Създаване...",
+            "minutesCount": "{count} мин"
         },
         "connection": {
             "title": "Свързване със сървър",
@@ -159,7 +160,6 @@
             "saveChanges": "Запазване на промените",
             "createAccount": "Създай акаунт",
             "docs": "Документация",
-            "minutes": "минути",
             "localPathPlaceholder": "/home/user/projects",
             "fourshared": {
                 "backToExistingAccount": "Обратно към съществуващ акаунт",
@@ -407,7 +407,6 @@
             "path": "Път",
             "files": "файлове",
             "folders": "папки",
-            "items": "елементи",
             "emptyFolder": "Тази папка е празна",
             "parentFolder": "Родителска папка",
             "newFolder": "Нова папка",
@@ -462,7 +461,10 @@
             "rightPanelMarker": "Десен панел",
             "chooseRightPanelFolder": "Изберете папка за десния панел",
             "chooseLeftPanelFolder": "Изберете папка за левия панел",
-            "localRight": "Локално (дясно)"
+            "localRight": "Локално (дясно)",
+            "itemCount": "Елементи: {count}",
+            "fileCount": "Файлове: {count}",
+            "folderCount": "Папки: {count}"
         },
         "contextMenu": {
             "askAeroAgent": "Питай AeroAgent...",
@@ -625,7 +627,6 @@
             "copyError": "Грешка при копиране",
             "copyQueueToClipboard": "Копиране на опашката в клипборда",
             "fail": "НЕУСПЕХ",
-            "pending": "Изчакване",
             "remove": "Премахни",
             "retry": "Повтори",
             "stopAll": "Спри всички",
@@ -690,7 +691,6 @@
                 "newTransfer": "Ново прехвърляне",
                 "preparing": "Подготовка на прехвърлянето…"
             },
-            "staged": "в опашка",
             "start": "Старт",
             "startAll": "Стартирай всички",
             "restored": "Възстановено",
@@ -761,7 +761,10 @@
                 "size": "Размер",
                 "source": "Източник",
                 "title": "План: {mode}"
-            }
+            },
+            "stagedCount": "Подготвени: {count}",
+            "pendingCount": "Изчакващи: {count}",
+            "failedCount": "Неуспешни: {count}"
         },
         "settings": {
             "title": "Настройки",
@@ -946,7 +949,6 @@
             "migrationSkip": "Пропускане засега",
             "migrationFinish": "Завършване",
             "migrationStep": "Стъпка {current} от {total}",
-            "duplicatesSkipped": "дубликати пропуснати",
             "invalidPassword": "Невалидна парола",
             "backup": "Резервно копие",
             "visibleColumns": "Видими колони",
@@ -1053,11 +1055,6 @@
             "consumerSecret": "Consumer Secret",
             "privacyRespect": "AeroFTP защитава вашата поверителност. Не се събират данни, няма проследяване, няма телеметрия.",
             "keystoreEntries": "{count} записи",
-            "serverCredentials": "идентификационни данни на сървъра",
-            "serverProfilesLabel": "профили на сървърите",
-            "aiKeysLabel": "AI ключове",
-            "oauthTokensLabel": "OAuth токени",
-            "configEntriesLabel": "записи в конфигурацията",
             "session": "Сесия",
             "aeroftpBackupFiles": "Резервни файлове на AeroFTP",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1116,7 +1113,6 @@
             "selectServersToExport": "Изберете сървъри за експортиране",
             "selectAll": "Избери всички",
             "deselectAll": "Премахни избора от всички",
-            "selected": "избрани",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "Ако не е зададена икона, favicon или icon.png от сървъра се разпознава автоматично.",
             "protocolFilelu": "FileLu",
@@ -1279,7 +1275,6 @@
             "imagePreviewBgLight": "Светъл",
             "imagePreviewBgCustom": "По избор",
             "showTransferProgress": "Показвай лентата за напредък на трансфера",
-            "similarToExisting": "приличат на съществуващ профил",
             "aerocloudCompress": "Включи компресия (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: компресия + криптиране (профилът има шифроване)",
@@ -1354,7 +1349,16 @@
             "fontSystemInstallHint": "Изисква системна инсталация. AeroFTP автоматично използва резервен вариант, ако не е наличен.",
             "fontSizeIndicatorLabel": "Шрифт",
             "fontPresetDefault": "{font} (по подразбиране)",
-            "fontPresetSystemDefault": "Системен по подразбиране"
+            "fontPresetSystemDefault": "Системен по подразбиране",
+            "duplicatesSkippedCount": "Пропуснати дубликати: {count}",
+            "similarToExistingCount": "Подобни на съществуващ профил: {count}",
+            "bridgeSkippedCount": "Пропуснати: {count}",
+            "selectedOfTotal": "Избрани: {selected} / {total}",
+            "serverCredentialsCount": "Идентификационни данни за сървъри: {count}",
+            "serverProfilesCount": "Сървърни профили: {count}",
+            "aiKeysCount": "AI ключове: {count}",
+            "oauthTokensCount": "OAuth токени: {count}",
+            "configEntriesCount": "Конфигурационни записи: {count}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1449,7 +1453,6 @@
             "starting": "Стартиране...",
             "pending": "Изчаква",
             "conflict": "Конфликт",
-            "conflicts": "конфликти изискват внимание",
             "error": "Грешка при синхронизация",
             "never": "Никога",
             "justNow": "Току-що",
@@ -1572,7 +1575,8 @@
             "countdownSoon": "Скоро...",
             "aerocloudEnabled": "AeroCloud е активиран",
             "selectPairLocalFolder": "Изберете локална папка за двойката",
-            "secondsAgo": "преди {count}с"
+            "secondsAgo": "преди {count}с",
+            "conflictsCount": "Конфликти за разрешаване: {count}"
         },
         "statusBar": {
             "connected": "Свързан",
@@ -2380,7 +2384,6 @@
         },
         "overwrite": {
             "title": "Файлът вече съществува",
-            "moreFiles": "още файл(а) в опашката",
             "remote": "Отдалечен",
             "local": "Локален",
             "sourceNewer": "Източникът е по-нов",
@@ -2817,7 +2820,6 @@
                 "approveThis": "Одобри това извикване на инструмент",
                 "confirm": "Потвърди",
                 "confirmDangerous": "Потвърди опасното действие",
-                "pendingApproval": "в очакване на одобрение",
                 "rejectAllCalls": "Откажи всички извиквания на инструменти",
                 "rejectExecution": "Откажи изпълнението на инструмент",
                 "toggleDetails": "Превключи подробности",
@@ -3046,12 +3048,11 @@
                 "allowAll": "Разрешаване на всички",
                 "rejectAll": "Отхвърляне на всички",
                 "pending": "чака одобрение",
-                "toolCall": "извикване на инструмент",
-                "toolCalls": "извиквания на инструменти",
                 "running": "Изпълнение...",
                 "done": "Готово",
                 "failed": "Неуспешно",
-                "allowThis": "Разрешаване на този инструмент"
+                "allowThis": "Разрешаване на този инструмент",
+                "pendingApprovalCount": "Извиквания на инструменти за одобрение: {count}"
             },
             "diff": {
                 "title": "Преглед на разликите",
@@ -3351,7 +3352,6 @@
                 "add": "Добави",
                 "added": "Добавен",
                 "all": "Всички",
-                "available": "налични",
                 "browseProviders": "Преглед на доставчици",
                 "chinese": "Китайски",
                 "fast": "Бързо извеждане",
@@ -3371,7 +3371,8 @@
                 "tools": "Tools",
                 "vision": "Vision",
                 "bedrockDescription": "Модели, хоствани в AWS, с достъп чрез регионален API ключ. Добавете ръчно своя model ID.",
-                "bedrockHighlight": "Регионална крайна точка на AWS"
+                "bedrockHighlight": "Регионална крайна точка на AWS",
+                "availableCount": "Налични: {count}"
             },
             "history": {
                 "cancel": "Отказ",
@@ -3726,12 +3727,12 @@
             "size": "Размер",
             "compressed": "Компресиран",
             "actions": "Действия",
-            "files": "файлове",
             "empty": "Архивът е празен",
             "extracting": "Разархивиране",
             "preview": "Преглед",
             "extract": "Извличане",
-            "back": "Назад"
+            "back": "Назад",
+            "filesSummary": "Файлове: {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "Добавени {files} файла в {dirs} директории",
@@ -3778,7 +3779,6 @@
             "filesAdded": "{count} файл(а) добавени",
             "folderName": "Име на папката",
             "itemDeleted": "Изтрито: {name}",
-            "items": "елементи",
             "itemsDeleted": "{count} елемент(а) изтрити",
             "lastOpened": "Последно отворено",
             "modified": "Промяна",
@@ -3819,7 +3819,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - Силно криптиране",
-            "totalItems": "общо",
             "unlock": "Отключване",
             "v1Standard": "AeroVault v1 (Стандартен)",
             "v2Advanced": "AeroVault v2 (Разширена сигурност)",
@@ -3906,8 +3905,6 @@
             "extractAllHint": "Извличане на всеки файл от трезора в папка",
             "extractedAll": "Извлечени {count} файл(а) в {path}",
             "dropFilesHint": "Плъзнете файлове или папки тук или използвайте бутоните по-долу",
-            "itemSingular": "елемент",
-            "itemPlural": "елемента",
             "reportExported": "Отчетът за хранилището е запазен в {path}",
             "reportCopied": "Отчетът за хранилището е копиран в клипборда",
             "exportReportHint": "Експортиране на пълен технически отчет: метаданни на хранилището, шифроване, корекция на грешки и пълен списък с файлове",
@@ -3960,7 +3957,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Бързо",
             "securityAdvancedDescription": "Устойчиво на nonce · Шифровани имена на файлове · 128 MB KDF",
             "securityParanoidDescription": "Каскада AES + ChaCha20 · Двойно шифроване",
-            "securityArchiveDescription": "Дедуплициран архив · zstd блокове · v3"
+            "securityArchiveDescription": "Дедуплициран архив · zstd блокове · v3",
+            "totalItemsCount": "Общо: {count}"
         },
         "cryptomator": {
             "title": "Cryptomator трезор",
@@ -3973,7 +3971,6 @@
             "empty": "Директорията е празна",
             "name": "Име",
             "size": "Размер",
-            "items": "елементи",
             "readOnly": "Режим само за четене - създаване на трезор предстои във v2.1",
             "openAsVault": "Отваряне като Cryptomator трезор",
             "decryptAndSave": "Дешифриране и запазване",
@@ -4006,8 +4003,6 @@
             "level": "Ниво на компресия",
             "password": "Парола (незадължително, AES-256)",
             "passwordHint": "Оставете празно, ако не желаете криптиране",
-            "files": "файлове",
-            "folders": "папки",
             "compress": "Компресиране",
             "store": "Съхранение (без компресия)",
             "fast": "Бързо",
@@ -4249,8 +4244,6 @@
             "modified": "Промяна",
             "file": "Файл",
             "folder": "Папка",
-            "files": "файлове",
-            "folders": "папки",
             "remote": "Отдалечен",
             "local": "Локален",
             "linkTarget": "Цел на символна връзка",
@@ -4326,10 +4319,7 @@
             "deleted": "{count} дублирани файла изтрити",
             "scanFailed": "Сканирането неуспешно",
             "retry": "Повторен опит",
-            "groups": "групи",
-            "duplicateFiles": "дублирани файлове",
             "wasted": "загубено",
-            "copies": "копия",
             "delete": "ИЗТРИВАНЕ",
             "skip": "ПРОПУСКАНЕ",
             "deleteConfirm": "Сигурни ли сте, че искате да изтриете {count} дублирани файла?",
@@ -4349,7 +4339,10 @@
             "similarityDistance": "{similarity}, разст. {distance}",
             "modeExact": "Точно",
             "modeLabel": "Режим:",
-            "modeNonIdentical": "Неидентични"
+            "modeNonIdentical": "Неидентични",
+            "groupsCount": "Групи: {count}",
+            "duplicateFilesCount": "Дублирани файлове: {count}",
+            "copiesCount": "{count} копия"
         },
         "diskUsage": {
             "title": "Използване на диска",
@@ -4357,20 +4350,16 @@
             "totalItems": "Общо: {size} в {count} елемента",
             "percentOfParent": "{percent}% от родителската директория",
             "backToParent": "Обратно към родителската",
-            "items": "елементи",
             "scanFailed": "Анализът неуспешен",
             "retry": "Повторен опит",
             "drillDown": "Натиснете за изследване",
             "back": "Назад",
-            "total": "Общо",
-            "across": "в",
             "empty": "Тази директория е празна",
             "hoverHint": "Задръжте курсора върху блок за детайли",
             "scanUnknownError": "Неизвестна грешка при сканиране на използването на диска"
         },
         "dependencies": {
             "title": "Зависимости",
-            "crates": "пакети",
             "copy": "Копиране",
             "copied": "Копирано!",
             "checkUpdates": "Проверка за актуализации",
@@ -4380,7 +4369,8 @@
             "latest": "Последна",
             "status": "Статус",
             "footer": "Данни за версиите от crates.io API. Показаните версии са разрешени (Cargo.lock) версии.",
-            "copyTitle": "Проверка на зависимостите на AeroFTP"
+            "copyTitle": "Проверка на зависимостите на AeroFTP",
+            "cratesCount": "Пакети: {count}"
         },
         "debug": {
             "tabs": {
@@ -4440,7 +4430,6 @@
                 "warning": "Предупреждение",
                 "info": "Информация",
                 "debug": "Отстраняване на грешки",
-                "entries": "записи",
                 "resume": "Възобновяване",
                 "pause": "Пауза",
                 "copyAll": "Копиране на всички",
@@ -4449,13 +4438,13 @@
                 "allSources": "Всички източници",
                 "sourceFilterTitle": "Филтриране по източник",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "Записи: {count}"
             },
             "frontend": {
                 "reactMode": "React режим",
                 "language": "Език",
                 "localStorageKeys": "Ключове в LocalStorage",
-                "keys": "ключове",
                 "localStorageSize": "Размер на LocalStorage",
                 "windowSize": "Размер на прозореца",
                 "devicePixelRatio": "Съотношение на пикселите",
@@ -4464,7 +4453,8 @@
                 "light": "Светла",
                 "userAgent": "User Agent",
                 "localStorageKeysTitle": "Ключове в LocalStorage",
-                "localStorageEntrySummary": "{size} байта · {preview}"
+                "localStorageEntrySummary": "{size} байта · {preview}",
+                "keysCount": "Ключове: {count}"
             },
             "copyFileListToClipboard": "Копирай списък с файлове в клипборда",
             "filesCopied": "{count} записа на файлове са копирани в клипборда",
@@ -4486,12 +4476,12 @@
                 "i18nSweep": "i18n преглед на ключове",
                 "ipcSpeed": "IPC проба на скоростта",
                 "knownHosts": "known_hosts четене",
-                "passed": "успешни",
                 "pluginIntegrity": "Цялост на плъгина",
                 "providerSelftest": "Самотест на доставчика (само за четене)",
                 "runAll": "Изпълни всички",
                 "runOne": "Изпълни този тест",
-                "vaultRoundtrip": "Обиколка на сейфа"
+                "vaultRoundtrip": "Обиколка на сейфа",
+                "passedCount": "Успешни: {passed}/{total}"
             },
             "bundle": {
                 "title": "Експортиране на диагностичен пакет (ZIP)"
@@ -4539,9 +4529,9 @@
         "activityPanel": {
             "awaitingCommands": "Очакване на команди...",
             "badges": {
-                "active": "АКТИВНО",
                 "live": "НА ЖИВО",
-                "synced": "СИНХРОНИЗИРАНО"
+                "synced": "СИНХРОНИЗИРАНО",
+                "activeCount": "АКТИВНИ: {count}"
             },
             "clearLog": "Изчисти журнала",
             "close": "Затвори",
@@ -4565,7 +4555,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Филтриране на операции",
-                "selected": "избрани"
+                "selectedCount": "Избрани: {count}"
             },
             "save": "Запазване"
         },
@@ -4757,14 +4747,12 @@
                 "auto": "Автоматично",
                 "autoRefresh": "Автоматично обновяване (3s)",
                 "browser": "Браузър",
-                "chars": "знака",
                 "copy": "Копирай в клипборда",
                 "disableWrap": "Изключи пренасяне на редове",
                 "enableWrap": "Включи пренасяне на редове",
                 "encoding": "Кодиране",
                 "errorLoading": "Грешка при зареждане на съдържанието",
                 "hex": "Шестнадесетичен",
-                "lines": "реда",
                 "loadFailed": "Зареждането на текстово съдържание е неуспешно",
                 "noContent": "Няма налично съдържание",
                 "openBrowser": "Отвори в системния браузър",
@@ -4783,7 +4771,8 @@
                 "wordWrap": "Пренасяне на редове",
                 "zoomIn": "Увеличаване",
                 "zoomOut": "Намаляване",
-                "htmlPreviewFrameTitle": "HTML преглед"
+                "htmlPreviewFrameTitle": "HTML преглед",
+                "stats": "Редове: {lines} • Знаци: {chars}"
             },
             "video": {
                 "exitFullscreen": "Изход от цял екран (F)",
@@ -4908,7 +4897,6 @@
             "pwdBatchCount": "Брой генерации",
             "pwdGenerate": "Генерирай",
             "pwdEntropy": "Ентропия",
-            "pwdBits": "бита",
             "pwdWeak": "Слаба",
             "pwdFair": "Приемлива",
             "pwdGood": "Добра",
@@ -4959,7 +4947,8 @@
             "argon2DefaultsHint": "По подразбиране: профилът, който използват AeroVault и AeroCrypt (128 MiB, 4 итерации, 4 ленти, 32-байтов изход). Солта по-горе е ваша. Памет до 2 GiB.",
             "argon2Derive": "Извличане",
             "argon2Phc": "PHC низ",
-            "hashError": "Грешка: {error}"
+            "hashError": "Грешка: {error}",
+            "pwdBitsCount": "{count} бита"
         },
         "dialog": {
             "deleteFile": "Изтрий \"{name}\"?",
@@ -5019,8 +5008,6 @@
             "vaultOnly": "Само в трезора",
             "localOnly": "Само локално",
             "conflict": "Конфликт",
-            "conflicts": "конфликти",
-            "unchanged": "без промяна",
             "allToVault": "Всичко в трезора",
             "allToLocal": "Всичко локално",
             "keepNewer": "Запази по-новия",
@@ -5035,10 +5022,14 @@
             "applySync": "Приложи синхронизация",
             "close": "Затвори",
             "allInSync": "Всички файлове са синхронизирани",
-            "filesToVault": "файл(ове) синхронизирани в трезора",
-            "filesToLocal": "файл(ове) извлечени локално",
-            "filesSkipped": "файл(ове) пропуснати",
-            "errorsOccurred": "Възникнаха някои грешки"
+            "errorsOccurred": "Възникнаха някои грешки",
+            "vaultOnlyCount": "Само в трезора: {count}",
+            "localOnlyCount": "Само локално: {count}",
+            "conflictsCount": "Конфликти: {count}",
+            "unchangedCount": "Непроменени: {count}",
+            "filesToVaultCount": "Синхронизирани файлове в трезора: {count}",
+            "filesToLocalCount": "Извлечени локално файлове: {count}",
+            "filesSkippedCount": "Пропуснати файлове: {count}"
         },
         "localTabs": {
             "closeAll": "Затвори всички раздели",
@@ -5263,7 +5254,6 @@
             "checkAll": "Провери всички",
             "checkOne": "Провери този сървър",
             "checking": "Проверка...",
-            "checked": "проверено",
             "healthy": "Изправен",
             "degraded": "Забавен",
             "unreachable": "Недостъпен",
@@ -5278,7 +5268,11 @@
             "copied": "Copied\\!",
             "batchChecking": "Проверка на {count} сървъра, моля, изчакайте...",
             "scoreLegend": "Резултат 0-100, по-високо е по-добре",
-            "scoreLegendDetail": "80+ здрав · 50-79 деградиран · под 50 има проблеми"
+            "scoreLegendDetail": "80+ здрав · 50-79 деградиран · под 50 има проблеми",
+            "checkedCount": "Проверени: {count}",
+            "healthyCount": "Изправни: {count}",
+            "degradedCount": "Забавени: {count}",
+            "unreachableCount": "Недостъпни: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5548,7 +5542,6 @@
                 "archived": "Архивирани",
                 "trash": "Кошче"
             },
-            "participants": "участници",
             "saving": "Запазване...",
             "saved": "Запазено",
             "saveNow": "Запази сега",
@@ -5566,7 +5559,8 @@
                 "code": "Код",
                 "richText": "Форматиран текст",
                 "checklist": "Списък със задачи"
-            }
+            },
+            "participantsCount": "{count} участници"
         },
         "shareLinkModal": {
             "title": "Връзка за споделяне",
@@ -6013,13 +6007,14 @@
             "moveToOtherPanel": "Преместване в другия панел",
             "copiedToOtherPanel": "Копирано в другия панел",
             "movedToOtherPanel": "Преместено в другия панел",
-            "itemsLower": "items",
             "resizePanels": "Resize panels",
             "copyHere": "Копирай {count} тук",
             "moveHere": "Премести {count} тук",
             "copyHereFromOtherPanelTooltip": "Копирай {count} избрани от другия панел в този панел (F5)",
             "moveHereFromOtherPanelTooltip": "Премести {count} избрани от другия панел в този панел (F6)",
-            "syncToOtherPanel": "Синхронизирай към другия панел (delta)"
+            "syncToOtherPanel": "Синхронизирай към другия панел (delta)",
+            "failedCount": "Неуспешни: {count}",
+            "skippedCount": "Пропуснати: {count}"
         },
         "compare": {
             "title": "Сравнение на панели",
@@ -6163,9 +6158,6 @@
             "bucket": "Категория",
             "count": "Брой",
             "action": "Действие",
-            "delete": "изтриване",
-            "overwrite": "презаписване",
-            "conflicts": "конфликт",
             "destructiveWarning": "Този пресет ще изтрие или презапише по-нови файлове.",
             "confirmDestructive": "Прегледах разрушителните действия и искам да продължа.",
             "executeHint": "Изпълни поставя селекцията в опашка и я изпраща чрез обединения планировчик на трансфери.",
@@ -6192,7 +6184,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "Байтове по мрежата",
                 "savings": "Икономия",
-                "errorDetails": "грешка(и), подробности",
                 "errorPathsRequired": "Източникът и местоназначението са задължителни",
                 "deltaStatus": "Делта синхр.",
                 "deltaAuto": "АВТО ВКЛ.",
@@ -6224,7 +6215,8 @@
                 "planned": "Планирани копирания",
                 "resultDryRunOk": "Пробното изпълнение е завършено",
                 "resultDryRunPartial": "Пробното изпълнение е завършено с грешки",
-                "resultDryRunCancelled": "Пробното изпълнение е отменено"
+                "resultDryRunCancelled": "Пробното изпълнение е отменено",
+                "errorDetailsCount": "Грешки: {count}, подробности"
             },
             "launcherTemplates": "Шаблони",
             "launcherMultiPath": "Множество пътища",
@@ -6328,7 +6320,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "Сравнението чете двете папки и всички папки в тях. При голямо дърво може да отнеме време, а можете да го спрете.",
             "progressDelta": "[делта]",
-            "progressCopy": "[копие]"
+            "progressCopy": "[копие]",
+            "deleteCount": "За изтриване: {count}",
+            "overwriteCount": "За презаписване: {count}",
+            "conflictCount": "Конфликти: {count}"
         },
         "accountLock": {
             "title": "Изберете акаунт",

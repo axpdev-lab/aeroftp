@@ -447,12 +447,12 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                             <div className="flex items-center gap-3 flex-1 min-w-0">
                                 <div className="flex items-center gap-1.5" style={{ color: 'var(--compress-text-secondary)' }}>
                                     <File size={14} />
-                                    <span>{fileCount} {t('compress.files') || 'file'}</span>
+                                    <span>{t('browser.fileCount', { count: fileCount })}</span>
                                 </div>
                                 {folderCount > 0 && (
                                     <div className="flex items-center gap-1.5" style={{ color: 'var(--compress-text-secondary)' }}>
                                         <Folder size={14} />
-                                        <span>{folderCount} {t('compress.folders') || 'folders'}</span>
+                                        <span>{t('browser.folderCount', { count: folderCount })}</span>
                                     </div>
                                 )}
                             </div>

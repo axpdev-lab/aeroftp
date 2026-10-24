@@ -204,7 +204,7 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                     {stagedCount > 0 ? (
                         <>
                             <div className="font-medium mb-1">
-                                {stagedCount} {stagedCount === 1 ? t('vault.itemSingular') : t('vault.itemPlural')}
+                                {t('browser.itemCount', { count: stagedCount })}
                             </div>
                             <div className="flex flex-col gap-0.5 max-h-28 overflow-y-auto pr-1">
                                 {state.stagedDirs.map(d => (

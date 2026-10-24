@@ -223,7 +223,7 @@ const CloudDashboard: React.FC<{
             case 'syncing':
                 return `${t('cloud.syncing')}: ${status.current_file || t('cloud.starting')} (${status.progress?.toFixed(0) || 0}%)`;
             case 'paused': return t('cloud.paused');
-            case 'has_conflicts': return `${status.count} ${t('cloud.conflicts')}`;
+            case 'has_conflicts': return t('cloud.conflictsCount', { count: status.count ?? 0 });
             case 'error': return status.message || t('cloud.error');
             default: return `${t('cloud.synced')} ${formatLastSync(config.last_sync)}`;
         }
@@ -304,8 +304,8 @@ const CloudDashboard: React.FC<{
                         <span className="label">{t('cloud.syncInterval')}</span>
                         <span className="value">
                             {config.sync_interval_secs >= 3600
-                                ? `${Math.round(config.sync_interval_secs / 3600)} ${t('cloud.hours') || 'ore'}`
-                                : `${Math.round(config.sync_interval_secs / 60)} ${t('settings.minutes')}`
+                                ? t(Math.round(config.sync_interval_secs / 3600) === 1 ? 'syncPanel.intervalHoursOne' : 'syncPanel.intervalHoursMany', { count: Math.round(config.sync_interval_secs / 3600) })
+                                : t('common.minutesCount', { count: Math.round(config.sync_interval_secs / 60) })
                             }
                         </span>
                     </div>

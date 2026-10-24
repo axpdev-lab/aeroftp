@@ -556,8 +556,7 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
                     {report.error_messages.length > 0 && (
                         <details className="mt-2">
                             <summary className="text-xs cursor-pointer text-red-600 dark:text-red-400">
-                                {report.error_messages.length}{' '}
-                                {t('aerosync.sync.errorDetails') || 'error(s), details'}
+                                {t('aerosync.sync.errorDetailsCount', { count: report.error_messages.length })}
                             </summary>
                             <ul className="mt-1 text-xs text-red-700 dark:text-red-300 max-h-32 overflow-y-auto list-disc pl-5">
                                 {report.error_messages.map((m, i) => (

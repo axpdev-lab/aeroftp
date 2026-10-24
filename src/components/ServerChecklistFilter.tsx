@@ -109,7 +109,7 @@ export const ServerChecklistSummary: React.FC<{
     return (
         <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 space-y-0.5">
             <div>
-                {selectedCount} / {allIds.length} {t('settings.selected')}
+                {t('settings.selectedOfTotal', { selected: selectedCount, total: allIds.length })}
                 {filtering && ` · ${t('settings.filterShownCount', { shown: shownRows ?? shownIds.length })}`}
                 {children}
             </div>

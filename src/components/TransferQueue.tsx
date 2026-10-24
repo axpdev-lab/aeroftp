@@ -582,13 +582,13 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                             </span>
                         )}
                         {stagedCount > 0 && (
-                            <span className="text-amber-500">{stagedCount} {t('transfer.staged')}</span>
+                            <span className="text-amber-500">{t('transfer.stagedCount', { count: stagedCount })}</span>
                         )}
                         {pendingCount > 0 && (
-                            <span className="text-gray-500 dark:text-gray-400">{pendingCount} {t('transfer.pending')}</span>
+                            <span className="text-gray-500 dark:text-gray-400">{t('transfer.pendingCount', { count: pendingCount })}</span>
                         )}
                         {errorCount > 0 && (
-                            <span className="text-red-400">{errorCount} {t('transfer.failed')}</span>
+                            <span className="text-red-400">{t('transfer.failedCount', { count: errorCount })}</span>
                         )}
 
                         {/* Quick action buttons */}

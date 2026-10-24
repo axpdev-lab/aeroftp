@@ -170,7 +170,7 @@ const DependenciesPanel: React.FC<DependenciesPanelProps> = ({ isVisible, onClos
                     <div className="flex items-center gap-2 pointer-events-none">
                         <Package size={18} className="text-blue-500" />
                         <h2 className="text-base font-semibold">{t('dependencies.title')}</h2>
-                        <span className="text-xs text-gray-500">({stats.total} {t('dependencies.crates')})</span>
+                        <span className="text-xs text-gray-500">({t('dependencies.cratesCount', { count: stats.total })})</span>
                     </div>
                     <div className="flex items-center gap-2">
                         {/* Stats badges */}

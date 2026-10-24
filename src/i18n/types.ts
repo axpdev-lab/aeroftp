@@ -116,7 +116,6 @@ export interface TranslationKeys {
         path: string;
         files: string;
         folders: string;
-        items: string;
         emptyFolder: string;
         parentFolder: string;
         newFolder: string;

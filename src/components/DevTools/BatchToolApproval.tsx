@@ -344,10 +344,7 @@ export const BatchToolApproval: React.FC<BatchToolApprovalProps> = ({
             <div className="px-3 py-1.5 bg-gray-800/60 flex items-center gap-2 text-xs text-gray-300 border-b border-gray-700/50">
                 <Shield size={12} className="text-yellow-400" />
                 <span className="font-medium">
-                    {toolCalls.length} {toolCalls.length === 1
-                        ? (t('ai.batch.toolCall') || 'tool call')
-                        : (t('ai.batch.toolCalls') || 'tool calls')
-                    } {t('ai.toolApproval.pendingApproval') || 'pending approval'}
+                    {t('ai.batch.pendingApprovalCount', { count: toolCalls.length })}
                 </span>
             </div>
 

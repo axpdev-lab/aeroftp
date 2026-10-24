@@ -3515,27 +3515,27 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 <div>{new Date(keystoreMetadata.exportDate).toLocaleString()}</div>
                                                                 {keystoreMetadata.categories.serverCredentials > 0 && (
                                                                     <div>
-                                                                        {keystoreMetadata.categories.serverCredentials} {t('settings.serverCredentials')}
+                                                                        {t('settings.serverCredentialsCount', { count: keystoreMetadata.categories.serverCredentials })}
                                                                     </div>
                                                                 )}
                                                                 {keystoreMetadata.categories.serverProfiles > 0 && (
                                                                     <div>
-                                                                        {keystoreMetadata.categories.serverProfiles} {t('settings.serverProfilesLabel')}
+                                                                        {t('settings.serverProfilesCount', { count: keystoreMetadata.categories.serverProfiles })}
                                                                     </div>
                                                                 )}
                                                                 {keystoreMetadata.categories.aiKeys > 0 && (
                                                                     <div>
-                                                                        {keystoreMetadata.categories.aiKeys} {t('settings.aiKeysLabel')}
+                                                                        {t('settings.aiKeysCount', { count: keystoreMetadata.categories.aiKeys })}
                                                                     </div>
                                                                 )}
                                                                 {keystoreMetadata.categories.oauthTokens > 0 && (
                                                                     <div>
-                                                                        {keystoreMetadata.categories.oauthTokens} {t('settings.oauthTokensLabel')}
+                                                                        {t('settings.oauthTokensCount', { count: keystoreMetadata.categories.oauthTokens })}
                                                                     </div>
                                                                 )}
                                                                 {keystoreMetadata.categories.configEntries > 0 && (
                                                                     <div>
-                                                                        {keystoreMetadata.categories.configEntries} {t('settings.configEntriesLabel')}
+                                                                        {t('settings.configEntriesCount', { count: keystoreMetadata.categories.configEntries })}
                                                                     </div>
                                                                 )}
                                                             </div>

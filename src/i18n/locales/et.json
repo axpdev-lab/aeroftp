@@ -80,7 +80,8 @@
             "reset": "Lähtesta",
             "saved": "Salvestatud",
             "saving": "Salvestamine...",
-            "creating": "Loomine..."
+            "creating": "Loomine...",
+            "minutesCount": "{count} min"
         },
         "connection": {
             "title": "Ühenda serveriga",
@@ -159,7 +160,6 @@
             "saveChanges": "Salvesta muudatused",
             "createAccount": "Loo konto",
             "docs": "Dokumendid",
-            "minutes": "minutit",
             "localPathPlaceholder": "/home/user/projects",
             "fourshared": {
                 "backToExistingAccount": "Tagasi olemasoleva konto juurde",
@@ -407,7 +407,6 @@
             "path": "Tee",
             "files": "faili",
             "folders": "kausta",
-            "items": "üksust",
             "emptyFolder": "See kaust on tühi",
             "parentFolder": "Ülemkaust",
             "newFolder": "Uus kaust",
@@ -462,7 +461,10 @@
             "rightPanelMarker": "Parem paneel",
             "chooseRightPanelFolder": "Vali parema paneeli kaust",
             "chooseLeftPanelFolder": "Vali vasaku paneeli kaust",
-            "localRight": "Kohalik (parem)"
+            "localRight": "Kohalik (parem)",
+            "itemCount": "Üksused: {count}",
+            "fileCount": "Failid: {count}",
+            "folderCount": "Kaustad: {count}"
         },
         "contextMenu": {
             "askAeroAgent": "Küsi AeroAgent-ilt...",
@@ -625,7 +627,6 @@
             "copyError": "Kopeerimise viga",
             "copyQueueToClipboard": "Kopeeri järjekord lõikelauale",
             "fail": "EBAÕNN",
-            "pending": "Ootel",
             "remove": "Eemalda",
             "retry": "Proovi uuesti",
             "stopAll": "Peata kõik",
@@ -690,7 +691,6 @@
                 "newTransfer": "Uus ülekanne",
                 "preparing": "Ülekande ettevalmistamine…"
             },
-            "staged": "järjekorras",
             "start": "Käivita",
             "startAll": "Käivita kõik",
             "restored": "Taastatud",
@@ -761,7 +761,10 @@
                 "size": "Suurus",
                 "source": "Allikas",
                 "title": "Plaan: {mode}"
-            }
+            },
+            "stagedCount": "Ettevalmistatud: {count}",
+            "pendingCount": "Ootel: {count}",
+            "failedCount": "Ebaõnnestunud: {count}"
         },
         "settings": {
             "title": "Seaded",
@@ -946,7 +949,6 @@
             "migrationSkip": "Jäta praegu vahele",
             "migrationFinish": "Lõpeta",
             "migrationStep": "Samm {current}/{total}",
-            "duplicatesSkipped": "duplikaadid vahele jäetud",
             "invalidPassword": "Vigane parool",
             "backup": "Varukoopia",
             "visibleColumns": "Nähtavad veerud",
@@ -1053,11 +1055,6 @@
             "consumerSecret": "Tarbija saladus",
             "privacyRespect": "AeroFTP kaitseb teie privaatsust. Andmeid ei koguta, jälgimist ega telemeetriat ei toimu.",
             "keystoreEntries": "{count} kirjet",
-            "serverCredentials": "serveri mandaadid",
-            "serverProfilesLabel": "serveri profiilid",
-            "aiKeysLabel": "AI võtmed",
-            "oauthTokensLabel": "OAuth tokenid",
-            "configEntriesLabel": "konfiguratsiooni kirjed",
             "session": "Seanss",
             "aeroftpBackupFiles": "AeroFTP varundusfailid",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1116,7 +1113,6 @@
             "selectServersToExport": "Vali eksportimiseks serverid",
             "selectAll": "Vali kõik",
             "deselectAll": "Tühista kõigi valik",
-            "selected": "valitud",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "Kui ühtegi ikooni pole määratud, tuvastatakse serveri favicon või icon.png automaatselt.",
             "protocolFilelu": "FileLu",
@@ -1279,7 +1275,6 @@
             "imagePreviewBgLight": "Hele",
             "imagePreviewBgCustom": "Kohandatud",
             "showTransferProgress": "Kuva ülekande edenemisriba",
-            "similarToExisting": "sarnanevad olemasoleva profiiliga",
             "aerocloudCompress": "Luba tihendamine (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: pakkimine + krüptimine (profiilil on krüptimine)",
@@ -1354,7 +1349,16 @@
             "fontSystemInstallHint": "Nõuab süsteemi paigaldust. AeroFTP kasutab puudumisel automaatselt varulahendust.",
             "fontSizeIndicatorLabel": "Kiri",
             "fontPresetDefault": "{font} (vaikimisi)",
-            "fontPresetSystemDefault": "Süsteemi vaikimisi"
+            "fontPresetSystemDefault": "Süsteemi vaikimisi",
+            "duplicatesSkippedCount": "Vahele jäetud duplikaadid: {count}",
+            "similarToExistingCount": "Sarnased olemasoleva profiiliga: {count}",
+            "bridgeSkippedCount": "Vahele jäetud: {count}",
+            "selectedOfTotal": "Valitud: {selected} / {total}",
+            "serverCredentialsCount": "Serveri mandaadid: {count}",
+            "serverProfilesCount": "Serveri profiilid: {count}",
+            "aiKeysCount": "AI võtmed: {count}",
+            "oauthTokensCount": "OAuth-märgid: {count}",
+            "configEntriesCount": "Konfiguratsioonikirjed: {count}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1449,7 +1453,6 @@
             "starting": "Käivitamine...",
             "pending": "Ootel",
             "conflict": "Konflikt",
-            "conflicts": "konflikti vajab tähelepanu",
             "error": "Sünkroniseerimise viga",
             "never": "Mitte kunagi",
             "justNow": "Äsja",
@@ -1572,7 +1575,8 @@
             "countdownSoon": "Varsti...",
             "aerocloudEnabled": "AeroCloud lubatud",
             "selectPairLocalFolder": "Vali paari jaoks kohalik kaust",
-            "secondsAgo": "{count}s tagasi"
+            "secondsAgo": "{count}s tagasi",
+            "conflictsCount": "Tähelepanu vajavad konfliktid: {count}"
         },
         "statusBar": {
             "connected": "Ühendatud",
@@ -2380,7 +2384,6 @@
         },
         "overwrite": {
             "title": "Fail on juba olemas",
-            "moreFiles": "veel faili(e) järjekorras",
             "remote": "Kaug",
             "local": "Kohalik",
             "sourceNewer": "Allikas on uuem",
@@ -2817,7 +2820,6 @@
                 "approveThis": "Kinnita see tööriistakutse",
                 "confirm": "Kinnita",
                 "confirmDangerous": "Kinnita ohtlik toiming",
-                "pendingApproval": "kinnitamise ootel",
                 "rejectAllCalls": "Keeldu kõigist tööriistakutsetest",
                 "rejectExecution": "Keeldu tööriista käivitamisest",
                 "toggleDetails": "Lülita üksikasjad",
@@ -3046,12 +3048,11 @@
                 "allowAll": "Luba kõik",
                 "rejectAll": "Keeldu kõigist",
                 "pending": "ootab kinnitust",
-                "toolCall": "tööriistakutse",
-                "toolCalls": "tööriistakutsed",
                 "running": "Töötab...",
                 "done": "Valmis",
                 "failed": "Ebaõnnestus",
-                "allowThis": "Luba see tööriist"
+                "allowThis": "Luba see tööriist",
+                "pendingApprovalCount": "Kinnitust ootavad tööriistakutsed: {count}"
             },
             "diff": {
                 "title": "Erinevuste eelvaade",
@@ -3351,7 +3352,6 @@
                 "add": "Lisa",
                 "added": "Lisatud",
                 "all": "Kõik",
-                "available": "saadaval",
                 "browseProviders": "Sirvi pakkujaid",
                 "chinese": "Hiina",
                 "fast": "Kiire järeldamine",
@@ -3371,7 +3371,8 @@
                 "tools": "Tools",
                 "vision": "Vision",
                 "bedrockDescription": "AWS-is majutatud mudelid piirkondliku API-võtmega juurdepääsuks. Lisa oma model ID käsitsi.",
-                "bedrockHighlight": "AWS-i piirkondlik lõpp-punkt"
+                "bedrockHighlight": "AWS-i piirkondlik lõpp-punkt",
+                "availableCount": "Saadaval: {count}"
             },
             "history": {
                 "cancel": "Tühista",
@@ -3726,12 +3727,12 @@
             "size": "Suurus",
             "compressed": "Pakitud",
             "actions": "Toimingud",
-            "files": "faili",
             "empty": "Arhiiv on tühi",
             "extracting": "Lahtipakkimine",
             "preview": "Eelvaade",
             "extract": "Ekstrakti",
-            "back": "Tagasi"
+            "back": "Tagasi",
+            "filesSummary": "Failid: {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "Lisati {files} faili {dirs} kataloogis",
@@ -3778,7 +3779,6 @@
             "filesAdded": "{count} fail(i) lisatud",
             "folderName": "Kausta nimi",
             "itemDeleted": "{name} kustutatud",
-            "items": "üksust",
             "itemsDeleted": "{count} üksus(t) kustutatud",
             "lastOpened": "Viimati avatud",
             "modified": "Muudetud",
@@ -3819,7 +3819,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - Tugev krüpteerimine",
-            "totalItems": "kokku",
             "unlock": "Ava lukk",
             "v1Standard": "AeroVault v1 (standardne)",
             "v2Advanced": "AeroVault v2 (täiustatud turvalisus)",
@@ -3906,8 +3905,6 @@
             "extractAllHint": "Ekstrakti kõik hoidla failid kausta",
             "extractedAll": "Ekstraktiti {count} fail(i) asukohta {path}",
             "dropFilesHint": "Lohista failid või kaustad siia või kasuta allolevaid nuppe",
-            "itemSingular": "üksus",
-            "itemPlural": "üksust",
             "reportExported": "Hoidla aruanne salvestati asukohta {path}",
             "reportCopied": "Hoidla aruanne kopeeriti lõikelauale",
             "exportReportHint": "Ekspordi täielik tehniline aruanne: hoidla metaandmed, krüpteerimine, veaparandus ja kogu faililoend",
@@ -3960,7 +3957,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Kiire",
             "securityAdvancedDescription": "Nonce-kindel · Krüpteeritud failinimed · 128 MB KDF",
             "securityParanoidDescription": "AES + ChaCha20 kaskaad · Topeltkrüpteerimine",
-            "securityArchiveDescription": "Dubleerimata arhiiv · zstd plokid · v3"
+            "securityArchiveDescription": "Dubleerimata arhiiv · zstd plokid · v3",
+            "totalItemsCount": "{count} kokku"
         },
         "cryptomator": {
             "title": "Cryptomator hoidla",
@@ -3973,7 +3971,6 @@
             "empty": "Kataloog on tühi",
             "name": "Nimi",
             "size": "Suurus",
-            "items": "üksust",
             "readOnly": "Ainult lugemise režiim - hoidla loomine tuleb versioonis v2.1",
             "openAsVault": "Ava Cryptomator hoidlana",
             "decryptAndSave": "Dekrüpteeri ja salvesta",
@@ -4006,8 +4003,6 @@
             "level": "Pakkimise tase",
             "password": "Parool (valikuline, AES-256)",
             "passwordHint": "Jätke tühjaks krüptimiseta",
-            "files": "faili",
-            "folders": "kausta",
             "compress": "Paki",
             "store": "Salvesta (pakkimiseta)",
             "fast": "Kiire",
@@ -4249,8 +4244,6 @@
             "modified": "Muudetud",
             "file": "Fail",
             "folder": "Kaust",
-            "files": "faili",
-            "folders": "kausta",
             "remote": "Kaug",
             "local": "Kohalik",
             "linkTarget": "Sümbollingi sihtmärk",
@@ -4326,10 +4319,7 @@
             "deleted": "{count} duplikaatfaili kustutatud",
             "scanFailed": "Skannimine ebaõnnestus",
             "retry": "Proovi uuesti",
-            "groups": "rühma",
-            "duplicateFiles": "duplikaatfaili",
             "wasted": "raisatud",
-            "copies": "koopiat",
             "delete": "KUSTUTA",
             "skip": "JÄTA VAHELE",
             "deleteConfirm": "Kas olete kindel, et soovite kustutada {count} duplikaatfaili?",
@@ -4349,7 +4339,10 @@
             "similarityDistance": "{similarity}, kaugus {distance}",
             "modeExact": "Täpne",
             "modeLabel": "Režiim:",
-            "modeNonIdentical": "Mitteidentne"
+            "modeNonIdentical": "Mitteidentne",
+            "groupsCount": "Rühmad: {count}",
+            "duplicateFilesCount": "Duplikaatfailid: {count}",
+            "copiesCount": "{count} koopiat"
         },
         "diskUsage": {
             "title": "Kettakasutus",
@@ -4357,20 +4350,16 @@
             "totalItems": "Kokku: {size} üle {count} üksuse",
             "percentOfParent": "{percent}% ülemkaustast",
             "backToParent": "Tagasi ülemkausta",
-            "items": "üksust",
             "scanFailed": "Analüüs ebaõnnestus",
             "retry": "Proovi uuesti",
             "drillDown": "Klõpsake uurimiseks",
             "back": "Tagasi",
-            "total": "Kokku",
-            "across": "üle",
             "empty": "See kataloog on tühi",
             "hoverHint": "Hõljutage ploki kohal üksikasjades",
             "scanUnknownError": "Tundmatu viga kettakasutuse skannimisel"
         },
         "dependencies": {
             "title": "Sõltuvused",
-            "crates": "kraadid",
             "copy": "Kopeeri",
             "copied": "Kopeeritud!",
             "checkUpdates": "Kontrolli uuendusi",
@@ -4380,7 +4369,8 @@
             "latest": "Uusim",
             "status": "Olek",
             "footer": "Versioonid pärinevad crates.io API-st. Näidatud versioonid on lahendatud (Cargo.lock) versioonid.",
-            "copyTitle": "AeroFTP sõltuvuste kontroll"
+            "copyTitle": "AeroFTP sõltuvuste kontroll",
+            "cratesCount": "Crate'id: {count}"
         },
         "debug": {
             "tabs": {
@@ -4440,7 +4430,6 @@
                 "warning": "Hoiatus",
                 "info": "Info",
                 "debug": "Silumine",
-                "entries": "kirjet",
                 "resume": "Jätka",
                 "pause": "Peata",
                 "copyAll": "Kopeeri kõik",
@@ -4449,13 +4438,13 @@
                 "allSources": "Kõik allikad",
                 "sourceFilterTitle": "Filtreeri allika järgi",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "Kirjed: {count}"
             },
             "frontend": {
                 "reactMode": "React režiim",
                 "language": "Keel",
                 "localStorageKeys": "LocalStorage võtmed",
-                "keys": "võtmed",
                 "localStorageSize": "LocalStorage suurus",
                 "windowSize": "Akna suurus",
                 "devicePixelRatio": "Seadme pikslisuhe",
@@ -4464,7 +4453,8 @@
                 "light": "Hele",
                 "userAgent": "Kasutajaagent",
                 "localStorageKeysTitle": "LocalStorage võtmed",
-                "localStorageEntrySummary": "{size} baiti · {preview}"
+                "localStorageEntrySummary": "{size} baiti · {preview}",
+                "keysCount": "Võtmed: {count}"
             },
             "copyFileListToClipboard": "Kopeeri failide nimekiri lõikelauale",
             "filesCopied": "{count} failikirjet kopeeritud lõikelauale",
@@ -4486,12 +4476,12 @@
                 "i18nSweep": "i18n võtmete läbivaatus",
                 "ipcSpeed": "IPC kiiruse näidis",
                 "knownHosts": "known_hosts lugemine",
-                "passed": "läbitud",
                 "pluginIntegrity": "Plugina terviklikkus",
                 "providerSelftest": "Pakkuja enesetest (ainult lugemine)",
                 "runAll": "Käivita kõik",
                 "runOne": "Käivita see test",
-                "vaultRoundtrip": "Hoidla edasi-tagasi"
+                "vaultRoundtrip": "Hoidla edasi-tagasi",
+                "passedCount": "Läbitud: {passed}/{total}"
             },
             "bundle": {
                 "title": "Ekspordi diagnostikapakett (ZIP)"
@@ -4539,9 +4529,9 @@
         "activityPanel": {
             "awaitingCommands": "Käskude ootamine...",
             "badges": {
-                "active": "AKTIIVNE",
                 "live": "REAALAJAS",
-                "synced": "SÜNKRONISEERITUD"
+                "synced": "SÜNKRONISEERITUD",
+                "activeCount": "AKTIIVSED: {count}"
             },
             "clearLog": "Tühjenda logi",
             "close": "Sulge",
@@ -4565,7 +4555,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Filtreeri toiminguid",
-                "selected": "valitud"
+                "selectedCount": "Valitud: {count}"
             },
             "save": "Salvesta"
         },
@@ -4757,14 +4747,12 @@
                 "auto": "Automaatne",
                 "autoRefresh": "Automaatne värskendamine (3s)",
                 "browser": "Brauser",
-                "chars": "märki",
                 "copy": "Kopeeri lõikelauale",
                 "disableWrap": "Keela reamurdmine",
                 "enableWrap": "Luba reamurdmine",
                 "encoding": "Kodeering",
                 "errorLoading": "Viga sisu laadimisel",
                 "hex": "Hex",
-                "lines": "rida",
                 "loadFailed": "Tekstisisu laadimine ebaõnnestus",
                 "noContent": "Sisu pole saadaval",
                 "openBrowser": "Ava süsteemibrauseris",
@@ -4783,7 +4771,8 @@
                 "wordWrap": "Reamurdmine",
                 "zoomIn": "Suurenda",
                 "zoomOut": "Vähenda",
-                "htmlPreviewFrameTitle": "HTML-eelvaade"
+                "htmlPreviewFrameTitle": "HTML-eelvaade",
+                "stats": "Read: {lines} • märgid: {chars}"
             },
             "video": {
                 "exitFullscreen": "Välju täisekraanilt (F)",
@@ -4908,7 +4897,6 @@
             "pwdBatchCount": "Genereerimise arv",
             "pwdGenerate": "Genereeri",
             "pwdEntropy": "Entroopia",
-            "pwdBits": "bitti",
             "pwdWeak": "Nõrk",
             "pwdFair": "Mõistlik",
             "pwdGood": "Hea",
@@ -4959,7 +4947,8 @@
             "argon2DefaultsHint": "Vaikeväärtused: profiil, mida kasutavad AeroVault ja AeroCrypt (128 MiB, 4 iteratsiooni, 4 rada, 32-baidine väljund). Ülalolev sool on teie oma. Mälu kuni 2 GiB.",
             "argon2Derive": "Tuleta",
             "argon2Phc": "PHC-string",
-            "hashError": "Viga: {error}"
+            "hashError": "Viga: {error}",
+            "pwdBitsCount": "{count} bitti"
         },
         "dialog": {
             "deleteFile": "Kustuta \"{name}\"?",
@@ -5019,8 +5008,6 @@
             "vaultOnly": "Ainult hoidlas",
             "localOnly": "Ainult kohalik",
             "conflict": "Konflikt",
-            "conflicts": "konflikti",
-            "unchanged": "muutmata",
             "allToVault": "Kõik hoidlasse",
             "allToLocal": "Kõik kohalikuks",
             "keepNewer": "Säilita uuem",
@@ -5035,10 +5022,14 @@
             "applySync": "Rakenda sünkroniseerimine",
             "close": "Sulge",
             "allInSync": "Kõik failid on sünkroniseeritud",
-            "filesToVault": "fail(i) sünkroniseeritud hoidlasse",
-            "filesToLocal": "fail(i) ekstraheeritud kohalikuks",
-            "filesSkipped": "fail(i) vahele jäetud",
-            "errorsOccurred": "Esines mõningaid vigu"
+            "errorsOccurred": "Esines mõningaid vigu",
+            "vaultOnlyCount": "Ainult hoidlas: {count}",
+            "localOnlyCount": "Ainult lokaalsed: {count}",
+            "conflictsCount": "Konfliktid: {count}",
+            "unchangedCount": "Muutmata: {count}",
+            "filesToVaultCount": "Hoidlasse sünkroonitud failid: {count}",
+            "filesToLocalCount": "Kohalikku kausta lahti pakitud failid: {count}",
+            "filesSkippedCount": "Vahele jäetud failid: {count}"
         },
         "localTabs": {
             "closeAll": "Sulge kõik vahekaardid",
@@ -5263,7 +5254,6 @@
             "checkAll": "Kontrolli kõiki",
             "checkOne": "Kontrolli seda serverit",
             "checking": "Kontrollin...",
-            "checked": "kontrollitud",
             "healthy": "Korras",
             "degraded": "Halvenenud",
             "unreachable": "Kättesaamatu",
@@ -5278,7 +5268,11 @@
             "copied": "Copied\\!",
             "batchChecking": "Kontrollitakse {count} serverit, palun oodake...",
             "scoreLegend": "Tulemus 0-100, kõrgem on parem",
-            "scoreLegendDetail": "80+ tervis · 50-79 halvenenud · alla 50 probleemidega"
+            "scoreLegendDetail": "80+ tervis · 50-79 halvenenud · alla 50 probleemidega",
+            "checkedCount": "Kontrollitud: {count}",
+            "healthyCount": "Korras: {count}",
+            "degradedCount": "Halvenenud: {count}",
+            "unreachableCount": "Kättesaamatud: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5548,7 +5542,6 @@
                 "archived": "Arhiveeritud",
                 "trash": "Prügikast"
             },
-            "participants": "osalejad",
             "saving": "Salvestamine...",
             "saved": "Salvestatud",
             "saveNow": "Salvesta kohe",
@@ -5566,7 +5559,8 @@
                 "code": "Kood",
                 "richText": "Vormindatud tekst",
                 "checklist": "Kontrollnimekiri"
-            }
+            },
+            "participantsCount": "{count} osalejat"
         },
         "shareLinkModal": {
             "title": "Jagamislink",
@@ -6013,13 +6007,14 @@
             "moveToOtherPanel": "Liiguta teisele paneelile",
             "copiedToOtherPanel": "Kopeeritud teisele paneelile",
             "movedToOtherPanel": "Liigutatud teisele paneelile",
-            "itemsLower": "items",
             "resizePanels": "Resize panels",
             "copyHere": "Kopeeri {count} siia",
             "moveHere": "Teisalda {count} siia",
             "copyHereFromOtherPanelTooltip": "Kopeeri {count} valitut teisest paneelist sellesse paneeli (F5)",
             "moveHereFromOtherPanelTooltip": "Teisalda {count} valitut teisest paneelist sellesse paneeli (F6)",
-            "syncToOtherPanel": "Sünkroniseeri teisele paneelile (delta)"
+            "syncToOtherPanel": "Sünkroniseeri teisele paneelile (delta)",
+            "failedCount": "Ebaõnnestunud: {count}",
+            "skippedCount": "Vahele jäetud: {count}"
         },
         "compare": {
             "title": "Võrdle paneele",
@@ -6163,9 +6158,6 @@
             "bucket": "Kategooria",
             "count": "Arv",
             "action": "Toiming",
-            "delete": "kustuta",
-            "overwrite": "kirjuta üle",
-            "conflicts": "konflikt",
             "destructiveWarning": "See eelseade kustutab või kirjutab üle uuemad failid.",
             "confirmDestructive": "Olen hävitavad toimingud üle vaadanud ja soovin jätkata.",
             "executeHint": "Käivita seab valiku järjekorda ja saadab selle ühtse ülekande planeerija kaudu.",
@@ -6192,7 +6184,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "Baidid võrgus",
                 "savings": "Sääst",
-                "errorDetails": "viga/vigu, üksikasjad",
                 "errorPathsRequired": "Lähe ja sihtkoht on kohustuslikud",
                 "deltaStatus": "Delta-sünk",
                 "deltaAuto": "AUTO SEES",
@@ -6224,7 +6215,8 @@
                 "planned": "Kavandatud koopiad",
                 "resultDryRunOk": "Testkäivitus lõpetatud",
                 "resultDryRunPartial": "Testkäivitus lõpetatud vigadega",
-                "resultDryRunCancelled": "Testkäivitus tühistatud"
+                "resultDryRunCancelled": "Testkäivitus tühistatud",
+                "errorDetailsCount": "{count} viga, üksikasjad"
             },
             "launcherTemplates": "Mallid",
             "launcherMultiPath": "Mitu rada",
@@ -6328,7 +6320,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "Võrdlus loeb mõlemat kausta ja kõiki nende all olevaid kaustu. Suure puu puhul võib see veidi aega võtta ja saate selle peatada.",
             "progressDelta": "[delta]",
-            "progressCopy": "[koopia]"
+            "progressCopy": "[koopia]",
+            "deleteCount": "{count} kustutamiseks",
+            "overwriteCount": "{count} ülekirjutamiseks",
+            "conflictCount": "Konfliktid: {count}"
         },
         "accountLock": {
             "title": "Vali konto",

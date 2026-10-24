@@ -516,6 +516,13 @@
       "twin": "kitą",
       "reason": "Kita is the nominative heading for the Other section; kitą is the accusative case, which this heading does not use."
     },
+    "da\u001fduplicates.copiesCount\u001f{count} kopier": {
+      "locale": "da",
+      "key": "duplicates.copiesCount",
+      "folded": "kopier",
+      "twin": "kopiér",
+      "reason": "kopier is the plural noun (copies) after a count; kopiér is the imperative of the verb kopiere, used on Copy buttons."
+    },
     "es\u001fconnection.protonSwitch.intro\u001fLa CLI escribe My Files como /my-files y la API como /. Estas rutas guardadas se mueven con el perfil:": {
       "locale": "es",
       "key": "connection.protonSwitch.intro",

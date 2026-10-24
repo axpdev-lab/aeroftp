@@ -80,7 +80,8 @@
             "reset": "Repor",
             "saved": "Salvo",
             "saving": "A guardar...",
-            "creating": "A criar..."
+            "creating": "A criar...",
+            "minutesCount": "{count} min"
         },
         "connection": {
             "title": "Conectar ao Servidor",
@@ -159,7 +160,6 @@
             "saveChanges": "Salvar Alterações",
             "createAccount": "Criar conta",
             "docs": "Docs",
-            "minutes": "minutos",
             "localPathPlaceholder": "/home/usuário/projetos",
             "fourshared": {
                 "backToExistingAccount": "Voltar a conta existente",
@@ -407,7 +407,6 @@
             "path": "Caminho",
             "files": "arquivos",
             "folders": "pastas",
-            "items": "itens",
             "emptyFolder": "Esta pasta está vazia",
             "parentFolder": "Pasta pai",
             "newFolder": "Nova Pasta",
@@ -462,7 +461,10 @@
             "rightPanelMarker": "Painel direito",
             "chooseRightPanelFolder": "Escolher pasta do painel direito",
             "chooseLeftPanelFolder": "Escolher pasta do painel esquerdo",
-            "localRight": "Local (direita)"
+            "localRight": "Local (direita)",
+            "itemCount": "Itens: {count}",
+            "fileCount": "Arquivos: {count}",
+            "folderCount": "Pastas: {count}"
         },
         "contextMenu": {
             "askAeroAgent": "Perguntar ao AeroAgent...",
@@ -625,7 +627,6 @@
             "copyError": "Erro ao copiar",
             "copyQueueToClipboard": "Copiar fila para a área de transferência",
             "fail": "FALHA",
-            "pending": "Pendente",
             "remove": "Remover",
             "retry": "Tentar novamente",
             "stopAll": "Parar tudo",
@@ -690,7 +691,6 @@
                 "newTransfer": "Nova transferência",
                 "preparing": "Preparando a transferência…"
             },
-            "staged": "em fila",
             "start": "Iniciar",
             "startAll": "Iniciar tudo",
             "restored": "Restaurado",
@@ -761,7 +761,10 @@
                 "size": "Tamanho",
                 "source": "Origem",
                 "title": "Plano: {mode}"
-            }
+            },
+            "stagedCount": "Preparados: {count}",
+            "pendingCount": "Pendentes: {count}",
+            "failedCount": "{count} com falha"
         },
         "settings": {
             "title": "Configurações",
@@ -946,7 +949,6 @@
             "migrationSkip": "Pular por enquanto",
             "migrationFinish": "Concluir",
             "migrationStep": "Etapa {current} de {total}",
-            "duplicatesSkipped": "duplicatas ignoradas",
             "invalidPassword": "Senha inválida",
             "backup": "Backup",
             "visibleColumns": "Colunas Visíveis",
@@ -1053,11 +1055,6 @@
             "consumerSecret": "Segredo do Consumidor",
             "privacyRespect": "O AeroFTP protege a sua privacidade. Nenhum dado é recolhido, sem rastreamento, sem telemetria.",
             "keystoreEntries": "{count} entradas",
-            "serverCredentials": "credenciais do servidor",
-            "serverProfilesLabel": "perfis do servidor",
-            "aiKeysLabel": "chaves de IA",
-            "oauthTokensLabel": "tokens OAuth",
-            "configEntriesLabel": "entradas de configuração",
             "session": "Sessão",
             "aeroftpBackupFiles": "Arquivos de backup do AeroFTP",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1116,7 +1113,6 @@
             "selectServersToExport": "Selecionar servidores para exportar",
             "selectAll": "Selecionar tudo",
             "deselectAll": "Desmarcar tudo",
-            "selected": "selecionado",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "Se nenhum ícone for definido, o favicon ou icon.png do servidor será detectado automaticamente.",
             "protocolFilelu": "FileLu",
@@ -1279,7 +1275,6 @@
             "imagePreviewBgLight": "Claro",
             "imagePreviewBgCustom": "Personalizado",
             "showTransferProgress": "Mostrar a barra de progresso da transferência",
-            "similarToExisting": "semelhantes a um perfil existente",
             "aerocloudCompress": "Ativar a compressão (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: compressão + cifragem (o perfil tem encriptação)",
@@ -1354,7 +1349,16 @@
             "fontSystemInstallHint": "Requer instalação no sistema. O AeroFTP usa uma alternativa automaticamente se indisponível.",
             "fontSizeIndicatorLabel": "Fonte",
             "fontPresetDefault": "{font} (Padrão)",
-            "fontPresetSystemDefault": "Padrão do sistema"
+            "fontPresetSystemDefault": "Padrão do sistema",
+            "duplicatesSkippedCount": "Duplicados ignorados: {count}",
+            "similarToExistingCount": "Semelhantes a um perfil existente: {count}",
+            "bridgeSkippedCount": "Ignorados: {count}",
+            "selectedOfTotal": "Selecionados: {selected} / {total}",
+            "serverCredentialsCount": "Credenciais de servidor: {count}",
+            "serverProfilesCount": "Perfis de servidor: {count}",
+            "aiKeysCount": "Chaves de AI: {count}",
+            "oauthTokensCount": "Tokens OAuth: {count}",
+            "configEntriesCount": "Entradas de configuração: {count}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1449,7 +1453,6 @@
             "starting": "Iniciando...",
             "pending": "Pendente",
             "conflict": "Conflito",
-            "conflicts": "conflitos precisam de atenção",
             "error": "Erro de sincronização",
             "never": "Nunca",
             "justNow": "Agora mesmo",
@@ -1572,7 +1575,8 @@
             "countdownSoon": "Em breve...",
             "aerocloudEnabled": "AeroCloud ativado",
             "selectPairLocalFolder": "Selecionar pasta local para o par",
-            "secondsAgo": "há {count}s"
+            "secondsAgo": "há {count}s",
+            "conflictsCount": "Conflitos que exigem atenção: {count}"
         },
         "statusBar": {
             "connected": "Conectado",
@@ -2380,7 +2384,6 @@
         },
         "overwrite": {
             "title": "O ficheiro já existe",
-            "moreFiles": "mais ficheiro(s) na fila",
             "remote": "Remoto",
             "local": "Local",
             "sourceNewer": "A origem é mais recente",
@@ -2817,7 +2820,6 @@
                 "approveThis": "Aprovar esta chamada de ferramenta",
                 "confirm": "Confirmar",
                 "confirmDangerous": "Confirmar ação perigosa",
-                "pendingApproval": "aguardando aprovação",
                 "rejectAllCalls": "Rejeitar todas as chamadas de ferramentas",
                 "rejectExecution": "Rejeitar execução da ferramenta",
                 "toggleDetails": "Mostrar/ocultar detalhes",
@@ -3046,12 +3048,11 @@
                 "allowAll": "Permitir Todos",
                 "rejectAll": "Rejeitar Todos",
                 "pending": "aprovação pendente",
-                "toolCall": "chamada de ferramenta",
-                "toolCalls": "chamadas de ferramenta",
                 "running": "Executando...",
                 "done": "Concluído",
                 "failed": "Falhou",
-                "allowThis": "Permitir esta ferramenta"
+                "allowThis": "Permitir esta ferramenta",
+                "pendingApprovalCount": "Chamadas de ferramenta aguardando aprovação: {count}"
             },
             "diff": {
                 "title": "Prévia do Diff",
@@ -3351,7 +3352,6 @@
                 "add": "Adicionar",
                 "added": "Adicionado",
                 "all": "Todos",
-                "available": "disponíveis",
                 "browseProviders": "Explorar provedores",
                 "chinese": "Chinês",
                 "fast": "Inferência rápida",
@@ -3371,7 +3371,8 @@
                 "tools": "Ferramentas",
                 "vision": "Vision",
                 "bedrockDescription": "Modelos alojados na AWS com acesso por chave API regional. Adicione manualmente o seu model ID.",
-                "bedrockHighlight": "Endpoint regional da AWS"
+                "bedrockHighlight": "Endpoint regional da AWS",
+                "availableCount": "Disponíveis: {count}"
             },
             "history": {
                 "cancel": "Cancelar",
@@ -3726,12 +3727,12 @@
             "size": "Tamanho",
             "compressed": "Compactado",
             "actions": "Ações",
-            "files": "arquivos",
             "empty": "O arquivo está vazio",
             "extracting": "Extraindo",
             "preview": "Pré-visualizar",
             "extract": "Extrair",
-            "back": "Voltar"
+            "back": "Voltar",
+            "filesSummary": "Arquivos: {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "Adicionados {files} ficheiros em {dirs} diretórios",
@@ -3778,7 +3779,6 @@
             "filesAdded": "{count} arquivo(s) adicionado(s)",
             "folderName": "Nome da pasta",
             "itemDeleted": "Excluído {name}",
-            "items": "itens",
             "itemsDeleted": "{count} item(ns) excluído(s)",
             "lastOpened": "Última abertura",
             "modified": "Modificado",
@@ -3819,7 +3819,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - Criptografia forte",
-            "totalItems": "total",
             "unlock": "Desbloquear",
             "v1Standard": "AeroVault v1 (Padrão)",
             "v2Advanced": "AeroVault v2 (Segurança Avançada)",
@@ -3906,8 +3905,6 @@
             "extractAllHint": "Extrair todos os ficheiros do cofre para uma pasta",
             "extractedAll": "Extraídos {count} ficheiro(s) para {path}",
             "dropFilesHint": "Arraste arquivos ou pastas para aqui, ou use os botões abaixo",
-            "itemSingular": "item",
-            "itemPlural": "itens",
             "reportExported": "Relatório do cofre guardado em {path}",
             "reportCopied": "Relatório do cofre copiado para a área de transferência",
             "exportReportHint": "Exportar um relatório técnico completo: metadados do cofre, encriptação, correção de erros e lista completa de ficheiros",
@@ -3960,7 +3957,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Rápido",
             "securityAdvancedDescription": "Resistente a nonce · Nomes de arquivo criptografados · KDF de 128 MB",
             "securityParanoidDescription": "Cascata AES + ChaCha20 · Criptografia dupla",
-            "securityArchiveDescription": "Arquivo deduplicado · blocos zstd · v3"
+            "securityArchiveDescription": "Arquivo deduplicado · blocos zstd · v3",
+            "totalItemsCount": "{count} no total"
         },
         "cryptomator": {
             "title": "Cofre Cryptomator",
@@ -3973,7 +3971,6 @@
             "empty": "O diretório está vazio",
             "name": "Nome",
             "size": "Tamanho",
-            "items": "itens",
             "readOnly": "Modo somente leitura - criação de cofres disponível na v2.1",
             "openAsVault": "Abrir como Cofre Cryptomator",
             "decryptAndSave": "Descriptografar e salvar",
@@ -4006,8 +4003,6 @@
             "level": "Nível de Compactação",
             "password": "Senha (opcional, AES-256)",
             "passwordHint": "Deixe vazio para não criptografar",
-            "files": "arquivos",
-            "folders": "pastas",
             "compress": "Compactar",
             "store": "Armazenar (sem compactação)",
             "fast": "Rápido",
@@ -4249,8 +4244,6 @@
             "modified": "Modificado",
             "file": "Arquivo",
             "folder": "Pasta",
-            "files": "arquivos",
-            "folders": "pastas",
             "remote": "Remoto",
             "local": "Local",
             "linkTarget": "Destino do Link Simbólico",
@@ -4326,10 +4319,7 @@
             "deleted": "{count} arquivos duplicados excluídos",
             "scanFailed": "Falha na verificação",
             "retry": "Tentar Novamente",
-            "groups": "grupos",
-            "duplicateFiles": "arquivos duplicados",
             "wasted": "desperdiçados",
-            "copies": "cópias",
             "delete": "EXCLUIR",
             "skip": "IGNORAR",
             "deleteConfirm": "Tem certeza de que deseja excluir {count} arquivos duplicados?",
@@ -4349,7 +4339,10 @@
             "similarityDistance": "{similarity}, dist. {distance}",
             "modeExact": "Exato",
             "modeLabel": "Modo:",
-            "modeNonIdentical": "Não idêntico"
+            "modeNonIdentical": "Não idêntico",
+            "groupsCount": "Grupos: {count}",
+            "duplicateFilesCount": "Arquivos duplicados: {count}",
+            "copiesCount": "{count} cópias"
         },
         "diskUsage": {
             "title": "Uso de Disco",
@@ -4357,20 +4350,16 @@
             "totalItems": "Total: {size} em {count} itens",
             "percentOfParent": "{percent}% do diretório pai",
             "backToParent": "Voltar ao diretório pai",
-            "items": "itens",
             "scanFailed": "Falha na análise",
             "retry": "Tentar Novamente",
             "drillDown": "Clique para explorar",
             "back": "Voltar",
-            "total": "Total",
-            "across": "em",
             "empty": "Este diretório está vazio",
             "hoverHint": "Passe o mouse sobre um bloco para ver detalhes",
             "scanUnknownError": "Erro desconhecido ao analisar o uso do disco"
         },
         "dependencies": {
             "title": "Dependências",
-            "crates": "crates",
             "copy": "Copiar",
             "copied": "Copiado!",
             "checkUpdates": "Verificar Atualizações",
@@ -4380,7 +4369,8 @@
             "latest": "Mais Recente",
             "status": "Status",
             "footer": "Dados de versão da API crates.io. As versões mostradas são versões resolvidas (Cargo.lock).",
-            "copyTitle": "Verificação de Dependências AeroFTP"
+            "copyTitle": "Verificação de Dependências AeroFTP",
+            "cratesCount": "Crates: {count}"
         },
         "debug": {
             "tabs": {
@@ -4440,7 +4430,6 @@
                 "warning": "Aviso",
                 "info": "Informação",
                 "debug": "Depuração",
-                "entries": "entradas",
                 "resume": "Retomar",
                 "pause": "Pausar",
                 "copyAll": "Copiar tudo",
@@ -4449,13 +4438,13 @@
                 "allSources": "Todas as fontes",
                 "sourceFilterTitle": "Filtrar por fonte",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "Entradas: {count}"
             },
             "frontend": {
                 "reactMode": "Modo React",
                 "language": "Idioma",
                 "localStorageKeys": "Chaves do LocalStorage",
-                "keys": "chaves",
                 "localStorageSize": "Tamanho do LocalStorage",
                 "windowSize": "Tamanho da Janela",
                 "devicePixelRatio": "Proporção de Pixels do Dispositivo",
@@ -4464,7 +4453,8 @@
                 "light": "Claro",
                 "userAgent": "User Agent",
                 "localStorageKeysTitle": "Chaves do LocalStorage",
-                "localStorageEntrySummary": "{size} bytes · {preview}"
+                "localStorageEntrySummary": "{size} bytes · {preview}",
+                "keysCount": "Chaves: {count}"
             },
             "copyFileListToClipboard": "Copiar lista de ficheiros para a área de transferência",
             "filesCopied": "{count} entradas de ficheiros copiadas para a área de transferência",
@@ -4486,12 +4476,12 @@
                 "i18nSweep": "Varredura de chaves i18n",
                 "ipcSpeed": "Amostra de velocidade IPC",
                 "knownHosts": "leitura de known_hosts",
-                "passed": "aprovados",
                 "pluginIntegrity": "Integridade do plug-in",
                 "providerSelftest": "Autoteste do provedor (somente leitura)",
                 "runAll": "Executar tudo",
                 "runOne": "Executar este teste",
-                "vaultRoundtrip": "Ida e volta do cofre"
+                "vaultRoundtrip": "Ida e volta do cofre",
+                "passedCount": "Aprovados: {passed}/{total}"
             },
             "bundle": {
                 "title": "Exportar pacote de diagnóstico (ZIP)"
@@ -4539,9 +4529,9 @@
         "activityPanel": {
             "awaitingCommands": "Aguardando comandos...",
             "badges": {
-                "active": "ATIVO",
                 "live": "AO VIVO",
-                "synced": "SINCRONIZADO"
+                "synced": "SINCRONIZADO",
+                "activeCount": "ATIVOS: {count}"
             },
             "clearLog": "Limpar registro",
             "close": "Fechar",
@@ -4565,7 +4555,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Filtrar operações",
-                "selected": "selecionados"
+                "selectedCount": "Selecionados: {count}"
             },
             "save": "Salvar"
         },
@@ -4757,14 +4747,12 @@
                 "auto": "Auto",
                 "autoRefresh": "Atualização automática (3s)",
                 "browser": "Navegador",
-                "chars": "caracteres",
                 "copy": "Copiar para a área de transferência",
                 "disableWrap": "Desativar quebra de linha",
                 "enableWrap": "Ativar quebra de linha",
                 "encoding": "Codificação",
                 "errorLoading": "Erro ao carregar conteúdo",
                 "hex": "Hex",
-                "lines": "linhas",
                 "loadFailed": "Falha ao carregar conteúdo de texto",
                 "noContent": "Nenhum conteúdo disponível",
                 "openBrowser": "Abrir no navegador do sistema",
@@ -4783,7 +4771,8 @@
                 "wordWrap": "Quebra de linha",
                 "zoomIn": "Ampliar",
                 "zoomOut": "Reduzir",
-                "htmlPreviewFrameTitle": "Pré-visualização HTML"
+                "htmlPreviewFrameTitle": "Pré-visualização HTML",
+                "stats": "Linhas: {lines} • caracteres: {chars}"
             },
             "video": {
                 "exitFullscreen": "Sair da tela cheia (F)",
@@ -4908,7 +4897,6 @@
             "pwdBatchCount": "Quantidade a gerar",
             "pwdGenerate": "Gerar",
             "pwdEntropy": "Entropia",
-            "pwdBits": "bits",
             "pwdWeak": "Fraca",
             "pwdFair": "Razoável",
             "pwdGood": "Boa",
@@ -4959,7 +4947,8 @@
             "argon2DefaultsHint": "Padrões: o perfil que o AeroVault e o AeroCrypt usam (128 MiB, 4 iterações, 4 faixas, saída de 32 bytes). O sal acima é seu. Memória até 2 GiB.",
             "argon2Derive": "Derivar",
             "argon2Phc": "String PHC",
-            "hashError": "Erro: {error}"
+            "hashError": "Erro: {error}",
+            "pwdBitsCount": "{count} bits"
         },
         "dialog": {
             "deleteFile": "Eliminar \"{name}\"?",
@@ -5019,8 +5008,6 @@
             "vaultOnly": "Apenas no vault",
             "localOnly": "Apenas local",
             "conflict": "Conflito",
-            "conflicts": "conflitos",
-            "unchanged": "inalterados",
             "allToVault": "Tudo para o vault",
             "allToLocal": "Tudo para local",
             "keepNewer": "Manter mais recente",
@@ -5035,10 +5022,14 @@
             "applySync": "Aplicar sincronização",
             "close": "Fechar",
             "allInSync": "Todos os arquivos estão sincronizados",
-            "filesToVault": "arquivo(s) sincronizado(s) para o vault",
-            "filesToLocal": "arquivo(s) extraido(s) para local",
-            "filesSkipped": "arquivo(s) pulado(s)",
-            "errorsOccurred": "Ocorreram alguns erros"
+            "errorsOccurred": "Ocorreram alguns erros",
+            "vaultOnlyCount": "{count} apenas no vault",
+            "localOnlyCount": "{count} apenas local",
+            "conflictsCount": "Conflitos: {count}",
+            "unchangedCount": "Inalterados: {count}",
+            "filesToVaultCount": "Arquivos sincronizados com o vault: {count}",
+            "filesToLocalCount": "Arquivos extraídos para o local: {count}",
+            "filesSkippedCount": "Arquivos ignorados: {count}"
         },
         "localTabs": {
             "closeAll": "Fechar Todas as Abas",
@@ -5263,7 +5254,6 @@
             "checkAll": "Verificar todos",
             "checkOne": "Verificar este servidor",
             "checking": "Verificando...",
-            "checked": "verificado",
             "healthy": "Saudável",
             "degraded": "Degradado",
             "unreachable": "Inacessível",
@@ -5278,7 +5268,11 @@
             "copied": "Copied\\!",
             "batchChecking": "A verificar {count} servidores, aguarde...",
             "scoreLegend": "Pontuação 0-100, maior é melhor",
-            "scoreLegendDetail": "80+ saudável · 50-79 degradado · abaixo de 50 com problemas"
+            "scoreLegendDetail": "80+ saudável · 50-79 degradado · abaixo de 50 com problemas",
+            "checkedCount": "Verificados: {count}",
+            "healthyCount": "Saudáveis: {count}",
+            "degradedCount": "Degradados: {count}",
+            "unreachableCount": "Inacessíveis: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5548,7 +5542,6 @@
                 "archived": "Arquivadas",
                 "trash": "Lixeira"
             },
-            "participants": "participantes",
             "saving": "Salvando...",
             "saved": "Salvo",
             "saveNow": "Salvar agora",
@@ -5566,7 +5559,8 @@
                 "code": "Código",
                 "richText": "Texto formatado",
                 "checklist": "Lista de verificação"
-            }
+            },
+            "participantsCount": "{count} participantes"
         },
         "shareLinkModal": {
             "title": "Link de partilha",
@@ -6013,13 +6007,14 @@
             "moveToOtherPanel": "Mover para o outro painel",
             "copiedToOtherPanel": "Copiado para o outro painel",
             "movedToOtherPanel": "Movido para o outro painel",
-            "itemsLower": "itens",
             "resizePanels": "Redimensionar painéis",
             "copyHere": "Copiar {count} aqui",
             "moveHere": "Mover {count} aqui",
             "copyHereFromOtherPanelTooltip": "Copiar {count} selecionados do outro painel para este painel (F5)",
             "moveHereFromOtherPanelTooltip": "Mover {count} selecionados do outro painel para este painel (F6)",
-            "syncToOtherPanel": "Sincronizar com o outro painel (delta)"
+            "syncToOtherPanel": "Sincronizar com o outro painel (delta)",
+            "failedCount": "{count} com falha",
+            "skippedCount": "Ignorados: {count}"
         },
         "compare": {
             "title": "Comparar painéis",
@@ -6163,9 +6158,6 @@
             "bucket": "Categoria",
             "count": "Contagem",
             "action": "Ação",
-            "delete": "excluir",
-            "overwrite": "substituir",
-            "conflicts": "conflito",
             "destructiveWarning": "Este preset excluirá ou substituirá arquivos mais recentes.",
             "confirmDestructive": "Revi as ações destrutivas e desejo continuar.",
             "executeHint": "Executar coloca a seleção em fila e despacha pelo planejador de transferência unificado.",
@@ -6192,7 +6184,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "Bytes na rede",
                 "savings": "Poupança",
-                "errorDetails": "erro(s), detalhes",
                 "errorPathsRequired": "Origem e destino são obrigatórios",
                 "deltaStatus": "Sincr. delta",
                 "deltaAuto": "AUTO ATIVADO",
@@ -6224,7 +6215,8 @@
                 "planned": "Cópias previstas",
                 "resultDryRunOk": "Simulação concluída",
                 "resultDryRunPartial": "Simulação concluída com erros",
-                "resultDryRunCancelled": "Simulação cancelada"
+                "resultDryRunCancelled": "Simulação cancelada",
+                "errorDetailsCount": "Erros: {count}, detalhes"
             },
             "launcherTemplates": "Modelos",
             "launcherMultiPath": "Múltiplos caminhos",
@@ -6328,7 +6320,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "A comparação lê ambas as pastas e todas as pastas dentro delas. Numa árvore grande pode demorar um pouco, e pode pará-la.",
             "progressDelta": "[delta]",
-            "progressCopy": "[cópia]"
+            "progressCopy": "[cópia]",
+            "deleteCount": "{count} para excluir",
+            "overwriteCount": "{count} para substituir",
+            "conflictCount": "Conflitos: {count}"
         },
         "accountLock": {
             "title": "Escolha uma conta",

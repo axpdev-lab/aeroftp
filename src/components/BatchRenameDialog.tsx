@@ -231,7 +231,7 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
           <div className="flex items-center gap-2">
             <Replace size={18} className="text-blue-500" />
             <span className="font-medium text-gray-900 dark:text-white">
-              {t('batchRename.title') || 'Batch Rename'} - {files.length} {t('browser.files') || 'files'}
+              {t('batchRename.title') || 'Batch Rename'} - {t('browser.fileCount', { count: files.length })}
             </span>
             {isRemote && (
               <span className="px-1.5 py-0.5 text-[10px] bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 rounded">

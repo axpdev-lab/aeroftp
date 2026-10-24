@@ -528,7 +528,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                     shownRows={exportFilter.visible.length}
                     filtering={exportFilter.filtering}
                 >
-                    {unsupportedCount > 0 && ` (${unsupportedCount} ${t('settings.bridgeSkipped').toLowerCase()})`}
+                    {unsupportedCount > 0 && ` (${t('settings.bridgeSkippedCount', { count: unsupportedCount })})`}
                 </ServerChecklistSummary>
             </div>
             {meta?.secretPolicy !== 'metadata' && (

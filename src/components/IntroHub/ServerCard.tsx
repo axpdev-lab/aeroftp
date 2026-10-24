@@ -49,7 +49,7 @@ function StorageUsageBar({
     // against a duplicate profile that lacked options.manualTotalBytes.
     // Without this the card showed "X / ∞" while the StatusBar correctly
     // showed "X / 80 GB".
-    const filesSuffix = quota?.fileCount != null ? ` · ${quota.fileCount} ${t('browser.files')}` : '';
+    const filesSuffix = quota?.fileCount != null ? ` · ${t('browser.fileCount', { count: quota.fileCount })}` : '';
     const rawUsed = quota?.used && quota.used > 0 ? quota.used : 0;
     const rawTotal = quota?.total && quota.total > 0 ? quota.total : 0;
     const eff = resolveEffectiveQuota(rawUsed, rawTotal, manualTotal);

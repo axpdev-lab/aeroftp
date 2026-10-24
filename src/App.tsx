@@ -10922,8 +10922,8 @@ const App: React.FC = () => {
       // was moved and where it came from.
       const summary = okNames.length === 1
         ? okNames[0]
-        : `${okNames.length} ${t('aerofile.itemsLower') || 'items'}`;
-      const suffix = `${failed > 0 ? ` (${failed} failed)` : ''}${skipped > 0 ? ` (${skipped} skipped)` : ''}`;
+        : t('browser.itemCount', { count: okNames.length });
+      const suffix = `${failed > 0 ? ` (${t('aerofile.failedCount', { count: failed })})` : ''}${skipped > 0 ? ` (${t('aerofile.skippedCount', { count: skipped })})` : ''}`;
       const detail = sourceDir
         ? `${summary}: ${sourceDir} → ${targetDir}${suffix}`
         : `${summary} → ${targetDir}${suffix}`;
@@ -12303,7 +12303,7 @@ const App: React.FC = () => {
             }
           }
           if (!anyFailed && files.length > 0) {
-            notify.info(t('toast.copyCompleted'), files.length === 1 ? files[0].name : `${files.length} ${t('browser.files')}`);
+            notify.info(t('toast.copyCompleted'), files.length === 1 ? files[0].name : t('browser.fileCount', { count: files.length }));
           }
           loadRemoteFiles(undefined, true);
         }
@@ -14010,7 +14010,7 @@ const App: React.FC = () => {
       humanLog.logSuccess('BATCH_RENAME', { count: successCount, isRemote }, logId);
       notify.success(
         t('toast.batchRenameSuccess'),
-        `${successCount} ${t('browser.files')}`
+        t('browser.fileCount', { count: successCount })
       );
     } else {
       humanLog.logError('BATCH_RENAME', { count: successCount, failed: errorCount, isRemote }, logId);
@@ -15033,7 +15033,7 @@ const App: React.FC = () => {
           const merged = await mergeImportedServerProfiles(result.servers);
           notify.success(
             (t('settings.importSuccess') || 'Imported {count} servers').replace('{count}', String(merged.imported)),
-            merged.skipped > 0 ? `${merged.skipped} ${t('settings.duplicatesSkipped') || 'duplicates skipped'}` : undefined,
+            merged.skipped > 0 ? t('settings.duplicatesSkippedCount', { count: merged.skipped }) : undefined,
           );
         } catch (err) {
           const message = String(err);

@@ -80,7 +80,8 @@
             "reset": "გადატვირთვა",
             "saved": "შენახულია",
             "saving": "ინახება...",
-            "creating": "იქმნება..."
+            "creating": "იქმნება...",
+            "minutesCount": "{count} წთ"
         },
         "connection": {
             "title": "სერვერთან დაკავშირება",
@@ -159,7 +160,6 @@
             "saveChanges": "ცვლილებების შენახვა",
             "createAccount": "ანგარიშის შექმნა",
             "docs": "დოკუმენტები",
-            "minutes": "წუთი",
             "localPathPlaceholder": "/home/user/projects",
             "fourshared": {
                 "backToExistingAccount": "არსებულ ანგარიშზე დაბრუნება",
@@ -407,7 +407,6 @@
             "path": "გზა",
             "files": "ფაილები",
             "folders": "საქაღალდეები",
-            "items": "ელემენტები",
             "emptyFolder": "ეს საქაღალდე ცარიელია",
             "parentFolder": "მშობელი საქაღალდე",
             "newFolder": "ახალი საქაღალდე",
@@ -462,7 +461,10 @@
             "rightPanelMarker": "მარჯვენა პანელი",
             "chooseRightPanelFolder": "აირჩიეთ მარჯვენა პანელის საქაღალდე",
             "chooseLeftPanelFolder": "აირჩიეთ მარცხენა პანელის საქაღალდე",
-            "localRight": "ლოკალური (მარჯვნივ)"
+            "localRight": "ლოკალური (მარჯვნივ)",
+            "itemCount": "{count} ელემენტი",
+            "fileCount": "{count} ფაილი",
+            "folderCount": "{count} საქაღალდე"
         },
         "contextMenu": {
             "askAeroAgent": "ჰკითხე AeroAgent-ს...",
@@ -625,7 +627,6 @@
             "copyError": "კოპირების შეცდომა",
             "copyQueueToClipboard": "რიგის კოპირება ბუფერში",
             "fail": "შეცდომა",
-            "pending": "მოლოდინში",
             "remove": "წაშლა",
             "retry": "ხელახლა ცდა",
             "stopAll": "ყველას შეჩერება",
@@ -690,7 +691,6 @@
                 "newTransfer": "ახალი ტრანსფერი",
                 "preparing": "გადაცემის მომზადება…"
             },
-            "staged": "რიგში",
             "start": "დაწყება",
             "startAll": "ყველას დაწყება",
             "restored": "აღდგენილია",
@@ -761,7 +761,10 @@
                 "size": "ზომა",
                 "source": "წყარო",
                 "title": "გეგმა: {mode}"
-            }
+            },
+            "stagedCount": "მომზადებული: {count}",
+            "pendingCount": "მოლოდინში: {count}",
+            "failedCount": "ვერ მოხერხდა: {count}"
         },
         "settings": {
             "title": "პარამეტრები",
@@ -946,7 +949,6 @@
             "migrationSkip": "ახლა გამოტოვება",
             "migrationFinish": "დასრულება",
             "migrationStep": "ნაბიჯი {current} / {total}",
-            "duplicatesSkipped": "დუბლიკატები გამოტოვებულია",
             "invalidPassword": "არასწორი პაროლი",
             "backup": "ბექაპი",
             "visibleColumns": "ხილული სვეტები",
@@ -1053,11 +1055,6 @@
             "consumerSecret": "მომხმარებლის საიდუმლო",
             "privacyRespect": "AeroFTP იცავს თქვენს კონფიდენციალურობას. მონაცემები არ გროვდება, არანაირი თვალთვალი, არანაირი ტელემეტრია.",
             "keystoreEntries": "{count} ჩანაწერი",
-            "serverCredentials": "სერვერის რეკვიზიტები",
-            "serverProfilesLabel": "სერვერის პროფილი",
-            "aiKeysLabel": "AI გასაღებები",
-            "oauthTokensLabel": "OAuth ტოკენები",
-            "configEntriesLabel": "კონფიგურაციის ჩანაწერი",
             "session": "სესია",
             "aeroftpBackupFiles": "AeroFTP სარეზერვო ფაილები",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1116,7 +1113,6 @@
             "selectServersToExport": "აირჩიეთ სერვერები ექსპორტისთვის",
             "selectAll": "ყველას არჩევა",
             "deselectAll": "ყველას მოხსნა",
-            "selected": "არჩეული",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "თუ ხატულა არ არის დაყენებული, სერვერიდან favicon ან icon.png ავტომატურად განისაზღვრება.",
             "protocolFilelu": "FileLu",
@@ -1279,7 +1275,6 @@
             "imagePreviewBgLight": "ღია",
             "imagePreviewBgCustom": "მორგებული",
             "showTransferProgress": "ტრანსფერის მიმდინარეობის ზოლის ჩვენება",
-            "similarToExisting": "ჰგავს არსებულ პროფილს",
             "aerocloudCompress": "შეკუმშვის ჩართვა (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: შეკუმშვა + დაშიფვრა (პროფილს აქვს დაშიფვრა)",
@@ -1354,7 +1349,16 @@
             "fontSystemInstallHint": "საჭიროებს სისტემაში ინსტალაციას. თუ მიუწვდომელია, AeroFTP ავტომატურად გადადის სარეზერვო ვარიანტზე.",
             "fontSizeIndicatorLabel": "შრიფტი",
             "fontPresetDefault": "{font} (ნაგულისხმევი)",
-            "fontPresetSystemDefault": "სისტემის ნაგულისხმევი"
+            "fontPresetSystemDefault": "სისტემის ნაგულისხმევი",
+            "duplicatesSkippedCount": "გამოტოვებულია {count} დუბლიკატი",
+            "similarToExistingCount": "არსებული პროფილის მსგავსი: {count}",
+            "bridgeSkippedCount": "გამოტოვებულია: {count}",
+            "selectedOfTotal": "არჩეულია {selected} / {total}",
+            "serverCredentialsCount": "{count} სერვერის ავტორიზაციის მონაცემი",
+            "serverProfilesCount": "{count} სერვერის პროფილი",
+            "aiKeysCount": "{count} AI გასაღები",
+            "oauthTokensCount": "{count} OAuth ტოკენი",
+            "configEntriesCount": "{count} კონფიგურაციის ჩანაწერი"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1449,7 +1453,6 @@
             "starting": "იწყება...",
             "pending": "მოლოდინში",
             "conflict": "კონფლიქტი",
-            "conflicts": "კონფლიქტი მოითხოვს ყურადღებას",
             "error": "სინქრონიზაციის შეცდომა",
             "never": "არასდროს",
             "justNow": "ახლახან",
@@ -1572,7 +1575,8 @@
             "countdownSoon": "მალე...",
             "aerocloudEnabled": "AeroCloud ჩართულია",
             "selectPairLocalFolder": "აირჩიეთ ლოკალური საქაღალდე წყვილისთვის",
-            "secondsAgo": "{count} წმ წინ"
+            "secondsAgo": "{count} წმ წინ",
+            "conflictsCount": "{count} კონფლიქტი საჭიროებს ყურადღებას"
         },
         "statusBar": {
             "connected": "დაკავშირებული",
@@ -2380,7 +2384,6 @@
         },
         "overwrite": {
             "title": "ფაილი უკვე არსებობს",
-            "moreFiles": "კიდევ ფაილ(ებ)ი რიგში",
             "remote": "დისტანციური",
             "local": "ლოკალური",
             "sourceNewer": "წყარო უფრო ახალია",
@@ -2817,7 +2820,6 @@
                 "approveThis": "ამ ინსტრუმენტის დამტკიცება",
                 "confirm": "დადასტურება",
                 "confirmDangerous": "საშიში მოქმედების დადასტურება",
-                "pendingApproval": "დამტკიცების მოლოდინში",
                 "rejectAllCalls": "ყველა ინსტრუმენტის უარყოფა",
                 "rejectExecution": "ინსტრუმენტის შესრულების უარყოფა",
                 "toggleDetails": "დეტალების გადართვა",
@@ -3046,12 +3048,11 @@
                 "allowAll": "ყველას ნებართვა",
                 "rejectAll": "ყველას უარყოფა",
                 "pending": "ნებართვას ელოდება",
-                "toolCall": "ინსტრუმენტის გამოძახება",
-                "toolCalls": "ინსტრუმენტის გამოძახებები",
                 "running": "შესრულება...",
                 "done": "დასრულდა",
                 "failed": "ვერ შესრულდა",
-                "allowThis": "ამ ინსტრუმენტის ნებართვა"
+                "allowThis": "ამ ინსტრუმენტის ნებართვა",
+                "pendingApprovalCount": "{count} ხელსაწყოს გამოძახება ელოდება დამტკიცებას"
             },
             "diff": {
                 "title": "დიფის პრევიუ",
@@ -3351,7 +3352,6 @@
                 "add": "დამატება",
                 "added": "დამატებულია",
                 "all": "ყველა",
-                "available": "ხელმისაწვდომი",
                 "browseProviders": "პროვაიდერების დათვალიერება",
                 "chinese": "ჩინური",
                 "fast": "სწრაფი ინფერენცია",
@@ -3371,7 +3371,8 @@
                 "tools": "Tools",
                 "vision": "Vision",
                 "bedrockDescription": "AWS-ზე განთავსებული მოდელები რეგიონული API გასაღებით წვდომით. ხელით დაამატეთ თქვენი model ID.",
-                "bedrockHighlight": "AWS-ის რეგიონული საბოლოო წერტილი"
+                "bedrockHighlight": "AWS-ის რეგიონული საბოლოო წერტილი",
+                "availableCount": "ხელმისაწვდომია {count}"
             },
             "history": {
                 "cancel": "გაუქმება",
@@ -3726,12 +3727,12 @@
             "size": "ზომა",
             "compressed": "შეკუმშული",
             "actions": "ქმედებები",
-            "files": "ფაილები",
             "empty": "არქივი ცარიელია",
             "extracting": "ამოღება",
             "preview": "გადახედვა",
             "extract": "ამოღება",
-            "back": "უკან"
+            "back": "უკან",
+            "filesSummary": "{count} ფაილი, {size}"
         },
         "vault": {
             "addDirectorySuccess": "დამატებულია {files} ფაილი {dirs} დირექტორიაში",
@@ -3778,7 +3779,6 @@
             "filesAdded": "{count} ფაილი დაემატა",
             "folderName": "საქაღალდის სახელი",
             "itemDeleted": "{name} წაიშალა",
-            "items": "ელემენტები",
             "itemsDeleted": "{count} ელემენტი წაიშალა",
             "lastOpened": "ბოლოს გახსნილი",
             "modified": "შეცვლილია",
@@ -3819,7 +3819,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - ძლიერი დაშიფვრა",
-            "totalItems": "სულ",
             "unlock": "განბლოკვა",
             "v1Standard": "AeroVault v1 (სტანდარტი)",
             "v2Advanced": "AeroVault v2 (გაფართოებული უსაფრთხოება)",
@@ -3906,8 +3905,6 @@
             "extractAllHint": "სეიფის ყველა ფაილის ამოღება საქაღალდეში",
             "extractedAll": "ამოღებულია {count} ფაილი {path}-ში",
             "dropFilesHint": "გადმოიტანეთ ფაილები ან საქაღალდეები აქ, ან გამოიყენეთ ქვემოთ მოცემული ღილაკები",
-            "itemSingular": "ერთეული",
-            "itemPlural": "ერთეული",
             "reportExported": "საცავის ანგარიში შენახულია მისამართზე {path}",
             "reportCopied": "საცავის ანგარიში დაკოპირდა ბუფერში",
             "exportReportHint": "სრული ტექნიკური ანგარიშის ექსპორტი: საცავის მეტამონაცემები, დაშიფვრა, შეცდომების გასწორება და ფაილების სრული სია",
@@ -3960,7 +3957,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · სწრაფი",
             "securityAdvancedDescription": "Nonce-მდგრადი · დაშიფრული ფაილის სახელები · 128 MB KDF",
             "securityParanoidDescription": "AES + ChaCha20 კასკადი · ორმაგი დაშიფვრა",
-            "securityArchiveDescription": "დედუპლიცირებული არქივი · zstd ნაწილები · v3"
+            "securityArchiveDescription": "დედუპლიცირებული არქივი · zstd ნაწილები · v3",
+            "totalItemsCount": "სულ {count}"
         },
         "cryptomator": {
             "title": "Cryptomator საცავი",
@@ -3973,7 +3971,6 @@
             "empty": "დირექტორია ცარიელია",
             "name": "სახელი",
             "size": "ზომა",
-            "items": "ელემენტები",
             "readOnly": "მხოლოდ-კითხვის რეჟიმი - საცავის შექმნა v2.1-ში დაემატება",
             "openAsVault": "Cryptomator საცავად გახსნა",
             "decryptAndSave": "გაშიფვრა და შენახვა",
@@ -4006,8 +4003,6 @@
             "level": "შეკუმშვის დონე",
             "password": "პაროლი (სურვილისამებრ, AES-256)",
             "passwordHint": "დაშიფვრის გარეშე დატოვეთ ცარიელი",
-            "files": "ფაილები",
-            "folders": "საქაღალდეები",
             "compress": "შეკუმშვა",
             "store": "შენახვა (შეკუმშვის გარეშე)",
             "fast": "სწრაფი",
@@ -4249,8 +4244,6 @@
             "modified": "შეიცვალა",
             "file": "ფაილი",
             "folder": "საქაღალდე",
-            "files": "ფაილები",
-            "folders": "საქაღალდეები",
             "remote": "დაშორებული",
             "local": "ადგილობრივი",
             "linkTarget": "ბმულების სამიზნე",
@@ -4326,10 +4319,7 @@
             "deleted": "{count} დუბლიკატი ფაილი წაიშალა",
             "scanFailed": "სკანირება ვერ მოხერხდა",
             "retry": "ცდა ხელახლა",
-            "groups": "ჯგუფი",
-            "duplicateFiles": "დუბლიკატი ფაილი",
             "wasted": "გაფლანგული",
-            "copies": "ასლი",
             "delete": "წაშლა",
             "skip": "გამოტოვება",
             "deleteConfirm": "დარწმუნებული ხართ, რომ გსურთ {count} დუბლიკატი ფაილის წაშლა?",
@@ -4349,7 +4339,10 @@
             "similarityDistance": "{similarity}, მანძ. {distance}",
             "modeExact": "ზუსტი",
             "modeLabel": "რეჟიმი:",
-            "modeNonIdentical": "არაიდენტური"
+            "modeNonIdentical": "არაიდენტური",
+            "groupsCount": "{count} ჯგუფი",
+            "duplicateFilesCount": "{count} დუბლიკატი ფაილი",
+            "copiesCount": "{count} ასლი"
         },
         "diskUsage": {
             "title": "დისკის გამოყენება",
@@ -4357,20 +4350,16 @@
             "totalItems": "სულ: {size} {count} ელემენტში",
             "percentOfParent": "{percent}% მშობლის",
             "backToParent": "დაბრუნება მშობელზე",
-            "items": "ელემენტი",
             "scanFailed": "ანალიზი ვერ მოხერხდა",
             "retry": "ცდა ხელახლა",
             "drillDown": "დააჭირეთ ჩასაღრმავებლად",
             "back": "უკან",
-            "total": "სულ",
-            "across": "გასწვრივ",
             "empty": "დირექტორია ცარიელია",
             "hoverHint": "მიიტანეთ მაუსი ბლოკზე დეტალების სანახავად",
             "scanUnknownError": "უცნობი შეცდომა დისკის გამოყენების სკანირებისას"
         },
         "dependencies": {
             "title": "დამოკიდებულებები",
-            "crates": "crates",
             "copy": "კოპირება",
             "copied": "კოპირებულია!",
             "checkUpdates": "განახლებების შემოწმება",
@@ -4380,7 +4369,8 @@
             "latest": "უახლესი",
             "status": "სტატუსი",
             "footer": "ვერსიის მონაცემები crates.io API-დან. ნაჩვენები ვერსიები არის გადაწყვეტილი (Cargo.lock) ვერსიები.",
-            "copyTitle": "AeroFTP-ის დამოკიდებულებების შემოწმება"
+            "copyTitle": "AeroFTP-ის დამოკიდებულებების შემოწმება",
+            "cratesCount": "{count} crate"
         },
         "debug": {
             "tabs": {
@@ -4440,7 +4430,6 @@
                 "warning": "გაფრთხილება",
                 "info": "ინფო",
                 "debug": "Debug",
-                "entries": "ჩანაწერი",
                 "resume": "გაგრძელება",
                 "pause": "დაპაუზება",
                 "copyAll": "ყველას კოპირება",
@@ -4449,13 +4438,13 @@
                 "allSources": "ყველა წყარო",
                 "sourceFilterTitle": "გაფილტვრა წყაროს მიხედვით",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "ჩანაწერები: {count}"
             },
             "frontend": {
                 "reactMode": "React რეჟიმი",
                 "language": "ენა",
                 "localStorageKeys": "LocalStorage გასაღებები",
-                "keys": "გასაღები",
                 "localStorageSize": "LocalStorage ზომა",
                 "windowSize": "ფანჯრის ზომა",
                 "devicePixelRatio": "მოწყობილობის პიქსელების თანაფარდობა",
@@ -4464,7 +4453,8 @@
                 "light": "ღია",
                 "userAgent": "User Agent",
                 "localStorageKeysTitle": "LocalStorage გასაღებები",
-                "localStorageEntrySummary": "{size} ბაიტი · {preview}"
+                "localStorageEntrySummary": "{size} ბაიტი · {preview}",
+                "keysCount": "{count} გასაღები"
             },
             "copyFileListToClipboard": "ფაილების სიის clipboard-ში კოპირება",
             "filesCopied": "{count} ფაილის ჩანაწერი დაკოპირდა ბუფერში",
@@ -4486,12 +4476,12 @@
                 "i18nSweep": "i18n გასაღებების სკანირება",
                 "ipcSpeed": "IPC სიჩქარის ნიმუში",
                 "knownHosts": "known_hosts წაკითხვა",
-                "passed": "გავიდა",
                 "pluginIntegrity": "მოდულის მთლიანობა",
                 "providerSelftest": "მომწოდებლის თვითტესტი (მხოლოდ წაკითხვა)",
                 "runAll": "ყველას გაშვება",
                 "runOne": "ამ ტესტის გაშვება",
-                "vaultRoundtrip": "სეიფის მრგვალი მოგზაურობა"
+                "vaultRoundtrip": "სეიფის მრგვალი მოგზაურობა",
+                "passedCount": "გავიდა: {passed}/{total}"
             },
             "bundle": {
                 "title": "დიაგნოსტიკური პაკეტის ექსპორტი (ZIP)"
@@ -4539,9 +4529,9 @@
         "activityPanel": {
             "awaitingCommands": "ბრძანებების მოლოდინში...",
             "badges": {
-                "active": "აქტიური",
                 "live": "პირდაპირ",
-                "synced": "სინქრონიზებული"
+                "synced": "სინქრონიზებული",
+                "activeCount": "აქტიური: {count}"
             },
             "clearLog": "ჟურნალის გასუფთავება",
             "close": "დახურვა",
@@ -4565,7 +4555,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "ოპერაციების ფილტრი",
-                "selected": "არჩეული"
+                "selectedCount": "არჩეულია {count}"
             },
             "save": "შენახვა"
         },
@@ -4757,14 +4747,12 @@
                 "auto": "ავტო",
                 "autoRefresh": "ავტო-განახლება (3s)",
                 "browser": "ბრაუზერი",
-                "chars": "სიმბოლო",
                 "copy": "ბუფერში კოპირება",
                 "disableWrap": "სიტყვების გადატანის გამორთვა",
                 "enableWrap": "სიტყვების გადატანის ჩართვა",
                 "encoding": "კოდირება",
                 "errorLoading": "კონტენტის ჩატვირთვის შეცდომა",
                 "hex": "თექვსმეტობითი",
-                "lines": "ხაზი",
                 "loadFailed": "ტექსტის ჩატვირთვა ვერ მოხერხდა",
                 "noContent": "კონტენტი არ არის ხელმისაწვდომი",
                 "openBrowser": "სისტემურ ბრაუზერში გახსნა",
@@ -4783,7 +4771,8 @@
                 "wordWrap": "სიტყვების გადატანა",
                 "zoomIn": "გადიდება",
                 "zoomOut": "შემცირება",
-                "htmlPreviewFrameTitle": "HTML გადახედვა"
+                "htmlPreviewFrameTitle": "HTML გადახედვა",
+                "stats": "{lines} ხაზი • {chars} სიმბოლო"
             },
             "video": {
                 "exitFullscreen": "სრული ეკრანიდან გასვლა (F)",
@@ -4908,7 +4897,6 @@
             "pwdBatchCount": "შექმნის რაოდენობა",
             "pwdGenerate": "შექმნა",
             "pwdEntropy": "ენტროპია",
-            "pwdBits": "ბიტი",
             "pwdWeak": "სუსტი",
             "pwdFair": "საშუალო",
             "pwdGood": "კარგი",
@@ -4959,7 +4947,8 @@
             "argon2DefaultsHint": "ნაგულისხმევი: პროფილი, რომელსაც იყენებენ AeroVault და AeroCrypt (128 MiB, 4 იტერაცია, 4 ზოლი, 32-ბაიტიანი გამომავალი). ზემოთა მარილი თქვენია. მეხსიერება 2 GiB-მდე.",
             "argon2Derive": "გამოყვანა",
             "argon2Phc": "PHC სტრიქონი",
-            "hashError": "შეცდომა: {error}"
+            "hashError": "შეცდომა: {error}",
+            "pwdBitsCount": "{count} ბიტი"
         },
         "dialog": {
             "deleteFile": "წაიშალოს \"{name}\"?",
@@ -5019,8 +5008,6 @@
             "vaultOnly": "მხოლოდ საცავში",
             "localOnly": "მხოლოდ ლოკალური",
             "conflict": "კონფლიქტი",
-            "conflicts": "კონფლიქტები",
-            "unchanged": "უცვლელი",
             "allToVault": "ყველა საცავში",
             "allToLocal": "ყველა ლოკალურში",
             "keepNewer": "უახლესის შენარჩუნება",
@@ -5035,10 +5022,14 @@
             "applySync": "სინქრონიზაციის გამოყენება",
             "close": "დახურვა",
             "allInSync": "ყველა ფაილი სინქრონიზებულია",
-            "filesToVault": "ფაილი სინქრონიზებულია საცავში",
-            "filesToLocal": "ფაილი ამოღებულია ლოკალურში",
-            "filesSkipped": "ფაილი გამოტოვებულია",
-            "errorsOccurred": "ზოგიერთი შეცდომა მოხდა"
+            "errorsOccurred": "ზოგიერთი შეცდომა მოხდა",
+            "vaultOnlyCount": "მხოლოდ საცავში: {count}",
+            "localOnlyCount": "მხოლოდ ლოკალური: {count}",
+            "conflictsCount": "{count} კონფლიქტი",
+            "unchangedCount": "უცვლელი: {count}",
+            "filesToVaultCount": "{count} ფაილი სინქრონიზდა საცავში",
+            "filesToLocalCount": "{count} ფაილი ამოღებულია ლოკალურად",
+            "filesSkippedCount": "{count} ფაილი გამოტოვებულია"
         },
         "localTabs": {
             "closeAll": "ყველა ჩანართის დახურვა",
@@ -5263,7 +5254,6 @@
             "checkAll": "ყველას შემოწმება",
             "checkOne": "ამ სერვერის შემოწმება",
             "checking": "მოწმება...",
-            "checked": "შემოწმებულია",
             "healthy": "გამართული",
             "degraded": "გაუარესებული",
             "unreachable": "მიუწვდომელი",
@@ -5278,7 +5268,11 @@
             "copied": "Copied\\!",
             "batchChecking": "მოწმდება {count} სერვერი, გთხოვთ დაიცადოთ...",
             "scoreLegend": "ქულა 0-100, მაღალი უკეთესია",
-            "scoreLegendDetail": "80+ ჯანსაღი · 50-79 დეგრადირებული · 50-ზე ქვემოთ პრობლემები"
+            "scoreLegendDetail": "80+ ჯანსაღი · 50-79 დეგრადირებული · 50-ზე ქვემოთ პრობლემები",
+            "checkedCount": "შემოწმებულია {count}",
+            "healthyCount": "გამართული: {count}",
+            "degradedCount": "გაუარესებული: {count}",
+            "unreachableCount": "მიუწვდომელი: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5548,7 +5542,6 @@
                 "archived": "დაარქივებული",
                 "trash": "ნაგავი"
             },
-            "participants": "მონაწილეები",
             "saving": "ინახება...",
             "saved": "შენახულია",
             "saveNow": "ახლავე შენახვა",
@@ -5566,7 +5559,8 @@
                 "code": "კოდი",
                 "richText": "ფორმატირებული ტექსტი",
                 "checklist": "საკონტროლო სია"
-            }
+            },
+            "participantsCount": "{count} მონაწილე"
         },
         "shareLinkModal": {
             "title": "გაზიარების ბმული",
@@ -6013,13 +6007,14 @@
             "moveToOtherPanel": "გადატანა მეორე პანელში",
             "copiedToOtherPanel": "დაკოპირდა მეორე პანელში",
             "movedToOtherPanel": "გადატანილია მეორე პანელში",
-            "itemsLower": "items",
             "resizePanels": "Resize panels",
             "copyHere": "{count}-ის კოპირება აქ",
             "moveHere": "{count}-ის გადატანა აქ",
             "copyHereFromOtherPanelTooltip": "მეორე პანელიდან არჩეული {count}-ის კოპირება ამ პანელში (F5)",
             "moveHereFromOtherPanelTooltip": "მეორე პანელიდან არჩეული {count}-ის გადატანა ამ პანელში (F6)",
-            "syncToOtherPanel": "სინქრონიზაცია მეორე პანელთან (delta)"
+            "syncToOtherPanel": "სინქრონიზაცია მეორე პანელთან (delta)",
+            "failedCount": "ვერ შესრულდა: {count}",
+            "skippedCount": "გამოტოვებულია: {count}"
         },
         "compare": {
             "title": "პანელების შედარება",
@@ -6163,9 +6158,6 @@
             "bucket": "კატეგორია",
             "count": "რაოდენობა",
             "action": "მოქმედება",
-            "delete": "წაშლა",
-            "overwrite": "გადაწერა",
-            "conflicts": "კონფლიქტი",
             "destructiveWarning": "ეს პრესეტი წაშლის ან გადაწერს უფრო ახალ ფაილებს.",
             "confirmDestructive": "გადავამოწმე დესტრუქციული მოქმედებები და მინდა გაგრძელება.",
             "executeHint": "შესრულება ამზადებს არჩევანს და გასცემს ერთიანი გადაცემის დამგეგმავის მეშვეობით.",
@@ -6192,7 +6184,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "ბაიტი ქსელში",
                 "savings": "დაზოგვა",
-                "errorDetails": "შეცდომა(ები), დეტალები",
                 "errorPathsRequired": "წყარო და დანიშნულება სავალდებულოა",
                 "deltaStatus": "დელტა სინქრონიზაცია",
                 "deltaAuto": "ავტო ჩართული",
@@ -6224,7 +6215,8 @@
                 "planned": "დაგეგმილი ასლები",
                 "resultDryRunOk": "სატესტო გაშვება დასრულდა",
                 "resultDryRunPartial": "სატესტო გაშვება დასრულდა შეცდომებით",
-                "resultDryRunCancelled": "სატესტო გაშვება გაუქმდა"
+                "resultDryRunCancelled": "სატესტო გაშვება გაუქმდა",
+                "errorDetailsCount": "{count} შეცდომა, დეტალები"
             },
             "launcherTemplates": "შაბლონები",
             "launcherMultiPath": "მრავალი გზა",
@@ -6328,7 +6320,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "შედარება კითხულობს ორივე საქაღალდეს და მათ ქვეშ არსებულ ყველა საქაღალდეს. დიდი ხის შემთხვევაში ამას გარკვეული დრო შეიძლება დასჭირდეს და შეგიძლიათ შეაჩეროთ.",
             "progressDelta": "[დელტა]",
-            "progressCopy": "[ასლი]"
+            "progressCopy": "[ასლი]",
+            "deleteCount": "წასაშლელია {count}",
+            "overwriteCount": "გადასაწერია {count}",
+            "conflictCount": "{count} კონფლიქტი"
         },
         "accountLock": {
             "title": "აირჩიეთ ანგარიში",

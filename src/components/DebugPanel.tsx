@@ -1093,7 +1093,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                                     <option value="rust">{t('debug.logs.sourceRust')}</option>
                                     <option value="js">{t('debug.logs.sourceJs')}</option>
                                 </select>
-                                <span className="text-gray-400 text-[10px]">{logs.length} {t('debug.logs.entries')}</span>
+                                <span className="text-gray-400 text-[10px]">{t('debug.logs.entriesCount', { count: logs.length })}</span>
                             </div>
                             <div className="flex items-center gap-1">
                                 <button onClick={() => setLogPaused(!logPaused)} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500" title={logPaused ? t('debug.logs.resume') : t('debug.logs.pause')}>
@@ -1142,7 +1142,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
                             <InfoRow label={t('debug.frontend.reactMode')} value={React.version ? `React ${React.version}` : 'Unknown'} mono />
                             <InfoRow label={t('debug.frontend.language')} value={document.documentElement.lang || navigator.language} mono />
-                            <InfoRow label={t('debug.frontend.localStorageKeys')} value={`${localStorage.length} ${t('debug.frontend.keys')}`} mono />
+                            <InfoRow label={t('debug.frontend.localStorageKeys')} value={t('debug.frontend.keysCount', { count: localStorage.length })} mono />
                             <InfoRow label={t('debug.frontend.localStorageSize')} value={`${localStorageSize} KB`} mono />
                             <InfoRow label={t('debug.frontend.windowSize')} value={`${window.innerWidth} x ${window.innerHeight}`} mono />
                             <InfoRow label={t('debug.frontend.devicePixelRatio')} value={`${window.devicePixelRatio}x`} mono />
@@ -1192,7 +1192,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({
                                 </button>
                             </div>
                             <span className="text-[10px] text-gray-400">
-                                {Object.values(testResults).filter(r => r.status === 'pass').length}/{TEST_CATALOG.length} {t('debug.tests.passed')}
+                                {t('debug.tests.passedCount', { passed: Object.values(testResults).filter(r => r.status === 'pass').length, total: TEST_CATALOG.length })}
                             </span>
                         </div>
                         <div className="flex-1 overflow-y-auto bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">

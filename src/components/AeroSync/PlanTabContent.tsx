@@ -929,11 +929,11 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                                 {t('aerosync.destructiveWarning') || 'This preset will delete or overwrite newer files.'}
                             </p>
                             <p className="text-[11px] text-amber-800 dark:text-amber-200/90">
-                                {plan.totals.deleteRight + plan.totals.deleteLeft} {t('aerosync.delete') || 'delete'}
+                                {t('aerosync.deleteCount', { count: plan.totals.deleteRight + plan.totals.deleteLeft })}
                                 <span className="mx-1">&middot;</span>
-                                {plan.totals.overwriteRight + plan.totals.overwriteLeft} {t('aerosync.overwrite') || 'overwrite'}
+                                {t('aerosync.overwriteCount', { count: plan.totals.overwriteRight + plan.totals.overwriteLeft })}
                                 <span className="mx-1">&middot;</span>
-                                {plan.totals.conflicts} {t('aerosync.conflicts') || 'conflict'}
+                                {t('aerosync.conflictCount', { count: plan.totals.conflicts })}
                             </p>
                             <label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-[11px] font-medium">
                                 <input

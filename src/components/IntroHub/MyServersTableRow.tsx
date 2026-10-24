@@ -242,7 +242,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
             toneText: TONE_TEXT_CLASS[tone],
         };
     })();
-    const filesSuffix = q?.fileCount != null ? ` · ${q.fileCount} ${t('browser.files')}` : '';
+    const filesSuffix = q?.fileCount != null ? ` · ${t('browser.fileCount', { count: q.fileCount })}` : '';
     const versioningBytes = q?.versioningBytes && q.versioningBytes > 0 ? q.versioningBytes : 0;
     const versioningTitle = versioningBytes > 0
         ? `\n${t('introHub.storageVersioning', { size: formatBytes(versioningBytes) })}`

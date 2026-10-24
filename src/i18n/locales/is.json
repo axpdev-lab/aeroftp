@@ -80,7 +80,8 @@
             "reset": "Endurstilla",
             "saved": "Vistað",
             "saving": "Vistar...",
-            "creating": "Verið að búa til..."
+            "creating": "Verið að búa til...",
+            "minutesCount": "{count} mín."
         },
         "connection": {
             "title": "Tengjast þjóni",
@@ -159,7 +160,6 @@
             "saveChanges": "Vista breytingar",
             "createAccount": "Búa til aðgang",
             "docs": "Skjöl",
-            "minutes": "mínútur",
             "localPathPlaceholder": "/home/user/projects",
             "fourshared": {
                 "backToExistingAccount": "Til baka i fyrirliggjandi reikning",
@@ -407,7 +407,6 @@
             "path": "Slóð",
             "files": "skrár",
             "folders": "möppur",
-            "items": "atriði",
             "emptyFolder": "Þessi mappa er tóm",
             "parentFolder": "Yfirmappa",
             "newFolder": "Ný mappa",
@@ -462,7 +461,10 @@
             "rightPanelMarker": "Hægra spjald",
             "chooseRightPanelFolder": "Veldu möppu hægri glugga",
             "chooseLeftPanelFolder": "Veldu möppu vinstri glugga",
-            "localRight": "Staðbundið (hægri)"
+            "localRight": "Staðbundið (hægri)",
+            "itemCount": "{count} atriði",
+            "fileCount": "Skrár: {count}",
+            "folderCount": "Möppur: {count}"
         },
         "contextMenu": {
             "askAeroAgent": "Spyrja AeroAgent...",
@@ -625,7 +627,6 @@
             "copyError": "Afritunarvilla",
             "copyQueueToClipboard": "Afrita biðröð á klippiborð",
             "fail": "MISTÓKST",
-            "pending": "Í bið",
             "remove": "Fjarlægja",
             "retry": "Reyna aftur",
             "stopAll": "Stöðva allt",
@@ -690,7 +691,6 @@
                 "newTransfer": "Nýr flutningur",
                 "preparing": "Undirbý flutning…"
             },
-            "staged": "í biðröð",
             "start": "Byrja",
             "startAll": "Byrja allt",
             "restored": "Endurheimt",
@@ -761,7 +761,10 @@
                 "size": "Stærð",
                 "source": "Uppruni",
                 "title": "Áætlun: {mode}"
-            }
+            },
+            "stagedCount": "Undirbúið: {count}",
+            "pendingCount": "Bíður: {count}",
+            "failedCount": "Mistókst: {count}"
         },
         "settings": {
             "title": "Stillingar",
@@ -946,7 +949,6 @@
             "migrationSkip": "Sleppa í bili",
             "migrationFinish": "Ljúka",
             "migrationStep": "Skref {current} af {total}",
-            "duplicatesSkipped": "tvíritum sleppt",
             "invalidPassword": "Ógilt lykilorð",
             "backup": "Öryggisafrit",
             "visibleColumns": "Sýnilegar dálkar",
@@ -1053,11 +1055,6 @@
             "consumerSecret": "Neytendaleynilykill",
             "privacyRespect": "AeroFTP verndar friðhelgi þína. Engin gögn eru söfnuð, engin rakning og engin fjarmæling.",
             "keystoreEntries": "{count} færslur",
-            "serverCredentials": "netþjónskilríki",
-            "serverProfilesLabel": "netþjónssnið",
-            "aiKeysLabel": "gervigreindalyklar",
-            "oauthTokensLabel": "OAuth tákn",
-            "configEntriesLabel": "stillingar færslur",
             "session": "Seta",
             "aeroftpBackupFiles": "AeroFTP öryggisafritsskrár",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1116,7 +1113,6 @@
             "selectServersToExport": "Veldu netþjóna til að flytja út",
             "selectAll": "Velja Allt",
             "deselectAll": "Afvelja Allt",
-            "selected": "valið",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "Ef engin tákn er stillt, er favicon eða icon.png frá þjóninum greint sjálfkrafa.",
             "protocolFilelu": "FileLu",
@@ -1279,7 +1275,6 @@
             "imagePreviewBgLight": "Ljóst",
             "imagePreviewBgCustom": "Sérsniðið",
             "showTransferProgress": "Sýna framvindustiku fyrir flutning",
-            "similarToExisting": "líkjast fyrirliggjandi sniði",
             "aerocloudCompress": "Virkja þjöppun (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: þjöppun + dulkóðun (sniðið er með dulkóðun)",
@@ -1354,7 +1349,16 @@
             "fontSystemInstallHint": "Krefst uppsetningar í kerfinu. AeroFTP notar sjálfkrafa varaleið ef það er ekki tiltækt.",
             "fontSizeIndicatorLabel": "Letur",
             "fontPresetDefault": "{font} (Sjálfgefið)",
-            "fontPresetSystemDefault": "Sjálfgefið kerfisins"
+            "fontPresetSystemDefault": "Sjálfgefið kerfisins",
+            "duplicatesSkippedCount": "Tvítökum sleppt: {count}",
+            "similarToExistingCount": "Líkt fyrirliggjandi sniði: {count}",
+            "bridgeSkippedCount": "Sleppt: {count}",
+            "selectedOfTotal": "Valið: {selected} / {total}",
+            "serverCredentialsCount": "Innskráningarupplýsingar netþjóna: {count}",
+            "serverProfilesCount": "Netþjónssnið: {count}",
+            "aiKeysCount": "AI-lyklar: {count}",
+            "oauthTokensCount": "OAuth-tókar: {count}",
+            "configEntriesCount": "Stillingafærslur: {count}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1449,7 +1453,6 @@
             "starting": "Ræsir...",
             "pending": "Bíður",
             "conflict": "Árekstur",
-            "conflicts": "árekstrar þarfnast athygli",
             "error": "Samstillingarvilla",
             "never": "Aldrei",
             "justNow": "Rétt núna",
@@ -1572,7 +1575,8 @@
             "countdownSoon": "Bráðum...",
             "aerocloudEnabled": "AeroCloud virkt",
             "selectPairLocalFolder": "Veldu staðbundna möppu fyrir parið",
-            "secondsAgo": "fyrir {count}sek"
+            "secondsAgo": "fyrir {count}sek",
+            "conflictsCount": "Árekstrar sem þarfnast athygli: {count}"
         },
         "statusBar": {
             "connected": "Tengt",
@@ -2380,7 +2384,6 @@
         },
         "overwrite": {
             "title": "Skráin er þegar til",
-            "moreFiles": "fleiri skrá(r) í biðröð",
             "remote": "Fjarlægt",
             "local": "Staðbundinn",
             "sourceNewer": "Uppruninn er nýrri",
@@ -2817,7 +2820,6 @@
                 "approveThis": "Samþykkja þetta verkfærakall",
                 "confirm": "Staðfesta",
                 "confirmDangerous": "Staðfesta hættulega aðgerð",
-                "pendingApproval": "bíður samþykkis",
                 "rejectAllCalls": "Hafna öllum verkfæraköllum",
                 "rejectExecution": "Hafna keyrslu verkfæris",
                 "toggleDetails": "Víxla upplýsingum",
@@ -3046,12 +3048,11 @@
                 "allowAll": "Leyfa allt",
                 "rejectAll": "Hafna öllu",
                 "pending": "bíður samþykkis",
-                "toolCall": "tóls kall",
-                "toolCalls": "tóla köll",
                 "running": "keyrir...",
                 "done": "lokið",
                 "failed": "mistókst",
-                "allowThis": "Leyfa þetta tól"
+                "allowThis": "Leyfa þetta tól",
+                "pendingApprovalCount": "Verkfærakvaðningar sem bíða samþykkis: {count}"
             },
             "diff": {
                 "title": "Forskoðun munar",
@@ -3351,7 +3352,6 @@
                 "add": "Bæta við",
                 "added": "Bætt við",
                 "all": "Allt",
-                "available": "í boði",
                 "browseProviders": "Skoða veitendur",
                 "chinese": "Kínverskt",
                 "fast": "Hröð ályktun",
@@ -3371,7 +3371,8 @@
                 "tools": "Tools",
                 "vision": "Vision",
                 "bedrockDescription": "Líkön hýst hjá AWS með aðgangi um svæðisbundinn API-lykil. Bættu model ID við handvirkt.",
-                "bedrockHighlight": "Svæðisbundinn AWS-endapunktur"
+                "bedrockHighlight": "Svæðisbundinn AWS-endapunktur",
+                "availableCount": "Tiltæk: {count}"
             },
             "history": {
                 "cancel": "Hætta við",
@@ -3726,12 +3727,12 @@
             "size": "Stærð",
             "compressed": "Þjappað",
             "actions": "Aðgerðir",
-            "files": "skrár",
             "empty": "Skjalasafnið er tómt",
             "extracting": "Afþjappar",
             "preview": "Forskoðun",
             "extract": "Afþjappa",
-            "back": "Til baka"
+            "back": "Til baka",
+            "filesSummary": "Skrár: {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "Bætt við {files} skrám í {dirs} möppum",
@@ -3778,7 +3779,6 @@
             "filesAdded": "{count} skrá(r) bætt við",
             "folderName": "Möppuheiti",
             "itemDeleted": "Eytt {name}",
-            "items": "hlutir",
             "itemsDeleted": "{count} atriði eytt",
             "lastOpened": "Síðast opnað",
             "modified": "Breytt",
@@ -3819,7 +3819,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - Sterk dulkóðun",
-            "totalItems": "samtals",
             "unlock": "Aflæsa",
             "v1Standard": "AeroVault v1 (Staðlað)",
             "v2Advanced": "AeroVault v2 (Ítarlegt Öryggi)",
@@ -3906,8 +3905,6 @@
             "extractAllHint": "Afþjappa allar skrár í hólfinu í möppu",
             "extractedAll": "Afþjappaði {count} skrá(r) í {path}",
             "dropFilesHint": "Dragðu skrár eða möppur hingað, eða notaðu hnappana hér að neðan",
-            "itemSingular": "atriði",
-            "itemPlural": "atriði",
             "reportExported": "Skýrsla hvelfingar vistuð í {path}",
             "reportCopied": "Skýrsla hvelfingar afrituð á klippiborð",
             "exportReportHint": "Flytja út heildstæða tækniskýrslu: lýsigögn hvelfingar, dulkóðun, villuleiðréttingu og fullan skráalista",
@@ -3960,7 +3957,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Hratt",
             "securityAdvancedDescription": "Nonce-þolið · Dulkóðuð skráarheiti · 128 MB KDF",
             "securityParanoidDescription": "AES + ChaCha20 keðja · Tvöföld dulkóðun",
-            "securityArchiveDescription": "Afritunarlaust safn · zstd bútar · v3"
+            "securityArchiveDescription": "Afritunarlaust safn · zstd bútar · v3",
+            "totalItemsCount": "Samtals: {count}"
         },
         "cryptomator": {
             "title": "Cryptomator Hvelfing",
@@ -3973,7 +3971,6 @@
             "empty": "Mappa er tóm",
             "name": "Nafn",
             "size": "Stærð",
-            "items": "hlutir",
             "readOnly": "Lesaðgangur eingöngu - stofnun hvelfingar væntanleg í v2.1",
             "openAsVault": "Opna sem Cryptomator Hvelfingu",
             "decryptAndSave": "Afkóða og vista",
@@ -4006,8 +4003,6 @@
             "level": "Þjöppunarstig",
             "password": "Lykilorð (valfrjálst, AES-256)",
             "passwordHint": "Skildu eftir autt fyrir enga dulkóðun",
-            "files": "skrár",
-            "folders": "möppur",
             "compress": "Þjappa",
             "store": "Geyma (engin þjöppun)",
             "fast": "Hrátt",
@@ -4249,8 +4244,6 @@
             "modified": "Breytt",
             "file": "Skrá",
             "folder": "Mappa",
-            "files": "skrár",
-            "folders": "möppur",
             "remote": "Fjarlægt",
             "local": "Staðbundið",
             "linkTarget": "Hlekkjamarkmið",
@@ -4326,10 +4319,7 @@
             "deleted": "{count} tvíritaskrár eyddu",
             "scanFailed": "Skönnun Mistókst",
             "retry": "Reyna Aftur",
-            "groups": "hópar",
-            "duplicateFiles": "tvíritaskrár",
             "wasted": "sóað",
-            "copies": "afrit",
             "delete": "EYÐA",
             "skip": "SLEPPA",
             "deleteConfirm": "Ertu viss um að þú viljir eyða {count} tvíritaskrám?",
@@ -4349,7 +4339,10 @@
             "similarityDistance": "{similarity}, fjarl. {distance}",
             "modeExact": "Nákvæmt",
             "modeLabel": "Hamur:",
-            "modeNonIdentical": "Ekki eins"
+            "modeNonIdentical": "Ekki eins",
+            "groupsCount": "Hópar: {count}",
+            "duplicateFilesCount": "Tvíteknar skrár: {count}",
+            "copiesCount": "{count} afrit"
         },
         "diskUsage": {
             "title": "Disknotkun",
@@ -4357,20 +4350,16 @@
             "totalItems": "Samtals: {size} í {count} hlutum",
             "percentOfParent": "{percent}% af foreldri",
             "backToParent": "Til baka í Foreldri",
-            "items": "hlutir",
             "scanFailed": "Greining Mistókst",
             "retry": "Reyna Aftur",
             "drillDown": "Smelltu til að kanna",
             "back": "Til baka",
-            "total": "Samtals",
-            "across": "yfir",
             "empty": "Þessi mappa er tóm",
             "hoverHint": "Sveima yfir blokka til að sjá upplýsingar",
             "scanUnknownError": "Óþekkt villa við skönnun á diskanotkun"
         },
         "dependencies": {
             "title": "Háðir Pakkar",
-            "crates": "kassi (crate)",
             "copy": "Afrita",
             "copied": "Afritað!",
             "checkUpdates": "Athuga með Uppfærslur",
@@ -4380,7 +4369,8 @@
             "latest": "Nýjasta",
             "status": "Staða",
             "footer": "Útgáfugögn frá crates.io API. Sýndar útgáfur eru leystar (Cargo.lock) útgáfur.",
-            "copyTitle": "AeroFTP Háðir Pakkar Athugun"
+            "copyTitle": "AeroFTP Háðir Pakkar Athugun",
+            "cratesCount": "Crates: {count}"
         },
         "debug": {
             "tabs": {
@@ -4440,7 +4430,6 @@
                 "warning": "Viðvörun",
                 "info": "Upplýsingar",
                 "debug": "Villusýn (Debug)",
-                "entries": "færslur",
                 "resume": "Halda áfram",
                 "pause": "Hlé",
                 "copyAll": "Afrita Allt",
@@ -4449,13 +4438,13 @@
                 "allSources": "Allar heimildir",
                 "sourceFilterTitle": "Sía eftir heimild",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "Færslur: {count}"
             },
             "frontend": {
                 "reactMode": "React Hamur",
                 "language": "Tungumál",
                 "localStorageKeys": "LocalStorage Lyklar",
-                "keys": "lyklar",
                 "localStorageSize": "LocalStorage Stærð",
                 "windowSize": "Gluggastærð",
                 "devicePixelRatio": "Tækjapixlahlutfall",
@@ -4464,7 +4453,8 @@
                 "light": "Ljóst",
                 "userAgent": "Notandamiðill (User Agent)",
                 "localStorageKeysTitle": "LocalStorage Lyklar",
-                "localStorageEntrySummary": "{size} bæti · {preview}"
+                "localStorageEntrySummary": "{size} bæti · {preview}",
+                "keysCount": "Lyklar: {count}"
             },
             "copyFileListToClipboard": "Afrita skráalista á klippispjald",
             "filesCopied": "{count} skráarfærslur afritaðar á klippispjald",
@@ -4486,12 +4476,12 @@
                 "i18nSweep": "i18n lyklayfirferð",
                 "ipcSpeed": "IPC hraðasýni",
                 "knownHosts": "known_hosts lestur",
-                "passed": "stóðust",
                 "pluginIntegrity": "Heilleiki viðbótar",
                 "providerSelftest": "Sjálfsprófun veitanda (aðeins lestur)",
                 "runAll": "Keyra allt",
                 "runOne": "Keyra þetta próf",
-                "vaultRoundtrip": "Hringferð hvelfingar"
+                "vaultRoundtrip": "Hringferð hvelfingar",
+                "passedCount": "Staðist: {passed}/{total}"
             },
             "bundle": {
                 "title": "Flytja út greiningarpakka (ZIP)"
@@ -4539,9 +4529,9 @@
         "activityPanel": {
             "awaitingCommands": "Bíð eftir skipunum...",
             "badges": {
-                "active": "VIRKT",
                 "live": "BEINT",
-                "synced": "SAMSTILLT"
+                "synced": "SAMSTILLT",
+                "activeCount": "VIRK: {count}"
             },
             "clearLog": "Hreinsa annál",
             "close": "Loka",
@@ -4565,7 +4555,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Sía aðgerðir",
-                "selected": "valið"
+                "selectedCount": "Valið: {count}"
             },
             "save": "Vista"
         },
@@ -4757,14 +4747,12 @@
                 "auto": "Sjálfvirkt",
                 "autoRefresh": "Sjálfvirk endurlestur (3s)",
                 "browser": "Vafri",
-                "chars": "stafir",
                 "copy": "Afrita á klippiborð",
                 "disableWrap": "Slökkva á orðaumbrot",
                 "enableWrap": "Kveikja á orðaumbrot",
                 "encoding": "Kóðun",
                 "errorLoading": "Villa við hleðslu efnis",
                 "hex": "Hex",
-                "lines": "línur",
                 "loadFailed": "Hleðsla textaefnis mistókst",
                 "noContent": "Ekkert efni tiltækt",
                 "openBrowser": "Opna í kerfisvafra",
@@ -4783,7 +4771,8 @@
                 "wordWrap": "Orðaumbrot",
                 "zoomIn": "Stækka",
                 "zoomOut": "Minnka",
-                "htmlPreviewFrameTitle": "HTML-forskoðun"
+                "htmlPreviewFrameTitle": "HTML-forskoðun",
+                "stats": "Línur: {lines} • Stafir: {chars}"
             },
             "video": {
                 "exitFullscreen": "Hætta í fullum skjá (F)",
@@ -4908,7 +4897,6 @@
             "pwdBatchCount": "Fjöldi myndunar",
             "pwdGenerate": "Búa til",
             "pwdEntropy": "Óreiða",
-            "pwdBits": "bitar",
             "pwdWeak": "Veikt",
             "pwdFair": "Sæmilegt",
             "pwdGood": "Gott",
@@ -4959,7 +4947,8 @@
             "argon2DefaultsHint": "Sjálfgefin gildi: sniðið sem AeroVault og AeroCrypt nota (128 MiB, 4 ítranir, 4 brautir, 32 bæta úttak). Saltið hér að ofan er þitt. Minni allt að 2 GiB.",
             "argon2Derive": "Leiða út",
             "argon2Phc": "PHC-strengur",
-            "hashError": "Villa: {error}"
+            "hashError": "Villa: {error}",
+            "pwdBitsCount": "Bitar: {count}"
         },
         "dialog": {
             "deleteFile": "Eyða \"{name}\"?",
@@ -5019,8 +5008,6 @@
             "vaultOnly": "Aðeins í hvelfingu",
             "localOnly": "Aðeins staðvært",
             "conflict": "Árekstur",
-            "conflicts": "árekstrar",
-            "unchanged": "óbreytt",
             "allToVault": "Allt í hvelfingu",
             "allToLocal": "Allt staðvært",
             "keepNewer": "Halda nýjara",
@@ -5035,10 +5022,14 @@
             "applySync": "Beita samstillingu",
             "close": "Loka",
             "allInSync": "Allar skrár eru samstilltar",
-            "filesToVault": "skrá(r) samstillt(ar) við hvelfingunni",
-            "filesToLocal": "skrá(r) útdrægin(ar) staðvært",
-            "filesSkipped": "skrá(m) sleppt",
-            "errorsOccurred": "Einhverjar villur komu upp"
+            "errorsOccurred": "Einhverjar villur komu upp",
+            "vaultOnlyCount": "Aðeins í hvelfingu: {count}",
+            "localOnlyCount": "Aðeins staðbundið: {count}",
+            "conflictsCount": "Árekstrar: {count}",
+            "unchangedCount": "Óbreytt: {count}",
+            "filesToVaultCount": "Skrár samstilltar í hvelfingu: {count}",
+            "filesToLocalCount": "Skrár dregnar út staðbundið: {count}",
+            "filesSkippedCount": "Skrám sleppt: {count}"
         },
         "localTabs": {
             "closeAll": "Loka öllum flipum",
@@ -5282,7 +5273,6 @@
             "checkAll": "Athuga alla",
             "checkOne": "Athuga þennan netþjón",
             "checking": "Athuga...",
-            "checked": "athugað",
             "healthy": "Heilbrigt",
             "degraded": "Skert",
             "unreachable": "Óaðgengilegt",
@@ -5297,7 +5287,11 @@
             "copied": "Copied\\!",
             "batchChecking": "Athugar {count} netþjóna, vinsamlegast bíðið...",
             "scoreLegend": "Stig 0-100, hærra er betra",
-            "scoreLegendDetail": "80+ heilbrigt · 50-79 skert · undir 50 með vandamál"
+            "scoreLegendDetail": "80+ heilbrigt · 50-79 skert · undir 50 með vandamál",
+            "checkedCount": "Athugað: {count}",
+            "healthyCount": "Heilbrigt: {count}",
+            "degradedCount": "Skert: {count}",
+            "unreachableCount": "Óaðgengilegt: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5567,7 +5561,6 @@
                 "archived": "Safnað",
                 "trash": "Rusl"
             },
-            "participants": "þátttakendur",
             "saving": "Vista...",
             "saved": "Vistað",
             "saveNow": "Vista núna",
@@ -5585,7 +5578,8 @@
                 "code": "Kóði",
                 "richText": "Sniðinn texti",
                 "checklist": "Gátlisti"
-            }
+            },
+            "participantsCount": "Þátttakendur: {count}"
         },
         "shareLinkModal": {
             "title": "Deilitengill",
@@ -6032,13 +6026,14 @@
             "moveToOtherPanel": "Færa í hinn gluggann",
             "copiedToOtherPanel": "Afritað í hinn gluggann",
             "movedToOtherPanel": "Fært í hinn gluggann",
-            "itemsLower": "items",
             "resizePanels": "Resize panels",
             "copyHere": "Afrita {count} hingað",
             "moveHere": "Færa {count} hingað",
             "copyHereFromOtherPanelTooltip": "Afrita {count} valin atriði úr hinum glugganum yfir í þennan glugga (F5)",
             "moveHereFromOtherPanelTooltip": "Færa {count} valin atriði úr hinum glugganum yfir í þennan glugga (F6)",
-            "syncToOtherPanel": "Samstilla við hinn glugga (delta)"
+            "syncToOtherPanel": "Samstilla við hinn glugga (delta)",
+            "failedCount": "Mistókst: {count}",
+            "skippedCount": "Sleppt: {count}"
         },
         "compare": {
             "title": "Bera saman glugga",
@@ -6182,9 +6177,6 @@
             "bucket": "Flokkur",
             "count": "Fjöldi",
             "action": "Aðgerð",
-            "delete": "eyða",
-            "overwrite": "yfirskrifa",
-            "conflicts": "árekstur",
             "destructiveWarning": "Þetta preset mun eyða eða yfirskrifa nýrri skrár.",
             "confirmDestructive": "Ég hef yfirfarið eyðileggjandi aðgerðirnar og vil halda áfram.",
             "executeHint": "Framkvæma undirbýr valið og sendir það gegnum sameinaða flutningsskipuleggjarann.",
@@ -6211,7 +6203,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "Bæti á neti",
                 "savings": "Sparnaður",
-                "errorDetails": "villa/villur, nánar",
                 "errorPathsRequired": "Uppruni og áfangastaður eru nauðsynleg",
                 "deltaStatus": "Delta-samstilling",
                 "deltaAuto": "SJÁLFVIRKT Á",
@@ -6243,7 +6234,8 @@
                 "planned": "Áætluð afrit",
                 "resultDryRunOk": "Þurrkeyrslu lokið",
                 "resultDryRunPartial": "Þurrkeyrslu lokið með villum",
-                "resultDryRunCancelled": "Þurrkeyrslu hætt"
+                "resultDryRunCancelled": "Þurrkeyrslu hætt",
+                "errorDetailsCount": "Villur: {count}, nánar"
             },
             "launcherTemplates": "Sniðmát",
             "launcherMultiPath": "Margar slóðir",
@@ -6347,7 +6339,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "Samanburðurinn les báðar möppurnar og allar möppur undir þeim. Á stóru tré getur það tekið nokkurn tíma og þú getur stöðvað hann.",
             "progressDelta": "[delta]",
-            "progressCopy": "[afrit]"
+            "progressCopy": "[afrit]",
+            "deleteCount": "Til eyðingar: {count}",
+            "overwriteCount": "Til yfirskriftar: {count}",
+            "conflictCount": "Árekstrar: {count}"
         },
         "accountLock": {
             "title": "Veldu reikning",

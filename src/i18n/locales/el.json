@@ -80,7 +80,8 @@
             "reset": "Επαναφορά",
             "saved": "Αποθηκεύτηκε",
             "saving": "Αποθήκευση...",
-            "creating": "Δημιουργία..."
+            "creating": "Δημιουργία...",
+            "minutesCount": "{count} λεπ."
         },
         "connection": {
             "title": "Σύνδεση σε διακομιστή",
@@ -159,7 +160,6 @@
             "saveChanges": "Αποθήκευση Αλλαγών",
             "createAccount": "Δημιουργία λογαριασμού",
             "docs": "Τεκμηρίωση",
-            "minutes": "λεπτά",
             "localPathPlaceholder": "/home/user/projects",
             "fourshared": {
                 "backToExistingAccount": "Επιστροφή στον υπάρχοντα λογαριασμό",
@@ -407,7 +407,6 @@
             "path": "Διαδρομή",
             "files": "αρχεία",
             "folders": "φάκελοι",
-            "items": "στοιχεία",
             "emptyFolder": "Αυτός ο φάκελος είναι κενός",
             "parentFolder": "Γονικός φάκελος",
             "newFolder": "Νέος φάκελος",
@@ -462,7 +461,10 @@
             "rightPanelMarker": "Δεξί πλαίσιο",
             "chooseRightPanelFolder": "Επιλογή φακέλου δεξιού πλαισίου",
             "chooseLeftPanelFolder": "Επιλογή φακέλου αριστερού πλαισίου",
-            "localRight": "Τοπικό (δεξιά)"
+            "localRight": "Τοπικό (δεξιά)",
+            "itemCount": "Στοιχεία: {count}",
+            "fileCount": "Αρχεία: {count}",
+            "folderCount": "Φάκελοι: {count}"
         },
         "contextMenu": {
             "askAeroAgent": "Ρωτήστε το AeroAgent...",
@@ -625,7 +627,6 @@
             "copyError": "Σφάλμα αντιγραφής",
             "copyQueueToClipboard": "Αντιγραφή ουράς στο πρόχειρο",
             "fail": "ΑΠΟΤΥΧΙΑ",
-            "pending": "Σε αναμονή",
             "remove": "Αφαίρεση",
             "retry": "Επανάληψη",
             "stopAll": "Διακοπή όλων",
@@ -690,7 +691,6 @@
                 "newTransfer": "Νέα μεταφορά",
                 "preparing": "Προετοιμασία μεταφοράς…"
             },
-            "staged": "σε αναμονή",
             "start": "Έναρξη",
             "startAll": "Έναρξη όλων",
             "restored": "Επαναφέρθηκε",
@@ -761,7 +761,10 @@
                 "size": "Μέγεθος",
                 "source": "Προέλευση",
                 "title": "Σχέδιο: {mode}"
-            }
+            },
+            "stagedCount": "Σε προετοιμασία: {count}",
+            "pendingCount": "Σε εκκρεμότητα: {count}",
+            "failedCount": "Απέτυχαν: {count}"
         },
         "settings": {
             "title": "Ρυθμίσεις",
@@ -946,7 +949,6 @@
             "migrationSkip": "Παράλειψη προς το παρόν",
             "migrationFinish": "Ολοκλήρωση",
             "migrationStep": "Βήμα {current} από {total}",
-            "duplicatesSkipped": "διπλότυπα παραλείφθηκαν",
             "invalidPassword": "Μη έγκυρος κωδικός",
             "backup": "Αντίγραφο Ασφαλείας",
             "visibleColumns": "Ορατές Στήλες",
@@ -1053,11 +1055,6 @@
             "consumerSecret": "Μυστικό καταναλωτή",
             "privacyRespect": "Το AeroFTP προστατεύει το απόρρητό σας. Δεν συλλέγονται δεδομένα, χωρίς παρακολούθηση, χωρίς τηλεμετρία.",
             "keystoreEntries": "{count} καταχωρήσεις",
-            "serverCredentials": "διαπιστευτήρια διακομιστή",
-            "serverProfilesLabel": "προφίλ διακομιστή",
-            "aiKeysLabel": "κλειδιά AI",
-            "oauthTokensLabel": "διακριτικά OAuth",
-            "configEntriesLabel": "καταχωρήσεις διαμόρφωσης",
             "session": "Περίοδος σύνδεσης",
             "aeroftpBackupFiles": "Αρχεία αντιγράφων ασφαλείας AeroFTP",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1116,7 +1113,6 @@
             "selectServersToExport": "Επιλέξτε διακομιστές για εξαγωγή",
             "selectAll": "Επιλογή όλων",
             "deselectAll": "Αποεπιλογή όλων",
-            "selected": "επιλεγμένα",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "Εάν δεν έχει οριστεί εικονίδιο, το favicon ή το icon.png από τον διακομιστή ανιχνεύεται αυτόματα.",
             "protocolFilelu": "FileLu",
@@ -1279,7 +1275,6 @@
             "imagePreviewBgLight": "Ανοιχτό",
             "imagePreviewBgCustom": "Προσαρμοσμένο",
             "showTransferProgress": "Εμφάνιση γραμμής προόδου μεταφοράς",
-            "similarToExisting": "μοιάζουν με υπάρχον προφίλ",
             "aerocloudCompress": "Ενεργοποίηση συμπίεσης (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: συμπίεση + κρυπτογράφηση (το προφίλ διαθέτει κρυπτογράφηση)",
@@ -1354,7 +1349,16 @@
             "fontSystemInstallHint": "Απαιτεί εγκατάσταση στο σύστημα. Το AeroFTP χρησιμοποιεί αυτόματα εναλλακτική αν δεν είναι διαθέσιμη.",
             "fontSizeIndicatorLabel": "Γραμματοσειρά",
             "fontPresetDefault": "{font} (Προεπιλογή)",
-            "fontPresetSystemDefault": "Προεπιλογή συστήματος"
+            "fontPresetSystemDefault": "Προεπιλογή συστήματος",
+            "duplicatesSkippedCount": "Διπλότυπα που παραλείφθηκαν: {count}",
+            "similarToExistingCount": "Παρόμοια με υπάρχον προφίλ: {count}",
+            "bridgeSkippedCount": "Παραλείφθηκαν: {count}",
+            "selectedOfTotal": "Επιλεγμένα: {selected} / {total}",
+            "serverCredentialsCount": "Διαπιστευτήρια διακομιστών: {count}",
+            "serverProfilesCount": "Προφίλ διακομιστών: {count}",
+            "aiKeysCount": "Κλειδιά AI: {count}",
+            "oauthTokensCount": "Διακριτικά OAuth: {count}",
+            "configEntriesCount": "Καταχωρήσεις ρυθμίσεων: {count}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1449,7 +1453,6 @@
             "starting": "Εκκίνηση...",
             "pending": "Σε εκκρεμότητα",
             "conflict": "Σύγκρουση",
-            "conflicts": "συγκρούσεις χρειάζονται προσοχή",
             "error": "Σφάλμα συγχρονισμού",
             "never": "Ποτέ",
             "justNow": "Μόλις τώρα",
@@ -1572,7 +1575,8 @@
             "countdownSoon": "Σύντομα...",
             "aerocloudEnabled": "Το AeroCloud ενεργοποιήθηκε",
             "selectPairLocalFolder": "Επιλέξτε τοπικό φάκελο για το ζεύγος",
-            "secondsAgo": "{count}δ πριν"
+            "secondsAgo": "{count}δ πριν",
+            "conflictsCount": "Συγκρούσεις που χρειάζονται προσοχή: {count}"
         },
         "statusBar": {
             "connected": "Συνδεδεμένο",
@@ -2380,7 +2384,6 @@
         },
         "overwrite": {
             "title": "Το αρχείο υπάρχει ήδη",
-            "moreFiles": "ακόμα αρχείο/α στην ουρά",
             "remote": "Απομακρυσμένο",
             "local": "Τοπικό",
             "sourceNewer": "Η πηγή είναι νεότερη",
@@ -2817,7 +2820,6 @@
                 "approveThis": "Έγκριση αυτής της κλήσης εργαλείου",
                 "confirm": "Επιβεβαίωση",
                 "confirmDangerous": "Επιβεβαίωση επικίνδυνης ενέργειας",
-                "pendingApproval": "σε αναμονή έγκρισης",
                 "rejectAllCalls": "Απόρριψη όλων των κλήσεων εργαλείων",
                 "rejectExecution": "Απόρριψη εκτέλεσης εργαλείου",
                 "toggleDetails": "Εναλλαγή λεπτομερειών",
@@ -3046,12 +3048,11 @@
                 "allowAll": "Αποδοχή Όλων",
                 "rejectAll": "Απόρριψη Όλων",
                 "pending": "εκκρεμεί έγκριση",
-                "toolCall": "κλήση εργαλείου",
-                "toolCalls": "κλήσεις εργαλείων",
                 "running": "Εκτέλεση...",
                 "done": "Ολοκληρώθηκε",
                 "failed": "Απέτυχε",
-                "allowThis": "Αποδοχή αυτού του εργαλείου"
+                "allowThis": "Αποδοχή αυτού του εργαλείου",
+                "pendingApprovalCount": "Κλήσεις εργαλείων σε αναμονή έγκρισης: {count}"
             },
             "diff": {
                 "title": "Προεπισκόπηση Διαφορών",
@@ -3351,7 +3352,6 @@
                 "add": "Προσθήκη",
                 "added": "Προστέθηκε",
                 "all": "Όλα",
-                "available": "διαθέσιμα",
                 "browseProviders": "Περιήγηση παρόχων",
                 "chinese": "Κινέζικα",
                 "fast": "Γρήγορη εξαγωγή",
@@ -3371,7 +3371,8 @@
                 "tools": "Tools",
                 "vision": "Vision",
                 "bedrockDescription": "Μοντέλα που φιλοξενούνται στο AWS με πρόσβαση μέσω περιφερειακού κλειδιού API. Προσθέστε χειροκίνητα το model ID σας.",
-                "bedrockHighlight": "Περιφερειακό τελικό σημείο AWS"
+                "bedrockHighlight": "Περιφερειακό τελικό σημείο AWS",
+                "availableCount": "Διαθέσιμα: {count}"
             },
             "history": {
                 "cancel": "Ακύρωση",
@@ -3726,12 +3727,12 @@
             "size": "Μέγεθος",
             "compressed": "Συμπιεσμένο",
             "actions": "Ενέργειες",
-            "files": "αρχεία",
             "empty": "Το αρχείο είναι κενό",
             "extracting": "Εξαγωγή",
             "preview": "Προεπισκόπηση",
             "extract": "Εξαγωγή",
-            "back": "Πίσω"
+            "back": "Πίσω",
+            "filesSummary": "Αρχεία: {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "Προστέθηκαν {files} αρχεία σε {dirs} καταλόγους",
@@ -3778,7 +3779,6 @@
             "filesAdded": "{count} αρχείο(α) προστέθηκαν",
             "folderName": "Όνομα φακέλου",
             "itemDeleted": "Διαγράφηκε {name}",
-            "items": "στοιχεία",
             "itemsDeleted": "{count} στοιχείο(α) διαγράφηκαν",
             "lastOpened": "Τελευταίο άνοιγμα",
             "modified": "Τροποποιημένο",
@@ -3819,7 +3819,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - Ισχυρή κρυπτογράφηση",
-            "totalItems": "σύνολο",
             "unlock": "Ξεκλείδωμα",
             "v1Standard": "AeroVault v1 (Τυπικό)",
             "v2Advanced": "AeroVault v2 (Προηγμένη Ασφάλεια)",
@@ -3906,8 +3905,6 @@
             "extractAllHint": "Εξαγωγή κάθε αρχείου του θησαυροφυλακίου σε φάκελο",
             "extractedAll": "Εξήχθησαν {count} αρχείο(α) στο {path}",
             "dropFilesHint": "Σύρετε αρχεία ή φακέλους εδώ ή χρησιμοποιήστε τα παρακάτω κουμπιά",
-            "itemSingular": "στοιχείο",
-            "itemPlural": "στοιχεία",
             "reportExported": "Η αναφορά του θησαυροφυλακίου αποθηκεύτηκε στο {path}",
             "reportCopied": "Η αναφορά του θησαυροφυλακίου αντιγράφηκε στο πρόχειρο",
             "exportReportHint": "Εξαγωγή πλήρους τεχνικής αναφοράς: μεταδεδομένα θησαυροφυλακίου, κρυπτογράφηση, διόρθωση σφαλμάτων και πλήρης λίστα αρχείων",
@@ -3960,7 +3957,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Γρήγορο",
             "securityAdvancedDescription": "Ανθεκτικό σε nonce · Κρυπτογραφημένα ονόματα αρχείων · 128 MB KDF",
             "securityParanoidDescription": "Διαδοχική AES + ChaCha20 · Διπλή κρυπτογράφηση",
-            "securityArchiveDescription": "Αρχειοθήκη με αφαίρεση διπλοτύπων · τμήματα zstd · v3"
+            "securityArchiveDescription": "Αρχειοθήκη με αφαίρεση διπλοτύπων · τμήματα zstd · v3",
+            "totalItemsCount": "Σύνολο: {count}"
         },
         "cryptomator": {
             "title": "Θησαυροφυλάκιο Cryptomator",
@@ -3973,7 +3971,6 @@
             "empty": "Ο κατάλογος είναι κενός",
             "name": "Όνομα",
             "size": "Μέγεθος",
-            "items": "στοιχεία",
             "readOnly": "Λειτουργία μόνο ανάγνωσης - η δημιουργία θησαυροφυλακίου έρχεται στη v2.1",
             "openAsVault": "Άνοιγμα ως Θησαυροφυλάκιο Cryptomator",
             "decryptAndSave": "Αποκρυπτογράφηση και αποθήκευση",
@@ -4006,8 +4003,6 @@
             "level": "Επίπεδο Συμπίεσης",
             "password": "Κωδικός (προαιρετικό, AES-256)",
             "passwordHint": "Αφήστε κενό για χωρίς κρυπτογράφηση",
-            "files": "αρχεία",
-            "folders": "φάκελοι",
             "compress": "Συμπίεση",
             "store": "Αποθήκευση (χωρίς συμπίεση)",
             "fast": "Γρήγορο",
@@ -4249,8 +4244,6 @@
             "modified": "Τροποποιημένο",
             "file": "Αρχείο",
             "folder": "Φάκελος",
-            "files": "αρχεία",
-            "folders": "φάκελοι",
             "remote": "Απομακρυσμένο",
             "local": "Τοπικό",
             "linkTarget": "Στόχος Συμβολικού Συνδέσμου",
@@ -4326,10 +4319,7 @@
             "deleted": "{count} διπλότυπα αρχεία διαγράφηκαν",
             "scanFailed": "Η σάρωση απέτυχε",
             "retry": "Επανάληψη",
-            "groups": "ομάδες",
-            "duplicateFiles": "διπλότυπα αρχεία",
             "wasted": "σπαταλημένα",
-            "copies": "αντίγραφα",
             "delete": "ΔΙΑΓΡΑΦΗ",
             "skip": "ΠΑΡΑΛΕΙΨΗ",
             "deleteConfirm": "Είστε σίγουροι ότι θέλετε να διαγράψετε {count} διπλότυπα αρχεία;",
@@ -4349,7 +4339,10 @@
             "similarityDistance": "{similarity}, απόστ. {distance}",
             "modeExact": "Ακριβής",
             "modeLabel": "Λειτουργία:",
-            "modeNonIdentical": "Μη πανομοιότυπα"
+            "modeNonIdentical": "Μη πανομοιότυπα",
+            "groupsCount": "Ομάδες: {count}",
+            "duplicateFilesCount": "Διπλότυπα αρχεία: {count}",
+            "copiesCount": "{count} αντίγραφα"
         },
         "diskUsage": {
             "title": "Χρήση Δίσκου",
@@ -4357,20 +4350,16 @@
             "totalItems": "Σύνολο: {size} σε {count} στοιχεία",
             "percentOfParent": "{percent}% του γονικού",
             "backToParent": "Πίσω στο γονικό",
-            "items": "στοιχεία",
             "scanFailed": "Η ανάλυση απέτυχε",
             "retry": "Επανάληψη",
             "drillDown": "Κλικ για εξερεύνηση",
             "back": "Πίσω",
-            "total": "Σύνολο",
-            "across": "σε",
             "empty": "Αυτός ο κατάλογος είναι κενός",
             "hoverHint": "Τοποθετήστε τον δείκτη πάνω σε ένα μπλοκ για λεπτομέρειες",
             "scanUnknownError": "Άγνωστο σφάλμα κατά τη σάρωση χρήσης δίσκου"
         },
         "dependencies": {
             "title": "Εξαρτήσεις",
-            "crates": "crates",
             "copy": "Αντιγραφή",
             "copied": "Αντιγράφηκε!",
             "checkUpdates": "Έλεγχος Ενημερώσεων",
@@ -4380,7 +4369,8 @@
             "latest": "Τελευταίο",
             "status": "Κατάσταση",
             "footer": "Δεδομένα εκδόσεων από το API crates.io. Οι εκδόσεις που εμφανίζονται είναι επιλυμένες (Cargo.lock) εκδόσεις.",
-            "copyTitle": "Έλεγχος Εξαρτήσεων AeroFTP"
+            "copyTitle": "Έλεγχος Εξαρτήσεων AeroFTP",
+            "cratesCount": "Crates: {count}"
         },
         "debug": {
             "tabs": {
@@ -4440,7 +4430,6 @@
                 "warning": "Προειδοποίηση",
                 "info": "Πληροφορίες",
                 "debug": "Αποσφαλμάτωση",
-                "entries": "εγγραφές",
                 "resume": "Συνέχιση",
                 "pause": "Παύση",
                 "copyAll": "Αντιγραφή όλων",
@@ -4449,13 +4438,13 @@
                 "allSources": "Όλες οι πηγές",
                 "sourceFilterTitle": "Φιλτράρισμα κατά πηγή",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "Καταχωρήσεις: {count}"
             },
             "frontend": {
                 "reactMode": "Λειτουργία React",
                 "language": "Γλώσσα",
                 "localStorageKeys": "Κλειδιά LocalStorage",
-                "keys": "κλειδιά",
                 "localStorageSize": "Μέγεθος LocalStorage",
                 "windowSize": "Μέγεθος Παραθύρου",
                 "devicePixelRatio": "Αναλογία Pixel Συσκευής",
@@ -4464,7 +4453,8 @@
                 "light": "Φωτεινό",
                 "userAgent": "User Agent",
                 "localStorageKeysTitle": "Κλειδιά LocalStorage",
-                "localStorageEntrySummary": "{size} byte · {preview}"
+                "localStorageEntrySummary": "{size} byte · {preview}",
+                "keysCount": "Κλειδιά: {count}"
             },
             "copyFileListToClipboard": "Αντιγραφή λίστας αρχείων στο πρόχειρο",
             "filesCopied": "{count} εγγραφές αρχείων αντιγράφηκαν στο πρόχειρο",
@@ -4486,12 +4476,12 @@
                 "i18nSweep": "Σάρωση κλειδιών i18n",
                 "ipcSpeed": "Δείγμα ταχύτητας IPC",
                 "knownHosts": "ανάγνωση known_hosts",
-                "passed": "επιτυχημένα",
                 "pluginIntegrity": "Ακεραιότητα προσθέτου",
                 "providerSelftest": "Αυτοδιαγνωστικός πάροχου (μόνο ανάγνωση)",
                 "runAll": "Εκτέλεση όλων",
                 "runOne": "Εκτέλεση αυτού του τεστ",
-                "vaultRoundtrip": "Διαδρομή μετ' επιστροφής θησαυροφυλακίου"
+                "vaultRoundtrip": "Διαδρομή μετ' επιστροφής θησαυροφυλακίου",
+                "passedCount": "Επιτυχή: {passed}/{total}"
             },
             "bundle": {
                 "title": "Εξαγωγή πακέτου διαγνωστικών (ZIP)"
@@ -4539,9 +4529,9 @@
         "activityPanel": {
             "awaitingCommands": "Αναμονή εντολών...",
             "badges": {
-                "active": "ΕΝΕΡΓΟ",
                 "live": "LIVE",
-                "synced": "ΣΥΓΧΡΟΝΙΣΜΕΝΟ"
+                "synced": "ΣΥΓΧΡΟΝΙΣΜΕΝΟ",
+                "activeCount": "ΕΝΕΡΓΑ: {count}"
             },
             "clearLog": "Εκκαθάριση αρχείου καταγραφής",
             "close": "Κλείσιμο",
@@ -4565,7 +4555,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "Φιλτράρισμα ενεργειών",
-                "selected": "επιλεγμένα"
+                "selectedCount": "Επιλεγμένα: {count}"
             },
             "save": "Αποθήκευση"
         },
@@ -4757,14 +4747,12 @@
                 "auto": "Αυτόματο",
                 "autoRefresh": "Αυτόματη ανανέωση (3s)",
                 "browser": "Πρόγραμμα περιήγησης",
-                "chars": "χαρακτήρες",
                 "copy": "Αντιγραφή στο πρόχειρο",
                 "disableWrap": "Απενεργοποίηση αναδίπλωσης λέξεων",
                 "enableWrap": "Ενεργοποίηση αναδίπλωσης λέξεων",
                 "encoding": "Κωδικοποίηση",
                 "errorLoading": "Σφάλμα φόρτωσης περιεχομένου",
                 "hex": "Hex",
-                "lines": "γραμμές",
                 "loadFailed": "Αποτυχία φόρτωσης κειμένου",
                 "noContent": "Δεν υπάρχει διαθέσιμο περιεχόμενο",
                 "openBrowser": "Άνοιγμα στο πρόγραμμα περιήγησης",
@@ -4783,7 +4771,8 @@
                 "wordWrap": "Αναδίπλωση λέξεων",
                 "zoomIn": "Μεγέθυνση",
                 "zoomOut": "Σμίκρυνση",
-                "htmlPreviewFrameTitle": "Προεπισκόπηση HTML"
+                "htmlPreviewFrameTitle": "Προεπισκόπηση HTML",
+                "stats": "Γραμμές: {lines} • Χαρακτήρες: {chars}"
             },
             "video": {
                 "exitFullscreen": "Έξοδος πλήρους οθόνης (F)",
@@ -4908,7 +4897,6 @@
             "pwdBatchCount": "Αριθμός δημιουργίας",
             "pwdGenerate": "Δημιουργία",
             "pwdEntropy": "Εντροπία",
-            "pwdBits": "bits",
             "pwdWeak": "Αδύναμο",
             "pwdFair": "Μέτριο",
             "pwdGood": "Καλό",
@@ -4959,7 +4947,8 @@
             "argon2DefaultsHint": "Προεπιλογές: το προφίλ που χρησιμοποιούν AeroVault και AeroCrypt (128 MiB, 4 επαναλήψεις, 4 λωρίδες, έξοδος 32 byte). Το αλάτι παραπάνω είναι δικό σας. Μνήμη έως 2 GiB.",
             "argon2Derive": "Παραγωγή",
             "argon2Phc": "Συμβολοσειρά PHC",
-            "hashError": "Σφάλμα: {error}"
+            "hashError": "Σφάλμα: {error}",
+            "pwdBitsCount": "{count} bit"
         },
         "dialog": {
             "deleteFile": "Διαγραφή του \"{name}\";",
@@ -5019,8 +5008,6 @@
             "vaultOnly": "Μόνο στο θησαυροφυλάκιο",
             "localOnly": "Μόνο τοπικά",
             "conflict": "Σύγκρουση",
-            "conflicts": "συγκρούσεις",
-            "unchanged": "αμετάβλητο",
             "allToVault": "Όλα στο θησαυροφυλάκιο",
             "allToLocal": "Όλα τοπικά",
             "keepNewer": "Διατήρηση νεότερου",
@@ -5035,10 +5022,14 @@
             "applySync": "Εφαρμογή συγχρονισμού",
             "close": "Κλείσιμο",
             "allInSync": "Όλα τα αρχεία είναι συγχρονισμένα",
-            "filesToVault": "αρχείο(α) συγχρονίστηκαν στο θησαυροφυλάκιο",
-            "filesToLocal": "αρχείο(α) εξήχθηκαν τοπικά",
-            "filesSkipped": "αρχείο(α) παραλείφθηκαν",
-            "errorsOccurred": "Προέκυψαν κάποια σφάλματα"
+            "errorsOccurred": "Προέκυψαν κάποια σφάλματα",
+            "vaultOnlyCount": "Μόνο στο θησαυροφυλάκιο: {count}",
+            "localOnlyCount": "Μόνο τοπικά: {count}",
+            "conflictsCount": "Συγκρούσεις: {count}",
+            "unchangedCount": "Αμετάβλητα: {count}",
+            "filesToVaultCount": "Συγχρονίστηκαν στο θησαυροφυλάκιο: {count}",
+            "filesToLocalCount": "Εξήχθησαν τοπικά: {count}",
+            "filesSkippedCount": "Παραλείφθηκαν αρχεία: {count}"
         },
         "localTabs": {
             "closeAll": "Κλείσιμο όλων των καρτελών",
@@ -5263,7 +5254,6 @@
             "checkAll": "Έλεγχος όλων",
             "checkOne": "Έλεγχος αυτού του διακομιστή",
             "checking": "Έλεγχος...",
-            "checked": "ελεγμένο",
             "healthy": "Υγιής",
             "degraded": "Υποβαθμισμένος",
             "unreachable": "Μη προσβάσιμος",
@@ -5278,7 +5268,11 @@
             "copied": "Copied\\!",
             "batchChecking": "Έλεγχος {count} διακομιστών, παρακαλώ περιμένετε...",
             "scoreLegend": "Βαθμολογία 0-100, υψηλότερη είναι καλύτερη",
-            "scoreLegendDetail": "80+ υγιής · 50-79 υποβαθμισμένος · κάτω από 50 με προβλήματα"
+            "scoreLegendDetail": "80+ υγιής · 50-79 υποβαθμισμένος · κάτω από 50 με προβλήματα",
+            "checkedCount": "Ελέγχθηκαν: {count}",
+            "healthyCount": "Υγιείς: {count}",
+            "degradedCount": "Υποβαθμισμένοι: {count}",
+            "unreachableCount": "Μη προσβάσιμοι: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5548,7 +5542,6 @@
                 "archived": "Αρχειοθετημένα",
                 "trash": "Κάδος"
             },
-            "participants": "συμμετέχοντες",
             "saving": "Αποθήκευση...",
             "saved": "Αποθηκεύτηκε",
             "saveNow": "Αποθήκευση τώρα",
@@ -5566,7 +5559,8 @@
                 "code": "Κώδικας",
                 "richText": "Μορφοποιημένο κείμενο",
                 "checklist": "Λίστα ελέγχου"
-            }
+            },
+            "participantsCount": "{count} συμμετέχοντες"
         },
         "shareLinkModal": {
             "title": "Σύνδεσμος Κοινοποίησης",
@@ -6013,13 +6007,14 @@
             "moveToOtherPanel": "Μετακίνηση στο άλλο παράθυρο",
             "copiedToOtherPanel": "Αντιγράφηκε στο άλλο παράθυρο",
             "movedToOtherPanel": "Μετακινήθηκε στο άλλο παράθυρο",
-            "itemsLower": "items",
             "resizePanels": "Resize panels",
             "copyHere": "Αντιγραφή {count} εδώ",
             "moveHere": "Μετακίνηση {count} εδώ",
             "copyHereFromOtherPanelTooltip": "Αντιγραφή {count} επιλεγμένων από το άλλο πλαίσιο σε αυτό το πλαίσιο (F5)",
             "moveHereFromOtherPanelTooltip": "Μετακίνηση {count} επιλεγμένων από το άλλο πλαίσιο σε αυτό το πλαίσιο (F6)",
-            "syncToOtherPanel": "Συγχρονισμός στο άλλο πλαίσιο (delta)"
+            "syncToOtherPanel": "Συγχρονισμός στο άλλο πλαίσιο (delta)",
+            "failedCount": "Αποτυχίες: {count}",
+            "skippedCount": "Παραλείφθηκαν: {count}"
         },
         "compare": {
             "title": "Σύγκριση πλαισίων",
@@ -6163,9 +6158,6 @@
             "bucket": "Κατηγορία",
             "count": "Πλήθος",
             "action": "Ενέργεια",
-            "delete": "διαγραφή",
-            "overwrite": "αντικατάσταση",
-            "conflicts": "σύγκρουση",
             "destructiveWarning": "Αυτή η προρύθμιση θα διαγράψει ή θα αντικαταστήσει νεότερα αρχεία.",
             "confirmDestructive": "Έχω εξετάσει τις καταστροφικές ενέργειες και θέλω να συνεχίσω.",
             "executeHint": "Η Εκτέλεση τοποθετεί την επιλογή σε ουρά και την αποστέλλει μέσω του ενοποιημένου σχεδιαστή μεταφοράς.",
@@ -6192,7 +6184,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "Bytes στο δίκτυο",
                 "savings": "Εξοικονόμηση",
-                "errorDetails": "σφάλμα(τα), λεπτομέρειες",
                 "errorPathsRequired": "Η προέλευση και ο προορισμός είναι υποχρεωτικά",
                 "deltaStatus": "Συγχρ. δέλτα",
                 "deltaAuto": "ΑΥΤΟΜΑΤΟ ΕΝΕΡΓΟ",
@@ -6224,7 +6215,8 @@
                 "planned": "Προγραμματισμένες αντιγραφές",
                 "resultDryRunOk": "Η δοκιμαστική εκτέλεση ολοκληρώθηκε",
                 "resultDryRunPartial": "Η δοκιμαστική εκτέλεση ολοκληρώθηκε με σφάλματα",
-                "resultDryRunCancelled": "Η δοκιμαστική εκτέλεση ακυρώθηκε"
+                "resultDryRunCancelled": "Η δοκιμαστική εκτέλεση ακυρώθηκε",
+                "errorDetailsCount": "Σφάλματα: {count}, λεπτομέρειες"
             },
             "launcherTemplates": "Πρότυπα",
             "launcherMultiPath": "Πολλαπλές διαδρομές",
@@ -6328,7 +6320,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "Η σύγκριση διαβάζει και τους δύο φακέλους και κάθε φάκελο μέσα σε αυτούς. Σε μεγάλο δέντρο μπορεί να πάρει λίγο χρόνο, και μπορείτε να τη διακόψετε.",
             "progressDelta": "[δέλτα]",
-            "progressCopy": "[αντίγραφο]"
+            "progressCopy": "[αντίγραφο]",
+            "deleteCount": "Προς διαγραφή: {count}",
+            "overwriteCount": "Προς αντικατάσταση: {count}",
+            "conflictCount": "Συγκρούσεις: {count}"
         },
         "accountLock": {
             "title": "Επιλέξτε λογαριασμό",

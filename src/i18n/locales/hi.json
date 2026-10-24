@@ -80,7 +80,8 @@
             "reset": "रीसेट करें",
             "saved": "सहेजा गया",
             "saving": "सहेजा जा रहा है...",
-            "creating": "बनाया जा रहा है..."
+            "creating": "बनाया जा रहा है...",
+            "minutesCount": "{count} मिनट"
         },
         "connection": {
             "title": "सर्वर से कनेक्ट करें",
@@ -159,7 +160,6 @@
             "saveChanges": "परिवर्तन सहेजें",
             "createAccount": "खाता बनाएं",
             "docs": "दस्तावेज़",
-            "minutes": "मिनट",
             "localPathPlaceholder": "/home/user/projects",
             "fourshared": {
                 "backToExistingAccount": "मौजूदा खाते पर वापस जाएँ",
@@ -407,7 +407,6 @@
             "path": "पथ",
             "files": "फ़ाइलें",
             "folders": "फ़ोल्डर",
-            "items": "आइटम",
             "emptyFolder": "यह फ़ोल्डर खाली है",
             "parentFolder": "मूल फ़ोल्डर",
             "newFolder": "नया फ़ोल्डर",
@@ -462,7 +461,10 @@
             "rightPanelMarker": "दायाँ पैनल",
             "chooseRightPanelFolder": "दाएँ पैनल का फ़ोल्डर चुनें",
             "chooseLeftPanelFolder": "बाएँ पैनल का फ़ोल्डर चुनें",
-            "localRight": "लोकल (दायाँ)"
+            "localRight": "लोकल (दायाँ)",
+            "itemCount": "{count} आइटम",
+            "fileCount": "फ़ाइलें: {count}",
+            "folderCount": "{count} फ़ोल्डर"
         },
         "contextMenu": {
             "askAeroAgent": "AeroAgent से पूछें...",
@@ -625,7 +627,6 @@
             "copyError": "कॉपी त्रुटि",
             "copyQueueToClipboard": "कतार को क्लिपबोर्ड पर कॉपी करें",
             "fail": "विफल",
-            "pending": "लंबित",
             "remove": "हटाएँ",
             "retry": "पुनः प्रयास",
             "stopAll": "सब रोकें",
@@ -690,7 +691,6 @@
                 "newTransfer": "नया ट्रांसफर",
                 "preparing": "स्थानांतरण की तैयारी की जा रही है…"
             },
-            "staged": "कतार में",
             "start": "शुरू करें",
             "startAll": "सभी शुरू करें",
             "restored": "पुनर्स्थापित",
@@ -761,7 +761,10 @@
                 "size": "आकार",
                 "source": "स्रोत",
                 "title": "{mode} योजना"
-            }
+            },
+            "stagedCount": "स्टेज किए गए: {count}",
+            "pendingCount": "लंबित: {count}",
+            "failedCount": "विफल: {count}"
         },
         "settings": {
             "title": "सेटिंग्स",
@@ -961,7 +964,6 @@
             "migrationSkip": "अभी के लिए छोड़ें",
             "migrationFinish": "पूर्ण",
             "migrationStep": "{total} में से चरण {current}",
-            "duplicatesSkipped": "डुप्लिकेट छोड़े गए",
             "invalidPassword": "अमान्य पासवर्ड",
             "showHiddenFiles": "छिपी हुई फाइलें दिखाएं (डॉटफाइलें)",
             "rememberLastFolder": "अंतिम फ़ोल्डर याद रखें",
@@ -1053,11 +1055,6 @@
             "consumerSecret": "उपभोक्ता गोपनीयता",
             "privacyRespect": "AeroFTP आपकी गोपनीयता की रक्षा करता है। कोई डेटा एकत्र नहीं किया जाता, कोई ट्रैकिंग नहीं, कोई टेलीमेट्री नहीं।",
             "keystoreEntries": "{count} प्रविष्टियां",
-            "serverCredentials": "सर्वर क्रेडेंशियल",
-            "serverProfilesLabel": "सर्वर प्रोफाइल",
-            "aiKeysLabel": "AI कुंजियां",
-            "oauthTokensLabel": "OAuth टोकन",
-            "configEntriesLabel": "कॉन्फ़िगरेशन प्रविष्टियां",
             "session": "सत्र",
             "aeroftpBackupFiles": "AeroFTP बैकअप फ़ाइलें",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1116,7 +1113,6 @@
             "selectServersToExport": "निर्यात के लिए सर्वर चुनें",
             "selectAll": "सभी चुनें",
             "deselectAll": "सभी का चयन हटाएं",
-            "selected": "चयनित",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "यदि कोई आइकन सेट नहीं है, तो सर्वर से favicon या icon.png स्वतः पहचान लिया जाता है।",
             "protocolFilelu": "FileLu",
@@ -1279,7 +1275,6 @@
             "imagePreviewBgLight": "हल्का",
             "imagePreviewBgCustom": "कस्टम",
             "showTransferProgress": "स्थानांतरण प्रगति बार दिखाएं",
-            "similarToExisting": "मौजूदा प्रोफ़ाइल से मिलते-जुलते हैं",
             "aerocloudCompress": "संपीड़न सक्षम करें (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: संपीड़न + क्रिप्ट (प्रोफ़ाइल में एन्क्रिप्शन है)",
@@ -1354,7 +1349,16 @@
             "fontSystemInstallHint": "सिस्टम इंस्टॉलेशन आवश्यक है। उपलब्ध न होने पर AeroFTP स्वचालित रूप से विकल्प का उपयोग करता है।",
             "fontSizeIndicatorLabel": "फ़ॉन्ट",
             "fontPresetDefault": "{font} (डिफ़ॉल्ट)",
-            "fontPresetSystemDefault": "सिस्टम डिफ़ॉल्ट"
+            "fontPresetSystemDefault": "सिस्टम डिफ़ॉल्ट",
+            "duplicatesSkippedCount": "छोड़े गए डुप्लिकेट: {count}",
+            "similarToExistingCount": "मौजूदा प्रोफ़ाइल के समान: {count}",
+            "bridgeSkippedCount": "छोड़े गए: {count}",
+            "selectedOfTotal": "चयनित: {selected} / {total}",
+            "serverCredentialsCount": "सर्वर क्रेडेंशियल: {count}",
+            "serverProfilesCount": "सर्वर प्रोफ़ाइल: {count}",
+            "aiKeysCount": "AI कुंजियाँ: {count}",
+            "oauthTokensCount": "OAuth टोकन: {count}",
+            "configEntriesCount": "कॉन्फ़िगरेशन प्रविष्टियाँ: {count}"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1449,7 +1453,6 @@
             "starting": "प्रारंभ हो रहा है...",
             "pending": "लंबित",
             "conflict": "संघर्ष",
-            "conflicts": "संघर्षों पर ध्यान देने की आवश्यकता है",
             "error": "सिंक त्रुटि",
             "never": "कभी नहीं",
             "justNow": "अभी",
@@ -1572,7 +1575,8 @@
             "countdownSoon": "जल्द ही...",
             "aerocloudEnabled": "AeroCloud सक्षम",
             "selectPairLocalFolder": "जोड़ी के लिए स्थानीय फ़ोल्डर चुनें",
-            "secondsAgo": "{count} सेकंड पहले"
+            "secondsAgo": "{count} सेकंड पहले",
+            "conflictsCount": "ध्यान देने योग्य संघर्ष: {count}"
         },
         "statusBar": {
             "connected": "कनेक्ट हो गया",
@@ -2380,7 +2384,6 @@
         },
         "overwrite": {
             "title": "फ़ाइल पहले से मौजूद है",
-            "moreFiles": "कतार में अधिक फ़ाइल(एं)",
             "remote": "दूरस्थ",
             "local": "स्थानीय",
             "sourceNewer": "स्रोत नया है",
@@ -2836,7 +2839,6 @@
                 "approveThis": "इस टूल कॉल को स्वीकृत करें",
                 "confirm": "पुष्टि करें",
                 "confirmDangerous": "खतरनाक कार्रवाई की पुष्टि करें",
-                "pendingApproval": "स्वीकृति लंबित",
                 "rejectAllCalls": "सभी टूल कॉल अस्वीकार करें",
                 "rejectExecution": "टूल निष्पादन अस्वीकार करें",
                 "toggleDetails": "विवरण टॉगल करें",
@@ -3046,12 +3048,11 @@
                 "allowAll": "सभी अनुमति दें",
                 "rejectAll": "सभी अस्वीकार करें",
                 "pending": "स्वीकृति लंबित",
-                "toolCall": "टूल कॉल",
-                "toolCalls": "टूल कॉल",
                 "running": "चल रहा है...",
                 "done": "पूर्ण",
                 "failed": "विफल",
-                "allowThis": "इस टूल की अनुमति दें"
+                "allowThis": "इस टूल की अनुमति दें",
+                "pendingApprovalCount": "स्वीकृति के लिए लंबित टूल कॉल: {count}"
             },
             "diff": {
                 "title": "अंतर पूर्वावलोकन",
@@ -3351,7 +3352,6 @@
                 "add": "जोड़ें",
                 "added": "जोड़ा गया",
                 "all": "सभी",
-                "available": "उपलब्ध",
                 "browseProviders": "प्रदाता खोजें",
                 "chinese": "चीनी",
                 "fast": "तेज़ अनुमान",
@@ -3371,7 +3371,8 @@
                 "tools": "Tools",
                 "vision": "Vision",
                 "bedrockDescription": "क्षेत्रीय API कुंजी से उपलब्ध AWS पर होस्ट किए गए मॉडल। अपना model ID मैन्युअल रूप से जोड़ें।",
-                "bedrockHighlight": "AWS क्षेत्रीय एंडपॉइंट"
+                "bedrockHighlight": "AWS क्षेत्रीय एंडपॉइंट",
+                "availableCount": "उपलब्ध: {count}"
             },
             "history": {
                 "cancel": "रद्द करें",
@@ -3728,10 +3729,10 @@
             "actions": "क्रियाएँ",
             "empty": "आर्काइव खाली है",
             "extracting": "निकाला जा रहा है",
-            "files": "फ़ाइलें",
             "preview": "पूर्वावलोकन",
             "extract": "निकालें",
-            "back": "वापस"
+            "back": "वापस",
+            "filesSummary": "फ़ाइलें: {count}, {size}"
         },
         "vault": {
             "addDirectorySuccess": "{dirs} निर्देशिकाओं में {files} फ़ाइलें जोड़ी गईं",
@@ -3778,7 +3779,6 @@
             "filesAdded": "{count} फ़ाइल(लें) जोड़ी गईं",
             "folderName": "फ़ोल्डर का नाम",
             "itemDeleted": "{name} हटाया गया",
-            "items": "आइटम",
             "itemsDeleted": "{count} आइटम हटाए गए",
             "lastOpened": "अंतिम बार खोला गया",
             "modified": "संशोधित",
@@ -3819,7 +3819,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - मजबूत एन्क्रिप्शन",
-            "totalItems": "कुल",
             "unlock": "अनलॉक करें",
             "v1Standard": "AeroVault v1 (मानक)",
             "v2Advanced": "AeroVault v2 (उन्नत सुरक्षा)",
@@ -3906,8 +3905,6 @@
             "extractAllHint": "वॉल्ट की हर फ़ाइल को एक फ़ोल्डर में निकालें",
             "extractedAll": "{count} फ़ाइल {path} में निकाली गईं",
             "dropFilesHint": "फ़ाइलें या फ़ोल्डर यहाँ खींचें, या नीचे दिए गए बटनों का उपयोग करें",
-            "itemSingular": "आइटम",
-            "itemPlural": "आइटम",
             "reportExported": "वॉल्ट रिपोर्ट {path} में सहेजी गई",
             "reportCopied": "वॉल्ट रिपोर्ट क्लिपबोर्ड पर कॉपी की गई",
             "exportReportHint": "एक संपूर्ण तकनीकी रिपोर्ट निर्यात करें: वॉल्ट मेटाडेटा, एन्क्रिप्शन, त्रुटि सुधार और पूरी फ़ाइल सूची",
@@ -3960,7 +3957,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · तेज़",
             "securityAdvancedDescription": "Nonce-प्रतिरोधी · एन्क्रिप्टेड फ़ाइल नाम · 128 MB KDF",
             "securityParanoidDescription": "AES + ChaCha20 कैस्केड · दोहरा एन्क्रिप्शन",
-            "securityArchiveDescription": "डुप्लिकेट-रहित संग्रह · zstd खंड · v3"
+            "securityArchiveDescription": "डुप्लिकेट-रहित संग्रह · zstd खंड · v3",
+            "totalItemsCount": "कुल: {count}"
         },
         "cryptomator": {
             "title": "Cryptomator वॉल्ट",
@@ -3975,7 +3973,6 @@
             "empty": "डायरेक्टरी खाली है",
             "name": "नाम",
             "size": "आकार",
-            "items": "आइटम",
             "decryptAndSave": "डिक्रिप्ट करें और सहेजें",
             "decrypted": "{name} डिक्रिप्ट हुआ",
             "encrypted": "फ़ाइल वॉल्ट में एन्क्रिप्ट हुई",
@@ -4006,8 +4003,6 @@
             "level": "सम्पीडन स्तर",
             "password": "पासवर्ड (वैकल्पिक, AES-256)",
             "passwordHint": "बिना एन्क्रिप्शन के लिए खाली छोड़ें",
-            "files": "फ़ाइलें",
-            "folders": "फ़ोल्डर",
             "compress": "सम्पीडित करें (Compress)",
             "store": "स्टोर (कोई सम्पीडन नहीं)",
             "fast": "तेज़",
@@ -4244,8 +4239,6 @@
             "group": "समूह",
             "file": "फ़ाइल",
             "folder": "फ़ोल्डर",
-            "files": "फ़ाइलें",
-            "folders": "फ़ोल्डर",
             "remote": "दूरस्थ",
             "local": "स्थानीय",
             "symlink": "सिमलिंक लक्ष्य",
@@ -4319,10 +4312,7 @@
             "noDuplicates": "कोई डुप्लिकेट नहीं मिला",
             "keep": "रखें",
             "group": "समूह",
-            "groups": "समूह",
-            "duplicateFiles": "डुप्लिकेट फ़ाइलें",
             "wasted": "बर्बाद",
-            "copies": "प्रतियां",
             "delete": "हटाएं",
             "skip": "छोड़ें",
             "selectAll": "सभी डुप्लिकेट चुनें",
@@ -4349,7 +4339,10 @@
             "similarityDistance": "{similarity}, दूरी {distance}",
             "modeExact": "सटीक",
             "modeLabel": "मोड:",
-            "modeNonIdentical": "गैर-समान"
+            "modeNonIdentical": "गैर-समान",
+            "groupsCount": "समूह: {count}",
+            "duplicateFilesCount": "डुप्लिकेट फ़ाइलें: {count}",
+            "copiesCount": "{count} प्रतियाँ"
         },
         "diskUsage": {
             "title": "डिस्क उपयोग",
@@ -4358,9 +4351,6 @@
             "percentOfParent": "मूल का {percent}%",
             "backToParent": "मूल पर वापस जाएं",
             "back": "वापस",
-            "total": "कुल",
-            "across": "भर में",
-            "items": "आइटम",
             "empty": "यह निर्देशिका खाली है",
             "hoverHint": "विवरण देखने के लिए ब्लॉक पर होवर करें",
             "scanFailed": "विश्लेषण विफल",
@@ -4370,7 +4360,6 @@
         },
         "dependencies": {
             "title": "निर्भरताएँ",
-            "crates": "crates",
             "copy": "कॉपी करें",
             "checkUpdates": "अपडेट जांचें",
             "checking": "जाँच हो रही है...",
@@ -4380,7 +4369,8 @@
             "status": "स्थिति",
             "footer": "crates.io API से संस्करण डेटा।",
             "copyTitle": "AeroFTP निर्भरता जाँच",
-            "copied": "कॉपी किया गया!"
+            "copied": "कॉपी किया गया!",
+            "cratesCount": "Crates: {count}"
         },
         "debug": {
             "tabs": {
@@ -4440,7 +4430,6 @@
                 "warning": "चेतावनी",
                 "info": "जानकारी",
                 "debug": "डीबग",
-                "entries": "प्रविष्टियाँ",
                 "resume": "पुनः आरंभ",
                 "pause": "रोकें",
                 "copyAll": "सभी कॉपी करें",
@@ -4449,13 +4438,13 @@
                 "allSources": "सभी स्रोत",
                 "sourceFilterTitle": "स्रोत के अनुसार फ़िल्टर करें",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "प्रविष्टियाँ: {count}"
             },
             "frontend": {
                 "reactMode": "React मोड",
                 "language": "भाषा",
                 "localStorageKeys": "LocalStorage कुंजियाँ",
-                "keys": "कुंजियाँ",
                 "localStorageSize": "LocalStorage आकार",
                 "windowSize": "विंडो आकार",
                 "devicePixelRatio": "डिवाइस पिक्सेल अनुपात",
@@ -4464,7 +4453,8 @@
                 "light": "हल्का",
                 "userAgent": "उपयोगकर्ता एजेंट",
                 "localStorageKeysTitle": "LocalStorage कुंजियाँ",
-                "localStorageEntrySummary": "{size} बाइट · {preview}"
+                "localStorageEntrySummary": "{size} बाइट · {preview}",
+                "keysCount": "कुंजियाँ: {count}"
             },
             "copyFileListToClipboard": "फ़ाइल सूची क्लिपबोर्ड पर कॉपी करें",
             "filesCopied": "{count} फ़ाइल प्रविष्टियाँ क्लिपबोर्ड पर कॉपी की गईं",
@@ -4486,12 +4476,12 @@
                 "i18nSweep": "i18n कुंजी स्वीप",
                 "ipcSpeed": "IPC गति नमूना",
                 "knownHosts": "known_hosts पठन",
-                "passed": "उत्तीर्ण",
                 "pluginIntegrity": "प्लगइन अखंडता",
                 "providerSelftest": "प्रदाता स्व-परीक्षण (केवल पठन)",
                 "runAll": "सभी चलाएँ",
                 "runOne": "यह परीक्षण चलाएँ",
-                "vaultRoundtrip": "वॉल्ट राउंड-ट्रिप"
+                "vaultRoundtrip": "वॉल्ट राउंड-ट्रिप",
+                "passedCount": "सफल: {passed}/{total}"
             },
             "bundle": {
                 "title": "डायग्नोस्टिक बंडल निर्यात करें (ZIP)"
@@ -4539,9 +4529,9 @@
         "activityPanel": {
             "awaitingCommands": "कमांड की प्रतीक्षा में...",
             "badges": {
-                "active": "सक्रिय",
                 "live": "लाइव",
-                "synced": "सिंक हुआ"
+                "synced": "सिंक हुआ",
+                "activeCount": "सक्रिय: {count}"
             },
             "clearLog": "लॉग साफ़ करें",
             "close": "बंद करें",
@@ -4565,7 +4555,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "ऑपरेशन फ़िल्टर करें",
-                "selected": "चयनित"
+                "selectedCount": "चयनित: {count}"
             },
             "save": "सहेजें"
         },
@@ -4757,14 +4747,12 @@
                 "auto": "ऑटो",
                 "autoRefresh": "ऑटो-रिफ़्रेश (3s)",
                 "browser": "ब्राउज़र",
-                "chars": "अक्षर",
                 "copy": "क्लिपबोर्ड पर कॉपी करें",
                 "disableWrap": "वर्ड रैप बंद करें",
                 "enableWrap": "वर्ड रैप चालू करें",
                 "encoding": "एन्कोडिंग",
                 "errorLoading": "सामग्री लोड करने में त्रुटि",
                 "hex": "Hex",
-                "lines": "पंक्तियाँ",
                 "loadFailed": "टेक्स्ट सामग्री लोड करने में विफल",
                 "noContent": "कोई सामग्री उपलब्ध नहीं",
                 "openBrowser": "सिस्टम ब्राउज़र में खोलें",
@@ -4783,7 +4771,8 @@
                 "wordWrap": "वर्ड रैप",
                 "zoomIn": "ज़ूम इन",
                 "zoomOut": "ज़ूम आउट",
-                "htmlPreviewFrameTitle": "HTML पूर्वावलोकन"
+                "htmlPreviewFrameTitle": "HTML पूर्वावलोकन",
+                "stats": "पंक्तियाँ: {lines} • वर्ण: {chars}"
             },
             "video": {
                 "exitFullscreen": "फ़ुलस्क्रीन से बाहर निकलें (F)",
@@ -4908,7 +4897,6 @@
             "pwdBatchCount": "उत्पन्न संख्या",
             "pwdGenerate": "उत्पन्न करें",
             "pwdEntropy": "एन्ट्रॉपी",
-            "pwdBits": "bits",
             "pwdWeak": "कमज़ोर",
             "pwdFair": "साधारण",
             "pwdGood": "अच्छा",
@@ -4959,7 +4947,8 @@
             "argon2DefaultsHint": "डिफ़ॉल्ट: AeroVault और AeroCrypt जिस प्रोफ़ाइल का उपयोग करते हैं (128 MiB, 4 पुनरावृत्तियाँ, 4 लेन, 32 बाइट आउटपुट)। ऊपर का सॉल्ट आपका है। मेमोरी 2 GiB तक।",
             "argon2Derive": "व्युत्पन्न करें",
             "argon2Phc": "PHC स्ट्रिंग",
-            "hashError": "त्रुटि: {error}"
+            "hashError": "त्रुटि: {error}",
+            "pwdBitsCount": "{count} बिट"
         },
         "dialog": {
             "deleteFile": "\"{name}\" हटाएं?",
@@ -5019,8 +5008,6 @@
             "vaultOnly": "केवल वॉल्ट में",
             "localOnly": "केवल स्थानीय",
             "conflict": "टकराव",
-            "conflicts": "टकराव",
-            "unchanged": "अपरिवर्तित",
             "allToVault": "सब वॉल्ट में",
             "allToLocal": "सब स्थानीय में",
             "keepNewer": "नवीनतम रखें",
@@ -5035,10 +5022,14 @@
             "applySync": "सिंक लागू करें",
             "close": "बंद करें",
             "allInSync": "सभी फाइलें सिंक हैं",
-            "filesToVault": "फाइल(ें) वॉल्ट में सिंक हुईं",
-            "filesToLocal": "फाइल(ें) स्थानीय में निकाली गईं",
-            "filesSkipped": "फाइल(ें) छोड़ी गईं",
-            "errorsOccurred": "कुछ त्रुटियाँ हुईं"
+            "errorsOccurred": "कुछ त्रुटियाँ हुईं",
+            "vaultOnlyCount": "केवल वॉल्ट में: {count}",
+            "localOnlyCount": "केवल स्थानीय: {count}",
+            "conflictsCount": "संघर्ष: {count}",
+            "unchangedCount": "अपरिवर्तित: {count}",
+            "filesToVaultCount": "वॉल्ट में सिंक की गई फ़ाइलें: {count}",
+            "filesToLocalCount": "स्थानीय रूप से निकाली गई फ़ाइलें: {count}",
+            "filesSkippedCount": "छोड़ी गई फ़ाइलें: {count}"
         },
         "localTabs": {
             "closeAll": "सभी टैब बंद करें",
@@ -5263,7 +5254,6 @@
             "checkAll": "सभी जाँचें",
             "checkOne": "इस सर्वर की जाँच करें",
             "checking": "जाँच हो रही है...",
-            "checked": "जाँचा गया",
             "healthy": "स्वस्थ",
             "degraded": "धीमा",
             "unreachable": "अगम्य",
@@ -5278,7 +5268,11 @@
             "copied": "Copied\\!",
             "batchChecking": "{count} सर्वर जाँचे जा रहे हैं, कृपया प्रतीक्षा करें...",
             "scoreLegend": "स्कोर 0-100, उच्च बेहतर है",
-            "scoreLegendDetail": "80+ स्वस्थ · 50-79 घटा · 50 से कम में समस्याएँ"
+            "scoreLegendDetail": "80+ स्वस्थ · 50-79 घटा · 50 से कम में समस्याएँ",
+            "checkedCount": "जाँचे गए: {count}",
+            "healthyCount": "स्वस्थ: {count}",
+            "degradedCount": "धीमे: {count}",
+            "unreachableCount": "अगम्य: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5548,7 +5542,6 @@
                 "archived": "संग्रहीत",
                 "trash": "कचरा"
             },
-            "participants": "प्रतिभागी",
             "saving": "सहेजा जा रहा है...",
             "saved": "सहेजा गया",
             "saveNow": "अभी सहेजें",
@@ -5566,7 +5559,8 @@
                 "code": "कोड",
                 "richText": "रिच टेक्स्ट",
                 "checklist": "चेकलिस्ट"
-            }
+            },
+            "participantsCount": "{count} प्रतिभागी"
         },
         "shareLinkModal": {
             "title": "शेयर लिंक",
@@ -6013,13 +6007,14 @@
             "moveToOtherPanel": "दूसरे पैनल में ले जाएं",
             "copiedToOtherPanel": "दूसरे पैनल में कॉपी किया गया",
             "movedToOtherPanel": "दूसरे पैनल में ले जाया गया",
-            "itemsLower": "items",
             "resizePanels": "Resize panels",
             "copyHere": "{count} यहाँ कॉपी करें",
             "moveHere": "{count} यहाँ स्थानांतरित करें",
             "copyHereFromOtherPanelTooltip": "दूसरे पैनल से चयनित {count} को इस पैनल में कॉपी करें (F5)",
             "moveHereFromOtherPanelTooltip": "दूसरे पैनल से चयनित {count} को इस पैनल में स्थानांतरित करें (F6)",
-            "syncToOtherPanel": "दूसरे पैनल में सिंक करें (delta)"
+            "syncToOtherPanel": "दूसरे पैनल में सिंक करें (delta)",
+            "failedCount": "विफल: {count}",
+            "skippedCount": "छोड़े गए: {count}"
         },
         "compare": {
             "title": "पैनल तुलना",
@@ -6163,9 +6158,6 @@
             "bucket": "श्रेणी",
             "count": "गणना",
             "action": "कार्रवाई",
-            "delete": "हटाएं",
-            "overwrite": "अधिलेखित करें",
-            "conflicts": "संघर्ष",
             "destructiveWarning": "यह प्रीसेट नए फ़ाइलों को हटा देगा या अधिलेखित कर देगा।",
             "confirmDestructive": "मैंने विनाशकारी कार्रवाइयों की समीक्षा कर ली है और आगे बढ़ना चाहता हूं।",
             "executeHint": "एक्ज़ीक्यूट चयन को कतार में रखता है और एकीकृत ट्रांसफर प्लानर के माध्यम से भेजता है।",
@@ -6192,7 +6184,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "नेटवर्क पर बाइट्स",
                 "savings": "बचत",
-                "errorDetails": "त्रुटि(याँ), विवरण",
                 "errorPathsRequired": "स्रोत और गंतव्य आवश्यक हैं",
                 "deltaStatus": "डेल्टा सिंक",
                 "deltaAuto": "ऑटो चालू",
@@ -6224,7 +6215,8 @@
                 "planned": "नियोजित कॉपियाँ",
                 "resultDryRunOk": "ड्राई रन पूर्ण हुआ",
                 "resultDryRunPartial": "ड्राई रन त्रुटियों के साथ पूर्ण हुआ",
-                "resultDryRunCancelled": "ड्राई रन रद्द कर दिया गया"
+                "resultDryRunCancelled": "ड्राई रन रद्द कर दिया गया",
+                "errorDetailsCount": "त्रुटियाँ: {count}, विवरण"
             },
             "launcherTemplates": "टेम्पलेट",
             "launcherMultiPath": "मल्टी-पाथ",
@@ -6328,7 +6320,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "तुलना दोनों फ़ोल्डर और उनके अंदर के हर फ़ोल्डर को पढ़ती है। बड़े ट्री पर इसमें कुछ समय लग सकता है, और आप इसे रोक सकते हैं।",
             "progressDelta": "[डेल्टा]",
-            "progressCopy": "[कॉपी]"
+            "progressCopy": "[कॉपी]",
+            "deleteCount": "हटाने के लिए: {count}",
+            "overwriteCount": "ओवरराइट करने के लिए: {count}",
+            "conflictCount": "संघर्ष: {count}"
         },
         "accountLock": {
             "title": "एक खाता चुनें",

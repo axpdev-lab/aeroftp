@@ -80,7 +80,8 @@
             "reset": "I-reset",
             "saved": "Na-save",
             "saving": "Nagse-save...",
-            "creating": "Ginagawa..."
+            "creating": "Ginagawa...",
+            "minutesCount": "{count} min"
         },
         "connection": {
             "title": "Kumonekta sa Server",
@@ -159,7 +160,6 @@
             "saveChanges": "I-save ang mga Pagbabago",
             "createAccount": "Lumikha ng Account",
             "docs": "Mga Dokumento",
-            "minutes": "minuto",
             "localPathPlaceholder": "/home/user/projects",
             "fourshared": {
                 "backToExistingAccount": "Bumalik sa umiiral na account",
@@ -407,7 +407,6 @@
             "path": "Path",
             "files": "mga file",
             "folders": "mga folder",
-            "items": "mga item",
             "emptyFolder": "Walang laman ang folder na ito",
             "parentFolder": "Parent folder",
             "newFolder": "Bagong Folder",
@@ -462,7 +461,10 @@
             "rightPanelMarker": "Kanang panel",
             "chooseRightPanelFolder": "Pumili ng folder ng kanang panel",
             "chooseLeftPanelFolder": "Pumili ng folder ng kaliwang panel",
-            "localRight": "Lokal (kanan)"
+            "localRight": "Lokal (kanan)",
+            "itemCount": "{count} item",
+            "fileCount": "{count} file",
+            "folderCount": "{count} folder"
         },
         "contextMenu": {
             "askAeroAgent": "Itanong sa AeroAgent...",
@@ -625,7 +627,6 @@
             "copyError": "Error sa pagkopya",
             "copyQueueToClipboard": "Kopyahin ang pila sa clipboard",
             "fail": "NABIGO",
-            "pending": "Naghihintay",
             "remove": "Alisin",
             "retry": "Subukan muli",
             "stopAll": "Itigil lahat",
@@ -690,7 +691,6 @@
                 "newTransfer": "Bagong Paglipat",
                 "preparing": "Inihahanda ang paglilipat…"
             },
-            "staged": "naka-queue",
             "start": "Simulan",
             "startAll": "Simulan lahat",
             "restored": "Naibalik",
@@ -761,7 +761,10 @@
                 "size": "Laki",
                 "source": "Pinagmulan",
                 "title": "Plano: {mode}"
-            }
+            },
+            "stagedCount": "Naka-stage: {count}",
+            "pendingCount": "Naghihintay: {count}",
+            "failedCount": "Nabigo: {count}"
         },
         "settings": {
             "title": "Mga Setting",
@@ -946,7 +949,6 @@
             "migrationSkip": "Laktawan muna",
             "migrationFinish": "Kumpleto",
             "migrationStep": "Hakbang {current} ng {total}",
-            "duplicatesSkipped": "mga duplikadong nilaktawan",
             "invalidPassword": "Hindi wastong password",
             "backup": "Backup",
             "visibleColumns": "Mga Nakikitang Kolum",
@@ -1053,11 +1055,6 @@
             "consumerSecret": "Consumer Secret",
             "privacyRespect": "Pinoprotektahan ng AeroFTP ang iyong privacy. Walang data na kinokolekta, walang pagsubaybay, walang telemetry.",
             "keystoreEntries": "{count} entry",
-            "serverCredentials": "mga kredensyal ng server",
-            "serverProfilesLabel": "mga profile ng server",
-            "aiKeysLabel": "mga AI key",
-            "oauthTokensLabel": "mga OAuth token",
-            "configEntriesLabel": "mga config entry",
             "session": "Session",
             "aeroftpBackupFiles": "AeroFTP Backup Files",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1116,7 +1113,6 @@
             "selectServersToExport": "Pumili ng mga server para i-export",
             "selectAll": "Piliin Lahat",
             "deselectAll": "Alisan ng Pagpili Lahat",
-            "selected": "napili",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "Kung walang nakatakdang icon, ang favicon o icon.png mula sa server ay awtomatikong natutukoy.",
             "protocolFilelu": "FileLu",
@@ -1279,7 +1275,6 @@
             "imagePreviewBgLight": "Maliwanag",
             "imagePreviewBgCustom": "Pasadya",
             "showTransferProgress": "Ipakita ang progress bar ng paglilipat",
-            "similarToExisting": "katulad ng umiiral nang profile",
             "aerocloudCompress": "Paganahin ang kompresyon (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: compression + crypt (may encryption ang profile)",
@@ -1354,7 +1349,16 @@
             "fontSystemInstallHint": "Kailangang naka-install sa system. Awtomatikong gagamit ang AeroFTP ng kapalit kung hindi available.",
             "fontSizeIndicatorLabel": "Font",
             "fontPresetDefault": "{font} (Nakatakda)",
-            "fontPresetSystemDefault": "Nakatakda ng sistema"
+            "fontPresetSystemDefault": "Nakatakda ng sistema",
+            "duplicatesSkippedCount": "{count} duplikado ang nilaktawan",
+            "similarToExistingCount": "Kahawig ng umiiral na profile: {count}",
+            "bridgeSkippedCount": "Nilaktawan: {count}",
+            "selectedOfTotal": "Napili: {selected} / {total}",
+            "serverCredentialsCount": "{count} kredensyal ng server",
+            "serverProfilesCount": "{count} profile ng server",
+            "aiKeysCount": "{count} AI key",
+            "oauthTokensCount": "{count} OAuth token",
+            "configEntriesCount": "{count} entry ng config"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1449,7 +1453,6 @@
             "starting": "Nagsisimula...",
             "pending": "Naghihintay",
             "conflict": "Conflict",
-            "conflicts": "mga conflict na nangangailangan ng atensyon",
             "error": "Error sa sync",
             "never": "Hindi kailanman",
             "justNow": "Kamakailan lang",
@@ -1572,7 +1575,8 @@
             "countdownSoon": "Malapit na...",
             "aerocloudEnabled": "Pinagana ang AeroCloud",
             "selectPairLocalFolder": "Pumili ng lokal na folder para sa pares",
-            "secondsAgo": "{count}s nakalipas"
+            "secondsAgo": "{count}s nakalipas",
+            "conflictsCount": "{count} salungatan ang nangangailangan ng pansin"
         },
         "statusBar": {
             "connected": "Nakakonekta",
@@ -2380,7 +2384,6 @@
         },
         "overwrite": {
             "title": "Mayroon nang file",
-            "moreFiles": "pa’ng file sa pila",
             "remote": "Malayo",
             "local": "Lokal",
             "sourceNewer": "Mas bago ang pinagmulan",
@@ -2817,7 +2820,6 @@
                 "approveThis": "Aprubahan ang tool call na ito",
                 "confirm": "Kumpirmahin",
                 "confirmDangerous": "Kumpirmahin ang mapanganib na aksyon",
-                "pendingApproval": "naghihintay ng pag-apruba",
                 "rejectAllCalls": "Tanggihan lahat ng tool calls",
                 "rejectExecution": "Tanggihan ang tool execution",
                 "toggleDetails": "I-toggle ang mga detalye",
@@ -3046,12 +3048,11 @@
                 "allowAll": "Payagan Lahat",
                 "rejectAll": "Tanggihan Lahat",
                 "pending": "naghihintay ng pag-apruba",
-                "toolCall": "tool call",
-                "toolCalls": "mga tool call",
                 "running": "Tumatakbo...",
                 "done": "Tapos na",
                 "failed": "Nabigo",
-                "allowThis": "Payagan ang tool na ito"
+                "allowThis": "Payagan ang tool na ito",
+                "pendingApprovalCount": "{count} tool call ang naghihintay ng pag-apruba"
             },
             "diff": {
                 "title": "Diff Preview",
@@ -3351,7 +3352,6 @@
                 "add": "Idagdag",
                 "added": "Naidagdag na",
                 "all": "Lahat",
-                "available": "magagamit",
                 "browseProviders": "Mag-browse ng mga Provider",
                 "chinese": "Tsino",
                 "fast": "Mabilis na Inference",
@@ -3371,7 +3371,8 @@
                 "tools": "Tools",
                 "vision": "Vision",
                 "bedrockDescription": "Mga modelong naka-host sa AWS na maa-access gamit ang panrehiyong API key. Idagdag nang manu-mano ang iyong model ID.",
-                "bedrockHighlight": "Panrehiyong endpoint ng AWS"
+                "bedrockHighlight": "Panrehiyong endpoint ng AWS",
+                "availableCount": "Magagamit: {count}"
             },
             "history": {
                 "cancel": "Kanselahin",
@@ -3726,12 +3727,12 @@
             "size": "Laki",
             "compressed": "Naka-compress",
             "actions": "Mga Aksyon",
-            "files": "mga file",
             "empty": "Walang laman ang archive",
             "extracting": "Nag-e-extract",
             "preview": "I-preview",
             "extract": "I-extract",
-            "back": "Bumalik"
+            "back": "Bumalik",
+            "filesSummary": "{count} file, {size}"
         },
         "vault": {
             "addDirectorySuccess": "Naidagdag ang {files} file sa {dirs} direktoryo",
@@ -3778,7 +3779,6 @@
             "filesAdded": "{count} (mga) file ang naidagdag",
             "folderName": "Pangalan ng folder",
             "itemDeleted": "Nabura ang {name}",
-            "items": "mga aytem",
             "itemsDeleted": "{count} (mga) item ang nabura",
             "lastOpened": "Huling binuksan",
             "modified": "Binago",
@@ -3819,7 +3819,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - Malakas na pag-encrypt",
-            "totalItems": "kabuuan",
             "unlock": "I-unlock",
             "v1Standard": "AeroVault v1 (Standard)",
             "v2Advanced": "AeroVault v2 (Advanced Security)",
@@ -3906,8 +3905,6 @@
             "extractAllHint": "I-extract ang bawat file sa vault sa isang folder",
             "extractedAll": "Na-extract ang {count} (na) file sa {path}",
             "dropFilesHint": "I-drag ang mga file o folder dito, o gamitin ang mga button sa ibaba",
-            "itemSingular": "item",
-            "itemPlural": "item",
             "reportExported": "Na-save ang ulat ng vault sa {path}",
             "reportCopied": "Nakopya ang ulat ng vault sa clipboard",
             "exportReportHint": "Mag-export ng kumpletong teknikal na ulat: metadata ng vault, pag-encrypt, pagwawasto ng error at buong listahan ng mga file",
@@ -3960,7 +3957,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · Mabilis",
             "securityAdvancedDescription": "Matibay laban sa nonce · Naka-encrypt na mga pangalan ng file · 128 MB KDF",
             "securityParanoidDescription": "Sunud-sunod na AES + ChaCha20 · Dobleng pag-encrypt",
-            "securityArchiveDescription": "Arkibong walang duplikado · mga piraso ng zstd · v3"
+            "securityArchiveDescription": "Arkibong walang duplikado · mga piraso ng zstd · v3",
+            "totalItemsCount": "Kabuuan: {count}"
         },
         "cryptomator": {
             "title": "Cryptomator Vault",
@@ -3973,7 +3971,6 @@
             "empty": "Walang laman ang direktoryo",
             "name": "Pangalan",
             "size": "Laki",
-            "items": "mga aytem",
             "readOnly": "Read-only mode - paparating ang vault creation sa v2.1",
             "openAsVault": "Buksan bilang Cryptomator Vault",
             "decryptAndSave": "I-decrypt at I-save",
@@ -4006,8 +4003,6 @@
             "level": "Antas ng Compression",
             "password": "Password (opsyonal, AES-256)",
             "passwordHint": "Iwanang walang laman kung walang encryption",
-            "files": "mga file",
-            "folders": "mga folder",
             "compress": "I-compress",
             "store": "I-store (walang compression)",
             "fast": "Mabilis",
@@ -4249,8 +4244,6 @@
             "modified": "Binago",
             "file": "File",
             "folder": "Folder",
-            "files": "mga file",
-            "folders": "mga folder",
             "remote": "Remote",
             "local": "Lokal",
             "linkTarget": "Symlink Target",
@@ -4326,10 +4319,7 @@
             "deleted": "{count} duplikadong file ang natanggal",
             "scanFailed": "Nabigo ang pag-scan",
             "retry": "Subukan Ulit",
-            "groups": "mga grupo",
-            "duplicateFiles": "mga duplikadong file",
             "wasted": "nasayang",
-            "copies": "mga kopya",
             "delete": "TANGGALIN",
             "skip": "LAKTAWAN",
             "deleteConfirm": "Sigurado ka bang gusto mong tanggalin ang {count} duplikadong file?",
@@ -4349,7 +4339,10 @@
             "similarityDistance": "{similarity}, layo {distance}",
             "modeExact": "Eksakto",
             "modeLabel": "Mode:",
-            "modeNonIdentical": "Hindi magkapareho"
+            "modeNonIdentical": "Hindi magkapareho",
+            "groupsCount": "{count} grupo",
+            "duplicateFilesCount": "{count} duplikadong file",
+            "copiesCount": "{count} kopya"
         },
         "diskUsage": {
             "title": "Paggamit ng Disk",
@@ -4357,20 +4350,16 @@
             "totalItems": "Kabuuan: {size} sa {count} item",
             "percentOfParent": "{percent}% ng parent",
             "backToParent": "Bumalik sa parent",
-            "items": "mga item",
             "scanFailed": "Nabigo ang pagsusuri",
             "retry": "Subukan Ulit",
             "drillDown": "I-click para tuklasin",
             "back": "Bumalik",
-            "total": "Kabuuan",
-            "across": "sa",
             "empty": "Walang laman ang direktoryo na ito",
             "hoverHint": "Mag-hover sa isang block para makita ang mga detalye",
             "scanUnknownError": "Hindi kilalang error habang ini-scan ang paggamit ng disk"
         },
         "dependencies": {
             "title": "Mga Dependency",
-            "crates": "mga crate",
             "copy": "Kopyahin",
             "copied": "Nakopya!",
             "checkUpdates": "Suriin ang mga Update",
@@ -4380,7 +4369,8 @@
             "latest": "Pinakabago",
             "status": "Status",
             "footer": "Ang data ng bersyon ay mula sa crates.io API. Ang mga berysong ipinapakita ay resolved (Cargo.lock) na bersyon.",
-            "copyTitle": "AeroFTP Dependencies Check"
+            "copyTitle": "AeroFTP Dependencies Check",
+            "cratesCount": "{count} crate"
         },
         "debug": {
             "tabs": {
@@ -4440,7 +4430,6 @@
                 "warning": "Babala",
                 "info": "Info",
                 "debug": "Debug",
-                "entries": "mga entry",
                 "resume": "Ipagpatuloy",
                 "pause": "I-pause",
                 "copyAll": "Kopyahin lahat",
@@ -4449,13 +4438,13 @@
                 "allSources": "Lahat ng pinagmulan",
                 "sourceFilterTitle": "Salain ayon sa pinagmulan",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "Mga entry: {count}"
             },
             "frontend": {
                 "reactMode": "React Mode",
                 "language": "Wika",
                 "localStorageKeys": "Mga LocalStorage Key",
-                "keys": "mga key",
                 "localStorageSize": "Laki ng LocalStorage",
                 "windowSize": "Laki ng Window",
                 "devicePixelRatio": "Device Pixel Ratio",
@@ -4464,7 +4453,8 @@
                 "light": "Maliwanag",
                 "userAgent": "User Agent",
                 "localStorageKeysTitle": "Mga LocalStorage Key",
-                "localStorageEntrySummary": "{size} byte · {preview}"
+                "localStorageEntrySummary": "{size} byte · {preview}",
+                "keysCount": "{count} key"
             },
             "copyFileListToClipboard": "Kopyahin ang listahan ng file sa clipboard",
             "filesCopied": "{count} na mga entry ng file ang nakopya sa clipboard",
@@ -4486,12 +4476,12 @@
                 "i18nSweep": "Pag-sweep ng mga susi ng i18n",
                 "ipcSpeed": "Sample ng bilis ng IPC",
                 "knownHosts": "pagbabasa ng known_hosts",
-                "passed": "pumasa",
                 "pluginIntegrity": "Integridad ng plugin",
                 "providerSelftest": "Self-test ng provider (basahin lamang)",
                 "runAll": "Patakbuhin lahat",
                 "runOne": "Patakbuhin ang pagsubok na ito",
-                "vaultRoundtrip": "Round-trip ng vault"
+                "vaultRoundtrip": "Round-trip ng vault",
+                "passedCount": "Pumasa: {passed}/{total}"
             },
             "bundle": {
                 "title": "I-export ang diagnostic bundle (ZIP)"
@@ -4539,9 +4529,9 @@
         "activityPanel": {
             "awaitingCommands": "Naghihintay ng mga command...",
             "badges": {
-                "active": "AKTIBO",
                 "live": "LIVE",
-                "synced": "NA-SYNC"
+                "synced": "NA-SYNC",
+                "activeCount": "AKTIBO: {count}"
             },
             "clearLog": "Burahin ang log",
             "close": "Isara",
@@ -4565,7 +4555,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "I-filter ang mga operasyon",
-                "selected": "napili"
+                "selectedCount": "Napili: {count}"
             },
             "save": "I-save"
         },
@@ -4757,14 +4747,12 @@
                 "auto": "Auto",
                 "autoRefresh": "Auto-Refresh (3s)",
                 "browser": "Browser",
-                "chars": "chars",
                 "copy": "Kopyahin sa Clipboard",
                 "disableWrap": "I-disable ang Word Wrap",
                 "enableWrap": "I-enable ang Word Wrap",
                 "encoding": "Encoding",
                 "errorLoading": "Error sa pag-load ng nilalaman",
                 "hex": "Hex",
-                "lines": "mga linya",
                 "loadFailed": "Nabigong i-load ang text content",
                 "noContent": "Walang available na nilalaman",
                 "openBrowser": "Buksan sa System Browser",
@@ -4783,7 +4771,8 @@
                 "wordWrap": "Word Wrap",
                 "zoomIn": "Mag-zoom In",
                 "zoomOut": "Mag-zoom Out",
-                "htmlPreviewFrameTitle": "Preview ng HTML"
+                "htmlPreviewFrameTitle": "Preview ng HTML",
+                "stats": "{lines} linya • {chars} karakter"
             },
             "video": {
                 "exitFullscreen": "Lumabas sa Fullscreen (F)",
@@ -4908,7 +4897,6 @@
             "pwdBatchCount": "Bilang ng Bubuin",
             "pwdGenerate": "Bumuo",
             "pwdEntropy": "Entropy",
-            "pwdBits": "bits",
             "pwdWeak": "Mahina",
             "pwdFair": "Katamtaman",
             "pwdGood": "Mabuti",
@@ -4959,7 +4947,8 @@
             "argon2DefaultsHint": "Mga default: ang profil na ginagamit ng AeroVault at AeroCrypt (128 MiB, 4 pag-ulit, 4 na lane, output na 32 byte). Ang asin sa itaas ay iyo. Memorya hanggang 2 GiB.",
             "argon2Derive": "I-derive",
             "argon2Phc": "String ng PHC",
-            "hashError": "Error: {error}"
+            "hashError": "Error: {error}",
+            "pwdBitsCount": "{count} bit"
         },
         "dialog": {
             "deleteFile": "Tanggalin ang \"{name}\"?",
@@ -5019,8 +5008,6 @@
             "vaultOnly": "Sa vault lamang",
             "localOnly": "Lokal lamang",
             "conflict": "Salungatan",
-            "conflicts": "mga salungatan",
-            "unchanged": "hindi nabago",
             "allToVault": "Lahat sa Vault",
             "allToLocal": "Lahat sa Lokal",
             "keepNewer": "Panatilihin ang Pinakabago",
@@ -5035,10 +5022,14 @@
             "applySync": "Isagawa ang Pag-sync",
             "close": "Isara",
             "allInSync": "Lahat ng mga file ay naka-sync",
-            "filesToVault": "mga file na nai-sync sa vault",
-            "filesToLocal": "mga file na na-extract sa lokal",
-            "filesSkipped": "mga file na nilaktawan",
-            "errorsOccurred": "May ilang mga error na naganap"
+            "errorsOccurred": "May ilang mga error na naganap",
+            "vaultOnlyCount": "Sa vault lamang: {count}",
+            "localOnlyCount": "Lokal lamang: {count}",
+            "conflictsCount": "{count} salungatan",
+            "unchangedCount": "Walang pagbabago: {count}",
+            "filesToVaultCount": "{count} file ang na-sync sa vault",
+            "filesToLocalCount": "{count} file ang na-extract sa lokal",
+            "filesSkippedCount": "{count} file ang nilaktawan"
         },
         "localTabs": {
             "closeAll": "Isara ang Lahat ng Tab",
@@ -5282,7 +5273,6 @@
             "checkAll": "Suriin lahat",
             "checkOne": "Suriin ang server na ito",
             "checking": "Sinusuri...",
-            "checked": "nasuri",
             "healthy": "Maayos",
             "degraded": "Bumaba ang kalidad",
             "unreachable": "Hindi maabot",
@@ -5297,7 +5287,11 @@
             "copied": "Copied\\!",
             "batchChecking": "Sinusuri ang {count} server, pakihintay...",
             "scoreLegend": "Iskor 0-100, mas mataas mas mabuti",
-            "scoreLegendDetail": "80+ malusog · 50-79 humina · mas mababa sa 50 may problema"
+            "scoreLegendDetail": "80+ malusog · 50-79 humina · mas mababa sa 50 may problema",
+            "checkedCount": "Nasuri: {count}",
+            "healthyCount": "Maayos: {count}",
+            "degradedCount": "Bumaba ang kalidad: {count}",
+            "unreachableCount": "Hindi maabot: {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5567,7 +5561,6 @@
                 "archived": "Arkibod",
                 "trash": "Basurahan"
             },
-            "participants": "kalahok",
             "saving": "Sine-save...",
             "saved": "Na-save",
             "saveNow": "I-save ngayon",
@@ -5585,7 +5578,8 @@
                 "code": "Kodigo",
                 "richText": "Naka-format na Teksto",
                 "checklist": "Listahan ng Pagsusuri"
-            }
+            },
+            "participantsCount": "{count} kalahok"
         },
         "shareLinkModal": {
             "title": "Link ng pagbabahagi",
@@ -6032,13 +6026,14 @@
             "moveToOtherPanel": "Ilipat sa kabilang panel",
             "copiedToOtherPanel": "Nakopya sa kabilang panel",
             "movedToOtherPanel": "Inilipat sa kabilang panel",
-            "itemsLower": "items",
             "resizePanels": "Resize panels",
             "copyHere": "Kopyahin ang {count} dito",
             "moveHere": "Ilipat ang {count} dito",
             "copyHereFromOtherPanelTooltip": "Kopyahin ang {count} napili mula sa kabilang panel papunta sa panel na ito (F5)",
             "moveHereFromOtherPanelTooltip": "Ilipat ang {count} napili mula sa kabilang panel papunta sa panel na ito (F6)",
-            "syncToOtherPanel": "I-sync sa kabilang panel (delta)"
+            "syncToOtherPanel": "I-sync sa kabilang panel (delta)",
+            "failedCount": "Nabigo: {count}",
+            "skippedCount": "Nilaktawan: {count}"
         },
         "compare": {
             "title": "Ihambing ang mga panel",
@@ -6182,9 +6177,6 @@
             "bucket": "Kategorya",
             "count": "Bilang",
             "action": "Aksyon",
-            "delete": "tanggalin",
-            "overwrite": "i-overwrite",
-            "conflicts": "salungatan",
             "destructiveWarning": "Buburahin o i-overwrite ng preset na ito ang mga mas bagong file.",
             "confirmDestructive": "Sinuri ko ang mga mapanirang aksyon at gustong magpatuloy.",
             "executeHint": "Ang Isagawa ay naglalagay ng pinili sa pila at nagpapadala sa pamamagitan ng pinag-isang transfer planner.",
@@ -6211,7 +6203,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "Mga byte sa network",
                 "savings": "Naipon",
-                "errorDetails": "(mga) error, mga detalye",
                 "errorPathsRequired": "Kinakailangan ang pinagmulan at destinasyon",
                 "deltaStatus": "Delta sync",
                 "deltaAuto": "AUTO NAKABUKAS",
@@ -6243,7 +6234,8 @@
                 "planned": "Mga nakaplanong kopya",
                 "resultDryRunOk": "Nakumpleto ang dry run",
                 "resultDryRunPartial": "Nakumpleto ang dry run na may mga error",
-                "resultDryRunCancelled": "Kinansela ang dry run"
+                "resultDryRunCancelled": "Kinansela ang dry run",
+                "errorDetailsCount": "{count} error, mga detalye"
             },
             "launcherTemplates": "Mga template",
             "launcherMultiPath": "Maramihang landas",
@@ -6347,7 +6339,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "Binabasa ng paghahambing ang parehong folder at ang bawat folder sa ilalim ng mga ito. Sa malaking tree, maaari itong magtagal, at maaari mo itong ihinto.",
             "progressDelta": "[delta]",
-            "progressCopy": "[kopya]"
+            "progressCopy": "[kopya]",
+            "deleteCount": "Buburahin: {count}",
+            "overwriteCount": "Papatungan: {count}",
+            "conflictCount": "{count} salungatan"
         },
         "accountLock": {
             "title": "Pumili ng account",

@@ -518,7 +518,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
 
                 {/* Footer */}
                 <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400 flex justify-between">
-                    <span>{fileCount} {t('archive.files') || 'files'}, {formatSize(totalSize)}</span>
+                    <span>{t('archive.filesSummary', { count: fileCount, size: formatSize(totalSize) })}</span>
                 </div>
             </div>
             {guarded.confirmOpen && guarded.confirmKind && (

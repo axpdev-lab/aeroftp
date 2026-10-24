@@ -80,7 +80,8 @@
             "reset": "รีเซ็ต",
             "saved": "บันทึกแล้ว",
             "saving": "กำลังบันทึก...",
-            "creating": "กำลังสร้าง..."
+            "creating": "กำลังสร้าง...",
+            "minutesCount": "{count} นาที"
         },
         "connection": {
             "title": "เชื่อมต่อเซิร์ฟเวอร์",
@@ -159,7 +160,6 @@
             "saveChanges": "บันทึกการเปลี่ยนแปลง",
             "createAccount": "สร้างบัญชี",
             "docs": "เอกสาร",
-            "minutes": "นาที",
             "localPathPlaceholder": "/home/user/projects",
             "fourshared": {
                 "backToExistingAccount": "กลับไปยังบัญชีที่มีอยู่",
@@ -407,7 +407,6 @@
             "path": "เส้นทาง",
             "files": "ไฟล์",
             "folders": "โฟลเดอร์",
-            "items": "รายการ",
             "emptyFolder": "โฟลเดอร์นี้ว่างเปล่า",
             "parentFolder": "โฟลเดอร์หลัก",
             "newFolder": "โฟลเดอร์ใหม่",
@@ -462,7 +461,10 @@
             "rightPanelMarker": "แผงด้านขวา",
             "chooseRightPanelFolder": "เลือกโฟลเดอร์แผงขวา",
             "chooseLeftPanelFolder": "เลือกโฟลเดอร์แผงซ้าย",
-            "localRight": "ในเครื่อง (ขวา)"
+            "localRight": "ในเครื่อง (ขวา)",
+            "itemCount": "{count} รายการ",
+            "fileCount": "{count} ไฟล์",
+            "folderCount": "{count} โฟลเดอร์"
         },
         "contextMenu": {
             "askAeroAgent": "ถาม AeroAgent...",
@@ -625,7 +627,6 @@
             "copyError": "ข้อผิดพลาดในการคัดลอก",
             "copyQueueToClipboard": "คัดลอกคิวไปยังคลิปบอร์ด",
             "fail": "ล้มเหลว",
-            "pending": "รอดำเนินการ",
             "remove": "ลบ",
             "retry": "ลองใหม่",
             "stopAll": "หยุดทั้งหมด",
@@ -690,7 +691,6 @@
                 "newTransfer": "โอนย้ายใหม่",
                 "preparing": "กำลังเตรียมการถ่ายโอน…"
             },
-            "staged": "ในคิว",
             "start": "เริ่ม",
             "startAll": "เริ่มทั้งหมด",
             "restored": "กู้คืนแล้ว",
@@ -761,7 +761,10 @@
                 "size": "ขนาด",
                 "source": "ต้นทาง",
                 "title": "แผน: {mode}"
-            }
+            },
+            "stagedCount": "จัดเตรียมแล้ว {count}",
+            "pendingCount": "รอดำเนินการ {count}",
+            "failedCount": "ล้มเหลว {count}"
         },
         "settings": {
             "title": "การตั้งค่า",
@@ -946,7 +949,6 @@
             "migrationSkip": "ข้ามไปก่อน",
             "migrationFinish": "เสร็จสิ้น",
             "migrationStep": "ขั้นตอน {current} จาก {total}",
-            "duplicatesSkipped": "ข้ามรายการซ้ำ",
             "invalidPassword": "รหัสผ่านไม่ถูกต้อง",
             "backup": "สำรองข้อมูล",
             "visibleColumns": "คอลัมน์ที่แสดง",
@@ -1053,11 +1055,6 @@
             "consumerSecret": "ความลับผู้บริโภค",
             "privacyRespect": "AeroFTP ปกป้องความเป็นส่วนตัวของคุณ ไม่มีการเก็บรวบรวมข้อมูล ไม่มีการติดตาม ไม่มีการวัดระยะไกล",
             "keystoreEntries": "{count} รายการ",
-            "serverCredentials": "ข้อมูลรับรองเซิร์ฟเวอร์",
-            "serverProfilesLabel": "โปรไฟล์เซิร์ฟเวอร์",
-            "aiKeysLabel": "คีย์ AI",
-            "oauthTokensLabel": "โทเค็น OAuth",
-            "configEntriesLabel": "รายการการกำหนดค่า",
             "session": "เซสชัน",
             "aeroftpBackupFiles": "ไฟล์สำรองข้อมูล AeroFTP",
             "boxClientIdPlaceholder": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
@@ -1116,7 +1113,6 @@
             "selectServersToExport": "เลือกเซิร์ฟเวอร์เพื่อส่งออก",
             "selectAll": "เลือกทั้งหมด",
             "deselectAll": "ยกเลิกการเลือกทั้งหมด",
-            "selected": "ที่เลือกไว้",
             "protocolSeafile": "Seafile",
             "iconAutoDetectHint": "หากไม่ได้ตั้งค่าไอคอน ระบบจะตรวจจับ favicon หรือ icon.png จากเซิร์ฟเวอร์โดยอัตโนมัติ",
             "protocolFilelu": "FileLu",
@@ -1279,7 +1275,6 @@
             "imagePreviewBgLight": "สว่าง",
             "imagePreviewBgCustom": "กำหนดเอง",
             "showTransferProgress": "แสดงแถบความคืบหน้าการถ่ายโอน",
-            "similarToExisting": "คล้ายกับโปรไฟล์ที่มีอยู่",
             "aerocloudCompress": "เปิดใช้งานการบีบอัด (AeroCompress zstd)",
             "aerocloudCompressLevel": "Compression level (1-22, 3 balanced)",
             "aerocloudCompressA1": "A1: การบีบอัด + การเข้ารหัส (โปรไฟล์มีการเข้ารหัส)",
@@ -1354,7 +1349,16 @@
             "fontSystemInstallHint": "ต้องติดตั้งในระบบ AeroFTP จะใช้ตัวเลือกสำรองโดยอัตโนมัติหากไม่พร้อมใช้งาน",
             "fontSizeIndicatorLabel": "แบบอักษร",
             "fontPresetDefault": "{font} (ค่าเริ่มต้น)",
-            "fontPresetSystemDefault": "ค่าเริ่มต้นของระบบ"
+            "fontPresetSystemDefault": "ค่าเริ่มต้นของระบบ",
+            "duplicatesSkippedCount": "ข้ามรายการซ้ำ {count} รายการ",
+            "similarToExistingCount": "{count} รายการคล้ายกับโปรไฟล์ที่มีอยู่",
+            "bridgeSkippedCount": "ข้าม {count} รายการ",
+            "selectedOfTotal": "เลือก {selected} / {total}",
+            "serverCredentialsCount": "ข้อมูลรับรองเซิร์ฟเวอร์ {count} รายการ",
+            "serverProfilesCount": "โปรไฟล์เซิร์ฟเวอร์ {count} รายการ",
+            "aiKeysCount": "คีย์ AI {count} รายการ",
+            "oauthTokensCount": "โทเค็น OAuth {count} รายการ",
+            "configEntriesCount": "รายการการกำหนดค่า {count} รายการ"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1449,7 +1453,6 @@
             "starting": "กำลังเริ่ม...",
             "pending": "รอดำเนินการ",
             "conflict": "ขัดแย้ง",
-            "conflicts": "ข้อขัดแย้งต้องการความสนใจ",
             "error": "ข้อผิดพลาดการซิงค์",
             "never": "ไม่เคย",
             "justNow": "เมื่อกี้",
@@ -1572,7 +1575,8 @@
             "countdownSoon": "เร็วๆ นี้...",
             "aerocloudEnabled": "เปิดใช้ AeroCloud แล้ว",
             "selectPairLocalFolder": "เลือกโฟลเดอร์ในเครื่องสำหรับคู่",
-            "secondsAgo": "{count} วินาทีที่แล้ว"
+            "secondsAgo": "{count} วินาทีที่แล้ว",
+            "conflictsCount": "ข้อขัดแย้ง {count} รายการต้องได้รับการดูแล"
         },
         "statusBar": {
             "connected": "เชื่อมต่อแล้ว",
@@ -2380,7 +2384,6 @@
         },
         "overwrite": {
             "title": "ไฟล์มีอยู่แล้ว",
-            "moreFiles": "ไฟล์เพิ่มเติมในคิว",
             "remote": "ระยะไกล",
             "local": "ในเครื่อง",
             "sourceNewer": "ต้นทางใหม่กว่า",
@@ -2817,7 +2820,6 @@
                 "approveThis": "อนุมัติการเรียกเครื่องมือนี้",
                 "confirm": "ยืนยัน",
                 "confirmDangerous": "ยืนยันการดำเนินการอันตราย",
-                "pendingApproval": "รอการอนุมัติ",
                 "rejectAllCalls": "ปฏิเสธการเรียกเครื่องมือทั้งหมด",
                 "rejectExecution": "ปฏิเสธการดำเนินการเครื่องมือ",
                 "toggleDetails": "แสดง/ซ่อนรายละเอียด",
@@ -3046,12 +3048,11 @@
                 "allowAll": "อนุญาตทั้งหมด",
                 "rejectAll": "ปฏิเสธทั้งหมด",
                 "pending": "รอการอนุมัติ",
-                "toolCall": "การเรียกเครื่องมือ",
-                "toolCalls": "การเรียกเครื่องมือ",
                 "running": "กำลังดำเนินการ...",
                 "done": "เสร็จแล้ว",
                 "failed": "ล้มเหลว",
-                "allowThis": "อนุญาตเครื่องมือนี้"
+                "allowThis": "อนุญาตเครื่องมือนี้",
+                "pendingApprovalCount": "การเรียกใช้เครื่องมือ {count} รายการรอการอนุมัติ"
             },
             "diff": {
                 "title": "ตัวอย่างความแตกต่าง",
@@ -3351,7 +3352,6 @@
                 "add": "เพิ่ม",
                 "added": "เพิ่มแล้ว",
                 "all": "ทั้งหมด",
-                "available": "ที่ใช้ได้",
                 "browseProviders": "เรียกดูผู้ให้บริการ",
                 "chinese": "จีน",
                 "fast": "การอนุมานเร็ว",
@@ -3371,7 +3371,8 @@
                 "tools": "Tools",
                 "vision": "Vision",
                 "bedrockDescription": "โมเดลที่โฮสต์บน AWS และเข้าถึงด้วยคีย์ API ประจำภูมิภาค เพิ่ม model ID ด้วยตนเอง",
-                "bedrockHighlight": "ปลายทาง AWS ประจำภูมิภาค"
+                "bedrockHighlight": "ปลายทาง AWS ประจำภูมิภาค",
+                "availableCount": "พร้อมใช้งาน {count} รายการ"
             },
             "history": {
                 "cancel": "ยกเลิก",
@@ -3726,12 +3727,12 @@
             "size": "ขนาด",
             "compressed": "บีบอัดแล้ว",
             "actions": "การดำเนินการ",
-            "files": "ไฟล์",
             "empty": "ไฟล์เก็บถาวรว่างเปล่า",
             "extracting": "กำลังแตกไฟล์",
             "preview": "แสดงตัวอย่าง",
             "extract": "แตกไฟล์",
-            "back": "ย้อนกลับ"
+            "back": "ย้อนกลับ",
+            "filesSummary": "{count} ไฟล์, {size}"
         },
         "vault": {
             "addDirectorySuccess": "เพิ่ม {files} ไฟล์ใน {dirs} ไดเรกทอรี",
@@ -3778,7 +3779,6 @@
             "filesAdded": "เพิ่ม {count} ไฟล์แล้ว",
             "folderName": "ชื่อโฟลเดอร์",
             "itemDeleted": "ลบ {name} แล้ว",
-            "items": "รายการ",
             "itemsDeleted": "ลบ {count} รายการแล้ว",
             "lastOpened": "เปิดล่าสุด",
             "modified": "วันที่แก้ไข",
@@ -3819,7 +3819,6 @@
             },
             "title": "AeroVault",
             "titleFull": "AeroVault - การเข้ารหัสที่แข็งแกร่ง",
-            "totalItems": "ทั้งหมด",
             "unlock": "ปลดล็อก",
             "v1Standard": "AeroVault v1 (มาตรฐาน)",
             "v2Advanced": "AeroVault v2 (ความปลอดภัยขั้นสูง)",
@@ -3906,8 +3905,6 @@
             "extractAllHint": "แยกทุกไฟล์ในตู้นิรภัยไปยังโฟลเดอร์",
             "extractedAll": "แยก {count} ไฟล์ไปยัง {path} แล้ว",
             "dropFilesHint": "ลากไฟล์หรือโฟลเดอร์มาที่นี่ หรือใช้ปุ่มด้านล่าง",
-            "itemSingular": "รายการ",
-            "itemPlural": "รายการ",
             "reportExported": "บันทึกรายงานวอลต์ไปยัง {path} แล้ว",
             "reportCopied": "คัดลอกรายงานวอลต์ไปยังคลิปบอร์ดแล้ว",
             "exportReportHint": "ส่งออกรายงานทางเทคนิคฉบับสมบูรณ์: ข้อมูลเมตาของวอลต์ การเข้ารหัส การแก้ไขข้อผิดพลาด และรายการไฟล์ทั้งหมด",
@@ -3960,7 +3957,8 @@
             "securityStandardDescription": "AES-256-GCM-SIV · Argon2id 128 MB · เร็ว",
             "securityAdvancedDescription": "ทนต่อ nonce · ชื่อไฟล์ที่เข้ารหัส · 128 MB KDF",
             "securityParanoidDescription": "AES + ChaCha20 แบบซ้อน · เข้ารหัสสองชั้น",
-            "securityArchiveDescription": "คลังเก็บที่ตัดข้อมูลซ้ำ · ชิ้นส่วน zstd · v3"
+            "securityArchiveDescription": "คลังเก็บที่ตัดข้อมูลซ้ำ · ชิ้นส่วน zstd · v3",
+            "totalItemsCount": "ทั้งหมด {count}"
         },
         "cryptomator": {
             "title": "ตู้นิรภัย Cryptomator",
@@ -3973,7 +3971,6 @@
             "empty": "ไดเรกทอรีว่างเปล่า",
             "name": "ชื่อ",
             "size": "ขนาด",
-            "items": "รายการ",
             "readOnly": "โหมดอ่านอย่างเดียว - การสร้างตู้นิรภัยจะมาใน v2.1",
             "openAsVault": "เปิดเป็นตู้นิรภัย Cryptomator",
             "decryptAndSave": "ถอดรหัสและบันทึก",
@@ -4006,8 +4003,6 @@
             "level": "ระดับการบีบอัด",
             "password": "รหัสผ่าน (ไม่บังคับ, AES-256)",
             "passwordHint": "เว้นว่างไว้หากไม่ต้องการเข้ารหัส",
-            "files": "ไฟล์",
-            "folders": "โฟลเดอร์",
             "compress": "บีบอัด",
             "store": "เก็บ (ไม่บีบอัด)",
             "fast": "เร็ว",
@@ -4249,8 +4244,6 @@
             "modified": "วันที่แก้ไข",
             "file": "ไฟล์",
             "folder": "โฟลเดอร์",
-            "files": "ไฟล์",
-            "folders": "โฟลเดอร์",
             "remote": "ระยะไกล",
             "local": "ในเครื่อง",
             "linkTarget": "เป้าหมาย Symlink",
@@ -4326,10 +4319,7 @@
             "deleted": "ลบไฟล์ซ้ำ {count} ไฟล์แล้ว",
             "scanFailed": "การสแกนล้มเหลว",
             "retry": "ลองใหม่",
-            "groups": "กลุ่ม",
-            "duplicateFiles": "ไฟล์ซ้ำ",
             "wasted": "สูญเปล่า",
-            "copies": "สำเนา",
             "delete": "ลบ",
             "skip": "ข้าม",
             "deleteConfirm": "คุณแน่ใจหรือไม่ว่าต้องการลบไฟล์ซ้ำ {count} ไฟล์?",
@@ -4349,7 +4339,10 @@
             "similarityDistance": "{similarity}, ระยะ {distance}",
             "modeExact": "ตรงกันทุกประการ",
             "modeLabel": "โหมด:",
-            "modeNonIdentical": "ไม่เหมือนกันทุกประการ"
+            "modeNonIdentical": "ไม่เหมือนกันทุกประการ",
+            "groupsCount": "{count} กลุ่ม",
+            "duplicateFilesCount": "ไฟล์ซ้ำ {count} ไฟล์",
+            "copiesCount": "{count} สำเนา"
         },
         "diskUsage": {
             "title": "การใช้พื้นที่ดิสก์",
@@ -4357,20 +4350,16 @@
             "totalItems": "รวม: {size} จาก {count} รายการ",
             "percentOfParent": "{percent}% ของโฟลเดอร์แม่",
             "backToParent": "กลับไปโฟลเดอร์แม่",
-            "items": "รายการ",
             "scanFailed": "การวิเคราะห์ล้มเหลว",
             "retry": "ลองใหม่",
             "drillDown": "คลิกเพื่อสำรวจ",
             "back": "ย้อนกลับ",
-            "total": "รวม",
-            "across": "จาก",
             "empty": "ไดเรกทอรีนี้ว่างเปล่า",
             "hoverHint": "วางเมาส์เหนือบล็อกเพื่อดูรายละเอียด",
             "scanUnknownError": "ข้อผิดพลาดที่ไม่รู้จักขณะสแกนการใช้ดิสก์"
         },
         "dependencies": {
             "title": "ไลบรารีที่ใช้",
-            "crates": "crates",
             "copy": "คัดลอก",
             "copied": "คัดลอกแล้ว!",
             "checkUpdates": "ตรวจสอบอัปเดต",
@@ -4380,7 +4369,8 @@
             "latest": "ล่าสุด",
             "status": "สถานะ",
             "footer": "ข้อมูลเวอร์ชันจาก crates.io API เวอร์ชันที่แสดงเป็นเวอร์ชันที่แก้ไขแล้ว (Cargo.lock)",
-            "copyTitle": "การตรวจสอบไลบรารีของ AeroFTP"
+            "copyTitle": "การตรวจสอบไลบรารีของ AeroFTP",
+            "cratesCount": "{count} crate"
         },
         "debug": {
             "tabs": {
@@ -4440,7 +4430,6 @@
                 "warning": "คำเตือน",
                 "info": "ข้อมูล",
                 "debug": "ดีบัก",
-                "entries": "รายการ",
                 "resume": "ดำเนินต่อ",
                 "pause": "หยุดชั่วคราว",
                 "copyAll": "คัดลอกทั้งหมด",
@@ -4449,13 +4438,13 @@
                 "allSources": "ทุกแหล่งที่มา",
                 "sourceFilterTitle": "กรองตามแหล่งที่มา",
                 "sourceJs": "JS",
-                "sourceRust": "Rust"
+                "sourceRust": "Rust",
+                "entriesCount": "รายการ: {count}"
             },
             "frontend": {
                 "reactMode": "โหมด React",
                 "language": "ภาษา",
                 "localStorageKeys": "คีย์ LocalStorage",
-                "keys": "คีย์",
                 "localStorageSize": "ขนาด LocalStorage",
                 "windowSize": "ขนาดหน้าต่าง",
                 "devicePixelRatio": "อัตราส่วนพิกเซลอุปกรณ์",
@@ -4464,7 +4453,8 @@
                 "light": "สว่าง",
                 "userAgent": "User Agent",
                 "localStorageKeysTitle": "คีย์ LocalStorage",
-                "localStorageEntrySummary": "{size} ไบต์ · {preview}"
+                "localStorageEntrySummary": "{size} ไบต์ · {preview}",
+                "keysCount": "{count} คีย์"
             },
             "copyFileListToClipboard": "คัดลอกรายการไฟล์ไปยังคลิปบอร์ด",
             "filesCopied": "คัดลอก {count} รายการไฟล์ไปยังคลิปบอร์ดแล้ว",
@@ -4486,12 +4476,12 @@
                 "i18nSweep": "การกวาดคีย์ i18n",
                 "ipcSpeed": "ตัวอย่างความเร็ว IPC",
                 "knownHosts": "การอ่าน known_hosts",
-                "passed": "ผ่าน",
                 "pluginIntegrity": "ความสมบูรณ์ของปลั๊กอิน",
                 "providerSelftest": "การทดสอบตนเองของผู้ให้บริการ (อ่านอย่างเดียว)",
                 "runAll": "เรียกใช้ทั้งหมด",
                 "runOne": "เรียกใช้การทดสอบนี้",
-                "vaultRoundtrip": "การไป-กลับของห้องนิรภัย"
+                "vaultRoundtrip": "การไป-กลับของห้องนิรภัย",
+                "passedCount": "ผ่าน {passed}/{total}"
             },
             "bundle": {
                 "title": "ส่งออกชุดข้อมูลวินิจฉัย (ZIP)"
@@ -4539,9 +4529,9 @@
         "activityPanel": {
             "awaitingCommands": "รอคำสั่ง...",
             "badges": {
-                "active": "ใช้งานอยู่",
                 "live": "สด",
-                "synced": "ซิงค์แล้ว"
+                "synced": "ซิงค์แล้ว",
+                "activeCount": "กำลังทำงาน {count} รายการ"
             },
             "clearLog": "ล้างบันทึก",
             "close": "ปิด",
@@ -4565,7 +4555,7 @@
             "duplicate": "Duplicate",
             "filterMenu": {
                 "title": "กรองการดำเนินการ",
-                "selected": "ที่เลือก"
+                "selectedCount": "เลือก {count} รายการ"
             },
             "save": "บันทึก"
         },
@@ -4757,14 +4747,12 @@
                 "auto": "อัตโนมัติ",
                 "autoRefresh": "รีเฟรชอัตโนมัติ (3s)",
                 "browser": "เบราว์เซอร์",
-                "chars": "อักขระ",
                 "copy": "คัดลอกไปยังคลิปบอร์ด",
                 "disableWrap": "ปิดการตัดคำ",
                 "enableWrap": "เปิดการตัดคำ",
                 "encoding": "การเข้ารหัส",
                 "errorLoading": "ข้อผิดพลาดในการโหลดเนื้อหา",
                 "hex": "Hex",
-                "lines": "บรรทัด",
                 "loadFailed": "โหลดเนื้อหาข้อความไม่สำเร็จ",
                 "noContent": "ไม่มีเนื้อหา",
                 "openBrowser": "เปิดในเบราว์เซอร์ของระบบ",
@@ -4783,7 +4771,8 @@
                 "wordWrap": "การตัดคำ",
                 "zoomIn": "ซูมเข้า",
                 "zoomOut": "ซูมออก",
-                "htmlPreviewFrameTitle": "ตัวอย่าง HTML"
+                "htmlPreviewFrameTitle": "ตัวอย่าง HTML",
+                "stats": "{lines} บรรทัด • {chars} อักขระ"
             },
             "video": {
                 "exitFullscreen": "ออกจากเต็มหน้าจอ (F)",
@@ -4908,7 +4897,6 @@
             "pwdBatchCount": "จำนวนที่สร้าง",
             "pwdGenerate": "สร้าง",
             "pwdEntropy": "เอนโทรปี",
-            "pwdBits": "บิต",
             "pwdWeak": "อ่อน",
             "pwdFair": "พอใช้",
             "pwdGood": "ดี",
@@ -4959,7 +4947,8 @@
             "argon2DefaultsHint": "ค่าเริ่มต้น: โปรไฟล์ที่ AeroVault และ AeroCrypt ใช้ (128 MiB, 4 รอบ, 4 เลน, เอาต์พุต 32 ไบต์) ซอลต์ด้านบนเป็นของคุณ หน่วยความจำสูงสุด 2 GiB",
             "argon2Derive": "สร้าง",
             "argon2Phc": "สตริง PHC",
-            "hashError": "ข้อผิดพลาด: {error}"
+            "hashError": "ข้อผิดพลาด: {error}",
+            "pwdBitsCount": "{count} บิต"
         },
         "dialog": {
             "deleteFile": "ลบ \"{name}\" หรือไม่?",
@@ -5019,8 +5008,6 @@
             "vaultOnly": "ใน vault เท่านั้น",
             "localOnly": "ในเครื่องเท่านั้น",
             "conflict": "ข้อขัดแย้ง",
-            "conflicts": "ข้อขัดแย้ง",
-            "unchanged": "ไม่เปลี่ยนแปลง",
             "allToVault": "ทั้งหมดไป vault",
             "allToLocal": "ทั้งหมดไปเครื่อง",
             "keepNewer": "เก็บไฟล์ใหม่กว่า",
@@ -5035,10 +5022,14 @@
             "applySync": "ดำเนินการซิงค์",
             "close": "ปิด",
             "allInSync": "ไฟล์ทั้งหมดซิงค์แล้ว",
-            "filesToVault": "ไฟล์ซิงค์ไป vault แล้ว",
-            "filesToLocal": "ไฟล์แตกไปเครื่องแล้ว",
-            "filesSkipped": "ไฟล์ข้ามแล้ว",
-            "errorsOccurred": "เกิดข้อผิดพลาดบางรายการ"
+            "errorsOccurred": "เกิดข้อผิดพลาดบางรายการ",
+            "vaultOnlyCount": "ใน vault เท่านั้น {count}",
+            "localOnlyCount": "ในเครื่องเท่านั้น {count}",
+            "conflictsCount": "ข้อขัดแย้ง {count} รายการ",
+            "unchangedCount": "ไม่เปลี่ยนแปลง {count} รายการ",
+            "filesToVaultCount": "ซิงค์ {count} ไฟล์ไปยัง vault แล้ว",
+            "filesToLocalCount": "แตก {count} ไฟล์ไปยังเครื่องแล้ว",
+            "filesSkippedCount": "ข้าม {count} ไฟล์"
         },
         "localTabs": {
             "closeAll": "ปิดแท็บทั้งหมด",
@@ -5263,7 +5254,6 @@
             "checkAll": "ตรวจสอบทั้งหมด",
             "checkOne": "ตรวจสอบเซิร์ฟเวอร์นี้",
             "checking": "กำลังตรวจสอบ...",
-            "checked": "ตรวจสอบแล้ว",
             "healthy": "ปกติ",
             "degraded": "ลดประสิทธิภาพ",
             "unreachable": "เข้าถึงไม่ได้",
@@ -5278,7 +5268,11 @@
             "copied": "Copied\\!",
             "batchChecking": "กำลังตรวจสอบเซิร์ฟเวอร์ {count} เครื่อง, กรุณารอสักครู่...",
             "scoreLegend": "คะแนน 0-100 สูงกว่าดีกว่า",
-            "scoreLegendDetail": "80+ ดี · 50-79 ลดลง · ต่ำกว่า 50 มีปัญหา"
+            "scoreLegendDetail": "80+ ดี · 50-79 ลดลง · ต่ำกว่า 50 มีปัญหา",
+            "checkedCount": "ตรวจสอบแล้ว {count} รายการ",
+            "healthyCount": "ปกติ {count}",
+            "degradedCount": "ลดประสิทธิภาพ {count}",
+            "unreachableCount": "เข้าถึงไม่ได้ {count}"
         },
         "speedTest": {
             "title": "Speed Test",
@@ -5548,7 +5542,6 @@
                 "archived": "เก็บถาวรแล้ว",
                 "trash": "ถังขยะ"
             },
-            "participants": "ผู้เข้าร่วม",
             "saving": "กำลังบันทึก...",
             "saved": "บันทึกแล้ว",
             "saveNow": "บันทึกเดี๋ยวนี้",
@@ -5566,7 +5559,8 @@
                 "code": "โค้ด",
                 "richText": "ข้อความแบบจัดรูปแบบ",
                 "checklist": "รายการตรวจสอบ"
-            }
+            },
+            "participantsCount": "ผู้เข้าร่วม {count} คน"
         },
         "shareLinkModal": {
             "title": "ลิงก์แชร์",
@@ -6013,13 +6007,14 @@
             "moveToOtherPanel": "ย้ายไปยังแผงอีกด้าน",
             "copiedToOtherPanel": "คัดลอกไปยังแผงอีกด้านแล้ว",
             "movedToOtherPanel": "ย้ายไปยังแผงอีกด้านแล้ว",
-            "itemsLower": "items",
             "resizePanels": "Resize panels",
             "copyHere": "คัดลอก {count} ที่นี่",
             "moveHere": "ย้าย {count} ที่นี่",
             "copyHereFromOtherPanelTooltip": "คัดลอก {count} ที่เลือกจากแผงอื่นมายังแผงนี้ (F5)",
             "moveHereFromOtherPanelTooltip": "ย้าย {count} ที่เลือกจากแผงอื่นมายังแผงนี้ (F6)",
-            "syncToOtherPanel": "ซิงค์ไปยังแผงอีกอัน (delta)"
+            "syncToOtherPanel": "ซิงค์ไปยังแผงอีกอัน (delta)",
+            "failedCount": "ล้มเหลว {count} รายการ",
+            "skippedCount": "ข้าม {count} รายการ"
         },
         "compare": {
             "title": "เปรียบเทียบแผง",
@@ -6163,9 +6158,6 @@
             "bucket": "หมวดหมู่",
             "count": "จำนวน",
             "action": "การกระทำ",
-            "delete": "ลบ",
-            "overwrite": "เขียนทับ",
-            "conflicts": "ความขัดแย้ง",
             "destructiveWarning": "พรีเซ็ตนี้จะลบหรือเขียนทับไฟล์ที่ใหม่กว่า",
             "confirmDestructive": "ฉันได้ตรวจสอบการกระทำที่ทำลายล้างแล้วและต้องการดำเนินการต่อ",
             "executeHint": "ดำเนินการจัดคิวรายการที่เลือกและส่งผ่านตัววางแผนการถ่ายโอนแบบรวม",
@@ -6192,7 +6184,6 @@
                 "payload": "Payload",
                 "bytesOnWire": "ไบต์บนเครือข่าย",
                 "savings": "ประหยัด",
-                "errorDetails": "ข้อผิดพลาด รายละเอียด",
                 "errorPathsRequired": "ต้องระบุต้นทางและปลายทาง",
                 "deltaStatus": "ซิงค์เดลตา",
                 "deltaAuto": "อัตโนมัติ เปิด",
@@ -6224,7 +6215,8 @@
                 "planned": "รายการคัดลอกที่วางแผนไว้",
                 "resultDryRunOk": "ทดลองรันเสร็จสมบูรณ์",
                 "resultDryRunPartial": "ทดลองรันเสร็จสมบูรณ์โดยมีข้อผิดพลาด",
-                "resultDryRunCancelled": "ยกเลิกการทดลองรันแล้ว"
+                "resultDryRunCancelled": "ยกเลิกการทดลองรันแล้ว",
+                "errorDetailsCount": "ข้อผิดพลาด {count} รายการ, รายละเอียด"
             },
             "launcherTemplates": "เทมเพลต",
             "launcherMultiPath": "หลายเส้นทาง",
@@ -6328,7 +6320,10 @@
             "comparePair": "{left} ↔ {right}",
             "compareStartHint": "การเปรียบเทียบจะอ่านทั้งสองโฟลเดอร์และทุกโฟลเดอร์ที่อยู่ภายใต้ หากโครงสร้างมีขนาดใหญ่อาจใช้เวลาสักครู่ และคุณสามารถหยุดได้",
             "progressDelta": "[เดลตา]",
-            "progressCopy": "[สำเนา]"
+            "progressCopy": "[สำเนา]",
+            "deleteCount": "จะลบ {count} รายการ",
+            "overwriteCount": "จะเขียนทับ {count} รายการ",
+            "conflictCount": "ข้อขัดแย้ง {count} รายการ"
         },
         "accountLock": {
             "title": "เลือกบัญชี",
