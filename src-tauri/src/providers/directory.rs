@@ -114,6 +114,15 @@ pub struct DirectoryProvider {
     cwd: String,
 }
 
+// Kept separate so metadata failures after path resolution can be injected
+// deterministically, without racing permissions or a removable mount.
+fn metadata_probe_error(path: &str, error: std::io::Error) -> ProviderError {
+    match error.kind() {
+        std::io::ErrorKind::NotFound => ProviderError::NotFound(format!("{path}: {error}")),
+        _ => ProviderError::IoError(error),
+    }
+}
+
 impl DirectoryProvider {
     /// A portable device through its desktop mount, with the `Mtp` identity so
     /// dual-panel transfers and AeroSync treat it as a remote.
@@ -454,7 +463,7 @@ impl StorageProvider for DirectoryProvider {
         let dir = self.resolve_existing(&vpath)?;
         let meta = tokio::fs::metadata(&dir)
             .await
-            .map_err(|e| ProviderError::NotFound(format!("{vpath}: {e}")))?;
+            .map_err(|e| metadata_probe_error(&vpath, e))?;
         if !meta.is_dir() {
             return Err(ProviderError::InvalidPath(format!(
                 "{vpath} is not a directory"
@@ -467,9 +476,10 @@ impl StorageProvider for DirectoryProvider {
         let mut left_out = Vec::new();
         while let Some(item) = rd.next_entry().await.map_err(ProviderError::IoError)? {
             let name = item.file_name().to_string_lossy().to_string();
-            let Ok(meta) = tokio::fs::symlink_metadata(item.path()).await else {
-                left_out.push(name);
-                continue;
+            let meta = match tokio::fs::symlink_metadata(item.path()).await {
+                Ok(meta) => meta,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e) => return Err(ProviderError::IoError(e)),
             };
             let (meta, is_symlink) = if meta.file_type().is_symlink() {
                 match self.linked_file(&item.path()) {
@@ -508,8 +518,7 @@ impl StorageProvider for DirectoryProvider {
             crate::providers::report_warning(format!(
                 "{vpath}: {} item(s) not listed: {shown}{more}. A symbolic link is listed \
                  only when it points to a file inside {}; a link to a folder, one that \
-                 leaves it, one that points nowhere and an item that cannot be read \
-                 are left out.",
+                 leaves it and one that points nowhere are left out.",
                 left_out.len(),
                 self.root_noun()
             ));
@@ -527,7 +536,7 @@ impl StorageProvider for DirectoryProvider {
         let fs = self.resolve_existing(&vpath)?;
         let meta = tokio::fs::metadata(&fs)
             .await
-            .map_err(|e| ProviderError::NotFound(format!("{vpath}: {e}")))?;
+            .map_err(|e| metadata_probe_error(&vpath, e))?;
         if !meta.is_dir() {
             return Err(ProviderError::InvalidPath(format!(
                 "{vpath} is not a directory"
@@ -552,7 +561,7 @@ impl StorageProvider for DirectoryProvider {
         let src = self.resolve_existing(&vpath)?;
         let meta = tokio::fs::metadata(&src)
             .await
-            .map_err(|e| ProviderError::NotFound(format!("{vpath}: {e}")))?;
+            .map_err(|e| metadata_probe_error(&vpath, e))?;
         if meta.is_dir() {
             return Err(ProviderError::InvalidPath(format!(
                 "{vpath} is a directory"
@@ -667,7 +676,7 @@ impl StorageProvider for DirectoryProvider {
         let src = self.resolve_existing(&vpath)?;
         let meta = tokio::fs::metadata(&src)
             .await
-            .map_err(|e| ProviderError::NotFound(format!("{vpath}: {e}")))?;
+            .map_err(|e| metadata_probe_error(&vpath, e))?;
         if meta.is_dir() {
             return Err(ProviderError::InvalidPath(format!(
                 "{vpath} is a directory"
@@ -795,7 +804,7 @@ impl StorageProvider for DirectoryProvider {
         let fs = self.resolve_entry(&vpath)?;
         let meta = tokio::fs::symlink_metadata(&fs)
             .await
-            .map_err(|e| ProviderError::NotFound(format!("{vpath}: {e}")))?;
+            .map_err(|e| metadata_probe_error(&vpath, e))?;
         if meta.is_dir() && !meta.file_type().is_symlink() {
             return Err(ProviderError::InvalidPath(format!(
                 "{vpath} is a directory; use rmdir"
@@ -914,7 +923,7 @@ impl StorageProvider for DirectoryProvider {
         let fs = self.resolve_existing(&vpath)?;
         let meta = tokio::fs::symlink_metadata(&fs)
             .await
-            .map_err(|e| ProviderError::NotFound(format!("{vpath}: {e}")))?;
+            .map_err(|e| metadata_probe_error(&vpath, e))?;
         // `fs` is the resolved target; whether the name itself is a link is
         // asked of the unresolved path.
         let is_symlink = self
@@ -935,7 +944,7 @@ impl StorageProvider for DirectoryProvider {
         let fs = self.resolve_existing(&vpath)?;
         let meta = tokio::fs::metadata(&fs)
             .await
-            .map_err(|e| ProviderError::NotFound(format!("{vpath}: {e}")))?;
+            .map_err(|e| metadata_probe_error(&vpath, e))?;
         Ok(meta.len())
     }
 
@@ -1239,6 +1248,45 @@ fn same_file(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn probe_contract_directory_cannot_hide_an_unreadable_item() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::geteuid() } == 0 {
+            return;
+        }
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("present"), b"data").unwrap();
+        let mut provider = connected(root.path()).await;
+        let original = std::fs::metadata(root.path()).unwrap().permissions();
+        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o400)).unwrap();
+        let outcome = provider.list("/").await;
+        std::fs::set_permissions(root.path(), original).unwrap();
+        assert!(
+            matches!(outcome, Err(ProviderError::IoError(_))),
+            "{outcome:?}"
+        );
+        assert_eq!(provider.list("/").await.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn probe_contract_directory_metadata_errors_are_not_absence() {
+        for kind in [
+            std::io::ErrorKind::PermissionDenied,
+            std::io::ErrorKind::Other,
+        ] {
+            let error = metadata_probe_error("/target", std::io::Error::from(kind));
+            assert!(matches!(error, ProviderError::IoError(_)), "{error:?}");
+        }
+        assert!(matches!(
+            metadata_probe_error(
+                "/missing",
+                std::io::Error::from(std::io::ErrorKind::NotFound)
+            ),
+            ProviderError::NotFound(_)
+        ));
+    }
+
     use super::*;
     use std::sync::{Arc, Mutex};
 

@@ -636,7 +636,10 @@ async fn list_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError>
     validate_remote_path(&path, "path")?;
     let opts = ListFilterOpts::from_args(args, 200);
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
-    let entries = backend.list(&path).await.map_err(ToolError::Exec)?;
+    let entries = backend
+        .list_for_display(&path)
+        .await
+        .map_err(ToolError::Exec)?;
     let total_unfiltered = entries.len();
     let mut filtered = apply_entry_filter(entries, &opts);
     let total_matched = filtered.len();
@@ -751,10 +754,14 @@ async fn search_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
     }))
 }
 
-/// Whether `path` exists, for a guard whose "no" leads to a write: `false`
-/// only when the provider said the path is missing. Any other failure (a
-/// timeout, a denial, a dropped connection) is returned as an error, so a
-/// write never follows a check that did not answer.
+// RemoteBackend currently transports ProviderError through Display. Only the
+// leading typed discriminator is evidence of absence; the detail may mention
+// a missing service, token or metadata without saying this path is absent.
+fn backend_reported_not_found(message: &str) -> bool {
+    message.starts_with(&crate::providers::ProviderError::NotFound(String::new()).to_string())
+}
+
+/// A guard may permit a write only after a definite missing-path response.
 async fn remote_path_exists(
     backend: &dyn RemoteBackend,
     path: &str,
@@ -762,7 +769,7 @@ async fn remote_path_exists(
 ) -> Result<bool, ToolError> {
     match backend.stat(path).await {
         Ok(_) => Ok(true),
-        Err(e) if crate::providers::types::message_names_a_missing_path_for(&e, path) => Ok(false),
+        Err(e) if backend_reported_not_found(&e) => Ok(false),
         Err(e) => Err(ToolError::Exec(format!(
             "{guard}: cannot verify whether '{path}' exists ({e}); nothing was written"
         ))),
@@ -777,11 +784,48 @@ async fn upload_file(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
     let no_clobber = get_bool_opt(args, "no_clobber").unwrap_or(false);
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
     reject_restricted_leaf(backend.as_ref(), &remote_path).await?;
-    if no_clobber && remote_path_exists(backend.as_ref(), &remote_path, "no_clobber").await? {
+    let native_guard = no_clobber && backend.supports_upload_if_absent().await;
+    if no_clobber
+        && !native_guard
+        && remote_path_exists(backend.as_ref(), &remote_path, "no_clobber").await?
+    {
         return Ok(no_clobber_skipped(&server, &remote_path));
     }
     if create_parents {
         ensure_remote_parents(ctx, &server, &remote_path).await?;
+    }
+    if native_guard {
+        let staged;
+        let local = if let Some(local) = get_str_opt(args, "local_path") {
+            validate_local_path(&local, "local_path")?;
+            local
+        } else if let Some(content) = get_str_opt(args, "content") {
+            staged = tempfile::NamedTempFile::new().map_err(|e| ToolError::Exec(e.to_string()))?;
+            std::fs::write(staged.path(), content.as_bytes())
+                .map_err(|e| ToolError::Exec(e.to_string()))?;
+            staged.path().to_string_lossy().into_owned()
+        } else {
+            return Err(ToolError::InvalidArgs {
+                tool: "aeroftp_upload_file".into(),
+                reason: "Provide either 'local_path' or 'content'".into(),
+            });
+        };
+        return match backend
+            .upload_if_absent(&local, &remote_path)
+            .await
+            .map_err(ToolError::Exec)?
+        {
+            true => {
+                if get_str_opt(args, "local_path").is_some() {
+                    Ok(local_file_uploaded(&server, &local, &remote_path))
+                } else {
+                    Ok(
+                        json!({"server":server,"remote_path":remote_path,"uploaded":true,"bytes":get_str_opt(args,"content").map_or(0,|content|content.len())}),
+                    )
+                }
+            }
+            false => Ok(no_clobber_skipped(&server, &remote_path)),
+        };
     }
     if let Some(local_path) = get_str_opt(args, "local_path") {
         validate_local_path(&local_path, "local_path")?;
@@ -1288,18 +1332,18 @@ async fn bulk_preconditions<'a>(
     } else {
         None
     };
+    let authoritative = backend.listing_is_authoritative().await;
     let mut pending = Vec::with_capacity(members.len());
     for (index, member) in members {
         if member.no_clobber {
             let name = member.remote_path.rsplit('/').next().unwrap_or("");
             let listed = match &listing {
-                Some(Ok(entries)) => listed_name(entries, name),
+                Some(Ok(entries)) => match listed_name(entries, name) {
+                    Listed::Absent if !authoritative => Listed::Unsure,
+                    answer => answer,
+                },
                 // Nothing lives under a folder that is not there.
-                Some(Err(e))
-                    if crate::providers::types::message_names_a_missing_path_for(e, parent) =>
-                {
-                    Listed::Absent
-                }
+                Some(Err(e)) if backend_reported_not_found(e) => Listed::Absent,
                 _ => Listed::Unsure,
             };
             let exists = match listed {
@@ -1440,7 +1484,7 @@ async fn preview_delete(
     let (is_dir, root_size): (bool, u64) = match backend.stat(path).await {
         Ok(r) => (r.is_dir, r.size),
         Err(e) => {
-            if recursive && crate::providers::types::message_names_a_missing_path_for(&e, path) {
+            if recursive && backend_reported_not_found(&e) {
                 // Assume pseudo-directory for recursive preview; contents will
                 // be discovered by list below.
                 (true, 0)
@@ -3583,10 +3627,7 @@ async fn speed(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
                 ),
             });
         }
-        Err(e)
-            if path_is_caller_named
-                && !crate::providers::types::message_names_a_missing_path_for(&e, &remote_path) =>
-        {
+        Err(e) if path_is_caller_named && !backend_reported_not_found(&e) => {
             return Err(ToolError::InvalidArgs {
                 tool: "aeroftp_speed".to_string(),
                 reason: format!(
@@ -4643,6 +4684,9 @@ mod tests {
         /// When set, `stat` fails with this message for every path, the way a
         /// provider fails on an expired token or a dropped connection.
         stat_fails_with: Option<String>,
+        list_fails_with: Option<String>,
+        listing_authoritative: bool,
+        conditional_result: Option<Result<bool, String>>,
         /// When set, `mkdir` fails with this message instead of the default
         /// "unused", so a test can hand the walk the wording a real server
         /// uses when the path is already taken.
@@ -4730,6 +4774,9 @@ mod tests {
                 delete_fails_with: None,
                 rename_fails_with: None,
                 stat_fails_with: None,
+                list_fails_with: None,
+                listing_authoritative: true,
+                conditional_result: None,
                 mkdir_fails_with: None,
                 mkdir_calls: Mutex::new(Vec::new()),
                 symlinks: std::collections::HashSet::new(),
@@ -4763,6 +4810,20 @@ mod tests {
 
     #[async_trait::async_trait]
     impl RemoteBackend for FakeBackend {
+        async fn supports_upload_if_absent(&self) -> bool {
+            self.conditional_result.is_some()
+        }
+        async fn upload_if_absent(&self, local: &str, remote: &str) -> Result<bool, String> {
+            let result = self.conditional_result.clone().ok_or("unavailable")?;
+            if result == Ok(true) {
+                let bytes = std::fs::read(local).map_err(|e| e.to_string())?;
+                self.uploads.lock().unwrap().push((remote.into(), bytes));
+            }
+            result
+        }
+        async fn listing_is_authoritative(&self) -> bool {
+            self.listing_authoritative
+        }
         async fn is_connected(&self) -> bool {
             true
         }
@@ -4771,20 +4832,21 @@ mod tests {
         }
         async fn list(&self, path: &str) -> Result<Vec<RemoteEntry>, String> {
             self.list_calls.lock().unwrap().push(path.to_string());
-            self.tree
-                .get(path)
-                .cloned()
-                .ok_or_else(|| format!("not found: {path}"))
+            if let Some(error) = &self.list_fails_with {
+                return Err(error.clone());
+            }
+            self.tree.get(path).cloned().ok_or_else(|| {
+                crate::providers::ProviderError::NotFound(path.to_string()).to_string()
+            })
         }
         async fn stat(&self, path: &str) -> Result<RemoteEntry, String> {
             self.stat_calls.lock().unwrap().push(path.to_string());
             if let Some(msg) = &self.stat_fails_with {
                 return Err(msg.clone());
             }
-            let (is_dir, size) = *self
-                .stats
-                .get(path)
-                .ok_or_else(|| format!("not found: {path}"))?;
+            let (is_dir, size) = *self.stats.get(path).ok_or_else(|| {
+                crate::providers::ProviderError::NotFound(path.to_string()).to_string()
+            })?;
             let mut e = entry(path, is_dir, size);
             e.is_symlink = self.symlinks.contains(path);
             e.permissions = self.modes.lock().unwrap().get(path).map(|mode| {
@@ -5344,6 +5406,56 @@ mod tests {
         assert_eq!(report["summary"]["totals"]["skipped"], 1);
     }
 
+    #[tokio::test]
+    async fn probe_contract_mcp_native_no_clobber_uses_server_instead_of_stat() {
+        for created in [false, true] {
+            let mut fake = FakeBackend::sample();
+            fake.conditional_result = Some(Ok(created));
+            fake.listing_authoritative = false;
+            let fake = Arc::new(fake);
+            let ctx = test_ctx(fake.clone());
+            let result = upload_file(
+                &ctx,
+                &json!({"server":"s","remote_path":"/new","content":"payload","no_clobber":true}),
+            )
+            .await
+            .unwrap();
+            assert_eq!(result[if created { "uploaded" } else { "skipped" }], true);
+            if created {
+                assert_eq!(result["bytes"], 7);
+            }
+            assert!(fake.stat_calls.lock().unwrap().is_empty());
+            assert_eq!(fake.uploads.lock().unwrap().len(), usize::from(created));
+        }
+    }
+
+    #[tokio::test]
+    async fn probe_contract_mcp_bulk_probes_names_omitted_by_a_partial_listing() {
+        let (_directory, items) = bulk_fixture(&["a.txt", "fresh1.txt", "fresh2.txt"]);
+        let mut fake = bulk_backend(|_| BulkTransferOutcome::Completed);
+        fake.listing_authoritative = false;
+        fake.tree.insert("/root".into(), Vec::new());
+        // stat still finds a.txt, which the incomplete list omitted.
+        let fake = Arc::new(fake);
+        let report = upload_many(
+            &test_ctx(fake.clone()),
+            &json!({"server":"s", "items":items, "no_clobber":true}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(report["summary"]["skipped"], 1);
+        assert_eq!(
+            *fake.bulk_calls.lock().unwrap(),
+            vec![vec!["/root/fresh1.txt", "/root/fresh2.txt"]]
+        );
+        assert!(fake
+            .stat_calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|path| path == "/root/a.txt"));
+    }
+
     /// `delay_ms` was advertised and ignored. It pauses before every upload
     /// call after the first, a native bulk counting as one call, and is
     /// capped at 2000 ms.
@@ -5847,6 +5959,63 @@ mod tests {
 
     /// A stat that does not answer (a timeout) is not a missing file: touch
     /// read it as one and uploaded 0 bytes over the file it could not see.
+    #[tokio::test]
+    async fn probe_contract_mcp_never_reads_error_details_as_absence() {
+        for error in [
+            crate::providers::ProviderError::AuthenticationFailed(
+                "upstream says 404 not found".into(),
+            ),
+            crate::providers::ProviderError::PermissionDenied(
+                "metadata lookup returned 404".into(),
+            ),
+            crate::providers::ProviderError::ServerError("cannot find metadata service".into()),
+        ] {
+            let mut fake = FakeBackend::sample();
+            fake.stat_fails_with = Some(error.to_string());
+            let fake = Arc::new(fake);
+            let ctx = test_ctx(fake.clone());
+            let outcome = touch(&ctx, &json!({"server":"s","path":"/root/a.txt"})).await;
+            assert!(
+                outcome.is_err(),
+                "{error}: a probe error permitted touch: {outcome:?}"
+            );
+            let outcome = upload_file(
+                &ctx,
+                &json!({"server":"s","remote_path":"/root/a.txt",
+                "content":"new","no_clobber":true}),
+            )
+            .await;
+            assert!(
+                outcome.is_err(),
+                "{error}: a probe error permitted upload: {outcome:?}"
+            );
+            assert!(fake.remote_files.lock().unwrap().is_empty());
+            assert!(speed(
+                &ctx,
+                &json!({"server":"s", "remote_path":"/root/a.txt", "size_mb":1})
+            )
+            .await
+            .is_err());
+            assert!(fake.uploads.lock().unwrap().is_empty());
+            assert!(fake.deleted.lock().unwrap().is_empty());
+
+            let (_directory, items) = bulk_fixture(&["a.txt", "fresh1.txt", "fresh2.txt"]);
+            let mut bulk = bulk_backend(|_| BulkTransferOutcome::Completed);
+            bulk.stat_fails_with = Some(error.to_string());
+            bulk.list_fails_with = Some(error.to_string());
+            let bulk = Arc::new(bulk);
+            let report = upload_many(
+                &test_ctx(bulk.clone()),
+                &json!({"server":"s", "items":items,"no_clobber":true}),
+            )
+            .await
+            .unwrap();
+            assert_eq!(report["summary"]["uploaded"], 0);
+            assert!(bulk.bulk_calls.lock().unwrap().is_empty());
+            assert!(bulk.local_uploads.lock().unwrap().is_empty());
+        }
+    }
+
     #[tokio::test]
     async fn touch_creates_nothing_when_the_stat_does_not_answer() {
         let mut fake = FakeBackend::sample();

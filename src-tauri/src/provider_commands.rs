@@ -2397,7 +2397,7 @@ async fn provider_list_files_inner(
     // between user actions; surfacing the raw `session closed` as a
     // hard error forces a manual reconnect, which Tom (issue #161)
     // flagged as the workflow killer.
-    let files = match provider.list(list_path).await {
+    let files = match provider.list_for_display(list_path).await {
         Ok(files) => files,
         Err(e) if e.is_connection_lost() => {
             emit_session_event(app, SessionEventKind::Lost, e.to_string());
@@ -2405,7 +2405,7 @@ async fn provider_list_files_inner(
                 .await
                 .map_err(|err| format!("Failed to reconnect: {}", err))?;
             let files = provider
-                .list(list_path)
+                .list_for_display(list_path)
                 .await
                 .map_err(|err| format!("Failed to list files after reconnect: {}", err))?;
             emit_session_event(app, SessionEventKind::Reconnected, "");
@@ -2495,7 +2495,7 @@ async fn provider_change_dir_inner(
     }
 
     let files = provider
-        .list(".")
+        .list_for_display(".")
         .await
         .map_err(|e| format!("Failed to list files: {}", e))?;
 
@@ -3840,6 +3840,8 @@ pub async fn provider_upload_folder(
 /// folder to walk.
 #[derive(Debug, Deserialize)]
 pub struct ProviderFileBatchParams {
+    #[serde(default)]
+    no_clobber: bool,
     entries: Vec<TransferEntry>,
     #[serde(default)]
     max_concurrent: Option<u32>,
@@ -4252,15 +4254,18 @@ pub(crate) async fn run_provider_file_batch(
         )
         .await
     } else {
-        let executor = Arc::new(ProviderUploadExecutor::new(
-            sink.clone(),
-            provider.clone(),
-            runtime_settings,
-            params.commit_message,
-            cancel_token,
-            session_model,
-            capabilities,
-        ));
+        let executor = Arc::new(
+            ProviderUploadExecutor::new(
+                sink.clone(),
+                provider.clone(),
+                runtime_settings,
+                params.commit_message,
+                cancel_token,
+                session_model,
+                capabilities,
+            )
+            .with_no_clobber(params.no_clobber),
+        );
         execute_batch(
             sink,
             batch,
@@ -4276,6 +4281,14 @@ pub(crate) async fn run_provider_file_batch(
             "{} cancelled after {} files",
             if is_download { "Download" } else { "Upload" },
             batch_result.completed + batch_result.failed
+        )
+    } else if batch_result.skipped > 0 {
+        format!(
+            "{} {} files, {} skipped, {} errors",
+            file_batch_verb(is_download),
+            batch_result.completed,
+            batch_result.skipped,
+            batch_result.failed
         )
     } else {
         format!(
@@ -4928,10 +4941,17 @@ async fn conflict_scan_listing(
     provider: &mut dyn StorageProvider,
     remote_dir: &str,
 ) -> Result<Vec<RemoteEntry>, ProviderError> {
-    match provider.list(remote_dir).await {
-        Err(ProviderError::NotFound(_)) => Ok(Vec::new()),
-        other => other,
+    let entries = match provider.list(remote_dir).await {
+        Err(ProviderError::NotFound(_)) => return Ok(Vec::new()),
+        other => other?,
+    };
+    // Native providers may discover unreadable entries during the listing.
+    if !provider.listing_is_authoritative() {
+        return Err(ProviderError::NotSupported(format!(
+            "Cannot verify upload conflicts in {remote_dir}: the listing can omit stored files"
+        )));
     }
+    Ok(entries)
 }
 
 /// The listing error of the folder that holds `remote_path`, when the
@@ -4961,6 +4981,13 @@ async fn provider_upload_folder_inner(
     let (runtime_settings, session_model, capabilities) =
         resolve_provider_transfer_runtime(&state.provider, transfer_settings).await;
 
+    let native_no_clobber = file_exists_action == "skip"
+        && state
+            .provider
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|p| p.supports_upload_if_absent());
     let cancel_token = state.reset_cancel_state().await;
 
     let folder_name = std::path::Path::new(local_path)
@@ -5180,7 +5207,7 @@ async fn provider_upload_folder_inner(
 
     let mut files_skipped = 0u32;
     let mut files_unverified = 0u32;
-    if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
+    if !native_no_clobber && !file_exists_action.is_empty() && file_exists_action != "overwrite" {
         let mut remote_index: std::collections::HashMap<
             String,
             (u64, Option<chrono::DateTime<chrono::Utc>>),
@@ -5372,15 +5399,18 @@ async fn provider_upload_folder_inner(
     });
 
     let sink: Arc<dyn TransferEventSink> = Arc::new(AppHandleSink::new(app.clone()));
-    let executor = Arc::new(ProviderUploadExecutor::new(
-        sink.clone(),
-        state.provider.clone(),
-        runtime_settings,
-        commit_message,
-        cancel_token,
-        session_model,
-        capabilities,
-    ));
+    let executor = Arc::new(
+        ProviderUploadExecutor::new(
+            sink.clone(),
+            state.provider.clone(),
+            runtime_settings,
+            commit_message,
+            cancel_token,
+            session_model,
+            capabilities,
+        )
+        .with_no_clobber(native_no_clobber),
+    );
 
     let batch_result = execute_batch(
         sink,
@@ -5392,6 +5422,7 @@ async fn provider_upload_folder_inner(
     )
     .await;
 
+    files_skipped += batch_result.skipped;
     let files_uploaded = batch_result.completed;
     let files_errored = batch_result.failed + files_unverified;
     let event_type = if batch_result.cancelled {
@@ -5436,6 +5467,8 @@ async fn provider_upload_folder_inner(
 }
 
 /// Upload a file to the remote server
+// Keep the existing IPC arguments compatible; no_clobber is an optional field.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn provider_upload_file(
     app: AppHandle,
@@ -5445,6 +5478,7 @@ pub async fn provider_upload_file(
     commit_message: Option<String>,
     use_delta: Option<bool>,
     resume: Option<bool>,
+    no_clobber: Option<bool>,
 ) -> Result<String, String> {
     // Fail-closed: never write plaintext into a crypt store whose overlay is
     // currently unwrapped (badge locked / outside the encrypted scope). A remote
@@ -5538,6 +5572,38 @@ pub async fn provider_upload_file(
     } else {
         None
     };
+
+    if no_clobber.unwrap_or(false) {
+        let cancel = state.current_cancel_token().await;
+        let result = tokio::select! {
+            biased;
+            _=cancel.cancelled()=>Err(ProviderError::TransferFailed("Transfer cancelled by user".into())),
+            result=provider.upload_if_absent(&local_path,&remote_path,progress_cb)=>result,
+        };
+        let (event_type, message) = match &result {
+            Ok(()) => ("complete", format!("Uploaded: {filename}")),
+            Err(ProviderError::AlreadyExists(_)) => ("file_skip", format!("Skipped: {filename}")),
+            Err(error) => ("error", error.to_string()),
+        };
+        crate::transfer_event_sink::emit_gui_transfer_event(
+            &app,
+            crate::TransferEvent {
+                event_type: event_type.into(),
+                transfer_id,
+                filename,
+                direction: "upload".into(),
+                message: Some(message.clone()),
+                progress: None,
+                path: Some(remote_path),
+                delta_stats: None,
+                fallback_reason: None,
+            },
+        );
+        return match result {
+            Ok(()) | Err(ProviderError::AlreadyExists(_)) => Ok(message),
+            Err(_) => Err(message),
+        };
+    }
 
     // Delta path (SFTP + supported SSH auth + rsync on remote): same contract as
     // `sync::perform_upload`. Skipped automatically for GitHub / non-SFTP
@@ -13913,6 +13979,19 @@ mod tests {
             .is_empty());
     }
 
+    #[tokio::test]
+    async fn probe_contract_gui_conflict_scan_cannot_trust_a_partial_listing() {
+        let mut provider =
+            crate::providers::probe_fake::ProbeFake::new().with_file("/up/visible.txt", 3);
+        // Native providers may learn of an unreadable item while listing.
+        provider.lose_listing_authority = true;
+        let outcome = conflict_scan_listing(&mut provider, "/up").await;
+        assert!(
+            outcome.is_err(),
+            "the unlisted targets remain unverified: {outcome:?}"
+        );
+    }
+
     /// The files of a folder the scan could not list are held back, the
     /// root included (its key is the empty string), and only those.
     #[test]
@@ -16429,6 +16508,7 @@ mod tests {
             CancellationToken::new(),
             direction,
             super::ProviderFileBatchParams {
+                no_clobber: false,
                 entries,
                 max_concurrent: Some(max_concurrent),
                 retry_count: Some(0),
@@ -16714,6 +16794,7 @@ mod tests {
             CancellationToken::new(),
             TransferDirection::Download,
             super::ProviderFileBatchParams {
+                no_clobber: false,
                 entries,
                 max_concurrent: Some(3),
                 retry_count: Some(0),

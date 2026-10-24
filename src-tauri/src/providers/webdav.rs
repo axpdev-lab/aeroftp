@@ -4399,6 +4399,8 @@ impl StorageProvider for WebDavProvider {
         }
 
         let mut last_status = StatusCode::NOT_FOUND;
+        let mut authentication_failed = false;
+        let mut refused_redirect = None;
         let attempt_count = attempts.len();
         for (index, attempt) in attempts.into_iter().enumerate() {
             let sent = self
@@ -4412,7 +4414,10 @@ impl StorageProvider for WebDavProvider {
             // the server's `301` leaves HTTPS (see `InsecureRedirect`): the
             // slash form is the next attempt.
             let mut response = match sent {
-                Err(e) if refused_collection_redirect(&e) && index + 1 < attempt_count => continue,
+                Err(e) if refused_collection_redirect(&e) && index + 1 < attempt_count => {
+                    refused_redirect = Some(send_error(e));
+                    continue;
+                }
                 other => other.map_err(send_error)?,
             };
 
@@ -4472,6 +4477,7 @@ impl StorageProvider for WebDavProvider {
                 StatusCode::NOT_FOUND | StatusCode::UNAUTHORIZED => {
                     // Ambiguous: may be a collection that needs the
                     // trailing-slash form. Fall through to the retry.
+                    authentication_failed |= response.status() == StatusCode::UNAUTHORIZED;
                     last_status = response.status();
                     continue;
                 }
@@ -4484,7 +4490,13 @@ impl StorageProvider for WebDavProvider {
             }
         }
 
-        if last_status == StatusCode::NOT_FOUND {
+        if authentication_failed {
+            Err(ProviderError::AuthenticationFailed(format!(
+                "PROPFIND could not verify {path}: an authentication failure was not resolved"
+            )))
+        } else if let Some(error) = refused_redirect {
+            Err(error)
+        } else if last_status == StatusCode::NOT_FOUND {
             Err(ProviderError::NotFound(path.to_string()))
         } else {
             Err(ProviderError::ServerError(format!(
@@ -5669,6 +5681,28 @@ const MOVE_DEPTH: &str = "infinity";
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn probe_contract_webdav_does_not_erase_an_auth_failure() {
+        const UNAUTHORIZED: &str =
+            "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+        const MISSING: &str =
+            "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+        for replies in [vec![UNAUTHORIZED, MISSING], vec![MISSING, UNAUTHORIZED]] {
+            let (url, _) = spawn_http_stub(replies).await;
+            let mut p = WebDavProvider::new(test_config(&url)).unwrap();
+            p.connected = true;
+            let outcome = p.exists("/target").await;
+            assert!(
+                matches!(outcome, Err(ref e) if !matches!(e, ProviderError::NotFound(_))),
+                "a failure on one path form is not disproved by the other: {outcome:?}"
+            );
+        }
+        let (url, _) = spawn_http_stub(vec![MISSING, MISSING]).await;
+        let mut p = WebDavProvider::new(test_config(&url)).unwrap();
+        p.connected = true;
+        assert!(!p.exists("/target").await.unwrap());
+    }
+
     use super::*;
 
     /// A window the connection drops is resumed from its mark: a body cut
@@ -8214,6 +8248,21 @@ mod recorded_propfind_fixture {
 /// failed with a bare 401 while listing the same folder worked.
 #[cfg(test)]
 mod collection_redirect_tests {
+    #[tokio::test]
+    async fn probe_contract_webdav_does_not_erase_a_refused_redirect() {
+        let stub = spawn_downgrading_server(|_| {
+            "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        })
+        .await;
+        let mut p = provider(&stub.base);
+        let outcome = p.exists("/collection").await;
+        assert!(seen(&stub).iter().any(|r| r == "PROPFIND /collection"));
+        assert!(
+            matches!(outcome, Err(ref e) if !matches!(e, ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+    }
+
     use super::*;
     use std::sync::atomic::AtomicUsize;
     use std::sync::Mutex;

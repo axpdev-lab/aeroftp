@@ -219,10 +219,37 @@ impl RemoteBackend for McpRemoteBackend {
             .await
     }
 
+    async fn list_for_display(&self, path: &str) -> Result<Vec<RemoteEntry>, String> {
+        let path = path.to_string();
+        self.with_provider(move |p| Box::pin(async move { p.list_for_display(&path).await }))
+            .await
+    }
+
     async fn stat(&self, path: &str) -> Result<RemoteEntry, String> {
         let path = path.to_string();
         self.with_provider(move |p| Box::pin(async move { p.stat(&path).await }))
             .await
+    }
+
+    async fn supports_upload_if_absent(&self) -> bool {
+        self.with_provider(|p| Box::pin(async move { Ok(p.supports_upload_if_absent()) }))
+            .await
+            .unwrap_or(false)
+    }
+    async fn upload_if_absent(&self, local: &str, remote: &str) -> Result<bool, String> {
+        let local = local.to_string();
+        let remote = remote.to_string();
+        self.with_provider(move |p| {
+            Box::pin(async move {
+                crate::providers::create_only_upload(p.as_mut(), &local, &remote).await
+            })
+        })
+        .await
+    }
+    async fn listing_is_authoritative(&self) -> bool {
+        self.with_provider(|p| Box::pin(async move { Ok(p.listing_is_authoritative()) }))
+            .await
+            .unwrap_or(false)
     }
 
     async fn download_to_bytes(&self, path: &str) -> Result<Vec<u8>, String> {

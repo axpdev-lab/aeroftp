@@ -1063,7 +1063,28 @@ impl StorageProvider for GitLabProvider {
             urlencoding::encode(self.active_branch()),
         );
 
-        let file_info: GitLabFileInfo = self.client.get_json(&file_url).await?;
+        if resolved.is_empty() {
+            self.list("/").await?;
+            return Ok(RemoteEntry::directory("/".into(), "/".into()));
+        }
+        let file_info: GitLabFileInfo = match self.client.get_json(&file_url).await {
+            Ok(file) => file,
+            Err(ProviderError::NotFound(_)) => {
+                let (parent, name) = resolved.rsplit_once('/').unwrap_or(("", &resolved));
+                // `resolved` is already relative to the repository root:
+                // list its parent as an absolute path, so the working
+                // folder of a session that did `cd` is not joined again.
+                let entries = self.list(&format!("/{parent}")).await?;
+                return match entries.into_iter().find(|entry| entry.name == name) {
+                    Some(entry) if entry.is_dir => Ok(entry),
+                    Some(_) => Err(ProviderError::ParseError(format!(
+                        "GitLab lists {resolved} but its file metadata is unavailable"
+                    ))),
+                    None => Err(ProviderError::NotFound(resolved)),
+                };
+            }
+            Err(error) => return Err(error),
+        };
 
         let name = std::path::Path::new(&resolved)
             .file_name()
@@ -1092,20 +1113,11 @@ impl StorageProvider for GitLabProvider {
     }
 
     async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
+        match self.stat(path).await {
+            Ok(_) => Ok(true),
+            Err(ProviderError::NotFound(_)) => Ok(false),
+            Err(error) => Err(error),
         }
-        let resolved = self.resolve_path(path);
-        let encoded = encode_file_path(&resolved);
-
-        let file_url = format!(
-            "{}/repository/files/{}?ref={}",
-            self.project_api(),
-            encoded,
-            urlencoding::encode(self.active_branch()),
-        );
-
-        self.client.exists(&file_url).await
     }
 
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
@@ -1172,6 +1184,47 @@ impl StorageProvider for GitLabProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn probe_contract_gitlab_file_404_does_not_hide_a_directory() {
+        use axum::response::IntoResponse;
+        let app = axum::Router::new().fallback(axum::routing::get(|uri: axum::http::Uri| async move {
+            if uri.path().ends_with("/denied") {
+                (axum::http::StatusCode::FORBIDDEN, "denied").into_response()
+            } else if uri.path().ends_with("/file") {
+                axum::Json(serde_json::json!({"file_name":"file","file_path":"file","size":3,"encoding":"base64","blob_id":"b","commit_id":"c","last_commit_id":"c"})).into_response()
+            } else if uri.path().ends_with("/repository/tree") {
+                if uri.query().unwrap_or("").contains("path=sub") {
+                    axum::Json(serde_json::json!([])).into_response()
+                } else {
+                    axum::Json(serde_json::json!([{"id":"folder","name":"dir","type":"tree","path":"dir","mode":"040000"}])).into_response()
+                }
+            } else { (axum::http::StatusCode::NOT_FOUND, axum::Json(serde_json::json!({"message":"404 File Not Found"}))).into_response() }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = GitLabProvider::new(GitLabConfig {
+            token: "t".into(),
+            api_base: format!("http://{addr}/api/v4"),
+            project_path: "o/r".into(),
+            branch: "main".into(),
+            initial_path: None,
+            accept_invalid_certs: false,
+        })
+        .unwrap();
+        provider.connected = true;
+        assert!(provider.stat("/dir").await.unwrap().is_dir);
+        assert!(provider.stat("/").await.unwrap().is_dir);
+        assert!(!provider.stat("/file").await.unwrap().is_dir);
+        assert!(!provider.exists("/missing").await.unwrap());
+        assert!(provider.exists("/denied").await.is_err());
+        // An absolute path ignores the session's working folder.
+        provider.current_path = "sub".into();
+        assert!(provider.stat("/dir").await.unwrap().is_dir);
+        assert!(provider.exists("/dir").await.unwrap());
+        server.abort();
+    }
 
     /// A rename is a commit with a `move` action: onto its own path it sent
     /// a commit that moves the file onto the path it already has, which

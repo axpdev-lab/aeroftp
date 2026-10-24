@@ -138,3 +138,18 @@ describe('cross-profile terminal events', () => {
         expect(options.activityLog.updateEntry).toHaveBeenCalledTimes(1);
     });
 });
+
+it('settles the active row and activity when the server skips an occupied upload', async () => {
+    const queue = Object.assign(queueWith({ id: 'q1', filename: 'a.txt', status: 'pending' }), {
+        addItem: vi.fn(() => 'duplicate'), completeTransfer: vi.fn(),
+    });
+    queue.items[0].path = '/target/a.txt';
+    const options = await mount(queue);
+    const transfer = { transfer_id: 'ul-folder-7-0', filename: 'a.txt', path: '/target/a.txt', direction: 'upload' };
+    await emit({ ...transfer, event_type: 'file_start' });
+    expect(queue.startTransfer).toHaveBeenCalledWith('q1');
+    await emit({ ...transfer, event_type: 'file_skip', message: 'Destination already exists' });
+    expect(queue.completeTransfer).toHaveBeenCalledExactlyOnceWith('q1');
+    expect(queue.addItem).not.toHaveBeenCalled();
+    expect(options.activityLog.updateEntry).toHaveBeenCalledWith('log', expect.objectContaining({ status: 'success' }));
+});

@@ -35,6 +35,17 @@ pub trait RemoteBackend: Send + Sync {
     /// List entries at a remote path.
     async fn list(&self, path: &str) -> Result<Vec<RemoteEntry>, String>;
 
+    /// Interactive/readable listing; never a completeness or absence proof.
+    async fn list_for_display(&self, path: &str) -> Result<Vec<RemoteEntry>, String> {
+        self.list(path).await
+    }
+
+    /// Whether an unlisted child is definitely absent. Unknown backends must
+    /// use a per-path probe before a write rather than trust an incomplete list.
+    async fn listing_is_authoritative(&self) -> bool {
+        false
+    }
+
     /// Get metadata for a single entry.
     async fn stat(&self, path: &str) -> Result<RemoteEntry, String>;
 
@@ -64,6 +75,13 @@ pub trait RemoteBackend: Send + Sync {
 
     /// Upload bytes to remote path.
     async fn upload_from_bytes(&self, data: &[u8], path: &str) -> Result<(), String>;
+
+    async fn supports_upload_if_absent(&self) -> bool {
+        false
+    }
+    async fn upload_if_absent(&self, _local: &str, _remote: &str) -> Result<bool, String> {
+        Err("Conditional create-only upload is unavailable".into())
+    }
 
     /// Download a file to local path.
     async fn download(&self, remote: &str, local: &str) -> Result<(), String>;

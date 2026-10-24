@@ -1518,6 +1518,22 @@ impl StorageProvider for KDriveProvider {
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let resolved = self.resolve_path(path);
+        if resolved == "/" {
+            if !self.connected {
+                return Err(ProviderError::NotConnected);
+            }
+            // The virtual root is not a child named "" in its own listing.
+            // Verify the listing so authentication/server failures stay errors.
+            // `list` moves the session into the listed folder; a probe must
+            // not, or later relative paths would resolve from the root.
+            let saved_current_path = self.current_path.clone();
+            let saved_current_file_id = self.current_file_id;
+            let listed = self.list("/").await;
+            self.current_path = saved_current_path;
+            self.current_file_id = saved_current_file_id;
+            listed?;
+            return Ok(RemoteEntry::directory("/".to_string(), "/".to_string()));
+        }
         let (parent_path, filename) = Self::split_path(&resolved);
         let parent_id = self.resolve_folder_id(parent_path).await?;
 
@@ -1540,7 +1556,10 @@ impl StorageProvider for KDriveProvider {
         })?;
 
         let file = api_resp.data.ok_or_else(|| {
-            ProviderError::NotFound(format!("File info not found for '{}'", filename))
+            ProviderError::ParseError(format!(
+                "Missing metadata for '{}' after a successful lookup",
+                filename
+            ))
         })?;
 
         let is_dir = file.file_type.as_deref() == Some("dir");
@@ -2340,6 +2359,40 @@ mod api_failure_tests {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn probe_contract_kdrive_root_is_not_a_missing_child() {
+        let (mut provider, _) = provider_on_kdrive_root(false, None).await;
+        assert!(!provider.list("/").await.unwrap().is_empty());
+        let root = provider.stat("/").await.unwrap();
+        assert!(root.is_dir);
+        assert!(provider.exists("/").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn probe_contract_kdrive_requires_metadata_after_a_successful_lookup() {
+        let app =
+            axum::Router::new().fallback(axum::routing::get(|uri: axum::http::Uri| async move {
+                let data = if uri.path().ends_with("/files/1/files") {
+                    serde_json::json!([{"id":11,"name":"target","type":"file","size":3}])
+                } else {
+                    serde_json::Value::Null
+                };
+                axum::Json(serde_json::json!({"result":"success","data":data}))
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = test_provider();
+        p.api_base_override = Some(format!("http://{addr}"));
+        p.connected = true;
+        let outcome = p.exists("/target").await;
+        server.abort();
+        assert!(
+            matches!(outcome, Err(ProviderError::ParseError(_))),
+            "{outcome:?}"
+        );
+    }
+
     use super::*;
 
     /// kDrive's move has no documented overwrite, so there is no one-step
@@ -3142,6 +3195,22 @@ mod tests {
         assert_eq!(
             (provider.current_path.as_str(), provider.current_file_id),
             ("/", 1)
+        );
+    }
+
+    /// CodeRabbit on #1350: `stat("/")` lists the root to prove it is
+    /// reachable, and that listing moved the session to the root, so after
+    /// `cd /docs` a root probe made later relative paths resolve from `/`.
+    #[tokio::test]
+    async fn a_root_stat_leaves_the_session_where_it_was() {
+        let (mut provider, _, _) = provider_on_kdrive_tree(&[(21, "docs", 1, "dir")]).await;
+        provider.current_path = "/docs".to_string();
+        provider.current_file_id = 21;
+        assert!(provider.stat("/").await.expect("the root answers").is_dir);
+        assert!(provider.exists("/").await.expect("the root answers"));
+        assert_eq!(
+            (provider.current_path.as_str(), provider.current_file_id),
+            ("/docs", 21)
         );
     }
 

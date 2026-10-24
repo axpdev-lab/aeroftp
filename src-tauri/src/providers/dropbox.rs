@@ -1512,12 +1512,19 @@ impl StorageProvider for DropboxProvider {
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
         let full_path = if path.starts_with('/') {
             self.normalize_path(path)
         } else {
             self.normalize_path(&format!("{}/{}", self.current_path, path))
         };
 
+        if full_path.is_empty() {
+            self.list_folder_all("").await?;
+            return Ok(RemoteEntry::directory("/".into(), "/".into()));
+        }
         let body = serde_json::json!({
             "path": full_path
         });
@@ -2696,6 +2703,35 @@ impl StorageProvider for DropboxProvider {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn probe_contract_dropbox_root_uses_a_supported_probe() {
+        use axum::response::IntoResponse;
+        let app =
+            axum::Router::new().fallback(axum::routing::post(|uri: axum::http::Uri| async move {
+                if uri.path().ends_with("/list_folder") {
+                    axum::Json(serde_json::json!({"entries":[],"cursor":"done","has_more":false}))
+                        .into_response()
+                } else {
+                    (
+                        axum::http::StatusCode::BAD_REQUEST,
+                        "root metadata path is invalid",
+                    )
+                        .into_response()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = fixture_connected();
+        provider.content_base_override = Some(format!("http://{addr}"));
+        assert!(provider.list("/").await.unwrap().is_empty());
+        let outcome = provider.stat("/").await;
+        server.abort();
+        assert!(
+            matches!(outcome, Ok(ref root) if root.is_dir),
+            "{outcome:?}"
+        );
+    }
     use super::*;
 
     #[test]

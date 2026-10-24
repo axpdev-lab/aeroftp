@@ -532,7 +532,17 @@ impl DrimeCloudProvider {
                     ProviderError::ServerError(format!("Parse list response failed: {}", e))
                 })?;
 
-                let files = list_resp.data.unwrap_or_default();
+                let files = list_resp.data.ok_or_else(|| {
+                    ProviderError::ParseError("Drime listing omitted its data array".into())
+                })?;
+                if files.iter().any(|file| {
+                    file.name.as_ref().is_none_or(String::is_empty)
+                        || file.id_str().is_none_or(|id| id.is_empty())
+                }) {
+                    return Err(ProviderError::ParseError(
+                        "Drime listing omitted an item name or ID".into(),
+                    ));
+                }
                 let last_page = list_resp.last_page.unwrap_or(1);
 
                 for file in &files {
@@ -783,7 +793,17 @@ impl DrimeCloudProvider {
                 )));
             };
 
-            let files = list_resp.data.unwrap_or_default();
+            let files = list_resp.data.ok_or_else(|| {
+                ProviderError::ParseError("Drime listing omitted its data array".into())
+            })?;
+            if files.iter().any(|file| {
+                file.name.as_ref().is_none_or(String::is_empty)
+                    || file.id_str().is_none_or(|id| id.is_empty())
+            }) {
+                return Err(ProviderError::ParseError(
+                    "Drime listing omitted an item name or ID".into(),
+                ));
+            }
             let last_page = list_resp.last_page.unwrap_or(1);
 
             for file in &files {
@@ -1314,7 +1334,17 @@ impl StorageProvider for DrimeCloudProvider {
                 ProviderError::ServerError(format!("Parse list response failed: {}", e))
             })?;
 
-            let files = list_resp.data.unwrap_or_default();
+            let files = list_resp.data.ok_or_else(|| {
+                ProviderError::ParseError("Drime listing omitted its data array".into())
+            })?;
+            if files.iter().any(|file| {
+                file.name.as_ref().is_none_or(String::is_empty)
+                    || file.id_str().is_none_or(|id| id.is_empty())
+            }) {
+                return Err(ProviderError::ParseError(
+                    "Drime listing omitted an item name or ID".into(),
+                ));
+            }
             let last_page = list_resp.last_page.unwrap_or(1);
 
             for file in files {
@@ -1853,6 +1883,15 @@ impl StorageProvider for DrimeCloudProvider {
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let resolved = self.resolve_path(path);
+        if resolved == "/" {
+            if !self.connected {
+                return Err(ProviderError::NotConnected);
+            }
+            // The virtual root is not a child named "" in its own listing.
+            // Verify the listing so authentication/server failures stay errors.
+            self.list("/").await?;
+            return Ok(RemoteEntry::directory("/".to_string(), "/".to_string()));
+        }
         let (parent_path, filename) = Self::split_path(&resolved);
         let parent_id = self.resolve_folder_id(parent_path).await?;
 
@@ -1921,7 +1960,17 @@ impl StorageProvider for DrimeCloudProvider {
                 ProviderError::ServerError(format!("Parse stat response failed: {}", e))
             })?;
 
-            let files = list_resp.data.unwrap_or_default();
+            let files = list_resp.data.ok_or_else(|| {
+                ProviderError::ParseError("Drime listing omitted its data array".into())
+            })?;
+            if files.iter().any(|file| {
+                file.name.as_ref().is_none_or(String::is_empty)
+                    || file.id_str().is_none_or(|id| id.is_empty())
+            }) {
+                return Err(ProviderError::ParseError(
+                    "Drime listing omitted an item name or ID".into(),
+                ));
+            }
             let last_page = list_resp.last_page.unwrap_or(1);
 
             for file in &files {
@@ -2154,7 +2203,17 @@ impl StorageProvider for DrimeCloudProvider {
                 ProviderError::ServerError(format!("Parse search response: {}", e))
             })?;
 
-            let files = list_resp.data.unwrap_or_default();
+            let files = list_resp.data.ok_or_else(|| {
+                ProviderError::ParseError("Drime listing omitted its data array".into())
+            })?;
+            if files.iter().any(|file| {
+                file.name.as_ref().is_none_or(String::is_empty)
+                    || file.id_str().is_none_or(|id| id.is_empty())
+            }) {
+                return Err(ProviderError::ParseError(
+                    "Drime listing omitted an item name or ID".into(),
+                ));
+            }
             let last_page = list_resp.last_page.unwrap_or(1);
 
             for file in files {
@@ -2846,6 +2905,53 @@ impl StorageProvider for DrimeCloudProvider {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn probe_contract_drime_root_is_not_a_missing_child() {
+        let (mut provider, _) = provider_on_drime(false, 200).await;
+        assert!(!provider.list("/").await.unwrap().is_empty());
+        let outcome = provider.stat("/").await;
+        TEST_API_BASE.with(|base| *base.borrow_mut() = None);
+        assert!(
+            matches!(outcome, Ok(ref root) if root.is_dir),
+            "{outcome:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn probe_contract_drime_requires_listing_data_and_names() {
+        for body in [
+            r#"{"last_page":1}"#,
+            r#"{"data":[{"id":1,"type":"file"}],"last_page":1}"#,
+            r#"{"data":[{"name":"present","type":"folder"}],"last_page":1}"#,
+        ] {
+            let app = axum::Router::new().fallback(axum::routing::get(move || async move { body }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            TEST_API_BASE.with(|base| *base.borrow_mut() = Some(format!("http://{addr}")));
+            let mut provider = test_provider();
+            provider.connected = true;
+            assert!(matches!(
+                provider.exists("/missing").await,
+                Err(ProviderError::ParseError(_))
+            ));
+            assert!(matches!(
+                provider.exists("/parent/missing").await,
+                Err(ProviderError::ParseError(_))
+            ));
+            assert!(matches!(
+                provider.list("/").await,
+                Err(ProviderError::ParseError(_))
+            ));
+            TEST_API_BASE.with(|base| *base.borrow_mut() = None);
+            server.abort();
+        }
+        let (mut provider, _) = provider_on_drime(false, 200).await;
+        assert!(provider.exists("/b.txt").await.unwrap());
+        assert!(!provider.exists("/missing").await.unwrap());
+        TEST_API_BASE.with(|base| *base.borrow_mut() = None);
+    }
+
     use super::*;
 
     fn test_provider() -> DrimeCloudProvider {

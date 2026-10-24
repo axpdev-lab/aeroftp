@@ -3492,24 +3492,38 @@ impl StorageProvider for B2Provider {
         }
         let abs = self.resolved_path(path);
         let key = self.b2_key(&abs);
-        // Use list_file_names with prefix == exact key, maxFileCount 1
-        let resp = match self.list_file_names(&key, None, None, 1).await {
-            Ok(r) => r,
-            Err(e) if is_b2_token_failure(&e) => {
-                if self.maybe_reauth(&e).await {
-                    self.list_file_names(&key, None, None, 1).await?
-                } else {
-                    return Err(e);
+        // A slashless prefix can return a sibling (dir! sorts before
+        // dir/child). Only the exact key or a slash-bounded child proves
+        // presence; one unrelated first result cannot prove absence.
+        let mut prefix = key.clone();
+        let f = loop {
+            let resp = match self.list_file_names(&prefix, None, None, 1).await {
+                Ok(r) => r,
+                Err(e) if is_b2_token_failure(&e) => {
+                    if self.maybe_reauth(&e).await {
+                        self.list_file_names(&prefix, None, None, 1).await?
+                    } else {
+                        return Err(e);
+                    }
                 }
+                Err(e) => return Err(e),
+            };
+            if key.is_empty() {
+                return Ok(RemoteEntry::directory("/".to_string(), abs));
             }
-            Err(e) => return Err(e),
+            if let Some(file) = resp.files.into_iter().find(|f| {
+                f.file_name == key
+                    || f.file_name
+                        .starts_with(&format!("{}/", key.trim_end_matches('/')))
+            }) {
+                break file;
+            }
+            if prefix.ends_with('/') {
+                return Err(ProviderError::NotFound(format!("path {abs}")));
+            }
+            prefix.push('/');
         };
-        let f = resp
-            .files
-            .into_iter()
-            .find(|f| f.file_name == key || f.file_name.starts_with(&format!("{}/", key)))
-            .ok_or_else(|| ProviderError::NotFound(format!("path {}", abs)))?;
-        let is_dir = f.file_name != key;
+        let is_dir = key.ends_with('/') || f.file_name != key;
         let mut metadata = std::collections::HashMap::new();
         if !is_dir {
             if let Some(sha1) = f.content_sha1.as_deref().and_then(b2_clean_sha1) {
@@ -3518,7 +3532,7 @@ impl StorageProvider for B2Provider {
         }
         Ok(RemoteEntry {
             name: abs.rsplit('/').next().unwrap_or("").to_string(),
-            path: format!("/{}", f.file_name.trim_end_matches('/')),
+            path: abs.clone(),
             is_dir,
             size: if is_dir { 0 } else { f.content_length },
             modified: f
@@ -4321,6 +4335,36 @@ fn map_b2_status(status: reqwest::StatusCode, body: &str, op: &str) -> ProviderE
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn probe_contract_b2_does_not_miss_a_directory_after_a_prefix_sibling() {
+        let app = axum::Router::new().fallback(axum::routing::post(
+            |axum::Json(body): axum::Json<serde_json::Value>| async move {
+                let prefix = body["prefix"].as_str().unwrap();
+                let names = ["dir!sibling", "dir/child"];
+                let files: Vec<_> = names.into_iter().filter(|n| n.starts_with(prefix))
+                    .take(body["maxFileCount"].as_u64().unwrap_or(1) as usize)
+                    .map(|n| serde_json::json!({"fileId":"id", "fileName":n, "action":"upload", "contentLength":3}))
+                    .collect();
+                axum::Json(serde_json::json!({"files":files,"nextFileName":null}))
+            }
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = empty_provider();
+        p.api_url = format!("http://{addr}");
+        p.auth_token = SecretString::new("token".into());
+        p.bucket_id = "bucket".into();
+        p.connected = true;
+        let outcome = p.stat("/dir").await;
+        assert!(
+            matches!(outcome, Ok(ref e) if e.is_dir && e.path == "/dir"),
+            "a sibling that sorts before the slash is not proof of absence: {outcome:?}"
+        );
+        assert!(!p.exists("/missing").await.unwrap());
+        server.abort();
+    }
+
     use super::*;
 
     #[test]
