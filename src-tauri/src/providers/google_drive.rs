@@ -1186,7 +1186,7 @@ impl GoogleDriveProvider {
         let mut page_token: Option<String> = None;
         for _ in 0..MAX_PAGES {
             let mut url = format!(
-                "{}/files?q={}&fields=files(id,name),nextPageToken,incompleteSearch&pageSize=100",
+                "{}/files?q={}&fields=files(id,name,mimeType),nextPageToken,incompleteSearch&pageSize=100",
                 self.drive_api(),
                 urlencoding::encode(&q)
             );
@@ -3302,6 +3302,7 @@ mod tests {
             r#"{"files":{}}"#,
             r#"{"files":"invalid"}"#,
             r#"{"files":[{}]}"#,
+            r#"{"files":[{"id":"TARGET","name":"missing.txt"}]}"#,
         ] {
             assert!(
                 serde_json::from_str::<DriveFileList>(response).is_err(),
@@ -3311,7 +3312,8 @@ mod tests {
     }
 
     /// Exercise the actual purge path with Drive search pages that may omit
-    /// `files`. Record every request, including any irreversible DELETE.
+    /// `files`, returning only the fields selected by the request. Record
+    /// every request, including any irreversible DELETE.
     async fn requested86_purge_with_search_pages(
         pages: Vec<serde_json::Value>,
     ) -> (Result<bool, ProviderError>, Vec<String>) {
@@ -3336,7 +3338,28 @@ mod tests {
                             .map(|(_, value)| value.parse::<usize>().unwrap())
                             .unwrap_or(0);
                         seen.lock().unwrap().push(format!("GET page {page}"));
-                        return axum::Json(pages[page].clone()).into_response();
+                        let fields = url
+                            .query_pairs()
+                            .find(|(key, _)| key == "fields")
+                            .expect("Drive search must select response fields")
+                            .1
+                            .into_owned();
+                        let (file_fields, list_fields) = fields
+                            .strip_prefix("files(")
+                            .and_then(|fields| fields.split_once(')'))
+                            .expect("fixture expects a flat files field selection");
+                        let mut body = pages[page].clone();
+                        if let Some(files) = body.get_mut("files").and_then(|v| v.as_array_mut()) {
+                            for file in files {
+                                file.as_object_mut().unwrap().retain(|key, _| {
+                                    file_fields.split(',').any(|field| field == key)
+                                });
+                            }
+                        }
+                        body.as_object_mut().unwrap().retain(|key, _| {
+                            key == "files" || list_fields.split(',').any(|field| field == key)
+                        });
+                        return axum::Json(body).into_response();
                     }
                     seen.lock()
                         .unwrap()
@@ -3367,6 +3390,16 @@ mod tests {
             requested86_purge_with_search_pages(vec![serde_json::json!({})]).await;
         assert!(!outcome.expect("empty search is already purged"));
         assert_eq!(requests, ["GET page 0"]);
+    }
+
+    #[tokio::test]
+    async fn requested86_matching_trash_item_uses_only_requested_fields() {
+        let (outcome, requests) = requested86_purge_with_search_pages(vec![serde_json::json!({
+            "files":[{"id":"TARGET", "name":"missing.txt", "mimeType":"text/plain"}]
+        })])
+        .await;
+        assert!(outcome.expect("purge using metadata actually requested from Drive"));
+        assert_eq!(requests, ["GET page 0", "DELETE /drive/v3/files/TARGET"]);
     }
 
     #[tokio::test]
