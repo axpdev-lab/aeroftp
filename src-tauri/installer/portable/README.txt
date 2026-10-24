@@ -52,6 +52,11 @@ cleans up the old version automatically.
 The check happens at launch and every 24 hours while the app is running.
 You can also trigger it manually from Help -> Check for Updates.
 
+aeroftp-app.exe is the app again, the same as AeroFTP.exe. It is in the ZIP
+so that versions 4.0.8 to 4.2.4, whose updater took the first .exe of the
+ZIP, install the app and not the CLI. You can delete it; if you keep it,
+updates keep it current.
+
 
 UNINSTALL
 ---------
