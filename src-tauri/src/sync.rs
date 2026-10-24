@@ -3102,6 +3102,9 @@ pub struct SyncIndex {
     pub local_path: String,
     /// Remote root path at time of sync
     pub remote_path: String,
+    /// The saved profile this index belongs to; see [`history_serves`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_id: Option<String>,
     /// File states at time of last sync (key = relative_path)
     pub files: HashMap<String, SyncIndexEntry>,
     /// Remote spelling of a key whose sides differ. Empty when every saved
@@ -3125,6 +3128,7 @@ impl SyncIndex {
             last_sync: Utc::now(),
             local_path,
             remote_path,
+            profile_id: None,
             files: HashMap::new(),
             remote_spellings: Default::default(),
             unverified_keys: Default::default(),
@@ -3134,7 +3138,7 @@ impl SyncIndex {
 
 /// Atomic write: write to temp file, then rename to target path.
 /// Prevents corruption from crash/power-loss during write.
-fn atomic_write(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
+pub(crate) fn atomic_write(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
     let _lock = ATOMIC_WRITE_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -3177,7 +3181,7 @@ fn atomic_write(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
 }
 
 /// Get the directory where sync indices are stored
-fn sync_index_dir() -> Result<std::path::PathBuf, String> {
+pub(crate) fn sync_index_dir() -> Result<std::path::PathBuf, String> {
     let dir = crate::portable::aeroftp_data_root()
         .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?
         .join("sync-index");
@@ -3197,7 +3201,7 @@ fn stable_path_hash(s: &str) -> String {
 }
 
 /// Generate a stable filename from a local+remote path pair
-fn index_filename(local_path: &str, remote_path: &str) -> String {
+pub(crate) fn index_filename(local_path: &str, remote_path: &str) -> String {
     let combined = format!("{}|{}", local_path, remote_path);
     format!("{}.json", stable_path_hash(&combined))
 }
@@ -3215,6 +3219,39 @@ pub fn load_sync_index(local_path: &str, remote_path: &str) -> Result<Option<Syn
         serde_json::from_str(&data).map_err(|e| format!("Failed to parse sync index: {}", e))?;
     migrate_sync_index(&mut index);
     Ok(Some(index))
+}
+
+/// Whether a sync history written for the profile `recorded` may serve the
+/// profile `active`. Histories are keyed by their two folders only, so two
+/// profiles that sync the same pair on different servers share one file;
+/// read as the other's baseline, it would turn the files only that server
+/// held into deletions. A history serves its own profile, and one that records
+/// none (written before profiles were recorded, or by a connection with no
+/// saved profile) serves as it always did. A caller that knows no profile
+/// filters nothing (Requested 79, point e).
+pub fn history_serves(recorded: Option<&str>, active: Option<&str>) -> bool {
+    match (recorded, active) {
+        (Some(recorded), Some(active)) => recorded == active,
+        _ => true,
+    }
+}
+
+/// [`load_sync_index`] as the baseline of `profile_id`: `None` when the index
+/// belongs to another profile (see [`history_serves`]).
+pub fn load_sync_index_for_profile(
+    local_path: &str,
+    remote_path: &str,
+    profile_id: Option<&str>,
+) -> Result<Option<SyncIndex>, String> {
+    Ok(load_sync_index(local_path, remote_path)?.filter(|index| {
+        let serves = history_serves(index.profile_id.as_deref(), profile_id);
+        if !serves {
+            tracing::info!(
+                "sync index of {local_path} | {remote_path} belongs to another profile: compared without history"
+            );
+        }
+        serves
+    }))
 }
 
 /// Remove the sync index of a path pair, for a live test that leaves the
@@ -4758,6 +4795,9 @@ pub struct SyncJournal {
     pub local_path: String,
     /// Remote root path
     pub remote_path: String,
+    /// The saved profile this journal belongs to; see [`history_serves`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_id: Option<String>,
     /// Sync direction
     pub direction: CompareDirection,
     /// Retry policy used
@@ -4785,6 +4825,7 @@ impl SyncJournal {
             updated_at: Utc::now(),
             local_path,
             remote_path,
+            profile_id: None,
             direction,
             retry_policy,
             verify_policy,
@@ -4816,7 +4857,7 @@ impl SyncJournal {
 }
 
 /// Get the directory where sync journals are stored
-fn sync_journal_dir() -> Result<PathBuf, String> {
+pub(crate) fn sync_journal_dir() -> Result<PathBuf, String> {
     let dir = crate::portable::aeroftp_data_root()
         .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?
         .join("sync-journal");
@@ -4826,7 +4867,7 @@ fn sync_journal_dir() -> Result<PathBuf, String> {
 }
 
 /// Generate a journal filename from path pair
-fn journal_filename(local_path: &str, remote_path: &str) -> String {
+pub(crate) fn journal_filename(local_path: &str, remote_path: &str) -> String {
     let combined = format!("{}|{}", local_path, remote_path);
     format!("journal_{}.json", stable_path_hash(&combined))
 }
@@ -4837,6 +4878,17 @@ pub fn load_sync_journal(
     remote_path: &str,
 ) -> Result<Option<SyncJournal>, String> {
     load_sync_journal_in(&sync_journal_dir()?, local_path, remote_path)
+}
+
+/// [`load_sync_journal`] for a resume by `profile_id`: `None` when the journal
+/// belongs to another profile (see [`history_serves`]).
+pub fn load_sync_journal_for_profile(
+    local_path: &str,
+    remote_path: &str,
+    profile_id: Option<&str>,
+) -> Result<Option<SyncJournal>, String> {
+    Ok(load_sync_journal(local_path, remote_path)?
+        .filter(|journal| history_serves(journal.profile_id.as_deref(), profile_id)))
 }
 
 fn load_sync_journal_in(
@@ -4861,7 +4913,7 @@ pub fn save_sync_journal(journal: &SyncJournal) -> Result<(), String> {
     save_sync_journal_in(&sync_journal_dir()?, journal)
 }
 
-fn save_sync_journal_in(dir: &Path, journal: &SyncJournal) -> Result<(), String> {
+pub(crate) fn save_sync_journal_in(dir: &Path, journal: &SyncJournal) -> Result<(), String> {
     let _lock = JOURNAL_WRITE_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -4892,6 +4944,29 @@ fn sign_journal_file(dir: &Path, journal: &SyncJournal, sig_path: &Path) -> Resu
     let key = hex::decode(key).map_err(|e| format!("Invalid signing key: {e}"))?;
     let signature = sign_journal(journal, &key)?;
     atomic_write(sig_path, signature.as_bytes())
+}
+
+/// The signature a journal moved to another remote path (a Proton Drive mode
+/// switch) carries for its new path pair in `dir`, so Verify answers after
+/// the move what it answered before: a new signature when the old one held,
+/// the old bytes when they did not (still a mismatch), none when the journal
+/// had none. `moved` is the journal with its new remote path.
+pub(crate) fn moved_journal_signature_in(
+    dir: &Path,
+    moved: &SyncJournal,
+    old_remote: &str,
+) -> Option<Vec<u8>> {
+    let local = moved.local_path.as_str();
+    let old = std::fs::read(dir.join(journal_sig_filename(local, old_remote))).ok()?;
+    let held = journal_signing_key_in(dir, local, old_remote)
+        .and_then(|key| verify_journal_signature_in(dir, local, old_remote, &key))
+        .unwrap_or(false);
+    if !held {
+        return Some(old);
+    }
+    let key = journal_signing_key_in(dir, local, &moved.remote_path).ok()?;
+    let key = hex::decode(key).ok()?;
+    sign_journal(moved, &key).ok().map(String::into_bytes)
 }
 
 /// Delete a journal for a path pair, with its signature.
@@ -6209,7 +6284,7 @@ pub fn journal_signing_key(local_path: &str, remote_path: &str) -> Result<String
     journal_signing_key_in(&sync_journal_dir()?, local_path, remote_path)
 }
 
-fn journal_signing_key_in(
+pub(crate) fn journal_signing_key_in(
     dir: &Path,
     local_path: &str,
     remote_path: &str,
@@ -6239,7 +6314,7 @@ pub fn verify_journal_signature(
     verify_journal_signature_in(&sync_journal_dir()?, local_path, remote_path, signing_key)
 }
 
-fn verify_journal_signature_in(
+pub(crate) fn verify_journal_signature_in(
     dir: &Path,
     local_path: &str,
     remote_path: &str,
@@ -7841,6 +7916,7 @@ mod tests {
     #[test]
     fn a_legacy_index_gets_its_keys_normalized_on_read() {
         let mut index = SyncIndex {
+            profile_id: None,
             version: 1,
             last_sync: Utc::now(),
             local_path: "/local".to_string(),
@@ -7876,6 +7952,7 @@ mod tests {
     #[cfg(windows)]
     fn legacy_index_with_both_spellings() -> SyncIndex {
         let mut index = SyncIndex {
+            profile_id: None,
             version: 1,
             last_sync: Utc::now(),
             local_path: "/local".to_string(),
@@ -7984,6 +8061,7 @@ mod tests {
     #[cfg(windows)]
     fn a_rewritten_key_does_not_turn_the_file_it_now_names_into_a_delete() {
         let mut index = SyncIndex {
+            profile_id: None,
             version: 1,
             last_sync: Utc::now(),
             local_path: "/local".to_string(),
@@ -8059,6 +8137,7 @@ mod tests {
     #[cfg(windows)]
     fn the_unverified_mark_does_not_outlive_a_save() {
         let mut index = SyncIndex {
+            profile_id: None,
             version: 1,
             last_sync: Utc::now(),
             local_path: "/local".to_string(),
@@ -8094,6 +8173,7 @@ mod tests {
     #[test]
     fn migration_leaves_a_current_index_alone() {
         let mut index = SyncIndex {
+            profile_id: None,
             version: SYNC_INDEX_VERSION,
             last_sync: Utc::now(),
             local_path: "/local".to_string(),
@@ -8123,6 +8203,7 @@ mod tests {
     #[test]
     fn test_sync_snapshot_creation() {
         let mut index = SyncIndex {
+            profile_id: None,
             version: 1,
             last_sync: Utc::now(),
             local_path: "/local".to_string(),
@@ -10055,5 +10136,73 @@ mod tests {
                 assert_eq!(report.summary.identical_count, 0);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod profile_history_tests {
+    use super::*;
+
+    /// Requested 79, point e: two profiles that sync the same pair of
+    /// folders on different servers share one index file. An index another
+    /// profile wrote is no baseline: read as one, bisync takes a file only
+    /// this side holds for one deleted on the other, and deletes it here.
+    #[test]
+    fn an_index_of_another_profile_is_no_baseline_and_deletes_nothing() {
+        assert!(!history_serves(Some("p2"), Some("p1")));
+        assert!(history_serves(Some("p1"), Some("p1")));
+        // A history that records no profile serves as before; a caller that
+        // knows no profile filters nothing.
+        assert!(history_serves(None, Some("p1")));
+        assert!(history_serves(Some("p2"), None));
+
+        let local_root = format!("/aeroftp-test/{}", uuid::Uuid::new_v4());
+        let mut index = SyncIndex::new(local_root.clone(), "/docs".to_string());
+        index.profile_id = Some("p2".to_string());
+        index.files.insert(
+            "only-here.txt".to_string(),
+            SyncIndexEntry {
+                size: 5,
+                modified: None,
+                is_dir: false,
+            },
+        );
+        save_sync_index(&index).unwrap();
+        let ours = load_sync_index_for_profile(&local_root, "/docs", Some("p1")).unwrap();
+        let theirs = load_sync_index_for_profile(&local_root, "/docs", Some("p2")).unwrap();
+        remove_sync_index(&local_root, "/docs");
+        assert!(ours.is_none());
+        assert!(theirs.is_some());
+
+        let local = HashMap::from([(
+            "only-here.txt".to_string(),
+            FileInfo {
+                name: "only-here.txt".to_string(),
+                path: format!("{local_root}/only-here.txt"),
+                size: 5,
+                modified: None,
+                is_dir: false,
+                checksum: None,
+                checksum_alg: None,
+            },
+        )]);
+        let decide = |baseline: Option<&SyncIndex>| {
+            let compared = build_comparison_results_with_index(
+                local.clone(),
+                HashMap::new(),
+                &CompareOptions::default(),
+                baseline,
+            );
+            let row = &compared[0];
+            decide_sync_action(
+                &row.status,
+                &CompareDirection::Bidirectional,
+                row.previously_synced,
+                false,
+            )
+        };
+        // What the other profile's index would do, and what this one does.
+        assert_eq!(decide(theirs.as_ref()), SyncAction::DeleteLocal);
+        assert_eq!(decide(ours.as_ref()), SyncAction::Upload);
     }
 }

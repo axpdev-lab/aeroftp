@@ -18,14 +18,15 @@ use tempfile::NamedTempFile;
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    benchmark_endpoint_kind, benchmark_mkdir_ladder, benchmark_provider_hint, benchmark_public_ip,
-    benchmark_remote_roots, benchmark_remote_roots_from_prefix, benchmark_rounded_hour_utc,
-    benchmark_signal_from, benchmark_stats_from, benchmark_tod_bucket, note_trash_purge,
-    BenchmarkCliMeta, BenchmarkClient, BenchmarkConfig, BenchmarkConsent, BenchmarkEnvironment,
-    BenchmarkErrors, BenchmarkLevel, BenchmarkRawRun, BenchmarkReport, BenchmarkResult,
-    BenchmarkSummary, ManyFilesConfig, BENCHMARK_IP_CHANGED_WARNING,
+    benchmark_effective_prefix, benchmark_endpoint_kind, benchmark_mkdir_ladder,
+    benchmark_provider_hint, benchmark_public_ip, benchmark_remote_roots,
+    benchmark_remote_roots_from_prefix, benchmark_rounded_hour_utc, benchmark_signal_from,
+    benchmark_stats_from, benchmark_tod_bucket, note_trash_purge, BenchmarkCliMeta,
+    BenchmarkClient, BenchmarkConfig, BenchmarkConsent, BenchmarkEnvironment, BenchmarkErrors,
+    BenchmarkLevel, BenchmarkRawRun, BenchmarkReport, BenchmarkResult, BenchmarkSummary,
+    ManyFilesConfig, BENCHMARK_IP_CHANGED_WARNING,
 };
-use crate::providers::{ProviderError, StorageProvider};
+use crate::providers::{ProviderError, ProviderType, StorageProvider};
 use crate::transfer_dag::TransferDirection;
 use crate::transfer_dag_single_file::{
     pick_single_file_route, run_single_file_on_route, MultipartFailure, ProgressCallback,
@@ -387,7 +388,22 @@ pub async fn run(
     let (access, _, _) = benchmark_endpoint_kind(client, provider_access_label, false, false);
 
     let report_id = uuid::Uuid::new_v4().to_string();
-    let (bench_base, test_root) = match opts.test_root_prefix.as_deref() {
+    // A relative prefix on Proton Drive lands where the session starts (see
+    // `benchmark_effective_prefix`); without a prefix the roots are relative
+    // and the provider resolves them there already.
+    let prefix = match opts.test_root_prefix.as_deref() {
+        Some(prefix) => {
+            let kind = provider.provider_type();
+            let start = if kind == ProviderType::Proton {
+                provider.pwd().await.unwrap_or_else(|_| "/".to_string())
+            } else {
+                String::new()
+            };
+            Some(benchmark_effective_prefix(prefix, kind, &start))
+        }
+        None => None,
+    };
+    let (bench_base, test_root) = match prefix.as_deref() {
         Some(prefix) => benchmark_remote_roots_from_prefix(prefix, &report_id),
         None => benchmark_remote_roots(initial_path, &report_id),
     };

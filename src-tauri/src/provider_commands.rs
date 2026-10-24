@@ -7981,8 +7981,9 @@ pub async fn provider_compare_directories(
     crypt_kind: Option<String>,
     options: Option<crate::sync::CompareOptions>,
     progress_id: Option<String>,
+    profile_id: Option<String>,
 ) -> Result<crate::sync::CompareReport, String> {
-    use crate::sync::{classify_with_summary, load_sync_index, FileInfo};
+    use crate::sync::{classify_with_summary, load_sync_index_for_profile, FileInfo};
 
     let mut options = options.unwrap_or_default();
     crate::sync::apply_error_correction_excludes(&mut options);
@@ -8316,7 +8317,10 @@ pub async fn provider_compare_directories(
         }),
     );
 
-    let index = load_sync_index(&local_path, &remote_path).ok().flatten();
+    // Another profile's index is no baseline here (see `sync::history_serves`).
+    let index = load_sync_index_for_profile(&local_path, &remote_path, profile_id.as_deref())
+        .ok()
+        .flatten();
     let report = classify_with_summary(local_files, remote_files, &options, index.as_ref());
     info!(
         "Provider compare complete: {} differences out of {} examined (index: {})",

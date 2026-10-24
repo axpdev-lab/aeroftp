@@ -377,7 +377,24 @@
                 "fetchUrl": "获取 URL",
                 "megacmdWebdavHint": "有意省略了用户名和密码。AeroFTP 在连接时会自行运行“{cmd}”以启动桥接并读取此地址:留空即可。“获取 URL”是可选的手动刷新;如果 MEGAcmd 使用自定义端口,请在此处更改端口。"
             },
-            "manualStorageUnitLabel": "{label} 单位"
+            "manualStorageUnitLabel": "{label} 单位",
+            "protonSwitch": {
+                "title": "将 {name} 切换到 {mode}？",
+                "intro": "CLI 将 My Files 写作 /my-files，API 则写作 /。以下已保存的路径将随配置文件一起移动：",
+                "initialPath": "初始文件夹",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "AeroCloud 配对 {name}",
+                "syncHistory": "{folder} 的同步历史",
+                "pendingSync": "{folder} 的待处理同步",
+                "noEquivalent": "在 {mode} 模式下没有对应项，保持不变：",
+                "legacy_one": "1 条同步历史写入于历史开始记录配置文件之前，因此不会被移动。其文件夹的下一次同步将在没有历史的情况下进行比较，不会因此删除任何内容。",
+                "legacy_many": "{count} 条同步历史写入于历史开始记录配置文件之前，因此不会被移动。这些文件夹的下一次同步将在没有历史的情况下进行比较，不会因此删除任何内容。",
+                "nothing": "没有需要更改的已保存路径。",
+                "confirm": "切换模式",
+                "refused": "未切换模式",
+                "copyKeptTitle": "已保留初始文件夹",
+                "copyKept": "初始文件夹 {path} 在 {mode} 模式下没有对应项，已保持原样。"
+            }
         },
         "browser": {
             "remote": "远程",
@@ -6879,7 +6896,9 @@
                 "proton": {
                     "headerDescription": "带端到端加密的 Proton 云存储",
                     "apiDescription": "AeroFTP 自带的 Proton Drive 客户端：你在浏览器中的 Proton 页面登录，文件在本机上加密和解密，无需其他应用。",
-                    "cliDescription": "驱动本机上已安装并登录的官方 Proton Drive CLI。你在浏览器中登录；AeroFTP 永远看不到你的 Proton 密码。"
+                    "cliDescription": "驱动本机上已安装并登录的官方 Proton Drive CLI。你在浏览器中登录；AeroFTP 永远看不到你的 Proton 密码。",
+                    "apiPaths": "路径从 My Files 开始：My Files 即 /。",
+                    "cliPaths": "绝对路径从各分区开始：My Files 即 /my-files，会话在此打开。"
                 },
                 "opendrive": {
                     "headerDescription": "OpenDrive 云存储 (5 GB 免费)",

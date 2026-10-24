@@ -656,6 +656,11 @@ jobs:
       #   - AeroFTP.exe          (the app)
       #   - aeroftp-cli.exe      (headless CLI: providers, transfers, vault)
       #   - aeroftp-dispatch.exe (CLI subcommand dispatcher / shim)
+      #   - aeroftp-app.exe      (the app again, under a name NTFS lists before
+      #                          aeroftp-cli.exe: the updater of 4.0.8 to 4.2.4
+      #                          took the first .exe of the ZIP and installed the
+      #                          CLI as AeroFTP.exe. It can go once updates from
+      #                          those versions no longer matter)
       #   - portable.marker      (detection key for the in-place auto-updater;
       #                          presence triggers portable-mode behaviour:
       #                          data dir next to .exe, in-place .exe swap on
@@ -695,6 +700,7 @@ jobs:
           New-Item -ItemType Directory -Path $stage | Out-Null
 
           Copy-Item $exe                                              "$stage\AeroFTP.exe"
+          Copy-Item $exe                                              "$stage\aeroftp-app.exe"
           Copy-Item $cliExe                                           "$stage\aeroftp-cli.exe"
           Copy-Item $dispatchExe                                      "$stage\aeroftp-dispatch.exe"
           Copy-Item "src-tauri/installer/portable/portable.marker"    "$stage\portable.marker"

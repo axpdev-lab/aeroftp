@@ -521,7 +521,7 @@ impl ProtonCliProvider {
         Self {
             config,
             connected: false,
-            current_path: "/".to_string(),
+            current_path: START_DIR.to_string(),
             account_email: None,
             binary,
             bulk_claimed_sizes: std::collections::HashMap::new(),
@@ -1213,6 +1213,11 @@ fn ensure_not_section(abs: &str) -> Result<(), ProviderError> {
     Ok(())
 }
 
+/// Where a session starts and returns to: My Files, the folder a native
+/// profile opens in, so that both modes open on the same files. The root of
+/// this mode stays the list of sections, one `cd ..` away (Requested 79).
+pub const START_DIR: &str = "/my-files";
+
 /// Every section the CLI shows in the root. They always exist and none can be
 /// created, renamed or removed.
 const ROOT_SECTIONS: &[&str] = &[
@@ -1552,7 +1557,7 @@ impl StorageProvider for ProtonCliProvider {
             }
         }
 
-        self.current_path = "/".to_string();
+        self.current_path = START_DIR.to_string();
         self.connected = true;
         tracing::info!("[Proton CLI] Connected as {}", self.display_name());
         Ok(())
@@ -1561,7 +1566,7 @@ impl StorageProvider for ProtonCliProvider {
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
         // Must not call `auth logout`: that session belongs to the user.
         self.connected = false;
-        self.current_path = "/".to_string();
+        self.current_path = START_DIR.to_string();
         Ok(())
     }
 
@@ -3646,6 +3651,31 @@ mod cli_sequence_tests {
         for line in log.lines() {
             assert_eq!(line, "[]", "AeroFTP variables reached proton-drive: {line}");
         }
+    }
+
+    /// Requested 79: a CLI-mode session opens in My Files, where a native
+    /// profile opens, instead of the list of sections; relative paths resolve
+    /// there, the sections stay one `cd ..` away, and a disconnect returns to
+    /// My Files for the next session.
+    #[tokio::test]
+    async fn a_session_starts_in_my_files_and_the_sections_stay_reachable() {
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        let mut p = provider(&shim);
+        p.connected = false;
+        p.connect().await.unwrap();
+        assert_eq!(p.pwd().await.unwrap(), START_DIR);
+        p.list("docs").await.unwrap();
+        let argv = read_argv(dir.path());
+        let listed: Vec<&str> = verbs(&argv, "list")
+            .iter()
+            .filter_map(|a| a.get(2).map(String::as_str))
+            .collect();
+        assert_eq!(listed.last(), Some(&"/my-files/docs"));
+        p.cd("..").await.unwrap();
+        assert_eq!(p.pwd().await.unwrap(), "/");
+        p.disconnect().await.unwrap();
+        assert_eq!(p.pwd().await.unwrap(), START_DIR);
     }
 
     fn provider(shim: &Path) -> ProtonCliProvider {

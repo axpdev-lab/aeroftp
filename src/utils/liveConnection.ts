@@ -41,6 +41,21 @@ export function resolveLiveConnectionParams(
 }
 
 /**
+ * The saved profile the live connection was opened from, or null when it was
+ * opened without one (a quick connect). A sync history records this id
+ * (Requested 79), so nothing else may stand in for it: a host name or a
+ * session id would name a profile that does not exist, which a later sync of
+ * the same profile reads as another profile's history and a Proton Drive mode
+ * switch never moves.
+ */
+export function savedProfileIdOf(
+    live: ConnectionParams,
+    session?: { savedServerId?: string | null } | null,
+): string | null {
+    return live.savedServerId || session?.savedServerId || null;
+}
+
+/**
  * Option keys that do not choose what a connection reaches: secrets and
  * one-shot codes (the account is named elsewhere), values the app records
  * after a connect (expiry, observed auth version, discovered node), and

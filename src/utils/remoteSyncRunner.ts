@@ -127,6 +127,13 @@ export interface SyncRunDirs {
 export interface RemoteSyncConfig {
     localRoot: string;
     remoteRoot: string;
+    /**
+     * The saved profile of the remote, recorded in the journal and the sync
+     * index so that a history serves only its own profile and moves with it
+     * when a Proton Drive profile changes client (Requested 79). Absent for a
+     * connection with no saved profile and for a local-local run.
+     */
+    profileId?: string | null;
     /** true → `provider_*` commands; false → ftp/sftp `upload_file`/`download_file`. */
     isProvider: boolean;
     /** true → emit `ftp_noop` keep-alives + inter-transfer delay. */
@@ -633,6 +640,7 @@ export const runRemoteSync = async (
         updated_at: new Date().toISOString(),
         local_path: localBase,
         remote_path: remoteBase,
+        ...(config.profileId ? { profile_id: config.profileId } : {}),
         direction: config.direction,
         retry_policy: config.retryPolicy,
         verify_policy: config.verifyPolicy,
@@ -1180,6 +1188,7 @@ export const runRemoteSync = async (
             const existing = await invoke<SyncIndex | null>('load_sync_index_cmd', {
                 localPath: localBase,
                 remotePath: remoteBase,
+                profileId: config.profileId ?? null,
             }).catch(() => null);
             const mergedFiles: Record<string, SyncIndexEntry> = {
                 ...(existing?.files ?? {}),
@@ -1277,6 +1286,7 @@ export const runRemoteSync = async (
                 last_sync: new Date().toISOString(),
                 local_path: localBase,
                 remote_path: remoteBase,
+                ...(config.profileId ? { profile_id: config.profileId } : {}),
                 files: mergedFiles,
                 ...(Object.keys(spellings).length > 0 ? { remote_spellings: spellings } : {}),
             };

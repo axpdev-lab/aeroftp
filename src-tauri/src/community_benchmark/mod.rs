@@ -777,6 +777,31 @@ pub fn benchmark_remote_roots(initial_path: &str, report_id: &str) -> (String, S
     (bench_base, test_root)
 }
 
+/// The `--test-root-prefix` a run uses on `provider`, whose session starts
+/// in `start_folder`. On Proton Drive a relative or empty prefix lands there
+/// (My Files in CLI mode), as a relative path of any other command does,
+/// instead of between the account's sections (Requested 79). An absolute
+/// prefix, and any prefix on another provider, is taken as given: resolving it
+/// against the profile's initial folder, as the CLI resolver does for other
+/// commands, would move a relative prefix of a profile that has one.
+pub fn benchmark_effective_prefix(
+    prefix: &str,
+    provider: ProviderType,
+    start_folder: &str,
+) -> String {
+    let trimmed = prefix.trim();
+    if provider != ProviderType::Proton || trimmed.starts_with('/') {
+        return prefix.to_string();
+    }
+    let relative = trimmed.trim_matches('/');
+    let start = start_folder.trim_end_matches('/');
+    match (start.is_empty(), relative.is_empty()) {
+        (true, true) => "/".to_string(),
+        (false, true) => start.to_string(),
+        _ => format!("{start}/{relative}"),
+    }
+}
+
 pub fn benchmark_remote_roots_from_prefix(prefix: &str, report_id: &str) -> (String, String) {
     // Honor `--test-root-prefix` verbatim: the user has chosen a writable
     // sub-path (typically required for kDrive and SeaFile WebDAV which refuse

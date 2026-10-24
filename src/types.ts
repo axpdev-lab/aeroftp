@@ -1020,6 +1020,8 @@ export interface SyncIndex {
   last_sync: string;
   local_path: string;
   remote_path: string;
+  /** The saved profile this index belongs to (absent: written before profiles were recorded, or without one). */
+  profile_id?: string;
   files: Record<string, SyncIndexEntry>;
   /** Remote spelling of a local key, only when the two strings differ. */
   remote_spellings?: Record<string, string>;
@@ -1416,6 +1418,8 @@ export interface SyncJournal {
   updated_at: string;
   local_path: string;
   remote_path: string;
+  /** The saved profile this journal belongs to, as on {@link SyncIndex}. */
+  profile_id?: string;
   direction: SyncDirection;
   retry_policy: RetryPolicy;
   verify_policy: VerifyPolicy;

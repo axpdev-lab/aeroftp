@@ -377,7 +377,24 @@
                 "fetchUrl": "Obter URL",
                 "megacmdWebdavHint": "O usuario e o contrasinal omítense a propósito. AeroFTP executa el mesmo «{cmd}» ao conectar para iniciar a ponte e ler este enderezo: podes deixalo en branco. «Obter URL» é unha actualización manual opcional; cambia aquí o porto se MEGAcmd usa un personalizado."
             },
-            "manualStorageUnitLabel": "Unidade de {label}"
+            "manualStorageUnitLabel": "Unidade de {label}",
+            "protonSwitch": {
+                "title": "Cambiar {name} a {mode}?",
+                "intro": "A CLI escribe My Files como /my-files e a API como /. Estas rutas gardadas móvense co perfil:",
+                "initialPath": "Cartafol inicial",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "Parella de AeroCloud {name}",
+                "syncHistory": "Historial de sincronización de {folder}",
+                "pendingSync": "Sincronización pendente de {folder}",
+                "noEquivalent": "Sen equivalente no modo {mode}, mantense tal como está:",
+                "legacy_one": "1 historial de sincronización escribiuse antes de que os historiais rexistrasen un perfil e non se move. A próxima sincronización dos seus cartafoles compara sen historial e, por iso, non elimina nada.",
+                "legacy_many": "{count} historiais de sincronización escribíronse antes de que os historiais rexistrasen un perfil e non se moven. A próxima sincronización dos seus cartafoles compara sen historial e, por iso, non elimina nada.",
+                "nothing": "Non é necesario cambiar ningunha ruta gardada.",
+                "confirm": "Cambiar o modo",
+                "refused": "Non se cambiou o modo",
+                "copyKeptTitle": "Cartafol inicial conservado",
+                "copyKept": "O cartafol inicial {path} non ten equivalente no modo {mode} e conservouse tal como estaba."
+            }
         },
         "browser": {
             "remote": "Remoto",
@@ -6898,7 +6915,9 @@
                 "proton": {
                     "headerDescription": "Almacenamento na nube de Proton con cifrado de extremo a extremo",
                     "apiDescription": "O cliente propio de Proton Drive de AeroFTP: inicias sesión na páxina de Proton no navegador, os ficheiros cífranse e descífranse neste ordenador e non se precisa ningunha outra aplicación.",
-                    "cliDescription": "Controla a CLI oficial de Proton Drive instalada e coa sesión iniciada neste equipo. Inicias sesión no navegador; AeroFTP nunca ve o teu contrasinal de Proton."
+                    "cliDescription": "Controla a CLI oficial de Proton Drive instalada e coa sesión iniciada neste equipo. Inicias sesión no navegador; AeroFTP nunca ve o teu contrasinal de Proton.",
+                    "apiPaths": "As rutas comezan en My Files: My Files é /.",
+                    "cliPaths": "As rutas absolutas comezan nas seccións: My Files é /my-files, onde se abre unha sesión."
                 },
                 "opendrive": {
                     "headerDescription": "Almacenamento na nube de OpenDrive (5 GB de balde)",

@@ -377,7 +377,24 @@
                 "fetchUrl": "Hae URL",
                 "megacmdWebdavHint": "Käyttäjänimi ja salasana on jätetty pois tarkoituksella. AeroFTP suorittaa itse komennon \"{cmd}\" yhdistettäessä käynnistääkseen sillan ja lukeakseen tämän osoitteen: kentän voi jättää tyhjäksi. Hae URL on valinnainen manuaalinen päivitys; vaihda portti tässä, jos MEGAcmd käyttää mukautettua porttia."
             },
-            "manualStorageUnitLabel": "{label}-yksikkö"
+            "manualStorageUnitLabel": "{label}-yksikkö",
+            "protonSwitch": {
+                "title": "Vaihdetaanko {name} tilaan {mode}?",
+                "intro": "CLI kirjoittaa My Files -kansion muodossa /my-files, API muodossa /. Nämä tallennetut polut siirtyvät profiilin mukana:",
+                "initialPath": "Aloituskansio",
+                "aerocloud": "AeroCloud",
+                "aerocloudPair": "AeroCloud-pari {name}",
+                "syncHistory": "Kohteen {folder} synkronointihistoria",
+                "pendingSync": "Kohteen {folder} odottava synkronointi",
+                "noEquivalent": "Ei vastinetta {mode}-tilassa, säilytetään sellaisenaan:",
+                "legacy_one": "1 synkronointihistoria kirjoitettiin ennen kuin historiat tallensivat profiilin, eikä sitä siirretä. Sen kansioiden seuraava synkronointi vertailee ilman historiaa eikä siksi poista mitään.",
+                "legacy_many": "{count} synkronointihistoriaa kirjoitettiin ennen kuin historiat tallensivat profiilin, eikä niitä siirretä. Niiden kansioiden seuraava synkronointi vertailee ilman historiaa eikä siksi poista mitään.",
+                "nothing": "Mitään tallennettua polkua ei tarvitse muuttaa.",
+                "confirm": "Vaihda tila",
+                "refused": "Tilaa ei vaihdettu",
+                "copyKeptTitle": "Aloituskansio säilytettiin",
+                "copyKept": "Aloituskansiolla {path} ei ole vastinetta {mode}-tilassa, ja se säilytettiin sellaisenaan."
+            }
         },
         "browser": {
             "remote": "Etä",
@@ -6879,7 +6896,9 @@
                 "proton": {
                     "headerDescription": "Protonin pilvitallennus päästä päähän -salauksella",
                     "apiDescription": "AeroFTP:n oma Proton Drive -asiakasohjelma: kirjaudut Protonin sivulla selaimessa, tiedostot salataan ja puretaan tällä tietokoneella, eikä muuta sovellusta tarvita.",
-                    "cliDescription": "Ohjaa virallista Proton Drive -CLI:tä, joka on asennettu ja kirjautuneena tällä koneella. Kirjaudut selaimessa; AeroFTP ei koskaan näe Proton-salasanaasi."
+                    "cliDescription": "Ohjaa virallista Proton Drive -CLI:tä, joka on asennettu ja kirjautuneena tällä koneella. Kirjaudut selaimessa; AeroFTP ei koskaan näe Proton-salasanaasi.",
+                    "apiPaths": "Polut alkavat kohteesta My Files: My Files on /.",
+                    "cliPaths": "Absoluuttiset polut alkavat osioista: My Files on /my-files, johon istunto avautuu."
                 },
                 "opendrive": {
                     "headerDescription": "OpenDriven pilvitallennus (5 Gt ilmaiseksi)",
