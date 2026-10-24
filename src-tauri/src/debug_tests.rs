@@ -255,7 +255,7 @@ pub async fn debug_test_plugin_integrity(app: tauri::AppHandle) -> Result<TestRe
 
 // ─── Bundle export (Pass 5) ────────────────────────────────────────────────
 //
-// Mirror of the frontend `redactSensitive` patterns so the `aeroftp.log` tail
+// Mirror of the frontend `redactSensitive` patterns so the `AeroFTP.log` tail
 // we pull off disk before zipping is sanitized in the same way as the live
 // buffer. The frontend-supplied buffers (logs, network) arrive already
 // redacted; we re-apply here only to the on-disk raw log.
@@ -317,6 +317,27 @@ pub(crate) fn redact(s: &str) -> String {
         out = re.replace_all(&out, *rep).into_owned();
     }
     out
+}
+
+/// The last `lines` lines of the on-disk app log, redacted, and the file they
+/// come from: the file the GUI log target writes, in a portable copy's own
+/// folder too. `None` when that file does not exist.
+pub(crate) async fn app_log_tail(lines: usize) -> Option<(std::path::PathBuf, String)> {
+    let path = crate::portable::app_log_file()?;
+    if !path.is_file() {
+        return None;
+    }
+    let content = tokio::fs::read(&path)
+        .await
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        .unwrap_or_default();
+    let all: Vec<&str> = content.lines().collect();
+    let tail = all[all.len().saturating_sub(lines)..]
+        .iter()
+        .map(|line| redact(line))
+        .collect::<Vec<_>>()
+        .join("\n");
+    Some((path, tail))
 }
 
 #[derive(Deserialize)]
@@ -393,28 +414,9 @@ pub async fn debug_export_bundle(
         &serde_json::to_string_pretty(&bundle.local_storage_keys).unwrap_or_else(|_| "{}".into()),
     )?;
 
-    // Tail of the on-disk Rust log. tauri-plugin-log writes under the
-    // canonical AeroFTP data root on most platforms.
-    if let Some(log_dir) = crate::portable::aeroftp_data_root() {
-        let candidates = [
-            log_dir.join("logs").join("aeroftp.log"),
-            log_dir.join("aeroftp.log"),
-        ];
-        for path in candidates.iter() {
-            if path.exists() {
-                if let Ok(content) = tokio::fs::read_to_string(path).await {
-                    let lines: Vec<&str> = content.lines().collect();
-                    let tail_start = lines.len().saturating_sub(1000);
-                    let tail = lines[tail_start..]
-                        .iter()
-                        .map(|l| redact(l))
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    write(&mut zip, "aeroftp.log.tail", &tail)?;
-                }
-                break;
-            }
-        }
+    // Tail of the on-disk Rust log, read where the GUI log target writes it.
+    if let Some((_, tail)) = app_log_tail(1000).await {
+        write(&mut zip, "aeroftp.log.tail", &tail)?;
     }
 
     zip.finish().map_err(|e| format!("zip finish: {}", e))?;
