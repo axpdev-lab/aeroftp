@@ -850,8 +850,25 @@ struct ListedFileId {
     file_id: String,
 }
 
+/// quick-xml yields `Eof` when the body stops, even if an element is still
+/// open. A PROPFIND is complete only after `</multistatus>` and with every
+/// element closed. Anything else would be a partial listing.
+fn propfind_document_is_complete(
+    depth: u32,
+    saw_multistatus_end: bool,
+) -> Result<(), ProviderError> {
+    if depth == 0 && saw_multistatus_end {
+        Ok(())
+    } else {
+        Err(ProviderError::ParseError(
+            "PROPFIND listing ended before the multistatus document was complete".into(),
+        ))
+    }
+}
+
 /// Depth-1 file-id listing. A 404 propstat's file id is ignored. A reader
-/// error fails the listing: a partial parse would look like "no file id".
+/// error, or a body that ends before `</multistatus>`, fails the listing:
+/// a partial parse would look like "no file id".
 fn parse_nextcloud_file_id_listing(xml: &str) -> Result<Vec<ListedFileId>, ProviderError> {
     let mut found = Vec::new();
     let mut reader = Reader::from_str(xml);
@@ -864,12 +881,18 @@ fn parse_nextcloud_file_id_listing(xml: &str) -> Result<Vec<ListedFileId>, Provi
     let mut staged_id = String::new();
     let mut kept_id = String::new();
     let mut propstat_status = String::new();
+    let mut depth = 0u32;
+    let mut saw_multistatus_end = false;
 
     loop {
         match reader.read_event_into(&mut buf) {
             Err(error) => return Err(ProviderError::ParseError(error.to_string())),
-            Ok(Event::Eof) => break,
+            Ok(Event::Eof) => {
+                propfind_document_is_complete(depth, saw_multistatus_end)?;
+                break;
+            }
             Ok(Event::Start(ref event)) => {
+                depth = depth.saturating_add(1);
                 let tag = event.local_name().as_ref().to_string();
                 match tag.as_str() {
                     "response" => {
@@ -892,6 +915,10 @@ fn parse_nextcloud_file_id_listing(xml: &str) -> Result<Vec<ListedFileId>, Provi
             }
             Ok(Event::End(ref event)) => {
                 let tag = event.local_name().as_ref().to_string();
+                depth = depth.saturating_sub(1);
+                if tag == "multistatus" {
+                    saw_multistatus_end = true;
+                }
                 match tag.as_str() {
                     "propstat" if in_propstat => {
                         in_propstat = false;
@@ -941,6 +968,9 @@ fn parse_nextcloud_file_id_listing(xml: &str) -> Result<Vec<ListedFileId>, Provi
                         }
                     }
                 }
+            }
+            Ok(Event::Empty(ref event)) if event.local_name().as_ref() == "multistatus" => {
+                saw_multistatus_end = true;
             }
             _ => {}
         }
@@ -2534,10 +2564,11 @@ impl WebDavProvider {
     /// A following 404 propstat (Nextcloud reports each missing property that
     /// way) must not replace the file id or the original location.
     ///
-    /// A reader error fails the whole listing. The entries already read are
-    /// not returned: a later generation of the same path could be in the
-    /// unread tail, and a purge would then treat one generation as the only
-    /// one and delete it.
+    /// A reader error, or a body that ends before `</multistatus>`, fails
+    /// the whole listing. The entries already read are not returned: a later
+    /// generation of the same path could be in the unread tail, and a purge
+    /// would then treat one generation as the only one and delete it.
+    /// A finished multistatus with no responses is an empty listing.
     fn parse_trashbin_response(
         &self,
         xml: &str,
@@ -2557,12 +2588,18 @@ impl WebDavProvider {
         let mut staged = TrashPropBuf::default();
         let mut propstat_status = String::new();
         let mut in_resourcetype = false;
+        let mut depth = 0u32;
+        let mut saw_multistatus_end = false;
 
         loop {
             match reader.read_event_into(&mut buf) {
                 Err(error) => return Err(ProviderError::ParseError(error.to_string())),
-                Ok(Event::Eof) => break,
+                Ok(Event::Eof) => {
+                    propfind_document_is_complete(depth, saw_multistatus_end)?;
+                    break;
+                }
                 Ok(Event::Start(ref e)) => {
+                    depth = depth.saturating_add(1);
                     let tag = e.local_name().as_ref().to_string();
                     match tag.as_str() {
                         "response" => {
@@ -2595,6 +2632,9 @@ impl WebDavProvider {
                 Ok(Event::Empty(ref e)) => {
                     let local = e.local_name();
                     let tag = local.as_ref();
+                    if tag == "multistatus" {
+                        saw_multistatus_end = true;
+                    }
                     if tag == "collection" && in_resourcetype {
                         active_trash_buf(&mut kept, &mut staged, in_propstat).is_collection = true;
                     }
@@ -2602,6 +2642,10 @@ impl WebDavProvider {
                 Ok(Event::End(ref e)) => {
                     let local = e.local_name();
                     let tag = local.as_ref();
+                    depth = depth.saturating_sub(1);
+                    if tag == "multistatus" {
+                        saw_multistatus_end = true;
+                    }
                     match tag {
                         "propstat" if in_propstat => {
                             in_propstat = false;
