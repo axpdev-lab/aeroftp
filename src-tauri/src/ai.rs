@@ -64,7 +64,11 @@ pub fn sanitize_error_message(msg: &str) -> String {
             r"(?i)x-api-key:\s*\S+",       // x-api-key header reflections
         ]
         .iter()
-        .filter_map(|p| regex::Regex::new(p).ok())
+        // A rule that does not compile must stop the scrub, not vanish from it.
+        .map(|p| {
+            regex::Regex::new(p)
+                .unwrap_or_else(|e| panic!("error-scrub rule {p:?} does not compile: {e}"))
+        })
         .collect()
     });
 
