@@ -524,7 +524,7 @@ impl ScanBoundaries {
     /// Record a path the scan did not see. The scan root has no path to bound a
     /// run around: a root the scan did not see leaves the whole tree unseen, a
     /// gap with no name.
-    fn unseen(&mut self, rel_path: &str, reason: &'static str, is_dir: Option<bool>) {
+    pub(crate) fn unseen(&mut self, rel_path: &str, reason: &'static str, is_dir: Option<bool>) {
         if rel_path.is_empty() {
             tracing::warn!("[scan] not seen: the scan root ({})", reason);
             self.unbounded.get_or_insert(reason);
