@@ -590,14 +590,12 @@ impl OneDriveProvider {
     /// (encoding the full path would corrupt '/' separators)
     fn api_path(&self, path: &str) -> String {
         let clean = path.trim_matches('/');
-        if let Some((root, drive_id, item_id)) = self.remote_root_of(clean) {
+        // Only what lies UNDER a shortcut goes to its target's drive: the
+        // shortcut's own path still names the shortcut, in the drive it is in.
+        if let Some((root, drive_id, item_id)) = self.remote_root_above(clean) {
             let base = format!("{}/drives/{}/items/{}", self.graph_api(), drive_id, item_id);
             let rest = clean[root.len()..].trim_start_matches('/');
-            return if rest.is_empty() {
-                base
-            } else {
-                format!("{}:/{}", base, Self::encode_path_segments(rest))
-            };
+            return format!("{}:/{}", base, Self::encode_path_segments(rest));
         }
         if clean.is_empty() {
             format!("{}/me/drive/root", self.graph_api())
@@ -608,14 +606,28 @@ impl OneDriveProvider {
     }
 
     /// The deepest shortcut or shared folder that `clean` (a path without
-    /// leading or trailing slash) is, or lies under: its path, drive id and
-    /// item id.
+    /// leading or trailing slash) is, or lies under: its path, and the drive
+    /// id and item id of its target.
     fn remote_root_of(&self, clean: &str) -> Option<(String, String, String)> {
+        self.deepest_remote_root(clean, true)
+    }
+
+    /// The deepest shortcut or shared folder that `clean` lies strictly
+    /// under, never `clean` itself.
+    fn remote_root_above(&self, clean: &str) -> Option<(String, String, String)> {
+        self.deepest_remote_root(clean, false)
+    }
+
+    fn deepest_remote_root(
+        &self,
+        clean: &str,
+        include_self: bool,
+    ) -> Option<(String, String, String)> {
         let roots = self.remote_roots.read().unwrap_or_else(|e| e.into_inner());
         roots
             .iter()
             .filter(|(root, _)| {
-                clean == root.as_str()
+                (include_self && clean == root.as_str())
                     || clean
                         .strip_prefix(root.as_str())
                         .is_some_and(|rest| rest.starts_with('/'))
@@ -625,30 +637,29 @@ impl OneDriveProvider {
     }
 
     /// Take a fetched item into this provider's addressing. A shortcut is
-    /// recorded as a remote root at `path` and stands for its target from
-    /// here on; an item read from another drive (`drive`) gets a
-    /// `drive/item` id, which [`Self::api_item`] routes to that drive.
+    /// recorded as a remote root at `path`, so everything under it goes to
+    /// the drive its target lives in; the shortcut itself keeps its own id,
+    /// so deleting, renaming or sharing it acts on the shortcut and never on
+    /// the folder it points to, and it takes the target's folder facet. An
+    /// item read from another drive (`drive`) gets a `drive/item` id, which
+    /// [`Self::api_item`] routes to that drive.
     fn adopt_item(&self, item: &mut DriveItem, path: Option<&str>, drive: Option<&str>) {
         if let Some(remote) = item.remote_item.take() {
             let remote_drive = remote
                 .parent_reference
                 .as_ref()
                 .and_then(|r| r.drive_id.clone());
-            if let Some(remote_drive) = remote_drive {
-                if let Some(path) = path {
-                    self.remote_roots
-                        .write()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .insert(
-                            path.trim_matches('/').to_string(),
-                            (remote_drive.clone(), remote.id.clone()),
-                        );
-                }
-                item.id = format!("{}/{}", remote_drive, remote.id);
-                if item.folder.is_none() {
-                    item.folder = remote.folder;
-                }
-                return;
+            if let (Some(remote_drive), Some(path)) = (remote_drive, path) {
+                self.remote_roots
+                    .write()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .insert(
+                        path.trim_matches('/').to_string(),
+                        (remote_drive, remote.id),
+                    );
+            }
+            if item.folder.is_none() {
+                item.folder = remote.folder;
             }
         }
         if let Some(drive) = drive {
@@ -656,6 +667,29 @@ impl OneDriveProvider {
                 item.id = format!("{}/{}", drive, item.id);
             }
         }
+    }
+
+    /// Forget what this session learned about `clean` and everything under
+    /// it, under any capitalization: the cached ids, the shortcuts and the
+    /// plain folders. Called once the item was moved or deleted, so a folder
+    /// made again under the same name is looked up afresh.
+    fn forget_subtree(&mut self, clean: &str) {
+        super::forget_cached_subtree_ignoring_case(&mut self.path_cache, clean);
+        super::forget_cached_subtree_ignoring_case(
+            self.remote_roots
+                .get_mut()
+                .unwrap_or_else(|e| e.into_inner()),
+            clean,
+        );
+        let path = clean.trim_end_matches('/').to_lowercase();
+        let below = format!("{path}/");
+        self.plain_folders
+            .get_mut()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|folder| {
+                let folder = folder.to_lowercase();
+                folder != path && !folder.starts_with(&below)
+            });
     }
 
     /// The `parentReference` that names folder `id` in a copy or a move.
@@ -687,8 +721,8 @@ impl OneDriveProvider {
 
     /// Convert DriveItem to RemoteEntry
     fn to_remote_entry(&self, item: &DriveItem, parent_path: &str) -> RemoteEntry {
-        // A shortcut to a folder arrives here already adopted, with the
-        // target's folder facet.
+        // A shortcut to a folder arrives here already adopted, with its
+        // target's folder facet, so it lists as a folder.
         let is_dir = item.folder.is_some();
         let path = if parent_path == "/" {
             format!("/{}", item.name)
@@ -783,7 +817,7 @@ impl OneDriveProvider {
     async fn fetch_item(&self, path: &str) -> Result<DriveItem, ProviderError> {
         let url = self.api_path(path);
         let drive = self
-            .remote_root_of(path.trim_matches('/'))
+            .remote_root_above(path.trim_matches('/'))
             .map(|(_, drive, _)| drive);
 
         let response = self
@@ -1132,6 +1166,19 @@ impl OneDriveProvider {
         Ok(item.id)
     }
 
+    /// The id to address what is INSIDE the folder at `path`: for a shortcut
+    /// or a shared folder its target in the other drive, for anything else
+    /// the item itself. Listing, creating and copying or moving into a
+    /// folder use this; operations on the item itself use [`Self::resolve_path`].
+    async fn resolve_container(&mut self, path: &str) -> Result<String, ProviderError> {
+        let id = self.resolve_path(path).await?;
+        let clean = path.trim_matches('/');
+        Ok(match self.remote_root_of(clean) {
+            Some((root, drive, target)) if root == clean => format!("{drive}/{target}"),
+            _ => id,
+        })
+    }
+
     /// Rename or move with one PATCH of the item. `conflict` is Graph's
     /// `@microsoft.graph.conflictBehavior`: none for a rename, which Graph
     /// then refuses onto a taken name (409 `nameAlreadyExists`, reported as
@@ -1173,7 +1220,7 @@ impl OneDriveProvider {
             let to_parent_clean = to_parent.trim_matches('/');
             let parent_reference = if self.remote_root_of(to_parent_clean).is_some() {
                 // Under a shortcut the path form names the wrong drive.
-                Self::parent_reference_of(&self.resolve_path(&to_parent).await?)
+                Self::parent_reference_of(&self.resolve_container(&to_parent).await?)
             } else if to_parent_clean.is_empty() {
                 serde_json::json!({ "path": "/drive/root:" })
             } else {
@@ -1223,11 +1270,8 @@ impl OneDriveProvider {
 
         // The ids cached for either path and everything under them now point
         // at a moved item, or at the one a replace sent to the recycle bin.
-        super::forget_cached_subtree_ignoring_case(
-            &mut self.path_cache,
-            from_path.trim_matches('/'),
-        );
-        super::forget_cached_subtree_ignoring_case(&mut self.path_cache, to_path.trim_matches('/'));
+        self.forget_subtree(from_path.trim_matches('/'));
+        self.forget_subtree(to_path.trim_matches('/'));
 
         info!("Renamed {} to {}", from, to);
         Ok(())
@@ -1389,11 +1433,11 @@ impl StorageProvider for OneDriveProvider {
         let (item_id, parent_path) = if path == "." || path.is_empty() {
             (self.current_item_id.clone(), self.current_path.clone())
         } else if path.starts_with('/') {
-            let id = self.resolve_path(path).await?;
+            let id = self.resolve_container(path).await?;
             (id, path.to_string())
         } else {
             let full_path = format!("{}/{}", self.current_path.trim_end_matches('/'), path);
-            let id = self.resolve_path(&full_path).await?;
+            let id = self.resolve_container(&full_path).await?;
             (id, full_path)
         };
 
@@ -1427,7 +1471,7 @@ impl StorageProvider for OneDriveProvider {
             format!("{}/{}", self.current_path.trim_end_matches('/'), path)
         };
 
-        let item_id = self.resolve_path(&new_path).await?;
+        let item_id = self.resolve_container(&new_path).await?;
 
         // Verify it's a folder
         let item = self.get_item_by_id(&item_id).await?;
@@ -1736,7 +1780,7 @@ impl StorageProvider for OneDriveProvider {
         // deleted ancestor) can keep an obsolete ID in the path cache. Resolve
         // the live path before this write; never create under a moved cached ID.
         self.path_cache.remove(parent_path.trim_matches('/'));
-        let parent_id = self.resolve_path(&parent_path).await?;
+        let parent_id = self.resolve_container(&parent_path).await?;
 
         let body = serde_json::json!({
             "name": folder_name,
@@ -1800,10 +1844,7 @@ impl StorageProvider for OneDriveProvider {
             // Whatever the answer, the ids cached for the item and everything
             // under it, under any capitalization, point into the recycle bin
             // or at nothing.
-            super::forget_cached_subtree_ignoring_case(
-                &mut self.path_cache,
-                full_path.trim_matches('/'),
-            );
+            self.forget_subtree(full_path.trim_matches('/'));
             let response = sent.map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
             let status = response.status();
             if status.as_u16() == 404 {
@@ -1901,10 +1942,7 @@ impl StorageProvider for OneDriveProvider {
             }
             _ => {}
         }
-        super::forget_cached_subtree_ignoring_case(
-            &mut self.path_cache,
-            full_path.trim_matches('/'),
-        );
+        self.forget_subtree(full_path.trim_matches('/'));
         info!("Removed empty folder: {}", path);
         Ok(())
     }
@@ -2157,7 +2195,7 @@ impl StorageProvider for OneDriveProvider {
         // Resolve destination parent and name
         let (to_parent_path, to_name) = copy_destination(&self.current_path, to);
 
-        let to_parent_id = self.resolve_path(&to_parent_path).await?;
+        let to_parent_id = self.resolve_container(&to_parent_path).await?;
 
         let body = serde_json::json!({
             "parentReference": Self::parent_reference_of(&to_parent_id),
@@ -2197,7 +2235,7 @@ impl StorageProvider for OneDriveProvider {
         let item_id = if path == "/" || path.is_empty() {
             "root".to_string()
         } else {
-            self.resolve_path(path).await?
+            self.resolve_container(path).await?
         };
 
         // Graph search(q=...) is a substring match on filename and ignores
@@ -3369,7 +3407,8 @@ mod tests {
     /// #368 (Ehud): a folder reached through a shortcut ("Add shortcut to My
     /// files", or a shared folder) lives in another drive. Graph answers
     /// `itemNotFound` to a create or a listing addressed to the shortcut's own
-    /// id, so every operation under it must go to the target drive.
+    /// id, so every operation under it must go to the target drive, while an
+    /// operation on the shortcut itself stays on the shortcut.
     #[tokio::test]
     async fn ehud_368_mkdir_and_list_inside_a_shortcut_address_the_target_drive() {
         use axum::{
@@ -3409,6 +3448,10 @@ mod tests {
                         StatusCode::OK,
                         Json(json!({"value": [{"id": "F1", "name": "f.txt", "size": 3, "file": {}}]})),
                     ),
+                    // Removing the shortcut removes the link in this drive.
+                    (Method::DELETE, "/v1.0/me/drive/items/SHORTCUT") => {
+                        (StatusCode::NO_CONTENT, Json(serde_json::Value::Null))
+                    }
                     // The shortcut's own id and a path through it are not
                     // the folder, which is what Graph answers.
                     _ => (
@@ -3443,6 +3486,10 @@ mod tests {
         p.mkdir("/Shared/inner/deeper")
             .await
             .expect("mkdir two levels under a shortcut");
+        // A second create straight into the shortcut looks it up again: the
+        // shortcut's own path must still name the shortcut, or the delete
+        // below would reach the shared folder.
+        p.mkdir("/Shared/second").await.expect("mkdir again");
 
         // A fresh session that goes straight below the shortcut.
         let mut fresh = fixture();
@@ -3457,9 +3504,26 @@ mod tests {
             Some("drv2/F1")
         );
 
+        // Deleting the shortcut itself deletes the link, never the shared
+        // folder it points to.
+        p.delete("/Shared").await.expect("delete the shortcut");
+        // A folder made again under that name is not taken for the old one.
+        assert!(p.remote_root_of("Shared").is_none());
+        assert!(p.remote_root_of("Shared/inner").is_none());
+
         let paths = requests.lock().unwrap();
         assert!(
-            !paths.iter().any(|p| p.contains("/me/drive/items/SHORTCUT")),
+            !paths
+                .iter()
+                .any(|p| p.contains("/me/drive/items/SHORTCUT/children")),
+            "{paths:?}"
+        );
+        assert!(
+            paths.contains(&"DELETE /v1.0/me/drive/items/SHORTCUT".to_string()),
+            "{paths:?}"
+        );
+        assert!(
+            !paths.iter().any(|p| p.starts_with("DELETE /v1.0/drives/")),
             "{paths:?}"
         );
         server.abort();

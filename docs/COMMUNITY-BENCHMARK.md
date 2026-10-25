@@ -121,7 +121,8 @@ profile keeps for it: in the GUI, open the profile, switch it to that mode with
 once. A mode with no credentials saved, or whose endpoint cannot be resolved,
 is listed as skipped with what to do, never measured as zero; when another
 saved profile is already in that mode, the skip names it so you can add it with
-`--compare`.
+`--compare`, or says that the mode is measured by it when it is already in the
+same run.
 
 Run only metadata operations:
 

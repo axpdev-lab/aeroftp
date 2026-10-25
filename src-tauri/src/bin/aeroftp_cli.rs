@@ -31006,13 +31006,6 @@ fn profile_value_to_provider_config(
         (username.clone(), String::new())
     };
 
-    // A fan-out mode with credentials of its own carries them in the value
-    // (see `synth_profile_for_mode`); a saved profile never has this key.
-    if let Some(secret) = profile.get(MODE_SECRET_KEY).and_then(|v| v.as_str()) {
-        cred_user = username.clone();
-        cred_pass = secret.to_string();
-    }
-
     // Filen Desktop local bridges default to admin/admin unless the user changed
     // them; the GUI applies that fallback at connect time but the saved profile
     // stays blank, so the CLI must apply parity here (#368). Shared with the MCP
@@ -31693,7 +31686,18 @@ async fn connect_with_base_path(
                     return Err(5);
                 }
             };
-            profile_value_to_provider_config(synth, &store, cli, format)?
+            let (mut config, path) = profile_value_to_provider_config(synth, &store, cli, format)?;
+            // A fan-out mode with credentials of its own carries them in the
+            // synthesized value (see `synth_profile_from_snapshot`). Read here
+            // only, so a saved profile can never supply one.
+            if let Some(secret) = synth.get(MODE_SECRET_KEY).and_then(|v| v.as_str()) {
+                config.username = synth
+                    .get("username")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string);
+                config.password = Some(secret.to_string());
+            }
+            (config, path)
         }
         None => resolve_url_or_profile_with(url, cli, profile_override, format)?,
     };
@@ -48915,10 +48919,13 @@ fn remote_parent_dir(remote_path: &str) -> Option<String> {
 /// only when the duration reaches them. Latency stays in ms, where the
 /// sub-second figure is the point, and JSON keeps its `_ms` fields.
 fn format_benchmark_duration(duration: std::time::Duration) -> String {
-    let secs = duration.as_secs();
-    if secs < 10 {
-        return format!("{:.1}s", duration.as_secs_f64());
+    let exact = duration.as_secs_f64();
+    // Below what rounds to ten seconds, tenths; from there whole seconds,
+    // rounded, so 9.96 s reads `10s` and 59.6 s `1m 00s`.
+    if exact < 9.95 {
+        return format!("{exact:.1}s");
     }
+    let secs = exact.round() as u64;
     let (h, m, s) = (secs / 3600, (secs % 3600) / 60, secs % 60);
     if h > 0 {
         format!("{h}h {m:02}m {s:02}s")
@@ -49149,6 +49156,10 @@ async fn cmd_benchmark(
     format: OutputFormat,
 ) -> i32 {
     let started = benchmark_clock();
+    // Warnings a previous profile left unclaimed (it stopped before its
+    // report) are shown now, next to it, so they never land in this
+    // profile's report.
+    render_pending_warnings(format);
     let profile_timeout_secs = profile_timeout_override
         .map(|v| v.clamp(60, 86_400))
         .unwrap_or(BENCHMARK_TOTAL_TIMEOUT_SECS);
@@ -49924,8 +49935,9 @@ fn synth_profile_from_snapshot(
     synth
 }
 
-/// Where a synthesized fan-out profile carries its mode's own secret; read by
-/// [`profile_value_to_provider_config`] in place of the vault's `server_<id>`.
+/// Where a synthesized fan-out profile carries its mode's own secret; read
+/// only on the synthesized-profile connect path, in place of the vault's
+/// `server_<id>`.
 const MODE_SECRET_KEY: &str = "__modeSecret";
 
 /// Run the same benchmark workload across several saved profiles and print a
@@ -50469,7 +50481,8 @@ fn oauth_profile_connect_error(profile_name: &str, error: &str) -> String {
         error
     };
     format!(
-        "profile '{profile_name}' cannot connect: {error}; authorize it with `aeroftp-cli profile-auth \"{profile_name}\" --request-json-file <file>` (action begin, then finish) or connect it once in the GUI"
+        "profile '{profile_name}' cannot connect: {error}; authorize it with `aeroftp-cli profile-auth {} --request-json-file <file>` (action begin, then finish) or connect it once in the GUI",
+        shell_arg(profile_name)
     )
 }
 
@@ -85773,6 +85786,16 @@ mod tests {
             format_benchmark_duration(Duration::from_secs(3_725)),
             "1h 02m 05s"
         );
+        // At the boundaries the rounding never shows an extra unit's worth.
+        assert_eq!(
+            format_benchmark_duration(Duration::from_millis(9_960)),
+            "10s"
+        );
+        assert_eq!(
+            format_benchmark_duration(Duration::from_millis(59_600)),
+            "1m 00s"
+        );
+        assert_eq!(format_benchmark_duration(Duration::ZERO), "0.0s");
     }
 
     /// #368 (Ehud): a benchmark profile without authorization names itself
@@ -85786,9 +85809,15 @@ mod tests {
         );
         assert!(line.contains("profile 'My Dropbox'"), "{line}");
         assert!(
-            line.contains("aeroftp-cli profile-auth \"My Dropbox\""),
+            line.contains(&format!(
+                "aeroftp-cli profile-auth {} ",
+                shell_arg("My Dropbox")
+            )),
             "{line}"
         );
+        // A name the shell would split or expand stays one argument.
+        let odd = oauth_profile_connect_error("Bob's $HOME", "Invalid token");
+        assert!(odd.contains(&shell_arg("Bob's $HOME")), "{odd}");
         assert!(!line.contains("start_auth"), "{line}");
         assert!(!line.contains("http"), "{line}");
         assert!(benchmark_skip_reason(6).contains("profile-auth"));
