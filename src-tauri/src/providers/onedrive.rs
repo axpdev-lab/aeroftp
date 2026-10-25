@@ -812,6 +812,16 @@ impl OneDriveProvider {
         roots() > before
     }
 
+    /// Learn the shortcuts on the way to `path` before an address is built
+    /// from it with no lookup of its own (a content GET or PUT, an upload
+    /// session, a move's destination): Graph does not follow a path through
+    /// a shortcut, so on a fresh session `/Shared/x.bin` would name a file in
+    /// this drive. Each parent not yet known is looked up once per session;
+    /// known ones cost nothing.
+    async fn learn_parents(&self, path: &str) {
+        self.discover_remote_parents(path).await;
+    }
+
     /// One `GET` of the item at `path`, taken into this provider's
     /// addressing (see [`Self::adopt_item`]).
     async fn fetch_item(&self, path: &str) -> Result<DriveItem, ProviderError> {
@@ -840,7 +850,16 @@ impl OneDriveProvider {
             .json()
             .await
             .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+        let shortcut = item.remote_item.is_some();
         self.adopt_item(&mut item, Some(path), drive.as_deref());
+        // A folder read here is known not to be a shortcut: the next address
+        // under it needs no lookup to tell.
+        if !shortcut && item.folder.is_some() {
+            self.plain_folders
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(path.trim_matches('/').to_string());
+        }
         Ok(item)
     }
 
@@ -1218,6 +1237,9 @@ impl OneDriveProvider {
 
         let body = if is_move {
             let to_parent_clean = to_parent.trim_matches('/');
+            // The destination folder may be, or lie under, a shortcut this
+            // session has not met yet.
+            self.learn_parents(&to_path).await;
             let parent_reference = if self.remote_root_of(to_parent_clean).is_some() {
                 // Under a shortcut the path form names the wrong drive.
                 Self::parent_reference_of(&self.resolve_container(&to_parent).await?)
@@ -1283,6 +1305,7 @@ impl OneDriveProvider {
     /// loop (post-extraction in a follow-up) and the multipart trait so
     /// both paths agree on session semantics.
     async fn open_upload_session(&mut self, remote_path: &str) -> Result<String, ProviderError> {
+        self.learn_parents(remote_path).await;
         let url = format!("{}:/createUploadSession", self.api_path(remote_path));
 
         let body = serde_json::json!({
@@ -1657,6 +1680,7 @@ impl StorageProvider for OneDriveProvider {
             )
         };
 
+        self.learn_parents(&path).await;
         let url = format!("{}:/content", self.api_path(&path));
 
         let response = self
@@ -1717,6 +1741,7 @@ impl StorageProvider for OneDriveProvider {
             )
         };
 
+        self.learn_parents(&path).await;
         let url = format!("{}:/content", self.api_path(&path));
 
         let response = self
@@ -2661,6 +2686,7 @@ impl StorageProvider for OneDriveProvider {
             .await
             .map_err(ProviderError::IoError)?;
 
+        self.learn_parents(remote_path).await;
         let url = format!("{}:/createUploadSession", self.api_path(remote_path));
 
         let body = serde_json::json!({
@@ -3527,6 +3553,118 @@ mod tests {
             "{paths:?}"
         );
         server.abort();
+    }
+
+    /// CodeRabbit on #1370: the content GET, the simple upload and the
+    /// upload session build their address with no lookup of their own, so
+    /// on a fresh session a file under a shortcut not yet met was addressed
+    /// in this drive. They learn the shortcut first.
+    #[tokio::test]
+    async fn ehud_368_content_and_uploads_under_an_unmet_shortcut_reach_the_target_drive() {
+        use axum::http::{Method, StatusCode};
+        let answer = |method: &Method, path: &str| match (method, path) {
+            (&Method::GET, "/v1.0/me/drive/root:/Shared") => (
+                StatusCode::OK,
+                serde_json::json!({
+                    "id": "SHORTCUT", "name": "Shared", "size": 0,
+                    "remoteItem": {"id": "TARGET", "folder": {}, "parentReference": {"driveId": "drv2"}}
+                }),
+            ),
+            (&Method::GET, "/v1.0/drives/drv2/items/TARGET:/x.bin:/content") => {
+                (StatusCode::OK, serde_json::json!("abc"))
+            }
+            (&Method::PUT, "/v1.0/drives/drv2/items/TARGET:/x.bin:/content") => (
+                StatusCode::CREATED,
+                serde_json::json!({"id": "X", "name": "x.bin", "size": 3, "file": {}}),
+            ),
+            (&Method::POST, "/v1.0/drives/drv2/items/TARGET:/x.bin:/createUploadSession") => (
+                StatusCode::OK,
+                serde_json::json!({"uploadUrl": "{base}/upload/session"}),
+            ),
+            _ => (
+                StatusCode::NOT_FOUND,
+                serde_json::json!({"error": {"code": "itemNotFound", "message": "Item not found"}}),
+            ),
+        };
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("x.bin");
+        std::fs::write(&local, b"abc").unwrap();
+
+        // Each on a fresh session: nothing known about the shortcut yet.
+        let (mut p, requests, server) = graph_fixture(answer).await;
+        let bytes = p
+            .download_to_bytes("/Shared/x.bin")
+            .await
+            .expect("content under the shortcut");
+        assert!(!bytes.is_empty());
+        server.abort();
+        assert!(!requests
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|r| r.contains("/me/drive/root:/Shared/")));
+
+        let (mut p, requests, server) = graph_fixture(answer).await;
+        p.upload(local.to_str().unwrap(), "/Shared/x.bin", None)
+            .await
+            .expect("upload under the shortcut");
+        server.abort();
+        assert!(requests
+            .lock()
+            .unwrap()
+            .contains(&"PUT /v1.0/drives/drv2/items/TARGET:/x.bin:/content".to_string()));
+
+        let (mut p, requests, server) = graph_fixture(answer).await;
+        let session = p
+            .open_upload_session("/Shared/x.bin")
+            .await
+            .expect("upload session under the shortcut");
+        server.abort();
+        assert!(session.ends_with("/upload/session"), "{session}");
+        assert!(!requests
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|r| r.contains("/me/drive/root:/Shared/")));
+    }
+
+    /// Learning the shortcuts costs one lookup per folder per session: a
+    /// folder already known as a plain one costs no request more.
+    #[tokio::test]
+    async fn a_known_plain_folder_costs_no_extra_lookup_before_an_upload() {
+        use axum::http::{Method, StatusCode};
+        let (mut p, requests, server) = graph_fixture(|method, path| match (method, path) {
+            (&Method::GET, "/v1.0/me/drive/root:/Docs") => (
+                StatusCode::OK,
+                serde_json::json!({"id": "DOCS", "name": "Docs", "size": 0, "folder": {}}),
+            ),
+            (&Method::PUT, _) => (
+                StatusCode::CREATED,
+                serde_json::json!({"id": "F", "name": "f", "size": 1, "file": {}}),
+            ),
+            _ => (
+                StatusCode::NOT_FOUND,
+                serde_json::json!({"error": {"code": "itemNotFound"}}),
+            ),
+        })
+        .await;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("f");
+        std::fs::write(&local, b"f").unwrap();
+        for name in ["/Docs/a.txt", "/Docs/b.txt"] {
+            p.upload(local.to_str().unwrap(), name, None)
+                .await
+                .expect("upload");
+        }
+        server.abort();
+        assert_eq!(
+            *requests.lock().unwrap(),
+            [
+                "GET /v1.0/me/drive/root:/Docs",
+                "PUT /v1.0/me/drive/root:/Docs/a.txt:/content",
+                "PUT /v1.0/me/drive/root:/Docs/b.txt:/content",
+            ]
+        );
     }
 
     /// Graph fixture answering every request with `answer(method, path)` and
