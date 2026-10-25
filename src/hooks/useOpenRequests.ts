@@ -27,9 +27,14 @@ import { logger } from '../utils/logger';
 
 export function useOpenRequests(ready: boolean, handle: (requests: OpenRequest[]) => Promise<void> | void): void {
     const handleRef = useRef(handle);
-    handleRef.current = handle;
     const readyRef = useRef(ready);
-    readyRef.current = ready;
+    // Kept current after each commit, never during a render: a render React
+    // discards must not tell a running drain that the app is ready. Declared
+    // before the drain effect, so the drain a commit starts reads that commit.
+    useEffect(() => {
+        handleRef.current = handle;
+        readyRef.current = ready;
+    });
     const running = useRef(false);
     const again = useRef(false);
     const [signal, setSignal] = useState(0);

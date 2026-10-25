@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, createElement } from 'react';
+import { act, createElement, startTransition, Suspense, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { OpenRequest } from '../types';
@@ -118,4 +118,41 @@ it('a failed drain still takes what arrived during it', async () => {
     await act(async () => fail(new Error('navigation refused')));
     expect(batches).toEqual([['first.png'], ['second.png']]);
     expect(bridge.queue).toEqual([]);
+});
+
+it('does not read a ready flag from a render React threw away', async () => {
+    // The app locks while a drain runs and an event waits behind it. A later
+    // render that says "ready" is started and abandoned (a transition that
+    // suspends): the drain must not take the next batch under the lock screen.
+    let release!: () => void;
+    const batches: string[][] = [];
+    handler = async (requests) => {
+        batches.push(requests.map(r => r.name));
+        if (batches.length === 1) await new Promise<void>(resolve => { release = resolve; });
+    };
+    let setReady!: (ready: boolean) => void;
+    let suspendRender = false;
+    const forever = new Promise<void>(() => {});
+    const Suspender = () => {
+        if (suspendRender) throw forever;
+        return null;
+    };
+    const Shell = () => {
+        const [ready, setReadyState] = useState(true);
+        setReady = setReadyState;
+        useOpenRequests(ready, requests => handler(requests));
+        return createElement(Suspense, { fallback: null }, createElement(Suspender));
+    };
+    await act(async () => root.render(createElement(Shell)));
+    bridge.queue.push(request('first.png'));
+    await emit();
+    await emit();
+    await act(async () => setReady(false));
+    suspendRender = true;
+    await act(async () => startTransition(() => setReady(true)));
+    suspendRender = false;
+    bridge.queue.push(request('second.png'));
+    await act(async () => release());
+    expect(batches).toEqual([['first.png']]);
+    expect(bridge.queue.map(r => (r as OpenRequest).name)).toEqual(['second.png']);
 });
