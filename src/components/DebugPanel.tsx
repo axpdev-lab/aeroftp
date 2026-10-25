@@ -12,67 +12,11 @@ import type { EffectiveTheme } from '../hooks/useTheme';
 import { TRANSFER_EVENT_BRIDGE } from '../hooks/useTransferEvents';
 import { usePointerDrag } from '../hooks/usePointerDrag';
 import { copyText } from '../utils/clipboard';
+import { redactSensitive } from '../utils/redactSensitive';
 
 // ─── Shared timestamp helper ───────────────────────────────────────────────
 function ts() {
     return new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
-
-// ─── Privacy redaction pipeline ────────────────────────────────────────────
-// Applied to every log entry (JS console, backend Rust, IPC argument summaries)
-// before it reaches the buffer. Default: always on, no toggle. The Rust log file
-// on disk keeps the raw form for offline forensic use; everything that appears
-// in the panel UI, copy-to-clipboard, and future exports is sanitized first.
-//
-// Patterns are ordered most-specific-first so a Bearer token does not get
-// double-replaced by the JWT heuristic. Replacement strings are stable so
-// duplicate detection across log lines still works after redaction.
-const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: string }> = [
-    // API keys (Anthropic, OpenAI projects, generic sk-*)
-    { pattern: /sk-(ant|proj|live|test)-[A-Za-z0-9_\-]{16,}/g, replacement: 'sk-***REDACTED***' },
-    { pattern: /sk_(live|test)_[A-Za-z0-9]{16,}/g, replacement: 'sk_***REDACTED***' },
-    // OAuth Bearer / x-api-key headers
-    { pattern: /\bBearer\s+[A-Za-z0-9_\-.~+/]{8,}=*/g, replacement: 'Bearer ***REDACTED***' },
-    { pattern: /\bx-api-key\s*[:=]\s*[^\s,;'"<>]+/gi, replacement: 'x-api-key: ***REDACTED***' },
-    { pattern: /\bauthorization\s*[:=]\s*[^\s,;'"<>]+/gi, replacement: 'authorization: ***REDACTED***' },
-    // JWT-shaped tokens (3 base64url segments separated by '.')
-    { pattern: /\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g, replacement: '***JWT-REDACTED***' },
-    // Inline credentials in URLs: ftp://user:pass@host -> ftp://user:***@host
-    { pattern: /\b((?:ftps?|sftp|https?|webdav):\/\/[^:\s@/]+:)[^@\s]+(@)/gi, replacement: '$1***REDACTED***$2' },
-    // Serialized secret fields in JSON: "password":"..." -> "password":"***REDACTED***"
-    {
-        pattern:
-            /("(?:password|passwd|pwd|secret|secret_key|secretkey|api_key|apikey|access_key|token|refresh_token|passphrase|private_key|privatekey|client_secret|totp_secret|consumer_secret)"\s*:\s*)"[^"]*"/gi,
-        replacement: '$1"***REDACTED***"',
-    },
-    // Secret fields in key=value / key: value form
-    {
-        pattern:
-            /(\b(?:password|passwd|pwd|secret|secret_key|api_key|passphrase|private_key|client_secret|token)\s*[:=]\s*)[^\s,;'"<>]+/gi,
-        replacement: '$1***REDACTED***',
-    },
-    // Email addresses
-    { pattern: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, replacement: '***@***' },
-    // IPv4 addresses, but keep loopback / unspecified for local-debug clarity
-    {
-        pattern: /\b(?!127\.0\.0\.1\b|0\.0\.0\.0\b)((?:\d{1,3}\.){3}\d{1,3})\b/g,
-        replacement: '***.***.***.***',
-    },
-    // Home directories
-    { pattern: /\/home\/[A-Za-z0-9._-]+/g, replacement: '/home/***' },
-    { pattern: /\/Users\/[A-Za-z0-9._-]+/g, replacement: '/Users/***' },
-    { pattern: /C:\\Users\\[^\\]+/gi, replacement: 'C:\\Users\\***' },
-    // Generic high-entropy hex blobs (likely keys / hashes / nonces), 32+ chars
-    { pattern: /\b[A-Fa-f0-9]{32,}\b/g, replacement: '***HEX-REDACTED***' },
-];
-
-function redactSensitive(msg: string): string {
-    if (!msg) return msg;
-    let result = msg;
-    for (const { pattern, replacement } of REDACTION_PATTERNS) {
-        result = result.replace(pattern, replacement);
-    }
-    return result;
 }
 
 function safeStringifyLogArg(value: unknown): string {
