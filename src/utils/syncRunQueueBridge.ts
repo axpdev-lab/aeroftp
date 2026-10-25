@@ -9,10 +9,12 @@
 // plain upload or download.
 
 import type { SyncRunFile, SyncRunFileStatus } from './remoteSyncRunner';
+import type { SyncJournal } from '../types';
+import type { NewQueueItem } from '../components/transferQueueActions';
 
 /** The slice of `useTransferQueue` a sync run drives. */
 export interface SyncRunQueue {
-    addItem: (filename: string, path: string, size: number, type: 'upload' | 'download') => string;
+    addItems: (items: NewQueueItem[]) => string[];
     startTransfer: (id: string) => void;
     completeTransfer: (id: string) => void;
     failTransfer: (id: string, error: string) => void;
@@ -21,44 +23,39 @@ export interface SyncRunQueue {
 const basename = (p: string): string => p.split('/').pop() || p;
 
 /**
- * The `onFileStatus` callback for one run of `files`. Only uploads and
- * downloads get a row: deletes and the folders the run creates are not
- * transfers. A row is added when its file starts syncing, so a file a cancel
- * skipped before it started never shows, and a retry keeps the same row and
- * puts it back in progress.
+ * Register every upload and download before the run starts so the queue knows
+ * its real denominator. Deletes and created folders are not transfers. The
+ * stable rows then follow each file through starts, retries and settlement,
+ * including a cancellation skip before its first start.
  */
 export function syncRunQueueBridge(
     files: SyncRunFile[],
     queue: SyncRunQueue,
+    resumeJournal?: SyncJournal,
 ): (relativePath: string, status: SyncRunFileStatus, message?: string) => void {
-    const transfers = new Map(
-        files
-            .filter((f) => f.action === 'upload' || f.action === 'download')
-            .map((f) => [f.relativePath, f]),
-    );
-    const rowIds = new Map<string, string>();
+    const transfers = files.filter((f) => f.action === 'upload' || f.action === 'download');
+    const transferByPath = new Map(transfers.map((f) => [f.relativePath, f]));
+    const ids = transfers.length > 0 ? queue.addItems(transfers.map((transfer) => ({
+        filename: basename(transfer.sourcePath ?? transfer.relativePath),
+        path: transfer.relativePath,
+        size: transfer.size,
+        type: transfer.action === 'upload' ? 'upload' : 'download',
+        options: { plannedSync: true },
+    }))) : [];
+    const rowIds = new Map(transfers.map((transfer, index) => [transfer.relativePath, ids[index]]));
+    for (const entry of resumeJournal?.entries ?? []) {
+        if (entry.status !== 'completed') continue;
+        const id = rowIds.get(entry.relative_path);
+        if (id !== undefined) queue.completeTransfer(id);
+    }
     return (relativePath, status, message) => {
-        const transfer = transfers.get(relativePath);
-        if (!transfer) return;
-        let id = rowIds.get(relativePath);
+        if (!transferByPath.has(relativePath)) return;
+        const id = rowIds.get(relativePath);
+        if (id === undefined) return;
         if (status === 'syncing') {
-            if (id === undefined) {
-                // Named after the source file: the backend events carry that
-                // name, which differs from `relativePath` for a keep-both copy.
-                id = queue.addItem(
-                    basename(transfer.sourcePath ?? relativePath),
-                    relativePath,
-                    transfer.size,
-                    transfer.action === 'upload' ? 'upload' : 'download',
-                );
-                rowIds.set(relativePath, id);
-            }
             queue.startTransfer(id);
             return;
         }
-        if (id === undefined) return;
-        // A retry runs the transfer again without a new `syncing`, and the
-        // failed attempt's error event already turned the row red.
         if (status === 'retrying') queue.startTransfer(id);
         else if (status === 'success' || status === 'skipped') queue.completeTransfer(id);
         else if (status === 'error' || status === 'verify_failed') queue.failTransfer(id, message ?? '');

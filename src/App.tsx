@@ -11626,7 +11626,7 @@ const App: React.FC = () => {
               // The queue's methods only queue functional state updates, so
               // the older `transferQueue` this memoized callback may hold
               // still drives the live list.
-              onFileStatus: syncRunQueueBridge(runFiles, transferQueue),
+              onFileStatus: syncRunQueueBridge(runFiles, transferQueue, opts.resumeJournal),
             },
             { invoke, deltaStats, resumeJournal: opts.resumeJournal, writeIndex: true },
           );
@@ -11778,7 +11778,7 @@ const App: React.FC = () => {
           {
             isCancelled: () => batchCancelledRef.current,
             // #364: each copy shows as a Transfer Queue row while it runs.
-            onFileStatus: syncRunQueueBridge(runFiles, transferQueue),
+            onFileStatus: syncRunQueueBridge(runFiles, transferQueue, opts.resumeJournal),
           },
           { invoke, resumeJournal: opts.resumeJournal, writeIndex: true },
         );

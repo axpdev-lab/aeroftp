@@ -20,6 +20,7 @@ import {
     startStaged,
     statusCounts,
     updateTransferStatus,
+    queueDisplayCounts,
 } from './transferQueueActions';
 
 const makeItem = (
@@ -36,6 +37,7 @@ const makeItem = (
     startTime: extra?.startTime,
     restored: extra?.restored,
     isFolder: extra?.isFolder,
+    isPlannedSync: extra?.isPlannedSync,
     error: extra?.error,
 });
 
@@ -55,6 +57,24 @@ describe('addItem', () => {
         expect(next).not.toBe(input);
         expect(input).toHaveLength(1);
         expect(next).toHaveLength(2);
+    });
+});
+
+describe('queueDisplayCounts', () => {
+    const snapshot = { batch_id: 'sync-1', completed: 26, skipped: 0, failed: 0, active: 1, total: 27, bytes_transferred: 26, bytes_total: 50 };
+
+    it('keeps the whole AeroSync plan as the denominator instead of one bulk group', () => {
+        const items = Array.from({ length: 50 }, (_, index) => makeItem(
+            `sync-${index}`,
+            index < 26 ? 'completed' : index === 26 ? 'transferring' : 'pending',
+            { isPlannedSync: true },
+        ));
+        expect(queueDisplayCounts(items, snapshot, 1)).toEqual({ completed: 26, total: 50 });
+    });
+
+    it('keeps the existing fixed snapshot total for an ordinary folder batch', () => {
+        const items = [makeItem('one', 'completed'), makeItem('two', 'transferring')];
+        expect(queueDisplayCounts(items, snapshot, 1)).toEqual({ completed: 26, total: 27 });
     });
 });
 
