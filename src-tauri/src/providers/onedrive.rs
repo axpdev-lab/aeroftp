@@ -769,19 +769,28 @@ impl OneDriveProvider {
     async fn get_item(&self, path: &str) -> Result<DriveItem, ProviderError> {
         match self.fetch_item(path).await {
             // Graph does not follow a path through a shortcut: find the
-            // shortcuts among its parents, then address it through them.
-            Err(ProviderError::NotFound(_)) if self.discover_remote_parents(path).await => {
-                self.fetch_item(path).await
+            // shortcuts among its parents, then address it through them. A
+            // lookup that failed for another reason (a 429, a 503) is that
+            // error, not the NotFound it was looking behind.
+            Err(ProviderError::NotFound(missing)) => {
+                if self.discover_remote_parents(path).await? {
+                    self.fetch_item(path).await
+                } else {
+                    Err(ProviderError::NotFound(missing))
+                }
             }
             other => other,
         }
     }
 
     /// Look up each parent of `path` not yet known to be a shortcut or a
-    /// plain folder, so a shortcut among them is recorded. `true` when one
-    /// was. Each folder is looked up once per session: a missing file under
-    /// known folders costs no request more.
-    async fn discover_remote_parents(&self, path: &str) -> bool {
+    /// plain folder, so a shortcut among them is recorded. `Ok(true)` when
+    /// one was. Each folder is looked up once per session: a missing file
+    /// under known folders costs no request more. A parent that does not
+    /// exist ends the walk (there is nothing below it to address); any other
+    /// failure of a lookup is returned, so a throttled or failing server is
+    /// never read as "no shortcut here".
+    async fn discover_remote_parents(&self, path: &str) -> Result<bool, ProviderError> {
         let clean = path.trim_matches('/');
         let segments: Vec<&str> = clean.split('/').filter(|s| !s.is_empty()).collect();
         let roots = || self.remote_roots.read().map(|r| r.len()).unwrap_or(0);
@@ -799,8 +808,10 @@ impl OneDriveProvider {
                 continue;
             }
             let found = roots();
-            if self.fetch_item(&parent).await.is_err() {
-                break;
+            match self.fetch_item(&parent).await {
+                Ok(_) => {}
+                Err(ProviderError::NotFound(_)) => break,
+                Err(e) => return Err(e),
             }
             if roots() == found {
                 self.plain_folders
@@ -809,7 +820,7 @@ impl OneDriveProvider {
                     .insert(parent);
             }
         }
-        roots() > before
+        Ok(roots() > before)
     }
 
     /// Learn the shortcuts on the way to `path` before an address is built
@@ -818,8 +829,18 @@ impl OneDriveProvider {
     /// a shortcut, so on a fresh session `/Shared/x.bin` would name a file in
     /// this drive. Each parent not yet known is looked up once per session;
     /// known ones cost nothing.
-    async fn learn_parents(&self, path: &str) {
-        self.discover_remote_parents(path).await;
+    async fn learn_parents(&self, path: &str) -> Result<(), ProviderError> {
+        self.discover_remote_parents(path).await.map(|_| ())
+    }
+
+    /// `path` as this session addresses it: a relative path is taken from
+    /// the current folder, an absolute one as given.
+    fn absolute_path(&self, path: &str) -> String {
+        if path.starts_with('/') {
+            path.to_string()
+        } else {
+            format!("{}/{}", self.current_path.trim_end_matches('/'), path)
+        }
     }
 
     /// One `GET` of the item at `path`, taken into this provider's
@@ -1239,7 +1260,7 @@ impl OneDriveProvider {
             let to_parent_clean = to_parent.trim_matches('/');
             // The destination folder may be, or lie under, a shortcut this
             // session has not met yet.
-            self.learn_parents(&to_path).await;
+            self.learn_parents(&to_path).await?;
             let parent_reference = if self.remote_root_of(to_parent_clean).is_some() {
                 // Under a shortcut the path form names the wrong drive.
                 Self::parent_reference_of(&self.resolve_container(&to_parent).await?)
@@ -1300,13 +1321,13 @@ impl OneDriveProvider {
     }
 
     /// Resolve `remote_path` against the current directory and POST
-    /// `/me/drive/root:/<encoded>:/createUploadSession`, returning the
-    /// per-session `uploadUrl`. Shared between the legacy `resume_upload`
-    /// loop (post-extraction in a follow-up) and the multipart trait so
-    /// both paths agree on session semantics.
+    /// `<its address>:/createUploadSession`, returning the per-session
+    /// `uploadUrl`. Used by the multipart trait; `resume_upload` opens its
+    /// session the same way, so both agree on the item a session targets.
     async fn open_upload_session(&mut self, remote_path: &str) -> Result<String, ProviderError> {
-        self.learn_parents(remote_path).await;
-        let url = format!("{}:/createUploadSession", self.api_path(remote_path));
+        let path = self.absolute_path(remote_path);
+        self.learn_parents(&path).await?;
+        let url = format!("{}:/createUploadSession", self.api_path(&path));
 
         let body = serde_json::json!({
             "item": {
@@ -1680,7 +1701,7 @@ impl StorageProvider for OneDriveProvider {
             )
         };
 
-        self.learn_parents(&path).await;
+        self.learn_parents(&path).await?;
         let url = format!("{}:/content", self.api_path(&path));
 
         let response = self
@@ -1741,7 +1762,7 @@ impl StorageProvider for OneDriveProvider {
             )
         };
 
-        self.learn_parents(&path).await;
+        self.learn_parents(&path).await?;
         let url = format!("{}:/content", self.api_path(&path));
 
         let response = self
@@ -2686,8 +2707,13 @@ impl StorageProvider for OneDriveProvider {
             .await
             .map_err(ProviderError::IoError)?;
 
-        self.learn_parents(remote_path).await;
-        let url = format!("{}:/createUploadSession", self.api_path(remote_path));
+        // One path for the session, the log and the version sweep: a
+        // relative one is taken from the current folder, as the small-file
+        // upload does. Unresolved, a relative upload over 4 MB went to the
+        // drive root and replaced whatever had that name there.
+        let path = self.absolute_path(remote_path);
+        self.learn_parents(&path).await?;
+        let url = format!("{}:/createUploadSession", self.api_path(&path));
 
         let body = serde_json::json!({
             "item": {
@@ -2771,22 +2797,12 @@ impl StorageProvider for OneDriveProvider {
             }
         }
 
-        info!("Resumable upload completed: {}", remote_path);
+        info!("Resumable upload completed: {}", path);
 
-        // KE-B3.1: post-upload version sweep mirrors the small-file path.
-        // Anchor the path the same way the session was created (relative
-        // resolved against current_path; absolute kept verbatim).
+        // KE-B3.1: post-upload version sweep mirrors the small-file path, on
+        // the path the session was created for.
         if self.no_versions {
-            let resolved = if remote_path.starts_with('/') {
-                remote_path.to_string()
-            } else {
-                format!(
-                    "{}/{}",
-                    self.current_path.trim_end_matches('/'),
-                    remote_path
-                )
-            };
-            self.purge_versions_after_upload(&resolved, "post-resume_upload")
+            self.purge_versions_after_upload(&path, "post-resume_upload")
                 .await;
         }
 
@@ -3664,6 +3680,114 @@ mod tests {
                 "PUT /v1.0/me/drive/root:/Docs/a.txt:/content",
                 "PUT /v1.0/me/drive/root:/Docs/b.txt:/content",
             ]
+        );
+    }
+
+    /// CodeRabbit on #1370 (older than it, on main too): an upload over
+    /// 4 MB went to `resume_upload` with the path as given, and a relative
+    /// one was never taken from the current folder, so after `cd /Docs` the
+    /// session was opened at the drive root, with `replace`, over whatever
+    /// had that name there.
+    #[tokio::test]
+    async fn a_relative_upload_over_4_mb_opens_its_session_in_the_current_folder() {
+        use axum::http::{Method, StatusCode};
+        let (mut p, requests, server) = graph_fixture(|method, path| match (method, path) {
+            (&Method::GET, "/v1.0/me/drive/root:/Docs")
+            | (&Method::GET, "/v1.0/me/drive/items/DOCS") => (
+                StatusCode::OK,
+                serde_json::json!({"id": "DOCS", "name": "Docs", "size": 0, "folder": {}}),
+            ),
+            (&Method::POST, p)
+                if p.starts_with("/v1.0/me/drive/root:/Docs/")
+                    && p.ends_with(":/createUploadSession") =>
+            {
+                (
+                    StatusCode::OK,
+                    serde_json::json!({"uploadUrl": "{base}/upload/session"}),
+                )
+            }
+            (&Method::PUT, "/upload/session") => (
+                StatusCode::CREATED,
+                serde_json::json!({"id": "X", "name": "x.bin", "size": 1, "file": {}}),
+            ),
+            _ => (
+                StatusCode::NOT_FOUND,
+                serde_json::json!({"error": {"code": "itemNotFound"}}),
+            ),
+        })
+        .await;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("big.bin");
+        std::fs::write(&local, vec![7u8; 4 * 1024 * 1024 + 1]).unwrap();
+        p.cd("/Docs").await.expect("cd");
+        p.upload(local.to_str().unwrap(), "x.bin", None)
+            .await
+            .expect("relative upload over 4 MB");
+        p.resume_upload(local.to_str().unwrap(), "y.bin", 0, None)
+            .await
+            .expect("relative resumable upload");
+        server.abort();
+        let seen = requests.lock().unwrap();
+        for name in ["x.bin", "y.bin"] {
+            assert!(
+                seen.contains(&format!(
+                    "POST /v1.0/me/drive/root:/Docs/{name}:/createUploadSession"
+                )),
+                "{seen:?}"
+            );
+            assert!(
+                !seen
+                    .iter()
+                    .any(|r| r.contains(&format!("/me/drive/root:/{name}"))),
+                "{seen:?}"
+            );
+        }
+    }
+
+    /// CodeRabbit on #1370: a parent lookup that failed for another reason
+    /// than "not there" (a 503, a 429) was read as "no shortcut", so the
+    /// request went to this drive and came back as a 404 instead of the
+    /// error the caller can retry. It is that error, and nothing is sent.
+    #[tokio::test]
+    async fn a_failing_parent_lookup_is_that_error_and_sends_nothing() {
+        use axum::http::{Method, StatusCode};
+        let answer = |method: &Method, path: &str| match (method, path) {
+            (&Method::GET, "/v1.0/me/drive/root:/Shared") => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                serde_json::json!({"error": {"code": "serviceNotAvailable", "message": "Service unavailable"}}),
+            ),
+            _ => (
+                StatusCode::NOT_FOUND,
+                serde_json::json!({"error": {"code": "itemNotFound"}}),
+            ),
+        };
+        let dir = tempfile::tempdir().expect("tempdir");
+        let small = dir.path().join("x.bin");
+        std::fs::write(&small, b"abc").unwrap();
+        let fetched = dir.path().join("fetched.bin");
+
+        let (mut p, requests, server) = graph_fixture(answer).await;
+        let outcomes = [
+            p.download_to_bytes("/Shared/x.bin").await.map(|_| ()),
+            p.upload(small.to_str().unwrap(), "/Shared/x.bin", None)
+                .await,
+            p.open_upload_session("/Shared/x.bin").await.map(|_| ()),
+            p.download("/Shared/x.bin", fetched.to_str().unwrap(), None)
+                .await,
+        ];
+        server.abort();
+        for outcome in &outcomes {
+            assert!(
+                matches!(outcome, Err(e) if !matches!(e, ProviderError::NotFound(_))),
+                "{outcome:?}"
+            );
+        }
+        let seen = requests.lock().unwrap();
+        assert!(
+            !seen
+                .iter()
+                .any(|r| r.starts_with("PUT") || r.starts_with("POST") || r.ends_with(":/content")),
+            "{seen:?}"
         );
     }
 
