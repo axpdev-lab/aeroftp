@@ -9573,7 +9573,12 @@ const App: React.FC = () => {
 
   // `localOnly` leaves Navigation Sync out of it: no base guard, no remote
   // mirror. A file the OS opened is not a step inside the paired tree.
-  const changeLocalDirectory = async (path: string, opts: { localOnly?: boolean } = {}) => {
+  // `waitMs` makes the navigation wait for a listing still loading instead of
+  // being refused, and `onBusy` runs when it still cannot start.
+  const changeLocalDirectory = async (
+    path: string,
+    opts: { localOnly?: boolean; waitMs?: number; onBusy?: () => void } = {},
+  ) => {
     // Sync navigation guard: prevent navigating above the sync base path
     if (!opts.localOnly && isSyncNavigation && syncBasePaths) {
       const norm = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
@@ -9582,8 +9587,14 @@ const App: React.FC = () => {
       // Block if target is a proper ancestor of the base path
       if (normTarget !== normBase && (normTarget === '/' || normBase.startsWith(normTarget + '/'))) return null;
     }
-    // #401: block a re-entrant local navigation the same way as remote.
-    if (!localNavGate.enter()) return null;
+    // #401: block a re-entrant local navigation the same way as remote. A file
+    // the OS opened (waitMs) waits for the gate and takes it itself, so no
+    // other navigation slips in between.
+    const entered = opts.waitMs ? await localNavGate.enterWhenFree(opts.waitMs) : localNavGate.enter();
+    if (!entered) {
+      opts.onBusy?.();
+      return null;
+    }
     setLocalListLoading(true);
     let success = false;
     try {
@@ -16240,11 +16251,15 @@ const App: React.FC = () => {
       const previous = { id: activeTabId, path: shownPath };
       const reuse = openInFolderTab(tabs, plan.folder, plan.names);
       // The batch has left the backend queue: a listing still loading in the
-      // primary panel is waited for, not taken for a failed open.
-      if (panelId === 'local') await localNavGate.whenFree(OS_OPEN_NAV_WAIT_MS);
+      // primary panel is waited for, not taken for a failed open, and the
+      // user is told when it never frees.
       const target = panelId === 'local2'
         ? await changeLocalDirectory2(plan.folder)
-        : await changeLocalDirectory(plan.folder, { localOnly: true });
+        : await changeLocalDirectory(plan.folder, {
+          localOnly: true,
+          waitMs: OS_OPEN_NAV_WAIT_MS,
+          onBusy: () => notify.warning(t('openRequest.folderBusyTitle'), t('openRequest.folderBusy', { folder: plan.folder })),
+        });
       if (target === null || target === undefined) {
         openOtherFolders();
         return;

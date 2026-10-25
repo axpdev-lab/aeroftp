@@ -7058,6 +7058,10 @@
             "runTemplate": "Jalankan",
             "duplicateName": "Templat bernama {name} sudah ada di server ini.",
             "templateStored": "Templat yang disimpan berisi perintah dengan isian, bukan kata sandi."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Folder masih dimuat",
+            "folderBusy": "File yang Anda buka tidak ditampilkan: folder lain masih dimuat saat {folder} diminta. Buka kembali file tersebut."
         }
     }
 }

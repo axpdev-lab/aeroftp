@@ -194,5 +194,17 @@
     "input": "Authorization: Bearer sk-ant-abcdefghijklmnopqrstuv",
     "expected": "authorization: ***REDACTED***",
     "group": "authorization"
+  },
+  {
+    "name": "opaque credential with a colon",
+    "input": "Authorization: AWS AKIAEXAMPLE:c2lnbmF0dXJl next",
+    "expected": "authorization: ***REDACTED*** next",
+    "group": "authorization"
+  },
+  {
+    "name": "opaque credential with percent and at",
+    "input": "Authorization: Token a%2Fb@c next",
+    "expected": "authorization: ***REDACTED*** next",
+    "group": "authorization"
   }
 ]

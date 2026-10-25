@@ -7058,6 +7058,10 @@
             "runTemplate": "Kör",
             "duplicateName": "En mall med namnet {name} finns redan på den här servern.",
             "templateStored": "En sparad mall sparar kommandot med platshållare, aldrig ett lösenord."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Mappen läses fortfarande in",
+            "folderBusy": "Filen du öppnade visades inte: en annan mapp lästes fortfarande in när {folder} begärdes. Öppna den igen."
         }
     }
 }

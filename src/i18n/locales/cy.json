@@ -7077,6 +7077,10 @@
             "runTemplate": "Rhedeg",
             "duplicateName": "Mae templed o'r enw {name} eisoes ar y gweinydd hwn.",
             "templateStored": "Mae templed cadwedig yn cadw'r gorchymyn gyda bylchau i'w llenwi, byth gyfrinair."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Mae'r ffolder yn dal i lwytho",
+            "folderBusy": "Ni ddangoswyd y ffeil a agorwyd gennych: roedd ffolder arall yn dal i lwytho pan ofynnwyd am {folder}. Agorwch hi eto."
         }
     }
 }

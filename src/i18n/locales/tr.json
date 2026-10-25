@@ -7058,6 +7058,10 @@
             "runTemplate": "Çalıştır",
             "duplicateName": "{name} adlı bir şablon bu sunucuda zaten var.",
             "templateStored": "Kayıtlı bir şablon komutu doldurulacak boşluklarla saklar, parolayı asla saklamaz."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Klasör hâlâ yükleniyor",
+            "folderBusy": "Açtığınız dosya gösterilmedi: {folder} istendiğinde başka bir klasör hâlâ yükleniyordu. Lütfen dosyayı yeniden açın."
         }
     }
 }

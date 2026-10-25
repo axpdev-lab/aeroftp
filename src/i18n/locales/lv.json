@@ -7058,6 +7058,10 @@
             "runTemplate": "Palaist",
             "duplicateName": "Veidne ar nosaukumu {name} šajā serverī jau ir.",
             "templateStored": "Saglabāta veidne glabā komandu ar aizpildāmām vietām, nekad paroli."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Mape vēl tiek ielādēta",
+            "folderBusy": "Atvērtais fails netika parādīts: kad tika pieprasīta mape {folder}, cita mape vēl tika ielādēta. Atveriet failu vēlreiz."
         }
     }
 }

@@ -7077,6 +7077,10 @@
             "runTemplate": "Executar",
             "duplicateName": "Xa hai un modelo chamado {name} neste servidor.",
             "templateStored": "Un modelo gardado conserva o comando con ocos para encher, nunca un contrasinal."
+        },
+        "openRequest": {
+            "folderBusyTitle": "O cartafol aínda se está a cargar",
+            "folderBusy": "O ficheiro que abriches non se mostrou: outro cartafol aínda se estaba a cargar cando se solicitou {folder}. Ábreo de novo."
         }
     }
 }

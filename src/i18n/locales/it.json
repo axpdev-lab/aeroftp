@@ -7058,6 +7058,10 @@
             "runTemplate": "Esegui",
             "duplicateName": "Un modello chiamato {name} è già presente su questo server.",
             "templateStored": "Un modello salvato conserva il comando con i segnaposto, mai una password."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Cartella ancora in caricamento",
+            "folderBusy": "Il file che hai aperto non è stato mostrato: un'altra cartella era ancora in caricamento quando è stata richiesta {folder}. Aprilo di nuovo."
         }
     }
 }

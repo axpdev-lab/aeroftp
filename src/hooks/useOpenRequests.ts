@@ -19,7 +19,7 @@
  * meanwhile makes the running drain take the queue once more when done.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { OpenRequest } from '../types';
 import { useTauriListener } from './useTauriListener';
@@ -28,10 +28,11 @@ import { logger } from '../utils/logger';
 export function useOpenRequests(ready: boolean, handle: (requests: OpenRequest[]) => Promise<void> | void): void {
     const handleRef = useRef(handle);
     const readyRef = useRef(ready);
-    // Kept current after each commit, never during a render: a render React
-    // discards must not tell a running drain that the app is ready. Declared
-    // before the drain effect, so the drain a commit starts reads that commit.
-    useEffect(() => {
+    // Kept current in the commit itself (a layout effect), never during a
+    // render: a render React discards must not tell a running drain that the
+    // app is ready, and a drain that wakes up right after a commit, before
+    // React flushes its passive effects, must already read that commit.
+    useLayoutEffect(() => {
         handleRef.current = handle;
         readyRef.current = ready;
     });

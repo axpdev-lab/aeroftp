@@ -4616,6 +4616,10 @@
             "newTab": "New Tab",
             "foldersNotOpened": "Folders not opened: {count}"
         },
+        "openRequest": {
+            "folderBusyTitle": "Folder still loading",
+            "folderBusy": "The file you opened was not shown: another folder was still loading when {folder} was requested. Open it again."
+        },
         "tags": {
             "addTag": "Add Tag",
             "clearAll": "Clear All Tags",

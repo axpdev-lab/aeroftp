@@ -7058,6 +7058,10 @@
             "runTemplate": "Ejecutar",
             "duplicateName": "Ya hay una plantilla llamada {name} en este servidor.",
             "templateStored": "Una plantilla guardada conserva el comando con huecos para rellenar, nunca una contraseña."
+        },
+        "openRequest": {
+            "folderBusyTitle": "La carpeta aún se está cargando",
+            "folderBusy": "El archivo que abriste no se mostró: otra carpeta aún se estaba cargando cuando se solicitó {folder}. Ábrelo de nuevo."
         }
     }
 }

@@ -7058,6 +7058,10 @@
             "runTemplate": "Spustit",
             "duplicateName": "Šablona s názvem {name} už na tomto serveru je.",
             "templateStored": "Uložená šablona ukládá příkaz s místy k doplnění, nikdy heslo."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Složka se stále načítá",
+            "folderBusy": "Otevřený soubor nebyl zobrazen: když byla požadována složka {folder}, načítala se ještě jiná složka. Otevřete jej prosím znovu."
         }
     }
 }

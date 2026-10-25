@@ -7058,6 +7058,10 @@
             "runTemplate": "Pokreni",
             "duplicateName": "Predložak naziva {name} već je na ovom poslužitelju.",
             "templateStored": "Spremljeni predložak sprema naredbu s mjestima za unos, nikad lozinku."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Mapa se još učitava",
+            "folderBusy": "Datoteka koju ste otvorili nije prikazana: druga se mapa još učitavala kada je zatražena mapa {folder}. Otvorite je ponovno."
         }
     }
 }

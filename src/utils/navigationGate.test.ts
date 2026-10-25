@@ -54,3 +54,48 @@ it('gives up when the navigation never answers', async () => {
     expect(freed).toBe(false);
     expect(gate.enter()).toBe(false);
 });
+
+it('takes the gate itself once the navigation in flight is done', async () => {
+    const gate = createNavigationGate();
+    gate.enter();
+    let taken: boolean | undefined;
+    void gate.enterWhenFree(1000).then(value => { taken = value; });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(taken).toBeUndefined();
+    gate.leave();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(taken).toBe(true);
+    expect(gate.enter()).toBe(false);
+});
+
+it('does not take the gate when the wait runs out', async () => {
+    const gate = createNavigationGate();
+    gate.enter();
+    let taken: boolean | undefined;
+    void gate.enterWhenFree(1000).then(value => { taken = value; });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(taken).toBe(false);
+    gate.leave();
+    expect(gate.enter()).toBe(true);
+});
+
+it('waits again for a navigation that took the gate between the wake-up and its turn', async () => {
+    const gate = createNavigationGate();
+    gate.enter();
+    let taken: boolean | undefined;
+    void gate.enterWhenFree(1000).then(value => { taken = value; });
+    gate.leave();
+    expect(gate.enter()).toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(taken).toBeUndefined();
+    gate.leave();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(taken).toBe(true);
+    expect(gate.enter()).toBe(false);
+});
+
+it('takes a free gate at once', async () => {
+    const gate = createNavigationGate();
+    await expect(gate.enterWhenFree(1000)).resolves.toBe(true);
+    expect(gate.enter()).toBe(false);
+});

@@ -15,14 +15,15 @@
 // src-tauri/src/debug_tests.rs). Both run src/shared/redaction-cases.json, so
 // a rule changed on one side only turns the other side's test red.
 
-// RFC 7235 `credentials`: a scheme, then a token68 or a comma-separated list
-// of `name=value` parameters whose values may be quoted (Digest, Hawk, ...) or
-// hold a `;` (AWS SigV4: `SignedHeaders=host;x-amz-date`).
+// RFC 7235 `credentials`: a scheme, then either a comma-separated list of
+// `name=value` parameters (a value may be quoted, as in Digest and Hawk, or hold
+// a `;`, as in AWS SigV4's `SignedHeaders=host;x-amz-date`) or any other opaque
+// credential up to the next delimiter (a token68, `AWS AKIA...:c2ln...`).
 // A value that is already the marker stays as it is: redacting a redacted line
 // again must not take the word after it for a credential.
 const AUTH_PARAM = String.raw`[A-Za-z0-9_-]+[ \t]*=[ \t]*(?:"(?:[^"\\]|\\.)*"|[^\s,'"<>\\]+)`;
 const AUTHORIZATION_CREDENTIALS = new RegExp(
-    String.raw`\bauthorization["']?[ \t]*[:=][ \t]*(?:\*\*\*REDACTED\*\*\*|[^\s,;'"<>\\]+(?:[ \t]+(?:${AUTH_PARAM}(?:[ \t]*,[ \t]*${AUTH_PARAM})*|[A-Za-z0-9._~+/-]+=*))?)`,
+    String.raw`\bauthorization["']?[ \t]*[:=][ \t]*(?:\*\*\*REDACTED\*\*\*|[^\s,;'"<>\\]+(?:[ \t]+(?:${AUTH_PARAM}(?:[ \t]*,[ \t]*${AUTH_PARAM})*|[^\s,'"<>\\]+))?)`,
     'gi',
 );
 

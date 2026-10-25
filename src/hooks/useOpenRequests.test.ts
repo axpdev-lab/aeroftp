@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, createElement, startTransition, Suspense, useState } from 'react';
+import { act, createElement, startTransition, Suspense, useLayoutEffect, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { OpenRequest } from '../types';
@@ -153,6 +153,48 @@ it('does not read a ready flag from a render React threw away', async () => {
     suspendRender = false;
     bridge.queue.push(request('second.png'));
     await act(async () => release());
+    expect(batches).toEqual([['first.png']]);
+    expect(bridge.queue.map(r => (r as OpenRequest).name)).toEqual(['second.png']);
+});
+
+it('reads the lock of the commit a resuming drain wakes up after', async () => {
+    // The lock screen commits while a drain waits on its handler and an event
+    // waits behind it. A heavy commit makes React's scheduler yield before it
+    // flushes the passive effects, and the handler resumes in that gap (an IPC
+    // answer is a task of its own): the drain must already read "locked". The
+    // render runs outside act(), which flushes the passive effects at once.
+    let release!: () => void;
+    const batches: string[][] = [];
+    handler = async (requests) => {
+        batches.push(requests.map(r => r.name));
+        if (batches.length === 1) await new Promise<void>(resolve => { release = resolve; });
+    };
+    const Unlock = ({ locked }: { locked: boolean }) => {
+        useLayoutEffect(() => {
+            if (!locked) return;
+            setTimeout(() => release(), 0);
+            // The scheduler yields to the host after a task of 5 ms or more.
+            const end = Date.now() + 20;
+            while (Date.now() < end) { /* a commit that takes its time */ }
+        }, [locked]);
+        return null;
+    };
+    const Shell = ({ ready }: { ready: boolean }) => {
+        useOpenRequests(ready, requests => handler(requests));
+        return createElement(Unlock, { locked: !ready });
+    };
+    await act(async () => root.render(createElement(Shell, { ready: true })));
+    bridge.queue.push(request('first.png'));
+    await emit();
+    bridge.queue.push(request('second.png'));
+    await emit();
+    (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = false;
+    try {
+        root.render(createElement(Shell, { ready: false }));
+        await new Promise(resolve => setTimeout(resolve, 100));
+    } finally {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+    }
     expect(batches).toEqual([['first.png']]);
     expect(bridge.queue.map(r => (r as OpenRequest).name)).toEqual(['second.png']);
 });

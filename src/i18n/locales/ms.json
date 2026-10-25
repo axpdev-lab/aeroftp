@@ -7058,6 +7058,10 @@
             "runTemplate": "Jalankan",
             "duplicateName": "Templat bernama {name} sudah ada pada pelayan ini.",
             "templateStored": "Templat yang disimpan berisi arahan dengan ruang untuk diisi, bukan kata laluan."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Folder masih dimuatkan",
+            "folderBusy": "Fail yang anda buka tidak dipaparkan: folder lain masih dimuatkan semasa {folder} diminta. Sila buka semula fail tersebut."
         }
     }
 }

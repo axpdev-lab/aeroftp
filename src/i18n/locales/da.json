@@ -7058,6 +7058,10 @@
             "runTemplate": "Kør",
             "duplicateName": "En skabelon med navnet {name} findes allerede på denne server.",
             "templateStored": "En gemt skabelon gemmer kommandoen med felter til udfyldning, aldrig en adgangskode."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Mappen indlæses stadig",
+            "folderBusy": "Den fil, du åbnede, blev ikke vist: en anden mappe var stadig ved at blive indlæst, da der blev anmodet om {folder}. Åbn den igen."
         }
     }
 }

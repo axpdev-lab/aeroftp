@@ -7058,6 +7058,10 @@
             "runTemplate": "Uitvoeren",
             "duplicateName": "Een sjabloon met de naam {name} staat al op deze server.",
             "templateStored": "Een opgeslagen sjabloon bewaart de opdracht met invulvelden, nooit een wachtwoord."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Map wordt nog geladen",
+            "folderBusy": "Het bestand dat u hebt geopend, is niet getoond: een andere map werd nog geladen toen {folder} werd opgevraagd. Open het opnieuw."
         }
     }
 }

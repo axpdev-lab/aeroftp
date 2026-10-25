@@ -18,36 +18,53 @@ export interface NavigationGate {
     leave(): void;
     /** True once no navigation is in flight; false when `timeoutMs` ran out first. */
     whenFree(timeoutMs: number): Promise<boolean>;
+    /** Takes the gate as soon as it is free; false when `timeoutMs` ran out first. */
+    enterWhenFree(timeoutMs: number): Promise<boolean>;
 }
 
 export function createNavigationGate(): NavigationGate {
     let held: { settled: Promise<void>; release: () => void } | null = null;
-    return {
-        enter() {
-            if (held) return false;
-            let release!: () => void;
-            held = { settled: new Promise<void>(resolve => { release = resolve; }), release };
-            return true;
-        },
-        leave() {
-            const finished = held;
-            held = null;
-            finished?.release();
-        },
-        async whenFree(timeoutMs) {
-            let timer: ReturnType<typeof setTimeout> | undefined;
-            const expired = new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(false), timeoutMs); });
-            const free = (async () => {
-                // A navigation that takes the gate as the last one leaves it is
-                // waited for as well.
-                while (held) await held.settled;
-                return true;
-            })();
-            try {
-                return await Promise.race([free, expired]);
-            } finally {
-                clearTimeout(timer);
-            }
-        },
+
+    const enter = (): boolean => {
+        if (held) return false;
+        let release!: () => void;
+        held = { settled: new Promise<void>(resolve => { release = resolve; }), release };
+        return true;
     };
+
+    const leave = (): void => {
+        const finished = held;
+        held = null;
+        finished?.release();
+    };
+
+    const whenFree = async (timeoutMs: number): Promise<boolean> => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const expired = new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(false), timeoutMs); });
+        const free = (async () => {
+            // A navigation that takes the gate as the last one leaves it is
+            // waited for as well.
+            while (held) await held.settled;
+            return true;
+        })();
+        try {
+            return await Promise.race([free, expired]);
+        } finally {
+            clearTimeout(timer);
+        }
+    };
+
+    const enterWhenFree = async (timeoutMs: number): Promise<boolean> => {
+        const deadline = Date.now() + timeoutMs;
+        // `enter` runs synchronously right after each wake-up, so nothing can
+        // take the gate between "free" and "mine"; a navigation that got in
+        // first is waited for again.
+        while (!enter()) {
+            const left = deadline - Date.now();
+            if (left <= 0 || !(await whenFree(left))) return false;
+        }
+        return true;
+    };
+
+    return { enter, leave, whenFree, enterWhenFree };
 }

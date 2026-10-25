@@ -7058,6 +7058,10 @@
             "runTemplate": "Spustiť",
             "duplicateName": "Šablóna s názvom {name} už je na tomto serveri.",
             "templateStored": "Uložená šablóna ukladá príkaz s miestami na doplnenie, nikdy heslo."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Priečinok sa stále načítava",
+            "folderBusy": "Otvorený súbor sa nezobrazil: keď sa požadoval priečinok {folder}, iný priečinok sa ešte načítaval. Otvorte ho znova."
         }
     }
 }

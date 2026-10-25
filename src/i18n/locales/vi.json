@@ -7058,6 +7058,10 @@
             "runTemplate": "Chạy",
             "duplicateName": "Đã có mẫu tên {name} trên máy chủ này.",
             "templateStored": "Mẫu đã lưu giữ lệnh kèm chỗ để điền, không bao giờ giữ mật khẩu."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Thư mục vẫn đang tải",
+            "folderBusy": "Tệp bạn đã mở không được hiển thị: một thư mục khác vẫn đang tải khi {folder} được yêu cầu. Hãy mở lại tệp."
         }
     }
 }

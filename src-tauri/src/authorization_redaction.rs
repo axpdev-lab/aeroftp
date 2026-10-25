@@ -33,8 +33,9 @@ macro_rules! auth_param {
     };
 }
 
-/// A bare value is `credentials`: a scheme, then a token68 or a
-/// comma-separated list of parameters (Digest, Hawk, ...). `$marker` is the
+/// A bare value is `credentials`: a scheme, then a comma-separated list of
+/// parameters (Digest, Hawk, ...), or a token68 or any other opaque
+/// credential up to the next delimiter (`AWS AKIA...:c2ln...`). `$marker` is the
 /// regex of the scrub's own marker: a value that is already the marker stays
 /// as it is, so scrubbing a scrubbed line again does not take the word after
 /// it for a credential. Replace with the key, a separator and the marker.
@@ -47,7 +48,7 @@ macro_rules! credentials {
             $crate::authorization_redaction::auth_param!(),
             r"(?:[ \t]*,[ \t]*",
             $crate::authorization_redaction::auth_param!(),
-            r")*|[A-Za-z0-9._~+/-]+=*))?)",
+            r#")*|[^\s,'"<>\\]+))?)"#,
         )
     };
 }

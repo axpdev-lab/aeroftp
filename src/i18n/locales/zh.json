@@ -7058,6 +7058,10 @@
             "runTemplate": "运行",
             "duplicateName": "此服务器上已有名为 {name} 的模板。",
             "templateStored": "已保存的模板只保存带填空的命令，绝不保存密码。"
+        },
+        "openRequest": {
+            "folderBusyTitle": "文件夹仍在加载",
+            "folderBusy": "您打开的文件未显示：请求 {folder} 时，另一个文件夹仍在加载。请重新打开。"
         }
     }
 }
