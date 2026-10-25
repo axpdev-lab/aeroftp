@@ -117,10 +117,8 @@ export async function secureGetWithFallback<T>(
   vaultKey: string,
   localStorageKey: string
 ): Promise<T | null> {
-  let vaultData: T | null = null;
-  try {
-    vaultData = await secureGetAwaitReady<T>(vaultKey);
-  } catch { /* use the legacy fallback after exhausted readiness retries */ }
+  // Try vault first
+  const vaultData = await secureGet<T>(vaultKey);
   if (vaultData !== null) return vaultData;
 
   // Fallback to localStorage (read-only, for pre-migration data)

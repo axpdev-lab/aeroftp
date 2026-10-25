@@ -17,26 +17,30 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('secureGetWithFallback', () => {
-    it('waits for the vault instead of treating STORE_NOT_READY as an absent preference', async () => {
-        invoke
-            .mockRejectedValueOnce(new Error('STORE_NOT_READY'))
-            .mockResolvedValueOnce(JSON.stringify({ compactMode: true }));
+    it('prefers the vault value when the vault is ready', async () => {
+        invoke.mockResolvedValue(JSON.stringify({ compactMode: true }));
+        localStorage.setItem('aeroftp_settings', JSON.stringify({ compactMode: false }));
 
         const result = secureGetWithFallback('app_settings', 'aeroftp_settings');
-        await vi.advanceTimersByTimeAsync(200);
+        await vi.advanceTimersByTimeAsync(0);
 
         await expect(result).resolves.toEqual({ compactMode: true });
-        expect(invoke).toHaveBeenCalledTimes(2);
+        expect(invoke).toHaveBeenCalledTimes(1);
     });
 
-    it('uses the legacy fallback only after the readiness retries are exhausted', async () => {
+    it('returns the legacy fallback immediately when the vault is not ready', async () => {
         invoke.mockRejectedValue(new Error('STORE_NOT_READY'));
         localStorage.setItem('aeroftp_settings', JSON.stringify({ compactMode: true }));
 
-        const result = secureGetWithFallback('app_settings', 'aeroftp_settings');
-        await vi.advanceTimersByTimeAsync(3000);
+        let settled = false;
+        const result = secureGetWithFallback('app_settings', 'aeroftp_settings').then(value => {
+            settled = true;
+            return value;
+        });
+        await vi.advanceTimersByTimeAsync(0);
 
+        expect(settled).toBe(true);
         await expect(result).resolves.toEqual({ compactMode: true });
-        expect(invoke).toHaveBeenCalledTimes(6);
+        expect(invoke).toHaveBeenCalledTimes(1);
     });
 });
