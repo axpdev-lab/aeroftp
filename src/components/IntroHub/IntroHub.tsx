@@ -40,6 +40,7 @@ interface FormTabState extends FormTab {
 }
 
 export interface IntroHubProps {
+    vaultReady: boolean;
     registerProfileConnector?: RegisterProfileConnector;
     connectionParams: ConnectionParams;
     quickConnectDirs: QuickConnectDirs;
@@ -428,7 +429,7 @@ export function IntroHub(props: IntroHubProps) {
             {/* Portable-mode first-run notice (v3.7.8): renders only when the
                 running binary detects portable.marker AND the user has not yet
                 dismissed it. Hidden on installed builds and after dismissal. */}
-            <PortableIsolationBanner />
+            <PortableIsolationBanner vaultReady={props.vaultReady} />
 
             {/* Tab Content
                 MyServersPanel stays mounted across tab switches (display:none

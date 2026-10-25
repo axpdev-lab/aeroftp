@@ -6,7 +6,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Shield, AlertTriangle, X, FolderOpen } from 'lucide-react';
 import { useTranslation } from '../../i18n';
-import { secureGet, secureStore } from '../../utils/secureStorage';
+import { secureGetAwaitReady, secureStoreAwaitReady } from '../../utils/secureStorage';
 
 interface PortableInfo {
     is_portable: boolean;
@@ -18,19 +18,20 @@ interface PortableInfo {
 
 const DISMISS_FLAG_KEY = 'portable_isolation_notice_v3_7_8';
 
-export const PortableIsolationBanner: React.FC = () => {
+export const PortableIsolationBanner: React.FC<{ vaultReady: boolean }> = ({ vaultReady }) => {
     const t = useTranslation();
     const [info, setInfo] = useState<PortableInfo | null>(null);
     const [dismissed, setDismissed] = useState<boolean>(true);
 
     useEffect(() => {
+        if (!vaultReady) return;
         let cancelled = false;
         (async () => {
             try {
                 const data = await invoke<PortableInfo>('portable_info');
                 if (cancelled) return;
                 if (!data.is_portable) return;
-                const flag = await secureGet<boolean>(DISMISS_FLAG_KEY);
+                const flag = await secureGetAwaitReady<boolean>(DISMISS_FLAG_KEY);
                 if (cancelled) return;
                 setInfo(data);
                 setDismissed(flag === true);
@@ -41,12 +42,12 @@ export const PortableIsolationBanner: React.FC = () => {
         return () => {
             cancelled = true;
         };
-    }, []);
+    }, [vaultReady]);
 
     const handleDismiss = useCallback(async () => {
         setDismissed(true);
         try {
-            await secureStore(DISMISS_FLAG_KEY, true);
+            await secureStoreAwaitReady(DISMISS_FLAG_KEY, true);
         } catch {
             // Non-fatal: worst case the banner reappears next launch.
         }
@@ -61,7 +62,7 @@ export const PortableIsolationBanner: React.FC = () => {
         }
     }, [info]);
 
-    if (!info || !info.is_portable || dismissed) return null;
+    if (!vaultReady || !info || !info.is_portable || dismissed) return null;
 
     return (
         <div

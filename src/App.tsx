@@ -18065,6 +18065,7 @@ const App: React.FC = () => {
               the foreground: zero remount = zero flash of the empty state. */}
           <div className={showConnectionScreen ? 'flex-1 min-h-0 flex flex-col' : 'hidden'}>
             <IntroHub
+              vaultReady={vaultBootComplete && !isAppLocked && !showMasterPasswordSetup}
               registerProfileConnector={registerProfileConnector}
               connectionParams={connectionParams}
               quickConnectDirs={quickConnectDirs}
