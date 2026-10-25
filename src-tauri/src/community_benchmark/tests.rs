@@ -627,6 +627,9 @@ mod engine_runs {
         hang_downloads: bool,
         /// Every existence check fails, as on a connection that dropped.
         fail_exists: bool,
+        /// A folder three levels deep is refused, as FileLu refused the run
+        /// folder under a prefix folder it had just created.
+        refuse_deep_mkdir: bool,
     }
 
     struct MemRemote(Arc<Mutex<Remote>>);
@@ -725,6 +728,9 @@ mod engine_runs {
             Ok(())
         }
         async fn mkdir(&mut self, p: &str) -> Result<(), ProviderError> {
+            if self.0.lock().unwrap().refuse_deep_mkdir && p.matches('/').count() >= 3 {
+                return Err(ProviderError::ServerError("Folder not found".into()));
+            }
             if !self.0.lock().unwrap().dirs.insert(p.into()) {
                 return Err(ProviderError::AlreadyExists(p.into()));
             }
@@ -841,6 +847,24 @@ mod engine_runs {
             "{:?}",
             outcome.report.summary.errors
         );
+    }
+
+    /// Live run (#368, FileLu): a run whose scratch folder is refused after
+    /// it created the prefix folders removes those folders before it gives
+    /// up, instead of leaving them on the server.
+    #[tokio::test]
+    async fn a_refused_scratch_folder_leaves_no_prefix_folder_behind() {
+        let (state, provider) = remote();
+        state.lock().unwrap().refuse_deep_mkdir = true;
+        let mut opts = options(BenchmarkLevel::Quick, "1K", None);
+        opts.test_root_prefix = Some("/data/live-tests".into());
+        let error = match run(provider, "/data", opts, &Silent).await {
+            Err(error) => error,
+            Ok(_) => panic!("the scratch folder was refused"),
+        };
+        assert!(error.contains("Folder not found"), "{error}");
+        let r = state.lock().unwrap();
+        assert_eq!(r.dirs, BTreeSet::from(["/data".to_string()]));
     }
 
     struct Silent;
@@ -1182,6 +1206,10 @@ mod engine_runs {
             "{:?}",
             outcome.report.summary.errors
         );
+        // Live run (#368): a trash note is not a measurement note, so the
+        // round trip still reads as the service's, never as a local bridge.
+        let signal = outcome.report.signal.as_ref().expect("latency measured");
+        assert!(signal.bars.is_some(), "{signal:?}");
     }
 
     #[tokio::test]

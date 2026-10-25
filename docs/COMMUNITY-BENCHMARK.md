@@ -174,11 +174,13 @@ has its own two-minute bound) and exits with 8.
 
 On providers whose delete is a soft delete, the run folder is also purged from
 the trash where the provider allows it. pCloud does not allow it through an
-OAuth login, Koofr not yet, and Dropbox only with the `files.permanent_delete`
-permission granted at authorization; in those cases the report carries a note
-(not an error) saying that the folder was deleted and stays in the provider's
-trash, and where to empty it. A purge that was attempted and failed is still
-reported as an error.
+OAuth login, OneDrive Personal does not expose its recycle bin through
+Microsoft Graph, and Koofr is not supported yet; in those cases the report
+carries a note (not an error) saying that the folder was deleted and stays in
+the provider's trash, and where to empty it. Dropbox purges only with the
+`files.permanent_delete` permission granted at authorization; without it the
+report says to reconnect Dropbox once. A purge that was attempted and failed is
+still reported as an error.
 
 ## Reading the run
 

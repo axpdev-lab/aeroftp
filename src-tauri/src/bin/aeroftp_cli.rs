@@ -50146,12 +50146,12 @@ async fn cmd_benchmark_compare(
                 .and_then(|id| read_server_cred(&store, scoped_user, &format!("server_modes_{id}")))
                 .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok());
             synth_profile_for_mode(source, entry, modes.as_ref()).map_err(|reason| {
-                match benchmark_saved_profile_in_mode(&profiles, entry) {
-                    Some(other) => format!(
-                        "{reason} (the saved profile '{other}' is in that mode: add it with --compare)"
-                    ),
-                    None => reason,
-                }
+                benchmark_mode_skip_reason(
+                    entry,
+                    reason,
+                    benchmark_saved_profile_in_mode(&profiles, entry),
+                    &idxs,
+                )
             })
         })
         .collect();
@@ -50380,18 +50380,19 @@ async fn cmd_benchmark_compare(
     )
 }
 
-/// The name of a saved profile already in `entry`'s mode, when exactly one
-/// is: the skip of that mode then names it.
+/// The saved profile already in `entry`'s mode (its index and name), when
+/// exactly one is: the skip of that mode then names it.
 fn benchmark_saved_profile_in_mode(
     profiles: &[serde_json::Value],
     entry: &FanoutEntry,
-) -> Option<String> {
+) -> Option<(usize, String)> {
     if entry.is_source_mode || entry.group_id.is_empty() {
         return None;
     }
-    let names: Vec<&str> = profiles
+    let found: Vec<(usize, &str)> = profiles
         .iter()
-        .filter(|p| {
+        .enumerate()
+        .filter(|(_, p)| {
             let protocol = p.get("protocol").and_then(|v| v.as_str()).unwrap_or("");
             let provider_id = p.get("providerId").and_then(|v| v.as_str());
             find_mode_group_row_of(protocol, provider_id).is_some_and(|row| {
@@ -50400,11 +50401,32 @@ fn benchmark_saved_profile_in_mode(
                     && row.provider_id == entry.target_provider_id
             })
         })
-        .filter_map(|p| p.get("name").and_then(|v| v.as_str()))
+        .filter_map(|(i, p)| p.get("name").and_then(|v| v.as_str()).map(|n| (i, n)))
         .collect();
-    match names.as_slice() {
-        [one] => Some((*one).to_string()),
+    match found.as_slice() {
+        [(i, name)] => Some((*i, (*name).to_string())),
         _ => None,
+    }
+}
+
+/// Why a mode of the fan-out is not measured from this profile: `reason`,
+/// and the saved profile already in that mode when there is one, which this
+/// sweep may already run (`selected`).
+fn benchmark_mode_skip_reason(
+    entry: &FanoutEntry,
+    reason: String,
+    sibling: Option<(usize, String)>,
+    selected: &[usize],
+) -> String {
+    match sibling {
+        Some((idx, name)) if selected.contains(&idx) => format!(
+            "mode '{}' is measured in this run by the saved profile '{name}'",
+            entry.mode_label
+        ),
+        Some((_, name)) => {
+            format!("{reason} (the saved profile '{name}' is in that mode: add it with --compare)")
+        }
+        None => reason,
     }
 }
 
@@ -85859,8 +85881,32 @@ mod tests {
             json!({"name": "Filen local Dav", "protocol": "webdav", "providerId": "filen-desktop-webdav"}),
         ];
         assert_eq!(
-            benchmark_saved_profile_in_mode(&saved, webdav).as_deref(),
-            Some("Filen local Dav")
+            benchmark_saved_profile_in_mode(&saved, webdav),
+            Some((1, "Filen local Dav".to_string()))
+        );
+        // Live run (#368): when that profile is in the same sweep, the mode
+        // is measured there, and the skip says so instead of asking to add it.
+        let covered = benchmark_mode_skip_reason(
+            webdav,
+            none.clone(),
+            Some((1, "Filen local Dav".to_string())),
+            &[0, 1],
+        );
+        assert_eq!(
+            covered,
+            "mode 'webdav' is measured in this run by the saved profile 'Filen local Dav'"
+        );
+        let elsewhere = benchmark_mode_skip_reason(
+            webdav,
+            none.clone(),
+            Some((1, "Filen local Dav".to_string())),
+            &[0],
+        );
+        assert!(
+            elsewhere.ends_with(
+                "(the saved profile 'Filen local Dav' is in that mode: add it with --compare)"
+            ),
+            "{elsewhere}"
         );
     }
 

@@ -1046,9 +1046,17 @@ impl OneDriveProvider {
             if !response.status().is_success() {
                 let status = response.status();
                 let text = response.text().await.unwrap_or_default();
-                // 400 / 404 on the recycle bin endpoint = not exposed for
-                // this account type. Treat as "no match" so the caller does
-                // not abort the run with a misleading error.
+                // Graph's own word that this account's recycle bin is not
+                // addressable (#397) is the limit, said as one: as "no
+                // match" it read as "no trash", and a purged folder stayed
+                // in the bin without a word (#368).
+                if let Some(limit) =
+                    recycle_bin_not_exposed(status, &text, self.drive_type.as_deref())
+                {
+                    return Err(limit);
+                }
+                // Any other 400 / 404 on the recycle bin endpoint: no match,
+                // so the caller does not abort with a misleading error.
                 if status.as_u16() == 400 || status.as_u16() == 404 {
                     return Ok(Vec::new());
                 }
@@ -3803,6 +3811,77 @@ mod tests {
             requests.lock().unwrap()
         );
         server.abort();
+    }
+
+    /// #368 live run: on OneDrive Personal Graph does not expose the recycle
+    /// bin (400 `invalidRequest`, "special folder identifier"), and the purge
+    /// answered `Ok(false)`, "no trash", so a benchmark folder stayed in the
+    /// bin without a word. That 400 is the limit, said as one; any other 400
+    /// or a 404 stays "nothing found to purge".
+    #[tokio::test]
+    async fn a_purge_on_a_drive_without_a_reachable_recycle_bin_says_so() {
+        use axum::http::{Method, StatusCode};
+        let (mut p, requests, server) = graph_fixture(|method, path| match (method, path) {
+            (&Method::GET, "/v1.0/me/drive/root") => (
+                StatusCode::OK,
+                serde_json::json!({ "id": "ROOT", "name": "root", "size": 0, "folder": {} }),
+            ),
+            (&Method::GET, "/v1.0/me/drive/special/deleted/children") => (
+                StatusCode::BAD_REQUEST,
+                serde_json::json!({ "error": { "code": "invalidRequest",
+                    "message": "The special folder identifier isn't valid" } }),
+            ),
+            _ => (
+                StatusCode::NOT_FOUND,
+                serde_json::json!({ "error": { "code": "itemNotFound" } }),
+            ),
+        })
+        .await;
+        p.drive_type = Some("personal".into());
+        let outcome = p.delete_permanent("/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotSupported(ref m)) if m.contains("recycle bin")),
+            "{outcome:?}"
+        );
+        assert!(!requests
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|r| r.starts_with("DELETE")));
+        server.abort();
+
+        for answer in [
+            (|method: &Method, path: &str| match (method, path) {
+                (&Method::GET, "/v1.0/me/drive/root") => (
+                    StatusCode::OK,
+                    serde_json::json!({ "id": "ROOT", "name": "root", "size": 0, "folder": {} }),
+                ),
+                (&Method::GET, "/v1.0/me/drive/special/deleted/children") => (
+                    StatusCode::BAD_REQUEST,
+                    serde_json::json!({ "error": { "code": "invalidRequest", "message": "Invalid $top" } }),
+                ),
+                _ => (
+                    StatusCode::NOT_FOUND,
+                    serde_json::json!({ "error": { "code": "itemNotFound" } }),
+                ),
+            }) as fn(&Method, &str) -> (StatusCode, serde_json::Value),
+            |method: &Method, path: &str| match (method, path) {
+                (&Method::GET, "/v1.0/me/drive/root") => (
+                    StatusCode::OK,
+                    serde_json::json!({ "id": "ROOT", "name": "root", "size": 0, "folder": {} }),
+                ),
+                _ => (
+                    StatusCode::NOT_FOUND,
+                    serde_json::json!({ "error": { "code": "itemNotFound" } }),
+                ),
+            },
+        ] {
+            let (mut p, _requests, server) = graph_fixture(answer).await;
+            p.drive_type = Some("business".into());
+            let outcome = p.delete_permanent("/a.txt").await;
+            assert!(matches!(outcome, Ok(false)), "{outcome:?}");
+            server.abort();
+        }
     }
 
     /// The recycle-bin lookup stopped after its page limit and returned

@@ -469,6 +469,14 @@ pub async fn run(
         }
         Some(Err(e)) => {
             stopper.abort();
+            // The prefix folders this run made before the refusal go too,
+            // deepest first and only when empty (#368, FileLu left one).
+            let (mut left, mut kept) = (Vec::new(), Vec::new());
+            for dir in created_by_run.iter().rev() {
+                if !remove_if_empty(&mut provider, dir, &mut left, &mut kept, observer).await {
+                    break;
+                }
+            }
             let _ = bounded(provider.disconnect()).await;
             return Err(scratch_dir_error(&test_root, initial_path, &e));
         }
@@ -998,6 +1006,8 @@ pub async fn run(
         .measurement_note()
         .map(|note| vec![note.to_string()])
         .unwrap_or_default();
+    // A measurement note marks a local bridge; the trash notes after it do not.
+    let bridge_note = !notes.is_empty();
     notes.extend(trash_notes);
     let _ = bounded(provider.disconnect()).await;
 
@@ -1049,7 +1059,7 @@ pub async fn run(
         client,
         provider_access_label,
         opts.local_endpoint,
-        !notes.is_empty(),
+        bridge_note,
     );
     let signal = benchmark_signal_from(&results, local_bridge, metadata_cached);
 
