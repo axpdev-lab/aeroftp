@@ -2533,6 +2533,11 @@ impl WebDavProvider {
     /// Properties are taken from a propstat whose status is missing or 200.
     /// A following 404 propstat (Nextcloud reports each missing property that
     /// way) must not replace the file id or the original location.
+    ///
+    /// A reader error fails the whole listing. The entries already read are
+    /// not returned: a later generation of the same path could be in the
+    /// unread tail, and a purge would then treat one generation as the only
+    /// one and delete it.
     fn parse_trashbin_response(
         &self,
         xml: &str,
@@ -2555,7 +2560,7 @@ impl WebDavProvider {
 
         loop {
             match reader.read_event_into(&mut buf) {
-                Err(_) => break,
+                Err(error) => return Err(ProviderError::ParseError(error.to_string())),
                 Ok(Event::Eof) => break,
                 Ok(Event::Start(ref e)) => {
                     let tag = e.local_name().as_ref().to_string();

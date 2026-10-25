@@ -84,6 +84,29 @@ fn trash_item(
     )
 }
 
+/// One complete generation, then a second response whose end tag does not
+/// match. A parser that keeps the entries it already has would see a unique
+/// match and delete it.
+fn broken_trash_xml(body: &str) -> String {
+    let first = trash_item(
+        body,
+        "/remote.php/dav/trashbin/user/trash/a.txt.d1700000001",
+        "a.txt",
+        "docs/a.txt",
+        "1700000001",
+        "42",
+        false,
+    );
+    format!(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\
+         <d:multistatus xmlns:d=\"DAV:\" xmlns:nc=\"http://nextcloud.org/ns\">\
+         {first}\
+         <d:response><d:href>/remote.php/dav/trashbin/user/trash/a.txt.d1700000002</d:href>\
+         <d:propstat><d:prop><nc:trashbin-original-location>docs/a.txt</nc:trashbin-original-location></d:not-a-prop>\
+         </d:multistatus>"
+    )
+}
+
 fn trash_xml(body: &str) -> String {
     let root = "<d:response><d:href>/remote.php/dav/trashbin/user/trash/</d:href>\
         <d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop>\
@@ -196,6 +219,14 @@ fn live_xml(body: &str, path: &str) -> String {
 }
 
 async fn serve(fail_propfind: bool, stall_propfind: bool) -> (String, Arc<Mutex<Vec<DavHit>>>) {
+    serve_fixture(fail_propfind, stall_propfind, false).await
+}
+
+async fn serve_fixture(
+    fail_propfind: bool,
+    stall_propfind: bool,
+    broken_trash: bool,
+) -> (String, Arc<Mutex<Vec<DavHit>>>) {
     let hits = Arc::new(Mutex::new(Vec::new()));
     let seen = Arc::clone(&hits);
     let app =
@@ -237,7 +268,11 @@ async fn serve(fail_propfind: bool, stall_propfind: bool) -> (String, Arc<Mutex<
                 }
                 if method == "PROPFIND" {
                     let xml = if path.contains("/trashbin/") {
-                        trash_xml(&body)
+                        if broken_trash {
+                            broken_trash_xml(&body)
+                        } else {
+                            trash_xml(&body)
+                        }
                     } else {
                         live_xml(&body, &path)
                     };
@@ -611,6 +646,21 @@ async fn nextcloud_purge_uses_files_root_for_a_decoded_folder_name() {
         .expect("live PROPFIND");
     assert!(live.path.contains("%20"), "{}", live.path);
     assert!(live.path.contains("%25"), "{}", live.path);
+}
+
+/// The listing breaks after the first generation of `docs/a.txt`. The second
+/// generation is in the broken tail. A partial list must not be purged.
+#[tokio::test]
+async fn nextcloud_purge_refuses_a_trash_listing_that_breaks_after_the_first_entry() {
+    let (base, hits) = serve_fixture(false, false, true).await;
+    let mut provider = nextcloud_at(&base);
+    let purged = provider.delete_permanent("/docs/a.txt").await;
+    assert!(purged.is_err(), "{purged:?}");
+    assert!(
+        deletes(&hits.lock().unwrap()).is_empty(),
+        "{:?}",
+        hits.lock().unwrap()
+    );
 }
 
 #[tokio::test]

@@ -1653,7 +1653,9 @@ async fn run_many_files_workload(
     }
 
     // Capture stable identities in one provider batch, outside every measured
-    // phase. A missing identity never turns into a name-only purge later.
+    // phase. `Ok(None)` is a provider with no per-file identity and still
+    // purges by path. An `Err` is a failed capture: it must not become that
+    // path-only purge, which on Nextcloud can delete another generation.
     let live_paths: Vec<String> = (0..uploaded).map(&remote_name).collect();
     let mut identities = match bounded(provider.capture_trash_identities(&live_paths)).await {
         Some(captured) if captured.len() == uploaded as usize => captured,
@@ -1674,16 +1676,17 @@ async fn run_many_files_workload(
     identities.resize_with(uploaded as usize, || {
         Err(ProviderError::Other("identity was not captured".into()))
     });
-    let mut identities: Vec<Option<String>> = identities
+    let mut identities: Vec<Result<Option<String>, String>> = identities
         .into_iter()
         .enumerate()
         .map(|(i, captured)| match captured {
-            Ok(identity) => identity,
+            Ok(identity) => Ok(identity),
             Err(error) => {
+                let message = error.to_string();
                 out.errors.push(format!(
-                    "many-files: identity capture of file {i} failed: {error}"
+                    "many-files: identity capture of file {i} failed: {message}"
                 ));
-                None
+                Err(message)
             }
         })
         .collect();
@@ -1755,9 +1758,11 @@ async fn run_many_files_workload(
 /// deleted: on a soft-delete provider every one is a separate trash item, up
 /// to 5 GiB per run, and purging the run folder later does not take them.
 /// The purge stays outside the timing, so delete-all keeps measuring plain
-/// deletes. Providers with captured identities purge those exact items;
-/// path-based providers keep their existing flow. Anything not verifiably
-/// purged is counted in the report.
+/// deletes. `Ok(Some)` purges that identity. `Ok(None)` keeps the path-only
+/// purge. `Err` skips the purge for that file and counts it as not purged:
+/// a failed capture must not fall through to a path match. The folder
+/// cleanup remains the fallback. Anything not verifiably purged is counted
+/// in the report.
 ///
 /// The whole pass ends at `budget` and at `stop`, a cancel or the profile
 /// timeout: a server that stops answering must not hold the report one
@@ -1767,7 +1772,7 @@ pub(super) async fn purge_deleted_files_with_identities(
     provider: &mut Box<dyn StorageProvider>,
     deleted: &[u32],
     remote_name: &(dyn Fn(u32) -> String + Sync),
-    identities: &mut [Option<String>],
+    identities: &mut [Result<Option<String>, String>],
     stop: &CancellationToken,
     budget: Duration,
     errors: &mut Vec<String>,
@@ -1795,7 +1800,19 @@ pub(super) async fn purge_deleted_files_with_identities(
             break;
         }
         let path = remote_name(i);
-        let identity = identities.get(i as usize).and_then(Option::as_deref);
+        let identity = match identities.get(i as usize) {
+            Some(Ok(identity)) => identity.as_deref(),
+            Some(Err(reason)) => {
+                failed += 1;
+                first_error.get_or_insert_with(|| reason.clone());
+                continue;
+            }
+            None => {
+                failed += 1;
+                first_error.get_or_insert_with(|| "identity was not captured".into());
+                continue;
+            }
+        };
         let purge = until_stopped(
             stop,
             provider.delete_permanent_with_identity(&path, identity),

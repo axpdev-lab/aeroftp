@@ -1003,6 +1003,9 @@ mod engine_runs {
         /// A live purge moves the item to the trash and then fails to purge
         /// it there, as Proton's CLI can.
         fail_live_purge: bool,
+        /// Capture of this many-files index fails. The others stay `Ok(None)`
+        /// or a live-path id, so one `Err` is not the whole batch.
+        fail_capture_index: Option<u32>,
     }
 
     #[async_trait]
@@ -1104,14 +1107,20 @@ mod engine_runs {
             &mut self,
             paths: &[String],
         ) -> Vec<Result<Option<String>, ProviderError>> {
-            if self.kind == TrashKind::LivePath {
-                paths
-                    .iter()
-                    .map(|path| Ok(Some(format!("uid:{path}"))))
-                    .collect()
-            } else {
-                paths.iter().map(|_| Ok(None)).collect()
-            }
+            paths
+                .iter()
+                .enumerate()
+                .map(|(index, path)| {
+                    if self.fail_capture_index == Some(index as u32) {
+                        return Err(ProviderError::Other("capture failed".into()));
+                    }
+                    if self.kind == TrashKind::LivePath {
+                        Ok(Some(format!("uid:{path}")))
+                    } else {
+                        Ok(None)
+                    }
+                })
+                .collect()
         }
         async fn delete_permanent_with_identity(
             &mut self,
@@ -1172,6 +1181,7 @@ mod engine_runs {
             hang_purge: false,
             cancel_on_purge: None,
             fail_live_purge: false,
+            fail_capture_index: None,
         });
         (state, trash, provider)
     }
@@ -1246,6 +1256,7 @@ mod engine_runs {
             hang_purge: false,
             cancel_on_purge: None,
             fail_live_purge: true,
+            fail_capture_index: None,
         });
         let outcome = run(
             provider,
@@ -1326,6 +1337,60 @@ mod engine_runs {
         );
     }
 
+    /// File 1's capture fails. The other two are `Ok(None)` and still purge by
+    /// path. The failed file must not be purged as if its identity were missing.
+    #[tokio::test]
+    async fn a_failed_capture_does_not_purge_that_file_by_path() {
+        let (state, _) = remote();
+        let trash = Arc::new(Mutex::new(Vec::new()));
+        let purge_calls = Arc::new(Mutex::new(Vec::new()));
+        let provider = Box::new(TrashKeepingRemote {
+            inner: MemRemote(state),
+            kind: TrashKind::OriginalPath,
+            trash: trash.clone(),
+            purge_calls: purge_calls.clone(),
+            hang_purge: false,
+            cancel_on_purge: None,
+            fail_live_purge: false,
+            fail_capture_index: Some(1),
+        });
+        let outcome = run(provider, "/data", many_files_options(), &Silent)
+            .await
+            .unwrap();
+        let calls = purge_calls.lock().unwrap().clone();
+        assert!(
+            calls.iter().any(|path| path.contains("f000000-")),
+            "{calls:?}"
+        );
+        assert!(
+            calls.iter().any(|path| path.contains("f000002-")),
+            "{calls:?}"
+        );
+        assert!(
+            calls.iter().all(|path| !path.contains("f000001-")),
+            "{calls:?}"
+        );
+        let left: Vec<String> = trash
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|path| path.contains("f000001-"))
+            .cloned()
+            .collect();
+        assert_eq!(left.len(), 1, "{left:?}");
+        let errors = &outcome.report.summary.errors;
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("identity capture of file 1 failed")),
+            "{errors:?}"
+        );
+        assert!(
+            errors.iter().any(|error| error.contains("trash purge of")),
+            "{errors:?}"
+        );
+    }
+
     #[tokio::test]
     async fn the_many_files_workload_says_when_its_files_stay_in_the_trash() {
         let (_state, _trash, provider) = trash_remote(TrashKind::Unpurgeable);
@@ -1367,6 +1432,7 @@ mod engine_runs {
             hang_purge: false,
             cancel_on_purge: None,
             fail_live_purge: false,
+            fail_capture_index: None,
         });
         let second = run(provider, "/data", many_files_options(), &Silent)
             .await
@@ -1406,6 +1472,7 @@ mod engine_runs {
             hang_purge,
             cancel_on_purge,
             fail_live_purge: false,
+            fail_capture_index: None,
         });
         (purge_calls, provider)
     }
@@ -1420,7 +1487,7 @@ mod engine_runs {
                 &mut provider,
                 &[0, 1, 2],
                 &|i| format!("/data/f{i}"),
-                &mut vec![None; 3],
+                &mut vec![Ok(None); 3],
                 &CancellationToken::new(),
                 std::time::Duration::from_millis(200),
                 &mut errors,
@@ -1450,7 +1517,7 @@ mod engine_runs {
             &mut provider,
             &[0, 1, 2],
             &|i| format!("/data/f{i}"),
-            &mut vec![None; 3],
+            &mut vec![Ok(None); 3],
             &stop,
             std::time::Duration::from_secs(120),
             &mut errors,
