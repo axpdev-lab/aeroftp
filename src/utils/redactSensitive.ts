@@ -14,6 +14,7 @@
 // The on-disk log tail is redacted by the Rust twin (`redaction_patterns` in
 // src-tauri/src/debug_tests.rs). Both run src/shared/redaction-cases.json, so
 // a rule changed on one side only turns the other side's test red.
+
 // RFC 7235 `credentials`: a scheme, then a token68 or a comma-separated list
 // of `name=value` parameters whose values may be quoted (Digest, Hawk, ...) or
 // hold a `;` (AWS SigV4: `SignedHeaders=host;x-amz-date`).

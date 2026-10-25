@@ -2274,7 +2274,7 @@ mod tests {
     async fn a_refused_sync_bulk_sends_transient_failures_back_to_the_single_file_path() {
         use crate::providers::ProviderError as E;
         use crate::transfer_bulk::tests::ScriptedBulk;
-        let transfers = vec![
+        let transfers = [
             planned_upload("a/1.txt", DeltaPolicy::SizeOnly),
             planned_upload("a/2.txt", DeltaPolicy::SizeOnly),
         ];
