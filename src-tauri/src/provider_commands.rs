@@ -18384,6 +18384,7 @@ mod walk_scope_tests {
         )
         .await;
         std::env::remove_var("AEROFTP_TEST_LOCAL_NORMALIZATION_FOLD");
+        std::env::remove_var("AEROFTP_TEST_LOCAL_CASE_FOLD");
         assert!(
             result.is_err(),
             "canonical aliases must be refused before mkdir"
