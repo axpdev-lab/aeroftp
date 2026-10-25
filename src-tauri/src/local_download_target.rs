@@ -58,11 +58,16 @@ impl LocalTargetGuard {
 
     fn key(&self, path: &Path) -> String {
         let mut key = path.to_string_lossy().into_owned();
-        if self.rules.fold_case {
-            key = case_fold_key(&key);
-        }
         if self.rules.fold_normalization {
             key = key.nfc().collect();
+        }
+        if self.rules.fold_case {
+            key = case_fold_key(&key);
+            // Folding can decompose (`İ` becomes `i` plus a combining dot),
+            // so compose again for a normalization-insensitive volume.
+            if self.rules.fold_normalization {
+                key = key.nfc().collect();
+            }
         }
         key
     }
@@ -101,20 +106,35 @@ impl LocalTargetGuard {
     }
 }
 
-/// Case key for a case-insensitive volume, one character at a time: the
-/// uppercase of each character, then the lowercase of each character of that
-/// (full mappings, so `ß` becomes `ss`). NTFS compares through an uppercase
-/// table and APFS through Unicode case folding, so `ς`, `σ` and `Σ` are one
-/// name on both, and APFS also folds the Kelvin sign to `k` and `ß` to `ss`.
-/// `str::to_lowercase` is not a stable key: it applies the final-sigma rule
-/// and keeps `ς` apart from `σ`. Where the volumes differ (`ß` and `ss`, or
-/// dotless `ı`, are distinct names on NTFS) the key merges: a needless
-/// refusal is safer than two files landing on one name.
+/// Case key for a case-insensitive volume: map every character to its full
+/// uppercase and every character of that to its full lowercase, and repeat
+/// until the key stops changing. NTFS compares through an uppercase table and
+/// APFS through Unicode case folding, so `ς`, `σ` and `Σ` are one name on
+/// both, and APFS also folds the Kelvin sign to `k` and `ß` and `ẞ` to `ss`.
+/// One pass is not enough: `ẞ` lowercases to `ß`, which only the next pass
+/// turns into `ss`. `str::to_lowercase` is not a stable key either: it applies
+/// the final-sigma rule and keeps `ς` apart from `σ`. Where the volumes differ
+/// (`ß` and `ss`, or dotless `ı`, are distinct names on NTFS) the key merges:
+/// a needless refusal is safer than two files landing on one name.
 fn case_fold_key(name: &str) -> String {
-    name.chars()
-        .flat_map(char::to_uppercase)
-        .flat_map(char::to_lowercase)
-        .collect()
+    let fold = |s: &str| -> String {
+        s.chars()
+            .flat_map(char::to_uppercase)
+            .flat_map(char::to_lowercase)
+            .collect()
+    };
+    let mut key = fold(name);
+    // Each pass maps a string to one that no later pass changes after at most
+    // a few steps; the bound only guards against a future Unicode table that
+    // cycles.
+    for _ in 0..4 {
+        let next = fold(&key);
+        if next == key {
+            break;
+        }
+        key = next;
+    }
+    key
 }
 
 fn ambiguous_local_target(first: &str, second: &str, local: &Path) -> LocalTargetConflict {
@@ -225,7 +245,7 @@ mod tests {
     }
 
     #[test]
-    fn audit425_case_key_merges_greek_sigmas_kelvin_and_sharp_s() {
+    fn audit425_case_key_merges_greek_sigmas_kelvin_and_both_sharp_s() {
         let insensitive = || {
             LocalTargetGuard::with_rules(DestinationRules {
                 fold_case: true,
@@ -239,6 +259,9 @@ mod tests {
             ("\u{212A}", "k"),
             ("ß", "ss"),
             ("STRASSE", "straße"),
+            ("ẞ", "ß"),
+            ("ẞ", "ss"),
+            ("STRAẞE", "strasse"),
         ] {
             assert!(
                 insensitive()
@@ -253,6 +276,19 @@ mod tests {
         insensitive()
             .claim_listing(&[claim("i", "/i"), claim("İ", "/İ")])
             .unwrap();
+    }
+
+    #[test]
+    fn audit425_case_and_normalization_fold_compose_after_folding() {
+        // `ǰ` has no single-character uppercase: it folds to `j` plus a
+        // combining caron, which must compose back to meet `J` + caron.
+        let mut guard = LocalTargetGuard::with_rules(DestinationRules {
+            fold_case: true,
+            fold_normalization: true,
+        });
+        assert!(guard
+            .claim_listing(&[claim("\u{1F0}", "/a"), claim("J\u{30C}", "/b")])
+            .is_err());
     }
 
     #[test]
