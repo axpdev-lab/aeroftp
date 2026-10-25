@@ -216,6 +216,7 @@ import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
 import { previewRouteFor } from './utils/previewRoute';
 import { useOpenRequests } from './hooks/useOpenRequests';
+import { createNavigationGate, OS_OPEN_NAV_WAIT_MS } from './utils/navigationGate';
 import { addFolderTabs, mergeOpenBatch, openInFolderTab, planLocalOpen, sameLocalFolder, settleReusedTab, takeTabSelection, type LastLocalOpen, type LocalOpenGroup } from './utils/openRequestPlan';
 import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, isConnectCancelledError, isConnectHardTimeoutError } from './utils/connectCancel';
 import { shouldPersistUsedScan } from './utils/usedScanPersist';
@@ -996,7 +997,9 @@ const App: React.FC = () => {
   // ITS navId, so a supersede or a Cancel-then-new-nav never frees the wrong
   // owner's latch (which would either trap the user or reopen the double-click).
   const remoteNavInFlightRef = useRef(0);
-  const localNavInFlightRef = useRef(false);
+  // The primary local panel's one-navigation-at-a-time latch, which a file the
+  // OS opens waits on instead of being refused.
+  const [localNavGate] = useState(createNavigationGate);
   // Non-false while a connect flow (fresh connect, saved-server connect, cloud
   // tab) or a session SWITCH owns the remote panel. It decides what the
   // spinner's Cancel means, and the KIND matters: cancelling a fresh CONNECT's
@@ -9580,15 +9583,14 @@ const App: React.FC = () => {
       if (normTarget !== normBase && (normTarget === '/' || normBase.startsWith(normTarget + '/'))) return null;
     }
     // #401: block a re-entrant local navigation the same way as remote.
-    if (localNavInFlightRef.current) return null;
-    localNavInFlightRef.current = true;
+    if (!localNavGate.enter()) return null;
     setLocalListLoading(true);
     let success = false;
     try {
       success = await loadLocalFiles(path);
     } finally {
       setLocalListLoading(false);
-      localNavInFlightRef.current = false;
+      localNavGate.leave();
     }
     if (!success) return null; // Don't record failed navigations
     humanLog.logNavigate(path, false);
@@ -16237,6 +16239,9 @@ const App: React.FC = () => {
       const activeTabId = panelId === 'local2' ? activeLocalTabId2 : activeLocalTabId;
       const previous = { id: activeTabId, path: shownPath };
       const reuse = openInFolderTab(tabs, plan.folder, plan.names);
+      // The batch has left the backend queue: a listing still loading in the
+      // primary panel is waited for, not taken for a failed open.
+      if (panelId === 'local') await localNavGate.whenFree(OS_OPEN_NAV_WAIT_MS);
       const target = panelId === 'local2'
         ? await changeLocalDirectory2(plan.folder)
         : await changeLocalDirectory(plan.folder, { localOnly: true });
