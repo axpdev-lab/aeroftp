@@ -13,7 +13,8 @@ use crate::ai_core::remote_backend::RemoteBackend;
 use crate::ai_core::tools::{ToolCtx, ToolError};
 use crate::dedupe::{self, SimilarityMode};
 use crate::providers::bulk::{
-    remote_parent, uncertain_items, BulkTransferItem, BulkTransferOutcome,
+    error_goes_back_to_single_file, remote_parent, uncertain_items, BulkTransferItem,
+    BulkTransferOutcome,
 };
 use crate::transfer_bulk::{
     bulk_item, group_key, plan_groups_by_key, settle_bulk_outcome, BulkSettlement,
@@ -1234,8 +1235,19 @@ async fn run_bulk_uploads(
                 "Bulk did not return complete outcomes; inspect the destination before retrying",
             ),
             Err(error) => {
-                for (index, _) in pending {
-                    tally.record(index, Err(ToolError::Exec(error.clone())));
+                // Refused before any item reached the wire. The backend hands
+                // the refusal over as text, so the shared predicate reads it
+                // the way the batch driver does: a transport failure sends the
+                // group to `upload_file`, any other refusal is final.
+                if error_goes_back_to_single_file(&crate::providers::ProviderError::TransferFailed(
+                    error.clone(),
+                )) {
+                    let indices: Vec<usize> = pending.iter().map(|(index, _)| *index).collect();
+                    upload_each(ctx, &item_args, &indices, tally).await?;
+                } else {
+                    for (index, _) in pending {
+                        tally.record(index, Err(ToolError::Exec(error.clone())));
+                    }
                 }
                 continue;
             }
@@ -4754,6 +4766,9 @@ mod tests {
         /// When set, a bulk never returns once it has drawn its outcomes,
         /// so a test can stop the batch while the bulk is in flight.
         bulk_hangs: bool,
+        /// When set, the backend refuses the whole bulk with this text, as
+        /// one refused before any item reached the wire.
+        bulk_refusal: Option<String>,
     }
 
     impl FakeBackend {
@@ -4814,6 +4829,7 @@ mod tests {
                 bulk_outcome: None,
                 bulk_calls: Mutex::new(Vec::new()),
                 bulk_hangs: false,
+                bulk_refusal: None,
             }
         }
 
@@ -4969,6 +4985,9 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push(items.iter().map(|i| i.remote_path.clone()).collect());
+            if let Some(refusal) = &self.bulk_refusal {
+                return Some(Err(refusal.clone()));
+            }
             let outcomes = items.iter().map(outcome.as_ref()).collect();
             if self.bulk_hangs {
                 std::future::pending::<()>().await;
@@ -5250,6 +5269,47 @@ mod tests {
         assert!(error.contains("read-only share"), "{error}");
         assert_eq!(report["summary"]["uploaded"], 3);
         assert_eq!(report["summary"]["errors"], 1);
+    }
+
+    /// A bulk the backend refuses as a whole put nothing on the wire: a
+    /// transport failure sends every item to the ordinary upload, as it does
+    /// for one item the bulk lost the same way; any other refusal is reported
+    /// for every item and uploads nothing.
+    #[tokio::test]
+    async fn upload_many_runs_the_single_file_path_when_the_transport_refuses_the_whole_bulk() {
+        let names = ["r1.txt", "r2.txt", "r3.txt"];
+        let remote: Vec<String> = names.iter().map(|n| format!("/root/{n}")).collect();
+        for refusal in ["Timeout", "Connection lost: peer closed"] {
+            let (_dir, items) = bulk_fixture(&names);
+            let fake = Arc::new(FakeBackend {
+                bulk_refusal: Some(refusal.into()),
+                ..bulk_backend(|_| BulkTransferOutcome::Completed)
+            });
+            let ctx = test_ctx(Arc::clone(&fake));
+
+            let report = upload_many(&ctx, &json!({"server": "srv", "items": items}))
+                .await
+                .unwrap();
+            assert_eq!(*fake.bulk_calls.lock().unwrap(), vec![remote.clone()]);
+            assert_eq!(*fake.local_uploads.lock().unwrap(), remote, "{refusal}");
+            assert_eq!(report["summary"]["uploaded"], 3, "{refusal}");
+            assert_eq!(report["summary"]["errors"], 0, "{refusal}");
+        }
+
+        let (_dir, items) = bulk_fixture(&names);
+        let fake = Arc::new(FakeBackend {
+            bulk_refusal: Some("Permission denied: read-only share".into()),
+            ..bulk_backend(|_| BulkTransferOutcome::Completed)
+        });
+        let ctx = test_ctx(Arc::clone(&fake));
+        let report = upload_many(&ctx, &json!({"server": "srv", "items": items}))
+            .await
+            .unwrap();
+        assert!(fake.local_uploads.lock().unwrap().is_empty());
+        assert_eq!(report["summary"]["uploaded"], 0);
+        assert_eq!(report["summary"]["errors"], 3);
+        let error = report["results"][0]["error"].as_str().unwrap();
+        assert!(error.contains("read-only share"), "{error}");
     }
 
     /// An uncertain item may already be on the server: it is reported and

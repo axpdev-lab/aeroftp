@@ -702,6 +702,12 @@ async fn perform_sync_bulk(
             items.len(),
             "Bulk sync returned incomplete outcomes; destination state unknown",
         ),
+        // The call was refused before any file reached the wire: a transport
+        // failure sends every file to the single-file path, as it does for a
+        // file the bulk lost the same way; any other refusal is final.
+        Err(error) if crate::providers::bulk::error_goes_back_to_single_file(&error) => {
+            return transfers.iter().map(|_| None).collect();
+        }
         Err(error) => {
             return transfers
                 .iter()
@@ -2258,6 +2264,63 @@ mod tests {
             total: 1,
             decision_policy: policy,
             expected_sha256_hex: None,
+        }
+    }
+
+    /// `Err` from a native bulk means nothing reached the wire. A transport
+    /// failure hands every file back to the driver's single-file path (`None`),
+    /// any other refusal is the file's final failure.
+    #[tokio::test]
+    async fn a_refused_sync_bulk_sends_transient_failures_back_to_the_single_file_path() {
+        use crate::providers::ProviderError as E;
+        use crate::transfer_bulk::tests::ScriptedBulk;
+        let transfers = vec![
+            planned_upload("a/1.txt", DeltaPolicy::SizeOnly),
+            planned_upload("a/2.txt", DeltaPolicy::SizeOnly),
+        ];
+        let members: Vec<&PlannedTransfer> = transfers.iter().collect();
+        let transient: [fn() -> E; 3] = [
+            || E::Timeout,
+            || E::ConnectionLost("peer closed".into()),
+            || E::ServerError("503 service unavailable".into()),
+        ];
+        for refusal in transient {
+            let mut provider: Box<dyn StorageProvider> = Box::new(ScriptedBulk {
+                refusal: Some(refusal),
+                ..Default::default()
+            });
+            let outcomes = perform_sync_bulk(
+                &mut provider,
+                &members,
+                "/tmp/local",
+                "/remote",
+                &mut TestSyncSink::default(),
+            )
+            .await;
+            assert!(
+                outcomes.iter().all(Option::is_none) && outcomes.len() == 2,
+                "{:?} must go back to the single-file path",
+                refusal()
+            );
+        }
+        let mut provider: Box<dyn StorageProvider> = Box::new(ScriptedBulk {
+            refusal: Some(|| E::PermissionDenied("read-only share".into())),
+            ..Default::default()
+        });
+        let outcomes = perform_sync_bulk(
+            &mut provider,
+            &members,
+            "/tmp/local",
+            "/remote",
+            &mut TestSyncSink::default(),
+        )
+        .await;
+        assert_eq!(outcomes.len(), 2);
+        for outcome in outcomes {
+            match outcome {
+                Some(FileOutcome::Failed { error }) => assert!(error.contains("read-only share")),
+                other => panic!("a final refusal is the file's failure: {other:?}"),
+            }
         }
     }
 
