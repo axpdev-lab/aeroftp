@@ -58,6 +58,8 @@ semver = "1.0.28"
 
 [dependencies]
 unicode-normalization = "0.1"
+# Identify filesystem probe aliases without changing their spelling.
+same-file = "1.0.6"
 # WI-3d: promoted from [dev-dependencies] to a NORMAL dependency so the iroh P2P
 # drive engine ships in the binary (the app calls it via src/peer/). peer-l0
 # stays the iroh isolation boundary; the 5 accepted RUSTSEC advisories now apply
@@ -336,8 +338,6 @@ whisper-rs = { version = "0.16.0", optional = true }
 
 # Windows Explorer badge integration (v2.0.5) + MTP/WPD portable devices (Phase 3)
 [target.'cfg(windows)'.dependencies]
-# A canonical path cannot identify two hard links to the same local file.
-same-file = "1.0.6"
 windows = { version = "0.58", features = [
     "Win32_Storage_CloudFilters",
     "Win32_Foundation",

@@ -36461,6 +36461,11 @@ async fn pget_fallback_single(
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    static TEST_DOWNLOAD_DESTINATION_RULES: std::cell::Cell<Option<ftp_client_gui_lib::local_download_target::DestinationRules>> = const { std::cell::Cell::new(None) };
+}
+
 /// The scan of `get -r`, one listing at a time. Only folders strictly under
 /// the one asked for are listed, each once, and each file is planned once
 /// ([`cli_walk_step`]). A folder the scan does not follow is an error of the
@@ -36472,11 +36477,12 @@ struct CliGetScan {
     immutable: bool,
     files_from: Option<std::collections::HashSet<String>>,
     max_depth: usize,
+    user_max_depth: bool,
     queue: Vec<(String, usize)>,
     scope: ftp_client_gui_lib::sync_core::WalkScope,
     fetched: std::collections::HashSet<String>,
     /// Local paths planned so far, of files and folders.
-    targets: std::collections::HashSet<String>,
+    local_targets: ftp_client_gui_lib::local_download_target::LocalTargetGuard,
     /// Folders found under the one asked for.
     dirs: usize,
     /// Files planned, and their bytes.
@@ -36509,6 +36515,14 @@ enum CliGetStep {
 
 impl CliGetScan {
     fn new(remote_dir: &str, local_base: &str, cli: &Cli, quiet: bool) -> Self {
+        let local_targets = ftp_client_gui_lib::local_download_target::LocalTargetGuard::new(
+            std::path::Path::new(local_base),
+        );
+        #[cfg(test)]
+        let local_targets = TEST_DOWNLOAD_DESTINATION_RULES
+            .with(|slot| slot.get())
+            .map(ftp_client_gui_lib::local_download_target::LocalTargetGuard::with_rules)
+            .unwrap_or(local_targets);
         Self {
             remote_dir: remote_dir.to_string(),
             local_base: PathBuf::from(local_base),
@@ -36516,10 +36530,11 @@ impl CliGetScan {
             immutable: cli.immutable,
             files_from: load_files_from(cli),
             max_depth: cli.max_depth.unwrap_or(MAX_SCAN_DEPTH as u32) as usize,
+            user_max_depth: cli.max_depth.is_some(),
             queue: vec![(remote_dir.to_string(), 0)],
             scope: ftp_client_gui_lib::sync_core::WalkScope::new(remote_dir),
             fetched: std::collections::HashSet::new(),
-            targets: std::collections::HashSet::new(),
+            local_targets,
             dirs: 0,
             planned: 0,
             planned_bytes: 0,
@@ -36551,6 +36566,12 @@ impl CliGetScan {
                 if !self.quiet {
                     eprintln!("Warning: max depth {} reached at {}", self.max_depth, dir);
                 }
+                if !self.user_max_depth {
+                    self.listing_errors.push(format!(
+                        "internal scan depth limit {} reached at {}",
+                        self.max_depth, dir
+                    ));
+                }
                 continue;
             }
             if self.planned + self.dirs >= MAX_SCAN_ENTRIES {
@@ -36560,7 +36581,12 @@ impl CliGetScan {
                         MAX_SCAN_ENTRIES
                     );
                 }
-                // What was planned still goes, held-back files included.
+                // What was planned still goes, held-back files included,
+                // but truncation is an error even when all planned files land.
+                self.listing_errors.push(format!(
+                    "internal scan entry limit {} reached at {}",
+                    MAX_SCAN_ENTRIES, dir
+                ));
                 self.queue.clear();
                 continue;
             }
@@ -36592,6 +36618,7 @@ impl CliGetScan {
             let mut elsewhere: Vec<PlannedDownload> = Vec::new();
             let listed_relative = self.scope.relative_path(&dir).unwrap_or_default();
             let mut subdirs: Vec<String> = Vec::new();
+            let mut capped = false;
             for e in entries {
                 // Never walk (nor recreate locally) a symlink-to-dir:
                 // it would copy the target's tree twice, or cycle.
@@ -36608,6 +36635,19 @@ impl CliGetScan {
                         self.listing_errors.push(refusal);
                         continue;
                     }
+                }
+                // Apply the cap inside a single large listing too. Testing
+                // only before LIST missed a huge final/root listing entirely.
+                if self.planned + self.dirs + listing.files.len() + elsewhere.len() + subdirs.len()
+                    >= MAX_SCAN_ENTRIES
+                {
+                    self.listing_errors.push(format!(
+                        "internal scan entry limit {} reached at {}",
+                        MAX_SCAN_ENTRIES, dir
+                    ));
+                    self.queue.clear();
+                    capped = true;
+                    break;
                 }
                 if e.is_dir {
                     subdirs.push(e.path);
@@ -36691,28 +36731,35 @@ impl CliGetScan {
             // Different provider root aliases must never publish two sources
             // onto the same local path. Refuse before anything of this
             // listing is created or downloaded.
-            let mut named = std::collections::HashSet::new();
-            let targets = listing
+            use ftp_client_gui_lib::local_download_target::LocalTargetClaim;
+            let claims: Vec<LocalTargetClaim> = listing
                 .dirs
                 .iter()
-                .map(|dir| dir.to_string_lossy().to_string())
+                .zip(&followed)
+                .map(|(local_path, remote_path)| LocalTargetClaim {
+                    remote_path: remote_path.clone(),
+                    local_path: local_path.clone(),
+                })
                 .chain(
                     listing
                         .files
                         .iter()
                         .chain(&elsewhere)
-                        .map(|file| file.local_path.clone()),
-                );
-            for target in targets {
-                if self.targets.contains(&target) || !named.insert(target.clone()) {
-                    return CliGetStep::Ambiguous(target);
-                }
+                        .map(|file| LocalTargetClaim {
+                            remote_path: file.remote_path.clone(),
+                            local_path: PathBuf::from(&file.local_path),
+                        }),
+                )
+                .collect();
+            if let Err(conflict) = self.local_targets.claim_listing(&claims) {
+                return CliGetStep::Ambiguous(conflict.local_path.to_string_lossy().into_owned());
             }
-            self.targets.extend(named);
 
             self.dirs += followed.len();
-            self.queue
-                .extend(followed.into_iter().map(|subdir| (subdir, depth + 1)));
+            if !capped {
+                self.queue
+                    .extend(followed.into_iter().map(|subdir| (subdir, depth + 1)));
+            }
             for file in listing.files.iter().chain(&elsewhere) {
                 self.planned += 1;
                 self.planned_bytes += file.size;
@@ -95026,6 +95073,146 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             "two distinct sources must not overwrite the same mapped target"
         );
         assert!(!local.path().join("a.txt").exists());
+    }
+
+    fn audit425_get_aliases(
+        names: [&str; 2],
+        fold_case: bool,
+        fold_normalization: bool,
+        parallel: usize,
+    ) {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let local = tempfile::tempdir().unwrap();
+        let cli = Cli {
+            quiet: true,
+            parallel,
+            ..test_cli()
+        };
+        let remote = MemTreeProvider {
+            contents: names
+                .iter()
+                .map(|name| (format!("/root/{name}"), b"data".to_vec()))
+                .collect(),
+            ..MemTreeProvider::tree(&[(names[0], 4), (names[1], 4)])
+        };
+        let code = run_against_remote(remote, || async {
+            TEST_DOWNLOAD_DESTINATION_RULES.with(|slot| {
+                slot.set(Some(
+                    ftp_client_gui_lib::local_download_target::DestinationRules {
+                        fold_case,
+                        fold_normalization,
+                    },
+                ))
+            });
+            let result = cmd_get_recursive(
+                "memory://",
+                "/root",
+                Some(local.path().to_str().unwrap()),
+                &cli,
+                OutputFormat::Json,
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await;
+            TEST_DOWNLOAD_DESTINATION_RULES.with(|slot| slot.set(None));
+            result
+        });
+        assert_eq!(code, 4, "aliases must be refused even with one worker");
+        assert_eq!(
+            std::fs::read_dir(local.path()).unwrap().count(),
+            0,
+            "refuse before writers receive files"
+        );
+    }
+
+    #[test]
+    fn audit425_cli_get_refuses_case_aliases_parallel_1() {
+        audit425_get_aliases(["A.txt", "a.txt"], true, false, 1);
+    }
+
+    #[test]
+    fn audit425_cli_get_refuses_case_aliases_parallel_4() {
+        audit425_get_aliases(["A.txt", "a.txt"], true, false, 4);
+    }
+
+    #[test]
+    fn audit425_cli_get_refuses_normalization_aliases_parallel_1() {
+        audit425_get_aliases(["café.txt", "cafe\u{301}.txt"], false, true, 1);
+    }
+
+    #[test]
+    fn audit425_cli_get_refuses_normalization_aliases_parallel_4() {
+        audit425_get_aliases(["café.txt", "cafe\u{301}.txt"], false, true, 4);
+    }
+
+    #[tokio::test]
+    async fn audit425_cli_scan_caps_a_single_listing_without_a_huge_tree() {
+        let local = tempfile::tempdir().unwrap();
+        let mut scan = CliGetScan::new("/root", local.path().to_str().unwrap(), &test_cli(), true);
+        scan.planned = MAX_SCAN_ENTRIES - 1;
+        let mut provider = MemTreeProvider::tree(&[("a.txt", 4), ("b.txt", 4)]);
+        let result = scan.step(&mut provider, &AtomicBool::new(false)).await;
+        let CliGetStep::Listing(listing) = result else {
+            panic!("one file fits before the cap")
+        };
+        assert_eq!(
+            listing.files.len(),
+            1,
+            "the internal bound applies inside a listing too"
+        );
+        assert_eq!(scan.planned, MAX_SCAN_ENTRIES);
+        assert!(!scan.listing_errors.is_empty());
+    }
+
+    #[tokio::test]
+    async fn audit425_cli_scan_reports_internal_depth_cap() {
+        let local = tempfile::tempdir().unwrap();
+        let mut scan = CliGetScan::new("/root", local.path().to_str().unwrap(), &test_cli(), true);
+        scan.queue = vec![("/root/too-deep".into(), MAX_SCAN_DEPTH)];
+        let mut provider = MemTreeProvider::default();
+        assert!(matches!(
+            scan.step(&mut provider, &AtomicBool::new(false)).await,
+            CliGetStep::Done
+        ));
+        assert!(
+            !scan.listing_errors.is_empty(),
+            "an internal depth cap is an incomplete inventory"
+        );
+    }
+
+    #[tokio::test]
+    async fn audit425_cli_user_max_depth_is_a_successful_scope_limit() {
+        let local = tempfile::tempdir().unwrap();
+        let cli = Cli {
+            max_depth: Some(0),
+            ..test_cli()
+        };
+        let mut scan = CliGetScan::new("/root", local.path().to_str().unwrap(), &cli, true);
+        let mut provider = MemTreeProvider::default();
+        assert!(matches!(
+            scan.step(&mut provider, &AtomicBool::new(false)).await,
+            CliGetStep::Done
+        ));
+        assert!(
+            scan.listing_errors.is_empty(),
+            "user-selected scope is not an error"
+        );
+    }
+
+    #[tokio::test]
+    async fn audit425_cli_scan_reports_internal_entry_cap() {
+        let local = tempfile::tempdir().unwrap();
+        let mut scan = CliGetScan::new("/root", local.path().to_str().unwrap(), &test_cli(), true);
+        scan.planned = MAX_SCAN_ENTRIES;
+        let mut provider = MemTreeProvider::tree(&[("a.txt", 4)]);
+        assert!(matches!(
+            scan.step(&mut provider, &AtomicBool::new(false)).await,
+            CliGetStep::Done
+        ));
+        assert!(
+            !scan.listing_errors.is_empty(),
+            "internal truncation cannot report success"
+        );
+        assert!(!scan.stopped, "the internal cap is not Ctrl-C");
     }
 
     /// What a [`LiveTree`] holds and what a run did to it, shared by every
