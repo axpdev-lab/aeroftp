@@ -1454,6 +1454,46 @@ impl S3Provider {
         }
     }
 
+    /// Copy after the caller has prepared the source. Rename also classifies
+    /// virtual folders after preparation, without starting a second wait.
+    async fn copy_prepared_source(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let from_key = from.trim_start_matches('/');
+        let to_key = to.trim_start_matches('/');
+
+        // HEAD source up front so we know whether to take the single-PUT
+        // CopyObject path or compose the copy as a multipart sequence of
+        // UploadPartCopy operations (`copy_via_multipart` also keeps Filebase
+        // on the single-PUT path: it answers 501 to UploadPartCopy). The HEAD
+        // surfaces a `NotFound` immediately on ordinary S3 instead of waiting
+        // for the PUT to fail downstream. The caller has already waited for
+        // write-back on the Filen Desktop preset. HEAD transfers headers only.
+        let source_meta = self.stat(from).await?;
+        let source_size = source_meta.size;
+
+        if !self.copy_via_multipart(source_size) {
+            return self.server_side_copy_single(from_key, to_key).await;
+        }
+
+        // T-DEBT-08: source > 5 GiB, single CopyObject would fail with
+        // `EntityTooLarge`. Fall through to multipart copy. Content-Type
+        // is preserved best-effort from the HEAD response; the rest of
+        // the source metadata is not (S3 multipart copy lacks the
+        // single-PUT `metadata-directive: COPY` slot).
+        let content_type = source_meta.mime_type;
+        let source_mtime = source_meta
+            .metadata
+            .get(Self::MTIME_METADATA_HEADER)
+            .cloned();
+        self.server_side_copy_multipart(
+            from_key,
+            to_key,
+            source_size,
+            content_type.as_deref(),
+            source_mtime,
+        )
+        .await
+    }
+
     async fn verify_copy_target_exists(&self, to: &str) -> Result<(), ProviderError> {
         let to_key = to.trim_start_matches('/');
         let mut last_status: Option<StatusCode> = None;
@@ -1628,38 +1668,39 @@ impl S3Provider {
                     from
                 ))
             };
-            // The preset's server_copy performs the bounded readiness check.
-            // Do not mistake its unpublished upload for a virtual folder, or
-            // run two independent wait budgets for the same file.
-            if !self.config.filen_desktop_bridge {
-                match self.s3_request(Method::HEAD, from_key, None, None).await {
-                    Ok(resp) if resp.status() == StatusCode::OK => {}
-                    Ok(resp) if resp.status() == StatusCode::NOT_FOUND => {
-                        return Err(virtual_folder_err());
-                    }
-                    // Filen's local S3 bridge (the Windows build in particular,
-                    // issue #368) answers HEAD on a virtual-folder key with 401/403
-                    // instead of 404. Reaching this arm means the prefix listing
-                    // already succeeded, so credentials are valid and this is the
-                    // same phantom-folder case, not a real auth failure. Map it to
-                    // the actionable message instead of leaking the raw status.
-                    Ok(resp)
-                        if self.is_filen_s3_endpoint()
-                            && (resp.status() == StatusCode::UNAUTHORIZED
-                                || resp.status() == StatusCode::FORBIDDEN) =>
-                    {
-                        return Err(virtual_folder_err());
-                    }
-                    Ok(resp) => {
-                        return Err(ProviderError::ServerError(format!(
-                            "HEAD on rename source returned status {}",
-                            resp.status()
-                        )));
-                    }
-                    Err(e) => return Err(e),
-                }
+            // An acknowledged upload may still be unpublished. Wait first,
+            // then classify virtual folders through the same probe as plain
+            // S3. Copy below reuses this preparation instead of waiting twice.
+            if self.config.filen_desktop_bridge {
+                self.prepare_file_move(from).await?;
             }
-            self.server_copy(from, to).await?;
+            match self.s3_request(Method::HEAD, from_key, None, None).await {
+                Ok(resp) if resp.status() == StatusCode::OK => {}
+                Ok(resp) if resp.status() == StatusCode::NOT_FOUND => {
+                    return Err(virtual_folder_err());
+                }
+                // Filen's local S3 bridge (the Windows build in particular,
+                // issue #368) answers HEAD on a virtual-folder key with 401/403
+                // instead of 404. Reaching this arm means the prefix listing
+                // already succeeded, so credentials are valid and this is the
+                // same phantom-folder case, not a real auth failure. Map it to
+                // the actionable message instead of leaking the raw status.
+                Ok(resp)
+                    if self.is_filen_s3_endpoint()
+                        && (resp.status() == StatusCode::UNAUTHORIZED
+                            || resp.status() == StatusCode::FORBIDDEN) =>
+                {
+                    return Err(virtual_folder_err());
+                }
+                Ok(resp) => {
+                    return Err(ProviderError::ServerError(format!(
+                        "HEAD on rename source returned status {}",
+                        resp.status()
+                    )));
+                }
+                Err(e) => return Err(e),
+            }
+            self.copy_prepared_source(from, to).await?;
             self.verify_copy_target_exists(to).await?;
             self.delete(from).await?;
             info!("Renamed file (copy+delete) {} to {}", from, to);
@@ -6133,44 +6174,10 @@ impl StorageProvider for S3Provider {
             return Err(ProviderError::NotConnected);
         }
 
-        let from_key = from.trim_start_matches('/');
-        let to_key = to.trim_start_matches('/');
-
-        // HEAD source up front so we know whether to take the single-PUT
-        // CopyObject path or compose the copy as a multipart sequence of
-        // UploadPartCopy operations (`copy_via_multipart` also keeps Filebase
-        // on the single-PUT path: it answers 501 to UploadPartCopy). The HEAD
-        // surfaces a `NotFound` immediately on ordinary S3 instead of waiting
-        // for the PUT to fail downstream. The Filen Desktop preset first
-        // waits for its write-back. Both probes transfer headers only.
         if self.config.filen_desktop_bridge {
             self.prepare_file_move(from).await?;
         }
-        let source_meta = self.stat(from).await?;
-        let source_size = source_meta.size;
-
-        if !self.copy_via_multipart(source_size) {
-            return self.server_side_copy_single(from_key, to_key).await;
-        }
-
-        // T-DEBT-08: source > 5 GiB, single CopyObject would fail with
-        // `EntityTooLarge`. Fall through to multipart copy. Content-Type
-        // is preserved best-effort from the HEAD response; the rest of
-        // the source metadata is not (S3 multipart copy lacks the
-        // single-PUT `metadata-directive: COPY` slot).
-        let content_type = source_meta.mime_type;
-        let source_mtime = source_meta
-            .metadata
-            .get(Self::MTIME_METADATA_HEADER)
-            .cloned();
-        self.server_side_copy_multipart(
-            from_key,
-            to_key,
-            source_size,
-            content_type.as_deref(),
-            source_mtime,
-        )
-        .await
+        self.copy_prepared_source(from, to).await
     }
 
     // Shaped-graph multipart trait wiring.
@@ -9647,9 +9654,15 @@ mod tests {
         let reads = Arc::new(AtomicUsize::new(0));
         let copies = Arc::new(AtomicUsize::new(0));
         let deletes = Arc::new(AtomicUsize::new(0));
-        let (r, c, d) = (reads.clone(), copies.clone(), deletes.clone());
+        let discoveries = Arc::new(AtomicUsize::new(0));
+        let (r, c, d, discovery) = (
+            reads.clone(),
+            copies.clone(),
+            deletes.clone(),
+            discoveries.clone(),
+        );
         let app = axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
-            let (r, c, d) = (r.clone(), c.clone(), d.clone());
+            let (r, c, d, discovery) = (r.clone(), c.clone(), d.clone(), discovery.clone());
             async move {
                 let method = req.method().clone();
                 let path = urlencoding::decode(req.uri().path()).unwrap().into_owned();
@@ -9674,6 +9687,9 @@ mod tests {
                 let mut status = 200;
                 let mut body = String::new();
                 if method == Method::GET && prefix.is_some() {
+                    if prefix.as_deref() == Some(format!("src/{leaf}").as_str()) {
+                        discovery.fetch_add(1, Ordering::SeqCst);
+                    }
                     let contents = if (directory && prefix.as_deref() == Some("src/"))
                         || prefix.as_deref() == Some(format!("src/{leaf}").as_str()) {
                         {
@@ -9738,7 +9754,16 @@ mod tests {
             assert!(result.is_ok(), "{result:?}");
             assert_eq!(copies.load(Ordering::SeqCst), 1);
             assert_eq!(deletes.load(Ordering::SeqCst), 1);
-            assert!(reads.load(Ordering::SeqCst) >= 4);
+            assert_eq!(
+                reads.load(Ordering::SeqCst),
+                if directory { 5 } else { 6 },
+                "one readiness poll plus classification (files) and copy metadata HEAD"
+            );
+            assert_eq!(
+                discoveries.load(Ordering::SeqCst),
+                usize::from(reconnect),
+                "discover an uncached source once; never start another wait budget"
+            );
         } else {
             assert!(
                 result.is_err(),
@@ -9775,6 +9800,71 @@ mod tests {
         for directory in [false, true] {
             bridge_rename_fixture(true, directory, false, "📦-ßς-100%25&.dat", true).await;
         }
+    }
+
+    async fn bridge_virtual_folder_rename_fixture(status: u16) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let heads = Arc::new(AtomicUsize::new(0));
+        let calls = heads.clone();
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let calls = calls.clone();
+                async move {
+                    let (status, body) = match req.method().as_str() {
+                        "GET" => (
+                            200,
+                            "<ListBucketResult><IsTruncated>false</IsTruncated></ListBucketResult>",
+                        ),
+                        "HEAD" => {
+                            assert_eq!(req.uri().path(), "/test-bucket/empty");
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            (status, "")
+                        }
+                        other => panic!("virtual-folder rename must not copy or delete: {other}"),
+                    };
+                    axum::http::Response::builder()
+                        .status(status)
+                        .body(axum::body::Body::from(body))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.config.filen_desktop_bridge = true;
+        provider.config.region = "filen".into();
+        provider.config.skip_dir_markers = true;
+        let result = provider.rename("/empty", "/renamed").await;
+        server.abort();
+        assert!(
+            matches!(result, Err(ProviderError::NotSupported(ref message))
+                if message.contains("virtual prefixes") && message.contains("Add a file")),
+            "HEAD {status} must explain the empty virtual folder: {result:?}"
+        );
+        assert_eq!(
+            heads.load(Ordering::SeqCst),
+            1,
+            "a missing key is not polled"
+        );
+    }
+
+    #[tokio::test]
+    async fn filen_bridge_virtual_folder_rename_head_404_is_actionable() {
+        bridge_virtual_folder_rename_fixture(404).await;
+    }
+
+    #[tokio::test]
+    async fn filen_bridge_virtual_folder_rename_head_403_is_actionable() {
+        bridge_virtual_folder_rename_fixture(403).await;
+    }
+
+    #[tokio::test]
+    async fn filen_bridge_virtual_folder_rename_head_401_is_actionable() {
+        bridge_virtual_folder_rename_fixture(401).await;
     }
 
     async fn unpublished_bridge_fixture(
