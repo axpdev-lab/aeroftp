@@ -78,6 +78,16 @@ describe('redactSensitive on a long line', () => {
         expect(performance.now() - started).toBeLessThan(2000);
     });
 
+    // `-` is not a word character, so a name prefix that could repeat without
+    // bound would restart after every hyphen: this is the line that would show it.
+    it('reads a long kebab or snake run without a secret word in linear time', () => {
+        const started = performance.now();
+        for (const run of ['ab-'.repeat(100000), 'ab_'.repeat(100000), 'api-'.repeat(60000), 'token-'.repeat(50000), '1-'.repeat(150000)]) {
+            redactSensitive(`line ${run} end`);
+        }
+        expect(performance.now() - started).toBeLessThan(2000);
+    });
+
     it('still redacts an address and keeps the words around it', () => {
         expect(redactSensitive('mail bob.smith+tag@example.org sent')).toBe('mail ***@*** sent');
     });

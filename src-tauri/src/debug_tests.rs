@@ -276,11 +276,15 @@ enum Replacement {
 /// Names of the fields whose value is a secret, in JSON and in key=value form,
 /// written in snake_case, kebab-case or camelCase (`access_token`, `api-key`,
 /// `clientSecret`). A name may follow snake or kebab words (`session_token`,
-/// `db_password`) but not an open prefix: `nextToken`, `tokens` and `bypass`
-/// stay. The rules are case-insensitive; the frontend twin writes the same text.
+/// `prod_db_admin_user_password`) but not an open prefix: `nextToken`, `tokens`
+/// and `bypass` stay. The prefix is bounded on purpose, 8 segments of at most 24
+/// characters: `-` is not a word character, so an unbounded prefix would start a
+/// match after every hyphen and cost a quadratic scan on a long kebab run (the
+/// class of the email rule below). The rules are case-insensitive; the frontend
+/// twin writes the same text.
 macro_rules! secret_name {
     () => {
-        r"(?:(?:[A-Za-z0-9]{1,24}[_-]){0,3}(?:password|passwd|passphrase|pwd|secret(?:[_-]?(?:access[_-]?)?key)?|api[_-]?key|access[_-]?key|(?:access|auth|refresh|id)[_-]?token|token|private[_-]?key|(?:client|totp|consumer)[_-]?secret)|pass)"
+        r"(?:(?:[A-Za-z0-9]{1,24}[_-]){0,8}(?:password|passwd|passphrase|pwd|secret(?:[_-]?(?:access[_-]?)?key)?|api[_-]?key|access[_-]?key|(?:access|auth|refresh|id)[_-]?token|token|private[_-]?key|(?:client|totp|consumer)[_-]?secret)|pass)"
     };
 }
 
