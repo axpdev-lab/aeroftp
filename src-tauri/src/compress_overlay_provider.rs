@@ -504,6 +504,10 @@ impl StorageProvider for CompressOverlayProvider {
         self.inner.wait_until_readable(path).await
     }
 
+    async fn prepare_file_move(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.inner.prepare_file_move(path).await
+    }
+
     fn measurement_note(&self) -> Option<&'static str> {
         self.inner.measurement_note()
     }

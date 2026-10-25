@@ -1271,6 +1271,15 @@ pub trait StorageProvider: Send + Sync {
         Ok(None)
     }
 
+    /// Prepare a file source before move-related metadata/existence checks.
+    /// A write-back bridge may still be publishing an acknowledged upload.
+    /// Ordinary providers do nothing. A missing file also returns promptly;
+    /// directory prefixes must not be passed here. Dropping the future
+    /// cancels the preparation without starting the move.
+    async fn prepare_file_move(&mut self, _path: &str) -> Result<(), ProviderError> {
+        Ok(())
+    }
+
     /// A caveat a benchmark or speed test prints next to its figures, once
     /// per run, when they do not measure what the profile's name suggests.
     /// `None` for an ordinary server.
