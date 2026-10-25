@@ -763,12 +763,13 @@ fn trash_propstat_succeeded(status: &str) -> bool {
 }
 
 /// Original-location key. Leading and trailing slashes are ignored. The
-/// remaining text matches exactly, including case and Unicode.
+/// remaining text matches exactly, including case, Unicode, and spaces at
+/// either end of a name. `docs/a.txt` and `docs/a.txt ` are different files.
 ///
 /// Trash text is already decoded XML. A second percent-decode would turn a
-/// literal `%20` in a name into a space, so this only trims slashes.
+/// literal `%20` in a name into a space, so this only strips slashes.
 fn nextcloud_trash_location(path: &str) -> String {
-    path.trim().trim_matches('/').to_string()
+    path.trim_matches('/').to_string()
 }
 
 /// One URL segment, decoded once. An invalid escape is kept as written.
@@ -820,14 +821,14 @@ fn nextcloud_location_rest(segments: &[String], userid: Option<&str>) -> Option<
 /// An empty id, `.`, `..`, or an id that still contains `/` would address
 /// the trash collection or leave it. Those are refused before DELETE.
 fn nextcloud_trash_id_is_one_segment(id: &str) -> bool {
-    let id = id.trim();
     !id.is_empty() && id != "." && id != ".." && !id.contains('/')
 }
 
 /// Parent collection and exact final segment of a caller path. `.` and `..`
 /// are not names that can be matched against a listing.
 fn nextcloud_parent_and_name(path: &str) -> Option<(String, String)> {
-    let trimmed = path.trim().trim_matches('/');
+    // Slashes only. A space at either end of the name is part of the name.
+    let trimmed = path.trim_matches('/');
     if trimmed.is_empty() {
         return None;
     }
@@ -2657,7 +2658,7 @@ impl WebDavProvider {
                         "response" if in_response => {
                             in_response = false;
                             // Skip the collection itself (the trash/ container).
-                            if !kept.filename.trim().is_empty() {
+                            if !kept.filename.is_empty() {
                                 let encoded_id = kept
                                     .href
                                     .rsplit('/')
@@ -2669,8 +2670,8 @@ impl WebDavProvider {
                                     .into_owned();
                                 entries.push(NextcloudTrashEntry {
                                     id,
-                                    name: kept.filename.trim().to_string(),
-                                    original_path: kept.location.trim().to_string(),
+                                    name: kept.filename.clone(),
+                                    original_path: kept.location.clone(),
                                     deleted_at: kept
                                         .deletion_time
                                         .trim()
@@ -2854,7 +2855,7 @@ impl WebDavProvider {
         let Some(entry) = super::the_one_trashed_item(path, matches)? else {
             return Ok(false);
         };
-        let id = entry.id.trim();
+        let id = entry.id.as_str();
         if !nextcloud_trash_id_is_one_segment(id) {
             return Err(ProviderError::ServerError(format!(
                 "Not purged: trash item id for {path} is empty or not a single segment"
@@ -2899,7 +2900,9 @@ impl WebDavProvider {
             if file_id.is_empty() {
                 continue;
             }
-            let href_path = Self::dav_path_segments(hit.href.trim(), &request_path);
+            // Do not trim the href. A space at the end of the leaf is a
+            // different file from the same letters without it.
+            let href_path = Self::dav_path_segments(&hit.href, &request_path);
             if href_path == request_path || href_path == listing_path || href_path == root_path {
                 continue;
             }

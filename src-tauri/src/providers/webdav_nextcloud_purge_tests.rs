@@ -273,6 +273,92 @@ fn cut_file_id_xml() -> String {
         .to_string()
 }
 
+fn trash_document(body: &str, items: &[(&str, &str, &str, &str)]) -> String {
+    let inner: String = items
+        .iter()
+        .map(|(href, filename, location, file_id)| {
+            trash_item(body, href, filename, location, "1700000001", file_id, false)
+        })
+        .collect();
+    format!(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\
+         <d:multistatus xmlns:d=\"DAV:\" xmlns:nc=\"http://nextcloud.org/ns\">\
+         {inner}</d:multistatus>"
+    )
+}
+
+fn trailing_space_only_trash(body: &str) -> String {
+    trash_document(
+        body,
+        &[(
+            "/remote.php/dav/trashbin/user/trash/trail.d1700000002",
+            "a.txt ",
+            "docs/a.txt ",
+            "43",
+        )],
+    )
+}
+
+fn plain_and_trailing_space_trash(body: &str) -> String {
+    trash_document(
+        body,
+        &[
+            (
+                "/remote.php/dav/trashbin/user/trash/plain.d1700000001",
+                "a.txt",
+                "docs/a.txt",
+                "42",
+            ),
+            (
+                "/remote.php/dav/trashbin/user/trash/trail.d1700000002",
+                "a.txt ",
+                "docs/a.txt ",
+                "43",
+            ),
+        ],
+    )
+}
+
+fn leading_space_only_trash(body: &str) -> String {
+    trash_document(
+        body,
+        &[(
+            "/remote.php/dav/trashbin/user/trash/lead.d1700000003",
+            " a.txt",
+            " a.txt",
+            "44",
+        )],
+    )
+}
+
+fn plain_and_leading_space_trash(body: &str) -> String {
+    trash_document(
+        body,
+        &[
+            (
+                "/remote.php/dav/trashbin/user/trash/plain.d1700000004",
+                "a.txt",
+                "a.txt",
+                "42",
+            ),
+            (
+                "/remote.php/dav/trashbin/user/trash/lead.d1700000003",
+                " a.txt",
+                " a.txt",
+                "44",
+            ),
+        ],
+    )
+}
+
+fn spaced_leaf_xml(body: &str) -> String {
+    let inner = live_file(body, "/remote.php/dav/files/user/docs/a.txt ", "43");
+    format!(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\
+         <d:multistatus xmlns:d=\"DAV:\" xmlns:oc=\"http://owncloud.org/ns\">{inner}</d:multistatus>"
+    )
+}
+
 fn two_file_id_xml(body: &str) -> String {
     let inner = format!(
         "{}{}",
@@ -297,6 +383,16 @@ enum Listing {
     EmptyTrash,
     EmptyFileIds,
     TwoFileIds,
+    /// Trash holds only `docs/a.txt ` (trailing space).
+    TrailingSpaceOnly,
+    /// Trash holds `docs/a.txt` and `docs/a.txt `.
+    PlainAndTrailingSpace,
+    /// Trash holds only ` a.txt` (leading space).
+    LeadingSpaceOnly,
+    /// Trash holds `a.txt` and ` a.txt`.
+    PlainAndLeadingSpace,
+    /// The live leaf is `a.txt `, not `a.txt`.
+    SpacedLeaf,
 }
 
 async fn serve(fail_propfind: bool, stall_propfind: bool) -> (String, Arc<Mutex<Vec<DavHit>>>) {
@@ -354,6 +450,10 @@ async fn serve_fixture(
                             Listing::CutTrash => cut_trash_xml(&body),
                             Listing::EmptyTrash => empty_multistatus(),
                             Listing::CutFileIds => one_generation_trash(&body),
+                            Listing::TrailingSpaceOnly => trailing_space_only_trash(&body),
+                            Listing::PlainAndTrailingSpace => plain_and_trailing_space_trash(&body),
+                            Listing::LeadingSpaceOnly => leading_space_only_trash(&body),
+                            Listing::PlainAndLeadingSpace => plain_and_leading_space_trash(&body),
                             _ => trash_xml(&body),
                         }
                     } else {
@@ -361,6 +461,7 @@ async fn serve_fixture(
                             Listing::CutFileIds => cut_file_id_xml(),
                             Listing::EmptyFileIds => empty_multistatus(),
                             Listing::TwoFileIds => two_file_id_xml(&body),
+                            Listing::SpacedLeaf => spaced_leaf_xml(&body),
                             _ => live_xml(&body, &path),
                         }
                     };
@@ -844,6 +945,78 @@ async fn nextcloud_purge_capture_keeps_two_files_in_a_complete_listing() {
             .and_then(|id| id.as_deref()),
         Some("11"),
         "{captured:?}"
+    );
+}
+
+/// `docs/a.txt ` is a different name. Purging `docs/a.txt` must not delete it.
+#[tokio::test]
+async fn nextcloud_purge_leaves_a_trailing_space_name_when_the_plain_path_is_deleted() {
+    let (base, hits) = serve_fixture(false, false, Listing::TrailingSpaceOnly).await;
+    let mut provider = nextcloud_at(&base);
+    let purged = provider.delete_permanent("/docs/a.txt").await;
+    assert!(matches!(purged, Ok(false)), "{purged:?}");
+    assert!(
+        deletes(&hits.lock().unwrap()).is_empty(),
+        "{:?}",
+        hits.lock().unwrap()
+    );
+}
+
+/// Both names are in the trash. The plain path deletes only the plain item.
+#[tokio::test]
+async fn nextcloud_purge_of_the_plain_path_deletes_only_the_exact_name_not_the_trailing_space() {
+    let (base, hits) = serve_fixture(false, false, Listing::PlainAndTrailingSpace).await;
+    let mut provider = nextcloud_at(&base);
+    let purged = provider.delete_permanent("/docs/a.txt").await;
+    assert!(matches!(purged, Ok(true)), "{purged:?}");
+    assert_eq!(
+        decoded_delete_ids(&deletes(&hits.lock().unwrap())),
+        vec!["plain.d1700000001".to_string()]
+    );
+}
+
+/// ` a.txt` is a different name. Purging `a.txt` must not delete it.
+#[tokio::test]
+async fn nextcloud_purge_leaves_a_leading_space_name_when_the_plain_path_is_deleted() {
+    let (base, hits) = serve_fixture(false, false, Listing::LeadingSpaceOnly).await;
+    let mut provider = nextcloud_at(&base);
+    let purged = provider.delete_permanent("/a.txt").await;
+    assert!(matches!(purged, Ok(false)), "{purged:?}");
+    assert!(
+        deletes(&hits.lock().unwrap()).is_empty(),
+        "{:?}",
+        hits.lock().unwrap()
+    );
+}
+
+/// Both names are in the trash. The plain path deletes only the plain item.
+#[tokio::test]
+async fn nextcloud_purge_of_the_plain_path_deletes_only_the_exact_name_not_the_leading_space() {
+    let (base, hits) = serve_fixture(false, false, Listing::PlainAndLeadingSpace).await;
+    let mut provider = nextcloud_at(&base);
+    let purged = provider.delete_permanent("/a.txt").await;
+    assert!(matches!(purged, Ok(true)), "{purged:?}");
+    assert_eq!(
+        decoded_delete_ids(&deletes(&hits.lock().unwrap())),
+        vec!["plain.d1700000004".to_string()]
+    );
+}
+
+/// A live href whose leaf is `a.txt ` is not the file `a.txt`.
+#[tokio::test]
+async fn nextcloud_purge_capture_does_not_treat_a_spaced_leaf_as_the_plain_name() {
+    let (base, _hits) = serve_fixture(false, false, Listing::SpacedLeaf).await;
+    let mut provider = nextcloud_at(&base);
+    let captured = provider
+        .capture_trash_identities(&["/docs/a.txt".to_string()])
+        .await;
+    assert!(matches!(captured.first(), Some(Ok(None))), "{captured:?}");
+    let spaced = provider
+        .capture_trash_identities(&["/docs/a.txt ".to_string()])
+        .await;
+    assert!(
+        matches!(spaced.first(), Some(Ok(Some(id))) if id == "43"),
+        "{spaced:?}"
     );
 }
 
