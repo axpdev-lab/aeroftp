@@ -39443,7 +39443,14 @@ async fn cmd_rm(
     }
 }
 
-async fn cmd_mv(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat) -> i32 {
+async fn cmd_mv(
+    url: &str,
+    from: &str,
+    to: &str,
+    cli: &Cli,
+    format: OutputFormat,
+    cancelled: &AtomicBool,
+) -> i32 {
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
@@ -39465,7 +39472,12 @@ async fn cmd_mv(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat
             return code;
         }
     }
-    match provider.rename(from, to).await {
+    // Filen Desktop can spend minutes publishing the cached source. The
+    // first Ctrl-C must drop that wait, before it can copy or delete.
+    let Some(outcome) = run_until_interrupted(cancelled, provider.rename(from, to)).await else {
+        return interrupted_exit(Some(provider.as_mut()), format, "mv interrupted").await;
+    };
+    match outcome {
         Ok(()) => {
             match format {
                 OutputFormat::Text => {
@@ -55818,7 +55830,12 @@ async fn cmd_sync(
         let old_path = format!("{}/{}", remote.trim_end_matches('/'), old_remote);
         let new_path = format!("{}/{}", remote.trim_end_matches('/'), new_local);
         if !dry_run {
-            match provider.rename(&old_path, &new_path).await {
+            let Some(outcome) =
+                run_until_interrupted(&cancelled, provider.rename(&old_path, &new_path)).await
+            else {
+                break;
+            };
+            match outcome {
                 Ok(()) => {
                     renamed += 1;
                     renames_done.push((old_remote.as_str(), new_local.as_str()));
@@ -70542,7 +70559,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     Ok(t) => t,
                     Err(code) => return code,
                 };
-                exit_code = cmd_mv(&url, args[0], args[1], cli, format).await;
+                exit_code = cmd_mv(&url, args[0], args[1], cli, format, &cancelled).await;
                 if let Some(code) = batch_check_exit(
                     exit_code,
                     line_num,
@@ -74963,7 +74980,7 @@ async fn main() {
             } else {
                 (url.as_str(), from.as_str(), to.as_str())
             };
-            cmd_mv(u, f, t, &cli, format).await
+            cmd_mv(u, f, t, &cli, format, &cancelled).await
         }
         Commands::Cp { url, from, to } => {
             let (u, f, t) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
@@ -87549,6 +87566,8 @@ mod tests {
     #[derive(Default, Clone)]
     struct StallingProvider {
         refuse: bool,
+        /// A Filen bridge waiting for its cached source to be published.
+        rename_stalls: bool,
         write_then_refuse: bool,
         /// Opens the destination as an atomic download (its `.aerotmp`)
         /// before it stalls, as a real download does.
@@ -87739,6 +87758,9 @@ mod tests {
             Err(ProviderError::NotFound(path.to_string()))
         }
         async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            if self.rename_stalls {
+                std::future::pending::<()>().await;
+            }
             Err(ProviderError::NotSupported("rename".to_string()))
         }
         async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -87856,6 +87878,28 @@ mod tests {
                 "parallel download unavailable: pget: the source size no longer matches the parallel plan; using a single stream"
             ]);
         }
+    }
+
+    #[test]
+    fn ctrl_c_stops_mv_while_the_bridge_publishes_the_source() {
+        let provider = StallingProvider {
+            rename_stalls: true,
+            ..Default::default()
+        };
+        let disconnects = provider.disconnects.clone();
+        let code = against_stalling(provider, |cancelled| async move {
+            cmd_mv(
+                "memory://",
+                "/fresh.dat",
+                "/moved.dat",
+                &quiet_cli(),
+                OutputFormat::Json,
+                &cancelled,
+            )
+            .await
+        });
+        assert_eq!(code, 130, "first Ctrl-C stops the readiness wait");
+        assert_eq!(disconnects.load(Ordering::Relaxed), 1);
     }
 
     /// Ctrl-C set the cancel flag and printed "press again to force quit",

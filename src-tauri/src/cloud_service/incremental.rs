@@ -990,6 +990,15 @@ impl CloudService {
         if remote_state(provider, &to).await?.is_some() {
             return Err("the new name is taken on the remote".to_string());
         }
+        // A bridge can acknowledge the previous upload before a fresh
+        // connection can stat it. Do not turn that window into a fallback
+        // delete/upload. Folders are virtual prefixes, not readable objects.
+        if !rename.is_dir {
+            provider
+                .prepare_file_move(&from)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
         match remote_state(provider, &from).await? {
             Some(entry) if entry.is_dir == rename.is_dir => {}
             Some(_) => return Err("the remote copy is of another kind".to_string()),

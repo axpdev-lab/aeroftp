@@ -286,7 +286,7 @@ fn join_remote(root: &str, rel: &str) -> String {
     format!("{}/{}", root, rel.trim_start_matches('/'))
 }
 
-/// The three operations an archive needs from a remote, so the provider path
+/// The operations an archive needs from a remote, so the provider path
 /// and the GUI's own FTP session run the same archive code.
 #[async_trait]
 pub trait ArchiveRemote: Send {
@@ -297,6 +297,11 @@ pub trait ArchiveRemote: Send {
     /// Whether a file or folder is at `path`. An error means "could not
     /// tell", never "no".
     async fn path_exists(&mut self, path: &str) -> Result<bool, ProviderError>;
+    /// Wait for an acknowledged file to be published before checking its
+    /// existence. Ordinary remotes need no preparation.
+    async fn prepare_file_source(&mut self, _path: &str) -> Result<(), ProviderError> {
+        Ok(())
+    }
     async fn make_dir(&mut self, path: &str) -> Result<(), ProviderError>;
     async fn move_path(&mut self, from: &str, to: &str) -> Result<(), ProviderError>;
 }
@@ -314,6 +319,10 @@ impl ArchiveRemote for ProviderRemote<'_> {
     }
     async fn path_exists(&mut self, path: &str) -> Result<bool, ProviderError> {
         self.0.exists(path).await
+    }
+    async fn prepare_file_source(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.0.prepare_file_move(path).await?;
+        Ok(())
     }
     async fn make_dir(&mut self, path: &str) -> Result<(), ProviderError> {
         self.0.mkdir(path).await
@@ -413,6 +422,7 @@ pub async fn archive_remote_on<R: ArchiveRemote + ?Sized>(
     }
     let rel = rel.trim_start_matches("./").trim_start_matches('/');
     let source = join_remote(root, rel);
+    remote.prepare_file_source(&source).await?;
     if !remote.path_exists(&source).await? {
         return Ok(None);
     }
@@ -636,6 +646,8 @@ mod tests {
         files: BTreeSet<String>,
         dirs: BTreeSet<String>,
         leaf_only_rename: bool,
+        unpublished: BTreeSet<String>,
+        readiness_fails: bool,
         calls: Vec<String>,
     }
 
@@ -658,6 +670,8 @@ mod tests {
                 files: files.iter().map(|s| s.to_string()).collect(),
                 dirs,
                 leaf_only_rename: false,
+                unpublished: BTreeSet::new(),
+                readiness_fails: false,
                 calls: Vec::new(),
             }
         }
@@ -764,6 +778,15 @@ mod tests {
             self.files.insert(to.to_string());
             Ok(())
         }
+        async fn prepare_file_move(&mut self, path: &str) -> Result<(), ProviderError> {
+            if self.readiness_fails {
+                return Err(ProviderError::TransferFailed(
+                    "bridge has not published the source".into(),
+                ));
+            }
+            self.unpublished.remove(path);
+            Ok(())
+        }
         async fn stat(&mut self, _p: &str) -> Result<RemoteEntry, ProviderError> {
             Err(ProviderError::NotSupported("stat".into()))
         }
@@ -771,6 +794,9 @@ mod tests {
             Ok(0)
         }
         async fn exists(&mut self, p: &str) -> Result<bool, ProviderError> {
+            if self.unpublished.contains(p) {
+                return Ok(false);
+            }
             // Like FTP, which answers by listing the parent: a missing parent
             // is an error, not a "no".
             if !self.dirs.contains(&Self::parent(p)) {
@@ -784,6 +810,30 @@ mod tests {
         async fn server_info(&mut self) -> Result<String, ProviderError> {
             Ok("mem".into())
         }
+    }
+
+    #[tokio::test]
+    async fn filen_bridge_backup_waits_before_source_exists() {
+        let mut p = MemTree::new(ProviderType::S3, &["/r/fresh.dat"]);
+        p.unpublished.insert("/r/fresh.dat".into());
+        let archived = archive_remote(&mut p, "/r", &dir("versions"), "S", "fresh.dat")
+            .await
+            .expect("archive waits for publication");
+        assert_eq!(archived.as_deref(), Some("/r/versions/S/fresh.dat"));
+        assert!(p.files.contains("/r/versions/S/fresh.dat"));
+        assert!(!p.files.contains("/r/fresh.dat"));
+    }
+
+    #[tokio::test]
+    async fn filen_bridge_backup_readiness_error_preserves_source() {
+        let mut p = MemTree::new(ProviderType::S3, &["/r/fresh.dat"]);
+        p.readiness_fails = true;
+        let err = archive_remote(&mut p, "/r", &dir("versions"), "S", "fresh.dat")
+            .await
+            .expect_err("refuse before touching the archive");
+        assert!(err.to_string().contains("not published"));
+        assert!(p.calls.is_empty());
+        assert!(p.files.contains("/r/fresh.dat"));
     }
 
     #[tokio::test]
