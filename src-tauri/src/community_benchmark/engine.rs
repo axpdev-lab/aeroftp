@@ -21,10 +21,10 @@ use super::{
     benchmark_effective_prefix, benchmark_endpoint_kind, benchmark_mkdir_ladder,
     benchmark_provider_hint, benchmark_public_ip, benchmark_remote_roots,
     benchmark_remote_roots_from_prefix, benchmark_rounded_hour_utc, benchmark_signal_from,
-    benchmark_stats_from, benchmark_tod_bucket, note_trash_purge, BenchmarkCliMeta,
-    BenchmarkClient, BenchmarkConfig, BenchmarkConsent, BenchmarkEnvironment, BenchmarkErrors,
-    BenchmarkLevel, BenchmarkRawRun, BenchmarkReport, BenchmarkResult, BenchmarkSummary,
-    ManyFilesConfig, BENCHMARK_IP_CHANGED_WARNING,
+    benchmark_stats_from, benchmark_tod_bucket, note_trash_purge, trash_kept_note,
+    BenchmarkCliMeta, BenchmarkClient, BenchmarkConfig, BenchmarkConsent, BenchmarkEnvironment,
+    BenchmarkErrors, BenchmarkLevel, BenchmarkRawRun, BenchmarkReport, BenchmarkResult,
+    BenchmarkSummary, ManyFilesConfig, BENCHMARK_IP_CHANGED_WARNING,
 };
 use crate::providers::{ProviderError, ProviderType, StorageProvider};
 use crate::transfer_dag::TransferDirection;
@@ -47,7 +47,7 @@ const CLEANUP_STEP_TIMEOUT: Duration = Duration::from_secs(120);
 pub enum BenchmarkEvent<'a> {
     /// The shared `aeroftp-bench` base could not be created. Not fatal: the
     /// per-run folder is created with its parents right after.
-    BaseDirNotCreated { error: &'a str },
+    BaseDirNotCreated { path: &'a str, error: &'a str },
     /// The size sweep moved to a new payload size.
     Payload { size: u64 },
     /// One timed (or warmup) upload or download is about to start.
@@ -436,6 +436,7 @@ pub async fn run(
         }
         if let Some(e) = last_error {
             observer.event(BenchmarkEvent::BaseDirNotCreated {
+                path: &bench_base,
                 error: &e.to_string(),
             });
         }
@@ -443,6 +444,7 @@ pub async fn run(
         match until_stopped(&stop, provider.mkdir(&bench_base)).await {
             None | Some(Ok(())) | Some(Err(ProviderError::AlreadyExists(_))) => {}
             Some(Err(e)) => observer.event(BenchmarkEvent::BaseDirNotCreated {
+                path: &bench_base,
                 error: &e.to_string(),
             }),
         }
@@ -468,10 +470,7 @@ pub async fn run(
         Some(Err(e)) => {
             stopper.abort();
             let _ = bounded(provider.disconnect()).await;
-            return Err(format!(
-                "benchmark cannot create scratch dir '{}': {}. Provider may not allow folder creation in the configured root (try --test-root-prefix to point at a writable sub-path).",
-                test_root, e
-            ));
+            return Err(scratch_dir_error(&test_root, initial_path, &e));
         }
     };
 
@@ -480,6 +479,9 @@ pub async fn run(
     let mut total_bytes_transferred: u64 = 0;
     let mut total_runs: u32 = 0;
     let mut errors: Vec<String> = Vec::new();
+    // What cleanup leaves by design (a trash this login cannot empty): told
+    // as a note, not as an error.
+    let mut trash_notes: Vec<String> = Vec::new();
     let mut early_abort = false;
     let mut stopped = stop.is_cancelled();
     let mut fatal_failures: u32 = 0;
@@ -869,6 +871,7 @@ pub async fn run(
             fatal_failures += outcome.fatal;
             results.extend(outcome.results);
             errors.extend(outcome.errors);
+            trash_notes.extend(outcome.notes);
             if outcome.stopped {
                 stopped = true;
                 early_abort = true;
@@ -895,7 +898,15 @@ pub async fn run(
     // residual is logged as an error but does not invalidate the run. It runs
     // after a stop too: a stopped run leaves nothing behind.
     let rmdir_ok = if scratch_created {
-        match remove_and_purge(&mut provider, &test_root, &mut errors, observer).await {
+        match remove_and_purge(
+            &mut provider,
+            &test_root,
+            &mut errors,
+            &mut trash_notes,
+            observer,
+        )
+        .await
+        {
             Some(Ok(())) => true,
             Some(Err(e)) => {
                 errors.push(format!(
@@ -922,16 +933,37 @@ pub async fn run(
     // once more after the request has had time to settle.
     if rmdir_ok && stopped {
         tokio::time::sleep(Duration::from_secs(3)).await;
-        if let Some(Ok(true)) = bounded(provider.exists(&test_root)).await {
-            if !matches!(
-                remove_and_purge(&mut provider, &test_root, &mut errors, observer).await,
-                Some(Ok(()))
-            ) {
-                errors.push(format!(
-                    "cleanup of {} after the stop: it came back and could not be removed again (manual review may be needed)",
-                    test_root
-                ));
+        // Only a confirmed absence closes the cleanup: a check that failed or
+        // did not finish proves nothing, and the report says so (L2B-06).
+        match bounded(provider.exists(&test_root)).await {
+            Some(Ok(false)) => {}
+            Some(Ok(true)) => {
+                if !matches!(
+                    remove_and_purge(
+                        &mut provider,
+                        &test_root,
+                        &mut errors,
+                        &mut trash_notes,
+                        observer
+                    )
+                    .await,
+                    Some(Ok(()))
+                ) {
+                    errors.push(format!(
+                        "cleanup of {} after the stop: it came back and could not be removed again (manual review may be needed)",
+                        test_root
+                    ));
+                }
             }
+            Some(Err(e)) => errors.push(format!(
+                "cleanup of {} after the stop could not be verified: looking for it again failed: {} (manual review may be needed)",
+                test_root, e
+            )),
+            None => errors.push(format!(
+                "cleanup of {} after the stop could not be verified: looking for it again did not finish within {} s (manual review may be needed)",
+                test_root,
+                CLEANUP_STEP_TIMEOUT.as_secs()
+            )),
         }
     }
 
@@ -944,21 +976,29 @@ pub async fn run(
         // Drive/kDrive/MEGA before. Emptiness-guarded so a folder that
         // unexpectedly still holds data (soft-delete lag) is left in place
         // and reported, never force-deleted.
-        remove_if_empty(&mut provider, &bench_base, &mut errors, observer).await;
+        remove_if_empty(
+            &mut provider,
+            &bench_base,
+            &mut errors,
+            &mut trash_notes,
+            observer,
+        )
+        .await;
     } else {
         // The prefix folders this run created, deepest first, each only when
         // empty: a folder the user already had is not in the list, and the
         // first one still holding something stops the walk up.
         for dir in created_by_run.iter().rev() {
-            if !remove_if_empty(&mut provider, dir, &mut errors, observer).await {
+            if !remove_if_empty(&mut provider, dir, &mut errors, &mut trash_notes, observer).await {
                 break;
             }
         }
     }
-    let notes = provider
+    let mut notes: Vec<String> = provider
         .measurement_note()
         .map(|note| vec![note.to_string()])
         .unwrap_or_default();
+    notes.extend(trash_notes);
     let _ = bounded(provider.disconnect()).await;
 
     // Close the IP fairness check (issue #368 #1): if the public IP changed
@@ -1077,24 +1117,47 @@ fn proton_native(_concrete: &dyn std::any::Any) -> bool {
     false
 }
 
+/// Why the run could not start: the scratch folder, where it was created
+/// (a relative one lands in the profile's start folder) and the provider's
+/// answer, so a report names the folder that refused (#368, Ehud's OneDrive).
+pub(super) fn scratch_dir_error(
+    test_root: &str,
+    start_folder: &str,
+    error: &ProviderError,
+) -> String {
+    let start = if start_folder.trim().is_empty() {
+        "/"
+    } else {
+        start_folder.trim()
+    };
+    let place = if test_root.starts_with('/') {
+        String::new()
+    } else {
+        format!(" in the profile's start folder '{start}'")
+    };
+    format!(
+        "benchmark cannot create its scratch folder '{test_root}'{place}: {error}. The provider refused to create a folder there; check that the start folder exists and is writable, or point the run at a writable folder with --test-root-prefix."
+    )
+}
+
 /// Purge `path` from the provider's trash after a soft delete, and say so.
 async fn purge_from_trash(
     provider: &mut Box<dyn StorageProvider>,
     path: &str,
     errors: &mut Vec<String>,
+    notes: &mut Vec<String>,
     observer: &dyn BenchmarkObserver,
 ) {
+    // A provider that keeps a trash it cannot purge (pCloud through OAuth,
+    // Koofr): the folder stays there by design, which is a note, not a
+    // failed purge (#368, Ehud).
+    if let Some(reason) = provider.trash_left_unpurged() {
+        notes.push(trash_kept_note(path, reason));
+        return;
+    }
     match bounded(provider.delete_permanent(path)).await {
-        // `Ok(false)` means "no trash" by contract, unless the provider says
-        // it keeps one it cannot purge: then the folder stays there, and the
-        // report says so instead of passing over it.
-        Some(Ok(false)) => {
-            if let Some(note) = provider.trash_left_unpurged() {
-                errors.push(format!("trash purge of {} not done: {}", path, note));
-            }
-        }
         Some(outcome) => {
-            if note_trash_purge(path, outcome, errors) {
+            if note_trash_purge(path, outcome, errors, notes) {
                 observer.event(BenchmarkEvent::TrashPurged { path });
             }
         }
@@ -1119,6 +1182,7 @@ async fn remove_and_purge(
     provider: &mut Box<dyn StorageProvider>,
     path: &str,
     errors: &mut Vec<String>,
+    notes: &mut Vec<String>,
     observer: &dyn BenchmarkObserver,
 ) -> Option<Result<(), ProviderError>> {
     let live = provider.purges_live_path();
@@ -1150,7 +1214,7 @@ async fn remove_and_purge(
         return Some(Ok(()));
     }
     if !live && matches!(removed, Some(Ok(()))) {
-        purge_from_trash(provider, path, errors, observer).await;
+        purge_from_trash(provider, path, errors, notes, observer).await;
     }
     removed
 }
@@ -1162,6 +1226,7 @@ async fn remove_if_empty(
     provider: &mut Box<dyn StorageProvider>,
     dir: &str,
     errors: &mut Vec<String>,
+    notes: &mut Vec<String>,
     observer: &dyn BenchmarkObserver,
 ) -> bool {
     let empty = match bounded(provider.list(dir)).await {
@@ -1181,7 +1246,7 @@ async fn remove_if_empty(
     // the test_root, refusal included: its result used to be dropped, so a
     // folder left in the bin said nothing (#368).
     if matches!(
-        remove_and_purge(provider, dir, errors, observer).await,
+        remove_and_purge(provider, dir, errors, notes, observer).await,
         Some(Ok(()))
     ) {
         true
@@ -1226,6 +1291,8 @@ struct ManyFilesOutcome {
     bytes_transferred: u64,
     runs: u32,
     errors: Vec<String>,
+    /// What the run left by design, as the trash a client cannot empty.
+    notes: Vec<String>,
     /// Files of a batch that failed.
     fatal: u32,
     stopped: bool,
@@ -1318,6 +1385,7 @@ async fn run_many_files_workload(
         bytes_transferred: 0,
         runs: 0,
         errors: Vec::new(),
+        notes: Vec::new(),
         fatal: 0,
         stopped: false,
     };
@@ -1666,6 +1734,7 @@ async fn run_many_files_workload(
         stop,
         budget,
         &mut out.errors,
+        &mut out.notes,
     )
     .await;
 
@@ -1692,13 +1761,14 @@ pub(super) async fn purge_deleted_files_with_identities(
     stop: &CancellationToken,
     budget: Duration,
     errors: &mut Vec<String>,
+    notes: &mut Vec<String>,
 ) {
     if deleted.is_empty() {
         return;
     }
     if let Some(reason) = provider.trash_left_unpurged() {
-        errors.push(format!(
-            "{} files the many-files workload deleted stay in the provider's trash: {}",
+        notes.push(format!(
+            "the {} files the many-files workload deleted went to the provider's trash and stay there: {}",
             deleted.len(),
             reason
         ));
@@ -1729,6 +1799,16 @@ pub(super) async fn purge_deleted_files_with_identities(
                 });
             }
             Ok(Some(Ok(false))) => {}
+            // The client cannot purge here by design: every file would
+            // answer the same, and that is a note, not a failure.
+            Ok(Some(Err(ProviderError::NotSupported(why)))) if failed == 0 => {
+                notes.push(format!(
+                    "the {} files the many-files workload deleted went to the provider's trash and stay there: {}",
+                    deleted.len(),
+                    why
+                ));
+                return;
+            }
             Ok(Some(Err(e))) => {
                 failed += 1;
                 first_error.get_or_insert_with(|| e.to_string());

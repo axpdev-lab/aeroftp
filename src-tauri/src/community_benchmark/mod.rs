@@ -848,16 +848,22 @@ pub fn benchmark_mkdir_ladder(path: &str) -> Vec<String> {
     out
 }
 
-/// The benchmark's word on the trash purge of `path`: `true` when it purged, a
-/// line in `errors` when the provider refused or failed, nothing when there
-/// was nothing to purge.
+/// The benchmark's word on the trash purge of `path`: `true` when it purged;
+/// a note when this client cannot purge that trash by design (the folder was
+/// deleted and stays in the provider's trash, #368); a line in `errors` when
+/// the purge failed; nothing when there was nothing to purge.
 fn note_trash_purge(
     path: &str,
     outcome: Result<bool, ProviderError>,
     errors: &mut Vec<String>,
+    notes: &mut Vec<String>,
 ) -> bool {
     match outcome {
         Ok(purged) => purged,
+        Err(ProviderError::NotSupported(why)) => {
+            notes.push(trash_kept_note(path, &why));
+            false
+        }
         Err(e) => {
             errors.push(format!(
                 "trash purge of {} failed, check the provider's trash: {}",
@@ -866,6 +872,16 @@ fn note_trash_purge(
             false
         }
     }
+}
+
+/// The note for a folder the run deleted that stays in the provider's trash,
+/// because this client cannot empty it: what happened first, then the
+/// provider's reason and where to empty it.
+fn trash_kept_note(path: &str, reason: &str) -> String {
+    format!(
+        "{} was deleted and stays in the provider's trash: {}",
+        path, reason
+    )
 }
 
 // ── Sanitization ──────────────────────────────────────────────────────

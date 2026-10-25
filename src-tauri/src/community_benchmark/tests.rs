@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-use super::engine::{many_files_result, purge_deleted_files_with_identities};
+use super::engine::{many_files_result, purge_deleted_files_with_identities, scratch_dir_error};
 use super::*;
 
 #[test]
@@ -76,20 +76,74 @@ fn benchmark_resolve_config_quick_defaults() {
 
 #[test]
 fn a_refused_trash_purge_is_reported() {
-    let mut errors = Vec::new();
-    assert!(!note_trash_purge("aeroftp-bench", Ok(false), &mut errors));
-    assert!(note_trash_purge("aeroftp-bench", Ok(true), &mut errors));
+    let (mut errors, mut notes) = (Vec::new(), Vec::new());
+    assert!(!note_trash_purge(
+        "aeroftp-bench",
+        Ok(false),
+        &mut errors,
+        &mut notes
+    ));
+    assert!(note_trash_purge(
+        "aeroftp-bench",
+        Ok(true),
+        &mut errors,
+        &mut notes
+    ));
     assert!(errors.is_empty(), "{errors:?}");
     assert!(!note_trash_purge(
         "aeroftp-bench",
         Err(ProviderError::Other("2 items named 'aeroftp-bench'".into())),
         &mut errors,
+        &mut notes,
     ));
+    assert!(notes.is_empty(), "{notes:?}");
     assert_eq!(errors.len(), 1);
     assert!(
         errors[0].starts_with("trash purge of aeroftp-bench failed")
             && errors[0].ends_with("2 items named 'aeroftp-bench'"),
         "{errors:?}"
+    );
+}
+
+/// #368 (Ehud's OneDrive): the error of a scratch folder that could not be
+/// made names the folder and where it was made, so a report says which
+/// folder the provider refused.
+#[test]
+fn ehud_368_a_refused_scratch_folder_names_where_it_was_made() {
+    let error = ProviderError::Other("mkdir failed: itemNotFound".into());
+    let relative = scratch_dir_error("aeroftp-bench/run", "", &error);
+    assert!(
+        relative.starts_with(
+            "benchmark cannot create its scratch folder 'aeroftp-bench/run' in the profile's start folder '/': mkdir failed: itemNotFound"
+        ),
+        "{relative}"
+    );
+    let absolute = scratch_dir_error("/Docs/aeroftp-bench/run", "/Docs", &error);
+    assert!(
+        absolute
+            .starts_with("benchmark cannot create its scratch folder '/Docs/aeroftp-bench/run': "),
+        "{absolute}"
+    );
+}
+
+/// #368 (Ehud): a client that cannot purge its provider's trash by design
+/// (pCloud through OAuth) is told as a note: the folder was deleted and stays
+/// in the trash. It is not a failed purge.
+#[test]
+fn a_trash_this_login_cannot_purge_is_a_note_not_a_failure() {
+    let (mut errors, mut notes) = (Vec::new(), Vec::new());
+    assert!(!note_trash_purge(
+        "aeroftp-bench",
+        Err(ProviderError::NotSupported(
+            "an OAuth login cannot empty it".into()
+        )),
+        &mut errors,
+        &mut notes,
+    ));
+    assert!(errors.is_empty(), "{errors:?}");
+    assert_eq!(
+        notes,
+        ["aeroftp-bench was deleted and stays in the provider's trash: an OAuth login cannot empty it"]
     );
 }
 
@@ -571,6 +625,8 @@ mod engine_runs {
         refuse_uploads: bool,
         /// Every download waits forever, as from an unreachable server.
         hang_downloads: bool,
+        /// Every existence check fails, as on a connection that dropped.
+        fail_exists: bool,
     }
 
     struct MemRemote(Arc<Mutex<Remote>>);
@@ -714,6 +770,9 @@ mod engine_runs {
         }
         async fn exists(&mut self, p: &str) -> Result<bool, ProviderError> {
             let r = self.0.lock().unwrap();
+            if r.fail_exists {
+                return Err(ProviderError::ConnectionFailed("connection reset".into()));
+            }
             Ok(r.files.contains_key(p) || r.dirs.contains(p))
         }
         async fn keep_alive(&mut self) -> Result<(), ProviderError> {
@@ -748,6 +807,40 @@ mod engine_runs {
             local_endpoint: false,
             cancel,
         }
+    }
+
+    /// Audit L2B-06: after a stop the engine looks again for the run folder,
+    /// which a transfer cut short can bring back. A look that fails proves
+    /// nothing: the report says the cleanup could not be verified instead of
+    /// passing for a clean one.
+    #[tokio::test]
+    async fn a_post_stop_check_that_fails_is_reported_as_unverified() {
+        let (state, provider) = remote();
+        state.lock().unwrap().fail_exists = true;
+        let token = CancellationToken::new();
+        let observer = CancelOn {
+            operation: "download",
+            token: token.clone(),
+        };
+        let outcome = run(
+            provider,
+            "/data",
+            options(BenchmarkLevel::Quick, "1K", Some(token)),
+            &observer,
+        )
+        .await
+        .unwrap();
+        assert!(outcome.cancelled);
+        assert!(
+            outcome
+                .report
+                .summary
+                .errors
+                .iter()
+                .any(|e| e.contains("could not be verified") && e.contains("connection reset")),
+            "{:?}",
+            outcome.report.summary.errors
+        );
     }
 
     struct Silent;
@@ -1060,7 +1153,7 @@ mod engine_runs {
     }
 
     #[tokio::test]
-    async fn a_trash_the_run_cannot_purge_is_reported_not_passed_over() {
+    async fn a_trash_the_run_cannot_purge_is_a_note_not_passed_over() {
         let (_state, _trash, provider) = trash_remote(TrashKind::Unpurgeable);
         let outcome = run(
             provider,
@@ -1070,13 +1163,22 @@ mod engine_runs {
         )
         .await
         .unwrap();
+        // #368 (Ehud): told, as a note: the folder was deleted and stays in
+        // the trash by design, which is not a failed purge.
         assert!(
-            outcome
+            outcome.report.notes.iter().any(|n| n
+                .contains("was deleted and stays in the provider's trash")
+                && n.contains("keeps deleted items in its trash")),
+            "{:?}",
+            outcome.report.notes
+        );
+        assert!(
+            !outcome
                 .report
                 .summary
                 .errors
                 .iter()
-                .any(|e| e.contains("keeps deleted items in its trash")),
+                .any(|e| e.contains("trash")),
             "{:?}",
             outcome.report.summary.errors
         );
@@ -1205,10 +1307,19 @@ mod engine_runs {
         assert!(
             outcome
                 .report
+                .notes
+                .iter()
+                .any(|n| n.contains("3 files the many-files workload deleted")),
+            "{:?}",
+            outcome.report.notes
+        );
+        assert!(
+            !outcome
+                .report
                 .summary
                 .errors
                 .iter()
-                .any(|e| e.contains("3 files the many-files workload deleted")),
+                .any(|e| e.contains("trash")),
             "{:?}",
             outcome.report.summary.errors
         );
@@ -1285,6 +1396,7 @@ mod engine_runs {
                 &CancellationToken::new(),
                 std::time::Duration::from_millis(200),
                 &mut errors,
+                &mut Vec::new(),
             ),
         )
         .await
@@ -1314,6 +1426,7 @@ mod engine_runs {
             &stop,
             std::time::Duration::from_secs(120),
             &mut errors,
+            &mut Vec::new(),
         )
         .await;
         // The stop came during the first purge, which finished; the other

@@ -127,6 +127,10 @@ fn trash_refused_to_oauth() -> ProviderError {
     )
 }
 
+/// Why a pCloud folder AeroFTP deleted stays in the trash.
+pub(crate) const PCLOUD_TRASH_NOT_PURGED: &str =
+    "pCloud keeps deleted items in its trash and an OAuth login cannot empty it; empty the Trash on pcloud.com to free the space";
+
 /// Live DAG-P1-05C blocker: concurrent `upload_write` on one `uploadid`
 /// returns result `2068` ("Error writing to upload"). Serial multipart still
 /// works (with occasional retry). Promotion to `HttpClonePool` is therefore
@@ -743,6 +747,13 @@ impl PCloudProvider {
 impl StorageProvider for PCloudProvider {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
+    }
+
+    /// A delete moves to pCloud's trash, and an OAuth login cannot empty it
+    /// (see [`trash_refused_to_oauth`]): a benchmark or a cleanup says the
+    /// folder stays there instead of reporting a failed purge (#368).
+    fn trash_left_unpurged(&self) -> Option<&'static str> {
+        Some(PCLOUD_TRASH_NOT_PURGED)
     }
 
     fn provider_type(&self) -> ProviderType {
