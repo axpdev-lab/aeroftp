@@ -28,6 +28,10 @@ use std::sync::RwLock;
 #[path = "webdav_owncloud_tests.rs"]
 mod owncloud_tests;
 
+#[cfg(test)]
+#[path = "webdav_nextcloud_purge_tests.rs"]
+mod nextcloud_purge_tests;
+
 use super::{
     sanitize_api_error, MultipartHandle, ProviderError, ProviderListExecutorKind,
     ProviderTransferExecutorKind, ProviderType, RemoteEntry, ShareLinkCapabilities,
@@ -78,6 +82,11 @@ pub struct NextcloudTrashEntry {
     pub size: u64,
     /// Whether this is a directory.
     pub is_dir: bool,
+    /// `oc:fileid` when the trashbin PROPFIND returned one. Empty when it did
+    /// not. The id is the live file's id, so a purge can name that item and
+    /// leave every other item of the same original location alone.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub file_id: String,
 }
 
 // ============ HTTP Digest Authentication (RFC 2617) ============
@@ -661,6 +670,235 @@ const WEBDAV_LIST_MAX_SESSIONS: u16 = 8;
 /// provider lock while it waits, so a `Retry-After` of minutes would freeze
 /// the file browser; past this budget the refusal is returned at once.
 const LIST_RETRY_BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Live `oc:fileid` lookup. The trashbin PROPFIND asks for the same property
+/// after the delete; this one runs before it, on the file's parent.
+const NEXTCLOUD_FILE_ID_PROPFIND: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
+    <d:prop>
+        <oc:fileid/>
+    </d:prop>
+</d:propfind>"#;
+
+/// One propstat's fields. A 404 propstat is staged here and kept only when
+/// its status is missing or 200, so a later "not found" block cannot replace
+/// the file id or the original location.
+#[derive(Default)]
+struct TrashPropBuf {
+    href: String,
+    filename: String,
+    location: String,
+    deletion_time: String,
+    content_length: String,
+    file_id: String,
+    is_collection: bool,
+}
+
+impl TrashPropBuf {
+    fn clear(&mut self) {
+        *self = Self::default();
+    }
+
+    /// Copy each field the destination does not already have.
+    fn take_missing_from(&mut self, from: &Self) {
+        Self::fill(&mut self.href, &from.href);
+        Self::fill(&mut self.filename, &from.filename);
+        Self::fill(&mut self.location, &from.location);
+        Self::fill(&mut self.deletion_time, &from.deletion_time);
+        Self::fill(&mut self.content_length, &from.content_length);
+        Self::fill(&mut self.file_id, &from.file_id);
+        self.is_collection |= from.is_collection;
+    }
+
+    fn fill(dest: &mut String, src: &str) {
+        if dest.is_empty() && !src.is_empty() {
+            dest.push_str(src);
+        }
+    }
+
+    /// Append one text or entity fragment. Indentation is dropped except in
+    /// the name-bearing tags, where a space between entities is part of the
+    /// name (`a&amp; &amp;b.txt`).
+    fn push_fragment(&mut self, tag: &str, raw: &str) {
+        let payload = matches!(
+            tag,
+            "href" | "trashbin-filename" | "trashbin-original-location"
+        );
+        if raw.trim().is_empty() && !payload {
+            return;
+        }
+        match tag {
+            "href" => self.href.push_str(raw),
+            "trashbin-filename" => self.filename.push_str(raw),
+            "trashbin-original-location" => self.location.push_str(raw),
+            "trashbin-deletion-time" => self.deletion_time.push_str(raw),
+            "getcontentlength" => self.content_length.push_str(raw),
+            "fileid" => self.file_id.push_str(raw),
+            _ => {}
+        }
+    }
+}
+
+fn active_trash_buf<'a>(
+    kept: &'a mut TrashPropBuf,
+    staged: &'a mut TrashPropBuf,
+    in_propstat: bool,
+) -> &'a mut TrashPropBuf {
+    if in_propstat {
+        staged
+    } else {
+        kept
+    }
+}
+
+/// A propstat with no status element is the shape older trash fixtures use,
+/// and a 200 keeps the values. `1200` and `404` do not: the code is one
+/// whitespace-separated token, so a longer number is not a success.
+fn trash_propstat_succeeded(status: &str) -> bool {
+    let status = status.trim();
+    if status.is_empty() {
+        return true;
+    }
+    status.split_whitespace().any(|token| token == "200")
+}
+
+/// Original-location key. Leading and trailing slashes are ignored. The
+/// remaining text matches exactly, including case and Unicode.
+fn nextcloud_trash_location(path: &str) -> String {
+    path.trim().trim_matches('/').to_string()
+}
+
+/// An empty id, `.`, `..`, or an id that still contains `/` would address
+/// the trash collection or leave it. Those are refused before DELETE.
+fn nextcloud_trash_id_is_one_segment(id: &str) -> bool {
+    let id = id.trim();
+    !id.is_empty() && id != "." && id != ".." && !id.contains('/')
+}
+
+/// Parent collection and exact final segment of a caller path. `.` and `..`
+/// are not names that can be matched against a listing.
+fn nextcloud_parent_and_name(path: &str) -> Option<(String, String)> {
+    let trimmed = path.trim().trim_matches('/');
+    if trimmed.is_empty() {
+        return None;
+    }
+    let (parent, name) = match trimmed.rfind('/') {
+        Some(cut) => (
+            format!("/{}", &trimmed[..cut]),
+            trimmed[cut + 1..].to_string(),
+        ),
+        None => ("/".to_string(), trimmed.to_string()),
+    };
+    if name.is_empty() || name == "." || name == ".." {
+        None
+    } else {
+        Some((parent, name))
+    }
+}
+
+struct ListedFileId {
+    href: String,
+    file_id: String,
+}
+
+/// Depth-1 file-id listing. A 404 propstat's file id is ignored. A reader
+/// error fails the listing: a partial parse would look like "no file id".
+fn parse_nextcloud_file_id_listing(xml: &str) -> Result<Vec<ListedFileId>, ProviderError> {
+    let mut found = Vec::new();
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    let mut buf = Vec::new();
+    let mut in_response = false;
+    let mut in_propstat = false;
+    let mut current_tag: Option<String> = None;
+    let mut href = String::new();
+    let mut staged_id = String::new();
+    let mut kept_id = String::new();
+    let mut propstat_status = String::new();
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Err(error) => return Err(ProviderError::ParseError(error.to_string())),
+            Ok(Event::Eof) => break,
+            Ok(Event::Start(ref event)) => {
+                let tag = event.local_name().as_ref().to_string();
+                match tag.as_str() {
+                    "response" => {
+                        in_response = true;
+                        in_propstat = false;
+                        href.clear();
+                        staged_id.clear();
+                        kept_id.clear();
+                        propstat_status.clear();
+                        current_tag = None;
+                    }
+                    "propstat" if in_response => {
+                        in_propstat = true;
+                        staged_id.clear();
+                        propstat_status.clear();
+                    }
+                    _ if in_response => current_tag = Some(tag),
+                    _ => {}
+                }
+            }
+            Ok(Event::End(ref event)) => {
+                let tag = event.local_name().as_ref().to_string();
+                match tag.as_str() {
+                    "propstat" if in_propstat => {
+                        in_propstat = false;
+                        if trash_propstat_succeeded(&propstat_status)
+                            && kept_id.is_empty()
+                            && !staged_id.is_empty()
+                        {
+                            kept_id.push_str(&staged_id);
+                        }
+                        current_tag = None;
+                    }
+                    "response" if in_response => {
+                        in_response = false;
+                        if !href.trim().is_empty() {
+                            found.push(ListedFileId {
+                                href: std::mem::take(&mut href),
+                                file_id: kept_id.trim().to_string(),
+                            });
+                        }
+                    }
+                    _ => {
+                        if current_tag.as_deref() == Some(tag.as_str()) {
+                            current_tag = None;
+                        }
+                    }
+                }
+            }
+            Ok(Event::Text(ref event)) => {
+                if let Some(ref tag) = current_tag {
+                    let raw = event.as_ref().to_string();
+                    if tag == "status" && in_propstat {
+                        propstat_status.push_str(&raw);
+                    } else if tag == "href" && !in_propstat {
+                        href.push_str(&raw);
+                    } else if tag == "fileid" && in_propstat && !raw.trim().is_empty() {
+                        staged_id.push_str(&raw);
+                    }
+                }
+            }
+            Ok(Event::GeneralRef(ref event)) => {
+                if let Some(ch) = super::xml_text::xml_entity_to_str(event.as_ref()) {
+                    if let Some(ref tag) = current_tag {
+                        if tag == "href" && !in_propstat {
+                            href.push_str(&ch);
+                        } else if tag == "fileid" && in_propstat {
+                            staged_id.push_str(&ch);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        buf.clear();
+    }
+    Ok(found)
+}
 
 impl WebDavProvider {
     /// Create a new WebDAV provider with the given configuration
@@ -2211,6 +2449,7 @@ impl WebDavProvider {
                     <nc:trashbin-filename/>
                     <nc:trashbin-original-location/>
                     <nc:trashbin-deletion-time/>
+                    <oc:fileid/>
                     <d:getcontentlength/>
                     <d:resourcetype/>
                 </d:prop>
@@ -2241,6 +2480,10 @@ impl WebDavProvider {
     }
 
     /// Parse trashbin PROPFIND XML into entries.
+    ///
+    /// Properties are taken from a propstat whose status is missing or 200.
+    /// A following 404 propstat (Nextcloud reports each missing property that
+    /// way) must not replace the file id or the original location.
     fn parse_trashbin_response(
         &self,
         xml: &str,
@@ -2254,13 +2497,11 @@ impl WebDavProvider {
         let mut buf = Vec::new();
 
         let mut in_response = false;
+        let mut in_propstat = false;
         let mut current_tag: Option<String> = None;
-        let mut href = String::new();
-        let mut trash_filename = String::new();
-        let mut trash_location = String::new();
-        let mut trash_deletion_time = String::new();
-        let mut content_length = String::new();
-        let mut is_collection = false;
+        let mut kept = TrashPropBuf::default();
+        let mut staged = TrashPropBuf::default();
+        let mut propstat_status = String::new();
         let mut in_resourcetype = false;
 
         loop {
@@ -2272,18 +2513,24 @@ impl WebDavProvider {
                     match tag.as_str() {
                         "response" => {
                             in_response = true;
-                            href.clear();
-                            trash_filename.clear();
-                            trash_location.clear();
-                            trash_deletion_time.clear();
-                            content_length.clear();
-                            is_collection = false;
+                            in_propstat = false;
+                            kept.clear();
+                            staged.clear();
+                            propstat_status.clear();
+                            in_resourcetype = false;
+                        }
+                        "propstat" if in_response => {
+                            in_propstat = true;
+                            staged.clear();
+                            propstat_status.clear();
+                            in_resourcetype = false;
                         }
                         "resourcetype" => {
                             in_resourcetype = true;
                         }
                         "collection" if in_resourcetype => {
-                            is_collection = true;
+                            active_trash_buf(&mut kept, &mut staged, in_propstat).is_collection =
+                                true;
                         }
                         _ if in_response => {
                             current_tag = Some(tag);
@@ -2295,33 +2542,45 @@ impl WebDavProvider {
                     let local = e.local_name();
                     let tag = local.as_ref();
                     if tag == "collection" && in_resourcetype {
-                        is_collection = true;
+                        active_trash_buf(&mut kept, &mut staged, in_propstat).is_collection = true;
                     }
                 }
                 Ok(Event::End(ref e)) => {
                     let local = e.local_name();
                     let tag = local.as_ref();
                     match tag {
+                        "propstat" if in_propstat => {
+                            in_propstat = false;
+                            if trash_propstat_succeeded(&propstat_status) {
+                                kept.take_missing_from(&staged);
+                            }
+                            current_tag = None;
+                        }
                         "response" if in_response => {
                             in_response = false;
-                            // Skip the collection itself (the trash/ container)
-                            if !trash_filename.is_empty() {
-                                let encoded_id =
-                                    href.rsplit('/').find(|s| !s.is_empty()).unwrap_or("");
+                            // Skip the collection itself (the trash/ container).
+                            if !kept.filename.trim().is_empty() {
+                                let encoded_id = kept
+                                    .href
+                                    .rsplit('/')
+                                    .find(|segment| !segment.is_empty())
+                                    .unwrap_or("");
                                 let id = percent_decode_str(encoded_id)
                                     .decode_utf8()
                                     .map_err(|e| ProviderError::ParseError(e.to_string()))?
                                     .into_owned();
                                 entries.push(NextcloudTrashEntry {
                                     id,
-                                    name: trash_filename.trim().to_string(),
-                                    original_path: trash_location.trim().to_string(),
-                                    deleted_at: trash_deletion_time
+                                    name: kept.filename.trim().to_string(),
+                                    original_path: kept.location.trim().to_string(),
+                                    deleted_at: kept
+                                        .deletion_time
                                         .trim()
                                         .parse::<u64>()
                                         .unwrap_or(0),
-                                    size: content_length.trim().parse::<u64>().unwrap_or(0),
-                                    is_dir: is_collection,
+                                    size: kept.content_length.trim().parse::<u64>().unwrap_or(0),
+                                    is_dir: kept.is_collection,
+                                    file_id: kept.file_id.trim().to_string(),
                                 });
                             }
                         }
@@ -2336,22 +2595,11 @@ impl WebDavProvider {
                 Ok(Event::Text(ref e)) => {
                     if let Some(ref tag) = current_tag {
                         let raw = e.as_ref().to_string();
-                        // Whitespace-only fragments are indentation EXCEPT
-                        // inside name/path-bearing tags, where the space is
-                        // payload (e.g. `a&amp; &amp;b.txt`).
-                        let payload_tag = matches!(
-                            tag.as_str(),
-                            "href" | "trashbin-filename" | "trashbin-original-location"
-                        );
-                        if !raw.trim().is_empty() || payload_tag {
-                            match tag.as_str() {
-                                "href" => href.push_str(&raw),
-                                "trashbin-filename" => trash_filename.push_str(&raw),
-                                "trashbin-original-location" => trash_location.push_str(&raw),
-                                "trashbin-deletion-time" => trash_deletion_time.push_str(&raw),
-                                "getcontentlength" => content_length.push_str(&raw),
-                                _ => {}
-                            }
+                        if tag == "status" && in_propstat {
+                            propstat_status.push_str(&raw);
+                        } else {
+                            active_trash_buf(&mut kept, &mut staged, in_propstat)
+                                .push_fragment(tag, &raw);
                         }
                     }
                 }
@@ -2360,13 +2608,9 @@ impl WebDavProvider {
                     // names containing these characters are not silently truncated.
                     if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
                         if let Some(ref tag) = current_tag {
-                            match tag.as_str() {
-                                "href" => href.push_str(&ch),
-                                "trashbin-filename" => trash_filename.push_str(&ch),
-                                "trashbin-original-location" => trash_location.push_str(&ch),
-                                "trashbin-deletion-time" => trash_deletion_time.push_str(&ch),
-                                "getcontentlength" => content_length.push_str(&ch),
-                                _ => {}
+                            if tag != "status" {
+                                active_trash_buf(&mut kept, &mut staged, in_propstat)
+                                    .push_fragment(tag, &ch);
                             }
                         }
                     }
@@ -2466,6 +2710,142 @@ impl WebDavProvider {
             )));
         }
         Ok(())
+    }
+
+    /// Purge the one trashbin row whose original location is `path`.
+    ///
+    /// A captured `oc:fileid` has to match as well. Deletion time is not a
+    /// key: it does not exist before the delete, and the newest row can be
+    /// a different generation of the same path. Zero matches purge nothing.
+    /// Two matches are refused. The trash collection itself is never deleted.
+    async fn purge_nextcloud_trash(
+        &mut self,
+        path: &str,
+        identity: Option<&str>,
+    ) -> Result<bool, ProviderError> {
+        if !self.is_nextcloud() {
+            return Ok(false);
+        }
+        let location = nextcloud_trash_location(path);
+        if location.is_empty() {
+            return Ok(false);
+        }
+        let identity = identity.map(str::trim).filter(|id| !id.is_empty());
+        let entries = self.nextcloud_list_trash().await?;
+        let matches = entries
+            .into_iter()
+            .filter(|entry| nextcloud_trash_location(&entry.original_path) == location)
+            .filter(|entry| match identity {
+                Some(id) => entry.file_id.trim() == id,
+                None => true,
+            })
+            .collect();
+        let Some(entry) = super::the_one_trashed_item(path, matches)? else {
+            return Ok(false);
+        };
+        let id = entry.id.trim();
+        if !nextcloud_trash_id_is_one_segment(id) {
+            return Err(ProviderError::ServerError(format!(
+                "Not purged: trash item id for {path} is empty or not a single segment"
+            )));
+        }
+        self.nextcloud_delete_trash_item(id).await?;
+        Ok(true)
+    }
+
+    /// One Depth-1 PROPFIND of `parent`, asking only for `oc:fileid`.
+    /// The collection itself is left out. A 404 propstat's id is left out
+    /// by the parser.
+    async fn nextcloud_list_file_ids(
+        &mut self,
+        parent: &str,
+    ) -> Result<Vec<(String, String)>, ProviderError> {
+        let collection = Self::collection_path(parent);
+        // Same self-reference rule as `parse_propfind_response`: the request
+        // URL, the listing path, and the configured root, compared as decoded
+        // segments. A suffix match would drop a child named like its parent.
+        let request_path =
+            Self::dav_path_segments(Self::url_path_component(&self.build_url(&collection)), &[]);
+        let listing_path =
+            Self::dav_path_segments(&Self::encode_path(collection.trim_start_matches('/')), &[]);
+        let root_path = Self::dav_path_segments(Self::url_path_component(&self.config.url), &[]);
+        let response = self
+            .send_propfind(parent, "1", NEXTCLOUD_FILE_ID_PROPFIND)
+            .await?;
+        if !matches!(response.status(), StatusCode::OK | StatusCode::MULTI_STATUS) {
+            return Err(ProviderError::ServerError(format!(
+                "File id PROPFIND failed: HTTP {}",
+                response.status()
+            )));
+        }
+        let xml = response
+            .text()
+            .await
+            .map_http_err(|error| ProviderError::ParseError(error.to_string()))?;
+        let mut found = Vec::new();
+        for hit in parse_nextcloud_file_id_listing(&xml)? {
+            let file_id = hit.file_id.trim();
+            if file_id.is_empty() {
+                continue;
+            }
+            let href_path = Self::dav_path_segments(hit.href.trim(), &request_path);
+            if href_path == request_path || href_path == listing_path || href_path == root_path {
+                continue;
+            }
+            let Some(leaf) = href_path.last() else {
+                continue;
+            };
+            found.push((leaf.clone(), file_id.to_string()));
+        }
+        Ok(found)
+    }
+
+    /// Group the paths by parent and read each parent's file ids once.
+    /// A failed listing fails every path in that group. Two rows with the
+    /// same name are refused, so the later purge cannot pick one of them.
+    async fn capture_nextcloud_file_ids(
+        &mut self,
+        paths: &[String],
+    ) -> Vec<Result<Option<String>, ProviderError>> {
+        let mut results = Vec::with_capacity(paths.len());
+        results.resize_with(paths.len(), || Ok(None));
+        let mut groups: Vec<(String, Vec<(usize, String)>)> = Vec::new();
+        for (index, path) in paths.iter().enumerate() {
+            let Some((parent, name)) = nextcloud_parent_and_name(path) else {
+                continue;
+            };
+            if let Some((_, members)) = groups.iter_mut().find(|(have, _)| have == &parent) {
+                members.push((index, name));
+            } else {
+                groups.push((parent, vec![(index, name)]));
+            }
+        }
+        for (parent, members) in groups {
+            let listed = match self.nextcloud_list_file_ids(&parent).await {
+                Ok(listed) => listed,
+                Err(error) => {
+                    let message = error.to_string();
+                    for (index, _) in members {
+                        results[index] = Err(ProviderError::Other(message.clone()));
+                    }
+                    continue;
+                }
+            };
+            for (index, name) in members {
+                let mut ids = listed
+                    .iter()
+                    .filter(|(leaf, _)| leaf == &name)
+                    .map(|(_, id)| id.as_str());
+                results[index] = match (ids.next(), ids.next()) {
+                    (None, _) => Ok(None),
+                    (Some(id), None) => Ok(Some(id.to_string())),
+                    (Some(_), Some(_)) => Err(ProviderError::ServerError(format!(
+                        "Not captured: more than one item named {name} is in {parent}"
+                    ))),
+                };
+            }
+        }
+        results
     }
 
     /// A new connection asks `Depth: infinity` afresh: what this session
@@ -3848,6 +4228,28 @@ impl StorageProvider for WebDavProvider {
         // The Koofr preset deletes into the same Koofr trash as the API.
         (self.config.provider_id.as_deref() == Some("koofr"))
             .then_some(super::koofr::KOOFR_TRASH_NOT_PURGED)
+    }
+
+    async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
+        self.purge_nextcloud_trash(path, None).await
+    }
+
+    async fn delete_permanent_with_identity(
+        &mut self,
+        path: &str,
+        identity: Option<&str>,
+    ) -> Result<bool, ProviderError> {
+        self.purge_nextcloud_trash(path, identity).await
+    }
+
+    async fn capture_trash_identities(
+        &mut self,
+        paths: &[String],
+    ) -> Vec<Result<Option<String>, ProviderError>> {
+        if !self.is_nextcloud() {
+            return paths.iter().map(|_| Ok(None)).collect();
+        }
+        self.capture_nextcloud_file_ids(paths).await
     }
 
     async fn cd_up(&mut self) -> Result<(), ProviderError> {
