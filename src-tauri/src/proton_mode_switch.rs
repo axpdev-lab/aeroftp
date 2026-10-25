@@ -369,9 +369,21 @@ pub(crate) fn plan_in(
             }
         }
     }
+    // Each new history file (and journal signature) with the old folder it
+    // comes from: two histories whose folders translate to one, such as
+    // `/my-files` and `/my-files/`, would write the same file and the later
+    // one would replace the other's baseline.
+    let mut targets: HashMap<PathBuf, &str> = HashMap::new();
     for history in moving {
         let local = history.text("local_path");
         let remote = history.text("remote_path");
+        if history.pending() {
+            // The run that wrote it may still be going, and it saves the
+            // journal under the old folder while the switch moves it.
+            plan.blockers.push(format!(
+                "a sync of {local} with {remote} is still pending: finish or discard it before switching mode"
+            ));
+        }
         let to_path = translate_path(remote, from, to);
         if let Some(target) = &to_path {
             let new_path =
@@ -382,6 +394,24 @@ pub(crate) fn plan_in(
                 plan.blockers.push(format!(
                     "a sync history of {local} with {target} already exists and records another profile or none: remove it from the sync history first"
                 ));
+            }
+            let mut new_files = vec![new_path];
+            if history.kind == HistoryKind::Journal {
+                let dir = history.path.parent().unwrap_or(Path::new(""));
+                new_files.push(dir.join(crate::sync::journal_sig_filename(local, target)));
+            }
+            for new_file in new_files {
+                if let Some(other) = targets.get(&new_file) {
+                    let blocker = format!(
+                        "the sync histories of {local} with {other} and with {remote} would both become the history of {target} in {} mode: remove one of them from the sync history first",
+                        to.label()
+                    );
+                    if !plan.blockers.contains(&blocker) {
+                        plan.blockers.push(blocker);
+                    }
+                    break;
+                }
+                targets.insert(new_file, remote);
             }
         }
         plan.changes.push(PathChange {
@@ -460,7 +490,17 @@ pub(crate) trait SwitchTargets {
         id: &str,
         to: ProtonMode,
         initial_path: Option<&str>,
-    ) -> Result<(), String>;
+    ) -> Result<(), ProfileStoreError>;
+}
+
+/// Why [`SwitchTargets::store_profile`] did not finish.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ProfileStoreError {
+    /// The stored profile is as it was: nothing was written, or what was
+    /// written has been put back.
+    NotSaved(String),
+    /// The profile was saved in the new mode and could not be put back.
+    Switched(String),
 }
 
 /// Applies a switch: the plan is made again, refused when anything blocks it,
@@ -590,12 +630,20 @@ pub(crate) fn apply_in(
         .iter()
         .find(|change| change.kind == "initialPath")
         .and_then(|change| change.to.clone());
-    if let Err(e) = targets.store_profile(&id, to, initial.as_deref()) {
-        if cloud_changed {
-            let _ = targets.store_cloud(cloud, pairs);
+    // A profile left in the new mode keeps the moved folders and histories:
+    // putting those back would point them at folders the profile no longer
+    // spells that way. The error says what happened.
+    let mut switched_anyway = None;
+    match targets.store_profile(&id, to, initial.as_deref()) {
+        Ok(()) => {}
+        Err(ProfileStoreError::NotSaved(e)) => {
+            if cloud_changed {
+                let _ = targets.store_cloud(cloud, pairs);
+            }
+            roll_back(&written);
+            return Err(format!("profile not saved, nothing was changed: {e}"));
         }
-        roll_back(&written);
-        return Err(format!("profile not saved, nothing was changed: {e}"));
+        Err(ProfileStoreError::Switched(e)) => switched_anyway = Some(e),
     }
 
     for old in &moved {
@@ -608,7 +656,76 @@ pub(crate) fn apply_in(
             }
         }
     }
+    if let Some(e) = switched_anyway {
+        return Err(format!(
+            "the profile is now in {} mode, but {e}; its folders and sync histories were moved with it",
+            to.label()
+        ));
+    }
     Ok(plan)
+}
+
+/// One edit of a profile list: true when it changed the list.
+type ProfileEdit<'a> = dyn FnMut(&mut Vec<Value>) -> bool + 'a;
+/// Runs an edit in the vault and answers the stored list and whether the edit
+/// was written.
+type ProfileUpdate<'a> = dyn FnMut(&mut ProfileEdit<'_>) -> Result<(Vec<Value>, bool), String> + 'a;
+/// Copies the stored profile list into the legacy blob.
+type ProfileMirror<'a> = dyn FnMut(&[Value]) -> Result<(), String> + 'a;
+
+/// Writes the mode on the profile in a partitioned vault, then mirrors the
+/// partition into the legacy profile list when `mirror` is given (the active
+/// account). The two writes are one change: when the mirror fails, the
+/// profile is put back as it was in the partition, and only a failure of
+/// that too leaves it switched. `update` is
+/// [`crate::user_partitions::cli_update_server_profiles_for_user`] for the
+/// account; tests pass an in-memory list.
+fn store_partitioned_profile(
+    id: &str,
+    to: ProtonMode,
+    initial_path: Option<&str>,
+    update: &mut ProfileUpdate<'_>,
+    mirror: Option<&mut ProfileMirror<'_>>,
+) -> Result<(), ProfileStoreError> {
+    let mut previous: Option<Value> = None;
+    let (stored, written) = update(&mut |profiles: &mut Vec<Value>| {
+        let Some(profile) = profiles.iter_mut().find(|p| field(p, "id") == id) else {
+            return false;
+        };
+        previous = Some(profile.clone());
+        set_mode(profile, to, initial_path);
+        true
+    })
+    .map_err(ProfileStoreError::NotSaved)?;
+    let Some(previous) = previous.filter(|_| written) else {
+        return Err(ProfileStoreError::NotSaved(
+            "the profile was removed in the meantime".to_string(),
+        ));
+    };
+    let Some(mirror) = mirror else {
+        return Ok(());
+    };
+    let Err(mirror_error) = mirror(&stored) else {
+        return Ok(());
+    };
+    let restored = update(&mut |profiles: &mut Vec<Value>| {
+        let Some(profile) = profiles.iter_mut().find(|p| field(p, "id") == id) else {
+            return false;
+        };
+        *profile = previous.clone();
+        true
+    });
+    match restored {
+        Ok((_, true)) => Err(ProfileStoreError::NotSaved(format!(
+            "the legacy profile list was not updated ({mirror_error}), and the profile was put back"
+        ))),
+        Ok((_, false)) => Err(ProfileStoreError::Switched(format!(
+            "the legacy profile list was not updated ({mirror_error}) and the profile could not be put back: it was removed in the meantime"
+        ))),
+        Err(restore_error) => Err(ProfileStoreError::Switched(format!(
+            "the legacy profile list was not updated ({mirror_error}) and putting the profile back failed ({restore_error})"
+        ))),
+    }
 }
 
 /// The app's and the CLI's stores: AeroCloud's config files, and the vault's
@@ -635,50 +752,46 @@ impl SwitchTargets for DiskTargets<'_> {
         id: &str,
         to: ProtonMode,
         initial_path: Option<&str>,
-    ) -> Result<(), String> {
-        let apply = |profiles: &mut Vec<Value>| {
-            let Some(profile) = profiles.iter_mut().find(|p| field(p, "id") == id) else {
-                return false;
-            };
-            set_mode(profile, to, initial_path);
-            true
-        };
+    ) -> Result<(), ProfileStoreError> {
+        let store = self.store;
         match self.user_id {
             Some(user) => {
-                let (stored, written) =
-                    crate::user_partitions::cli_update_server_profiles_for_user(
-                        self.store, user, apply,
-                    )?;
-                if !written {
-                    return Err("the profile was removed in the meantime".to_string());
-                }
-                let active = crate::user_partitions::cli_get_active_user(self.store)
+                let active = crate::user_partitions::cli_get_active_user(store)
                     .ok()
                     .flatten()
                     .map(|user| user.id);
-                if active == Some(user) {
-                    crate::user_partitions::mirror_active_profiles_to_legacy_blob(
-                        self.store, &stored,
-                    )?;
-                }
-                Ok(())
+                let mut update = |apply: &mut ProfileEdit<'_>| {
+                    crate::user_partitions::cli_update_server_profiles_for_user(store, user, apply)
+                };
+                let mut mirror = |profiles: &[Value]| {
+                    crate::user_partitions::mirror_active_profiles_to_legacy_blob(store, profiles)
+                        .map(|_| ())
+                };
+                let mirror: Option<&mut ProfileMirror<'_>> = if active == Some(user) {
+                    Some(&mut mirror)
+                } else {
+                    None
+                };
+                store_partitioned_profile(id, to, initial_path, &mut update, mirror)
             }
             None => {
-                let raw = self
-                    .store
+                let not_saved = ProfileStoreError::NotSaved;
+                let raw = store
                     .get("config_server_profiles")
-                    .map_err(|e| e.to_string())?;
-                let mut profiles: Vec<Value> =
-                    serde_json::from_str(&raw).map_err(|_| "invalid saved profiles".to_string())?;
-                if !apply(&mut profiles) {
-                    return Err("the profile was removed in the meantime".to_string());
-                }
-                self.store
-                    .store(
-                        "config_server_profiles",
-                        &serde_json::to_string(&profiles).map_err(|e| e.to_string())?,
-                    )
-                    .map_err(|e| e.to_string())
+                    .map_err(|e| not_saved(e.to_string()))?;
+                let mut profiles: Vec<Value> = serde_json::from_str(&raw)
+                    .map_err(|_| not_saved("invalid saved profiles".to_string()))?;
+                let Some(profile) = profiles.iter_mut().find(|p| field(p, "id") == id) else {
+                    return Err(not_saved(
+                        "the profile was removed in the meantime".to_string(),
+                    ));
+                };
+                set_mode(profile, to, initial_path);
+                let serialized =
+                    serde_json::to_string(&profiles).map_err(|e| not_saved(e.to_string()))?;
+                store
+                    .store("config_server_profiles", &serialized)
+                    .map_err(|e| not_saved(e.to_string()))
             }
         }
     }
@@ -991,6 +1104,13 @@ mod tests {
         cloud: Option<(CloudConfig, CloudPairsConfig)>,
         profile: Option<(String, ProtonMode, Option<String>)>,
         fail_profile: bool,
+        /// A partitioned vault's profile list: the profile is written there
+        /// through [`store_partitioned_profile`], as the app does.
+        partition: Option<Vec<Value>>,
+        /// The legacy blob mirror fails after the partition write.
+        fail_mirror: bool,
+        /// Every partition write after the first fails.
+        fail_restore: bool,
     }
 
     impl SwitchTargets for Memory {
@@ -1007,9 +1127,34 @@ mod tests {
             id: &str,
             to: ProtonMode,
             initial: Option<&str>,
-        ) -> Result<(), String> {
+        ) -> Result<(), ProfileStoreError> {
             if self.fail_profile {
-                return Err("vault locked".to_string());
+                return Err(ProfileStoreError::NotSaved("vault locked".to_string()));
+            }
+            if let Some(partition) = self.partition.as_mut() {
+                let fail_restore = self.fail_restore;
+                let mut writes = 0;
+                let mut update = |apply: &mut ProfileEdit<'_>| {
+                    writes += 1;
+                    if writes > 1 && fail_restore {
+                        return Err("partition write failed".to_string());
+                    }
+                    let mut next = partition.clone();
+                    let written = apply(&mut next);
+                    if written {
+                        *partition = next.clone();
+                    }
+                    Ok((next, written))
+                };
+                let mut mirror = |_: &[Value]| -> Result<(), String> {
+                    Err("legacy blob unreadable".to_string())
+                };
+                let mirror: Option<&mut ProfileMirror<'_>> = if self.fail_mirror {
+                    Some(&mut mirror)
+                } else {
+                    None
+                };
+                return store_partitioned_profile(id, to, initial, &mut update, mirror);
             }
             self.profile = Some((id.to_string(), to, initial.map(str::to_string)));
             Ok(())
@@ -1040,7 +1185,7 @@ mod tests {
             Some("p1"),
             "a.txt",
         );
-        let journal = write_journal(&f.dirs, "/home/u/docs", "/my-files/docs", Some("p1"), false);
+        let journal = write_journal(&f.dirs, "/home/u/docs", "/my-files/docs", Some("p1"), true);
         let legacy = write_index(&f.dirs, "/home/u/old", "/my-files/old", None, "b.txt");
         let other = write_index(&f.dirs, "/home/u/x", "/my-files/x", Some("p2"), "c.txt");
         let mut memory = Memory::default();
@@ -1391,5 +1536,276 @@ mod tests {
         )
         .unwrap();
         assert_eq!(busy.blockers, vec!["AeroCloud is syncing".to_string()]);
+    }
+
+    /// Every file of the history folders with its bytes.
+    fn snapshot(dirs: &HistoryDirs) -> Vec<(String, Vec<u8>)> {
+        let mut files = Vec::new();
+        for dir in [&dirs.index, &dirs.journal] {
+            for name in files_in(dir) {
+                let bytes = std::fs::read(dir.join(&name)).unwrap();
+                files.push((name, bytes));
+            }
+        }
+        files
+    }
+
+    /// Audit 4.2.5 B02: a pending journal that records the profile (what a
+    /// running AeroSync writes before its transfers) blocks the switch, and
+    /// nothing is written.
+    #[test]
+    fn a_pending_sync_of_the_profile_blocks_the_switch_before_any_write() {
+        let f = fixture();
+        write_index(
+            &f.dirs,
+            "/home/u/docs",
+            "/my-files/docs",
+            Some("p1"),
+            "a.txt",
+        );
+        write_journal(&f.dirs, "/home/u/docs", "/my-files/docs", Some("p1"), false);
+        let before = snapshot(&f.dirs);
+        let plan = plan_in(
+            &f.dirs,
+            &profile(ProtonMode::Cli, ""),
+            ProtonMode::Native,
+            &CloudConfig::default(),
+            &CloudPairsConfig::default(),
+            None,
+        )
+        .unwrap();
+        assert!(
+            plan.blockers.iter().any(|b| b.contains("still pending")),
+            "{:?}",
+            plan.blockers
+        );
+        let mut memory = Memory::default();
+        let err = apply_in(
+            &f.dirs,
+            &profile(ProtonMode::Cli, ""),
+            ProtonMode::Native,
+            &CloudConfig::default(),
+            &CloudPairsConfig::default(),
+            None,
+            &mut memory,
+        )
+        .unwrap_err();
+        assert!(err.contains("still pending"), "{err}");
+        assert_eq!(snapshot(&f.dirs), before);
+        assert!(memory.profile.is_none() && memory.cloud.is_none());
+    }
+
+    /// Audit 4.2.5 B03: two histories of one local folder whose remote
+    /// folders translate to the same spelling (`/my-files` and `/my-files/`
+    /// both become `/`) would write the same new file, and the later one
+    /// would replace the other's baseline. The switch is refused and both
+    /// stay as they were, for indexes and for signed journals.
+    #[test]
+    fn histories_that_translate_to_one_folder_refuse_the_switch() {
+        {
+            let (a, b) = ("/my-files", "/my-files/");
+            // Indexes.
+            let f = fixture();
+            write_index(&f.dirs, "/home/u/docs", a, Some("p1"), "first.txt");
+            write_index(&f.dirs, "/home/u/docs", b, Some("p1"), "second.txt");
+            let before = snapshot(&f.dirs);
+            let mut memory = Memory::default();
+            let err = apply_in(
+                &f.dirs,
+                &profile(ProtonMode::Cli, ""),
+                ProtonMode::Native,
+                &CloudConfig::default(),
+                &CloudPairsConfig::default(),
+                None,
+                &mut memory,
+            )
+            .unwrap_err();
+            assert!(err.contains("would both become"), "{a} {b}: {err}");
+            assert_eq!(snapshot(&f.dirs), before, "{a} {b}");
+            assert!(memory.profile.is_none());
+
+            // Signed journals.
+            let g = fixture();
+            for remote in [a, b] {
+                let mut journal = crate::sync::SyncJournal::new(
+                    "/home/u/docs".to_string(),
+                    remote.to_string(),
+                    crate::sync::CompareDirection::Bidirectional,
+                    crate::sync::RetryPolicy::default(),
+                    crate::sync::VerifyPolicy::default(),
+                );
+                journal.profile_id = Some("p1".to_string());
+                journal.completed = true;
+                crate::sync::save_sync_journal_in(&g.dirs.journal, &journal).unwrap();
+            }
+            let before = snapshot(&g.dirs);
+            let err = apply_in(
+                &g.dirs,
+                &profile(ProtonMode::Cli, ""),
+                ProtonMode::Native,
+                &CloudConfig::default(),
+                &CloudPairsConfig::default(),
+                None,
+                &mut Memory::default(),
+            )
+            .unwrap_err();
+            assert!(err.contains("would both become"), "journals {a} {b}: {err}");
+            assert_eq!(snapshot(&g.dirs), before, "journals {a} {b}");
+        }
+
+        // Below My Files the spellings stay apart: `/my-files/docs/` becomes
+        // `/docs/` and `/my-files//docs` becomes `//docs`, other files than
+        // `/docs`, so all three arrive, as they lived side by side before.
+        let f = fixture();
+        write_index(
+            &f.dirs,
+            "/home/u/docs",
+            "/my-files/docs",
+            Some("p1"),
+            "one.txt",
+        );
+        write_index(
+            &f.dirs,
+            "/home/u/docs",
+            "/my-files//docs",
+            Some("p1"),
+            "two.txt",
+        );
+        write_index(
+            &f.dirs,
+            "/home/u/docs",
+            "/my-files/docs/",
+            Some("p1"),
+            "three.txt",
+        );
+        apply_in(
+            &f.dirs,
+            &profile(ProtonMode::Cli, ""),
+            ProtonMode::Native,
+            &CloudConfig::default(),
+            &CloudPairsConfig::default(),
+            None,
+            &mut Memory::default(),
+        )
+        .unwrap();
+        let one = read(
+            &f.dirs
+                .index
+                .join(crate::sync::index_filename("/home/u/docs", "/docs")),
+        );
+        let two = read(
+            &f.dirs
+                .index
+                .join(crate::sync::index_filename("/home/u/docs", "//docs")),
+        );
+        let three = read(
+            &f.dirs
+                .index
+                .join(crate::sync::index_filename("/home/u/docs", "/docs/")),
+        );
+        assert_eq!(one["files"]["one.txt"]["size"], 1);
+        assert_eq!(two["files"]["two.txt"]["size"], 1);
+        assert_eq!(three["files"]["three.txt"]["size"], 1);
+        assert_eq!(files_in(&f.dirs.index).len(), 3);
+    }
+
+    /// Audit 4.2.5 B04: in a partitioned vault the profile is written, then
+    /// mirrored into the legacy list. When the mirror fails the profile is
+    /// put back, so profile, AeroCloud, index, journal and signature all
+    /// match what they were.
+    #[test]
+    fn a_failed_mirror_after_the_profile_write_puts_everything_back() {
+        let f = fixture();
+        write_index(
+            &f.dirs,
+            "/home/u/docs",
+            "/my-files/docs",
+            Some("p1"),
+            "a.txt",
+        );
+        let mut journal = crate::sync::SyncJournal::new(
+            "/home/u/docs".to_string(),
+            "/my-files/docs".to_string(),
+            crate::sync::CompareDirection::Bidirectional,
+            crate::sync::RetryPolicy::default(),
+            crate::sync::VerifyPolicy::default(),
+        );
+        journal.profile_id = Some("p1".to_string());
+        journal.completed = true;
+        crate::sync::save_sync_journal_in(&f.dirs.journal, &journal).unwrap();
+        let cloud = CloudConfig {
+            remote_folder: "/my-files/cloud".to_string(),
+            server_profile: "Proton".to_string(),
+            server_profile_id: Some("p1".to_string()),
+            ..CloudConfig::default()
+        };
+        let original = profile(ProtonMode::Cli, "/my-files/docs");
+        let other = json!({"id": "p2", "name": "Other", "protocol": "sftp"});
+        let before = snapshot(&f.dirs);
+        let mut memory = Memory {
+            partition: Some(vec![original.clone(), other.clone()]),
+            fail_mirror: true,
+            ..Memory::default()
+        };
+        let err = apply_in(
+            &f.dirs,
+            &original,
+            ProtonMode::Native,
+            &cloud,
+            &CloudPairsConfig::default(),
+            None,
+            &mut memory,
+        )
+        .unwrap_err();
+        assert!(err.contains("nothing was changed"), "{err}");
+        assert_eq!(
+            memory.partition,
+            Some(vec![original.clone(), other.clone()])
+        );
+        assert_eq!(memory.cloud.unwrap().0.remote_folder, "/my-files/cloud");
+        assert_eq!(snapshot(&f.dirs), before);
+
+        // Putting the profile back fails too: it stays switched, and so do
+        // its folders and histories, and the error says so.
+        let mut memory = Memory {
+            partition: Some(vec![original.clone(), other]),
+            fail_mirror: true,
+            fail_restore: true,
+            ..Memory::default()
+        };
+        let err = apply_in(
+            &f.dirs,
+            &original,
+            ProtonMode::Native,
+            &cloud,
+            &CloudPairsConfig::default(),
+            None,
+            &mut memory,
+        )
+        .unwrap_err();
+        assert!(err.contains("now in native mode"), "{err}");
+        assert!(!err.contains("nothing was changed"), "{err}");
+        let partition = memory.partition.unwrap();
+        assert_eq!(ProtonMode::of_profile(&partition[0]), ProtonMode::Native);
+        assert_eq!(partition[0]["initialPath"], "/docs");
+        assert_eq!(memory.cloud.unwrap().0.remote_folder, "/cloud");
+        assert!(f
+            .dirs
+            .index
+            .join(crate::sync::index_filename("/home/u/docs", "/docs"))
+            .exists());
+        assert!(f
+            .dirs
+            .journal
+            .join(crate::sync::journal_filename("/home/u/docs", "/docs"))
+            .exists());
+        assert!(!f
+            .dirs
+            .index
+            .join(crate::sync::index_filename(
+                "/home/u/docs",
+                "/my-files/docs"
+            ))
+            .exists());
     }
 }

@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "2b55a6df4b6f8649ec069f00f0ac73c1c35eb8546bb2cfc5b4c14234653c1aa4",
+    "enHash": "476df4331998d00b8e735ecdab0bbd6970fc9497954b7cc16074a7b3977f3e45",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -458,6 +458,9 @@
         ],
         "portable.banner.body": [
             "Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent — deleting a profile in one folder no longer affects the other."
+        ],
+        "portable.banner.legacyWarning": [
+            "We detected leftover data from a previous shared install at %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. It is no longer used by this portable installation. You can remove it manually if you do not need it."
         ],
         "preview.text.stats": [
             "{lines} line(s) • {chars} chars"

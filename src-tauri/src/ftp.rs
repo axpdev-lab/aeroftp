@@ -301,15 +301,19 @@ impl FtpManager {
         let mut remote_files: Vec<RemoteFile> = listing
             .entries
             .into_iter()
-            .map(|entry| RemoteFile {
-                name: entry.name,
-                path: entry.path,
-                size: Some(entry.size),
-                is_dir: entry.is_dir,
-                is_symlink: entry.is_symlink,
-                modified: entry.modified,
-                permissions: entry.permissions,
-                link_target: entry.link_target,
+            .map(|entry| {
+                let size = (!crate::providers::ftp_listing::size_is_unreadable(&entry))
+                    .then_some(entry.size);
+                RemoteFile {
+                    name: entry.name,
+                    path: entry.path,
+                    size,
+                    is_dir: entry.is_dir,
+                    is_symlink: entry.is_symlink,
+                    modified: entry.modified,
+                    permissions: entry.permissions,
+                    link_target: entry.link_target,
+                }
             })
             .collect();
 
@@ -966,14 +970,12 @@ impl FtpManager {
                 .ok_or_else(|| {
                     FtpManagerError::InvalidPath(format!("Unrecognised listing row: {listing}"))
                 })?;
+        let size =
+            (!crate::providers::ftp_listing::size_is_unreadable(&entry)).then_some(entry.size);
         Ok(RemoteFile {
             name: entry.name,
             path: entry.path,
-            // `RemoteEntry.size` is a plain `u64`, so an unknown size arrives
-            // here as 0 and cannot be told from an empty file. That is a real
-            // loss against the old code on this side, and it is the reason the
-            // shared type is queued to grow an explicit "unknown".
-            size: Some(entry.size),
+            size,
             is_dir: entry.is_dir,
             is_symlink: entry.is_symlink,
             modified: entry.modified,
@@ -1088,6 +1090,19 @@ mod charac_tests {
         assert!(!file.is_symlink);
     }
 
+    #[test]
+    fn audit425_legacy_parser_distinguishes_unknown_size_from_empty_file() {
+        let manager = FtpManager::new();
+        let unknown = manager
+            .parse_ftp_listing("-rw-r--r-- 1 u g ???? Jan 20 10:00 unknown.txt")
+            .unwrap();
+        let empty = manager
+            .parse_ftp_listing("-rw-r--r-- 1 u g 0 Jan 20 10:00 empty.txt")
+            .unwrap();
+        assert_eq!(unknown.size, None);
+        assert_eq!(empty.size, Some(0));
+    }
+
     const CHARAC_BASELINE: &str = r#"LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 projects"
   name="projects" path="/projects" dir=true size=Some(4096) perms=Some("drwxr-xr-x") mod=Some("2026-01-20 10:00")
 LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 notes.txt"
@@ -1099,13 +1114,13 @@ LIST "-rw-r--r--    1 user     group         123 Jan 20 10:00 a  b.txt"
 LIST "01-23-24  10:30AM  12345  my  file.txt"
   name="my  file.txt" path="/my  file.txt" dir=false size=Some(12345) perms=None mod=Some("2024-01-23 10:30")
 LIST "01-23-24  10:30AM  ????  odd.txt"
-  name="odd.txt" path="/odd.txt" dir=false size=Some(0) perms=None mod=Some("2024-01-23 10:30")
+  name="odd.txt" path="/odd.txt" dir=false size=None perms=None mod=Some("2024-01-23 10:30")
 LIST "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 link -> target"
   name="link" path="/link" dir=false size=Some(7) perms=Some("lrwxrwxrwx") mod=Some("2026-01-20 10:00")
 LIST "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 dangling"
   name="dangling" path="/dangling" dir=false size=Some(7) perms=Some("lrwxrwxrwx") mod=Some("2026-01-20 10:00")
 LIST "-rw-r--r--    1 user     group        ???? Jan 20 10:00 odd.txt"
-  name="odd.txt" path="/odd.txt" dir=false size=Some(0) perms=Some("-rw-r--r--") mod=Some("2026-01-20 10:00")
+  name="odd.txt" path="/odd.txt" dir=false size=None perms=Some("-rw-r--r--") mod=Some("2026-01-20 10:00")
 LIST "-rw-r--r-- 1 user group 123 Jan 20 10:00"
   <err: Invalid path: Unrecognised listing row: -rw-r--r-- 1 user group 123 Jan 20 10:00>
 LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 ."
@@ -1164,6 +1179,18 @@ pub(crate) mod exists_tests {
     /// ASCII, and SIZE is refused with 550 in ASCII mode whether or not the
     /// file is there. `/a.txt` is a file and `/d` a folder.
     pub(crate) async fn vsftpd_like() -> String {
+        vsftpd_like_with_unknown_size(false).await
+    }
+
+    pub(crate) async fn vsftpd_like_with_unknown_size(unknown_size: bool) -> String {
+        vsftpd_like_script(unknown_size, false, false).await
+    }
+
+    pub(crate) async fn vsftpd_like_script(
+        unknown_size: bool,
+        deny_size: bool,
+        deny_listing: bool,
+    ) -> String {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap().to_string();
         tokio::spawn(async move {
@@ -1184,7 +1211,9 @@ pub(crate) mod exists_tests {
                         binary = arg == "I";
                         "200 type set\r\n".to_string()
                     }
-                    "SIZE" if !binary => "550 Could not get file size.\r\n".to_string(),
+                    "SIZE" if !binary || deny_size => {
+                        "550 Could not get file size.\r\n".to_string()
+                    }
                     "SIZE" if arg == "/a.txt" => "213 5\r\n".to_string(),
                     "SIZE" => "550 Could not get file size.\r\n".to_string(),
                     "NOOP" => "200 ok\r\n".to_string(),
@@ -1198,6 +1227,9 @@ pub(crate) mod exists_tests {
                             port % 256
                         )
                     }
+                    "NLST" | "LIST" if cwd == "/d" && deny_listing => {
+                        "550 Access denied\r\n".to_string()
+                    }
                     "NLST" | "LIST" if arg == "/denied" => "550 Access denied\r\n".to_string(),
                     "NLST" | "LIST" => {
                         write.write_all(b"150 listing\r\n").await.unwrap();
@@ -1206,6 +1238,8 @@ pub(crate) mod exists_tests {
                             "a.txt\r\nd\r\n"
                         } else if arg == "-a" {
                             "-rw-r--r-- 1 user group 5 Jan 20 10:00 .hidden\r\n"
+                        } else if unknown_size {
+                            "-rw-r--r-- 1 user group ???? Jan 20 10:00 a.txt\r\n"
                         } else {
                             "-rw-r--r-- 1 user group 5 Jan 20 10:00 a.txt\r\ndrwxr-xr-x 1 user group 0 Jan 20 10:00 denied\r\n"
                         };
