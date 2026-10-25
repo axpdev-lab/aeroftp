@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Mod portabil: acest folder conține toate datele tale AeroFTP",
                 "body": "Fiecare instalare portabilă este complet autonomă: serverele salvate, AeroVault, conversațiile AI și preferințele se află toate lângă AeroFTP.exe. Începând cu v3.7.8, două foldere portabile pe același PC sunt complet independente. Ștergerea unui profil dintr-un folder nu mai afectează celălalt folder.",
-                "legacyWarning": "Am detectat date rămase de la o instalare partajată anterioară în %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Acestea nu mai sunt folosite de această instalare portabilă. Le poți elimina manual dacă nu îți sunt necesare.",
+                "legacyWarning": "Am găsit date dintr-o instalare partajată anterioară în %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Această instalare portabilă nu le folosește. Dacă AeroFTP este instalat și pe acest PC (MSI sau setup), folderul respectiv conține datele aplicației instalate: păstrați-l. Altfel, îl puteți elimina manual dacă nu aveți nevoie de el.",
                 "openFolder": "Deschide folderul de date",
                 "dismiss": "Am înțeles"
             }

@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Prenosný režim: tento priečinok obsahuje všetky vaše dáta AeroFTP",
                 "body": "Každá prenosná inštalácia je plne sebestačná: uložené servery, AeroVault, AI konverzácie a predvoľby sa nachádzajú vedľa súboru AeroFTP.exe. Od verzie v3.7.8 sú dva prenosné priečinky na tom istom PC úplne nezávislé. Vymazanie profilu v jednom priečinku už neovplyvňuje druhý.",
-                "legacyWarning": "Zistili sme zvyšné dáta z predchádzajúcej zdieľanej inštalácie v %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Táto prenosná inštalácia ich už nepoužíva. Ak ich nepotrebujete, môžete ich odstrániť manuálne.",
+                "legacyWarning": "Našli sme údaje z predchádzajúcej zdieľanej inštalácie v %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Táto prenosná inštalácia ich nepoužíva. Ak je AeroFTP nainštalovaný aj na tomto počítači (MSI alebo inštalátor), tento priečinok obsahuje údaje nainštalovanej aplikácie: ponechajte ho. Inak ho môžete ručne odstrániť, ak ho nepotrebujete.",
                 "openFolder": "Otvoriť priečinok s dátami",
                 "dismiss": "Rozumiem"
             }

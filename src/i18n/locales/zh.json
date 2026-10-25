@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "便携模式：此文件夹保存了您所有的 AeroFTP 数据",
                 "body": "每个便携安装都是完全独立的：已保存的服务器、AeroVault、AI 对话和首选项都位于 AeroFTP.exe 旁边。从 v3.7.8 起，同一台电脑上的两个便携文件夹完全相互独立。在一个文件夹中删除某个配置文件不再会影响另一个文件夹。",
-                "legacyWarning": "我们在 %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ 检测到来自先前共享安装的残留数据。本便携安装已不再使用这些数据。如果您不需要，可以手动删除。",
+                "legacyWarning": "我们在 %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ 中发现了之前共享安装的数据。此便携版安装不会使用这些数据。如果此电脑上也安装了 AeroFTP（MSI 或安装程序），该文件夹保存的是已安装应用的数据：请保留它。否则，如果不需要，您可以手动删除它。",
                 "openFolder": "打开数据文件夹",
                 "dismiss": "知道了"
             }

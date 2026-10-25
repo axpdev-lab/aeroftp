@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Mod mudah alih: folder ini menyimpan semua data AeroFTP anda",
                 "body": "Setiap pemasangan mudah alih adalah sepenuhnya berdikari: pelayan tersimpan, AeroVault, sembang AI dan keutamaan semuanya berada di sebelah AeroFTP.exe. Bermula dari v3.7.8, dua folder mudah alih pada PC yang sama adalah bebas sepenuhnya, memadam profil dalam satu folder tidak lagi menjejaskan folder yang lain.",
-                "legacyWarning": "Kami mengesan data yang tertinggal dari pemasangan bersama sebelumnya di %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ia tidak lagi digunakan oleh pemasangan mudah alih ini. Anda boleh memadamnya secara manual jika tidak diperlukan.",
+                "legacyWarning": "Kami menemui data daripada pemasangan kongsi terdahulu di %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Pemasangan mudah alih ini tidak menggunakannya. Jika AeroFTP juga dipasang pada PC ini (MSI atau setup), folder itu mengandungi data aplikasi yang dipasang: simpan folder itu. Jika tidak, anda boleh membuangnya secara manual jika tidak memerlukannya.",
                 "openFolder": "Buka folder data",
                 "dismiss": "Faham"
             }

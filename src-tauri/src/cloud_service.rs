@@ -142,6 +142,14 @@ pub struct SyncOperationResult {
     pub file_details: Vec<SyncedFileDetail>,
 }
 
+/// What the remote walk of a cycle saw: its files, whether it saw the whole
+/// tree, and by name what it did not see.
+struct RemoteScan {
+    files: HashMap<String, FileInfo>,
+    complete: bool,
+    boundaries: crate::sync_core::ScanBoundaries,
+}
+
 /// The scanned + compared sync plan produced by `build_sync_plan_with_provider`.
 /// Internal seam shared by the real executor and the `--dry-run` preview.
 struct SyncPlan {
@@ -1012,31 +1020,47 @@ impl CloudService {
         // Get file listings
         // CLAUDE-AV-B3-16: local scan reports completeness (see scan_local_folder).
         let (mut local_files, local_complete) = self.scan_local_folder(config).await?;
-        let (mut remote_files, remote_complete) = if remote_present || ensure_remote {
-            match self
-                .scan_remote_folder_with_provider(provider, config)
-                .await
-            {
-                Ok(scanned) => scanned,
-                Err(e) => {
-                    // Propagate OAuth 1.0a token revocation to the UI before returning.
-                    // Without this, 4shared failures during scan only surface as a generic
-                    // sync error with no actionable recovery path.
-                    self.notify_reauth_if_token_revoked(&config.protocol_type, &e);
-                    return Err(e);
+        let (mut remote_files, remote_complete, remote_boundaries) =
+            if remote_present || ensure_remote {
+                match self
+                    .scan_remote_folder_with_provider(provider, config)
+                    .await
+                {
+                    Ok(scan) => (scan.files, scan.complete, scan.boundaries),
+                    Err(e) => {
+                        // Propagate OAuth 1.0a token revocation to the UI before returning.
+                        // Without this, 4shared failures during scan only surface as a generic
+                        // sync error with no actionable recovery path.
+                        self.notify_reauth_if_token_revoked(&config.protocol_type, &e);
+                        return Err(e);
+                    }
                 }
-            }
-        } else {
-            // Preview against a not-yet-created remote: nothing is there, so every
-            // local file reads as new. No mkdir, no scan, no mutation. The empty
-            // map is the TRUTH about that remote, not a failed listing, so it
-            // counts as a complete scan.
-            (HashMap::new(), true)
-        };
+            } else {
+                // Preview against a not-yet-created remote: nothing is there, so every
+                // local file reads as new. No mkdir, no scan, no mutation. The empty
+                // map is the TRUTH about that remote, not a failed listing, so it
+                // counts as a complete scan.
+                (
+                    HashMap::new(),
+                    true,
+                    crate::sync_core::ScanBoundaries::default(),
+                )
+            };
 
         let local_str = config.local_folder.to_string_lossy().to_string();
         let remote_str = config.remote_folder.clone();
-        Self::bound_local_scan_paths(&local_str, &mut local_files, &mut remote_files);
+        // A remote folder that did not list holds files the plan cannot see:
+        // left in, each local file under it reads as LocalOnly and goes up
+        // over a remote copy nobody compared it with. Both sides of every
+        // such subtree stay out of this cycle (their baseline entries are
+        // carried forward), and a scan that missed a part it cannot name
+        // refuses the cycle, as the GUI Compare does.
+        Self::bound_scan_paths(
+            &local_str,
+            &mut local_files,
+            &mut remote_files,
+            remote_boundaries,
+        )?;
 
         // Load prior sync index (if any) for delete propagation + conflict detection.
         let index = self.load_index(config);
@@ -1415,15 +1439,37 @@ impl CloudService {
         locals: &mut HashMap<String, FileInfo>,
         remotes: &mut HashMap<String, FileInfo>,
     ) {
+        // No remote boundaries, so nothing can refuse.
+        let _ = Self::bound_scan_paths(
+            local_root,
+            locals,
+            remotes,
+            crate::sync_core::ScanBoundaries::default(),
+        );
+    }
+
+    /// [`Self::bound_local_scan_paths`] plus what the remote scan did not
+    /// see: every unseen remote path leaves both sides, with everything under
+    /// it. `Err` when the remote scan missed a part it cannot name.
+    fn bound_scan_paths(
+        local_root: &str,
+        locals: &mut HashMap<String, FileInfo>,
+        remotes: &mut HashMap<String, FileInfo>,
+        remote_boundaries: crate::sync_core::ScanBoundaries,
+    ) -> Result<(), String> {
         let bound = crate::sync_core::ScanBound::for_sync(
             local_root,
             locals.keys().map(String::as_str),
             remotes.keys().map(String::as_str),
             &crate::sync_core::ScanBoundaries::default(),
-            crate::sync_core::ScanBoundaries::default(),
+            remote_boundaries,
         );
+        if let Some(refusal) = bound.refusal() {
+            return Err(format!("AeroCloud sync not run: {refusal}"));
+        }
         locals.retain(|path, _| !bound.covers(path));
         remotes.retain(|path, _| !bound.covers(path));
+        Ok(())
     }
 
     /// The baseline paths gone from both sides since the last cycle: deleted
@@ -1680,9 +1726,12 @@ impl CloudService {
         &self,
         provider: &mut P,
         config: &CloudConfig,
-    ) -> Result<(HashMap<String, FileInfo>, bool), String> {
+    ) -> Result<RemoteScan, String> {
         let mut files = HashMap::new();
         let mut complete = true;
+        // What the walk did not see, by name, so the plan stays out of it on
+        // both sides; a gap it cannot name refuses the cycle.
+        let mut boundaries = crate::sync_core::ScanBoundaries::default();
         let base_path = &config.remote_folder;
         // Load .aeroignore from local sync root (applies to remote paths too)
         let aeroignore = crate::sync_ignore::AeroIgnore::load(&config.local_folder);
@@ -1705,12 +1754,14 @@ impl CloudService {
             if depth > MAX_DEPTH {
                 tracing::warn!("Remote scan depth limit reached at {}", current_path);
                 complete = false;
+                boundaries.unseen(&relative_prefix, "depth_limit", Some(true));
                 continue;
             }
 
             // Navigate to directory
             if provider.cd(&current_path).await.is_err() {
                 complete = false;
+                boundaries.unseen(&relative_prefix, "list_error", Some(true));
                 continue;
             }
 
@@ -1719,6 +1770,7 @@ impl CloudService {
                 Ok(list) => list,
                 Err(_) => {
                     complete = false;
+                    boundaries.unseen(&relative_prefix, "list_error", Some(true));
                     continue;
                 }
             };
@@ -1741,6 +1793,7 @@ impl CloudService {
                             step.explain()
                         );
                         complete = false;
+                        boundaries.unseen(&relative_path, step.reason(), Some(entry.is_dir));
                         continue;
                     }
                 }
@@ -1763,7 +1816,12 @@ impl CloudService {
                     // gate refuses to act on it. (CLAUDE-AV-B3-11)
                     if files.len() >= 100_000 {
                         tracing::warn!("Remote file index cap reached (100K), truncating scan");
-                        return Ok((files, false));
+                        boundaries.unbounded.get_or_insert("entry_cap");
+                        return Ok(RemoteScan {
+                            files,
+                            complete: false,
+                            boundaries,
+                        });
                     }
 
                     files.insert(
@@ -1806,7 +1864,11 @@ impl CloudService {
             }
         }
 
-        Ok((files, complete))
+        Ok(RemoteScan {
+            files,
+            complete,
+            boundaries,
+        })
     }
 
     /// Process a single file comparison using any StorageProvider
@@ -4646,6 +4708,90 @@ mod baseline_tests {
         });
     }
 
+    /// Audit 4.2.5 A03: a remote folder whose listing fails while writes
+    /// still work (a read-denied folder, a transient error) hides what it
+    /// holds. Left in the plan, each local file under it read as LocalOnly
+    /// and went up over the remote copy the scan never saw, with or without a
+    /// baseline. Both sides of that folder stay out of the cycle: zero writes
+    /// into it, its baseline entries kept, the rest of the tree synced. A scan
+    /// that cannot list the sync folder itself refuses the cycle.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_remote_folder_that_did_not_list_gets_no_upload() {
+        with_scratch_index(async {
+            let hidden = format!("{GONE_REMOTE}/blocked/report.txt");
+            let added = format!("{GONE_REMOTE}/blocked/new.txt");
+            for with_baseline in [false, true] {
+                let local = tempfile::tempdir().unwrap();
+                std::fs::create_dir_all(local.path().join("blocked")).unwrap();
+                std::fs::write(local.path().join("blocked/report.txt"), b"local copy").unwrap();
+                std::fs::write(local.path().join("keep.txt"), b"keep").unwrap();
+                let mut provider = MemoryProvider::default();
+                let svc = CloudService::new();
+                svc.init(gone_config(local.path())).await;
+                if with_baseline {
+                    let first = svc
+                        .perform_full_sync_with_provider(&mut provider)
+                        .await
+                        .unwrap();
+                    assert!(first.errors.is_empty(), "{:?}", first.errors);
+                }
+                // Another device writes a newer remote copy; then the folder
+                // stops listing, and a new local file appears under it.
+                provider.put(&hidden, b"newer remote copy");
+                provider.broken = Some(format!("{GONE_REMOTE}/blocked"));
+                std::fs::write(local.path().join("blocked/new.txt"), b"new").unwrap();
+                std::fs::write(local.path().join("later.txt"), b"later").unwrap();
+
+                let run = svc
+                    .perform_full_sync_with_provider(&mut provider)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    provider.stored[&hidden].0, b"newer remote copy",
+                    "baseline {with_baseline}: the unseen remote copy was overwritten"
+                );
+                assert!(
+                    !provider.stored.contains_key(&added),
+                    "baseline {with_baseline}: an upload reached the folder that did not list"
+                );
+                assert_eq!(
+                    std::fs::read(local.path().join("blocked/report.txt")).unwrap(),
+                    b"local copy"
+                );
+                assert!(
+                    provider
+                        .stored
+                        .contains_key(&format!("{GONE_REMOTE}/later.txt")),
+                    "baseline {with_baseline}: the rest of the tree still syncs ({:?})",
+                    run.errors
+                );
+                if with_baseline {
+                    let baseline = svc.load_index(&gone_config(local.path())).unwrap();
+                    assert!(baseline.files.contains_key("blocked/report.txt"));
+                }
+            }
+
+            // The sync folder itself does not list: nothing to bound around,
+            // so the cycle is refused and writes nothing.
+            let local = tempfile::tempdir().unwrap();
+            std::fs::write(local.path().join("a.txt"), b"a").unwrap();
+            let mut provider = MemoryProvider {
+                broken: Some(GONE_REMOTE.to_string()),
+                ..MemoryProvider::default()
+            };
+            provider.put(&format!("{GONE_REMOTE}/a.txt"), b"remote a");
+            let svc = CloudService::new();
+            svc.init(gone_config(local.path())).await;
+            let refused = svc.perform_full_sync_with_provider(&mut provider).await;
+            assert!(refused.is_err(), "{refused:?}");
+            assert_eq!(
+                provider.stored[&format!("{GONE_REMOTE}/a.txt")].0,
+                b"remote a"
+            );
+        });
+    }
+
     /// Both sides emptied (the folder cleared here and on the remote): the
     /// mass-delete gate trips on the empty sides, and the cycle still forgets
     /// what is gone from both. Kept, the old names would read as synced once
@@ -5333,7 +5479,11 @@ mod walk_scope_tests {
                 ..Default::default()
             };
             let svc = CloudService::new();
-            let (files, complete) = svc
+            let RemoteScan {
+                files,
+                complete,
+                boundaries,
+            } = svc
                 .scan_remote_folder_with_provider(&mut provider, &config)
                 .await
                 .unwrap_or_else(|e| panic!("{case}: {e}"));
@@ -5348,6 +5498,10 @@ mod walk_scope_tests {
             expected.sort();
             assert_eq!(indexed, expected, "{case}");
             assert_eq!(complete, shape.refused == 0, "{case}");
+            // A folder the walk refused is named, so a cycle stays out of it
+            // instead of reading what it holds as absent (audit 4.2.5 A03).
+            assert_eq!(boundaries.unseen.is_empty(), shape.refused == 0, "{case}");
+            assert!(boundaries.unbounded.is_none(), "{case}");
         }
     }
 }

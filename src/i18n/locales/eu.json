@@ -6013,7 +6013,7 @@
             "banner": {
                 "title": "Modu eramangarria: karpeta honek AeroFTP datu guztiak ditu",
                 "body": "Instalazio eramangarri bakoitza guztiz autonomoa da: gordetako zerbitzariak, AeroVault, AI txatak eta hobespenak AeroFTP.exe-ren ondoan daude. v3.7.8 bertsiotik aurrera, ordenagailu berean dauden bi karpeta eramangarri guztiz independenteak dira: karpeta batean profil bat ezabatzeak ez du jada bestea eragiten.",
-                "legacyWarning": "Aurreko instalazio partekatu baten hondar-datuak detektatu ditugu %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ kokapenean. Instalazio eramangarri honek jada ez ditu erabiltzen. Eskuz ken ditzakezu behar ez badituzu.",
+                "legacyWarning": "Aurreko instalazio partekatu baten datuak aurkitu ditugu hemen: %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Instalazio eramangarri honek ez ditu erabiltzen. AeroFTP ordenagailu honetan ere instalatuta badago (MSI edo instalatzailea), karpeta horrek instalatutako aplikazioaren datuak ditu: gorde ezazu. Bestela, eskuz ken dezakezu behar ez baduzu.",
                 "openFolder": "Ireki datuen karpeta",
                 "dismiss": "Ulertuta"
             }
