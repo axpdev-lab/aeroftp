@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Atjaunināt",
-                    "tagline": "Kopē trūkstošos un jaunākos failus. Nekad nedzēš un nekad nepārraksta jaunāku kopiju galamērķī. Atrisina konfliktus ar izvēlēto politiku."
+                    "tagline": "Kopē trūkstošos un jaunākos failus. Nekad nedzēš. Jaunākas kopijas galamērķī pārraksta tikai tad, ja atlasītā konfliktu risināšanas politika izvēlas otru kopiju."
                 },
                 "bisync": {
                     "name": "Divvirzienu sinhronizācija",

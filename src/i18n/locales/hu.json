@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Frissítés",
-                    "tagline": "A hiányzó és újabb fájlokat másolja. Soha nem töröl, és soha nem ír felül egy újabb céloldali másolatot. A konfliktusokat a kiválasztott szabályzattal oldja fel."
+                    "tagline": "Átmásolja a hiányzó és újabb fájlokat. Soha nem töröl. Csak akkor írja felül a célhely újabb példányait, ha a kiválasztott ütközéskezelési szabály a másik példányt választja."
                 },
                 "bisync": {
                     "name": "Kétirányú szinkronizálás",

@@ -79,7 +79,7 @@ describe('one vocabulary for sync directions', () => {
     });
 
     it('describes Update with its selected conflict policy instead of an unconditional skip', () => {
-        const description = 'Copy missing and newer files. Never delete, never overwrite a newer destination copy. Resolve conflicts with the selected policy.';
+        const description = 'Copy missing and newer files. Never delete. Overwrite newer destination copies only if the selected conflict policy chooses the other copy.';
         expect(presetTaglineLabel('update').fallback).toBe(description);
         expect(say(presetTaglineLabel('update'))).toBe(description);
     });

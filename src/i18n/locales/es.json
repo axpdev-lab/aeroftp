@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Actualizar",
-                    "tagline": "Copia los archivos ausentes y los más recientes. Nunca elimina ni sobrescribe una copia más reciente en el destino. Resuelve los conflictos con la política seleccionada."
+                    "tagline": "Copia los archivos que faltan y los más recientes. Nunca elimina. Solo sobrescribe las copias más recientes del destino si la política de conflictos seleccionada elige la otra copia."
                 },
                 "bisync": {
                     "name": "Sincronización bidireccional",

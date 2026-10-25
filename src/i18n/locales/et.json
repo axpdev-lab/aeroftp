@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Uuenda",
-                    "tagline": "Kopeerib puuduvad ja uuemad failid. Ei kustuta kunagi ega kirjuta kunagi üle sihtkohas olevat uuemat koopiat. Lahendab konfliktid valitud poliitika alusel."
+                    "tagline": "Kopeerib puuduvad ja uuemad failid. Ei kustuta kunagi. Kirjutab sihtkohas olevad uuemad koopiad üle ainult siis, kui valitud konfliktide lahendamise reegel valib teise koopia."
                 },
                 "bisync": {
                     "name": "Kahesuunaline sünkroonimine",

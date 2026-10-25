@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Uppdatera",
-                    "tagline": "Kopierar saknade och nyare filer. Tar aldrig bort något och skriver aldrig över en nyare kopia på destinationen. Löser konflikter med den valda policyn."
+                    "tagline": "Kopierar saknade och nyare filer. Raderar aldrig. Skriver över nyare kopior på målet endast om den valda konfliktpolicyn väljer den andra kopian."
                 },
                 "bisync": {
                     "name": "Tvåvägssynkronisering",

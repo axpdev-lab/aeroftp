@@ -6157,7 +6157,7 @@
                 },
                 "update": {
                     "name": "Eguneratu",
-                    "tagline": "Falta diren eta berriagoak diren fitxategiak kopiatzen ditu. Inoiz ez du ezabatzen, eta inoiz ez du helmugako kopia berriago bat gainidazten. Gatazkak hautatutako politikarekin ebazten ditu."
+                    "tagline": "Falta diren fitxategiak eta berriagoak kopiatzen ditu. Ez du inoiz ezabatzen. Helburuko kopia berriagoak gainidazten ditu hautatutako gatazka-politikak beste kopia aukeratzen badu soilik."
                 },
                 "bisync": {
                     "name": "Bi norabideko sinkronizazioa",

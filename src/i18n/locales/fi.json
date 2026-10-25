@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Päivitä",
-                    "tagline": "Kopioi puuttuvat ja uudemmat tiedostot. Ei koskaan poista eikä korvaa kohteessa olevaa uudempaa kopiota. Ratkaisee ristiriidat valitun käytännön mukaisesti."
+                    "tagline": "Kopioi puuttuvat ja uudemmat tiedostot. Ei koskaan poista. Korvaa kohteen uudemmat kopiot vain, jos valittu ristiriitojen ratkaisukäytäntö valitsee toisen kopion."
                 },
                 "bisync": {
                     "name": "Kaksisuuntainen synkronointi",

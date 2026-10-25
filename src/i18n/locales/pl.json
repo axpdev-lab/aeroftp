@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Aktualizacja",
-                    "tagline": "Kopiuje brakujące i nowsze pliki. Nigdy nie usuwa ani nie nadpisuje nowszej kopii w miejscu docelowym. Rozwiązuje konflikty zgodnie z wybraną zasadą."
+                    "tagline": "Kopiuje brakujące i nowsze pliki. Nigdy nie usuwa. Nadpisuje nowsze kopie w miejscu docelowym tylko wtedy, gdy wybrana zasada rozwiązywania konfliktów wybierze drugą kopię."
                 },
                 "bisync": {
                     "name": "Synchronizacja dwukierunkowa",

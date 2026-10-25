@@ -6424,7 +6424,7 @@
                 },
                 "update": {
                     "name": "Update",
-                    "tagline": "Copy missing and newer files. Never delete, never overwrite a newer destination copy. Resolve conflicts with the selected policy."
+                    "tagline": "Copy missing and newer files. Never delete. Overwrite newer destination copies only if the selected conflict policy chooses the other copy."
                 },
                 "bisync": {
                     "name": "Two-way sync",

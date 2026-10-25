@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Cập nhật",
-                    "tagline": "Sao chép các tệp bị thiếu và tệp mới hơn. Không bao giờ xóa hoặc ghi đè bản sao mới hơn ở đích. Giải quyết xung đột bằng chính sách đã chọn."
+                    "tagline": "Sao chép các tệp còn thiếu và mới hơn. Không bao giờ xóa. Chỉ ghi đè các bản sao mới hơn ở đích nếu chính sách xử lý xung đột đã chọn chọn bản sao còn lại."
                 },
                 "bisync": {
                     "name": "Đồng bộ hai chiều",

@@ -6157,7 +6157,7 @@
                 },
                 "update": {
                     "name": "Uppfæra",
-                    "tagline": "Afritar skrár sem vantar og nýrri skrár. Eyjir aldrei né skrifar yfir nýrra afrit á áfangastað. Leysir árekstra með valinni stefnu."
+                    "tagline": "Afritar skrár sem vantar og nýrri skrár. Eyðir aldrei. Skrifar aðeins yfir nýrri afrit á áfangastað ef valin árekstrastefna velur hitt afritið."
                 },
                 "bisync": {
                     "name": "Tvíátta samstilling",

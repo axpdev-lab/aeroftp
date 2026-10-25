@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Atnaujinti",
-                    "tagline": "Kopijuoja trūkstamus ir naujesnius failus. Niekada nešalina ir niekada neperrašo naujesnės paskirties kopijos. Konfliktus sprendžia pagal pasirinktą politiką."
+                    "tagline": "Kopijuoja trūkstamus ir naujesnius failus. Niekada neištrina. Naujesnes kopijas paskirties vietoje perrašo tik tada, jei pasirinkta konfliktų sprendimo taisyklė pasirenka kitą kopiją."
                 },
                 "bisync": {
                     "name": "Dvipusė sinchronizacija",

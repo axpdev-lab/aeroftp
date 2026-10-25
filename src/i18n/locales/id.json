@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Perbarui",
-                    "tagline": "Menyalin file yang hilang dan yang lebih baru. Tidak pernah menghapus atau menimpa salinan tujuan yang lebih baru. Menyelesaikan konflik dengan kebijakan yang dipilih."
+                    "tagline": "Menyalin file yang belum ada dan yang lebih baru. Tidak pernah menghapus. Menimpa salinan yang lebih baru di tujuan hanya jika kebijakan konflik yang dipilih memilih salinan lainnya."
                 },
                 "bisync": {
                     "name": "Sinkronisasi dua arah",

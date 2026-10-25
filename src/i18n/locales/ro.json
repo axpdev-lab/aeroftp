@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Actualizare",
-                    "tagline": "Copiază fișierele lipsă și cele mai noi. Nu șterge niciodată și nu suprascrie niciodată o copie mai nouă la destinație. Rezolvă conflictele cu politica selectată."
+                    "tagline": "Copiază fișierele lipsă și pe cele mai noi. Nu șterge niciodată. Suprascrie copiile mai noi de la destinație numai dacă politica de conflicte selectată alege cealaltă copie."
                 },
                 "bisync": {
                     "name": "Sincronizare bidirecțională",

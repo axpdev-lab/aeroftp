@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Mise à jour",
-                    "tagline": "Copie les fichiers manquants et les plus récents. Ne supprime jamais et n’écrase jamais une copie plus récente dans la destination. Résout les conflits avec la politique sélectionnée."
+                    "tagline": "Copie les fichiers manquants et les plus récents. Ne supprime jamais rien. Écrase les copies plus récentes à destination uniquement si la politique de conflits sélectionnée choisit l’autre copie."
                 },
                 "bisync": {
                     "name": "Synchronisation bidirectionnelle",

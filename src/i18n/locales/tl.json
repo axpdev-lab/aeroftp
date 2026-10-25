@@ -6157,7 +6157,7 @@
                 },
                 "update": {
                     "name": "I-update",
-                    "tagline": "Kinokopya ang mga nawawala at mas bagong file. Hindi kailanman nagbubura o nag-o-overwrite ng mas bagong kopya sa patutunguhan. Nilulutas ang mga salungatan gamit ang napiling patakaran."
+                    "tagline": "Kinokopya ang mga nawawala at mas bagong file. Hindi kailanman nagtatanggal. Pinapatungan lang ang mas bagong mga kopya sa destinasyon kung pipiliin ng napiling patakaran sa salungatan ang kabilang kopya."
                 },
                 "bisync": {
                     "name": "Two-way na sync",

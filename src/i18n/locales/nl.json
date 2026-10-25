@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Bijwerken",
-                    "tagline": "Kopieert ontbrekende en nieuwere bestanden. Verwijdert nooit en overschrijft nooit een nieuwere kopie op de bestemming. Lost conflicten op met het geselecteerde beleid."
+                    "tagline": "Kopieert ontbrekende en nieuwere bestanden. Verwijdert nooit. Overschrijft nieuwere kopieën op de bestemming alleen als het geselecteerde conflictbeleid de andere kopie kiest."
                 },
                 "bisync": {
                     "name": "Tweerichtingssynchronisatie",

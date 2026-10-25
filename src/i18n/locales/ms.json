@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Kemas kini",
-                    "tagline": "Menyalin fail yang tiada dan lebih baharu. Tidak pernah memadam atau menulis ganti salinan destinasi yang lebih baharu. Menyelesaikan konflik dengan dasar yang dipilih."
+                    "tagline": "Menyalin fail yang tiada dan yang lebih baharu. Tidak pernah memadam. Menulis ganti salinan yang lebih baharu di destinasi hanya jika dasar konflik yang dipilih memilih salinan yang satu lagi."
                 },
                 "bisync": {
                     "name": "Penyegerakan dua hala",

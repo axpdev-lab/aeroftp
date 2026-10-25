@@ -6391,7 +6391,7 @@
                 },
                 "update": {
                     "name": "Aggiorna",
-                    "tagline": "Copia i file mancanti e quelli più recenti. Non elimina mai e non sovrascrive mai una copia di destinazione più recente. Risolve i conflitti con il criterio selezionato."
+                    "tagline": "Copia i file mancanti e più recenti. Non elimina mai. Sovrascrive le copie più recenti nella destinazione solo se il criterio di conflitto selezionato sceglie l’altra copia."
                 },
                 "bisync": {
                     "name": "Sync bidirezionale",

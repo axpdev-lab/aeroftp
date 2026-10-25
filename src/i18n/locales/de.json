@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Aktualisieren",
-                    "tagline": "Kopiert fehlende und neuere Dateien. Löscht niemals und überschreibt niemals eine neuere Kopie am Ziel. Löst Konflikte mit der ausgewählten Richtlinie."
+                    "tagline": "Kopiert fehlende und neuere Dateien. Löscht niemals. Überschreibt neuere Kopien am Ziel nur, wenn die ausgewählte Konfliktrichtlinie die andere Kopie auswählt."
                 },
                 "bisync": {
                     "name": "Zwei-Wege-Sync",

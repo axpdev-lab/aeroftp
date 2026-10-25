@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Opdatér",
-                    "tagline": "Kopierer manglende og nyere filer. Sletter aldrig og overskriver aldrig en nyere kopi på destinationen. Løser konflikter med den valgte politik."
+                    "tagline": "Kopierer manglende og nyere filer. Sletter aldrig. Overskriver kun nyere kopier på destinationen, hvis den valgte konfliktpolitik vælger den anden kopi."
                 },
                 "bisync": {
                     "name": "Tovejssynkronisering",

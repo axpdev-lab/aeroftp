@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Posodobitev",
-                    "tagline": "Kopira manjkajoče in novejše datoteke. Nikoli ne briše niti ne prepiše novejše kopije na cilju. Rešuje konflikte z izbranim pravilnikom."
+                    "tagline": "Kopira manjkajoče in novejše datoteke. Nikoli ne briše. Novejše kopije na cilju prepiše le, če izbrano pravilo za razreševanje sporov izbere drugo kopijo."
                 },
                 "bisync": {
                     "name": "Dvosmerna sinhronizacija",

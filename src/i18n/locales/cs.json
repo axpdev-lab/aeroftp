@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Aktualizace",
-                    "tagline": "Kopíruje chybějící a novější soubory. Nikdy nemaže ani nepřepisuje novější kopii v cíli. Konflikty řeší podle zvolené zásady."
+                    "tagline": "Kopíruje chybějící a novější soubory. Nikdy nemaže. Novější kopie v cíli přepisuje pouze tehdy, pokud vybraná zásada řešení konfliktů zvolí druhou kopii."
                 },
                 "bisync": {
                     "name": "Obousměrná synchronizace",

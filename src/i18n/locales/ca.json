@@ -6157,7 +6157,7 @@
                 },
                 "update": {
                     "name": "Actualitza",
-                    "tagline": "Copia els fitxers que falten i els més nous. No suprimeix mai ni sobreescriu mai una còpia més nova de la destinació. Resol els conflictes amb la política seleccionada."
+                    "tagline": "Copia els fitxers que falten i els més recents. No suprimeix mai res. Només sobreescriu les còpies més recents de la destinació si la política de conflictes seleccionada tria l’altra còpia."
                 },
                 "bisync": {
                     "name": "Sincronització bidireccional",

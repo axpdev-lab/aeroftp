@@ -6157,7 +6157,7 @@
                 },
                 "update": {
                     "name": "Actualizar",
-                    "tagline": "Copia os ficheiros que faltan e os máis recentes. Nunca elimina nin sobrescribe unha copia máis recente no destino. Resolve os conflitos coa política seleccionada."
+                    "tagline": "Copia os ficheiros que faltan e os máis recentes. Nunca elimina. Só sobrescribe as copias máis recentes no destino se a política de conflitos seleccionada escolle a outra copia."
                 },
                 "bisync": {
                     "name": "Sincronización bidireccional",
