@@ -102,26 +102,18 @@ impl LocalTargetGuard {
 }
 
 /// Case key for a case-insensitive volume, one character at a time: the
-/// single-character uppercase, then its single-character lowercase. NTFS
-/// compares through an uppercase table and APFS through Unicode case folding,
-/// so `ς`, `σ` and `Σ` are one name on both, and so are `k` and the Kelvin
-/// sign on APFS. `str::to_lowercase` is not a stable key: it applies the
-/// final-sigma rule and keeps `ς` apart from `σ`. Mappings that expand to
-/// several characters (`ß` to `SS`) are left alone, as both volumes do. Where
-/// the two volumes differ (dotless `ı` is `I` on NTFS, apart on APFS) the key
-/// merges: a needless refusal is safer than two files landing on one name.
+/// uppercase of each character, then the lowercase of each character of that
+/// (full mappings, so `ß` becomes `ss`). NTFS compares through an uppercase
+/// table and APFS through Unicode case folding, so `ς`, `σ` and `Σ` are one
+/// name on both, and APFS also folds the Kelvin sign to `k` and `ß` to `ss`.
+/// `str::to_lowercase` is not a stable key: it applies the final-sigma rule
+/// and keeps `ς` apart from `σ`. Where the volumes differ (`ß` and `ss`, or
+/// dotless `ı`, are distinct names on NTFS) the key merges: a needless
+/// refusal is safer than two files landing on one name.
 fn case_fold_key(name: &str) -> String {
-    fn single(mut mapped: impl Iterator<Item = char>, original: char) -> char {
-        match (mapped.next(), mapped.next()) {
-            (Some(c), None) => c,
-            _ => original,
-        }
-    }
     name.chars()
-        .map(|c| {
-            let upper = single(c.to_uppercase(), c);
-            single(upper.to_lowercase(), upper)
-        })
+        .flat_map(char::to_uppercase)
+        .flat_map(char::to_lowercase)
         .collect()
 }
 
@@ -233,7 +225,7 @@ mod tests {
     }
 
     #[test]
-    fn audit425_case_key_merges_greek_sigmas_and_kelvin_but_not_sharp_s() {
+    fn audit425_case_key_merges_greek_sigmas_kelvin_and_sharp_s() {
         let insensitive = || {
             LocalTargetGuard::with_rules(DestinationRules {
                 fold_case: true,
@@ -245,6 +237,8 @@ mod tests {
             ("ΟΔΟΣ", "οδος"),
             ("οδοσ", "οδος"),
             ("\u{212A}", "k"),
+            ("ß", "ss"),
+            ("STRASSE", "straße"),
         ] {
             assert!(
                 insensitive()
@@ -257,7 +251,7 @@ mod tests {
             );
         }
         insensitive()
-            .claim_listing(&[claim("ß", "/ß"), claim("ss", "/ss")])
+            .claim_listing(&[claim("i", "/i"), claim("İ", "/İ")])
             .unwrap();
     }
 
