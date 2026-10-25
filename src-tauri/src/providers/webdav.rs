@@ -764,8 +764,57 @@ fn trash_propstat_succeeded(status: &str) -> bool {
 
 /// Original-location key. Leading and trailing slashes are ignored. The
 /// remaining text matches exactly, including case and Unicode.
+///
+/// Trash text is already decoded XML. A second percent-decode would turn a
+/// literal `%20` in a name into a space, so this only trims slashes.
 fn nextcloud_trash_location(path: &str) -> String {
     path.trim().trim_matches('/').to_string()
+}
+
+/// One URL segment, decoded once. An invalid escape is kept as written.
+fn decode_one_segment(segment: &str) -> String {
+    urlencoding::decode(segment)
+        .map(|decoded| decoded.into_owned())
+        .unwrap_or_else(|_| segment.to_string())
+}
+
+fn find_segment_sequence(segments: &[String], needle: &[&str]) -> Option<usize> {
+    segments.windows(needle.len()).position(|window| {
+        window
+            .iter()
+            .zip(needle.iter())
+            .all(|(have, want)| have == want)
+    })
+}
+
+/// Path relative to the Nextcloud files root, from the decoded URL segments
+/// of the request that was actually sent.
+///
+/// The files form is `remote.php/dav/files/<userid>/...`, and the userid is
+/// the decoded `nextcloud_userid`. The legacy form is `remote.php/webdav/...`.
+/// A subpath install may have segments before `remote.php`. Anything else,
+/// a userid that does not match, or an empty remainder (the root itself) is
+/// `None`: the caller purges nothing and does not guess.
+fn nextcloud_location_rest(segments: &[String], userid: Option<&str>) -> Option<String> {
+    if let Some(at) = find_segment_sequence(segments, &["remote.php", "dav", "files"]) {
+        let user = segments.get(at + 3)?;
+        if user != userid? {
+            return None;
+        }
+        let rest = &segments[at + 4..];
+        if rest.is_empty() {
+            return None;
+        }
+        return Some(rest.join("/"));
+    }
+    if let Some(at) = find_segment_sequence(segments, &["remote.php", "webdav"]) {
+        let rest = &segments[at + 2..];
+        if rest.is_empty() {
+            return None;
+        }
+        return Some(rest.join("/"));
+    }
+    None
 }
 
 /// An empty id, `.`, `..`, or an id that still contains `/` would address
@@ -2712,12 +2761,26 @@ impl WebDavProvider {
         Ok(())
     }
 
-    /// Purge the one trashbin row whose original location is `path`.
+    /// Original location of `path` as Nextcloud recorded it: the decoded
+    /// remainder of the URL `build_url` would use, after the files root.
+    /// `None` when that root is not in the URL or `path` is the root itself.
+    fn nextcloud_files_relative_location(&self, path: &str) -> Option<String> {
+        let url = self.build_url(path);
+        let segments = Self::dav_path_segments(Self::url_path_component(&url), &[]);
+        let userid = self.nextcloud_userid().map(|id| decode_one_segment(&id));
+        nextcloud_location_rest(&segments, userid.as_deref())
+    }
+
+    /// Purge the one trashbin row whose original location is the file `path`
+    /// names under the user's files root.
     ///
-    /// A captured `oc:fileid` has to match as well. Deletion time is not a
-    /// key: it does not exist before the delete, and the newest row can be
-    /// a different generation of the same path. Zero matches purge nothing.
-    /// Two matches are refused. The trash collection itself is never deleted.
+    /// The caller path is relative to the profile root. Nextcloud stores
+    /// `trashbin-original-location` relative to `/remote.php/dav/files/<id>/`
+    /// (or `/remote.php/webdav/` on the legacy root). The key is taken from
+    /// the URL the delete really hits, not from the caller string. A captured
+    /// `oc:fileid` has to match as well. Deletion time is not a key. Zero
+    /// matches purge nothing. Two matches are refused. The trash collection
+    /// itself is never deleted.
     async fn purge_nextcloud_trash(
         &mut self,
         path: &str,
@@ -2726,10 +2789,9 @@ impl WebDavProvider {
         if !self.is_nextcloud() {
             return Ok(false);
         }
-        let location = nextcloud_trash_location(path);
-        if location.is_empty() {
+        let Some(location) = self.nextcloud_files_relative_location(path) else {
             return Ok(false);
-        }
+        };
         let identity = identity.map(str::trim).filter(|id| !id.is_empty());
         let entries = self.nextcloud_list_trash().await?;
         let matches = entries

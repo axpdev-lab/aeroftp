@@ -112,6 +112,33 @@ fn trash_xml(body: &str) -> String {
             false,
         ),
         trash_item(body, "/remote.php/dav/trashbin/user/trash/other.txt.d1700000007", "other.txt", "docs/other.txt", "1700000007", "12", false),
+        // `bench/x` is the decoy a caller-path key purges. The real row is
+        // `Sub/bench/x`, the path under the files root.
+        trash_item(body, "/remote.php/dav/trashbin/user/trash/sub.bench.x.d1700000011", "x", "Sub/bench/x", "1700000011", "77", false),
+        trash_item(body, "/remote.php/dav/trashbin/user/trash/root.bench.x.d1700000012", "x", "bench/x", "1700000012", "78", false),
+        trash_item(
+            body,
+            "/remote.php/dav/trashbin/user/trash/rooted.bench.x.d1700000013",
+            "x",
+            "remote.php/dav/files/user/bench/x",
+            "1700000013",
+            "79",
+            false,
+        ),
+        trash_item(body, "/remote.php/dav/trashbin/user/trash/legacy.x.d1700000014", "x", "legacy/x", "1700000014", "81", false),
+        trash_item(
+            body,
+            "/remote.php/dav/trashbin/user/trash/legacy.rooted.d1700000015",
+            "x",
+            "remote.php/webdav/legacy/x",
+            "1700000015",
+            "82",
+            false,
+        ),
+        // Decoded trash text: space, a literal `%`, and a non-ASCII letter.
+        // The decoy is the caller path with the folder prefix dropped.
+        trash_item(body, "/remote.php/dav/trashbin/user/trash/special.n.d1700000016", "n.txt", "a b%λ/n.txt", "1700000016", "80", false),
+        trash_item(body, "/remote.php/dav/trashbin/user/trash/root.n.d1700000017", "n.txt", "n.txt", "1700000017", "83", false),
     ];
     format!(
         "<?xml version=\"1.0\" encoding=\"utf-8\"?>\
@@ -145,6 +172,10 @@ fn live_xml(body: &str, path: &str) -> String {
             "/remote.php/dav/files/user/docs/%CF%84%CE%B5%CE%BB%CE%B9%CE%BA%CF%8C%CF%82.txt",
             "7",
         )
+    } else if path.contains("bench") {
+        one(&format!("{}/x", path.trim_end_matches('/')), "77")
+    } else if path.contains("%20") || path.contains("%25") {
+        one(&format!("{}/n.txt", path.trim_end_matches('/')), "80")
     } else {
         format!(
             "<d:response><d:href>/remote.php/dav/files/user/docs/</d:href>\
@@ -447,6 +478,139 @@ async fn plain_webdav_purge_sends_nothing() {
         "{:?}",
         hits.lock().unwrap()
     );
+}
+
+fn assert_one_delete(hits: &[DavHit], id: &str) {
+    let gone = deletes(hits);
+    assert_eq!(decoded_delete_ids(&gone), vec![id.to_string()], "{gone:?}");
+    assert_not_the_trash_root(&gone);
+}
+
+/// Profile URL at the files root, `initial_path` `/Sub`. Connect stores that
+/// folder as `server_root`, so `/bench/x` is really `Sub/bench/x` on disk.
+#[tokio::test]
+async fn nextcloud_purge_uses_files_root_under_initial_subfolder() {
+    let (base, hits) = serve(false, false).await;
+    let mut provider = nextcloud_at(&base);
+    provider.config.initial_path = Some("/Sub".to_string());
+    provider.server_root = Some("/Sub".to_string());
+    let captured = provider
+        .capture_trash_identities(&["/bench/x".to_string()])
+        .await;
+    assert_eq!(
+        captured[0].as_ref().expect("capture").as_deref(),
+        Some("77")
+    );
+    let purged = provider.delete_permanent("/bench/x").await;
+    let seen = hits.lock().unwrap().clone();
+    assert!(matches!(purged, Ok(true)), "{purged:?}");
+    assert_one_delete(&seen, "sub.bench.x.d1700000011");
+    let live = seen
+        .iter()
+        .find(|hit| hit.method == "PROPFIND" && hit.path.contains("/files/"))
+        .expect("live PROPFIND");
+    assert!(
+        live.path.contains("/Sub/bench"),
+        "capture must list the subfolder the delete hits: {}",
+        live.path
+    );
+}
+
+/// The configured URL itself is already below the files root.
+#[tokio::test]
+async fn nextcloud_purge_uses_files_root_when_the_url_is_a_subfolder() {
+    let (base, hits) = serve(false, false).await;
+    let mut provider = WebDavProvider::new(webdav_config(
+        &format!("{base}/remote.php/dav/files/user/Sub/"),
+        Some("nextcloud"),
+    ))
+    .unwrap();
+    provider.connected = true;
+    let captured = provider
+        .capture_trash_identities(&["/bench/x".to_string()])
+        .await;
+    assert_eq!(
+        captured[0].as_ref().expect("capture").as_deref(),
+        Some("77")
+    );
+    let purged = provider
+        .delete_permanent_with_identity("/bench/x", Some("77"))
+        .await;
+    let seen = hits.lock().unwrap().clone();
+    assert!(matches!(purged, Ok(true)), "{purged:?}");
+    assert_one_delete(&seen, "sub.bench.x.d1700000011");
+    let live = seen
+        .iter()
+        .find(|hit| hit.method == "PROPFIND" && !hit.path.contains("/trashbin/"))
+        .expect("live PROPFIND");
+    assert!(live.path.contains("/Sub/bench"), "{}", live.path);
+}
+
+/// Bare host. Connect stored the detected files root, and the caller path is
+/// the rooted path a listing returns.
+#[tokio::test]
+async fn nextcloud_purge_uses_files_root_for_a_rooted_path_on_a_bare_host() {
+    let (base, hits) = serve(false, false).await;
+    let mut provider = WebDavProvider::new(webdav_config(&base, Some("nextcloud"))).unwrap();
+    provider.connected = true;
+    provider.server_root = Some("/remote.php/dav/files/user/".to_string());
+    let path = "/remote.php/dav/files/user/bench/x";
+    let captured = provider.capture_trash_identities(&[path.to_string()]).await;
+    assert_eq!(
+        captured[0].as_ref().expect("capture").as_deref(),
+        Some("77")
+    );
+    let purged = provider.delete_permanent(path).await;
+    let seen = hits.lock().unwrap().clone();
+    assert!(matches!(purged, Ok(true)), "{purged:?}");
+    assert_one_delete(&seen, "root.bench.x.d1700000012");
+    let live = seen
+        .iter()
+        .find(|hit| hit.method == "PROPFIND" && hit.path.contains("/files/"))
+        .expect("live PROPFIND");
+    assert!(live.path.contains("/files/user/bench"), "{}", live.path);
+    assert!(!live.path.contains("/Sub/"), "{}", live.path);
+}
+
+/// Legacy detection stores `server_root` as `/remote.php/webdav/`.
+#[tokio::test]
+async fn nextcloud_purge_uses_files_root_for_legacy_webdav() {
+    let (base, hits) = serve(false, false).await;
+    let mut provider = WebDavProvider::new(webdav_config(&base, Some("nextcloud"))).unwrap();
+    provider.connected = true;
+    provider.server_root = Some("/remote.php/webdav/".to_string());
+    let purged = provider
+        .delete_permanent("/remote.php/webdav/legacy/x")
+        .await;
+    let seen = hits.lock().unwrap().clone();
+    assert!(matches!(purged, Ok(true)), "{purged:?}");
+    assert_one_delete(&seen, "legacy.x.d1700000014");
+}
+
+/// The folder name is `a b%λ`: a space, a literal percent, and a non-ASCII
+/// letter. The trash text is that decoded name. The URL encodes it.
+#[tokio::test]
+async fn nextcloud_purge_uses_files_root_for_a_decoded_folder_name() {
+    let (base, hits) = serve(false, false).await;
+    let mut provider = nextcloud_at(&base);
+    provider.server_root = Some("/a b%λ".to_string());
+    let captured = provider
+        .capture_trash_identities(&["/n.txt".to_string()])
+        .await;
+    assert_eq!(
+        captured[0].as_ref().expect("capture").as_deref(),
+        Some("80")
+    );
+    let purged = provider.delete_permanent("/n.txt").await;
+    let seen = hits.lock().unwrap().clone();
+    assert!(matches!(purged, Ok(true)), "{purged:?}");
+    assert_one_delete(&seen, "special.n.d1700000016");
+    let live = seen
+        .iter()
+        .find(|hit| hit.method == "PROPFIND" && !hit.path.contains("/trashbin/"))
+        .expect("live PROPFIND");
+    assert!(live.path.contains("%20"), "{}", live.path);
+    assert!(live.path.contains("%25"), "{}", live.path);
 }
 
 #[tokio::test]
