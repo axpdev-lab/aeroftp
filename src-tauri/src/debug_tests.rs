@@ -272,10 +272,11 @@ enum Replacement {
     Ipv4,
 }
 
-/// One RFC 7235 `auth-param`: `name=value`, the value a token or a quoted string.
+/// One RFC 7235 `auth-param`: `name=value`, the value a token or a quoted
+/// string. A token may hold a `;` (AWS SigV4: `SignedHeaders=host;x-amz-date`).
 macro_rules! auth_param {
     () => {
-        r#"[A-Za-z0-9_-]+[ \t]*=[ \t]*(?:"(?:[^"\\]|\\.)*"|[^\s,;'"<>\\]+)"#
+        r#"[A-Za-z0-9_-]+[ \t]*=[ \t]*(?:"(?:[^"\\]|\\.)*"|[^\s,'"<>\\]+)"#
     };
 }
 
@@ -336,14 +337,14 @@ const REDACTION_RULES: &[(&str, Replacement)] = &[
     ),
     // Serialized secret fields in JSON: "password":"..." -> "password":"***REDACTED***"
     (
-        r#"(?i)("(?:password|passwd|pwd|secret|secret_key|secretkey|api_key|apikey|access_key|token|refresh_token|passphrase|private_key|privatekey|client_secret|totp_secret|consumer_secret)"\s*:\s*)"[^"]*""#,
+        r#"(?i)("(?:password|passwd|pwd|secret|secret_key|secretkey|api_key|apikey|access_key|token|access_token|refresh_token|id_token|passphrase|private_key|privatekey|client_secret|totp_secret|consumer_secret)"\s*:\s*)"[^"]*""#,
         Replacement::Text("$1\"***REDACTED***\""),
     ),
     // MCP-06: generic key=value secrets (password=, secret:, token=, ...).
-    // Keeps the key name for debugging context, scrubs the value.
+    // Keeps the key and its separator for debugging context, scrubs the value.
     (
-        r#"(?i)\b(pass(?:word|wd)?|pwd|secret|token|api[_-]?key)\s*[:=]\s*[^\s,;'"<>]+"#,
-        Replacement::Text("$1=***REDACTED***"),
+        r#"(?i)(\b(?:pass(?:word|wd|phrase)?|pwd|secret(?:_?key)?|client_secret|totp_secret|consumer_secret|private_?key|api[_-]?key|access_key|(?:access|refresh|id)_token|token)\s*[:=]\s*)[^\s,;'"<>]+"#,
+        Replacement::Text("$1***REDACTED***"),
     ),
     (
         r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",

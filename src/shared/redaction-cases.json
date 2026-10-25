@@ -128,5 +128,45 @@
     "name": "json secret field",
     "input": "{\"password\":\"hunter2\",\"user\":\"bob\"}",
     "expected": "{\"password\":\"***REDACTED***\",\"user\":\"bob\"}"
+  },
+  {
+    "name": "aws sigv4 header",
+    "input": "Authorization: AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/iam/aws4_request, SignedHeaders=content-type;host;x-amz-date, Signature=5d672d79c15b13162d9279b0855cfba6789a8edb4c82c400e06b5924a6f2b5d7",
+    "expected": "authorization: ***REDACTED***"
+  },
+  {
+    "name": "key and value with a colon keeps the colon",
+    "input": "password: hunter2",
+    "expected": "password: ***REDACTED***"
+  },
+  {
+    "name": "key and value with an equals sign keeps it",
+    "input": "password=hunter2",
+    "expected": "password=***REDACTED***"
+  },
+  {
+    "name": "short and dashed key names",
+    "input": "pass=abc123 api-key=zzz999",
+    "expected": "pass=***REDACTED*** api-key=***REDACTED***"
+  },
+  {
+    "name": "secret names with a prefix",
+    "input": "client_secret=abc123 secret_key: def456 passphrase=ghi789",
+    "expected": "client_secret=***REDACTED*** secret_key: ***REDACTED*** passphrase=***REDACTED***"
+  },
+  {
+    "name": "oauth token names",
+    "input": "access_token=ya29.a0AfH6SMB refresh_token: 1//0gXYZ id_token=abc",
+    "expected": "access_token=***REDACTED*** refresh_token: ***REDACTED*** id_token=***REDACTED***"
+  },
+  {
+    "name": "json oauth token fields",
+    "input": "{\"access_token\":\"ya29.x\",\"expires_in\":3600}",
+    "expected": "{\"access_token\":\"***REDACTED***\",\"expires_in\":3600}"
+  },
+  {
+    "name": "a plural is not a token key",
+    "input": "max_tokens=4096 and tokens: 5",
+    "expected": "max_tokens=4096 and tokens: 5"
   }
 ]

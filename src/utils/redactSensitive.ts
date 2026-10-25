@@ -15,10 +15,11 @@
 // src-tauri/src/debug_tests.rs). Both run src/shared/redaction-cases.json, so
 // a rule changed on one side only turns the other side's test red.
 // RFC 7235 `credentials`: a scheme, then a token68 or a comma-separated list
-// of `name=value` parameters whose values may be quoted (Digest, Hawk, ...).
+// of `name=value` parameters whose values may be quoted (Digest, Hawk, ...) or
+// hold a `;` (AWS SigV4: `SignedHeaders=host;x-amz-date`).
 // A value that is already the marker stays as it is: redacting a redacted line
 // again must not take the word after it for a credential.
-const AUTH_PARAM = String.raw`[A-Za-z0-9_-]+[ \t]*=[ \t]*(?:"(?:[^"\\]|\\.)*"|[^\s,;'"<>\\]+)`;
+const AUTH_PARAM = String.raw`[A-Za-z0-9_-]+[ \t]*=[ \t]*(?:"(?:[^"\\]|\\.)*"|[^\s,'"<>\\]+)`;
 const AUTHORIZATION_CREDENTIALS = new RegExp(
     String.raw`\bauthorization["']?[ \t]*[:=][ \t]*(?:\*\*\*REDACTED\*\*\*|[^\s,;'"<>\\]+(?:[ \t]+(?:${AUTH_PARAM}(?:[ \t]*,[ \t]*${AUTH_PARAM})*|[A-Za-z0-9._~+/-]+=*))?)`,
     'gi',
@@ -49,13 +50,13 @@ export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: s
     // Serialized secret fields in JSON: "password":"..." -> "password":"***REDACTED***"
     {
         pattern:
-            /("(?:password|passwd|pwd|secret|secret_key|secretkey|api_key|apikey|access_key|token|refresh_token|passphrase|private_key|privatekey|client_secret|totp_secret|consumer_secret)"\s*:\s*)"[^"]*"/gi,
+            /("(?:password|passwd|pwd|secret|secret_key|secretkey|api_key|apikey|access_key|token|access_token|refresh_token|id_token|passphrase|private_key|privatekey|client_secret|totp_secret|consumer_secret)"\s*:\s*)"[^"]*"/gi,
         replacement: '$1"***REDACTED***"',
     },
     // Secret fields in key=value / key: value form
     {
         pattern:
-            /(\b(?:password|passwd|pwd|secret|secret_key|api_key|passphrase|private_key|client_secret|token)\s*[:=]\s*)[^\s,;'"<>]+/gi,
+            /(\b(?:pass(?:word|wd|phrase)?|pwd|secret(?:_?key)?|client_secret|totp_secret|consumer_secret|private_?key|api[_-]?key|access_key|(?:access|refresh|id)_token|token)\s*[:=]\s*)[^\s,;'"<>]+/gi,
         replacement: '$1***REDACTED***',
     },
     // Email addresses
