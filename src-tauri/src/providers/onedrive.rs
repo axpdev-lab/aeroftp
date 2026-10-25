@@ -1546,15 +1546,7 @@ impl StorageProvider for OneDriveProvider {
         local_path: &str,
         _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        let path = if remote_path.starts_with('/') {
-            remote_path.to_string()
-        } else {
-            format!(
-                "{}/{}",
-                self.current_path.trim_end_matches('/'),
-                remote_path
-            )
-        };
+        let path = self.absolute_path(remote_path);
 
         let item = self.get_item(&path).await?;
 
@@ -1625,15 +1617,7 @@ impl StorageProvider for OneDriveProvider {
         _offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        let path = if remote_path.starts_with('/') {
-            remote_path.to_string()
-        } else {
-            format!(
-                "{}/{}",
-                self.current_path.trim_end_matches('/'),
-                remote_path
-            )
-        };
+        let path = self.absolute_path(remote_path);
 
         let item = self.get_item(&path).await?;
 
@@ -1691,15 +1675,7 @@ impl StorageProvider for OneDriveProvider {
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
-        let path = if remote_path.starts_with('/') {
-            remote_path.to_string()
-        } else {
-            format!(
-                "{}/{}",
-                self.current_path.trim_end_matches('/'),
-                remote_path
-            )
-        };
+        let path = self.absolute_path(remote_path);
 
         self.learn_parents(&path).await?;
         let url = format!("{}:/content", self.api_path(&path));
@@ -1752,15 +1728,7 @@ impl StorageProvider for OneDriveProvider {
             crate::transfer_dag::governor::TransferDirection::Upload,
         ));
 
-        let path = if remote_path.starts_with('/') {
-            remote_path.to_string()
-        } else {
-            format!(
-                "{}/{}",
-                self.current_path.trim_end_matches('/'),
-                remote_path
-            )
-        };
+        let path = self.absolute_path(remote_path);
 
         self.learn_parents(&path).await?;
         let url = format!("{}:/content", self.api_path(&path));
@@ -2853,18 +2821,9 @@ impl StorageProvider for OneDriveProvider {
             ));
         }
 
-        // Mirror legacy upload() path resolution: relative paths anchor on
-        // `current_path` so the session targets the same item the
+        // The same resolution as upload(): the session targets the item the
         // single-PUT path would.
-        let resolved_path = if remote_path.starts_with('/') {
-            remote_path.to_string()
-        } else {
-            format!(
-                "{}/{}",
-                self.current_path.trim_end_matches('/'),
-                remote_path
-            )
-        };
+        let resolved_path = self.absolute_path(remote_path);
 
         let upload_url = self.open_upload_session(&resolved_path).await?;
         let meta = OneDriveMultipartMeta {
