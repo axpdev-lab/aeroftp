@@ -297,6 +297,18 @@ pub fn keep_timeout(
     }
 }
 
+/// A whole-object hash must consume exactly the size pinned before its read.
+/// A self-consistent HTTP200 Content-Length can still describe only part of
+/// the object; it is not a substitute for the caller's known object size.
+pub fn validate_hash_length(path: &str, expected: u64, actual: u64) -> Result<(), ProviderError> {
+    if actual != expected {
+        return Err(ProviderError::TransferFailed(format!(
+            "{path}: expected {expected} bytes for hashing, downloaded {actual}"
+        )));
+    }
+    Ok(())
+}
+
 /// H2: Read a reqwest Response into Vec<u8> with a size cap.
 /// Checks Content-Length first; if absent, reads up to `limit` bytes via streaming.
 ///
