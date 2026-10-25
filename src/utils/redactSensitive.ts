@@ -15,6 +15,15 @@
 // src-tauri/src/debug_tests.rs). Both run src/shared/redaction-cases.json, so
 // a rule changed on one side only turns the other side's test red.
 
+// The body of a value whose quotes are escaped (`\"v\"`, from a Debug or JSON
+// dump of the line), up to its closing `\"`. One level down every backslash is
+// doubled: `\\` is an escape of the value itself and takes the next character
+// with it (`\\\"` is a quote inside the value, `\\\\` a backslash), so a
+// backslash in the value does not end it early; any other `\x` is one character.
+// The Rust twin writes the same text (`escaped_body!` in
+// src-tauri/src/authorization_redaction.rs).
+const ESCAPED_BODY = String.raw`(?:[^\\]|\\[^"\\]|\\\\(?:[^\\]|\\.))*`;
+
 // RFC 7235 `credentials`: a scheme, then either a comma-separated list of
 // `name=value` parameters (a value may be quoted, as in Digest and Hawk, or hold
 // a `;`, as in AWS SigV4's `SignedHeaders=host;x-amz-date`) or any other opaque
@@ -43,7 +52,7 @@ const SECRET_NAME = String.raw`(?:(?:[A-Za-z0-9]{1,24}[_-]){0,8}(?:password|pass
 // quoted string that ends at its closing quote (an escaped quote does not end
 // it; a line cut inside the value has no closing quote and ends there), or a
 // bare word up to the next delimiter.
-const SECRET_VALUE = String.raw`(?:\*\*\*REDACTED\*\*\*|\\"(?:[^\\]|\\\\\\")*(?:\\")?|"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[^\s,;'"<>]+)`;
+const SECRET_VALUE = String.raw`(?:\*\*\*REDACTED\*\*\*|\\"${ESCAPED_BODY}(?:\\")?|"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[^\s,;'"<>]+)`;
 
 export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: string }> = [
     // Authorization (and Proxy-Authorization) carries `scheme credentials`, and
@@ -53,11 +62,14 @@ export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: s
     // the same three rules (src-tauri/src/authorization_redaction.rs).
     // JSON inside a string: the value ends at the first lone `\"`, and a Digest
     // parameter's `\\\"` belongs to it.
-    { pattern: /(\\"authorization\\"[ \t]*:[ \t]*\\")(?:[^\\]|\\\\\\")*/gi, replacement: '$1***REDACTED***' },
+    { pattern: new RegExp(String.raw`(\\"authorization\\"[ \t]*:[ \t]*\\")${ESCAPED_BODY}`, 'gi'), replacement: '$1***REDACTED***' },
     // A quoted value (JSON, Debug) ends at its closing quote, so the keys after
     // it stay; a line cut inside the value has no closing quote and ends there.
     // A value whose quotes are escaped (`authorization=\"Basic ...\"`) is read first.
-    { pattern: /(\bauthorization["']?[ \t]*[:=][ \t]*)(?:\\"(?:[^\\]|\\\\\\")*(?:\\")?|"(?:[^"\\]|\\.)*"?|'[^']*'?)/gi, replacement: '$1"***REDACTED***"' },
+    {
+        pattern: new RegExp(String.raw`(\bauthorization["']?[ \t]*[:=][ \t]*)(?:\\"${ESCAPED_BODY}(?:\\")?|"(?:[^"\\]|\\.)*"?|'[^']*'?)`, 'gi'),
+        replacement: '$1"***REDACTED***"',
+    },
     { pattern: AUTHORIZATION_CREDENTIALS, replacement: 'authorization: ***REDACTED***' },
     // API keys (Anthropic, OpenAI projects, generic sk-*)
     { pattern: /sk-(ant|proj|live|test)-[A-Za-z0-9_\-]{16,}/g, replacement: 'sk-***REDACTED***' },
@@ -78,7 +90,7 @@ export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: s
     // The same inside a JSON string, where each quote is escaped: the value ends
     // at the first lone `\"`, and an inner `\\\"` belongs to it.
     {
-        pattern: new RegExp(String.raw`(\\"${SECRET_NAME}\\"[ \t]*:[ \t]*\\")(?:[^\\]|\\\\\\")*`, 'gi'),
+        pattern: new RegExp(String.raw`(\\"${SECRET_NAME}\\"[ \t]*:[ \t]*\\")${ESCAPED_BODY}`, 'gi'),
         replacement: '$1***REDACTED***',
     },
     // Secret fields in key=value / key: value form

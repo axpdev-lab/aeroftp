@@ -14,17 +14,37 @@
 //! so `Authorization: Bearer sk-...` becomes one marker, and chooses the
 //! marker text.
 
+/// The body of a value whose quotes are escaped (`\"v\"`, from a Debug or
+/// JSON dump of the line), up to its closing `\"`. One level down every
+/// backslash is doubled: `\\` is an escape of the value itself and takes the
+/// next character with it (`\\\"` is a quote inside the value, `\\\\` a
+/// backslash), so a backslash in the value does not end it early; any other
+/// `\x` is one character. The frontend table writes the same text.
+macro_rules! escaped_body {
+    () => {
+        r#"(?:[^\\]|\\[^"\\]|\\\\(?:[^\\]|\\.))*"#
+    };
+}
+
+pub(crate) use escaped_body;
+
 /// JSON inside a string: the value ends at the first lone `\"`, and a Digest
 /// parameter's `\\\"` belongs to it. Replace with `$1` plus the marker.
-pub(crate) const IN_JSON_STRING: &str =
-    r#"(?i)(\\"authorization\\"[ \t]*:[ \t]*\\")(?:[^\\]|\\\\\\")*"#;
+pub(crate) const IN_JSON_STRING: &str = concat!(
+    r#"(?i)(\\"authorization\\"[ \t]*:[ \t]*\\")"#,
+    escaped_body!()
+);
 
 /// A quoted value (JSON, Debug) ends at its closing quote, so the keys after
 /// it stay; a line cut inside the value has no closing quote and ends there.
 /// A value whose quotes are escaped (`authorization=\"Basic ...\"`, from a
 /// Debug or JSON dump of the line) is read first, and takes its closing `\"`.
 /// Replace with `$1` plus the quoted marker.
-pub(crate) const QUOTED: &str = r#"(?i)(\bauthorization["']?[ \t]*[:=][ \t]*)(?:\\"(?:[^\\]|\\\\\\")*(?:\\")?|"(?:[^"\\]|\\.)*"?|'[^']*'?)"#;
+pub(crate) const QUOTED: &str = concat!(
+    r#"(?i)(\bauthorization["']?[ \t]*[:=][ \t]*)(?:\\""#,
+    escaped_body!(),
+    r#"(?:\\")?|"(?:[^"\\]|\\.)*"?|'[^']*'?)"#
+);
 
 /// One RFC 7235 `auth-param`: `name=value`, the value a token or a quoted
 /// string. A token may hold a `;` (AWS SigV4: `SignedHeaders=host;x-amz-date`).
@@ -79,6 +99,7 @@ pub(crate) mod matrix {
         separators: Vec<String>,
         #[serde(rename = "valueForms")]
         value_forms: Vec<String>,
+        values: Vec<String>,
         authorization: Vec<Credential>,
         unchanged: Vec<String>,
     }
@@ -128,15 +149,23 @@ pub(crate) mod matrix {
                     kept: key.clone(),
                 })
             };
-            for sep in &m.separators {
-                for form in &m.value_forms {
-                    probe(format!("{key}{sep}{} next", form.replace("{v}", &m.secret)));
+            // The secret alone and the secret after a backslash, which an
+            // escaped value doubles once per level and must not end it early.
+            for template in &m.values {
+                let value = template.replace("{v}", &m.secret);
+                for sep in &m.separators {
+                    for form in &m.value_forms {
+                        probe(format!("{key}{sep}{} next", form.replace("{v}", &value)));
+                    }
                 }
+                probe(object(key, &value));
+                probe(format!(
+                    r#"{{"{key}": {}, "next": 1}}"#,
+                    json_string(&value)
+                ));
+                probe(in_a_string(object(key, &value)));
+                probe(format!("Config {{ {key}: \\\"{}\\\" }}", escaped(&value)));
             }
-            probe(object(key, &m.secret));
-            probe(format!(r#"{{"{key}": "{}", "next": 1}}"#, m.secret));
-            probe(in_a_string(object(key, &m.secret)));
-            probe(format!("Config {{ {key}: \\\"{}\\\" }}", m.secret));
         }
         probes
     }

@@ -29,7 +29,7 @@ describe('redactSensitive', () => {
 // inputs from the same file (src/shared/redaction-matrix.json): the secret
 // never survives, the key does, and redacting twice changes nothing.
 describe('redactSensitive matrix', () => {
-    const { secret, keys, separators, valueForms, authorization, unchanged } = matrix;
+    const { secret, keys, separators, valueForms, values, authorization, unchanged } = matrix;
     const escaped = (text: string): string => JSON.stringify(JSON.stringify(text)).slice(1, -1).slice(2, -2);
     const check = (input: string, leaked: string, kept: string): void => {
         const out = redactSensitive(input);
@@ -38,15 +38,20 @@ describe('redactSensitive matrix', () => {
         expect(redactSensitive(out), `again: ${out}`).toBe(out);
     };
 
+    // Each value is the secret alone and the secret after a backslash, which an
+    // escaped value doubles once per level and must not end it early.
     it('redacts every secret field in every form', () => {
         for (const key of keys) {
-            for (const sep of separators) {
-                for (const form of valueForms) check(`${key}${sep}${form.replace('{v}', secret)} next`, secret, key);
+            for (const template of values) {
+                const value = template.replace('{v}', secret);
+                for (const sep of separators) {
+                    for (const form of valueForms) check(`${key}${sep}${form.replace('{v}', value)} next`, secret, key);
+                }
+                check(JSON.stringify({ [key]: value, next: 1 }), secret, key);
+                check(`{"${key}": ${JSON.stringify(value)}, "next": 1}`, secret, key);
+                check(JSON.stringify({ msg: JSON.stringify({ [key]: value, next: 1 }) }), secret, key);
+                check(`Config { ${key}: \\"${escaped(value)}\\" }`, secret, key);
             }
-            check(JSON.stringify({ [key]: secret, next: 1 }), secret, key);
-            check(`{"${key}": "${secret}", "next": 1}`, secret, key);
-            check(JSON.stringify({ msg: JSON.stringify({ [key]: secret, next: 1 }) }), secret, key);
-            check(`Config { ${key}: ${JSON.stringify(secret).replace(/"/g, '\\"')} }`, secret, key);
         }
     });
 

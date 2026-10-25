@@ -295,7 +295,11 @@ macro_rules! secret_name {
 /// bare word up to the next delimiter.
 macro_rules! secret_value {
     () => {
-        r#"(?:\*\*\*REDACTED\*\*\*|\\"(?:[^\\]|\\\\\\")*(?:\\")?|"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[^\s,;'"<>]+)"#
+        concat!(
+            r#"(?:\*\*\*REDACTED\*\*\*|\\""#,
+            authorization_redaction::escaped_body!(),
+            r#"(?:\\")?|"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[^\s,;'"<>]+)"#
+        )
     };
 }
 
@@ -355,7 +359,8 @@ const REDACTION_RULES: &[(&str, Replacement)] = &[
         concat!(
             r#"(?i)(\\""#,
             secret_name!(),
-            r#"\\"[ \t]*:[ \t]*\\")(?:[^\\]|\\\\\\")*"#
+            r#"\\"[ \t]*:[ \t]*\\")"#,
+            authorization_redaction::escaped_body!()
         ),
         Replacement::Text("$1***REDACTED***"),
     ),

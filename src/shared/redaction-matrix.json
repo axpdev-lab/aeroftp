@@ -43,6 +43,10 @@
     "'{v}'",
     "\\\"{v}\\\""
   ],
+  "values": [
+    "{v}",
+    "a\\{v}"
+  ],
   "authorization": [
     {
       "name": "basic",
@@ -57,6 +61,11 @@
     {
       "name": "digest",
       "credential": "Digest username=\"a\", response=\"S3cretVal42\"",
+      "secret": "S3cretVal42"
+    },
+    {
+      "name": "digest with a backslash",
+      "credential": "Digest username=\"a\\\\b\", response=\"S3cretVal42\"",
       "secret": "S3cretVal42"
     },
     {

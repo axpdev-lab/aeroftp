@@ -113,6 +113,12 @@
     "group": "authorization"
   },
   {
+    "name": "digest inside a json string with a backslash in a parameter",
+    "input": "{\"payload\":\"{\\\"authorization\\\":\\\"Digest username=\\\\\\\"a\\\\\\\\b\\\\\\\", response=\\\\\\\"S3cretVal42\\\\\\\"\\\"}\"}",
+    "expected": "{\"payload\":\"{\\\"authorization\\\":\\\"***REDACTED***\\\"}\"}",
+    "group": "authorization"
+  },
+  {
     "name": "the word alone is prose",
     "input": "authorization failed for the session",
     "expected": "authorization failed for the session",
@@ -246,6 +252,11 @@
     "name": "a json secret inside a json string",
     "input": "{\"msg\":\"{\\\"password\\\":\\\"abc\\\",\\\"next\\\":1}\"}",
     "expected": "{\"msg\":\"{\\\"password\\\":\\\"***REDACTED***\\\",\\\"next\\\":1}\"}"
+  },
+  {
+    "name": "a json secret after a backslash inside a json string",
+    "input": "{\"payload\":\"{\\\"password\\\":\\\"a\\\\\\\\bS3cretVal42\\\"}\"}",
+    "expected": "{\"payload\":\"{\\\"password\\\":\\\"***REDACTED***\\\"}\"}"
   },
   {
     "name": "a redacted secret stays as it is",
