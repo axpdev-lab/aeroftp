@@ -42,7 +42,8 @@ RUN set -eu; \
     sha256sum --check --strict rust.sha256; \
     tar -xJf rust.tar.xz; \
     "./rust-1.97.1-${rust_arch}-unknown-linux-gnu/install.sh" \
-      --prefix=/usr/local --without=rust-docs; \
+      --prefix=/usr/local \
+      --components="rustc,cargo,rust-std-${rust_arch}-unknown-linux-gnu,rustfmt-preview,clippy-preview"; \
     rm -rf node.tar.xz node.sha256 rust.tar.xz rust.sha256 rust-1.97.1-*
 ENV PATH="/root/.cargo/bin:${PATH}"
 
