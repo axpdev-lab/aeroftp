@@ -6013,7 +6013,7 @@
             "banner": {
                 "title": "Portable mode: nasa folder na ito ang lahat ng iyong AeroFTP data",
                 "body": "Bawat portable installation ay ganap na self-contained: nakaligpit na servers, AeroVault, AI chats, at preferences ay pawang nasa tabi ng AeroFTP.exe. Mula sa v3.7.8, ang dalawang portable folder sa parehong PC ay ganap na hiwalay sa isa't isa. Ang pagtanggal ng profile sa isang folder ay hindi na nakakaapekto sa kabila.",
-                "legacyWarning": "Nakita namin ang natirang data mula sa nakaraang shared install sa %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Hindi na ito ginagamit ng portable installation na ito. Maaari mo itong tanggalin nang manu-mano kung hindi mo na kailangan.",
+                "legacyWarning": "Nakakita kami ng data mula sa isang naunang shared na installation sa %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Hindi ito ginagamit ng portable na installation na ito. Kung naka-install din ang AeroFTP sa PC na ito (MSI o setup), ang folder na iyon ay naglalaman ng data ng naka-install na app: panatilihin ito. Kung hindi, maaari mo itong alisin nang manu-mano kung hindi mo ito kailangan.",
                 "openFolder": "Buksan ang data folder",
                 "dismiss": "Naintindihan"
             }

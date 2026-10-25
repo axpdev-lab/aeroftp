@@ -1091,27 +1091,116 @@ fn copy_tree_plain(src: &Path, dst: &Path) -> std::io::Result<()> {
 }
 
 /// True when an `EBWebView` folder exists under the shared, identifier-scoped
-/// `%LOCALAPPDATA%\com.aeroftp.AeroFTP` directory. Used by the portable
-/// migration wizard to detect "there is legacy state from a previous
-/// non-portable (or pre-isolation portable) install on this machine".
+/// `%LOCALAPPDATA%\com.aeroftp.AeroFTP` directory and nothing else uses it:
+/// the portable banner then calls it leftover data from a previous shared
+/// install (or a pre-isolation portable) that the user may remove.
 ///
-/// Only meaningful when running portable: an installed build expects that
-/// directory to exist (it's its own state).
+/// That directory is also the live state of an installed AeroFTP (MSI or
+/// NSIS) on the same machine, and the banner told a portable user to delete
+/// it. So it is leftover only when no installed copy is registered, see
+/// [`shared_data_is_leftover`].
 #[cfg(windows)]
 pub fn shared_webview_data_present() -> bool {
+    // An installed build expects the directory (it is its own state), so the
+    // question is only asked when portable, and the registry only read when
+    // the folder is there.
     if !is_portable() {
         return false;
     }
     let Some(local_appdata) = dirs::data_local_dir() else {
         return false;
     };
-    let candidate = local_appdata.join(LEGACY_APP_IDENTIFIER).join("EBWebView");
-    candidate.is_dir()
+    if !local_appdata
+        .join(LEGACY_APP_IDENTIFIER)
+        .join("EBWebView")
+        .is_dir()
+    {
+        return false;
+    }
+    let own_dir = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf))
+        .unwrap_or_default();
+    shared_data_is_leftover(&own_dir, &registered_aeroftp_installs(), holds_aeroftp_exe)
 }
 
 #[cfg(not(windows))]
 pub fn shared_webview_data_present() -> bool {
     false
+}
+
+/// Whether the shared WebView folder, found by a portable copy, is leftover
+/// data it may call unused. `installs` holds the install folder of every AeroFTP the
+/// Windows uninstall registry lists (`None` for an entry that names none);
+/// `holds_exe` says whether a folder still holds the installed program.
+///
+/// An installed copy owns the folder unless it is this portable copy's own
+/// folder or its program is gone. A registered install that names no folder
+/// counts as present: calling the folder of a live install leftover is the
+/// one mistake that costs the user data.
+#[cfg(any(windows, test))]
+fn shared_data_is_leftover(
+    own_dir: &Path,
+    installs: &[Option<PathBuf>],
+    holds_exe: impl Fn(&Path) -> bool,
+) -> bool {
+    let own = comparable_dir(own_dir);
+    !installs.iter().any(|install| match install {
+        None => true,
+        Some(dir) => comparable_dir(dir) != own && holds_exe(dir),
+    })
+}
+
+/// A Windows folder as the registry and `current_exe` may spell it: case
+/// and a trailing separator do not make another folder.
+#[cfg(any(windows, test))]
+fn comparable_dir(path: &Path) -> String {
+    path.to_string_lossy()
+        .to_lowercase()
+        .trim_end_matches(['\\', '/'])
+        .to_string()
+}
+
+/// Whether `dir` holds `aeroftp.exe` (any case: the file system is not case
+/// sensitive, and the installers have shipped both spellings).
+#[cfg(windows)]
+fn holds_aeroftp_exe(dir: &Path) -> bool {
+    std::fs::read_dir(dir).is_ok_and(|entries| {
+        entries.flatten().any(|entry| {
+            entry.file_name().to_string_lossy().to_lowercase() == "aeroftp.exe"
+                && entry.path().is_file()
+        })
+    })
+}
+
+/// The install folder of every AeroFTP in the Windows uninstall registry,
+/// per machine (HKLM) and per user (HKCU); `None` for an entry without an
+/// `InstallLocation`.
+#[cfg(windows)]
+fn registered_aeroftp_installs() -> Vec<Option<PathBuf>> {
+    use winreg::enums::*;
+    use winreg::RegKey;
+
+    let mut installs = Vec::new();
+    for hive in [HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER] {
+        let Ok(uninstall) =
+            RegKey::predef(hive).open_subkey_with_flags(REGISTRY_UNINSTALL_KEY, KEY_READ)
+        else {
+            continue;
+        };
+        for sub_key_name in uninstall.enum_keys().flatten() {
+            let Ok(sub) = uninstall.open_subkey_with_flags(&sub_key_name, KEY_READ) else {
+                continue;
+            };
+            let display_name: String = sub.get_value("DisplayName").unwrap_or_default();
+            if !display_name.contains("AeroFTP") {
+                continue;
+            }
+            let location: String = sub.get_value("InstallLocation").unwrap_or_default();
+            installs.push((!location.trim().is_empty()).then(|| PathBuf::from(location)));
+        }
+    }
+    installs
 }
 
 // ===========================================================================
@@ -1272,6 +1361,47 @@ fn normalize_windows_path(path: &std::path::Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Audit 4.2.5 W0-b: the portable banner called the shared
+    /// `%LOCALAPPDATA%\com.aeroftp.AeroFTP` folder leftover data to remove,
+    /// also on a machine where an installed AeroFTP (MSI or NSIS) uses it as
+    /// its live state. Windows paths, with the registry and the file system
+    /// injected, so the rule runs on every OS.
+    #[test]
+    fn the_shared_folder_of_an_installed_copy_is_not_leftover() {
+        let portable_dir = Path::new(r"D:\Tools\AeroFTP");
+        let installed = PathBuf::from(r"C:\Program Files\AeroFTP\");
+        let exe_present = |dir: &Path| dir == installed.as_path();
+        let nothing_there = |_: &Path| false;
+
+        // No install registered: leftover, as before.
+        assert!(shared_data_is_leftover(portable_dir, &[], exe_present));
+        // An installed copy whose program is there owns the folder.
+        assert!(!shared_data_is_leftover(
+            portable_dir,
+            &[Some(installed.clone())],
+            exe_present
+        ));
+        // A registered install that names no folder counts as present.
+        assert!(!shared_data_is_leftover(
+            portable_dir,
+            &[None],
+            nothing_there
+        ));
+        // A stale entry whose program is gone does not.
+        assert!(shared_data_is_leftover(
+            portable_dir,
+            &[Some(installed.clone())],
+            nothing_there
+        ));
+        // An entry naming this portable copy's own folder, in another case
+        // and with a trailing separator, is not another install.
+        assert!(shared_data_is_leftover(
+            portable_dir,
+            &[Some(PathBuf::from(r"d:\tools\aeroftp\"))],
+            |_: &Path| true
+        ));
+    }
 
     /// The same executable fixture the CLI integration tests use must choose
     /// portable state on native Windows too, where APPDATA redirection alone

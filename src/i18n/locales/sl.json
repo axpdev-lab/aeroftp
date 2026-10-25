@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Prenosni način: ta mapa vsebuje vse vaše podatke AeroFTP",
                 "body": "Vsaka prenosna namestitev je popolnoma samostojna: shranjeni strežniki, AeroVault, AI klepeti in nastavitve so vsi poleg datoteke AeroFTP.exe. Od različice v3.7.8 sta dve prenosni mapi na istem računalniku popolnoma neodvisni. Izbris profila v eni mapi ne vpliva več na drugo.",
-                "legacyWarning": "Zaznali smo preostale podatke iz prejšnje skupne namestitve v %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ta prenosna namestitev jih ne uporablja več. Če jih ne potrebujete, jih lahko ročno odstranite.",
+                "legacyWarning": "Našli smo podatke prejšnje skupne namestitve v %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ta prenosna namestitev jih ne uporablja. Če je AeroFTP nameščen tudi v tem računalniku (MSI ali namestitveni program), ta mapa vsebuje podatke nameščene aplikacije: obdržite jo. Sicer jo lahko ročno odstranite, če je ne potrebujete.",
                 "openFolder": "Odpri mapo s podatki",
                 "dismiss": "Razumem"
             }

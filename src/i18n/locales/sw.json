@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Hali ya portable: folda hii ina data yako yote ya AeroFTP",
                 "body": "Kila usakinishaji wa portable umekamilika peke yake: seva zilizohifadhiwa, AeroVault, mazungumzo ya AI na mapendeleo yote yapo karibu na AeroFTP.exe. Kuanzia v3.7.8, folda mbili za portable kwenye PC moja ni huru kabisa. Kufuta wasifu katika folda moja hakuathiri tena nyingine.",
-                "legacyWarning": "Tumegundua data iliyobaki kutoka usakinishaji wa awali wa pamoja kwenye %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Haitumiki tena na usakinishaji huu wa portable. Unaweza kuiondoa kwa mkono ikiwa huihitaji.",
+                "legacyWarning": "Tumepata data kutoka kwa usakinishaji wa pamoja uliopita katika %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Usakinishaji huu unaobebeka hautumii data hiyo. Ikiwa AeroFTP pia imesakinishwa kwenye kompyuta hii (MSI au setup), folda hiyo ina data ya programu iliyosakinishwa: ihifadhi. Vinginevyo unaweza kuiondoa mwenyewe ikiwa huihitaji.",
                 "openFolder": "Fungua folda ya data",
                 "dismiss": "Nimeelewa"
             }
