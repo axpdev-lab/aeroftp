@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Tryb przenośny: ten folder zawiera wszystkie dane AeroFTP",
                 "body": "Każda instalacja przenośna jest w pełni samodzielna: zapisane serwery, AeroVault, czaty AI i preferencje znajdują się obok pliku AeroFTP.exe. Od wersji v3.7.8 dwa foldery przenośne na tym samym komputerze są całkowicie niezależne. Usunięcie profilu w jednym folderze nie wpływa już na drugi.",
-                "legacyWarning": "Wykryliśmy pozostałości danych z poprzedniej instalacji współdzielonej w %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Nie są one już używane przez tę instalację przenośną. Możesz je usunąć ręcznie, jeśli ich nie potrzebujesz.",
+                "legacyWarning": "Znaleźliśmy dane z poprzedniej współdzielonej instalacji w %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ta przenośna instalacja z nich nie korzysta. Jeśli AeroFTP jest również zainstalowany na tym komputerze (MSI lub instalator), ten folder zawiera dane zainstalowanej aplikacji: zachowaj go. W przeciwnym razie możesz usunąć go ręcznie, jeśli go nie potrzebujesz.",
                 "openFolder": "Otwórz folder danych",
                 "dismiss": "Rozumiem"
             }

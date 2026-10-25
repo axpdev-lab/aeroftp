@@ -6265,7 +6265,7 @@
             "banner": {
                 "title": "Modalità portable: questa cartella contiene tutti i tuoi dati AeroFTP",
                 "body": "Ogni installazione portable è completamente autonoma: server salvati, AeroVault, chat AI e preferenze vivono tutti accanto ad AeroFTP.exe. Da v3.7.8 in poi, due cartelle portable sullo stesso PC sono totalmente indipendenti: eliminare un profilo in una cartella non influisce più sull'altra.",
-                "legacyWarning": "Abbiamo rilevato dati residui di un'installazione condivisa precedente in %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Non sono più utilizzati da questa installazione portable. Puoi rimuoverli manualmente se non ti servono.",
+                "legacyWarning": "Abbiamo trovato dati di una precedente installazione condivisa in %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Questa installazione portable non li usa. Se AeroFTP è installato anche su questo PC (MSI o setup), quella cartella contiene i dati dell'app installata: conservala. Altrimenti puoi rimuoverla manualmente se non ti serve.",
                 "openFolder": "Apri cartella dati",
                 "dismiss": "Ho capito"
             }

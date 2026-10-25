@@ -6013,7 +6013,7 @@
             "banner": {
                 "title": "Modd cludadwy: mae'r ffolder hon yn dal eich holl ddata AeroFTP",
                 "body": "Mae pob gosodiad cludadwy yn gwbl hunangynhwysol: mae'r gweinyddion sydd wedi'u cadw, AeroVault, sgyrsiau AI a dewisiadau i gyd yn byw wrth ymyl AeroFTP.exe. O v3.7.8 ymlaen, mae dau ffolder cludadwy ar yr un cyfrifiadur yn gwbl annibynnol: nid yw dileu proffil mewn un ffolder yn effeithio ar y llall mwyach.",
-                "legacyWarning": "Rydym wedi canfod data sy'n weddill o osodiad a rennir blaenorol yn %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Nid yw'r gosodiad cludadwy hwn yn ei ddefnyddio mwyach. Gallwch ei dynnu â llaw os nad oes ei angen arnoch.",
+                "legacyWarning": "Daethom o hyd i ddata o osodiad a rennir blaenorol yn %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Nid yw'r gosodiad cludadwy hwn yn ei ddefnyddio. Os yw AeroFTP hefyd wedi'i osod ar y PC hwn (MSI neu setup), mae'r ffolder honno'n cynnwys data'r ap sydd wedi'i osod: cadwch hi. Fel arall, gallwch ei thynnu â llaw os nad oes ei hangen arnoch.",
                 "openFolder": "Agor y ffolder data",
                 "dismiss": "Iawn, deallaf"
             }

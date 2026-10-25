@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Hordozható mód: ez a mappa tartalmazza az összes AeroFTP adatát",
                 "body": "Minden hordozható telepítés teljesen önálló: a mentett szerverek, az AeroVault, az AI beszélgetések és a beállítások mind az AeroFTP.exe mellett találhatók. A v3.7.8 verziótól kezdve két hordozható mappa ugyanazon a számítógépen teljesen független egymástól, az egyik mappában lévő profil törlése már nem érinti a másikat.",
-                "legacyWarning": "Maradék adatokat észleltünk egy korábbi megosztott telepítésből a %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ helyen. Ezt a hordozható telepítés már nem használja. Manuálisan eltávolíthatja, ha nincs rá szüksége.",
+                "legacyWarning": "Egy korábbi megosztott telepítés adatait találtuk itt: %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ez a hordozható telepítés nem használja őket. Ha az AeroFTP erre a számítógépre is telepítve van (MSI vagy telepítő), a mappa a telepített alkalmazás adatait tartalmazza: tartsa meg. Ellenkező esetben kézzel eltávolíthatja, ha nincs rá szüksége.",
                 "openFolder": "Adatmappa megnyitása",
                 "dismiss": "Rendben"
             }

@@ -854,6 +854,38 @@ impl WebDavProvider {
         }
     }
 
+    /// The path a PROPFIND href names, as its decoded segments, for an exact
+    /// comparison. The scheme and authority of an absolute URL and any query
+    /// or fragment are dropped, empty and `.` segments vanish, `..` removes
+    /// the segment before it, and a relative reference is resolved against
+    /// the collection `base` (segments already normalised). Each segment is
+    /// decoded on its own, so an escaped `/` (`%2F`) inside a name stays part
+    /// of that name. The root is no segment at all.
+    fn dav_path_segments(href: &str, base: &[String]) -> Vec<String> {
+        let raw = href.split(['?', '#']).next().unwrap_or("");
+        let has_authority = raw.find("://").is_some_and(|i| !raw[..i].contains('/'));
+        let (path, relative) = if has_authority {
+            (Self::url_path_component(raw), false)
+        } else {
+            (raw, !raw.starts_with('/'))
+        };
+        let mut segments: Vec<String> = if relative { base.to_vec() } else { Vec::new() };
+        for segment in path.split('/') {
+            match segment {
+                "" | "." => {}
+                ".." => {
+                    segments.pop();
+                }
+                _ => segments.push(
+                    urlencoding::decode(segment)
+                        .map(|decoded| decoded.into_owned())
+                        .unwrap_or_else(|_| segment.to_string()),
+                ),
+            }
+        }
+        segments
+    }
+
     /// Issue #264 — try to detect a single-file WebDAV resource at connect time.
     ///
     /// Runs PROPFIND with `Depth: 0` against the configured URL **verbatim**
@@ -2570,6 +2602,15 @@ impl WebDavProvider {
             self.config.url
         );
 
+        // The configured URL and `build_url` carry the base's own escapes
+        // (`/my%20dav`), the listing path is the plain one: both go through
+        // the same segment reading as the hrefs they are compared with.
+        let request_path =
+            Self::dav_path_segments(Self::url_path_component(&self.build_url(base_path)), &[]);
+        let listing_path =
+            Self::dav_path_segments(&Self::encode_path(base_path.trim_start_matches('/')), &[]);
+        let root_path = Self::dav_path_segments(Self::url_path_component(&self.config.url), &[]);
+
         // Event-based quick-xml parser
         let mut reader = Reader::from_str(xml);
         // No trim_text: fragments around XML entities must survive intact
@@ -2652,41 +2693,26 @@ impl WebDavProvider {
 
                             let decoded_href = urlencoding::decode(href.trim())
                                 .unwrap_or_else(|_| href.trim().into());
-                            let clean_path = decoded_href.trim_end_matches('/');
                             let base_clean = base_path.trim_end_matches('/');
-                            // The base URL is decoded like the href it is
-                            // compared with: a base whose path carries escapes
-                            // (`/my%20dav`, MEGAcmd's `/<handle>/Cloud%20Drive`)
-                            // otherwise never matches its own self-reference,
-                            // relative or absolute (MEGAcmd answers with
-                            // absolute hrefs), and the root listing showed the
-                            // base as an entry of itself.
-                            let url_raw = self.config.url.trim_end_matches('/');
-                            let url_decoded =
-                                urlencoding::decode(url_raw).unwrap_or_else(|_| url_raw.into());
-                            let url_clean: &str = url_decoded.trim_end_matches('/');
-
-                            let url_path_clean = url_clean
-                                .find("://")
-                                .and_then(|i| url_clean[i + 3..].find('/').map(|j| i + 3 + j))
-                                .map(|i| url_clean[i..].trim_end_matches('/'))
-                                .unwrap_or("");
-
-                            let is_self_reference = clean_path == base_clean
-                                || clean_path == url_clean
-                                || (!base_clean.is_empty() && clean_path.ends_with(base_clean))
-                                || (!base_clean.is_empty()
-                                    && clean_path.ends_with(&format!(
-                                        "/{}",
-                                        base_clean.trim_start_matches('/')
-                                    )))
-                                || (!base_clean.is_empty()
-                                    && base_clean != "/"
-                                    && url_clean.ends_with(clean_path))
-                                || (!url_path_clean.is_empty() && clean_path == url_path_clean);
+                            // Only the exact resource asked for is the
+                            // collection's self-reference: the request URL,
+                            // the listing path itself (a server behind a
+                            // rewriting proxy answers in its own namespace)
+                            // or the configured root, all decoded and
+                            // slash-normalised. A suffix is never enough: a
+                            // child named like the base (`/Sub Dir/Sub Dir`)
+                            // ends with it, and dropping it made bidirectional
+                            // sync delete the local copy.
+                            let href_path = Self::dav_path_segments(href.trim(), &request_path);
+                            let is_self_reference = href_path == request_path
+                                || href_path == listing_path
+                                || href_path == root_path;
 
                             if is_self_reference {
-                                tracing::debug!("[WebDAV] Skipping self-reference: {}", clean_path);
+                                tracing::debug!(
+                                    "[WebDAV] Skipping self-reference: {}",
+                                    decoded_href
+                                );
                                 continue;
                             }
 
@@ -6248,6 +6274,126 @@ mod tests {
             );
             assert_eq!(entries[0].path, "/Sub Dir/x y.txt");
         }
+    }
+
+    /// Audit 4.2.5 B01: a child whose path ends with the listed path is a
+    /// child, not the collection's self-reference. Dropping it made a synced
+    /// local copy LocalOnly, and bidirectional sync deleted it. Covers a child
+    /// named like the base, a nested descendant with the same suffix (the
+    /// Depth:infinity walk parses through the same code), escaped bases,
+    /// absolute, path-absolute and relative hrefs, and trailing slashes.
+    #[test]
+    fn a_child_ending_with_the_listed_path_is_kept() {
+        let collection = r#"<d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat>"#;
+        let file = r#"<d:propstat><d:prop><d:resourcetype/><d:getcontentlength>3</d:getcontentlength></d:prop></d:propstat>"#;
+        let response = |href: String, props: &str| {
+            format!("<d:response><d:href>{href}</d:href>{props}</d:response>")
+        };
+        let doc = |body: String| {
+            format!(r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">{body}</d:multistatus>"#)
+        };
+        for (base, prefix) in [
+            ("https://example.com", ""),
+            ("https://example.com/", "https://example.com"),
+            ("https://example.com/dav", "/dav"),
+            ("https://example.com/dav/", "https://example.com/dav"),
+            ("https://example.com/my%20dav", "/my%20dav"),
+            (
+                "https://example.com/my%20dav",
+                "https://example.com/my%20dav",
+            ),
+            (
+                "http://127.0.0.1:4443/aBcD1234/Cloud%20Drive",
+                "http://127.0.0.1:4443/aBcD1234/Cloud%20Drive",
+            ),
+        ] {
+            let provider = WebDavProvider::new(test_config(base)).expect("provider");
+
+            // A child named like the listed folder, with and without the
+            // trailing slash on the self-reference.
+            for self_slash in ["/", ""] {
+                let xml = doc(format!(
+                    "{}{}{}",
+                    response(format!("{prefix}/Sub%20Dir{self_slash}"), collection),
+                    response(format!("{prefix}/Sub%20Dir/Sub%20Dir/"), collection),
+                    response(format!("{prefix}/Sub%20Dir/Sub%20Dir.txt"), file),
+                ));
+                let entries = provider.parse_propfind_response(&xml, "/Sub Dir").unwrap();
+                let paths: Vec<&str> = entries.iter().map(|e| e.path.as_str()).collect();
+                assert_eq!(
+                    paths,
+                    vec!["/Sub Dir/Sub Dir", "/Sub Dir/Sub Dir.txt"],
+                    "base {base}, hrefs {prefix:?}, self slash {self_slash:?}"
+                );
+            }
+
+            // The same child under a nested listing path, and a deeper
+            // descendant ending with the listed path (Depth:infinity body).
+            let xml = doc(format!(
+                "{}{}{}",
+                response(format!("{prefix}/x/b/"), collection),
+                response(format!("{prefix}/x/b/b"), file),
+                response(format!("{prefix}/x/b/y/x/b/"), collection),
+            ));
+            let entries = provider.parse_propfind_response(&xml, "/x/b").unwrap();
+            let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+            assert_eq!(
+                names,
+                vec!["b", "b"],
+                "nested, base {base}, hrefs {prefix:?}"
+            );
+            assert!(entries[1].is_dir);
+        }
+
+        // Spellings of the same self-reference of a UTF-8 folder: a query or
+        // fragment, dot segments, lowercase hex escapes, an absolute URL.
+        // The child is kept every time.
+        let provider =
+            WebDavProvider::new(test_config("https://example.com/dav")).expect("provider");
+        for self_href in [
+            "/dav/R%C3%A9sum%C3%A9/?depth=1",
+            "/dav/R%C3%A9sum%C3%A9/#top",
+            "/dav/./R%C3%A9sum%C3%A9/x/../",
+            "/dav/R%c3%a9sum%c3%a9/",
+            "https://example.com/dav/R%c3%a9sum%c3%a9",
+        ] {
+            let xml = doc(format!(
+                "{}{}",
+                response(self_href.to_string(), collection),
+                response(
+                    "/dav/R%C3%A9sum%C3%A9/R%C3%A9sum%C3%A9.txt".to_string(),
+                    file
+                ),
+            ));
+            let entries = provider
+                .parse_propfind_response(&xml, "/R\u{e9}sum\u{e9}")
+                .unwrap();
+            let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+            assert_eq!(names, vec!["R\u{e9}sum\u{e9}.txt"], "self href {self_href}");
+        }
+        // An escaped slash stays inside its segment: `a%2Fb` is one name,
+        // never the path `a/b`.
+        assert_eq!(
+            WebDavProvider::dav_path_segments("/dav/a%2Fb", &[]),
+            vec!["dav".to_string(), "a/b".to_string()]
+        );
+        assert_ne!(
+            WebDavProvider::dav_path_segments("/dav/a%2Fb", &[]),
+            WebDavProvider::dav_path_segments("/dav/a/b", &[])
+        );
+
+        // Relative hrefs resolve against the listed collection.
+        let provider =
+            WebDavProvider::new(test_config("https://example.com/dav")).expect("provider");
+        let xml = doc(format!(
+            "{}{}{}",
+            response("./".to_string(), collection),
+            response("Sub%20Dir/".to_string(), collection),
+            response("Sub%20Dir.txt".to_string(), file),
+        ));
+        let entries = provider.parse_propfind_response(&xml, "/Sub Dir").unwrap();
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["Sub Dir", "Sub Dir.txt"]);
     }
 
     /// LIVE-1 regression: with trim_text(true), a displayname like

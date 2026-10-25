@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Portabler Modus: Dieser Ordner enthält alle Ihre AeroFTP-Daten",
                 "body": "Jede portable Installation ist vollständig eigenständig: gespeicherte Server, AeroVault, AI-Chats und Einstellungen befinden sich alle neben der AeroFTP.exe. Ab v3.7.8 sind zwei portable Ordner auf demselben PC völlig unabhängig voneinander: Das Löschen eines Profils in einem Ordner wirkt sich nicht mehr auf den anderen aus.",
-                "legacyWarning": "Wir haben Restdaten einer früheren gemeinsamen Installation unter %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ erkannt. Sie werden von dieser portablen Installation nicht mehr verwendet. Sie können sie manuell entfernen, falls Sie sie nicht benötigen.",
+                "legacyWarning": "Wir haben Daten einer früheren gemeinsamen Installation in %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ gefunden. Diese portable Installation verwendet sie nicht. Wenn AeroFTP auch auf diesem PC installiert ist (MSI oder Setup), enthält dieser Ordner die Daten der installierten App: Behalten Sie ihn. Andernfalls können Sie ihn manuell entfernen, wenn Sie ihn nicht benötigen.",
                 "openFolder": "Datenordner öffnen",
                 "dismiss": "Verstanden"
             }

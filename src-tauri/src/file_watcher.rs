@@ -632,6 +632,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn audit425_watcher_ignores_destination_probe_descendants() {
+        assert!(should_exclude_path(Path::new(
+            "/sync/.aeroftp-name-probe-Ab12/CASE"
+        )));
+        assert!(!should_exclude_path(Path::new("/sync/photos/café.txt")));
+    }
+
+    #[test]
     fn test_should_exclude_git() {
         assert!(should_exclude_path(Path::new("/project/.git/objects/abc")));
         assert!(should_exclude_path(Path::new(".git")));

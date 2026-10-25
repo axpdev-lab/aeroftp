@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Siirrettävä tila: tämä kansio sisältää kaikki AeroFTP-tietosi",
                 "body": "Jokainen siirrettävä asennus on täysin itsenäinen: tallennetut palvelimet, AeroVault, AI-keskustelut ja asetukset sijaitsevat kaikki AeroFTP.exe-tiedoston vieressä. Versiosta v3.7.8 alkaen kaksi siirrettävää kansiota samassa tietokoneessa ovat täysin riippumattomia: profiilin poistaminen yhdessä kansiossa ei enää vaikuta toiseen.",
-                "legacyWarning": "Havaitsimme jäännösdataa aiemmasta jaetusta asennuksesta sijainnissa %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Tämä siirrettävä asennus ei enää käytä sitä. Voit poistaa sen manuaalisesti, jos et tarvitse sitä.",
+                "legacyWarning": "Löysimme aiemman jaetun asennuksen tietoja sijainnista %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Tämä siirrettävä asennus ei käytä niitä. Jos AeroFTP on asennettu myös tähän tietokoneeseen (MSI tai asennusohjelma), kansio sisältää asennetun sovelluksen tiedot: säilytä se. Muussa tapauksessa voit poistaa sen manuaalisesti, jos et tarvitse sitä.",
                 "openFolder": "Avaa datakansio",
                 "dismiss": "Selvä"
             }

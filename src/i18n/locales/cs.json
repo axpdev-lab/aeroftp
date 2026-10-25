@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Přenosný režim: tato složka obsahuje všechna vaše data AeroFTP",
                 "body": "Každá přenosná instalace je plně samostatná: uložené servery, AeroVault, AI chaty a předvolby jsou umístěny vedle souboru AeroFTP.exe. Od verze v3.7.8 jsou dvě přenosné složky na stejném počítači zcela nezávislé: smazání profilu v jedné složce již neovlivní druhou.",
-                "legacyWarning": "Zjistili jsme zbytková data z předchozí sdílené instalace v %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Tato přenosná instalace je již nepoužívá. Pokud je nepotřebujete, můžete je odstranit ručně.",
+                "legacyWarning": "Našli jsme data z předchozí sdílené instalace v %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Tato přenosná instalace je nepoužívá. Pokud je AeroFTP na tomto počítači také nainstalován (MSI nebo instalátor), tato složka obsahuje data nainstalované aplikace: ponechte ji. Jinak ji můžete ručně odstranit, pokud ji nepotřebujete.",
                 "openFolder": "Otevřít složku s daty",
                 "dismiss": "Rozumím"
             }

@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Nešiojamasis režimas: šiame aplanke saugomi visi jūsų AeroFTP duomenys",
                 "body": "Kiekvienas nešiojamasis diegimas yra visiškai savarankiškas: išsaugoti serveriai, AeroVault, AI pokalbiai ir nuostatos yra šalia AeroFTP.exe. Nuo v3.7.8 versijos du nešiojamieji aplankai tame pačiame kompiuteryje yra visiškai nepriklausomi, profilio ištrynimas viename aplanke nebeturi įtakos kitam.",
-                "legacyWarning": "Aptikome likusių duomenų iš ankstesnio bendro diegimo vietoje %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Šis nešiojamasis diegimas jų nebenaudoja. Galite juos pašalinti rankiniu būdu, jei jų nereikia.",
+                "legacyWarning": "Radome ankstesnio bendro diegimo duomenų aplanke %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Šis nešiojamasis diegimas jų nenaudoja. Jei AeroFTP taip pat įdiegta šiame kompiuteryje (MSI arba diegimo programa), šiame aplanke yra įdiegtos programos duomenys: palikite jį. Kitu atveju galite jį pašalinti rankiniu būdu, jei jo nereikia.",
                 "openFolder": "Atidaryti duomenų aplanką",
                 "dismiss": "Supratau"
             }

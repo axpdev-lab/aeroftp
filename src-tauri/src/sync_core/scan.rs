@@ -524,7 +524,7 @@ impl ScanBoundaries {
     /// Record a path the scan did not see. The scan root has no path to bound a
     /// run around: a root the scan did not see leaves the whole tree unseen, a
     /// gap with no name.
-    fn unseen(&mut self, rel_path: &str, reason: &'static str, is_dir: Option<bool>) {
+    pub(crate) fn unseen(&mut self, rel_path: &str, reason: &'static str, is_dir: Option<bool>) {
         if rel_path.is_empty() {
             tracing::warn!("[scan] not seen: the scan root ({})", reason);
             self.unbounded.get_or_insert(reason);
@@ -2482,7 +2482,11 @@ pub(crate) mod tests {
         let tmp = tempdir().unwrap();
         let root = tmp.path();
         fs::write(root.join("keep.bin"), b"x").unwrap();
-        for staging in [".aeroftp-proton-bulk-Ab12Cd", ".aeroftp-proton-dl-0f9e"] {
+        for staging in [
+            ".aeroftp-proton-bulk-Ab12Cd",
+            ".aeroftp-proton-dl-0f9e",
+            ".aeroftp-name-probe-Ab12",
+        ] {
             fs::create_dir(root.join(staging)).unwrap();
             fs::write(root.join(staging).join("keep.bin"), b"partial").unwrap();
         }

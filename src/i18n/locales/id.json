@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Mode portabel: folder ini menyimpan semua data AeroFTP Anda",
                 "body": "Setiap instalasi portabel sepenuhnya mandiri: server tersimpan, AeroVault, obrolan AI, dan preferensi semuanya berada di samping AeroFTP.exe. Mulai dari v3.7.8, dua folder portabel pada PC yang sama sepenuhnya independen, menghapus profil di satu folder tidak lagi memengaruhi yang lain.",
-                "legacyWarning": "Kami mendeteksi sisa data dari instalasi bersama sebelumnya di %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Data ini tidak lagi digunakan oleh instalasi portabel ini. Anda dapat menghapusnya secara manual jika tidak diperlukan.",
+                "legacyWarning": "Kami menemukan data dari instalasi bersama sebelumnya di %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Instalasi portabel ini tidak menggunakannya. Jika AeroFTP juga terinstal di PC ini (MSI atau setup), folder tersebut berisi data aplikasi yang terinstal: simpan folder itu. Jika tidak, Anda dapat menghapusnya secara manual jika tidak diperlukan.",
                 "openFolder": "Buka folder data",
                 "dismiss": "Mengerti"
             }

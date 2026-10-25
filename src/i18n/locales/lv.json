@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Pārnēsājamais režīms: šajā mapē glabājas visi jūsu AeroFTP dati",
                 "body": "Katra pārnēsājamā instalācija ir pilnībā patstāvīga: saglabātie serveri, AeroVault, AI sarunas un iestatījumi atrodas blakus AeroFTP.exe. Sākot ar v3.7.8 versiju, divas pārnēsājamās mapes vienā datorā ir pilnīgi neatkarīgas, profila dzēšana vienā mapē vairs neietekmē otru.",
-                "legacyWarning": "Mēs konstatējām atlikušos datus no iepriekšējās koplietotās instalācijas vietā %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Šī pārnēsājamā instalācija tos vairs neizmanto. Jūs varat tos manuāli noņemt, ja tie nav nepieciešami.",
+                "legacyWarning": "Mēs atradām iepriekšējas koplietotas instalācijas datus mapē %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Šī pārnēsājamā instalācija tos neizmanto. Ja AeroFTP ir instalēts arī šajā datorā (MSI vai instalētājs), šajā mapē ir instalētās lietotnes dati: saglabājiet to. Pretējā gadījumā varat to noņemt manuāli, ja tā jums nav vajadzīga.",
                 "openFolder": "Atvērt datu mapi",
                 "dismiss": "Sapratu"
             }

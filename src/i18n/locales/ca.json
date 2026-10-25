@@ -6013,7 +6013,7 @@
             "banner": {
                 "title": "Mode portàtil: aquesta carpeta conté totes les dades d'AeroFTP",
                 "body": "Cada instal·lació portàtil és completament autònoma: els servidors desats, AeroVault, els xats d'AI i les preferències es troben al costat d'AeroFTP.exe. A partir de la v3.7.8, dues carpetes portàtils al mateix ordinador són totalment independents: eliminar un perfil en una carpeta ja no afecta l'altra.",
-                "legacyWarning": "Hem detectat dades residuals d'una instal·lació compartida anterior a %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ja no s'utilitzen en aquesta instal·lació portàtil. Podeu eliminar-les manualment si no les necessiteu.",
+                "legacyWarning": "Hem trobat dades d'una instal·lació compartida anterior a %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Aquesta instal·lació portable no les utilitza. Si AeroFTP també està instal·lat en aquest PC (MSI o instal·lador), aquesta carpeta conté les dades de l'aplicació instal·lada: conserveu-la. Altrament, podeu eliminar-la manualment si no la necessiteu.",
                 "openFolder": "Obre la carpeta de dades",
                 "dismiss": "Entesos"
             }

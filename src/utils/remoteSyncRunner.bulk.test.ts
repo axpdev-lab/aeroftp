@@ -180,6 +180,42 @@ describe('remoteSyncRunner on a native bulk', () => {
         expect(h.of('sync_backup_archive_remote').filter((c) => !String(c.args?.rel).includes('aerocorrect'))).toHaveLength(3);
     });
 
+    it.each(['upload', 'download'] as const)('archives a lone %s before its single-file fallback', async (action) => {
+        const order: string[] = [];
+        const archive = action === 'upload' ? 'sync_backup_archive_remote' : 'sync_backup_archive_local';
+        const h = harness({
+            sync_backup_run_stamp: () => 'stamp',
+            [archive]: (args) => {
+                if (!String(args?.rel).endsWith('.aerocorrect')) order.push('archive');
+                return 'kept';
+            },
+            [action === 'upload' ? 'provider_upload_file' : 'provider_download_file']: () => order.push('write'),
+        });
+        const run = files(1, action).map((f) => ({ ...f, overwritesExisting: true }));
+        await runRemoteSync(run, { remote: [], local: [] }, config({ versionedBackup: { dir: '.v' } }), {}, h.deps);
+        expect(order).toEqual(['archive', 'write']);
+    });
+
+    it('archives the final upload after a full bulk chunk exactly once', async () => {
+        const h = harness({ sync_backup_run_stamp: () => 'stamp', sync_backup_archive_remote: () => 'kept' });
+        const run = files(257, 'upload').map((f) => ({ ...f, overwritesExisting: true }));
+        const report = await runRemoteSync(run, { remote: [], local: [] }, config({ versionedBackup: { dir: '.v' } }), {}, h.deps);
+        expect(report.uploaded).toBe(257);
+        expect(h.of('sync_backup_archive_remote').filter((c) => !String(c.args?.rel).endsWith('.aerocorrect'))).toHaveLength(257);
+        expect(h.of('provider_upload_file')).toHaveLength(1);
+    });
+
+    it('captures local state before uploading a lone file without scan mtime', async () => {
+        const order: string[] = [];
+        const h = harness({
+            get_file_properties: () => { order.push('read'); return { size: 7, modified: '2026-10-25T01:00:00' }; },
+            provider_upload_file: () => order.push('write'),
+        });
+        await runRemoteSync(files(1, 'upload').map((f) => ({ ...f, mtime: null })),
+            { remote: [], local: [] }, config(), {}, { ...h.deps, writeIndex: true });
+        expect(order).toEqual(['read', 'write']);
+    });
+
     it('verifies each downloaded file as the single-file path does', async () => {
         const h = harness({ verify_local_transfer: () => ({ passed: true, message: null }) });
         await runRemoteSync(files(4, 'download'), { remote: [], local: [] }, config({ verifyPolicy: 'size_only' }), {}, h.deps);

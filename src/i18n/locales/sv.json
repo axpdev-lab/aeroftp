@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Portabelt läge: den här mappen innehåller all din AeroFTP-data",
                 "body": "Varje portabel installation är helt självständig: sparade servrar, AeroVault, AI-chattar och inställningar finns alla bredvid AeroFTP.exe. Från och med v3.7.8 är två portabla mappar på samma dator helt oberoende av varandra. Att radera en profil i en mapp påverkar inte längre den andra.",
-                "legacyWarning": "Vi upptäckte kvarvarande data från en tidigare delad installation i %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Den används inte längre av den här portabla installationen. Du kan ta bort den manuellt om du inte behöver den.",
+                "legacyWarning": "Vi hittade data från en tidigare delad installation i %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Den här portabla installationen använder dem inte. Om AeroFTP även är installerat på den här datorn (MSI eller installationsprogram) innehåller mappen data för den installerade appen: behåll den. Annars kan du ta bort den manuellt om du inte behöver den.",
                 "openFolder": "Öppna datamapp",
                 "dismiss": "Uppfattat"
             }

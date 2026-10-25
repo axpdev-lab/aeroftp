@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Modo portátil: esta pasta contém todos os seus dados do AeroFTP",
                 "body": "Cada instalação portátil é totalmente autocontida: servidores salvos, AeroVault, conversas com a AI e preferências ficam todos ao lado do AeroFTP.exe. A partir da v3.7.8, duas pastas portáteis no mesmo PC são completamente independentes. Excluir um perfil em uma pasta não afeta mais a outra.",
-                "legacyWarning": "Detectamos dados residuais de uma instalação compartilhada anterior em %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Eles não são mais usados por esta instalação portátil. Você pode removê-los manualmente se não precisar deles.",
+                "legacyWarning": "Encontramos dados de uma instalação compartilhada anterior em %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Esta instalação portátil não os utiliza. Se o AeroFTP também estiver instalado neste PC (MSI ou instalador), essa pasta contém os dados do aplicativo instalado: mantenha-a. Caso contrário, você pode removê-la manualmente se não precisar dela.",
                 "openFolder": "Abrir pasta de dados",
                 "dismiss": "Entendi"
             }

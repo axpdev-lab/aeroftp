@@ -48,9 +48,12 @@ fn record_of_part(temp: &Path) -> Option<PathBuf> {
 /// True for a private folder a download fills before it publishes its files
 /// (Proton CLI: one per bulk and one per single file). It sits in the
 /// destination folder for the length of the transfer, and a crash can leave
-/// it behind: scans and watchers must never take it for content.
+/// it behind: scans and watchers must never take it for content. Destination
+/// filename probes use the same protection for their owned private folder.
 pub fn is_download_staging_dir_name(name: &str) -> bool {
-    name.starts_with(".aeroftp-proton-bulk-") || name.starts_with(".aeroftp-proton-dl-")
+    name.starts_with(".aeroftp-proton-bulk-")
+        || name.starts_with(".aeroftp-proton-dl-")
+        || name.starts_with(".aeroftp-name-probe-")
 }
 
 /// True for local download sidecars that filesystem watchers must hide.

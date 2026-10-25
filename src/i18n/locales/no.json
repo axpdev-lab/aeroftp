@@ -6013,7 +6013,7 @@
             "banner": {
                 "title": "Bærbar modus: denne mappen inneholder alle AeroFTP-dataene dine",
                 "body": "Hver bærbar installasjon er helt selvstendig: lagrede servere, AeroVault, AI-chatter og preferanser ligger alle ved siden av AeroFTP.exe. Fra v3.7.8 og fremover er to bærbare mapper på samme PC helt uavhengige, å slette en profil i én mappe påvirker ikke lenger den andre.",
-                "legacyWarning": "Vi oppdaget gjenværende data fra en tidligere delt installasjon på %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Den brukes ikke lenger av denne bærbare installasjonen. Du kan fjerne den manuelt hvis du ikke trenger den.",
+                "legacyWarning": "Vi fant data fra en tidligere delt installasjon i %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Denne bærbare installasjonen bruker dem ikke. Hvis AeroFTP også er installert på denne PC-en (MSI eller oppsett), inneholder mappen dataene til den installerte appen: behold den. Ellers kan du fjerne den manuelt hvis du ikke trenger den.",
                 "openFolder": "Åpne datamappe",
                 "dismiss": "Forstått"
             }

@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Kaasaskantav režiim: see kaust sisaldab kõiki teie AeroFTP andmeid",
                 "body": "Iga kaasaskantav paigaldus on täielikult iseseisev: salvestatud serverid, AeroVault, AI vestlused ja eelistused asuvad kõik AeroFTP.exe kõrval. Alates versioonist v3.7.8 on kaks kaasaskantavat kausta samas arvutis täiesti sõltumatud: profiili kustutamine ühes kaustas ei mõjuta enam teist.",
-                "legacyWarning": "Tuvastasime jääkandmed varasemast jagatud paigaldusest asukohas %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Käesolev kaasaskantav paigaldus seda enam ei kasuta. Võite need käsitsi eemaldada, kui te neid ei vaja.",
+                "legacyWarning": "Leidsime varasema jagatud installi andmed asukohas %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. See kaasaskantav install neid ei kasuta. Kui AeroFTP on sellesse arvutisse ka installitud (MSI või setup), sisaldab see kaust installitud rakenduse andmeid: jätke see alles. Vastasel juhul võite selle käsitsi eemaldada, kui te seda ei vaja.",
                 "openFolder": "Ava andmekaust",
                 "dismiss": "Selge"
             }

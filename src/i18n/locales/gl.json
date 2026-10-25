@@ -6013,7 +6013,7 @@
             "banner": {
                 "title": "Modo portátil: este cartafol contén todos os teus datos de AeroFTP",
                 "body": "Cada instalación portátil é completamente autónoma: os servidores gardados, AeroVault, os chats de AI e as preferencias atópanse todos xunto a AeroFTP.exe. A partir da v3.7.8, dous cartafoles portátiles no mesmo PC son totalmente independentes: eliminar un perfil nun cartafol xa non afecta ao outro.",
-                "legacyWarning": "Detectamos datos residuais dunha instalación compartida anterior en %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Esta instalación portátil xa non os usa. Podes eliminalos manualmente se non os necesitas.",
+                "legacyWarning": "Atopamos datos dunha instalación compartida anterior en %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Esta instalación portátil non os usa. Se AeroFTP tamén está instalado neste PC (MSI ou instalador), ese cartafol contén os datos da aplicación instalada: consérvao. Noutro caso, podes eliminalo manualmente se non o necesitas.",
                 "openFolder": "Abrir cartafol de datos",
                 "dismiss": "Entendido"
             }
