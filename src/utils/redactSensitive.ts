@@ -27,14 +27,19 @@ const AUTHORIZATION_CREDENTIALS = new RegExp(
     'gi',
 );
 
-// Names of the fields whose value is a secret, in JSON and in key=value form.
-const SECRET_FIELDS = 'password|passwd|pwd|secret|secret_key|secretkey|api_key|apikey|x-api-key|access_key|token|access_token|refresh_token|id_token|passphrase|private_key|privatekey|client_secret|totp_secret|consumer_secret';
+// Names of the fields whose value is a secret, in JSON and in key=value form,
+// written in snake_case, kebab-case or camelCase (`access_token`, `api-key`,
+// `clientSecret`). A name may follow snake or kebab words (`session_token`,
+// `db_password`) but not an open prefix: `nextToken`, `tokens` and `bypass`
+// stay. The rules are case-insensitive; the Rust twin writes the same text.
+const SECRET_NAME = String.raw`(?:(?:[A-Za-z0-9]{1,24}[_-]){0,3}(?:password|passwd|passphrase|pwd|secret(?:[_-]?(?:access[_-]?)?key)?|api[_-]?key|access[_-]?key|(?:access|auth|refresh|id)[_-]?token|token|private[_-]?key|(?:client|totp|consumer)[_-]?secret)|pass)`;
 
-// The value after a key: the marker (a redacted line stays as it is), a quoted
-// string that ends at its closing quote (an escaped quote does not end it; a
-// line cut inside the value has no closing quote and ends there), or a bare
-// word up to the next delimiter.
-const SECRET_VALUE = String.raw`(?:\*\*\*REDACTED\*\*\*|"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[^\s,;'"<>]+)`;
+// The value after a key: the marker (a redacted line stays as it is), a string
+// whose quotes are escaped (`\"v\"`, from a Debug or JSON dump of the line), a
+// quoted string that ends at its closing quote (an escaped quote does not end
+// it; a line cut inside the value has no closing quote and ends there), or a
+// bare word up to the next delimiter.
+const SECRET_VALUE = String.raw`(?:\*\*\*REDACTED\*\*\*|\\"(?:[^\\]|\\\\\\")*(?:\\")?|"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[^\s,;'"<>]+)`;
 
 export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: string }> = [
     // Authorization (and Proxy-Authorization) carries `scheme credentials`, and
@@ -47,7 +52,8 @@ export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: s
     { pattern: /(\\"authorization\\"[ \t]*:[ \t]*\\")(?:[^\\]|\\\\\\")*/gi, replacement: '$1***REDACTED***' },
     // A quoted value (JSON, Debug) ends at its closing quote, so the keys after
     // it stay; a line cut inside the value has no closing quote and ends there.
-    { pattern: /(\bauthorization["']?[ \t]*[:=][ \t]*)(?:"(?:[^"\\]|\\.)*"?|'[^']*'?)/gi, replacement: '$1"***REDACTED***"' },
+    // A value whose quotes are escaped (`authorization=\"Basic ...\"`) is read first.
+    { pattern: /(\bauthorization["']?[ \t]*[:=][ \t]*)(?:\\"(?:[^\\]|\\\\\\")*(?:\\")?|"(?:[^"\\]|\\.)*"?|'[^']*'?)/gi, replacement: '$1"***REDACTED***"' },
     { pattern: AUTHORIZATION_CREDENTIALS, replacement: 'authorization: ***REDACTED***' },
     // API keys (Anthropic, OpenAI projects, generic sk-*)
     { pattern: /sk-(ant|proj|live|test)-[A-Za-z0-9_\-]{16,}/g, replacement: 'sk-***REDACTED***' },
@@ -62,22 +68,24 @@ export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: s
     // Serialized secret fields in JSON: "password":"..." -> "password":"***REDACTED***".
     // The value ends at its closing quote; an escaped quote inside it does not end it.
     {
-        pattern: new RegExp(String.raw`("(?:${SECRET_FIELDS})"\s*:\s*)"(?:[^"\\]|\\.)*"?`, 'gi'),
+        pattern: new RegExp(String.raw`("${SECRET_NAME}"\s*:\s*)"(?:[^"\\]|\\.)*"?`, 'gi'),
         replacement: '$1"***REDACTED***"',
     },
     // The same inside a JSON string, where each quote is escaped: the value ends
     // at the first lone `\"`, and an inner `\\\"` belongs to it.
     {
-        pattern: new RegExp(String.raw`(\\"(?:${SECRET_FIELDS})\\"[ \t]*:[ \t]*\\")(?:[^\\]|\\\\\\")*`, 'gi'),
+        pattern: new RegExp(String.raw`(\\"${SECRET_NAME}\\"[ \t]*:[ \t]*\\")(?:[^\\]|\\\\\\")*`, 'gi'),
         replacement: '$1***REDACTED***',
     },
     // Secret fields in key=value / key: value form
     {
-        pattern: new RegExp(String.raw`(\b(?:pass(?:word|wd|phrase)?|pwd|secret(?:_?key)?|client_secret|totp_secret|consumer_secret|private_?key|api[_-]?key|access_key|(?:access|refresh|id)_token|token)\s*[:=]\s*)${SECRET_VALUE}`, 'gi'),
+        pattern: new RegExp(String.raw`(\b${SECRET_NAME}\s*[:=]\s*)${SECRET_VALUE}`, 'gi'),
         replacement: '$1***REDACTED***',
     },
-    // Email addresses
-    { pattern: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, replacement: '***@***' },
+    // Email addresses. The local part is at most 64 characters (RFC 5321), which
+    // also keeps a long run of such characters without an `@` (a hex or base64url
+    // dump) from costing a quadratic scan on every start position.
+    { pattern: /[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, replacement: '***@***' },
     // IPv4 addresses, but keep loopback / unspecified for local-debug clarity
     {
         pattern: /\b(?!127\.0\.0\.1\b|0\.0\.0\.0\b)((?:\d{1,3}\.){3}\d{1,3})\b/g,

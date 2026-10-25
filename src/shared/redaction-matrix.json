@@ -1,0 +1,27 @@
+{
+  "secret": "S3cretVal42",
+  "keys": [
+    "password", "passwd", "passphrase", "pwd", "secret", "secret_key", "secretKey", "api_key", "api-key", "apiKey",
+    "x-api-key", "access_key", "access_token", "accessToken", "auth_token", "authToken", "refresh_token", "refreshToken",
+    "id_token", "client_secret", "clientSecret", "private_key", "private-key", "privateKey", "session_token", "github_token",
+    "db_password"
+  ],
+  "separators": ["=", ": ", " = "],
+  "valueForms": ["{v}", "\"{v}\"", "'{v}'", "\\\"{v}\\\""],
+  "authorization": [
+    { "name": "basic", "credential": "Basic dXNlcjpwYXNz", "secret": "dXNlcjpwYXNz" },
+    { "name": "bearer", "credential": "Bearer S3cretVal42", "secret": "S3cretVal42" },
+    { "name": "digest", "credential": "Digest username=\"a\", response=\"S3cretVal42\"", "secret": "S3cretVal42" },
+    { "name": "opaque", "credential": "AWS AKIAEXAMPLE:S3cretVal42", "secret": "S3cretVal42" }
+  ],
+  "unchanged": [
+    "nextToken=abc",
+    "tokens: 3",
+    "max_tokens=4096",
+    "the token expired",
+    "AuthorizationHeaderMalformed",
+    "apiKeyName=x",
+    "bypass: true",
+    "tests_pass: 5"
+  ]
+}

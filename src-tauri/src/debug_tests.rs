@@ -273,20 +273,25 @@ enum Replacement {
     Ipv4,
 }
 
-/// Names of the fields whose value is a secret, in JSON and in key=value form.
-macro_rules! secret_fields {
+/// Names of the fields whose value is a secret, in JSON and in key=value form,
+/// written in snake_case, kebab-case or camelCase (`access_token`, `api-key`,
+/// `clientSecret`). A name may follow snake or kebab words (`session_token`,
+/// `db_password`) but not an open prefix: `nextToken`, `tokens` and `bypass`
+/// stay. The rules are case-insensitive; the frontend twin writes the same text.
+macro_rules! secret_name {
     () => {
-        "password|passwd|pwd|secret|secret_key|secretkey|api_key|apikey|x-api-key|access_key|token|access_token|refresh_token|id_token|passphrase|private_key|privatekey|client_secret|totp_secret|consumer_secret"
+        r"(?:(?:[A-Za-z0-9]{1,24}[_-]){0,3}(?:password|passwd|passphrase|pwd|secret(?:[_-]?(?:access[_-]?)?key)?|api[_-]?key|access[_-]?key|(?:access|auth|refresh|id)[_-]?token|token|private[_-]?key|(?:client|totp|consumer)[_-]?secret)|pass)"
     };
 }
 
-/// The value after a key: the marker (a redacted line stays as it is), a
+/// The value after a key: the marker (a redacted line stays as it is), a string
+/// whose quotes are escaped (`\"v\"`, from a Debug or JSON dump of the line), a
 /// quoted string that ends at its closing quote (an escaped quote does not end
 /// it; a line cut inside the value has no closing quote and ends there), or a
 /// bare word up to the next delimiter.
 macro_rules! secret_value {
     () => {
-        r#"(?:\*\*\*REDACTED\*\*\*|"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[^\s,;'"<>]+)"#
+        r#"(?:\*\*\*REDACTED\*\*\*|\\"(?:[^\\]|\\\\\\")*(?:\\")?|"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[^\s,;'"<>]+)"#
     };
 }
 
@@ -334,9 +339,9 @@ const REDACTION_RULES: &[(&str, Replacement)] = &[
     // The value ends at its closing quote; an escaped quote inside it does not end it.
     (
         concat!(
-            r#"(?i)("(?:"#,
-            secret_fields!(),
-            r#")"\s*:\s*)"(?:[^"\\]|\\.)*"?"#
+            r#"(?i)(""#,
+            secret_name!(),
+            r#""\s*:\s*)"(?:[^"\\]|\\.)*"?"#
         ),
         Replacement::Text("$1\"***REDACTED***\""),
     ),
@@ -344,23 +349,20 @@ const REDACTION_RULES: &[(&str, Replacement)] = &[
     // at the first lone `\"`, and an inner `\\\"` belongs to it.
     (
         concat!(
-            r#"(?i)(\\"(?:"#,
-            secret_fields!(),
-            r#")\\"[ \t]*:[ \t]*\\")(?:[^\\]|\\\\\\")*"#
+            r#"(?i)(\\""#,
+            secret_name!(),
+            r#"\\"[ \t]*:[ \t]*\\")(?:[^\\]|\\\\\\")*"#
         ),
         Replacement::Text("$1***REDACTED***"),
     ),
     // MCP-06: generic key=value secrets (password=, secret:, token=, ...).
     // Keeps the key and its separator for debugging context, scrubs the value.
     (
-        concat!(
-            r"(?i)(\b(?:pass(?:word|wd|phrase)?|pwd|secret(?:_?key)?|client_secret|totp_secret|consumer_secret|private_?key|api[_-]?key|access_key|(?:access|refresh|id)_token|token)\s*[:=]\s*)",
-            secret_value!(),
-        ),
+        concat!(r"(?i)(\b", secret_name!(), r"\s*[:=]\s*)", secret_value!(),),
         Replacement::Text("$1***REDACTED***"),
     ),
     (
-        r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
+        r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
         Replacement::Text("***@***"),
     ),
     (r"\b(?:\d{1,3}\.){3}\d{1,3}\b", Replacement::Ipv4),
@@ -584,6 +586,25 @@ mod tests {
     fn redact_follows_the_shared_cases() {
         let wrong = mismatches(|case| &case.input);
         assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+    }
+
+    #[test]
+    fn the_matrix_of_secret_fields_never_leaks_a_value() {
+        let probes = crate::authorization_redaction::matrix::secret_field_probes();
+        crate::authorization_redaction::matrix::assert_redacted(redact, &probes);
+    }
+
+    #[test]
+    fn the_matrix_of_authorization_schemes_never_leaks_a_credential() {
+        let probes = crate::authorization_redaction::matrix::authorization_probes();
+        crate::authorization_redaction::matrix::assert_redacted(redact, &probes);
+    }
+
+    #[test]
+    fn what_is_not_a_secret_field_stays() {
+        for line in crate::authorization_redaction::matrix::unchanged_lines() {
+            assert_eq!(redact(&line), line);
+        }
     }
 
     #[test]

@@ -1982,6 +1982,15 @@ mod authorization_tests {
         assert!(wrong.is_empty(), "{}", wrong.join("\n"));
     }
 
+    #[test]
+    fn the_matrix_of_authorization_schemes_never_leaks_a_credential_into_an_error() {
+        let probes = crate::authorization_redaction::matrix::authorization_probes();
+        crate::authorization_redaction::matrix::assert_redacted(sanitize_error_message, &probes);
+        for line in crate::authorization_redaction::matrix::unchanged_lines() {
+            assert_eq!(sanitize_error_message(&line), line);
+        }
+    }
+
     /// A provider that reflects the request in its error body.
     #[test]
     fn a_reflected_request_header_does_not_carry_its_credential_into_an_error() {
