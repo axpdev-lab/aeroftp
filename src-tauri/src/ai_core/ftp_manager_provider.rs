@@ -67,19 +67,28 @@ impl FtpManagerProvider {
         self.0.change_dir(&previous).await.map_err(failed)?;
         Ok(listed?
             .into_iter()
-            .map(|file| RemoteEntry {
-                name: file.name,
-                path: file.path,
-                is_dir: file.is_dir,
-                size: file.size.unwrap_or(0),
-                modified: file.modified,
-                permissions: file.permissions,
-                owner: None,
-                group: None,
-                is_symlink: file.is_symlink,
-                link_target: file.link_target,
-                mime_type: None,
-                metadata: Default::default(),
+            .map(|file| {
+                let mut metadata = std::collections::HashMap::new();
+                if file.size.is_none() {
+                    metadata.insert(
+                        crate::providers::ftp_listing::SIZE_UNREADABLE.to_string(),
+                        "1".to_string(),
+                    );
+                }
+                RemoteEntry {
+                    name: file.name,
+                    path: file.path,
+                    is_dir: file.is_dir,
+                    size: file.size.unwrap_or(0),
+                    modified: file.modified,
+                    permissions: file.permissions,
+                    owner: None,
+                    group: None,
+                    is_symlink: file.is_symlink,
+                    link_target: file.link_target,
+                    mime_type: None,
+                    metadata,
+                }
             })
             .collect())
     }
@@ -246,7 +255,12 @@ impl StorageProvider for FtpManagerProvider {
     }
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
-        Ok(self.stat(path).await?.size)
+        let entry = self.stat(path).await?;
+        if crate::providers::ftp_listing::size_is_unreadable(&entry) {
+            self.0.get_file_size(path).await.map_err(failed)
+        } else {
+            Ok(entry.size)
+        }
     }
 
     async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
@@ -292,6 +306,30 @@ mod tests {
 #[cfg(test)]
 mod probe_contract_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn audit425_legacy_ftp_preserves_unknown_size_and_uses_size_command() {
+        let addr = crate::ftp::exists_tests::vsftpd_like_with_unknown_size(true).await;
+        let mut manager = FtpManager::new();
+        manager.connect(&addr).await.unwrap();
+        manager.login("u", "p").await.unwrap();
+        let mut provider = FtpManagerProvider(manager);
+        let entry = provider.stat("/a.txt").await.unwrap();
+        assert!(
+            crate::providers::ftp_listing::size_is_unreadable(&entry),
+            "unknown LIST size must not become an exact zero"
+        );
+        assert_eq!(provider.size("/a.txt").await.unwrap(), 5);
+    }
+
+    #[tokio::test]
+    async fn audit425_legacy_ftp_unknown_size_and_refused_size_is_an_error() {
+        let addr = crate::ftp::exists_tests::vsftpd_like_script(true, true, false).await;
+        let mut manager = FtpManager::new();
+        manager.connect(&addr).await.unwrap();
+        manager.login("u", "p").await.unwrap();
+        assert!(FtpManagerProvider(manager).size("/a.txt").await.is_err());
+    }
 
     #[tokio::test]
     async fn probe_contract_ftp_manager_adapter_finds_hidden_entries() {

@@ -190,7 +190,12 @@ finish)
   sudo chown -R "$(id -u):$(id -g)" "$archives"
   after=$(fingerprint)
   before=$(sed -n 's/^before=//p' "$state" 2>/dev/null || true)
-  if [ -n "$before" ] && [ "$before" = "$after" ]; then
+  if grep -qx 'result=complete' "$state" 2>/dev/null; then
+    # A successful install promotes restored partial archives to the complete
+    # key family even when every required byte was already cached.
+    echo "apt-install: verified complete archive set, saving complete key"
+    output changed true
+  elif [ -n "$before" ] && [ "$before" = "$after" ]; then
     echo "apt-install: archives unchanged since the restore, nothing to save"
     output changed false
   else

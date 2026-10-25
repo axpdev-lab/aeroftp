@@ -737,6 +737,7 @@ export const runRemoteSync = async (
         && f.sourcePath == null
         && ((f.action === 'upload' && bulk.upload) || (f.action === 'download' && bulk.download));
     const bulkPrepared = new Map<string, BulkPrepared>();
+    const bulkPreparationRan = new Set<string>();
     /**
      * Send the files from `start` on that go the same way and can travel
      * together, up to the one that reaches the transfer budget (the last file
@@ -782,6 +783,7 @@ export const runRemoteSync = async (
             if (action === 'upload' && deps.writeIndex && f.mtime == null) {
                 landedStates.set(f.relativePath, await readLocalState(`${localBase}/${f.relativePath}`));
             }
+            bulkPreparationRan.add(f.relativePath);
             send.push(f);
         }
         await saveJournal();
@@ -942,7 +944,7 @@ export const runRemoteSync = async (
         }
         const fromBulk = bulkPrepared.get(item.relativePath);
         const sentByBulk = fromBulk !== undefined && fromBulk.status !== 'not_attempted';
-        const preparedByBulk = fromBulk !== undefined;
+        const preparedByBulk = bulkPreparationRan.has(item.relativePath);
 
         // Transfer budget: stop once the cap is reached.
         const budgetReached =
