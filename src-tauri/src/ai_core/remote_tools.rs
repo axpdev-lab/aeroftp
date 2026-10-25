@@ -2280,10 +2280,8 @@ async fn storage_quota(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
     }))
 }
 
-/// Hard cap per `aeroftp_hashsum`: sopra questo size il tool ritorna errore
-/// `file_too_large` invece di tentare il download. Coerente con il fatto che
-/// il backend.download_to_bytes carica tutto il payload in RAM (stessa
-/// pipeline della CLI `aeroftp hashsum --download`).
+/// The agent tool reads one capped whole body into memory. Larger files use
+/// CLI hashsum, which reads windows or streams to disk when ranges are refused.
 const MAX_HASHSUM_BYTES: u64 = 256 * 1024 * 1024;
 
 async fn hashsum(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
@@ -2320,14 +2318,26 @@ async fn hashsum(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
             "hint": "Use the CLI 'aeroftp hashsum' for files larger than 256 MB; MCP keeps a memory cap to protect the agent process."
         }));
     }
-    // Capped, not the general 500 MB download: the size above comes from the
-    // server's own listing, and a server that under-reports it would otherwise
-    // walk this tool up to the general ceiling. The cap is the same one the
-    // size check just applied, so nothing legitimate changes.
+    // Ask for the tool's cap as well as checking the listing. Streaming
+    // implementations enforce it while reading; the default may materialize
+    // up to the provider's general ceiling before rejecting. The exact-size
+    // check below also refuses a self-consistent but incomplete whole body.
     let data = backend
         .download_to_bytes_capped(&path, MAX_HASHSUM_BYTES)
         .await
         .map_err(ToolError::Exec)?;
+    // Workspace exports are generated representations: their stored size
+    // does not describe these bytes. Ordinary zero-byte objects still need
+    // the exact check, so a false-empty listing cannot yield the empty hash.
+    let generated_export = entry
+        .metadata
+        .get("isWorkspaceFile")
+        .is_some_and(|v| v == "true")
+        && entry.metadata.contains_key("exportMimeType");
+    if !generated_export {
+        crate::providers::validate_hash_length(&path, entry.size, data.len() as u64)
+            .map_err(|e| ToolError::Exec(e.to_string()))?;
+    }
     let hash = match algorithm.as_str() {
         "md5" => {
             use md5::Digest;
@@ -4266,6 +4276,11 @@ async fn checksum_pair(
         .await
     {
         Ok(data) => {
+            if let Err(error) =
+                crate::providers::validate_hash_length(remote_path, size, data.len() as u64)
+            {
+                return PairChecksum::Failed(error.to_string());
+            }
             let remote_hash = blake3::hash(&data).to_hex().to_string();
             if remote_hash == local_hash {
                 PairChecksum::Equal(local_hash)
@@ -4664,6 +4679,7 @@ mod tests {
         tree: std::collections::HashMap<String, Vec<RemoteEntry>>,
         /// path -> (is_dir, size)
         stats: std::collections::HashMap<String, (bool, u64)>,
+        stat_metadata: std::collections::HashMap<String, std::collections::HashMap<String, String>>,
         downloads: std::collections::HashMap<String, Vec<u8>>,
         /// High-water mark of bytes materialized by the last
         /// `download_to_bytes_capped` call, so a test can prove the streaming
@@ -4764,6 +4780,7 @@ mod tests {
                 tree,
                 stats,
                 downloads: std::collections::HashMap::new(),
+                stat_metadata: Default::default(),
                 capped_high_water: Mutex::new(0),
                 remote_files: Mutex::new(std::collections::HashMap::new()),
                 uploads: Mutex::new(Vec::new()),
@@ -4848,6 +4865,7 @@ mod tests {
                 crate::providers::ProviderError::NotFound(path.to_string()).to_string()
             })?;
             let mut e = entry(path, is_dir, size);
+            e.metadata = self.stat_metadata.get(path).cloned().unwrap_or_default();
             e.is_symlink = self.symlinks.contains(path);
             e.permissions = self.modes.lock().unwrap().get(path).map(|mode| {
                 let bit = |mask: u32, letter: char| if mode & mask != 0 { letter } else { '-' };
@@ -6126,6 +6144,75 @@ mod tests {
         fake.downloads
             .insert("/remote/diff.txt".to_string(), b"yyy".to_vec());
         (dir, Arc::new(fake))
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_aliases_hash_only_the_complete_known_size() {
+        for tool in ["aeroftp_hashsum", "remote_hashsum"] {
+            for listed in [0, 2, 3, 4] {
+                let mut fake = FakeBackend::sample();
+                fake.stats.insert("/hash.bin".to_string(), (false, listed));
+                fake.downloads
+                    .insert("/hash.bin".to_string(), b"abc".to_vec());
+                let result = dispatch_remote_tool(
+                    &test_ctx(Arc::new(fake)),
+                    tool,
+                    &json!({"server":"srv", "path":"/hash.bin", "algorithm":"sha256"}),
+                )
+                .await;
+                if listed == 3 {
+                    let result = result.expect("complete body hashes through either alias");
+                    assert_eq!(
+                        result["hash"],
+                        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                    );
+                    assert_eq!(result["bytes_hashed"], 3);
+                } else {
+                    assert!(
+                        result.is_err(),
+                        "{tool} accepted {listed} listed bytes as a complete three-byte object"
+                    );
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_preserves_generated_workspace_exports() {
+        let mut fake = FakeBackend::sample();
+        fake.stats.insert("/document".into(), (false, 0));
+        fake.stat_metadata.insert(
+            "/document".into(),
+            std::collections::HashMap::from([
+                ("isWorkspaceFile".into(), "true".into()),
+                ("exportMimeType".into(), "application/pdf".into()),
+            ]),
+        );
+        fake.downloads.insert("/document".into(), b"abc".to_vec());
+        let result = hashsum(
+            &test_ctx(Arc::new(fake)),
+            &json!({"server":"srv", "path":"/document", "algorithm":"sha256"}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["bytes_hashed"], 3);
+        assert_eq!(
+            result["hash"],
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_checksum_pair_refuses_a_short_body() {
+        let (dir, _) = checksum_fixture();
+        let mut fake = FakeBackend::sample();
+        fake.downloads
+            .insert("/remote/same.txt".to_string(), b"aa".to_vec());
+        let result = checksum_pair(&fake, dir.path(), "/remote/same.txt", "same.txt", 3).await;
+        assert!(
+            matches!(result, PairChecksum::Failed(_)),
+            "short reads must fail checksum verification"
+        );
     }
 
     /// G26: with `checksum: true` a same-size pair with different content

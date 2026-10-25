@@ -52036,8 +52036,9 @@ async fn cmd_dedupe(
 /// Streaming SHA-256 of a remote file used by `dedupe` (DEDUPE-02). Small files
 /// keep the single-shot `download_to_bytes`; larger files feed the hasher from
 /// ranged reads so peak memory stays bounded to one chunk instead of the whole
-/// file. If the provider cannot serve ranged reads we fall back to a full
-/// download for that file (no worse than the previous behaviour).
+/// file. A refused ranged attempt uses the same checked, streamed disk
+/// fallback as hashsum. Backends without a range hint retain their original
+/// first-window / bounded in-memory fallback below.
 async fn dedupe_hash_remote_sha256(
     provider: &mut Box<dyn StorageProvider>,
     path: &str,
@@ -65902,6 +65903,18 @@ impl LocalDigest {
         })
     }
 
+    /// Discard every byte from an abandoned range attempt before starting
+    /// the whole object again, including windows already consumed in order.
+    fn restart(&mut self) {
+        *self = match self {
+            Self::Md5(_) => Self::Md5(Default::default()),
+            Self::Sha1(_) => Self::Sha1(Default::default()),
+            Self::Sha256(_) => Self::Sha256(Default::default()),
+            Self::Sha512(_) => Self::Sha512(Default::default()),
+            Self::Blake3(_) => Self::Blake3(Box::new(blake3::Hasher::new())),
+        };
+    }
+
     fn update(&mut self, bytes: &[u8]) {
         match self {
             Self::Md5(hasher) => md5::Digest::update(hasher, bytes),
@@ -65950,9 +65963,9 @@ const HASHSUM_STREAMS: usize = 4;
 /// used when the backend supplies one. With `download`, or for `sha512`,
 /// `blake3` and backends without the requested digest, the bytes are
 /// transferred and hashed here. A backend that reads windows of a file hashes
-/// them as they arrive, with no file in between ([`digest_in_order`]); any
-/// other is downloaded first into a folder on disk with room for it, never the
-/// temporary folder, which is often a tmpfs sized from RAM. Proprietary
+/// them as they arrive ([`digest_in_order`]); a backend that refuses ranges
+/// or cannot read them is downloaded first into a folder on disk with room
+/// for it, never the temporary folder, which is often a tmpfs sized from RAM. Proprietary
 /// algorithms (quickxor/dropbox) have no local fallback.
 async fn hashsum_digest(
     provider: &mut dyn StorageProvider,
@@ -65991,12 +66004,32 @@ async fn hashsum_digest(
         }
     }
 
+    let size = digest_downloaded(provider, path, &mut digest, None).await?;
+    Ok((digest.finish(), size))
+}
+
+/// Hash a whole streamed download on disk. `before` pins a refused ranged
+/// attempt's size and version; without one this preserves the non-range
+/// provider path (including providers whose exports have no stored size).
+async fn digest_downloaded(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+    digest: &mut LocalDigest,
+    before: Option<&ftp_client_gui_lib::providers::multi_thread::RangeSourceFingerprint>,
+) -> Result<u64, ProviderError> {
     // Streaming download, not `download_to_bytes`: that path is capped at
     // 500 MiB and holds the whole file in RAM. The room is checked before the
     // transfer, and `NamedTempFile` removes the scratch file on drop,
     // including after a transfer or hash error, so a failed download cannot
     // yield a partial digest.
-    let planned = provider.stat(path).await.map(|e| e.size).unwrap_or(0);
+    let planned = match before {
+        Some(before) => before.size(),
+        None => provider
+            .stat(path)
+            .await
+            .map(|entry| entry.size)
+            .unwrap_or(0),
+    };
     let dir = ftp_client_gui_lib::util::scratch::staging_dir(planned).map_err(|why| {
         ProviderError::Other(format!("hashsum cannot download {path} to hash it: {why}"))
     })?;
@@ -66004,14 +66037,36 @@ async fn hashsum_digest(
     let tmp_str = tmp.path().to_str().ok_or_else(|| {
         ProviderError::IoError(std::io::Error::other("hashsum temp path is not UTF-8"))
     })?;
-    provider.download(path, tmp_str, None).await?;
+    if before.is_some() {
+        // A pinned whole-object read bypasses opportunistic range downloads
+        // too, so download() cannot repeat a refused attempt or its notice.
+        provider.set_multi_thread_download(1, u64::MAX);
+        provider
+            .download_with_size_hint(path, tmp_str, Some(planned), None)
+            .await?;
+    } else {
+        provider.download(path, tmp_str, None).await?;
+    }
     let size = std::fs::metadata(tmp.path())
         .map(|m| m.len())
         .map_err(ProviderError::from)?;
+    if let Some(before) = before {
+        ftp_client_gui_lib::providers::validate_hash_length(path, before.size(), size)?;
+        if let Some(why) =
+            ftp_client_gui_lib::providers::multi_thread::range_source_changed_through(
+                provider, path, before,
+            )
+            .await
+        {
+            return Err(ProviderError::TransferFailed(format!(
+                "{path} changed while it was hashed: {why}"
+            )));
+        }
+    }
     let mut file = std::fs::File::open(tmp.path()).map_err(ProviderError::from)?;
     let mut buf = vec![0u8; 1024 * 1024];
     feed_file(&mut file, &mut buf, |chunk| digest.update(chunk)).map_err(ProviderError::from)?;
-    Ok((digest.finish(), size))
+    Ok(size)
 }
 
 /// Hash a remote file from windows read in their order, with no file in
@@ -66024,20 +66079,49 @@ async fn hashsum_digest(
 /// from where it stopped. A file that fits in one window, or a backend that
 /// cannot open connections of its own (Koofr, Cloudinary, ImageKit), is read
 /// in order on the session already open, with no resume: what a download
-/// through that session offered, without the copy on disk.
+/// through that session offered. A refusal discards every consumed window
+/// and hashes one complete download on disk, checked against the pinned size
+/// and source fingerprint.
 async fn digest_in_order(
     provider: &mut dyn StorageProvider,
     path: &str,
     digest: &mut LocalDigest,
 ) -> Result<Option<u64>, ProviderError> {
     use ftp_client_gui_lib::providers::multi_thread::{
-        range_source_changed_through, read_in_order, read_range_paced, read_range_source_through,
-        IN_ORDER_WINDOW,
+        read_range_source_through, report_download_fallback,
     };
-
     let Ok(before) = read_range_source_through(provider, path).await else {
         return Ok(None);
     };
+    // A listed empty object still needs a real whole-object read: hashing no
+    // windows would accept an under-reported nonempty object as empty.
+    if before.size() == 0 {
+        return digest_downloaded(provider, path, digest, Some(&before))
+            .await
+            .map(Some);
+    }
+    match digest_in_order_attempt(provider, path, digest, &before).await {
+        Err(ProviderError::ParallelRefused(_) | ProviderError::NotSupported(_)) => {
+            report_download_fallback("the server refused ranged hashing");
+            digest.restart();
+            digest_downloaded(provider, path, digest, Some(&before))
+                .await
+                .map(Some)
+        }
+        other => other,
+    }
+}
+
+async fn digest_in_order_attempt(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+    digest: &mut LocalDigest,
+    before: &ftp_client_gui_lib::providers::multi_thread::RangeSourceFingerprint,
+) -> Result<Option<u64>, ProviderError> {
+    use ftp_client_gui_lib::providers::multi_thread::{
+        range_source_changed_through, read_in_order, read_range_paced, IN_ORDER_WINDOW,
+    };
+
     let size = before.size();
     let mut workers = Vec::new();
     if size > IN_ORDER_WINDOW {
@@ -66071,7 +66155,7 @@ async fn digest_in_order(
         // Several windows apart, the object may have been replaced between
         // two of them; one window is a single read.
         if size > IN_ORDER_WINDOW {
-            if let Some(why) = range_source_changed_through(provider, path, &before).await {
+            if let Some(why) = range_source_changed_through(provider, path, before).await {
                 return Err(ProviderError::TransferFailed(format!(
                     "{path} changed while it was hashed: {why}"
                 )));
@@ -66095,9 +66179,7 @@ async fn digest_in_order(
     // meanwhile hashes as a mix of two versions, every window the right
     // length. Read it once more before the digest is trusted.
     let changed = match (&read, workers.first_mut()) {
-        (Ok(()), Some(worker)) => {
-            range_source_changed_through(worker.as_mut(), path, &before).await
-        }
+        (Ok(()), Some(worker)) => range_source_changed_through(worker.as_mut(), path, before).await,
         _ => None,
     };
     for mut worker in workers {
@@ -66140,14 +66222,29 @@ async fn cmd_hashsum(
     download: bool,
     cli: &Cli,
     format: OutputFormat,
+    cancelled: &AtomicBool,
 ) -> i32 {
-    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+    const NOT_FINISHED: &str = "hashsum did not finish";
+    let Some(connection) =
+        run_until_interrupted(cancelled, create_and_connect(url, cli, format)).await
+    else {
+        return interrupted_exit(None, format, NOT_FINISHED).await;
+    };
+    let (mut provider, initial_path) = match connection {
         Ok(v) => v,
         Err(code) => return code,
     };
     let path = &resolve_cli_remote_path(&initial_path, path);
 
-    match hashsum_digest(&mut *provider, path, algorithm, download).await {
+    let Some(result) = run_until_interrupted(
+        cancelled,
+        hashsum_digest(&mut *provider, path, algorithm, download),
+    )
+    .await
+    else {
+        return interrupted_exit(Some(provider.as_mut()), format, NOT_FINISHED).await;
+    };
+    match result {
         Ok((hash, size)) => {
             if matches!(format, OutputFormat::Json) {
                 print_json(&CliHashResult {
@@ -66403,6 +66500,359 @@ mod hashsum_digest_tests {
             let end = (offset.saturating_add(len) as usize).min(self.content.len());
             Ok(self.content[start..end].to_vec())
         }
+    }
+
+    struct RangeHashFixture {
+        provider: ftp_client_gui_lib::providers::s3::S3Provider,
+        body: Vec<u8>,
+        whole_gets: Arc<std::sync::atomic::AtomicUsize>,
+        ranged_gets: Arc<std::sync::atomic::AtomicUsize>,
+        server: tokio::task::JoinHandle<()>,
+    }
+
+    impl Drop for RangeHashFixture {
+        fn drop(&mut self) {
+            self.server.abort();
+        }
+    }
+
+    async fn range_hash_fixture(
+        size: usize,
+        body_delta: isize,
+        range_mode: u8,
+    ) -> RangeHashFixture {
+        use axum::{
+            body::Body,
+            http::{Method, StatusCode},
+            response::Response,
+        };
+        use ftp_client_gui_lib::providers::{s3::S3Provider, S3Config};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let body: Vec<u8> = (0..size.saturating_add_signed(body_delta))
+            .map(|n| (n % 251) as u8)
+            .collect();
+        let served = Arc::new(body.clone());
+        let whole_gets = Arc::new(AtomicUsize::new(0));
+        let ranged_gets = Arc::new(AtomicUsize::new(0));
+        let app = axum::Router::new().fallback(axum::routing::any({
+            let whole_gets = whole_gets.clone();
+            let ranged_gets = ranged_gets.clone();
+            move |request: axum::extract::Request| {
+                let served = served.clone();
+                let whole_gets = whole_gets.clone();
+                let ranged_gets = ranged_gets.clone();
+                async move {
+                    if request.method() == Method::HEAD {
+                        return Response::builder()
+                            .header("content-length", size.to_string())
+                            .header(
+                                "etag",
+                                if range_mode == 3 && whole_gets.load(Ordering::SeqCst) > 0 {
+                                    "\"changed-version\""
+                                } else {
+                                    "\"fixed-version\""
+                                },
+                            )
+                            .header("accept-ranges", "bytes")
+                            .body(Body::empty())
+                            .unwrap();
+                    }
+                    assert_eq!(request.method(), Method::GET);
+                    if let Some(range) = request.headers().get("range") {
+                        ranged_gets.fetch_add(1, Ordering::SeqCst);
+                        if matches!(range_mode, 1 | 2) {
+                            let (start, end) = range
+                                .to_str()
+                                .unwrap()
+                                .strip_prefix("bytes=")
+                                .unwrap()
+                                .split_once('-')
+                                .unwrap();
+                            let start: usize = start.parse().unwrap();
+                            let end: usize = end.parse().unwrap();
+                            if range_mode == 1 || start == 0 {
+                                return Response::builder()
+                                    .status(StatusCode::PARTIAL_CONTENT)
+                                    .header("content-range", format!("bytes {start}-{end}/{size}"))
+                                    .body(Body::from(served[start..=end].to_vec()))
+                                    .unwrap();
+                            }
+                        }
+                    } else {
+                        whole_gets.fetch_add(1, Ordering::SeqCst);
+                    }
+                    // HTTP200 is self-consistent; only HEAD's known size can expose
+                    // the truncated whole-object answer, not Content-Length alone.
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .header("etag", "\"fixed-version\"")
+                        .body(Body::from(served.as_ref().clone()))
+                        .unwrap()
+                }
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = S3Provider::new(S3Config {
+            endpoint: Some(format!("http://{addr}")),
+            region: "us-east-1".to_string(),
+            access_key_id: "test-key".to_string(),
+            secret_access_key: secrecy::SecretString::from("test-secret".to_string()),
+            session_token: None,
+            role_arn: None,
+            role_external_id: None,
+            role_session_name: None,
+            role_duration_seconds: None,
+            role_mfa_serial: None,
+            role_mfa_token_code: None,
+            bucket: "test-bucket".to_string(),
+            prefix: None,
+            path_style: true,
+            storage_class: None,
+            sse_mode: None,
+            sse_kms_key_id: None,
+            verify_cert: true,
+            allow_cleartext_endpoint: true,
+            skip_dir_markers: false,
+            filen_desktop_bridge: false,
+        })
+        .unwrap();
+        provider.connect().await.unwrap();
+        whole_gets.store(0, Ordering::SeqCst);
+        ranged_gets.store(0, Ordering::SeqCst);
+        // Exercise a fallback that must override configured parallel downloads.
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        RangeHashFixture {
+            provider,
+            body,
+            whole_gets,
+            ranged_gets,
+            server,
+        }
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_200_hashes_the_whole_object_once() {
+        let mut fixture = range_hash_fixture(1024 * 1024 + 31, 0, 0).await;
+        let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+        let (hash, size) = warnings
+            .scope(hashsum_digest(
+                &mut fixture.provider,
+                PATH,
+                HashAlgorithm::Sha256,
+                true,
+            ))
+            .await
+            .expect("an ignored Range falls back to one complete stream");
+        assert_eq!(
+            hash,
+            format!(
+                "{:x}",
+                <sha2::Sha256 as sha2::Digest>::digest(&fixture.body)
+            )
+        );
+        assert_eq!(size, fixture.body.len() as u64);
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+        assert_eq!(fixture.ranged_gets.load(Ordering::SeqCst), 1);
+        assert_eq!(warnings.take(), vec![
+            "parallel download unavailable: the server refused ranged hashing; using a single stream"
+        ]);
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_200_wrong_size_is_rejected() {
+        let mut fixture = range_hash_fixture(1024 * 1024 + 31, -17, 0).await;
+        let error = hashsum_digest(&mut fixture.provider, PATH, HashAlgorithm::Sha256, true)
+            .await
+            .expect_err("a self-consistent HTTP200 cannot change the known object size");
+        assert!(
+            format!("{error:?}").contains("expected 1048607 bytes"),
+            "{error:?}"
+        );
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_206_keeps_the_ranged_path() {
+        let mut fixture = range_hash_fixture(1024 * 1024 + 31, 0, 1).await;
+        let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+        let (hash, size) = warnings
+            .scope(hashsum_digest(
+                &mut fixture.provider,
+                PATH,
+                HashAlgorithm::Sha256,
+                true,
+            ))
+            .await
+            .expect("ordinary206 remains supported");
+        assert_eq!(
+            hash,
+            format!(
+                "{:x}",
+                <sha2::Sha256 as sha2::Digest>::digest(&fixture.body)
+            )
+        );
+        assert_eq!(size, fixture.body.len() as u64);
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 0);
+        assert!(warnings.take().is_empty());
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_large_200_does_not_duplicate_windows() {
+        use ftp_client_gui_lib::providers::multi_thread::IN_ORDER_WINDOW;
+        let mut fixture = range_hash_fixture((IN_ORDER_WINDOW * 2 + 31) as usize, 0, 0).await;
+        let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+        let (hash, size) = warnings
+            .scope(hashsum_digest(
+                &mut fixture.provider,
+                PATH,
+                HashAlgorithm::Sha256,
+                true,
+            ))
+            .await
+            .expect("refused worker windows fall back once");
+        assert_eq!(
+            hash,
+            format!(
+                "{:x}",
+                <sha2::Sha256 as sha2::Digest>::digest(&fixture.body)
+            )
+        );
+        assert_eq!(size, fixture.body.len() as u64);
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+        assert_eq!(warnings.take().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_200_overlong_size_is_rejected() {
+        let mut fixture = range_hash_fixture(1024 * 1024 + 31, 17, 0).await;
+        let error = hashsum_digest(&mut fixture.provider, PATH, HashAlgorithm::Sha256, true)
+            .await
+            .expect_err("an overlong200 is not the known object");
+        assert!(
+            format!("{error:?}").contains("expected 1048607 bytes"),
+            "{error:?}"
+        );
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_restarts_after_a_completed_window() {
+        use ftp_client_gui_lib::providers::multi_thread::IN_ORDER_WINDOW;
+        let mut fixture = range_hash_fixture((IN_ORDER_WINDOW * 2 + 31) as usize, 0, 2).await;
+        let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+        let (hash, size) = warnings
+            .scope(hashsum_digest(
+                &mut fixture.provider,
+                PATH,
+                HashAlgorithm::Sha256,
+                true,
+            ))
+            .await
+            .expect("discard the successful206 prefix before the full stream");
+        assert_eq!(
+            hash,
+            format!(
+                "{:x}",
+                <sha2::Sha256 as sha2::Digest>::digest(&fixture.body)
+            )
+        );
+        assert_eq!(size, fixture.body.len() as u64);
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+        assert_eq!(warnings.take().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_restarts_every_local_algorithm() {
+        for algorithm in [
+            HashAlgorithm::Md5,
+            HashAlgorithm::Sha1,
+            HashAlgorithm::Sha256,
+            HashAlgorithm::Sha512,
+            HashAlgorithm::Blake3,
+        ] {
+            let mut fixture = range_hash_fixture(127, 0, 0).await;
+            let mut digest = LocalDigest::new(algorithm).unwrap();
+            digest.update(b"discarded prefix");
+            let mut expected = LocalDigest::new(algorithm).unwrap();
+            expected.update(&fixture.body);
+            let size = digest_in_order(&mut fixture.provider, PATH, &mut digest)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(digest.finish(), expected.finish());
+            assert_eq!(size, 127);
+        }
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_checks_a_listed_empty_object() {
+        let mut fixture = range_hash_fixture(0, 0, 0).await;
+        let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+        let (hash, size) = warnings
+            .scope(hashsum_digest(
+                &mut fixture.provider,
+                PATH,
+                HashAlgorithm::Sha256,
+                true,
+            ))
+            .await
+            .expect("a genuinely empty body hashes successfully");
+        assert_eq!(
+            hash,
+            format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest([]))
+        );
+        assert_eq!(size, 0);
+        assert_eq!(fixture.ranged_gets.load(Ordering::SeqCst), 0);
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+        assert!(warnings.take().is_empty());
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_refuses_a_false_empty_listing() {
+        let mut fixture = range_hash_fixture(0, 3, 0).await;
+        let error = hashsum_digest(&mut fixture.provider, PATH, HashAlgorithm::Sha256, true)
+            .await
+            .expect_err("the empty hash cannot stand in for a real body");
+        assert!(
+            format!("{error:?}").contains("expected 0 bytes"),
+            "{error:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_checks_source_version_after_the_whole_read() {
+        let mut fixture = range_hash_fixture(127, 0, 3).await;
+        let error = hashsum_digest(&mut fixture.provider, PATH, HashAlgorithm::Sha256, true)
+            .await
+            .expect_err("same-length replacement cannot publish a hash");
+        assert!(
+            format!("{error:?}").contains("changed while it was hashed"),
+            "{error:?}"
+        );
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_streams_one_still_falls_back_once() {
+        let mut fixture = range_hash_fixture(127, 0, 0).await;
+        fixture.provider.set_multi_thread_download(1, u64::MAX);
+        let (hash, size) = hashsum_digest(&mut fixture.provider, PATH, HashAlgorithm::Sha256, true)
+            .await
+            .unwrap();
+        assert_eq!(
+            hash,
+            format!(
+                "{:x}",
+                <sha2::Sha256 as sha2::Digest>::digest(&fixture.body)
+            )
+        );
+        assert_eq!(size, 127);
+        assert_eq!(fixture.ranged_gets.load(Ordering::SeqCst), 1);
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
     }
 
     fn md5_hex(bytes: &[u8]) -> String {
@@ -75191,7 +75641,7 @@ async fn main() {
         }
         Commands::Hashsum { .. } => {
             let (algorithm, u, p, download) = hashsum_request_from_cli(&cli).expect("Hashsum arm");
-            cmd_hashsum(algorithm, u, p, download, &cli, format).await
+            cmd_hashsum(algorithm, u, p, download, &cli, format, &cancelled).await
         }
         Commands::Check {
             url,
@@ -87538,6 +87988,8 @@ mod tests {
         ranged_size: u64,
         /// Complete the ordinary download for parallel-fallback regression tests.
         finish_download: bool,
+        /// Refuses ranged hashing before the ordinary download stalls.
+        refuse_hash_ranges: bool,
     }
 
     impl StallingProvider {
@@ -87663,6 +88115,11 @@ mod tests {
             _offset: u64,
             _len: u64,
         ) -> Result<Vec<u8>, ProviderError> {
+            if self.refuse_hash_ranges {
+                return Err(ProviderError::ParallelRefused(
+                    "server ignored Range (HTTP 200)".into(),
+                ));
+            }
             std::future::pending().await
         }
         async fn download_to_bytes(
@@ -87809,6 +88266,42 @@ mod tests {
                 "parallel download unavailable: pget: the source size no longer matches the parallel plan; using a single stream"
             ]);
         }
+    }
+
+    #[test]
+    fn ctrl_c_stops_hashsum_range_fallback_and_removes_scratch() {
+        let provider = StallingProvider {
+            ranged_size: 1_000_000,
+            refuse_hash_ranges: true,
+            ..Default::default()
+        };
+        let downloading = provider.downloading.clone();
+        let disconnects = provider.disconnects.clone();
+        let downloads = provider.downloads.clone();
+        let code = against_stalling(provider, |cancelled| async move {
+            cmd_hashsum(
+                HashAlgorithm::Sha256,
+                "memory://",
+                "/f.bin",
+                true,
+                &quiet_cli(),
+                OutputFormat::Json,
+                &cancelled,
+            )
+            .await
+        });
+        assert_eq!(code, 130, "first Ctrl-C stops the full fallback");
+        assert_eq!(disconnects.load(Ordering::Relaxed), 1);
+        assert_eq!(downloads.load(Ordering::Relaxed), 1);
+        let scratch = downloading
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("fallback started");
+        assert!(
+            !std::path::Path::new(&scratch).exists(),
+            "cancelled hash scratch must be removed"
+        );
     }
 
     /// Ctrl-C set the cancel flag and printed "press again to force quit",
