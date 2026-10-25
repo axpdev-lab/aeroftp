@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { useEffect, useState, useCallback } from 'react';
-import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
+import { onVaultReady, secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
 
 export type MyServersDensity = 'compact' | 'comfortable';
 
@@ -36,26 +36,33 @@ export const useMyServersDensity = (): {
 
     useEffect(() => {
         let cancelled = false;
-        (async () => {
+        let generation = 0;
+        const load = async () => {
+            const current = ++generation;
             try {
                 const blob = await secureGetWithFallback<Record<string, unknown>>(
                     VAULT_ACCOUNT,
                     VAULT_KEY,
                 );
-                if (!cancelled && blob && blob[SETTINGS_FIELD] !== undefined) {
+                if (!cancelled && current === generation && blob && blob[SETTINGS_FIELD] !== undefined) {
                     setLocal(sanitize(blob[SETTINGS_FIELD]));
                 }
             } catch { /* default already applied */ }
-        })();
+        };
+        void load();
         const onChanged = (e: Event) => {
             const detail = (e as CustomEvent<Record<string, unknown> | null>).detail;
             if (detail && detail[SETTINGS_FIELD] !== undefined) {
+                generation++;
                 setLocal(sanitize(detail[SETTINGS_FIELD]));
             }
         };
+        const unsubscribe = onVaultReady(load);
         window.addEventListener(EVENT_NAME, onChanged);
         return () => {
             cancelled = true;
+            generation++;
+            unsubscribe();
             window.removeEventListener(EVENT_NAME, onChanged);
         };
     }, []);

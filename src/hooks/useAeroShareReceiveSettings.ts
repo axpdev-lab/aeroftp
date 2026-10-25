@@ -11,12 +11,12 @@
  *   accepted without a prompt; unknown senders ALWAYS prompt. Default OFF, so by
  *   default every incoming send shows an Accept/Decline prompt (fail-safe).
  *
- * Mirrors {@link useAeroShareEnabled}: a read-only vault peek on mount plus the
- * global `aeroftp-settings-changed` event, no full useSettings round-trip.
+ * Mirrors {@link useAeroShareEnabled}: read-only vault peeks on mount and readiness
+ * plus the global `aeroftp-settings-changed` event, no full useSettings round-trip.
  */
 
 import { useEffect, useState } from 'react';
-import { secureGetWithFallback } from '../utils/secureStorage';
+import { onVaultReady, secureGetWithFallback } from '../utils/secureStorage';
 
 const SETTINGS_KEY = 'aeroftp_settings';
 const SETTINGS_VAULT_KEY = 'app_settings';
@@ -39,13 +39,15 @@ export const useAeroShareReceiveSettings = (): AeroShareReceiveSettings => {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    let generation = 0;
+    const load = async () => {
+      const current = ++generation;
       try {
         const parsed = await secureGetWithFallback<Record<string, unknown>>(
           SETTINGS_VAULT_KEY,
           SETTINGS_KEY,
         );
-        if (!cancelled && parsed) {
+        if (!cancelled && current === generation && parsed) {
           setSettings({
             receiving: asBool(parsed.aeroShareReceiving),
             autoAcceptFriends: asBool(parsed.aeroShareAutoAcceptFriends),
@@ -55,11 +57,13 @@ export const useAeroShareReceiveSettings = (): AeroShareReceiveSettings => {
       } catch {
         /* keep defaults (off) */
       }
-    })();
+    };
+    void load();
 
     const onChange = (e: Event) => {
       const detail = (e as CustomEvent)?.detail as Record<string, unknown> | undefined;
       if (!detail) return;
+      generation++;
       setSettings((prev) => ({
         receiving:
           'aeroShareReceiving' in detail ? asBool(detail.aeroShareReceiving) : prev.receiving,
@@ -73,9 +77,12 @@ export const useAeroShareReceiveSettings = (): AeroShareReceiveSettings => {
             : prev.notifyOnReceive,
       }));
     };
+    const unsubscribe = onVaultReady(load);
     window.addEventListener('aeroftp-settings-changed', onChange);
     return () => {
       cancelled = true;
+      generation++;
+      unsubscribe();
       window.removeEventListener('aeroftp-settings-changed', onChange);
     };
   }, []);

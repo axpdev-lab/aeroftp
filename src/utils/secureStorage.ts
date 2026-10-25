@@ -9,6 +9,21 @@ import { invoke } from '@tauri-apps/api/core';
 
 const VAULT_PREFIX = 'config_';
 
+export const VAULT_READY_EVENT = 'aeroftp-vault-ready';
+
+export function notifyVaultReady(): void {
+  try { window.dispatchEvent(new Event(VAULT_READY_EVENT)); } catch { /* browserless tests */ }
+}
+
+export function onVaultReady(listener: () => void): () => void {
+  try {
+    window.addEventListener(VAULT_READY_EVENT, listener);
+    return () => window.removeEventListener(VAULT_READY_EVENT, listener);
+  } catch {
+    return () => undefined;
+  }
+}
+
 /**
  * Store data in the encrypted vault
  */

@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { updateAppSettings } from '../utils/appSettings';
-import { secureGetWithFallback } from '../utils/secureStorage';
+import { onVaultReady, secureGetWithFallback } from '../utils/secureStorage';
 
 const SETTINGS_KEY = 'aeroftp_settings';
 const SETTINGS_VAULT_KEY = 'app_settings';
@@ -11,8 +11,8 @@ const SETTINGS_VAULT_KEY = 'app_settings';
 /**
  * Reader + writer for the "health check on Add Services" preference, the same
  * `discoverHealthCheck` field SettingsPanel persists. Mirrors useIntroHubIconSize:
- * it reads the vault on mount and re-reads on `aeroftp-settings-changed`, so the
- * Settings checkbox and the double-click toggle on the Discover Check button stay
+ * it reads the vault on mount and readiness, and applies `aeroftp-settings-changed`,
+ * so the Settings checkbox and the double-click toggle on the Discover Check button stay
  * in sync. The setter writes the merged settings blob back and dispatches the
  * event so every other listener (Settings panel, App-level useSettings) updates.
  *
@@ -25,27 +25,34 @@ export function useDiscoverHealthCheck(): [boolean, (value: boolean) => void] {
     useEffect(() => {
         mountedRef.current = true;
         let cancelled = false;
-        (async () => {
+        let generation = 0;
+        const load = async () => {
+            const current = ++generation;
             try {
                 const parsed = await secureGetWithFallback<Record<string, unknown>>(SETTINGS_VAULT_KEY, SETTINGS_KEY);
-                if (!cancelled && parsed && typeof parsed.discoverHealthCheck === 'boolean') {
+                if (!cancelled && current === generation && parsed && typeof parsed.discoverHealthCheck === 'boolean') {
                     setEnabledState(parsed.discoverHealthCheck);
                 }
             } catch {
                 /* keep default ON */
             }
-        })();
+        };
+        void load();
 
         const onChange = (e: Event) => {
             const detail = (e as CustomEvent)?.detail as Record<string, unknown> | undefined;
             if (detail && typeof detail.discoverHealthCheck === 'boolean') {
+                generation++;
                 setEnabledState(detail.discoverHealthCheck);
             }
         };
+        const unsubscribe = onVaultReady(load);
         window.addEventListener('aeroftp-settings-changed', onChange);
         return () => {
             cancelled = true;
+            generation++;
             mountedRef.current = false;
+            unsubscribe();
             window.removeEventListener('aeroftp-settings-changed', onChange);
         };
     }, []);

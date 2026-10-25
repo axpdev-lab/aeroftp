@@ -16,7 +16,7 @@ import { PluginManifest } from '../../types/plugins';
 import { ToolApproval } from './ToolApproval';
 import { BatchToolApproval } from './BatchToolApproval';
 import { type Conversation, cleanupHistory, loadSession } from '../../utils/chatHistory';
-import { secureGetWithFallback } from '../../utils/secureStorage';
+import { onVaultReady, secureGetWithFallback } from '../../utils/secureStorage';
 import { loadSavedServerProfiles } from '../../utils/serverProfileStore';
 import { useTranslation } from '../../i18n';
 import { logger } from '../../utils/logger';
@@ -965,15 +965,6 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     const fileImportsRef = useRef<string[]>([]);
     const [tokenBudgetData, setTokenBudgetData] = useState<TokenBudgetData | null>(null);
 
-    // Refresh AI settings from vault (async, with localStorage fallback)
-    const refreshAiSettings = useCallback(async () => {
-        const settings = await secureGetWithFallback<AISettings>('ai_settings', 'aeroftp_ai_settings');
-        if (settings) setCachedAiSettings(settings);
-    }, []);
-
-    // Load AI settings from vault on mount
-    useEffect(() => { refreshAiSettings(); }, [refreshAiSettings]);
-
     // Load plugins on mount
     useEffect(() => {
         invoke<PluginManifest[]>('list_plugins')
@@ -1140,80 +1131,80 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     }, []);
 
     // Load available models from settings (API keys fetched from OS Keyring)
-    const loadModels = async () => {
+    const loadModelsGenerationRef = useRef(0);
+    const loadModels = useCallback(async () => {
+        const current = ++loadModelsGenerationRef.current;
         // Read from vault with localStorage fallback, update cache
         const settings = await secureGetWithFallback<AISettings>('ai_settings', 'aeroftp_ai_settings');
-        if (settings) {
+        if (!settings || current !== loadModelsGenerationRef.current) return;
+        try {
             settings.providers = reconcileProviderNames(settings.providers);
-            setCachedAiSettings(settings);
-            try {
-                const models: SelectedModel[] = [];
+            const models: SelectedModel[] = [];
 
-                // Check which providers have API keys in keyring
-                const enabledProviders: string[] = [];
-                for (const p of settings.providers) {
-                    if (!p.isEnabled) continue;
-                    // Ollama doesn't need an API key
-                    if (p.type === 'ollama') {
+            // Check which providers have API keys in keyring
+            const enabledProviders: string[] = [];
+            for (const p of settings.providers) {
+                if (!p.isEnabled) continue;
+                // Ollama doesn't need an API key
+                if (p.type === 'ollama') {
+                    enabledProviders.push(p.id);
+                    continue;
+                }
+                // Check if API key exists (either in-memory from migration or in keyring)
+                if (p.apiKey) {
+                    enabledProviders.push(p.id);
+                } else {
+                    try {
+                        await invoke<string>('get_credential', { account: `ai_apikey_${p.id}` });
                         enabledProviders.push(p.id);
-                        continue;
-                    }
-                    // Check if API key exists (either in-memory from migration or in keyring)
-                    if (p.apiKey) {
-                        enabledProviders.push(p.id);
-                    } else {
-                        try {
-                            await invoke<string>('get_credential', { account: `ai_apikey_${p.id}` });
-                            enabledProviders.push(p.id);
-                        } catch {
-                            // No API key configured
-                        }
+                    } catch {
+                        // No API key configured
                     }
                 }
+            }
+            if (current !== loadModelsGenerationRef.current) return;
 
-                settings.providers
-                    .filter(p => enabledProviders.includes(p.id))
-                    .forEach(provider => {
-                        const providerModels = settings.models.filter(
-                            m => m.providerId === provider.id && m.isEnabled
-                        );
-                        providerModels.forEach(model => {
-                            models.push({
-                                providerId: provider.id,
-                                providerName: provider.name,
-                                providerType: provider.type,
-                                modelId: model.id,
-                                modelName: model.name,
-                                displayName: model.displayName,
-                            });
+            settings.providers
+                .filter(p => enabledProviders.includes(p.id))
+                .forEach(provider => {
+                    const providerModels = settings.models.filter(
+                        m => m.providerId === provider.id && m.isEnabled
+                    );
+                    providerModels.forEach(model => {
+                        models.push({
+                            providerId: provider.id,
+                            providerName: provider.name,
+                            providerType: provider.type,
+                            modelId: model.id,
+                            modelName: model.name,
+                            displayName: model.displayName,
                         });
                     });
+                });
 
-                setAvailableModels(models);
-
-                // Set default if none selected
-                if (!selectedModel && models.length > 0) {
-                    const defaultModel = models.find(m => {
-                        const settingsModel = settings.models.find(sm => sm.id === m.modelId);
-                        return settingsModel?.isDefault;
-                    }) || models[0];
-                    setSelectedModel(defaultModel);
-                }
-            } catch (e) {
-                logger.error('[AIChat] Failed to load AI settings:', e);
-            }
+            const defaultModel = models.find(m => {
+                const settingsModel = settings.models.find(sm => sm.id === m.modelId);
+                return settingsModel?.isDefault;
+            }) || models[0] || null;
+            setCachedAiSettings(settings);
+            setAvailableModels(models);
+            setSelectedModel(selected => selected
+                ? models.find(m => m.modelId === selected.modelId && m.providerId === selected.providerId) || defaultModel
+                : defaultModel);
+        } catch (e) {
+            logger.error('[AIChat] Failed to load AI settings:', e);
         }
-    };
-
-    // Initial load
-    useEffect(() => {
-        loadModels();
     }, []);
 
-    // Reload when settings close
     useEffect(() => {
-        if (!showSettings) loadModels();
-    }, [showSettings]);
+        const unsubscribe = onVaultReady(() => { void loadModels(); });
+        return () => { loadModelsGenerationRef.current++; unsubscribe(); };
+    }, [loadModels]);
+
+    // Initial load and reload when settings close
+    useEffect(() => {
+        if (!showSettings) void loadModels();
+    }, [showSettings, loadModels]);
 
     // Load chat history on mount
     useEffect(() => { loadChatHistory(); }, [loadChatHistory]);
