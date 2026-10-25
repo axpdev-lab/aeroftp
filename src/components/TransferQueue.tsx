@@ -12,6 +12,7 @@ import { TransferProgressBar } from './TransferProgressBar';
 import type { BatchProgressSnapshot } from '../hooks/useTransferEvents';
 import {
     addItem as addItemHelper,
+    addItems as addItemsHelper,
     applyItemProgress,
     clearRestoredFlags as clearRestoredFlagsHelper,
     listRestoredPendingIds,
@@ -21,8 +22,10 @@ import {
     startAll as startAllHelper,
     startStaged as startStagedHelper,
     computeFooterPercentage,
+    queueDisplayCounts,
     updateTransferStatus,
     type AddItemOptions,
+    type NewQueueItem,
 } from './transferQueueActions';
 import { copyText } from '../utils/clipboard';
 
@@ -47,6 +50,8 @@ export interface TransferItem {
     error?: string;
     startTime?: number;
     endTime?: number;
+    /** Registered upfront from an AeroSync plan, not discovered file by file. */
+    isPlannedSync?: boolean;
     // For folder transfers
     isFolder?: boolean;
     totalFiles?: number;
@@ -540,17 +545,14 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
     // See `computeFooterPercentage` for the full precedence + rationale.
     const wavePercentage = computeFooterPercentage(waveTotal, waveDone, transferringCount, activeBatchSnapshot);
 
-    // #364: the header item counter must read completed/total for the WHOLE
-    // transfer, not the lazily-enqueued item-count wave. Queue items enqueue on
-    // `file_start`, so `items.length` only counts files started so far (e.g.
-    // [148/150] on a 600-file upload). When a batch snapshot is live, use its
-    // pre-scan `total` (fixed upfront) and `completed`; fall back to the queue
-    // array for single-file / non-batch transfers. Mirrors computeFooterPercentage.
-    const counterFromSnapshot = !!activeBatchSnapshot && transferringCount > 0 && activeBatchSnapshot.total > 0;
-    const displayCompleted = counterFromSnapshot
-        ? Math.min(activeBatchSnapshot!.completed, activeBatchSnapshot!.total)
-        : completedCount;
-    const displayTotal = counterFromSnapshot ? activeBatchSnapshot!.total : items.length;
+    // Ordinary folder batches use their backend's fixed snapshot total. An
+    // AeroSync plan already registered every row, including across bulk groups
+    // and single-file fallback, so its complete queue is the stable denominator.
+    const { completed: displayCompleted, total: displayTotal } = queueDisplayCounts(
+        items,
+        activeBatchSnapshot,
+        transferringCount,
+    );
 
     // Only render if visible AND has items
     if (!isVisible || items.length === 0) return null;
@@ -884,6 +886,15 @@ export const useTransferQueue = () => {
         return id;
     };
 
+    const addItems = (newItems: NewQueueItem[]): string[] => {
+        const ids = newItems.map(item => item.options?.id ?? `transfer-${++transferId}`);
+        setItems(prev => addItemsHelper(prev, newItems.map((item, index) => ({ ...item, id: ids[index] }))));
+        if (!userDismissedRef.current && newItems.length > 0) {
+            setIsVisible(true);
+        }
+        return ids;
+    };
+
     // TQ-3 staging lifecycle: promote a single staged entry to pending.
     // Used by the per-item Start button. No-op when the item is not staged.
     const startStaged = (id: string) => {
@@ -1046,6 +1057,7 @@ export const useTransferQueue = () => {
         hasActiveTransfers,
         stagedTransferCount,
         addItem,
+        addItems,
         startTransfer,
         setProgress,
         completeTransfer,

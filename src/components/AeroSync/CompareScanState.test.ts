@@ -2,25 +2,24 @@
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { CompareScanState } from './CompareScanState';
+import { CompareScanState, ScanProgressContext } from './CompareScanState';
 import { isCompareCancelled } from '../../utils/scanCompleteness';
 
 vi.mock('../../i18n', () => ({ useTranslation: () => (key: string) => key }));
-vi.mock('../../hooks/useScanProgress', () => ({
-    useScanProgress: () => ({ totals: { files: 781456, dirs: 76894, bytes: 0 }, elapsedMs: 26000 }),
-    formatElapsed: () => '0:26',
-}));
+vi.mock('../../hooks/useScanProgress', () => ({ formatElapsed: () => '0:26' }));
 
 let root: Root;
 let host: HTMLDivElement;
 const buttons = () => [...document.querySelectorAll('button')].map((b) => b.textContent?.trim());
 const render = async (props: Partial<Parameters<typeof CompareScanState>[0]>) => {
-    await act(async () => root.render(createElement(CompareScanState, {
+    await act(async () => root.render(createElement(ScanProgressContext.Provider, {
+        value: { totals: { files: 781456, dirs: 76894, bytes: 0 }, elapsedMs: 26000 },
+    }, createElement(CompareScanState, {
         loading: false,
         leftLabel: '/home/user',
         rightLabel: '/home/user/Pictures',
         ...props,
-    })));
+    }))));
 };
 beforeEach(() => {
     (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
