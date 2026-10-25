@@ -588,7 +588,7 @@ export const describePreset = (preset: SyncPreset): { name: string; tagline: str
         case 'update':
             return {
                 name: 'Update',
-                tagline: 'Copy missing and newer files. Skip conflicts so you can resolve them manually.',
+                tagline: 'Copy missing and newer files. Never delete, never overwrite a newer destination copy. Resolve conflicts with the selected policy.',
                 safe: true,
             };
         case 'bisync':

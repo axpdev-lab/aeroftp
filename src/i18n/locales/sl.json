@@ -6064,19 +6064,19 @@
                     "tagline": "Kopira različico iz vira s pripono z datumom in uro."
                 },
                 "newer-wins": {
-                    "label": "Zmaga novejša",
+                    "label": "Ohrani novejšo",
                     "tagline": "Stran z novejšim časom spremembe prepiše drugo."
                 },
                 "older-wins": {
-                    "label": "Zmaga starejša",
+                    "label": "Ohrani starejšo",
                     "tagline": "Starejša stran prepiše novejšo (za arhiviranje)."
                 },
                 "larger-wins": {
-                    "label": "Zmaga večja",
+                    "label": "Ohrani večjo",
                     "tagline": "Stran z večjo velikostjo prepiše manjšo."
                 },
                 "smaller-wins": {
-                    "label": "Zmaga manjša",
+                    "label": "Ohrani manjšo",
                     "tagline": "Manjša stran prepiše večjo."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Posodobitev",
-                    "tagline": "Kopira manjkajoče in novejše datoteke. Preskoči spore, da jih rešite ročno."
+                    "tagline": "Kopira manjkajoče in novejše datoteke. Nikoli ne briše niti ne prepiše novejše kopije na cilju. Rešuje konflikte z izbranim pravilnikom."
                 },
                 "bisync": {
                     "name": "Dvosmerna sinhronizacija",

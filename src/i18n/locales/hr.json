@@ -6064,19 +6064,19 @@
                     "tagline": "Kopira verziju iz izvora sa sufiksom datuma i vremena."
                 },
                 "newer-wins": {
-                    "label": "Novija pobjeđuje",
+                    "label": "Zadrži noviju",
                     "tagline": "Strana s novijim vremenom izmjene prepisuje drugu."
                 },
                 "older-wins": {
-                    "label": "Starija pobjeđuje",
+                    "label": "Zadrži stariju",
                     "tagline": "Starija strana prepisuje noviju (za arhiviranje)."
                 },
                 "larger-wins": {
-                    "label": "Veća pobjeđuje",
+                    "label": "Zadrži veću",
                     "tagline": "Strana s većom veličinom prepisuje manju."
                 },
                 "smaller-wins": {
-                    "label": "Manja pobjeđuje",
+                    "label": "Zadrži manju",
                     "tagline": "Manja strana prepisuje veću."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Ažuriranje",
-                    "tagline": "Kopira datoteke koje nedostaju i novije. Preskače sukobe kako biste ih riješili ručno."
+                    "tagline": "Kopira nedostajuće i novije datoteke. Nikad ne briše niti prepisuje noviju kopiju na odredištu. Rješava sukobe odabranom politikom."
                 },
                 "bisync": {
                     "name": "Dvosmjerna sinkronizacija",

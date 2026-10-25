@@ -6083,19 +6083,19 @@
                     "tagline": "Kinokopya ang bersyon ng pinagmulan na may hulaping petsa at oras."
                 },
                 "newer-wins": {
-                    "label": "Mas bago ang panalo",
+                    "label": "Panatilihin ang mas bago",
                     "tagline": "Ang panig na may mas bagong oras ng pagbabago ang papatong sa kabila."
                 },
                 "older-wins": {
-                    "label": "Mas luma ang panalo",
+                    "label": "Panatilihin ang mas luma",
                     "tagline": "Ang mas lumang panig ang papatong sa mas bago (para sa pag-archive)."
                 },
                 "larger-wins": {
-                    "label": "Mas malaki ang panalo",
+                    "label": "Panatilihin ang mas malaki",
                     "tagline": "Ang panig na may mas malaking sukat ang papatong sa mas maliit."
                 },
                 "smaller-wins": {
-                    "label": "Mas maliit ang panalo",
+                    "label": "Panatilihin ang mas maliit",
                     "tagline": "Ang mas maliit na panig ang papatong sa mas malaki."
                 }
             },
@@ -6157,7 +6157,7 @@
                 },
                 "update": {
                     "name": "I-update",
-                    "tagline": "Kinokopya ang mga nawawala at mas bagong file. Nilalaktawan ang mga conflict para malutas mo nang mano-mano."
+                    "tagline": "Kinokopya ang mga nawawala at mas bagong file. Hindi kailanman nagbubura o nag-o-overwrite ng mas bagong kopya sa patutunguhan. Nilulutas ang mga salungatan gamit ang napiling patakaran."
                 },
                 "bisync": {
                     "name": "Two-way na sync",

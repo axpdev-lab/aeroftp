@@ -6064,19 +6064,19 @@
                     "tagline": "Menyalin versi sumber dengan akhiran tarikh dan masa."
                 },
                 "newer-wins": {
-                    "label": "Yang lebih baharu menang",
+                    "label": "Simpan yang lebih baharu",
                     "tagline": "Belah dengan masa ubah suai yang lebih baharu menulis ganti belah yang satu lagi."
                 },
                 "older-wins": {
-                    "label": "Yang lebih lama menang",
+                    "label": "Simpan yang lebih lama",
                     "tagline": "Belah yang lebih lama menulis ganti yang lebih baharu (untuk pengarkiban)."
                 },
                 "larger-wins": {
-                    "label": "Yang lebih besar menang",
+                    "label": "Simpan yang lebih besar",
                     "tagline": "Belah dengan saiz lebih besar menulis ganti yang lebih kecil."
                 },
                 "smaller-wins": {
-                    "label": "Yang lebih kecil menang",
+                    "label": "Simpan yang lebih kecil",
                     "tagline": "Belah yang lebih kecil menulis ganti yang lebih besar."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Kemas kini",
-                    "tagline": "Menyalin fail yang tiada dan lebih baharu. Melangkau konflik supaya anda boleh menyelesaikannya secara manual."
+                    "tagline": "Menyalin fail yang tiada dan lebih baharu. Tidak pernah memadam atau menulis ganti salinan destinasi yang lebih baharu. Menyelesaikan konflik dengan dasar yang dipilih."
                 },
                 "bisync": {
                     "name": "Penyegerakan dua hala",

@@ -6064,19 +6064,19 @@
                     "tagline": "Kopē avota versiju ar datuma un laika sufiksu."
                 },
                 "newer-wins": {
-                    "label": "Uzvar jaunākais",
+                    "label": "Paturēt jaunāku",
                     "tagline": "Puse ar vēlāku modificēšanas laiku pārraksta otru."
                 },
                 "older-wins": {
-                    "label": "Uzvar vecākais",
+                    "label": "Paturēt vecāku",
                     "tagline": "Vecākā puse pārraksta jaunāko (arhivēšanai)."
                 },
                 "larger-wins": {
-                    "label": "Uzvar lielākais",
+                    "label": "Paturēt lielāku",
                     "tagline": "Puse ar lielāku izmēru pārraksta mazāko."
                 },
                 "smaller-wins": {
-                    "label": "Uzvar mazākais",
+                    "label": "Paturēt mazāku",
                     "tagline": "Mazākā puse pārraksta lielāko."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Atjaunināt",
-                    "tagline": "Kopē trūkstošos un jaunākos failus. Izlaiž konfliktus, lai jūs tos atrisinātu manuāli."
+                    "tagline": "Kopē trūkstošos un jaunākos failus. Nekad nedzēš un nekad nepārraksta jaunāku kopiju galamērķī. Atrisina konfliktus ar izvēlēto politiku."
                 },
                 "bisync": {
                     "name": "Divvirzienu sinhronizācija",

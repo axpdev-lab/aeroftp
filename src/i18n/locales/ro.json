@@ -6064,19 +6064,19 @@
                     "tagline": "Copiază versiunea din sursă cu un sufix de dată și oră."
                 },
                 "newer-wins": {
-                    "label": "Câștigă cel mai nou",
+                    "label": "Păstrează cel mai nou",
                     "tagline": "Partea cu data modificării mai recentă o suprascrie pe cealaltă."
                 },
                 "older-wins": {
-                    "label": "Câștigă cel mai vechi",
+                    "label": "Păstrează cel mai vechi",
                     "tagline": "Partea mai veche o suprascrie pe cea mai nouă (pentru arhivare)."
                 },
                 "larger-wins": {
-                    "label": "Câștigă cel mai mare",
+                    "label": "Păstrează cel mai mare",
                     "tagline": "Partea cu dimensiunea mai mare o suprascrie pe cea mai mică."
                 },
                 "smaller-wins": {
-                    "label": "Câștigă cel mai mic",
+                    "label": "Păstrează cel mai mic",
                     "tagline": "Partea mai mică o suprascrie pe cea mai mare."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Actualizare",
-                    "tagline": "Copiază fișierele lipsă și pe cele mai noi. Omite conflictele pentru a le rezolva manual."
+                    "tagline": "Copiază fișierele lipsă și cele mai noi. Nu șterge niciodată și nu suprascrie niciodată o copie mai nouă la destinație. Rezolvă conflictele cu politica selectată."
                 },
                 "bisync": {
                     "name": "Sincronizare bidirecțională",

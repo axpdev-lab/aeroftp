@@ -139,7 +139,7 @@ describe('AeroSync template import application', () => {
         expect(patch['plan.canarySelection']).toBe('newest');
     });
 
-    it('round-trips the full live Plan option set, including Update and Newer wins', () => {
+    it('round-trips the full live Plan option set, including Update and Keep newer', () => {
         const template: SyncTemplate = {
             schema_version: 1,
             name: 'Update',

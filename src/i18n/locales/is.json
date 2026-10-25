@@ -6083,19 +6083,19 @@
                     "tagline": "Afritar útgáfu upprunans með viðskeyti sem inniheldur dagsetningu og tíma."
                 },
                 "newer-wins": {
-                    "label": "Nýrra vinnur",
+                    "label": "Halda nýrri",
                     "tagline": "Hliðin með nýrri breytingartíma skrifar yfir hina."
                 },
                 "older-wins": {
-                    "label": "Eldra vinnur",
+                    "label": "Halda eldri",
                     "tagline": "Eldri hliðin skrifar yfir þá nýrri (til geymslu)."
                 },
                 "larger-wins": {
-                    "label": "Stærra vinnur",
+                    "label": "Halda stærri",
                     "tagline": "Hliðin með stærri skráarstærð skrifar yfir þá minni."
                 },
                 "smaller-wins": {
-                    "label": "Minna vinnur",
+                    "label": "Halda minni",
                     "tagline": "Minni hliðin skrifar yfir þá stærri."
                 }
             },
@@ -6157,7 +6157,7 @@
                 },
                 "update": {
                     "name": "Uppfæra",
-                    "tagline": "Afritar skrár sem vantar og nýrri skrár. Sleppir árekstrum svo þú getir leyst þá handvirkt."
+                    "tagline": "Afritar skrár sem vantar og nýrri skrár. Eyjir aldrei né skrifar yfir nýrra afrit á áfangastað. Leysir árekstra með valinni stefnu."
                 },
                 "bisync": {
                     "name": "Tvíátta samstilling",

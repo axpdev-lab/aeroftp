@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "2b55a6df4b6f8649ec069f00f0ac73c1c35eb8546bb2cfc5b4c14234653c1aa4",
+    "enHash": "a4f47d0a3530aa440c2df55f4cb88991e6f8f52eeb57bf161aa36631d9b1fb92",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -105,6 +105,18 @@
         "aerosync.conflictCount": [
             "{count} conflict(s)"
         ],
+        "aerosync.conflictPolicyOption.larger-wins.label": [
+            "Larger wins"
+        ],
+        "aerosync.conflictPolicyOption.newer-wins.label": [
+            "Newer wins"
+        ],
+        "aerosync.conflictPolicyOption.older-wins.label": [
+            "Older wins"
+        ],
+        "aerosync.conflictPolicyOption.smaller-wins.label": [
+            "Smaller wins"
+        ],
         "aerosync.errorCorrectionHint": [
             "Stores a small .aerorec parity file next to each backed-up file so a bit-rotted remote copy can be repaired on the next pull, without the original."
         ],
@@ -116,6 +128,9 @@
         ],
         "aerosync.launcherHistory": [
             "Journal history"
+        ],
+        "aerosync.preset.update.tagline": [
+            "Copy missing and newer files. Skip conflicts so you can resolve them manually."
         ],
         "aerosync.speedModeHint": [
             "Parallel streams + compression preset applied to the run."

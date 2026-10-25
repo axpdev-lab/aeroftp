@@ -6064,19 +6064,19 @@
                     "tagline": "Hunakili toleo la chanzo likiwa na kiambishi cha tarehe na saa."
                 },
                 "newer-wins": {
-                    "label": "Mpya zaidi hushinda",
+                    "label": "Weka faili jipya zaidi",
                     "tagline": "Upande wenye muda wa marekebisho wa karibuni zaidi huandika juu ya upande mwingine."
                 },
                 "older-wins": {
-                    "label": "Ya zamani zaidi hushinda",
+                    "label": "Weka faili la zamani zaidi",
                     "tagline": "Upande wa zamani zaidi huandika juu ya ule mpya zaidi (kwa kuhifadhi kumbukumbu)."
                 },
                 "larger-wins": {
-                    "label": "Kubwa zaidi hushinda",
+                    "label": "Weka faili kubwa zaidi",
                     "tagline": "Upande wenye ukubwa mkubwa zaidi huandika juu ya ule mdogo zaidi."
                 },
                 "smaller-wins": {
-                    "label": "Ndogo zaidi hushinda",
+                    "label": "Weka faili dogo zaidi",
                     "tagline": "Upande mdogo zaidi huandika juu ya ule mkubwa zaidi."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Sasisha",
-                    "tagline": "Hunakili faili zinazokosekana na mpya zaidi. Huruka migongano ili uitatue mwenyewe."
+                    "tagline": "Hunakili faili zinazokosekana na faili mpya zaidi. Kamwe hufuta wala kuandika juu ya nakala mpya zaidi iliyo kwenye lengo. Hutatua migogoro kwa sera iliyochaguliwa."
                 },
                 "bisync": {
                     "name": "Usawazishaji wa pande mbili",

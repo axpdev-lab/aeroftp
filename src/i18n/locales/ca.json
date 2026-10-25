@@ -6083,19 +6083,19 @@
                     "tagline": "Copia la versió d'origen amb un sufix de data i hora."
                 },
                 "newer-wins": {
-                    "label": "Guanya el més recent",
+                    "label": "Conserva el més nou",
                     "tagline": "El costat amb la data de modificació més recent sobreescriu l'altre."
                 },
                 "older-wins": {
-                    "label": "Guanya el més antic",
+                    "label": "Conserva el més antic",
                     "tagline": "El costat més antic sobreescriu el més recent (per a arxivament)."
                 },
                 "larger-wins": {
-                    "label": "Guanya el més gran",
+                    "label": "Conserva el més gran",
                     "tagline": "El costat amb la mida més gran sobreescriu el més petit."
                 },
                 "smaller-wins": {
-                    "label": "Guanya el més petit",
+                    "label": "Conserva el més petit",
                     "tagline": "El costat més petit sobreescriu el més gran."
                 }
             },
@@ -6157,7 +6157,7 @@
                 },
                 "update": {
                     "name": "Actualitza",
-                    "tagline": "Copia els fitxers que falten i els més nous. Omet els conflictes perquè els resolguis manualment."
+                    "tagline": "Copia els fitxers que falten i els més nous. No suprimeix mai ni sobreescriu mai una còpia més nova de la destinació. Resol els conflictes amb la política seleccionada."
                 },
                 "bisync": {
                     "name": "Sincronització bidireccional",

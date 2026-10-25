@@ -6348,19 +6348,19 @@
                     "tagline": "Copy the source-side copy under a timestamped suffix."
                 },
                 "newer-wins": {
-                    "label": "Newer wins",
+                    "label": "Keep newer",
                     "tagline": "The side with the more recent mtime overwrites the other."
                 },
                 "older-wins": {
-                    "label": "Older wins",
+                    "label": "Keep older",
                     "tagline": "The older side overwrites the newer (archive use case)."
                 },
                 "larger-wins": {
-                    "label": "Larger wins",
+                    "label": "Keep larger",
                     "tagline": "The side with the larger size overwrites the smaller."
                 },
                 "smaller-wins": {
-                    "label": "Smaller wins",
+                    "label": "Keep smaller",
                     "tagline": "The smaller side overwrites the larger."
                 }
             },
@@ -6424,7 +6424,7 @@
                 },
                 "update": {
                     "name": "Update",
-                    "tagline": "Copy missing and newer files. Skip conflicts so you can resolve them manually."
+                    "tagline": "Copy missing and newer files. Never delete, never overwrite a newer destination copy. Resolve conflicts with the selected policy."
                 },
                 "bisync": {
                     "name": "Two-way sync",

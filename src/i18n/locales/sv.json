@@ -6064,19 +6064,19 @@
                     "tagline": "Kopierar källans version med ett suffix med datum och tid."
                 },
                 "newer-wins": {
-                    "label": "Nyaste vinner",
+                    "label": "Behåll nyare",
                     "tagline": "Sidan med den senaste ändringstiden skriver över den andra."
                 },
                 "older-wins": {
-                    "label": "Äldsta vinner",
+                    "label": "Behåll äldre",
                     "tagline": "Den äldre sidan skriver över den nyare (för arkivering)."
                 },
                 "larger-wins": {
-                    "label": "Största vinner",
+                    "label": "Behåll större",
                     "tagline": "Sidan med störst filstorlek skriver över den mindre."
                 },
                 "smaller-wins": {
-                    "label": "Minsta vinner",
+                    "label": "Behåll mindre",
                     "tagline": "Den mindre sidan skriver över den större."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Uppdatera",
-                    "tagline": "Kopierar saknade och nyare filer. Hoppar över konflikter så att du kan lösa dem manuellt."
+                    "tagline": "Kopierar saknade och nyare filer. Tar aldrig bort något och skriver aldrig över en nyare kopia på destinationen. Löser konflikter med den valda policyn."
                 },
                 "bisync": {
                     "name": "Tvåvägssynkronisering",

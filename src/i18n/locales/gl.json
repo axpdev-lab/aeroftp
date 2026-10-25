@@ -6083,19 +6083,19 @@
                     "tagline": "Copia a versión de orixe cun sufixo de data e hora."
                 },
                 "newer-wins": {
-                    "label": "Gaña o máis recente",
+                    "label": "Conservar o máis recente",
                     "tagline": "O lado coa data de modificación máis recente sobrescribe o outro."
                 },
                 "older-wins": {
-                    "label": "Gaña o máis antigo",
+                    "label": "Conservar o máis antigo",
                     "tagline": "O lado máis antigo sobrescribe o máis recente (para arquivado)."
                 },
                 "larger-wins": {
-                    "label": "Gaña o máis grande",
+                    "label": "Conservar o maior",
                     "tagline": "O lado co tamaño maior sobrescribe o menor."
                 },
                 "smaller-wins": {
-                    "label": "Gaña o máis pequeno",
+                    "label": "Conservar o máis pequeno",
                     "tagline": "O lado máis pequeno sobrescribe o máis grande."
                 }
             },
@@ -6157,7 +6157,7 @@
                 },
                 "update": {
                     "name": "Actualizar",
-                    "tagline": "Copia os ficheiros que faltan e os máis recentes. Omite os conflitos para que os resolvas manualmente."
+                    "tagline": "Copia os ficheiros que faltan e os máis recentes. Nunca elimina nin sobrescribe unha copia máis recente no destino. Resolve os conflitos coa política seleccionada."
                 },
                 "bisync": {
                     "name": "Sincronización bidireccional",

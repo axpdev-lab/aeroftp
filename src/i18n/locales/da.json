@@ -6064,19 +6064,19 @@
                     "tagline": "Kopierer kildens version med et suffiks med dato og klokkeslæt."
                 },
                 "newer-wins": {
-                    "label": "Nyeste vinder",
+                    "label": "Behold nyere",
                     "tagline": "Siden med det seneste ændringstidspunkt overskriver den anden."
                 },
                 "older-wins": {
-                    "label": "Ældste vinder",
+                    "label": "Behold ældre",
                     "tagline": "Den ældste side overskriver den nyeste (til arkivering)."
                 },
                 "larger-wins": {
-                    "label": "Største vinder",
+                    "label": "Behold større",
                     "tagline": "Siden med den største filstørrelse overskriver den mindste."
                 },
                 "smaller-wins": {
-                    "label": "Mindste vinder",
+                    "label": "Behold mindre",
                     "tagline": "Den mindste side overskriver den største."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Opdatér",
-                    "tagline": "Kopierer manglende og nyere filer. Springer konflikter over, så du kan løse dem manuelt."
+                    "tagline": "Kopierer manglende og nyere filer. Sletter aldrig og overskriver aldrig en nyere kopi på destinationen. Løser konflikter med den valgte politik."
                 },
                 "bisync": {
                     "name": "Tovejssynkronisering",

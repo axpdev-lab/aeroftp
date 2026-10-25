@@ -6064,19 +6064,19 @@
                     "tagline": "Kopiuje wersję ze źródła z przyrostkiem zawierającym datę i godzinę."
                 },
                 "newer-wins": {
-                    "label": "Wygrywa nowszy",
+                    "label": "Zachowaj nowszy",
                     "tagline": "Strona z późniejszą datą modyfikacji nadpisuje drugą."
                 },
                 "older-wins": {
-                    "label": "Wygrywa starszy",
+                    "label": "Zachowaj starszy",
                     "tagline": "Starsza strona nadpisuje nowszą (do archiwizacji)."
                 },
                 "larger-wins": {
-                    "label": "Wygrywa większy",
+                    "label": "Zachowaj większy",
                     "tagline": "Strona o większym rozmiarze nadpisuje mniejszą."
                 },
                 "smaller-wins": {
-                    "label": "Wygrywa mniejszy",
+                    "label": "Zachowaj mniejszy",
                     "tagline": "Mniejsza strona nadpisuje większą."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Aktualizacja",
-                    "tagline": "Kopiuje brakujące i nowsze pliki. Pomija konflikty, aby można je było rozwiązać ręcznie."
+                    "tagline": "Kopiuje brakujące i nowsze pliki. Nigdy nie usuwa ani nie nadpisuje nowszej kopii w miejscu docelowym. Rozwiązuje konflikty zgodnie z wybraną zasadą."
                 },
                 "bisync": {
                     "name": "Synchronizacja dwukierunkowa",

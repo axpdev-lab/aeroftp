@@ -6064,19 +6064,19 @@
                     "tagline": "Kopieert de bronversie met een achtervoegsel met datum en tijd."
                 },
                 "newer-wins": {
-                    "label": "Nieuwste wint",
+                    "label": "Nieuwere behouden",
                     "tagline": "De kant met de recentste wijzigingstijd overschrijft de andere."
                 },
                 "older-wins": {
-                    "label": "Oudste wint",
+                    "label": "Oudere behouden",
                     "tagline": "De oudere kant overschrijft de nieuwere (voor archivering)."
                 },
                 "larger-wins": {
-                    "label": "Grootste wint",
+                    "label": "Grotere behouden",
                     "tagline": "De kant met de grootste bestandsgrootte overschrijft de kleinere."
                 },
                 "smaller-wins": {
-                    "label": "Kleinste wint",
+                    "label": "Kleinere behouden",
                     "tagline": "De kleinere kant overschrijft de grotere."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Bijwerken",
-                    "tagline": "Kopieert ontbrekende en nieuwere bestanden. Slaat conflicten over zodat u ze handmatig kunt oplossen."
+                    "tagline": "Kopieert ontbrekende en nieuwere bestanden. Verwijdert nooit en overschrijft nooit een nieuwere kopie op de bestemming. Lost conflicten op met het geselecteerde beleid."
                 },
                 "bisync": {
                     "name": "Tweerichtingssynchronisatie",

@@ -6064,19 +6064,19 @@
                     "tagline": "Kopioi lähteen version päivämäärän ja kellonajan sisältävällä päätteellä."
                 },
                 "newer-wins": {
-                    "label": "Uudempi voittaa",
+                    "label": "Säilytä uudempi",
                     "tagline": "Puoli, jonka muokkausaika on uudempi, korvaa toisen."
                 },
                 "older-wins": {
-                    "label": "Vanhempi voittaa",
+                    "label": "Säilytä vanhempi",
                     "tagline": "Vanhempi puoli korvaa uudemman (arkistointia varten)."
                 },
                 "larger-wins": {
-                    "label": "Suurempi voittaa",
+                    "label": "Säilytä suurempi",
                     "tagline": "Puoli, jonka koko on suurempi, korvaa pienemmän."
                 },
                 "smaller-wins": {
-                    "label": "Pienempi voittaa",
+                    "label": "Säilytä pienempi",
                     "tagline": "Pienempi puoli korvaa suuremman."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Päivitä",
-                    "tagline": "Kopioi puuttuvat ja uudemmat tiedostot. Ohittaa ristiriidat, jotta voit ratkaista ne itse."
+                    "tagline": "Kopioi puuttuvat ja uudemmat tiedostot. Ei koskaan poista eikä korvaa kohteessa olevaa uudempaa kopiota. Ratkaisee ristiriidat valitun käytännön mukaisesti."
                 },
                 "bisync": {
                     "name": "Kaksisuuntainen synkronointi",

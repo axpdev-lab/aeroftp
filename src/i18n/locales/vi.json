@@ -6064,19 +6064,19 @@
                     "tagline": "Sao chép phiên bản ở nguồn với hậu tố ngày giờ."
                 },
                 "newer-wins": {
-                    "label": "Mới hơn thắng",
+                    "label": "Giữ bản mới hơn",
                     "tagline": "Bên có thời gian sửa đổi gần đây hơn sẽ ghi đè bên còn lại."
                 },
                 "older-wins": {
-                    "label": "Cũ hơn thắng",
+                    "label": "Giữ bản cũ hơn",
                     "tagline": "Bên cũ hơn ghi đè bên mới hơn (dùng để lưu trữ)."
                 },
                 "larger-wins": {
-                    "label": "Lớn hơn thắng",
+                    "label": "Giữ bản lớn hơn",
                     "tagline": "Bên có kích thước lớn hơn ghi đè bên nhỏ hơn."
                 },
                 "smaller-wins": {
-                    "label": "Nhỏ hơn thắng",
+                    "label": "Giữ bản nhỏ hơn",
                     "tagline": "Bên nhỏ hơn ghi đè bên lớn hơn."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Cập nhật",
-                    "tagline": "Sao chép tệp còn thiếu và mới hơn. Bỏ qua xung đột để bạn tự giải quyết."
+                    "tagline": "Sao chép các tệp bị thiếu và tệp mới hơn. Không bao giờ xóa hoặc ghi đè bản sao mới hơn ở đích. Giải quyết xung đột bằng chính sách đã chọn."
                 },
                 "bisync": {
                     "name": "Đồng bộ hai chiều",

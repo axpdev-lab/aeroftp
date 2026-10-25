@@ -6064,19 +6064,19 @@
                     "tagline": "Nukopijuoja šaltinio versiją su datos ir laiko priesaga."
                 },
                 "newer-wins": {
-                    "label": "Laimi naujesnis",
+                    "label": "Palikti naujesnį",
                     "tagline": "Pusė su vėlesniu keitimo laiku perrašo kitą."
                 },
                 "older-wins": {
-                    "label": "Laimi senesnis",
+                    "label": "Palikti senesnį",
                     "tagline": "Senesnė pusė perrašo naujesnę (archyvavimui)."
                 },
                 "larger-wins": {
-                    "label": "Laimi didesnis",
+                    "label": "Palikti didesnį",
                     "tagline": "Pusė su didesniu dydžiu perrašo mažesnę."
                 },
                 "smaller-wins": {
-                    "label": "Laimi mažesnis",
+                    "label": "Palikti mažesnį",
                     "tagline": "Mažesnė pusė perrašo didesnę."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Atnaujinti",
-                    "tagline": "Nukopijuoja trūkstamus ir naujesnius failus. Praleidžia konfliktus, kad galėtumėte juos išspręsti rankiniu būdu."
+                    "tagline": "Kopijuoja trūkstamus ir naujesnius failus. Niekada nešalina ir niekada neperrašo naujesnės paskirties kopijos. Konfliktus sprendžia pagal pasirinktą politiką."
                 },
                 "bisync": {
                     "name": "Dvipusė sinchronizacija",
