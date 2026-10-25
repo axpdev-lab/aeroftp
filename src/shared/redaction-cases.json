@@ -206,5 +206,50 @@
     "input": "Authorization: Token a%2Fb@c next",
     "expected": "authorization: ***REDACTED*** next",
     "group": "authorization"
+  },
+  {
+    "name": "a quoted value after a key",
+    "input": "password=\"secret\" next",
+    "expected": "password=***REDACTED*** next"
+  },
+  {
+    "name": "a quoted value after a colon",
+    "input": "token: \"secret\" next",
+    "expected": "token: ***REDACTED*** next"
+  },
+  {
+    "name": "a single-quoted value",
+    "input": "api_key='abc' next",
+    "expected": "api_key=***REDACTED*** next"
+  },
+  {
+    "name": "a quoted value cut before its closing quote",
+    "input": "password=\"abc def",
+    "expected": "password=***REDACTED***"
+  },
+  {
+    "name": "a quoted x-api-key",
+    "input": "x-api-key: \"abc123\" next",
+    "expected": "x-api-key: ***REDACTED*** next"
+  },
+  {
+    "name": "a json secret with an escaped quote",
+    "input": "{\"password\":\"abc\\\"def\",\"user\":\"x\"}",
+    "expected": "{\"password\":\"***REDACTED***\",\"user\":\"x\"}"
+  },
+  {
+    "name": "a json x-api-key",
+    "input": "{\"x-api-key\":\"abc123\",\"next\":1}",
+    "expected": "{\"x-api-key\":\"***REDACTED***\",\"next\":1}"
+  },
+  {
+    "name": "a json secret inside a json string",
+    "input": "{\"msg\":\"{\\\"password\\\":\\\"abc\\\",\\\"next\\\":1}\"}",
+    "expected": "{\"msg\":\"{\\\"password\\\":\\\"***REDACTED***\\\",\\\"next\\\":1}\"}"
+  },
+  {
+    "name": "a redacted secret stays as it is",
+    "input": "password: ***REDACTED***",
+    "expected": "password: ***REDACTED***"
   }
 ]

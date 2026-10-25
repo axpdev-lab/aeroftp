@@ -27,6 +27,15 @@ const AUTHORIZATION_CREDENTIALS = new RegExp(
     'gi',
 );
 
+// Names of the fields whose value is a secret, in JSON and in key=value form.
+const SECRET_FIELDS = 'password|passwd|pwd|secret|secret_key|secretkey|api_key|apikey|x-api-key|access_key|token|access_token|refresh_token|id_token|passphrase|private_key|privatekey|client_secret|totp_secret|consumer_secret';
+
+// The value after a key: the marker (a redacted line stays as it is), a quoted
+// string that ends at its closing quote (an escaped quote does not end it; a
+// line cut inside the value has no closing quote and ends there), or a bare
+// word up to the next delimiter.
+const SECRET_VALUE = String.raw`(?:\*\*\*REDACTED\*\*\*|"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[^\s,;'"<>]+)`;
+
 export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: string }> = [
     // Authorization (and Proxy-Authorization) carries `scheme credentials`, and
     // the whole value goes, not its first word: `Basic dXNlcjpwYXNz` is a
@@ -45,21 +54,26 @@ export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: s
     { pattern: /sk_(live|test)_[A-Za-z0-9]{16,}/g, replacement: 'sk_***REDACTED***' },
     // OAuth Bearer / x-api-key headers
     { pattern: /\bBearer\s+[A-Za-z0-9_\-.~+/]{8,}=*/g, replacement: 'Bearer ***REDACTED***' },
-    { pattern: /\bx-api-key\s*[:=]\s*[^\s,;'"<>]+/gi, replacement: 'x-api-key: ***REDACTED***' },
+    { pattern: new RegExp(String.raw`\bx-api-key\s*[:=]\s*${SECRET_VALUE}`, 'gi'), replacement: 'x-api-key: ***REDACTED***' },
     // JWT-shaped tokens (3 base64url segments separated by '.')
     { pattern: /\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g, replacement: '***JWT-REDACTED***' },
     // Inline credentials in URLs: ftp://user:pass@host -> ftp://user:***@host
     { pattern: /\b((?:ftps?|sftp|https?|webdav):\/\/[^:\s@/]+:)[^@\s]+(@)/gi, replacement: '$1***REDACTED***$2' },
-    // Serialized secret fields in JSON: "password":"..." -> "password":"***REDACTED***"
+    // Serialized secret fields in JSON: "password":"..." -> "password":"***REDACTED***".
+    // The value ends at its closing quote; an escaped quote inside it does not end it.
     {
-        pattern:
-            /("(?:password|passwd|pwd|secret|secret_key|secretkey|api_key|apikey|access_key|token|access_token|refresh_token|id_token|passphrase|private_key|privatekey|client_secret|totp_secret|consumer_secret)"\s*:\s*)"[^"]*"/gi,
+        pattern: new RegExp(String.raw`("(?:${SECRET_FIELDS})"\s*:\s*)"(?:[^"\\]|\\.)*"?`, 'gi'),
         replacement: '$1"***REDACTED***"',
+    },
+    // The same inside a JSON string, where each quote is escaped: the value ends
+    // at the first lone `\"`, and an inner `\\\"` belongs to it.
+    {
+        pattern: new RegExp(String.raw`(\\"(?:${SECRET_FIELDS})\\"[ \t]*:[ \t]*\\")(?:[^\\]|\\\\\\")*`, 'gi'),
+        replacement: '$1***REDACTED***',
     },
     // Secret fields in key=value / key: value form
     {
-        pattern:
-            /(\b(?:pass(?:word|wd|phrase)?|pwd|secret(?:_?key)?|client_secret|totp_secret|consumer_secret|private_?key|api[_-]?key|access_key|(?:access|refresh|id)_token|token)\s*[:=]\s*)[^\s,;'"<>]+/gi,
+        pattern: new RegExp(String.raw`(\b(?:pass(?:word|wd|phrase)?|pwd|secret(?:_?key)?|client_secret|totp_secret|consumer_secret|private_?key|api[_-]?key|access_key|(?:access|refresh|id)_token|token)\s*[:=]\s*)${SECRET_VALUE}`, 'gi'),
         replacement: '$1***REDACTED***',
     },
     // Email addresses

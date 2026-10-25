@@ -273,6 +273,23 @@ enum Replacement {
     Ipv4,
 }
 
+/// Names of the fields whose value is a secret, in JSON and in key=value form.
+macro_rules! secret_fields {
+    () => {
+        "password|passwd|pwd|secret|secret_key|secretkey|api_key|apikey|x-api-key|access_key|token|access_token|refresh_token|id_token|passphrase|private_key|privatekey|client_secret|totp_secret|consumer_secret"
+    };
+}
+
+/// The value after a key: the marker (a redacted line stays as it is), a
+/// quoted string that ends at its closing quote (an escaped quote does not end
+/// it; a line cut inside the value has no closing quote and ends there), or a
+/// bare word up to the next delimiter.
+macro_rules! secret_value {
+    () => {
+        r#"(?:\*\*\*REDACTED\*\*\*|"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[^\s,;'"<>]+)"#
+    };
+}
+
 const REDACTION_RULES: &[(&str, Replacement)] = &[
     // Authorization first, ahead of every key and Bearer rule below, so
     // `Authorization: Bearer sk-...` is one marker. Shared with
@@ -302,7 +319,7 @@ const REDACTION_RULES: &[(&str, Replacement)] = &[
         Replacement::Text("Bearer ***REDACTED***"),
     ),
     (
-        r#"(?i)\bx-api-key\s*[:=]\s*[^\s,;'"<>]+"#,
+        concat!(r"(?i)\bx-api-key\s*[:=]\s*", secret_value!()),
         Replacement::Text("x-api-key: ***REDACTED***"),
     ),
     (
@@ -313,15 +330,33 @@ const REDACTION_RULES: &[(&str, Replacement)] = &[
         r"(?i)\b((?:ftps?|sftp|https?|webdav)://[^:\s@/]+:)[^@\s]+(@)",
         Replacement::Text("$1***REDACTED***$2"),
     ),
-    // Serialized secret fields in JSON: "password":"..." -> "password":"***REDACTED***"
+    // Serialized secret fields in JSON: "password":"..." -> "password":"***REDACTED***".
+    // The value ends at its closing quote; an escaped quote inside it does not end it.
     (
-        r#"(?i)("(?:password|passwd|pwd|secret|secret_key|secretkey|api_key|apikey|access_key|token|access_token|refresh_token|id_token|passphrase|private_key|privatekey|client_secret|totp_secret|consumer_secret)"\s*:\s*)"[^"]*""#,
+        concat!(
+            r#"(?i)("(?:"#,
+            secret_fields!(),
+            r#")"\s*:\s*)"(?:[^"\\]|\\.)*"?"#
+        ),
         Replacement::Text("$1\"***REDACTED***\""),
+    ),
+    // The same inside a JSON string, where each quote is escaped: the value ends
+    // at the first lone `\"`, and an inner `\\\"` belongs to it.
+    (
+        concat!(
+            r#"(?i)(\\"(?:"#,
+            secret_fields!(),
+            r#")\\"[ \t]*:[ \t]*\\")(?:[^\\]|\\\\\\")*"#
+        ),
+        Replacement::Text("$1***REDACTED***"),
     ),
     // MCP-06: generic key=value secrets (password=, secret:, token=, ...).
     // Keeps the key and its separator for debugging context, scrubs the value.
     (
-        r#"(?i)(\b(?:pass(?:word|wd|phrase)?|pwd|secret(?:_?key)?|client_secret|totp_secret|consumer_secret|private_?key|api[_-]?key|access_key|(?:access|refresh|id)_token|token)\s*[:=]\s*)[^\s,;'"<>]+"#,
+        concat!(
+            r"(?i)(\b(?:pass(?:word|wd|phrase)?|pwd|secret(?:_?key)?|client_secret|totp_secret|consumer_secret|private_?key|api[_-]?key|access_key|(?:access|refresh|id)_token|token)\s*[:=]\s*)",
+            secret_value!(),
+        ),
         Replacement::Text("$1***REDACTED***"),
     ),
     (
