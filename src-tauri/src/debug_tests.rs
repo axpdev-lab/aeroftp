@@ -13,6 +13,7 @@ use std::io::Write as _;
 use std::sync::OnceLock;
 use std::time::Instant;
 
+use crate::authorization_redaction;
 use crate::credential_store::CredentialStore;
 use crate::AppState;
 
@@ -272,15 +273,22 @@ enum Replacement {
     Ipv4,
 }
 
-/// One RFC 7235 `auth-param`: `name=value`, the value a token or a quoted
-/// string. A token may hold a `;` (AWS SigV4: `SignedHeaders=host;x-amz-date`).
-macro_rules! auth_param {
-    () => {
-        r#"[A-Za-z0-9_-]+[ \t]*=[ \t]*(?:"(?:[^"\\]|\\.)*"|[^\s,'"<>\\]+)"#
-    };
-}
-
 const REDACTION_RULES: &[(&str, Replacement)] = &[
+    // Authorization first, ahead of every key and Bearer rule below, so
+    // `Authorization: Bearer sk-...` is one marker. Shared with
+    // `ai::sanitize_error_message`.
+    (
+        authorization_redaction::IN_JSON_STRING,
+        Replacement::Text("$1***REDACTED***"),
+    ),
+    (
+        authorization_redaction::QUOTED,
+        Replacement::Text("$1\"***REDACTED***\""),
+    ),
+    (
+        authorization_redaction::credentials!(r"\*\*\*REDACTED\*\*\*"),
+        Replacement::Text("authorization: ***REDACTED***"),
+    ),
     (
         r"sk-(ant|proj|live|test)-[A-Za-z0-9_\-]{16,}",
         Replacement::Text("sk-***REDACTED***"),
@@ -288,36 +296,6 @@ const REDACTION_RULES: &[(&str, Replacement)] = &[
     (
         r"sk_(live|test)_[A-Za-z0-9]{16,}",
         Replacement::Text("sk_***REDACTED***"),
-    ),
-    // Authorization (and Proxy-Authorization) carries `scheme credentials`, and
-    // the whole value goes, not its first word: `Basic dXNlcjpwYXNz` is a
-    // password. Ahead of the Bearer rule, so `Authorization: Bearer <token>`
-    // becomes one marker.
-    // JSON inside a string: the value ends at the first lone `\"`, and a Digest
-    // parameter's `\\\"` belongs to it.
-    (
-        r#"(?i)(\\"authorization\\"[ \t]*:[ \t]*\\")(?:[^\\]|\\\\\\")*"#,
-        Replacement::Text("$1***REDACTED***"),
-    ),
-    // A quoted value (JSON, Debug) ends at its closing quote, so the keys after
-    // it stay; a line cut inside the value has no closing quote and ends there.
-    (
-        r#"(?i)(\bauthorization["']?[ \t]*[:=][ \t]*)(?:"(?:[^"\\]|\\.)*"?|'[^']*'?)"#,
-        Replacement::Text("$1\"***REDACTED***\""),
-    ),
-    // A bare value is `credentials`: a scheme, then a token68 or a
-    // comma-separated list of parameters (Digest, Hawk, ...). A value that is
-    // already the marker stays as it is, so redacting a redacted line again
-    // does not take the word after it for a credential.
-    (
-        concat!(
-            r#"(?i)\bauthorization["']?[ \t]*[:=][ \t]*(?:\*\*\*REDACTED\*\*\*|[^\s,;'"<>\\]+(?:[ \t]+(?:"#,
-            auth_param!(),
-            r"(?:[ \t]*,[ \t]*",
-            auth_param!(),
-            r")*|[A-Za-z0-9._~+/-]+=*))?)",
-        ),
-        Replacement::Text("authorization: ***REDACTED***"),
     ),
     (
         r"\bBearer\s+[A-Za-z0-9_\-.~+/]{8,}=*",

@@ -2,57 +2,68 @@
   {
     "name": "basic header",
     "input": "Authorization: Basic dXNlcjpwYXNz",
-    "expected": "authorization: ***REDACTED***"
+    "expected": "authorization: ***REDACTED***",
+    "group": "authorization"
   },
   {
     "name": "basic header with padding",
     "input": "Authorization: Basic dXNlcjpwYQ==",
-    "expected": "authorization: ***REDACTED***"
+    "expected": "authorization: ***REDACTED***",
+    "group": "authorization"
   },
   {
     "name": "bearer header",
     "input": "Authorization: Bearer abcdefghijklmnop",
-    "expected": "authorization: ***REDACTED***"
+    "expected": "authorization: ***REDACTED***",
+    "group": "authorization"
   },
   {
     "name": "digest header dump",
     "input": "authorization=Digest username=\"a\", realm=\"b\", response=\"c\"",
-    "expected": "authorization: ***REDACTED***"
+    "expected": "authorization: ***REDACTED***",
+    "group": "authorization"
   },
   {
     "name": "ntlm header",
     "input": "Authorization: NTLM TlRMTVNTUAABAAAAB4IIogAAAAAAAAAAAAAAAAAAAAAGAHAXAAAADw==",
-    "expected": "authorization: ***REDACTED***"
+    "expected": "authorization: ***REDACTED***",
+    "group": "authorization"
   },
   {
     "name": "negotiate header",
     "input": "Authorization: Negotiate YIIBVgYGKwYBBQUCoIIBSjCCAUagDTALBgkqhkiG9xIBAgIFAKIDAgEW",
-    "expected": "authorization: ***REDACTED***"
+    "expected": "authorization: ***REDACTED***",
+    "group": "authorization"
   },
   {
     "name": "custom scheme with parameters",
     "input": "Authorization: Hawk id=\"dh37fgj492je\", ts=\"1353832234\", mac=\"6R4rV5iE+NPoym+WwjeHzjAGXUtLNIxmo1vpMofpLAE=\"",
-    "expected": "authorization: ***REDACTED***"
+    "expected": "authorization: ***REDACTED***",
+    "group": "authorization"
   },
   {
     "name": "credential without a scheme",
     "input": "authorization: abc123token",
-    "expected": "authorization: ***REDACTED***"
+    "expected": "authorization: ***REDACTED***",
+    "group": "authorization"
   },
   {
     "name": "proxy header at the end of the line",
     "input": "proxy-authorization: Basic dXNlcjpwYXNz",
-    "expected": "proxy-authorization: ***REDACTED***"
+    "expected": "proxy-authorization: ***REDACTED***",
+    "group": "authorization"
   },
   {
     "name": "text on both sides",
     "input": "sent Authorization: Basic dXNlcjpwYXNz to host",
-    "expected": "sent authorization: ***REDACTED*** to host"
+    "expected": "sent authorization: ***REDACTED*** to host",
+    "group": "authorization"
   },
   {
     "name": "neighbouring headers survive",
     "input": "host: a.example.org authorization: Basic dXNlcjpwYXNz user-agent: x",
-    "expected": "host: a.example.org authorization: ***REDACTED*** user-agent: x"
+    "expected": "host: a.example.org authorization: ***REDACTED*** user-agent: x",
+    "group": "authorization"
   },
   {
     "name": "composes with the other rules",
@@ -62,42 +73,50 @@
   {
     "name": "quoted value after a plain key",
     "input": "authorization: \"Bearer abcdefghijklmnop\"",
-    "expected": "authorization: \"***REDACTED***\""
+    "expected": "authorization: \"***REDACTED***\"",
+    "group": "authorization"
   },
   {
     "name": "json field keeps the next keys",
     "input": "{\"authorization\":\"Basic dXNlcjpwYXNz\",\"next\":1}",
-    "expected": "{\"authorization\":\"***REDACTED***\",\"next\":1}"
+    "expected": "{\"authorization\":\"***REDACTED***\",\"next\":1}",
+    "group": "authorization"
   },
   {
     "name": "json field with spaces",
     "input": "{\"Authorization\": \"Basic dXNlcjpwYXNz\", \"host\": \"example.org\"}",
-    "expected": "{\"Authorization\": \"***REDACTED***\", \"host\": \"example.org\"}"
+    "expected": "{\"Authorization\": \"***REDACTED***\", \"host\": \"example.org\"}",
+    "group": "authorization"
   },
   {
     "name": "json digest with escaped quotes",
     "input": "{\"authorization\":\"Digest username=\\\"a\\\", response=\\\"c\\\"\",\"next\":1}",
-    "expected": "{\"authorization\":\"***REDACTED***\",\"next\":1}"
+    "expected": "{\"authorization\":\"***REDACTED***\",\"next\":1}",
+    "group": "authorization"
   },
   {
     "name": "json cut before its closing quote",
     "input": "{\"authorization\":\"Basic dXNlcjpw",
-    "expected": "{\"authorization\":\"***REDACTED***\""
+    "expected": "{\"authorization\":\"***REDACTED***\"",
+    "group": "authorization"
   },
   {
     "name": "json inside a json string",
     "input": "{\"msg\":\"{\\\"authorization\\\":\\\"Basic dXNlcjpwYXNz\\\",\\\"next\\\":1}\"}",
-    "expected": "{\"msg\":\"{\\\"authorization\\\":\\\"***REDACTED***\\\",\\\"next\\\":1}\"}"
+    "expected": "{\"msg\":\"{\\\"authorization\\\":\\\"***REDACTED***\\\",\\\"next\\\":1}\"}",
+    "group": "authorization"
   },
   {
     "name": "digest inside a json string",
     "input": "{\"msg\":\"{\\\"authorization\\\":\\\"Digest username=\\\\\\\"a\\\\\\\", response=\\\\\\\"c\\\\\\\"\\\",\\\"next\\\":1}\"}",
-    "expected": "{\"msg\":\"{\\\"authorization\\\":\\\"***REDACTED***\\\",\\\"next\\\":1}\"}"
+    "expected": "{\"msg\":\"{\\\"authorization\\\":\\\"***REDACTED***\\\",\\\"next\\\":1}\"}",
+    "group": "authorization"
   },
   {
     "name": "the word alone is prose",
     "input": "authorization failed for the session",
-    "expected": "authorization failed for the session"
+    "expected": "authorization failed for the session",
+    "group": "authorization"
   },
   {
     "name": "bearer token on its own",
@@ -132,7 +151,8 @@
   {
     "name": "aws sigv4 header",
     "input": "Authorization: AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/iam/aws4_request, SignedHeaders=content-type;host;x-amz-date, Signature=5d672d79c15b13162d9279b0855cfba6789a8edb4c82c400e06b5924a6f2b5d7",
-    "expected": "authorization: ***REDACTED***"
+    "expected": "authorization: ***REDACTED***",
+    "group": "authorization"
   },
   {
     "name": "key and value with a colon keeps the colon",
@@ -168,5 +188,11 @@
     "name": "a plural is not a token key",
     "input": "max_tokens=4096 and tokens: 5",
     "expected": "max_tokens=4096 and tokens: 5"
+  },
+  {
+    "name": "an api key as the bearer token",
+    "input": "Authorization: Bearer sk-ant-abcdefghijklmnopqrstuv",
+    "expected": "authorization: ***REDACTED***",
+    "group": "authorization"
   }
 ]

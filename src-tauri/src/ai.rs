@@ -52,29 +52,43 @@ pub(crate) fn truncate_safe(s: &str, max_bytes: usize) -> &str {
 /// Public so the CLI-agent / orchestrate surface in the `aeroftp-cli` binary can
 /// scrub provider/tool error strings before they enter model context (MCP-02),
 /// matching the MCP and AI-stream paths.
+///
+/// An `Authorization` header loses its whole value (`Basic dXNlcjpwYXNz` is a
+/// password, so the scheme is not enough): see `authorization_redaction`.
+/// Those rules come first, so `Authorization: Bearer sk-...` is one marker.
 pub fn sanitize_error_message(msg: &str) -> String {
-    static PATTERNS: LazyLock<Vec<regex::Regex>> = LazyLock::new(|| {
+    static RULES: LazyLock<Vec<(regex::Regex, &'static str)>> = LazyLock::new(|| {
         [
-            r"[?&]key=[^&\s\)]*",                    // Google key= query parameter
-            r"sk-ant-[A-Za-z0-9_\-]{20,}", // Anthropic API keys (check before generic sk-)
-            r"sk-[A-Za-z0-9_\-]{20,}",     // OpenAI API keys
-            r"nvapi-[A-Za-z0-9_\-]{20,}",  // NVIDIA API keys
-            r"xai-[A-Za-z0-9_\-]{20,}",    // xAI API keys
-            r"(?i)Bearer\s+[A-Za-z0-9._\-/+=]{20,}", // Bearer tokens in error bodies
-            r"(?i)x-api-key:\s*\S+",       // x-api-key header reflections
+            (
+                crate::authorization_redaction::IN_JSON_STRING,
+                "$1[REDACTED]",
+            ),
+            (crate::authorization_redaction::QUOTED, "$1\"[REDACTED]\""),
+            (
+                crate::authorization_redaction::credentials!(r"\[REDACTED\]"),
+                "authorization: [REDACTED]",
+            ),
+            (r"[?&]key=[^&\s\)]*", "[REDACTED]"), // Google key= query parameter
+            (r"sk-ant-[A-Za-z0-9_\-]{20,}", "[REDACTED]"), // Anthropic API keys (check before generic sk-)
+            (r"sk-[A-Za-z0-9_\-]{20,}", "[REDACTED]"),     // OpenAI API keys
+            (r"nvapi-[A-Za-z0-9_\-]{20,}", "[REDACTED]"),  // NVIDIA API keys
+            (r"xai-[A-Za-z0-9_\-]{20,}", "[REDACTED]"),    // xAI API keys
+            (r"(?i)Bearer\s+[A-Za-z0-9._\-/+=]{20,}", "[REDACTED]"), // Bearer tokens in error bodies
+            (r"(?i)x-api-key:\s*\S+", "[REDACTED]"),                 // x-api-key header reflections
         ]
-        .iter()
+        .into_iter()
         // A rule that does not compile must stop the scrub, not vanish from it.
-        .map(|p| {
-            regex::Regex::new(p)
-                .unwrap_or_else(|e| panic!("error-scrub rule {p:?} does not compile: {e}"))
+        .map(|(pattern, replacement)| {
+            let re = regex::Regex::new(pattern)
+                .unwrap_or_else(|e| panic!("error-scrub rule {pattern:?} does not compile: {e}"));
+            (re, replacement)
         })
         .collect()
     });
 
     let mut result = msg.to_string();
-    for re in PATTERNS.iter() {
-        result = re.replace_all(&result, "[REDACTED]").to_string();
+    for (re, replacement) in RULES.iter() {
+        result = re.replace_all(&result, *replacement).into_owned();
     }
     result
 }
@@ -1906,6 +1920,76 @@ pub async fn ollama_list_running(base_url: String) -> Result<Vec<OllamaRunningMo
         .unwrap_or_default();
 
     Ok(models)
+}
+
+#[cfg(test)]
+mod authorization_tests {
+    use super::*;
+
+    #[derive(serde::Deserialize)]
+    struct SharedCase {
+        name: String,
+        input: String,
+        expected: String,
+        #[serde(default)]
+        group: Option<String>,
+    }
+
+    /// The `authorization` cases of the diagnostic redaction, which the
+    /// frontend table and the log-tail table run too. This scrub marks a
+    /// redaction `[REDACTED]` where they write `***REDACTED***`; the value that
+    /// goes and the text around it are the same.
+    fn authorization_cases() -> Vec<(String, String, String)> {
+        let cases: Vec<SharedCase> =
+            serde_json::from_str(include_str!("../../src/shared/redaction-cases.json"))
+                .expect("redaction cases parse");
+        let cases: Vec<_> = cases
+            .into_iter()
+            .filter(|case| case.group.as_deref() == Some("authorization"))
+            .map(|case| {
+                (
+                    case.name,
+                    case.input,
+                    case.expected.replace("***REDACTED***", "[REDACTED]"),
+                )
+            })
+            .collect();
+        assert!(cases.len() >= 20, "{} authorization cases", cases.len());
+        cases
+    }
+
+    #[test]
+    fn an_authorization_header_in_an_error_loses_its_whole_value() {
+        let wrong: Vec<String> = authorization_cases()
+            .iter()
+            .filter_map(|(name, input, expected)| {
+                let got = sanitize_error_message(input);
+                (&got != expected).then(|| format!("{name}: got {got:?}, want {expected:?}"))
+            })
+            .collect();
+        assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+    }
+
+    #[test]
+    fn a_scrubbed_error_scrubs_to_itself() {
+        let wrong: Vec<String> = authorization_cases()
+            .iter()
+            .filter_map(|(name, _, expected)| {
+                let got = sanitize_error_message(expected);
+                (&got != expected).then(|| format!("{name}: got {got:?}, want {expected:?}"))
+            })
+            .collect();
+        assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+    }
+
+    /// A provider that reflects the request in its error body.
+    #[test]
+    fn a_reflected_request_header_does_not_carry_its_credential_into_an_error() {
+        let body = "400 Bad Request: GET /x HTTP/1.1 authorization: Basic dXNlcjpwYXNz host: a.example.org";
+        let message = sanitize_error_message(body);
+        assert!(!message.contains("dXNlcjpwYXNz"), "{message}");
+        assert!(message.contains("host: a.example.org"), "{message}");
+    }
 }
 
 #[cfg(test)]

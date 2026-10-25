@@ -27,13 +27,11 @@ const AUTHORIZATION_CREDENTIALS = new RegExp(
 );
 
 export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: string }> = [
-    // API keys (Anthropic, OpenAI projects, generic sk-*)
-    { pattern: /sk-(ant|proj|live|test)-[A-Za-z0-9_\-]{16,}/g, replacement: 'sk-***REDACTED***' },
-    { pattern: /sk_(live|test)_[A-Za-z0-9]{16,}/g, replacement: 'sk_***REDACTED***' },
     // Authorization (and Proxy-Authorization) carries `scheme credentials`, and
     // the whole value goes, not its first word: `Basic dXNlcjpwYXNz` is a
-    // password. Ahead of the Bearer rule, so `Authorization: Bearer <token>`
-    // becomes one marker. The Rust twin applies the same three rules.
+    // password. First of all, ahead of the key and Bearer rules, so
+    // `Authorization: Bearer sk-...` becomes one marker. The Rust scrubs apply
+    // the same three rules (src-tauri/src/authorization_redaction.rs).
     // JSON inside a string: the value ends at the first lone `\"`, and a Digest
     // parameter's `\\\"` belongs to it.
     { pattern: /(\\"authorization\\"[ \t]*:[ \t]*\\")(?:[^\\]|\\\\\\")*/gi, replacement: '$1***REDACTED***' },
@@ -41,6 +39,9 @@ export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: s
     // it stay; a line cut inside the value has no closing quote and ends there.
     { pattern: /(\bauthorization["']?[ \t]*[:=][ \t]*)(?:"(?:[^"\\]|\\.)*"?|'[^']*'?)/gi, replacement: '$1"***REDACTED***"' },
     { pattern: AUTHORIZATION_CREDENTIALS, replacement: 'authorization: ***REDACTED***' },
+    // API keys (Anthropic, OpenAI projects, generic sk-*)
+    { pattern: /sk-(ant|proj|live|test)-[A-Za-z0-9_\-]{16,}/g, replacement: 'sk-***REDACTED***' },
+    { pattern: /sk_(live|test)_[A-Za-z0-9]{16,}/g, replacement: 'sk_***REDACTED***' },
     // OAuth Bearer / x-api-key headers
     { pattern: /\bBearer\s+[A-Za-z0-9_\-.~+/]{8,}=*/g, replacement: 'Bearer ***REDACTED***' },
     { pattern: /\bx-api-key\s*[:=]\s*[^\s,;'"<>]+/gi, replacement: 'x-api-key: ***REDACTED***' },
