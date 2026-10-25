@@ -2482,7 +2482,11 @@ pub(crate) mod tests {
         let tmp = tempdir().unwrap();
         let root = tmp.path();
         fs::write(root.join("keep.bin"), b"x").unwrap();
-        for staging in [".aeroftp-proton-bulk-Ab12Cd", ".aeroftp-proton-dl-0f9e"] {
+        for staging in [
+            ".aeroftp-proton-bulk-Ab12Cd",
+            ".aeroftp-proton-dl-0f9e",
+            ".aeroftp-name-probe-Ab12",
+        ] {
             fs::create_dir(root.join(staging)).unwrap();
             fs::write(root.join(staging).join("keep.bin"), b"partial").unwrap();
         }
