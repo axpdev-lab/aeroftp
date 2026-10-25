@@ -6083,19 +6083,19 @@
                     "tagline": "Iturburuko bertsioa kopiatzen du data eta orduko atzizki batekin."
                 },
                 "newer-wins": {
-                    "label": "Berriagoak irabazten du",
+                    "label": "Mantendu berriagoa",
                     "tagline": "Aldaketa-data berriagoa duen aldeak bestea gainidazten du."
                 },
                 "older-wins": {
-                    "label": "Zaharragoak irabazten du",
+                    "label": "Mantendu zaharragoa",
                     "tagline": "Alde zaharragoak berriagoa gainidazten du (artxibatzeko)."
                 },
                 "larger-wins": {
-                    "label": "Handiagoak irabazten du",
+                    "label": "Mantendu handiagoa",
                     "tagline": "Tamaina handiagoa duen aldeak txikiagoa gainidazten du."
                 },
                 "smaller-wins": {
-                    "label": "Txikiagoak irabazten du",
+                    "label": "Mantendu txikiagoa",
                     "tagline": "Alde txikiagoak handiagoa gainidazten du."
                 }
             },
@@ -6157,7 +6157,7 @@
                 },
                 "update": {
                     "name": "Eguneratu",
-                    "tagline": "Falta diren fitxategiak eta berriagoak kopiatzen ditu. Gatazkak saltatzen ditu eskuz konpon ditzazun."
+                    "tagline": "Falta diren fitxategiak eta berriagoak kopiatzen ditu. Ez du inoiz ezabatzen. Helburuko kopia berriagoak gainidazten ditu hautatutako gatazka-politikak beste kopia aukeratzen badu soilik."
                 },
                 "bisync": {
                     "name": "Bi norabideko sinkronizazioa",

@@ -1333,6 +1333,13 @@ export interface SyncTemplate {
     delete_orphans: boolean;
     parallel_streams: number;
     compression_mode: CompressionMode;
+    /** Explicit Plan mode. Older files derive Backup, Mirror or Two-way from direction and deletes. */
+    mode?: "mirror" | "backup" | "update" | "bisync";
+    conflict_mode?: "newer" | "older" | "larger" | "smaller" | "rename" | "skip";
+    versioned_backup?: { enabled: boolean; backup_dir: string };
+    speed_mode?: "normal" | "fast" | "turbo" | "extreme" | "maniac";
+    transfer_budget_mb?: number;
+    error_correction?: { enabled: boolean; pct: number };
     /** Plan-tab verify policy. Absent on templates exported before v4.1.9. */
     verify_policy?: VerifyPolicy;
     /** Plan-tab canary trial. Absent when canary was off, or on older files. */

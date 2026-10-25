@@ -5423,6 +5423,53 @@ pub struct TemplatePathPattern {
     pub remote: String,
 }
 
+/// AeroSync Plan mode preserved explicitly by schema version 1.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncTemplateMode {
+    Mirror,
+    Backup,
+    Update,
+    Bisync,
+}
+
+/// Conflict policy stored with the portable Plan options.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncTemplateConflictMode {
+    Newer,
+    Older,
+    Larger,
+    Smaller,
+    Rename,
+    Skip,
+}
+
+/// Speed preset that determines retry and delta behavior on import.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncTemplateSpeedMode {
+    Normal,
+    Fast,
+    Turbo,
+    Extreme,
+    Maniac,
+}
+
+/// Versioned-backup toggle and destination-relative folder.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SyncTemplateVersionedBackup {
+    pub enabled: bool,
+    pub backup_dir: String,
+}
+
+/// Error-correction toggle and parity percentage from the Plan tab.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SyncTemplateErrorCorrection {
+    pub enabled: bool,
+    pub pct: u32,
+}
+
 /// Profile settings embedded in a template (no credentials, no id)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncTemplateProfile {
@@ -5435,6 +5482,20 @@ pub struct SyncTemplateProfile {
     pub parallel_streams: u8,
     #[serde(default)]
     pub compression_mode: crate::transfer_pool::CompressionMode,
+    /// Explicit Plan mode. Files through 4.2.4 omit it and retain the old
+    /// direction/delete_orphans fallback on the frontend.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<SyncTemplateMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conflict_mode: Option<SyncTemplateConflictMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub versioned_backup: Option<SyncTemplateVersionedBackup>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speed_mode: Option<SyncTemplateSpeedMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transfer_budget_mb: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_correction: Option<SyncTemplateErrorCorrection>,
     /// Plan-tab verify policy. Absent on templates exported before the
     /// schema grew it; `import_sync_template_cmd` must keep it when present
     /// (#514).
@@ -5494,6 +5555,18 @@ pub fn export_sync_template(
             // accepts and ignores what an older export put there.
             parallel_streams: 1,
             compression_mode: crate::transfer_pool::CompressionMode::Off,
+            mode: Some(if profile.direction == CompareDirection::Bidirectional {
+                SyncTemplateMode::Bisync
+            } else if profile.delete_orphans {
+                SyncTemplateMode::Mirror
+            } else {
+                SyncTemplateMode::Backup
+            }),
+            conflict_mode: None,
+            versioned_backup: None,
+            speed_mode: None,
+            transfer_budget_mb: None,
+            error_correction: None,
             verify_policy: Some(profile.verify_policy.clone()),
             canary: None,
         },
@@ -8306,6 +8379,74 @@ mod tests {
         let canary = back.profile.canary.expect("canary must survive import");
         assert_eq!(canary.percent, 15);
         assert_eq!(canary.selection, "newest");
+    }
+
+    #[test]
+    fn template_serde_keeps_the_full_plan_options() {
+        let profile = SyncProfile::mirror();
+        let mut template =
+            export_sync_template("Update", "", &profile, "/tmp/a", "/remote/a", &[], None).unwrap();
+        template.profile.mode = Some(SyncTemplateMode::Update);
+        template.profile.direction = CompareDirection::RemoteToLocal;
+        template.profile.delete_orphans = false;
+        template.profile.conflict_mode = Some(SyncTemplateConflictMode::Newer);
+        template.profile.versioned_backup = Some(SyncTemplateVersionedBackup {
+            enabled: true,
+            backup_dir: "history/versions".to_string(),
+        });
+        template.profile.speed_mode = Some(SyncTemplateSpeedMode::Turbo);
+        template.profile.transfer_budget_mb = Some(64);
+        template.profile.error_correction = Some(SyncTemplateErrorCorrection {
+            enabled: true,
+            pct: 25,
+        });
+
+        let json = serde_json::to_string(&template).unwrap();
+        assert!(json.contains("\"mode\":\"update\""));
+        assert!(json.contains("\"conflict_mode\":\"newer\""));
+        assert!(json.contains("\"speed_mode\":\"turbo\""));
+        let back: SyncTemplate = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.profile.mode, Some(SyncTemplateMode::Update));
+        assert_eq!(back.profile.direction, CompareDirection::RemoteToLocal);
+        assert!(!back.profile.delete_orphans);
+        assert_eq!(
+            back.profile.conflict_mode,
+            Some(SyncTemplateConflictMode::Newer)
+        );
+        assert_eq!(
+            back.profile.versioned_backup,
+            template.profile.versioned_backup
+        );
+        assert_eq!(back.profile.speed_mode, Some(SyncTemplateSpeedMode::Turbo));
+        assert_eq!(back.profile.transfer_budget_mb, Some(64));
+        assert_eq!(
+            back.profile.error_correction,
+            template.profile.error_correction
+        );
+    }
+
+    #[test]
+    fn a_4_2_4_template_keeps_its_legacy_defaults() {
+        let template: SyncTemplate = serde_json::from_str(include_str!(
+            "../tests/fixtures/aerosync/mirror-4.2.4.aerosync"
+        ))
+        .expect("a 4.2.4 export must still deserialize");
+        assert_eq!(template.created_by, "AeroFTP v4.2.4");
+        assert_eq!(template.profile.mode, None);
+        assert_eq!(template.profile.conflict_mode, None);
+        assert_eq!(template.profile.versioned_backup, None);
+        assert_eq!(template.profile.speed_mode, None);
+        assert_eq!(template.profile.transfer_budget_mb, None);
+        assert_eq!(template.profile.error_correction, None);
+    }
+
+    #[test]
+    fn template_import_rejects_an_unknown_mode() {
+        let invalid = include_str!("../tests/fixtures/aerosync/mirror-4.2.4.aerosync").replace(
+            "\"profile\": {",
+            "\"profile\": {\n    \"mode\": \"sideways\",",
+        );
+        assert!(serde_json::from_str::<SyncTemplate>(&invalid).is_err());
     }
 
     #[test]

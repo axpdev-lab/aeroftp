@@ -6064,19 +6064,19 @@
                     "tagline": "Zkopíruje verzi ze zdroje s příponou obsahující datum a čas."
                 },
                 "newer-wins": {
-                    "label": "Vyhrává novější",
+                    "label": "Ponechat novější",
                     "tagline": "Strana s novějším časem změny přepíše druhou."
                 },
                 "older-wins": {
-                    "label": "Vyhrává starší",
+                    "label": "Ponechat starší",
                     "tagline": "Starší strana přepíše novější (pro archivaci)."
                 },
                 "larger-wins": {
-                    "label": "Vyhrává větší",
+                    "label": "Ponechat větší",
                     "tagline": "Strana s větší velikostí přepíše menší."
                 },
                 "smaller-wins": {
-                    "label": "Vyhrává menší",
+                    "label": "Ponechat menší",
                     "tagline": "Menší strana přepíše větší."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Aktualizace",
-                    "tagline": "Zkopíruje chybějící a novější soubory. Konflikty přeskočí, abyste je mohli vyřešit ručně."
+                    "tagline": "Kopíruje chybějící a novější soubory. Nikdy nemaže. Novější kopie v cíli přepisuje pouze tehdy, pokud vybraná zásada řešení konfliktů zvolí druhou kopii."
                 },
                 "bisync": {
                     "name": "Obousměrná synchronizace",

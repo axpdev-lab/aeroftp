@@ -6083,19 +6083,19 @@
                     "tagline": "Copïo fersiwn y ffynhonnell gydag ôl-ddodiad dyddiad ac amser."
                 },
                 "newer-wins": {
-                    "label": "Y mwyaf newydd sy'n ennill",
+                    "label": "Cadw'r mwyaf newydd",
                     "tagline": "Mae'r ochr â'r amser addasu mwyaf diweddar yn trosysgrifo'r llall."
                 },
                 "older-wins": {
-                    "label": "Yr hynaf sy'n ennill",
+                    "label": "Cadw'r hynaf",
                     "tagline": "Mae'r ochr hynaf yn trosysgrifo'r un fwyaf newydd (ar gyfer archifo)."
                 },
                 "larger-wins": {
-                    "label": "Y mwyaf sy'n ennill",
+                    "label": "Cadw'r mwyaf",
                     "tagline": "Mae'r ochr â'r maint mwyaf yn trosysgrifo'r un leiaf."
                 },
                 "smaller-wins": {
-                    "label": "Y lleiaf sy'n ennill",
+                    "label": "Cadw'r lleiaf",
                     "tagline": "Mae'r ochr leiaf yn trosysgrifo'r un fwyaf."
                 }
             },
@@ -6157,7 +6157,7 @@
                 },
                 "update": {
                     "name": "Diweddaru",
-                    "tagline": "Copïo ffeiliau coll a mwy newydd. Hepgor gwrthdaro fel y gallwch eu datrys â llaw."
+                    "tagline": "Copïo ffeiliau sydd ar goll a ffeiliau mwy diweddar. Byth yn dileu. Dim ond os yw’r polisi gwrthdaro a ddewiswyd yn dewis y copi arall y trosysgrifir copïau mwy diweddar yn y gyrchfan."
                 },
                 "bisync": {
                     "name": "Cysoni dwyffordd",

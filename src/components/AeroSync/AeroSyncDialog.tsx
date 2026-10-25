@@ -344,6 +344,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                         remotePath={remotePath}
                         serverProfileName={serverProfileName}
                         excludePatterns={excludePatterns}
+                        pairKind={context.pairKind}
                         onApplyImport={applyImportedSettings}
                     />
                     </TabStateStoreContext.Provider>

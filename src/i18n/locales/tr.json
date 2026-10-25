@@ -6064,19 +6064,19 @@
                     "tagline": "Kaynak taraftaki sürümü tarih ve saat içeren bir sonekle kopyalar."
                 },
                 "newer-wins": {
-                    "label": "Yeni olan kazanır",
+                    "label": "Daha yeniyi koru",
                     "tagline": "Değiştirilme zamanı daha yeni olan taraf diğerinin üzerine yazar."
                 },
                 "older-wins": {
-                    "label": "Eski olan kazanır",
+                    "label": "Daha eskiyi koru",
                     "tagline": "Daha eski taraf yeni olanın üzerine yazar (arşivleme amaçlı)."
                 },
                 "larger-wins": {
-                    "label": "Büyük olan kazanır",
+                    "label": "Daha büyüğü koru",
                     "tagline": "Boyutu daha büyük olan taraf küçük olanın üzerine yazar."
                 },
                 "smaller-wins": {
-                    "label": "Küçük olan kazanır",
+                    "label": "Daha küçüğü koru",
                     "tagline": "Daha küçük taraf büyük olanın üzerine yazar."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Güncelle",
-                    "tagline": "Eksik ve daha yeni dosyaları kopyalar. Çakışmaları elle çözebilmeniz için atlar."
+                    "tagline": "Eksik ve daha yeni dosyaları kopyalar. Asla silmez. Hedefteki daha yeni kopyaların üzerine yalnızca seçili çakışma ilkesi diğer kopyayı seçerse yazar."
                 },
                 "bisync": {
                     "name": "İki yönlü eşitleme",

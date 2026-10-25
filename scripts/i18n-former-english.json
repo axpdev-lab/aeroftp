@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "476df4331998d00b8e735ecdab0bbd6970fc9497954b7cc16074a7b3977f3e45",
+    "enHash": "67d68b095194cbcd12227f5d2e302f158615a56b73d5c8231a9f09d7ac20e6e8",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -105,6 +105,18 @@
         "aerosync.conflictCount": [
             "{count} conflict(s)"
         ],
+        "aerosync.conflictPolicyOption.larger-wins.label": [
+            "Larger wins"
+        ],
+        "aerosync.conflictPolicyOption.newer-wins.label": [
+            "Newer wins"
+        ],
+        "aerosync.conflictPolicyOption.older-wins.label": [
+            "Older wins"
+        ],
+        "aerosync.conflictPolicyOption.smaller-wins.label": [
+            "Smaller wins"
+        ],
         "aerosync.errorCorrectionHint": [
             "Stores a small .aerorec parity file next to each backed-up file so a bit-rotted remote copy can be repaired on the next pull, without the original."
         ],
@@ -116,6 +128,10 @@
         ],
         "aerosync.launcherHistory": [
             "Journal history"
+        ],
+        "aerosync.preset.update.tagline": [
+            "Copy missing and newer files. Never delete, never overwrite a newer destination copy. Resolve conflicts with the selected policy.",
+            "Copy missing and newer files. Skip conflicts so you can resolve them manually."
         ],
         "aerosync.speedModeHint": [
             "Parallel streams + compression preset applied to the run."

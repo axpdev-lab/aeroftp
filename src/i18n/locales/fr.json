@@ -6064,19 +6064,19 @@
                     "tagline": "Copie la version source avec un suffixe de date et d'heure."
                 },
                 "newer-wins": {
-                    "label": "Le plus récent l'emporte",
+                    "label": "Garder le plus récent",
                     "tagline": "Le côté dont la date de modification est la plus récente écrase l'autre."
                 },
                 "older-wins": {
-                    "label": "Le plus ancien l'emporte",
+                    "label": "Garder le plus ancien",
                     "tagline": "Le côté le plus ancien écrase le plus récent (pour l'archivage)."
                 },
                 "larger-wins": {
-                    "label": "Le plus grand l'emporte",
+                    "label": "Garder le plus gros",
                     "tagline": "Le côté dont la taille est la plus grande écrase le plus petit."
                 },
                 "smaller-wins": {
-                    "label": "Le plus petit l'emporte",
+                    "label": "Garder le plus petit",
                     "tagline": "Le côté le plus petit écrase le plus grand."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Mise à jour",
-                    "tagline": "Copie les fichiers manquants et plus récents. Ignore les conflits pour que vous les résolviez manuellement."
+                    "tagline": "Copie les fichiers manquants et les plus récents. Ne supprime jamais rien. Écrase les copies plus récentes à destination uniquement si la politique de conflits sélectionnée choisit l’autre copie."
                 },
                 "bisync": {
                     "name": "Synchronisation bidirectionnelle",

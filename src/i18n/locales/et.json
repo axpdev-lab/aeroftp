@@ -6064,19 +6064,19 @@
                     "tagline": "Kopeerib lähteversiooni kuupäeva ja kellaajaga järelliitega."
                 },
                 "newer-wins": {
-                    "label": "Uuem võidab",
+                    "label": "Säilita uuem",
                     "tagline": "Hilisema muutmisajaga pool kirjutab teise üle."
                 },
                 "older-wins": {
-                    "label": "Vanem võidab",
+                    "label": "Säilita vanem",
                     "tagline": "Vanem pool kirjutab uuema üle (arhiveerimiseks)."
                 },
                 "larger-wins": {
-                    "label": "Suurem võidab",
+                    "label": "Säilita suurem",
                     "tagline": "Suurema failisuurusega pool kirjutab väiksema üle."
                 },
                 "smaller-wins": {
-                    "label": "Väiksem võidab",
+                    "label": "Säilita väiksem",
                     "tagline": "Väiksem pool kirjutab suurema üle."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Uuenda",
-                    "tagline": "Kopeerib puuduvad ja uuemad failid. Jätab konfliktid vahele, et saaksite need käsitsi lahendada."
+                    "tagline": "Kopeerib puuduvad ja uuemad failid. Ei kustuta kunagi. Kirjutab sihtkohas olevad uuemad koopiad üle ainult siis, kui valitud konfliktide lahendamise reegel valib teise koopia."
                 },
                 "bisync": {
                     "name": "Kahesuunaline sünkroonimine",

@@ -97,10 +97,10 @@ export function actionLabel(action: BucketAction): LabelRef {
 const CONFLICT_POLICY_FALLBACK: Record<ConflictPolicy, { label: string; tagline: string }> = {
     'skip': { label: 'Skip', tagline: 'Leave conflicts untouched on both sides.' },
     'rename': { label: 'Keep both', tagline: 'Copy the source-side copy under a timestamped suffix.' },
-    'newer-wins': { label: 'Newer wins', tagline: 'The side with the more recent mtime overwrites the other.' },
-    'older-wins': { label: 'Older wins', tagline: 'The older side overwrites the newer (archive use case).' },
-    'larger-wins': { label: 'Larger wins', tagline: 'The side with the larger size overwrites the smaller.' },
-    'smaller-wins': { label: 'Smaller wins', tagline: 'The smaller side overwrites the larger.' },
+    'newer-wins': { label: 'Keep newer', tagline: 'The side with the more recent mtime overwrites the other.' },
+    'older-wins': { label: 'Keep older', tagline: 'The older side overwrites the newer (archive use case).' },
+    'larger-wins': { label: 'Keep larger', tagline: 'The side with the larger size overwrites the smaller.' },
+    'smaller-wins': { label: 'Keep smaller', tagline: 'The smaller side overwrites the larger.' },
 };
 
 export function conflictPolicyLabel(policy: ConflictPolicy): LabelRef {

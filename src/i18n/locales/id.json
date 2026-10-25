@@ -6064,19 +6064,19 @@
                     "tagline": "Menyalin versi sumber dengan akhiran tanggal dan waktu."
                 },
                 "newer-wins": {
-                    "label": "Yang lebih baru menang",
+                    "label": "Simpan yang lebih baru",
                     "tagline": "Sisi dengan waktu modifikasi yang lebih baru menimpa sisi lainnya."
                 },
                 "older-wins": {
-                    "label": "Yang lebih lama menang",
+                    "label": "Simpan yang lebih lama",
                     "tagline": "Sisi yang lebih lama menimpa yang lebih baru (untuk pengarsipan)."
                 },
                 "larger-wins": {
-                    "label": "Yang lebih besar menang",
+                    "label": "Simpan yang lebih besar",
                     "tagline": "Sisi dengan ukuran lebih besar menimpa yang lebih kecil."
                 },
                 "smaller-wins": {
-                    "label": "Yang lebih kecil menang",
+                    "label": "Simpan yang lebih kecil",
                     "tagline": "Sisi yang lebih kecil menimpa yang lebih besar."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Perbarui",
-                    "tagline": "Menyalin file yang hilang dan lebih baru. Melewati konflik agar Anda dapat menyelesaikannya secara manual."
+                    "tagline": "Menyalin file yang belum ada dan yang lebih baru. Tidak pernah menghapus. Menimpa salinan yang lebih baru di tujuan hanya jika kebijakan konflik yang dipilih memilih salinan lainnya."
                 },
                 "bisync": {
                     "name": "Sinkronisasi dua arah",

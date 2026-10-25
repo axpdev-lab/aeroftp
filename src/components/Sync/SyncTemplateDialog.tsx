@@ -39,7 +39,8 @@ import {
     type LivePlanExport,
 } from '../../utils/syncTemplateApply';
 import { TabStateStoreContext } from '../AeroSync/tabStateStore';
-import type { AeroSyncCanarySelection, AeroSyncVerifyPolicy } from '../AeroSync/types';
+import type { AeroSyncCanarySelection, AeroSyncPairKind, AeroSyncSpeedMode, AeroSyncVerifyPolicy } from '../AeroSync/types';
+import type { ConflictPolicy, PresetDirection, SyncPreset, VersionedBackupConfig } from '../../utils/syncPresets';
 import { presetForTemplate, presetNameLabel, resolveLabel, templateDirectionLabel } from '../../utils/syncDirectionLabels';
 
 interface SyncTemplateDialogProps {
@@ -55,6 +56,7 @@ interface SyncTemplateDialogProps {
      */
     serverProfileName: string;
     excludePatterns: string[];
+    pairKind: AeroSyncPairKind | null;
     /** Apply imported values to the live AeroSync Plan + Sync tab controls. */
     onApplyImport: (settings: ImportedSyncSettings) => void;
 }
@@ -76,13 +78,14 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
     remotePath,
     serverProfileName,
     excludePatterns,
+    pairKind,
     onApplyImport,
 }) => {
     const t = useTranslation();
     // "Local → Remote · Mirror": the words the Plan tab uses, not the raw
     // `local_to_remote` the file stores.
-    const templateSummary = (direction: string, deleteOrphans: boolean | undefined): string =>
-        `${resolveLabel(t, templateDirectionLabel(direction))} · ${resolveLabel(t, presetNameLabel(presetForTemplate(direction, deleteOrphans)))}`;
+    const templateSummary = (direction: string, deleteOrphans: boolean | undefined, preset?: SyncPreset): string =>
+        `${resolveLabel(t, templateDirectionLabel(direction))} · ${resolveLabel(t, presetNameLabel(preset ?? presetForTemplate(direction, deleteOrphans)))}`;
     const modalDrag = useDraggableModal();
     const tabState = React.useContext(TabStateStoreContext);
     const liveExcludes = () => readSyncExcludePatterns(tabState, excludePatterns);
@@ -94,7 +97,18 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
     const livePlanFromStore = (): LivePlanExport => {
         const canaryOn = tabState?.get<boolean>('plan.canaryMode', false) === true;
         const verify = tabState?.get<AeroSyncVerifyPolicy | undefined>('plan.verifyPolicy', undefined);
+        const preset = tabState?.get<SyncPreset | undefined>('plan.preset', undefined);
+        const planDirection = tabState?.get<PresetDirection>('plan.direction', 'left-to-right') ?? 'left-to-right';
+        const localIsSource = (planDirection === 'left-to-right') === (pairKind !== 'remote-local');
+        const hasLiveDirection = preset != null || tabState?.has('plan.direction') === true;
         return {
+            preset,
+            direction: hasLiveDirection
+                ? preset === 'bisync' ? 'bidirectional' : localIsSource ? 'local_to_remote' : 'remote_to_local'
+                : undefined,
+            conflictPolicy: tabState?.get<ConflictPolicy | undefined>('plan.conflictPolicy', undefined),
+            versionedBackup: tabState?.get<VersionedBackupConfig | undefined>('plan.versionedBackup', undefined),
+            speedMode: tabState?.get<AeroSyncSpeedMode | undefined>('plan.speedMode', undefined),
             verifyPolicy: verify,
             canary: canaryOn
                 ? {
@@ -102,6 +116,13 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                     selection: tabState?.get<AeroSyncCanarySelection>('plan.canarySelection', 'random') ?? 'random',
                 }
                 : null,
+            transferBudgetMb: tabState?.get<number | undefined>('plan.transferBudgetMb', undefined),
+            errorCorrection: tabState?.has('plan.ecEnabled') || tabState?.has('plan.ecPct')
+                ? {
+                    enabled: tabState?.get<boolean>('plan.ecEnabled', false) ?? false,
+                    pct: tabState?.get<number>('plan.ecPct', 15) ?? 15,
+                }
+                : undefined,
         };
     };
     const [mode, setMode] = useState<'export' | 'import'>('export');
@@ -184,8 +205,8 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
             remotePath,
             excludePatterns: liveExcludes(),
         });
-        // The command serialises the named preset. Stamp the live Plan-tab
-        // knobs (compression, verify, canary) so they survive import (#514).
+        // The command serialises the named preset. Stamp every live Plan
+        // control so export and import describe the same run.
         let toWrite = jsonContent;
         try {
             const parsed = JSON.parse(jsonContent) as SyncTemplate;
@@ -705,7 +726,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                     {importPreview && (
                         <div className="p-3 rounded-lg bg-gray-100 dark:bg-gray-700/50 text-xs space-y-1">
                             <div><strong>{t('syncPanel.templateName')}:</strong> {importPreview.name?.slice(0, 100)}</div>
-                            <div><strong>{t('syncPanel.direction')}:</strong> {templateSummary(importPreview.profile.direction, importPreview.profile.delete_orphans)}</div>
+                            <div><strong>{t('syncPanel.direction')}:</strong> {templateSummary(importPreview.profile.direction, importPreview.profile.delete_orphans, importPreview.profile.mode)}</div>
                             {importPreview.exclude_patterns.length > 0 && (
                                 <div><strong>{t('syncPanel.templateExcludes')}:</strong> {importPreview.exclude_patterns.join(', ')}</div>
                             )}
