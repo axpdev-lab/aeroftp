@@ -1348,6 +1348,11 @@ impl StorageProvider for CryptOverlayProvider {
         self.inner.wait_until_readable(&enc).await
     }
 
+    async fn prepare_file_move(&mut self, path: &str) -> Result<(), ProviderError> {
+        let enc = self.map(path, false, AccessKind::Read)?;
+        self.inner.prepare_file_move(&enc).await
+    }
+
     fn measurement_note(&self) -> Option<&'static str> {
         self.inner.measurement_note()
     }

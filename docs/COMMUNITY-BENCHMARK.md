@@ -115,8 +115,14 @@ over every surface:
 aeroftp-cli benchmark standard --all-profiles --all-protocols
 ```
 
-A mode whose credentials or endpoint cannot be resolved is listed as skipped,
-never measured as zero.
+A mode with credentials of its own (Filen, FileLu) runs on the credentials the
+profile keeps for it: in the GUI, open the profile, switch it to that mode with
+"Remember credentials for every protocol of this account" on, and enter them
+once. A mode with no credentials saved, or whose endpoint cannot be resolved,
+is listed as skipped with what to do, never measured as zero; when another
+saved profile is already in that mode, the skip names it so you can add it with
+`--compare`, or says that the mode is measured by it when it is already in the
+same run.
 
 Run only metadata operations:
 
@@ -169,9 +175,13 @@ has its own two-minute bound) and exits with 8.
 
 On providers whose delete is a soft delete, the run folder is also purged from
 the trash where the provider allows it. pCloud does not allow it through an
-OAuth login, and Dropbox only with the `files.permanent_delete` permission
-granted at authorization; in those cases the report says so and the folder
-stays in the trash until you empty it or the provider's retention does.
+OAuth login, OneDrive Personal does not expose its recycle bin through
+Microsoft Graph, and Koofr is not supported yet; in those cases the report
+carries a note (not an error) saying that the folder was deleted and stays in
+the provider's trash, and where to empty it. Dropbox purges only with the
+`files.permanent_delete` permission granted at authorization; without it the
+report says to reconnect Dropbox once. A purge that was attempted and failed is
+still reported as an error.
 
 ## Reading the run
 
@@ -193,7 +203,16 @@ A few presentation details make multi-profile runs easier to read:
   changed mid-sweep (for example, the connection dropped and reconnected on a
   different address), since that breaks the apples-to-apples comparison.
 - Multi-profile runs show `[k/N]` progress per profile, plus the per-operation
-  run `k/N` within each profile.
+  run `k/N` within each profile. Every progress line starts with the time since
+  the command started (`[2m 05s]`), and the run ends with `Total time:`.
+- Durations read in hours, minutes and seconds (`1h 02m 05s`, `2m 05s`,
+  `42s`, `4.2s`); latency stays in milliseconds. `--json` keeps its `_ms`
+  fields.
+- A parallel-download fallback (`parallel download unavailable: ...`) is
+  listed once, under the profile it happened on.
+- A profile that has no OAuth authorization is skipped with its name and the
+  `aeroftp-cli profile-auth` command that authorizes it; a benchmark never
+  starts a browser authorization nor prints an authorization URL.
 - On a Yandex endpoint error, or a Yandex run that timed out, the output adds
   a region hint.
 - The connection-type field is clarified as downstream Mbps.

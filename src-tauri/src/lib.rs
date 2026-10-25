@@ -276,6 +276,7 @@ mod provider_commands;
 // PD-CLI-CONV-A). Additive visibility only: no behaviour change, no API
 // break (visibility only widens).
 pub mod copy_fallback;
+pub mod local_download_target;
 /// Class-level pin: every consumer of a provider time uses the single parser.
 #[cfg(test)]
 mod mtime_parse_audit;
@@ -4587,6 +4588,18 @@ struct FtpDownloadScanResult {
     cancelled: bool,
 }
 
+impl FtpDownloadScanResult {
+    fn completion_event_type(&self, batch_cancelled: bool, batch_failed: u32) -> &'static str {
+        if self.cancelled || batch_cancelled {
+            "cancelled"
+        } else if self.scan_errors > 0 || batch_failed > 0 {
+            "error"
+        } else {
+            "complete"
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn scan_ftp_download_entries(
     emit: &(dyn Fn(TransferEvent) + Sync),
@@ -4616,7 +4629,8 @@ async fn scan_ftp_download_entries(
             vec![(remote_path.to_string(), local_folder_path.to_path_buf())];
         let mut last_scan_emit = std::time::Instant::now();
         let mut file_index: u32 = 0;
-        let mut local_targets = crate::provider_commands::LocalTargetGuard::new(local_folder_path);
+        let mut local_targets =
+            crate::local_download_target::LocalTargetGuard::new(local_folder_path);
 
         while let Some((remote_dir, local_dir)) = dirs_to_scan.pop() {
             if cancel_flag.load(Ordering::Relaxed) {
@@ -4637,6 +4651,7 @@ async fn scan_ftp_download_entries(
 
             if let Err(e) = ftp_manager.change_dir(&remote_dir).await {
                 warn!("Cannot access remote directory {}: {}", remote_dir, e);
+                result.scan_errors += 1;
                 continue;
             }
 
@@ -4644,6 +4659,7 @@ async fn scan_ftp_download_entries(
                 Ok(files) => files,
                 Err(e) => {
                     warn!("Cannot list files in {}: {}", remote_dir, e);
+                    result.scan_errors += 1;
                     continue;
                 }
             };
@@ -4684,16 +4700,18 @@ async fn scan_ftp_download_entries(
                 staged.push((file, safe_name, remote_file_path, local_file_path, follow));
             }
 
-            let claims: Vec<crate::provider_commands::LocalTargetClaim> = staged
+            let claims: Vec<crate::local_download_target::LocalTargetClaim> = staged
                 .iter()
                 .map(|(_, _, remote_path, local_path, _)| {
-                    crate::provider_commands::LocalTargetClaim {
+                    crate::local_download_target::LocalTargetClaim {
                         remote_path: remote_path.clone(),
                         local_path: local_path.clone(),
                     }
                 })
                 .collect();
-            local_targets.claim_listing(&claims)?;
+            local_targets
+                .claim_listing(&claims)
+                .map_err(|error| error.to_string())?;
 
             for (file, safe_name, remote_file_path, local_file_path, follow) in staged {
                 if !follow {
@@ -4895,7 +4913,7 @@ async fn download_folder(
         return Err(format!("Failed to create local directory: {}", e));
     }
 
-    let (scan_result, connection_spec) = {
+    let (mut scan_result, connection_spec) = {
         let mut ftp_manager = state.ftp_manager.lock().await;
         ftp_manager.apply_transfer_timeout(runtime_settings.timeout_seconds);
         let original_path = ftp_manager.current_path();
@@ -4945,7 +4963,7 @@ async fn download_folder(
             max_backlog: transfer_domain::default_transfer_max_backlog(),
             schedule: crate::transfer_dag::AdmissionPolicy::Fifo,
         },
-        entries: scan_result.entries,
+        entries: std::mem::take(&mut scan_result.entries),
     };
 
     let pool = Arc::new(
@@ -5046,11 +5064,9 @@ async fn download_folder(
     crate::transfer_event_sink::emit_gui_transfer_event(
         &app,
         TransferEvent {
-            event_type: if batch_result.cancelled {
-                "cancelled".to_string()
-            } else {
-                "complete".to_string()
-            },
+            event_type: scan_result
+                .completion_event_type(batch_result.cancelled, batch_result.failed)
+                .to_string(),
             transfer_id: transfer_id.clone(),
             filename: folder_name.clone(),
             direction: "download".to_string(),
@@ -25638,6 +25654,56 @@ mod legacy_ftp_walk_tests {
         assert!(error.contains("Ambiguous local target"), "{error}");
         assert!(error.contains("/x/"), "{error}");
         assert_eq!(std::fs::read_dir(local.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn audit425_legacy_ftp_terminal_event_never_hides_scan_or_transfer_errors() {
+        let mut scan = FtpDownloadScanResult::default();
+        assert_eq!(scan.completion_event_type(false, 0), "complete");
+        assert_eq!(scan.completion_event_type(false, 1), "error");
+        scan.scan_errors = 1;
+        assert_eq!(scan.completion_event_type(false, 0), "error");
+        assert_eq!(scan.completion_event_type(true, 0), "cancelled");
+    }
+
+    #[tokio::test]
+    async fn audit425_legacy_ftp_denied_listing_or_root_is_partial() {
+        for root in ["/d", "/blocked"] {
+            let addr = crate::ftp::exists_tests::vsftpd_like_script(false, false, true).await;
+            let mut manager = ftp::FtpManager::new();
+            manager.connect(&addr).await.unwrap();
+            manager.login("u", "p").await.unwrap();
+            let local = tempfile::tempdir().unwrap();
+            let scan = scan_ftp_download_entries(
+                &|_| {},
+                &Arc::new(AtomicBool::new(false)),
+                &mut manager,
+                root,
+                local.path(),
+                "",
+                "t",
+                "folder",
+            )
+            .await
+            .unwrap();
+            assert_eq!(scan.scan_errors, 1, "{root}");
+            assert!(scan.entries.is_empty());
+            assert_eq!(scan.completion_event_type(false, 0), "error");
+            assert_eq!(manager.current_path(), "/");
+        }
+    }
+
+    #[tokio::test]
+    async fn audit425_legacy_ftp_denied_child_is_not_complete() {
+        // LIST names blocked, but CWD refuses it.
+        let (outcome, _) =
+            requested97_legacy_scan(&[("/", &["x/"]), ("/x", &["a.txt", "blocked/"])], false).await;
+        let result = outcome.unwrap();
+        assert_eq!(result.entries.len(), 1);
+        assert_eq!(
+            result.scan_errors, 1,
+            "unreadable child must make the final outcome partial"
+        );
     }
 
     #[tokio::test]

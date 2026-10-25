@@ -31635,7 +31635,13 @@ async fn connect_with_base_path(
                             p.connect().await.map_err(|error| {
                                 print_error(
                                     format,
-                                    &format!("{}; authorize with profile-auth", error),
+                                    &oauth_profile_connect_error(
+                                        profile
+                                            .get("name")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or(profile_name),
+                                        &error.to_string(),
+                                    ),
                                     6,
                                 );
                                 6
@@ -31680,7 +31686,18 @@ async fn connect_with_base_path(
                     return Err(5);
                 }
             };
-            profile_value_to_provider_config(synth, &store, cli, format)?
+            let (mut config, path) = profile_value_to_provider_config(synth, &store, cli, format)?;
+            // A fan-out mode with credentials of its own carries them in the
+            // synthesized value (see `synth_profile_from_snapshot`). Read here
+            // only, so a saved profile can never supply one.
+            if let Some(secret) = synth.get(MODE_SECRET_KEY).and_then(|v| v.as_str()) {
+                config.username = synth
+                    .get("username")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string);
+                config.password = Some(secret.to_string());
+            }
+            (config, path)
         }
         None => resolve_url_or_profile_with(url, cli, profile_override, format)?,
     };
@@ -36461,6 +36478,11 @@ async fn pget_fallback_single(
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    static TEST_DOWNLOAD_DESTINATION_RULES: std::cell::Cell<Option<ftp_client_gui_lib::local_download_target::DestinationRules>> = const { std::cell::Cell::new(None) };
+}
+
 /// The scan of `get -r`, one listing at a time. Only folders strictly under
 /// the one asked for are listed, each once, and each file is planned once
 /// ([`cli_walk_step`]). A folder the scan does not follow is an error of the
@@ -36472,11 +36494,12 @@ struct CliGetScan {
     immutable: bool,
     files_from: Option<std::collections::HashSet<String>>,
     max_depth: usize,
+    user_max_depth: bool,
     queue: Vec<(String, usize)>,
     scope: ftp_client_gui_lib::sync_core::WalkScope,
     fetched: std::collections::HashSet<String>,
     /// Local paths planned so far, of files and folders.
-    targets: std::collections::HashSet<String>,
+    local_targets: ftp_client_gui_lib::local_download_target::LocalTargetGuard,
     /// Folders found under the one asked for.
     dirs: usize,
     /// Files planned, and their bytes.
@@ -36509,6 +36532,14 @@ enum CliGetStep {
 
 impl CliGetScan {
     fn new(remote_dir: &str, local_base: &str, cli: &Cli, quiet: bool) -> Self {
+        let local_targets = ftp_client_gui_lib::local_download_target::LocalTargetGuard::new(
+            std::path::Path::new(local_base),
+        );
+        #[cfg(test)]
+        let local_targets = TEST_DOWNLOAD_DESTINATION_RULES
+            .with(|slot| slot.get())
+            .map(ftp_client_gui_lib::local_download_target::LocalTargetGuard::with_rules)
+            .unwrap_or(local_targets);
         Self {
             remote_dir: remote_dir.to_string(),
             local_base: PathBuf::from(local_base),
@@ -36516,10 +36547,11 @@ impl CliGetScan {
             immutable: cli.immutable,
             files_from: load_files_from(cli),
             max_depth: cli.max_depth.unwrap_or(MAX_SCAN_DEPTH as u32) as usize,
+            user_max_depth: cli.max_depth.is_some(),
             queue: vec![(remote_dir.to_string(), 0)],
             scope: ftp_client_gui_lib::sync_core::WalkScope::new(remote_dir),
             fetched: std::collections::HashSet::new(),
-            targets: std::collections::HashSet::new(),
+            local_targets,
             dirs: 0,
             planned: 0,
             planned_bytes: 0,
@@ -36551,6 +36583,12 @@ impl CliGetScan {
                 if !self.quiet {
                     eprintln!("Warning: max depth {} reached at {}", self.max_depth, dir);
                 }
+                if !self.user_max_depth {
+                    self.listing_errors.push(format!(
+                        "internal scan depth limit {} reached at {}",
+                        self.max_depth, dir
+                    ));
+                }
                 continue;
             }
             if self.planned + self.dirs >= MAX_SCAN_ENTRIES {
@@ -36560,7 +36598,12 @@ impl CliGetScan {
                         MAX_SCAN_ENTRIES
                     );
                 }
-                // What was planned still goes, held-back files included.
+                // What was planned still goes, held-back files included,
+                // but truncation is an error even when all planned files land.
+                self.listing_errors.push(format!(
+                    "internal scan entry limit {} reached at {}",
+                    MAX_SCAN_ENTRIES, dir
+                ));
                 self.queue.clear();
                 continue;
             }
@@ -36592,6 +36635,7 @@ impl CliGetScan {
             let mut elsewhere: Vec<PlannedDownload> = Vec::new();
             let listed_relative = self.scope.relative_path(&dir).unwrap_or_default();
             let mut subdirs: Vec<String> = Vec::new();
+            let mut capped = false;
             for e in entries {
                 // Never walk (nor recreate locally) a symlink-to-dir:
                 // it would copy the target's tree twice, or cycle.
@@ -36608,6 +36652,19 @@ impl CliGetScan {
                         self.listing_errors.push(refusal);
                         continue;
                     }
+                }
+                // Apply the cap inside a single large listing too. Testing
+                // only before LIST missed a huge final/root listing entirely.
+                if self.planned + self.dirs + listing.files.len() + elsewhere.len() + subdirs.len()
+                    >= MAX_SCAN_ENTRIES
+                {
+                    self.listing_errors.push(format!(
+                        "internal scan entry limit {} reached at {}",
+                        MAX_SCAN_ENTRIES, dir
+                    ));
+                    self.queue.clear();
+                    capped = true;
+                    break;
                 }
                 if e.is_dir {
                     subdirs.push(e.path);
@@ -36691,28 +36748,35 @@ impl CliGetScan {
             // Different provider root aliases must never publish two sources
             // onto the same local path. Refuse before anything of this
             // listing is created or downloaded.
-            let mut named = std::collections::HashSet::new();
-            let targets = listing
+            use ftp_client_gui_lib::local_download_target::LocalTargetClaim;
+            let claims: Vec<LocalTargetClaim> = listing
                 .dirs
                 .iter()
-                .map(|dir| dir.to_string_lossy().to_string())
+                .zip(&followed)
+                .map(|(local_path, remote_path)| LocalTargetClaim {
+                    remote_path: remote_path.clone(),
+                    local_path: local_path.clone(),
+                })
                 .chain(
                     listing
                         .files
                         .iter()
                         .chain(&elsewhere)
-                        .map(|file| file.local_path.clone()),
-                );
-            for target in targets {
-                if self.targets.contains(&target) || !named.insert(target.clone()) {
-                    return CliGetStep::Ambiguous(target);
-                }
+                        .map(|file| LocalTargetClaim {
+                            remote_path: file.remote_path.clone(),
+                            local_path: PathBuf::from(&file.local_path),
+                        }),
+                )
+                .collect();
+            if let Err(conflict) = self.local_targets.claim_listing(&claims) {
+                return CliGetStep::Ambiguous(conflict.local_path.to_string_lossy().into_owned());
             }
-            self.targets.extend(named);
 
             self.dirs += followed.len();
-            self.queue
-                .extend(followed.into_iter().map(|subdir| (subdir, depth + 1)));
+            if !capped {
+                self.queue
+                    .extend(followed.into_iter().map(|subdir| (subdir, depth + 1)));
+            }
             for file in listing.files.iter().chain(&elsewhere) {
                 self.planned += 1;
                 self.planned_bytes += file.size;
@@ -39396,7 +39460,14 @@ async fn cmd_rm(
     }
 }
 
-async fn cmd_mv(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat) -> i32 {
+async fn cmd_mv(
+    url: &str,
+    from: &str,
+    to: &str,
+    cli: &Cli,
+    format: OutputFormat,
+    cancelled: &AtomicBool,
+) -> i32 {
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
@@ -39418,7 +39489,12 @@ async fn cmd_mv(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat
             return code;
         }
     }
-    match provider.rename(from, to).await {
+    // Filen Desktop can spend minutes publishing the cached source. The
+    // first Ctrl-C must drop that wait, before it can copy or delete.
+    let Some(outcome) = run_until_interrupted(cancelled, provider.rename(from, to)).await else {
+        return interrupted_exit(Some(provider.as_mut()), format, "mv interrupted").await;
+    };
+    match outcome {
         Ok(()) => {
             match format {
                 OutputFormat::Text => {
@@ -48897,10 +48973,52 @@ fn remote_parent_dir(remote_path: &str) -> Option<String> {
 // contract: docs/dev/roadmap/APPENDIX-BENCHMARK/01_JSON-Schema-v1.md. No
 // automated upload: the report is paste-ready.
 
+/// A duration as people read one (#368, Ehud): `1h 02m 05s`, `2m 05s`,
+/// `42s`, with tenths under ten seconds (`4.2s`). Hours and minutes appear
+/// only when the duration reaches them. Latency stays in ms, where the
+/// sub-second figure is the point, and JSON keeps its `_ms` fields.
+fn format_benchmark_duration(duration: std::time::Duration) -> String {
+    let exact = duration.as_secs_f64();
+    // Below what rounds to ten seconds, tenths; from there whole seconds,
+    // rounded, so 9.96 s reads `10s` and 59.6 s `1m 00s`.
+    if exact < 9.95 {
+        return format!("{exact:.1}s");
+    }
+    let secs = exact.round() as u64;
+    let (h, m, s) = (secs / 3600, (secs % 3600) / 60, secs % 60);
+    if h > 0 {
+        format!("{h}h {m:02}m {s:02}s")
+    } else if m > 0 {
+        format!("{m}m {s:02}s")
+    } else {
+        format!("{s}s")
+    }
+}
+
+/// When this benchmark command started: the first call fixes it, so a
+/// comparison and each profile it runs share one clock.
+fn benchmark_clock() -> std::time::Instant {
+    static STARTED: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    *STARTED.get_or_init(std::time::Instant::now)
+}
+
+/// The stopwatch at the head of each progress line (#368, Ehud): the time
+/// since the benchmark command started, in whole seconds.
+fn benchmark_elapsed_stamp(started: std::time::Instant) -> String {
+    let elapsed = std::time::Duration::from_secs(started.elapsed().as_secs());
+    let text = if elapsed.as_secs() < 10 {
+        format!("{}s", elapsed.as_secs())
+    } else {
+        format_benchmark_duration(elapsed)
+    };
+    format!("[{text}]")
+}
+
 /// The CLI narration of a benchmark run on stderr: the phase lines and the
 /// progress bars, both silent under `--quiet` and under JSON output.
 struct CliBenchmarkObserver {
     show: bool,
+    started: std::time::Instant,
     bytes_bar: std::sync::Mutex<Option<ProgressBar>>,
     batch_bar: std::sync::Mutex<Option<ProgressBar>>,
 }
@@ -48909,6 +49027,7 @@ impl CliBenchmarkObserver {
     fn new(show: bool) -> Self {
         Self {
             show,
+            started: benchmark_clock(),
             bytes_bar: std::sync::Mutex::new(None),
             batch_bar: std::sync::Mutex::new(None),
         }
@@ -48918,14 +49037,23 @@ impl CliBenchmarkObserver {
 impl BenchmarkObserver for CliBenchmarkObserver {
     fn event(&self, event: BenchmarkEvent<'_>) {
         match event {
-            BenchmarkEvent::BaseDirNotCreated { error } => {
+            BenchmarkEvent::BaseDirNotCreated { path, error } => {
                 if self.show {
-                    eprintln!("warning: could not create benchmark base dir: {}", error);
+                    eprintln!(
+                        "{} warning: could not create the benchmark base folder '{}': {}",
+                        benchmark_elapsed_stamp(self.started),
+                        path,
+                        error
+                    );
                 }
             }
             BenchmarkEvent::Payload { size } => {
                 if self.show {
-                    eprintln!("running benchmark with payload {}", format_size(size));
+                    eprintln!(
+                        "{} running benchmark with payload {}",
+                        benchmark_elapsed_stamp(self.started),
+                        format_size(size)
+                    );
                 }
             }
             BenchmarkEvent::Run {
@@ -48937,7 +49065,8 @@ impl BenchmarkObserver for CliBenchmarkObserver {
             } => {
                 if self.show {
                     eprintln!(
-                        "  {:<8} {} run {}/{}{}",
+                        "{}   {:<8} {} run {}/{}{}",
+                        benchmark_elapsed_stamp(self.started),
                         operation,
                         format_size(size),
                         run,
@@ -48948,7 +49077,11 @@ impl BenchmarkObserver for CliBenchmarkObserver {
             }
             BenchmarkEvent::LatencyProbe { samples } => {
                 if self.show {
-                    eprintln!("  latency  {} round trips", samples);
+                    eprintln!(
+                        "{}   latency  {} round trips",
+                        benchmark_elapsed_stamp(self.started),
+                        samples
+                    );
                 }
             }
             BenchmarkEvent::ManyFiles {
@@ -48957,7 +49090,8 @@ impl BenchmarkObserver for CliBenchmarkObserver {
             } => {
                 if self.show {
                     eprintln!(
-                        "running many-small-files workload: {} files of {}",
+                        "{} running many-small-files workload: {} files of {}",
+                        benchmark_elapsed_stamp(self.started),
                         file_count,
                         format_size(file_size)
                     );
@@ -48965,8 +49099,9 @@ impl BenchmarkObserver for CliBenchmarkObserver {
             }
             BenchmarkEvent::BatchStarted { operation, total } => {
                 // Count bar for the many-small-files loops (issue #277 #14).
+                let label = format!("{} {}", benchmark_elapsed_stamp(self.started), operation);
                 *self.batch_bar.lock().unwrap_or_else(|e| e.into_inner()) =
-                    Some(many_files_progress_bar(operation, total, self.show));
+                    Some(many_files_progress_bar(&label, total, self.show));
             }
             BenchmarkEvent::BatchItem { .. } => {
                 if let Some(pb) = self
@@ -48990,13 +49125,17 @@ impl BenchmarkObserver for CliBenchmarkObserver {
             }
             BenchmarkEvent::TrashPurged { path } => {
                 if self.show {
-                    eprintln!("trash purge: {} hard-deleted", path);
+                    eprintln!(
+                        "{} trash purge: {} hard-deleted",
+                        benchmark_elapsed_stamp(self.started),
+                        path
+                    );
                 }
             }
             BenchmarkEvent::WaitedForReadable { waited } => {
                 if self.show && waited >= std::time::Duration::from_millis(100) {
                     eprintln!(
-                        "  waited {:.1} s for the server to make the upload readable (not counted as download time)",
+                        "{}   waited {:.1} s for the server to make the upload readable (not counted as download time)", benchmark_elapsed_stamp(self.started),
                         waited.as_secs_f64()
                     );
                 }
@@ -49019,7 +49158,8 @@ impl BenchmarkObserver for CliBenchmarkObserver {
         } else {
             "download"
         };
-        let pb = benchmark_bytes_progress_bar(label, size, show_bar);
+        let label = format!("{} {}", benchmark_elapsed_stamp(self.started), label);
+        let pb = benchmark_bytes_progress_bar(&label, size, show_bar);
         *self.bytes_bar.lock().unwrap_or_else(|e| e.into_inner()) = Some(pb.clone());
         if show_bar {
             Some(Box::new(move |done, _total| pb.set_position(done)))
@@ -49074,6 +49214,11 @@ async fn cmd_benchmark(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
+    let started = benchmark_clock();
+    // Warnings a previous profile left unclaimed (it stopped before its
+    // report) are shown now, next to it, so they never land in this
+    // profile's report.
+    render_pending_warnings(format);
     let profile_timeout_secs = profile_timeout_override
         .map(|v| v.clamp(60, 86_400))
         .unwrap_or(BENCHMARK_TOTAL_TIMEOUT_SECS);
@@ -49236,7 +49381,14 @@ async fn cmd_benchmark(
     // 130 for a run the user stopped, 4 when a measured operation failed, 8
     // when the profile timeout ended it with nothing failed, 0 otherwise.
     let exit_code = benchmark_exit_code(&outcome);
-    let report = outcome.report;
+    let mut report = outcome.report;
+    // The library's warnings of this run (a parallel download that fell back
+    // to one stream) belong to this profile: in its report, once each,
+    // instead of repeated after the last profile with no name (#368, Ehud).
+    benchmark_absorb_warnings(
+        &mut report.summary.errors,
+        ftp_client_gui_lib::providers::take_warnings(),
+    );
 
     // The report leaves the process only in its sanitized form: the run's
     // remote paths replaced, PII patterns substituted, then swept, and
@@ -49277,11 +49429,28 @@ async fn cmd_benchmark(
                 if consent_publish {
                     print_benchmark_publish_block(&serialized);
                 }
+                // The whole command: connect and cleanup included, which the
+                // report's own duration leaves out.
+                println!(
+                    "Total time: {}",
+                    format_benchmark_duration(started.elapsed())
+                );
             }
         }
     }
 
     exit_code
+}
+
+/// Add the library warnings a run reported to its report's errors and
+/// warnings, each line once, in the order first seen.
+fn benchmark_absorb_warnings(errors: &mut Vec<String>, warnings: Vec<String>) {
+    for warning in warnings {
+        let line = format!("warning: {warning}");
+        if !errors.contains(&line) {
+            errors.push(line);
+        }
+    }
 }
 
 /// Run the connect of a benchmark profile until it ends, the user stops it
@@ -49380,12 +49549,14 @@ fn print_benchmark_text_report(report: &BenchmarkReport) {
         )
     };
     println!(
-        "Benchmark complete: level={:?}{} runs={} bytes={} duration={}ms",
+        "Benchmark complete: level={:?}{} runs={} bytes={} duration={}",
         report.level,
         identity_cell,
         report.summary.total_runs,
         format_size(report.summary.total_bytes_transferred),
-        report.summary.total_duration_ms
+        benchmark_quote(&format_benchmark_duration(
+            std::time::Duration::from_millis(report.summary.total_duration_ms)
+        ))
     );
     for note in &report.notes {
         println!("Note: {}", note);
@@ -49669,22 +49840,31 @@ fn plan_protocol_fanout(profiles: &[serde_json::Value], idxs: &[usize]) -> Vec<F
 /// and the endpoint rewritten to that mode's host. Nothing is written to the
 /// vault, so an interrupted sweep cannot leave throwaway profiles behind.
 ///
+/// A mode with secrets of its own (FileLu, Filen) runs on the credentials
+/// the profile keeps for it: the GUI stores them in `server_modes_<id>`
+/// (`modes`) when "Remember credentials for every protocol of this account"
+/// is on (#368, Ehud).
+///
 /// `Err` carries the reason the mode cannot be measured honestly, which the
-/// caller prints as a skip: modes with per-mode secrets (FileLu, Filen) or
-/// without a derivable endpoint (the S3 surfaces need a user's own bucket and
-/// region) are never guessed at.
+/// caller prints as a skip: a mode with no credentials saved, or without a
+/// derivable endpoint (the S3 surfaces need a user's own bucket and region),
+/// is never guessed at.
 fn synth_profile_for_mode(
     source: &serde_json::Value,
     entry: &FanoutEntry,
+    modes: Option<&serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
     if entry.is_source_mode {
         return Ok(source.clone());
     }
     if !mode_group_shares_credentials(entry.group_id) {
-        return Err(format!(
-            "mode '{}' needs its own credentials; save a profile for it (or switch the profile to that mode once in the GUI)",
-            entry.mode_label
-        ));
+        let Some(snapshot) = modes.and_then(|m| mode_credential_snapshot(m, entry)) else {
+            return Err(format!(
+                "mode '{}' has no credentials saved in this profile; open the profile in the GUI, switch it to that mode with \"Remember credentials for every protocol of this account\" on, or save a profile for that mode and add it with --compare",
+                entry.mode_label
+            ));
+        };
+        return Ok(synth_profile_from_snapshot(source, entry, snapshot));
     }
     let mut synth = source.clone();
     let Some(map) = synth.as_object_mut() else {
@@ -49725,6 +49905,100 @@ fn synth_profile_for_mode(
     Ok(synth)
 }
 
+/// The credentials the GUI saved for `entry`'s mode in a profile's
+/// `server_modes_<id>` map, when they hold a secret. The map is keyed
+/// `<providerId>|<protocol>` (the providerId empty for a native mode); an
+/// older save used `<providerId or protocol>`, which is read too.
+fn mode_credential_snapshot<'a>(
+    modes: &'a serde_json::Value,
+    entry: &FanoutEntry,
+) -> Option<&'a serde_json::Value> {
+    let pid = entry
+        .target_provider_id
+        .filter(|pid| *pid != entry.target_protocol)
+        .unwrap_or("");
+    let keys = [
+        format!("{}|{}", pid, entry.target_protocol),
+        entry
+            .target_provider_id
+            .unwrap_or(entry.target_protocol)
+            .to_string(),
+    ];
+    keys.iter()
+        .filter_map(|key| modes.get(key))
+        .find(|snapshot| {
+            snapshot
+                .get("password")
+                .and_then(|v| v.as_str())
+                .is_some_and(|p| !p.is_empty())
+        })
+}
+
+/// The in-memory profile of a mode that runs on its own saved credentials:
+/// the source's identity (its `id`, so per-profile keys still resolve) with
+/// the mode's protocol, preset, endpoint, user, options and secret. The
+/// secret travels only in this value, under a key no saved profile has.
+fn synth_profile_from_snapshot(
+    source: &serde_json::Value,
+    entry: &FanoutEntry,
+    snapshot: &serde_json::Value,
+) -> serde_json::Value {
+    let mut synth = source.clone();
+    let Some(map) = synth.as_object_mut() else {
+        return synth;
+    };
+    let text = |key: &str| {
+        serde_json::Value::String(
+            snapshot
+                .get(key)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        )
+    };
+    map.insert(
+        "protocol".into(),
+        serde_json::Value::String(entry.target_protocol.to_string()),
+    );
+    match entry.target_provider_id {
+        Some(pid) => {
+            map.insert(
+                "providerId".into(),
+                serde_json::Value::String(pid.to_string()),
+            );
+        }
+        None => {
+            map.remove("providerId");
+        }
+    }
+    map.insert("host".into(), text("server"));
+    match snapshot.get("port").filter(|v| v.is_u64()) {
+        Some(port) => {
+            map.insert("port".into(), port.clone());
+        }
+        None => {
+            map.remove("port");
+        }
+    }
+    map.insert("username".into(), text("username"));
+    match snapshot.get("options").filter(|v| v.is_object()) {
+        Some(options) => {
+            map.insert("options".into(), options.clone());
+        }
+        None => {
+            map.remove("options");
+        }
+    }
+    map.insert(MODE_SECRET_KEY.into(), text("password"));
+    map.remove("lastConnected");
+    synth
+}
+
+/// Where a synthesized fan-out profile carries its mode's own secret; read
+/// only on the synthesized-profile connect path, in place of the vault's
+/// `server_<id>`.
+const MODE_SECRET_KEY: &str = "__modeSecret";
+
 /// Run the same benchmark workload across several saved profiles and print a
 /// combined comparison. Selectors come from one of four sources: `--compare`
 /// (comma list), the inline name/index prompt when `interactive` is set, the
@@ -49755,6 +50029,7 @@ async fn cmd_benchmark_compare(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
+    let sweep_started = benchmark_clock();
     let store = match open_vault(cli) {
         Ok(s) => s,
         Err(e) => {
@@ -49931,9 +50206,25 @@ async fn cmd_benchmark_compare(
 
     // Resolve each mode once, before numbering the runs. Unsupported modes
     // remain in the skip report but cannot inflate either progress counter.
+    let scoped_user = scoped_credential_user_id(cli, &store);
     let resolved: Vec<_> = plan
         .iter()
-        .map(|entry| synth_profile_for_mode(&profiles[entry.source_idx], entry))
+        .map(|entry| {
+            let source = &profiles[entry.source_idx];
+            let modes = (!entry.is_source_mode && !mode_group_shares_credentials(entry.group_id))
+                .then(|| source.get("id").and_then(|v| v.as_str()))
+                .flatten()
+                .and_then(|id| read_server_cred(&store, scoped_user, &format!("server_modes_{id}")))
+                .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok());
+            synth_profile_for_mode(source, entry, modes.as_ref()).map_err(|reason| {
+                benchmark_mode_skip_reason(
+                    entry,
+                    reason,
+                    benchmark_saved_profile_in_mode(&profiles, entry),
+                    &idxs,
+                )
+            })
+        })
         .collect();
     let total_profiles = resolved.iter().filter(|result| result.is_ok()).count();
     let mut run_number = 0;
@@ -49984,7 +50275,13 @@ async fn cmd_benchmark_compare(
             println!(
                 "{}",
                 paint_bold(
-                    &format!("=== [{}/{}] {} ===", run_number, total_profiles, label),
+                    &format!(
+                        "=== [{}/{}] {} === {}",
+                        run_number,
+                        total_profiles,
+                        label,
+                        benchmark_elapsed_stamp(sweep_started)
+                    ),
                     use_color()
                 )
             );
@@ -50137,6 +50434,11 @@ async fn cmd_benchmark_compare(
                 if consent_publish && !entries.is_empty() {
                     print_benchmark_publish_block(&combined);
                 }
+                println!();
+                println!(
+                    "Total time: {}",
+                    format_benchmark_duration(sweep_started.elapsed())
+                );
             }
         }
     }
@@ -50147,6 +50449,56 @@ async fn cmd_benchmark_compare(
         failed.len(),
         cancelled.load(Ordering::Relaxed),
     )
+}
+
+/// The saved profile already in `entry`'s mode (its index and name), when
+/// exactly one is: the skip of that mode then names it.
+fn benchmark_saved_profile_in_mode(
+    profiles: &[serde_json::Value],
+    entry: &FanoutEntry,
+) -> Option<(usize, String)> {
+    if entry.is_source_mode || entry.group_id.is_empty() {
+        return None;
+    }
+    let found: Vec<(usize, &str)> = profiles
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| {
+            let protocol = p.get("protocol").and_then(|v| v.as_str()).unwrap_or("");
+            let provider_id = p.get("providerId").and_then(|v| v.as_str());
+            find_mode_group_row_of(protocol, provider_id).is_some_and(|row| {
+                row.group_id == entry.group_id
+                    && row.protocol == entry.target_protocol
+                    && row.provider_id == entry.target_provider_id
+            })
+        })
+        .filter_map(|(i, p)| p.get("name").and_then(|v| v.as_str()).map(|n| (i, n)))
+        .collect();
+    match found.as_slice() {
+        [(i, name)] => Some((*i, (*name).to_string())),
+        _ => None,
+    }
+}
+
+/// Why a mode of the fan-out is not measured from this profile: `reason`,
+/// and the saved profile already in that mode when there is one, which this
+/// sweep may already run (`selected`).
+fn benchmark_mode_skip_reason(
+    entry: &FanoutEntry,
+    reason: String,
+    sibling: Option<(usize, String)>,
+    selected: &[usize],
+) -> String {
+    match sibling {
+        Some((idx, name)) if selected.contains(&idx) => format!(
+            "mode '{}' is measured in this run by the saved profile '{name}'",
+            entry.mode_label
+        ),
+        Some((_, name)) => {
+            format!("{reason} (the saved profile '{name}' is in that mode: add it with --compare)")
+        }
+        None => reason,
+    }
 }
 
 /// The exit code of a comparison: 130 when the user stopped it, during a
@@ -50176,6 +50528,23 @@ fn benchmark_sweep_exit_code(
 
 /// Why a profile produced no report, from the exit code its run ended with.
 /// The full error was printed when it happened; this is the summary line.
+/// The error of an OAuth profile that could not connect: what the provider
+/// said, the profile it concerns and how to authorize it from here. It never
+/// carries an authorization URL: a connect does not start a browser flow, and
+/// a line a user may paste in public must not hold one (#368, Ehud).
+fn oauth_profile_connect_error(profile_name: &str, error: &str) -> String {
+    // The providers' own wording for a missing token names an internal call.
+    let error = if error.contains("Call start_auth() first") {
+        "no authorization is saved for it"
+    } else {
+        error
+    };
+    format!(
+        "profile '{profile_name}' cannot connect: {error}; authorize it with `aeroftp-cli profile-auth {} --request-json-file <file>` (action begin, then finish) or connect it once in the GUI",
+        shell_arg(profile_name)
+    )
+}
+
 fn benchmark_skip_reason(code: i32) -> &'static str {
     match code {
         1 => "connection failed",
@@ -50183,7 +50552,7 @@ fn benchmark_skip_reason(code: i32) -> &'static str {
         3 => "permission denied",
         4 => "could not create its scratch folder (see the error above)",
         5 => "invalid usage or profile/vault error",
-        6 => "authentication failed: re-authorize the profile",
+        6 => "authentication failed: check its credentials, or authorize an OAuth profile with `aeroftp-cli profile-auth` (the error above says how)",
         7 => "not supported by this provider",
         8 => "timed out",
         10 => "server error",
@@ -50610,17 +50979,45 @@ fn benchmark_profile_str(
     owned(profiles.get(idx)?)
 }
 
+/// Column widths of the profile pickers' Server and Protocol columns (#368,
+/// Ehud): each the longest value of the listed profiles or its header, plus a
+/// two-space gap, so `Zoho WorkDrive` never runs into `OAuth 2.0`.
+fn benchmark_picker_widths(profiles: &[serde_json::Value]) -> (usize, usize) {
+    let (mut server_w, mut protocol_w) = ("Server".len(), "Protocol".len());
+    for p in profiles {
+        let (type_name, access) = benchmark_profile_identity(p);
+        server_w = server_w.max(type_name.chars().count());
+        protocol_w = protocol_w.max(access.chars().count());
+    }
+    (server_w + 2, protocol_w + 2)
+}
+
+/// One picker row after its index: Server, Protocol and Profile, aligned on
+/// the widths of [`benchmark_picker_widths`].
+fn benchmark_picker_label(
+    type_name: &str,
+    access: &str,
+    name: &str,
+    (server_w, protocol_w): (usize, usize),
+) -> String {
+    format!("{type_name:<server_w$}{access:<protocol_w$}{name}")
+}
+
 fn benchmark_pick_profiles_inline(profiles: &[serde_json::Value]) -> std::io::Result<Vec<usize>> {
     use std::io::Write;
 
     let color_on = use_color();
     let mut err = std::io::stderr();
+    let widths = benchmark_picker_widths(profiles);
     writeln!(err, "{}", paint_bold("Saved profiles:", color_on))?;
     writeln!(
         err,
         "{}",
         paint_dim(
-            &format!("      {:<14}{:<12}{}", "Server", "Protocol", "Profile"),
+            &format!(
+                "      {}",
+                benchmark_picker_label("Server", "Protocol", "Profile", widths)
+            ),
             color_on
         )
     )?;
@@ -50629,11 +51026,9 @@ fn benchmark_pick_profiles_inline(profiles: &[serde_json::Value]) -> std::io::Re
         let (type_name, access) = benchmark_profile_identity(p);
         writeln!(
             err,
-            "  {:>2}. {:<14}{:<12}{}",
+            "  {:>2}. {}",
             i + 1,
-            type_name,
-            access,
-            name
+            benchmark_picker_label(&type_name, &access, name, widths)
         )?;
     }
 
@@ -50706,6 +51101,7 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
     // taller than the terminal, so we render a window and scroll it rather than
     // printing every row (which would overflow and duplicate on redraw).
     let mut top = 0usize;
+    let widths = benchmark_picker_widths(profiles);
 
     let label_of = |i: usize| -> String {
         let name = profiles[i]
@@ -50715,7 +51111,7 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
         // Type (service name) + Protocol (access class), matching the comparison
         // table and the inline picker (issue #277).
         let (type_name, access) = benchmark_profile_identity(&profiles[i]);
-        format!("{:<14}{:<12}{}", type_name, access, name)
+        benchmark_picker_label(&type_name, &access, name, widths)
     };
 
     // Restore the main screen and the cursor no matter how we leave.
@@ -50777,7 +51173,10 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
             err,
             "{}",
             paint_dim(
-                &format!("          {:<14}{:<12}{}", "Server", "Protocol", "Profile"),
+                &format!(
+                    "          {}",
+                    benchmark_picker_label("Server", "Protocol", "Profile", widths)
+                ),
                 color_on
             )
         )?;
@@ -52036,8 +52435,9 @@ async fn cmd_dedupe(
 /// Streaming SHA-256 of a remote file used by `dedupe` (DEDUPE-02). Small files
 /// keep the single-shot `download_to_bytes`; larger files feed the hasher from
 /// ranged reads so peak memory stays bounded to one chunk instead of the whole
-/// file. If the provider cannot serve ranged reads we fall back to a full
-/// download for that file (no worse than the previous behaviour).
+/// file. A refused ranged attempt uses the same checked, streamed disk
+/// fallback as hashsum. Backends without a range hint retain their original
+/// first-window / bounded in-memory fallback below.
 async fn dedupe_hash_remote_sha256(
     provider: &mut Box<dyn StorageProvider>,
     path: &str,
@@ -55771,7 +56171,12 @@ async fn cmd_sync(
         let old_path = format!("{}/{}", remote.trim_end_matches('/'), old_remote);
         let new_path = format!("{}/{}", remote.trim_end_matches('/'), new_local);
         if !dry_run {
-            match provider.rename(&old_path, &new_path).await {
+            let Some(outcome) =
+                run_until_interrupted(&cancelled, provider.rename(&old_path, &new_path)).await
+            else {
+                break;
+            };
+            match outcome {
                 Ok(()) => {
                     renamed += 1;
                     renames_done.push((old_remote.as_str(), new_local.as_str()));
@@ -65902,6 +66307,18 @@ impl LocalDigest {
         })
     }
 
+    /// Discard every byte from an abandoned range attempt before starting
+    /// the whole object again, including windows already consumed in order.
+    fn restart(&mut self) {
+        *self = match self {
+            Self::Md5(_) => Self::Md5(Default::default()),
+            Self::Sha1(_) => Self::Sha1(Default::default()),
+            Self::Sha256(_) => Self::Sha256(Default::default()),
+            Self::Sha512(_) => Self::Sha512(Default::default()),
+            Self::Blake3(_) => Self::Blake3(Box::new(blake3::Hasher::new())),
+        };
+    }
+
     fn update(&mut self, bytes: &[u8]) {
         match self {
             Self::Md5(hasher) => md5::Digest::update(hasher, bytes),
@@ -65950,9 +66367,9 @@ const HASHSUM_STREAMS: usize = 4;
 /// used when the backend supplies one. With `download`, or for `sha512`,
 /// `blake3` and backends without the requested digest, the bytes are
 /// transferred and hashed here. A backend that reads windows of a file hashes
-/// them as they arrive, with no file in between ([`digest_in_order`]); any
-/// other is downloaded first into a folder on disk with room for it, never the
-/// temporary folder, which is often a tmpfs sized from RAM. Proprietary
+/// them as they arrive ([`digest_in_order`]); a backend that refuses ranges
+/// or cannot read them is downloaded first into a folder on disk with room
+/// for it, never the temporary folder, which is often a tmpfs sized from RAM. Proprietary
 /// algorithms (quickxor/dropbox) have no local fallback.
 async fn hashsum_digest(
     provider: &mut dyn StorageProvider,
@@ -65991,12 +66408,32 @@ async fn hashsum_digest(
         }
     }
 
+    let size = digest_downloaded(provider, path, &mut digest, None).await?;
+    Ok((digest.finish(), size))
+}
+
+/// Hash a whole streamed download on disk. `before` pins a refused ranged
+/// attempt's size and version; without one this preserves the non-range
+/// provider path (including providers whose exports have no stored size).
+async fn digest_downloaded(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+    digest: &mut LocalDigest,
+    before: Option<&ftp_client_gui_lib::providers::multi_thread::RangeSourceFingerprint>,
+) -> Result<u64, ProviderError> {
     // Streaming download, not `download_to_bytes`: that path is capped at
     // 500 MiB and holds the whole file in RAM. The room is checked before the
     // transfer, and `NamedTempFile` removes the scratch file on drop,
     // including after a transfer or hash error, so a failed download cannot
     // yield a partial digest.
-    let planned = provider.stat(path).await.map(|e| e.size).unwrap_or(0);
+    let planned = match before {
+        Some(before) => before.size(),
+        None => provider
+            .stat(path)
+            .await
+            .map(|entry| entry.size)
+            .unwrap_or(0),
+    };
     let dir = ftp_client_gui_lib::util::scratch::staging_dir(planned).map_err(|why| {
         ProviderError::Other(format!("hashsum cannot download {path} to hash it: {why}"))
     })?;
@@ -66004,14 +66441,36 @@ async fn hashsum_digest(
     let tmp_str = tmp.path().to_str().ok_or_else(|| {
         ProviderError::IoError(std::io::Error::other("hashsum temp path is not UTF-8"))
     })?;
-    provider.download(path, tmp_str, None).await?;
+    if before.is_some() {
+        // A pinned whole-object read bypasses opportunistic range downloads
+        // too, so download() cannot repeat a refused attempt or its notice.
+        provider.set_multi_thread_download(1, u64::MAX);
+        provider
+            .download_with_size_hint(path, tmp_str, Some(planned), None)
+            .await?;
+    } else {
+        provider.download(path, tmp_str, None).await?;
+    }
     let size = std::fs::metadata(tmp.path())
         .map(|m| m.len())
         .map_err(ProviderError::from)?;
+    if let Some(before) = before {
+        ftp_client_gui_lib::providers::validate_hash_length(path, before.size(), size)?;
+        if let Some(why) =
+            ftp_client_gui_lib::providers::multi_thread::range_source_changed_through(
+                provider, path, before,
+            )
+            .await
+        {
+            return Err(ProviderError::TransferFailed(format!(
+                "{path} changed while it was hashed: {why}"
+            )));
+        }
+    }
     let mut file = std::fs::File::open(tmp.path()).map_err(ProviderError::from)?;
     let mut buf = vec![0u8; 1024 * 1024];
     feed_file(&mut file, &mut buf, |chunk| digest.update(chunk)).map_err(ProviderError::from)?;
-    Ok((digest.finish(), size))
+    Ok(size)
 }
 
 /// Hash a remote file from windows read in their order, with no file in
@@ -66024,20 +66483,49 @@ async fn hashsum_digest(
 /// from where it stopped. A file that fits in one window, or a backend that
 /// cannot open connections of its own (Koofr, Cloudinary, ImageKit), is read
 /// in order on the session already open, with no resume: what a download
-/// through that session offered, without the copy on disk.
+/// through that session offered. A refusal discards every consumed window
+/// and hashes one complete download on disk, checked against the pinned size
+/// and source fingerprint.
 async fn digest_in_order(
     provider: &mut dyn StorageProvider,
     path: &str,
     digest: &mut LocalDigest,
 ) -> Result<Option<u64>, ProviderError> {
     use ftp_client_gui_lib::providers::multi_thread::{
-        range_source_changed_through, read_in_order, read_range_paced, read_range_source_through,
-        IN_ORDER_WINDOW,
+        read_range_source_through, report_download_fallback,
     };
-
     let Ok(before) = read_range_source_through(provider, path).await else {
         return Ok(None);
     };
+    // A listed empty object still needs a real whole-object read: hashing no
+    // windows would accept an under-reported nonempty object as empty.
+    if before.size() == 0 {
+        return digest_downloaded(provider, path, digest, Some(&before))
+            .await
+            .map(Some);
+    }
+    match digest_in_order_attempt(provider, path, digest, &before).await {
+        Err(ProviderError::ParallelRefused(_) | ProviderError::NotSupported(_)) => {
+            report_download_fallback("the server refused ranged hashing");
+            digest.restart();
+            digest_downloaded(provider, path, digest, Some(&before))
+                .await
+                .map(Some)
+        }
+        other => other,
+    }
+}
+
+async fn digest_in_order_attempt(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+    digest: &mut LocalDigest,
+    before: &ftp_client_gui_lib::providers::multi_thread::RangeSourceFingerprint,
+) -> Result<Option<u64>, ProviderError> {
+    use ftp_client_gui_lib::providers::multi_thread::{
+        range_source_changed_through, read_in_order, read_range_paced, IN_ORDER_WINDOW,
+    };
+
     let size = before.size();
     let mut workers = Vec::new();
     if size > IN_ORDER_WINDOW {
@@ -66071,7 +66559,7 @@ async fn digest_in_order(
         // Several windows apart, the object may have been replaced between
         // two of them; one window is a single read.
         if size > IN_ORDER_WINDOW {
-            if let Some(why) = range_source_changed_through(provider, path, &before).await {
+            if let Some(why) = range_source_changed_through(provider, path, before).await {
                 return Err(ProviderError::TransferFailed(format!(
                     "{path} changed while it was hashed: {why}"
                 )));
@@ -66095,9 +66583,7 @@ async fn digest_in_order(
     // meanwhile hashes as a mix of two versions, every window the right
     // length. Read it once more before the digest is trusted.
     let changed = match (&read, workers.first_mut()) {
-        (Ok(()), Some(worker)) => {
-            range_source_changed_through(worker.as_mut(), path, &before).await
-        }
+        (Ok(()), Some(worker)) => range_source_changed_through(worker.as_mut(), path, before).await,
         _ => None,
     };
     for mut worker in workers {
@@ -66140,14 +66626,29 @@ async fn cmd_hashsum(
     download: bool,
     cli: &Cli,
     format: OutputFormat,
+    cancelled: &AtomicBool,
 ) -> i32 {
-    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+    const NOT_FINISHED: &str = "hashsum did not finish";
+    let Some(connection) =
+        run_until_interrupted(cancelled, create_and_connect(url, cli, format)).await
+    else {
+        return interrupted_exit(None, format, NOT_FINISHED).await;
+    };
+    let (mut provider, initial_path) = match connection {
         Ok(v) => v,
         Err(code) => return code,
     };
     let path = &resolve_cli_remote_path(&initial_path, path);
 
-    match hashsum_digest(&mut *provider, path, algorithm, download).await {
+    let Some(result) = run_until_interrupted(
+        cancelled,
+        hashsum_digest(&mut *provider, path, algorithm, download),
+    )
+    .await
+    else {
+        return interrupted_exit(Some(provider.as_mut()), format, NOT_FINISHED).await;
+    };
+    match result {
         Ok((hash, size)) => {
             if matches!(format, OutputFormat::Json) {
                 print_json(&CliHashResult {
@@ -66403,6 +66904,359 @@ mod hashsum_digest_tests {
             let end = (offset.saturating_add(len) as usize).min(self.content.len());
             Ok(self.content[start..end].to_vec())
         }
+    }
+
+    struct RangeHashFixture {
+        provider: ftp_client_gui_lib::providers::s3::S3Provider,
+        body: Vec<u8>,
+        whole_gets: Arc<std::sync::atomic::AtomicUsize>,
+        ranged_gets: Arc<std::sync::atomic::AtomicUsize>,
+        server: tokio::task::JoinHandle<()>,
+    }
+
+    impl Drop for RangeHashFixture {
+        fn drop(&mut self) {
+            self.server.abort();
+        }
+    }
+
+    async fn range_hash_fixture(
+        size: usize,
+        body_delta: isize,
+        range_mode: u8,
+    ) -> RangeHashFixture {
+        use axum::{
+            body::Body,
+            http::{Method, StatusCode},
+            response::Response,
+        };
+        use ftp_client_gui_lib::providers::{s3::S3Provider, S3Config};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let body: Vec<u8> = (0..size.saturating_add_signed(body_delta))
+            .map(|n| (n % 251) as u8)
+            .collect();
+        let served = Arc::new(body.clone());
+        let whole_gets = Arc::new(AtomicUsize::new(0));
+        let ranged_gets = Arc::new(AtomicUsize::new(0));
+        let app = axum::Router::new().fallback(axum::routing::any({
+            let whole_gets = whole_gets.clone();
+            let ranged_gets = ranged_gets.clone();
+            move |request: axum::extract::Request| {
+                let served = served.clone();
+                let whole_gets = whole_gets.clone();
+                let ranged_gets = ranged_gets.clone();
+                async move {
+                    if request.method() == Method::HEAD {
+                        return Response::builder()
+                            .header("content-length", size.to_string())
+                            .header(
+                                "etag",
+                                if range_mode == 3 && whole_gets.load(Ordering::SeqCst) > 0 {
+                                    "\"changed-version\""
+                                } else {
+                                    "\"fixed-version\""
+                                },
+                            )
+                            .header("accept-ranges", "bytes")
+                            .body(Body::empty())
+                            .unwrap();
+                    }
+                    assert_eq!(request.method(), Method::GET);
+                    if let Some(range) = request.headers().get("range") {
+                        ranged_gets.fetch_add(1, Ordering::SeqCst);
+                        if matches!(range_mode, 1 | 2) {
+                            let (start, end) = range
+                                .to_str()
+                                .unwrap()
+                                .strip_prefix("bytes=")
+                                .unwrap()
+                                .split_once('-')
+                                .unwrap();
+                            let start: usize = start.parse().unwrap();
+                            let end: usize = end.parse().unwrap();
+                            if range_mode == 1 || start == 0 {
+                                return Response::builder()
+                                    .status(StatusCode::PARTIAL_CONTENT)
+                                    .header("content-range", format!("bytes {start}-{end}/{size}"))
+                                    .body(Body::from(served[start..=end].to_vec()))
+                                    .unwrap();
+                            }
+                        }
+                    } else {
+                        whole_gets.fetch_add(1, Ordering::SeqCst);
+                    }
+                    // HTTP200 is self-consistent; only HEAD's known size can expose
+                    // the truncated whole-object answer, not Content-Length alone.
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .header("etag", "\"fixed-version\"")
+                        .body(Body::from(served.as_ref().clone()))
+                        .unwrap()
+                }
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = S3Provider::new(S3Config {
+            endpoint: Some(format!("http://{addr}")),
+            region: "us-east-1".to_string(),
+            access_key_id: "test-key".to_string(),
+            secret_access_key: secrecy::SecretString::from("test-secret".to_string()),
+            session_token: None,
+            role_arn: None,
+            role_external_id: None,
+            role_session_name: None,
+            role_duration_seconds: None,
+            role_mfa_serial: None,
+            role_mfa_token_code: None,
+            bucket: "test-bucket".to_string(),
+            prefix: None,
+            path_style: true,
+            storage_class: None,
+            sse_mode: None,
+            sse_kms_key_id: None,
+            verify_cert: true,
+            allow_cleartext_endpoint: true,
+            skip_dir_markers: false,
+            filen_desktop_bridge: false,
+        })
+        .unwrap();
+        provider.connect().await.unwrap();
+        whole_gets.store(0, Ordering::SeqCst);
+        ranged_gets.store(0, Ordering::SeqCst);
+        // Exercise a fallback that must override configured parallel downloads.
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        RangeHashFixture {
+            provider,
+            body,
+            whole_gets,
+            ranged_gets,
+            server,
+        }
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_200_hashes_the_whole_object_once() {
+        let mut fixture = range_hash_fixture(1024 * 1024 + 31, 0, 0).await;
+        let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+        let (hash, size) = warnings
+            .scope(hashsum_digest(
+                &mut fixture.provider,
+                PATH,
+                HashAlgorithm::Sha256,
+                true,
+            ))
+            .await
+            .expect("an ignored Range falls back to one complete stream");
+        assert_eq!(
+            hash,
+            format!(
+                "{:x}",
+                <sha2::Sha256 as sha2::Digest>::digest(&fixture.body)
+            )
+        );
+        assert_eq!(size, fixture.body.len() as u64);
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+        assert_eq!(fixture.ranged_gets.load(Ordering::SeqCst), 1);
+        assert_eq!(warnings.take(), vec![
+            "parallel download unavailable: the server refused ranged hashing; using a single stream"
+        ]);
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_200_wrong_size_is_rejected() {
+        let mut fixture = range_hash_fixture(1024 * 1024 + 31, -17, 0).await;
+        let error = hashsum_digest(&mut fixture.provider, PATH, HashAlgorithm::Sha256, true)
+            .await
+            .expect_err("a self-consistent HTTP200 cannot change the known object size");
+        assert!(
+            format!("{error:?}").contains("expected 1048607 bytes"),
+            "{error:?}"
+        );
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_206_keeps_the_ranged_path() {
+        let mut fixture = range_hash_fixture(1024 * 1024 + 31, 0, 1).await;
+        let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+        let (hash, size) = warnings
+            .scope(hashsum_digest(
+                &mut fixture.provider,
+                PATH,
+                HashAlgorithm::Sha256,
+                true,
+            ))
+            .await
+            .expect("ordinary206 remains supported");
+        assert_eq!(
+            hash,
+            format!(
+                "{:x}",
+                <sha2::Sha256 as sha2::Digest>::digest(&fixture.body)
+            )
+        );
+        assert_eq!(size, fixture.body.len() as u64);
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 0);
+        assert!(warnings.take().is_empty());
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_large_200_does_not_duplicate_windows() {
+        use ftp_client_gui_lib::providers::multi_thread::IN_ORDER_WINDOW;
+        let mut fixture = range_hash_fixture((IN_ORDER_WINDOW * 2 + 31) as usize, 0, 0).await;
+        let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+        let (hash, size) = warnings
+            .scope(hashsum_digest(
+                &mut fixture.provider,
+                PATH,
+                HashAlgorithm::Sha256,
+                true,
+            ))
+            .await
+            .expect("refused worker windows fall back once");
+        assert_eq!(
+            hash,
+            format!(
+                "{:x}",
+                <sha2::Sha256 as sha2::Digest>::digest(&fixture.body)
+            )
+        );
+        assert_eq!(size, fixture.body.len() as u64);
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+        assert_eq!(warnings.take().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_200_overlong_size_is_rejected() {
+        let mut fixture = range_hash_fixture(1024 * 1024 + 31, 17, 0).await;
+        let error = hashsum_digest(&mut fixture.provider, PATH, HashAlgorithm::Sha256, true)
+            .await
+            .expect_err("an overlong200 is not the known object");
+        assert!(
+            format!("{error:?}").contains("expected 1048607 bytes"),
+            "{error:?}"
+        );
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_restarts_after_a_completed_window() {
+        use ftp_client_gui_lib::providers::multi_thread::IN_ORDER_WINDOW;
+        let mut fixture = range_hash_fixture((IN_ORDER_WINDOW * 2 + 31) as usize, 0, 2).await;
+        let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+        let (hash, size) = warnings
+            .scope(hashsum_digest(
+                &mut fixture.provider,
+                PATH,
+                HashAlgorithm::Sha256,
+                true,
+            ))
+            .await
+            .expect("discard the successful206 prefix before the full stream");
+        assert_eq!(
+            hash,
+            format!(
+                "{:x}",
+                <sha2::Sha256 as sha2::Digest>::digest(&fixture.body)
+            )
+        );
+        assert_eq!(size, fixture.body.len() as u64);
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+        assert_eq!(warnings.take().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_restarts_every_local_algorithm() {
+        for algorithm in [
+            HashAlgorithm::Md5,
+            HashAlgorithm::Sha1,
+            HashAlgorithm::Sha256,
+            HashAlgorithm::Sha512,
+            HashAlgorithm::Blake3,
+        ] {
+            let mut fixture = range_hash_fixture(127, 0, 0).await;
+            let mut digest = LocalDigest::new(algorithm).unwrap();
+            digest.update(b"discarded prefix");
+            let mut expected = LocalDigest::new(algorithm).unwrap();
+            expected.update(&fixture.body);
+            let size = digest_in_order(&mut fixture.provider, PATH, &mut digest)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(digest.finish(), expected.finish());
+            assert_eq!(size, 127);
+        }
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_checks_a_listed_empty_object() {
+        let mut fixture = range_hash_fixture(0, 0, 0).await;
+        let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+        let (hash, size) = warnings
+            .scope(hashsum_digest(
+                &mut fixture.provider,
+                PATH,
+                HashAlgorithm::Sha256,
+                true,
+            ))
+            .await
+            .expect("a genuinely empty body hashes successfully");
+        assert_eq!(
+            hash,
+            format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest([]))
+        );
+        assert_eq!(size, 0);
+        assert_eq!(fixture.ranged_gets.load(Ordering::SeqCst), 0);
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+        assert!(warnings.take().is_empty());
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_refuses_a_false_empty_listing() {
+        let mut fixture = range_hash_fixture(0, 3, 0).await;
+        let error = hashsum_digest(&mut fixture.provider, PATH, HashAlgorithm::Sha256, true)
+            .await
+            .expect_err("the empty hash cannot stand in for a real body");
+        assert!(
+            format!("{error:?}").contains("expected 0 bytes"),
+            "{error:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_checks_source_version_after_the_whole_read() {
+        let mut fixture = range_hash_fixture(127, 0, 3).await;
+        let error = hashsum_digest(&mut fixture.provider, PATH, HashAlgorithm::Sha256, true)
+            .await
+            .expect_err("same-length replacement cannot publish a hash");
+        assert!(
+            format!("{error:?}").contains("changed while it was hashed"),
+            "{error:?}"
+        );
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_streams_one_still_falls_back_once() {
+        let mut fixture = range_hash_fixture(127, 0, 0).await;
+        fixture.provider.set_multi_thread_download(1, u64::MAX);
+        let (hash, size) = hashsum_digest(&mut fixture.provider, PATH, HashAlgorithm::Sha256, true)
+            .await
+            .unwrap();
+        assert_eq!(
+            hash,
+            format!(
+                "{:x}",
+                <sha2::Sha256 as sha2::Digest>::digest(&fixture.body)
+            )
+        );
+        assert_eq!(size, 127);
+        assert_eq!(fixture.ranged_gets.load(Ordering::SeqCst), 1);
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
     }
 
     fn md5_hex(bytes: &[u8]) -> String {
@@ -70495,7 +71349,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     Ok(t) => t,
                     Err(code) => return code,
                 };
-                exit_code = cmd_mv(&url, args[0], args[1], cli, format).await;
+                exit_code = cmd_mv(&url, args[0], args[1], cli, format, &cancelled).await;
                 if let Some(code) = batch_check_exit(
                     exit_code,
                     line_num,
@@ -74916,7 +75770,7 @@ async fn main() {
             } else {
                 (url.as_str(), from.as_str(), to.as_str())
             };
-            cmd_mv(u, f, t, &cli, format).await
+            cmd_mv(u, f, t, &cli, format, &cancelled).await
         }
         Commands::Cp { url, from, to } => {
             let (u, f, t) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
@@ -75191,7 +76045,7 @@ async fn main() {
         }
         Commands::Hashsum { .. } => {
             let (algorithm, u, p, download) = hashsum_request_from_cli(&cli).expect("Hashsum arm");
-            cmd_hashsum(algorithm, u, p, download, &cli, format).await
+            cmd_hashsum(algorithm, u, p, download, &cli, format, &cancelled).await
         }
         Commands::Check {
             url,
@@ -79192,10 +80046,7 @@ mod tests {
         // Ctrl+C between two profiles: the first finished cleanly.
         assert_eq!(benchmark_sweep_exit_code(&[0], 1, 0, true), 130);
         assert_eq!(benchmark_sweep_exit_code(&[4], 1, 0, true), 130);
-        assert_eq!(
-            benchmark_skip_reason(6),
-            "authentication failed: re-authorize the profile"
-        );
+        assert!(benchmark_skip_reason(6).starts_with("authentication failed: "));
     }
 
     #[tokio::test(flavor = "current_thread", start_paused = true)]
@@ -79418,7 +80269,7 @@ mod tests {
         });
         let plan = plan_protocol_fanout(std::slice::from_ref(&source), &[0]);
         let webdav = plan.iter().find(|e| e.mode_label == "webdav").unwrap();
-        let synth = synth_profile_for_mode(&source, webdav).expect("koofr modes share creds");
+        let synth = synth_profile_for_mode(&source, webdav, None).expect("koofr modes share creds");
         assert_eq!(synth["protocol"], json!("webdav"));
         assert_eq!(synth["host"], json!("https://app.koofr.net/dav/Koofr"));
         // Same account: keeping the id is what makes `server_<id>` resolve.
@@ -79435,14 +80286,14 @@ mod tests {
         });
         let plan = plan_protocol_fanout(std::slice::from_ref(&source), &[0]);
         for entry in plan.iter().filter(|e| !e.is_source_mode) {
-            let err = synth_profile_for_mode(&source, entry)
+            let err = synth_profile_for_mode(&source, entry, None)
                 .expect_err("FileLu modes each need their own secret");
             assert!(err.contains("credentials"), "unexpected reason: {}", err);
         }
         // The source mode always runs, verbatim.
         let source_entry = plan.iter().find(|e| e.is_source_mode).unwrap();
         assert_eq!(
-            synth_profile_for_mode(&source, source_entry).unwrap(),
+            synth_profile_for_mode(&source, source_entry, None).unwrap(),
             source
         );
     }
@@ -85407,6 +86258,201 @@ mod tests {
         );
     }
 
+    /// #368 (Ehud): `Zoho WorkDrive` is 14 characters, the old fixed width,
+    /// so it ran into `OAuth 2.0`. The columns size to the longest value.
+    #[test]
+    fn ehud_368_picker_columns_never_touch() {
+        let profiles = vec![
+            json!({"name": "MyZoho", "protocol": "zohoworkdrive"}),
+            json!({"name": "Box", "protocol": "sftp"}),
+        ];
+        let widths = benchmark_picker_widths(&profiles);
+        let (server, access) = benchmark_profile_identity(&profiles[0]);
+        assert_eq!(server, "Zoho WorkDrive");
+        let row = benchmark_picker_label(&server, &access, "MyZoho", widths);
+        assert!(
+            row.starts_with("Zoho WorkDrive  OAuth 2.0  MyZoho"),
+            "{row:?}"
+        );
+        let header = benchmark_picker_label("Server", "Protocol", "Profile", widths);
+        assert_eq!(
+            header.find("Protocol"),
+            row.find("OAuth 2.0"),
+            "{header:?} / {row:?}"
+        );
+    }
+
+    /// #368 (Ehud): durations in hours, minutes and seconds, each unit shown
+    /// only once the duration reaches it.
+    #[test]
+    fn ehud_368_durations_read_in_hours_minutes_seconds() {
+        use std::time::Duration;
+        assert_eq!(
+            format_benchmark_duration(Duration::from_millis(4_240)),
+            "4.2s"
+        );
+        assert_eq!(format_benchmark_duration(Duration::from_secs(42)), "42s");
+        assert_eq!(
+            format_benchmark_duration(Duration::from_secs(125)),
+            "2m 05s"
+        );
+        assert_eq!(
+            format_benchmark_duration(Duration::from_secs(3_725)),
+            "1h 02m 05s"
+        );
+        // At the boundaries the rounding never shows an extra unit's worth.
+        assert_eq!(
+            format_benchmark_duration(Duration::from_millis(9_960)),
+            "10s"
+        );
+        assert_eq!(
+            format_benchmark_duration(Duration::from_millis(59_600)),
+            "1m 00s"
+        );
+        assert_eq!(format_benchmark_duration(Duration::ZERO), "0.0s");
+    }
+
+    /// #368 (Ehud): a benchmark profile without authorization names itself
+    /// and how to authorize it, never an authorization URL nor the
+    /// providers' internal wording.
+    #[test]
+    fn ehud_368_an_unauthorized_profile_says_which_and_how_without_a_url() {
+        let line = oauth_profile_connect_error(
+            "My Dropbox",
+            "Authentication failed: Not authenticated. Call start_auth() first.",
+        );
+        assert!(line.contains("profile 'My Dropbox'"), "{line}");
+        assert!(
+            line.contains(&format!(
+                "aeroftp-cli profile-auth {} ",
+                shell_arg("My Dropbox")
+            )),
+            "{line}"
+        );
+        // A name the shell would split or expand stays one argument.
+        let odd = oauth_profile_connect_error("Bob's $HOME", "Invalid token");
+        assert!(odd.contains(&shell_arg("Bob's $HOME")), "{odd}");
+        assert!(!line.contains("start_auth"), "{line}");
+        assert!(!line.contains("http"), "{line}");
+        assert!(benchmark_skip_reason(6).contains("profile-auth"));
+    }
+
+    /// No benchmark surface may start a browser authorization: the CLI and
+    /// the MCP tool (which runs the CLI) never call the flow that builds an
+    /// authorization URL, nor print one (v4.2.3 printed Dropbox's, #368).
+    #[test]
+    fn ehud_368_no_benchmark_surface_starts_a_browser_authorization() {
+        let flow = concat!("start_auth", "_flow(");
+        let printed = concat!("Authorize in ", "your browser");
+        for (name, source) in [
+            ("aeroftp_cli.rs", include_str!("aeroftp_cli.rs")),
+            ("mcp/tools.rs", include_str!("../mcp/tools.rs")),
+            (
+                "community_benchmark/engine.rs",
+                include_str!("../community_benchmark/engine.rs"),
+            ),
+            ("profile_auth.rs", include_str!("../profile_auth.rs")),
+        ] {
+            assert!(!source.contains(flow), "{name} starts a browser flow");
+            assert!(
+                !source.contains(printed),
+                "{name} prints an authorization URL"
+            );
+        }
+    }
+
+    /// #368 (Ehud): a parallel-download fallback is reported in the profile
+    /// it happened on, once, instead of repeated after the last profile.
+    #[test]
+    fn ehud_368_download_fallback_warnings_land_once_in_their_report() {
+        let fallback = "parallel download unavailable: the S3 HEAD probe was refused (HTTP 404); using a single stream";
+        let mut errors = vec!["upload failed".to_string()];
+        benchmark_absorb_warnings(
+            &mut errors,
+            vec![fallback.to_string(), fallback.to_string()],
+        );
+        benchmark_absorb_warnings(&mut errors, vec![fallback.to_string()]);
+        assert_eq!(
+            errors,
+            ["upload failed".to_string(), format!("warning: {fallback}")]
+        );
+    }
+
+    /// #368 (Ehud): `--all-protocols` measures a mode with secrets of its own
+    /// (Filen, FileLu) on the credentials the profile keeps for it, and only
+    /// a mode with none saved is skipped, saying what to do.
+    #[test]
+    fn ehud_368_fanout_runs_a_mode_on_the_credentials_the_profile_keeps() {
+        let source = json!({
+            "id": "srv_f", "name": "Filen", "protocol": "filen", "providerId": "filen",
+            "host": "filen.io", "username": "me@example.com", "persistModeCredentials": true
+        });
+        let plan = plan_protocol_fanout(std::slice::from_ref(&source), &[0]);
+        let webdav = plan.iter().find(|e| e.mode_label == "webdav").unwrap();
+        let s3 = plan.iter().find(|e| e.mode_label == "s3").unwrap();
+        let modes = json!({
+            "filen-desktop-webdav|webdav": {
+                "username": "admin", "password": "bridge-secret",
+                "server": "local.webdav.filen.io", "port": 1900
+            },
+            // An older save, keyed by the preset id alone.
+            "filen-desktop-s3": {
+                "username": "admin", "password": "s3-secret",
+                "server": "http://local.s3.filen.io:1700",
+                "options": {"bucket": "filen", "region": "filen"}
+            }
+        });
+        let synth = synth_profile_for_mode(&source, webdav, Some(&modes)).expect("webdav saved");
+        assert_eq!(synth["protocol"], json!("webdav"));
+        assert_eq!(synth["providerId"], json!("filen-desktop-webdav"));
+        assert_eq!(synth["host"], json!("local.webdav.filen.io"));
+        assert_eq!(synth["port"], json!(1900));
+        assert_eq!(synth["username"], json!("admin"));
+        assert_eq!(synth[MODE_SECRET_KEY], json!("bridge-secret"));
+        assert_eq!(synth["id"], json!("srv_f"));
+        let synth = synth_profile_for_mode(&source, s3, Some(&modes)).expect("s3 saved");
+        assert_eq!(synth["options"]["bucket"], json!("filen"));
+        assert_eq!(synth[MODE_SECRET_KEY], json!("s3-secret"));
+
+        let none = synth_profile_for_mode(&source, webdav, Some(&json!({}))).unwrap_err();
+        assert!(
+            none.contains("no credentials saved in this profile"),
+            "{none}"
+        );
+        let saved = vec![
+            source.clone(),
+            json!({"name": "Filen local Dav", "protocol": "webdav", "providerId": "filen-desktop-webdav"}),
+        ];
+        assert_eq!(
+            benchmark_saved_profile_in_mode(&saved, webdav),
+            Some((1, "Filen local Dav".to_string()))
+        );
+        // Live run (#368): when that profile is in the same sweep, the mode
+        // is measured there, and the skip says so instead of asking to add it.
+        let covered = benchmark_mode_skip_reason(
+            webdav,
+            none.clone(),
+            Some((1, "Filen local Dav".to_string())),
+            &[0, 1],
+        );
+        assert_eq!(
+            covered,
+            "mode 'webdav' is measured in this run by the saved profile 'Filen local Dav'"
+        );
+        let elsewhere = benchmark_mode_skip_reason(
+            webdav,
+            none.clone(),
+            Some((1, "Filen local Dav".to_string())),
+            &[0],
+        );
+        assert!(
+            elsewhere.ends_with(
+                "(the saved profile 'Filen local Dav' is in that mode: add it with --compare)"
+            ),
+            "{elsewhere}"
+        );
+    }
+
     #[test]
     fn benchmark_identity_names_pcloud_drive_and_distinguishes_megacmd() {
         assert_eq!(
@@ -87502,6 +88548,8 @@ mod tests {
     #[derive(Default, Clone)]
     struct StallingProvider {
         refuse: bool,
+        /// A Filen bridge waiting for its cached source to be published.
+        rename_stalls: bool,
         write_then_refuse: bool,
         /// Opens the destination as an atomic download (its `.aerotmp`)
         /// before it stalls, as a real download does.
@@ -87538,6 +88586,8 @@ mod tests {
         ranged_size: u64,
         /// Complete the ordinary download for parallel-fallback regression tests.
         finish_download: bool,
+        /// Refuses ranged hashing before the ordinary download stalls.
+        refuse_hash_ranges: bool,
     }
 
     impl StallingProvider {
@@ -87663,6 +88713,11 @@ mod tests {
             _offset: u64,
             _len: u64,
         ) -> Result<Vec<u8>, ProviderError> {
+            if self.refuse_hash_ranges {
+                return Err(ProviderError::ParallelRefused(
+                    "server ignored Range (HTTP 200)".into(),
+                ));
+            }
             std::future::pending().await
         }
         async fn download_to_bytes(
@@ -87692,6 +88747,9 @@ mod tests {
             Err(ProviderError::NotFound(path.to_string()))
         }
         async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            if self.rename_stalls {
+                std::future::pending::<()>().await;
+            }
             Err(ProviderError::NotSupported("rename".to_string()))
         }
         async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -87809,6 +88867,64 @@ mod tests {
                 "parallel download unavailable: pget: the source size no longer matches the parallel plan; using a single stream"
             ]);
         }
+    }
+
+    #[test]
+    fn ctrl_c_stops_hashsum_range_fallback_and_removes_scratch() {
+        let provider = StallingProvider {
+            ranged_size: 1_000_000,
+            refuse_hash_ranges: true,
+            ..Default::default()
+        };
+        let downloading = provider.downloading.clone();
+        let disconnects = provider.disconnects.clone();
+        let downloads = provider.downloads.clone();
+        let code = against_stalling(provider, |cancelled| async move {
+            cmd_hashsum(
+                HashAlgorithm::Sha256,
+                "memory://",
+                "/f.bin",
+                true,
+                &quiet_cli(),
+                OutputFormat::Json,
+                &cancelled,
+            )
+            .await
+        });
+        assert_eq!(code, 130, "first Ctrl-C stops the full fallback");
+        assert_eq!(disconnects.load(Ordering::Relaxed), 1);
+        assert_eq!(downloads.load(Ordering::Relaxed), 1);
+        let scratch = downloading
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("fallback started");
+        assert!(
+            !std::path::Path::new(&scratch).exists(),
+            "cancelled hash scratch must be removed"
+        );
+    }
+
+    #[test]
+    fn ctrl_c_stops_mv_while_the_bridge_publishes_the_source() {
+        let provider = StallingProvider {
+            rename_stalls: true,
+            ..Default::default()
+        };
+        let disconnects = provider.disconnects.clone();
+        let code = against_stalling(provider, |cancelled| async move {
+            cmd_mv(
+                "memory://",
+                "/fresh.dat",
+                "/moved.dat",
+                &quiet_cli(),
+                OutputFormat::Json,
+                &cancelled,
+            )
+            .await
+        });
+        assert_eq!(code, 130, "first Ctrl-C stops the readiness wait");
+        assert_eq!(disconnects.load(Ordering::Relaxed), 1);
     }
 
     /// Ctrl-C set the cancel flag and printed "press again to force quit",
@@ -95026,6 +96142,146 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             "two distinct sources must not overwrite the same mapped target"
         );
         assert!(!local.path().join("a.txt").exists());
+    }
+
+    fn audit425_get_aliases(
+        names: [&str; 2],
+        fold_case: bool,
+        fold_normalization: bool,
+        parallel: usize,
+    ) {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let local = tempfile::tempdir().unwrap();
+        let cli = Cli {
+            quiet: true,
+            parallel,
+            ..test_cli()
+        };
+        let remote = MemTreeProvider {
+            contents: names
+                .iter()
+                .map(|name| (format!("/root/{name}"), b"data".to_vec()))
+                .collect(),
+            ..MemTreeProvider::tree(&[(names[0], 4), (names[1], 4)])
+        };
+        let code = run_against_remote(remote, || async {
+            TEST_DOWNLOAD_DESTINATION_RULES.with(|slot| {
+                slot.set(Some(
+                    ftp_client_gui_lib::local_download_target::DestinationRules {
+                        fold_case,
+                        fold_normalization,
+                    },
+                ))
+            });
+            let result = cmd_get_recursive(
+                "memory://",
+                "/root",
+                Some(local.path().to_str().unwrap()),
+                &cli,
+                OutputFormat::Json,
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await;
+            TEST_DOWNLOAD_DESTINATION_RULES.with(|slot| slot.set(None));
+            result
+        });
+        assert_eq!(code, 4, "aliases must be refused even with one worker");
+        assert_eq!(
+            std::fs::read_dir(local.path()).unwrap().count(),
+            0,
+            "refuse before writers receive files"
+        );
+    }
+
+    #[test]
+    fn audit425_cli_get_refuses_case_aliases_parallel_1() {
+        audit425_get_aliases(["A.txt", "a.txt"], true, false, 1);
+    }
+
+    #[test]
+    fn audit425_cli_get_refuses_case_aliases_parallel_4() {
+        audit425_get_aliases(["A.txt", "a.txt"], true, false, 4);
+    }
+
+    #[test]
+    fn audit425_cli_get_refuses_normalization_aliases_parallel_1() {
+        audit425_get_aliases(["café.txt", "cafe\u{301}.txt"], false, true, 1);
+    }
+
+    #[test]
+    fn audit425_cli_get_refuses_normalization_aliases_parallel_4() {
+        audit425_get_aliases(["café.txt", "cafe\u{301}.txt"], false, true, 4);
+    }
+
+    #[tokio::test]
+    async fn audit425_cli_scan_caps_a_single_listing_without_a_huge_tree() {
+        let local = tempfile::tempdir().unwrap();
+        let mut scan = CliGetScan::new("/root", local.path().to_str().unwrap(), &test_cli(), true);
+        scan.planned = MAX_SCAN_ENTRIES - 1;
+        let mut provider = MemTreeProvider::tree(&[("a.txt", 4), ("b.txt", 4)]);
+        let result = scan.step(&mut provider, &AtomicBool::new(false)).await;
+        let CliGetStep::Listing(listing) = result else {
+            panic!("one file fits before the cap")
+        };
+        assert_eq!(
+            listing.files.len(),
+            1,
+            "the internal bound applies inside a listing too"
+        );
+        assert_eq!(scan.planned, MAX_SCAN_ENTRIES);
+        assert!(!scan.listing_errors.is_empty());
+    }
+
+    #[tokio::test]
+    async fn audit425_cli_scan_reports_internal_depth_cap() {
+        let local = tempfile::tempdir().unwrap();
+        let mut scan = CliGetScan::new("/root", local.path().to_str().unwrap(), &test_cli(), true);
+        scan.queue = vec![("/root/too-deep".into(), MAX_SCAN_DEPTH)];
+        let mut provider = MemTreeProvider::default();
+        assert!(matches!(
+            scan.step(&mut provider, &AtomicBool::new(false)).await,
+            CliGetStep::Done
+        ));
+        assert!(
+            !scan.listing_errors.is_empty(),
+            "an internal depth cap is an incomplete inventory"
+        );
+    }
+
+    #[tokio::test]
+    async fn audit425_cli_user_max_depth_is_a_successful_scope_limit() {
+        let local = tempfile::tempdir().unwrap();
+        let cli = Cli {
+            max_depth: Some(0),
+            ..test_cli()
+        };
+        let mut scan = CliGetScan::new("/root", local.path().to_str().unwrap(), &cli, true);
+        let mut provider = MemTreeProvider::default();
+        assert!(matches!(
+            scan.step(&mut provider, &AtomicBool::new(false)).await,
+            CliGetStep::Done
+        ));
+        assert!(
+            scan.listing_errors.is_empty(),
+            "user-selected scope is not an error"
+        );
+    }
+
+    #[tokio::test]
+    async fn audit425_cli_scan_reports_internal_entry_cap() {
+        let local = tempfile::tempdir().unwrap();
+        let mut scan = CliGetScan::new("/root", local.path().to_str().unwrap(), &test_cli(), true);
+        scan.planned = MAX_SCAN_ENTRIES;
+        let mut provider = MemTreeProvider::tree(&[("a.txt", 4)]);
+        assert!(matches!(
+            scan.step(&mut provider, &AtomicBool::new(false)).await,
+            CliGetStep::Done
+        ));
+        assert!(
+            !scan.listing_errors.is_empty(),
+            "internal truncation cannot report success"
+        );
+        assert!(!scan.stopped, "the internal cap is not Ctrl-C");
     }
 
     /// What a [`LiveTree`] holds and what a run did to it, shared by every

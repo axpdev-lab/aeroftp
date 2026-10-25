@@ -2280,10 +2280,8 @@ async fn storage_quota(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
     }))
 }
 
-/// Hard cap per `aeroftp_hashsum`: sopra questo size il tool ritorna errore
-/// `file_too_large` invece di tentare il download. Coerente con il fatto che
-/// il backend.download_to_bytes carica tutto il payload in RAM (stessa
-/// pipeline della CLI `aeroftp hashsum --download`).
+/// The agent tool reads one capped whole body into memory. Larger files use
+/// CLI hashsum, which reads windows or streams to disk when ranges are refused.
 const MAX_HASHSUM_BYTES: u64 = 256 * 1024 * 1024;
 
 async fn hashsum(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
@@ -2320,14 +2318,26 @@ async fn hashsum(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
             "hint": "Use the CLI 'aeroftp hashsum' for files larger than 256 MB; MCP keeps a memory cap to protect the agent process."
         }));
     }
-    // Capped, not the general 500 MB download: the size above comes from the
-    // server's own listing, and a server that under-reports it would otherwise
-    // walk this tool up to the general ceiling. The cap is the same one the
-    // size check just applied, so nothing legitimate changes.
+    // Ask for the tool's cap as well as checking the listing. Streaming
+    // implementations enforce it while reading; the default may materialize
+    // up to the provider's general ceiling before rejecting. The exact-size
+    // check below also refuses a self-consistent but incomplete whole body.
     let data = backend
         .download_to_bytes_capped(&path, MAX_HASHSUM_BYTES)
         .await
         .map_err(ToolError::Exec)?;
+    // Workspace exports are generated representations: their stored size
+    // does not describe these bytes. Ordinary zero-byte objects still need
+    // the exact check, so a false-empty listing cannot yield the empty hash.
+    let generated_export = entry
+        .metadata
+        .get("isWorkspaceFile")
+        .is_some_and(|v| v == "true")
+        && entry.metadata.contains_key("exportMimeType");
+    if !generated_export {
+        crate::providers::validate_hash_length(&path, entry.size, data.len() as u64)
+            .map_err(|e| ToolError::Exec(e.to_string()))?;
+    }
     let hash = match algorithm.as_str() {
         "md5" => {
             use md5::Digest;
@@ -4221,8 +4231,8 @@ enum PairChecksum {
     Different { local: String, remote: String },
     /// Over the per-file memory cap; the pair is reported by size, flagged.
     SkippedTooLarge,
-    /// A side could not be read or hashed; the pair is reported by size,
-    /// flagged, and counted. Never silently called a match by content.
+    /// A side could not be read or hashed; the pair is unverified and makes
+    /// the comparison partial. It is never counted as a match or difference.
     Failed(String),
 }
 
@@ -4266,6 +4276,11 @@ async fn checksum_pair(
         .await
     {
         Ok(data) => {
+            if let Err(error) =
+                crate::providers::validate_hash_length(remote_path, size, data.len() as u64)
+            {
+                return PairChecksum::Failed(error.to_string());
+            }
             let remote_hash = blake3::hash(&data).to_hex().to_string();
             if remote_hash == local_hash {
                 PairChecksum::Equal(local_hash)
@@ -4335,6 +4350,7 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
     let mut differ_g: Vec<Value> = Vec::new();
     let mut missing_remote_g: Vec<Value> = Vec::new();
     let mut missing_local_g: Vec<Value> = Vec::new();
+    let mut checksum_failed_g: Vec<Value> = Vec::new();
     let mut checksum_hashed: u64 = 0;
     let mut checksum_skipped_large: u64 = 0;
     let mut checksum_errors: u64 = 0;
@@ -4346,8 +4362,8 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
                 if lsize == rsize {
                     // With `checksum` the size verdict is not enough: equal
                     // length says nothing about equal content. Each pair is
-                    // hashed; pairs that cannot be hashed keep their size
-                    // verdict but say so on the entry and in the summary.
+                    // hashed; failed attempts stay unverified. Only files above
+                    // the documented cap retain an explicit size-only verdict.
                     if checksum {
                         match checksum_pair(backend.as_ref(), local_path, &remote.path, rel, *lsize)
                             .await
@@ -4385,11 +4401,11 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
                             }
                             PairChecksum::Failed(reason) => {
                                 checksum_errors += 1;
-                                matches_g.push(json!({
+                                checksum_failed_g.push(json!({
                                     "path": rel,
                                     "local_size": lsize,
                                     "remote_size": rsize,
-                                    "compare_method": "size",
+                                    "compare_method": "blake3",
                                     "checksum": "error",
                                     "checksum_error": reason,
                                 }));
@@ -4436,7 +4452,7 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
     let suggested_next_command =
         suggest_sync_command(&server, &local_dir, &remote_dir, " --dry-run --json");
 
-    let status = if !local_scan.is_complete() || !remote_scan.is_complete() {
+    let status = if checksum_errors > 0 || !local_scan.is_complete() || !remote_scan.is_complete() {
         "partial"
     } else if differ_g.is_empty() && missing_remote_g.is_empty() && missing_local_g.is_empty() {
         "ok"
@@ -4460,6 +4476,7 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
         "checksum_hashed": checksum_hashed,
         "checksum_skipped_large": checksum_skipped_large,
         "checksum_errors": checksum_errors,
+        "checksum_failed_count": checksum_failed_g.len(),
     });
 
     let compare_method = if checksum { "blake3" } else { "size" };
@@ -4486,6 +4503,7 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
         "groups": {
             "match": matches_g,
             "differ": differ_g,
+            "checksum_failed": checksum_failed_g,
             "missing_remote": missing_remote_g,
             "missing_local": missing_local_g,
         },
@@ -4664,6 +4682,7 @@ mod tests {
         tree: std::collections::HashMap<String, Vec<RemoteEntry>>,
         /// path -> (is_dir, size)
         stats: std::collections::HashMap<String, (bool, u64)>,
+        stat_metadata: std::collections::HashMap<String, std::collections::HashMap<String, String>>,
         downloads: std::collections::HashMap<String, Vec<u8>>,
         /// High-water mark of bytes materialized by the last
         /// `download_to_bytes_capped` call, so a test can prove the streaming
@@ -4764,6 +4783,7 @@ mod tests {
                 tree,
                 stats,
                 downloads: std::collections::HashMap::new(),
+                stat_metadata: Default::default(),
                 capped_high_water: Mutex::new(0),
                 remote_files: Mutex::new(std::collections::HashMap::new()),
                 uploads: Mutex::new(Vec::new()),
@@ -4848,6 +4868,7 @@ mod tests {
                 crate::providers::ProviderError::NotFound(path.to_string()).to_string()
             })?;
             let mut e = entry(path, is_dir, size);
+            e.metadata = self.stat_metadata.get(path).cloned().unwrap_or_default();
             e.is_symlink = self.symlinks.contains(path);
             e.permissions = self.modes.lock().unwrap().get(path).map(|mode| {
                 let bit = |mask: u32, letter: char| if mode & mask != 0 { letter } else { '-' };
@@ -6126,6 +6147,157 @@ mod tests {
         fake.downloads
             .insert("/remote/diff.txt".to_string(), b"yyy".to_vec());
         (dir, Arc::new(fake))
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_aliases_hash_only_the_complete_known_size() {
+        for tool in ["aeroftp_hashsum", "remote_hashsum"] {
+            for listed in [0, 2, 3, 4] {
+                let mut fake = FakeBackend::sample();
+                fake.stats.insert("/hash.bin".to_string(), (false, listed));
+                fake.downloads
+                    .insert("/hash.bin".to_string(), b"abc".to_vec());
+                let result = dispatch_remote_tool(
+                    &test_ctx(Arc::new(fake)),
+                    tool,
+                    &json!({"server":"srv", "path":"/hash.bin", "algorithm":"sha256"}),
+                )
+                .await;
+                if listed == 3 {
+                    let result = result.expect("complete body hashes through either alias");
+                    assert_eq!(
+                        result["hash"],
+                        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                    );
+                    assert_eq!(result["bytes_hashed"], 3);
+                } else {
+                    assert!(
+                        result.is_err(),
+                        "{tool} accepted {listed} listed bytes as a complete three-byte object"
+                    );
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_preserves_generated_workspace_exports() {
+        let mut fake = FakeBackend::sample();
+        fake.stats.insert("/document".into(), (false, 0));
+        fake.stat_metadata.insert(
+            "/document".into(),
+            std::collections::HashMap::from([
+                ("isWorkspaceFile".into(), "true".into()),
+                ("exportMimeType".into(), "application/pdf".into()),
+            ]),
+        );
+        fake.downloads.insert("/document".into(), b"abc".to_vec());
+        let result = hashsum(
+            &test_ctx(Arc::new(fake)),
+            &json!({"server":"srv", "path":"/document", "algorithm":"sha256"}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["bytes_hashed"], 3);
+        assert_eq!(
+            result["hash"],
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
+    #[tokio::test]
+    async fn range_ignored_hashsum_checksum_pair_refuses_a_short_body() {
+        let (dir, _) = checksum_fixture();
+        let mut fake = FakeBackend::sample();
+        fake.downloads
+            .insert("/remote/same.txt".to_string(), b"aa".to_vec());
+        let result = checksum_pair(&fake, dir.path(), "/remote/same.txt", "same.txt", 3).await;
+        assert!(
+            matches!(result, PairChecksum::Failed(_)),
+            "short reads must fail checksum verification"
+        );
+    }
+
+    async fn reconcile_checksum_result(body: Option<&[u8]>, summary_only: bool) -> Value {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("same.txt"), b"aaa").unwrap();
+        let mut fake = FakeBackend::sample();
+        fake.tree
+            .insert("/remote".into(), vec![entry("/remote/same.txt", false, 3)]);
+        fake.downloads.remove("/remote/same.txt");
+        if let Some(body) = body {
+            fake.downloads
+                .insert("/remote/same.txt".into(), body.to_vec());
+        }
+        reconcile(
+            &test_ctx(Arc::new(fake)),
+            &json!({
+                "server":"s", "local_dir":dir.path().to_string_lossy(),
+                "remote_dir":"/remote", "checksum":true, "summary_only":summary_only,
+            }),
+        )
+        .await
+        .unwrap()
+    }
+
+    fn assert_failed_checksum_is_partial(out: &Value) {
+        assert_eq!(out["status"], "partial", "{out}");
+        assert_eq!(out["summary"]["match_count"], 0);
+        assert_eq!(out["summary"]["differ_count"], 0);
+        assert_eq!(out["summary"]["checksum_errors"], 1);
+        assert_eq!(out["summary"]["checksum_failed_count"], 1);
+        assert_eq!(out["summary"]["checksum_hashed"], 0);
+        assert!(out["groups"]["match"].as_array().unwrap().is_empty());
+        let failed = out["groups"]["checksum_failed"].as_array().unwrap();
+        assert_eq!(failed.len(), 1);
+        assert_eq!(failed[0]["path"], "same.txt");
+        assert_eq!(failed[0]["checksum"], "error");
+        assert!(!failed[0]["checksum_error"].as_str().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn reconcile_checksum_failure_short_body_is_partial() {
+        let out = reconcile_checksum_result(Some(b"aa"), false).await;
+        assert_failed_checksum_is_partial(&out);
+    }
+
+    #[tokio::test]
+    async fn reconcile_checksum_failure_overlong_body_is_partial() {
+        let out = reconcile_checksum_result(Some(b"aaaa"), false).await;
+        assert_failed_checksum_is_partial(&out);
+    }
+
+    #[tokio::test]
+    async fn reconcile_checksum_failure_remote_read_is_partial() {
+        let out = reconcile_checksum_result(None, false).await;
+        assert_failed_checksum_is_partial(&out);
+        assert!(out["groups"]["checksum_failed"][0]["checksum_error"]
+            .as_str()
+            .unwrap()
+            .contains("remote read failed"));
+    }
+
+    #[tokio::test]
+    async fn reconcile_checksum_failure_summary_is_partial() {
+        let out = reconcile_checksum_result(Some(b"aa"), true).await;
+        assert_eq!(out["status"], "partial", "{out}");
+        assert_eq!(out["summary"]["match_count"], 0);
+        assert_eq!(out["summary"]["checksum_errors"], 1);
+        assert_eq!(out["summary"]["checksum_failed_count"], 1);
+        assert!(out.get("groups").is_none());
+    }
+
+    #[tokio::test]
+    async fn reconcile_checksum_failure_controls_remain_equal_or_different() {
+        for (body, status, group) in [
+            (b"aaa", "ok", "match"),
+            (b"bbb", "differences_found", "differ"),
+        ] {
+            let out = reconcile_checksum_result(Some(body), false).await;
+            assert_eq!(out["status"], status);
+            assert_eq!(out["groups"][group].as_array().unwrap().len(), 1);
+            assert_eq!(out["summary"]["checksum_errors"], 0);
+        }
     }
 
     /// G26: with `checksum: true` a same-size pair with different content

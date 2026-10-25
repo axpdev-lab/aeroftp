@@ -244,10 +244,6 @@ fn onedrive_takes_the_current_folder_as_a_parent_only_where_allowed() {
             "list",
             "pwd",
             "cd",
-            "download",
-            "resume_download",
-            "download_to_bytes",
-            "upload",
             "mkdir",
             "delete",
             "rmdir",
@@ -256,8 +252,9 @@ fn onedrive_takes_the_current_folder_as_a_parent_only_where_allowed() {
             "stat",
             "create_share_link",
             "server_side_copy",
-            "resume_upload",
-            "begin_multipart_upload",
+            // Joins a relative file path to the current folder for the
+            // downloads, the uploads and the upload sessions.
+            "absolute_path",
             "copy_destination",
         ],
     );
