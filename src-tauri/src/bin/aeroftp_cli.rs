@@ -31635,7 +31635,13 @@ async fn connect_with_base_path(
                             p.connect().await.map_err(|error| {
                                 print_error(
                                     format,
-                                    &format!("{}; authorize with profile-auth", error),
+                                    &oauth_profile_connect_error(
+                                        profile
+                                            .get("name")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or(profile_name),
+                                        &error.to_string(),
+                                    ),
                                     6,
                                 );
                                 6
@@ -31680,7 +31686,18 @@ async fn connect_with_base_path(
                     return Err(5);
                 }
             };
-            profile_value_to_provider_config(synth, &store, cli, format)?
+            let (mut config, path) = profile_value_to_provider_config(synth, &store, cli, format)?;
+            // A fan-out mode with credentials of its own carries them in the
+            // synthesized value (see `synth_profile_from_snapshot`). Read here
+            // only, so a saved profile can never supply one.
+            if let Some(secret) = synth.get(MODE_SECRET_KEY).and_then(|v| v.as_str()) {
+                config.username = synth
+                    .get("username")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string);
+                config.password = Some(secret.to_string());
+            }
+            (config, path)
         }
         None => resolve_url_or_profile_with(url, cli, profile_override, format)?,
     };
@@ -48956,10 +48973,52 @@ fn remote_parent_dir(remote_path: &str) -> Option<String> {
 // contract: docs/dev/roadmap/APPENDIX-BENCHMARK/01_JSON-Schema-v1.md. No
 // automated upload: the report is paste-ready.
 
+/// A duration as people read one (#368, Ehud): `1h 02m 05s`, `2m 05s`,
+/// `42s`, with tenths under ten seconds (`4.2s`). Hours and minutes appear
+/// only when the duration reaches them. Latency stays in ms, where the
+/// sub-second figure is the point, and JSON keeps its `_ms` fields.
+fn format_benchmark_duration(duration: std::time::Duration) -> String {
+    let exact = duration.as_secs_f64();
+    // Below what rounds to ten seconds, tenths; from there whole seconds,
+    // rounded, so 9.96 s reads `10s` and 59.6 s `1m 00s`.
+    if exact < 9.95 {
+        return format!("{exact:.1}s");
+    }
+    let secs = exact.round() as u64;
+    let (h, m, s) = (secs / 3600, (secs % 3600) / 60, secs % 60);
+    if h > 0 {
+        format!("{h}h {m:02}m {s:02}s")
+    } else if m > 0 {
+        format!("{m}m {s:02}s")
+    } else {
+        format!("{s}s")
+    }
+}
+
+/// When this benchmark command started: the first call fixes it, so a
+/// comparison and each profile it runs share one clock.
+fn benchmark_clock() -> std::time::Instant {
+    static STARTED: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    *STARTED.get_or_init(std::time::Instant::now)
+}
+
+/// The stopwatch at the head of each progress line (#368, Ehud): the time
+/// since the benchmark command started, in whole seconds.
+fn benchmark_elapsed_stamp(started: std::time::Instant) -> String {
+    let elapsed = std::time::Duration::from_secs(started.elapsed().as_secs());
+    let text = if elapsed.as_secs() < 10 {
+        format!("{}s", elapsed.as_secs())
+    } else {
+        format_benchmark_duration(elapsed)
+    };
+    format!("[{text}]")
+}
+
 /// The CLI narration of a benchmark run on stderr: the phase lines and the
 /// progress bars, both silent under `--quiet` and under JSON output.
 struct CliBenchmarkObserver {
     show: bool,
+    started: std::time::Instant,
     bytes_bar: std::sync::Mutex<Option<ProgressBar>>,
     batch_bar: std::sync::Mutex<Option<ProgressBar>>,
 }
@@ -48968,6 +49027,7 @@ impl CliBenchmarkObserver {
     fn new(show: bool) -> Self {
         Self {
             show,
+            started: benchmark_clock(),
             bytes_bar: std::sync::Mutex::new(None),
             batch_bar: std::sync::Mutex::new(None),
         }
@@ -48977,14 +49037,23 @@ impl CliBenchmarkObserver {
 impl BenchmarkObserver for CliBenchmarkObserver {
     fn event(&self, event: BenchmarkEvent<'_>) {
         match event {
-            BenchmarkEvent::BaseDirNotCreated { error } => {
+            BenchmarkEvent::BaseDirNotCreated { path, error } => {
                 if self.show {
-                    eprintln!("warning: could not create benchmark base dir: {}", error);
+                    eprintln!(
+                        "{} warning: could not create the benchmark base folder '{}': {}",
+                        benchmark_elapsed_stamp(self.started),
+                        path,
+                        error
+                    );
                 }
             }
             BenchmarkEvent::Payload { size } => {
                 if self.show {
-                    eprintln!("running benchmark with payload {}", format_size(size));
+                    eprintln!(
+                        "{} running benchmark with payload {}",
+                        benchmark_elapsed_stamp(self.started),
+                        format_size(size)
+                    );
                 }
             }
             BenchmarkEvent::Run {
@@ -48996,7 +49065,8 @@ impl BenchmarkObserver for CliBenchmarkObserver {
             } => {
                 if self.show {
                     eprintln!(
-                        "  {:<8} {} run {}/{}{}",
+                        "{}   {:<8} {} run {}/{}{}",
+                        benchmark_elapsed_stamp(self.started),
                         operation,
                         format_size(size),
                         run,
@@ -49007,7 +49077,11 @@ impl BenchmarkObserver for CliBenchmarkObserver {
             }
             BenchmarkEvent::LatencyProbe { samples } => {
                 if self.show {
-                    eprintln!("  latency  {} round trips", samples);
+                    eprintln!(
+                        "{}   latency  {} round trips",
+                        benchmark_elapsed_stamp(self.started),
+                        samples
+                    );
                 }
             }
             BenchmarkEvent::ManyFiles {
@@ -49016,7 +49090,8 @@ impl BenchmarkObserver for CliBenchmarkObserver {
             } => {
                 if self.show {
                     eprintln!(
-                        "running many-small-files workload: {} files of {}",
+                        "{} running many-small-files workload: {} files of {}",
+                        benchmark_elapsed_stamp(self.started),
                         file_count,
                         format_size(file_size)
                     );
@@ -49024,8 +49099,9 @@ impl BenchmarkObserver for CliBenchmarkObserver {
             }
             BenchmarkEvent::BatchStarted { operation, total } => {
                 // Count bar for the many-small-files loops (issue #277 #14).
+                let label = format!("{} {}", benchmark_elapsed_stamp(self.started), operation);
                 *self.batch_bar.lock().unwrap_or_else(|e| e.into_inner()) =
-                    Some(many_files_progress_bar(operation, total, self.show));
+                    Some(many_files_progress_bar(&label, total, self.show));
             }
             BenchmarkEvent::BatchItem { .. } => {
                 if let Some(pb) = self
@@ -49049,13 +49125,17 @@ impl BenchmarkObserver for CliBenchmarkObserver {
             }
             BenchmarkEvent::TrashPurged { path } => {
                 if self.show {
-                    eprintln!("trash purge: {} hard-deleted", path);
+                    eprintln!(
+                        "{} trash purge: {} hard-deleted",
+                        benchmark_elapsed_stamp(self.started),
+                        path
+                    );
                 }
             }
             BenchmarkEvent::WaitedForReadable { waited } => {
                 if self.show && waited >= std::time::Duration::from_millis(100) {
                     eprintln!(
-                        "  waited {:.1} s for the server to make the upload readable (not counted as download time)",
+                        "{}   waited {:.1} s for the server to make the upload readable (not counted as download time)", benchmark_elapsed_stamp(self.started),
                         waited.as_secs_f64()
                     );
                 }
@@ -49078,7 +49158,8 @@ impl BenchmarkObserver for CliBenchmarkObserver {
         } else {
             "download"
         };
-        let pb = benchmark_bytes_progress_bar(label, size, show_bar);
+        let label = format!("{} {}", benchmark_elapsed_stamp(self.started), label);
+        let pb = benchmark_bytes_progress_bar(&label, size, show_bar);
         *self.bytes_bar.lock().unwrap_or_else(|e| e.into_inner()) = Some(pb.clone());
         if show_bar {
             Some(Box::new(move |done, _total| pb.set_position(done)))
@@ -49133,6 +49214,11 @@ async fn cmd_benchmark(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
+    let started = benchmark_clock();
+    // Warnings a previous profile left unclaimed (it stopped before its
+    // report) are shown now, next to it, so they never land in this
+    // profile's report.
+    render_pending_warnings(format);
     let profile_timeout_secs = profile_timeout_override
         .map(|v| v.clamp(60, 86_400))
         .unwrap_or(BENCHMARK_TOTAL_TIMEOUT_SECS);
@@ -49295,7 +49381,14 @@ async fn cmd_benchmark(
     // 130 for a run the user stopped, 4 when a measured operation failed, 8
     // when the profile timeout ended it with nothing failed, 0 otherwise.
     let exit_code = benchmark_exit_code(&outcome);
-    let report = outcome.report;
+    let mut report = outcome.report;
+    // The library's warnings of this run (a parallel download that fell back
+    // to one stream) belong to this profile: in its report, once each,
+    // instead of repeated after the last profile with no name (#368, Ehud).
+    benchmark_absorb_warnings(
+        &mut report.summary.errors,
+        ftp_client_gui_lib::providers::take_warnings(),
+    );
 
     // The report leaves the process only in its sanitized form: the run's
     // remote paths replaced, PII patterns substituted, then swept, and
@@ -49336,11 +49429,28 @@ async fn cmd_benchmark(
                 if consent_publish {
                     print_benchmark_publish_block(&serialized);
                 }
+                // The whole command: connect and cleanup included, which the
+                // report's own duration leaves out.
+                println!(
+                    "Total time: {}",
+                    format_benchmark_duration(started.elapsed())
+                );
             }
         }
     }
 
     exit_code
+}
+
+/// Add the library warnings a run reported to its report's errors and
+/// warnings, each line once, in the order first seen.
+fn benchmark_absorb_warnings(errors: &mut Vec<String>, warnings: Vec<String>) {
+    for warning in warnings {
+        let line = format!("warning: {warning}");
+        if !errors.contains(&line) {
+            errors.push(line);
+        }
+    }
 }
 
 /// Run the connect of a benchmark profile until it ends, the user stops it
@@ -49439,12 +49549,14 @@ fn print_benchmark_text_report(report: &BenchmarkReport) {
         )
     };
     println!(
-        "Benchmark complete: level={:?}{} runs={} bytes={} duration={}ms",
+        "Benchmark complete: level={:?}{} runs={} bytes={} duration={}",
         report.level,
         identity_cell,
         report.summary.total_runs,
         format_size(report.summary.total_bytes_transferred),
-        report.summary.total_duration_ms
+        benchmark_quote(&format_benchmark_duration(
+            std::time::Duration::from_millis(report.summary.total_duration_ms)
+        ))
     );
     for note in &report.notes {
         println!("Note: {}", note);
@@ -49728,22 +49840,31 @@ fn plan_protocol_fanout(profiles: &[serde_json::Value], idxs: &[usize]) -> Vec<F
 /// and the endpoint rewritten to that mode's host. Nothing is written to the
 /// vault, so an interrupted sweep cannot leave throwaway profiles behind.
 ///
+/// A mode with secrets of its own (FileLu, Filen) runs on the credentials
+/// the profile keeps for it: the GUI stores them in `server_modes_<id>`
+/// (`modes`) when "Remember credentials for every protocol of this account"
+/// is on (#368, Ehud).
+///
 /// `Err` carries the reason the mode cannot be measured honestly, which the
-/// caller prints as a skip: modes with per-mode secrets (FileLu, Filen) or
-/// without a derivable endpoint (the S3 surfaces need a user's own bucket and
-/// region) are never guessed at.
+/// caller prints as a skip: a mode with no credentials saved, or without a
+/// derivable endpoint (the S3 surfaces need a user's own bucket and region),
+/// is never guessed at.
 fn synth_profile_for_mode(
     source: &serde_json::Value,
     entry: &FanoutEntry,
+    modes: Option<&serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
     if entry.is_source_mode {
         return Ok(source.clone());
     }
     if !mode_group_shares_credentials(entry.group_id) {
-        return Err(format!(
-            "mode '{}' needs its own credentials; save a profile for it (or switch the profile to that mode once in the GUI)",
-            entry.mode_label
-        ));
+        let Some(snapshot) = modes.and_then(|m| mode_credential_snapshot(m, entry)) else {
+            return Err(format!(
+                "mode '{}' has no credentials saved in this profile; open the profile in the GUI, switch it to that mode with \"Remember credentials for every protocol of this account\" on, or save a profile for that mode and add it with --compare",
+                entry.mode_label
+            ));
+        };
+        return Ok(synth_profile_from_snapshot(source, entry, snapshot));
     }
     let mut synth = source.clone();
     let Some(map) = synth.as_object_mut() else {
@@ -49784,6 +49905,100 @@ fn synth_profile_for_mode(
     Ok(synth)
 }
 
+/// The credentials the GUI saved for `entry`'s mode in a profile's
+/// `server_modes_<id>` map, when they hold a secret. The map is keyed
+/// `<providerId>|<protocol>` (the providerId empty for a native mode); an
+/// older save used `<providerId or protocol>`, which is read too.
+fn mode_credential_snapshot<'a>(
+    modes: &'a serde_json::Value,
+    entry: &FanoutEntry,
+) -> Option<&'a serde_json::Value> {
+    let pid = entry
+        .target_provider_id
+        .filter(|pid| *pid != entry.target_protocol)
+        .unwrap_or("");
+    let keys = [
+        format!("{}|{}", pid, entry.target_protocol),
+        entry
+            .target_provider_id
+            .unwrap_or(entry.target_protocol)
+            .to_string(),
+    ];
+    keys.iter()
+        .filter_map(|key| modes.get(key))
+        .find(|snapshot| {
+            snapshot
+                .get("password")
+                .and_then(|v| v.as_str())
+                .is_some_and(|p| !p.is_empty())
+        })
+}
+
+/// The in-memory profile of a mode that runs on its own saved credentials:
+/// the source's identity (its `id`, so per-profile keys still resolve) with
+/// the mode's protocol, preset, endpoint, user, options and secret. The
+/// secret travels only in this value, under a key no saved profile has.
+fn synth_profile_from_snapshot(
+    source: &serde_json::Value,
+    entry: &FanoutEntry,
+    snapshot: &serde_json::Value,
+) -> serde_json::Value {
+    let mut synth = source.clone();
+    let Some(map) = synth.as_object_mut() else {
+        return synth;
+    };
+    let text = |key: &str| {
+        serde_json::Value::String(
+            snapshot
+                .get(key)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        )
+    };
+    map.insert(
+        "protocol".into(),
+        serde_json::Value::String(entry.target_protocol.to_string()),
+    );
+    match entry.target_provider_id {
+        Some(pid) => {
+            map.insert(
+                "providerId".into(),
+                serde_json::Value::String(pid.to_string()),
+            );
+        }
+        None => {
+            map.remove("providerId");
+        }
+    }
+    map.insert("host".into(), text("server"));
+    match snapshot.get("port").filter(|v| v.is_u64()) {
+        Some(port) => {
+            map.insert("port".into(), port.clone());
+        }
+        None => {
+            map.remove("port");
+        }
+    }
+    map.insert("username".into(), text("username"));
+    match snapshot.get("options").filter(|v| v.is_object()) {
+        Some(options) => {
+            map.insert("options".into(), options.clone());
+        }
+        None => {
+            map.remove("options");
+        }
+    }
+    map.insert(MODE_SECRET_KEY.into(), text("password"));
+    map.remove("lastConnected");
+    synth
+}
+
+/// Where a synthesized fan-out profile carries its mode's own secret; read
+/// only on the synthesized-profile connect path, in place of the vault's
+/// `server_<id>`.
+const MODE_SECRET_KEY: &str = "__modeSecret";
+
 /// Run the same benchmark workload across several saved profiles and print a
 /// combined comparison. Selectors come from one of four sources: `--compare`
 /// (comma list), the inline name/index prompt when `interactive` is set, the
@@ -49814,6 +50029,7 @@ async fn cmd_benchmark_compare(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
+    let sweep_started = benchmark_clock();
     let store = match open_vault(cli) {
         Ok(s) => s,
         Err(e) => {
@@ -49990,9 +50206,25 @@ async fn cmd_benchmark_compare(
 
     // Resolve each mode once, before numbering the runs. Unsupported modes
     // remain in the skip report but cannot inflate either progress counter.
+    let scoped_user = scoped_credential_user_id(cli, &store);
     let resolved: Vec<_> = plan
         .iter()
-        .map(|entry| synth_profile_for_mode(&profiles[entry.source_idx], entry))
+        .map(|entry| {
+            let source = &profiles[entry.source_idx];
+            let modes = (!entry.is_source_mode && !mode_group_shares_credentials(entry.group_id))
+                .then(|| source.get("id").and_then(|v| v.as_str()))
+                .flatten()
+                .and_then(|id| read_server_cred(&store, scoped_user, &format!("server_modes_{id}")))
+                .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok());
+            synth_profile_for_mode(source, entry, modes.as_ref()).map_err(|reason| {
+                benchmark_mode_skip_reason(
+                    entry,
+                    reason,
+                    benchmark_saved_profile_in_mode(&profiles, entry),
+                    &idxs,
+                )
+            })
+        })
         .collect();
     let total_profiles = resolved.iter().filter(|result| result.is_ok()).count();
     let mut run_number = 0;
@@ -50043,7 +50275,13 @@ async fn cmd_benchmark_compare(
             println!(
                 "{}",
                 paint_bold(
-                    &format!("=== [{}/{}] {} ===", run_number, total_profiles, label),
+                    &format!(
+                        "=== [{}/{}] {} === {}",
+                        run_number,
+                        total_profiles,
+                        label,
+                        benchmark_elapsed_stamp(sweep_started)
+                    ),
                     use_color()
                 )
             );
@@ -50196,6 +50434,11 @@ async fn cmd_benchmark_compare(
                 if consent_publish && !entries.is_empty() {
                     print_benchmark_publish_block(&combined);
                 }
+                println!();
+                println!(
+                    "Total time: {}",
+                    format_benchmark_duration(sweep_started.elapsed())
+                );
             }
         }
     }
@@ -50206,6 +50449,56 @@ async fn cmd_benchmark_compare(
         failed.len(),
         cancelled.load(Ordering::Relaxed),
     )
+}
+
+/// The saved profile already in `entry`'s mode (its index and name), when
+/// exactly one is: the skip of that mode then names it.
+fn benchmark_saved_profile_in_mode(
+    profiles: &[serde_json::Value],
+    entry: &FanoutEntry,
+) -> Option<(usize, String)> {
+    if entry.is_source_mode || entry.group_id.is_empty() {
+        return None;
+    }
+    let found: Vec<(usize, &str)> = profiles
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| {
+            let protocol = p.get("protocol").and_then(|v| v.as_str()).unwrap_or("");
+            let provider_id = p.get("providerId").and_then(|v| v.as_str());
+            find_mode_group_row_of(protocol, provider_id).is_some_and(|row| {
+                row.group_id == entry.group_id
+                    && row.protocol == entry.target_protocol
+                    && row.provider_id == entry.target_provider_id
+            })
+        })
+        .filter_map(|(i, p)| p.get("name").and_then(|v| v.as_str()).map(|n| (i, n)))
+        .collect();
+    match found.as_slice() {
+        [(i, name)] => Some((*i, (*name).to_string())),
+        _ => None,
+    }
+}
+
+/// Why a mode of the fan-out is not measured from this profile: `reason`,
+/// and the saved profile already in that mode when there is one, which this
+/// sweep may already run (`selected`).
+fn benchmark_mode_skip_reason(
+    entry: &FanoutEntry,
+    reason: String,
+    sibling: Option<(usize, String)>,
+    selected: &[usize],
+) -> String {
+    match sibling {
+        Some((idx, name)) if selected.contains(&idx) => format!(
+            "mode '{}' is measured in this run by the saved profile '{name}'",
+            entry.mode_label
+        ),
+        Some((_, name)) => {
+            format!("{reason} (the saved profile '{name}' is in that mode: add it with --compare)")
+        }
+        None => reason,
+    }
 }
 
 /// The exit code of a comparison: 130 when the user stopped it, during a
@@ -50235,6 +50528,23 @@ fn benchmark_sweep_exit_code(
 
 /// Why a profile produced no report, from the exit code its run ended with.
 /// The full error was printed when it happened; this is the summary line.
+/// The error of an OAuth profile that could not connect: what the provider
+/// said, the profile it concerns and how to authorize it from here. It never
+/// carries an authorization URL: a connect does not start a browser flow, and
+/// a line a user may paste in public must not hold one (#368, Ehud).
+fn oauth_profile_connect_error(profile_name: &str, error: &str) -> String {
+    // The providers' own wording for a missing token names an internal call.
+    let error = if error.contains("Call start_auth() first") {
+        "no authorization is saved for it"
+    } else {
+        error
+    };
+    format!(
+        "profile '{profile_name}' cannot connect: {error}; authorize it with `aeroftp-cli profile-auth {} --request-json-file <file>` (action begin, then finish) or connect it once in the GUI",
+        shell_arg(profile_name)
+    )
+}
+
 fn benchmark_skip_reason(code: i32) -> &'static str {
     match code {
         1 => "connection failed",
@@ -50242,7 +50552,7 @@ fn benchmark_skip_reason(code: i32) -> &'static str {
         3 => "permission denied",
         4 => "could not create its scratch folder (see the error above)",
         5 => "invalid usage or profile/vault error",
-        6 => "authentication failed: re-authorize the profile",
+        6 => "authentication failed: check its credentials, or authorize an OAuth profile with `aeroftp-cli profile-auth` (the error above says how)",
         7 => "not supported by this provider",
         8 => "timed out",
         10 => "server error",
@@ -50669,17 +50979,45 @@ fn benchmark_profile_str(
     owned(profiles.get(idx)?)
 }
 
+/// Column widths of the profile pickers' Server and Protocol columns (#368,
+/// Ehud): each the longest value of the listed profiles or its header, plus a
+/// two-space gap, so `Zoho WorkDrive` never runs into `OAuth 2.0`.
+fn benchmark_picker_widths(profiles: &[serde_json::Value]) -> (usize, usize) {
+    let (mut server_w, mut protocol_w) = ("Server".len(), "Protocol".len());
+    for p in profiles {
+        let (type_name, access) = benchmark_profile_identity(p);
+        server_w = server_w.max(type_name.chars().count());
+        protocol_w = protocol_w.max(access.chars().count());
+    }
+    (server_w + 2, protocol_w + 2)
+}
+
+/// One picker row after its index: Server, Protocol and Profile, aligned on
+/// the widths of [`benchmark_picker_widths`].
+fn benchmark_picker_label(
+    type_name: &str,
+    access: &str,
+    name: &str,
+    (server_w, protocol_w): (usize, usize),
+) -> String {
+    format!("{type_name:<server_w$}{access:<protocol_w$}{name}")
+}
+
 fn benchmark_pick_profiles_inline(profiles: &[serde_json::Value]) -> std::io::Result<Vec<usize>> {
     use std::io::Write;
 
     let color_on = use_color();
     let mut err = std::io::stderr();
+    let widths = benchmark_picker_widths(profiles);
     writeln!(err, "{}", paint_bold("Saved profiles:", color_on))?;
     writeln!(
         err,
         "{}",
         paint_dim(
-            &format!("      {:<14}{:<12}{}", "Server", "Protocol", "Profile"),
+            &format!(
+                "      {}",
+                benchmark_picker_label("Server", "Protocol", "Profile", widths)
+            ),
             color_on
         )
     )?;
@@ -50688,11 +51026,9 @@ fn benchmark_pick_profiles_inline(profiles: &[serde_json::Value]) -> std::io::Re
         let (type_name, access) = benchmark_profile_identity(p);
         writeln!(
             err,
-            "  {:>2}. {:<14}{:<12}{}",
+            "  {:>2}. {}",
             i + 1,
-            type_name,
-            access,
-            name
+            benchmark_picker_label(&type_name, &access, name, widths)
         )?;
     }
 
@@ -50765,6 +51101,7 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
     // taller than the terminal, so we render a window and scroll it rather than
     // printing every row (which would overflow and duplicate on redraw).
     let mut top = 0usize;
+    let widths = benchmark_picker_widths(profiles);
 
     let label_of = |i: usize| -> String {
         let name = profiles[i]
@@ -50774,7 +51111,7 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
         // Type (service name) + Protocol (access class), matching the comparison
         // table and the inline picker (issue #277).
         let (type_name, access) = benchmark_profile_identity(&profiles[i]);
-        format!("{:<14}{:<12}{}", type_name, access, name)
+        benchmark_picker_label(&type_name, &access, name, widths)
     };
 
     // Restore the main screen and the cursor no matter how we leave.
@@ -50836,7 +51173,10 @@ fn benchmark_pick_profiles(profiles: &[serde_json::Value]) -> std::io::Result<Ve
             err,
             "{}",
             paint_dim(
-                &format!("          {:<14}{:<12}{}", "Server", "Protocol", "Profile"),
+                &format!(
+                    "          {}",
+                    benchmark_picker_label("Server", "Protocol", "Profile", widths)
+                ),
                 color_on
             )
         )?;
@@ -79256,10 +79596,7 @@ mod tests {
         // Ctrl+C between two profiles: the first finished cleanly.
         assert_eq!(benchmark_sweep_exit_code(&[0], 1, 0, true), 130);
         assert_eq!(benchmark_sweep_exit_code(&[4], 1, 0, true), 130);
-        assert_eq!(
-            benchmark_skip_reason(6),
-            "authentication failed: re-authorize the profile"
-        );
+        assert!(benchmark_skip_reason(6).starts_with("authentication failed: "));
     }
 
     #[tokio::test(flavor = "current_thread", start_paused = true)]
@@ -79482,7 +79819,7 @@ mod tests {
         });
         let plan = plan_protocol_fanout(std::slice::from_ref(&source), &[0]);
         let webdav = plan.iter().find(|e| e.mode_label == "webdav").unwrap();
-        let synth = synth_profile_for_mode(&source, webdav).expect("koofr modes share creds");
+        let synth = synth_profile_for_mode(&source, webdav, None).expect("koofr modes share creds");
         assert_eq!(synth["protocol"], json!("webdav"));
         assert_eq!(synth["host"], json!("https://app.koofr.net/dav/Koofr"));
         // Same account: keeping the id is what makes `server_<id>` resolve.
@@ -79499,14 +79836,14 @@ mod tests {
         });
         let plan = plan_protocol_fanout(std::slice::from_ref(&source), &[0]);
         for entry in plan.iter().filter(|e| !e.is_source_mode) {
-            let err = synth_profile_for_mode(&source, entry)
+            let err = synth_profile_for_mode(&source, entry, None)
                 .expect_err("FileLu modes each need their own secret");
             assert!(err.contains("credentials"), "unexpected reason: {}", err);
         }
         // The source mode always runs, verbatim.
         let source_entry = plan.iter().find(|e| e.is_source_mode).unwrap();
         assert_eq!(
-            synth_profile_for_mode(&source, source_entry).unwrap(),
+            synth_profile_for_mode(&source, source_entry, None).unwrap(),
             source
         );
     }
@@ -85468,6 +85805,201 @@ mod tests {
         assert_eq!(
             benchmark_best_protocol(&download, false).as_deref(),
             Some("REST API")
+        );
+    }
+
+    /// #368 (Ehud): `Zoho WorkDrive` is 14 characters, the old fixed width,
+    /// so it ran into `OAuth 2.0`. The columns size to the longest value.
+    #[test]
+    fn ehud_368_picker_columns_never_touch() {
+        let profiles = vec![
+            json!({"name": "MyZoho", "protocol": "zohoworkdrive"}),
+            json!({"name": "Box", "protocol": "sftp"}),
+        ];
+        let widths = benchmark_picker_widths(&profiles);
+        let (server, access) = benchmark_profile_identity(&profiles[0]);
+        assert_eq!(server, "Zoho WorkDrive");
+        let row = benchmark_picker_label(&server, &access, "MyZoho", widths);
+        assert!(
+            row.starts_with("Zoho WorkDrive  OAuth 2.0  MyZoho"),
+            "{row:?}"
+        );
+        let header = benchmark_picker_label("Server", "Protocol", "Profile", widths);
+        assert_eq!(
+            header.find("Protocol"),
+            row.find("OAuth 2.0"),
+            "{header:?} / {row:?}"
+        );
+    }
+
+    /// #368 (Ehud): durations in hours, minutes and seconds, each unit shown
+    /// only once the duration reaches it.
+    #[test]
+    fn ehud_368_durations_read_in_hours_minutes_seconds() {
+        use std::time::Duration;
+        assert_eq!(
+            format_benchmark_duration(Duration::from_millis(4_240)),
+            "4.2s"
+        );
+        assert_eq!(format_benchmark_duration(Duration::from_secs(42)), "42s");
+        assert_eq!(
+            format_benchmark_duration(Duration::from_secs(125)),
+            "2m 05s"
+        );
+        assert_eq!(
+            format_benchmark_duration(Duration::from_secs(3_725)),
+            "1h 02m 05s"
+        );
+        // At the boundaries the rounding never shows an extra unit's worth.
+        assert_eq!(
+            format_benchmark_duration(Duration::from_millis(9_960)),
+            "10s"
+        );
+        assert_eq!(
+            format_benchmark_duration(Duration::from_millis(59_600)),
+            "1m 00s"
+        );
+        assert_eq!(format_benchmark_duration(Duration::ZERO), "0.0s");
+    }
+
+    /// #368 (Ehud): a benchmark profile without authorization names itself
+    /// and how to authorize it, never an authorization URL nor the
+    /// providers' internal wording.
+    #[test]
+    fn ehud_368_an_unauthorized_profile_says_which_and_how_without_a_url() {
+        let line = oauth_profile_connect_error(
+            "My Dropbox",
+            "Authentication failed: Not authenticated. Call start_auth() first.",
+        );
+        assert!(line.contains("profile 'My Dropbox'"), "{line}");
+        assert!(
+            line.contains(&format!(
+                "aeroftp-cli profile-auth {} ",
+                shell_arg("My Dropbox")
+            )),
+            "{line}"
+        );
+        // A name the shell would split or expand stays one argument.
+        let odd = oauth_profile_connect_error("Bob's $HOME", "Invalid token");
+        assert!(odd.contains(&shell_arg("Bob's $HOME")), "{odd}");
+        assert!(!line.contains("start_auth"), "{line}");
+        assert!(!line.contains("http"), "{line}");
+        assert!(benchmark_skip_reason(6).contains("profile-auth"));
+    }
+
+    /// No benchmark surface may start a browser authorization: the CLI and
+    /// the MCP tool (which runs the CLI) never call the flow that builds an
+    /// authorization URL, nor print one (v4.2.3 printed Dropbox's, #368).
+    #[test]
+    fn ehud_368_no_benchmark_surface_starts_a_browser_authorization() {
+        let flow = concat!("start_auth", "_flow(");
+        let printed = concat!("Authorize in ", "your browser");
+        for (name, source) in [
+            ("aeroftp_cli.rs", include_str!("aeroftp_cli.rs")),
+            ("mcp/tools.rs", include_str!("../mcp/tools.rs")),
+            (
+                "community_benchmark/engine.rs",
+                include_str!("../community_benchmark/engine.rs"),
+            ),
+            ("profile_auth.rs", include_str!("../profile_auth.rs")),
+        ] {
+            assert!(!source.contains(flow), "{name} starts a browser flow");
+            assert!(
+                !source.contains(printed),
+                "{name} prints an authorization URL"
+            );
+        }
+    }
+
+    /// #368 (Ehud): a parallel-download fallback is reported in the profile
+    /// it happened on, once, instead of repeated after the last profile.
+    #[test]
+    fn ehud_368_download_fallback_warnings_land_once_in_their_report() {
+        let fallback = "parallel download unavailable: the S3 HEAD probe was refused (HTTP 404); using a single stream";
+        let mut errors = vec!["upload failed".to_string()];
+        benchmark_absorb_warnings(
+            &mut errors,
+            vec![fallback.to_string(), fallback.to_string()],
+        );
+        benchmark_absorb_warnings(&mut errors, vec![fallback.to_string()]);
+        assert_eq!(
+            errors,
+            ["upload failed".to_string(), format!("warning: {fallback}")]
+        );
+    }
+
+    /// #368 (Ehud): `--all-protocols` measures a mode with secrets of its own
+    /// (Filen, FileLu) on the credentials the profile keeps for it, and only
+    /// a mode with none saved is skipped, saying what to do.
+    #[test]
+    fn ehud_368_fanout_runs_a_mode_on_the_credentials_the_profile_keeps() {
+        let source = json!({
+            "id": "srv_f", "name": "Filen", "protocol": "filen", "providerId": "filen",
+            "host": "filen.io", "username": "me@example.com", "persistModeCredentials": true
+        });
+        let plan = plan_protocol_fanout(std::slice::from_ref(&source), &[0]);
+        let webdav = plan.iter().find(|e| e.mode_label == "webdav").unwrap();
+        let s3 = plan.iter().find(|e| e.mode_label == "s3").unwrap();
+        let modes = json!({
+            "filen-desktop-webdav|webdav": {
+                "username": "admin", "password": "bridge-secret",
+                "server": "local.webdav.filen.io", "port": 1900
+            },
+            // An older save, keyed by the preset id alone.
+            "filen-desktop-s3": {
+                "username": "admin", "password": "s3-secret",
+                "server": "http://local.s3.filen.io:1700",
+                "options": {"bucket": "filen", "region": "filen"}
+            }
+        });
+        let synth = synth_profile_for_mode(&source, webdav, Some(&modes)).expect("webdav saved");
+        assert_eq!(synth["protocol"], json!("webdav"));
+        assert_eq!(synth["providerId"], json!("filen-desktop-webdav"));
+        assert_eq!(synth["host"], json!("local.webdav.filen.io"));
+        assert_eq!(synth["port"], json!(1900));
+        assert_eq!(synth["username"], json!("admin"));
+        assert_eq!(synth[MODE_SECRET_KEY], json!("bridge-secret"));
+        assert_eq!(synth["id"], json!("srv_f"));
+        let synth = synth_profile_for_mode(&source, s3, Some(&modes)).expect("s3 saved");
+        assert_eq!(synth["options"]["bucket"], json!("filen"));
+        assert_eq!(synth[MODE_SECRET_KEY], json!("s3-secret"));
+
+        let none = synth_profile_for_mode(&source, webdav, Some(&json!({}))).unwrap_err();
+        assert!(
+            none.contains("no credentials saved in this profile"),
+            "{none}"
+        );
+        let saved = vec![
+            source.clone(),
+            json!({"name": "Filen local Dav", "protocol": "webdav", "providerId": "filen-desktop-webdav"}),
+        ];
+        assert_eq!(
+            benchmark_saved_profile_in_mode(&saved, webdav),
+            Some((1, "Filen local Dav".to_string()))
+        );
+        // Live run (#368): when that profile is in the same sweep, the mode
+        // is measured there, and the skip says so instead of asking to add it.
+        let covered = benchmark_mode_skip_reason(
+            webdav,
+            none.clone(),
+            Some((1, "Filen local Dav".to_string())),
+            &[0, 1],
+        );
+        assert_eq!(
+            covered,
+            "mode 'webdav' is measured in this run by the saved profile 'Filen local Dav'"
+        );
+        let elsewhere = benchmark_mode_skip_reason(
+            webdav,
+            none.clone(),
+            Some((1, "Filen local Dav".to_string())),
+            &[0],
+        );
+        assert!(
+            elsewhere.ends_with(
+                "(the saved profile 'Filen local Dav' is in that mode: add it with --compare)"
+            ),
+            "{elsewhere}"
         );
     }
 
