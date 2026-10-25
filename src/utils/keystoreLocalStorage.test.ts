@@ -11,7 +11,9 @@ const autostart = vi.hoisted(() => ({
     enable: vi.fn(async () => {}),
     disable: vi.fn(async () => {}),
 }));
+const core = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/plugin-autostart', () => autostart);
+vi.mock('@tauri-apps/api/core', () => core);
 
 import { applyLocalStorage, collectLocalStorage } from './keystoreLocalStorage';
 
@@ -35,6 +37,7 @@ describe('applyLocalStorage', () => {
     beforeEach(() => {
         autostart.enable.mockReset().mockResolvedValue(undefined);
         autostart.disable.mockReset().mockResolvedValue(undefined);
+        core.invoke.mockReset().mockResolvedValue({ is_portable: false });
     });
 
     afterEach(() => {
@@ -71,6 +74,17 @@ describe('applyLocalStorage', () => {
 
         expect(result).toEqual({ applied: 1, error: expect.stringContaining('autostart entry not writable') });
     });
+    it('portable import restores preferences without changing installed autostart', async () => {
+        vi.stubGlobal('localStorage', storageWithCapacity(10));
+        core.invoke.mockResolvedValue({ is_portable: true });
+
+        const result = await applyLocalStorage({ _aeroftp_system_autostart: 'true', 'aeroftp-theme': 'dark' });
+
+        expect(result).toEqual({ applied: 1, error: null });
+        expect(autostart.enable).not.toHaveBeenCalled();
+        expect(autostart.disable).not.toHaveBeenCalled();
+    });
+
     it('round-trips the scheduled appearance with its previous system preference', async () => {
         const storage = storageWithCapacity(10);
         vi.stubGlobal('localStorage', storage);

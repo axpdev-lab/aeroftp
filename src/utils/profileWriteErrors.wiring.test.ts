@@ -81,6 +81,27 @@ function fixture(fail: 'read' | 'write' | 'none' = 'write') {
     return { context, read, store, events, servers };
 }
 
+function settingsSaveFixture(launchOnStartup: boolean, autostartAtOpen: boolean | null, portableMode: boolean | null) {
+    const f = fixture('none');
+    const settings = {
+        fontSize: 14, fontFamily: 'system', introHubIconSize: 32,
+        launchOnStartup, showSystemMenu: false,
+    };
+    Object.assign(f.context, {
+        saveState: 'idle', settings,
+        settingsBase: { current: { ...settings } }, settingsDraft: { current: { ...settings } },
+        autostartAtOpen: { current: autostartAtOpen }, autostartEditRevision: { current: 0 }, portableMode,
+        panelOpen: { current: true }, ConnectScope, bindSettingsScope: async (scope: ConnectScope) => scope,
+        mergeAppSettingsDraft, normalizeGuiPresentation, updateAppSettings: vi.fn(async () => ({ ...settings })),
+        clampAppFontSize: (v: unknown) => v, normalizeAppFontFamily: (v: unknown) => v, clampIntroHubIconSize: (v: unknown) => v,
+        SETTINGS_VAULT_KEY: 'settings', SETTINGS_KEY: 'settings', OAUTH_SETTINGS_KEY: 'oauth',
+        oauthSettings: Object.fromEntries(['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'].map(p => [p, {}])),
+        localStorage: { removeItem: vi.fn() }, enableAutostart: vi.fn(), disableAutostart: vi.fn(), isAutostartEnabled: vi.fn(),
+        setSettings: vi.fn(), setHasChanges: vi.fn(), setSaveState: vi.fn(), onClose: vi.fn(), setTimeout: vi.fn(),
+    });
+    return f;
+}
+
 describe('saved profile write rejection in production handlers', () => {
     it.each(['read', 'write'] as const)('keeps the primary editor open on %s failure', async fail => {
         const f = fixture(fail);
@@ -165,6 +186,30 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.events.filter(e => e.type === 'aeroftp-settings-changed')).toEqual([]);
         if (fail === 'read') expect(f.context.updateAppSettings).not.toHaveBeenCalled();
         else expect(f.store).toHaveBeenCalledWith(f.servers, false, 7);
+    });
+
+    it('portable Settings save never changes the installed app autostart', async () => {
+        const f = settingsSaveFixture(true, false, true);
+        const fn = await execute(settingsSource, ['handleSave'], f.context);
+        await fn.handleSave();
+        expect(f.context.enableAutostart).not.toHaveBeenCalled();
+        expect(f.context.disableAutostart).not.toHaveBeenCalled();
+    });
+
+    it('installed Settings save leaves autostart untouched when the checkbox did not change', async () => {
+        const f = settingsSaveFixture(false, false, false);
+        const fn = await execute(settingsSource, ['handleSave'], f.context);
+        await fn.handleSave();
+        expect(f.context.enableAutostart).not.toHaveBeenCalled();
+        expect(f.context.disableAutostart).not.toHaveBeenCalled();
+    });
+
+    it('installed Settings save applies a changed autostart checkbox exactly once', async () => {
+        const f = settingsSaveFixture(true, false, false);
+        const fn = await execute(settingsSource, ['handleSave'], f.context);
+        await fn.handleSave();
+        expect(f.context.enableAutostart).toHaveBeenCalledTimes(1);
+        expect(f.context.disableAutostart).not.toHaveBeenCalled();
     });
 
     it.each(['handleDuplicate', 'handleRenameSubmit', 'confirmDelete', 'handleDrop'] as const)('IntroHub %s never publishes unpersisted state', async name => {
