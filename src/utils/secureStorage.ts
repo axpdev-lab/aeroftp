@@ -51,14 +51,26 @@ export async function secureStoreAwaitReady(
   }
 }
 
-/** Public config reads for controller writes: unavailable/corrupt is never absent. */
-export async function secureGetConfigStrict<T>(key: 'app_settings' | 'ai_settings'): Promise<T | null> {
+/** Public config reads for controller writes: unavailable/corrupt is never absent.
+ *  With `awaitReady`, a vault that is still starting is waited for (the
+ *  {@link secureGetAwaitReady} backoff) before it counts as unavailable. */
+export async function secureGetConfigStrict<T>(
+  key: 'app_settings' | 'ai_settings',
+  { awaitReady = false, maxRetries = 6, baseDelayMs = 200 }: { awaitReady?: boolean; maxRetries?: number; baseDelayMs?: number } = {},
+): Promise<T | null> {
   let json: string;
-  try {
-    json = await invoke<string>('get_credential', { account: VAULT_PREFIX + key });
-  } catch (error) {
-    if (String(error).endsWith(`Credential not found: ${VAULT_PREFIX + key}`)) return null;
-    throw new Error('CONFIG_UNAVAILABLE');
+  for (let attempt = 0; ; attempt++) {
+    try {
+      json = await invoke<string>('get_credential', { account: VAULT_PREFIX + key });
+      break;
+    } catch (error) {
+      if (String(error).endsWith(`Credential not found: ${VAULT_PREFIX + key}`)) return null;
+      if (awaitReady && String(error).includes('STORE_NOT_READY') && attempt < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, baseDelayMs * (attempt + 1)));
+        continue;
+      }
+      throw new Error('CONFIG_UNAVAILABLE');
+    }
   }
   try {
     const value: unknown = JSON.parse(json);
