@@ -1,6 +1,6 @@
 # The AeroFTP Wrapper Stack
 
-> _Last updated: 2026-06-22_
+> _Last updated: 2026-10-26_
 
 > Status: living document. Covers the at-rest transformation pipeline shared by
 > AeroVault (static container) and, progressively, AeroSync (streaming engine).
@@ -84,21 +84,17 @@ encrypted**. Compressing after encrypting saves nothing.
 A note on *why* the ciphertext looks random, because it is easy to state this
 imprecisely:
 
-> Cryptographic hashes (Argon2, scrypt, SHA-2/3, BLAKE2/3, RIPEMD) and block
-> ciphers in feedback modes (AES-CBC, AES-CFB) exhibit a full avalanche effect:
-> a single-bit change in the input produces a fully-changed output. AEAD modes
-> built on top of stream-cipher constructions (AES-GCM, AES-GCM-SIV,
-> ChaCha20-Poly1305) do not have this property in their ciphertext body: a
-> single-bit plaintext change produces a single-bit ciphertext change. The
-> avalanche surface in those modes lives in the authentication tag, which
-> detects any tampering or corruption at decrypt time. AeroVault uses
-> AES-256-GCM-SIV, so this is the distinction that applies to its at-rest
-> format.
+For fixed-key, fixed-nonce stream constructions such as AES-GCM or
+ChaCha20-Poly1305, changing one plaintext bit changes the corresponding
+ciphertext bit, while authentication detects the modification. AeroVault uses
+**AES-GCM-SIV**, whose synthetic tag is derived from the plaintext and then seeds
+the counter-mode encryption. Changing the plaintext therefore changes that seed;
+the fixed-keystream single-bit statement does not apply to GCM-SIV. See
+[RFC 8452 section 4](https://www.rfc-editor.org/rfc/rfc8452.html#section-4).
 
-The "compress before encrypt" rule still holds, because the keystream itself is
-statistically indistinguishable from random and the ciphertext inherits that
-property regardless of mode. The justification routes through "the keystream
-looks random", not "the cipher has avalanche on the body".
+Compression must precede encryption because encrypted data has no useful
+compressible structure. This rationale does not depend on describing a
+particular cipher's avalanche effect.
 
 ### Chunking before compression
 

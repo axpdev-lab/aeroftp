@@ -1,9 +1,9 @@
 # AeroFTP LLM Integration Guide
 
-> _Last updated: 2026-06-28_
+> _Last updated: 2026-10-26_
 
-> Version: 1.1
-> Date: 2026-04-27
+> AeroFTP reference: v4.2.5
+> Reviewed: 2026-10-26
 > For: LLM/AI agent developers integrating with AeroFTP CLI or MCP server
 
 ---
@@ -29,7 +29,7 @@ AeroFTP exposes 3 integration points for LLMs:
 | **stdout** | Data only (file listings, content, JSON) | Stable, parseable |
 | **stderr** | Progress, warnings, errors | Informational, not for parsing |
 
-Always use `--json` for machine-readable output. Always redirect stderr: `2>/dev/null` or `2>log.txt`.
+Use `--json` for machine-readable output and keep stdout/stderr separate. Preserve stderr for failures and warnings, for example `2>log.txt`; discarding it with `2>/dev/null` is suitable only when those diagnostics are deliberately unnecessary.
 
 ### Exit Codes
 
@@ -39,12 +39,12 @@ Always use `--json` for machine-readable output. Always redirect stderr: `2>/dev
 | 1 | Connection failed | Yes | Retry with backoff |
 | 2 | Not found | No | Check path exists |
 | 3 | Permission denied | No | Check credentials |
-| 4 | Transfer failed | Yes | Retry, check disk space |
+| 4 | Transfer failed or partial | Inspect first | Read JSON status, errors and scan-completeness fields before retrying |
 | 5 | Invalid usage | No | Fix command syntax |
 | 6 | Auth failed | No | Re-authenticate |
 | 7 | Not supported | No | Use different operation |
-| 8 | Timeout | Yes | Increase timeout, retry |
-| 9 | Already exists / not empty | No | Skip or use `--force` |
+| 8 | Stopped at a limit, nothing failed | Inspect first | Raise the timeout or sync `--max-transfer` budget; JSON `over_budget` identifies the latter |
+| 9 | Already exists / not empty | No | Preserve the target; overwrite/delete only with explicit authorization |
 | 10 | Server/parse error | Maybe | Check server status |
 | 11 | Local I/O error | Maybe | Check disk, permissions |
 | 99 | Unknown error | Maybe | Inspect error message |
@@ -263,7 +263,7 @@ Install the [AeroFTP MCP Server](https://marketplace.visualstudio.com/items?item
 aeroftp-cli mcp
 ```
 
-The MCP server communicates via JSON-RPC 2.0 over stdin/stdout. It is multi-server by design: every tool call carries a `server` argument naming a saved profile, so a single MCP process can route operations across the whole vault. Auto-initializes the Universal Vault, or falls back to `AEROFTP_MASTER_PASSWORD` when set. Per-profile tool calls are serialized.
+The MCP server communicates via JSON-RPC 2.0 over stdin/stdout. It is multi-server by design: remote tool calls carry a `server` argument naming a saved profile, so one process can route across the vault. Diagnostics, local recovery tools and cross-profile operations have their own schemas. Auto-initializes the Universal Vault, or falls back to `AEROFTP_MASTER_PASSWORD` when set. Per-profile tool calls are serialized.
 
 ### Rate Limits
 
@@ -273,9 +273,9 @@ The MCP server communicates via JSON-RPC 2.0 over stdin/stdout. It is multi-serv
 | Mutative | 400/min | `aeroftp_upload_file`, `aeroftp_upload_many`, `aeroftp_create_directory`, `aeroftp_rename`, `aeroftp_edit`, `aeroftp_download_file`, `aeroftp_sync_tree`, `aeroftp_close_connection`, `aeroftp_transfer`, `aeroftp_transfer_tree`, `aeroftp_touch`, `aeroftp_speed`, `aeroftp_correct_gen`, `aeroftp_correct_repair` |
 | Destructive | 100/min | `aeroftp_delete`, `aeroftp_delete_many`, `aeroftp_cleanup` |
 
-### Available Tools (35+ canonical)
+### Available Tools (40 primary tools, 38 compatibility aliases)
 
-The canonical MCP tool set uses the `aeroftp_` prefix. Each tool also ships a matching `remote_*` alias for callers that prefer the cross-profile naming convention.
+The MCP server exposes 78 names: 40 primary tools (39 `aeroftp_*` names plus `server_exec`) and 38 compatibility aliases. Alias availability is tool-specific; introspect `tools/list` rather than constructing names. The generated [command inventory](COMMAND-INVENTORY.json) records the full name list.
 
 > **Note**: the v4.1.0 AeroAgent coding tools (the `coding_*` workspace search, diagnostics, git, run-checks / verify, and patch tools) are GUI-only. They are **not** exposed over the MCP server, so they do not appear in the table below.
 
@@ -284,14 +284,17 @@ The canonical MCP tool set uses the `aeroftp_` prefix. Each tool also ships a ma
 | `aeroftp_list_servers` | ReadOnly | List saved server profiles in the vault (filters: `name_contains`, `protocol`, `limit`, `offset`) |
 | `aeroftp_agent_connect` | ReadOnly | Single-shot connect probe: connect / capabilities / quota / path in one envelope |
 | `aeroftp_mcp_info` | ReadOnly | MCP process diagnostics (started_at, uptime_secs, protocol coverage) |
+| `aeroftp_profile_auth` | Mutative | Authorize a saved profile: configure, begin, finish, status or cancel; supports provider-specific OAuth, GitHub Device Flow/App credentials, and vault-held auth state |
+| `aeroftp_transfer_stats` | ReadOnly | Most recent DAG engine transfer statistics; reports unavailable if no transfer has run |
+| `server_exec` | ReadOnly | Read-only compatibility operations `ls`, `cat`, `stat`, `find`, `df`; use dedicated tools for mutations |
 | `aeroftp_list_files` | ReadOnly | List files in a remote directory (glob, `name_contains`, `recursive`, `limit`) |
-| `aeroftp_read_file` | ReadOnly | Read a remote text file with `preview_kb` window and soft-truncate inside the 1 MB hard cap |
+| `aeroftp_read_file` | ReadOnly | Read a bounded remote text preview; inspect the schema for the current preview and truncation controls |
 | `aeroftp_file_info` | ReadOnly | Stat a remote file or directory (size, mtime, type, hash where supported) |
 | `aeroftp_search_files` | ReadOnly | Search remote tree by name pattern (glob, extension filters) |
 | `aeroftp_storage_quota` | ReadOnly | Storage quota / usage where the protocol exposes it |
 | `aeroftp_head` / `aeroftp_tail` | ReadOnly | First / last N lines of a remote text file |
 | `aeroftp_tree` | ReadOnly | Recursive directory tree, depth-capped |
-| `aeroftp_hashsum` | ReadOnly | Server-side checksum (SHA-256 / SHA-1 / MD5 / BLAKE3) with provider fallback |
+| `aeroftp_hashsum` | ReadOnly | Compute a remote file hash through the shared read/download path (cap 256 MiB); do not assume a server-side checksum API |
 | `aeroftp_check_tree` | ReadOnly | Compare local vs remote tree with two-sided checksum, per-group caps (`max_match`, `max_differ`, `max_missing_local`, `max_missing_remote`), `omit_match`, `compare_method` flag per entry |
 | `aeroftp_sync_doctor` | ReadOnly | Preflight risk summary with `suggested_next_command` (lighter than `sync_tree dry_run`) |
 | `aeroftp_reconcile` | ReadOnly | Categorized size-only diff variant of `check_tree` with `elapsed_secs` + `suggested_next_command` |
@@ -301,7 +304,7 @@ The canonical MCP tool set uses the `aeroftp_` prefix. Each tool also ships a ma
 | `aeroftp_download_file` | Mutative | Download one remote file with progress stream |
 | `aeroftp_create_directory` | Mutative | Create a remote directory (idempotent with `parents`) |
 | `aeroftp_rename` | Mutative | Rename / move a remote file or directory |
-| `aeroftp_edit` | Mutative | Find-and-replace on a remote UTF-8 text file (no full download) |
+| `aeroftp_edit` | Mutative | Find-and-replace in a bounded remote UTF-8 text file; publication safety depends on provider replace capabilities |
 | `aeroftp_sync_tree` | Mutative | Bidirectional sync with `plan[]` (per-file decision) and `summary.delta_files[]` (per-file delta breakdown) |
 | `aeroftp_transfer` | Mutative | Cross-profile single-file copy between two saved profiles |
 | `aeroftp_transfer_tree` | Mutative | Cross-profile recursive directory copy (`max_files` cap, `summary_only`, `dry_run`) |
@@ -371,7 +374,7 @@ aeroftp-cli agent-info --json 2>/dev/null
 ```
 
 Returns:
-- Available commands with syntax (82 top-level commands, grouped in the `commands` object as `safe` / `modify` / `destructive` / `advanced`)
+- Available commands with syntax (99 top-level commands, grouped in the `commands` object as `safe` / `modify` / `destructive` / `advanced`)
 - Supported protocols and provider integrations (7 transport protocols + 25+ native provider integrations)
 - Per-protocol `protocol_features` map (token vocabulary: `resume`, `find`, `server_copy`, `checksum`, `chmod`, `symlinks`, `permissions`, `share_links`, `versions`, `change_tracking`, `thumbnails`)
 - `agent_connect_supported_protocols` array for the live-connect allowlist
@@ -387,10 +390,10 @@ Returns:
 ### Chunk Size Override
 
 ```bash
-# Large files on S3 (64 MB parts instead of default 5 MB)
+# Explicitly request 64 MiB S3 parts; provider constraints still apply
 aeroftp-cli put --profile "S3" --chunk-size 64M ./large-file.tar.gz /backups/
 
-# SFTP with larger buffer (256 KB instead of default 32 KB)
+# Explicitly set a 256 KiB SFTP buffer (also the provider default)
 aeroftp-cli get --profile "NAS" --buffer-size 256K /data/big-file.bin ./local/
 ```
 

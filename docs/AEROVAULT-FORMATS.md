@@ -66,10 +66,11 @@ Cross-family opens are **rejected before any allocation or decrypt** by a magic
 check, so there is no cross-parser confusion or type-confusion primitive. This
 non-interoperability is by design: the two binary layouts are not convertible in
 place. To move data between families, extract from one and re-add to the other
-(the GUI and CLI both expose extract + create). A "Change Mode" repack that
-performs this extract-and-rebuild as a single operation (v2<->v3, and v2
-standard<->cascade), atomically swapping the rebuilt container, is in preparation
-for a future release and is not yet shipped.
+(the GUI and CLI both expose extract + create). The shipped **Change Mode** operation performs this extract-and-rebuild
+(v2<->v3, and v2 standard<->cascade) and atomically swaps the rebuilt container.
+It is available from an open vault next to Change Password and through
+`aeroftp-cli vault change-mode`; it keeps the password and requires enough free
+space for the rebuilt container.
 
 ## Header authentication
 
@@ -91,4 +92,4 @@ for a future release and is not yet shipped.
 - `AEROVAULT3` block AAD = `b"AeroVault v3 block"` + block_index (u64 LE) + the
   128-bit keyed-BLAKE3 chunk id as its 32-character hex string.
 
-_Last updated: 2026-06-22._
+_Last updated: 2026-10-26._

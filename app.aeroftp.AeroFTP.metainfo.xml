@@ -20,27 +20,27 @@
     </p>
     <p>Security and Encryption:</p>
     <ul>
-      <li>AeroVault v2: Military-grade encrypted containers with AES-256-GCM-SIV, Argon2id, HMAC-SHA512, and optional ChaCha20 cascade</li>
+      <li>AeroVault encrypted containers with authenticated encryption, password-based key derivation, and optional error correction</li>
       <li>Cryptomator format 8 vault support (scrypt + AES-SIV + AES-GCM)</li>
       <li>Universal Credential Vault with AES-256-GCM encryption and optional master password</li>
       <li>Archive encryption: ZIP and 7z with AES-256 password protection</li>
-      <li>Memory zeroization for all passwords and keys (Rust secrecy + zeroize)</li>
+      <li>Credential locking and optional second-factor protection for vault access</li>
     </ul>
     <p>AI Assistant:</p>
     <ul>
-      <li>AeroAgent Pro: AI-powered assistant with 65 tools, shell command execution, server exec, RAG indexing, plugin system, streaming markdown, prompt templates, and cost budget tracking</li>
+      <li>AeroAgent: AI-assisted file operations, code tools, remote operations, plugin support, streaming responses, prompt templates, and approval controls</li>
       <li>26 AI providers: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi, Alibaba Model Studio, DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, AI21 Labs, Cerebras, SambaNova, Fireworks AI, Nvidia NIM, Z.AI, Hyperbolic, Novita, Yi, Kilo Gateway, Amazon Bedrock, Custom</li>
       <li>Vision/multimodal: Attach images for analysis with GPT-4o, Claude, Gemini</li>
-      <li>Native function calling with streaming responses and cost tracking</li>
+      <li>Native function calling with streaming responses and tool execution controls</li>
     </ul>
     <p>File Management:</p>
     <ul>
       <li>Dual-pane file browser with list/grid views, thumbnails, and media player</li>
       <li>Archive browser for ZIP, 7z, TAR, and RAR with selective extraction</li>
-      <li>Smart Sync with intelligent conflict resolution (3 modes)</li>
+      <li>AeroSync Compare and Plan with Backup, Update, Mirror, and Two-way modes</li>
       <li>Batch Rename with 4 modes and live preview</li>
       <li>Monaco code editor (VS Code engine) with syntax highlighting</li>
-      <li>Integrated terminal with SSH remote shell and 8 themes</li>
+      <li>Integrated terminal with SSH remote shell and 13 themes</li>
       <li>47 languages at 100% coverage: quality-audited translations with native script integrity</li>
       <li>AeroPlayer: Built-in media player with 14 visualizer modes, WebGL GPU shaders, 10-band EQ, and beat detection</li>
     </ul>
@@ -146,6 +146,18 @@
   </languages>
 
   <releases>
+    <release version="4.2.5" date="2026-10-26">
+      <description>
+        <p>Safer synchronization, faster Proton Drive transfers, and desktop reliability improvements.</p>
+        <ul>
+          <li>AeroSync preserves literal filenames, canonical Unicode correspondence, progress, and template settings; incomplete scans and ambiguous download names retain safe boundaries.</li>
+          <li>Native Proton Drive reduces redundant requests and overlaps transfers, while CLI compatibility mode uses native bulk groups in more operations.</li>
+          <li>Windows portable updates, startup preferences, logging, and desktop Open with integration are repaired.</li>
+          <li>Application settings remain in the encrypted vault, diagnostic errors redact complete secret values, and security dependencies are refreshed.</li>
+          <li>Benchmark latency, scoped cleanup, provider operations, interface translations, and public documentation are updated.</li>
+        </ul>
+      </description>
+    </release>
     <release version="4.2.4" date="2026-10-20">
       <description>
         <p>Native Proton Drive, Headless Profiles, and Bulk Transfers. Connect to Proton Drive through the native client with browser sign-in and encrypted vault sessions, or keep the official CLI mode. Create and authorize saved profiles from the GUI, CLI and MCP with consistent options and profile-bound credentials.</p>

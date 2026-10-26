@@ -5,6 +5,73 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.5] - 2026-10-26
+
+### Safer Sync, Faster Proton Transfers, and Desktop Reliability
+
+AeroSync preserves literal filenames, matches canonical Unicode names and keeps progress and template settings consistent. Proton Drive transfers make fewer requests and use native bulk operations in more places. Folder downloads can start before scanning finishes, while stricter destination checks prevent ambiguous filenames from overwriting one another. Windows portable updates, desktop file opening, diagnostics and translations receive further repairs.
+
+The complete change record and remaining follow-ups are in the [4.2.5 release tracker](https://github.com/axpdev-lab/aeroftp/issues/1318).
+
+#### Added
+
+- **Benchmark latency and service recommendations.** Signal bars and measured latency help compare services from your own network; a best protocol is named only when two different protocols supplied comparable measurements (@EhudKirsh, #368, #277, #1341, #1361).
+- **Open any file with AeroFTP.** Desktop file opening selects the file in AeroFile and previews images in AeroImage or text in the text preview. Linux integration works again, and files and archives opened during startup are retained (@EhudKirsh, #347, #1359).
+
+#### Fixed
+
+- **AeroSync preserves folders and converged files.** Compare retains shared and empty remote directories, S3 implicit parents and typed rclone entries, and skips files that already match while preserving actionable checksum and type conflicts (#1322).
+- **Literal Unix backslashes remain literal.** Recursive uploads, sync, watchers and GUI transfers no longer confuse a backslash in a filename with a nested path. Windows drive and UNC roots remain navigable, remote parent-creation errors are handled, and escaped ignore reinclusions stay reachable (#1324, #1325).
+- **Canonical Unicode names match without losing their real paths.** Compare, watcher events, resume and navigation retain exact object identities, including distinct siblings and rename collisions. Confirmation on the original macOS/SFTP setup remains pending (@bratushkadan, #1326, #1328, #1329).
+- **AeroSync progress and templates stay consistent.** Compare and Plan retain scan progress, queue progress uses the whole plan, and compatible template imports reuse the comparison. Exported templates preserve Update and other Plan settings, reject invalid values and retain 4.2.4 defaults (@EhudKirsh, #347, #1366, #1368, #1372).
+- **Sync refuses incomplete or ambiguous destinations.** AeroCloud does not upload over objects hidden by an incomplete scan; single-file fallback retains versioned backups. GUI and CLI folder downloads reject duplicate, sanitized, case-folded and canonical Unicode aliases instead of overwriting an earlier file (#1365, #1367, #1369).
+- **Recursive scans report their limits.** Interrupted or capped scans report partial results; provider root spellings produce the right child paths. B2 bucket-root recursion is refused, internal upload symlinks are skipped, GitLab absolute paths remain repository-rooted, and FUSE children keep distinct inodes (#1343, #1349, #1367).
+- **Folder downloads start while scanning continues.** CLI recursive downloads and GUI folder downloads stream discovered files on providers that can give each transfer its own session (#1363).
+- **Interrupted downloads can retry immediately.** Failed HTTP and SFTP attempts settle their partial writes before returning, and a retry waits for the abandoned attempt. Unverified in-place partial downloads restart from byte zero; a local download cannot truncate its own source (#1342, #1357).
+- **FTP resumes retain their offset.** REST is sent at the right point for servers that reject an earlier restart command. Servers without restart support receive a complete-file fallback, and unreadable listing sizes remain unknown rather than zero (#1331, #1339, #1367).
+- **Proton CLI bulk reaches more operations.** Relative paths, interleaved sync trees, no-clobber transfers and MCP upload batches use suitable native groups. AeroSync and AeroCloud send runs through the provider's bulk path, and downloads verify the uploader's claimed size (#1334, #1360).
+- **Native Proton Drive makes fewer requests.** My Files is fetched with the account keys, downloads avoid a redundant file lookup and keep up to ten blocks in flight, and up to five file transfers or folder scans can run together. CLI commands unlock the vault once (#1335, #1340, #1346).
+- **Proton mode changes preserve profile paths.** CLI mode starts in My Files, and switching modes translates the initial path, AeroCloud folders and sync histories. Pending syncs and colliding histories block the switch, and a failed switch rolls back (#1352, #1369).
+- **MCP batches and first syncs retain their contracts.** Upload batches honor batch-level no-clobber and delay settings, and a first sync into a missing directory ends successfully when all work succeeds. Whole-call bulk refusal can fall back to individual files without hiding failures (#1338, #1375).
+- **Provider probes distinguish absence from failure.** Refused requests, unreadable metadata and incomplete listings do not authorize writes as if a destination were missing; protected writes use verified checks or native create-only guards (#1350).
+- **Filen Desktop uploads can be moved after publication.** S3 preset renames and moves wait for a fresh upload to become visible, including through a new connection (#1371).
+- **WebDAV keeps real children and MEGAcmd's served path.** MEGAcmd 2.6 bridge-root profiles reach the served folder and can create directories. Listings exclude the actual base entry while retaining a child named like its parent (#1348, #1369).
+- **OneDrive follows shortcuts and shared folders.** Operations resolve their targets consistently across the provider's file operations (@EhudKirsh, #368, #1370).
+- **Google Drive permanent removal handles empty searches.** Empty trash searches no longer fail parsing, and matching searches request the fields needed to identify the trashed item (#1364).
+- **Checksums handle ignored byte ranges.** A server that returns the whole object gets one checked full-download fallback. MCP and AeroAgent validate hash lengths, and reconcile reports failed checksums separately with a partial verdict (#1373).
+- **Windows portable updates keep the application executable.** Updates select the GUI executable by name, replace it without leaving the launch path empty, and support updates from older portable builds. Subsequent portable updates also replace the bundled CLI executables (#1351).
+- **Windows portable state survives startup and reboot.** A dismissed isolation banner stays dismissed, vault preferences reconcile after initialization or unlock, and portable settings never change an installed copy's startup entry (@Detektywi, #1376, #1377).
+- **Portable logs stay inside the portable folder.** Logging uses `data/logs`, startup survives an unavailable log destination, and diagnostics read the actual application log on every platform. The banner distinguishes an installed app's data from portable leftovers, and updater cleanup paths are not opened as user files (#1358, #1369).
+- **Benchmark runs stop and clean up with accurate results.** Ctrl+C and timeouts stop owned work; picker columns, duration formatting, per-mode credentials and fallback warnings follow the tested behavior. Proton labels identify the client mode, trash cleanup is identity-checked, and reports disclose cleanup that a provider cannot perform (@EhudKirsh, #368, #277, #1341, #1353, #1362, #1370).
+- **Nextcloud benchmark cleanup removes only its own trash item.** Benchmark and CLI speed-test cleanup on Nextcloud and ownCloud targets the deleted item. Koofr selective purge and Filen trash support remain follow-ups (#1374).
+- **Translations cover rendered interface text.** Labels, activity lines, status messages, badges, dialogs, accessibility text and interpolated values use translations across all 47 languages. Counted labels use the locale's plural forms, with regression checks against rendered English and malformed counts (#1333, #1337, #1345, #1347, #1354).
+
+#### Security
+
+- **Application settings stay in the encrypted vault.** Confirmed writes remove the legacy plaintext WebView copy, migration writes only into an empty settings vault, and a starting or unreadable vault cannot cause a partial settings write to replace the saved configuration (#1379).
+- **Diagnostic and agent errors redact complete credentials.** Authorization headers, quoted and escaped secret fields, and bulk-refusal errors are scrubbed consistently before reaching diagnostic bundles, AeroAgent, the CLI agent or MCP (#1375).
+- **Transfer checks preserve local and remote data.** Download-folder probes cannot delete an existing file, ambiguous destination names are refused, incomplete scans retain a partial verdict, and sync does not overwrite a remote object whose absence was never established (#1350, #1367, #1369).
+- **FTP command fields reject CR and LF.** Unsafe names are refused before any FTP command is sent (#1339).
+- **Security dependencies are refreshed.** Compatible updates cover the AWS-LC, HTTP/2, archive and TLS stacks; crypto-bigint 0.7 moves to 0.7.9 and ctutils and clipboard-win move past the reported advisory or yank. The documented crypto-bigint 0.5.5 advisory exception remains in force for dependencies without a compatible patched release (#1320, #1330, #1344, #1355, #1378).
+- **The TLS trust stores remove two more emSign roots.** webpki-roots and webpki-root-certs 1.0.11 follow the CCADB removal of emSign Root CA - C1 and emSign ECC Root CA - C3 (#1387).
+- **Scanner enrollment and security contact.** The scanner-facing build and threat model support independent review, and SECURITY.md lists the maintainer's security contact alongside private GitHub advisories (#1319, #1321, #1367).
+
+#### Changed
+
+- **Compatible dependencies are updated together.** Vite 8.3.5, react-window 2.5.0, uuid 1.29.0 and unicode-normalization 0.1.26 are validated in one dependency bundle (#1387).
+- **Snap security refresh reads architecture-qualified packages.** The staged-package audit accepts the published manifest's architecture suffixes while refusing mismatched architectures, allowing the weekly refresh to reach its rebuild decision (#1380).
+- **CI keeps useful caches and finishes main runs.** Rust caches are shared by job family, main builds survive later merges, and bounded dependency installs save complete or partial apt archives so a slow-mirror rerun can resume. Successful installs can promote an unchanged partial cache; a partial-download fixture waits for its recorded write (#1332, #1336, #1356, #1367).
+- **Provider bulk documentation follows the active sync path.** The guide describes AeroSync and AeroCloud's native bulk routing and its fallback and recovery boundaries (#1367).
+- **Public documentation follows the current code.** Internal v4.2.3 triage notes are removed from the public tree; the release documentation is reconciled with the active command grammars, credential storage, provider modes and transfer boundaries (#1381).
+
+#### Contributors
+
+Thanks to the people who reported issues, contributed code and tested the changes:
+
+[<img src="https://github.com/EhudKirsh.png?size=48" width="48" height="48" alt="@EhudKirsh" />](https://github.com/EhudKirsh)
+[<img src="https://github.com/bratushkadan.png?size=48" width="48" height="48" alt="@bratushkadan" />](https://github.com/bratushkadan)
+[<img src="https://github.com/Detektywi.png?size=48" width="48" height="48" alt="@Detektywi" />](https://github.com/Detektywi)
+
 ## [4.2.4] - 2026-10-20
 
 ### Native Proton Drive, Headless Profiles, and Bulk Transfers
@@ -3743,7 +3810,7 @@ A second independent audit (Claude Opus 4.7, 250 live tool calls across MCP and 
 - **GitLab CHANGELOG import**: Import release notes from CHANGELOG.md in Create Release form. Always reads from repo root regardless of current navigation path
 - **GitLab self-hosted TLS**: Accept self-signed certificates toggle for self-hosted instances (appears when host is not gitlab.com)
 - **GitLab form improvements**: Branch field, token creation link, remote/local path fields, save connection with icon picker
-- **CLI `serve http`**: Expose any remote as a local read-only HTTP server. HTML directory listing with navigation, file download, HEAD without download, range requests (HTTP 206 Partial Content with `Content-Range`), `Accept-Ranges: bytes`, MIME type guessing, path traversal protection, graceful Ctrl+C shutdown. Supports all 27 providers via URL or `--profile`. See [APPENDIX-W](docs/dev/roadmap/APPENDIX-W_Rclone-Parity.md)
+- **CLI `serve http`**: Expose any remote as a local read-only HTTP server. HTML directory listing with navigation, file download, HEAD without download, range requests (HTTP 206 Partial Content with `Content-Range`), `Accept-Ranges: bytes`, MIME type guessing, path traversal protection, graceful Ctrl+C shutdown. Supports all 27 providers via URL or `--profile`. See the [CLI guide](docs/CLI-GUIDE.md)
 - **CLI `serve webdav`**: Expose any remote as a local read-write WebDAV server. PROPFIND (Depth 0/1, XML DAV: namespace), GET, HEAD, PUT (512 MB cap), DELETE (file + directory), MKCOL, MOVE, COPY (native `server_copy` or download+upload fallback), OPTIONS with DAV header. Reuses path primitives and state from serve http
 - **Provider range download**: `read_range(path, offset, length)` for FTP (REST + bounded RETR), S3 (Range header, 206/200 handling), and WebDAV (Range header with server-ignoring fallback). 100 MB per-request safety cap. New `supports_range_download` flag in `TransferOptimizationHints`
 

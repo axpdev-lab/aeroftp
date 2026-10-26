@@ -1,6 +1,6 @@
 # Universal Credential Vault - Technical Documentation
 
-> AeroFTP v4.0.x - Last Updated 2026-06-22
+> AeroFTP v4.2.5 - reviewed 26 October 2026
 
 ---
 
@@ -13,7 +13,7 @@ Since **v1.9.0**, the vault scope has been expanded into a **Unified Encrypted K
 ### Design Goals
 
 1. **Zero-interaction default**: Credentials save and load automatically without any user prompt
-2. **Cross-platform reliability**: The default mode stores the high-entropy passphrase in the OS keyring (gnome-keyring, Windows Credential Manager, macOS Keychain) with a robust file-based fallback, so a missing or broken keyring never blocks startup
+2. **Cross-platform reliability**: The default mode stores the high-entropy passphrase in the OS keyring (gnome-keyring, Windows Credential Manager, macOS Keychain) with a robust file-based fallback, so an unavailable keyring can use a permission-protected on-disk passphrase; that fallback has a weaker at-rest boundary than master-password mode
 3. **Optional master password**: Users who want extra protection can enable a master password at any time
 4. **Simple architecture**: One code path, no fallback chains, no health probes
 5. **Complete coverage** (v1.9.0): No sensitive data in localStorage - everything encrypted in vault
@@ -26,19 +26,19 @@ Since **v1.9.0**, the vault scope has been expanded into a **Unified Encrypted K
 ### File Layout
 
 ```
-~/.config/aeroftp/          (Linux/macOS)
+~/.config/aeroftp/          (Linux; macOS: ~/Library/Application Support/aeroftp/)
 %APPDATA%/aeroftp/          (Windows)
-├── vault.key               Binary passphrase file (76 or 136 bytes)
+├── vault.key               Key mode file (12+ bytes keyring, 76 bytes local fallback, 136 bytes master)
 ├── vault.db                AES-256-GCM encrypted credential database (JSON)
 └── ...
 ```
 
-### Two Modes
+### Key-storage modes
 
 | Mode | vault.key marker | Where the passphrase lives | User interaction | Use case |
 |------|------------------|----------------------------|------------------|----------|
 | **Auto / keyring** (default, mode `0x02`) | Mode marker only | OS keyring (gnome-keyring / Windows Credential Manager / macOS Keychain) | None - fully transparent | Most users |
-| **Legacy auto** (mode `0x00`, read-only fallback) | Passphrase in cleartext inside vault.key | vault.key file | None - fully transparent | Vaults created before the keyring default |
+| **Local fallback / legacy auto** (mode `0x00`) | Passphrase in cleartext inside vault.key | vault.key file | None - fully transparent | No usable keyring, including portable installs; also reads older auto vaults |
 | **Master** (optional, mode `0x01`) | Passphrase encrypted with user password | vault.key file (AES-GCM under an Argon2id KEK) | Enter password on app start | Security-conscious users |
 
 ### Security Model
@@ -47,7 +47,7 @@ Since **v1.9.0**, the vault scope has been expanded into a **Unified Encrypted K
 - Unix: `chmod 0o600` (owner read/write only)
 - Windows: `icacls` ACL restricting access to current user
 
-**Legacy auto mode** (the older `0x00` format, still readable) keeps the cleartext passphrase inside vault.key, protected only by the same file permissions.
+**Local fallback / legacy auto mode** (`0x00`) keeps the cleartext passphrase inside vault.key, protected only by the same file permissions. It is still written when a keyring slot cannot be claimed, including first initialization and disabling a master password. On subsequent startup, the app attempts migration into a fresh keyring slot; failure keeps the local key usable. The database remains encrypted, but a copy of both files is enough to open it in this mode.
 
 **Master mode** adds cryptographic protection:
 - User password → Argon2id (128 MiB, t=4, p=4) → 256-bit KEK
@@ -60,7 +60,7 @@ Since **v1.9.0**, the vault scope has been expanded into a **Unified Encrypted K
 
 ## vault.key Binary Format
 
-### Auto / Keyring Mode (12 bytes, current default)
+### Auto / Keyring Mode (12-byte base plus optional slot trailer)
 
 ```
 Offset  Size  Field        Description
@@ -71,9 +71,11 @@ Offset  Size  Field        Description
 10      2     PADDING      Reserved (zeroes)
 ```
 
-The 64-byte CSPRNG passphrase is stored in the OS keyring under a fixed service/account; vault.key holds only the mode marker.
+The 64-byte CSPRNG passphrase is stored under service `com.aeroftp.AeroFTP`. The account is scoped to native, portable, Flatpak or Snap installation and to release/debug builds. A new vault never replaces a key already held by that scope: it claims a fresh account with a random suffix when needed.
 
-### Legacy Auto Mode (76 bytes, read-only fallback)
+The default account needs only the 12-byte marker above. A non-default account appends `SLOT` (4 bytes), the account-name length (1 byte), then that many UTF-8 bytes. This trailer names the keyring entry; it contains no passphrase. `aeroftp-cli keystore status` reports the current vault's account. See [PRIVACY.md](../PRIVACY.md#data-stored-locally) for exact names and cleanup boundaries.
+
+### Local Fallback / Legacy Auto Mode (76 bytes)
 
 ```
 Offset  Size  Field        Description
@@ -103,7 +105,7 @@ Offset  Size  Field             Description
 
 ## Key Derivation
 
-### Passphrase → Vault Key (both modes)
+### Passphrase → Vault Key (all modes)
 
 ```
 Passphrase (64 bytes, 512 bits entropy)
@@ -186,7 +188,9 @@ App start
   → init_credential_store()
   → vault.key NOT found
   → Generate 64-byte CSPRNG passphrase
-  → Store passphrase in OS keyring; write vault.key (auto-keyring mode, 12 bytes, marker only)
+  → Claim a free install-scoped OS keyring account; write vault.key (12-byte marker, optional account trailer)
+  → If no keyring slot is usable, write the permission-protected 76-byte local fallback instead
+  → If AEROFTP_MASTER_PASSWORD was explicitly supplied, initialize in master mode without claiming a keyring account
   → Set file permissions (0o600 / ACL)
   → Create empty vault.db
   → HKDF(passphrase) → vault key
@@ -202,7 +206,7 @@ Header: Shield icon → "Set Master Password" tooltip
 ```
 App start
   → init_credential_store()
-  → vault.key exists, mode = 0x02 (auto-keyring); 0x00 (legacy-auto) handled the same way
+  → vault.key exists, mode = 0x02 (auto-keyring); 0x00 (local fallback) attempts keyring migration
   → Read passphrase from OS keyring (or from vault.key for legacy-auto)
   → HKDF(passphrase) → vault key
   → Open vault.db, cache vault key
@@ -483,7 +487,7 @@ Import flow:
 
 ### Master Mode Threat Model
 
-- **Brute force**: Argon2id with 128 MiB makes each guess take ~1 second on modern hardware. A 12-character password with mixed case/digits/symbols is practically unbreakable.
+- **Brute force**: Argon2id increases the cost of each guess; the actual time depends on the attacker's hardware. Protection still depends on a strong, unique master password.
 - **Memory dump**: Vault key is in memory while app is unlocked. Auto-lock timeout limits exposure window.
 - **vault.key exfiltration**: Without the user password, the encrypted passphrase cannot be recovered.
 

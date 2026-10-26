@@ -1,6 +1,6 @@
 # AeroFTP CLI and GUI - Agent Integration Guide
 
-> _Last updated: 2026-10-06_
+> _Last updated: 2026-10-26_
 
 > This file is for AI coding agents (Claude Code, Cursor, Codex, Devin, OpenClaw).
 > It describes CLI operations and available in-app GUI control without exposing saved credentials.
@@ -446,7 +446,7 @@ aeroftp-cli agent --mcp
 ```
 
 Current MCP mode exposes:
-- 39 primary tools across safe / medium / destructive tiers, plus 38 compatibility aliases (77 names in `tools/list`, counted in `docs/COMMAND-INVENTORY.json`): file ops, batch (`aeroftp_delete_many`, `aeroftp_upload_many`), tree sync (`aeroftp_sync_tree` with `delta_files[]` + `plan[]`), tree diff (`aeroftp_check_tree` two-sided checksum + per-group caps + `omit_match`), preflight (`aeroftp_sync_doctor`, `aeroftp_reconcile`, `aeroftp_dedupe`), cross-profile copy (`aeroftp_transfer`, `aeroftp_transfer_tree`), agent ergonomics (`aeroftp_agent_connect`, `aeroftp_speed`, `aeroftp_touch`, `aeroftp_cleanup`)
+- 40 primary tools across safe / medium / destructive tiers, plus 38 compatibility aliases (78 names in `tools/list`, counted in `docs/COMMAND-INVENTORY.json`): file ops, batch (`aeroftp_delete_many`, `aeroftp_upload_many`), tree sync (`aeroftp_sync_tree` with `delta_files[]` + `plan[]`), tree diff (`aeroftp_check_tree` two-sided checksum + per-group caps + `omit_match`), preflight (`aeroftp_sync_doctor`, `aeroftp_reconcile`, `aeroftp_dedupe`), cross-profile copy (`aeroftp_transfer`, `aeroftp_transfer_tree`), agent ergonomics (`aeroftp_agent_connect`, `aeroftp_speed`, `aeroftp_touch`, `aeroftp_cleanup`), profile authentication (`aeroftp_profile_auth`), and transfer telemetry (`aeroftp_transfer_stats`)
 - resources for saved profiles, status, capabilities, and pooled connections
 - prompt templates for deploy, backup, sync, and clean workflows
 - async stdio transport, connection pooling, request cancellation, rate limiting, and audit logging
@@ -455,11 +455,11 @@ Use this mode for Claude Desktop, Cursor, VS Code, or any other MCP client that 
 
 **JSON-RPC orchestration**: `aeroftp-cli agent --orchestrate` runs a JSON-RPC 2.0 loop over stdin/stdout for programmatic agent-to-agent integration, emitting an `agent/ready` notification with the live CLI tool count on startup.
 
-### Coming Soon
+### Delivered operations and remaining proposals
 
-- **Mutative server operations**: Available as dedicated tools - `remote_upload`, `remote_download`, `remote_mkdir`, `remote_delete`, `remote_rename`
-- **Cross-server operations**: `server_diff`, `server_sync` between two remote servers
-- **Agent session tokens**: Pre-authorized scoped sessions for headless automation
+Mutative server operations are available through `remote_upload`, `remote_download`, `remote_mkdir`, `remote_delete` and `remote_rename`. Cross-profile copies use the CLI `transfer` command or MCP `aeroftp_transfer` / `aeroftp_transfer_tree`.
+
+Dedicated remote-to-remote `server_diff` / `server_sync` and pre-authorized scoped agent-session tokens remain proposals; do not assume these tools exist. Discover the live catalog with `agent-info --json` or MCP `tools/list`.
 
 Full orchestration documentation with a verified field test report: **[Agent Orchestration](https://docs.aeroftp.app/features/agent-orchestration)**
 

@@ -4,7 +4,7 @@
 
 # AeroFTP
 
-> _Last updated: 2026-06-28_
+> _Last updated: 2026-10-26_
 
 <p align="center">
   The modern FTP client that grew into a complete file management platform. Multi-protocol, 7 integrated product modules, 47 languages, one app.
@@ -25,8 +25,8 @@
 <!-- Row 2: App Features -->
 <p align="center">
   <img src="https://img.shields.io/badge/support-multi--protocol-green" alt="Multi-Protocol Support" />
-  <img src="https://img.shields.io/badge/AI%20providers-24-ff6600?logo=openai&logoColor=white" alt="AI Providers" />
-  <img src="https://img.shields.io/badge/AI%20tools-65-ff6600" alt="AI Tools" />
+  <img src="https://img.shields.io/badge/AI%20providers-26-ff6600?logo=openai&logoColor=white" alt="AI Providers" />
+  <img src="https://img.shields.io/badge/AI%20tools-86-ff6600" alt="AI Tools" />
   <img src="https://img.shields.io/badge/languages-47-orange" alt="Languages" />
   <img src="https://img.shields.io/badge/encryption-AES--256-purple?logo=letsencrypt&logoColor=white" alt="AES-256 Encryption" />
   <img src="https://img.shields.io/badge/CLI-ready-blue?logo=gnubash&logoColor=white" alt="CLI Ready" />
@@ -333,7 +333,7 @@ AeroFTP
 │   └── AeroRsync    - Native Rust delta sync (clean-room rsync protocol 31)
 ├── AeroVault    - Military-grade encryption
 ├── AeroTools    - Code editor + Terminal + AI chat
-│   └── AeroAgent    - AI-powered assistant (65 tools, 24 providers)
+│   └── AeroAgent    - AI-powered assistant (86 built-in tools, 26 providers)
 ├── AeroFTP CLI  - Production command-line client (vault profiles, JSON output, batch scripting, daemon, FUSE mount, crypt, ncdu, agent discovery)
 └── AeroPlayer   - Media player with visualizers
 ```
@@ -407,7 +407,7 @@ It does **not** replace rsync. It talks to it.
 
 #### Measured against stock rsync
 
-Same 50 MB files, same container, same SSH loopback, back-to-back on an idle 24-core machine. The rsync side runs `-logDtprcz`, the client flags that produce **byte-identical server arguments** to the ones AeroRsync sends (`-logDtprcze.iLsfxCIvu`), verified with a wrapper that logged the server command line.
+Same 50 MB files, same container, same SSH loopback, back-to-back on an idle 24-core machine. This historical run used `-logDtprcz`, producing the same server arguments as the AeroRsync capture profile at that time (`-logDtprcze.iLsfxCIvu`). The current product profile uses `-ltprcz` (plus `A`/`X` when enabled); these timings have not been remeasured with the current flags.
 
 | Scenario | AeroRsync | stock rsync 3.2.7 |
 |---|---|---|
@@ -430,7 +430,7 @@ Repeated across three runs the timings move by a few percent and the byte counts
 
 #### Known limits
 
-Single file per invocation: AeroRsync is a delta accelerator, not a tree walker - enumeration, deletion and retention stay with AeroSync, which owns its own safety gates. Protocol 31 only, SSH remote-shell only: no `rsync://` daemon mode, and an endpoint negotiating protocol 27-30 is served by the stock binary instead. Metadata preserved today is mtime, permissions, symlinks (Unix), `user.*` xattrs (Unix, `-X`) and POSIX.1e access ACLs (Linux only, opt-in, `-A`); **owner/group and device files are not implemented**, and hardlinks are structurally blocked until recursive scope exists, because detecting that two paths share an inode needs the whole file list.
+Single file per invocation: AeroRsync is a delta accelerator, not a tree walker - enumeration, deletion and retention stay with AeroSync, which owns its own safety gates. Protocol 31 only, SSH remote-shell only: no `rsync://` daemon mode, and an endpoint negotiating protocol 27-30 falls back to a plain SFTP transfer without delta in Auto/Native mode. Unix users can explicitly choose Classic mode to use the installed stock rsync binary. Metadata preserved today is mtime, permissions, symlinks (Unix), `user.*` xattrs (Unix, `-X`) and POSIX.1e access ACLs (Linux only, opt-in, `-A`); **owner/group and device files are not implemented**, and hardlinks are structurally blocked until recursive scope exists, because detecting that two paths share an inode needs the whole file list.
 
 One version note worth stating plainly: upstream rsync **dropped `sha1`** from the negotiated checksum list between 3.2.7 and 3.4.1. AeroRsync still implements it, and it works against peers that still offer it, but against a modern rsync it is simply not negotiable.
 
@@ -519,11 +519,11 @@ Exposed in the AeroVault GUI (create with Error Correction, scrub, repair) and t
 
 > [Full documentation →](https://docs.aeroftp.app/features/aerotools.html)
 
-Integrated development panel with three tools in a tabbed interface: **Monaco Editor** (VS Code engine, 50+ languages, remote file editing), **SSH Terminal** (8 themes, multiple tabs), and **AeroAgent AI Chat** with bidirectional editor sync.
+Integrated development panel with three tools in a tabbed interface: **Monaco Editor** (VS Code engine, 50+ languages, remote file editing), **SSH Terminal** (13 themes, multiple tabs), and **AeroAgent AI Chat** with bidirectional editor sync.
 
 #### AeroAgent - AI-Powered Assistant
 
-An AI assistant with **65 tools** that work across local files and remote providers. Supports **26 AI providers** (OpenAI, Anthropic, Gemini, xAI, Ollama, DeepSeek, Mistral, Cerebras, SambaNova, Fireworks, Nvidia, and 15 more). Vision/multimodal, RAG indexing, plugin ecosystem, streaming responses, multi-step autonomous execution, native MCP server mode (77 MCP tools), and Command Palette (Ctrl+Shift+P).
+An AI assistant with **86 built-in tools** that work across local files and remote providers. Supports **26 AI providers** (OpenAI, Anthropic, Gemini, xAI, Ollama, DeepSeek, Mistral, Cerebras, SambaNova, Fireworks, Nvidia, and 15 more). Vision/multimodal, RAG indexing, plugin ecosystem, streaming responses, multi-step autonomous execution, native MCP server mode (78 MCP tool names), and Command Palette (Ctrl+Shift+P).
 
 ---
 
@@ -535,7 +535,7 @@ AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and
 
 **For AI Agents (CLI)**: Tools like Claude Code, Open Interpreter, Cline, Aider, Devin, Codex, Cursor Agent, Windsurf, and other agentic frameworks can call `aeroftp-cli` directly. Structured `--json` output, vault-based `--profile` credentials (agents never see passwords), semantic exit codes, and `.aeroftp-script` batch files make AeroFTP a first-class tool in any agent's toolkit. External agents can also invoke `aeroftp-cli agent` to orchestrate AeroAgent as a credential-isolating proxy for multi-server operations. See [Agent Orchestration](https://docs.aeroftp.app/features/agent-orchestration) for the full orchestration guide, CLI reference, and a verified field test report.
 
-**For Humans (GUI + AeroAgent)**: The desktop app provides drag-and-drop file management with AeroAgent, the integrated AI assistant offering 65 tools across local files and remote providers. AeroAgent supports multi-step autonomous execution, tool approval workflows with backend-enforced grants, and 26 AI providers.
+**For Humans (GUI + AeroAgent)**: The desktop app provides drag-and-drop file management with AeroAgent, the integrated AI assistant offering 86 built-in tools across local files and remote providers. AeroAgent supports multi-step autonomous execution, tool approval workflows with backend-enforced grants, and 26 AI providers.
 
 ---
 
@@ -543,14 +543,14 @@ AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and
 
 > [Full documentation →](https://docs.aeroftp.app/cli/installation.html)
 
-Production CLI sharing the same Rust backend as the GUI. 95 top-level commands (several grouping their own subcommands: `daemon`, `jobs`, `vault`, `archive`, `crypt`, `import`/`export`, `serve`, `users`, `groups`) across 7 transport protocols and 26 native provider integrations, encrypted vault profiles, JSON output, batch scripting, daemon mode with job queue, FUSE filesystem mounting, ncdu TUI explorer, zero-knowledge crypt overlay, single-file AeroVault containers (`vault`, all formats v1/v2/v3), plaintext `.aerozip` archives (`archive create/list/extract`), recursive used-storage scan (`df --scan`) with a manual total-cap override, and native MCP server mode for AI integration.
+Production CLI sharing the same Rust backend as the GUI. 99 top-level commands (several grouping their own subcommands: `daemon`, `jobs`, `vault`, `archive`, `crypt`, `import`/`export`, `serve`, `users`, `groups`) across 7 transport protocols and 26 native provider integrations, encrypted vault profiles, JSON output, batch scripting, daemon mode with job queue, FUSE filesystem mounting, ncdu TUI explorer, zero-knowledge crypt overlay, single-file AeroVault containers (`vault`, all formats v1/v2/v3), plaintext `.aerozip` archives (`archive create/list/extract`), recursive used-storage scan (`df --scan`) with a manual total-cap override, and native MCP server mode for AI integration.
 
 > **Short invocation**: every package ships a native dispatcher, so `aeroftp <subcommand>` and the built-in 4-character name `aftp` both route to the CLI; `aeroftp-cli` is kept for back-compat. An opt-in `aero` alias can be enabled with `aeroftp-cli alias-toggle aero` (idempotent, the same command turns it off). See the [Short Invocation](docs/CLI-GUIDE.md#short-invocation) section of the CLI Guide.
 
 ```bash
 aeroftp-cli ls --profile "My Server" /var/www/ -l        # Vault profile (no credentials exposed)
 aeroftp-cli get sftp://user@host "/data/*.csv"            # Glob download
-aeroftp-cli check --profile "My Server" /local /remote --checksum  # Verify local matches remote
+aeroftp-cli check --profile "My Server" /local /remote  # Compare tree sizes; see CLI guide for checksum limits
 aeroftp-cli archive create backup.aerozip ./docs       # Plaintext archive: recovery, not secrecy
 aeroftp-cli sync --profile "My Server" /local /remote --watch      # Continuous bidirectional sync
 aeroftp-cli serve http sftp://user@host /data             # Serve remote as local HTTP
@@ -583,11 +583,11 @@ AeroFTP incorporates privacy protections that go beyond what traditional file ma
 | ------- | ------- |
 | **Master Password** | Optional Argon2id vault encryption - all credentials locked behind a single password |
 | **Multi-User Account Partition** | Optional per-user vault partitions (Argon2id-derived keys, AES partition encryption) with a boot-time Account Lock Screen, per-user profiles and AeroSync settings, an opt-in admin role with a last-admin guard, and a CLI `--user` flag. Single-user installs are unchanged; migration from an older keystore is automatic and idempotent. New in v4.0.0 |
-| **Encrypted Vault** | All sensitive data in AES-256-GCM encrypted storage - zero plaintext on disk |
-| **Zero Telemetry** | No analytics, no phone-home, no network requests beyond user-initiated connections |
-| **Memory Zeroization** | Passwords and keys cleared from RAM immediately after use |
-| **Clearable History** | One-click clear for recent locations. No persistent browsing traces |
-| **Portable Deployment** | AppImage runs without installation. Remove it and the config directory - no traces remain |
+| **Encrypted Vault** | Sensitive entries use AES-256-GCM; keyring/master-password modes and the permission-protected on-disk key fallback have distinct protection boundaries |
+| **Zero Telemetry** | No product analytics or automatic crash reporting; enabled update checks, sync, health checks, AeroShare and MCP services can communicate in the background |
+| **Memory Zeroization** | Secret buffers are zeroized on release; unlocked sessions retain the key material needed for their lifetime |
+| **Clearable History** | Recent locations and other stored histories can be cleared through their respective controls |
+| **Portable Deployment** | AppImage runs without installation; [privacy cleanup instructions](PRIVACY.md#data-stored-locally) cover data directories, logs and OS keyring entries |
 
 See [SECURITY.md](SECURITY.md) for the security policy and architecture summary, and [docs.aeroftp.app/security](https://docs.aeroftp.app/security/overview) for the complete security documentation with encryption specs, AI security model, supply chain details, and audit history.
 
@@ -608,20 +608,20 @@ Output is published in [`docs/security/security-report-latest.html`](docs/securi
 | Jun 2026 | v4.0.5 | **0** | 23 | russh 0.61.2 cleared GHSA-wwx6-x28x-8259 (HIGH) + GHSA-hpv4-5h6f-wqr3 (MEDIUM) + SFTP parsing advisories; 2 suppressions removed |
 | Jun 2026 | v4.0.7 | **0** | 28 | Full self-hosted run (`cargo audit` + `npm audit` + `osv-scanner` 2.4.0): 0 open, 28 advisories suppressed per `audit.toml`; dual blind AeroVault audit remediation shipped (grade A) |
 
-Each month we publish the run results here. Past Aikido Security reports remain linked in the Security Posture table below for archive.
+The rows above are dated historical runs, not a fresh v4.2.5 vulnerability verdict. Release preparation must use current audit results. Past Aikido Security reports remain linked in the Security Posture table below for archive.
 
 ### Security Posture
 
 | Area | Details |
 |---|---|
-| **Self-Hosted Audit** | `cargo audit` + `npm audit` + `osv-scanner` aggregator with documented suppression list - **0 open findings** ([latest report](docs/security/security-report-latest.html)) |
+| **Self-Hosted Audit** | `cargo audit` + `npm audit` + `osv-scanner` aggregator with documented suppression list - dated results in the [checked-in report](docs/security/security-report-latest.html); rerun for the release revision |
 | **OpenSSF Best Practices** | [100% passing](https://www.bestpractices.dev/projects/11994) - all 67 criteria met |
 | **Aikido Security** | Past audits archived - **Top 5% benchmark**, 0 open issues during trial period (Feb-May 2026) |
 | **Socket.dev** | Supply chain SCA monitoring on every push - dependency risk scoring, typosquatting detection |
 | **Snyk** | Continuous vulnerability scanning for npm and Cargo dependencies with automated fix PRs |
 | **CodeRabbit** | AI-driven pull-request review on every PR - inline code suggestions, secret/PII checks, complement to the SAST/SCA stack |
 | **Dependabot** | GitHub-native dependency alerts and auto-PRs cross-referenced against the self-hosted audit list |
-| **Dependency Scanning** | 1,434 packages monitored (303 JS + 1,131 Rust), daily automated scans |
+| **Dependency Scanning** | npm/Cargo dependency graphs monitored through the configured CI and advisory workflows; counts depend on the locked revision |
 | **Supply Chain** | All GitHub Actions pinned to SHA hashes, Dependabot enabled, [Sigstore](https://sigstore.dev) signing with client-side verification |
 | **Compliance** | Verified against OWASP Top 10, ISO 27001, CIS, NIS2, GDPR - 0 open issues ([March 2026 audit](docs/Security%20Audit%20Report%20axpdev-lab%20-%20March%202026.pdf)) |
 | **Security Audits** | 300+ findings resolved across [9 independent audits](https://docs.aeroftp.app/security/audits) - grade A- |

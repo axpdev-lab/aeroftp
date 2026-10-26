@@ -1,6 +1,6 @@
 # Contributing to AeroFTP
 
-> _Last updated: 2026-10-08_
+> _Last updated: 2026-10-26_
 
 First off, thank you for considering contributing to AeroFTP!
 
@@ -74,11 +74,13 @@ another worktree is already compiling.
 
 Full `npm run ci:pre-push` remains required for:
 
-- a push or merge directly to `main`
+- a direct push to `main` without checked PR CI
 - a release or pre-tag
 - CI cannot run, or the change is in a platform-specific area CI does not cover
 
-Do not push while that command is red. If a required gate cannot run, stop and
+For a clean PR merge with complete required GitHub Actions CI already green, use that CI as the merge gate. Additional local checks are required for conflict resolutions, new source edits, concrete integration concerns, CI gaps, release/pre-tag work or unavailable CI. Do not repeat Clippy or the complete local suite solely to merge the same checked revision.
+
+Do not push while a required check is red. If a required gate cannot run, stop and
 report the blocker.
 
 ## Development Setup
@@ -88,7 +90,7 @@ report the blocker.
 Core toolchain (all platforms):
 
 - **Node.js 24+** and npm (CI builds on Node 24 LTS).
-- **Rust** stable toolchain via [rustup](https://rustup.rs/) (minimum 1.85.0).
+- **Rust** stable toolchain via [rustup](https://rustup.rs/) (minimum 1.93, as declared in `src-tauri/Cargo.toml`; use the toolchain pinned in `rust-toolchain.toml`).
 - A **C/C++ compiler toolchain** and **Perl**: two native dependencies build
   from source. `ssh2` vendors OpenSSL (needs `perl` on `PATH`) and
   `whisper-rs-sys` vendors whisper.cpp and runs `bindgen` (needs **libclang**
@@ -119,7 +121,7 @@ Platform-specific native build tools:
   sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
     librsvg2-dev patchelf libfuse3-dev
   ```
-  Optional (MTP / portable devices, APPENDIX-MTP):
+  Optional (MTP / portable devices):
   ```bash
   sudo apt-get install -y libmtp-dev libmtp9t64
   ```

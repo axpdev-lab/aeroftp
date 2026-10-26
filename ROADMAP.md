@@ -1,6 +1,6 @@
 # AeroFTP Roadmap
 
-> _Last updated: 2026-09-19_
+> _Last updated: 2026-10-26_
 
 > A transparent view of where AeroFTP has been, where it is today, and where it's headed.
 > This roadmap is updated continuously. Feature requests and feedback are welcome via [GitHub Issues](https://github.com/axpdev-lab/aeroftp/issues).
@@ -23,6 +23,11 @@ Every roadmap item at a glance; the lanes below carry the full detail.
 
 | Status | Item | Target |
 |---|---|---|
+| 🟡 Preparing | Public documentation reconciliation and release-channel sync; final feature list follows reviewed merged code | v4.2.5 |
+| 🟢 Shipped | Native Proton Drive, headless profile authorization and bounded Proton CLI bulk transfers | v4.2.4 |
+| 🟢 Shipped | Checked writes, resumable ranges, SITE commands and AeroAgent 1.7 visible GUI control | v4.2.3 |
+| 🟢 Shipped | AeroAgent MCP client and scoped read-only workers, faster SFTP and parallel selections | v4.2.2 |
+| 🟢 Shipped | Twake Drive, IBM Cloud Object Storage and Mail.ru presets, Proton CLI and AeroAgent 1.5 | v4.2.1 |
 | 🟢 Shipped | Measured against rclone: multi-stream downloads by default, SFTP connection reuse and read-ahead, S3 delta upload, Filebase preset, identifier app.aeroftp.AeroFTP | v4.2.0 |
 | 🟢 Shipped | CI gates that report an empty run + POSIX.1e ACLs in AeroSync + private OpenStack in Quick Connect + resume store screen | v4.1.9 |
 | 🟢 Shipped | Four independent adversarial audits + Quick Connect bucket and drive discovery + rclone export for Zoho WorkDrive and crypt overlays | v4.1.8 |
@@ -64,9 +69,12 @@ Every roadmap item at a glance; the lanes below carry the full detail.
 | ⚪ Horizon | Biometric unlock | exploring |
 | ⚪ Horizon | Per-protocol comparison page in docs | exploring |
 | ⚪ Horizon | Keyboard accessibility: Tab traversal | exploring |
-| ⚪ Horizon | CLI / CMD provider category (MEGAcmd today, Proton Drive next) | exploring |
+| ⚪ Horizon | CLI / CMD provider category (MEGAcmd and Proton Drive supported; category grouping proposed) | exploring |
 
 ### 🟢 Just Shipped
+
+- **Native Proton Drive, headless profiles and bounded CLI bulk** (v4.2.4). The native browser-authenticated provider and official CLI mode are distinct paths. Profile authorization is available to CLI/MCP clients; bulk support is explicit and preserves per-file outcomes. See [the CLI guide](docs/CLI-GUIDE.md), [bulk-transfer contract](docs/PROVIDER-BULK-TRANSFERS.md) and [CHANGELOG](CHANGELOG.md).
+- **v4.2.1 through v4.2.3** brought Twake Drive and new presets, the AeroAgent 1.5/1.6/1.7 foundations, MCP client and read-only workers, checked writes, resumable ranges and FTP SITE commands. The [AeroAgent roadmap](docs/AEROAGENT-ROADMAP.md) separates delivered work from remaining 2.0 proposals.
 
 - **Measured against rclone, read commit by commit** (v4.2.0)
   A cycle of tuning and repair: the transfer engine went through a live review battery against rclone and every gap it found was closed and measured again (multi-stream downloads by default, SFTP read-ahead and connection reuse, a speed limit every provider honours, one-way sync that no longer re-uploads unchanged S3 trees). Filebase joins as a production-ready S3 preset, S3 learns delta uploads, a key-authenticated delta works on Windows, and scans, deletes and exit codes say what they did not cover. Full notes in [CHANGELOG.md](CHANGELOG.md).
@@ -91,8 +99,8 @@ Every roadmap item at a glance; the lanes below carry the full detail.
   The Add Service page is rebuilt as a company-centric catalog with a list view, per-protocol categories, inline storage regions, a free/paid filter and a matching CLI `catalog` subcommand ([#224](https://github.com/axpdev-lab/aeroftp/issues/224), Ehud Kirsh); the Ehud wishlist lands across several waves ([#270](https://github.com/axpdev-lab/aeroftp/issues/270)); and the MEGAcmd WebDAV bridge auto-arms on connect ([#275](https://github.com/axpdev-lab/aeroftp/issues/275)). A two-stage independent CLI security audit (Codex plus Opus) hardens every destructive and agent-facing surface (roughly forty findings closed with new tests), the main window presents correctly on macOS Tahoe ([#290](https://github.com/axpdev-lab/aeroftp/issues/290)), and development builds are isolated from the released app's credentials ([#302](https://github.com/axpdev-lab/aeroftp/issues/302)).
 - **S3 native AssumeRole, AeroVault audit hardening, settings consolidation** (v4.0.1)
   Connect to S3 by assuming an IAM role: a Role ARN (plus optional External ID, session name, duration and MFA) turns the access keys into base credentials that AeroFTP exchanges for temporary, role-scoped credentials via AWS STS at connect time, then re-assumes automatically before they expire. Built on a hand-rolled STS client (one SigV4-signed `AssumeRole` POST, no AWS SDK dependency) feeding the existing data-plane signer ([#301](https://github.com/axpdev-lab/aeroftp/issues/301), co-authored with the reporter). Plus the AeroVault dual-independent audit remediation (crate hardened to v3), the unified profile bridge (rclone / WinSCP / FileZilla through one dispatcher), the Servers settings tab folded into the Backup interoperability table ([#270](https://github.com/axpdev-lab/aeroftp/issues/270)), the first community wishlist batch ([#300](https://github.com/axpdev-lab/aeroftp/issues/300)), and a download-integrity fix for embedded rsync servers (WD MyCloud) that previously truncated delta downloads in silence.
-- **Shaped Graph Transfer (DAG): single production path** (v4.0.0)
-  The ready-frontier DAG transfer engine becomes the one production path for every transfer surface: single-file leaves, multi-file batches, sync sessions, intra-file segmented downloads, and cross-bucket copies. The three rollout flags and the hand-rolled JoinSet orchestrator are gone; a capability-aware shaped builder picks the right shape per call from each provider's `TransferCapabilities` (native multipart fan-out, server-side copy, segmented Range downloads), degrading honestly to a single stream when a backend advertises none of them. GUI, CLI, and MCP schedule through the same runners; the CLI exposes 25+ runtime knobs over the engine.
+- **Shaped Graph Transfer (DAG): shared core and production runners** (v4.0.0)
+  Eligible single-file, batch, non-dry-run sync, same-provider copy and segmented-download paths use the shared DAG core. Explicit provider-direct, resume and delta exceptions remain, and cross-profile transfers keep a separate adapter. Provider capabilities determine actual wire concurrency. The [call-path matrix](docs/DAG-TRANSFER-ENGINE.md#production-call-path-matrix) states these boundaries; a shared builder alone does not prove identical behavior across GUI, CLI and MCP.
 - **Multi-User Account Partition** (v4.0.0)
   The vault splits into per-user encrypted partitions (Argon2id-derived keys, AES partition encryption) while single-user installs stay fully compatible and migrate automatically. A boot-time Account Lock Screen lists the configured users, with per-user profiles and AeroSync settings, an opt-in admin role (last-admin guard, peer passphrase reset), and a CLI `--user` flag across profile and transfer commands.
 - **AeroVault wrapper-stack hardening, telemetry, and full CLI vault parity** (v3.8.0)
@@ -105,7 +113,7 @@ Every roadmap item at a glance; the lanes below carry the full detail.
   Unified panel controller with an endpoint selector and a transfer planner routing local/local, local/remote and remote/local through the correct engine; FreeFileSync-style compare panel (6-bucket classifier), sync presets, conflict policy with versioned backup, inline cross-profile transfer, terminal cwd follows the focused panel.
 - **AeroFile Dual Panel - Slice A** (v3.7.9)
   Two local panels side by side in AeroFile mode, with full keyboard parity on the second panel (F2 / Delete / Enter / Backspace / clipboard / Quick Look / properties / arrows / Shift+arrow / Home / End all dispatch to the focused pane, Tab cycles between local and local2). Total-Commander shortcuts: F5 copy to other panel, F6 move to other panel, F7 new folder in the focused panel. Drag-and-drop between panes uses `rename_local_file` / `copy_local_file`; Ctrl+drag switches from move to copy. The separator is resizable from mouse and from keyboard (Arrow Left/Right ±10%, Home/End to extremes, Enter/Space to reset, `aria-valuenow` + `tabIndex=0`). Unified tab bar in the top strip with L/R markers and per-panel persistence. Slice B (each pane configurable as a local path or a saved remote profile) and Slice C (FreeFileSync-style mirror/backup/bisync workflows on top) follow in their own release windows.
-- **AeroVault v4 EC (T-AEROVAULT-ECC)** (shipped on feat/aerovault-v4-ecc, v4 track): Reed-Solomon 10+2 error-correction wrapper as 4th first-class layer (compression→chunk→crypt→EC last, per Ehud Kirsh #272/#276). v2 fixed-grid payload (~20% real overhead proven live on incompressible data), per-shard BLAKE3 cksums for localized damage (incl. parity), all-or-nothing repair gate (re-verify cipher_hash or leave vault untouched). scrub/repair (GUI draggable modals + full CLI via --profile safety), P3-03 receipt telemetry (shards/bytes/overhead/repairs), i18n, help polish. "v3 + EC = v4" forward-compat (non-critical ext). 22 tests + live CLI/GUI. Phase 4 docs + CHANGELOG close. See docs/dev/roadmap/APPENDIX-AEROVAULT-STACK/AEROVAULT-V4-ECC/.
+- **AeroVault v4 EC (T-AEROVAULT-ECC)** (shipped on feat/aerovault-v4-ecc, v4 track): Reed-Solomon 10+2 error-correction wrapper as 4th first-class layer (compression→chunk→crypt→EC last, per Ehud Kirsh #272/#276). v2 fixed-grid payload (~20% real overhead proven live on incompressible data), per-shard BLAKE3 cksums for localized damage (incl. parity), all-or-nothing repair gate (re-verify cipher_hash or leave vault untouched). scrub/repair (GUI draggable modals + full CLI via --profile safety), P3-03 receipt telemetry (shards/bytes/overhead/repairs), i18n, help polish. "v3 + EC = v4" forward-compat (non-critical ext). 22 tests + live CLI/GUI. Phase 4 docs + CHANGELOG close. See [the public format note](docs/AEROVAULT-V3-SPEC.md#11-v4-evolution-note-t-aerovault-ecc-shipped) and [wrapper-stack architecture](docs/architecture/wrapper-stack.md).
 - **AeroVault v3 (Archive tier)** (v3.7.9)
   Draft container format that ships alongside v2. Pipeline: gear-CDC chunking → per-chunk zstd (fast `-3` / balanced `-9` / archive `-19`) → AES-256-GCM-SIV (RFC 8452, 96-bit random nonce + per-chunk AAD) → encrypted manifest. Chunks are content-addressed by BLAKE3-keyed-128 (chunk id, also the dedup key) and integrity-checked by BLAKE3-256 (cipher hash, pre-decryption check for the future EC layer). Argon2id (128 MiB, t=4, p=4) derives two distinct KEKs via HKDF; both unwrap independent random 256-bit working keys through AES-KW. HMAC-SHA512 header tag verified before any unwrap. The 1024-byte header reserves an extension directory and an extension payload region so a future v4 writer can append Reed-Solomon / Parchive blocks, and a v3 reader skips them, without changing the header or manifest layout (`v3 + EC = v4` forward-compat). At v3.7.9 it shipped opt-in alongside v2 as the default, originally labelled the Experimental tier; that label was dropped in v3.8.0 and v3 is now the production Archive tier (the v4 = v3 + EC format built on top shipped in v4.0.5). There is still no automatic v2 → v3 migration. Specification: [docs/AEROVAULT-V3-SPEC.md](docs/AEROVAULT-V3-SPEC.md). Tracked in [issue #162](https://github.com/axpdev-lab/aeroftp/issues/162) section 4 / T-AEROVAULT-ECC.
 - **TOTP secret passthrough for Filen and MEGA** (v3.7.9)
@@ -165,7 +173,10 @@ Every roadmap item at a glance; the lanes below carry the full detail.
 
 ### 🟡 In Flight
 
-_Nothing actively in flight right now; the next items are queued under Up Next below._
+_v4.2.5 release preparation is in progress as of 26 October 2026. Documentation
+changes and the final release notes must be reconciled with the reviewed merged
+source before publication; this page does not announce the release or a pending
+PR merge._
 
 ### 🔵 Up Next
 
@@ -182,7 +193,7 @@ _Nothing actively in flight right now; the next items are queued under Up Next b
 - **Deploy Engine**
   One-click self-hosted server provisioning (S3, WebDAV, SFTP, FTP) on a NAS, VPS, or local Docker, with the resulting endpoint auto-saved as a connection profile.
 - **Photo and Media Services expansion**
-  More photo and media-CDN services on top of the four already shipped (Immich, Cloudinary, ImageKit, Uploadcare).
+  More photo and media-CDN services on top of Immich/PixelUnion, Cloudinary, ImageKit and Uploadcare.
 - **Mobile-friendly window dimensions**
   Shrink the minimum width below the current bound so AeroFTP runs comfortably on Linux phones and half-screen splits.
 
@@ -205,7 +216,7 @@ _Nothing actively in flight right now; the next items are queued under Up Next b
 - **Keyboard accessibility: Tab forward unstuck**
   Enter and Space activation already shipped; Tab traversal still pending.
 - **CLI / CMD provider category**
-  A dedicated tab in Add Service for services reached through their vendor's own official CLI, with AeroFTP acting as the GUI on top. The pattern already ships for MEGA via MEGAcmd; the next candidate is Proton Drive, whose official CLI (MIT, released June 2026) is the only sanctioned way in while the Proton Drive SDK stays closed to third parties. Proposed by [@EhudKirsh](https://github.com/EhudKirsh) in [#573](https://github.com/axpdev-lab/aeroftp/discussions/573). Known limits to design around: no quota command and no transfer progress outside a TTY on the Proton CLI, one account per machine, and browser-only sign in.
+  A dedicated tab in Add Service for services reached through their vendor's own official CLI, with AeroFTP acting as the GUI on top. The integrations already ship for MEGA via MEGAcmd and for Proton Drive in official CLI mode; Proton also has a separate native browser-authenticated client. The remaining proposal is a dedicated catalog category, not implementation of those providers. Proposed by [@EhudKirsh](https://github.com/EhudKirsh) in [#573](https://github.com/axpdev-lab/aeroftp/discussions/573). The official Proton CLI and native mode have different capabilities and sessions; see the current [CLI guide](docs/CLI-GUIDE.md) and [bulk-transfer contract](docs/PROVIDER-BULK-TRANSFERS.md).
 
 ---
 
@@ -222,7 +233,7 @@ _Nothing actively in flight right now; the next items are queued under Up Next b
 | **Uploadcare** | REST + Upload API | 🟢 Just Shipped (v3.7.2): media CDN, EU/GDPR |
 | **GitLab Tier 2-3** | REST API v4 | 🔵 Up Next: Tier 1 already shipped |
 | **Blomp** | OpenStack Swift | ⏸ Awaiting Blomp proxy fix (auth works, storage 403) |
-| **Proton Drive** | Official Proton Drive CLI | ⏸ Awaiting Proton: no third-party API exists, and the SDK excludes authentication and is closed to third parties until their cryptographic migration (Proton estimates end 2026 / early 2027). We will not reverse engineer the protocol, so the route we are evaluating is driving Proton's own official CLI, pending their confirmation |
+| **Proton Drive** | Native client + official Proton Drive CLI mode | 🟢 Shipped: official CLI mode in v4.2.1, native browser-authenticated client in v4.2.4; eligible CLI transfers use bounded multi-file operations |
 
 **Already supported via presets**: Quotaless (S3 + WebDAV), PixelUnion (self-hosted), Hetzner Storage Box (WebDAV/SFTP), Nextcloud / ownCloud (WebDAV auto-detect), **TAB.DIGITAL** (Nextcloud-as-a-Service, EU / GDPR, v3.7.4), **Felicloud** (Nextcloud-as-a-Service, OCS API), **Seafile** (`seafdav` endpoint), **CloudMe** (Digest auth auto-detected), **Jianguoyun** (China-based WebDAV), **Filen Desktop S3 / WebDAV bridges** (local ports 1700 / 1900), **MEGA S4 Object Storage** (S3-compatible, 4 EU/CA regions), **FileLu S5** (S3-compatible), **MinIO** (dedicated S3-compatible), **MEGAcmd** (anonymous WebDAV), **S3Drive** (path-style S3).
 
@@ -244,7 +255,7 @@ Carry-over community items still open after the v3.8.0 cut:
 
 `T-EDITOR-DRAG-RUN` and `T-TOPBAR-3-CLUSTER` shipped in v3.7.2 (closed). Big-feature community items live in the COMMUNITY ROADMAP thread (`T-MULTI-USER`, `T-DUAL-PANEL-UNIFICATION`, `T-MOBILE-WINDOW`).
 
-Newer community item on the same track: `T-CLI-CMD-CATEGORY`, a dedicated CLI / CMD tab in Add Service grouping the services AeroFTP reaches through their vendor's official CLI, proposed by [@EhudKirsh](https://github.com/EhudKirsh) in [#573](https://github.com/axpdev-lab/aeroftp/discussions/573) while welcoming a new user who had asked for Proton Drive. It is now tracked in the On the Horizon lane above, and it is a good example of how a provider request turns into a design direction here.
+Newer community item on the same track: `T-CLI-CMD-CATEGORY`, a dedicated CLI / CMD tab in Add Service grouping the services AeroFTP reaches through their vendor's official CLI, proposed by [@EhudKirsh](https://github.com/EhudKirsh) in [#573](https://github.com/axpdev-lab/aeroftp/discussions/573) while welcoming a new user who had asked for Proton Drive. The dedicated catalog category remains in the On the Horizon lane above; MEGAcmd and Proton Drive provider support has already shipped.
 
 If you spot a bug, want a small feature, or want to nominate a provider for native integration, [open an issue](https://github.com/axpdev-lab/aeroftp/issues). Tier 1 quick wins are typically picked up within one or two releases.
 

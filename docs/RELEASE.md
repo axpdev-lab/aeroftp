@@ -5,7 +5,7 @@
 ```bash
 # After updating every version site (`npm run check:version-sites` must pass) and CHANGELOG.md
 git add <the files the release changed>
-git commit -m "chore(release): vX.Y.Z Description"
+git commit -s -m "chore(release): vX.Y.Z Description"
 git push origin main
 # Wait until CI on main is green on Linux, Windows AND macOS, then:
 git tag -a vX.Y.Z -m "Release vX.Y.Z - Description"
@@ -16,7 +16,7 @@ Never push `main` and the tag in one command: macOS builds but does not publish 
 
 ---
 
-## Pre-Release Checklist (10 files)
+## Pre-Release Checklist
 
 ### Version Files (7 files - MUST be identical)
 
@@ -38,15 +38,15 @@ Never push `main` and the tag in one command: macOS builds but does not publish 
 
 | # | File | What to update |
 |---|------|----------------|
-| 7 | `app.aeroftp.AeroFTP.metainfo.xml` | Add new `<release version="X.Y.Z" date="YYYY-MM-DD">` with `<description>` (Ubuntu Store / GNOME Software) |
-| 8 | `CHANGELOG.md` | New `## [X.Y.Z] - YYYY-MM-DD` section at top (CI extracts this for GitHub Release body) |
+| 8 | `app.aeroftp.AeroFTP.metainfo.xml` | Add new `<release version="X.Y.Z" date="YYYY-MM-DD">` with `<description>` (Ubuntu Store / GNOME Software) |
+| 9 | `CHANGELOG.md` | New `## [X.Y.Z] - YYYY-MM-DD` section at top (CI extracts this for GitHub Release body) |
 
 ### Documentation (2 files)
 
 | # | File | What to update |
 |---|------|----------------|
-| 9 | `SECURITY.md` | Supported Versions table when a new minor line opens (the footer uses the series form `*AeroFTP v4.0.x*` and needs no per-release bump) |
-| 10 | `AGENTS.md` | Footer stamp `*AeroFTP CLI vX.Y.Z - ...*` when the CLI surface changed |
+| 10 | `SECURITY.md` | Supported Versions table when a new minor line opens (the footer uses the series form `*AeroFTP v4.2.x*` and needs no per-release bump) |
+| 11 | `AGENTS.md` | Footer stamp `*AeroFTP CLI vX.Y.Z - ...*` when the CLI surface changed |
 
 Also sweep `docs/PROTOCOL-FEATURES.md` and the relevant feature guide (`docs/CLI-GUIDE.md`, `docs/PROVIDERS.md`, etc.) when the release adds or changes user-visible behavior, and confirm `CHANGELOG.md` and `app.aeroftp.AeroFTP.metainfo.xml` describe the same set of changes.
 
@@ -58,7 +58,7 @@ npm run i18n:sync        # Propagate new keys to all 47 languages
 npm run i18n:validate    # Verify 100% coverage
 
 # Rust (MUST pass - CI runs this exact command)
-cd src-tauri && cargo clippy --all-targets -- -D warnings
+cd src-tauri && cargo clippy --all-targets --features test-seed -- -D warnings
 
 # Frontend
 npm run build
@@ -101,7 +101,7 @@ Two things that are *not* the cause, checked at v4.1.7 so nobody has to check th
 
 ```bash
 git add <the files the release changed>
-git commit -m "chore(release): vX.Y.Z Short Release Title"
+git commit -s -m "chore(release): vX.Y.Z Short Release Title"
 git push origin main
 # Wait until CI on main is green on Linux, Windows AND macOS, then:
 git tag -a vX.Y.Z -m "Release vX.Y.Z - Short Release Title"
@@ -163,7 +163,7 @@ The cosign identity in `prepare()` pins `refs/tags/vX.Y.Z`, so it re-pins per re
 cd /path/to/aeroftp-bin   # the separate AUR checkout
 git fetch origin && git rebase origin/master
 git add PKGBUILD .SRCINFO
-git commit -m "aeroftp-bin X.Y.Z - Short Release Title"
+git commit -s -m "aeroftp-bin X.Y.Z - Short Release Title"
 git push origin master
 ```
 
@@ -335,4 +335,4 @@ snapcraft release aeroftp <revision> stable
 
 ---
 
-*Last updated: 2026-06-22*
+*Last updated: 2026-10-26; release reference v4.2.5*

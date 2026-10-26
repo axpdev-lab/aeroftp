@@ -5,7 +5,7 @@
 > **For storage providers and integrators**: this is the only public reference of its kind in the file-client space: a complete blueprint that lets a new cloud or self-hosted storage service ship a first-class native integration in AeroFTP without reverse-engineering the codebase. If you run a storage service and want a dedicated provider entry (instead of a generic preset), this guide is the contract. We're already collaborating with one provider on a native integration using exactly this document; we welcome more. Reach out via [GitHub Issues](https://github.com/axpdev-lab/aeroftp/issues) and we'll review the API together.
 
 **Version**: 3.7
-**Last Updated**: 2026-06-28
+**Last Updated**: 2026-10-26
 **Codebase**: `src-tauri/src/providers/`
 
 ---
@@ -45,7 +45,7 @@
 
 ## 1. Architecture Overview
 
-AeroFTP uses a trait-based abstraction layer that decouples protocol-specific logic from the application. All storage backends implement the same `StorageProvider` trait, enabling uniform file operations across FTP, SFTP, WebDAV, S3, and the cloud APIs. The `ProviderType` enum currently exposes 33 variants (FTP, FTPS, SFTP, WebDAV, S3, AeroCloud, plus the native cloud and media providers listed below).
+AeroFTP uses a trait-based abstraction layer that decouples protocol-specific logic from the application. All storage backends implement the same `StorageProvider` trait, enabling uniform file operations across FTP, SFTP, WebDAV, S3, and the cloud APIs. The `ProviderType` enum also contains internal/local adapters, so its variant count is not a product-provider count. Use the generated [provider inventory](PROVIDER-INVENTORY.json) for the seven transport protocols and 26 native integrations; inspect `providers/types.rs` for the full enum.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -69,7 +69,7 @@ src-tauri/src/providers/
 ├── mod.rs                  # StorageProvider trait + ProviderFactory
 ├── types.rs                # ProviderType enum, config structs, RemoteEntry, ProviderError
 ├── http_retry.rs           # HTTP retry with exponential backoff + jitter
-├── oauth2.rs               # OAuth2 PKCE flow (8 providers)
+├── oauth2.rs               # Provider-specific OAuth2 flows (PKCE where supported)
 ├── oauth1.rs               # OAuth 1.0 HMAC-SHA1 (4shared)
 ├── ftp.rs                  # FTP/FTPS via suppaftp
 ├── sftp.rs                 # SFTP: russh + russh-sftp over a single SSH session (connection, listing, download, upload)
@@ -79,6 +79,9 @@ src-tauri/src/providers/
 ├── google_drive.rs         # Google Drive API v3
 ├── dropbox.rs              # Dropbox API v2
 ├── onedrive.rs             # Microsoft Graph API
+├── proton.rs               # Official Proton Drive CLI wrapper and multi-file adapter
+├── proton_native/          # Native Proton Drive client, browser sign-in and SDK crypto
+├── twake.rs                # Twake Drive instance OAuth and cozy-stack API
 ├── mega.rs                 # MEGA.nz (E2E encrypted)
 ├── mega_native.rs          # MEGA native client helpers
 ├── mega_crypto.rs          # MEGA AES key/attribute crypto
@@ -109,7 +112,12 @@ src-tauri/src/providers/
 
 ### Provider Registry
 
-| Provider | File | Lines | Auth Method | Protocol |
+Line counts below are historical orientation, not API or coverage guarantees. New
+providers must also participate in profile auth, capability/wrapper propagation,
+error classification and the transfer paths they actually support. Native bulk
+is opt-in through the trait; see [PROVIDER-BULK-TRANSFERS.md](PROVIDER-BULK-TRANSFERS.md).
+
+| Provider | File | Historical lines | Auth Method | Protocol |
 |----------|------|-------|-------------|----------|
 | FTP/FTPS | `ftp.rs` | ~1,050 | User/Pass + TLS | TCP socket |
 | SFTP | `sftp.rs` | ~1,200 | User/Pass/Key | SSH (russh + russh-sftp, single session) |
@@ -120,6 +128,8 @@ src-tauri/src/providers/
 | Dropbox | `dropbox.rs` | ~1,500 | OAuth2 PKCE | REST |
 | OneDrive | `onedrive.rs` | ~1,400 | OAuth2 PKCE | REST (Graph) |
 | MEGA | `mega.rs` | ~900 | E2E (AES-128) | REST |
+| Proton Drive | `proton.rs`, `proton_native/` | - | Native browser sign-in or vendor CLI session | SDK / official CLI |
+| Twake Drive | `twake.rs` | - | OAuth2 on the configured instance | REST |
 | Box | `box_provider.rs` | ~1,700 | OAuth2 PKCE | REST |
 | pCloud | `pcloud.rs` | ~1,050 | OAuth2 PKCE | REST |
 | Azure Blob | `azure.rs` | ~1,150 | Shared Key / SAS | REST |
@@ -1805,7 +1815,7 @@ AeroFTP implements S3 signing manually (SigV4) instead of using `aws-sdk-s3` bec
 
 ## Acknowledgments
 
-This guide documents patterns developed across 35+ releases and refined through 12+ independent security audits totaling 500+ findings. The architecture has been proven in production across the full provider catalog (33 `ProviderType` variants), with new patterns added as new providers join the catalog.
+This guide documents patterns developed across 35+ releases and refined through 12+ independent security audits totaling 500+ findings. The architecture has been proven in production across the full provider catalog (see [the generated inventory](PROVIDER-INVENTORY.json)), with new patterns added as new providers join the catalog.
 
 ---
 

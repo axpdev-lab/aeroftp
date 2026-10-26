@@ -1,6 +1,6 @@
 # AI Transparency Statement
 
-> _Last updated: 2026-06-28_
+> _Last updated: 2026-10-26_
 
 ## Overview
 
@@ -68,7 +68,7 @@ Reviewers and auditors can verify the human-driven development model by examinin
 
 - **Git history**: Every commit has a descriptive message following Conventional Commits, reflecting deliberate changes
 - **SPDX headers**: Every source file carries a license identifier and AI-assisted attribution
-- **Security audit trail**: `docs/dev/` contains audit reports showing human triage of AI-generated findings
+- **Security audit trail**: the [public security evidence index](docs/security-evidence/README.md) links versioned audit reports and remediation evidence; internal working notes are not part of the public repository
 - **Issue tracker**: Feature requests, bug reports, and design discussions reflect human decision-making
 
 ## How the Work Is Divided
