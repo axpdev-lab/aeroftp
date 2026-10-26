@@ -224,7 +224,7 @@ import { usedScanBoundKey } from './utils/usedScanBound';
 import type { UpdateVerificationInfo } from './utils/updateVerification';
 import { UpdateVerificationPanel } from './components/UpdateVerificationPanel';
 import { safePickerStartDir } from './utils/safePickerDir';
-import { normCryptScope, isWithinCryptScope, resolveBoundCryptScope } from './utils/cryptScope';
+import { normCryptScope, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
@@ -348,34 +348,6 @@ import {
   Lock, LockOpen, Unlock, Server, XCircle, History, Users, FolderSync, Replace, PanelLeft, Rows3, Zap,
   MoreHorizontal, Tag, Layers, Snowflake, Bot, Terminal, Star, MessageSquare, FileSpreadsheet, Presentation, LinkIcon, ArrowRight, ArrowRightLeft, Columns2, FileKey, KeyRound
 } from 'lucide-react';
-
-/**
- * Resolve a `{username}` placeholder inside a connection path against the
- * actual credentials. Some Nextcloud-based provider presets ship with
- * `defaults.basePath = '/remote.php/dav/files/{username}/'` (Felicloud,
- * generic Nextcloud, TAB.DIGITAL before the basePath was dropped). The
- * placeholder reaches `quickConnectDirs.remoteDir` at protocol-selection
- * time, BEFORE the user has typed the username, so it cannot be resolved
- * upstream. Resolving here at connect time covers every path that flows
- * into `provider_list_files` / `change_directory` for the first listing.
- *
- * Symmetric helper in the Rust backend lives at
- * `src-tauri/src/providers/types.rs` `WebDavConfig::from_provider_config`,
- * which already substitutes `{username}` in the URL string itself.
- *
- * Returns the original path when there is no placeholder or no username
- * (e.g. anonymous WebDAV endpoints), so callers don't have to pre-check.
- */
-const resolveUsernameTemplate = (
-  path: string | null | undefined,
-  username: string | null | undefined,
-): string | null => {
-  if (!path) return null;
-  if (!path.includes('{username}')) return path;
-  const u = (username || '').trim();
-  if (!u) return path;
-  return path.replace(/\{username\}/g, u);
-};
 
 /**
  * Strip a legacy initialPath that points exactly at a Nextcloud WebDAV root
@@ -5892,7 +5864,8 @@ const App: React.FC = () => {
   // Returns the overlay kind + anchored remote folder, or null.
   const getProfileOverlayHint = async (
     savedServerId?: string,
-  ): Promise<{ kind: 'rclone-crypt' | 'aerocrypt'; anchor: string | null } | null> => {
+    landingPath?: string | null,
+  ): Promise<{ kind: 'rclone-crypt' | 'aerocrypt'; anchor: string | null; opensOutside: boolean } | null> => {
     if (!savedServerId) return null;
     try {
       const profiles = await loadSavedServerProfiles();
@@ -5903,8 +5876,20 @@ const App: React.FC = () => {
       const hasUnlockFactor = profile?.hasStoredAeroCryptPassword
         || (binding?.kind === 'aerocrypt' && profile?.hasStoredAeroCryptKeyfilePath);
       if (!binding?.enabled || !hasUnlockFactor) return null;
-      const scope = binding.remoteScope?.trim() || profile.initialPath?.trim() || '';
-      return { kind: binding.kind, anchor: scope && scope !== '/' ? scope : null };
+      const profileInitialPath = resolveUsernameTemplate(profile.initialPath, profile.username);
+      const initialPath = landingPath === undefined
+        ? profileInitialPath
+        : resolveUsernameTemplate(landingPath, profile.username);
+      const remoteScope = resolveUsernameTemplate(binding.remoteScope, profile.username);
+      const scope = remoteScope?.trim() || profileInitialPath?.trim() || '';
+      return {
+        kind: binding.kind,
+        anchor: scope && scope !== '/' ? scope : null,
+        // Remote Path is the opening. An empty Overlays Path means that
+        // folder is the encrypted one. A root, or any parent of the island,
+        // opens in plaintext and must not point the panel at the island.
+        opensOutside: connectLandsOutsideOverlay(initialPath, scope),
+      };
     } catch {
       return null;
     }
@@ -5984,10 +5969,8 @@ const App: React.FC = () => {
   };
 
   // P3.3 / P3.3b: when a saved profile carries an encrypted-overlay binding,
-  // unlock it automatically right after connect so the standard dual-panel
-  // renders transparently decrypted (Filen/MEGA-style), with no modal. The
-  // provider is already positioned at the overlay scope (initialPath ==
-  // remoteScope) by the connect listing. Both kinds are handled: native
+  // unlock it after a connect that lands inside the scope, or when navigation
+  // enters the scope from plaintext. Both kinds are handled: native
   // (`aerocrypt`, config from the AeroCrypt marker) and `rclone-crypt` interop
   // (salt + filename/dir-name encryption from the binding, salt from the vault).
   // Returns the activated overlay's vault id + provider prefix, or null when no
@@ -6033,7 +6016,9 @@ const App: React.FC = () => {
       // Filen reset pwd to "/" on connect and never cd when they merely list a
       // folder, so after applying we explicitly move the wrapped provider to the
       // plaintext anchor.
-      const overlayScope = binding.remoteScope?.trim() || profile.initialPath?.trim() || '';
+      const initialPath = resolveUsernameTemplate(profile.initialPath, profile.username);
+      const remoteScope = resolveUsernameTemplate(binding.remoteScope, profile.username);
+      const overlayScope = remoteScope?.trim() || initialPath?.trim() || '';
 
       try {
         await invoke('provider_arm_crypt_capability');
@@ -6173,7 +6158,7 @@ const App: React.FC = () => {
     if (!pendingOverlayUnlock || !activeVault) return;
     // StrictMode (dev) double-invokes this effect; the ref makes the decrypted
     // reload + log finalization run once per activated vault (no double "Loaded
-    // N items"). A fresh unlock always yields a new vault id, so re-unlocks pass.
+    // N items"). Connect resets this ref because a saved profile reuses its sentinel.
     if (overlayReloadedVaultRef.current === activeVault) return;
     overlayReloadedVaultRef.current = activeVault;
     let cancelled = false;
@@ -7699,15 +7684,15 @@ const App: React.FC = () => {
       // saved on an OAuth profile (Google Drive, Dropbox, ...) was never unlocked:
       // no decrypted names, and the path-bar overlay badge/button never appeared.
       const overlaySavedId = effectiveParams.savedServerId;
-      const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId) : null;
+      const oauthInitialPath = resolveUsernameTemplate(quickConnectDirs.remoteDir, effectiveParams.username) || '/';
+      const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, oauthInitialPath) : null;
       let oauthResponse: FileListResponse | null = null;
       if (overlayHint && overlaySavedId) {
-        // Probe the provider cwd for the session, but never let a transient
-        // listing error break the connect: loadRemoteFiles (the non-overlay path)
-        // swallows such errors, so this direct probe must too. On failure we still
-        // arm the overlay and let the deferred decrypted reload anchor the path.
+        // Probe the configured landing, but never let a transient listing error
+        // break the connect: loadRemoteFiles (the non-overlay path) swallows
+        // such errors, so this direct probe must too.
         try {
-          oauthResponse = await withRemoteListSpinner(() => invoke<FileListResponse>('provider_list_files', { path: null }));
+          oauthResponse = await withRemoteListSpinner(() => invoke<FileListResponse>('provider_change_dir', { path: oauthInitialPath }));
         } catch (error) {
           // A Cancel is the one listing failure this probe must not swallow:
           // arming the overlay on a session the user just tore down would paint
@@ -7716,14 +7701,31 @@ const App: React.FC = () => {
           oauthResponse = null;
         }
         const overlayAnchor = overlayHint.anchor || oauthResponse?.current_path || '/';
-        overlaySuppressedRef.current = true;
-        setRemoteFiles([]);
-        setCurrentRemotePath(oauthResponse?.current_path || overlayAnchor);
-        setCurrentRemoteDisplayPath(overlayAnchor);
+        // A new connection must not inherit another session's vault mirrors.
+        setAeroCryptVaultId(null);
+        setRcloneCryptVaultId(null);
+        overlayReloadedVaultRef.current = null;
         setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
         markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
-        setOverlayDecrypting(true);
-        connectListingLogIdRef.current = null;
+        if (overlayHint.opensOutside) {
+          // The Remote Path is above the island. Show that plaintext folder
+          // now. Decrypting starts when the user enters the Overlays Path.
+          const listedPath = (oauthResponse as (FileListResponse & { display_current_path?: string }) | null)?.display_current_path || oauthResponse?.current_path || oauthInitialPath;
+          overlaySuppressedRef.current = false;
+          setRemoteFiles(oauthResponse?.files ?? []);
+          setCurrentRemotePath(oauthResponse?.current_path || oauthInitialPath);
+          setCurrentRemoteDisplayPath(listedPath);
+          connectListingLogIdRef.current = oauthResponse
+            ? logListingComplete(listedPath, oauthResponse.files?.length ?? 0)
+            : null;
+        } else {
+          overlaySuppressedRef.current = true;
+          setRemoteFiles([]);
+          setCurrentRemotePath(oauthResponse?.current_path || overlayAnchor);
+          setCurrentRemoteDisplayPath(overlayAnchor);
+          setOverlayDecrypting(true);
+          connectListingLogIdRef.current = null;
+        }
       } else {
         oauthResponse = await loadRemoteFiles(protocol);
       }
@@ -7758,15 +7760,20 @@ const App: React.FC = () => {
       await createSession(
         oauthTabName,
         effectiveParams,
-        oauthResponse?.current_path || '/',
+        oauthResponse?.current_path || oauthInitialPath,
         oauthLocalDir || currentLocalPath,
-        overlayHint ? [] : oauthResponse?.files
+        overlayHint && !overlayHint.opensOutside ? [] : oauthResponse?.files,
+        undefined,
+        overlayHint ? oauthInitialPath : undefined
       );
+      if (overlayHint && overlaySavedId) {
+        markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
+      }
       // Defer the overlay auto-unlock to the post-connect effect (inline unlock
       // sees stale session state), same as the credential-provider path. LT2b:
       // also arm pending when the overlay is enabled but has no stored unlock
       // factor, so phase-1 can surface the locked affordance instead of silence.
-      if (overlaySavedId && (overlayHint || await getEnabledProfileOverlay(overlaySavedId))) {
+      if (overlaySavedId && shouldAutoUnlockOverlayOnConnect(overlayHint) && (overlayHint || await getEnabledProfileOverlay(overlaySavedId))) {
         setPendingOverlayUnlock(overlaySavedId);
       }
       // Pass effectiveParams so persistQuotaToProfile receives the saved server id
@@ -7966,9 +7973,13 @@ const App: React.FC = () => {
         // path computed above so a Nextcloud-based preset's basePath like
         // `/remote.php/dav/files/{username}/` doesn't reach the backend
         // with the placeholder unresolved (would 404 on the literal path).
+        // Listing a path need not change a provider's cwd (for example Filen).
+        // An outside-scope landing must also survive Refresh at path:null.
+        const overlaySavedId = effectiveParams.savedServerId;
+        const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, resolvedRemoteDir) : null;
         logger.debug('[connectToFtp] Calling provider_list_files for:', protocol);
-        const response = await withRemoteListSpinner(() => invoke<{ files: any[]; current_path: string }>('provider_list_files', {
-          path: resolvedRemoteDir || null
+        const response = await withRemoteListSpinner(() => invoke<{ files: any[]; current_path: string }>(overlayHint?.opensOutside ? 'provider_change_dir' : 'provider_list_files', {
+          path: overlayHint?.opensOutside ? resolvedRemoteDir || '/' : resolvedRemoteDir || null
         }), listingReason(resolvedRemoteDir));
         logger.debug('[connectToFtp] provider_list_files response:', {
           fileCount: response.files?.length ?? 0,
@@ -7997,19 +8008,24 @@ const App: React.FC = () => {
         // Suppress the raw encrypted listing during the Argon2id unlock window
         // and let the deferred phase-2 reload paint the decrypted names anchored
         // at the bound scope.
-        const overlaySavedId = effectiveParams.savedServerId;
-        const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId) : null;
         if (overlayHint && overlaySavedId) {
+          // A new connection must not inherit another session's vault mirrors.
+          setAeroCryptVaultId(null);
+          setRcloneCryptVaultId(null);
+          overlayReloadedVaultRef.current = null;
+          setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
+          markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
+        }
+        if (overlayHint && overlaySavedId && !overlayHint.opensOutside) {
           overlaySuppressedRef.current = true;
           setRemoteFiles([]);
           setCurrentRemoteDisplayPath(overlayHint.anchor || response.current_path);
-          setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
-          markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
           setOverlayDecrypting(true);
           connectListingLogIdRef.current = null;
         } else {
           overlaySuppressedRef.current = false;
           setRemoteFiles(files);
+          setCurrentRemoteDisplayPath((response as FileListResponse & { display_current_path?: string }).display_current_path || response.current_path);
           connectListingLogIdRef.current = logListingComplete(response.current_path, files.length);
         }
 
@@ -8034,13 +8050,18 @@ const App: React.FC = () => {
           sessionParams,
           response.current_path,
           quickConnectDirs.localDir || currentLocalPath,
-          overlayHint ? [] : files
+          overlayHint && !overlayHint.opensOutside ? [] : files,
+          undefined,
+          overlayHint ? resolvedRemoteDir || '/' : undefined
         );
+        if (overlayHint && overlaySavedId) {
+          markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
+        }
         // Defer the overlay auto-unlock to the post-connect effect (same reason
         // as onSavedServerConnect: inline unlock sees stale session state).
         // LT2b: also arm pending for enabled-without-factor so the locked
         // affordance can surface after a silent arm failure.
-        if (overlaySavedId && (overlayHint || await getEnabledProfileOverlay(overlaySavedId))) {
+        if (overlaySavedId && shouldAutoUnlockOverlayOnConnect(overlayHint) && (overlayHint || await getEnabledProfileOverlay(overlaySavedId))) {
           setPendingOverlayUnlock(overlaySavedId);
         }
         fetchStorageQuota(protocol, sessionParams, { newConnection: true });
@@ -8254,7 +8275,7 @@ const App: React.FC = () => {
   // Session Management for Multi-Tab
   // Accept optional file lists to avoid stale closure captures: callers that
   // just did setRemoteFiles/setLocalFiles should pass the fresh arrays here.
-  const createSession = async (serverName: string, params: ConnectionParams, remotePath: string, localPath: string, freshRemoteFiles?: RemoteFile[], freshLocalFiles?: LocalFile[]) => {
+  const createSession = async (serverName: string, params: ConnectionParams, remotePath: string, localPath: string, freshRemoteFiles?: RemoteFile[], freshLocalFiles?: LocalFile[], initialPathOverride?: string) => {
     // Deep copy params to prevent reference mutation when switching tabs
     const paramsCopy: ConnectionParams = JSON.parse(JSON.stringify(params));
 
@@ -8290,7 +8311,7 @@ const App: React.FC = () => {
       faviconUrl: cachedFavicon,
       customIconUrl: cachedCustomIcon,
       publicUrlBase: cachedPublicUrlBase,
-      serverInitialPath: cachedInitialPath,
+      serverInitialPath: initialPathOverride ?? cachedInitialPath,
       // New sessions start with navigation sync disabled
       isSyncNavigation: false,
       syncBasePaths: null,
@@ -9322,16 +9343,17 @@ const App: React.FC = () => {
       // CWP-20B (B3): route on the TARGET display path, not the current one, so a
       // boundary crossing flips between the crypt overlay and the plain provider at
       // the moment of navigation (B2 keyed only off the current path, so it could
-      // never *leave* the anchor). overlayBinding is the ungated session overlay so
-      // we can re-anchor when stepping back INTO the anchor from cleartext.
+      // never *leave* the anchor). A saved capability is enough to unlock when
+      // entering; only a live vault can be cleared when leaving.
       const overlayBinding = isProvider ? rawActiveCryptOverlay() : null;
+      const overlayCapable = !!overlayBinding || !!(isProvider && activeSession?.savedServerId && activeSession.cryptOverlayKind);
       const targetDisplay = resolveTargetDisplayPath(currentRemoteDisplayPath, path, plainPath);
       const currentInScope = isWithinCryptScope(activeBoundRemoteScope, currentRemoteDisplayPath);
-      const targetInScope = overlayBinding
+      const targetInScope = overlayCapable
         ? isWithinCryptScope(activeBoundRemoteScope, targetDisplay)
         : false;
       const crossingOut = !!overlayBinding && currentInScope && !targetInScope;
-      const crossingIn = !!overlayBinding && !currentInScope && targetInScope;
+      const crossingIn = overlayCapable && !currentInScope && targetInScope;
       const providerNavPath = (crossingOut || crossingIn) ? targetDisplay : path;
       let reactivatedOverlayForNav = false;
 
@@ -18156,14 +18178,14 @@ const App: React.FC = () => {
                   // unlocked (no decrypted names, no path-bar overlay badge/button).
                   const savedOverlaySavedId = normalizedParams.savedServerId;
                   const savedOverlayHint = savedOverlaySavedId ? await connectScope.step(() => getProfileOverlayHint(savedOverlaySavedId)) : null;
+                  const savedOauthInitialPath = resolveUsernameTemplate(initialPath, normalizedParams.username) || '/';
                   let savedOauthResp: FileListResponse | null = null;
                   if (savedOverlayHint && savedOverlaySavedId) {
-                    // Probe the provider cwd, but never let a transient listing
-                    // error break the connect (loadRemoteFiles swallows such
-                    // errors); still arm the overlay and let the deferred reload
-                    // anchor the path on failure.
+                    // Probe the configured landing, but never let a transient
+                    // listing error break the connect (loadRemoteFiles swallows
+                    // such errors), so this direct probe must too.
                     try {
-                      savedOauthResp = await connectScope.step(() => withRemoteListSpinner(() => invoke<FileListResponse>('provider_list_files', { path: null })));
+                      savedOauthResp = await connectScope.step(() => withRemoteListSpinner(() => invoke<FileListResponse>('provider_change_dir', { path: savedOauthInitialPath })));
                     } catch (error) { connectScope.assert();
                       // A Cancel is the one failure not to swallow: the session
                       // it would arm the overlay on is already being torn down.
@@ -18174,14 +18196,29 @@ const App: React.FC = () => {
                       savedOauthResp = null;
                     }
                     const savedOverlayAnchor = savedOverlayHint.anchor || savedOauthResp?.current_path || '/';
-                    overlaySuppressedRef.current = true;
-                    setRemoteFiles([]);
-                    setCurrentRemotePath(savedOauthResp?.current_path || savedOverlayAnchor);
-                    setCurrentRemoteDisplayPath(savedOverlayAnchor);
+                    // A new connection must not inherit another session's vault mirrors.
+                    setAeroCryptVaultId(null);
+                    setRcloneCryptVaultId(null);
+                    overlayReloadedVaultRef.current = null;
                     setCryptOverlayOwner({ savedServerId: savedOverlaySavedId, sessionId: null });
                     markSessionOverlayKind({ savedServerId: savedOverlaySavedId }, savedOverlayHint.kind, savedOverlayHint.anchor);
-                    setOverlayDecrypting(true);
-                    connectListingLogIdRef.current = null;
+                    if (savedOverlayHint.opensOutside) {
+                      const listedPath = (savedOauthResp as (FileListResponse & { display_current_path?: string }) | null)?.display_current_path || savedOauthResp?.current_path || savedOauthInitialPath;
+                      overlaySuppressedRef.current = false;
+                      setRemoteFiles(savedOauthResp?.files ?? []);
+                      setCurrentRemotePath(savedOauthResp?.current_path || savedOauthInitialPath);
+                      setCurrentRemoteDisplayPath(listedPath);
+                      connectListingLogIdRef.current = savedOauthResp
+                        ? logListingComplete(listedPath, savedOauthResp.files?.length ?? 0)
+                        : null;
+                    } else {
+                      overlaySuppressedRef.current = true;
+                      setRemoteFiles([]);
+                      setCurrentRemotePath(savedOauthResp?.current_path || savedOverlayAnchor);
+                      setCurrentRemoteDisplayPath(savedOverlayAnchor);
+                      setOverlayDecrypting(true);
+                      connectListingLogIdRef.current = null;
+                    }
                   } else {
                     savedOauthResp = await connectScope.step(() => loadRemoteFiles(normalizedParams.protocol));
                   }
@@ -18199,14 +18236,19 @@ const App: React.FC = () => {
                   await connectScope.step(() => createSession(
                     providerName,
                     normalizedParams,
-                    savedOauthResp?.current_path || initialPath || '/',
+                    savedOauthResp?.current_path || savedOauthInitialPath,
                     resolvedLocalPath,
-                    savedOverlayHint ? [] : savedOauthResp?.files
+                    savedOverlayHint && !savedOverlayHint.opensOutside ? [] : savedOauthResp?.files,
+                    undefined,
+                    savedOverlayHint ? savedOauthInitialPath : undefined
                   ));
+                  if (savedOverlayHint && savedOverlaySavedId) {
+                    markSessionOverlayKind({ savedServerId: savedOverlaySavedId }, savedOverlayHint.kind, savedOverlayHint.anchor);
+                  }
                   // Defer the overlay auto-unlock to the post-connect effect (inline
                   // unlock sees stale session state), same as the provider branch.
                   // LT2b: also arm pending for enabled-without-factor.
-                  if (savedOverlaySavedId && (savedOverlayHint || await connectScope.step(() => getEnabledProfileOverlay(savedOverlaySavedId)))) {
+                  if (savedOverlaySavedId && shouldAutoUnlockOverlayOnConnect(savedOverlayHint) && (savedOverlayHint || await connectScope.step(() => getEnabledProfileOverlay(savedOverlaySavedId)))) {
                     setPendingOverlayUnlock(savedOverlaySavedId);
                   }
                   // Pass normalizedParams so persistQuotaToProfile picks up
@@ -18323,8 +18365,10 @@ const App: React.FC = () => {
                     // path computed above so a Nextcloud-based saved profile's
                     // initialPath (e.g. `/remote.php/dav/files/{username}/`) does
                     // not reach the backend with the placeholder unresolved.
-                    const response = await connectScope.step(() => withRemoteListSpinner(() => invoke<{ files: any[]; current_path: string }>('provider_list_files', {
-                      path: resolvedSavedInitialPath || null
+                    const overlaySavedId = connectedParams.savedServerId || normalizedParams.savedServerId;
+                    const overlayHint = await connectScope.step(() => getProfileOverlayHint(overlaySavedId));
+                    const response = await connectScope.step(() => withRemoteListSpinner(() => invoke<{ files: any[]; current_path: string }>(overlayHint?.opensOutside ? 'provider_change_dir' : 'provider_list_files', {
+                      path: overlayHint?.opensOutside ? resolvedSavedInitialPath || '/' : resolvedSavedInitialPath || null
                     }), listingReason(resolvedSavedInitialPath)));
 
                     const files = response.files.map(f => ({
@@ -18340,20 +18384,25 @@ const App: React.FC = () => {
                     // profile: hide the blobs + "/" path during the Argon2id
                     // unlock window and let the phase-2 decrypted reload paint the
                     // real names. Plain profiles render the listing as usual.
-                    const overlaySavedId = connectedParams.savedServerId || normalizedParams.savedServerId;
-                    const overlayHint = await connectScope.step(() => getProfileOverlayHint(overlaySavedId));
                     setCurrentRemotePath(response.current_path);
                     if (overlayHint && overlaySavedId) {
+                      // A new connection must not inherit another session's vault mirrors.
+                      setAeroCryptVaultId(null);
+                      setRcloneCryptVaultId(null);
+                      overlayReloadedVaultRef.current = null;
+                      setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
+                      markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
+                    }
+                    if (overlayHint && overlaySavedId && !overlayHint.opensOutside) {
                       overlaySuppressedRef.current = true;
                       setRemoteFiles([]);
                       setCurrentRemoteDisplayPath(overlayHint.anchor || response.current_path);
-                      setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
-                      markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
                       setOverlayDecrypting(true);
                       connectListingLogIdRef.current = null;
                     } else {
                       overlaySuppressedRef.current = false;
                       setRemoteFiles(files);
+                      setCurrentRemoteDisplayPath((response as FileListResponse & { display_current_path?: string }).display_current_path || response.current_path);
                       connectListingLogIdRef.current = logListingComplete(response.current_path, files.length);
                     }
 
@@ -18367,14 +18416,19 @@ const App: React.FC = () => {
                       connectedParams,
                       response.current_path,
                       resolvedLocalPath2,
-                      overlayHint ? [] : files
+                      overlayHint && !overlayHint.opensOutside ? [] : files,
+                      undefined,
+                      overlayHint ? resolvedSavedInitialPath || '/' : undefined
                     ));
+                    if (overlayHint && overlaySavedId) {
+                      markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
+                    }
                     // P3.3: defer the AeroCrypt overlay auto-unlock to a post-connect
                     // effect. Running it inline here sees stale React state (the new
                     // session/activeSessionId are not committed yet), so the overlay
                     // reload hit "Not connected"; the effect runs once the connection
                     // state has settled, exactly like the manual Refresh that works.
-                    if (overlaySavedId) setPendingOverlayUnlock(overlaySavedId);
+                    if (overlaySavedId && shouldAutoUnlockOverlayOnConnect(overlayHint)) setPendingOverlayUnlock(overlaySavedId);
                     fetchStorageQuota(connectedParams.protocol, connectedParams, { newConnection: true });
                     // Clear the standalone connect-failure marker (#180 /
                     // 4486730822). Separate signal from health.
