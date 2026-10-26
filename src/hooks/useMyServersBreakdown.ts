@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
 import { useCallback, useEffect, useState } from 'react';
-import { secureGetWithFallback } from '../utils/secureStorage';
+import { onVaultReady, secureGetWithFallback } from '../utils/secureStorage';
 import { APP_SETTINGS_EVENT, updateAppSettings } from '../utils/appSettings';
 
 const ACCOUNT = 'app_settings';
@@ -36,10 +36,12 @@ export function useMyServersBreakdown(refreshKey?: number) {
         };
         window.addEventListener('focus', onFocus);
         window.addEventListener(EVENT, onChanged);
+        const offVaultReady = refreshKey === undefined ? onVaultReady(onFocus) : undefined;
         return () => {
             cancelled = true;
             window.removeEventListener('focus', onFocus);
             window.removeEventListener(EVENT, onChanged);
+            offVaultReady?.();
         };
     }, [refreshKey]);
 

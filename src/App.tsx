@@ -463,7 +463,7 @@ import { getIconThemeProvider } from './utils/iconThemes';
 import { logger } from './utils/logger';
 import { initCspReporter } from './utils/cspReporter';
 import { updateAppSettings } from './utils/appSettings';
-import { secureGetWithFallback } from './utils/secureStorage';
+import { notifyVaultReady, secureGetWithFallback } from './utils/secureStorage';
 import {
   loadSavedServerProfiles,
   mergeSavedServerProfile,
@@ -1907,7 +1907,10 @@ const App: React.FC = () => {
         // partition is the only source of truth.
         // Force the My Servers list to re-fetch from vault (now initialized)
         setServersRefreshKey(k => k + 1);
-        vaultInitDone.current = true;
+        if (!vaultInitDone.current) {
+          vaultInitDone.current = true;
+          notifyVaultReady();
+        }
         setVaultBootComplete(true);
         signalAppReady();
       }
@@ -16494,6 +16497,7 @@ const App: React.FC = () => {
             setIsAppLocked(false);
             setAutoKeyringTotpRequired(false);
             setServersRefreshKey(k => k + 1);
+            notifyVaultReady();
           }}
         />
       )}
@@ -16520,6 +16524,7 @@ const App: React.FC = () => {
             setMasterPasswordBootstrapMode(false);
             setMasterPasswordSet(true);
             dispatchMasterPasswordChanged({ enabled: true, isLocked: false });
+            notifyVaultReady();
           }}
           onClose={() => {
             setShowMasterPasswordSetup(false);
@@ -18085,6 +18090,7 @@ const App: React.FC = () => {
               the foreground: zero remount = zero flash of the empty state. */}
           <div className={showConnectionScreen ? 'flex-1 min-h-0 flex flex-col' : 'hidden'}>
             <IntroHub
+              vaultReady={vaultBootComplete && !isAppLocked && !showMasterPasswordSetup}
               registerProfileConnector={registerProfileConnector}
               connectionParams={connectionParams}
               quickConnectDirs={quickConnectDirs}

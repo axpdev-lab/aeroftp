@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { secureGetWithFallback } from '../utils/secureStorage';
+import { onVaultReady, secureGetWithFallback } from '../utils/secureStorage';
 import { APP_SETTINGS_EVENT, updateAppSettings } from '../utils/appSettings';
 
 export type TableColAlign = 'left' | 'center' | 'right';
@@ -305,10 +305,12 @@ export function useTableColumns<TColId extends string>(
         };
         window.addEventListener(EVENT_NAME, onChanged);
         window.addEventListener('focus', onFocus);
+        const offVaultReady = refreshKey === undefined ? onVaultReady(onFocus) : undefined;
         return () => {
             cancelled = true;
             window.removeEventListener(EVENT_NAME, onChanged);
             window.removeEventListener('focus', onFocus);
+            offVaultReady?.();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [storageKey, refreshKey]);

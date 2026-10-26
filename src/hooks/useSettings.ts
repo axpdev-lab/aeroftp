@@ -17,7 +17,7 @@
 import { normalizeGuiPresentation, DEFAULT_GUI_PRESENTATION, type GuiPresentationSettings } from '../gui/presentation';
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { secureGetWithFallback } from '../utils/secureStorage';
+import { onVaultReady, secureGetWithFallback } from '../utils/secureStorage';
 import { updateAppSettings } from '../utils/appSettings';
 import {
   DEFAULT_SFTP_DOWNLOAD_PRESET,
@@ -268,9 +268,19 @@ export const useSettings = () => {
 
   // Load settings on mount + listen for changes
   useEffect(() => {
+    let cancelled = false;
+    let loadRevision = 0;
+    // The one-way migration to the vault is retried by every later load, the
+    // vault-ready one included, until a vault write succeeds. Its strict read
+    // takes a store that is not ready for a failure, never for an absent key,
+    // so the localStorage copy cannot replace the settings in the vault.
+    let migrationPending = true;
+
     const loadSettings = async () => {
+      const revision = ++loadRevision;
       try {
         const parsed = await secureGetWithFallback<Record<string, unknown>>(SETTINGS_VAULT_KEY, SETTINGS_KEY);
+        if (cancelled || revision !== loadRevision) return;
         if (parsed) {
           applySettings(parsed);
 
@@ -279,8 +289,11 @@ export const useSettings = () => {
           setSystemMenuVisible(showMenu);
           invoke('toggle_menu_bar', { visible: showMenu });
 
-          // One-way idempotent migration to vault (no-op if already in vault)
-          updateAppSettings(existing => existing ?? parsed).catch(() => {});
+          if (migrationPending) {
+            updateAppSettings(existing => existing ?? parsed, undefined, true)
+              .then(() => { migrationPending = false; })
+              .catch(() => {});
+          }
         } else {
           // No settings saved, apply defaults for system menu
           invoke('toggle_menu_bar', { visible: false });
@@ -291,34 +304,31 @@ export const useSettings = () => {
     };
 
     const handleSettingsChange = (e: Event) => {
+      if (cancelled) return;
       // Use inline payload from CustomEvent for immediate sync (no async vault read)
       const detail = (e as CustomEvent)?.detail as Record<string, unknown> | undefined;
       if (detail) {
+        loadRevision++;
         applySettings(detail);
         const showMenu = typeof detail.showSystemMenu === 'boolean' ? detail.showSystemMenu : false;
         setSystemMenuVisible(showMenu);
         return;
       }
       // Fallback: re-read from vault (for storage events or legacy callers)
-      void (async () => {
-        try {
-          const parsed = await secureGetWithFallback<Record<string, unknown>>(SETTINGS_VAULT_KEY, SETTINGS_KEY);
-          if (parsed) {
-            applySettings(parsed);
-            const showMenu = typeof parsed.showSystemMenu === 'boolean' ? parsed.showSystemMenu : false;
-            setSystemMenuVisible(showMenu);
-          }
-        } catch { /* ignore */ }
-      })();
+      void loadSettings();
     };
 
     void loadSettings();
 
     window.addEventListener('storage', handleSettingsChange);
     window.addEventListener('aeroftp-settings-changed', handleSettingsChange);
+    const unsubscribeVaultReady = onVaultReady(() => void loadSettings());
     return () => {
+      cancelled = true;
+      loadRevision++;
       window.removeEventListener('storage', handleSettingsChange);
       window.removeEventListener('aeroftp-settings-changed', handleSettingsChange);
+      unsubscribeVaultReady();
     };
   }, [applySettings]);
 

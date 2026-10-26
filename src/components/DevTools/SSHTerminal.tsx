@@ -10,7 +10,7 @@ import { Terminal as TerminalIcon, Play, Square, RotateCcw, Plus, X, Palette, Zo
 import { invoke } from '@tauri-apps/api/core';
 import '@xterm/xterm/css/xterm.css';
 import { createTauriListener } from '../../hooks/useTauriListener';
-import { secureGetWithFallback, secureStoreAndClean } from '../../utils/secureStorage';
+import { onVaultReady, secureGetWithFallback, secureStoreAndClean } from '../../utils/secureStorage';
 
 // ============ Terminal Themes ============
 
@@ -541,15 +541,19 @@ export const SSHTerminal: React.FC<SSHTerminalProps> = ({
     const t = useTranslation();
     // Settings
     const [settings, setSettings] = useState<TerminalSettings>(loadSettingsSync);
-    // Hydrate from vault on mount (vault read is async; the localStorage
-    // fallback above gives an instant first paint, then we upgrade if the
-    // vault holds a fresher value).
+    // Hydrate from vault on mount and after unlock; the localStorage fallback
+    // above gives an instant first paint.
     useEffect(() => {
-        let cancelled = false;
-        void loadSettingsFromVault().then(v => {
-            if (!cancelled && v) setSettings(prev => ({ ...prev, ...v }));
-        });
-        return () => { cancelled = true; };
+        let generation = 0;
+        const reload = () => {
+            const current = ++generation;
+            void loadSettingsFromVault().then(v => {
+                if (current === generation && v) setSettings(prev => ({ ...prev, ...v }));
+            });
+        };
+        reload();
+        const unsubscribe = onVaultReady(reload);
+        return () => { generation++; unsubscribe(); };
     }, []);
     // Track whether user manually picked a terminal theme (overrides auto-sync)
     const userOverrideRef = useRef(false);
