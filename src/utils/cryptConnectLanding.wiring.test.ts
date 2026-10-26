@@ -11,7 +11,7 @@
 import { transformWithOxc } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 import app from '../App.tsx?raw';
-import { isWithinCryptScope, normCryptScope } from './cryptScope';
+import { connectLandsOutsideOverlay, isWithinCryptScope, normCryptScope, resolveUsernameTemplate } from './cryptScope';
 
 async function execute<T>(source: string, context: Record<string, unknown>, suffix: string): Promise<T> {
     const { code } = await transformWithOxc(source, 'crypt-connect-landing.ts');
@@ -141,5 +141,30 @@ describe('crypt overlay deferred connect unlock', () => {
     it('lists OAuth at the configured Remote Path on both connect paths', () => {
         expect(app).toContain("invoke<FileListResponse>('provider_change_dir', { path: oauthInitialPath })");
         expect(app).toContain("invoke<FileListResponse>('provider_change_dir', { path: savedOauthInitialPath })");
+    });
+
+    it('classifies the Quick Connect landing instead of the saved profile default', async () => {
+        const start = app.indexOf('const getProfileOverlayHint = async (');
+        const end = app.indexOf('// Open and Create from', start);
+        if (start < 0 || end < 0) throw new Error('profile overlay hint block not found in App.tsx');
+        const hintFor = (landingPath?: string, profilePath = '/', overlayScope: string | null = '/Crypt') => execute(app.slice(start, end), {
+            landingPath,
+            loadSavedServerProfiles: async () => [{
+                id: 'srv_1',
+                initialPath: profilePath,
+                username: 'alice',
+                hasStoredAeroCryptPassword: true,
+                aeroCryptOverlay: { enabled: true, kind: 'aerocrypt', remoteScope: overlayScope },
+            }],
+            resolveUsernameTemplate,
+            connectLandsOutsideOverlay,
+        }, "return getProfileOverlayHint('srv_1', landingPath);");
+
+        await expect(hintFor()).resolves.toMatchObject({ opensOutside: true });
+        await expect(hintFor('/Crypt')).resolves.toMatchObject({ opensOutside: false });
+        await expect(hintFor('/', '/Crypt', null)).resolves.toMatchObject({ anchor: '/Crypt', opensOutside: true });
+        expect(app).toContain('getProfileOverlayHint(overlaySavedId, oauthInitialPath)');
+        expect(app).toContain('getProfileOverlayHint(overlaySavedId, resolvedRemoteDir)');
+        expect(app).toContain('serverInitialPath: initialPathOverride ?? cachedInitialPath');
     });
 });

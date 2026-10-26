@@ -5864,6 +5864,7 @@ const App: React.FC = () => {
   // Returns the overlay kind + anchored remote folder, or null.
   const getProfileOverlayHint = async (
     savedServerId?: string,
+    landingPath?: string | null,
   ): Promise<{ kind: 'rclone-crypt' | 'aerocrypt'; anchor: string | null; opensOutside: boolean } | null> => {
     if (!savedServerId) return null;
     try {
@@ -5875,16 +5876,19 @@ const App: React.FC = () => {
       const hasUnlockFactor = profile?.hasStoredAeroCryptPassword
         || (binding?.kind === 'aerocrypt' && profile?.hasStoredAeroCryptKeyfilePath);
       if (!binding?.enabled || !hasUnlockFactor) return null;
-      const initialPath = resolveUsernameTemplate(profile.initialPath, profile.username);
+      const profileInitialPath = resolveUsernameTemplate(profile.initialPath, profile.username);
+      const initialPath = landingPath === undefined
+        ? profileInitialPath
+        : resolveUsernameTemplate(landingPath, profile.username);
       const remoteScope = resolveUsernameTemplate(binding.remoteScope, profile.username);
-      const scope = remoteScope?.trim() || initialPath?.trim() || '';
+      const scope = remoteScope?.trim() || profileInitialPath?.trim() || '';
       return {
         kind: binding.kind,
         anchor: scope && scope !== '/' ? scope : null,
         // Remote Path is the opening. An empty Overlays Path means that
         // folder is the encrypted one. A root, or any parent of the island,
         // opens in plaintext and must not point the panel at the island.
-        opensOutside: connectLandsOutsideOverlay(initialPath, remoteScope),
+        opensOutside: connectLandsOutsideOverlay(initialPath, scope),
       };
     } catch {
       return null;
@@ -7680,8 +7684,8 @@ const App: React.FC = () => {
       // saved on an OAuth profile (Google Drive, Dropbox, ...) was never unlocked:
       // no decrypted names, and the path-bar overlay badge/button never appeared.
       const overlaySavedId = effectiveParams.savedServerId;
-      const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId) : null;
       const oauthInitialPath = resolveUsernameTemplate(quickConnectDirs.remoteDir, effectiveParams.username) || '/';
+      const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, oauthInitialPath) : null;
       let oauthResponse: FileListResponse | null = null;
       if (overlayHint && overlaySavedId) {
         // Probe the configured landing, but never let a transient listing error
@@ -7754,7 +7758,9 @@ const App: React.FC = () => {
         effectiveParams,
         oauthResponse?.current_path || oauthInitialPath,
         oauthLocalDir || currentLocalPath,
-        overlayHint && !overlayHint.opensOutside ? [] : oauthResponse?.files
+        overlayHint && !overlayHint.opensOutside ? [] : oauthResponse?.files,
+        undefined,
+        overlayHint ? oauthInitialPath : undefined
       );
       if (overlayHint && overlaySavedId) {
         markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
@@ -7995,7 +8001,7 @@ const App: React.FC = () => {
         // and let the deferred phase-2 reload paint the decrypted names anchored
         // at the bound scope.
         const overlaySavedId = effectiveParams.savedServerId;
-        const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId) : null;
+        const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, resolvedRemoteDir) : null;
         if (overlayHint && overlaySavedId) {
           setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
           markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
@@ -8034,7 +8040,9 @@ const App: React.FC = () => {
           sessionParams,
           response.current_path,
           quickConnectDirs.localDir || currentLocalPath,
-          overlayHint && !overlayHint.opensOutside ? [] : files
+          overlayHint && !overlayHint.opensOutside ? [] : files,
+          undefined,
+          overlayHint ? resolvedRemoteDir || '/' : undefined
         );
         if (overlayHint && overlaySavedId) {
           markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
@@ -8257,7 +8265,7 @@ const App: React.FC = () => {
   // Session Management for Multi-Tab
   // Accept optional file lists to avoid stale closure captures: callers that
   // just did setRemoteFiles/setLocalFiles should pass the fresh arrays here.
-  const createSession = async (serverName: string, params: ConnectionParams, remotePath: string, localPath: string, freshRemoteFiles?: RemoteFile[], freshLocalFiles?: LocalFile[]) => {
+  const createSession = async (serverName: string, params: ConnectionParams, remotePath: string, localPath: string, freshRemoteFiles?: RemoteFile[], freshLocalFiles?: LocalFile[], initialPathOverride?: string) => {
     // Deep copy params to prevent reference mutation when switching tabs
     const paramsCopy: ConnectionParams = JSON.parse(JSON.stringify(params));
 
@@ -8293,7 +8301,7 @@ const App: React.FC = () => {
       faviconUrl: cachedFavicon,
       customIconUrl: cachedCustomIcon,
       publicUrlBase: cachedPublicUrlBase,
-      serverInitialPath: cachedInitialPath,
+      serverInitialPath: initialPathOverride ?? cachedInitialPath,
       // New sessions start with navigation sync disabled
       isSyncNavigation: false,
       syncBasePaths: null,
