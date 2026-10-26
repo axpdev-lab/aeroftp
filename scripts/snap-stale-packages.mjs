@@ -192,6 +192,7 @@ function sh(cmd, args, opts = {}) {
   return execFileSync(cmd, args, { encoding: 'utf8', ...opts });
 }
 
+/** Read the Snap metadata needed to audit its staged Ubuntu packages. */
 function readSnapMetadata(snapFile, workDir) {
   sh('unsquashfs', ['-q', '-n', '-f', '-d', join(workDir, 'x'), snapFile, 'snap/manifest.yaml', 'meta/snap.yaml']);
   const manifest = readFileSync(join(workDir, 'x', 'snap', 'manifest.yaml'), 'utf8');
@@ -217,9 +218,10 @@ function readSnapMetadata(snapFile, workDir) {
   // file), and every line in between is read. Ending it at the first line
   // that is not an entry, as a regex over `(-\s.*\n)+` did, let a blank line,
   // a comment or an unterminated last line drop every package after it.
-  // Each entry is `<package>=<version>` (snapcraft 9.1.4: 188 of 188 in the
-  // 4.2.3 snap). An entry read any other way would not be found in the
-  // archive and would read as not stale, so the audit refuses it instead.
+  // Entries are `<package>=<version>` or `<package>:<architecture>=<version>`.
+  // The architecture qualifier names the binary package without changing its
+  // archive key. A mismatched or otherwise unreadable entry would not be found
+  // in the archive and would read as not stale, so the audit refuses it instead.
   const lines = manifest.replace(/\n+$/, '').split('\n');
   const start = lines.indexOf('primed-stage-packages:');
   if (start === -1) throw new Error('no primed-stage-packages list in snap/manifest.yaml');
@@ -227,13 +229,13 @@ function readSnapMetadata(snapFile, workDir) {
   const packages = [];
   for (const line of lines.slice(start + 1)) {
     if (/^[^\s#-][^:]*:/.test(line)) break;
-    const entry = line.match(/^- ([a-z0-9][a-z0-9+.-]+)=([0-9][A-Za-z0-9.+~:-]*)$/);
-    if (entry) packages.push({ name: entry[1], version: entry[2] });
+    const entry = line.match(/^- ([a-z0-9][a-z0-9+.-]+)(?::([a-z0-9-]+))?=([0-9][A-Za-z0-9.+~:-]*)$/);
+    if (entry && (!entry[2] || entry[2] === arch)) packages.push({ name: entry[1], version: entry[3] });
     else unread.push(line === '' ? '(blank line)' : line);
   }
   if (unread.length > 0) {
     throw new Error(
-      `cannot read ${unread.length} primed-stage-packages entr${unread.length === 1 ? 'y' : 'ies'} of snap/manifest.yaml as <package>=<version>:\n  ${unread.join('\n  ')}`,
+      `cannot read ${unread.length} primed-stage-packages entr${unread.length === 1 ? 'y' : 'ies'} of snap/manifest.yaml as <package>[:<architecture>]=<version> (the architecture qualifier must match the snap architecture: ${arch}):\n  ${unread.join('\n  ')}`,
     );
   }
   if (packages.length === 0) throw new Error('the primed-stage-packages list of snap/manifest.yaml has no entries');
