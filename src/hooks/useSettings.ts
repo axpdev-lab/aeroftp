@@ -270,8 +270,13 @@ export const useSettings = () => {
   useEffect(() => {
     let cancelled = false;
     let loadRevision = 0;
+    // The one-way migration to the vault is retried by every later load, the
+    // vault-ready one included, until a vault write succeeds. Its strict read
+    // takes a store that is not ready for a failure, never for an absent key,
+    // so the localStorage copy cannot replace the settings in the vault.
+    let migrationPending = true;
 
-    const loadSettings = async (migrate: boolean) => {
+    const loadSettings = async () => {
       const revision = ++loadRevision;
       try {
         const parsed = await secureGetWithFallback<Record<string, unknown>>(SETTINGS_VAULT_KEY, SETTINGS_KEY);
@@ -284,9 +289,10 @@ export const useSettings = () => {
           setSystemMenuVisible(showMenu);
           invoke('toggle_menu_bar', { visible: showMenu });
 
-          if (migrate) {
-            // One-way idempotent migration to vault (no-op if already in vault)
-            updateAppSettings(existing => existing ?? parsed).catch(() => {});
+          if (migrationPending) {
+            updateAppSettings(existing => existing ?? parsed, undefined, true)
+              .then(() => { migrationPending = false; })
+              .catch(() => {});
           }
         } else {
           // No settings saved, apply defaults for system menu
@@ -309,14 +315,14 @@ export const useSettings = () => {
         return;
       }
       // Fallback: re-read from vault (for storage events or legacy callers)
-      void loadSettings(false);
+      void loadSettings();
     };
 
-    void loadSettings(true);
+    void loadSettings();
 
     window.addEventListener('storage', handleSettingsChange);
     window.addEventListener('aeroftp-settings-changed', handleSettingsChange);
-    const unsubscribeVaultReady = onVaultReady(() => void loadSettings(false));
+    const unsubscribeVaultReady = onVaultReady(() => void loadSettings());
     return () => {
       cancelled = true;
       loadRevision++;

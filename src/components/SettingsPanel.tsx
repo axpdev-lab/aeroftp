@@ -395,6 +395,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [portableMode, setPortableMode] = useState<boolean | null>(null);
     const autostartAtOpen = useRef<boolean | null>(null);
     const autostartEditRevision = useRef(0);
+    // Whether the user changed the autostart checkbox since the panel opened:
+    // Save Changes writes the OS state only for such an edit.
+    const autostartTouched = useRef(false);
     const [oauthSettings, setOauthSettings] = useState<OAuthSettings>(defaultOAuthSettings);
     const oauthEdits = useRef<Partial<Record<keyof OAuthSettings, { clientId?: boolean; clientSecret?: boolean }>>>({});
     const [servers, setServers] = useState<ServerProfile[]>([]);
@@ -684,6 +687,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                             fontFamily: normalizeAppFontFamily(saved.fontFamily ?? defaultSettings.fontFamily),
                             introHubIconSize: clampIntroHubIconSize(saved.introHubIconSize ?? defaultSettings.introHubIconSize),
                             sftpDownloadPreset: normalizeSftpDownloadPreset(saved.sftpDownloadPreset),
+                            // The OS is the source of truth for autostart: a saved
+                            // value read after the OS state must not replace it.
+                            launchOnStartup: autostartAtOpen.current ?? saved.launchOnStartup ?? defaultSettings.launchOnStartup,
                         };
                         settingsBase.current = normalizedSettings;
                         setSettings(normalizedSettings);
@@ -770,16 +776,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
     useEffect(() => {
         autostartAtOpen.current = null;
+        autostartTouched.current = false;
         if (!isOpen || portableMode !== false) return;
         let disposed = false;
         const revision = autostartEditRevision.current;
         isAutostartEnabled()
             .then(enabled => {
-                if (disposed) return;
+                // A checkbox edit or an import refresh made during the read is newer.
+                if (disposed || autostartEditRevision.current !== revision) return;
                 autostartAtOpen.current = enabled;
-                if (autostartEditRevision.current === revision) {
-                    setSettings(prev => ({ ...prev, launchOnStartup: enabled }));
-                }
+                setSettings(prev => ({ ...prev, launchOnStartup: enabled }));
             })
             .catch(e => logger.debug('Autostart status check failed:', e));
         return () => { disposed = true; };
@@ -874,7 +880,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             localStorage.removeItem(OAUTH_SETTINGS_KEY);
             // Apply system menu setting immediately
             invoke('toggle_menu_bar', { visible: captured.showSystemMenu });
-            if (portableMode === false && autostartAtOpen.current !== null && captured.launchOnStartup !== autostartAtOpen.current) {
+            // Only a checkbox edit writes the OS state, and only when it differs
+            // from the state read at open; with no state read (the read failed)
+            // the edit is applied as it is.
+            if (portableMode === false && autostartTouched.current && captured.launchOnStartup !== autostartAtOpen.current) {
                 const revision = autostartEditRevision.current;
                 try {
                     if (captured.launchOnStartup) {
@@ -912,7 +921,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
     const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
         ++settingsLoadRevision.current;
-        if (key === 'launchOnStartup') autostartEditRevision.current++;
+        if (key === 'launchOnStartup') {
+            autostartEditRevision.current++;
+            autostartTouched.current = true;
+        }
         setSettings((prev) => ({ ...prev, [key]: value }));
         setHasChanges(true);
     };
@@ -3749,12 +3761,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                                 // so the UI reflects reality without
                                                                                 // forcing the user to reopen Settings
                                                                                 // (issue #214 C3 pt.E1).
+                                                                                // A checkbox edit made during the read stays.
                                                                                 if (portableMode === false) {
                                                                                     try {
+                                                                                        const revision = autostartEditRevision.current;
                                                                                         const enabled = await isAutostartEnabled();
                                                                                         autostartAtOpen.current = enabled;
-                                                                                        autostartEditRevision.current++;
-                                                                                        setSettings(prev => ({ ...prev, launchOnStartup: enabled }));
+                                                                                        if (autostartEditRevision.current === revision) {
+                                                                                            autostartEditRevision.current++;
+                                                                                            setSettings(prev => ({ ...prev, launchOnStartup: enabled }));
+                                                                                        }
                                                                                     } catch {
                                                                                         /* plugin unavailable: ignore */
                                                                                     }

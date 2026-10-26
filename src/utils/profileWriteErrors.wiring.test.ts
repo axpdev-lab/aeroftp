@@ -81,7 +81,7 @@ function fixture(fail: 'read' | 'write' | 'none' = 'write') {
     return { context, read, store, events, servers };
 }
 
-function settingsSaveFixture(launchOnStartup: boolean, autostartAtOpen: boolean | null, portableMode: boolean | null) {
+function settingsSaveFixture(launchOnStartup: boolean, autostartAtOpen: boolean | null, portableMode: boolean | null, touched = true) {
     const f = fixture('none');
     const settings = {
         fontSize: 14, fontFamily: 'system', introHubIconSize: 32,
@@ -90,7 +90,7 @@ function settingsSaveFixture(launchOnStartup: boolean, autostartAtOpen: boolean 
     Object.assign(f.context, {
         saveState: 'idle', settings,
         settingsBase: { current: { ...settings } }, settingsDraft: { current: { ...settings } },
-        autostartAtOpen: { current: autostartAtOpen }, autostartEditRevision: { current: 0 }, portableMode,
+        autostartAtOpen: { current: autostartAtOpen }, autostartEditRevision: { current: 0 }, autostartTouched: { current: touched }, portableMode,
         panelOpen: { current: true }, ConnectScope, bindSettingsScope: async (scope: ConnectScope) => scope,
         mergeAppSettingsDraft, normalizeGuiPresentation, updateAppSettings: vi.fn(async () => ({ ...settings })),
         clampAppFontSize: (v: unknown) => v, normalizeAppFontFamily: (v: unknown) => v, clampIntroHubIconSize: (v: unknown) => v,
@@ -210,6 +210,74 @@ describe('saved profile write rejection in production handlers', () => {
         await fn.handleSave();
         expect(f.context.enableAutostart).toHaveBeenCalledTimes(1);
         expect(f.context.disableAutostart).not.toHaveBeenCalled();
+    });
+
+    it('installed Settings save leaves autostart untouched when only a saved value differs from the OS', async () => {
+        const f = settingsSaveFixture(true, false, false, false);
+        const fn = await execute(settingsSource, ['handleSave'], f.context);
+        await fn.handleSave();
+        expect(f.context.enableAutostart).not.toHaveBeenCalled();
+        expect(f.context.disableAutostart).not.toHaveBeenCalled();
+    });
+
+    it('installed Settings save applies a checkbox edit when the OS state could not be read', async () => {
+        const f = settingsSaveFixture(true, null, false);
+        const fn = await execute(settingsSource, ['handleSave'], f.context);
+        await fn.handleSave();
+        expect(f.context.enableAutostart).toHaveBeenCalledTimes(1);
+        expect(f.context.disableAutostart).not.toHaveBeenCalled();
+    });
+
+    it('saved-settings load keeps an OS autostart value that resolved first', async () => {
+        const marker = settingsSource.indexOf('    // Load settings on open');
+        const start = settingsSource.indexOf('    useEffect(() => {', marker);
+        const end = settingsSource.indexOf('\n', settingsSource.indexOf('    }, [isOpen]);', start));
+        let resolveSaved!: (settings: { launchOnStartup: boolean }) => void;
+        const secureGetWithFallback = vi.fn(() => new Promise<{ launchOnStartup: boolean }>(resolve => { resolveSaved = resolve; }));
+        const setSettings = vi.fn();
+        const pending = snippet(settingsSource.slice(start, end), {
+            useEffect: (callback: () => void) => callback(), isOpen: true,
+            oauthEdits: { current: {} }, settingsLoadRevision: { current: 0 }, panelOpen: { current: true },
+            ConnectScope, GuiError: class extends Error {}, bindSettingsScope: async (scope: ConnectScope) => scope,
+            secureGetWithFallback, SETTINGS_VAULT_KEY: 'settings', SETTINGS_KEY: 'settings',
+            defaultSettings: { fontSize: 14, fontFamily: 'system', introHubIconSize: 32, sftpDownloadPreset: 'ask', launchOnStartup: false },
+            normalizeGuiPresentation: (value: unknown) => value, clampAppFontSize: (value: unknown) => value,
+            normalizeAppFontFamily: (value: unknown) => value, clampIntroHubIconSize: (value: unknown) => value,
+            normalizeSftpDownloadPreset: (value: unknown) => value, autostartAtOpen: { current: false },
+            settingsBase: { current: null }, setSettings, loadSavedServerProfiles: async () => [], setServers: vi.fn(),
+            defaultOAuthSettings: Object.fromEntries(['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'].map(provider => [provider, {}])),
+            loadOAuthClientCredentials: async () => ({}), notifyOAuthKeysUnavailable: vi.fn(), keyReadFailure: String,
+            t: (key: string) => key, setOauthSettings: vi.fn(),
+            invoke: vi.fn(async (command: string) => command === 'get_credential_store_status'
+                ? { master_mode: false, is_locked: false, timeout_seconds: 0 }
+                : command === 'aerovault_overlay_get_idle_timeout' ? 60 : false),
+            setMasterPasswordStatus: vi.fn(), setAutoLockTimeout: vi.fn(), setAeroVaultOverlayTimeoutMin: vi.fn(),
+            setVaultEntriesCount: vi.fn(), setVaultCategories: vi.fn(), setTotpEnabled: vi.fn(), console,
+        });
+        await pending;
+        await vi.waitFor(() => expect(secureGetWithFallback).toHaveBeenCalledOnce());
+        resolveSaved({ launchOnStartup: true });
+        await vi.waitFor(() => expect(setSettings).toHaveBeenCalledWith(expect.objectContaining({ launchOnStartup: false })));
+    });
+
+    it('keystore import refresh keeps a checkbox edit made during its autostart read', async () => {
+        const marker = settingsSource.indexOf('// The import may have toggled OS-level');
+        const start = settingsSource.indexOf('if (portableMode === false) {', marker);
+        const end = settingsSource.indexOf('                                                                            } catch (e) {', start);
+        let resolveEnabled!: (enabled: boolean) => void;
+        const isAutostartEnabled = vi.fn(() => new Promise<boolean>(resolve => { resolveEnabled = resolve; }));
+        const autostartEditRevision = { current: 0 };
+        const autostartAtOpen = { current: null };
+        const setSettings = vi.fn();
+        const pending = snippet(settingsSource.slice(start, end), {
+            portableMode: false, autostartEditRevision, autostartAtOpen, isAutostartEnabled, setSettings,
+        });
+        await vi.waitFor(() => expect(isAutostartEnabled).toHaveBeenCalledOnce());
+        autostartEditRevision.current++;
+        resolveEnabled(false);
+        await pending;
+        expect(autostartAtOpen.current).toBe(false);
+        expect(setSettings).not.toHaveBeenCalled();
     });
 
     it.each(['handleDuplicate', 'handleRenameSubmit', 'confirmDelete', 'handleDrop'] as const)('IntroHub %s never publishes unpersisted state', async name => {

@@ -94,4 +94,25 @@ describe('useSettings vault readiness', () => {
         expect(latest.dateFormat).toBe('dmy');
         expect(mocks.invoke.mock.calls.filter(([command]) => command === 'get_credential')).toHaveLength(2);
     });
+
+    it('retries the legacy migration at readiness until a vault write succeeds, then stops', async () => {
+        localStorage.setItem('aeroftp_settings', JSON.stringify({ fontSize: 15 }));
+        mocks.updateAppSettings.mockRejectedValueOnce(new Error('CONFIG_UNAVAILABLE'));
+        await act(async () => root.render(createElement(Harness)));
+        expect(latest.fontSize).toBe(15);
+        expect(mocks.updateAppSettings).toHaveBeenCalledTimes(1);
+
+        mocks.invoke.mockImplementation(async (command: string) => {
+            if (command === 'get_credential') throw new Error('Credential not found: config_app_settings');
+            return null;
+        });
+        await act(async () => window.dispatchEvent(new Event('aeroftp-vault-ready')));
+        expect(mocks.updateAppSettings).toHaveBeenCalledTimes(2);
+        // The strict read: a store that is not ready is never taken for an absent key.
+        expect(mocks.updateAppSettings).toHaveBeenLastCalledWith(expect.any(Function), undefined, true);
+        expect(mocks.updateAppSettings.mock.calls[1][0](null)).toEqual({ fontSize: 15 });
+
+        await act(async () => window.dispatchEvent(new Event('aeroftp-vault-ready')));
+        expect(mocks.updateAppSettings).toHaveBeenCalledTimes(2);
+    });
 });
