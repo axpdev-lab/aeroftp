@@ -67943,6 +67943,7 @@ async fn check_report(
     let scan_opts = ScanOptions {
         checkers: Some(effective_checkers(cli)),
         compute_checksum: checksum && !crypt_active,
+        compute_remote_checksum: checksum && !crypt_active,
         disable_recursive_fastpath: crypt_active,
         max_depth: Some(MAX_SCAN_DEPTH),
         ..Default::default()
@@ -100561,6 +100562,82 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
 
         assert_eq!(report.status(), "partial");
         assert_eq!(report.exit_code(), 4);
+    }
+
+    #[test]
+    fn check_checksum_compares_both_sides_of_same_size_files() {
+        std::thread::Builder::new()
+            .name("check-checksum-local".to_string())
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                let fixture = tempfile::tempdir().expect("checksum fixture");
+                let local = fixture.path().join("local");
+                let remote = fixture.path().join("remote");
+                std::fs::create_dir(&local).expect("local tree");
+                std::fs::create_dir(&remote).expect("remote tree");
+                std::fs::write(local.join("same-size.txt"), b"ABCD").expect("local file");
+                std::fs::write(remote.join("same-size.txt"), b"WXYZ").expect("remote file");
+                let local = local.to_string_lossy().into_owned();
+                let remote = remote.to_string_lossy().into_owned();
+                let cli = Cli {
+                    quiet: true,
+                    ..test_cli()
+                };
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("checksum runtime")
+                    .block_on(async {
+                        let by_size = check_report(
+                            &remote,
+                            &local,
+                            "/",
+                            false,
+                            false,
+                            &cli,
+                            OutputFormat::Json,
+                        )
+                        .await
+                        .expect("size report");
+                        assert_eq!(by_size.match_count, 1);
+                        assert_eq!(by_size.exit_code(), 0);
+
+                        let by_hash = check_report(
+                            &remote,
+                            &local,
+                            "/",
+                            true,
+                            false,
+                            &cli,
+                            OutputFormat::Json,
+                        )
+                        .await
+                        .expect("checksum report");
+                        assert_eq!(by_hash.match_count, 0);
+                        assert_eq!(by_hash.differ_count, 1);
+                        assert_eq!(by_hash.exit_code(), 4);
+
+                        std::fs::write(Path::new(&remote).join("same-size.txt"), b"ABCD")
+                            .expect("matching remote file");
+                        let equal = check_report(
+                            &remote,
+                            &local,
+                            "/",
+                            true,
+                            false,
+                            &cli,
+                            OutputFormat::Json,
+                        )
+                        .await
+                        .expect("matching checksum report");
+                        assert_eq!(equal.match_count, 1);
+                        assert_eq!(equal.differ_count, 0);
+                        assert_eq!(equal.exit_code(), 0);
+                    });
+            })
+            .expect("checksum test thread")
+            .join()
+            .expect("checksum test completed");
     }
 
     /// Complete scans of matching trees still report `ok` and exit 0.
