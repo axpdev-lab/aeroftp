@@ -182,7 +182,8 @@ function checkSettingsVaultMigration() {
 
   assert(
     settingsPanel.includes('await updateAppSettings(existing => mergeAppSettingsDraft(base, captured,') &&
-    read('src/utils/appSettings.ts').includes("await scope.step(() => secureStore('app_settings', updated))"),
+    read('src/utils/appSettings.ts').includes("const store = async () => { await secureStore('app_settings', updated); removeLegacySettings(); };") &&
+    read('src/utils/appSettings.ts').includes('if (scope) await scope.step(store);'),
     `settings vault migration regression: missing vault-backed settings save in ${settingsPanelFile}`
   );
 
@@ -191,14 +192,28 @@ function checkSettingsVaultMigration() {
     `settings vault migration regression: plaintext settings write still present in ${settingsPanelFile}`
   );
 
-  // The legacy migration reads the vault strictly (a store that is not ready
-  // is a failure, never an absent key), stays pending until a write lands, and
-  // handles its own rejection: the call is not awaited, so a failed vault write
-  // without the catch would surface as an unhandled rejection.
+  // The legacy migration stays pending until it succeeds and handles its own
+  // rejection: the call is not awaited, so without the catch a failed vault
+  // write would surface as an unhandled rejection.
   assert(
     useSettings.includes("secureGetWithFallback<Record<string, unknown>>(SETTINGS_VAULT_KEY, SETTINGS_KEY)") &&
-      /updateAppSettings\(existing => existing \?\? parsed, undefined, true\)\s*\.then\(\(\) => \{ migrationPending = false; \}\)\s*\.catch\(\(\) => \{\}\)/.test(useSettings),
+      /migrateLegacySettings\(parsed\)\s*\.then\(\(\) => \{ migrationPending = false; \}\)\s*\.catch\(\(\) => \{\}\)/.test(useSettings),
     `settings vault migration regression: missing vault-first load/migration in ${useSettingsFile}`
+  );
+
+  // It writes only into a vault that holds no settings, and reads strictly (a
+  // store that is not ready is a failure, never an absent key). The settings
+  // live in the vault only: the app-settings writer leaves no plaintext copy
+  // in WebView storage (docs/UNIVERSAL-VAULT.md), as 4.2.3 and 4.2.4 did.
+  const appSettingsFile = 'src/utils/appSettings.ts';
+  const appSettings = read(appSettingsFile);
+  assert(
+    /if \(await secureGetConfigStrict<Settings>\('app_settings'\)\) \{\s*removeLegacySettings\(\);\s*return;\s*\}\s*await updateAppSettings\(existing => existing \?\? found, undefined, true\);/.test(appSettings),
+    `settings vault migration regression: the migration must write only into an empty vault, strictly, in ${appSettingsFile}`
+  );
+  assert(
+    !appSettings.includes('localStorage.setItem('),
+    `settings vault migration regression: plaintext settings write present in ${appSettingsFile}`
   );
 
   assert(

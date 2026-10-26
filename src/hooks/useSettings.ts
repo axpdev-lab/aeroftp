@@ -5,10 +5,11 @@
  * useSettings Hook
  * Extracted from App.tsx during modularization (v1.3.1)
  *
- * Manages all application settings persisted in localStorage under 'aeroftp_settings'.
+ * Manages all application settings, stored in the vault as 'app_settings'; the old
+ * plaintext 'aeroftp_settings' key is only read as a migration source.
  * Provides live reload via 'storage' and custom 'aeroftp-settings-changed' events.
  *
- * Used by: App.tsx (main consumer), SettingsPanel (writes to localStorage)
+ * Used by: App.tsx (main consumer), SettingsPanel (writes through utils/appSettings)
  * Dependencies: invoke('toggle_menu_bar') for native menu bar visibility
  *
  * Returns: All settings as individual state values + their setters + SETTINGS_KEY constant
@@ -18,7 +19,7 @@ import { normalizeGuiPresentation, DEFAULT_GUI_PRESENTATION, type GuiPresentatio
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { onVaultReady, secureGetWithFallback } from '../utils/secureStorage';
-import { updateAppSettings } from '../utils/appSettings';
+import { migrateLegacySettings } from '../utils/appSettings';
 import {
   DEFAULT_SFTP_DOWNLOAD_PRESET,
   normalizeSftpDownloadPreset,
@@ -271,9 +272,9 @@ export const useSettings = () => {
     let cancelled = false;
     let loadRevision = 0;
     // The one-way migration to the vault is retried by every later load, the
-    // vault-ready one included, until a vault write succeeds. Its strict read
-    // takes a store that is not ready for a failure, never for an absent key,
-    // so the localStorage copy cannot replace the settings in the vault.
+    // vault-ready one included, until it succeeds. It writes only when the
+    // vault holds no settings, and its strict read takes a store that is not
+    // ready for a failure, never for an absent key.
     let migrationPending = true;
 
     const loadSettings = async () => {
@@ -290,7 +291,7 @@ export const useSettings = () => {
           invoke('toggle_menu_bar', { visible: showMenu });
 
           if (migrationPending) {
-            updateAppSettings(existing => existing ?? parsed, undefined, true)
+            migrateLegacySettings(parsed)
               .then(() => { migrationPending = false; })
               .catch(() => {});
           }

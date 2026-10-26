@@ -10,10 +10,10 @@ import { useSettings } from './useSettings';
 
 const mocks = vi.hoisted(() => ({
     invoke: vi.fn(),
-    updateAppSettings: vi.fn(),
+    migrateLegacySettings: vi.fn(),
 }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
-vi.mock('../utils/appSettings', () => ({ updateAppSettings: mocks.updateAppSettings }));
+vi.mock('../utils/appSettings', () => ({ migrateLegacySettings: mocks.migrateLegacySettings }));
 
 let root: Root;
 let host: HTMLDivElement;
@@ -33,7 +33,7 @@ beforeEach(() => {
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
     localStorage.clear();
     mounts = 0;
-    mocks.updateAppSettings.mockReset().mockResolvedValue({});
+    mocks.migrateLegacySettings.mockReset().mockResolvedValue(undefined);
     mocks.invoke.mockReset().mockImplementation(async (command: string) => {
         if (command === 'get_credential') throw new Error('STORE_NOT_READY');
         return null;
@@ -95,24 +95,22 @@ describe('useSettings vault readiness', () => {
         expect(mocks.invoke.mock.calls.filter(([command]) => command === 'get_credential')).toHaveLength(2);
     });
 
-    it('retries the legacy migration at readiness until a vault write succeeds, then stops', async () => {
+    it('retries the legacy migration at readiness until it succeeds, then stops', async () => {
         localStorage.setItem('aeroftp_settings', JSON.stringify({ fontSize: 15 }));
-        mocks.updateAppSettings.mockRejectedValueOnce(new Error('CONFIG_UNAVAILABLE'));
+        mocks.migrateLegacySettings.mockRejectedValueOnce(new Error('CONFIG_UNAVAILABLE'));
         await act(async () => root.render(createElement(Harness)));
         expect(latest.fontSize).toBe(15);
-        expect(mocks.updateAppSettings).toHaveBeenCalledTimes(1);
+        expect(mocks.migrateLegacySettings).toHaveBeenCalledTimes(1);
 
         mocks.invoke.mockImplementation(async (command: string) => {
             if (command === 'get_credential') throw new Error('Credential not found: config_app_settings');
             return null;
         });
         await act(async () => window.dispatchEvent(new Event('aeroftp-vault-ready')));
-        expect(mocks.updateAppSettings).toHaveBeenCalledTimes(2);
-        // The strict read: a store that is not ready is never taken for an absent key.
-        expect(mocks.updateAppSettings).toHaveBeenLastCalledWith(expect.any(Function), undefined, true);
-        expect(mocks.updateAppSettings.mock.calls[1][0](null)).toEqual({ fontSize: 15 });
+        expect(mocks.migrateLegacySettings).toHaveBeenCalledTimes(2);
+        expect(mocks.migrateLegacySettings).toHaveBeenLastCalledWith({ fontSize: 15 });
 
         await act(async () => window.dispatchEvent(new Event('aeroftp-vault-ready')));
-        expect(mocks.updateAppSettings).toHaveBeenCalledTimes(2);
+        expect(mocks.migrateLegacySettings).toHaveBeenCalledTimes(2);
     });
 });

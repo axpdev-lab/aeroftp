@@ -13,6 +13,8 @@ const storage = vi.hoisted(() => ({
 }));
 vi.mock('../utils/secureStorage', () => ({
     secureGetWithFallback: storage.get,
+    // The write path of utils/appSettings reads the vault blob strictly.
+    secureGetConfigStrict: async () => structuredClone(storage.blob),
     secureStore: storage.store,
     VAULT_READY_EVENT: 'aeroftp-vault-ready',
     onVaultReady: (listener: () => void) => {
