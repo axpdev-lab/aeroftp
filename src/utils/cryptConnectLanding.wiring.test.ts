@@ -11,7 +11,7 @@
 import { transformWithOxc } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 import app from '../App.tsx?raw';
-import { normCryptScope } from './cryptScope';
+import { isWithinCryptScope, normCryptScope } from './cryptScope';
 
 async function execute<T>(source: string, context: Record<string, unknown>, suffix: string): Promise<T> {
     const { code } = await transformWithOxc(source, 'crypt-connect-landing.ts');
@@ -94,5 +94,52 @@ describe('crypt overlay connect landing (#1211)', () => {
         const { invoke, positionWrappedProviderAtScope } = await reanchorWith({ initialLandingPath: '/docs' });
         expect(positionWrappedProviderAtScope).toHaveBeenCalledWith('/docs');
         expect(invoke).not.toHaveBeenCalled();
+    });
+});
+
+describe('crypt overlay deferred connect unlock', () => {
+    const DECISION_START = 'const overlayBinding = isProvider ? rawActiveCryptOverlay() : null;';
+    const DECISION_END = 'let reactivatedOverlayForNav = false;';
+
+    async function navigationDecisionFor(activeSession: { savedServerId?: string; cryptOverlayKind?: string | null }) {
+        const start = app.indexOf(DECISION_START);
+        const end = app.indexOf(DECISION_END, start);
+        if (start < 0 || end < 0) throw new Error('overlay navigation decision block not found in App.tsx');
+        return execute(app.slice(start, end), {
+            isProvider: true,
+            rawActiveCryptOverlay: () => null,
+            activeSession,
+            resolveTargetDisplayPath: (_current: string, path: string) => path,
+            currentRemoteDisplayPath: '/',
+            path: '/Crypt',
+            plainPath: true,
+            activeBoundRemoteScope: '/Crypt',
+            isWithinCryptScope,
+        }, 'return { crossingIn, crossingOut, providerNavPath };');
+    }
+
+    it('enters the scope through a saved capability before any vault exists', async () => {
+        await expect(navigationDecisionFor({ savedServerId: 'srv_1', cryptOverlayKind: 'aerocrypt' })).resolves.toEqual({
+            crossingIn: true,
+            crossingOut: false,
+            providerNavPath: '/Crypt',
+        });
+    });
+
+    it('does not route a plain session through the overlay', async () => {
+        await expect(navigationDecisionFor({ savedServerId: 'srv_1', cryptOverlayKind: null })).resolves.toEqual({
+            crossingIn: false,
+            crossingOut: false,
+            providerNavPath: '/Crypt',
+        });
+    });
+
+    it('gates every connect-time pending unlock on the landing policy', () => {
+        expect(app.match(/shouldAutoUnlockOverlayOnConnect\(/g)).toHaveLength(4);
+    });
+
+    it('lists OAuth at the configured Remote Path on both connect paths', () => {
+        expect(app).toContain("invoke<FileListResponse>('provider_change_dir', { path: oauthInitialPath })");
+        expect(app).toContain("invoke<FileListResponse>('provider_change_dir', { path: savedOauthInitialPath })");
     });
 });
