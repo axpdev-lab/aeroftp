@@ -28,6 +28,10 @@ use std::sync::RwLock;
 #[path = "webdav_owncloud_tests.rs"]
 mod owncloud_tests;
 
+#[cfg(test)]
+#[path = "webdav_nextcloud_purge_tests.rs"]
+mod nextcloud_purge_tests;
+
 use super::{
     sanitize_api_error, MultipartHandle, ProviderError, ProviderListExecutorKind,
     ProviderTransferExecutorKind, ProviderType, RemoteEntry, ShareLinkCapabilities,
@@ -78,6 +82,11 @@ pub struct NextcloudTrashEntry {
     pub size: u64,
     /// Whether this is a directory.
     pub is_dir: bool,
+    /// `oc:fileid` when the trashbin PROPFIND returned one. Empty when it did
+    /// not. The id is the live file's id, so a purge can name that item and
+    /// leave every other item of the same original location alone.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub file_id: String,
 }
 
 // ============ HTTP Digest Authentication (RFC 2617) ============
@@ -662,6 +671,315 @@ const WEBDAV_LIST_MAX_SESSIONS: u16 = 8;
 /// the file browser; past this budget the refusal is returned at once.
 const LIST_RETRY_BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// Live `oc:fileid` lookup. The trashbin PROPFIND asks for the same property
+/// after the delete; this one runs before it, on the file's parent.
+const NEXTCLOUD_FILE_ID_PROPFIND: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
+    <d:prop>
+        <oc:fileid/>
+    </d:prop>
+</d:propfind>"#;
+
+/// One propstat's fields. A 404 propstat is staged here and kept only when
+/// its status is missing or 200, so a later "not found" block cannot replace
+/// the file id or the original location.
+#[derive(Default)]
+struct TrashPropBuf {
+    href: String,
+    filename: String,
+    location: String,
+    deletion_time: String,
+    content_length: String,
+    file_id: String,
+    is_collection: bool,
+}
+
+impl TrashPropBuf {
+    fn clear(&mut self) {
+        *self = Self::default();
+    }
+
+    /// Copy each field the destination does not already have.
+    fn take_missing_from(&mut self, from: &Self) {
+        Self::fill(&mut self.href, &from.href);
+        Self::fill(&mut self.filename, &from.filename);
+        Self::fill(&mut self.location, &from.location);
+        Self::fill(&mut self.deletion_time, &from.deletion_time);
+        Self::fill(&mut self.content_length, &from.content_length);
+        Self::fill(&mut self.file_id, &from.file_id);
+        self.is_collection |= from.is_collection;
+    }
+
+    fn fill(dest: &mut String, src: &str) {
+        if dest.is_empty() && !src.is_empty() {
+            dest.push_str(src);
+        }
+    }
+
+    /// Append one text or entity fragment. Indentation is dropped except in
+    /// the name-bearing tags, where a space between entities is part of the
+    /// name (`a&amp; &amp;b.txt`).
+    fn push_fragment(&mut self, tag: &str, raw: &str) {
+        let payload = matches!(
+            tag,
+            "href" | "trashbin-filename" | "trashbin-original-location"
+        );
+        if raw.trim().is_empty() && !payload {
+            return;
+        }
+        match tag {
+            "href" => self.href.push_str(raw),
+            "trashbin-filename" => self.filename.push_str(raw),
+            "trashbin-original-location" => self.location.push_str(raw),
+            "trashbin-deletion-time" => self.deletion_time.push_str(raw),
+            "getcontentlength" => self.content_length.push_str(raw),
+            "fileid" => self.file_id.push_str(raw),
+            _ => {}
+        }
+    }
+}
+
+fn active_trash_buf<'a>(
+    kept: &'a mut TrashPropBuf,
+    staged: &'a mut TrashPropBuf,
+    in_propstat: bool,
+) -> &'a mut TrashPropBuf {
+    if in_propstat {
+        staged
+    } else {
+        kept
+    }
+}
+
+/// A propstat with no status element is the shape older trash fixtures use,
+/// and a 200 keeps the values. `1200` and `404` do not: the code is one
+/// whitespace-separated token, so a longer number is not a success.
+fn trash_propstat_succeeded(status: &str) -> bool {
+    let status = status.trim();
+    if status.is_empty() {
+        return true;
+    }
+    status.split_whitespace().any(|token| token == "200")
+}
+
+/// Original-location key. Leading and trailing slashes are ignored. The
+/// remaining text matches exactly, including case, Unicode, and spaces at
+/// either end of a name. `docs/a.txt` and `docs/a.txt ` are different files.
+///
+/// Trash text is already decoded XML. A second percent-decode would turn a
+/// literal `%20` in a name into a space, so this only strips slashes.
+fn nextcloud_trash_location(path: &str) -> String {
+    path.trim_matches('/').to_string()
+}
+
+/// One URL segment, decoded once. An invalid escape is kept as written.
+fn decode_one_segment(segment: &str) -> String {
+    urlencoding::decode(segment)
+        .map(|decoded| decoded.into_owned())
+        .unwrap_or_else(|_| segment.to_string())
+}
+
+fn find_segment_sequence(segments: &[String], needle: &[&str]) -> Option<usize> {
+    segments.windows(needle.len()).position(|window| {
+        window
+            .iter()
+            .zip(needle.iter())
+            .all(|(have, want)| have == want)
+    })
+}
+
+/// Path relative to the Nextcloud files root, from the decoded URL segments
+/// of the request that was actually sent.
+///
+/// The files form is `remote.php/dav/files/<userid>/...`, and the userid is
+/// the decoded `nextcloud_userid`. The legacy form is `remote.php/webdav/...`.
+/// A subpath install may have segments before `remote.php`. Anything else,
+/// a userid that does not match, or an empty remainder (the root itself) is
+/// `None`: the caller purges nothing and does not guess.
+fn nextcloud_location_rest(segments: &[String], userid: Option<&str>) -> Option<String> {
+    if let Some(at) = find_segment_sequence(segments, &["remote.php", "dav", "files"]) {
+        let user = segments.get(at + 3)?;
+        if user != userid? {
+            return None;
+        }
+        let rest = &segments[at + 4..];
+        if rest.is_empty() {
+            return None;
+        }
+        return Some(rest.join("/"));
+    }
+    if let Some(at) = find_segment_sequence(segments, &["remote.php", "webdav"]) {
+        let rest = &segments[at + 2..];
+        if rest.is_empty() {
+            return None;
+        }
+        return Some(rest.join("/"));
+    }
+    None
+}
+
+/// An empty id, `.`, `..`, or an id that still contains `/` would address
+/// the trash collection or leave it. Those are refused before DELETE.
+fn nextcloud_trash_id_is_one_segment(id: &str) -> bool {
+    !id.is_empty() && id != "." && id != ".." && !id.contains('/')
+}
+
+/// Parent collection and exact final segment of a caller path. `.` and `..`
+/// are not names that can be matched against a listing.
+fn nextcloud_parent_and_name(path: &str) -> Option<(String, String)> {
+    // Slashes only. A space at either end of the name is part of the name.
+    let trimmed = path.trim_matches('/');
+    if trimmed.is_empty() {
+        return None;
+    }
+    let (parent, name) = match trimmed.rfind('/') {
+        Some(cut) => (
+            format!("/{}", &trimmed[..cut]),
+            trimmed[cut + 1..].to_string(),
+        ),
+        None => ("/".to_string(), trimmed.to_string()),
+    };
+    if name.is_empty() || name == "." || name == ".." {
+        None
+    } else {
+        Some((parent, name))
+    }
+}
+
+struct ListedFileId {
+    href: String,
+    file_id: String,
+}
+
+/// quick-xml yields `Eof` when the body stops, even if an element is still
+/// open. A PROPFIND is complete only after `</multistatus>` and with every
+/// element closed. Anything else would be a partial listing.
+fn propfind_document_is_complete(
+    depth: u32,
+    saw_multistatus_end: bool,
+) -> Result<(), ProviderError> {
+    if depth == 0 && saw_multistatus_end {
+        Ok(())
+    } else {
+        Err(ProviderError::ParseError(
+            "PROPFIND listing ended before the multistatus document was complete".into(),
+        ))
+    }
+}
+
+/// Depth-1 file-id listing. A 404 propstat's file id is ignored. A reader
+/// error, or a body that ends before `</multistatus>`, fails the listing:
+/// a partial parse would look like "no file id".
+fn parse_nextcloud_file_id_listing(xml: &str) -> Result<Vec<ListedFileId>, ProviderError> {
+    let mut found = Vec::new();
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    let mut buf = Vec::new();
+    let mut in_response = false;
+    let mut in_propstat = false;
+    let mut current_tag: Option<String> = None;
+    let mut href = String::new();
+    let mut staged_id = String::new();
+    let mut kept_id = String::new();
+    let mut propstat_status = String::new();
+    let mut depth = 0u32;
+    let mut saw_multistatus_end = false;
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Err(error) => return Err(ProviderError::ParseError(error.to_string())),
+            Ok(Event::Eof) => {
+                propfind_document_is_complete(depth, saw_multistatus_end)?;
+                break;
+            }
+            Ok(Event::Start(ref event)) => {
+                depth = depth.saturating_add(1);
+                let tag = event.local_name().as_ref().to_string();
+                match tag.as_str() {
+                    "response" => {
+                        in_response = true;
+                        in_propstat = false;
+                        href.clear();
+                        staged_id.clear();
+                        kept_id.clear();
+                        propstat_status.clear();
+                        current_tag = None;
+                    }
+                    "propstat" if in_response => {
+                        in_propstat = true;
+                        staged_id.clear();
+                        propstat_status.clear();
+                    }
+                    _ if in_response => current_tag = Some(tag),
+                    _ => {}
+                }
+            }
+            Ok(Event::End(ref event)) => {
+                let tag = event.local_name().as_ref().to_string();
+                depth = depth.saturating_sub(1);
+                if tag == "multistatus" {
+                    saw_multistatus_end = true;
+                }
+                match tag.as_str() {
+                    "propstat" if in_propstat => {
+                        in_propstat = false;
+                        if trash_propstat_succeeded(&propstat_status)
+                            && kept_id.is_empty()
+                            && !staged_id.is_empty()
+                        {
+                            kept_id.push_str(&staged_id);
+                        }
+                        current_tag = None;
+                    }
+                    "response" if in_response => {
+                        in_response = false;
+                        if !href.trim().is_empty() {
+                            found.push(ListedFileId {
+                                href: std::mem::take(&mut href),
+                                file_id: kept_id.trim().to_string(),
+                            });
+                        }
+                    }
+                    _ => {
+                        if current_tag.as_deref() == Some(tag.as_str()) {
+                            current_tag = None;
+                        }
+                    }
+                }
+            }
+            Ok(Event::Text(ref event)) => {
+                if let Some(ref tag) = current_tag {
+                    let raw = event.as_ref().to_string();
+                    if tag == "status" && in_propstat {
+                        propstat_status.push_str(&raw);
+                    } else if tag == "href" && !in_propstat {
+                        href.push_str(&raw);
+                    } else if tag == "fileid" && in_propstat && !raw.trim().is_empty() {
+                        staged_id.push_str(&raw);
+                    }
+                }
+            }
+            Ok(Event::GeneralRef(ref event)) => {
+                if let Some(ch) = super::xml_text::xml_entity_to_str(event.as_ref()) {
+                    if let Some(ref tag) = current_tag {
+                        if tag == "href" && !in_propstat {
+                            href.push_str(&ch);
+                        } else if tag == "fileid" && in_propstat {
+                            staged_id.push_str(&ch);
+                        }
+                    }
+                }
+            }
+            Ok(Event::Empty(ref event)) if event.local_name().as_ref() == "multistatus" => {
+                saw_multistatus_end = true;
+            }
+            _ => {}
+        }
+        buf.clear();
+    }
+    Ok(found)
+}
+
 impl WebDavProvider {
     /// Create a new WebDAV provider with the given configuration
     pub fn new(config: WebDavConfig) -> Result<Self, ProviderError> {
@@ -852,6 +1170,38 @@ impl WebDavProvider {
             Some(i) => &after_scheme[i..],
             None => "",
         }
+    }
+
+    /// The path a PROPFIND href names, as its decoded segments, for an exact
+    /// comparison. The scheme and authority of an absolute URL and any query
+    /// or fragment are dropped, empty and `.` segments vanish, `..` removes
+    /// the segment before it, and a relative reference is resolved against
+    /// the collection `base` (segments already normalised). Each segment is
+    /// decoded on its own, so an escaped `/` (`%2F`) inside a name stays part
+    /// of that name. The root is no segment at all.
+    fn dav_path_segments(href: &str, base: &[String]) -> Vec<String> {
+        let raw = href.split(['?', '#']).next().unwrap_or("");
+        let has_authority = raw.find("://").is_some_and(|i| !raw[..i].contains('/'));
+        let (path, relative) = if has_authority {
+            (Self::url_path_component(raw), false)
+        } else {
+            (raw, !raw.starts_with('/'))
+        };
+        let mut segments: Vec<String> = if relative { base.to_vec() } else { Vec::new() };
+        for segment in path.split('/') {
+            match segment {
+                "" | "." => {}
+                ".." => {
+                    segments.pop();
+                }
+                _ => segments.push(
+                    urlencoding::decode(segment)
+                        .map(|decoded| decoded.into_owned())
+                        .unwrap_or_else(|_| segment.to_string()),
+                ),
+            }
+        }
+        segments
     }
 
     /// Issue #264 — try to detect a single-file WebDAV resource at connect time.
@@ -2179,6 +2529,7 @@ impl WebDavProvider {
                     <nc:trashbin-filename/>
                     <nc:trashbin-original-location/>
                     <nc:trashbin-deletion-time/>
+                    <oc:fileid/>
                     <d:getcontentlength/>
                     <d:resourcetype/>
                 </d:prop>
@@ -2209,6 +2560,16 @@ impl WebDavProvider {
     }
 
     /// Parse trashbin PROPFIND XML into entries.
+    ///
+    /// Properties are taken from a propstat whose status is missing or 200.
+    /// A following 404 propstat (Nextcloud reports each missing property that
+    /// way) must not replace the file id or the original location.
+    ///
+    /// A reader error, or a body that ends before `</multistatus>`, fails
+    /// the whole listing. The entries already read are not returned: a later
+    /// generation of the same path could be in the unread tail, and a purge
+    /// would then treat one generation as the only one and delete it.
+    /// A finished multistatus with no responses is an empty listing.
     fn parse_trashbin_response(
         &self,
         xml: &str,
@@ -2222,36 +2583,46 @@ impl WebDavProvider {
         let mut buf = Vec::new();
 
         let mut in_response = false;
+        let mut in_propstat = false;
         let mut current_tag: Option<String> = None;
-        let mut href = String::new();
-        let mut trash_filename = String::new();
-        let mut trash_location = String::new();
-        let mut trash_deletion_time = String::new();
-        let mut content_length = String::new();
-        let mut is_collection = false;
+        let mut kept = TrashPropBuf::default();
+        let mut staged = TrashPropBuf::default();
+        let mut propstat_status = String::new();
         let mut in_resourcetype = false;
+        let mut depth = 0u32;
+        let mut saw_multistatus_end = false;
 
         loop {
             match reader.read_event_into(&mut buf) {
-                Err(_) => break,
-                Ok(Event::Eof) => break,
+                Err(error) => return Err(ProviderError::ParseError(error.to_string())),
+                Ok(Event::Eof) => {
+                    propfind_document_is_complete(depth, saw_multistatus_end)?;
+                    break;
+                }
                 Ok(Event::Start(ref e)) => {
+                    depth = depth.saturating_add(1);
                     let tag = e.local_name().as_ref().to_string();
                     match tag.as_str() {
                         "response" => {
                             in_response = true;
-                            href.clear();
-                            trash_filename.clear();
-                            trash_location.clear();
-                            trash_deletion_time.clear();
-                            content_length.clear();
-                            is_collection = false;
+                            in_propstat = false;
+                            kept.clear();
+                            staged.clear();
+                            propstat_status.clear();
+                            in_resourcetype = false;
+                        }
+                        "propstat" if in_response => {
+                            in_propstat = true;
+                            staged.clear();
+                            propstat_status.clear();
+                            in_resourcetype = false;
                         }
                         "resourcetype" => {
                             in_resourcetype = true;
                         }
                         "collection" if in_resourcetype => {
-                            is_collection = true;
+                            active_trash_buf(&mut kept, &mut staged, in_propstat).is_collection =
+                                true;
                         }
                         _ if in_response => {
                             current_tag = Some(tag);
@@ -2262,34 +2633,53 @@ impl WebDavProvider {
                 Ok(Event::Empty(ref e)) => {
                     let local = e.local_name();
                     let tag = local.as_ref();
+                    if tag == "multistatus" {
+                        saw_multistatus_end = true;
+                    }
                     if tag == "collection" && in_resourcetype {
-                        is_collection = true;
+                        active_trash_buf(&mut kept, &mut staged, in_propstat).is_collection = true;
                     }
                 }
                 Ok(Event::End(ref e)) => {
                     let local = e.local_name();
                     let tag = local.as_ref();
+                    depth = depth.saturating_sub(1);
+                    if tag == "multistatus" {
+                        saw_multistatus_end = true;
+                    }
                     match tag {
+                        "propstat" if in_propstat => {
+                            in_propstat = false;
+                            if trash_propstat_succeeded(&propstat_status) {
+                                kept.take_missing_from(&staged);
+                            }
+                            current_tag = None;
+                        }
                         "response" if in_response => {
                             in_response = false;
-                            // Skip the collection itself (the trash/ container)
-                            if !trash_filename.is_empty() {
-                                let encoded_id =
-                                    href.rsplit('/').find(|s| !s.is_empty()).unwrap_or("");
+                            // Skip the collection itself (the trash/ container).
+                            if !kept.filename.is_empty() {
+                                let encoded_id = kept
+                                    .href
+                                    .rsplit('/')
+                                    .find(|segment| !segment.is_empty())
+                                    .unwrap_or("");
                                 let id = percent_decode_str(encoded_id)
                                     .decode_utf8()
                                     .map_err(|e| ProviderError::ParseError(e.to_string()))?
                                     .into_owned();
                                 entries.push(NextcloudTrashEntry {
                                     id,
-                                    name: trash_filename.trim().to_string(),
-                                    original_path: trash_location.trim().to_string(),
-                                    deleted_at: trash_deletion_time
+                                    name: kept.filename.clone(),
+                                    original_path: kept.location.clone(),
+                                    deleted_at: kept
+                                        .deletion_time
                                         .trim()
                                         .parse::<u64>()
                                         .unwrap_or(0),
-                                    size: content_length.trim().parse::<u64>().unwrap_or(0),
-                                    is_dir: is_collection,
+                                    size: kept.content_length.trim().parse::<u64>().unwrap_or(0),
+                                    is_dir: kept.is_collection,
+                                    file_id: kept.file_id.trim().to_string(),
                                 });
                             }
                         }
@@ -2304,22 +2694,11 @@ impl WebDavProvider {
                 Ok(Event::Text(ref e)) => {
                     if let Some(ref tag) = current_tag {
                         let raw = e.as_ref().to_string();
-                        // Whitespace-only fragments are indentation EXCEPT
-                        // inside name/path-bearing tags, where the space is
-                        // payload (e.g. `a&amp; &amp;b.txt`).
-                        let payload_tag = matches!(
-                            tag.as_str(),
-                            "href" | "trashbin-filename" | "trashbin-original-location"
-                        );
-                        if !raw.trim().is_empty() || payload_tag {
-                            match tag.as_str() {
-                                "href" => href.push_str(&raw),
-                                "trashbin-filename" => trash_filename.push_str(&raw),
-                                "trashbin-original-location" => trash_location.push_str(&raw),
-                                "trashbin-deletion-time" => trash_deletion_time.push_str(&raw),
-                                "getcontentlength" => content_length.push_str(&raw),
-                                _ => {}
-                            }
+                        if tag == "status" && in_propstat {
+                            propstat_status.push_str(&raw);
+                        } else {
+                            active_trash_buf(&mut kept, &mut staged, in_propstat)
+                                .push_fragment(tag, &raw);
                         }
                     }
                 }
@@ -2328,13 +2707,9 @@ impl WebDavProvider {
                     // names containing these characters are not silently truncated.
                     if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
                         if let Some(ref tag) = current_tag {
-                            match tag.as_str() {
-                                "href" => href.push_str(&ch),
-                                "trashbin-filename" => trash_filename.push_str(&ch),
-                                "trashbin-original-location" => trash_location.push_str(&ch),
-                                "trashbin-deletion-time" => trash_deletion_time.push_str(&ch),
-                                "getcontentlength" => content_length.push_str(&ch),
-                                _ => {}
+                            if tag != "status" {
+                                active_trash_buf(&mut kept, &mut staged, in_propstat)
+                                    .push_fragment(tag, &ch);
                             }
                         }
                     }
@@ -2434,6 +2809,157 @@ impl WebDavProvider {
             )));
         }
         Ok(())
+    }
+
+    /// Original location of `path` as Nextcloud recorded it: the decoded
+    /// remainder of the URL `build_url` would use, after the files root.
+    /// `None` when that root is not in the URL or `path` is the root itself.
+    fn nextcloud_files_relative_location(&self, path: &str) -> Option<String> {
+        let url = self.build_url(path);
+        let segments = Self::dav_path_segments(Self::url_path_component(&url), &[]);
+        let userid = self.nextcloud_userid().map(|id| decode_one_segment(&id));
+        nextcloud_location_rest(&segments, userid.as_deref())
+    }
+
+    /// Purge the one trashbin row whose original location is the file `path`
+    /// names under the user's files root.
+    ///
+    /// The caller path is relative to the profile root. Nextcloud stores
+    /// `trashbin-original-location` relative to `/remote.php/dav/files/<id>/`
+    /// (or `/remote.php/webdav/` on the legacy root). The key is taken from
+    /// the URL the delete really hits, not from the caller string. A captured
+    /// `oc:fileid` has to match as well. Deletion time is not a key. Zero
+    /// matches purge nothing. Two matches are refused. The trash collection
+    /// itself is never deleted.
+    async fn purge_nextcloud_trash(
+        &mut self,
+        path: &str,
+        identity: Option<&str>,
+    ) -> Result<bool, ProviderError> {
+        if !self.is_nextcloud() {
+            return Ok(false);
+        }
+        let Some(location) = self.nextcloud_files_relative_location(path) else {
+            return Ok(false);
+        };
+        let identity = identity.map(str::trim).filter(|id| !id.is_empty());
+        let entries = self.nextcloud_list_trash().await?;
+        let matches = entries
+            .into_iter()
+            .filter(|entry| nextcloud_trash_location(&entry.original_path) == location)
+            .filter(|entry| match identity {
+                Some(id) => entry.file_id.trim() == id,
+                None => true,
+            })
+            .collect();
+        let Some(entry) = super::the_one_trashed_item(path, matches)? else {
+            return Ok(false);
+        };
+        let id = entry.id.as_str();
+        if !nextcloud_trash_id_is_one_segment(id) {
+            return Err(ProviderError::ServerError(format!(
+                "Not purged: trash item id for {path} is empty or not a single segment"
+            )));
+        }
+        self.nextcloud_delete_trash_item(id).await?;
+        Ok(true)
+    }
+
+    /// One Depth-1 PROPFIND of `parent`, asking only for `oc:fileid`.
+    /// The collection itself is left out. A 404 propstat's id is left out
+    /// by the parser.
+    async fn nextcloud_list_file_ids(
+        &mut self,
+        parent: &str,
+    ) -> Result<Vec<(String, String)>, ProviderError> {
+        let collection = Self::collection_path(parent);
+        // Same self-reference rule as `parse_propfind_response`: the request
+        // URL, the listing path, and the configured root, compared as decoded
+        // segments. A suffix match would drop a child named like its parent.
+        let request_path =
+            Self::dav_path_segments(Self::url_path_component(&self.build_url(&collection)), &[]);
+        let listing_path =
+            Self::dav_path_segments(&Self::encode_path(collection.trim_start_matches('/')), &[]);
+        let root_path = Self::dav_path_segments(Self::url_path_component(&self.config.url), &[]);
+        let response = self
+            .send_propfind(parent, "1", NEXTCLOUD_FILE_ID_PROPFIND)
+            .await?;
+        if !matches!(response.status(), StatusCode::OK | StatusCode::MULTI_STATUS) {
+            return Err(ProviderError::ServerError(format!(
+                "File id PROPFIND failed: HTTP {}",
+                response.status()
+            )));
+        }
+        let xml = response
+            .text()
+            .await
+            .map_http_err(|error| ProviderError::ParseError(error.to_string()))?;
+        let mut found = Vec::new();
+        for hit in parse_nextcloud_file_id_listing(&xml)? {
+            let file_id = hit.file_id.trim();
+            if file_id.is_empty() {
+                continue;
+            }
+            // Do not trim the href. A space at the end of the leaf is a
+            // different file from the same letters without it.
+            let href_path = Self::dav_path_segments(&hit.href, &request_path);
+            if href_path == request_path || href_path == listing_path || href_path == root_path {
+                continue;
+            }
+            let Some(leaf) = href_path.last() else {
+                continue;
+            };
+            found.push((leaf.clone(), file_id.to_string()));
+        }
+        Ok(found)
+    }
+
+    /// Group the paths by parent and read each parent's file ids once.
+    /// A failed listing fails every path in that group. Two rows with the
+    /// same name are refused, so the later purge cannot pick one of them.
+    async fn capture_nextcloud_file_ids(
+        &mut self,
+        paths: &[String],
+    ) -> Vec<Result<Option<String>, ProviderError>> {
+        let mut results = Vec::with_capacity(paths.len());
+        results.resize_with(paths.len(), || Ok(None));
+        let mut groups: Vec<(String, Vec<(usize, String)>)> = Vec::new();
+        for (index, path) in paths.iter().enumerate() {
+            let Some((parent, name)) = nextcloud_parent_and_name(path) else {
+                continue;
+            };
+            if let Some((_, members)) = groups.iter_mut().find(|(have, _)| have == &parent) {
+                members.push((index, name));
+            } else {
+                groups.push((parent, vec![(index, name)]));
+            }
+        }
+        for (parent, members) in groups {
+            let listed = match self.nextcloud_list_file_ids(&parent).await {
+                Ok(listed) => listed,
+                Err(error) => {
+                    let message = error.to_string();
+                    for (index, _) in members {
+                        results[index] = Err(ProviderError::Other(message.clone()));
+                    }
+                    continue;
+                }
+            };
+            for (index, name) in members {
+                let mut ids = listed
+                    .iter()
+                    .filter(|(leaf, _)| leaf == &name)
+                    .map(|(_, id)| id.as_str());
+                results[index] = match (ids.next(), ids.next()) {
+                    (None, _) => Ok(None),
+                    (Some(id), None) => Ok(Some(id.to_string())),
+                    (Some(_), Some(_)) => Err(ProviderError::ServerError(format!(
+                        "Not captured: more than one item named {name} is in {parent}"
+                    ))),
+                };
+            }
+        }
+        results
     }
 
     /// A new connection asks `Depth: infinity` afresh: what this session
@@ -2570,6 +3096,15 @@ impl WebDavProvider {
             self.config.url
         );
 
+        // The configured URL and `build_url` carry the base's own escapes
+        // (`/my%20dav`), the listing path is the plain one: both go through
+        // the same segment reading as the hrefs they are compared with.
+        let request_path =
+            Self::dav_path_segments(Self::url_path_component(&self.build_url(base_path)), &[]);
+        let listing_path =
+            Self::dav_path_segments(&Self::encode_path(base_path.trim_start_matches('/')), &[]);
+        let root_path = Self::dav_path_segments(Self::url_path_component(&self.config.url), &[]);
+
         // Event-based quick-xml parser
         let mut reader = Reader::from_str(xml);
         // No trim_text: fragments around XML entities must survive intact
@@ -2652,41 +3187,26 @@ impl WebDavProvider {
 
                             let decoded_href = urlencoding::decode(href.trim())
                                 .unwrap_or_else(|_| href.trim().into());
-                            let clean_path = decoded_href.trim_end_matches('/');
                             let base_clean = base_path.trim_end_matches('/');
-                            // The base URL is decoded like the href it is
-                            // compared with: a base whose path carries escapes
-                            // (`/my%20dav`, MEGAcmd's `/<handle>/Cloud%20Drive`)
-                            // otherwise never matches its own self-reference,
-                            // relative or absolute (MEGAcmd answers with
-                            // absolute hrefs), and the root listing showed the
-                            // base as an entry of itself.
-                            let url_raw = self.config.url.trim_end_matches('/');
-                            let url_decoded =
-                                urlencoding::decode(url_raw).unwrap_or_else(|_| url_raw.into());
-                            let url_clean: &str = url_decoded.trim_end_matches('/');
-
-                            let url_path_clean = url_clean
-                                .find("://")
-                                .and_then(|i| url_clean[i + 3..].find('/').map(|j| i + 3 + j))
-                                .map(|i| url_clean[i..].trim_end_matches('/'))
-                                .unwrap_or("");
-
-                            let is_self_reference = clean_path == base_clean
-                                || clean_path == url_clean
-                                || (!base_clean.is_empty() && clean_path.ends_with(base_clean))
-                                || (!base_clean.is_empty()
-                                    && clean_path.ends_with(&format!(
-                                        "/{}",
-                                        base_clean.trim_start_matches('/')
-                                    )))
-                                || (!base_clean.is_empty()
-                                    && base_clean != "/"
-                                    && url_clean.ends_with(clean_path))
-                                || (!url_path_clean.is_empty() && clean_path == url_path_clean);
+                            // Only the exact resource asked for is the
+                            // collection's self-reference: the request URL,
+                            // the listing path itself (a server behind a
+                            // rewriting proxy answers in its own namespace)
+                            // or the configured root, all decoded and
+                            // slash-normalised. A suffix is never enough: a
+                            // child named like the base (`/Sub Dir/Sub Dir`)
+                            // ends with it, and dropping it made bidirectional
+                            // sync delete the local copy.
+                            let href_path = Self::dav_path_segments(href.trim(), &request_path);
+                            let is_self_reference = href_path == request_path
+                                || href_path == listing_path
+                                || href_path == root_path;
 
                             if is_self_reference {
-                                tracing::debug!("[WebDAV] Skipping self-reference: {}", clean_path);
+                                tracing::debug!(
+                                    "[WebDAV] Skipping self-reference: {}",
+                                    decoded_href
+                                );
                                 continue;
                             }
 
@@ -3822,6 +4342,28 @@ impl StorageProvider for WebDavProvider {
         // The Koofr preset deletes into the same Koofr trash as the API.
         (self.config.provider_id.as_deref() == Some("koofr"))
             .then_some(super::koofr::KOOFR_TRASH_NOT_PURGED)
+    }
+
+    async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
+        self.purge_nextcloud_trash(path, None).await
+    }
+
+    async fn delete_permanent_with_identity(
+        &mut self,
+        path: &str,
+        identity: Option<&str>,
+    ) -> Result<bool, ProviderError> {
+        self.purge_nextcloud_trash(path, identity).await
+    }
+
+    async fn capture_trash_identities(
+        &mut self,
+        paths: &[String],
+    ) -> Vec<Result<Option<String>, ProviderError>> {
+        if !self.is_nextcloud() {
+            return paths.iter().map(|_| Ok(None)).collect();
+        }
+        self.capture_nextcloud_file_ids(paths).await
     }
 
     async fn cd_up(&mut self) -> Result<(), ProviderError> {
@@ -6248,6 +6790,126 @@ mod tests {
             );
             assert_eq!(entries[0].path, "/Sub Dir/x y.txt");
         }
+    }
+
+    /// Audit 4.2.5 B01: a child whose path ends with the listed path is a
+    /// child, not the collection's self-reference. Dropping it made a synced
+    /// local copy LocalOnly, and bidirectional sync deleted it. Covers a child
+    /// named like the base, a nested descendant with the same suffix (the
+    /// Depth:infinity walk parses through the same code), escaped bases,
+    /// absolute, path-absolute and relative hrefs, and trailing slashes.
+    #[test]
+    fn a_child_ending_with_the_listed_path_is_kept() {
+        let collection = r#"<d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat>"#;
+        let file = r#"<d:propstat><d:prop><d:resourcetype/><d:getcontentlength>3</d:getcontentlength></d:prop></d:propstat>"#;
+        let response = |href: String, props: &str| {
+            format!("<d:response><d:href>{href}</d:href>{props}</d:response>")
+        };
+        let doc = |body: String| {
+            format!(r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">{body}</d:multistatus>"#)
+        };
+        for (base, prefix) in [
+            ("https://example.com", ""),
+            ("https://example.com/", "https://example.com"),
+            ("https://example.com/dav", "/dav"),
+            ("https://example.com/dav/", "https://example.com/dav"),
+            ("https://example.com/my%20dav", "/my%20dav"),
+            (
+                "https://example.com/my%20dav",
+                "https://example.com/my%20dav",
+            ),
+            (
+                "http://127.0.0.1:4443/aBcD1234/Cloud%20Drive",
+                "http://127.0.0.1:4443/aBcD1234/Cloud%20Drive",
+            ),
+        ] {
+            let provider = WebDavProvider::new(test_config(base)).expect("provider");
+
+            // A child named like the listed folder, with and without the
+            // trailing slash on the self-reference.
+            for self_slash in ["/", ""] {
+                let xml = doc(format!(
+                    "{}{}{}",
+                    response(format!("{prefix}/Sub%20Dir{self_slash}"), collection),
+                    response(format!("{prefix}/Sub%20Dir/Sub%20Dir/"), collection),
+                    response(format!("{prefix}/Sub%20Dir/Sub%20Dir.txt"), file),
+                ));
+                let entries = provider.parse_propfind_response(&xml, "/Sub Dir").unwrap();
+                let paths: Vec<&str> = entries.iter().map(|e| e.path.as_str()).collect();
+                assert_eq!(
+                    paths,
+                    vec!["/Sub Dir/Sub Dir", "/Sub Dir/Sub Dir.txt"],
+                    "base {base}, hrefs {prefix:?}, self slash {self_slash:?}"
+                );
+            }
+
+            // The same child under a nested listing path, and a deeper
+            // descendant ending with the listed path (Depth:infinity body).
+            let xml = doc(format!(
+                "{}{}{}",
+                response(format!("{prefix}/x/b/"), collection),
+                response(format!("{prefix}/x/b/b"), file),
+                response(format!("{prefix}/x/b/y/x/b/"), collection),
+            ));
+            let entries = provider.parse_propfind_response(&xml, "/x/b").unwrap();
+            let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+            assert_eq!(
+                names,
+                vec!["b", "b"],
+                "nested, base {base}, hrefs {prefix:?}"
+            );
+            assert!(entries[1].is_dir);
+        }
+
+        // Spellings of the same self-reference of a UTF-8 folder: a query or
+        // fragment, dot segments, lowercase hex escapes, an absolute URL.
+        // The child is kept every time.
+        let provider =
+            WebDavProvider::new(test_config("https://example.com/dav")).expect("provider");
+        for self_href in [
+            "/dav/R%C3%A9sum%C3%A9/?depth=1",
+            "/dav/R%C3%A9sum%C3%A9/#top",
+            "/dav/./R%C3%A9sum%C3%A9/x/../",
+            "/dav/R%c3%a9sum%c3%a9/",
+            "https://example.com/dav/R%c3%a9sum%c3%a9",
+        ] {
+            let xml = doc(format!(
+                "{}{}",
+                response(self_href.to_string(), collection),
+                response(
+                    "/dav/R%C3%A9sum%C3%A9/R%C3%A9sum%C3%A9.txt".to_string(),
+                    file
+                ),
+            ));
+            let entries = provider
+                .parse_propfind_response(&xml, "/R\u{e9}sum\u{e9}")
+                .unwrap();
+            let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+            assert_eq!(names, vec!["R\u{e9}sum\u{e9}.txt"], "self href {self_href}");
+        }
+        // An escaped slash stays inside its segment: `a%2Fb` is one name,
+        // never the path `a/b`.
+        assert_eq!(
+            WebDavProvider::dav_path_segments("/dav/a%2Fb", &[]),
+            vec!["dav".to_string(), "a/b".to_string()]
+        );
+        assert_ne!(
+            WebDavProvider::dav_path_segments("/dav/a%2Fb", &[]),
+            WebDavProvider::dav_path_segments("/dav/a/b", &[])
+        );
+
+        // Relative hrefs resolve against the listed collection.
+        let provider =
+            WebDavProvider::new(test_config("https://example.com/dav")).expect("provider");
+        let xml = doc(format!(
+            "{}{}{}",
+            response("./".to_string(), collection),
+            response("Sub%20Dir/".to_string(), collection),
+            response("Sub%20Dir.txt".to_string(), file),
+        ));
+        let entries = provider.parse_propfind_response(&xml, "/Sub Dir").unwrap();
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["Sub Dir", "Sub Dir.txt"]);
     }
 
     /// LIVE-1 regression: with trim_text(true), a displayname like

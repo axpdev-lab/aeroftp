@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Siirrettävä tila: tämä kansio sisältää kaikki AeroFTP-tietosi",
                 "body": "Jokainen siirrettävä asennus on täysin itsenäinen: tallennetut palvelimet, AeroVault, AI-keskustelut ja asetukset sijaitsevat kaikki AeroFTP.exe-tiedoston vieressä. Versiosta v3.7.8 alkaen kaksi siirrettävää kansiota samassa tietokoneessa ovat täysin riippumattomia: profiilin poistaminen yhdessä kansiossa ei enää vaikuta toiseen.",
-                "legacyWarning": "Havaitsimme jäännösdataa aiemmasta jaetusta asennuksesta sijainnissa %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Tämä siirrettävä asennus ei enää käytä sitä. Voit poistaa sen manuaalisesti, jos et tarvitse sitä.",
+                "legacyWarning": "Löysimme aiemman jaetun asennuksen tietoja sijainnista %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Tämä siirrettävä asennus ei käytä niitä. Jos AeroFTP on asennettu myös tähän tietokoneeseen (MSI tai asennusohjelma), kansio sisältää asennetun sovelluksen tiedot: säilytä se. Muussa tapauksessa voit poistaa sen manuaalisesti, jos et tarvitse sitä.",
                 "openFolder": "Avaa datakansio",
                 "dismiss": "Selvä"
             }
@@ -6064,19 +6064,19 @@
                     "tagline": "Kopioi lähteen version päivämäärän ja kellonajan sisältävällä päätteellä."
                 },
                 "newer-wins": {
-                    "label": "Uudempi voittaa",
+                    "label": "Säilytä uudempi",
                     "tagline": "Puoli, jonka muokkausaika on uudempi, korvaa toisen."
                 },
                 "older-wins": {
-                    "label": "Vanhempi voittaa",
+                    "label": "Säilytä vanhempi",
                     "tagline": "Vanhempi puoli korvaa uudemman (arkistointia varten)."
                 },
                 "larger-wins": {
-                    "label": "Suurempi voittaa",
+                    "label": "Säilytä suurempi",
                     "tagline": "Puoli, jonka koko on suurempi, korvaa pienemmän."
                 },
                 "smaller-wins": {
-                    "label": "Pienempi voittaa",
+                    "label": "Säilytä pienempi",
                     "tagline": "Pienempi puoli korvaa suuremman."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Päivitä",
-                    "tagline": "Kopioi puuttuvat ja uudemmat tiedostot. Ohittaa ristiriidat, jotta voit ratkaista ne itse."
+                    "tagline": "Kopioi puuttuvat ja uudemmat tiedostot. Ei koskaan poista. Korvaa kohteen uudemmat kopiot vain, jos valittu ristiriitojen ratkaisukäytäntö valitsee toisen kopion."
                 },
                 "bisync": {
                     "name": "Kaksisuuntainen synkronointi",
@@ -7058,6 +7058,10 @@
             "runTemplate": "Suorita",
             "duplicateName": "Malli nimeltä {name} on jo tällä palvelimella.",
             "templateStored": "Tallennettu malli tallentaa komennon paikkamerkkeineen, ei koskaan salasanaa."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Kansiota ladataan vielä",
+            "folderBusy": "Avaamaasi tiedostoa ei näytetty: toista kansiota ladattiin vielä, kun kansiota {folder} pyydettiin. Avaa tiedosto uudelleen."
         }
     }
 }

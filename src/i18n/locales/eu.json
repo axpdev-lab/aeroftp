@@ -6013,7 +6013,7 @@
             "banner": {
                 "title": "Modu eramangarria: karpeta honek AeroFTP datu guztiak ditu",
                 "body": "Instalazio eramangarri bakoitza guztiz autonomoa da: gordetako zerbitzariak, AeroVault, AI txatak eta hobespenak AeroFTP.exe-ren ondoan daude. v3.7.8 bertsiotik aurrera, ordenagailu berean dauden bi karpeta eramangarri guztiz independenteak dira: karpeta batean profil bat ezabatzeak ez du jada bestea eragiten.",
-                "legacyWarning": "Aurreko instalazio partekatu baten hondar-datuak detektatu ditugu %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ kokapenean. Instalazio eramangarri honek jada ez ditu erabiltzen. Eskuz ken ditzakezu behar ez badituzu.",
+                "legacyWarning": "Aurreko instalazio partekatu baten datuak aurkitu ditugu hemen: %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Instalazio eramangarri honek ez ditu erabiltzen. AeroFTP ordenagailu honetan ere instalatuta badago (MSI edo instalatzailea), karpeta horrek instalatutako aplikazioaren datuak ditu: gorde ezazu. Bestela, eskuz ken dezakezu behar ez baduzu.",
                 "openFolder": "Ireki datuen karpeta",
                 "dismiss": "Ulertuta"
             }
@@ -6083,19 +6083,19 @@
                     "tagline": "Iturburuko bertsioa kopiatzen du data eta orduko atzizki batekin."
                 },
                 "newer-wins": {
-                    "label": "Berriagoak irabazten du",
+                    "label": "Mantendu berriagoa",
                     "tagline": "Aldaketa-data berriagoa duen aldeak bestea gainidazten du."
                 },
                 "older-wins": {
-                    "label": "Zaharragoak irabazten du",
+                    "label": "Mantendu zaharragoa",
                     "tagline": "Alde zaharragoak berriagoa gainidazten du (artxibatzeko)."
                 },
                 "larger-wins": {
-                    "label": "Handiagoak irabazten du",
+                    "label": "Mantendu handiagoa",
                     "tagline": "Tamaina handiagoa duen aldeak txikiagoa gainidazten du."
                 },
                 "smaller-wins": {
-                    "label": "Txikiagoak irabazten du",
+                    "label": "Mantendu txikiagoa",
                     "tagline": "Alde txikiagoak handiagoa gainidazten du."
                 }
             },
@@ -6157,7 +6157,7 @@
                 },
                 "update": {
                     "name": "Eguneratu",
-                    "tagline": "Falta diren fitxategiak eta berriagoak kopiatzen ditu. Gatazkak saltatzen ditu eskuz konpon ditzazun."
+                    "tagline": "Falta diren fitxategiak eta berriagoak kopiatzen ditu. Ez du inoiz ezabatzen. Helburuko kopia berriagoak gainidazten ditu hautatutako gatazka-politikak beste kopia aukeratzen badu soilik."
                 },
                 "bisync": {
                     "name": "Bi norabideko sinkronizazioa",
@@ -7077,6 +7077,10 @@
             "runTemplate": "Exekutatu",
             "duplicateName": "{name} izeneko txantiloi bat badago dagoeneko zerbitzari honetan.",
             "templateStored": "Gordetako txantiloiak komandoa hutsuneekin gordetzen du, inoiz ez pasahitza."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Karpeta oraindik kargatzen ari da",
+            "folderBusy": "Ireki duzun fitxategia ez da erakutsi: beste karpeta bat oraindik kargatzen ari zen {folder} eskatu zenean. Ireki berriro."
         }
     }
 }

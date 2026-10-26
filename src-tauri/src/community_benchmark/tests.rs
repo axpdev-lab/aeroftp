@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-use super::engine::{many_files_result, purge_deleted_files_with_identities};
+use super::engine::{many_files_result, purge_deleted_files_with_identities, scratch_dir_error};
 use super::*;
 
 #[test]
@@ -76,20 +76,74 @@ fn benchmark_resolve_config_quick_defaults() {
 
 #[test]
 fn a_refused_trash_purge_is_reported() {
-    let mut errors = Vec::new();
-    assert!(!note_trash_purge("aeroftp-bench", Ok(false), &mut errors));
-    assert!(note_trash_purge("aeroftp-bench", Ok(true), &mut errors));
+    let (mut errors, mut notes) = (Vec::new(), Vec::new());
+    assert!(!note_trash_purge(
+        "aeroftp-bench",
+        Ok(false),
+        &mut errors,
+        &mut notes
+    ));
+    assert!(note_trash_purge(
+        "aeroftp-bench",
+        Ok(true),
+        &mut errors,
+        &mut notes
+    ));
     assert!(errors.is_empty(), "{errors:?}");
     assert!(!note_trash_purge(
         "aeroftp-bench",
         Err(ProviderError::Other("2 items named 'aeroftp-bench'".into())),
         &mut errors,
+        &mut notes,
     ));
+    assert!(notes.is_empty(), "{notes:?}");
     assert_eq!(errors.len(), 1);
     assert!(
         errors[0].starts_with("trash purge of aeroftp-bench failed")
             && errors[0].ends_with("2 items named 'aeroftp-bench'"),
         "{errors:?}"
+    );
+}
+
+/// #368 (Ehud's OneDrive): the error of a scratch folder that could not be
+/// made names the folder and where it was made, so a report says which
+/// folder the provider refused.
+#[test]
+fn ehud_368_a_refused_scratch_folder_names_where_it_was_made() {
+    let error = ProviderError::Other("mkdir failed: itemNotFound".into());
+    let relative = scratch_dir_error("aeroftp-bench/run", "", &error);
+    assert!(
+        relative.starts_with(
+            "benchmark cannot create its scratch folder 'aeroftp-bench/run' in the profile's start folder '/': mkdir failed: itemNotFound"
+        ),
+        "{relative}"
+    );
+    let absolute = scratch_dir_error("/Docs/aeroftp-bench/run", "/Docs", &error);
+    assert!(
+        absolute
+            .starts_with("benchmark cannot create its scratch folder '/Docs/aeroftp-bench/run': "),
+        "{absolute}"
+    );
+}
+
+/// #368 (Ehud): a client that cannot purge its provider's trash by design
+/// (pCloud through OAuth) is told as a note: the folder was deleted and stays
+/// in the trash. It is not a failed purge.
+#[test]
+fn a_trash_this_login_cannot_purge_is_a_note_not_a_failure() {
+    let (mut errors, mut notes) = (Vec::new(), Vec::new());
+    assert!(!note_trash_purge(
+        "aeroftp-bench",
+        Err(ProviderError::NotSupported(
+            "an OAuth login cannot empty it".into()
+        )),
+        &mut errors,
+        &mut notes,
+    ));
+    assert!(errors.is_empty(), "{errors:?}");
+    assert_eq!(
+        notes,
+        ["aeroftp-bench was deleted and stays in the provider's trash: an OAuth login cannot empty it"]
     );
 }
 
@@ -571,6 +625,11 @@ mod engine_runs {
         refuse_uploads: bool,
         /// Every download waits forever, as from an unreachable server.
         hang_downloads: bool,
+        /// Every existence check fails, as on a connection that dropped.
+        fail_exists: bool,
+        /// A folder three levels deep is refused, as FileLu refused the run
+        /// folder under a prefix folder it had just created.
+        refuse_deep_mkdir: bool,
     }
 
     struct MemRemote(Arc<Mutex<Remote>>);
@@ -669,6 +728,9 @@ mod engine_runs {
             Ok(())
         }
         async fn mkdir(&mut self, p: &str) -> Result<(), ProviderError> {
+            if self.0.lock().unwrap().refuse_deep_mkdir && p.matches('/').count() >= 3 {
+                return Err(ProviderError::ServerError("Folder not found".into()));
+            }
             if !self.0.lock().unwrap().dirs.insert(p.into()) {
                 return Err(ProviderError::AlreadyExists(p.into()));
             }
@@ -714,6 +776,9 @@ mod engine_runs {
         }
         async fn exists(&mut self, p: &str) -> Result<bool, ProviderError> {
             let r = self.0.lock().unwrap();
+            if r.fail_exists {
+                return Err(ProviderError::ConnectionFailed("connection reset".into()));
+            }
             Ok(r.files.contains_key(p) || r.dirs.contains(p))
         }
         async fn keep_alive(&mut self) -> Result<(), ProviderError> {
@@ -748,6 +813,58 @@ mod engine_runs {
             local_endpoint: false,
             cancel,
         }
+    }
+
+    /// Audit L2B-06: after a stop the engine looks again for the run folder,
+    /// which a transfer cut short can bring back. A look that fails proves
+    /// nothing: the report says the cleanup could not be verified instead of
+    /// passing for a clean one.
+    #[tokio::test]
+    async fn a_post_stop_check_that_fails_is_reported_as_unverified() {
+        let (state, provider) = remote();
+        state.lock().unwrap().fail_exists = true;
+        let token = CancellationToken::new();
+        let observer = CancelOn {
+            operation: "download",
+            token: token.clone(),
+        };
+        let outcome = run(
+            provider,
+            "/data",
+            options(BenchmarkLevel::Quick, "1K", Some(token)),
+            &observer,
+        )
+        .await
+        .unwrap();
+        assert!(outcome.cancelled);
+        assert!(
+            outcome
+                .report
+                .summary
+                .errors
+                .iter()
+                .any(|e| e.contains("could not be verified") && e.contains("connection reset")),
+            "{:?}",
+            outcome.report.summary.errors
+        );
+    }
+
+    /// Live run (#368, FileLu): a run whose scratch folder is refused after
+    /// it created the prefix folders removes those folders before it gives
+    /// up, instead of leaving them on the server.
+    #[tokio::test]
+    async fn a_refused_scratch_folder_leaves_no_prefix_folder_behind() {
+        let (state, provider) = remote();
+        state.lock().unwrap().refuse_deep_mkdir = true;
+        let mut opts = options(BenchmarkLevel::Quick, "1K", None);
+        opts.test_root_prefix = Some("/data/live-tests".into());
+        let error = match run(provider, "/data", opts, &Silent).await {
+            Err(error) => error,
+            Ok(_) => panic!("the scratch folder was refused"),
+        };
+        assert!(error.contains("Folder not found"), "{error}");
+        let r = state.lock().unwrap();
+        assert_eq!(r.dirs, BTreeSet::from(["/data".to_string()]));
     }
 
     struct Silent;
@@ -886,6 +1003,9 @@ mod engine_runs {
         /// A live purge moves the item to the trash and then fails to purge
         /// it there, as Proton's CLI can.
         fail_live_purge: bool,
+        /// Capture of this many-files index fails. The others stay `Ok(None)`
+        /// or a live-path id, so one `Err` is not the whole batch.
+        fail_capture_index: Option<u32>,
     }
 
     #[async_trait]
@@ -987,14 +1107,20 @@ mod engine_runs {
             &mut self,
             paths: &[String],
         ) -> Vec<Result<Option<String>, ProviderError>> {
-            if self.kind == TrashKind::LivePath {
-                paths
-                    .iter()
-                    .map(|path| Ok(Some(format!("uid:{path}"))))
-                    .collect()
-            } else {
-                paths.iter().map(|_| Ok(None)).collect()
-            }
+            paths
+                .iter()
+                .enumerate()
+                .map(|(index, path)| {
+                    if self.fail_capture_index == Some(index as u32) {
+                        return Err(ProviderError::Other("capture failed".into()));
+                    }
+                    if self.kind == TrashKind::LivePath {
+                        Ok(Some(format!("uid:{path}")))
+                    } else {
+                        Ok(None)
+                    }
+                })
+                .collect()
         }
         async fn delete_permanent_with_identity(
             &mut self,
@@ -1055,12 +1181,13 @@ mod engine_runs {
             hang_purge: false,
             cancel_on_purge: None,
             fail_live_purge: false,
+            fail_capture_index: None,
         });
         (state, trash, provider)
     }
 
     #[tokio::test]
-    async fn a_trash_the_run_cannot_purge_is_reported_not_passed_over() {
+    async fn a_trash_the_run_cannot_purge_is_a_note_not_passed_over() {
         let (_state, _trash, provider) = trash_remote(TrashKind::Unpurgeable);
         let outcome = run(
             provider,
@@ -1070,16 +1197,29 @@ mod engine_runs {
         )
         .await
         .unwrap();
+        // #368 (Ehud): told, as a note: the folder was deleted and stays in
+        // the trash by design, which is not a failed purge.
         assert!(
-            outcome
+            outcome.report.notes.iter().any(|n| n
+                .contains("was deleted and stays in the provider's trash")
+                && n.contains("keeps deleted items in its trash")),
+            "{:?}",
+            outcome.report.notes
+        );
+        assert!(
+            !outcome
                 .report
                 .summary
                 .errors
                 .iter()
-                .any(|e| e.contains("keeps deleted items in its trash")),
+                .any(|e| e.contains("trash")),
             "{:?}",
             outcome.report.summary.errors
         );
+        // Live run (#368): a trash note is not a measurement note, so the
+        // round trip still reads as the service's, never as a local bridge.
+        let signal = outcome.report.signal.as_ref().expect("latency measured");
+        assert!(signal.bars.is_some(), "{signal:?}");
     }
 
     #[tokio::test]
@@ -1116,6 +1256,7 @@ mod engine_runs {
             hang_purge: false,
             cancel_on_purge: None,
             fail_live_purge: true,
+            fail_capture_index: None,
         });
         let outcome = run(
             provider,
@@ -1196,6 +1337,60 @@ mod engine_runs {
         );
     }
 
+    /// File 1's capture fails. The other two are `Ok(None)` and still purge by
+    /// path. The failed file must not be purged as if its identity were missing.
+    #[tokio::test]
+    async fn a_failed_capture_does_not_purge_that_file_by_path() {
+        let (state, _) = remote();
+        let trash = Arc::new(Mutex::new(Vec::new()));
+        let purge_calls = Arc::new(Mutex::new(Vec::new()));
+        let provider = Box::new(TrashKeepingRemote {
+            inner: MemRemote(state),
+            kind: TrashKind::OriginalPath,
+            trash: trash.clone(),
+            purge_calls: purge_calls.clone(),
+            hang_purge: false,
+            cancel_on_purge: None,
+            fail_live_purge: false,
+            fail_capture_index: Some(1),
+        });
+        let outcome = run(provider, "/data", many_files_options(), &Silent)
+            .await
+            .unwrap();
+        let calls = purge_calls.lock().unwrap().clone();
+        assert!(
+            calls.iter().any(|path| path.contains("f000000-")),
+            "{calls:?}"
+        );
+        assert!(
+            calls.iter().any(|path| path.contains("f000002-")),
+            "{calls:?}"
+        );
+        assert!(
+            calls.iter().all(|path| !path.contains("f000001-")),
+            "{calls:?}"
+        );
+        let left: Vec<String> = trash
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|path| path.contains("f000001-"))
+            .cloned()
+            .collect();
+        assert_eq!(left.len(), 1, "{left:?}");
+        let errors = &outcome.report.summary.errors;
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("identity capture of file 1 failed")),
+            "{errors:?}"
+        );
+        assert!(
+            errors.iter().any(|error| error.contains("trash purge of")),
+            "{errors:?}"
+        );
+    }
+
     #[tokio::test]
     async fn the_many_files_workload_says_when_its_files_stay_in_the_trash() {
         let (_state, _trash, provider) = trash_remote(TrashKind::Unpurgeable);
@@ -1205,10 +1400,19 @@ mod engine_runs {
         assert!(
             outcome
                 .report
+                .notes
+                .iter()
+                .any(|n| n.contains("3 files the many-files workload deleted")),
+            "{:?}",
+            outcome.report.notes
+        );
+        assert!(
+            !outcome
+                .report
                 .summary
                 .errors
                 .iter()
-                .any(|e| e.contains("3 files the many-files workload deleted")),
+                .any(|e| e.contains("trash")),
             "{:?}",
             outcome.report.summary.errors
         );
@@ -1228,6 +1432,7 @@ mod engine_runs {
             hang_purge: false,
             cancel_on_purge: None,
             fail_live_purge: false,
+            fail_capture_index: None,
         });
         let second = run(provider, "/data", many_files_options(), &Silent)
             .await
@@ -1267,6 +1472,7 @@ mod engine_runs {
             hang_purge,
             cancel_on_purge,
             fail_live_purge: false,
+            fail_capture_index: None,
         });
         (purge_calls, provider)
     }
@@ -1281,10 +1487,11 @@ mod engine_runs {
                 &mut provider,
                 &[0, 1, 2],
                 &|i| format!("/data/f{i}"),
-                &mut vec![None; 3],
+                &mut vec![Ok(None); 3],
                 &CancellationToken::new(),
                 std::time::Duration::from_millis(200),
                 &mut errors,
+                &mut Vec::new(),
             ),
         )
         .await
@@ -1310,10 +1517,11 @@ mod engine_runs {
             &mut provider,
             &[0, 1, 2],
             &|i| format!("/data/f{i}"),
-            &mut vec![None; 3],
+            &mut vec![Ok(None); 3],
             &stop,
             std::time::Duration::from_secs(120),
             &mut errors,
+            &mut Vec::new(),
         )
         .await;
         // The stop came during the first purge, which finished; the other

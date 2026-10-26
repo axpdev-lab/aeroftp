@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Prijenosni način rada: ova mapa sadrži sve vaše AeroFTP podatke",
                 "body": "Svaka prijenosna instalacija je potpuno samostalna: spremljeni poslužitelji, AeroVault, AI razgovori i postavke nalaze se uz AeroFTP.exe. Od verzije v3.7.8 nadalje, dvije prijenosne mape na istom računalu potpuno su neovisne, brisanje profila u jednoj mapi više ne utječe na drugu.",
-                "legacyWarning": "Otkrili smo preostale podatke iz prethodne dijeljene instalacije na %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ova prijenosna instalacija ih više ne koristi. Možete ih ručno ukloniti ako vam nisu potrebni.",
+                "legacyWarning": "Pronašli smo podatke prethodne zajedničke instalacije u %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ova prijenosna instalacija ih ne koristi. Ako je AeroFTP instaliran i na ovom računalu (MSI ili instalacijski program), ta mapa sadrži podatke instalirane aplikacije: zadržite je. U suprotnom je možete ručno ukloniti ako vam nije potrebna.",
                 "openFolder": "Otvori mapu s podacima",
                 "dismiss": "U redu"
             }
@@ -6064,19 +6064,19 @@
                     "tagline": "Kopira verziju iz izvora sa sufiksom datuma i vremena."
                 },
                 "newer-wins": {
-                    "label": "Novija pobjeđuje",
+                    "label": "Zadrži noviju",
                     "tagline": "Strana s novijim vremenom izmjene prepisuje drugu."
                 },
                 "older-wins": {
-                    "label": "Starija pobjeđuje",
+                    "label": "Zadrži stariju",
                     "tagline": "Starija strana prepisuje noviju (za arhiviranje)."
                 },
                 "larger-wins": {
-                    "label": "Veća pobjeđuje",
+                    "label": "Zadrži veću",
                     "tagline": "Strana s većom veličinom prepisuje manju."
                 },
                 "smaller-wins": {
-                    "label": "Manja pobjeđuje",
+                    "label": "Zadrži manju",
                     "tagline": "Manja strana prepisuje veću."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Ažuriranje",
-                    "tagline": "Kopira datoteke koje nedostaju i novije. Preskače sukobe kako biste ih riješili ručno."
+                    "tagline": "Kopira datoteke koje nedostaju i novije datoteke. Nikada ne briše. Prepisuje novije kopije na odredištu samo ako odabrano pravilo za sukobe odabere drugu kopiju."
                 },
                 "bisync": {
                     "name": "Dvosmjerna sinkronizacija",
@@ -7058,6 +7058,10 @@
             "runTemplate": "Pokreni",
             "duplicateName": "Predložak naziva {name} već je na ovom poslužitelju.",
             "templateStored": "Spremljeni predložak sprema naredbu s mjestima za unos, nikad lozinku."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Mapa se još učitava",
+            "folderBusy": "Datoteka koju ste otvorili nije prikazana: druga se mapa još učitavala kada je zatražena mapa {folder}. Otvorite je ponovno."
         }
     }
 }

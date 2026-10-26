@@ -14,6 +14,7 @@ import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { useGuardedClose } from '../../hooks/useGuardedClose';
 import { GuardedCloseConfirm } from '../GuardedCloseConfirm';
 import { CompareTabContent } from './CompareTabContent';
+import { ScanProgressProvider } from './CompareScanState';
 import { PlanTabContent } from './PlanTabContent';
 import { SyncTabContent } from './SyncTabContent';
 import { JournalHistoryDialog } from './JournalHistoryDialog';
@@ -269,6 +270,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                 )}
 
                 <TabStateStoreContext.Provider value={tabState}>
+                <ScanProgressProvider active={!!context.compareLoading} progressId={context.scanProgressId}>
                 <div className="flex-1 overflow-y-auto">
                     {activeTab === 'compare' && (
                         <CompareTabContent
@@ -325,6 +327,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                         />
                     )}
                 </div>
+                </ScanProgressProvider>
                 </TabStateStoreContext.Provider>
             </div>
 
@@ -341,6 +344,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                         remotePath={remotePath}
                         serverProfileName={serverProfileName}
                         excludePatterns={excludePatterns}
+                        pairKind={context.pairKind}
                         onApplyImport={applyImportedSettings}
                     />
                     </TabStateStoreContext.Provider>

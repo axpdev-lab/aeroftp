@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
+import { invoke } from '@tauri-apps/api/core';
+
 /**
  * Whitelist of `localStorage` keys included in a full keystore export.
  *
@@ -190,6 +192,8 @@ export const applyLocalStorage = async (
     for (const [key, value] of Object.entries(map)) {
         if (key === AUTOSTART_KEY) {
             try {
+                const portable = await invoke<{ is_portable: boolean }>('portable_info');
+                if (portable.is_portable) continue;
                 const { enable, disable } = await import('@tauri-apps/plugin-autostart');
                 if (value === 'true') {
                     await enable();

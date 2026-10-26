@@ -216,6 +216,7 @@ import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
 import { previewRouteFor } from './utils/previewRoute';
 import { useOpenRequests } from './hooks/useOpenRequests';
+import { createNavigationGate, OS_OPEN_NAV_WAIT_MS } from './utils/navigationGate';
 import { addFolderTabs, mergeOpenBatch, openInFolderTab, planLocalOpen, sameLocalFolder, settleReusedTab, takeTabSelection, type LastLocalOpen, type LocalOpenGroup } from './utils/openRequestPlan';
 import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, isConnectCancelledError, isConnectHardTimeoutError } from './utils/connectCancel';
 import { shouldPersistUsedScan } from './utils/usedScanPersist';
@@ -462,7 +463,7 @@ import { getIconThemeProvider } from './utils/iconThemes';
 import { logger } from './utils/logger';
 import { initCspReporter } from './utils/cspReporter';
 import { updateAppSettings } from './utils/appSettings';
-import { secureGetWithFallback } from './utils/secureStorage';
+import { notifyVaultReady, secureGetWithFallback } from './utils/secureStorage';
 import {
   loadSavedServerProfiles,
   mergeSavedServerProfile,
@@ -996,7 +997,9 @@ const App: React.FC = () => {
   // ITS navId, so a supersede or a Cancel-then-new-nav never frees the wrong
   // owner's latch (which would either trap the user or reopen the double-click).
   const remoteNavInFlightRef = useRef(0);
-  const localNavInFlightRef = useRef(false);
+  // The primary local panel's one-navigation-at-a-time latch, which a file the
+  // OS opens waits on instead of being refused.
+  const [localNavGate] = useState(createNavigationGate);
   // Non-false while a connect flow (fresh connect, saved-server connect, cloud
   // tab) or a session SWITCH owns the remote panel. It decides what the
   // spinner's Cancel means, and the KIND matters: cancelling a fresh CONNECT's
@@ -1904,7 +1907,10 @@ const App: React.FC = () => {
         // partition is the only source of truth.
         // Force the My Servers list to re-fetch from vault (now initialized)
         setServersRefreshKey(k => k + 1);
-        vaultInitDone.current = true;
+        if (!vaultInitDone.current) {
+          vaultInitDone.current = true;
+          notifyVaultReady();
+        }
         setVaultBootComplete(true);
         signalAppReady();
       }
@@ -9570,7 +9576,12 @@ const App: React.FC = () => {
 
   // `localOnly` leaves Navigation Sync out of it: no base guard, no remote
   // mirror. A file the OS opened is not a step inside the paired tree.
-  const changeLocalDirectory = async (path: string, opts: { localOnly?: boolean } = {}) => {
+  // `waitMs` makes the navigation wait for a listing still loading instead of
+  // being refused, and `onBusy` runs when it still cannot start.
+  const changeLocalDirectory = async (
+    path: string,
+    opts: { localOnly?: boolean; waitMs?: number; onBusy?: () => void } = {},
+  ) => {
     // Sync navigation guard: prevent navigating above the sync base path
     if (!opts.localOnly && isSyncNavigation && syncBasePaths) {
       const norm = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
@@ -9579,16 +9590,21 @@ const App: React.FC = () => {
       // Block if target is a proper ancestor of the base path
       if (normTarget !== normBase && (normTarget === '/' || normBase.startsWith(normTarget + '/'))) return null;
     }
-    // #401: block a re-entrant local navigation the same way as remote.
-    if (localNavInFlightRef.current) return null;
-    localNavInFlightRef.current = true;
+    // #401: block a re-entrant local navigation the same way as remote. A file
+    // the OS opened (waitMs) waits for the gate and takes it itself, so no
+    // other navigation slips in between.
+    const entered = opts.waitMs ? await localNavGate.enterWhenFree(opts.waitMs) : localNavGate.enter();
+    if (!entered) {
+      opts.onBusy?.();
+      return null;
+    }
     setLocalListLoading(true);
     let success = false;
     try {
       success = await loadLocalFiles(path);
     } finally {
       setLocalListLoading(false);
-      localNavInFlightRef.current = false;
+      localNavGate.leave();
     }
     if (!success) return null; // Don't record failed navigations
     humanLog.logNavigate(path, false);
@@ -11626,7 +11642,7 @@ const App: React.FC = () => {
               // The queue's methods only queue functional state updates, so
               // the older `transferQueue` this memoized callback may hold
               // still drives the live list.
-              onFileStatus: syncRunQueueBridge(runFiles, transferQueue),
+              onFileStatus: syncRunQueueBridge(runFiles, transferQueue, opts.resumeJournal),
             },
             { invoke, deltaStats, resumeJournal: opts.resumeJournal, writeIndex: true },
           );
@@ -11778,7 +11794,7 @@ const App: React.FC = () => {
           {
             isCancelled: () => batchCancelledRef.current,
             // #364: each copy shows as a Transfer Queue row while it runs.
-            onFileStatus: syncRunQueueBridge(runFiles, transferQueue),
+            onFileStatus: syncRunQueueBridge(runFiles, transferQueue, opts.resumeJournal),
           },
           { invoke, resumeJournal: opts.resumeJournal, writeIndex: true },
         );
@@ -16237,9 +16253,16 @@ const App: React.FC = () => {
       const activeTabId = panelId === 'local2' ? activeLocalTabId2 : activeLocalTabId;
       const previous = { id: activeTabId, path: shownPath };
       const reuse = openInFolderTab(tabs, plan.folder, plan.names);
+      // The batch has left the backend queue: a listing still loading in the
+      // primary panel is waited for, not taken for a failed open, and the
+      // user is told when it never frees.
       const target = panelId === 'local2'
         ? await changeLocalDirectory2(plan.folder)
-        : await changeLocalDirectory(plan.folder, { localOnly: true });
+        : await changeLocalDirectory(plan.folder, {
+          localOnly: true,
+          waitMs: OS_OPEN_NAV_WAIT_MS,
+          onBusy: () => notify.warning(t('openRequest.folderBusyTitle'), t('openRequest.folderBusy', { folder: plan.folder })),
+        });
       if (target === null || target === undefined) {
         openOtherFolders();
         return;
@@ -16474,6 +16497,7 @@ const App: React.FC = () => {
             setIsAppLocked(false);
             setAutoKeyringTotpRequired(false);
             setServersRefreshKey(k => k + 1);
+            notifyVaultReady();
           }}
         />
       )}
@@ -16500,6 +16524,7 @@ const App: React.FC = () => {
             setMasterPasswordBootstrapMode(false);
             setMasterPasswordSet(true);
             dispatchMasterPasswordChanged({ enabled: true, isLocked: false });
+            notifyVaultReady();
           }}
           onClose={() => {
             setShowMasterPasswordSetup(false);
@@ -18065,6 +18090,7 @@ const App: React.FC = () => {
               the foreground: zero remount = zero flash of the empty state. */}
           <div className={showConnectionScreen ? 'flex-1 min-h-0 flex flex-col' : 'hidden'}>
             <IntroHub
+              vaultReady={vaultBootComplete && !isAppLocked && !showMasterPasswordSetup}
               registerProfileConnector={registerProfileConnector}
               connectionParams={connectionParams}
               quickConnectDirs={quickConnectDirs}

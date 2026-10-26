@@ -6013,7 +6013,7 @@
             "banner": {
                 "title": "Mode portàtil: aquesta carpeta conté totes les dades d'AeroFTP",
                 "body": "Cada instal·lació portàtil és completament autònoma: els servidors desats, AeroVault, els xats d'AI i les preferències es troben al costat d'AeroFTP.exe. A partir de la v3.7.8, dues carpetes portàtils al mateix ordinador són totalment independents: eliminar un perfil en una carpeta ja no afecta l'altra.",
-                "legacyWarning": "Hem detectat dades residuals d'una instal·lació compartida anterior a %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ja no s'utilitzen en aquesta instal·lació portàtil. Podeu eliminar-les manualment si no les necessiteu.",
+                "legacyWarning": "Hem trobat dades d'una instal·lació compartida anterior a %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Aquesta instal·lació portable no les utilitza. Si AeroFTP també està instal·lat en aquest PC (MSI o instal·lador), aquesta carpeta conté les dades de l'aplicació instal·lada: conserveu-la. Altrament, podeu eliminar-la manualment si no la necessiteu.",
                 "openFolder": "Obre la carpeta de dades",
                 "dismiss": "Entesos"
             }
@@ -6083,19 +6083,19 @@
                     "tagline": "Copia la versió d'origen amb un sufix de data i hora."
                 },
                 "newer-wins": {
-                    "label": "Guanya el més recent",
+                    "label": "Conserva el més nou",
                     "tagline": "El costat amb la data de modificació més recent sobreescriu l'altre."
                 },
                 "older-wins": {
-                    "label": "Guanya el més antic",
+                    "label": "Conserva el més antic",
                     "tagline": "El costat més antic sobreescriu el més recent (per a arxivament)."
                 },
                 "larger-wins": {
-                    "label": "Guanya el més gran",
+                    "label": "Conserva el més gran",
                     "tagline": "El costat amb la mida més gran sobreescriu el més petit."
                 },
                 "smaller-wins": {
-                    "label": "Guanya el més petit",
+                    "label": "Conserva el més petit",
                     "tagline": "El costat més petit sobreescriu el més gran."
                 }
             },
@@ -6157,7 +6157,7 @@
                 },
                 "update": {
                     "name": "Actualitza",
-                    "tagline": "Copia els fitxers que falten i els més nous. Omet els conflictes perquè els resolguis manualment."
+                    "tagline": "Copia els fitxers que falten i els més recents. No suprimeix mai res. Només sobreescriu les còpies més recents de la destinació si la política de conflictes seleccionada tria l’altra còpia."
                 },
                 "bisync": {
                     "name": "Sincronització bidireccional",
@@ -7077,6 +7077,10 @@
             "runTemplate": "Executar",
             "duplicateName": "Ja hi ha una plantilla amb el nom {name} en aquest servidor.",
             "templateStored": "Una plantilla desada conserva l'ordre amb espais per omplir, mai una contrasenya."
+        },
+        "openRequest": {
+            "folderBusyTitle": "La carpeta encara s'està carregant",
+            "folderBusy": "El fitxer que heu obert no s'ha mostrat: una altra carpeta encara s'estava carregant quan es va sol·licitar {folder}. Torneu-lo a obrir."
         }
     }
 }

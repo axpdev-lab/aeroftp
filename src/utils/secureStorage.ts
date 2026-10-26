@@ -9,6 +9,21 @@ import { invoke } from '@tauri-apps/api/core';
 
 const VAULT_PREFIX = 'config_';
 
+export const VAULT_READY_EVENT = 'aeroftp-vault-ready';
+
+export function notifyVaultReady(): void {
+  try { window.dispatchEvent(new Event(VAULT_READY_EVENT)); } catch { /* browserless tests */ }
+}
+
+export function onVaultReady(listener: () => void): () => void {
+  try {
+    window.addEventListener(VAULT_READY_EVENT, listener);
+    return () => window.removeEventListener(VAULT_READY_EVENT, listener);
+  } catch {
+    return () => undefined;
+  }
+}
+
 /**
  * Store data in the encrypted vault
  */
@@ -17,14 +32,45 @@ export async function secureStore(key: string, value: unknown): Promise<void> {
   await invoke('store_credential', { account: VAULT_PREFIX + key, password: json });
 }
 
-/** Public config reads for controller writes: unavailable/corrupt is never absent. */
-export async function secureGetConfigStrict<T>(key: 'app_settings' | 'ai_settings'): Promise<T | null> {
+/** Like {@link secureStore} but retries a vault that is still initializing. */
+export async function secureStoreAwaitReady(
+  key: string,
+  value: unknown,
+  maxRetries = 6,
+  baseDelayMs = 200,
+): Promise<void> {
+  const json = JSON.stringify(value);
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      await invoke('store_credential', { account: VAULT_PREFIX + key, password: json });
+      return;
+    } catch (err) {
+      if (!String(err).includes('STORE_NOT_READY') || attempt === maxRetries - 1) throw err;
+      await new Promise(resolve => setTimeout(resolve, baseDelayMs * (attempt + 1)));
+    }
+  }
+}
+
+/** Public config reads for controller writes: unavailable/corrupt is never absent.
+ *  With `awaitReady`, a vault that is still starting is waited for (the
+ *  {@link secureGetAwaitReady} backoff) before it counts as unavailable. */
+export async function secureGetConfigStrict<T>(
+  key: 'app_settings' | 'ai_settings',
+  { awaitReady = false, maxRetries = 6, baseDelayMs = 200 }: { awaitReady?: boolean; maxRetries?: number; baseDelayMs?: number } = {},
+): Promise<T | null> {
   let json: string;
-  try {
-    json = await invoke<string>('get_credential', { account: VAULT_PREFIX + key });
-  } catch (error) {
-    if (String(error).endsWith(`Credential not found: ${VAULT_PREFIX + key}`)) return null;
-    throw new Error('CONFIG_UNAVAILABLE');
+  for (let attempt = 0; ; attempt++) {
+    try {
+      json = await invoke<string>('get_credential', { account: VAULT_PREFIX + key });
+      break;
+    } catch (error) {
+      if (String(error).endsWith(`Credential not found: ${VAULT_PREFIX + key}`)) return null;
+      if (awaitReady && String(error).includes('STORE_NOT_READY') && attempt < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, baseDelayMs * (attempt + 1)));
+        continue;
+      }
+      throw new Error('CONFIG_UNAVAILABLE');
+    }
   }
   try {
     const value: unknown = JSON.parse(json);
@@ -69,6 +115,8 @@ export async function secureDelete(key: string): Promise<void> {
  * *only* on `STORE_NOT_READY`. Any other outcome (key absent, parse
  * error) still resolves to `null` immediately, so the #194 semantics
  * where a genuinely empty vault must propagate are preserved unchanged.
+ * Exhausted readiness retries reject instead of disguising an unavailable
+ * store as an absent key.
  */
 export async function secureGetAwaitReady<T>(
   key: string,
@@ -80,11 +128,9 @@ export async function secureGetAwaitReady<T>(
       const json = await invoke<string>('get_credential', { account: VAULT_PREFIX + key });
       return JSON.parse(json) as T;
     } catch (err) {
-      if (String(err).includes('STORE_NOT_READY') && attempt < maxRetries - 1) {
-        await new Promise(resolve => setTimeout(resolve, baseDelayMs * (attempt + 1)));
-        continue;
-      }
-      return null;
+      if (!String(err).includes('STORE_NOT_READY')) return null;
+      if (attempt === maxRetries - 1) throw err;
+      await new Promise(resolve => setTimeout(resolve, baseDelayMs * (attempt + 1)));
     }
   }
   return null;

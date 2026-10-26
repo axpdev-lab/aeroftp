@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Pārnēsājamais režīms: šajā mapē glabājas visi jūsu AeroFTP dati",
                 "body": "Katra pārnēsājamā instalācija ir pilnībā patstāvīga: saglabātie serveri, AeroVault, AI sarunas un iestatījumi atrodas blakus AeroFTP.exe. Sākot ar v3.7.8 versiju, divas pārnēsājamās mapes vienā datorā ir pilnīgi neatkarīgas, profila dzēšana vienā mapē vairs neietekmē otru.",
-                "legacyWarning": "Mēs konstatējām atlikušos datus no iepriekšējās koplietotās instalācijas vietā %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Šī pārnēsājamā instalācija tos vairs neizmanto. Jūs varat tos manuāli noņemt, ja tie nav nepieciešami.",
+                "legacyWarning": "Mēs atradām iepriekšējas koplietotas instalācijas datus mapē %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Šī pārnēsājamā instalācija tos neizmanto. Ja AeroFTP ir instalēts arī šajā datorā (MSI vai instalētājs), šajā mapē ir instalētās lietotnes dati: saglabājiet to. Pretējā gadījumā varat to noņemt manuāli, ja tā jums nav vajadzīga.",
                 "openFolder": "Atvērt datu mapi",
                 "dismiss": "Sapratu"
             }
@@ -6064,19 +6064,19 @@
                     "tagline": "Kopē avota versiju ar datuma un laika sufiksu."
                 },
                 "newer-wins": {
-                    "label": "Uzvar jaunākais",
+                    "label": "Paturēt jaunāku",
                     "tagline": "Puse ar vēlāku modificēšanas laiku pārraksta otru."
                 },
                 "older-wins": {
-                    "label": "Uzvar vecākais",
+                    "label": "Paturēt vecāku",
                     "tagline": "Vecākā puse pārraksta jaunāko (arhivēšanai)."
                 },
                 "larger-wins": {
-                    "label": "Uzvar lielākais",
+                    "label": "Paturēt lielāku",
                     "tagline": "Puse ar lielāku izmēru pārraksta mazāko."
                 },
                 "smaller-wins": {
-                    "label": "Uzvar mazākais",
+                    "label": "Paturēt mazāku",
                     "tagline": "Mazākā puse pārraksta lielāko."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Atjaunināt",
-                    "tagline": "Kopē trūkstošos un jaunākos failus. Izlaiž konfliktus, lai jūs tos atrisinātu manuāli."
+                    "tagline": "Kopē trūkstošos un jaunākos failus. Nekad nedzēš. Jaunākas kopijas galamērķī pārraksta tikai tad, ja atlasītā konfliktu risināšanas politika izvēlas otru kopiju."
                 },
                 "bisync": {
                     "name": "Divvirzienu sinhronizācija",
@@ -7058,6 +7058,10 @@
             "runTemplate": "Palaist",
             "duplicateName": "Veidne ar nosaukumu {name} šajā serverī jau ir.",
             "templateStored": "Saglabāta veidne glabā komandu ar aizpildāmām vietām, nekad paroli."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Mape vēl tiek ielādēta",
+            "folderBusy": "Atvērtais fails netika parādīts: kad tika pieprasīta mape {folder}, cita mape vēl tika ielādēta. Atveriet failu vēlreiz."
         }
     }
 }

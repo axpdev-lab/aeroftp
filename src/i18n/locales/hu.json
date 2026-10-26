@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Hordozható mód: ez a mappa tartalmazza az összes AeroFTP adatát",
                 "body": "Minden hordozható telepítés teljesen önálló: a mentett szerverek, az AeroVault, az AI beszélgetések és a beállítások mind az AeroFTP.exe mellett találhatók. A v3.7.8 verziótól kezdve két hordozható mappa ugyanazon a számítógépen teljesen független egymástól, az egyik mappában lévő profil törlése már nem érinti a másikat.",
-                "legacyWarning": "Maradék adatokat észleltünk egy korábbi megosztott telepítésből a %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ helyen. Ezt a hordozható telepítés már nem használja. Manuálisan eltávolíthatja, ha nincs rá szüksége.",
+                "legacyWarning": "Egy korábbi megosztott telepítés adatait találtuk itt: %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ez a hordozható telepítés nem használja őket. Ha az AeroFTP erre a számítógépre is telepítve van (MSI vagy telepítő), a mappa a telepített alkalmazás adatait tartalmazza: tartsa meg. Ellenkező esetben kézzel eltávolíthatja, ha nincs rá szüksége.",
                 "openFolder": "Adatmappa megnyitása",
                 "dismiss": "Rendben"
             }
@@ -6064,19 +6064,19 @@
                     "tagline": "A forrásoldali változatot dátumot és időt tartalmazó utótaggal másolja."
                 },
                 "newer-wins": {
-                    "label": "Az újabb nyer",
+                    "label": "Újabb megtartása",
                     "tagline": "A későbbi módosítási idejű oldal felülírja a másikat."
                 },
                 "older-wins": {
-                    "label": "A régebbi nyer",
+                    "label": "Régebbi megtartása",
                     "tagline": "A régebbi oldal felülírja az újabbat (archiválási célra)."
                 },
                 "larger-wins": {
-                    "label": "A nagyobb nyer",
+                    "label": "Nagyobb megtartása",
                     "tagline": "A nagyobb méretű oldal felülírja a kisebbet."
                 },
                 "smaller-wins": {
-                    "label": "A kisebb nyer",
+                    "label": "Kisebb megtartása",
                     "tagline": "A kisebb oldal felülírja a nagyobbat."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Frissítés",
-                    "tagline": "Átmásolja a hiányzó és újabb fájlokat. Kihagyja az ütközéseket, hogy kézzel oldhassa meg őket."
+                    "tagline": "Átmásolja a hiányzó és újabb fájlokat. Soha nem töröl. Csak akkor írja felül a célhely újabb példányait, ha a kiválasztott ütközéskezelési szabály a másik példányt választja."
                 },
                 "bisync": {
                     "name": "Kétirányú szinkronizálás",
@@ -7058,6 +7058,10 @@
             "runTemplate": "Futtatás",
             "duplicateName": "Ezen a szerveren már van {name} nevű sablon.",
             "templateStored": "A mentett sablon a parancsot kitöltendő helyekkel tárolja, jelszót soha."
+        },
+        "openRequest": {
+            "folderBusyTitle": "A mappa még töltődik",
+            "folderBusy": "A megnyitott fájl nem jelent meg: egy másik mappa még töltődött, amikor a(z) {folder} mappát kérték. Nyissa meg újra."
         }
     }
 }

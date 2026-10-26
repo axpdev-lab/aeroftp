@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Mod portabil: acest folder conține toate datele tale AeroFTP",
                 "body": "Fiecare instalare portabilă este complet autonomă: serverele salvate, AeroVault, conversațiile AI și preferințele se află toate lângă AeroFTP.exe. Începând cu v3.7.8, două foldere portabile pe același PC sunt complet independente. Ștergerea unui profil dintr-un folder nu mai afectează celălalt folder.",
-                "legacyWarning": "Am detectat date rămase de la o instalare partajată anterioară în %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Acestea nu mai sunt folosite de această instalare portabilă. Le poți elimina manual dacă nu îți sunt necesare.",
+                "legacyWarning": "Am găsit date dintr-o instalare partajată anterioară în %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Această instalare portabilă nu le folosește. Dacă AeroFTP este instalat și pe acest PC (MSI sau setup), folderul respectiv conține datele aplicației instalate: păstrați-l. Altfel, îl puteți elimina manual dacă nu aveți nevoie de el.",
                 "openFolder": "Deschide folderul de date",
                 "dismiss": "Am înțeles"
             }
@@ -6064,19 +6064,19 @@
                     "tagline": "Copiază versiunea din sursă cu un sufix de dată și oră."
                 },
                 "newer-wins": {
-                    "label": "Câștigă cel mai nou",
+                    "label": "Păstrează cel mai nou",
                     "tagline": "Partea cu data modificării mai recentă o suprascrie pe cealaltă."
                 },
                 "older-wins": {
-                    "label": "Câștigă cel mai vechi",
+                    "label": "Păstrează cel mai vechi",
                     "tagline": "Partea mai veche o suprascrie pe cea mai nouă (pentru arhivare)."
                 },
                 "larger-wins": {
-                    "label": "Câștigă cel mai mare",
+                    "label": "Păstrează cel mai mare",
                     "tagline": "Partea cu dimensiunea mai mare o suprascrie pe cea mai mică."
                 },
                 "smaller-wins": {
-                    "label": "Câștigă cel mai mic",
+                    "label": "Păstrează cel mai mic",
                     "tagline": "Partea mai mică o suprascrie pe cea mai mare."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Actualizare",
-                    "tagline": "Copiază fișierele lipsă și pe cele mai noi. Omite conflictele pentru a le rezolva manual."
+                    "tagline": "Copiază fișierele lipsă și pe cele mai noi. Nu șterge niciodată. Suprascrie copiile mai noi de la destinație numai dacă politica de conflicte selectată alege cealaltă copie."
                 },
                 "bisync": {
                     "name": "Sincronizare bidirecțională",
@@ -7058,6 +7058,10 @@
             "runTemplate": "Rulează",
             "duplicateName": "Un șablon numit {name} există deja pe acest server.",
             "templateStored": "Un șablon salvat păstrează comanda cu locuri de completat, niciodată o parolă."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Folderul se încarcă încă",
+            "folderBusy": "Fișierul deschis nu a fost afișat: un alt folder era încă în curs de încărcare când a fost solicitat folderul {folder}. Deschideți-l din nou."
         }
     }
 }

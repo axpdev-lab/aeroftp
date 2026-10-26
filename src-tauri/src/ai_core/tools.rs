@@ -1876,14 +1876,14 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         entry(|| {
             ToolDef {
             name: "aeroftp_reconcile",
-            description: "Categorized diff superset of `aeroftp_check_tree`: reports the same 4 buckets (match, differ, missing_local, missing_remote) plus elapsed time and a `suggested_next_command` (CLI-style `aeroftp-cli sync` invocation). Mirrors `aeroftp reconcile` from the CLI. Use `aeroftp_check_tree` when you want the same diff with per-group caps and `summary_only` short-circuit; use `aeroftp_reconcile` when you want elapsed-time + next-command for an end-to-end agent report. NOT capped by max_entries_reported: full lists returned.",
+            description: "Categorized diff superset of `aeroftp_check_tree`: reports match, differ, missing_local, missing_remote and checksum_failed buckets plus elapsed time and a `suggested_next_command` (CLI-style `aeroftp-cli sync` invocation). Mirrors `aeroftp reconcile` from the CLI. Use `aeroftp_check_tree` when you want the same diff with per-group caps and `summary_only` short-circuit; use `aeroftp_reconcile` when you want elapsed-time + next-command for an end-to-end agent report. NOT capped by max_entries_reported: full lists returned.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
                     "server": {"type": "string", "description": "Server name or ID"},
                     "local_dir": {"type": "string", "description": "Local directory"},
                     "remote_dir": {"type": "string", "description": "Remote directory"},
-                    "checksum": {"type": "boolean", "description": "Hash both sides of each equal-size pair with blake3 (default: false). The remote side is read through a capped download (256 MB per file, the hashsum ceiling): provider-independent, but the cost is the download. Larger files keep their size verdict, flagged on the entry and counted in the summary."},
+                    "checksum": {"type": "boolean", "description": "Hash both sides of each equal-size pair with blake3 (default: false). The remote side is read through a capped download (256 MB per file, the hashsum ceiling): provider-independent, but the cost is the download. Larger files keep their size verdict, flagged on the entry and counted in the summary. Failed checksum attempts go into groups.checksum_failed, never match or differ; summary.checksum_errors and checksum_failed_count count them, and status is partial even in summary_only mode."},
                     "one_way": {"type": "boolean", "description": "Skip remote-only entries (default: false)"},
                     "exclude": {"type": "array", "items": {"type": "string"}, "description": "Glob patterns to exclude"},
                     "summary_only": {"type": "boolean", "description": "Drop the `groups` arrays: only counters + elapsed + suggested_next_command (default: false)"}

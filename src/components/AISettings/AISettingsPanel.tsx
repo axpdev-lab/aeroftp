@@ -34,7 +34,7 @@ import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaI
 import { AIProvider, AIModel, AISettings, AIProviderType, PROVIDER_PRESETS, DEFAULT_MODELS, generateId, getDefaultAISettings } from '../../types/ai';
 import { logger } from '../../utils/logger';
 import './AISettingsPanel.css';
-import { secureGetWithFallback } from '../../utils/secureStorage';
+import { onVaultReady, secureGetWithFallback } from '../../utils/secureStorage';
 import { ProviderMarketplace } from './ProviderMarketplace';
 import { PluginBrowser } from './PluginBrowser';
 import { McpServersPanel } from './McpServersPanel';
@@ -367,6 +367,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
 
     // Load settings from localStorage (sync) + vault (async) + API keys from OS Keyring
     useEffect(() => {
+        let generation = 0;
         // Helper: hydrate parsed settings with API keys from OS Keyring
         const hydrateApiKeys = async (parsed: AISettings): Promise<{ settings: AISettings; migrated: boolean }> => {
             let migrated = false;
@@ -401,7 +402,44 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
             return { settings: parsed, migrated };
         };
 
+        const applySettings = (incoming: AISettings) => {
+            setSettings(prev => {
+                let merged = incoming;
+                for (const draft of [...failedDraftsRef.current, ...inFlightDraftsRef.current, ...(pendingDraftRef.current ? [pendingDraftRef.current] : [])]) {
+                    merged = mergeAiSettingsDraft(draft.base, draft.edited, merged);
+                }
+                return {
+                    ...merged,
+                    providers: merged.providers.map(p => ({
+                        ...p,
+                        createdAt: new Date(p.createdAt),
+                        updatedAt: new Date(p.updatedAt),
+                        apiKey: prev.providers.find(current => current.id === p.id)?.apiKey ?? p.apiKey,
+                    })),
+                };
+            });
+        };
+
+        const loadVaultSettings = async () => {
+            const current = ++generation;
+            try {
+                const vaultData = await secureGetWithFallback<AISettings>('ai_settings', AI_SETTINGS_KEY);
+                if (current !== generation) return;
+                if (vaultData && vaultData.providers && vaultData.providers.length > 0) {
+                    vaultData.providers = reconcileProviderNames(vaultData.providers);
+                    vaultData.models = reconcileProviderModels(vaultData.models, vaultData.providers);
+                    const { settings: vaultHydrated } = await hydrateApiKeys(vaultData);
+                    if (current !== generation) return;
+                    applySettings(vaultHydrated);
+                }
+            } catch {
+                // Vault unavailable, localStorage data already loaded above
+            }
+            if (current === generation) setSettingsLoaded(true);
+        };
+
         const loadSettings = async () => {
+            const current = ++generation;
             // 1. Synchronous localStorage read for immediate UI
             const saved = localStorage.getItem(AI_SETTINGS_KEY);
             if (saved) {
@@ -410,7 +448,8 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                     parsed.providers = reconcileProviderNames(parsed.providers);
                     parsed.models = reconcileProviderModels(parsed.models, parsed.providers);
                     const { settings: hydrated, migrated } = await hydrateApiKeys(parsed);
-                    setSettings(hydrated);
+                    if (current !== generation) return;
+                    applySettings(hydrated);
 
                     // After migration, strip API keys from localStorage
                     if (migrated) {
@@ -430,20 +469,11 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
             }
 
             // 2. Async vault read: overrides localStorage if vault has data
-            try {
-                const vaultData = await secureGetWithFallback<AISettings>('ai_settings', AI_SETTINGS_KEY);
-                if (vaultData && vaultData.providers && vaultData.providers.length > 0) {
-                    vaultData.providers = reconcileProviderNames(vaultData.providers);
-                    vaultData.models = reconcileProviderModels(vaultData.models, vaultData.providers);
-                    const { settings: vaultHydrated } = await hydrateApiKeys(vaultData);
-                    setSettings(vaultHydrated);
-                }
-            } catch {
-                // Vault unavailable, localStorage data already loaded above
-            }
-            setSettingsLoaded(true);
+            if (current === generation) await loadVaultSettings();
         };
-        loadSettings();
+        void loadSettings();
+        const unsubscribe = onVaultReady(() => { void loadVaultSettings(); });
+        return () => { generation++; unsubscribe(); };
     }, []);
 
     // Report the panel's REAL mounted visibility: the GUI controller's

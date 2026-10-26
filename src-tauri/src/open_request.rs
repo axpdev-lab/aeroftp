@@ -163,14 +163,30 @@ pub fn classify(raw: &str, cwd: Option<&Path>) -> Option<OpenRequest> {
     })
 }
 
+/// The app's own options that take a value in the next argument. The value
+/// is the app's, never a file the user chose: the Windows portable updater
+/// of 4.2.4 relaunches with `--post-update-cleanup <old exe>`, and that old
+/// exe still exists while the new one starts, so read as a path it opened
+/// its folder in AeroFile. An extract verb whose target is not a file falls
+/// through to here too.
+const INTERNAL_OPTIONS_WITH_VALUE: &[&str] =
+    &["--post-update-cleanup", "--extract-here", "--extract-to"];
+
 /// Every openable path among the process arguments (`argv[0]` skipped), in
 /// order: `%U` passes one argument per file of a multi-selection. The
-/// extract verbs are handled before this and never reach it.
+/// extract verbs are handled before this; the app's own options are skipped
+/// with their value.
 pub fn from_argv<S: AsRef<str>>(argv: &[S], cwd: Option<&Path>) -> Vec<OpenRequest> {
-    argv.iter()
-        .skip(1)
-        .filter_map(|arg| classify(arg.as_ref(), cwd))
-        .collect()
+    let mut requests = Vec::new();
+    let mut args = argv.iter().skip(1).map(AsRef::as_ref);
+    while let Some(arg) = args.next() {
+        if INTERNAL_OPTIONS_WITH_VALUE.contains(&arg) {
+            args.next();
+            continue;
+        }
+        requests.extend(classify(arg, cwd));
+    }
+    requests
 }
 
 /// Add one delivery to the queue. The bound trims only what was already
@@ -288,6 +304,44 @@ mod tests {
             missing.to_str().unwrap(),
         ];
         assert!(from_argv(&argv, None).is_empty());
+    }
+
+    /// Audit 4.2.5 C01: after a Windows portable update from 4.2.4 the new
+    /// exe starts as `AeroFTP.exe --post-update-cleanup <old exe>`, and the
+    /// old exe still exists. Its path is the updater's, not a file to open:
+    /// no request for it, cold start or second instance (both read argv
+    /// through here), while a file the user passes still opens. The same
+    /// for an extract verb whose value fell through.
+    #[test]
+    fn the_apps_own_options_and_their_values_open_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let old_exe = dir.path().join("AeroFTP.exe.old");
+        let user_file = dir.path().join("notes.txt");
+        std::fs::write(&old_exe, b"MZ").unwrap();
+        std::fs::write(&user_file, b"x").unwrap();
+        let old = old_exe.to_string_lossy().to_string();
+        let user = user_file.to_string_lossy().to_string();
+        for flag in ["--post-update-cleanup", "--extract-here", "--extract-to"] {
+            let argv = ["AeroFTP.exe", flag, old.as_str()];
+            assert!(from_argv(&argv, None).is_empty(), "{flag}");
+            // Relative to the launching folder, as a second instance hands it.
+            let argv = ["AeroFTP.exe", flag, "AeroFTP.exe.old"];
+            assert!(
+                from_argv(&argv, Some(dir.path())).is_empty(),
+                "{flag} relative"
+            );
+            let argv = ["AeroFTP.exe", flag, old.as_str(), user.as_str()];
+            let names: Vec<String> = from_argv(&argv, None).into_iter().map(|r| r.name).collect();
+            assert_eq!(names, ["notes.txt"], "{flag}");
+        }
+        // A file before the option still opens.
+        let argv = [
+            "AeroFTP.exe",
+            user.as_str(),
+            "--post-update-cleanup",
+            old.as_str(),
+        ];
+        assert_eq!(from_argv(&argv, None).len(), 1);
     }
 
     #[test]

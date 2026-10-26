@@ -392,6 +392,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const panelOpen = useRef(isOpen);
     panelOpen.current = isOpen;
     const settingsLoadRevision = useRef(0);
+    const [portableMode, setPortableMode] = useState<boolean | null>(null);
+    const autostartAtOpen = useRef<boolean | null>(null);
+    const autostartEditRevision = useRef(0);
+    // Whether the user changed the autostart checkbox since the panel opened:
+    // Save Changes writes the OS state only for such an edit.
+    const autostartTouched = useRef(false);
     const [oauthSettings, setOauthSettings] = useState<OAuthSettings>(defaultOAuthSettings);
     const oauthEdits = useRef<Partial<Record<keyof OAuthSettings, { clientId?: boolean; clientSecret?: boolean }>>>({});
     const [servers, setServers] = useState<ServerProfile[]>([]);
@@ -654,6 +660,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         }
     }, []);
 
+    useEffect(() => {
+        let disposed = false;
+        invoke<{ is_portable: boolean }>('portable_info')
+            .then(info => { if (!disposed) setPortableMode(info.is_portable); })
+            .catch(e => logger.debug('Portable mode detection failed:', e));
+        return () => { disposed = true; };
+    }, []);
+
     // Load settings on open
     useEffect(() => {
         if (isOpen) {
@@ -673,6 +687,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                             fontFamily: normalizeAppFontFamily(saved.fontFamily ?? defaultSettings.fontFamily),
                             introHubIconSize: clampIntroHubIconSize(saved.introHubIconSize ?? defaultSettings.introHubIconSize),
                             sftpDownloadPreset: normalizeSftpDownloadPreset(saved.sftpDownloadPreset),
+                            // The OS is the source of truth for autostart: a saved
+                            // value read after the OS state must not replace it.
+                            launchOnStartup: autostartAtOpen.current ?? saved.launchOnStartup ?? defaultSettings.launchOnStartup,
                         };
                         settingsBase.current = normalizedSettings;
                         setSettings(normalizedSettings);
@@ -711,11 +728,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         });
                     };
                     await loadOAuthFromStore();
-
-                    // Sync autostart state from OS (authoritative source)
-                    isAutostartEnabled()
-                        .then((enabled) => setSettings((prev) => ({ ...prev, launchOnStartup: enabled })))
-                        .catch((e) => logger.debug('Autostart status check failed:', e));
 
                     // Load credential store status
                     invoke<{
@@ -761,6 +773,23 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             return () => { disposed = true; };
         }
     }, [isOpen]);
+
+    useEffect(() => {
+        autostartAtOpen.current = null;
+        autostartTouched.current = false;
+        if (!isOpen || portableMode !== false) return;
+        let disposed = false;
+        const revision = autostartEditRevision.current;
+        isAutostartEnabled()
+            .then(enabled => {
+                // A checkbox edit or an import refresh made during the read is newer.
+                if (disposed || autostartEditRevision.current !== revision) return;
+                autostartAtOpen.current = enabled;
+                setSettings(prev => ({ ...prev, launchOnStartup: enabled }));
+            })
+            .catch(e => logger.debug('Autostart status check failed:', e));
+        return () => { disposed = true; };
+    }, [isOpen, portableMode]);
 
     useEffect(() => {
         if (isOpen) return;
@@ -851,18 +880,26 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             localStorage.removeItem(OAUTH_SETTINGS_KEY);
             // Apply system menu setting immediately
             invoke('toggle_menu_bar', { visible: captured.showSystemMenu });
-            // Apply autostart setting (idempotent: no pre-check needed)
-            try {
-                if (captured.launchOnStartup) {
-                    await enableAutostart();
-                } else {
-                    await disableAutostart();
+            // Only a checkbox edit writes the OS state, and only when it differs
+            // from the state read at open; with no state read (the read failed)
+            // the edit is applied as it is.
+            if (portableMode === false && autostartTouched.current && captured.launchOnStartup !== autostartAtOpen.current) {
+                const revision = autostartEditRevision.current;
+                try {
+                    if (captured.launchOnStartup) {
+                        await enableAutostart();
+                    } else {
+                        await disableAutostart();
+                    }
+                    autostartAtOpen.current = captured.launchOnStartup;
+                } catch (e) {
+                    logger.debug('Autostart toggle failed:', e);
+                    const actual = await isAutostartEnabled().catch(() => null);
+                    autostartAtOpen.current = actual;
+                    if (actual !== null && autostartEditRevision.current === revision) {
+                        setSettings((prev) => ({ ...prev, launchOnStartup: actual }));
+                    }
                 }
-            } catch (e) {
-                logger.debug('Autostart toggle failed:', e);
-                // Revert UI to actual OS state on next open
-                const actual = await isAutostartEnabled().catch(() => false);
-                setSettings((prev) => ({ ...prev, launchOnStartup: actual }));
             }
             // Keep edits made while saving; only the captured draft has been persisted.
             const stillEdited = JSON.stringify(settingsDraft.current) !== JSON.stringify(committed);
@@ -884,6 +921,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
     const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
         ++settingsLoadRevision.current;
+        if (key === 'launchOnStartup') {
+            autostartEditRevision.current++;
+            autostartTouched.current = true;
+        }
         setSettings((prev) => ({ ...prev, [key]: value }));
         setHasChanges(true);
     };
@@ -1258,28 +1299,32 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 {t('settings.startupOptions')}
                                             </h4>
                                             <div className="space-y-3">
-                                                <Checkbox
-                                                    checked={settings.launchOnStartup}
-                                                    onChange={(v) => updateSetting('launchOnStartup', v)}
-                                                    label={
-                                                        <div>
-                                                            <p className="text-sm">{t('settings.launchOnStartup')}</p>
-                                                            <p className="text-xs text-gray-500">{t('settings.launchOnStartupDesc')}</p>
+                                                {portableMode === false && (
+                                                    <>
+                                                        <Checkbox
+                                                            checked={settings.launchOnStartup}
+                                                            onChange={(v) => updateSetting('launchOnStartup', v)}
+                                                            label={
+                                                                <div>
+                                                                    <p className="text-sm">{t('settings.launchOnStartup')}</p>
+                                                                    <p className="text-xs text-gray-500">{t('settings.launchOnStartupDesc')}</p>
+                                                                </div>
+                                                            }
+                                                        />
+                                                        <div className={`pl-6 ${settings.launchOnStartup ? '' : 'opacity-50 pointer-events-none'}`}>
+                                                            <Checkbox
+                                                                checked={settings.startMinimizedOnAutostart}
+                                                                onChange={(v) => updateSetting('startMinimizedOnAutostart', v)}
+                                                                label={
+                                                                    <div>
+                                                                        <p className="text-sm">{t('settings.startMinimizedOnAutostart')}</p>
+                                                                        <p className="text-xs text-gray-500">{t('settings.startMinimizedOnAutostartDesc')}</p>
+                                                                    </div>
+                                                                }
+                                                            />
                                                         </div>
-                                                    }
-                                                />
-                                                <div className={`pl-6 ${settings.launchOnStartup ? '' : 'opacity-50 pointer-events-none'}`}>
-                                                    <Checkbox
-                                                        checked={settings.startMinimizedOnAutostart}
-                                                        onChange={(v) => updateSetting('startMinimizedOnAutostart', v)}
-                                                        label={
-                                                            <div>
-                                                                <p className="text-sm">{t('settings.startMinimizedOnAutostart')}</p>
-                                                                <p className="text-xs text-gray-500">{t('settings.startMinimizedOnAutostartDesc')}</p>
-                                                            </div>
-                                                        }
-                                                    />
-                                                </div>
+                                                    </>
+                                                )}
                                                 <Checkbox
                                                     checked={settings.closeToTray}
                                                     onChange={(v) => {
@@ -3716,11 +3761,19 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                                 // so the UI reflects reality without
                                                                                 // forcing the user to reopen Settings
                                                                                 // (issue #214 C3 pt.E1).
-                                                                                try {
-                                                                                    const enabled = await isAutostartEnabled();
-                                                                                    setSettings(prev => ({ ...prev, launchOnStartup: enabled }));
-                                                                                } catch {
-                                                                                    /* plugin unavailable: ignore */
+                                                                                // A checkbox edit made during the read stays.
+                                                                                if (portableMode === false) {
+                                                                                    try {
+                                                                                        const revision = autostartEditRevision.current;
+                                                                                        const enabled = await isAutostartEnabled();
+                                                                                        autostartAtOpen.current = enabled;
+                                                                                        if (autostartEditRevision.current === revision) {
+                                                                                            autostartEditRevision.current++;
+                                                                                            setSettings(prev => ({ ...prev, launchOnStartup: enabled }));
+                                                                                        }
+                                                                                    } catch {
+                                                                                        /* plugin unavailable: ignore */
+                                                                                    }
                                                                                 }
                                                                             } catch (e) {
                                                                                 console.warn('Failed to apply restored localStorage:', e);

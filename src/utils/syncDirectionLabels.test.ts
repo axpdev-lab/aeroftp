@@ -65,6 +65,25 @@ describe('one vocabulary for sync directions', () => {
         for (const label of labels) expect(lookup(label.key), label.key).not.toBe(label.key);
     });
 
+    it('names the four conflict policies with the same Keep vocabulary as Keep both', () => {
+        const expected = {
+            'newer-wins': 'Keep newer',
+            'older-wins': 'Keep older',
+            'larger-wins': 'Keep larger',
+            'smaller-wins': 'Keep smaller',
+        } as const;
+        for (const [policy, label] of Object.entries(expected)) {
+            expect(conflictPolicyLabel(policy as keyof typeof expected).fallback).toBe(label);
+            expect(say(conflictPolicyLabel(policy as keyof typeof expected))).toBe(label);
+        }
+    });
+
+    it('describes Update with its selected conflict policy instead of an unconditional skip', () => {
+        const description = 'Copy missing and newer files. Never delete. Overwrite newer destination copies only if the selected conflict policy chooses the other copy.';
+        expect(presetTaglineLabel('update').fallback).toBe(description);
+        expect(say(presetTaglineLabel('update'))).toBe(description);
+    });
+
     it('falls back to English when `t` answers with the key itself', () => {
         expect(resolveLabel((k) => k, presetNameLabel('bisync'))).toBe('Two-way sync');
         expect(say(templateDirectionLabel('sideways'))).toBe('sideways');

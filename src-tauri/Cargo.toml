@@ -58,6 +58,8 @@ semver = "1.0.28"
 
 [dependencies]
 unicode-normalization = "0.1"
+# Identify filesystem probe aliases without changing their spelling.
+same-file = "1.0.6"
 # WI-3d: promoted from [dev-dependencies] to a NORMAL dependency so the iroh P2P
 # drive engine ships in the binary (the app calls it via src/peer/). peer-l0
 # stays the iroh isolation boundary; the 5 accepted RUSTSEC advisories now apply
@@ -336,8 +338,6 @@ whisper-rs = { version = "0.16.0", optional = true }
 
 # Windows Explorer badge integration (v2.0.5) + MTP/WPD portable devices (Phase 3)
 [target.'cfg(windows)'.dependencies]
-# A canonical path cannot identify two hard links to the same local file.
-same-file = "1.0.6"
 windows = { version = "0.58", features = [
     "Win32_Storage_CloudFilters",
     "Win32_Foundation",
@@ -594,11 +594,12 @@ n0-mainline = { git = "https://github.com/axpdev-lab/n0-mainline", rev = "25ee35
 # nothing here will TELL us if that changes. That is a reason to file upstream
 # rather than to keep the fork comfortable.
 #
-# When it is sent, REPLACE the "NOTHING FILED" line above with its URL. That is the
-# whole point of writing the state here: "we will upstream it" is a sentence
-# nobody can check six months later, while "not opened as of a date" and a
-# link are both things a reader can verify in a second. A fork does not
-# become permanent because the exit condition is missing; it becomes
-# permanent because the exit condition is written in a form nobody can
-# verify.
+# When an upstream API PR is opened, update the UPSTREAM note above: add the
+# PR's URL and the date it was opened next to issue 206, and drop "No upstream
+# API PR has been opened". That is the whole point of writing the state here:
+# "we will upstream it" is a sentence nobody can check six months later,
+# while "not opened as of a date" and a link are both things a reader can
+# verify in a second. A fork does not become permanent because the exit
+# condition is missing; it becomes permanent because the exit condition is
+# written in a form nobody can verify.
 suppaftp = { git = "https://github.com/axpdev-lab/suppaftp", rev = "9aaa000273cac54762855424d1274e17e02f8fa6" }

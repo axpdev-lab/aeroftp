@@ -25,7 +25,21 @@
 
 import type { TransferItem, TransferStatus, TransferType } from './TransferQueue';
 
+export interface NewQueueItem {
+    filename: string;
+    path: string;
+    size: number;
+    type: TransferType;
+    options?: AddItemOptions;
+}
+
+export interface AddItemsEntry extends NewQueueItem {
+    id: string;
+}
+
 export interface AddItemOptions {
+    /** An AeroSync row registered from the complete plan before it starts. */
+    plannedSync?: boolean;
     /** When true, the new entry lands in `staged` and waits for an explicit
      *  start (per-item or via `startAll`). Default false preserves the
      *  legacy "add and run" behaviour. */
@@ -122,6 +136,21 @@ export function rowForFileStart(
     return pending ? pending.id : null;
 }
 
+function newQueueRow(entry: AddItemsEntry): TransferItem {
+    return {
+        id: entry.id,
+        filename: entry.filename,
+        path: entry.path,
+        size: entry.size,
+        type: entry.type,
+        status: entry.options?.staged ? 'staged' : 'pending',
+        startTime: Date.now(),
+        restored: entry.options?.restored || undefined,
+        isFolder: entry.options?.isFolder || undefined,
+        isPlannedSync: entry.options?.plannedSync || undefined,
+    };
+}
+
 /** Push a new item to the queue. Pure: returns a fresh array; never mutates
  *  the input. */
 export function addItem(
@@ -133,21 +162,30 @@ export function addItem(
     type: TransferType,
     options?: AddItemOptions,
 ): TransferItem[] {
-    const status: TransferStatus = options?.staged ? 'staged' : 'pending';
-    return [
-        ...items,
-        {
-            id,
-            filename,
-            path,
-            size,
-            type,
-            status,
-            startTime: Date.now(),
-            restored: options?.restored || undefined,
-            isFolder: options?.isFolder || undefined,
-        },
-    ];
+    return [...items, newQueueRow({ id, filename, path, size, type, options })];
+}
+
+/** Register a complete plan with one state update. */
+export function addItems(items: TransferItem[], entries: AddItemsEntry[]): TransferItem[] {
+    return [...items, ...entries.map(newQueueRow)];
+}
+
+/** The title counter uses a run's complete plan when one is active. Other
+ * folder batches keep the fixed total supplied by their backend snapshot. */
+export function queueDisplayCounts(
+    items: TransferItem[],
+    snapshot: { completed: number; total: number } | null | undefined,
+    transferringCount: number,
+): { completed: number; total: number } {
+    const plannedActive = items.some(item => item.isPlannedSync
+        && (item.status === 'pending' || item.status === 'transferring'));
+    if (!plannedActive && snapshot && transferringCount > 0 && snapshot.total > 0) {
+        return { completed: Math.min(snapshot.completed, snapshot.total), total: snapshot.total };
+    }
+    return {
+        completed: items.reduce((count, item) => count + (item.status === 'completed' ? 1 : 0), 0),
+        total: items.length,
+    };
 }
 
 /** Transition every STAGED entry to PENDING in current order. No-op when no

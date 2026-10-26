@@ -297,6 +297,18 @@ pub fn keep_timeout(
     }
 }
 
+/// A whole-object hash must consume exactly the size pinned before its read.
+/// A self-consistent HTTP200 Content-Length can still describe only part of
+/// the object; it is not a substitute for the caller's known object size.
+pub fn validate_hash_length(path: &str, expected: u64, actual: u64) -> Result<(), ProviderError> {
+    if actual != expected {
+        return Err(ProviderError::TransferFailed(format!(
+            "{path}: expected {expected} bytes for hashing, downloaded {actual}"
+        )));
+    }
+    Ok(())
+}
+
 /// H2: Read a reqwest Response into Vec<u8> with a size cap.
 /// Checks Content-Length first; if absent, reads up to `limit` bytes via streaming.
 ///
@@ -1269,6 +1281,15 @@ pub trait StorageProvider: Send + Sync {
         _path: &str,
     ) -> Result<Option<std::time::Duration>, ProviderError> {
         Ok(None)
+    }
+
+    /// Prepare a file source before move-related metadata/existence checks.
+    /// A write-back bridge may still be publishing an acknowledged upload.
+    /// Ordinary providers do nothing. A missing file also returns promptly;
+    /// directory prefixes must not be passed here. Dropping the future
+    /// cancels the preparation without starting the move.
+    async fn prepare_file_move(&mut self, _path: &str) -> Result<(), ProviderError> {
+        Ok(())
     }
 
     /// A caveat a benchmark or speed test prints next to its figures, once

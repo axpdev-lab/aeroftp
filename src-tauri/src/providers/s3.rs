@@ -1454,6 +1454,46 @@ impl S3Provider {
         }
     }
 
+    /// Copy after the caller has prepared the source. Rename also classifies
+    /// virtual folders after preparation, without starting a second wait.
+    async fn copy_prepared_source(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let from_key = from.trim_start_matches('/');
+        let to_key = to.trim_start_matches('/');
+
+        // HEAD source up front so we know whether to take the single-PUT
+        // CopyObject path or compose the copy as a multipart sequence of
+        // UploadPartCopy operations (`copy_via_multipart` also keeps Filebase
+        // on the single-PUT path: it answers 501 to UploadPartCopy). The HEAD
+        // surfaces a `NotFound` immediately on ordinary S3 instead of waiting
+        // for the PUT to fail downstream. The caller has already waited for
+        // write-back on the Filen Desktop preset. HEAD transfers headers only.
+        let source_meta = self.stat(from).await?;
+        let source_size = source_meta.size;
+
+        if !self.copy_via_multipart(source_size) {
+            return self.server_side_copy_single(from_key, to_key).await;
+        }
+
+        // T-DEBT-08: source > 5 GiB, single CopyObject would fail with
+        // `EntityTooLarge`. Fall through to multipart copy. Content-Type
+        // is preserved best-effort from the HEAD response; the rest of
+        // the source metadata is not (S3 multipart copy lacks the
+        // single-PUT `metadata-directive: COPY` slot).
+        let content_type = source_meta.mime_type;
+        let source_mtime = source_meta
+            .metadata
+            .get(Self::MTIME_METADATA_HEADER)
+            .cloned();
+        self.server_side_copy_multipart(
+            from_key,
+            to_key,
+            source_size,
+            content_type.as_deref(),
+            source_mtime,
+        )
+        .await
+    }
+
     async fn verify_copy_target_exists(&self, to: &str) -> Result<(), ProviderError> {
         let to_key = to.trim_start_matches('/');
         let mut last_status: Option<StatusCode> = None;
@@ -1628,14 +1668,14 @@ impl S3Provider {
                     from
                 ))
             };
+            // An acknowledged upload may still be unpublished. Wait first,
+            // then classify virtual folders through the same probe as plain
+            // S3. Copy below reuses this preparation instead of waiting twice.
+            if self.config.filen_desktop_bridge {
+                self.prepare_file_move(from).await?;
+            }
             match self.s3_request(Method::HEAD, from_key, None, None).await {
-                Ok(resp) if resp.status() == StatusCode::OK => {
-                    // Real file: proceed with single-file rename.
-                    self.server_copy(from, to).await?;
-                    self.verify_copy_target_exists(to).await?;
-                    self.delete(from).await?;
-                    info!("Renamed file (copy+delete) {} to {}", from, to);
-                }
+                Ok(resp) if resp.status() == StatusCode::OK => {}
                 Ok(resp) if resp.status() == StatusCode::NOT_FOUND => {
                     return Err(virtual_folder_err());
                 }
@@ -1660,6 +1700,10 @@ impl S3Provider {
                 }
                 Err(e) => return Err(e),
             }
+            self.copy_prepared_source(from, to).await?;
+            self.verify_copy_target_exists(to).await?;
+            self.delete(from).await?;
+            info!("Renamed file (copy+delete) {} to {}", from, to);
         } else {
             // Directory rename: copy all objects to new prefix, then delete
             // originals (the folder marker, when there is one, is among them).
@@ -4086,13 +4130,23 @@ impl S3Provider {
         }
     }
 
-    /// How long a GET may wait for an object this session just uploaded.
-    /// Filen Desktop runs `rclone serve s3 --vfs-write-back 5s`, then copies
-    /// the file onto Filen. Giving up at 10 seconds landed while that copy
-    /// was still running, and the benchmark then deleted the cache file.
-    /// Thirty seconds covers the delay and the copy. A GET that succeeds
-    /// returns immediately.
+    /// Keep the existing read-after-upload allowance for markerless S3.
     const MARKERLESS_WRITE_BACK_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+
+    /// Filen Desktop acknowledges its local cache before cloud publication.
+    /// A 260 MB write-back exceeded thirty seconds; five minutes allows a
+    /// slower uplink and matches rclone's transfer timeout. This is a hard
+    /// readiness-probe ceiling, including requests, not a guarantee for any size.
+    /// A new CLI connection has no upload size or timestamp to budget from.
+    const FILEN_WRITE_BACK_WAIT: std::time::Duration = std::time::Duration::from_secs(300);
+
+    fn write_back_wait(&self) -> std::time::Duration {
+        if self.config.filen_desktop_bridge {
+            Self::FILEN_WRITE_BACK_WAIT
+        } else {
+            Self::MARKERLESS_WRITE_BACK_WAIT
+        }
+    }
 
     fn note_markerless_upload(&self, key: &str) {
         if !self.config.skip_dir_markers {
@@ -4113,7 +4167,7 @@ impl S3Provider {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         let cutoff = tokio::time::Instant::now()
-            .checked_sub(Self::MARKERLESS_WRITE_BACK_WAIT)
+            .checked_sub(self.write_back_wait())
             .unwrap_or_else(tokio::time::Instant::now);
         noted.retain(|_, at| *at >= cutoff);
         noted.contains_key(key)
@@ -4134,7 +4188,7 @@ impl S3Provider {
         key: &str,
     ) -> Result<reqwest::Response, ProviderError> {
         let wait_for_write_back = self.markerless_upload_is_fresh(key);
-        let deadline = tokio::time::Instant::now() + Self::MARKERLESS_WRITE_BACK_WAIT;
+        let deadline = tokio::time::Instant::now() + self.write_back_wait();
         let mut pause = std::time::Duration::from_millis(250);
         loop {
             let response = self.s3_request(Method::GET, key, None, None).await?;
@@ -4154,10 +4208,82 @@ impl S3Provider {
         }
     }
 
-    /// HEAD `key` until it answers, when this session just uploaded it on a
-    /// preset that skips directory markers. Returns the time spent, or `None`
-    /// when no wait applied. The record is kept, so the GET that follows
-    /// still waits if the object disappears again.
+    fn bridge_not_published(&self, key: &str, budget: std::time::Duration) -> ProviderError {
+        ProviderError::TransferFailed(format!(
+                "{} has not published object '/{key}' yet after {} seconds; the source was not moved. Retry after the bridge finishes its write-back.",
+                if self.config.filen_desktop_bridge { "Filen Desktop S3 bridge" } else { "S3 bridge" },
+                budget.as_secs()
+            ))
+    }
+
+    /// Bound cache discovery as well as HEAD polling. S3's general client
+    /// read timeout allows long downloads and is too large for this wait.
+    async fn prepare_bridge_file_move(
+        &self,
+        key: &str,
+        budget: std::time::Duration,
+    ) -> Result<(), ProviderError> {
+        let prepare = async {
+            // rclone lists cached files before HEAD can read their cloud
+            // object. Without this evidence a genuinely missing file,
+            // including an optional backup sidecar, would wait needlessly.
+            // Compare raw keys here: Linux rclone emits literal keys, while
+            // older Filen bridges emit URL-encoded keys. Either spelling
+            // proves cache presence; HEAD/copy still use the original key.
+            if self.markerless_upload_is_fresh(key)
+                || self
+                    .list_keys_for_prefix(key, Some(1), false)
+                    .await?
+                    .iter()
+                    .any(|listed| listed == key || listed == &encode_s3_key_path(key))
+            {
+                self.wait_for_bridge_object(key, budget).await?;
+            }
+            Ok(())
+        };
+        tokio::time::timeout(budget, prepare)
+            .await
+            .map_err(|_| self.bridge_not_published(key, budget))?
+    }
+
+    /// The benchmark and server-side moves share this readiness probe.
+    /// HEAD on Filen's rclone bridge refuses a cached file whose DirEntry
+    /// is still absent; CopyObject needs that same underlying object.
+    /// Only 404 is transient. Dropping this future cancels its request or
+    /// timer inline, with no detached poller and no copy/delete in flight.
+    async fn wait_for_bridge_object(
+        &self,
+        key: &str,
+        budget: std::time::Duration,
+    ) -> Result<std::time::Duration, ProviderError> {
+        let started = tokio::time::Instant::now();
+        let deadline = started + budget;
+        let mut pause = std::time::Duration::from_millis(250);
+        loop {
+            let response =
+                tokio::time::timeout_at(deadline, self.s3_request(Method::HEAD, key, None, None))
+                    .await
+                    .map_err(|_| self.bridge_not_published(key, budget))??;
+            if response.status() == StatusCode::OK {
+                return Ok(started.elapsed());
+            }
+            if response.status() != StatusCode::NOT_FOUND {
+                return Err(ProviderError::ServerError(format!(
+                    "HEAD on bridge source '/{key}' returned status {}",
+                    response.status()
+                )));
+            }
+            let now = tokio::time::Instant::now();
+            if now >= deadline {
+                return Err(self.bridge_not_published(key, budget));
+            }
+            tokio::time::sleep(pause.min(deadline.saturating_duration_since(now))).await;
+            pause = (pause * 2).min(std::time::Duration::from_secs(2));
+        }
+    }
+
+    /// Read-after-upload callers wait only for their own fresh upload.
+    /// Rename/copy on the Filen preset also probes on a fresh connection.
     async fn wait_for_own_markerless_upload(
         &self,
         key: &str,
@@ -4165,18 +4291,9 @@ impl S3Provider {
         if !self.markerless_upload_is_fresh(key) {
             return Ok(None);
         }
-        let started = tokio::time::Instant::now();
-        let deadline = started + Self::MARKERLESS_WRITE_BACK_WAIT;
-        let mut pause = std::time::Duration::from_millis(250);
-        loop {
-            let response = self.s3_request(Method::HEAD, key, None, None).await?;
-            let now = tokio::time::Instant::now();
-            if response.status() != StatusCode::NOT_FOUND || now >= deadline {
-                return Ok(Some(now - started));
-            }
-            tokio::time::sleep(pause.min(deadline.saturating_duration_since(now))).await;
-            pause = (pause * 2).min(std::time::Duration::from_secs(2));
-        }
+        self.wait_for_bridge_object(key, self.write_back_wait())
+            .await
+            .map(Some)
     }
 
     /// Whether `key` is an object, or a folder with at least one object under
@@ -4218,15 +4335,20 @@ impl S3Provider {
         prefix: &str,
         first: Option<usize>,
     ) -> Result<Vec<String>, ProviderError> {
+        self.list_keys_for_prefix(prefix, first, self.is_filen_s3_endpoint())
+            .await
+    }
+
+    /// Shared parser with optional legacy Filen key decoding. Cache
+    /// membership checks compare the raw spelling without normalizing it.
+    async fn list_keys_for_prefix(
+        &self,
+        prefix: &str,
+        first: Option<usize>,
+        filen_decode: bool,
+    ) -> Result<Vec<String>, ProviderError> {
         let max_keys = first.map_or_else(|| "1000".to_string(), |n| n.to_string());
         let mut all_keys = Vec::new();
-        // Filen's S3 bridge returns <Key> percent-encoded (issue #196). Decode to
-        // the logical key here so the single downstream encode_s3_key_path() call
-        // (server_side_copy_single / build_url) encodes exactly once. Without this,
-        // a listed emoji key like "folder/%F0%9F%9A%80file.txt" gets re-encoded to
-        // "%25F0...", producing a copy-source / delete key that fails SigV4 with
-        // "401 The signature does not match" (issue #368). Mirrors parse_list_response.
-        let filen_decode = self.is_filen_s3_endpoint();
         let repair_mojibake = self.is_filelu_s3_endpoint();
         let mut continuation_token: Option<String> = None;
 
@@ -4236,6 +4358,13 @@ impl S3Provider {
                 ("prefix", prefix),
                 ("max-keys", &max_keys),
             ];
+
+            // Ask for the encoding this legacy Filen path decodes. Recent
+            // rclone defaults to literal keys; without this request a name
+            // containing a literal "%25" would be decoded into another key.
+            if filen_decode {
+                params.push(("encoding-type", "url"));
+            }
 
             let token_str: String;
             if let Some(ref token) = continuation_token {
@@ -4900,6 +5029,18 @@ impl StorageProvider for S3Provider {
         }
         let key = path.trim_start_matches('/');
         self.wait_for_own_markerless_upload(key).await
+    }
+
+    async fn prepare_file_move(&mut self, path: &str) -> Result<(), ProviderError> {
+        if !self.config.filen_desktop_bridge {
+            return Ok(());
+        }
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let key = path.trim_start_matches('/');
+        self.prepare_bridge_file_move(key, Self::FILEN_WRITE_BACK_WAIT)
+            .await
     }
 
     fn measurement_note(&self) -> Option<&'static str> {
@@ -6033,41 +6174,10 @@ impl StorageProvider for S3Provider {
             return Err(ProviderError::NotConnected);
         }
 
-        let from_key = from.trim_start_matches('/');
-        let to_key = to.trim_start_matches('/');
-
-        // HEAD source up front so we know whether to take the single-PUT
-        // CopyObject path or compose the copy as a multipart sequence of
-        // UploadPartCopy operations (`copy_via_multipart` also keeps Filebase
-        // on the single-PUT path: it answers 501 to UploadPartCopy). The HEAD
-        // is one cheap round trip per copy and surfaces a `NotFound`
-        // immediately instead of waiting for the PUT to fail downstream.
-        // Network egress is unchanged: headers only.
-        let source_meta = self.stat(from).await?;
-        let source_size = source_meta.size;
-
-        if !self.copy_via_multipart(source_size) {
-            return self.server_side_copy_single(from_key, to_key).await;
+        if self.config.filen_desktop_bridge {
+            self.prepare_file_move(from).await?;
         }
-
-        // T-DEBT-08: source > 5 GiB, single CopyObject would fail with
-        // `EntityTooLarge`. Fall through to multipart copy. Content-Type
-        // is preserved best-effort from the HEAD response; the rest of
-        // the source metadata is not (S3 multipart copy lacks the
-        // single-PUT `metadata-directive: COPY` slot).
-        let content_type = source_meta.mime_type;
-        let source_mtime = source_meta
-            .metadata
-            .get(Self::MTIME_METADATA_HEADER)
-            .cloned();
-        self.server_side_copy_multipart(
-            from_key,
-            to_key,
-            source_size,
-            content_type.as_deref(),
-            source_mtime,
-        )
-        .await
+        self.copy_prepared_source(from, to).await
     }
 
     // Shaped-graph multipart trait wiring.
@@ -9529,6 +9639,406 @@ mod tests {
         );
         config.filen_desktop_bridge = false;
         assert_eq!(S3Provider::new(config).unwrap().measurement_note(), None);
+    }
+
+    /// Filen's cache acknowledges PUT while HEAD and CopyObject still
+    /// answer NoSuchKey. No source may be deleted until copying succeeds.
+    async fn bridge_rename_fixture(
+        bridge: bool,
+        directory: bool,
+        replace: bool,
+        leaf: &'static str,
+        reconnect: bool,
+    ) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let reads = Arc::new(AtomicUsize::new(0));
+        let copies = Arc::new(AtomicUsize::new(0));
+        let deletes = Arc::new(AtomicUsize::new(0));
+        let discoveries = Arc::new(AtomicUsize::new(0));
+        let (r, c, d, discovery) = (
+            reads.clone(),
+            copies.clone(),
+            deletes.clone(),
+            discoveries.clone(),
+        );
+        let app = axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+            let (r, c, d, discovery) = (r.clone(), c.clone(), d.clone(), discovery.clone());
+            async move {
+                let method = req.method().clone();
+                let path = urlencoding::decode(req.uri().path()).unwrap().into_owned();
+                let source = path == format!("/test-bucket/src/{leaf}");
+                let url = reqwest::Url::parse(&format!("http://fixture{}", req.uri())).unwrap();
+                let prefix = url.query_pairs().find(|(k, _)| k == "prefix").map(|(_, v)| v.into_owned());
+                if bridge && directory && prefix.as_deref() == Some("src/") {
+                    assert!(url.query_pairs().any(|(k, v)| k == "encoding-type" && v == "url"),
+                        "encoded listing fixtures must be explicitly requested");
+                }
+                let copy = req.headers().get("x-amz-copy-source").map(|value| {
+                    urlencoding::decode(value.to_str().unwrap()).unwrap().into_owned()
+                });
+                if let Some(source) = &copy {
+                    assert_eq!(source, &format!("/test-bucket/src/{leaf}"));
+                    let target = if directory {
+                        format!("/test-bucket/renamed-📦-ßς-100%.dat/{leaf}")
+                    } else { "/test-bucket/renamed-📦-ßς-100%.dat".into() };
+                    assert_eq!(path, target, "the destination is encoded exactly once");
+                }
+                let _ = axum::body::to_bytes(req.into_body(), 1 << 20).await.unwrap();
+                let mut status = 200;
+                let mut body = String::new();
+                if method == Method::GET && prefix.is_some() {
+                    if prefix.as_deref() == Some(format!("src/{leaf}").as_str()) {
+                        discovery.fetch_add(1, Ordering::SeqCst);
+                    }
+                    let contents = if (directory && prefix.as_deref() == Some("src/"))
+                        || prefix.as_deref() == Some(format!("src/{leaf}").as_str()) {
+                        {
+                            let key = format!("src/{leaf}");
+                            let listed = if bridge && directory { encode_s3_key_path(&key) } else { key };
+                            format!("<Contents><Key>{}</Key><Size>2</Size></Contents>", quick_xml::escape::escape(&listed))
+                        }
+                    } else { String::new() };
+                    body = format!("<ListBucketResult><IsTruncated>false</IsTruncated>{contents}</ListBucketResult>");
+                } else if method == Method::HEAD && source {
+                    if r.fetch_add(1, Ordering::SeqCst) < 3 { status = 404; }
+                } else if method == Method::PUT && copy.is_some() {
+                    c.fetch_add(1, Ordering::SeqCst);
+                    if r.load(Ordering::SeqCst) < 4 {
+                        status = 404;
+                        body = "<Error><Code>NoSuchKey</Code></Error>".into();
+                    } else {
+                        body = "<CopyObjectResult><ETag>&quot;26900ff2522cfea800879f940b5d592d&quot;</ETag><LastModified>2026-10-25T07:12:16Z</LastModified></CopyObjectResult>".into();
+                    }
+                } else if method == Method::DELETE {
+                    assert!(source, "only the exact original is deleted: {path}");
+                    d.fetch_add(1, Ordering::SeqCst);
+                    status = 204;
+                } else if method == Method::POST { status = 405; }
+                axum::http::Response::builder().status(status)
+                    .body(axum::body::Body::from(body)).unwrap()
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.config.filen_desktop_bridge = bridge;
+        if bridge {
+            provider.config.region = "filen".into();
+        }
+        provider.config.skip_dir_markers = true;
+        let src = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(src.path(), b"hi").unwrap();
+        provider
+            .upload(src.path().to_str().unwrap(), &format!("/src/{leaf}"), None)
+            .await
+            .unwrap();
+        // CLI mv uses a new connection, so the wait must also work without
+        // the uploader's in-memory record.
+        if reconnect {
+            provider.recent_markerless_uploads.lock().unwrap().clear();
+        }
+        let file = format!("/src/{leaf}");
+        let from = if directory { "/src" } else { &file };
+        let to = "/renamed-📦-ßς-100%.dat/";
+        let result = if replace {
+            provider.replace(from, to).await
+        } else {
+            provider.rename(from, to).await
+        };
+        server.abort();
+        if bridge {
+            assert!(result.is_ok(), "{result:?}");
+            assert_eq!(copies.load(Ordering::SeqCst), 1);
+            assert_eq!(deletes.load(Ordering::SeqCst), 1);
+            assert_eq!(
+                reads.load(Ordering::SeqCst),
+                if directory { 5 } else { 6 },
+                "one readiness poll plus classification (files) and copy metadata HEAD"
+            );
+            assert_eq!(
+                discoveries.load(Ordering::SeqCst),
+                usize::from(reconnect),
+                "discover an uncached source once; never start another wait budget"
+            );
+        } else {
+            assert!(
+                result.is_err(),
+                "a genuine missing S3 source fails immediately"
+            );
+            assert_eq!(reads.load(Ordering::SeqCst), 1);
+            assert_eq!(copies.load(Ordering::SeqCst), 0);
+            assert_eq!(deletes.load(Ordering::SeqCst), 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn filen_bridge_rename_waits_after_put() {
+        bridge_rename_fixture(true, false, false, "fresh.dat", true).await;
+    }
+
+    #[tokio::test]
+    async fn filen_bridge_folder_move_waits_after_put() {
+        bridge_rename_fixture(true, true, false, "fresh.dat", false).await;
+    }
+
+    #[tokio::test]
+    async fn filen_bridge_replace_waits_after_put() {
+        bridge_rename_fixture(true, false, true, "fresh.dat", false).await;
+    }
+
+    #[tokio::test]
+    async fn filen_bridge_flag_off_does_not_retry_a_missing_source() {
+        bridge_rename_fixture(false, false, false, "fresh.dat", false).await;
+    }
+
+    #[tokio::test]
+    async fn filen_bridge_move_preserves_unicode_and_literal_percent_keys() {
+        for directory in [false, true] {
+            bridge_rename_fixture(true, directory, false, "📦-ßς-100%25&.dat", true).await;
+        }
+    }
+
+    async fn bridge_virtual_folder_rename_fixture(status: u16) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let heads = Arc::new(AtomicUsize::new(0));
+        let calls = heads.clone();
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let calls = calls.clone();
+                async move {
+                    let (status, body) = match req.method().as_str() {
+                        "GET" => (
+                            200,
+                            "<ListBucketResult><IsTruncated>false</IsTruncated></ListBucketResult>",
+                        ),
+                        "HEAD" => {
+                            assert_eq!(req.uri().path(), "/test-bucket/empty");
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            (status, "")
+                        }
+                        other => panic!("virtual-folder rename must not copy or delete: {other}"),
+                    };
+                    axum::http::Response::builder()
+                        .status(status)
+                        .body(axum::body::Body::from(body))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.config.filen_desktop_bridge = true;
+        provider.config.region = "filen".into();
+        provider.config.skip_dir_markers = true;
+        let result = provider.rename("/empty", "/renamed").await;
+        server.abort();
+        assert!(
+            matches!(result, Err(ProviderError::NotSupported(ref message))
+                if message.contains("virtual prefixes") && message.contains("Add a file")),
+            "HEAD {status} must explain the empty virtual folder: {result:?}"
+        );
+        assert_eq!(
+            heads.load(Ordering::SeqCst),
+            1,
+            "a missing key is not polled"
+        );
+    }
+
+    #[tokio::test]
+    async fn filen_bridge_virtual_folder_rename_head_404_is_actionable() {
+        bridge_virtual_folder_rename_fixture(404).await;
+    }
+
+    #[tokio::test]
+    async fn filen_bridge_virtual_folder_rename_head_403_is_actionable() {
+        bridge_virtual_folder_rename_fixture(403).await;
+    }
+
+    #[tokio::test]
+    async fn filen_bridge_virtual_folder_rename_head_401_is_actionable() {
+        bridge_virtual_folder_rename_fixture(401).await;
+    }
+
+    async fn unpublished_bridge_fixture(
+        status: u16,
+        stall: bool,
+        stall_list: bool,
+    ) -> (
+        S3Provider,
+        tokio::task::JoinHandle<()>,
+        Arc<std::sync::atomic::AtomicUsize>,
+    ) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen = calls.clone();
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = seen.clone();
+                async move {
+                    let (status, body) = if req.method() == Method::GET {
+                        if stall_list { std::future::pending::<()>().await; }
+                        let url = reqwest::Url::parse(&format!("http://fixture{}", req.uri())).unwrap();
+                        let cached = url.query_pairs().any(|(k, v)| k == "prefix" && v == "fresh.dat");
+                        (200, if cached {
+                            "<ListBucketResult><Contents><Key>fresh.dat</Key><Size>2</Size></Contents><IsTruncated>false</IsTruncated></ListBucketResult>"
+                        } else {
+                            "<ListBucketResult><IsTruncated>false</IsTruncated></ListBucketResult>"
+                        })
+                    } else {
+                        assert_eq!(
+                            req.method(),
+                            Method::HEAD,
+                            "no copy or delete while unpublished"
+                        );
+                        seen.fetch_add(1, Ordering::SeqCst);
+                        if stall {
+                            std::future::pending::<()>().await;
+                        }
+                        (status, "")
+                    };
+                    axum::http::Response::builder()
+                        .status(status)
+                        .body(axum::body::Body::from(body))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.config.filen_desktop_bridge = true;
+        (provider, server, calls)
+    }
+
+    #[tokio::test]
+    async fn filen_bridge_readiness_bounds_missing_and_stalled_heads() {
+        for stall in [false, true] {
+            let (provider, server, _) = unpublished_bridge_fixture(404, stall, false).await;
+            let err = tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                provider.wait_for_bridge_object("fresh.dat", std::time::Duration::from_millis(40)),
+            )
+            .await
+            .expect("the HEAD itself is bounded")
+            .expect_err("not published");
+            server.abort();
+            assert!(
+                err.to_string()
+                    .contains("Filen Desktop S3 bridge has not published"),
+                "{err}"
+            );
+            assert_eq!(provider.write_back_wait().as_secs(), 300);
+        }
+    }
+
+    #[tokio::test]
+    async fn filen_bridge_readiness_does_not_retry_permission_errors() {
+        use std::sync::atomic::Ordering;
+        let (provider, server, calls) = unpublished_bridge_fixture(403, false, false).await;
+        let err = provider
+            .wait_for_bridge_object("fresh.dat", S3Provider::FILEN_WRITE_BACK_WAIT)
+            .await
+            .expect_err("permission failure");
+        server.abort();
+        assert!(err.to_string().contains("403"), "{err}");
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn filen_bridge_rename_cancellation_stops_polling_before_copy() {
+        use std::sync::atomic::Ordering;
+        let (mut provider, server, calls) = unpublished_bridge_fixture(404, false, false).await;
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            tokio::select! {
+                outcome = provider.rename("/fresh.dat", "/dest.dat") => {
+                    panic!("rename must still be waiting: {outcome:?}");
+                }
+                () = async {
+                    while calls.load(Ordering::SeqCst) == 0 {
+                        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+                    }
+                } => {}
+            }
+            // The losing rename future is dropped inline after its first HEAD.
+        })
+        .await
+        .expect("the fixture received the readiness probe");
+        let stopped = calls.load(Ordering::SeqCst);
+        assert!(stopped > 0);
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            stopped,
+            "no detached poller survives cancellation"
+        );
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn filen_bridge_preparation_bounds_stalled_cache_listing() {
+        use std::sync::atomic::Ordering;
+        let (provider, server, heads) = unpublished_bridge_fixture(404, false, true).await;
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            provider.prepare_bridge_file_move("fresh.dat", std::time::Duration::from_millis(40)),
+        )
+        .await
+        .expect("cache discovery obeys the preparation deadline");
+        let err = outcome.expect_err("the cache never answered");
+        assert!(
+            err.to_string()
+                .contains("Filen Desktop S3 bridge has not published"),
+            "{err}"
+        );
+        assert_eq!(heads.load(Ordering::SeqCst), 0);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn filen_bridge_missing_move_source_returns_without_waiting() {
+        use std::sync::atomic::Ordering;
+        let (mut provider, server, heads) = unpublished_bridge_fixture(404, false, false).await;
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            provider.server_side_copy("/absent.aerocorrect", "/dest"),
+        )
+        .await
+        .expect("a source absent from the bridge cache is not retried");
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+        assert_eq!(heads.load(Ordering::SeqCst), 1);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn filen_bridge_flag_off_preparation_does_not_wait_for_own_upload() {
+        use std::sync::atomic::Ordering;
+        let (mut provider, server, heads) = unpublished_bridge_fixture(404, false, false).await;
+        provider.config.filen_desktop_bridge = false;
+        provider.config.skip_dir_markers = true;
+        provider.note_markerless_upload("fresh.dat");
+        tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            provider.prepare_file_move("/fresh.dat"),
+        )
+        .await
+        .expect("ordinary S3 preparation is a no-op")
+        .unwrap();
+        assert_eq!(heads.load(Ordering::SeqCst), 0);
+        server.abort();
     }
 
     /// A benchmark waits for the write-back BEFORE it starts the download

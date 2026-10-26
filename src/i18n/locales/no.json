@@ -6013,7 +6013,7 @@
             "banner": {
                 "title": "Bærbar modus: denne mappen inneholder alle AeroFTP-dataene dine",
                 "body": "Hver bærbar installasjon er helt selvstendig: lagrede servere, AeroVault, AI-chatter og preferanser ligger alle ved siden av AeroFTP.exe. Fra v3.7.8 og fremover er to bærbare mapper på samme PC helt uavhengige, å slette en profil i én mappe påvirker ikke lenger den andre.",
-                "legacyWarning": "Vi oppdaget gjenværende data fra en tidligere delt installasjon på %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Den brukes ikke lenger av denne bærbare installasjonen. Du kan fjerne den manuelt hvis du ikke trenger den.",
+                "legacyWarning": "Vi fant data fra en tidligere delt installasjon i %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Denne bærbare installasjonen bruker dem ikke. Hvis AeroFTP også er installert på denne PC-en (MSI eller oppsett), inneholder mappen dataene til den installerte appen: behold den. Ellers kan du fjerne den manuelt hvis du ikke trenger den.",
                 "openFolder": "Åpne datamappe",
                 "dismiss": "Forstått"
             }
@@ -6083,19 +6083,19 @@
                     "tagline": "Kopierer kildens versjon med et suffiks med dato og klokkeslett."
                 },
                 "newer-wins": {
-                    "label": "Nyeste vinner",
+                    "label": "Behold nyere",
                     "tagline": "Siden med det nyeste endringstidspunktet overskriver den andre."
                 },
                 "older-wins": {
-                    "label": "Eldste vinner",
+                    "label": "Behold eldre",
                     "tagline": "Den eldste siden overskriver den nyeste (for arkivering)."
                 },
                 "larger-wins": {
-                    "label": "Største vinner",
+                    "label": "Behold større",
                     "tagline": "Siden med størst filstørrelse overskriver den minste."
                 },
                 "smaller-wins": {
-                    "label": "Minste vinner",
+                    "label": "Behold mindre",
                     "tagline": "Den minste siden overskriver den største."
                 }
             },
@@ -6157,7 +6157,7 @@
                 },
                 "update": {
                     "name": "Oppdater",
-                    "tagline": "Kopierer manglende og nyere filer. Hopper over konflikter så du kan løse dem manuelt."
+                    "tagline": "Kopierer manglende og nyere filer. Sletter aldri. Overskriver nyere kopier på målstedet bare hvis den valgte konfliktpolicyen velger den andre kopien."
                 },
                 "bisync": {
                     "name": "Toveis synkronisering",
@@ -7077,6 +7077,10 @@
             "runTemplate": "Kjør",
             "duplicateName": "En mal med navnet {name} finnes allerede på denne serveren.",
             "templateStored": "En lagret mal lagrer kommandoen med felt som fylles ut, aldri et passord."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Mappen lastes fortsatt inn",
+            "folderBusy": "Filen du åpnet ble ikke vist: en annen mappe ble fortsatt lastet inn da {folder} ble forespurt. Åpne den på nytt."
         }
     }
 }

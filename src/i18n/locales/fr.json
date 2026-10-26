@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Mode portable : ce dossier contient toutes vos données AeroFTP",
                 "body": "Chaque installation portable est entièrement autonome : les serveurs enregistrés, AeroVault, les conversations AI et les préférences se trouvent tous à côté de AeroFTP.exe. À partir de la v3.7.8, deux dossiers portables sur le même PC sont totalement indépendants : supprimer un profil dans un dossier n'affecte plus l'autre.",
-                "legacyWarning": "Nous avons détecté des données résiduelles d'une installation partagée précédente dans %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Elles ne sont plus utilisées par cette installation portable. Vous pouvez les supprimer manuellement si vous n'en avez plus besoin.",
+                "legacyWarning": "Nous avons trouvé des données d'une ancienne installation partagée dans %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Cette installation portable ne les utilise pas. Si AeroFTP est aussi installé sur ce PC (MSI ou programme d'installation), ce dossier contient les données de l'application installée : conservez-le. Sinon, vous pouvez le supprimer manuellement si vous n'en avez pas besoin.",
                 "openFolder": "Ouvrir le dossier de données",
                 "dismiss": "Compris"
             }
@@ -6064,19 +6064,19 @@
                     "tagline": "Copie la version source avec un suffixe de date et d'heure."
                 },
                 "newer-wins": {
-                    "label": "Le plus récent l'emporte",
+                    "label": "Garder le plus récent",
                     "tagline": "Le côté dont la date de modification est la plus récente écrase l'autre."
                 },
                 "older-wins": {
-                    "label": "Le plus ancien l'emporte",
+                    "label": "Garder le plus ancien",
                     "tagline": "Le côté le plus ancien écrase le plus récent (pour l'archivage)."
                 },
                 "larger-wins": {
-                    "label": "Le plus grand l'emporte",
+                    "label": "Garder le plus gros",
                     "tagline": "Le côté dont la taille est la plus grande écrase le plus petit."
                 },
                 "smaller-wins": {
-                    "label": "Le plus petit l'emporte",
+                    "label": "Garder le plus petit",
                     "tagline": "Le côté le plus petit écrase le plus grand."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Mise à jour",
-                    "tagline": "Copie les fichiers manquants et plus récents. Ignore les conflits pour que vous les résolviez manuellement."
+                    "tagline": "Copie les fichiers manquants et les plus récents. Ne supprime jamais rien. Écrase les copies plus récentes à destination uniquement si la politique de conflits sélectionnée choisit l’autre copie."
                 },
                 "bisync": {
                     "name": "Synchronisation bidirectionnelle",
@@ -7058,6 +7058,10 @@
             "runTemplate": "Exécuter",
             "duplicateName": "Un modèle nommé {name} est déjà présent sur ce serveur.",
             "templateStored": "Un modèle enregistré conserve la commande avec des emplacements à remplir, jamais un mot de passe."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Dossier encore en cours de chargement",
+            "folderBusy": "Le fichier que vous avez ouvert n'a pas été affiché : un autre dossier était encore en cours de chargement lorsque {folder} a été demandé. Ouvrez-le à nouveau."
         }
     }
 }

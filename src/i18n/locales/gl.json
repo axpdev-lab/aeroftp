@@ -6013,7 +6013,7 @@
             "banner": {
                 "title": "Modo portátil: este cartafol contén todos os teus datos de AeroFTP",
                 "body": "Cada instalación portátil é completamente autónoma: os servidores gardados, AeroVault, os chats de AI e as preferencias atópanse todos xunto a AeroFTP.exe. A partir da v3.7.8, dous cartafoles portátiles no mesmo PC son totalmente independentes: eliminar un perfil nun cartafol xa non afecta ao outro.",
-                "legacyWarning": "Detectamos datos residuais dunha instalación compartida anterior en %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Esta instalación portátil xa non os usa. Podes eliminalos manualmente se non os necesitas.",
+                "legacyWarning": "Atopamos datos dunha instalación compartida anterior en %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Esta instalación portátil non os usa. Se AeroFTP tamén está instalado neste PC (MSI ou instalador), ese cartafol contén os datos da aplicación instalada: consérvao. Noutro caso, podes eliminalo manualmente se non o necesitas.",
                 "openFolder": "Abrir cartafol de datos",
                 "dismiss": "Entendido"
             }
@@ -6083,19 +6083,19 @@
                     "tagline": "Copia a versión de orixe cun sufixo de data e hora."
                 },
                 "newer-wins": {
-                    "label": "Gaña o máis recente",
+                    "label": "Conservar o máis recente",
                     "tagline": "O lado coa data de modificación máis recente sobrescribe o outro."
                 },
                 "older-wins": {
-                    "label": "Gaña o máis antigo",
+                    "label": "Conservar o máis antigo",
                     "tagline": "O lado máis antigo sobrescribe o máis recente (para arquivado)."
                 },
                 "larger-wins": {
-                    "label": "Gaña o máis grande",
+                    "label": "Conservar o maior",
                     "tagline": "O lado co tamaño maior sobrescribe o menor."
                 },
                 "smaller-wins": {
-                    "label": "Gaña o máis pequeno",
+                    "label": "Conservar o máis pequeno",
                     "tagline": "O lado máis pequeno sobrescribe o máis grande."
                 }
             },
@@ -6157,7 +6157,7 @@
                 },
                 "update": {
                     "name": "Actualizar",
-                    "tagline": "Copia os ficheiros que faltan e os máis recentes. Omite os conflitos para que os resolvas manualmente."
+                    "tagline": "Copia os ficheiros que faltan e os máis recentes. Nunca elimina. Só sobrescribe as copias máis recentes no destino se a política de conflitos seleccionada escolle a outra copia."
                 },
                 "bisync": {
                     "name": "Sincronización bidireccional",
@@ -7077,6 +7077,10 @@
             "runTemplate": "Executar",
             "duplicateName": "Xa hai un modelo chamado {name} neste servidor.",
             "templateStored": "Un modelo gardado conserva o comando con ocos para encher, nunca un contrasinal."
+        },
+        "openRequest": {
+            "folderBusyTitle": "O cartafol aínda se está a cargar",
+            "folderBusy": "O ficheiro que abriches non se mostrou: outro cartafol aínda se estaba a cargar cando se solicitou {folder}. Ábreo de novo."
         }
     }
 }

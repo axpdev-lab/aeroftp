@@ -14,6 +14,7 @@ import { AEROSYNC_DEFAULT_EXCLUDES } from './aeroSyncExcludes';
 import { createTabStateStore } from '../components/AeroSync/tabStateStore';
 import type { AerosyncImportScriptResult, SyncScriptMeta, SyncTemplate } from '../types';
 import fixture420 from '../../src-tauri/tests/fixtures/aerosync/mirror-turbo-4.2.0.aerosync?raw';
+import fixture424 from '../../src-tauri/tests/fixtures/aerosync/mirror-4.2.4.aerosync?raw';
 
 describe('AeroSync template import application', () => {
     it('exports the edited or cleared Sync exclusions, including after a tab switch', () => {
@@ -136,6 +137,106 @@ describe('AeroSync template import application', () => {
         expect(patch['plan.canaryMode']).toBe(true);
         expect(patch['plan.canaryPercent']).toBe(15);
         expect(patch['plan.canarySelection']).toBe('newest');
+    });
+
+    it('round-trips the full live Plan option set, including Update and Keep newer', () => {
+        const template: SyncTemplate = {
+            schema_version: 1,
+            name: 'Update',
+            description: '',
+            created_by: 'test',
+            path_patterns: [{ local: '/a', remote: '/b' }],
+            profile: {
+                direction: 'local_to_remote',
+                compare_timestamp: true,
+                compare_size: true,
+                compare_checksum: false,
+                delete_orphans: true,
+                parallel_streams: 1,
+                compression_mode: 'off',
+            },
+            exclude_patterns: ['cache/**'],
+            schedule: {
+                enabled: true,
+                interval_secs: 300,
+                time_window: null,
+                paused: false,
+                last_sync: null,
+            },
+        };
+        const exported = overlayLivePlanOnTemplate(template, {
+            preset: 'update',
+            direction: 'remote_to_local',
+            conflictPolicy: 'newer-wins',
+            versionedBackup: { enabled: true, backupDir: 'history/versions' },
+            speedMode: 'turbo',
+            verifyPolicy: 'full_checksum',
+            canary: { percent: 25, selection: 'largest' },
+            transferBudgetMb: 64,
+            errorCorrection: { enabled: true, pct: 25 },
+        });
+        expect(exported.profile).toMatchObject({
+            mode: 'update',
+            direction: 'remote_to_local',
+            delete_orphans: false,
+            conflict_mode: 'newer',
+            versioned_backup: { enabled: true, backup_dir: 'history/versions' },
+            speed_mode: 'turbo',
+            verify_policy: 'full',
+            canary: { percent: 25, selection: 'largest' },
+            transfer_budget_mb: 64,
+            error_correction: { enabled: true, pct: 25 },
+        });
+        expect(exported.schedule).toEqual(template.schedule);
+
+        const imported = settingsFromTemplate(exported);
+        expect(imported.ok).toBe(true);
+        if (!imported.ok) return;
+        expect(buildAeroSyncTabStatePatch(imported.settings, 'local-remote')).toMatchObject({
+            'sync.source': '/a',
+            'sync.destination': '/b',
+            'sync.exclude': 'cache/**',
+            'plan.preset': 'update',
+            'plan.direction': 'right-to-left',
+            'plan.conflictPolicy': 'newer-wins',
+            'plan.versionedBackup': { enabled: true, backupDir: 'history/versions' },
+            'plan.speedMode': 'turbo',
+            'plan.verifyPolicy': 'full_checksum',
+            'plan.canaryMode': true,
+            'plan.canaryPercent': 25,
+            'plan.canarySelection': 'largest',
+            'plan.transferBudgetMb': 64,
+            'plan.ecEnabled': true,
+            'plan.ecPct': 25,
+        });
+    });
+
+    it('keeps template exclusions literal when one names the backup folder', () => {
+        const template: SyncTemplate = {
+            schema_version: 1,
+            name: 'Literal excludes',
+            description: '',
+            created_by: 'test',
+            path_patterns: [{ local: '/a', remote: '/b' }],
+            profile: {
+                direction: 'local_to_remote',
+                compare_timestamp: true,
+                compare_size: true,
+                compare_checksum: false,
+                delete_orphans: false,
+                parallel_streams: 1,
+                compression_mode: 'off',
+                mode: 'update',
+                versioned_backup: { enabled: true, backup_dir: 'history/versions' },
+            },
+            exclude_patterns: ['cache/**', 'history/versions'],
+            schedule: null,
+        };
+        const imported = settingsFromTemplate(template);
+        expect(imported.ok).toBe(true);
+        if (!imported.ok) return;
+        expect(buildAeroSyncTabStatePatch(imported.settings, 'local-remote')['sync.exclude'])
+            .toBe('cache/**, history/versions');
     });
 
     it('exports the compare_* triple the verify policy implies, and leaves it alone for none (#514)', () => {
@@ -294,6 +395,27 @@ describe('a template written by AeroFTP 4.2.0', () => {
             'plan.verifyPolicy': 'full_checksum',
         });
         expect(Object.keys(patch).filter((k) => /parallel|compression|stream/i.test(k))).toEqual([]);
+    });
+});
+
+describe('a template written by AeroFTP 4.2.4', () => {
+    it('keeps the legacy Mirror default and does not invent newer Plan options', () => {
+        const imported = settingsFromTemplate(JSON.parse(fixture424) as SyncTemplate);
+        expect(imported.ok).toBe(true);
+        if (!imported.ok) return;
+        const patch = buildAeroSyncTabStatePatch(imported.settings, 'local-remote');
+        expect(patch).toMatchObject({
+            'plan.preset': 'mirror',
+            'plan.direction': 'left-to-right',
+            'plan.verifyPolicy': 'size_only',
+            'plan.canaryMode': false,
+        });
+        for (const key of [
+            'plan.conflictPolicy', 'plan.versionedBackup', 'plan.speedMode',
+            'plan.transferBudgetMb', 'plan.ecEnabled', 'plan.ecPct',
+        ]) {
+            expect(patch).not.toHaveProperty(key);
+        }
     });
 });
 

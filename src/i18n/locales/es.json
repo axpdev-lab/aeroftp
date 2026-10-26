@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Modo portátil: esta carpeta contiene todos tus datos de AeroFTP",
                 "body": "Cada instalación portátil es completamente autónoma: los servidores guardados, AeroVault, los chats de AI y las preferencias se encuentran junto a AeroFTP.exe. A partir de la v3.7.8, dos carpetas portátiles en el mismo PC son totalmente independientes: eliminar un perfil en una carpeta ya no afecta a la otra.",
-                "legacyWarning": "Hemos detectado datos residuales de una instalación compartida anterior en %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Esta instalación portátil ya no los utiliza. Puedes eliminarlos manualmente si no los necesitas.",
+                "legacyWarning": "Encontramos datos de una instalación compartida anterior en %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Esta instalación portable no los utiliza. Si AeroFTP también está instalado en este PC (MSI o instalador), esa carpeta contiene los datos de la aplicación instalada: consérvela. De lo contrario, puede eliminarla manualmente si no la necesita.",
                 "openFolder": "Abrir carpeta de datos",
                 "dismiss": "Entendido"
             }
@@ -6064,19 +6064,19 @@
                     "tagline": "Copia la versión de origen con un sufijo de fecha y hora."
                 },
                 "newer-wins": {
-                    "label": "Gana el más reciente",
+                    "label": "Conservar el más reciente",
                     "tagline": "El lado con la fecha de modificación más reciente sobrescribe al otro."
                 },
                 "older-wins": {
-                    "label": "Gana el más antiguo",
+                    "label": "Conservar el más antiguo",
                     "tagline": "El lado más antiguo sobrescribe al más reciente (para archivado)."
                 },
                 "larger-wins": {
-                    "label": "Gana el más grande",
+                    "label": "Conservar el más grande",
                     "tagline": "El lado con el tamaño mayor sobrescribe al menor."
                 },
                 "smaller-wins": {
-                    "label": "Gana el más pequeño",
+                    "label": "Conservar el más pequeño",
                     "tagline": "El lado más pequeño sobrescribe al más grande."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Actualizar",
-                    "tagline": "Copia los archivos que faltan y los más recientes. Omite los conflictos para que los resuelvas manualmente."
+                    "tagline": "Copia los archivos que faltan y los más recientes. Nunca elimina. Solo sobrescribe las copias más recientes del destino si la política de conflictos seleccionada elige la otra copia."
                 },
                 "bisync": {
                     "name": "Sincronización bidireccional",
@@ -7058,6 +7058,10 @@
             "runTemplate": "Ejecutar",
             "duplicateName": "Ya hay una plantilla llamada {name} en este servidor.",
             "templateStored": "Una plantilla guardada conserva el comando con huecos para rellenar, nunca una contraseña."
+        },
+        "openRequest": {
+            "folderBusyTitle": "La carpeta aún se está cargando",
+            "folderBusy": "El archivo que abriste no se mostró: otra carpeta aún se estaba cargando cuando se solicitó {folder}. Ábrelo de nuevo."
         }
     }
 }

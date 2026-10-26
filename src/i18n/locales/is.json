@@ -6013,7 +6013,7 @@
             "banner": {
                 "title": "Færanlegur hamur: þessi mappa geymir öll AeroFTP gögnin þín",
                 "body": "Hver færanleg uppsetning er fullkomlega sjálfstæð: vistaðir þjónar, AeroVault, AI spjall og stillingar eru öll við hliðina á AeroFTP.exe. Frá útgáfu v3.7.8 og áfram eru tvær færanlegar möppur á sömu tölvu algjörlega óháðar, eyðing prófíls í einni möppu hefur ekki lengur áhrif á hina.",
-                "legacyWarning": "Við greindum afgangsgögn frá fyrri sameiginlegri uppsetningu á %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Þessi færanlega uppsetning notar þau ekki lengur. Þú getur fjarlægt þau handvirkt ef þú þarft þau ekki.",
+                "legacyWarning": "Við fundum gögn frá fyrri sameiginlegri uppsetningu í %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Þessi ferðaútgáfa notar þau ekki. Ef AeroFTP er einnig uppsett á þessari tölvu (MSI eða uppsetningarforrit) geymir sú mappa gögn uppsetta forritsins: haltu henni. Annars geturðu fjarlægt hana handvirkt ef þú þarft hana ekki.",
                 "openFolder": "Opna gagnamöppu",
                 "dismiss": "Ég skil"
             }
@@ -6083,19 +6083,19 @@
                     "tagline": "Afritar útgáfu upprunans með viðskeyti sem inniheldur dagsetningu og tíma."
                 },
                 "newer-wins": {
-                    "label": "Nýrra vinnur",
+                    "label": "Halda nýrri",
                     "tagline": "Hliðin með nýrri breytingartíma skrifar yfir hina."
                 },
                 "older-wins": {
-                    "label": "Eldra vinnur",
+                    "label": "Halda eldri",
                     "tagline": "Eldri hliðin skrifar yfir þá nýrri (til geymslu)."
                 },
                 "larger-wins": {
-                    "label": "Stærra vinnur",
+                    "label": "Halda stærri",
                     "tagline": "Hliðin með stærri skráarstærð skrifar yfir þá minni."
                 },
                 "smaller-wins": {
-                    "label": "Minna vinnur",
+                    "label": "Halda minni",
                     "tagline": "Minni hliðin skrifar yfir þá stærri."
                 }
             },
@@ -6157,7 +6157,7 @@
                 },
                 "update": {
                     "name": "Uppfæra",
-                    "tagline": "Afritar skrár sem vantar og nýrri skrár. Sleppir árekstrum svo þú getir leyst þá handvirkt."
+                    "tagline": "Afritar skrár sem vantar og nýrri skrár. Eyðir aldrei. Skrifar aðeins yfir nýrri afrit á áfangastað ef valin árekstrastefna velur hitt afritið."
                 },
                 "bisync": {
                     "name": "Tvíátta samstilling",
@@ -7077,6 +7077,10 @@
             "runTemplate": "Keyra",
             "duplicateName": "Sniðmát að nafni {name} er þegar á þessum netþjóni.",
             "templateStored": "Vistað sniðmát geymir skipunina með eyðum til útfyllingar, aldrei lykilorð."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Mappan er enn að hlaðast",
+            "folderBusy": "Skráin sem þú opnaðir var ekki birt: önnur mappa var enn að hlaðast þegar beðið var um {folder}. Opnaðu hana aftur."
         }
     }
 }

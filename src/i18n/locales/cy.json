@@ -6013,7 +6013,7 @@
             "banner": {
                 "title": "Modd cludadwy: mae'r ffolder hon yn dal eich holl ddata AeroFTP",
                 "body": "Mae pob gosodiad cludadwy yn gwbl hunangynhwysol: mae'r gweinyddion sydd wedi'u cadw, AeroVault, sgyrsiau AI a dewisiadau i gyd yn byw wrth ymyl AeroFTP.exe. O v3.7.8 ymlaen, mae dau ffolder cludadwy ar yr un cyfrifiadur yn gwbl annibynnol: nid yw dileu proffil mewn un ffolder yn effeithio ar y llall mwyach.",
-                "legacyWarning": "Rydym wedi canfod data sy'n weddill o osodiad a rennir blaenorol yn %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Nid yw'r gosodiad cludadwy hwn yn ei ddefnyddio mwyach. Gallwch ei dynnu â llaw os nad oes ei angen arnoch.",
+                "legacyWarning": "Daethom o hyd i ddata o osodiad a rennir blaenorol yn %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Nid yw'r gosodiad cludadwy hwn yn ei ddefnyddio. Os yw AeroFTP hefyd wedi'i osod ar y PC hwn (MSI neu setup), mae'r ffolder honno'n cynnwys data'r ap sydd wedi'i osod: cadwch hi. Fel arall, gallwch ei thynnu â llaw os nad oes ei hangen arnoch.",
                 "openFolder": "Agor y ffolder data",
                 "dismiss": "Iawn, deallaf"
             }
@@ -6083,19 +6083,19 @@
                     "tagline": "Copïo fersiwn y ffynhonnell gydag ôl-ddodiad dyddiad ac amser."
                 },
                 "newer-wins": {
-                    "label": "Y mwyaf newydd sy'n ennill",
+                    "label": "Cadw'r mwyaf newydd",
                     "tagline": "Mae'r ochr â'r amser addasu mwyaf diweddar yn trosysgrifo'r llall."
                 },
                 "older-wins": {
-                    "label": "Yr hynaf sy'n ennill",
+                    "label": "Cadw'r hynaf",
                     "tagline": "Mae'r ochr hynaf yn trosysgrifo'r un fwyaf newydd (ar gyfer archifo)."
                 },
                 "larger-wins": {
-                    "label": "Y mwyaf sy'n ennill",
+                    "label": "Cadw'r mwyaf",
                     "tagline": "Mae'r ochr â'r maint mwyaf yn trosysgrifo'r un leiaf."
                 },
                 "smaller-wins": {
-                    "label": "Y lleiaf sy'n ennill",
+                    "label": "Cadw'r lleiaf",
                     "tagline": "Mae'r ochr leiaf yn trosysgrifo'r un fwyaf."
                 }
             },
@@ -6157,7 +6157,7 @@
                 },
                 "update": {
                     "name": "Diweddaru",
-                    "tagline": "Copïo ffeiliau coll a mwy newydd. Hepgor gwrthdaro fel y gallwch eu datrys â llaw."
+                    "tagline": "Copïo ffeiliau sydd ar goll a ffeiliau mwy diweddar. Byth yn dileu. Dim ond os yw’r polisi gwrthdaro a ddewiswyd yn dewis y copi arall y trosysgrifir copïau mwy diweddar yn y gyrchfan."
                 },
                 "bisync": {
                     "name": "Cysoni dwyffordd",
@@ -7077,6 +7077,10 @@
             "runTemplate": "Rhedeg",
             "duplicateName": "Mae templed o'r enw {name} eisoes ar y gweinydd hwn.",
             "templateStored": "Mae templed cadwedig yn cadw'r gorchymyn gyda bylchau i'w llenwi, byth gyfrinair."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Mae'r ffolder yn dal i lwytho",
+            "folderBusy": "Ni ddangoswyd y ffeil a agorwyd gennych: roedd ffolder arall yn dal i lwytho pan ofynnwyd am {folder}. Agorwch hi eto."
         }
     }
 }

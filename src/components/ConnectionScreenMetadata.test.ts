@@ -354,6 +354,7 @@ describe('IntroHub form drafts across tab switches', () => {
             initialPath: `/remote-${index}`, localInitialPath: `/local-${index}`, customIconUrl: icon,
         }));
         await act(async () => root.render(React.createElement(IntroHub, {
+            vaultReady: true,
             connectionParams: { server: '', username: '', password: '' },
             quickConnectDirs: { remoteDir: '', localDir: '' }, loading: false,
             onConnectionParamsChange: vi.fn(), onQuickConnectDirsChange: vi.fn(), onConnect: vi.fn(),

@@ -5,7 +5,27 @@ import React from 'react';
 import { Loader2, Play, Square } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { formatBytes } from '../../utils/formatters';
-import { useScanProgress, formatElapsed } from '../../hooks/useScanProgress';
+import { formatElapsed, useScanProgress, type ScanProgressSide } from '../../hooks/useScanProgress';
+
+interface ScanProgressSnapshot {
+    totals: ScanProgressSide;
+    elapsedMs: number;
+}
+
+export const ScanProgressContext = React.createContext<ScanProgressSnapshot>({
+    totals: { files: 0, dirs: 0, bytes: 0 },
+    elapsedMs: 0,
+});
+
+/** Own the subscription above the tab contents so changing tabs cannot reset it. */
+export const ScanProgressProvider: React.FC<{
+    active: boolean;
+    progressId?: string;
+    children: React.ReactNode;
+}> = ({ active, progressId, children }) => {
+    const { totals, elapsedMs } = useScanProgress(active, progressId);
+    return <ScanProgressContext.Provider value={{ totals, elapsedMs }}>{children}</ScanProgressContext.Provider>;
+};
 
 interface CompareScanStateProps {
     /** A recursive compare is running. */
@@ -31,7 +51,6 @@ interface CompareScanStateProps {
  */
 export const CompareScanState: React.FC<CompareScanStateProps> = ({
     loading,
-    scanProgressId,
     stopped,
     leftLabel,
     rightLabel,
@@ -39,7 +58,7 @@ export const CompareScanState: React.FC<CompareScanStateProps> = ({
     onStop,
 }) => {
     const t = useTranslation();
-    const { totals, elapsedMs } = useScanProgress(loading, scanProgressId);
+    const { totals, elapsedMs } = React.useContext(ScanProgressContext);
     const buttonCls = 'mt-1 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white';
 
     if (loading) {

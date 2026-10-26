@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Draagbare modus: deze map bevat al uw AeroFTP-gegevens",
                 "body": "Elke draagbare installatie is volledig zelfstandig: opgeslagen servers, AeroVault, AI-chats en voorkeuren bevinden zich allemaal naast AeroFTP.exe. Vanaf v3.7.8 zijn twee draagbare mappen op dezelfde pc volledig onafhankelijk, het verwijderen van een profiel in de ene map heeft niet langer invloed op de andere.",
-                "legacyWarning": "We hebben overgebleven gegevens gedetecteerd van een eerdere gedeelde installatie op %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Deze gegevens worden niet meer gebruikt door deze draagbare installatie. U kunt ze handmatig verwijderen als u ze niet nodig hebt.",
+                "legacyWarning": "We hebben gegevens van een eerdere gedeelde installatie gevonden in %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Deze draagbare installatie gebruikt ze niet. Als AeroFTP ook op deze pc is geïnstalleerd (MSI of setup), bevat die map de gegevens van de geïnstalleerde app: bewaar hem. Anders kunt u hem handmatig verwijderen als u hem niet nodig hebt.",
                 "openFolder": "Gegevensmap openen",
                 "dismiss": "Begrepen"
             }
@@ -6064,19 +6064,19 @@
                     "tagline": "Kopieert de bronversie met een achtervoegsel met datum en tijd."
                 },
                 "newer-wins": {
-                    "label": "Nieuwste wint",
+                    "label": "Nieuwere behouden",
                     "tagline": "De kant met de recentste wijzigingstijd overschrijft de andere."
                 },
                 "older-wins": {
-                    "label": "Oudste wint",
+                    "label": "Oudere behouden",
                     "tagline": "De oudere kant overschrijft de nieuwere (voor archivering)."
                 },
                 "larger-wins": {
-                    "label": "Grootste wint",
+                    "label": "Grotere behouden",
                     "tagline": "De kant met de grootste bestandsgrootte overschrijft de kleinere."
                 },
                 "smaller-wins": {
-                    "label": "Kleinste wint",
+                    "label": "Kleinere behouden",
                     "tagline": "De kleinere kant overschrijft de grotere."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Bijwerken",
-                    "tagline": "Kopieert ontbrekende en nieuwere bestanden. Slaat conflicten over zodat u ze handmatig kunt oplossen."
+                    "tagline": "Kopieert ontbrekende en nieuwere bestanden. Verwijdert nooit. Overschrijft nieuwere kopieën op de bestemming alleen als het geselecteerde conflictbeleid de andere kopie kiest."
                 },
                 "bisync": {
                     "name": "Tweerichtingssynchronisatie",
@@ -7058,6 +7058,10 @@
             "runTemplate": "Uitvoeren",
             "duplicateName": "Een sjabloon met de naam {name} staat al op deze server.",
             "templateStored": "Een opgeslagen sjabloon bewaart de opdracht met invulvelden, nooit een wachtwoord."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Map wordt nog geladen",
+            "folderBusy": "Het bestand dat u hebt geopend, is niet getoond: een andere map werd nog geladen toen {folder} werd opgevraagd. Open het opnieuw."
         }
     }
 }

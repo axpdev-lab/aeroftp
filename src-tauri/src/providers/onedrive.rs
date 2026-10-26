@@ -198,6 +198,23 @@ struct DriveItem {
     parent_reference: Option<ParentReference>,
     #[serde(rename = "@microsoft.graph.downloadUrl")]
     download_url: Option<String>,
+    /// Set on a shortcut ("Add shortcut to My files") or a shared folder:
+    /// the item itself lives in another drive, and Graph creates, lists and
+    /// reads under it only through that drive (#368, Ehud: a mkdir under
+    /// such an id answered `itemNotFound`).
+    #[serde(default)]
+    remote_item: Option<RemoteItemFacet>,
+}
+
+/// The `remoteItem` facet: where a shortcut or shared item really lives.
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct RemoteItemFacet {
+    id: String,
+    #[serde(default)]
+    folder: Option<FolderFacet>,
+    #[serde(default)]
+    parent_reference: Option<ParentReference>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -230,7 +247,7 @@ struct HashesFacet {
     quick_xor_hash: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
 struct ParentReference {
@@ -287,6 +304,12 @@ pub struct OneDriveProvider {
     current_item_id: String,
     /// Cache: path -> item_id
     path_cache: HashMap<String, String>,
+    /// Shortcuts and shared folders met so far: path (no leading or trailing
+    /// slash) -> (drive id, item id) of the folder they stand for. Every
+    /// address under one of these paths goes to that drive.
+    remote_roots: std::sync::RwLock<HashMap<String, (String, String)>>,
+    /// Folders already looked up and found not to be shortcuts.
+    plain_folders: std::sync::RwLock<std::collections::HashSet<String>>,
     /// Authenticated user email
     account_email: Option<String>,
     /// Graph `driveType` from `/me/drive` at connect: `personal`, `business`
@@ -337,6 +360,8 @@ impl OneDriveProvider {
             current_path: "/".to_string(),
             current_item_id: "root".to_string(),
             path_cache: HashMap::new(),
+            remote_roots: std::sync::RwLock::new(HashMap::new()),
+            plain_folders: std::sync::RwLock::new(std::collections::HashSet::new()),
             account_email: None,
             drive_type: None,
             profile_id: String::new(),
@@ -565,11 +590,113 @@ impl OneDriveProvider {
     /// (encoding the full path would corrupt '/' separators)
     fn api_path(&self, path: &str) -> String {
         let clean = path.trim_matches('/');
+        // Only what lies UNDER a shortcut goes to its target's drive: the
+        // shortcut's own path still names the shortcut, in the drive it is in.
+        if let Some((root, drive_id, item_id)) = self.remote_root_above(clean) {
+            let base = format!("{}/drives/{}/items/{}", self.graph_api(), drive_id, item_id);
+            let rest = clean[root.len()..].trim_start_matches('/');
+            return format!("{}:/{}", base, Self::encode_path_segments(rest));
+        }
         if clean.is_empty() {
             format!("{}/me/drive/root", self.graph_api())
         } else {
             let encoded = Self::encode_path_segments(clean);
             format!("{}/me/drive/root:/{}", self.graph_api(), encoded)
+        }
+    }
+
+    /// The deepest shortcut or shared folder that `clean` (a path without
+    /// leading or trailing slash) is, or lies under: its path, and the drive
+    /// id and item id of its target.
+    fn remote_root_of(&self, clean: &str) -> Option<(String, String, String)> {
+        self.deepest_remote_root(clean, true)
+    }
+
+    /// The deepest shortcut or shared folder that `clean` lies strictly
+    /// under, never `clean` itself.
+    fn remote_root_above(&self, clean: &str) -> Option<(String, String, String)> {
+        self.deepest_remote_root(clean, false)
+    }
+
+    fn deepest_remote_root(
+        &self,
+        clean: &str,
+        include_self: bool,
+    ) -> Option<(String, String, String)> {
+        let roots = self.remote_roots.read().unwrap_or_else(|e| e.into_inner());
+        roots
+            .iter()
+            .filter(|(root, _)| {
+                (include_self && clean == root.as_str())
+                    || clean
+                        .strip_prefix(root.as_str())
+                        .is_some_and(|rest| rest.starts_with('/'))
+            })
+            .max_by_key(|(root, _)| root.len())
+            .map(|(root, (drive, item))| (root.clone(), drive.clone(), item.clone()))
+    }
+
+    /// Take a fetched item into this provider's addressing. A shortcut is
+    /// recorded as a remote root at `path`, so everything under it goes to
+    /// the drive its target lives in; the shortcut itself keeps its own id,
+    /// so deleting, renaming or sharing it acts on the shortcut and never on
+    /// the folder it points to, and it takes the target's folder facet. An
+    /// item read from another drive (`drive`) gets a `drive/item` id, which
+    /// [`Self::api_item`] routes to that drive.
+    fn adopt_item(&self, item: &mut DriveItem, path: Option<&str>, drive: Option<&str>) {
+        if let Some(remote) = item.remote_item.take() {
+            let remote_drive = remote
+                .parent_reference
+                .as_ref()
+                .and_then(|r| r.drive_id.clone());
+            if let (Some(remote_drive), Some(path)) = (remote_drive, path) {
+                self.remote_roots
+                    .write()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .insert(
+                        path.trim_matches('/').to_string(),
+                        (remote_drive, remote.id),
+                    );
+            }
+            if item.folder.is_none() {
+                item.folder = remote.folder;
+            }
+        }
+        if let Some(drive) = drive {
+            if !item.id.contains('/') {
+                item.id = format!("{}/{}", drive, item.id);
+            }
+        }
+    }
+
+    /// Forget what this session learned about `clean` and everything under
+    /// it, under any capitalization: the cached ids, the shortcuts and the
+    /// plain folders. Called once the item was moved or deleted, so a folder
+    /// made again under the same name is looked up afresh.
+    fn forget_subtree(&mut self, clean: &str) {
+        super::forget_cached_subtree_ignoring_case(&mut self.path_cache, clean);
+        super::forget_cached_subtree_ignoring_case(
+            self.remote_roots
+                .get_mut()
+                .unwrap_or_else(|e| e.into_inner()),
+            clean,
+        );
+        let path = clean.trim_end_matches('/').to_lowercase();
+        let below = format!("{path}/");
+        self.plain_folders
+            .get_mut()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|folder| {
+                let folder = folder.to_lowercase();
+                folder != path && !folder.starts_with(&below)
+            });
+    }
+
+    /// The `parentReference` that names folder `id` in a copy or a move.
+    fn parent_reference_of(id: &str) -> serde_json::Value {
+        match id.split_once('/') {
+            Some((drive, item)) => serde_json::json!({ "driveId": drive, "id": item }),
+            None => serde_json::json!({ "id": id }),
         }
     }
 
@@ -585,6 +712,8 @@ impl OneDriveProvider {
     fn api_item(&self, item_id: &str) -> String {
         if item_id == "root" {
             format!("{}/me/drive/root", self.graph_api())
+        } else if let Some((drive, item)) = item_id.split_once('/') {
+            format!("{}/drives/{}/items/{}", self.graph_api(), drive, item)
         } else {
             format!("{}/me/drive/items/{}", self.graph_api(), item_id)
         }
@@ -592,6 +721,8 @@ impl OneDriveProvider {
 
     /// Convert DriveItem to RemoteEntry
     fn to_remote_entry(&self, item: &DriveItem, parent_path: &str) -> RemoteEntry {
+        // A shortcut to a folder arrives here already adopted, with its
+        // target's folder facet, so it lists as a folder.
         let is_dir = item.folder.is_some();
         let path = if parent_path == "/" {
             format!("/{}", item.name)
@@ -636,7 +767,89 @@ impl OneDriveProvider {
 
     /// Get item by path
     async fn get_item(&self, path: &str) -> Result<DriveItem, ProviderError> {
+        match self.fetch_item(path).await {
+            // Graph does not follow a path through a shortcut: find the
+            // shortcuts among its parents, then address it through them. A
+            // lookup that failed for another reason (a 429, a 503) is that
+            // error, not the NotFound it was looking behind.
+            Err(ProviderError::NotFound(missing)) => {
+                if self.discover_remote_parents(path).await? {
+                    self.fetch_item(path).await
+                } else {
+                    Err(ProviderError::NotFound(missing))
+                }
+            }
+            other => other,
+        }
+    }
+
+    /// Look up each parent of `path` not yet known to be a shortcut or a
+    /// plain folder, so a shortcut among them is recorded. `Ok(true)` when
+    /// one was. Each folder is looked up once per session: a missing file
+    /// under known folders costs no request more. A parent that does not
+    /// exist ends the walk (there is nothing below it to address); any other
+    /// failure of a lookup is returned, so a throttled or failing server is
+    /// never read as "no shortcut here".
+    async fn discover_remote_parents(&self, path: &str) -> Result<bool, ProviderError> {
+        let clean = path.trim_matches('/');
+        let segments: Vec<&str> = clean.split('/').filter(|s| !s.is_empty()).collect();
+        let roots = || self.remote_roots.read().map(|r| r.len()).unwrap_or(0);
+        let before = roots();
+        for depth in 1..segments.len() {
+            let parent = segments[..depth].join("/");
+            let known = self
+                .remote_root_of(&parent)
+                .is_some_and(|(root, _, _)| root == parent)
+                || self
+                    .plain_folders
+                    .read()
+                    .is_ok_and(|plain| plain.contains(&parent));
+            if known {
+                continue;
+            }
+            let found = roots();
+            match self.fetch_item(&parent).await {
+                Ok(_) => {}
+                Err(ProviderError::NotFound(_)) => break,
+                Err(e) => return Err(e),
+            }
+            if roots() == found {
+                self.plain_folders
+                    .write()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .insert(parent);
+            }
+        }
+        Ok(roots() > before)
+    }
+
+    /// Learn the shortcuts on the way to `path` before an address is built
+    /// from it with no lookup of its own (a content GET or PUT, an upload
+    /// session, a move's destination): Graph does not follow a path through
+    /// a shortcut, so on a fresh session `/Shared/x.bin` would name a file in
+    /// this drive. Each parent not yet known is looked up once per session;
+    /// known ones cost nothing.
+    async fn learn_parents(&self, path: &str) -> Result<(), ProviderError> {
+        self.discover_remote_parents(path).await.map(|_| ())
+    }
+
+    /// `path` as this session addresses it: a relative path is taken from
+    /// the current folder, an absolute one as given.
+    fn absolute_path(&self, path: &str) -> String {
+        if path.starts_with('/') {
+            path.to_string()
+        } else {
+            format!("{}/{}", self.current_path.trim_end_matches('/'), path)
+        }
+    }
+
+    /// One `GET` of the item at `path`, taken into this provider's
+    /// addressing (see [`Self::adopt_item`]).
+    async fn fetch_item(&self, path: &str) -> Result<DriveItem, ProviderError> {
         let url = self.api_path(path);
+        let drive = self
+            .remote_root_above(path.trim_matches('/'))
+            .map(|(_, drive, _)| drive);
 
         let response = self
             .client
@@ -654,10 +867,21 @@ impl OneDriveProvider {
             return Err(onedrive_error_from_response(response, "API error").await);
         }
 
-        response
+        let mut item: DriveItem = response
             .json()
             .await
-            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+        let shortcut = item.remote_item.is_some();
+        self.adopt_item(&mut item, Some(path), drive.as_deref());
+        // A folder read here is known not to be a shortcut: the next address
+        // under it needs no lookup to tell.
+        if !shortcut && item.folder.is_some() {
+            self.plain_folders
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(path.trim_matches('/').to_string());
+        }
+        Ok(item)
     }
 
     /// Get item by ID
@@ -679,14 +903,22 @@ impl OneDriveProvider {
             return Err(onedrive_error_from_response(response, "Item lookup failed").await);
         }
 
-        response
+        let mut item: DriveItem = response
             .json()
             .await
-            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+        let drive = item_id.split_once('/').map(|(drive, _)| drive);
+        self.adopt_item(&mut item, None, drive);
+        Ok(item)
     }
 
     /// List children with pagination
-    async fn list_children(&self, item_id: &str) -> Result<Vec<DriveItem>, ProviderError> {
+    /// The children of folder `item_id`, which lives at `parent_path`.
+    async fn list_children(
+        &self,
+        item_id: &str,
+        parent_path: &str,
+    ) -> Result<Vec<DriveItem>, ProviderError> {
         let mut all_items = Vec::new();
         // KE-B3.2: honor `--onedrive-list-chunk` by appending `$top=N` on the
         // first request. Continuation links returned by Graph already encode
@@ -716,7 +948,12 @@ impl OneDriveProvider {
                 .await
                 .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
-            all_items.extend(result.value);
+            let drive = item_id.split_once('/').map(|(drive, _)| drive);
+            all_items.extend(result.value.into_iter().map(|mut child| {
+                let path = format!("{}/{}", parent_path.trim_end_matches('/'), child.name);
+                self.adopt_item(&mut child, Some(&path), drive);
+                child
+            }));
 
             match result.next_link {
                 Some(next) => url = next,
@@ -883,9 +1120,17 @@ impl OneDriveProvider {
             if !response.status().is_success() {
                 let status = response.status();
                 let text = response.text().await.unwrap_or_default();
-                // 400 / 404 on the recycle bin endpoint = not exposed for
-                // this account type. Treat as "no match" so the caller does
-                // not abort the run with a misleading error.
+                // Graph's own word that this account's recycle bin is not
+                // addressable (#397) is the limit, said as one: as "no
+                // match" it read as "no trash", and a purged folder stayed
+                // in the bin without a word (#368).
+                if let Some(limit) =
+                    recycle_bin_not_exposed(status, &text, self.drive_type.as_deref())
+                {
+                    return Err(limit);
+                }
+                // Any other 400 / 404 on the recycle bin endpoint: no match,
+                // so the caller does not abort with a misleading error.
                 if status.as_u16() == 400 || status.as_u16() == 404 {
                     return Ok(Vec::new());
                 }
@@ -961,6 +1206,19 @@ impl OneDriveProvider {
         Ok(item.id)
     }
 
+    /// The id to address what is INSIDE the folder at `path`: for a shortcut
+    /// or a shared folder its target in the other drive, for anything else
+    /// the item itself. Listing, creating and copying or moving into a
+    /// folder use this; operations on the item itself use [`Self::resolve_path`].
+    async fn resolve_container(&mut self, path: &str) -> Result<String, ProviderError> {
+        let id = self.resolve_path(path).await?;
+        let clean = path.trim_matches('/');
+        Ok(match self.remote_root_of(clean) {
+            Some((root, drive, target)) if root == clean => format!("{drive}/{target}"),
+            _ => id,
+        })
+    }
+
     /// Rename or move with one PATCH of the item. `conflict` is Graph's
     /// `@microsoft.graph.conflictBehavior`: none for a rename, which Graph
     /// then refuses onto a taken name (409 `nameAlreadyExists`, reported as
@@ -1000,16 +1258,20 @@ impl OneDriveProvider {
 
         let body = if is_move {
             let to_parent_clean = to_parent.trim_matches('/');
-            let parent_ref_path = if to_parent_clean.is_empty() {
-                "/drive/root:".to_string()
+            // The destination folder may be, or lie under, a shortcut this
+            // session has not met yet.
+            self.learn_parents(&to_path).await?;
+            let parent_reference = if self.remote_root_of(to_parent_clean).is_some() {
+                // Under a shortcut the path form names the wrong drive.
+                Self::parent_reference_of(&self.resolve_container(&to_parent).await?)
+            } else if to_parent_clean.is_empty() {
+                serde_json::json!({ "path": "/drive/root:" })
             } else {
-                format!("/drive/root:/{}", to_parent_clean)
+                serde_json::json!({ "path": format!("/drive/root:/{}", to_parent_clean) })
             };
             serde_json::json!({
                 "name": new_name,
-                "parentReference": {
-                    "path": parent_ref_path
-                }
+                "parentReference": parent_reference
             })
         } else {
             serde_json::json!({
@@ -1051,29 +1313,21 @@ impl OneDriveProvider {
 
         // The ids cached for either path and everything under them now point
         // at a moved item, or at the one a replace sent to the recycle bin.
-        super::forget_cached_subtree_ignoring_case(
-            &mut self.path_cache,
-            from_path.trim_matches('/'),
-        );
-        super::forget_cached_subtree_ignoring_case(&mut self.path_cache, to_path.trim_matches('/'));
+        self.forget_subtree(from_path.trim_matches('/'));
+        self.forget_subtree(to_path.trim_matches('/'));
 
         info!("Renamed {} to {}", from, to);
         Ok(())
     }
 
     /// Resolve `remote_path` against the current directory and POST
-    /// `/me/drive/root:/<encoded>:/createUploadSession`, returning the
-    /// per-session `uploadUrl`. Shared between the legacy `resume_upload`
-    /// loop (post-extraction in a follow-up) and the multipart trait so
-    /// both paths agree on session semantics.
+    /// `<its address>:/createUploadSession`, returning the per-session
+    /// `uploadUrl`. Used by the multipart trait; `resume_upload` opens its
+    /// session the same way, so both agree on the item a session targets.
     async fn open_upload_session(&mut self, remote_path: &str) -> Result<String, ProviderError> {
-        let path = remote_path.trim_matches('/');
-        let encoded = Self::encode_path_segments(path);
-        let url = format!(
-            "{}/me/drive/root:/{}:/createUploadSession",
-            self.graph_api(),
-            encoded
-        );
+        let path = self.absolute_path(remote_path);
+        self.learn_parents(&path).await?;
+        let url = format!("{}:/createUploadSession", self.api_path(&path));
 
         let body = serde_json::json!({
             "item": {
@@ -1203,6 +1457,14 @@ impl StorageProvider for OneDriveProvider {
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
         self.connected = false;
         self.path_cache.clear();
+        self.remote_roots
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        self.plain_folders
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
         info!("Disconnected from OneDrive");
         Ok(())
     }
@@ -1215,15 +1477,15 @@ impl StorageProvider for OneDriveProvider {
         let (item_id, parent_path) = if path == "." || path.is_empty() {
             (self.current_item_id.clone(), self.current_path.clone())
         } else if path.starts_with('/') {
-            let id = self.resolve_path(path).await?;
+            let id = self.resolve_container(path).await?;
             (id, path.to_string())
         } else {
             let full_path = format!("{}/{}", self.current_path.trim_end_matches('/'), path);
-            let id = self.resolve_path(&full_path).await?;
+            let id = self.resolve_container(&full_path).await?;
             (id, full_path)
         };
 
-        let items = self.list_children(&item_id).await?;
+        let items = self.list_children(&item_id, &parent_path).await?;
         Ok(items
             .iter()
             .map(|i| self.to_remote_entry(i, &parent_path))
@@ -1253,7 +1515,7 @@ impl StorageProvider for OneDriveProvider {
             format!("{}/{}", self.current_path.trim_end_matches('/'), path)
         };
 
-        let item_id = self.resolve_path(&new_path).await?;
+        let item_id = self.resolve_container(&new_path).await?;
 
         // Verify it's a folder
         let item = self.get_item_by_id(&item_id).await?;
@@ -1284,15 +1546,7 @@ impl StorageProvider for OneDriveProvider {
         local_path: &str,
         _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        let path = if remote_path.starts_with('/') {
-            remote_path.to_string()
-        } else {
-            format!(
-                "{}/{}",
-                self.current_path.trim_end_matches('/'),
-                remote_path
-            )
-        };
+        let path = self.absolute_path(remote_path);
 
         let item = self.get_item(&path).await?;
 
@@ -1363,15 +1617,7 @@ impl StorageProvider for OneDriveProvider {
         _offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        let path = if remote_path.starts_with('/') {
-            remote_path.to_string()
-        } else {
-            format!(
-                "{}/{}",
-                self.current_path.trim_end_matches('/'),
-                remote_path
-            )
-        };
+        let path = self.absolute_path(remote_path);
 
         let item = self.get_item(&path).await?;
 
@@ -1429,16 +1675,9 @@ impl StorageProvider for OneDriveProvider {
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
-        let path = if remote_path.starts_with('/') {
-            remote_path.to_string()
-        } else {
-            format!(
-                "{}/{}",
-                self.current_path.trim_end_matches('/'),
-                remote_path
-            )
-        };
+        let path = self.absolute_path(remote_path);
 
+        self.learn_parents(&path).await?;
         let url = format!("{}:/content", self.api_path(&path));
 
         let response = self
@@ -1489,16 +1728,9 @@ impl StorageProvider for OneDriveProvider {
             crate::transfer_dag::governor::TransferDirection::Upload,
         ));
 
-        let path = if remote_path.starts_with('/') {
-            remote_path.to_string()
-        } else {
-            format!(
-                "{}/{}",
-                self.current_path.trim_end_matches('/'),
-                remote_path
-            )
-        };
+        let path = self.absolute_path(remote_path);
 
+        self.learn_parents(&path).await?;
         let url = format!("{}:/content", self.api_path(&path));
 
         let response = self
@@ -1562,7 +1794,7 @@ impl StorageProvider for OneDriveProvider {
         // deleted ancestor) can keep an obsolete ID in the path cache. Resolve
         // the live path before this write; never create under a moved cached ID.
         self.path_cache.remove(parent_path.trim_matches('/'));
-        let parent_id = self.resolve_path(&parent_path).await?;
+        let parent_id = self.resolve_container(&parent_path).await?;
 
         let body = serde_json::json!({
             "name": folder_name,
@@ -1626,10 +1858,7 @@ impl StorageProvider for OneDriveProvider {
             // Whatever the answer, the ids cached for the item and everything
             // under it, under any capitalization, point into the recycle bin
             // or at nothing.
-            super::forget_cached_subtree_ignoring_case(
-                &mut self.path_cache,
-                full_path.trim_matches('/'),
-            );
+            self.forget_subtree(full_path.trim_matches('/'));
             let response = sent.map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
             let status = response.status();
             if status.as_u16() == 404 {
@@ -1727,10 +1956,7 @@ impl StorageProvider for OneDriveProvider {
             }
             _ => {}
         }
-        super::forget_cached_subtree_ignoring_case(
-            &mut self.path_cache,
-            full_path.trim_matches('/'),
-        );
+        self.forget_subtree(full_path.trim_matches('/'));
         info!("Removed empty folder: {}", path);
         Ok(())
     }
@@ -1983,10 +2209,10 @@ impl StorageProvider for OneDriveProvider {
         // Resolve destination parent and name
         let (to_parent_path, to_name) = copy_destination(&self.current_path, to);
 
-        let to_parent_id = self.resolve_path(&to_parent_path).await?;
+        let to_parent_id = self.resolve_container(&to_parent_path).await?;
 
         let body = serde_json::json!({
-            "parentReference": { "id": to_parent_id },
+            "parentReference": Self::parent_reference_of(&to_parent_id),
             "name": to_name
         });
 
@@ -2023,7 +2249,7 @@ impl StorageProvider for OneDriveProvider {
         let item_id = if path == "/" || path.is_empty() {
             "root".to_string()
         } else {
-            self.resolve_path(path).await?
+            self.resolve_container(path).await?
         };
 
         // Graph search(q=...) is a substring match on filename and ignores
@@ -2449,13 +2675,13 @@ impl StorageProvider for OneDriveProvider {
             .await
             .map_err(ProviderError::IoError)?;
 
-        let path_str = remote_path.trim_matches('/');
-        let encoded = Self::encode_path_segments(path_str);
-        let url = format!(
-            "{}/me/drive/root:/{}:/createUploadSession",
-            self.graph_api(),
-            encoded
-        );
+        // One path for the session, the log and the version sweep: a
+        // relative one is taken from the current folder, as the small-file
+        // upload does. Unresolved, a relative upload over 4 MB went to the
+        // drive root and replaced whatever had that name there.
+        let path = self.absolute_path(remote_path);
+        self.learn_parents(&path).await?;
+        let url = format!("{}:/createUploadSession", self.api_path(&path));
 
         let body = serde_json::json!({
             "item": {
@@ -2539,22 +2765,12 @@ impl StorageProvider for OneDriveProvider {
             }
         }
 
-        info!("Resumable upload completed: {}", remote_path);
+        info!("Resumable upload completed: {}", path);
 
-        // KE-B3.1: post-upload version sweep mirrors the small-file path.
-        // Anchor the path the same way the session was created (relative
-        // resolved against current_path; absolute kept verbatim).
+        // KE-B3.1: post-upload version sweep mirrors the small-file path, on
+        // the path the session was created for.
         if self.no_versions {
-            let resolved = if remote_path.starts_with('/') {
-                remote_path.to_string()
-            } else {
-                format!(
-                    "{}/{}",
-                    self.current_path.trim_end_matches('/'),
-                    remote_path
-                )
-            };
-            self.purge_versions_after_upload(&resolved, "post-resume_upload")
+            self.purge_versions_after_upload(&path, "post-resume_upload")
                 .await;
         }
 
@@ -2605,18 +2821,9 @@ impl StorageProvider for OneDriveProvider {
             ));
         }
 
-        // Mirror legacy upload() path resolution: relative paths anchor on
-        // `current_path` so the session targets the same item the
+        // The same resolution as upload(): the session targets the item the
         // single-PUT path would.
-        let resolved_path = if remote_path.starts_with('/') {
-            remote_path.to_string()
-        } else {
-            format!(
-                "{}/{}",
-                self.current_path.trim_end_matches('/'),
-                remote_path
-            )
-        };
+        let resolved_path = self.absolute_path(remote_path);
 
         let upload_url = self.open_upload_session(&resolved_path).await?;
         let meta = OneDriveMultipartMeta {
@@ -3198,6 +3405,351 @@ mod tests {
         server.abort();
     }
 
+    /// #368 (Ehud): a folder reached through a shortcut ("Add shortcut to My
+    /// files", or a shared folder) lives in another drive. Graph answers
+    /// `itemNotFound` to a create or a listing addressed to the shortcut's own
+    /// id, so every operation under it must go to the target drive, while an
+    /// operation on the shortcut itself stays on the shortcut.
+    #[tokio::test]
+    async fn ehud_368_mkdir_and_list_inside_a_shortcut_address_the_target_drive() {
+        use axum::{
+            http::{Method, StatusCode},
+            routing::any,
+            Json, Router,
+        };
+        use serde_json::json;
+        let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = requests.clone();
+        let app = Router::new().fallback(any(move |request: axum::extract::Request| {
+            let seen = seen.clone();
+            async move {
+                let method = request.method().clone();
+                let path = request.uri().path().to_string();
+                seen.lock().unwrap().push(format!("{method} {path}"));
+                let shortcut = json!({
+                    "id": "SHORTCUT", "name": "Shared", "size": 0,
+                    "remoteItem": {"id": "TARGET", "folder": {}, "parentReference": {"driveId": "drv2"}}
+                });
+                match (method, path.as_str()) {
+                    (Method::GET, "/v1.0/me/drive/root:/Shared") => (StatusCode::OK, Json(shortcut)),
+                    (Method::POST, "/v1.0/drives/drv2/items/TARGET/children")
+                    | (Method::POST, "/v1.0/drives/drv2/items/INNER/children") => {
+                        (StatusCode::CREATED, Json(json!({"id": "NEW"})))
+                    }
+                    (Method::GET, "/v1.0/drives/drv2/items/TARGET/children") => (
+                        StatusCode::OK,
+                        Json(json!({"value": [{"id": "INNER", "name": "inner", "size": 0, "folder": {}}]})),
+                    ),
+                    (Method::GET, "/v1.0/drives/drv2/items/TARGET:/inner") => (
+                        StatusCode::OK,
+                        Json(json!({"id": "INNER", "name": "inner", "size": 0, "folder": {},
+                            "parentReference": {"driveId": "drv2"}})),
+                    ),
+                    (Method::GET, "/v1.0/drives/drv2/items/INNER/children") => (
+                        StatusCode::OK,
+                        Json(json!({"value": [{"id": "F1", "name": "f.txt", "size": 3, "file": {}}]})),
+                    ),
+                    // Removing the shortcut removes the link in this drive.
+                    (Method::DELETE, "/v1.0/me/drive/items/SHORTCUT") => {
+                        (StatusCode::NO_CONTENT, Json(serde_json::Value::Null))
+                    }
+                    // The shortcut's own id and a path through it are not
+                    // the folder, which is what Graph answers.
+                    _ => (
+                        StatusCode::NOT_FOUND,
+                        Json(json!({"error": {"code": "itemNotFound", "message": "Item not found"}})),
+                    ),
+                }
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let fixture = || {
+            let mut p = OneDriveProvider::new(OneDriveConfig {
+                client_id: "fixture".into(),
+                client_secret: "fixture".into(),
+            });
+            p.api_origin_override = Some(format!("http://{addr}"));
+            p.test_access_token = Some("fixture".into());
+            p
+        };
+
+        let mut p = fixture();
+        p.mkdir("/Shared/aeroftp-bench")
+            .await
+            .expect("mkdir inside a shortcut");
+        let listed = p.list("/Shared").await.expect("list a shortcut");
+        assert_eq!(listed.len(), 1);
+        assert!(listed[0].is_dir && listed[0].name == "inner", "{listed:?}");
+        p.mkdir("/Shared/inner/deeper")
+            .await
+            .expect("mkdir two levels under a shortcut");
+        // A second create straight into the shortcut looks it up again: the
+        // shortcut's own path must still name the shortcut, or the delete
+        // below would reach the shared folder.
+        p.mkdir("/Shared/second").await.expect("mkdir again");
+
+        // A fresh session that goes straight below the shortcut.
+        let mut fresh = fixture();
+        let inner = fresh
+            .list("/Shared/inner")
+            .await
+            .expect("list below a shortcut never visited");
+        assert_eq!(inner.len(), 1);
+        assert_eq!(inner[0].name, "f.txt");
+        assert_eq!(
+            inner[0].metadata.get("id").map(String::as_str),
+            Some("drv2/F1")
+        );
+
+        // Deleting the shortcut itself deletes the link, never the shared
+        // folder it points to.
+        p.delete("/Shared").await.expect("delete the shortcut");
+        // A folder made again under that name is not taken for the old one.
+        assert!(p.remote_root_of("Shared").is_none());
+        assert!(p.remote_root_of("Shared/inner").is_none());
+
+        let paths = requests.lock().unwrap();
+        assert!(
+            !paths
+                .iter()
+                .any(|p| p.contains("/me/drive/items/SHORTCUT/children")),
+            "{paths:?}"
+        );
+        assert!(
+            paths.contains(&"DELETE /v1.0/me/drive/items/SHORTCUT".to_string()),
+            "{paths:?}"
+        );
+        assert!(
+            !paths.iter().any(|p| p.starts_with("DELETE /v1.0/drives/")),
+            "{paths:?}"
+        );
+        server.abort();
+    }
+
+    /// CodeRabbit on #1370: the content GET, the simple upload and the
+    /// upload session build their address with no lookup of their own, so
+    /// on a fresh session a file under a shortcut not yet met was addressed
+    /// in this drive. They learn the shortcut first.
+    #[tokio::test]
+    async fn ehud_368_content_and_uploads_under_an_unmet_shortcut_reach_the_target_drive() {
+        use axum::http::{Method, StatusCode};
+        let answer = |method: &Method, path: &str| match (method, path) {
+            (&Method::GET, "/v1.0/me/drive/root:/Shared") => (
+                StatusCode::OK,
+                serde_json::json!({
+                    "id": "SHORTCUT", "name": "Shared", "size": 0,
+                    "remoteItem": {"id": "TARGET", "folder": {}, "parentReference": {"driveId": "drv2"}}
+                }),
+            ),
+            (&Method::GET, "/v1.0/drives/drv2/items/TARGET:/x.bin:/content") => {
+                (StatusCode::OK, serde_json::json!("abc"))
+            }
+            (&Method::PUT, "/v1.0/drives/drv2/items/TARGET:/x.bin:/content") => (
+                StatusCode::CREATED,
+                serde_json::json!({"id": "X", "name": "x.bin", "size": 3, "file": {}}),
+            ),
+            (&Method::POST, "/v1.0/drives/drv2/items/TARGET:/x.bin:/createUploadSession") => (
+                StatusCode::OK,
+                serde_json::json!({"uploadUrl": "{base}/upload/session"}),
+            ),
+            _ => (
+                StatusCode::NOT_FOUND,
+                serde_json::json!({"error": {"code": "itemNotFound", "message": "Item not found"}}),
+            ),
+        };
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("x.bin");
+        std::fs::write(&local, b"abc").unwrap();
+
+        // Each on a fresh session: nothing known about the shortcut yet.
+        let (mut p, requests, server) = graph_fixture(answer).await;
+        let bytes = p
+            .download_to_bytes("/Shared/x.bin")
+            .await
+            .expect("content under the shortcut");
+        assert!(!bytes.is_empty());
+        server.abort();
+        assert!(!requests
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|r| r.contains("/me/drive/root:/Shared/")));
+
+        let (mut p, requests, server) = graph_fixture(answer).await;
+        p.upload(local.to_str().unwrap(), "/Shared/x.bin", None)
+            .await
+            .expect("upload under the shortcut");
+        server.abort();
+        assert!(requests
+            .lock()
+            .unwrap()
+            .contains(&"PUT /v1.0/drives/drv2/items/TARGET:/x.bin:/content".to_string()));
+
+        let (mut p, requests, server) = graph_fixture(answer).await;
+        let session = p
+            .open_upload_session("/Shared/x.bin")
+            .await
+            .expect("upload session under the shortcut");
+        server.abort();
+        assert!(session.ends_with("/upload/session"), "{session}");
+        assert!(!requests
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|r| r.contains("/me/drive/root:/Shared/")));
+    }
+
+    /// Learning the shortcuts costs one lookup per folder per session: a
+    /// folder already known as a plain one costs no request more.
+    #[tokio::test]
+    async fn a_known_plain_folder_costs_no_extra_lookup_before_an_upload() {
+        use axum::http::{Method, StatusCode};
+        let (mut p, requests, server) = graph_fixture(|method, path| match (method, path) {
+            (&Method::GET, "/v1.0/me/drive/root:/Docs") => (
+                StatusCode::OK,
+                serde_json::json!({"id": "DOCS", "name": "Docs", "size": 0, "folder": {}}),
+            ),
+            (&Method::PUT, _) => (
+                StatusCode::CREATED,
+                serde_json::json!({"id": "F", "name": "f", "size": 1, "file": {}}),
+            ),
+            _ => (
+                StatusCode::NOT_FOUND,
+                serde_json::json!({"error": {"code": "itemNotFound"}}),
+            ),
+        })
+        .await;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("f");
+        std::fs::write(&local, b"f").unwrap();
+        for name in ["/Docs/a.txt", "/Docs/b.txt"] {
+            p.upload(local.to_str().unwrap(), name, None)
+                .await
+                .expect("upload");
+        }
+        server.abort();
+        assert_eq!(
+            *requests.lock().unwrap(),
+            [
+                "GET /v1.0/me/drive/root:/Docs",
+                "PUT /v1.0/me/drive/root:/Docs/a.txt:/content",
+                "PUT /v1.0/me/drive/root:/Docs/b.txt:/content",
+            ]
+        );
+    }
+
+    /// CodeRabbit on #1370 (older than it, on main too): an upload over
+    /// 4 MB went to `resume_upload` with the path as given, and a relative
+    /// one was never taken from the current folder, so after `cd /Docs` the
+    /// session was opened at the drive root, with `replace`, over whatever
+    /// had that name there.
+    #[tokio::test]
+    async fn a_relative_upload_over_4_mb_opens_its_session_in_the_current_folder() {
+        use axum::http::{Method, StatusCode};
+        let (mut p, requests, server) = graph_fixture(|method, path| match (method, path) {
+            (&Method::GET, "/v1.0/me/drive/root:/Docs")
+            | (&Method::GET, "/v1.0/me/drive/items/DOCS") => (
+                StatusCode::OK,
+                serde_json::json!({"id": "DOCS", "name": "Docs", "size": 0, "folder": {}}),
+            ),
+            (&Method::POST, p)
+                if p.starts_with("/v1.0/me/drive/root:/Docs/")
+                    && p.ends_with(":/createUploadSession") =>
+            {
+                (
+                    StatusCode::OK,
+                    serde_json::json!({"uploadUrl": "{base}/upload/session"}),
+                )
+            }
+            (&Method::PUT, "/upload/session") => (
+                StatusCode::CREATED,
+                serde_json::json!({"id": "X", "name": "x.bin", "size": 1, "file": {}}),
+            ),
+            _ => (
+                StatusCode::NOT_FOUND,
+                serde_json::json!({"error": {"code": "itemNotFound"}}),
+            ),
+        })
+        .await;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("big.bin");
+        std::fs::write(&local, vec![7u8; 4 * 1024 * 1024 + 1]).unwrap();
+        p.cd("/Docs").await.expect("cd");
+        p.upload(local.to_str().unwrap(), "x.bin", None)
+            .await
+            .expect("relative upload over 4 MB");
+        p.resume_upload(local.to_str().unwrap(), "y.bin", 0, None)
+            .await
+            .expect("relative resumable upload");
+        server.abort();
+        let seen = requests.lock().unwrap();
+        for name in ["x.bin", "y.bin"] {
+            assert!(
+                seen.contains(&format!(
+                    "POST /v1.0/me/drive/root:/Docs/{name}:/createUploadSession"
+                )),
+                "{seen:?}"
+            );
+            assert!(
+                !seen
+                    .iter()
+                    .any(|r| r.contains(&format!("/me/drive/root:/{name}"))),
+                "{seen:?}"
+            );
+        }
+    }
+
+    /// CodeRabbit on #1370: a parent lookup that failed for another reason
+    /// than "not there" (a 503, a 429) was read as "no shortcut", so the
+    /// request went to this drive and came back as a 404 instead of the
+    /// error the caller can retry. It is that error, and nothing is sent.
+    #[tokio::test]
+    async fn a_failing_parent_lookup_is_that_error_and_sends_nothing() {
+        use axum::http::{Method, StatusCode};
+        let answer = |method: &Method, path: &str| match (method, path) {
+            (&Method::GET, "/v1.0/me/drive/root:/Shared") => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                serde_json::json!({"error": {"code": "serviceNotAvailable", "message": "Service unavailable"}}),
+            ),
+            _ => (
+                StatusCode::NOT_FOUND,
+                serde_json::json!({"error": {"code": "itemNotFound"}}),
+            ),
+        };
+        let dir = tempfile::tempdir().expect("tempdir");
+        let small = dir.path().join("x.bin");
+        std::fs::write(&small, b"abc").unwrap();
+        let fetched = dir.path().join("fetched.bin");
+
+        let (mut p, requests, server) = graph_fixture(answer).await;
+        let outcomes = [
+            p.download_to_bytes("/Shared/x.bin").await.map(|_| ()),
+            p.upload(small.to_str().unwrap(), "/Shared/x.bin", None)
+                .await,
+            p.open_upload_session("/Shared/x.bin").await.map(|_| ()),
+            p.download("/Shared/x.bin", fetched.to_str().unwrap(), None)
+                .await,
+        ];
+        server.abort();
+        for outcome in &outcomes {
+            assert!(
+                matches!(outcome, Err(e) if !matches!(e, ProviderError::NotFound(_))),
+                "{outcome:?}"
+            );
+        }
+        let seen = requests.lock().unwrap();
+        assert!(
+            !seen
+                .iter()
+                .any(|r| r.starts_with("PUT") || r.starts_with("POST") || r.ends_with(":/content")),
+            "{seen:?}"
+        );
+    }
+
     /// Graph fixture answering every request with `answer(method, path)` and
     /// recording `METHOD path`.
     async fn graph_fixture(
@@ -3453,11 +4005,13 @@ mod tests {
             matches!(outcome, Err(ProviderError::NotFound(_))),
             "{outcome:?}"
         );
+        // The folder is looked up once, in case it is a shortcut (#368).
         assert_eq!(
             *requests.lock().unwrap(),
             [
                 "DELETE /v1.0/me/drive/items/OLD",
                 "GET /v1.0/me/drive/root:/docs/a.txt",
+                "GET /v1.0/me/drive/root:/docs",
             ]
         );
         server.abort();
@@ -3542,6 +4096,77 @@ mod tests {
             requests.lock().unwrap()
         );
         server.abort();
+    }
+
+    /// #368 live run: on OneDrive Personal Graph does not expose the recycle
+    /// bin (400 `invalidRequest`, "special folder identifier"), and the purge
+    /// answered `Ok(false)`, "no trash", so a benchmark folder stayed in the
+    /// bin without a word. That 400 is the limit, said as one; any other 400
+    /// or a 404 stays "nothing found to purge".
+    #[tokio::test]
+    async fn a_purge_on_a_drive_without_a_reachable_recycle_bin_says_so() {
+        use axum::http::{Method, StatusCode};
+        let (mut p, requests, server) = graph_fixture(|method, path| match (method, path) {
+            (&Method::GET, "/v1.0/me/drive/root") => (
+                StatusCode::OK,
+                serde_json::json!({ "id": "ROOT", "name": "root", "size": 0, "folder": {} }),
+            ),
+            (&Method::GET, "/v1.0/me/drive/special/deleted/children") => (
+                StatusCode::BAD_REQUEST,
+                serde_json::json!({ "error": { "code": "invalidRequest",
+                    "message": "The special folder identifier isn't valid" } }),
+            ),
+            _ => (
+                StatusCode::NOT_FOUND,
+                serde_json::json!({ "error": { "code": "itemNotFound" } }),
+            ),
+        })
+        .await;
+        p.drive_type = Some("personal".into());
+        let outcome = p.delete_permanent("/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotSupported(ref m)) if m.contains("recycle bin")),
+            "{outcome:?}"
+        );
+        assert!(!requests
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|r| r.starts_with("DELETE")));
+        server.abort();
+
+        for answer in [
+            (|method: &Method, path: &str| match (method, path) {
+                (&Method::GET, "/v1.0/me/drive/root") => (
+                    StatusCode::OK,
+                    serde_json::json!({ "id": "ROOT", "name": "root", "size": 0, "folder": {} }),
+                ),
+                (&Method::GET, "/v1.0/me/drive/special/deleted/children") => (
+                    StatusCode::BAD_REQUEST,
+                    serde_json::json!({ "error": { "code": "invalidRequest", "message": "Invalid $top" } }),
+                ),
+                _ => (
+                    StatusCode::NOT_FOUND,
+                    serde_json::json!({ "error": { "code": "itemNotFound" } }),
+                ),
+            }) as fn(&Method, &str) -> (StatusCode, serde_json::Value),
+            |method: &Method, path: &str| match (method, path) {
+                (&Method::GET, "/v1.0/me/drive/root") => (
+                    StatusCode::OK,
+                    serde_json::json!({ "id": "ROOT", "name": "root", "size": 0, "folder": {} }),
+                ),
+                _ => (
+                    StatusCode::NOT_FOUND,
+                    serde_json::json!({ "error": { "code": "itemNotFound" } }),
+                ),
+            },
+        ] {
+            let (mut p, _requests, server) = graph_fixture(answer).await;
+            p.drive_type = Some("business".into());
+            let outcome = p.delete_permanent("/a.txt").await;
+            assert!(matches!(outcome, Ok(false)), "{outcome:?}");
+            server.abort();
+        }
     }
 
     /// The recycle-bin lookup stopped after its page limit and returned

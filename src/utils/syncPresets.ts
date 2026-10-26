@@ -10,9 +10,9 @@
 //   backup  → conservative one-way: copy missing + newer from source, never
 //             delete, never overwrite a newer destination copy. Default
 //             preset because the user can always re-run a delete-mode pass.
-//   update  → like backup but also leaves untouched anything where source
-//             is older or where sizes diverge (i.e. conflicts surface as
-//             "skip" with a warning instead of being silently overwritten).
+//   update  → copy missing + newer files without deleting. Conflicts skip
+//             by default; the selected policy may choose either copy,
+//             including an older copy over a newer destination.
 //   bisync  → mirror in both directions: copy missing both ways, propagate
 //             newer in either direction, surface conflicts (skip and let
 //             the user resolve manually in a follow-up pass).
@@ -588,7 +588,7 @@ export const describePreset = (preset: SyncPreset): { name: string; tagline: str
         case 'update':
             return {
                 name: 'Update',
-                tagline: 'Copy missing and newer files. Skip conflicts so you can resolve them manually.',
+                tagline: 'Copy missing and newer files. Never delete. Overwrite newer destination copies only if the selected conflict policy chooses the other copy.',
                 safe: true,
             };
         case 'bisync':

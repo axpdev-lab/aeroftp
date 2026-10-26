@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Prenosný režim: tento priečinok obsahuje všetky vaše dáta AeroFTP",
                 "body": "Každá prenosná inštalácia je plne sebestačná: uložené servery, AeroVault, AI konverzácie a predvoľby sa nachádzajú vedľa súboru AeroFTP.exe. Od verzie v3.7.8 sú dva prenosné priečinky na tom istom PC úplne nezávislé. Vymazanie profilu v jednom priečinku už neovplyvňuje druhý.",
-                "legacyWarning": "Zistili sme zvyšné dáta z predchádzajúcej zdieľanej inštalácie v %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Táto prenosná inštalácia ich už nepoužíva. Ak ich nepotrebujete, môžete ich odstrániť manuálne.",
+                "legacyWarning": "Našli sme údaje z predchádzajúcej zdieľanej inštalácie v %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Táto prenosná inštalácia ich nepoužíva. Ak je AeroFTP nainštalovaný aj na tomto počítači (MSI alebo inštalátor), tento priečinok obsahuje údaje nainštalovanej aplikácie: ponechajte ho. Inak ho môžete ručne odstrániť, ak ho nepotrebujete.",
                 "openFolder": "Otvoriť priečinok s dátami",
                 "dismiss": "Rozumiem"
             }
@@ -6064,19 +6064,19 @@
                     "tagline": "Skopíruje verziu zo zdroja s príponou obsahujúcou dátum a čas."
                 },
                 "newer-wins": {
-                    "label": "Vyhráva novšia",
+                    "label": "Ponechať novší",
                     "tagline": "Strana s novším časom zmeny prepíše druhú."
                 },
                 "older-wins": {
-                    "label": "Vyhráva staršia",
+                    "label": "Ponechať starší",
                     "tagline": "Staršia strana prepíše novšiu (na archiváciu)."
                 },
                 "larger-wins": {
-                    "label": "Vyhráva väčšia",
+                    "label": "Ponechať väčší",
                     "tagline": "Strana s väčšou veľkosťou prepíše menšiu."
                 },
                 "smaller-wins": {
-                    "label": "Vyhráva menšia",
+                    "label": "Ponechať menší",
                     "tagline": "Menšia strana prepíše väčšiu."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Aktualizácia",
-                    "tagline": "Skopíruje chýbajúce a novšie súbory. Konflikty preskočí, aby ste ich mohli vyriešiť ručne."
+                    "tagline": "Kopíruje chýbajúce a novšie súbory. Nikdy nemaže. Novšie kópie v cieli prepíše iba vtedy, ak vybrané pravidlo riešenia konfliktov zvolí druhú kópiu."
                 },
                 "bisync": {
                     "name": "Obojsmerná synchronizácia",
@@ -7058,6 +7058,10 @@
             "runTemplate": "Spustiť",
             "duplicateName": "Šablóna s názvom {name} už je na tomto serveri.",
             "templateStored": "Uložená šablóna ukladá príkaz s miestami na doplnenie, nikdy heslo."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Priečinok sa stále načítava",
+            "folderBusy": "Otvorený súbor sa nezobrazil: keď sa požadoval priečinok {folder}, iný priečinok sa ešte načítaval. Otvorte ho znova."
         }
     }
 }

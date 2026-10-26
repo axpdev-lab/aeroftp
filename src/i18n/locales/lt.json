@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Nešiojamasis režimas: šiame aplanke saugomi visi jūsų AeroFTP duomenys",
                 "body": "Kiekvienas nešiojamasis diegimas yra visiškai savarankiškas: išsaugoti serveriai, AeroVault, AI pokalbiai ir nuostatos yra šalia AeroFTP.exe. Nuo v3.7.8 versijos du nešiojamieji aplankai tame pačiame kompiuteryje yra visiškai nepriklausomi, profilio ištrynimas viename aplanke nebeturi įtakos kitam.",
-                "legacyWarning": "Aptikome likusių duomenų iš ankstesnio bendro diegimo vietoje %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Šis nešiojamasis diegimas jų nebenaudoja. Galite juos pašalinti rankiniu būdu, jei jų nereikia.",
+                "legacyWarning": "Radome ankstesnio bendro diegimo duomenų aplanke %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Šis nešiojamasis diegimas jų nenaudoja. Jei AeroFTP taip pat įdiegta šiame kompiuteryje (MSI arba diegimo programa), šiame aplanke yra įdiegtos programos duomenys: palikite jį. Kitu atveju galite jį pašalinti rankiniu būdu, jei jo nereikia.",
                 "openFolder": "Atidaryti duomenų aplanką",
                 "dismiss": "Supratau"
             }
@@ -6064,19 +6064,19 @@
                     "tagline": "Nukopijuoja šaltinio versiją su datos ir laiko priesaga."
                 },
                 "newer-wins": {
-                    "label": "Laimi naujesnis",
+                    "label": "Palikti naujesnį",
                     "tagline": "Pusė su vėlesniu keitimo laiku perrašo kitą."
                 },
                 "older-wins": {
-                    "label": "Laimi senesnis",
+                    "label": "Palikti senesnį",
                     "tagline": "Senesnė pusė perrašo naujesnę (archyvavimui)."
                 },
                 "larger-wins": {
-                    "label": "Laimi didesnis",
+                    "label": "Palikti didesnį",
                     "tagline": "Pusė su didesniu dydžiu perrašo mažesnę."
                 },
                 "smaller-wins": {
-                    "label": "Laimi mažesnis",
+                    "label": "Palikti mažesnį",
                     "tagline": "Mažesnė pusė perrašo didesnę."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Atnaujinti",
-                    "tagline": "Nukopijuoja trūkstamus ir naujesnius failus. Praleidžia konfliktus, kad galėtumėte juos išspręsti rankiniu būdu."
+                    "tagline": "Kopijuoja trūkstamus ir naujesnius failus. Niekada neištrina. Naujesnes kopijas paskirties vietoje perrašo tik tada, jei pasirinkta konfliktų sprendimo taisyklė pasirenka kitą kopiją."
                 },
                 "bisync": {
                     "name": "Dvipusė sinchronizacija",
@@ -7058,6 +7058,10 @@
             "runTemplate": "Vykdyti",
             "duplicateName": "Šablonas pavadinimu {name} jau yra šiame serveryje.",
             "templateStored": "Išsaugotas šablonas saugo komandą su pildomomis vietomis, niekada slaptažodžio."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Aplankas vis dar įkeliamas",
+            "folderBusy": "Atidarytas failas nebuvo parodytas: kai buvo paprašyta aplanko {folder}, kitas aplankas vis dar buvo įkeliamas. Atidarykite failą dar kartą."
         }
     }
 }

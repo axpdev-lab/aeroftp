@@ -4616,6 +4616,10 @@
             "newTab": "New Tab",
             "foldersNotOpened": "Folders not opened: {count}"
         },
+        "openRequest": {
+            "folderBusyTitle": "Folder still loading",
+            "folderBusy": "The file you opened was not shown: another folder was still loading when {folder} was requested. Open it again."
+        },
         "tags": {
             "addTag": "Add Tag",
             "clearAll": "Clear All Tags",
@@ -6307,7 +6311,7 @@
             "banner": {
                 "title": "Portable mode: this folder holds all your AeroFTP data",
                 "body": "Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent - deleting a profile in one folder no longer affects the other.",
-                "legacyWarning": "We detected leftover data from a previous shared install at %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. It is no longer used by this portable installation. You can remove it manually if you do not need it.",
+                "legacyWarning": "We found data from a previous shared install at %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. This portable installation does not use it. If AeroFTP is also installed on this PC (MSI or setup), that folder holds the installed app's data: keep it. Otherwise you can remove it manually if you do not need it.",
                 "openFolder": "Open data folder",
                 "dismiss": "Got it"
             }
@@ -6348,19 +6352,19 @@
                     "tagline": "Copy the source-side copy under a timestamped suffix."
                 },
                 "newer-wins": {
-                    "label": "Newer wins",
+                    "label": "Keep newer",
                     "tagline": "The side with the more recent mtime overwrites the other."
                 },
                 "older-wins": {
-                    "label": "Older wins",
+                    "label": "Keep older",
                     "tagline": "The older side overwrites the newer (archive use case)."
                 },
                 "larger-wins": {
-                    "label": "Larger wins",
+                    "label": "Keep larger",
                     "tagline": "The side with the larger size overwrites the smaller."
                 },
                 "smaller-wins": {
-                    "label": "Smaller wins",
+                    "label": "Keep smaller",
                     "tagline": "The smaller side overwrites the larger."
                 }
             },
@@ -6424,7 +6428,7 @@
                 },
                 "update": {
                     "name": "Update",
-                    "tagline": "Copy missing and newer files. Skip conflicts so you can resolve them manually."
+                    "tagline": "Copy missing and newer files. Never delete. Overwrite newer destination copies only if the selected conflict policy chooses the other copy."
                 },
                 "bisync": {
                     "name": "Two-way sync",

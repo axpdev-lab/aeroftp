@@ -6013,7 +6013,7 @@
             "banner": {
                 "title": "Portable mode: nasa folder na ito ang lahat ng iyong AeroFTP data",
                 "body": "Bawat portable installation ay ganap na self-contained: nakaligpit na servers, AeroVault, AI chats, at preferences ay pawang nasa tabi ng AeroFTP.exe. Mula sa v3.7.8, ang dalawang portable folder sa parehong PC ay ganap na hiwalay sa isa't isa. Ang pagtanggal ng profile sa isang folder ay hindi na nakakaapekto sa kabila.",
-                "legacyWarning": "Nakita namin ang natirang data mula sa nakaraang shared install sa %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Hindi na ito ginagamit ng portable installation na ito. Maaari mo itong tanggalin nang manu-mano kung hindi mo na kailangan.",
+                "legacyWarning": "Nakakita kami ng data mula sa isang naunang shared na installation sa %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Hindi ito ginagamit ng portable na installation na ito. Kung naka-install din ang AeroFTP sa PC na ito (MSI o setup), ang folder na iyon ay naglalaman ng data ng naka-install na app: panatilihin ito. Kung hindi, maaari mo itong alisin nang manu-mano kung hindi mo ito kailangan.",
                 "openFolder": "Buksan ang data folder",
                 "dismiss": "Naintindihan"
             }
@@ -6083,19 +6083,19 @@
                     "tagline": "Kinokopya ang bersyon ng pinagmulan na may hulaping petsa at oras."
                 },
                 "newer-wins": {
-                    "label": "Mas bago ang panalo",
+                    "label": "Panatilihin ang mas bago",
                     "tagline": "Ang panig na may mas bagong oras ng pagbabago ang papatong sa kabila."
                 },
                 "older-wins": {
-                    "label": "Mas luma ang panalo",
+                    "label": "Panatilihin ang mas luma",
                     "tagline": "Ang mas lumang panig ang papatong sa mas bago (para sa pag-archive)."
                 },
                 "larger-wins": {
-                    "label": "Mas malaki ang panalo",
+                    "label": "Panatilihin ang mas malaki",
                     "tagline": "Ang panig na may mas malaking sukat ang papatong sa mas maliit."
                 },
                 "smaller-wins": {
-                    "label": "Mas maliit ang panalo",
+                    "label": "Panatilihin ang mas maliit",
                     "tagline": "Ang mas maliit na panig ang papatong sa mas malaki."
                 }
             },
@@ -6157,7 +6157,7 @@
                 },
                 "update": {
                     "name": "I-update",
-                    "tagline": "Kinokopya ang mga nawawala at mas bagong file. Nilalaktawan ang mga conflict para malutas mo nang mano-mano."
+                    "tagline": "Kinokopya ang mga nawawala at mas bagong file. Hindi kailanman nagtatanggal. Pinapatungan lang ang mas bagong mga kopya sa destinasyon kung pipiliin ng napiling patakaran sa salungatan ang kabilang kopya."
                 },
                 "bisync": {
                     "name": "Two-way na sync",
@@ -7077,6 +7077,10 @@
             "runTemplate": "Patakbuhin",
             "duplicateName": "May suleras na nangangalang {name} na sa serbidor na ito.",
             "templateStored": "Ang suleras na nakaimbak ay nagtatago ng utos na may mga puwang na pupunan, hindi kailanman ng kontrasenyas."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Naglo-load pa ang folder",
+            "folderBusy": "Hindi naipakita ang file na binuksan mo: may ibang folder na naglo-load pa nang hilingin ang {folder}. Buksan itong muli."
         }
     }
 }

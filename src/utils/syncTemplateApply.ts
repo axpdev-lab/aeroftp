@@ -7,7 +7,7 @@ import type {
     SyncTemplate,
     VerifyPolicy,
 } from '../types';
-import type { AeroSyncPairKind, AeroSyncVerifyPolicy } from '../components/AeroSync/types';
+import type { AeroSyncPairKind, AeroSyncSpeedMode, AeroSyncVerifyPolicy } from '../components/AeroSync/types';
 import type { ConflictPolicy, PresetDirection, SyncPreset, VersionedBackupConfig } from './syncPresets';
 import type { TabStateStore } from '../components/AeroSync/tabStateStore';
 import { presetForTemplate } from './syncDirectionLabels';
@@ -45,9 +45,16 @@ export interface ImportedSyncSettings {
     direction: SyncDirection;
     deleteOrphans: boolean;
     excludePatterns: string[];
+    /** True for script formats that append their backup folder to the user's patterns. */
+    excludePatternsIncludeBackupDir?: boolean;
+    preset?: SyncPreset;
     /** The backup folder the exported script recorded, when it has one. */
     backupDir?: string;
+    versionedBackup?: VersionedBackupConfig;
     verifyPolicy?: VerifyPolicy;
+    speedMode?: AeroSyncSpeedMode;
+    transferBudgetMb?: number;
+    errorCorrection?: { enabled: boolean; pct: number };
     dryRun?: boolean;
     conflictMode?: string | null;
     canaryMode?: boolean;
@@ -55,10 +62,17 @@ export interface ImportedSyncSettings {
     canarySelection?: string;
 }
 
-/** Plan-tab knobs the .aerosync export must keep (#514). */
+/** Live Plan controls that a .aerosync export preserves. */
 export interface LivePlanExport {
+    preset?: SyncPreset;
+    direction?: SyncDirection;
+    conflictPolicy?: ConflictPolicy;
+    versionedBackup?: VersionedBackupConfig;
+    speedMode?: AeroSyncSpeedMode;
     verifyPolicy?: VerifyPolicy | AeroSyncVerifyPolicy;
     canary?: { percent: number; selection: string } | null;
+    transferBudgetMb?: number;
+    errorCorrection?: { enabled: boolean; pct: number };
 }
 
 export type AeroSyncTabStatePatch = Record<string, unknown>;
@@ -90,18 +104,29 @@ export function settingsFromTemplate(template: SyncTemplate): TemplateImportResu
     );
     if (usable.length !== 1) return { ok: false, usablePairs: usable.length };
     const paths = usable[0];
+    const backup = template.profile.versioned_backup;
     const settings: ImportedSyncSettings = {
         localPath: paths.local,
         remotePath: paths.remote,
         direction: template.profile.direction,
         deleteOrphans: template.profile.delete_orphans,
         excludePatterns: template.exclude_patterns,
+        excludePatternsIncludeBackupDir: false,
+        preset: template.profile.mode,
+        backupDir: backup?.backup_dir,
+        versionedBackup: backup
+            ? { enabled: backup.enabled, backupDir: backup.backup_dir }
+            : undefined,
         verifyPolicy: template.profile.verify_policy
             ?? (template.profile.compare_checksum
                 ? 'full'
                 : template.profile.compare_timestamp
                     ? 'size_and_mtime'
                     : 'size_only'),
+        speedMode: template.profile.speed_mode,
+        transferBudgetMb: template.profile.transfer_budget_mb,
+        errorCorrection: template.profile.error_correction,
+        conflictMode: template.profile.conflict_mode,
         canaryMode: !!template.profile.canary,
         canaryPercent: template.profile.canary?.percent,
         canarySelection: template.profile.canary?.selection,
@@ -138,20 +163,49 @@ function compareFieldsForVerify(verify: VerifyPolicy): Partial<SyncTemplate['pro
     }
 }
 
+function toTemplateConflict(value: ConflictPolicy | undefined): SyncTemplate['profile']['conflict_mode'] {
+    switch (value) {
+        case 'newer-wins': return 'newer';
+        case 'older-wins': return 'older';
+        case 'larger-wins': return 'larger';
+        case 'smaller-wins': return 'smaller';
+        case 'rename': return 'rename';
+        case 'skip': return 'skip';
+        default: return undefined;
+    }
+}
+
 /**
  * Stamp the live Plan-tab values onto an exported .aerosync document.
- * The backend serialises the named preset (no canary, no verify_policy).
- * Without this overlay those knobs round-trip as defaults (#514).
+ * The backend supplies the portable document and named-preset fields; this
+ * overlay makes the controls visible in the current Plan authoritative.
  *
  * Streams and compression are not the Plan's to set: the backend writes them
  * neutral (`export_sync_template`), and an import ignores them.
  */
 export function overlayLivePlanOnTemplate(template: SyncTemplate, live: LivePlanExport): SyncTemplate {
     const verify = toTemplateVerify(live.verifyPolicy);
+    const conflict = toTemplateConflict(live.conflictPolicy);
     return {
         ...template,
         profile: {
             ...template.profile,
+            ...(live.preset
+                ? { mode: live.preset, delete_orphans: live.preset === 'mirror' }
+                : {}),
+            ...(live.direction ? { direction: live.direction } : {}),
+            ...(conflict ? { conflict_mode: conflict } : {}),
+            ...(live.versionedBackup
+                ? {
+                    versioned_backup: {
+                        enabled: live.versionedBackup.enabled,
+                        backup_dir: live.versionedBackup.backupDir ?? AEROSYNC_DEFAULT_BACKUP_DIR,
+                    },
+                }
+                : {}),
+            ...(live.speedMode ? { speed_mode: live.speedMode } : {}),
+            ...(live.transferBudgetMb != null ? { transfer_budget_mb: live.transferBudgetMb } : {}),
+            ...(live.errorCorrection ? { error_correction: live.errorCorrection } : {}),
             ...(verify ? { verify_policy: verify, ...compareFieldsForVerify(verify) } : {}),
             ...(live.canary
                 ? { canary: { percent: live.canary.percent, selection: live.canary.selection } }
@@ -193,7 +247,7 @@ function planDirection(direction: SyncDirection, pairKind: AeroSyncPairKind | nu
 }
 
 function planPreset(settings: ImportedSyncSettings): SyncPreset {
-    return presetForTemplate(settings.direction, settings.deleteOrphans);
+    return settings.preset ?? presetForTemplate(settings.direction, settings.deleteOrphans);
 }
 
 function planVerify(value: VerifyPolicy | undefined): AeroSyncVerifyPolicy | undefined {
@@ -231,17 +285,25 @@ export function buildAeroSyncTabStatePatch(
     const backupDir = settings.backupDir
         ?? currentBackup?.backupDir
         ?? AEROSYNC_DEFAULT_BACKUP_DIR;
+    const excludesIncludeBackupDir = settings.excludePatternsIncludeBackupDir ?? true;
     const patch: AeroSyncTabStatePatch = {
         'sync.source': settings.localPath,
         'sync.destination': settings.remotePath,
-        // An exported script carries the compare defaults and the backup
-        // folder too; the field holds only the user's own, since the compare
-        // adds the rest anyway.
-        'sync.exclude': userExcludePatterns(settings.excludePatterns, backupDir).join(', '),
+        // Scripts append the compare's backup folder; .aerosync templates
+        // already contain only the user's own patterns and stay literal.
+        'sync.exclude': (excludesIncludeBackupDir
+            ? userExcludePatterns(settings.excludePatterns, backupDir)
+            : settings.excludePatterns
+        ).join(', '),
         'plan.preset': planPreset(settings),
         'plan.direction': planDirection(settings.direction, pairKind),
     };
-    if (settings.backupDir) {
+    if (settings.versionedBackup) {
+        patch['plan.versionedBackup'] = {
+            enabled: settings.versionedBackup.enabled,
+            backupDir: settings.versionedBackup.backupDir ?? backupDir,
+        } satisfies VersionedBackupConfig;
+    } else if (settings.backupDir) {
         patch['plan.versionedBackup'] = {
             enabled: currentBackup?.enabled ?? false,
             backupDir: settings.backupDir,
@@ -249,6 +311,12 @@ export function buildAeroSyncTabStatePatch(
     }
     const verify = planVerify(settings.verifyPolicy);
     if (verify) patch['plan.verifyPolicy'] = verify;
+    if (settings.speedMode) patch['plan.speedMode'] = settings.speedMode;
+    if (settings.transferBudgetMb != null) patch['plan.transferBudgetMb'] = settings.transferBudgetMb;
+    if (settings.errorCorrection) {
+        patch['plan.ecEnabled'] = settings.errorCorrection.enabled;
+        patch['plan.ecPct'] = settings.errorCorrection.pct;
+    }
     if (settings.dryRun != null) patch['sync.dryRun'] = settings.dryRun;
     const conflict = planConflict(settings.conflictMode);
     if (conflict) patch['plan.conflictPolicy'] = conflict;

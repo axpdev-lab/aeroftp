@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Prenosni način: ta mapa vsebuje vse vaše podatke AeroFTP",
                 "body": "Vsaka prenosna namestitev je popolnoma samostojna: shranjeni strežniki, AeroVault, AI klepeti in nastavitve so vsi poleg datoteke AeroFTP.exe. Od različice v3.7.8 sta dve prenosni mapi na istem računalniku popolnoma neodvisni. Izbris profila v eni mapi ne vpliva več na drugo.",
-                "legacyWarning": "Zaznali smo preostale podatke iz prejšnje skupne namestitve v %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ta prenosna namestitev jih ne uporablja več. Če jih ne potrebujete, jih lahko ročno odstranite.",
+                "legacyWarning": "Našli smo podatke prejšnje skupne namestitve v %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ta prenosna namestitev jih ne uporablja. Če je AeroFTP nameščen tudi v tem računalniku (MSI ali namestitveni program), ta mapa vsebuje podatke nameščene aplikacije: obdržite jo. Sicer jo lahko ročno odstranite, če je ne potrebujete.",
                 "openFolder": "Odpri mapo s podatki",
                 "dismiss": "Razumem"
             }
@@ -6064,19 +6064,19 @@
                     "tagline": "Kopira različico iz vira s pripono z datumom in uro."
                 },
                 "newer-wins": {
-                    "label": "Zmaga novejša",
+                    "label": "Ohrani novejšo",
                     "tagline": "Stran z novejšim časom spremembe prepiše drugo."
                 },
                 "older-wins": {
-                    "label": "Zmaga starejša",
+                    "label": "Ohrani starejšo",
                     "tagline": "Starejša stran prepiše novejšo (za arhiviranje)."
                 },
                 "larger-wins": {
-                    "label": "Zmaga večja",
+                    "label": "Ohrani večjo",
                     "tagline": "Stran z večjo velikostjo prepiše manjšo."
                 },
                 "smaller-wins": {
-                    "label": "Zmaga manjša",
+                    "label": "Ohrani manjšo",
                     "tagline": "Manjša stran prepiše večjo."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Posodobitev",
-                    "tagline": "Kopira manjkajoče in novejše datoteke. Preskoči spore, da jih rešite ročno."
+                    "tagline": "Kopira manjkajoče in novejše datoteke. Nikoli ne briše. Novejše kopije na cilju prepiše le, če izbrano pravilo za razreševanje sporov izbere drugo kopijo."
                 },
                 "bisync": {
                     "name": "Dvosmerna sinhronizacija",
@@ -7058,6 +7058,10 @@
             "runTemplate": "Zaženi",
             "duplicateName": "Predloga z imenom {name} je na tem strežniku že shranjena.",
             "templateStored": "Shranjena predloga shrani ukaz z mesti za vnos, nikoli gesla."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Mapa se še nalaga",
+            "folderBusy": "Odprta datoteka ni bila prikazana: ko je bila zahtevana mapa {folder}, se je druga mapa še nalagala. Odprite jo znova."
         }
     }
 }

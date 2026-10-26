@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Portabler Modus: Dieser Ordner enthält alle Ihre AeroFTP-Daten",
                 "body": "Jede portable Installation ist vollständig eigenständig: gespeicherte Server, AeroVault, AI-Chats und Einstellungen befinden sich alle neben der AeroFTP.exe. Ab v3.7.8 sind zwei portable Ordner auf demselben PC völlig unabhängig voneinander: Das Löschen eines Profils in einem Ordner wirkt sich nicht mehr auf den anderen aus.",
-                "legacyWarning": "Wir haben Restdaten einer früheren gemeinsamen Installation unter %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ erkannt. Sie werden von dieser portablen Installation nicht mehr verwendet. Sie können sie manuell entfernen, falls Sie sie nicht benötigen.",
+                "legacyWarning": "Wir haben Daten einer früheren gemeinsamen Installation in %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ gefunden. Diese portable Installation verwendet sie nicht. Wenn AeroFTP auch auf diesem PC installiert ist (MSI oder Setup), enthält dieser Ordner die Daten der installierten App: Behalten Sie ihn. Andernfalls können Sie ihn manuell entfernen, wenn Sie ihn nicht benötigen.",
                 "openFolder": "Datenordner öffnen",
                 "dismiss": "Verstanden"
             }
@@ -6064,19 +6064,19 @@
                     "tagline": "Kopiert die Version der Quelle mit einem Suffix aus Datum und Uhrzeit."
                 },
                 "newer-wins": {
-                    "label": "Neuere gewinnt",
+                    "label": "Neuere behalten",
                     "tagline": "Die Seite mit dem jüngeren Änderungsdatum überschreibt die andere."
                 },
                 "older-wins": {
-                    "label": "Ältere gewinnt",
+                    "label": "Ältere behalten",
                     "tagline": "Die ältere Seite überschreibt die neuere (für Archivierung)."
                 },
                 "larger-wins": {
-                    "label": "Größere gewinnt",
+                    "label": "Größere behalten",
                     "tagline": "Die Seite mit der größeren Dateigröße überschreibt die kleinere."
                 },
                 "smaller-wins": {
-                    "label": "Kleinere gewinnt",
+                    "label": "Kleinere behalten",
                     "tagline": "Die kleinere Seite überschreibt die größere."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Aktualisieren",
-                    "tagline": "Kopiert fehlende und neuere Dateien. Überspringt Konflikte, damit Sie sie manuell lösen können."
+                    "tagline": "Kopiert fehlende und neuere Dateien. Löscht niemals. Überschreibt neuere Kopien am Ziel nur, wenn die ausgewählte Konfliktrichtlinie die andere Kopie auswählt."
                 },
                 "bisync": {
                     "name": "Zwei-Wege-Sync",
@@ -7058,6 +7058,10 @@
             "runTemplate": "Ausführen",
             "duplicateName": "Eine Vorlage namens {name} ist auf diesem Server bereits vorhanden.",
             "templateStored": "Eine gespeicherte Vorlage bewahrt den Befehl mit Platzhaltern auf, niemals ein Passwort."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Ordner wird noch geladen",
+            "folderBusy": "Die geöffnete Datei wurde nicht angezeigt: Ein anderer Ordner wurde noch geladen, als {folder} angefordert wurde. Öffnen Sie die Datei erneut."
         }
     }
 }

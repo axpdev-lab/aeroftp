@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { secureGetWithFallback } from '../utils/secureStorage';
+import { onVaultReady, secureGetWithFallback } from '../utils/secureStorage';
 
 const SETTINGS_KEY = 'aeroftp_settings';
 const SETTINGS_VAULT_KEY = 'app_settings';
@@ -29,26 +29,35 @@ export const useAeroShareEnabled = (): boolean => {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    let generation = 0;
+    const load = async () => {
+      const current = ++generation;
       try {
         const parsed = await secureGetWithFallback<Record<string, unknown>>(
           SETTINGS_VAULT_KEY,
           SETTINGS_KEY,
         );
-        if (!cancelled && parsed) setEnabled(parse(parsed.aeroShareEnabled));
+        if (!cancelled && current === generation && parsed) {
+          setEnabled(parse(parsed.aeroShareEnabled));
+        }
       } catch {
         /* keep default (off) */
       }
-    })();
+    };
+    void load();
 
     const onChange = (e: Event) => {
       const detail = (e as CustomEvent)?.detail as Record<string, unknown> | undefined;
-      if (!detail) return;
-      if ('aeroShareEnabled' in detail) setEnabled(parse(detail.aeroShareEnabled));
+      if (!detail || !('aeroShareEnabled' in detail)) return;
+      generation++;
+      setEnabled(parse(detail.aeroShareEnabled));
     };
+    const unsubscribe = onVaultReady(load);
     window.addEventListener('aeroftp-settings-changed', onChange);
     return () => {
       cancelled = true;
+      generation++;
+      unsubscribe();
       window.removeEventListener('aeroftp-settings-changed', onChange);
     };
   }, []);

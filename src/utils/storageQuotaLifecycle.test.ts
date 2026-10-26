@@ -324,4 +324,3 @@ describe('App used-storage scan root', () => {
     expect(roots).toEqual([root]);
   });
 });
-

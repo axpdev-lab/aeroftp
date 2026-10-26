@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Mod mudah alih: folder ini menyimpan semua data AeroFTP anda",
                 "body": "Setiap pemasangan mudah alih adalah sepenuhnya berdikari: pelayan tersimpan, AeroVault, sembang AI dan keutamaan semuanya berada di sebelah AeroFTP.exe. Bermula dari v3.7.8, dua folder mudah alih pada PC yang sama adalah bebas sepenuhnya, memadam profil dalam satu folder tidak lagi menjejaskan folder yang lain.",
-                "legacyWarning": "Kami mengesan data yang tertinggal dari pemasangan bersama sebelumnya di %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Ia tidak lagi digunakan oleh pemasangan mudah alih ini. Anda boleh memadamnya secara manual jika tidak diperlukan.",
+                "legacyWarning": "Kami menemui data daripada pemasangan kongsi terdahulu di %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Pemasangan mudah alih ini tidak menggunakannya. Jika AeroFTP juga dipasang pada PC ini (MSI atau setup), folder itu mengandungi data aplikasi yang dipasang: simpan folder itu. Jika tidak, anda boleh membuangnya secara manual jika tidak memerlukannya.",
                 "openFolder": "Buka folder data",
                 "dismiss": "Faham"
             }
@@ -6064,19 +6064,19 @@
                     "tagline": "Menyalin versi sumber dengan akhiran tarikh dan masa."
                 },
                 "newer-wins": {
-                    "label": "Yang lebih baharu menang",
+                    "label": "Simpan yang lebih baharu",
                     "tagline": "Belah dengan masa ubah suai yang lebih baharu menulis ganti belah yang satu lagi."
                 },
                 "older-wins": {
-                    "label": "Yang lebih lama menang",
+                    "label": "Simpan yang lebih lama",
                     "tagline": "Belah yang lebih lama menulis ganti yang lebih baharu (untuk pengarkiban)."
                 },
                 "larger-wins": {
-                    "label": "Yang lebih besar menang",
+                    "label": "Simpan yang lebih besar",
                     "tagline": "Belah dengan saiz lebih besar menulis ganti yang lebih kecil."
                 },
                 "smaller-wins": {
-                    "label": "Yang lebih kecil menang",
+                    "label": "Simpan yang lebih kecil",
                     "tagline": "Belah yang lebih kecil menulis ganti yang lebih besar."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Kemas kini",
-                    "tagline": "Menyalin fail yang tiada dan lebih baharu. Melangkau konflik supaya anda boleh menyelesaikannya secara manual."
+                    "tagline": "Menyalin fail yang tiada dan yang lebih baharu. Tidak pernah memadam. Menulis ganti salinan yang lebih baharu di destinasi hanya jika dasar konflik yang dipilih memilih salinan yang satu lagi."
                 },
                 "bisync": {
                     "name": "Penyegerakan dua hala",
@@ -7058,6 +7058,10 @@
             "runTemplate": "Jalankan",
             "duplicateName": "Templat bernama {name} sudah ada pada pelayan ini.",
             "templateStored": "Templat yang disimpan berisi arahan dengan ruang untuk diisi, bukan kata laluan."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Folder masih dimuatkan",
+            "folderBusy": "Fail yang anda buka tidak dipaparkan: folder lain masih dimuatkan semasa {folder} diminta. Sila buka semula fail tersebut."
         }
     }
 }

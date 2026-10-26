@@ -13,7 +13,14 @@ const storage = vi.hoisted(() => ({
 }));
 vi.mock('../utils/secureStorage', () => ({
     secureGetWithFallback: storage.get,
+    // The write path of utils/appSettings reads the vault blob strictly.
+    secureGetConfigStrict: async () => structuredClone(storage.blob),
     secureStore: storage.store,
+    VAULT_READY_EVENT: 'aeroftp-vault-ready',
+    onVaultReady: (listener: () => void) => {
+        window.addEventListener('aeroftp-vault-ready', listener);
+        return () => window.removeEventListener('aeroftp-vault-ready', listener);
+    },
 }));
 vi.mock('../i18n', () => ({ useTranslation: () => (key: string) => key }));
 
@@ -75,6 +82,33 @@ describe('shared CLI / GUI profile view preferences', () => {
 
         storage.blob = { ui_settings: { my_servers_table: { visibility: { subtitle: true } }, my_servers_breakdown: false } };
         await act(async () => root.render(createElement(Probe, { refreshKey: 1 })));
+        expect(checkbox().checked).toBe(false);
+        expect(latest.config.visibility.subtitle).toBe(true);
+    });
+
+    it('rereads both preferences once on vault ready without a refreshKey or remount', async () => {
+        storage.blob = { ui_settings: { my_servers_table: { visibility: { subtitle: false } }, my_servers_breakdown: true } };
+        await mount();
+        expect(checkbox().checked).toBe(true);
+        expect(latest.config.visibility.subtitle).toBe(false);
+        storage.get.mockClear();
+
+        storage.blob = { ui_settings: { my_servers_table: { visibility: { subtitle: true } }, my_servers_breakdown: false } };
+        await act(async () => window.dispatchEvent(new Event('aeroftp-vault-ready')));
+
+        expect(storage.get).toHaveBeenCalledTimes(2);
+        expect(checkbox().checked).toBe(false);
+        expect(latest.config.visibility.subtitle).toBe(true);
+    });
+
+    it('does not additionally reread on vault ready when refreshKey is supplied', async () => {
+        await act(async () => root.render(createElement(Probe, { refreshKey: 0 })));
+        storage.get.mockClear();
+
+        storage.blob = { ui_settings: { my_servers_table: { visibility: { subtitle: false } }, my_servers_breakdown: true } };
+        await act(async () => window.dispatchEvent(new Event('aeroftp-vault-ready')));
+
+        expect(storage.get).not.toHaveBeenCalled();
         expect(checkbox().checked).toBe(false);
         expect(latest.config.visibility.subtitle).toBe(true);
     });

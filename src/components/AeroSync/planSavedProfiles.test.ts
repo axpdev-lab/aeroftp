@@ -87,6 +87,8 @@ describe('saved profiles in the real Plan tab', () => {
         expect(store.get('plan.verifyPolicy', '')).toBe('full_checksum');
         expect(store.get('sync.source', '')).toBe('/local'); expect(store.get('sync.destination', '')).toBe('/remote');
         expect(host.textContent).toContain('aerosync.savedPresetLimits');
+        expect(host.textContent).not.toContain('aerosync.rescanNeeded');
+        expect(onRescan).not.toHaveBeenCalled();
         expect(onExecute).not.toHaveBeenCalled();
         await click('aerosync.execute');
         expect(onExecute).toHaveBeenCalledTimes(1);
@@ -187,7 +189,7 @@ describe('actual script Save as preset notification', () => {
             throw new Error(`Unexpected IPC ${cmd}`);
         });
         const root = createRoot(host); roots.push(root);
-        await React.act(async () => root.render(React.createElement(SyncTemplateDialog, { isOpen: true, onClose: vi.fn(), localPath: '/local', remotePath: '/remote', serverProfileName: 'Server', excludePatterns: [], onApplyImport: vi.fn() })));
+        await React.act(async () => root.render(React.createElement(SyncTemplateDialog, { isOpen: true, onClose: vi.fn(), localPath: '/local', remotePath: '/remote', serverProfileName: 'Server', excludePatterns: [], pairKind: 'local-remote', onApplyImport: vi.fn() })));
         await click('syncPanel.templateImport');
         await React.act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>('button')).filter(b => b.textContent?.includes('syncPanel.templateImport')).slice(-1)[0].click());
         await click('syncPanel.aerosyncScriptApplyButton');

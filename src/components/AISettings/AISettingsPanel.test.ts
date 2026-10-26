@@ -10,8 +10,12 @@ import { getDefaultAISettings, type AISettings } from '../../types/ai';
 import { updateAiSettingsBlob } from '../../utils/aiSettingsStore';
 
 const backend = vi.hoisted(() => ({ blob: '', key: 'FIXTURE-OLD', writes: [] as { account: string; password: string }[],
-    delayKey: undefined as Promise<void> | undefined, failKey: false, failPublic: false }));
+    delayKey: undefined as Promise<void> | undefined, failKey: false, failPublic: false, configReadErrors: 0 }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(async (command: string, args?: { account?: string; password?: string }) => {
+    if (command === 'get_credential' && args?.account === 'config_ai_settings' && backend.configReadErrors > 0) {
+        backend.configReadErrors--;
+        throw new Error('STORE_NOT_READY');
+    }
     if (command === 'get_credential') return args?.account === 'config_ai_settings' ? backend.blob : backend.key;
     if (command === 'store_credential') {
         const write = { account: args!.account!, password: args!.password! }; backend.writes.push(write);
@@ -35,7 +39,7 @@ beforeEach(async () => {
     const settings: AISettings = getDefaultAISettings();
     settings.providers = [{ id: 'p', name: 'Public Fixture', type: 'custom', baseUrl: 'http://127.0.0.1:1',
         isEnabled: true, isDefault: true, createdAt: new Date(0), updatedAt: new Date(0) }];
-    backend.blob = JSON.stringify(settings); backend.key = 'FIXTURE-OLD'; backend.writes = []; backend.delayKey = undefined; backend.failKey = false; backend.failPublic = false;
+    backend.blob = JSON.stringify(settings); backend.key = 'FIXTURE-OLD'; backend.writes = []; backend.delayKey = undefined; backend.failKey = false; backend.failPublic = false; backend.configReadErrors = 0;
     localStorage.clear();
     host = document.createElement('div'); document.body.append(host); root = createRoot(host);
     await act(async () => root.render(h(AISettingsPanel, { isOpen: true, onClose: () => {} })));
@@ -147,4 +151,27 @@ it('a failed public preference delta survives an external update and retries on 
         await until(() => backend.writes.filter(w => w.account === 'config_ai_settings').length === 3);
         expect(JSON.parse(backend.blob)).toMatchObject({ providers: [{ isEnabled: false }], advancedSettings: { temperature: 0.2 } });
     } finally { errors.mockRestore(); }
+});
+
+it('vault-ready rehydrates the fallback and preserves a pending human edit', async () => {
+    await act(async () => root.unmount());
+    const fallback = getDefaultAISettings();
+    fallback.providers = [{ id: 'p', name: 'Local Fixture', type: 'custom', baseUrl: 'http://127.0.0.1:1',
+        isEnabled: true, isDefault: true, createdAt: new Date(0), updatedAt: new Date(0) }];
+    const vault = getDefaultAISettings();
+    vault.providers = [{ ...fallback.providers[0], name: 'Vault Fixture' }];
+    localStorage.setItem('aeroftp_ai_settings', JSON.stringify(fallback));
+    backend.blob = JSON.stringify(vault);
+    backend.configReadErrors = 1;
+    root = createRoot(host);
+    await act(async () => root.render(h(AISettingsPanel, { isOpen: true, onClose: () => {} })));
+
+    await until(() => host.textContent!.includes('Local Fixture'));
+    expect(host.textContent).not.toContain('Vault Fixture');
+    await act(async () => button('ai.settings.enabled').click());
+    await act(async () => { window.dispatchEvent(new Event('aeroftp-vault-ready')); });
+
+    expect(host.textContent).toContain('Vault Fixture');
+    expect(host.textContent).not.toContain('Local Fixture');
+    expect(button('ai.settings.disabled')).toBeDefined();
 });

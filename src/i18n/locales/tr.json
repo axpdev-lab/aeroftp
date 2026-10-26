@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Taşınabilir mod: bu klasör tüm AeroFTP verilerinizi barındırır",
                 "body": "Her taşınabilir kurulum tamamen bağımsızdır: kayıtlı sunucular, AeroVault, AI sohbetleri ve tercihler hepsi AeroFTP.exe ile aynı dizinde bulunur. v3.7.8 sürümünden itibaren aynı bilgisayardaki iki taşınabilir klasör tamamen bağımsızdır. Bir klasördeki profili silmek artık diğerini etkilemez.",
-                "legacyWarning": "%LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ konumunda önceki paylaşımlı kurulumdan kalan verileri tespit ettik. Bu taşınabilir kurulum tarafından artık kullanılmıyor. İhtiyacınız yoksa manuel olarak kaldırabilirsiniz.",
+                "legacyWarning": "%LOCALAPPDATA%\\com.aeroftp.AeroFTP\\ konumunda önceki paylaşılan bir kurulumdan kalan veriler bulduk. Bu taşınabilir kurulum bu verileri kullanmaz. AeroFTP bu bilgisayarda da kuruluysa (MSI veya kurulum programı), bu klasör kurulu uygulamanın verilerini içerir: klasörü saklayın. Aksi takdirde, ihtiyacınız yoksa elle kaldırabilirsiniz.",
                 "openFolder": "Veri klasörünü aç",
                 "dismiss": "Anladım"
             }
@@ -6064,19 +6064,19 @@
                     "tagline": "Kaynak taraftaki sürümü tarih ve saat içeren bir sonekle kopyalar."
                 },
                 "newer-wins": {
-                    "label": "Yeni olan kazanır",
+                    "label": "Daha yeniyi koru",
                     "tagline": "Değiştirilme zamanı daha yeni olan taraf diğerinin üzerine yazar."
                 },
                 "older-wins": {
-                    "label": "Eski olan kazanır",
+                    "label": "Daha eskiyi koru",
                     "tagline": "Daha eski taraf yeni olanın üzerine yazar (arşivleme amaçlı)."
                 },
                 "larger-wins": {
-                    "label": "Büyük olan kazanır",
+                    "label": "Daha büyüğü koru",
                     "tagline": "Boyutu daha büyük olan taraf küçük olanın üzerine yazar."
                 },
                 "smaller-wins": {
-                    "label": "Küçük olan kazanır",
+                    "label": "Daha küçüğü koru",
                     "tagline": "Daha küçük taraf büyük olanın üzerine yazar."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Güncelle",
-                    "tagline": "Eksik ve daha yeni dosyaları kopyalar. Çakışmaları elle çözebilmeniz için atlar."
+                    "tagline": "Eksik ve daha yeni dosyaları kopyalar. Asla silmez. Hedefteki daha yeni kopyaların üzerine yalnızca seçili çakışma ilkesi diğer kopyayı seçerse yazar."
                 },
                 "bisync": {
                     "name": "İki yönlü eşitleme",
@@ -7058,6 +7058,10 @@
             "runTemplate": "Çalıştır",
             "duplicateName": "{name} adlı bir şablon bu sunucuda zaten var.",
             "templateStored": "Kayıtlı bir şablon komutu doldurulacak boşluklarla saklar, parolayı asla saklamaz."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Klasör hâlâ yükleniyor",
+            "folderBusy": "Açtığınız dosya gösterilmedi: {folder} istendiğinde başka bir klasör hâlâ yükleniyordu. Lütfen dosyayı yeniden açın."
         }
     }
 }

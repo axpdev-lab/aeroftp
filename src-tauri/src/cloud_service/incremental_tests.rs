@@ -27,6 +27,9 @@ struct RemoteState {
     /// The server's clock: each upload is stamped with the next tick.
     clock: i64,
     refuse_rename: bool,
+    unpublished: BTreeSet<String>,
+    readiness_calls: Vec<String>,
+    readiness_fails: bool,
     /// Paths whose `stat` and `exists` fail with a connection error.
     unreadable: BTreeSet<String>,
     floor: Option<Duration>,
@@ -228,9 +231,23 @@ impl StorageProvider for MemRemote {
         }
         Ok(())
     }
+    async fn prepare_file_move(&mut self, path: &str) -> Result<(), ProviderError> {
+        let mut state = self.state();
+        state.readiness_calls.push(path.to_string());
+        if state.readiness_fails {
+            return Err(ProviderError::TransferFailed(
+                "bridge has not published the source".into(),
+            ));
+        }
+        state.unpublished.remove(path);
+        Ok(())
+    }
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let mut state = self.state();
         state.stats.push(path.to_string());
+        if state.unpublished.contains(path) {
+            return Err(not_found(path));
+        }
         if state.unreadable.contains(path) {
             return Err(ProviderError::ConnectionFailed("reset by peer".to_string()));
         }
@@ -1082,6 +1099,74 @@ async fn a_rename_moves_the_remote_copy_instead_of_sending_it_again() {
     }
 }
 
+#[tokio::test]
+async fn filen_bridge_incremental_rename_waits_before_source_stat() {
+    let mut remote = MemRemote::new();
+    remote.put("/remote/fresh.dat", b"ok", SYNCED_AT);
+    remote
+        .state()
+        .unpublished
+        .insert("/remote/fresh.dat".into());
+    let rename = PlannedRename {
+        from: "fresh.dat".into(),
+        to: "renamed.dat".into(),
+        is_dir: false,
+        moved: Vec::new(),
+        fallback: BTreeMap::new(),
+    };
+    let outcome = CloudService::new()
+        .rename_on_remote(&mut remote, "/remote", &rename)
+        .await;
+    assert!(outcome.is_ok(), "{outcome:?}");
+    let state = remote.state();
+    assert_eq!(state.readiness_calls, ["/remote/fresh.dat"]);
+    assert_eq!(
+        state.renames,
+        [("/remote/fresh.dat".into(), "/remote/renamed.dat".into())]
+    );
+    assert!(state.uploads.is_empty() && state.deletes.is_empty());
+}
+
+#[tokio::test]
+async fn filen_bridge_incremental_readiness_error_preserves_source() {
+    let mut remote = MemRemote::new();
+    remote.put("/remote/fresh.dat", b"ok", SYNCED_AT);
+    remote.state().readiness_fails = true;
+    let rename = PlannedRename {
+        from: "fresh.dat".into(),
+        to: "renamed.dat".into(),
+        is_dir: false,
+        moved: Vec::new(),
+        fallback: BTreeMap::new(),
+    };
+    let outcome = CloudService::new()
+        .rename_on_remote(&mut remote, "/remote", &rename)
+        .await;
+    assert!(outcome.unwrap_err().contains("not published"));
+    let state = remote.state();
+    assert!(state.renames.is_empty());
+    assert!(state.files.contains_key("/remote/fresh.dat"));
+}
+
+#[tokio::test]
+async fn filen_bridge_incremental_folder_is_not_probed_as_an_object() {
+    let mut remote = MemRemote::new();
+    remote.state().dirs.insert("/remote/folder".into());
+    remote.state().readiness_fails = true;
+    let rename = PlannedRename {
+        from: "folder".into(),
+        to: "renamed".into(),
+        is_dir: true,
+        moved: Vec::new(),
+        fallback: BTreeMap::new(),
+    };
+    let outcome = CloudService::new()
+        .rename_on_remote(&mut remote, "/remote", &rename)
+        .await;
+    assert!(outcome.is_ok(), "{outcome:?}");
+    assert!(remote.state().readiness_calls.is_empty());
+}
+
 /// A remote that cannot rename gets the full sync's answer: the old copy
 /// deleted, the new one sent.
 #[tokio::test]
@@ -1387,6 +1472,7 @@ async fn a_crypt_overlay_rewrites_the_names_the_pass_reaches() {
         assert!(!from.contains("secret") && !to.contains("renamed"));
         assert_ne!(from, to);
         assert_eq!(state.uploads.len(), 1, "moved, not sent again");
+        assert_eq!(state.readiness_calls.as_slice(), std::slice::from_ref(from));
     }
     let moved = overlay.stat("/remote/docs/renamed.txt").await.unwrap();
     assert_eq!(moved.size, 14);
@@ -1426,6 +1512,21 @@ async fn a_compress_overlay_is_read_by_time_not_by_its_wire_size() {
     )
     .unwrap();
     assert!(settled(&again));
+}
+
+#[tokio::test]
+async fn filen_bridge_move_preparation_crosses_both_overlays() {
+    let remote = MemRemote::new();
+    let mut overlay = CompressOverlayProvider::new(Box::new(rclone_overlay(remote.clone())), 3);
+    overlay
+        .prepare_file_move("/remote/📦-100%.dat")
+        .await
+        .unwrap();
+    let state = remote.state();
+    assert_eq!(state.readiness_calls.len(), 1);
+    let wire = &state.readiness_calls[0];
+    assert!(wire.starts_with("/remote/"));
+    assert!(!wire.contains("📦") && !wire.contains("100%"), "{wire}");
 }
 
 /// The provider's floor is seen through both overlays.
@@ -1591,6 +1692,9 @@ impl StorageProvider for CountingLists {
     }
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         self.inner.rename(from, to).await
+    }
+    async fn prepare_file_move(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.inner.prepare_file_move(path).await
     }
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         self.inner.stat(path).await

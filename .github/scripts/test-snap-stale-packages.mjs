@@ -129,12 +129,20 @@ test('an older package reads as stale', async (t) => {
   assert.match(r.outputs, /^count=1$/m);
 });
 
+test('architecture-qualified packages are compared against the snap architecture', async (t) => {
+  const r = await audit(t, ['bubblewrap:amd64=0.6.1-1ubuntu0.3', 'libssl3:amd64=3.0.2-0ubuntu1.10', 'zlib1g:amd64=1:1.2.11.dfsg-2ubuntu9.2']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /libssl3: snap=3\.0\.2-0ubuntu1\.10 {2}archive=3\.0\.2-0ubuntu1\.18/);
+  assert.match(r.outputs, /^stale=true$/m);
+  assert.match(r.outputs, /^count=1$/m);
+});
+
 // A stale libssl3 written in a shape the reader does not split into a name
 // and a version used to be "not found in the archive" and then "OK": the
 // rebuild was skipped with a stale package in the snap.
 test('a manifest entry not shaped name=version is unverified, not current', async (t) => {
   for (const entry of [
-    'libssl3:amd64=3.0.2-0ubuntu1.10',
+    'libssl3:arm64=3.0.2-0ubuntu1.10',
     'libssl3 3.0.2-0ubuntu1.10',
     'libssl3: 3.0.2-0ubuntu1.10',
     'libssl3==3.0.2-0ubuntu1.10',
@@ -146,6 +154,9 @@ test('a manifest entry not shaped name=version is unverified, not current', asyn
       assert.equal(r.status, 2, r.stdout);
       assert.match(r.stderr, /::error::/);
       assert.ok(r.stderr.includes(entry), r.stderr);
+      if (entry.startsWith('libssl3:arm64=')) {
+        assert.match(r.stderr, /architecture qualifier must match the snap architecture: amd64/);
+      }
       assert.doesNotMatch(r.stdout, /^OK:/m);
       assert.doesNotMatch(r.outputs, /^stale=/m);
     });

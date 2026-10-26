@@ -106,12 +106,19 @@ pub fn remote_parent(path: &str) -> Option<&str> {
 pub fn goes_back_to_single_file(outcome: &BulkTransferOutcome) -> bool {
     match outcome {
         BulkTransferOutcome::NotAttempted(_) => true,
-        BulkTransferOutcome::Failed(error) => {
-            let failure = crate::transfer_multipart::transfer_failure_from_provider(error, None);
-            failure.retryable && transport_is_transient(failure.kind)
-        }
+        BulkTransferOutcome::Failed(error) => error_goes_back_to_single_file(error),
         BulkTransferOutcome::Completed | BulkTransferOutcome::Uncertain(_) => false,
     }
+}
+
+/// [`goes_back_to_single_file`] for an error alone: the answer for an item the
+/// transport failed, and for the whole call when the adapter refuses it. A
+/// refused call put nothing on the wire (see `StorageProvider::upload_bulk`),
+/// so a transient refusal sends every item to the single-file path the way a
+/// transient item goes, and any other refusal stays final.
+pub fn error_goes_back_to_single_file(error: &ProviderError) -> bool {
+    let failure = crate::transfer_multipart::transfer_failure_from_provider(error, None);
+    failure.retryable && transport_is_transient(failure.kind)
 }
 
 fn transport_is_transient(kind: crate::transfer_domain::TransferFailureKind) -> bool {
@@ -211,6 +218,49 @@ mod tests {
         let resolved = absolute_local_path("flat/a.bin").unwrap();
         assert_eq!(std::path::Path::new(&resolved), cwd.join("flat/a.bin"));
         assert_eq!(absolute_local_path(""), None);
+    }
+
+    #[test]
+    fn a_transport_error_goes_back_to_the_single_file_path_and_a_final_one_does_not() {
+        for error in [
+            ProviderError::Timeout,
+            ProviderError::ConnectionLost("peer closed".into()),
+            ProviderError::NetworkError("connection reset by peer".into()),
+            ProviderError::ServerError("503 service unavailable".into()),
+        ] {
+            assert!(error_goes_back_to_single_file(&error), "{error}");
+        }
+        for error in [
+            ProviderError::PermissionDenied("read-only share".into()),
+            ProviderError::AuthenticationFailed("bad token".into()),
+            ProviderError::NotFound("/gone".into()),
+            ProviderError::FileTooLarge("over the cap".into()),
+            ProviderError::Cancelled,
+        ] {
+            assert!(!error_goes_back_to_single_file(&error), "{error}");
+        }
+    }
+
+    /// Callers that only hold the text of a refusal (MCP's backend trait)
+    /// wrap it in `TransferFailed`: the decision must not change.
+    #[test]
+    fn a_refusal_known_by_its_text_is_decided_like_the_typed_one() {
+        for error in [
+            ProviderError::Timeout,
+            ProviderError::ConnectionLost("peer closed".into()),
+            ProviderError::NetworkError("connection reset by peer".into()),
+            ProviderError::ServerError("503 service unavailable".into()),
+            ProviderError::PermissionDenied("read-only share".into()),
+            ProviderError::AuthenticationFailed("bad token".into()),
+            ProviderError::NotFound("/gone".into()),
+        ] {
+            let by_text = ProviderError::TransferFailed(error.to_string());
+            assert_eq!(
+                error_goes_back_to_single_file(&by_text),
+                error_goes_back_to_single_file(&error),
+                "{error}"
+            );
+        }
     }
 
     #[test]

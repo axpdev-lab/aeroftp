@@ -1,0 +1,1033 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
+//! Nextcloud trash purge. The fixture answers a trashbin PROPFIND with the
+//! properties the request actually asked for, plus a 404 propstat that carries
+//! a sentinel file id and original location. A parser that ignores `d:status`
+//! purges the wrong item. A plain WebDAV server is a different origin shape
+//! and must receive no request.
+
+use std::sync::{Arc, Mutex};
+
+use super::*;
+
+#[derive(Clone, Debug)]
+struct DavHit {
+    method: String,
+    path: String,
+    depth: String,
+    body: String,
+}
+
+fn asked(body: &str, needle: &str) -> bool {
+    body.to_ascii_lowercase().contains(needle)
+}
+
+fn xml_prop(request: &str, needle: &str, element: &str, value: &str) -> String {
+    if !asked(request, needle) {
+        return String::new();
+    }
+    format!("<{element}>{value}</{element}>")
+}
+
+fn trash_item(
+    body: &str,
+    href: &str,
+    filename: &str,
+    location: &str,
+    deleted: &str,
+    file_id: &str,
+    dir: bool,
+) -> String {
+    let kind = if dir {
+        "<d:resourcetype><d:collection/></d:resourcetype>"
+    } else if asked(body, "resourcetype") {
+        "<d:resourcetype/>"
+    } else {
+        ""
+    };
+    let found = format!(
+        "{}{}{}{}{}{}",
+        xml_prop(body, "trashbin-filename", "nc:trashbin-filename", filename),
+        xml_prop(
+            body,
+            "trashbin-original-location",
+            "nc:trashbin-original-location",
+            location
+        ),
+        xml_prop(
+            body,
+            "trashbin-deletion-time",
+            "nc:trashbin-deletion-time",
+            deleted
+        ),
+        xml_prop(body, "fileid", "oc:fileid", file_id),
+        xml_prop(body, "getcontentlength", "d:getcontentlength", "4"),
+        kind,
+    );
+    // Sentinel values live only in the 404 propstat. Production leaves that
+    // propstat empty; the sentinel makes a status-blind parser fail the test.
+    let missing = if asked(body, "fileid") || asked(body, "trashbin-original-location") {
+        format!(
+            "<d:propstat><d:prop>{}{}</d:prop><d:status>HTTP/1.1 404 Not Found</d:status></d:propstat>",
+            xml_prop(body, "fileid", "oc:fileid", "999"),
+            xml_prop(body, "trashbin-original-location", "nc:trashbin-original-location", "docs/not-this"),
+        )
+    } else {
+        String::new()
+    };
+    format!(
+        "<d:response><d:href>{href}</d:href>\
+         {missing}\
+         <d:propstat><d:prop>{found}</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>\
+         </d:response>"
+    )
+}
+
+/// One complete generation, then a second response whose end tag does not
+/// match. A parser that keeps the entries it already has would see a unique
+/// match and delete it.
+/// One complete generation and no `</d:multistatus>`. quick-xml reports
+/// `Eof` here, not a reader error. A parser that accepts that `Eof` would
+/// see a unique match and delete it.
+fn cut_trash_xml(body: &str) -> String {
+    let first = trash_item(
+        body,
+        "/remote.php/dav/trashbin/user/trash/a.txt.d1700000001",
+        "a.txt",
+        "docs/a.txt",
+        "1700000001",
+        "42",
+        false,
+    );
+    format!(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\
+         <d:multistatus xmlns:d=\"DAV:\" xmlns:nc=\"http://nextcloud.org/ns\">\
+         {first}"
+    )
+}
+
+/// The one generation a path-only purge would delete, in a finished document.
+fn one_generation_trash(body: &str) -> String {
+    let first = trash_item(
+        body,
+        "/remote.php/dav/trashbin/user/trash/a.txt.d1700000001",
+        "a.txt",
+        "docs/a.txt",
+        "1700000001",
+        "42",
+        false,
+    );
+    format!(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\
+         <d:multistatus xmlns:d=\"DAV:\" xmlns:nc=\"http://nextcloud.org/ns\">\
+         {first}</d:multistatus>"
+    )
+}
+
+fn empty_multistatus() -> String {
+    "<?xml version=\"1.0\" encoding=\"utf-8\"?>\
+     <d:multistatus xmlns:d=\"DAV:\" xmlns:nc=\"http://nextcloud.org/ns\"></d:multistatus>"
+        .to_string()
+}
+
+fn broken_trash_xml(body: &str) -> String {
+    let first = trash_item(
+        body,
+        "/remote.php/dav/trashbin/user/trash/a.txt.d1700000001",
+        "a.txt",
+        "docs/a.txt",
+        "1700000001",
+        "42",
+        false,
+    );
+    format!(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\
+         <d:multistatus xmlns:d=\"DAV:\" xmlns:nc=\"http://nextcloud.org/ns\">\
+         {first}\
+         <d:response><d:href>/remote.php/dav/trashbin/user/trash/a.txt.d1700000002</d:href>\
+         <d:propstat><d:prop><nc:trashbin-original-location>docs/a.txt</nc:trashbin-original-location></d:not-a-prop>\
+         </d:multistatus>"
+    )
+}
+
+fn trash_xml(body: &str) -> String {
+    let root = "<d:response><d:href>/remote.php/dav/trashbin/user/trash/</d:href>\
+        <d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop>\
+        <d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>";
+    let items = [
+        trash_item(body, "/remote.php/dav/trashbin/user/trash/a.txt.d1700000001", "a.txt", "docs/a.txt", "1700000001", "42", false),
+        trash_item(body, "/remote.php/dav/trashbin/user/trash/a.txt.d1700000002", "a.txt", "docs/a.txt", "1700000002", "99", false),
+        trash_item(
+            body,
+            "/remote.php/dav/trashbin/user/trash/%CF%84%CE%B5%CE%BB%CE%B9%CE%BA%CF%8C%CF%82.txt.d1700000003",
+            "τελικός.txt",
+            "docs/τελικός.txt",
+            "1700000003",
+            "7",
+            false,
+        ),
+        trash_item(body, "/remote.php/dav/trashbin/user/trash/File.txt.d1700000004", "File.txt", "docs/File.txt", "1700000004", "8", false),
+        trash_item(body, "/remote.php/dav/trashbin/user/trash/run.d1700000005", "run", "docs/run", "1700000005", "11", true),
+        trash_item(
+            body,
+            "/remote.php/dav/trashbin/user/trash/Stra%C3%9Fe.txt.d1700000006",
+            "Straße.txt",
+            "docs/Straße.txt",
+            "1700000006",
+            "15",
+            false,
+        ),
+        trash_item(body, "/remote.php/dav/trashbin/user/trash/other.txt.d1700000007", "other.txt", "docs/other.txt", "1700000007", "12", false),
+        // `bench/x` is the decoy a caller-path key purges. The real row is
+        // `Sub/bench/x`, the path under the files root.
+        trash_item(body, "/remote.php/dav/trashbin/user/trash/sub.bench.x.d1700000011", "x", "Sub/bench/x", "1700000011", "77", false),
+        trash_item(body, "/remote.php/dav/trashbin/user/trash/root.bench.x.d1700000012", "x", "bench/x", "1700000012", "78", false),
+        trash_item(
+            body,
+            "/remote.php/dav/trashbin/user/trash/rooted.bench.x.d1700000013",
+            "x",
+            "remote.php/dav/files/user/bench/x",
+            "1700000013",
+            "79",
+            false,
+        ),
+        trash_item(body, "/remote.php/dav/trashbin/user/trash/legacy.x.d1700000014", "x", "legacy/x", "1700000014", "81", false),
+        trash_item(
+            body,
+            "/remote.php/dav/trashbin/user/trash/legacy.rooted.d1700000015",
+            "x",
+            "remote.php/webdav/legacy/x",
+            "1700000015",
+            "82",
+            false,
+        ),
+        // Decoded trash text: space, a literal `%`, and a non-ASCII letter.
+        // The decoy is the caller path with the folder prefix dropped.
+        trash_item(body, "/remote.php/dav/trashbin/user/trash/special.n.d1700000016", "n.txt", "a b%λ/n.txt", "1700000016", "80", false),
+        trash_item(body, "/remote.php/dav/trashbin/user/trash/root.n.d1700000017", "n.txt", "n.txt", "1700000017", "83", false),
+    ];
+    format!(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\
+         <d:multistatus xmlns:d=\"DAV:\" xmlns:oc=\"http://owncloud.org/ns\" xmlns:nc=\"http://nextcloud.org/ns\">\
+         {root}{}</d:multistatus>",
+        items.join("")
+    )
+}
+
+fn live_file(body: &str, href: &str, file_id: &str) -> String {
+    let id = xml_prop(body, "fileid", "oc:fileid", file_id);
+    let decoy = if asked(body, "fileid") {
+        "<d:propstat><d:prop><oc:fileid>999</oc:fileid></d:prop><d:status>HTTP/1.1 404 Not Found</d:status></d:propstat>"
+    } else {
+        ""
+    };
+    format!(
+        "<d:response><d:href>{href}</d:href>\
+         {decoy}\
+         <d:propstat><d:prop>{id}</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>\
+         </d:response>"
+    )
+}
+
+fn live_xml(body: &str, path: &str) -> String {
+    let one = |href: &str, id: &str| live_file(body, href, id);
+    let inner = if path.contains("a.txt") {
+        one("/remote.php/dav/files/user/docs/a.txt", "42")
+    } else if path.contains("%CF%84") || path.contains("τελικός") {
+        one(
+            "/remote.php/dav/files/user/docs/%CF%84%CE%B5%CE%BB%CE%B9%CE%BA%CF%8C%CF%82.txt",
+            "7",
+        )
+    } else if path.contains("bench") {
+        one(&format!("{}/x", path.trim_end_matches('/')), "77")
+    } else if path.contains("%20") || path.contains("%25") {
+        one(&format!("{}/n.txt", path.trim_end_matches('/')), "80")
+    } else {
+        format!(
+            "<d:response><d:href>/remote.php/dav/files/user/docs/</d:href>\
+             <d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop>\
+             <d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>{}{}{}",
+            one("/remote.php/dav/files/user/docs/a.txt", "42"),
+            one(
+                "/remote.php/dav/files/user/docs/%CF%84%CE%B5%CE%BB%CE%B9%CE%BA%CF%8C%CF%82.txt",
+                "7",
+            ),
+            one("/remote.php/dav/files/user/docs/run", "11"),
+        )
+    };
+    format!(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\
+         <d:multistatus xmlns:d=\"DAV:\" xmlns:oc=\"http://owncloud.org/ns\">{inner}</d:multistatus>"
+    )
+}
+
+/// The collection response is finished. The document is not: there is no
+/// `</d:multistatus>`, and the file response was never sent.
+fn cut_file_id_xml() -> String {
+    "<?xml version=\"1.0\" encoding=\"utf-8\"?>\
+     <d:multistatus xmlns:d=\"DAV:\" xmlns:oc=\"http://owncloud.org/ns\">\
+     <d:response><d:href>/remote.php/dav/files/user/docs/</d:href>\
+     <d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop>\
+     <d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
+        .to_string()
+}
+
+fn trash_document(body: &str, items: &[(&str, &str, &str, &str)]) -> String {
+    let inner: String = items
+        .iter()
+        .map(|(href, filename, location, file_id)| {
+            trash_item(body, href, filename, location, "1700000001", file_id, false)
+        })
+        .collect();
+    format!(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\
+         <d:multistatus xmlns:d=\"DAV:\" xmlns:nc=\"http://nextcloud.org/ns\">\
+         {inner}</d:multistatus>"
+    )
+}
+
+fn trailing_space_only_trash(body: &str) -> String {
+    trash_document(
+        body,
+        &[(
+            "/remote.php/dav/trashbin/user/trash/trail.d1700000002",
+            "a.txt ",
+            "docs/a.txt ",
+            "43",
+        )],
+    )
+}
+
+fn plain_and_trailing_space_trash(body: &str) -> String {
+    trash_document(
+        body,
+        &[
+            (
+                "/remote.php/dav/trashbin/user/trash/plain.d1700000001",
+                "a.txt",
+                "docs/a.txt",
+                "42",
+            ),
+            (
+                "/remote.php/dav/trashbin/user/trash/trail.d1700000002",
+                "a.txt ",
+                "docs/a.txt ",
+                "43",
+            ),
+        ],
+    )
+}
+
+fn leading_space_only_trash(body: &str) -> String {
+    trash_document(
+        body,
+        &[(
+            "/remote.php/dav/trashbin/user/trash/lead.d1700000003",
+            " a.txt",
+            " a.txt",
+            "44",
+        )],
+    )
+}
+
+fn plain_and_leading_space_trash(body: &str) -> String {
+    trash_document(
+        body,
+        &[
+            (
+                "/remote.php/dav/trashbin/user/trash/plain.d1700000004",
+                "a.txt",
+                "a.txt",
+                "42",
+            ),
+            (
+                "/remote.php/dav/trashbin/user/trash/lead.d1700000003",
+                " a.txt",
+                " a.txt",
+                "44",
+            ),
+        ],
+    )
+}
+
+fn spaced_leaf_xml(body: &str) -> String {
+    let inner = live_file(body, "/remote.php/dav/files/user/docs/a.txt ", "43");
+    format!(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\
+         <d:multistatus xmlns:d=\"DAV:\" xmlns:oc=\"http://owncloud.org/ns\">{inner}</d:multistatus>"
+    )
+}
+
+fn two_file_id_xml(body: &str) -> String {
+    let inner = format!(
+        "{}{}",
+        live_file(body, "/remote.php/dav/files/user/docs/a.txt", "42"),
+        live_file(body, "/remote.php/dav/files/user/docs/b.txt", "11"),
+    );
+    format!(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\
+         <d:multistatus xmlns:d=\"DAV:\" xmlns:oc=\"http://owncloud.org/ns\">{inner}</d:multistatus>"
+    )
+}
+
+#[derive(Clone, Copy)]
+enum Listing {
+    Normal,
+    BrokenTrash,
+    /// Trash PROPFIND ends after one complete response.
+    CutTrash,
+    /// File-id PROPFIND ends after the collection response. Trash has one
+    /// generation, so a path-only purge would delete it.
+    CutFileIds,
+    EmptyTrash,
+    EmptyFileIds,
+    TwoFileIds,
+    /// Trash holds only `docs/a.txt ` (trailing space).
+    TrailingSpaceOnly,
+    /// Trash holds `docs/a.txt` and `docs/a.txt `.
+    PlainAndTrailingSpace,
+    /// Trash holds only ` a.txt` (leading space).
+    LeadingSpaceOnly,
+    /// Trash holds `a.txt` and ` a.txt`.
+    PlainAndLeadingSpace,
+    /// The live leaf is `a.txt `, not `a.txt`.
+    SpacedLeaf,
+}
+
+async fn serve(fail_propfind: bool, stall_propfind: bool) -> (String, Arc<Mutex<Vec<DavHit>>>) {
+    serve_fixture(fail_propfind, stall_propfind, Listing::Normal).await
+}
+
+async fn serve_fixture(
+    fail_propfind: bool,
+    stall_propfind: bool,
+    listing: Listing,
+) -> (String, Arc<Mutex<Vec<DavHit>>>) {
+    let hits = Arc::new(Mutex::new(Vec::new()));
+    let seen = Arc::clone(&hits);
+    let app =
+        axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+            let seen = Arc::clone(&seen);
+            async move {
+                let method = req.method().as_str().to_string();
+                let path = req.uri().path().to_string();
+                let depth = req
+                    .headers()
+                    .get("depth")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("")
+                    .to_string();
+                let bytes = axum::body::to_bytes(req.into_body(), 64 * 1024)
+                    .await
+                    .unwrap_or_default();
+                let body = String::from_utf8_lossy(&bytes).to_string();
+                seen.lock().unwrap().push(DavHit {
+                    method: method.clone(),
+                    path: path.clone(),
+                    depth,
+                    body: body.clone(),
+                });
+                if method == "PROPFIND" && stall_propfind {
+                    std::future::pending::<()>().await;
+                }
+                if method == "PROPFIND" && fail_propfind {
+                    return axum::response::Response::builder()
+                        .status(500)
+                        .body(axum::body::Body::from("propfind failed"))
+                        .unwrap();
+                }
+                if method == "DELETE" {
+                    return axum::response::Response::builder()
+                        .status(204)
+                        .body(axum::body::Body::empty())
+                        .unwrap();
+                }
+                if method == "PROPFIND" {
+                    let xml = if path.contains("/trashbin/") {
+                        match listing {
+                            Listing::BrokenTrash => broken_trash_xml(&body),
+                            Listing::CutTrash => cut_trash_xml(&body),
+                            Listing::EmptyTrash => empty_multistatus(),
+                            Listing::CutFileIds => one_generation_trash(&body),
+                            Listing::TrailingSpaceOnly => trailing_space_only_trash(&body),
+                            Listing::PlainAndTrailingSpace => plain_and_trailing_space_trash(&body),
+                            Listing::LeadingSpaceOnly => leading_space_only_trash(&body),
+                            Listing::PlainAndLeadingSpace => plain_and_leading_space_trash(&body),
+                            _ => trash_xml(&body),
+                        }
+                    } else {
+                        match listing {
+                            Listing::CutFileIds => cut_file_id_xml(),
+                            Listing::EmptyFileIds => empty_multistatus(),
+                            Listing::TwoFileIds => two_file_id_xml(&body),
+                            Listing::SpacedLeaf => spaced_leaf_xml(&body),
+                            _ => live_xml(&body, &path),
+                        }
+                    };
+                    return axum::response::Response::builder()
+                        .status(207)
+                        .header("content-type", "application/xml; charset=utf-8")
+                        .body(axum::body::Body::from(xml))
+                        .unwrap();
+                }
+                axum::response::Response::builder()
+                    .status(405)
+                    .body(axum::body::Body::empty())
+                    .unwrap()
+            }
+        }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+    (format!("http://{addr}"), hits)
+}
+
+fn webdav_config(url: &str, provider_id: Option<&str>) -> WebDavConfig {
+    WebDavConfig {
+        url: url.to_string(),
+        username: "user".to_string(),
+        password: secrecy::SecretString::from("pass".to_string()),
+        initial_path: None,
+        provider_id: provider_id.map(str::to_string),
+        verify_cert: true,
+        anonymous: false,
+    }
+}
+
+fn nextcloud_at(base: &str) -> WebDavProvider {
+    let mut provider = WebDavProvider::new(webdav_config(
+        &format!("{base}/remote.php/dav/files/user/"),
+        Some("nextcloud"),
+    ))
+    .unwrap();
+    provider.connected = true;
+    provider
+}
+
+fn plain_at(base: &str) -> WebDavProvider {
+    let mut provider = WebDavProvider::new(webdav_config(&format!("{base}/dav/"), None)).unwrap();
+    provider.connected = true;
+    provider
+}
+
+fn koofr_at(base: &str) -> WebDavProvider {
+    let mut provider =
+        WebDavProvider::new(webdav_config(&format!("{base}/dav/Koofr"), Some("koofr"))).unwrap();
+    provider.connected = true;
+    provider
+}
+
+fn deletes(hits: &[DavHit]) -> Vec<String> {
+    hits.iter()
+        .filter(|hit| hit.method == "DELETE")
+        .map(|hit| hit.path.clone())
+        .collect()
+}
+
+fn decoded_delete_ids(paths: &[String]) -> Vec<String> {
+    paths
+        .iter()
+        .map(|path| {
+            let leaf = path.rsplit('/').find(|part| !part.is_empty()).unwrap_or("");
+            percent_encoding::percent_decode_str(leaf)
+                .decode_utf8_lossy()
+                .into_owned()
+        })
+        .collect()
+}
+
+fn assert_not_the_trash_root(paths: &[String]) {
+    for path in paths {
+        let trimmed = path.trim_end_matches('/');
+        assert_ne!(
+            trimmed, "/remote.php/dav/trashbin/user/trash",
+            "purge must not empty the trashbin: {path}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn nextcloud_purge_deletes_the_one_trash_item_for_that_path() {
+    let (base, hits) = serve(false, false).await;
+    let mut provider = nextcloud_at(&base);
+    let purged = provider.delete_permanent("/docs/run/").await;
+    let seen = hits.lock().unwrap().clone();
+    let gone = deletes(&seen);
+    assert!(matches!(purged, Ok(true)), "{purged:?}");
+    assert_eq!(
+        decoded_delete_ids(&gone),
+        vec!["run.d1700000005".to_string()]
+    );
+    assert_not_the_trash_root(&gone);
+    let listing = seen
+        .iter()
+        .find(|hit| hit.method == "PROPFIND" && hit.path.contains("/trashbin/"))
+        .expect("trash PROPFIND");
+    assert_eq!(listing.depth, "1");
+    assert!(asked(&listing.body, "fileid"));
+    assert!(asked(&listing.body, "trashbin-original-location"));
+    assert!(asked(&listing.body, "trashbin-filename"));
+    assert!(asked(&listing.body, "trashbin-deletion-time"));
+}
+
+#[tokio::test]
+async fn nextcloud_purge_refuses_two_entries_with_the_same_location() {
+    let (base, hits) = serve(false, false).await;
+    let mut provider = nextcloud_at(&base);
+    let purged = provider.delete_permanent("/docs/a.txt").await;
+    let message = purged.expect_err("two generations of one path").to_string();
+    assert!(message.contains("Not purged"), "{message}");
+    assert!(message.contains('2'), "{message}");
+    let gone = deletes(&hits.lock().unwrap());
+    assert!(gone.is_empty(), "{gone:?}");
+}
+
+#[tokio::test]
+async fn nextcloud_purge_with_captured_file_id_deletes_only_that_generation() {
+    let (base, hits) = serve(false, false).await;
+    let mut provider = nextcloud_at(&base);
+    let captured = provider
+        .capture_trash_identities(&["/docs/a.txt".to_string()])
+        .await;
+    assert_eq!(captured.len(), 1);
+    let file_id = captured[0].as_ref().expect("capture").as_deref();
+    assert_eq!(file_id, Some("42"));
+    let purged = provider
+        .delete_permanent_with_identity("/docs/a.txt", file_id)
+        .await;
+    let seen = hits.lock().unwrap().clone();
+    let gone = deletes(&seen);
+    assert!(matches!(purged, Ok(true)), "{purged:?}");
+    assert_eq!(
+        decoded_delete_ids(&gone),
+        vec!["a.txt.d1700000001".to_string()]
+    );
+    assert_not_the_trash_root(&gone);
+    let live = seen
+        .iter()
+        .find(|hit| hit.method == "PROPFIND" && hit.path.contains("/files/"))
+        .expect("live PROPFIND");
+    assert!(
+        asked(&live.body, "fileid"),
+        "the live request must ask for oc:fileid"
+    );
+    assert!(!live.path.contains("/trashbin/"));
+}
+
+#[tokio::test]
+async fn nextcloud_purge_keeps_exact_unicode_and_does_not_casefold() {
+    let (base, hits) = serve(false, false).await;
+    let mut provider = nextcloud_at(&base);
+    assert_eq!(
+        provider.delete_permanent("/docs/τελικός.txt").await.ok(),
+        Some(true)
+    );
+    assert_eq!(
+        provider.delete_permanent("/docs/file.txt").await.ok(),
+        Some(false),
+        "File.txt is a different name"
+    );
+    assert_eq!(
+        provider.delete_permanent("/docs/Strasse.txt").await.ok(),
+        Some(false),
+        "Strasse is not Straße"
+    );
+    assert_eq!(
+        provider.delete_permanent("/docs/Straße.txt").await.ok(),
+        Some(true)
+    );
+    let gone = deletes(&hits.lock().unwrap());
+    assert_eq!(
+        decoded_delete_ids(&gone),
+        vec![
+            "τελικός.txt.d1700000003".to_string(),
+            "Straße.txt.d1700000006".to_string(),
+        ]
+    );
+    assert_not_the_trash_root(&gone);
+}
+
+#[tokio::test]
+async fn nextcloud_purge_of_the_root_sends_nothing() {
+    let (base, hits) = serve(false, false).await;
+    let mut provider = nextcloud_at(&base);
+    assert_eq!(provider.delete_permanent("/").await.ok(), Some(false));
+    assert_eq!(provider.delete_permanent("").await.ok(), Some(false));
+    assert!(deletes(&hits.lock().unwrap()).is_empty());
+}
+
+#[tokio::test]
+async fn nextcloud_purge_does_not_delete_when_the_listing_fails() {
+    let (base, hits) = serve(true, false).await;
+    let mut provider = nextcloud_at(&base);
+    let purged = provider.delete_permanent("/docs/run").await;
+    assert!(purged.is_err(), "{purged:?}");
+    assert!(deletes(&hits.lock().unwrap()).is_empty());
+}
+
+#[tokio::test]
+async fn nextcloud_identity_for_another_location_is_not_deleted() {
+    let (base, hits) = serve(false, false).await;
+    let mut provider = nextcloud_at(&base);
+    let purged = provider
+        .delete_permanent_with_identity("/docs/a.txt", Some("12"))
+        .await;
+    assert!(matches!(purged, Ok(false)), "{purged:?}");
+    assert!(deletes(&hits.lock().unwrap()).is_empty());
+}
+
+#[tokio::test]
+async fn plain_webdav_purge_sends_nothing() {
+    let (base, hits) = serve(false, false).await;
+    let mut provider = plain_at(&base);
+    assert_eq!(
+        provider.delete_permanent("/docs/a.txt").await.ok(),
+        Some(false)
+    );
+    assert_eq!(
+        provider
+            .delete_permanent_with_identity("/docs/a.txt", Some("42"))
+            .await
+            .ok(),
+        Some(false)
+    );
+    let captured = provider
+        .capture_trash_identities(&["/docs/a.txt".to_string()])
+        .await;
+    assert_eq!(captured.len(), 1);
+    assert_eq!(captured[0].as_ref().ok().and_then(|id| id.as_deref()), None);
+    assert!(
+        hits.lock().unwrap().is_empty(),
+        "{:?}",
+        hits.lock().unwrap()
+    );
+}
+
+fn assert_one_delete(hits: &[DavHit], id: &str) {
+    let gone = deletes(hits);
+    assert_eq!(decoded_delete_ids(&gone), vec![id.to_string()], "{gone:?}");
+    assert_not_the_trash_root(&gone);
+}
+
+/// Profile URL at the files root, `initial_path` `/Sub`. Connect stores that
+/// folder as `server_root`, so `/bench/x` is really `Sub/bench/x` on disk.
+#[tokio::test]
+async fn nextcloud_purge_uses_files_root_under_initial_subfolder() {
+    let (base, hits) = serve(false, false).await;
+    let mut provider = nextcloud_at(&base);
+    provider.config.initial_path = Some("/Sub".to_string());
+    provider.server_root = Some("/Sub".to_string());
+    let captured = provider
+        .capture_trash_identities(&["/bench/x".to_string()])
+        .await;
+    assert_eq!(
+        captured[0].as_ref().expect("capture").as_deref(),
+        Some("77")
+    );
+    let purged = provider.delete_permanent("/bench/x").await;
+    let seen = hits.lock().unwrap().clone();
+    assert!(matches!(purged, Ok(true)), "{purged:?}");
+    assert_one_delete(&seen, "sub.bench.x.d1700000011");
+    let live = seen
+        .iter()
+        .find(|hit| hit.method == "PROPFIND" && hit.path.contains("/files/"))
+        .expect("live PROPFIND");
+    assert!(
+        live.path.contains("/Sub/bench"),
+        "capture must list the subfolder the delete hits: {}",
+        live.path
+    );
+}
+
+/// The configured URL itself is already below the files root.
+#[tokio::test]
+async fn nextcloud_purge_uses_files_root_when_the_url_is_a_subfolder() {
+    let (base, hits) = serve(false, false).await;
+    let mut provider = WebDavProvider::new(webdav_config(
+        &format!("{base}/remote.php/dav/files/user/Sub/"),
+        Some("nextcloud"),
+    ))
+    .unwrap();
+    provider.connected = true;
+    let captured = provider
+        .capture_trash_identities(&["/bench/x".to_string()])
+        .await;
+    assert_eq!(
+        captured[0].as_ref().expect("capture").as_deref(),
+        Some("77")
+    );
+    let purged = provider
+        .delete_permanent_with_identity("/bench/x", Some("77"))
+        .await;
+    let seen = hits.lock().unwrap().clone();
+    assert!(matches!(purged, Ok(true)), "{purged:?}");
+    assert_one_delete(&seen, "sub.bench.x.d1700000011");
+    let live = seen
+        .iter()
+        .find(|hit| hit.method == "PROPFIND" && !hit.path.contains("/trashbin/"))
+        .expect("live PROPFIND");
+    assert!(live.path.contains("/Sub/bench"), "{}", live.path);
+}
+
+/// Bare host. Connect stored the detected files root, and the caller path is
+/// the rooted path a listing returns.
+#[tokio::test]
+async fn nextcloud_purge_uses_files_root_for_a_rooted_path_on_a_bare_host() {
+    let (base, hits) = serve(false, false).await;
+    let mut provider = WebDavProvider::new(webdav_config(&base, Some("nextcloud"))).unwrap();
+    provider.connected = true;
+    provider.server_root = Some("/remote.php/dav/files/user/".to_string());
+    let path = "/remote.php/dav/files/user/bench/x";
+    let captured = provider.capture_trash_identities(&[path.to_string()]).await;
+    assert_eq!(
+        captured[0].as_ref().expect("capture").as_deref(),
+        Some("77")
+    );
+    let purged = provider.delete_permanent(path).await;
+    let seen = hits.lock().unwrap().clone();
+    assert!(matches!(purged, Ok(true)), "{purged:?}");
+    assert_one_delete(&seen, "root.bench.x.d1700000012");
+    let live = seen
+        .iter()
+        .find(|hit| hit.method == "PROPFIND" && hit.path.contains("/files/"))
+        .expect("live PROPFIND");
+    assert!(live.path.contains("/files/user/bench"), "{}", live.path);
+    assert!(!live.path.contains("/Sub/"), "{}", live.path);
+}
+
+/// Legacy detection stores `server_root` as `/remote.php/webdav/`.
+#[tokio::test]
+async fn nextcloud_purge_uses_files_root_for_legacy_webdav() {
+    let (base, hits) = serve(false, false).await;
+    let mut provider = WebDavProvider::new(webdav_config(&base, Some("nextcloud"))).unwrap();
+    provider.connected = true;
+    provider.server_root = Some("/remote.php/webdav/".to_string());
+    let purged = provider
+        .delete_permanent("/remote.php/webdav/legacy/x")
+        .await;
+    let seen = hits.lock().unwrap().clone();
+    assert!(matches!(purged, Ok(true)), "{purged:?}");
+    assert_one_delete(&seen, "legacy.x.d1700000014");
+}
+
+/// The folder name is `a b%λ`: a space, a literal percent, and a non-ASCII
+/// letter. The trash text is that decoded name. The URL encodes it.
+#[tokio::test]
+async fn nextcloud_purge_uses_files_root_for_a_decoded_folder_name() {
+    let (base, hits) = serve(false, false).await;
+    let mut provider = nextcloud_at(&base);
+    provider.server_root = Some("/a b%λ".to_string());
+    let captured = provider
+        .capture_trash_identities(&["/n.txt".to_string()])
+        .await;
+    assert_eq!(
+        captured[0].as_ref().expect("capture").as_deref(),
+        Some("80")
+    );
+    let purged = provider.delete_permanent("/n.txt").await;
+    let seen = hits.lock().unwrap().clone();
+    assert!(matches!(purged, Ok(true)), "{purged:?}");
+    assert_one_delete(&seen, "special.n.d1700000016");
+    let live = seen
+        .iter()
+        .find(|hit| hit.method == "PROPFIND" && !hit.path.contains("/trashbin/"))
+        .expect("live PROPFIND");
+    assert!(live.path.contains("%20"), "{}", live.path);
+    assert!(live.path.contains("%25"), "{}", live.path);
+}
+
+/// The listing breaks after the first generation of `docs/a.txt`. The second
+/// generation is in the broken tail. A partial list must not be purged.
+#[tokio::test]
+async fn nextcloud_purge_refuses_a_trash_listing_that_breaks_after_the_first_entry() {
+    let (base, hits) = serve_fixture(false, false, Listing::BrokenTrash).await;
+    let mut provider = nextcloud_at(&base);
+    let purged = provider.delete_permanent("/docs/a.txt").await;
+    assert!(purged.is_err(), "{purged:?}");
+    assert!(
+        deletes(&hits.lock().unwrap()).is_empty(),
+        "{:?}",
+        hits.lock().unwrap()
+    );
+}
+
+/// The trash body is cut after the first complete response, with no
+/// `</d:multistatus>`. That is not a finished listing, and nothing is deleted.
+#[tokio::test]
+async fn nextcloud_purge_refuses_a_trash_listing_cut_after_the_first_response() {
+    let (base, hits) = serve_fixture(false, false, Listing::CutTrash).await;
+    let mut provider = nextcloud_at(&base);
+    let purged = provider.delete_permanent("/docs/a.txt").await;
+    assert!(purged.is_err(), "{purged:?}");
+    assert!(
+        deletes(&hits.lock().unwrap()).is_empty(),
+        "{:?}",
+        hits.lock().unwrap()
+    );
+}
+
+/// The file-id body is cut after the collection response. Capture must fail,
+/// and that failure must not fall through to a path-only purge.
+#[tokio::test]
+async fn nextcloud_purge_refuses_a_file_id_listing_cut_before_the_document_ends() {
+    let (base, hits) = serve_fixture(false, false, Listing::CutFileIds).await;
+    let mut provider = nextcloud_at(&base);
+    let captured = provider
+        .capture_trash_identities(&["/docs/a.txt".to_string()])
+        .await;
+    if let Some(Ok(identity)) = captured.first() {
+        let _ = provider
+            .delete_permanent_with_identity("/docs/a.txt", identity.as_deref())
+            .await;
+    }
+    assert!(
+        deletes(&hits.lock().unwrap()).is_empty(),
+        "captured={captured:?} hits={:?}",
+        hits.lock().unwrap()
+    );
+    assert!(
+        captured.first().is_some_and(|result| result.is_err()),
+        "{captured:?}"
+    );
+}
+
+/// A finished multistatus with no responses is an empty trash, not a parse error.
+#[tokio::test]
+async fn nextcloud_purge_accepts_a_complete_empty_trash_listing() {
+    let (base, hits) = serve_fixture(false, false, Listing::EmptyTrash).await;
+    let mut provider = nextcloud_at(&base);
+    let purged = provider.delete_permanent("/docs/a.txt").await;
+    assert!(matches!(purged, Ok(false)), "{purged:?}");
+    assert!(
+        deletes(&hits.lock().unwrap()).is_empty(),
+        "{:?}",
+        hits.lock().unwrap()
+    );
+}
+
+/// A finished file-id document with no responses is `Ok(None)`, not an error.
+#[tokio::test]
+async fn nextcloud_purge_capture_keeps_a_complete_empty_file_id_listing() {
+    let (base, hits) = serve_fixture(false, false, Listing::EmptyFileIds).await;
+    let mut provider = nextcloud_at(&base);
+    let captured = provider
+        .capture_trash_identities(&["/docs/a.txt".to_string()])
+        .await;
+    assert!(matches!(captured.first(), Some(Ok(None))), "{captured:?}");
+    assert!(
+        deletes(&hits.lock().unwrap()).is_empty(),
+        "{:?}",
+        hits.lock().unwrap()
+    );
+}
+
+/// Two finished file responses still yield both ids.
+#[tokio::test]
+async fn nextcloud_purge_capture_keeps_two_files_in_a_complete_listing() {
+    let (base, _hits) = serve_fixture(false, false, Listing::TwoFileIds).await;
+    let mut provider = nextcloud_at(&base);
+    let captured = provider
+        .capture_trash_identities(&["/docs/a.txt".to_string(), "/docs/b.txt".to_string()])
+        .await;
+    assert_eq!(
+        captured
+            .first()
+            .and_then(|result| result.as_ref().ok())
+            .and_then(|id| id.as_deref()),
+        Some("42"),
+        "{captured:?}"
+    );
+    assert_eq!(
+        captured
+            .get(1)
+            .and_then(|result| result.as_ref().ok())
+            .and_then(|id| id.as_deref()),
+        Some("11"),
+        "{captured:?}"
+    );
+}
+
+/// `docs/a.txt ` is a different name. Purging `docs/a.txt` must not delete it.
+#[tokio::test]
+async fn nextcloud_purge_leaves_a_trailing_space_name_when_the_plain_path_is_deleted() {
+    let (base, hits) = serve_fixture(false, false, Listing::TrailingSpaceOnly).await;
+    let mut provider = nextcloud_at(&base);
+    let purged = provider.delete_permanent("/docs/a.txt").await;
+    assert!(matches!(purged, Ok(false)), "{purged:?}");
+    assert!(
+        deletes(&hits.lock().unwrap()).is_empty(),
+        "{:?}",
+        hits.lock().unwrap()
+    );
+}
+
+/// Both names are in the trash. The plain path deletes only the plain item.
+#[tokio::test]
+async fn nextcloud_purge_of_the_plain_path_deletes_only_the_exact_name_not_the_trailing_space() {
+    let (base, hits) = serve_fixture(false, false, Listing::PlainAndTrailingSpace).await;
+    let mut provider = nextcloud_at(&base);
+    let purged = provider.delete_permanent("/docs/a.txt").await;
+    assert!(matches!(purged, Ok(true)), "{purged:?}");
+    assert_eq!(
+        decoded_delete_ids(&deletes(&hits.lock().unwrap())),
+        vec!["plain.d1700000001".to_string()]
+    );
+}
+
+/// ` a.txt` is a different name. Purging `a.txt` must not delete it.
+#[tokio::test]
+async fn nextcloud_purge_leaves_a_leading_space_name_when_the_plain_path_is_deleted() {
+    let (base, hits) = serve_fixture(false, false, Listing::LeadingSpaceOnly).await;
+    let mut provider = nextcloud_at(&base);
+    let purged = provider.delete_permanent("/a.txt").await;
+    assert!(matches!(purged, Ok(false)), "{purged:?}");
+    assert!(
+        deletes(&hits.lock().unwrap()).is_empty(),
+        "{:?}",
+        hits.lock().unwrap()
+    );
+}
+
+/// Both names are in the trash. The plain path deletes only the plain item.
+#[tokio::test]
+async fn nextcloud_purge_of_the_plain_path_deletes_only_the_exact_name_not_the_leading_space() {
+    let (base, hits) = serve_fixture(false, false, Listing::PlainAndLeadingSpace).await;
+    let mut provider = nextcloud_at(&base);
+    let purged = provider.delete_permanent("/a.txt").await;
+    assert!(matches!(purged, Ok(true)), "{purged:?}");
+    assert_eq!(
+        decoded_delete_ids(&deletes(&hits.lock().unwrap())),
+        vec!["plain.d1700000004".to_string()]
+    );
+}
+
+/// A live href whose leaf is `a.txt ` is not the file `a.txt`.
+#[tokio::test]
+async fn nextcloud_purge_capture_does_not_treat_a_spaced_leaf_as_the_plain_name() {
+    let (base, _hits) = serve_fixture(false, false, Listing::SpacedLeaf).await;
+    let mut provider = nextcloud_at(&base);
+    let captured = provider
+        .capture_trash_identities(&["/docs/a.txt".to_string()])
+        .await;
+    assert!(matches!(captured.first(), Some(Ok(None))), "{captured:?}");
+    let spaced = provider
+        .capture_trash_identities(&["/docs/a.txt ".to_string()])
+        .await;
+    assert!(
+        matches!(spaced.first(), Some(Ok(Some(id))) if id == "43"),
+        "{spaced:?}"
+    );
+}
+
+#[tokio::test]
+async fn koofr_webdav_keeps_its_trash_note_and_sends_nothing() {
+    let (base, hits) = serve(false, false).await;
+    let mut provider = koofr_at(&base);
+    assert!(provider.trash_left_unpurged().is_some());
+    assert_eq!(
+        provider.delete_permanent("/docs/a.txt").await.ok(),
+        Some(false)
+    );
+    assert!(hits.lock().unwrap().is_empty());
+}

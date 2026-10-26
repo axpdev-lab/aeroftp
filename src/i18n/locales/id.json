@@ -5994,7 +5994,7 @@
             "banner": {
                 "title": "Mode portabel: folder ini menyimpan semua data AeroFTP Anda",
                 "body": "Setiap instalasi portabel sepenuhnya mandiri: server tersimpan, AeroVault, obrolan AI, dan preferensi semuanya berada di samping AeroFTP.exe. Mulai dari v3.7.8, dua folder portabel pada PC yang sama sepenuhnya independen, menghapus profil di satu folder tidak lagi memengaruhi yang lain.",
-                "legacyWarning": "Kami mendeteksi sisa data dari instalasi bersama sebelumnya di %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Data ini tidak lagi digunakan oleh instalasi portabel ini. Anda dapat menghapusnya secara manual jika tidak diperlukan.",
+                "legacyWarning": "Kami menemukan data dari instalasi bersama sebelumnya di %LOCALAPPDATA%\\com.aeroftp.AeroFTP\\. Instalasi portabel ini tidak menggunakannya. Jika AeroFTP juga terinstal di PC ini (MSI atau setup), folder tersebut berisi data aplikasi yang terinstal: simpan folder itu. Jika tidak, Anda dapat menghapusnya secara manual jika tidak diperlukan.",
                 "openFolder": "Buka folder data",
                 "dismiss": "Mengerti"
             }
@@ -6064,19 +6064,19 @@
                     "tagline": "Menyalin versi sumber dengan akhiran tanggal dan waktu."
                 },
                 "newer-wins": {
-                    "label": "Yang lebih baru menang",
+                    "label": "Simpan yang lebih baru",
                     "tagline": "Sisi dengan waktu modifikasi yang lebih baru menimpa sisi lainnya."
                 },
                 "older-wins": {
-                    "label": "Yang lebih lama menang",
+                    "label": "Simpan yang lebih lama",
                     "tagline": "Sisi yang lebih lama menimpa yang lebih baru (untuk pengarsipan)."
                 },
                 "larger-wins": {
-                    "label": "Yang lebih besar menang",
+                    "label": "Simpan yang lebih besar",
                     "tagline": "Sisi dengan ukuran lebih besar menimpa yang lebih kecil."
                 },
                 "smaller-wins": {
-                    "label": "Yang lebih kecil menang",
+                    "label": "Simpan yang lebih kecil",
                     "tagline": "Sisi yang lebih kecil menimpa yang lebih besar."
                 }
             },
@@ -6138,7 +6138,7 @@
                 },
                 "update": {
                     "name": "Perbarui",
-                    "tagline": "Menyalin file yang hilang dan lebih baru. Melewati konflik agar Anda dapat menyelesaikannya secara manual."
+                    "tagline": "Menyalin file yang belum ada dan yang lebih baru. Tidak pernah menghapus. Menimpa salinan yang lebih baru di tujuan hanya jika kebijakan konflik yang dipilih memilih salinan lainnya."
                 },
                 "bisync": {
                     "name": "Sinkronisasi dua arah",
@@ -7058,6 +7058,10 @@
             "runTemplate": "Jalankan",
             "duplicateName": "Templat bernama {name} sudah ada di server ini.",
             "templateStored": "Templat yang disimpan berisi perintah dengan isian, bukan kata sandi."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Folder masih dimuat",
+            "folderBusy": "File yang Anda buka tidak ditampilkan: folder lain masih dimuat saat {folder} diminta. Buka kembali file tersebut."
         }
     }
 }

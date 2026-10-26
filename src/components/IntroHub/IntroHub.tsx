@@ -12,7 +12,8 @@ import { PortableIsolationBanner } from './PortableIsolationBanner';
 import { ConnectionScreen } from '../ConnectionScreen';
 import { ExportImportDialog } from '../ExportImportDialog';
 import { getTotalServiceCount } from './discoverData';
-import { getProviderById, presetDefaultS3Region, resolveS3Endpoint } from '../../providers';
+import { getProviderById } from '../../providers';
+import { newFormTabOptions } from './newFormTabOptions';
 import { useTranslation } from '../../i18n';
 import { loadSavedServerProfiles } from '../../utils/serverProfileStore';
 import { appendImportedProfiles } from '../bridge/bridgeImportCommit';
@@ -39,6 +40,7 @@ interface FormTabState extends FormTab {
 }
 
 export interface IntroHubProps {
+    vaultReady: boolean;
     registerProfileConnector?: RegisterProfileConnector;
     connectionParams: ConnectionParams;
     quickConnectDirs: QuickConnectDirs;
@@ -241,18 +243,7 @@ export function IntroHub(props: IntroHubProps) {
                 // MTP device profiles use port 0 (no TCP host); connect is fingerprint match.
                 port: protocol === 'mtp' ? 0 : (demo?.port || provider?.defaults?.port || undefined),
                 providerId,
-                options: {
-                    pathStyle: provider?.defaults?.pathStyle,
-                    // Template presets (IBM COS, Wasabi, MEGA S4) get the region the
-                    // form preselects and the endpoint built from it, as on selection.
-                    region: presetDefaultS3Region(providerId),
-                    endpoint: resolveS3Endpoint(providerId, presetDefaultS3Region(providerId)) ?? undefined,
-                    anonymous: provider?.defaults?.anonymous,
-                    // Local-bridge WebDAV presets (Filen Desktop, MEGAcmd) carry their default scheme
-                    webdavScheme: provider?.defaults?.webdavScheme,
-                    // Local HTTPS bridges (Filen Desktop S3) use self-signed certs
-                    verifyCert: provider?.defaults?.verifyCert,
-                },
+                options: newFormTabOptions(protocol, providerId),
             },
             quickConnectDirs: { remoteDir: provider?.defaults?.basePath || '', localDir: '' },
             originTab: activeTab,
@@ -438,7 +429,7 @@ export function IntroHub(props: IntroHubProps) {
             {/* Portable-mode first-run notice (v3.7.8): renders only when the
                 running binary detects portable.marker AND the user has not yet
                 dismissed it. Hidden on installed builds and after dismissal. */}
-            <PortableIsolationBanner />
+            <PortableIsolationBanner vaultReady={props.vaultReady} />
 
             {/* Tab Content
                 MyServersPanel stays mounted across tab switches (display:none
