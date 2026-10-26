@@ -7077,6 +7077,10 @@
             "runTemplate": "Patakbuhin",
             "duplicateName": "May suleras na nangangalang {name} na sa serbidor na ito.",
             "templateStored": "Ang suleras na nakaimbak ay nagtatago ng utos na may mga puwang na pupunan, hindi kailanman ng kontrasenyas."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Naglo-load pa ang folder",
+            "folderBusy": "Hindi naipakita ang file na binuksan mo: may ibang folder na naglo-load pa nang hilingin ang {folder}. Buksan itong muli."
         }
     }
 }

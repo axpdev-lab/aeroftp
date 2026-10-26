@@ -7058,6 +7058,10 @@
             "runTemplate": "Executar",
             "duplicateName": "Já existe um modelo chamado {name} neste servidor.",
             "templateStored": "Um modelo salvo guarda o comando com espaços para preencher, nunca uma palavra-passe."
+        },
+        "openRequest": {
+            "folderBusyTitle": "A pasta ainda está carregando",
+            "folderBusy": "O arquivo que você abriu não foi exibido: outra pasta ainda estava sendo carregada quando a pasta {folder} foi solicitada. Abra-o novamente."
         }
     }
 }

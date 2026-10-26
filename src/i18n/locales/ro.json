@@ -7058,6 +7058,10 @@
             "runTemplate": "Rulează",
             "duplicateName": "Un șablon numit {name} există deja pe acest server.",
             "templateStored": "Un șablon salvat păstrează comanda cu locuri de completat, niciodată o parolă."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Folderul se încarcă încă",
+            "folderBusy": "Fișierul deschis nu a fost afișat: un alt folder era încă în curs de încărcare când a fost solicitat folderul {folder}. Deschideți-l din nou."
         }
     }
 }

@@ -601,7 +601,7 @@ async fn cancelled(token: &CancellationToken, cancel: &AtomicBool) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::transfer_dag::{Capability, TransferCapabilities, TransferSessionLease};
     use crate::transfer_domain::{TransferBatchConfig, TransferDirection};
@@ -900,12 +900,14 @@ mod tests {
     }
     /// A provider with a native bulk whose answer for a file depends on its
     /// name: `fail` fails, `unsure` comes back uncertain, `skip` was not
-    /// attempted; anything else completes. `hang` keeps the bulk running.
+    /// attempted; anything else completes. `hang` keeps the bulk running and
+    /// `refusal` refuses the whole call.
     #[derive(Default)]
-    struct ScriptedBulk {
-        bulks: Arc<std::sync::Mutex<Vec<Vec<String>>>>,
-        singles: Arc<std::sync::Mutex<Vec<String>>>,
-        hang: bool,
+    pub(crate) struct ScriptedBulk {
+        pub(crate) bulks: Arc<std::sync::Mutex<Vec<Vec<String>>>>,
+        pub(crate) singles: Arc<std::sync::Mutex<Vec<String>>>,
+        pub(crate) hang: bool,
+        pub(crate) refusal: Option<fn() -> crate::providers::ProviderError>,
     }
 
     #[async_trait]
@@ -1041,6 +1043,9 @@ mod tests {
             if self.hang {
                 std::future::pending::<()>().await;
             }
+            if let Some(refusal) = self.refusal {
+                return Err(refusal());
+            }
             Ok(items
                 .iter()
                 .map(|item| match &item.remote_path {
@@ -1081,6 +1086,53 @@ mod tests {
             Arc::new(Mutex::new(Some(Box::new(provider))));
         let sink: Arc<dyn TransferEventSink> = Arc::new(NoopTransferSink);
         run_sync_bulk(&provider, &sink, items, upload, token, 30).await
+    }
+
+    /// An `Err` from a native bulk means nothing reached the wire. The GUI
+    /// batch, the CLI and the AeroSync runner all settle it here: a transport
+    /// failure runs each file once on the single-file path, any other refusal
+    /// fails them all and sends nothing.
+    #[tokio::test]
+    async fn a_refused_sync_bulk_follows_the_shared_predicate() {
+        use crate::providers::ProviderError as E;
+        let transient: [fn() -> E; 3] = [
+            || E::Timeout,
+            || E::ConnectionLost("peer closed".into()),
+            || E::ServerError("503 service unavailable".into()),
+        ];
+        for upload in [true, false] {
+            for refusal in transient {
+                let provider = ScriptedBulk {
+                    refusal: Some(refusal),
+                    ..Default::default()
+                };
+                let (bulks, singles) = (provider.bulks.clone(), provider.singles.clone());
+                let items = sync_items(&["/a/1.txt", "/a/2.txt"]);
+                let results = sync_bulk(provider, &items, upload, &CancellationToken::new()).await;
+                assert_eq!(
+                    results,
+                    vec![SyncBulkResult::Completed, SyncBulkResult::Completed],
+                    "{:?}",
+                    refusal()
+                );
+                assert_eq!(bulks.lock().unwrap().len(), 1);
+                assert_eq!(*singles.lock().unwrap(), vec!["/r/a/1.txt", "/r/a/2.txt"]);
+            }
+            let provider = ScriptedBulk {
+                refusal: Some(|| E::PermissionDenied("read-only share".into())),
+                ..Default::default()
+            };
+            let singles = provider.singles.clone();
+            let items = sync_items(&["/a/1.txt", "/a/2.txt"]);
+            let results = sync_bulk(provider, &items, upload, &CancellationToken::new()).await;
+            assert!(
+                results
+                    .iter()
+                    .all(|r| matches!(r, SyncBulkResult::Failed { .. })),
+                "{results:?}"
+            );
+            assert!(singles.lock().unwrap().is_empty());
+        }
     }
 
     /// AeroSync sent one `provider_upload_file` per file, so on Proton Drive

@@ -7077,6 +7077,10 @@
             "runTemplate": "Kjør",
             "duplicateName": "En mal med navnet {name} finnes allerede på denne serveren.",
             "templateStored": "En lagret mal lagrer kommandoen med felt som fylles ut, aldri et passord."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Mappen lastes fortsatt inn",
+            "folderBusy": "Filen du åpnet ble ikke vist: en annen mappe ble fortsatt lastet inn da {folder} ble forespurt. Åpne den på nytt."
         }
     }
 }

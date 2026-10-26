@@ -7058,6 +7058,10 @@
             "runTemplate": "Exécuter",
             "duplicateName": "Un modèle nommé {name} est déjà présent sur ce serveur.",
             "templateStored": "Un modèle enregistré conserve la commande avec des emplacements à remplir, jamais un mot de passe."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Dossier encore en cours de chargement",
+            "folderBusy": "Le fichier que vous avez ouvert n'a pas été affiché : un autre dossier était encore en cours de chargement lorsque {folder} a été demandé. Ouvrez-le à nouveau."
         }
     }
 }

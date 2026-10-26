@@ -7058,6 +7058,10 @@
             "runTemplate": "Endesha",
             "duplicateName": "Kiolezo chenye jina {name} tayari kipo kwenye seva hii.",
             "templateStored": "Kiolezo kilichohifadhiwa huhifadhi amri yenye nafasi za kujaza, kamwe si nenosiri."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Folda bado inapakia",
+            "folderBusy": "Faili uliyofungua haikuonyeshwa: folda nyingine ilikuwa bado inapakia wakati {folder} ilipoombwa. Ifungue tena."
         }
     }
 }

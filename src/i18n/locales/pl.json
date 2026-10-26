@@ -7058,6 +7058,10 @@
             "runTemplate": "Uruchom",
             "duplicateName": "Szablon o nazwie {name} jest już na tym serwerze.",
             "templateStored": "Zapisany szablon przechowuje polecenie z polami do uzupełnienia, nigdy hasła."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Folder wciąż się wczytuje",
+            "folderBusy": "Otwarty plik nie został wyświetlony: gdy zażądano folderu {folder}, inny folder wciąż się wczytywał. Otwórz plik ponownie."
         }
     }
 }

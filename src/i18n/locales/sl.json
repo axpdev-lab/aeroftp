@@ -7058,6 +7058,10 @@
             "runTemplate": "Zaženi",
             "duplicateName": "Predloga z imenom {name} je na tem strežniku že shranjena.",
             "templateStored": "Shranjena predloga shrani ukaz z mesti za vnos, nikoli gesla."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Mapa se še nalaga",
+            "folderBusy": "Odprta datoteka ni bila prikazana: ko je bila zahtevana mapa {folder}, se je druga mapa še nalagala. Odprite jo znova."
         }
     }
 }

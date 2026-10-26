@@ -7077,6 +7077,10 @@
             "runTemplate": "Exekutatu",
             "duplicateName": "{name} izeneko txantiloi bat badago dagoeneko zerbitzari honetan.",
             "templateStored": "Gordetako txantiloiak komandoa hutsuneekin gordetzen du, inoiz ez pasahitza."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Karpeta oraindik kargatzen ari da",
+            "folderBusy": "Ireki duzun fitxategia ez da erakutsi: beste karpeta bat oraindik kargatzen ari zen {folder} eskatu zenean. Ireki berriro."
         }
     }
 }

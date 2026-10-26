@@ -7058,6 +7058,10 @@
             "runTemplate": "Ausführen",
             "duplicateName": "Eine Vorlage namens {name} ist auf diesem Server bereits vorhanden.",
             "templateStored": "Eine gespeicherte Vorlage bewahrt den Befehl mit Platzhaltern auf, niemals ein Passwort."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Ordner wird noch geladen",
+            "folderBusy": "Die geöffnete Datei wurde nicht angezeigt: Ein anderer Ordner wurde noch geladen, als {folder} angefordert wurde. Öffnen Sie die Datei erneut."
         }
     }
 }

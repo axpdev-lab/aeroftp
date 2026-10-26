@@ -57,6 +57,7 @@ pub mod ai_stream;
 mod ai_tools;
 pub mod app_events;
 mod archive_browse;
+mod authorization_redaction;
 pub(crate) mod compare_cancel;
 #[cfg(target_os = "linux")]
 mod localhost_security;

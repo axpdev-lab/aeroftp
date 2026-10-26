@@ -7077,6 +7077,10 @@
             "runTemplate": "Keyra",
             "duplicateName": "Sniðmát að nafni {name} er þegar á þessum netþjóni.",
             "templateStored": "Vistað sniðmát geymir skipunina með eyðum til útfyllingar, aldrei lykilorð."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Mappan er enn að hlaðast",
+            "folderBusy": "Skráin sem þú opnaðir var ekki birt: önnur mappa var enn að hlaðast þegar beðið var um {folder}. Opnaðu hana aftur."
         }
     }
 }

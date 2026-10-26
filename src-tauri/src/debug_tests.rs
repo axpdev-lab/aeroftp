@@ -13,6 +13,7 @@ use std::io::Write as _;
 use std::sync::OnceLock;
 use std::time::Instant;
 
+use crate::authorization_redaction;
 use crate::credential_store::CredentialStore;
 use crate::AppState;
 
@@ -255,68 +256,181 @@ pub async fn debug_test_plugin_integrity(app: tauri::AppHandle) -> Result<TestRe
 
 // ─── Bundle export (Pass 5) ────────────────────────────────────────────────
 //
-// Mirror of the frontend `redactSensitive` patterns so the `AeroFTP.log` tail
-// we pull off disk before zipping is sanitized in the same way as the live
-// buffer. The frontend-supplied buffers (logs, network) arrive already
-// redacted; we re-apply here only to the on-disk raw log.
+// Mirror of the frontend `redactSensitive` patterns (src/utils/redactSensitive.ts)
+// so the `AeroFTP.log` tail we pull off disk before zipping is sanitized in the
+// same way as the live buffer. The frontend-supplied buffers (logs, network)
+// arrive already redacted; we re-apply here only to the on-disk raw log. Both
+// tables run src/shared/redaction-cases.json, so a rule changed on one side
+// only turns the other side's test red.
 
-fn redaction_patterns() -> &'static [(regex::Regex, &'static str)] {
-    static PATTERNS: OnceLock<Vec<(regex::Regex, &'static str)>> = OnceLock::new();
+/// What a rule puts where it matches.
+#[derive(Clone, Copy)]
+enum Replacement {
+    Text(&'static str),
+    /// Every IPv4 address except the loopback and unspecified ones, which the
+    /// log keeps for local debugging. The `regex` crate has no look-around, so
+    /// the exception is decided on the match, not in the pattern.
+    Ipv4,
+}
+
+/// Names of the fields whose value is a secret, in JSON and in key=value form,
+/// written in snake_case, kebab-case or camelCase (`access_token`, `api-key`,
+/// `clientSecret`). A name may follow snake or kebab words (`session_token`,
+/// `prod_db_admin_user_password`) but not an open prefix: `nextToken`, `tokens`
+/// and `bypass` stay. The prefix is bounded on purpose, 8 segments of at most 24
+/// characters: `-` is not a word character, so an unbounded prefix would start a
+/// match after every hyphen and cost a quadratic scan on a long kebab run (the
+/// class of the email rule below). The rules are case-insensitive; the frontend
+/// twin writes the same text.
+macro_rules! secret_name {
+    () => {
+        r"(?:(?:[A-Za-z0-9]{1,24}[_-]){0,8}(?:password|passwd|passphrase|pwd|secret(?:[_-]?(?:access[_-]?)?key)?|api[_-]?key|access[_-]?key|(?:access|auth|refresh|id)[_-]?token|token|private[_-]?key|(?:client|totp|consumer)[_-]?secret)|pass)"
+    };
+}
+
+/// The value after a key: the marker (a redacted line stays as it is), a string
+/// whose quotes are escaped (`\"v\"`, from a Debug or JSON dump of the line), a
+/// quoted string that ends at its closing quote (an escaped quote does not end
+/// it; a line cut inside the value has no closing quote and ends there), or a
+/// bare word up to the next delimiter.
+macro_rules! secret_value {
+    () => {
+        concat!(
+            r#"(?:\*\*\*REDACTED\*\*\*|\\""#,
+            authorization_redaction::escaped_body!(),
+            r#"(?:\\")?|"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[^\s,;'"<>]+)"#
+        )
+    };
+}
+
+const REDACTION_RULES: &[(&str, Replacement)] = &[
+    // Authorization first, ahead of every key and Bearer rule below, so
+    // `Authorization: Bearer sk-...` is one marker. Shared with
+    // `ai::sanitize_error_message`.
+    (
+        authorization_redaction::IN_JSON_STRING,
+        Replacement::Text("$1***REDACTED***"),
+    ),
+    (
+        authorization_redaction::QUOTED,
+        Replacement::Text("$1\"***REDACTED***\""),
+    ),
+    (
+        authorization_redaction::credentials!(r"\*\*\*REDACTED\*\*\*"),
+        Replacement::Text("authorization: ***REDACTED***"),
+    ),
+    (
+        r"sk-(ant|proj|live|test)-[A-Za-z0-9_\-]{16,}",
+        Replacement::Text("sk-***REDACTED***"),
+    ),
+    (
+        r"sk_(live|test)_[A-Za-z0-9]{16,}",
+        Replacement::Text("sk_***REDACTED***"),
+    ),
+    (
+        r"\bBearer\s+[A-Za-z0-9_\-.~+/]{8,}=*",
+        Replacement::Text("Bearer ***REDACTED***"),
+    ),
+    (
+        concat!(r"(?i)\bx-api-key\s*[:=]\s*", secret_value!()),
+        Replacement::Text("x-api-key: ***REDACTED***"),
+    ),
+    (
+        r"\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}",
+        Replacement::Text("***JWT-REDACTED***"),
+    ),
+    (
+        r"(?i)\b((?:ftps?|sftp|https?|webdav)://[^:\s@/]+:)[^@\s]+(@)",
+        Replacement::Text("$1***REDACTED***$2"),
+    ),
+    // Serialized secret fields in JSON: "password":"..." -> "password":"***REDACTED***".
+    // The value ends at its closing quote; an escaped quote inside it does not end it.
+    (
+        concat!(
+            r#"(?i)(""#,
+            secret_name!(),
+            r#""\s*:\s*)"(?:[^"\\]|\\.)*"?"#
+        ),
+        Replacement::Text("$1\"***REDACTED***\""),
+    ),
+    // The same inside a JSON string, where each quote is escaped: the value ends
+    // at the first lone `\"`, and an inner `\\\"` belongs to it.
+    (
+        concat!(
+            r#"(?i)(\\""#,
+            secret_name!(),
+            r#"\\"[ \t]*:[ \t]*\\")"#,
+            authorization_redaction::escaped_body!()
+        ),
+        Replacement::Text("$1***REDACTED***"),
+    ),
+    // MCP-06: generic key=value secrets (password=, secret:, token=, ...).
+    // Keeps the key and its separator for debugging context, scrubs the value.
+    (
+        concat!(r"(?i)(\b", secret_name!(), r"\s*[:=]\s*)", secret_value!(),),
+        Replacement::Text("$1***REDACTED***"),
+    ),
+    (
+        r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
+        Replacement::Text("***@***"),
+    ),
+    (r"\b(?:\d{1,3}\.){3}\d{1,3}\b", Replacement::Ipv4),
+    (r"/home/[A-Za-z0-9._-]+", Replacement::Text("/home/***")),
+    (r"/Users/[A-Za-z0-9._-]+", Replacement::Text("/Users/***")),
+    (
+        r"(?i)C:\\Users\\[^\\]+",
+        Replacement::Text("C:\\Users\\***"),
+    ),
+    (
+        r"\b[A-Fa-f0-9]{32,}\b",
+        Replacement::Text("***HEX-REDACTED***"),
+    ),
+];
+
+/// A rule that does not compile would drop out of the policy without a word
+/// (IPv4 did, for a look-around the `regex` crate rejects), so it stops the
+/// first redaction instead; `every_redaction_rule_compiles` runs it in CI.
+fn redaction_patterns() -> &'static [(regex::Regex, Replacement)] {
+    static PATTERNS: OnceLock<Vec<(regex::Regex, Replacement)>> = OnceLock::new();
     PATTERNS.get_or_init(|| {
-        let raw: &[(&str, &'static str)] = &[
-            (
-                r"sk-(ant|proj|live|test)-[A-Za-z0-9_\-]{16,}",
-                "sk-***REDACTED***",
-            ),
-            (r"sk_(live|test)_[A-Za-z0-9]{16,}", "sk_***REDACTED***"),
-            (
-                r"\bBearer\s+[A-Za-z0-9_\-.~+/]{8,}=*",
-                "Bearer ***REDACTED***",
-            ),
-            (
-                r#"(?i)\bx-api-key\s*[:=]\s*[^\s,;'"<>]+"#,
-                "x-api-key: ***REDACTED***",
-            ),
-            (
-                r#"(?i)\bauthorization\s*[:=]\s*[^\s,;'"<>]+"#,
-                "authorization: ***REDACTED***",
-            ),
-            // MCP-06: generic key=value secrets (password=, secret:, token=, ...).
-            // Keeps the key name for debugging context, scrubs the value.
-            (
-                r#"(?i)\b(pass(?:word|wd)?|pwd|secret|token|api[_-]?key)\s*[:=]\s*[^\s,;'"<>]+"#,
-                "$1=***REDACTED***",
-            ),
-            (
-                r"\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}",
-                "***JWT-REDACTED***",
-            ),
-            (
-                r"(?i)\b((?:ftps?|sftp|https?|webdav)://[^:\s@/]+:)[^@\s]+(@)",
-                "$1***REDACTED***$2",
-            ),
-            (r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", "***@***"),
-            (
-                r"\b(?!127\.0\.0\.1\b|0\.0\.0\.0\b)((?:\d{1,3}\.){3}\d{1,3})\b",
-                "***.***.***.***",
-            ),
-            (r"/home/[A-Za-z0-9._-]+", "/home/***"),
-            (r"/Users/[A-Za-z0-9._-]+", "/Users/***"),
-            (r"(?i)C:\\Users\\[^\\]+", "C:\\Users\\***"),
-            (r"\b[A-Fa-f0-9]{32,}\b", "***HEX-REDACTED***"),
-        ];
-        raw.iter()
-            .filter_map(|(p, r)| regex::Regex::new(p).ok().map(|re| (re, *r)))
+        REDACTION_RULES
+            .iter()
+            .map(|(pattern, replacement)| {
+                let re = regex::Regex::new(pattern)
+                    .unwrap_or_else(|e| panic!("redaction rule {pattern:?} does not compile: {e}"));
+                (re, *replacement)
+            })
             .collect()
     })
 }
 
 pub(crate) fn redact(s: &str) -> String {
     let mut out = s.to_owned();
-    for (re, rep) in redaction_patterns() {
-        out = re.replace_all(&out, *rep).into_owned();
+    for (re, replacement) in redaction_patterns() {
+        out = match replacement {
+            Replacement::Text(text) => re.replace_all(&out, *text).into_owned(),
+            Replacement::Ipv4 => re
+                .replace_all(&out, |caps: &regex::Captures<'_>| {
+                    if matches!(&caps[0], "127.0.0.1" | "0.0.0.0") {
+                        caps[0].to_owned()
+                    } else {
+                        "***.***.***.***".to_owned()
+                    }
+                })
+                .into_owned(),
+        };
     }
     out
+}
+
+/// The last `lines` lines of `content`, each redacted on its own.
+fn redacted_tail(content: &str, lines: usize) -> String {
+    let all: Vec<&str> = content.lines().collect();
+    all[all.len().saturating_sub(lines)..]
+        .iter()
+        .map(|line| redact(line))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// The last `lines` lines of the on-disk app log, redacted, and the file they
@@ -331,13 +445,7 @@ pub(crate) async fn app_log_tail(lines: usize) -> Option<(std::path::PathBuf, St
         .await
         .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
         .unwrap_or_default();
-    let all: Vec<&str> = content.lines().collect();
-    let tail = all[all.len().saturating_sub(lines)..]
-        .iter()
-        .map(|line| redact(line))
-        .collect::<Vec<_>>()
-        .join("\n");
-    Some((path, tail))
+    Some((path, redacted_tail(&content, lines)))
 }
 
 #[derive(Deserialize)]
@@ -387,10 +495,11 @@ pub async fn debug_export_bundle(
          - aeroftp.log.tail      Last 1000 lines of the on-disk Rust log (re-redacted)\n\
          \n\
          Redaction policy:\n\
-         - Tokens, Bearer headers, JWTs, inline URL passwords, emails,\n\
-           non-loopback IPv4, home directories and 32+ hex blobs are\n\
-           replaced with ***REDACTED*** markers across every file in this\n\
-           bundle. The raw log on disk is left untouched for the user.\n",
+         - Tokens, Authorization headers (the whole value), JWTs, inline\n\
+           URL passwords, emails, non-loopback IPv4, home directories and\n\
+           32+ hex blobs are replaced with ***REDACTED*** markers across\n\
+           every file in this bundle. The raw log on disk is left\n\
+           untouched for the user.\n",
         bundle.app_version,
         chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
     );
@@ -448,5 +557,96 @@ pub async fn debug_test_provider_selftest(
             format!("Remote listing OK ({} entries)", files.len()),
         )),
         Err(e) => Ok(TestResult::fail(t0, format!("Listing failed: {}", e))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Deserialize)]
+    struct RedactionCase {
+        name: String,
+        input: String,
+        expected: String,
+    }
+
+    /// The cases `src/utils/redactSensitive.test.ts` runs through the frontend
+    /// table: both tables apply one policy, so a rule changed on one side only
+    /// turns the other side's test red.
+    fn redaction_cases() -> Vec<RedactionCase> {
+        serde_json::from_str(include_str!("../../src/shared/redaction-cases.json"))
+            .expect("redaction cases parse")
+    }
+
+    /// Every case whose `redact` of `input(case)` is not `expected(case)`.
+    fn mismatches(input: fn(&RedactionCase) -> &str) -> Vec<String> {
+        redaction_cases()
+            .iter()
+            .filter_map(|case| {
+                let got = redact(input(case));
+                (got != case.expected)
+                    .then(|| format!("{}: got {got:?}, want {:?}", case.name, case.expected))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn redact_follows_the_shared_cases() {
+        let wrong = mismatches(|case| &case.input);
+        assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+    }
+
+    #[test]
+    fn the_matrix_of_secret_fields_never_leaks_a_value() {
+        let probes = crate::authorization_redaction::matrix::secret_field_probes();
+        crate::authorization_redaction::matrix::assert_redacted(redact, &probes);
+    }
+
+    #[test]
+    fn the_matrix_of_authorization_schemes_never_leaks_a_credential() {
+        let probes = crate::authorization_redaction::matrix::authorization_probes();
+        crate::authorization_redaction::matrix::assert_redacted(redact, &probes);
+    }
+
+    #[test]
+    fn what_is_not_a_secret_field_stays() {
+        for line in crate::authorization_redaction::matrix::unchanged_lines() {
+            assert_eq!(redact(&line), line);
+        }
+    }
+
+    #[test]
+    fn a_redacted_line_redacts_to_itself() {
+        let wrong = mismatches(|case| &case.expected);
+        assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+    }
+
+    /// The policy once lost its IPv4 rule without a word: `regex` rejects the
+    /// look-around it was written with and the rule was dropped on the error.
+    #[test]
+    fn every_redaction_rule_compiles() {
+        for (pattern, _) in REDACTION_RULES {
+            if let Err(e) = regex::Regex::new(pattern) {
+                panic!("redaction rule {pattern:?} does not compile: {e}");
+            }
+        }
+        assert_eq!(redaction_patterns().len(), REDACTION_RULES.len());
+    }
+
+    /// What the bundle and the MCP snapshot carry: the tail's last lines, each
+    /// redacted, with a Basic credential and a public address among them.
+    #[test]
+    fn the_log_tail_redacts_what_it_keeps() {
+        let log = "old line\n\
+                   GET /x Authorization: Basic dXNlcjpwYXNz\n\
+                   peer 203.0.113.9 and 127.0.0.1";
+        assert_eq!(
+            redacted_tail(log, 2),
+            "GET /x authorization: ***REDACTED***\n\
+             peer ***.***.***.*** and 127.0.0.1"
+        );
+        assert_eq!(redacted_tail("", 5), "");
+        assert_eq!(redacted_tail("one", 5), "one");
     }
 }

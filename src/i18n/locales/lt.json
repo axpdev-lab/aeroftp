@@ -7058,6 +7058,10 @@
             "runTemplate": "Vykdyti",
             "duplicateName": "Šablonas pavadinimu {name} jau yra šiame serveryje.",
             "templateStored": "Išsaugotas šablonas saugo komandą su pildomomis vietomis, niekada slaptažodžio."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Aplankas vis dar įkeliamas",
+            "folderBusy": "Atidarytas failas nebuvo parodytas: kai buvo paprašyta aplanko {folder}, kitas aplankas vis dar buvo įkeliamas. Atidarykite failą dar kartą."
         }
     }
 }

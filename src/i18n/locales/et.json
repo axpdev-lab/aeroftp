@@ -7058,6 +7058,10 @@
             "runTemplate": "Käivita",
             "duplicateName": "Mall nimega {name} on sellel serveril juba olemas.",
             "templateStored": "Salvestatud mall hoiab käsku koos täidetavate kohtadega, mitte kunagi parooli."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Kausta laaditakse veel",
+            "folderBusy": "Avatud faili ei kuvatud: kui küsiti kausta {folder}, laaditi veel mõnda teist kausta. Avage fail uuesti."
         }
     }
 }

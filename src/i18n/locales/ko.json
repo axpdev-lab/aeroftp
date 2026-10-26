@@ -7058,6 +7058,10 @@
             "runTemplate": "실행",
             "duplicateName": "{name} 이름의 템플릿이 이 서버에 이미 있습니다.",
             "templateStored": "저장된 템플릿은 값을 채울 칸이 있는 명령을 저장하며, 비밀번호는 저장하지 않습니다."
+        },
+        "openRequest": {
+            "folderBusyTitle": "폴더를 불러오는 중입니다",
+            "folderBusy": "열려고 한 파일이 표시되지 않았습니다. {folder} 폴더를 요청했을 때 다른 폴더가 아직 로드 중이었습니다. 다시 열어 주세요."
         }
     }
 }

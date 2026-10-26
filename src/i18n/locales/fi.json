@@ -7058,6 +7058,10 @@
             "runTemplate": "Suorita",
             "duplicateName": "Malli nimeltä {name} on jo tällä palvelimella.",
             "templateStored": "Tallennettu malli tallentaa komennon paikkamerkkeineen, ei koskaan salasanaa."
+        },
+        "openRequest": {
+            "folderBusyTitle": "Kansiota ladataan vielä",
+            "folderBusy": "Avaamaasi tiedostoa ei näytetty: toista kansiota ladattiin vielä, kun kansiota {folder} pyydettiin. Avaa tiedosto uudelleen."
         }
     }
 }

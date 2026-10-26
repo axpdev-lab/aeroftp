@@ -7058,6 +7058,10 @@
             "runTemplate": "Futtatás",
             "duplicateName": "Ezen a szerveren már van {name} nevű sablon.",
             "templateStored": "A mentett sablon a parancsot kitöltendő helyekkel tárolja, jelszót soha."
+        },
+        "openRequest": {
+            "folderBusyTitle": "A mappa még töltődik",
+            "folderBusy": "A megnyitott fájl nem jelent meg: egy másik mappa még töltődött, amikor a(z) {folder} mappát kérték. Nyissa meg újra."
         }
     }
 }
