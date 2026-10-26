@@ -7701,6 +7701,9 @@ const App: React.FC = () => {
           oauthResponse = null;
         }
         const overlayAnchor = overlayHint.anchor || oauthResponse?.current_path || '/';
+        // A new connection must not inherit another session's vault mirrors.
+        setAeroCryptVaultId(null);
+        setRcloneCryptVaultId(null);
         setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
         markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
         if (overlayHint.opensOutside) {
@@ -8003,6 +8006,9 @@ const App: React.FC = () => {
         const overlaySavedId = effectiveParams.savedServerId;
         const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, resolvedRemoteDir) : null;
         if (overlayHint && overlaySavedId) {
+          // A new connection must not inherit another session's vault mirrors.
+          setAeroCryptVaultId(null);
+          setRcloneCryptVaultId(null);
           setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
           markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
         }
@@ -18186,6 +18192,9 @@ const App: React.FC = () => {
                       savedOauthResp = null;
                     }
                     const savedOverlayAnchor = savedOverlayHint.anchor || savedOauthResp?.current_path || '/';
+                    // A new connection must not inherit another session's vault mirrors.
+                    setAeroCryptVaultId(null);
+                    setRcloneCryptVaultId(null);
                     setCryptOverlayOwner({ savedServerId: savedOverlaySavedId, sessionId: null });
                     markSessionOverlayKind({ savedServerId: savedOverlaySavedId }, savedOverlayHint.kind, savedOverlayHint.anchor);
                     if (savedOverlayHint.opensOutside) {
@@ -18372,6 +18381,9 @@ const App: React.FC = () => {
                     const overlayHint = await connectScope.step(() => getProfileOverlayHint(overlaySavedId));
                     setCurrentRemotePath(response.current_path);
                     if (overlayHint && overlaySavedId) {
+                      // A new connection must not inherit another session's vault mirrors.
+                      setAeroCryptVaultId(null);
+                      setRcloneCryptVaultId(null);
                       setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
                       markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
                     }
