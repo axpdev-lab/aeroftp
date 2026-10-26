@@ -1,7 +1,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, it, expect } from 'vitest';
-import { normCryptScope, isWithinCryptScope, resolveBoundCryptScope } from './cryptScope';
+import { normCryptScope, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope } from './cryptScope';
 
 describe('normCryptScope', () => {
   it('collapses the empty scope and the root onto "whole remote"', () => {
@@ -16,6 +16,28 @@ describe('normCryptScope', () => {
     expect(normCryptScope('vault')).toBe('/vault');
     expect(normCryptScope('/vault/')).toBe('/vault');
     expect(normCryptScope('//vault//sub//')).toBe('/vault//sub');
+  });
+});
+
+describe('connectLandsOutsideOverlay', () => {
+  it('opens a root Remote Path outside a subfolder island', () => {
+    expect(connectLandsOutsideOverlay('/', '/Crypt')).toBe(true);
+    expect(connectLandsOutsideOverlay('', '/Crypt')).toBe(true);
+    expect(connectLandsOutsideOverlay('   ', '/Crypt-rclone')).toBe(true);
+    expect(connectLandsOutsideOverlay('/docs', '/docs/secret')).toBe(true);
+  });
+
+  it('opens inside the island when the Remote Path is the encrypted folder', () => {
+    expect(connectLandsOutsideOverlay('/Crypt', '/Crypt')).toBe(false);
+    expect(connectLandsOutsideOverlay('/Crypt/sub', '/Crypt')).toBe(false);
+    expect(connectLandsOutsideOverlay('/Crypt/', '/Crypt')).toBe(false);
+  });
+
+  it('treats an empty Overlays Path as the Remote Path itself', () => {
+    expect(connectLandsOutsideOverlay('/', '')).toBe(false);
+    expect(connectLandsOutsideOverlay('/', '/')).toBe(false);
+    expect(connectLandsOutsideOverlay('/Crypt', '')).toBe(false);
+    expect(connectLandsOutsideOverlay('/Crypt', null)).toBe(false);
   });
 });
 

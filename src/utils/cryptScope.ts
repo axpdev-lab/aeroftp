@@ -21,6 +21,25 @@ export const normCryptScope = (s?: string | null): string => {
   return '/' + t.replace(/^\/+|\/+$/g, '');
 };
 
+/**
+ * The connect always opens on the Remote Path. An empty Overlays Path means
+ * that folder is the encrypted one, so the opening is already inside it.
+ * A Remote Path that is the account root, or any folder above the island,
+ * opens outside it: plaintext listing, no decrypt pass until the user enters
+ * the island.
+ */
+export const connectLandsOutsideOverlay = (
+  remotePath?: string | null,
+  overlayPath?: string | null,
+): boolean => {
+  const island = normCryptScope(overlayPath);
+  if (!island) return false;
+  const landing = normCryptScope(remotePath);
+  if (!landing) return true;
+  if (landing === island || landing.startsWith(island + '/')) return false;
+  return true;
+};
+
 export const isWithinCryptScope = (
   scope: string | undefined | null,
   displayPath: string | null | undefined,

@@ -224,7 +224,7 @@ import { usedScanBoundKey } from './utils/usedScanBound';
 import type { UpdateVerificationInfo } from './utils/updateVerification';
 import { UpdateVerificationPanel } from './components/UpdateVerificationPanel';
 import { safePickerStartDir } from './utils/safePickerDir';
-import { normCryptScope, isWithinCryptScope, resolveBoundCryptScope } from './utils/cryptScope';
+import { normCryptScope, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope } from './utils/cryptScope';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
@@ -5892,7 +5892,7 @@ const App: React.FC = () => {
   // Returns the overlay kind + anchored remote folder, or null.
   const getProfileOverlayHint = async (
     savedServerId?: string,
-  ): Promise<{ kind: 'rclone-crypt' | 'aerocrypt'; anchor: string | null } | null> => {
+  ): Promise<{ kind: 'rclone-crypt' | 'aerocrypt'; anchor: string | null; opensOutside: boolean } | null> => {
     if (!savedServerId) return null;
     try {
       const profiles = await loadSavedServerProfiles();
@@ -5904,7 +5904,14 @@ const App: React.FC = () => {
         || (binding?.kind === 'aerocrypt' && profile?.hasStoredAeroCryptKeyfilePath);
       if (!binding?.enabled || !hasUnlockFactor) return null;
       const scope = binding.remoteScope?.trim() || profile.initialPath?.trim() || '';
-      return { kind: binding.kind, anchor: scope && scope !== '/' ? scope : null };
+      return {
+        kind: binding.kind,
+        anchor: scope && scope !== '/' ? scope : null,
+        // Remote Path is the opening. An empty Overlays Path means that
+        // folder is the encrypted one. A root, or any parent of the island,
+        // opens in plaintext and must not point the panel at the island.
+        opensOutside: connectLandsOutsideOverlay(profile.initialPath, binding.remoteScope),
+      };
     } catch {
       return null;
     }
@@ -6022,8 +6029,12 @@ const App: React.FC = () => {
       // overlay ones.
       setCryptOverlayOwner({ savedServerId, sessionId: null });
       // Show the path-bar badge immediately (grey) for the whole decrypt window.
+      // When the Remote Path sits outside the island, the opening is that
+      // plaintext folder: do not run the decrypt animation on the way in.
       markSessionOverlayKind({ savedServerId }, binding.kind, binding.remoteScope ?? null);
-      setOverlayDecrypting(true);
+      if (!connectLandsOutsideOverlay(profile.initialPath, binding.remoteScope)) {
+        setOverlayDecrypting(true);
+      }
 
       // T3: live activity-log entry, settled to green by the phase-2 reload.
       overlayLogIdRef.current = humanLog.logRaw('activity.overlay_opening', 'CONNECT', {}, 'running');
@@ -7716,14 +7727,27 @@ const App: React.FC = () => {
           oauthResponse = null;
         }
         const overlayAnchor = overlayHint.anchor || oauthResponse?.current_path || '/';
-        overlaySuppressedRef.current = true;
-        setRemoteFiles([]);
-        setCurrentRemotePath(oauthResponse?.current_path || overlayAnchor);
-        setCurrentRemoteDisplayPath(overlayAnchor);
         setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
         markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
-        setOverlayDecrypting(true);
-        connectListingLogIdRef.current = null;
+        if (overlayHint.opensOutside) {
+          // The Remote Path is above the island. Show that plaintext folder
+          // now. Decrypting starts when the user enters the Overlays Path.
+          const listedPath = (oauthResponse as (FileListResponse & { display_current_path?: string }) | null)?.display_current_path || oauthResponse?.current_path || '/';
+          overlaySuppressedRef.current = false;
+          setRemoteFiles(oauthResponse?.files ?? []);
+          setCurrentRemotePath(oauthResponse?.current_path || '/');
+          setCurrentRemoteDisplayPath(listedPath);
+          connectListingLogIdRef.current = oauthResponse
+            ? logListingComplete(listedPath, oauthResponse.files?.length ?? 0)
+            : null;
+        } else {
+          overlaySuppressedRef.current = true;
+          setRemoteFiles([]);
+          setCurrentRemotePath(oauthResponse?.current_path || overlayAnchor);
+          setCurrentRemoteDisplayPath(overlayAnchor);
+          setOverlayDecrypting(true);
+          connectListingLogIdRef.current = null;
+        }
       } else {
         oauthResponse = await loadRemoteFiles(protocol);
       }
@@ -7760,7 +7784,7 @@ const App: React.FC = () => {
         effectiveParams,
         oauthResponse?.current_path || '/',
         oauthLocalDir || currentLocalPath,
-        overlayHint ? [] : oauthResponse?.files
+        overlayHint && !overlayHint.opensOutside ? [] : oauthResponse?.files
       );
       // Defer the overlay auto-unlock to the post-connect effect (inline unlock
       // sees stale session state), same as the credential-provider path. LT2b:
@@ -8000,16 +8024,19 @@ const App: React.FC = () => {
         const overlaySavedId = effectiveParams.savedServerId;
         const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId) : null;
         if (overlayHint && overlaySavedId) {
+          setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
+          markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
+        }
+        if (overlayHint && overlaySavedId && !overlayHint.opensOutside) {
           overlaySuppressedRef.current = true;
           setRemoteFiles([]);
           setCurrentRemoteDisplayPath(overlayHint.anchor || response.current_path);
-          setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
-          markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
           setOverlayDecrypting(true);
           connectListingLogIdRef.current = null;
         } else {
           overlaySuppressedRef.current = false;
           setRemoteFiles(files);
+          setCurrentRemoteDisplayPath((response as FileListResponse & { display_current_path?: string }).display_current_path || response.current_path);
           connectListingLogIdRef.current = logListingComplete(response.current_path, files.length);
         }
 
@@ -8034,7 +8061,7 @@ const App: React.FC = () => {
           sessionParams,
           response.current_path,
           quickConnectDirs.localDir || currentLocalPath,
-          overlayHint ? [] : files
+          overlayHint && !overlayHint.opensOutside ? [] : files
         );
         // Defer the overlay auto-unlock to the post-connect effect (same reason
         // as onSavedServerConnect: inline unlock sees stale session state).
@@ -18174,14 +18201,25 @@ const App: React.FC = () => {
                       savedOauthResp = null;
                     }
                     const savedOverlayAnchor = savedOverlayHint.anchor || savedOauthResp?.current_path || '/';
-                    overlaySuppressedRef.current = true;
-                    setRemoteFiles([]);
-                    setCurrentRemotePath(savedOauthResp?.current_path || savedOverlayAnchor);
-                    setCurrentRemoteDisplayPath(savedOverlayAnchor);
                     setCryptOverlayOwner({ savedServerId: savedOverlaySavedId, sessionId: null });
                     markSessionOverlayKind({ savedServerId: savedOverlaySavedId }, savedOverlayHint.kind, savedOverlayHint.anchor);
-                    setOverlayDecrypting(true);
-                    connectListingLogIdRef.current = null;
+                    if (savedOverlayHint.opensOutside) {
+                      const listedPath = (savedOauthResp as (FileListResponse & { display_current_path?: string }) | null)?.display_current_path || savedOauthResp?.current_path || '/';
+                      overlaySuppressedRef.current = false;
+                      setRemoteFiles(savedOauthResp?.files ?? []);
+                      setCurrentRemotePath(savedOauthResp?.current_path || '/');
+                      setCurrentRemoteDisplayPath(listedPath);
+                      connectListingLogIdRef.current = savedOauthResp
+                        ? logListingComplete(listedPath, savedOauthResp.files?.length ?? 0)
+                        : null;
+                    } else {
+                      overlaySuppressedRef.current = true;
+                      setRemoteFiles([]);
+                      setCurrentRemotePath(savedOauthResp?.current_path || savedOverlayAnchor);
+                      setCurrentRemoteDisplayPath(savedOverlayAnchor);
+                      setOverlayDecrypting(true);
+                      connectListingLogIdRef.current = null;
+                    }
                   } else {
                     savedOauthResp = await connectScope.step(() => loadRemoteFiles(normalizedParams.protocol));
                   }
@@ -18201,7 +18239,7 @@ const App: React.FC = () => {
                     normalizedParams,
                     savedOauthResp?.current_path || initialPath || '/',
                     resolvedLocalPath,
-                    savedOverlayHint ? [] : savedOauthResp?.files
+                    savedOverlayHint && !savedOverlayHint.opensOutside ? [] : savedOauthResp?.files
                   ));
                   // Defer the overlay auto-unlock to the post-connect effect (inline
                   // unlock sees stale session state), same as the provider branch.
@@ -18344,16 +18382,19 @@ const App: React.FC = () => {
                     const overlayHint = await connectScope.step(() => getProfileOverlayHint(overlaySavedId));
                     setCurrentRemotePath(response.current_path);
                     if (overlayHint && overlaySavedId) {
+                      setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
+                      markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
+                    }
+                    if (overlayHint && overlaySavedId && !overlayHint.opensOutside) {
                       overlaySuppressedRef.current = true;
                       setRemoteFiles([]);
                       setCurrentRemoteDisplayPath(overlayHint.anchor || response.current_path);
-                      setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
-                      markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
                       setOverlayDecrypting(true);
                       connectListingLogIdRef.current = null;
                     } else {
                       overlaySuppressedRef.current = false;
                       setRemoteFiles(files);
+                      setCurrentRemoteDisplayPath((response as FileListResponse & { display_current_path?: string }).display_current_path || response.current_path);
                       connectListingLogIdRef.current = logListingComplete(response.current_path, files.length);
                     }
 
@@ -18367,7 +18408,7 @@ const App: React.FC = () => {
                       connectedParams,
                       response.current_path,
                       resolvedLocalPath2,
-                      overlayHint ? [] : files
+                      overlayHint && !overlayHint.opensOutside ? [] : files
                     ));
                     // P3.3: defer the AeroCrypt overlay auto-unlock to a post-connect
                     // effect. Running it inline here sees stale React state (the new
