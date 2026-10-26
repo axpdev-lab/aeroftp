@@ -182,7 +182,7 @@ src/i18n/
 ├── I18nContext.tsx        # Provider, hooks, getNestedValue
 ├── types.ts              # TypeScript interfaces, AVAILABLE_LANGUAGES (47)
 └── locales/
-    ├── en.json           # English (base, 4400+ keys)
+    ├── en.json           # English (base translations)
     ├── it.json           # Italian (manually translated)
     ├── ...               # 44 more languages
     └── zh.json           # Chinese

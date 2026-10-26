@@ -6,7 +6,7 @@
 
 ## Overview
 
-The Universal Vault is AeroFTP's credential storage system. It replaces the previous dual-mode architecture (OS Keyring + Encrypted Vault fallback) with a single, platform-independent encrypted vault that works identically on Linux, Windows, and macOS.
+The Universal Vault is AeroFTP's credential storage system. It uses a common encrypted vault format on Linux, Windows, and macOS, with OS keyring, local-fallback and master-password modes for protecting the passphrase that opens it. Key storage and migration follow the selected mode and the facilities available on the host.
 
 Since **v1.9.0**, the vault scope has been expanded into a **Unified Encrypted Keystore**: all sensitive data that was previously stored in browser localStorage (server profiles, AI provider configuration, OAuth credentials, application settings) is now encrypted in `vault.db`. A migration wizard automatically moves legacy data on first launch, and a backup/restore system enables vault portability across devices.
 
@@ -15,7 +15,7 @@ Since **v1.9.0**, the vault scope has been expanded into a **Unified Encrypted K
 1. **Zero-interaction default**: Credentials save and load automatically without any user prompt
 2. **Cross-platform reliability**: The default mode stores the high-entropy passphrase in the OS keyring (gnome-keyring, Windows Credential Manager, macOS Keychain) with a robust file-based fallback, so an unavailable keyring can use a permission-protected on-disk passphrase; that fallback has a weaker at-rest boundary than master-password mode
 3. **Optional master password**: Users who want extra protection can enable a master password at any time
-4. **Simple architecture**: One code path, no fallback chains, no health probes
+4. **Common encrypted format**: Mode-specific key storage and migration feed the same encrypted credential database; keyring availability can select the local fallback
 5. **Complete coverage** (v1.9.0): No sensitive data in localStorage - everything encrypted in vault
 6. **Portable backups** (v1.9.0): Full vault export/import for disaster recovery and device migration
 
@@ -188,9 +188,11 @@ App start
   → init_credential_store()
   → vault.key NOT found
   → Generate 64-byte CSPRNG passphrase
-  → Claim a free install-scoped OS keyring account; write vault.key (12-byte marker, optional account trailer)
-  → If no keyring slot is usable, write the permission-protected 76-byte local fallback instead
-  → If AEROFTP_MASTER_PASSWORD was explicitly supplied, initialize in master mode without claiming a keyring account
+  → If AEROFTP_MASTER_PASSWORD was explicitly supplied:
+      → Initialize master mode; do not claim a keyring account
+    Otherwise:
+      → Claim a free install-scoped OS keyring account; write vault.key (12-byte marker, optional account trailer)
+      → If no keyring slot is usable, write the permission-protected 76-byte local fallback instead
   → Set file permissions (0o600 / ACL)
   → Create empty vault.db
   → HKDF(passphrase) → vault key

@@ -20,7 +20,7 @@ The complete change record and remaining follow-ups are in the [4.2.5 release tr
 
 #### Fixed
 
-- **Crypt connections open at the configured Remote Path.** A landing above an encrypted island stays in plaintext until that island is entered, without visiting it during connection. Saved and Quick Connect paths retain their resolved landing and clear the previous session's frontend vault IDs (#1390).
+- **Crypt connections open at the configured Remote Path.** A landing above an encrypted island stays in plaintext until that island is entered, without visiting it during connection. Saved and Quick Connect paths retain their resolved landing and clear the previous session's frontend vault IDs. If a stored unlock fails when entering the encrypted scope, the locked-overlay banner offers manual recovery (#1390, #1391).
 - **CLI checks request both sides of a checksum comparison.** `check --checksum` detects different same-size contents when the provider supplies SHA-256; JSON `compare_method` identifies pairs that fall back to size.
 - **AeroSync preserves folders and converged files.** Compare retains shared and empty remote directories, S3 implicit parents and typed rclone entries, and skips files that already match while preserving actionable checksum and type conflicts (#1322).
 - **Literal Unix backslashes remain literal.** Recursive uploads, sync, watchers and GUI transfers no longer confuse a backslash in a filename with a nested path. Windows drive and UNC roots remain navigable, remote parent-creation errors are handled, and escaped ignore reinclusions stay reachable (#1324, #1325).

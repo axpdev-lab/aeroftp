@@ -82,7 +82,7 @@ Plain FTP connections display a prominent insecure warning badge. WebDAV support
 AeroAgent (86 built-in GUI tools) operates under backend-enforced security controls:
 
 - **Grant system**: Mutative tools require a cryptographic grant verified by the Rust backend
-- **Confirmation modes**: Safe and Normal use native OS confirmation for mutating grants; Expert uses the in-app approval panel and Extreme can auto-approve tools. Backend request binding and tool restrictions still apply, but the modes have different frontend-compromise boundaries
+- **Confirmation modes**: Safe and Normal use a backend-created AeroFTP approval window for mutating grants; Expert uses the in-app approval panel and Extreme can auto-approve tools. Backend request binding and tool restrictions still apply, but the modes have different frontend-compromise boundaries
 - **Credential isolation**: AI models never receive raw credentials; the backend authenticates internally
 - **Shell denylist**: 34 regex patterns block dangerous commands
 - **Path validation**: Null bytes, traversal, and system paths blocked at the backend level

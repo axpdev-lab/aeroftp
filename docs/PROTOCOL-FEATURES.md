@@ -821,7 +821,7 @@ The remote-facing tools route through the `StorageProvider` trait, with capabili
 | Medium | `remote_upload`, `upload_files`, `upload_many`, `remote_download`, `download_files`, `remote_mkdir`, `remote_rename`, `remote_edit`, `remote_touch`, `remote_speed`, `transfer`, `transfer_tree`, `cross_profile_transfer` |
 | High | `remote_delete`, `remote_delete_many`, `remote_dedupe`, `remote_cleanup`, `server_exec` |
 
-See the full tool breakdown in [AeroAgent Tool Categories](#aeroagent-tool-categories-50-agent-tools-35-exposed-over-mcp) below.
+See the full tool breakdown in [AeroAgent capabilities](AEROAGENT-CAPABILITIES.md).
 
 ### AI Features
 

@@ -62,11 +62,11 @@ AeroFTP does not integrate with any advertising, analytics, or tracking services
 
 ## Data Sharing
 
-We do not share, sell, or transfer any user data to third parties. AeroFTP has no server-side component - all operations happen locally or directly between your machine and the services you connect to.
+AeroFTP has no product telemetry, analytics or automatic crash reporting, and we do not sell user data. Transfers, authentication, AI prompts and tool context are sent to the recipients or services you select, including configured background work. Enabled AeroShare discovery and relays can receive network metadata and encrypted traffic as described above. AeroFTP does not operate a hosted storage or file-proxy service; the services you use have their own data policies.
 
 ## Children's Privacy
 
-AeroFTP does not knowingly collect any data from children or any other users.
+AeroFTP has no product telemetry, analytics or automatic crash reporting for any age group. Files, prompts and other data sent through configured features remain subject to the selected recipients' and services' policies, including their age requirements.
 
 ## Open Source Transparency
 
@@ -75,7 +75,7 @@ https://github.com/axpdev-lab/aeroftp
 
 ## Changes to This Policy
 
-Updates to this privacy policy will be reflected in this document with an updated date. Since AeroFTP collects no data, changes are expected to be minimal.
+Updates to this privacy policy will be reflected in this document with an updated date. Changes to features, authentication, background connections or third-party services can change the data flows described here.
 
 ## Contact
 

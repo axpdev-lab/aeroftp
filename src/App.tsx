@@ -9374,6 +9374,16 @@ const App: React.FC = () => {
           setOverlayDecrypting(false);
           setPendingOverlayUnlock(null);
           if (!reactivated) {
+            const kind = activeSession.cryptOverlayKind ?? (overlayBinding
+              ? overlayBinding.prefix === 'aerocrypt_provider' ? 'aerocrypt' : 'rclone-crypt'
+              : null);
+            if (kind) {
+              setLockedOverlayProfile({
+                savedServerId: activeSession.savedServerId,
+                kind,
+                reason: refusalFor(overlayRefusalRef.current, activeSession.savedServerId),
+              });
+            }
             throw new Error('Failed to re-apply crypt overlay for this scope.');
           }
           reactivatedOverlayForNav = true;

@@ -12,6 +12,7 @@ import { transformWithOxc } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 import app from '../App.tsx?raw';
 import { connectLandsOutsideOverlay, isWithinCryptScope, normCryptScope, resolveUsernameTemplate } from './cryptScope';
+import { refusalFor } from './overlayRefusal';
 
 async function execute<T>(source: string, context: Record<string, unknown>, suffix: string): Promise<T> {
     const { code } = await transformWithOxc(source, 'crypt-connect-landing.ts');
@@ -94,6 +95,48 @@ describe('crypt overlay connect landing (#1211)', () => {
         const { invoke, positionWrappedProviderAtScope } = await reanchorWith({ initialLandingPath: '/docs' });
         expect(positionWrappedProviderAtScope).toHaveBeenCalledWith('/docs');
         expect(invoke).not.toHaveBeenCalled();
+    });
+});
+
+describe('crypt overlay scope-entry recovery', () => {
+    async function enterScope(kind: string | null, reactivated: boolean, refusalProfile = 'srv_1') {
+        const start = app.indexOf('const reactivated = await maybeAutoUnlockProfileOverlay(activeSession.savedServerId);');
+        const marker = 'reactivatedOverlayForNav = true;';
+        const end = app.indexOf(marker, start);
+        if (start < 0 || end < 0) throw new Error('scope-entry unlock block not found in App.tsx');
+        const setLockedOverlayProfile = vi.fn();
+        const run = execute('let reactivatedOverlayForNav = false;\n' + app.slice(start, end + marker.length), {
+            activeSession: { savedServerId: 'srv_1', cryptOverlayKind: kind },
+            overlayBinding: { vaultId: 'live_vault', prefix: 'aerocrypt_provider' },
+            maybeAutoUnlockProfileOverlay: vi.fn().mockResolvedValue(reactivated),
+            setOverlayDecrypting: vi.fn(),
+            setPendingOverlayUnlock: vi.fn(),
+            setLockedOverlayProfile,
+            overlayRefusalRef: { current: { savedServerId: refusalProfile, kind: kind ?? 'aerocrypt', reason: 'Supply the missing salt.' } },
+            refusalFor,
+        }, '');
+        // The successful branch assigns the surrounding navigation flag.
+        return { run, setLockedOverlayProfile };
+    }
+
+    it.each(['aerocrypt', 'rclone-crypt', null])('offers manual recovery after a failed %s scope-entry unlock', async (kind) => {
+        const { run, setLockedOverlayProfile } = await enterScope(kind, false);
+        await expect(run).rejects.toThrow('Failed to re-apply crypt overlay for this scope.');
+        expect(setLockedOverlayProfile).toHaveBeenCalledWith({
+            savedServerId: 'srv_1', kind: kind ?? 'aerocrypt', reason: kind === 'rclone-crypt' ? 'Supply the missing salt.' : undefined,
+        });
+    });
+
+    it('does not show a refusal belonging to another profile', async () => {
+        const { run, setLockedOverlayProfile } = await enterScope('rclone-crypt', false, 'srv_other');
+        await expect(run).rejects.toThrow('Failed to re-apply crypt overlay for this scope.');
+        expect(setLockedOverlayProfile).toHaveBeenCalledWith({ savedServerId: 'srv_1', kind: 'rclone-crypt', reason: undefined });
+    });
+
+    it('keeps the recovery banner closed after a successful scope-entry unlock', async () => {
+        const { run, setLockedOverlayProfile } = await enterScope('aerocrypt', true);
+        await expect(run).resolves.toBeUndefined();
+        expect(setLockedOverlayProfile).not.toHaveBeenCalled();
     });
 });
 

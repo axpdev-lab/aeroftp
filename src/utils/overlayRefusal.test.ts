@@ -18,11 +18,11 @@ describe('refusalFor', () => {
         expect(refusalFor(null, 'p1')).toBeUndefined();
     });
 
-    it('reaches the locked banner from both failure paths', () => {
-        // The auto-unlock records the refusal, both places that arm the locked
+    it('reaches the locked banner from connect, reload and scope-entry failures', () => {
+        // The auto-unlock records the refusal, all three places that arm the locked
         // banner read it, and the banner renders it: a toast closed in seconds.
         expect(APP).toContain('overlayRefusalRef.current = {');
-        expect(APP.match(/reason: refusalFor\(overlayRefusalRef\.current, /g) ?? []).toHaveLength(2);
+        expect(APP.match(/reason: refusalFor\(overlayRefusalRef\.current, /g) ?? []).toHaveLength(3);
         expect(APP).toContain('{lockedOverlayProfile.reason && (');
     });
 });

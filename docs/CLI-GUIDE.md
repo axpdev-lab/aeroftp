@@ -1093,17 +1093,22 @@ for tiny files, where fixed parity-shard floors dominate the nominal overhead.
 The sync-doctor estimate uses the same windowed geometry without generating
 parity and reports skipped-large and skipped-low-benefit candidates.
 
-On download, repair must match the expected file size and out-of-band SHA-256
-recorded for the sync item before the repaired file is published. A sidecar's
-own content hash is an integrity aid, not an authenticity proof against an
-attacker who can replace both the file and its sidecar. Detached recovery data
-must be refreshed after content changes.
+In v4.2.5, CLI `sync --ec` generates sidecars after successful uploads; it does not automatically verify or repair downloaded files. The separate desktop sync repair path requires an expected SHA-256 from the scanned item and skips repair when that hash is unavailable; an S3 MD5 is not a SHA-256 authenticity anchor.
+
+For explicit recovery, download the damaged file and its `.aerocorrect` sidecar, then use a SHA-256 of the known-good content obtained independently from a trusted source:
+
+```bash
+aeroftp-cli get --profile "Backup" /backup/report.bin ./report.bin
+aeroftp-cli get --profile "Backup" /backup/report.bin.aerocorrect ./report.bin.aerocorrect
+aeroftp-cli correct repair ./report.bin --parity ./report.bin.aerocorrect --expect-sha256 <trusted-64-hex-sha256>
+```
+
+Replace the hash placeholder before running the command. A bare `correct repair` checks the sidecar's own content hash for integrity, but that hash does not authenticate a sidecar supplied by an attacker who can replace both objects. Detached recovery data must be refreshed after content changes.
 
 EC covers damage within the selected Reed-Solomon budget. It does not recover
 logical deletes, ransomware replacing a whole file, complete file loss or damage
 beyond that budget. Each protected file adds a remote object and the selected
-storage overhead. The receipt and JSON counters report generation, repair and
-skip outcomes; inspect them before treating a backup as protected.
+storage overhead. The CLI receipt and JSON counters report generation and skip outcomes; inspect them before treating a backup as protected. Desktop sync also reports its verification and repair outcomes.
 
 ### transfer - Cross-Profile Transfer
 

@@ -4,11 +4,11 @@
 
 > **Beta preview.** AeroShare first shipped as a Beta preview in v4.1.0 and remains Beta in v4.2.5. The transport is hardened and decentralized by design, while parts of the surface and the notifications are still being refined. Expect rough edges and please report them.
 
-AeroShare lets you send a file or a folder straight to another person, end-to-end encrypted, without a hosted storage account. Instead of uploading to a hosted account and sharing a link to it, AeroShare opens a direct peer-to-peer channel between the two devices and moves the bytes across it. Nothing is stored on an AeroFTP server, because there is no AeroFTP server in the path.
+AeroShare lets you send a file or a folder straight to another person, end-to-end encrypted, without a hosted storage account. Instead of uploading to a hosted account and sharing a link to it, AeroShare moves bytes between the two devices over an end-to-end encrypted channel, directly when connectivity permits or through a relay when necessary. AeroFTP does not operate a hosted storage or file-proxy service; third-party relays can forward encrypted packets.
 
 ## How it works
 
-AeroShare is built on [iroh](https://www.iroh.computer/) 1.0. Peers connect over QUIC. The default discovery mode combines Mainline DHT, n0 discovery and LAN discovery; Settings also offers `dht`, `n0`, `lan` and `none`. Relays provide a path when direct connectivity is unavailable. Discovery services see network/discovery metadata; end-to-end encryption protects file contents. The channel is end-to-end encrypted (a 256-bit class), so the relay, if one is used, only forwards opaque packets and never sees your files. There is no central tie to any operator-run server: every user is a node.
+AeroShare is built on [iroh](https://www.iroh.computer/) 1.0. Peers connect over QUIC. The default discovery mode, `both`, combines Mainline DHT, n0 discovery and LAN discovery. Settings offers `both`, `dht`, `n0`, `lan` and `none`. Relays provide a path when direct connectivity is unavailable. Discovery services see network/discovery metadata; end-to-end encryption protects file contents. The channel is end-to-end encrypted (a 256-bit class), so the relay, if one is used, only forwards opaque packets and never sees your files. Peers do not need an AeroFTP-hosted storage account; discovery and relay availability depend on the selected network services.
 
 A transfer is described by a share link (an iroh ticket carrying the dial addresses and the namespace). When you share a folder, AeroShare gives you a link to send to your friend; they paste it into their AeroShare to receive. Shared folders are browse and download only on the receiving side.
 
@@ -43,7 +43,7 @@ AeroShare keeps a small address book of saved contacts, your AeroShare friends. 
 ## Privacy and trust
 
 - **End-to-end encrypted**: only the two peers can read the transfer; relays forward ciphertext only.
-- **No operator server in the path**: there is no hosted account and no AeroFTP server storing or proxying your files. Discovery follows the selected DHT/n0/LAN mode; relay services can forward encrypted traffic when needed.
+- **No AeroFTP-hosted storage or proxy**: there is no hosted account and no AeroFTP server storing or proxying your files. Discovery follows the selected DHT/n0/LAN mode; relay services can forward encrypted traffic when needed.
 - **Receiving is opt-in**: your device does not accept incoming transfers until you opt in, and you can turn it off from the status bar or Settings at any time.
 - **No provider credentials involved**: AeroShare moves files directly between people and does not require sharing any storage-provider credential, so it stays within AeroFTP's broader no-credential-exposure model (see [Credential Isolation](CREDENTIAL-ISOLATION.md)).
 
