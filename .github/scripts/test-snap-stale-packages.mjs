@@ -154,6 +154,9 @@ test('a manifest entry not shaped name=version is unverified, not current', asyn
       assert.equal(r.status, 2, r.stdout);
       assert.match(r.stderr, /::error::/);
       assert.ok(r.stderr.includes(entry), r.stderr);
+      if (entry.startsWith('libssl3:arm64=')) {
+        assert.match(r.stderr, /architecture qualifier must match the snap architecture: amd64/);
+      }
       assert.doesNotMatch(r.stdout, /^OK:/m);
       assert.doesNotMatch(r.outputs, /^stale=/m);
     });

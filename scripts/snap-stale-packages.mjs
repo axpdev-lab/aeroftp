@@ -192,6 +192,7 @@ function sh(cmd, args, opts = {}) {
   return execFileSync(cmd, args, { encoding: 'utf8', ...opts });
 }
 
+/** Read the Snap metadata needed to audit its staged Ubuntu packages. */
 function readSnapMetadata(snapFile, workDir) {
   sh('unsquashfs', ['-q', '-n', '-f', '-d', join(workDir, 'x'), snapFile, 'snap/manifest.yaml', 'meta/snap.yaml']);
   const manifest = readFileSync(join(workDir, 'x', 'snap', 'manifest.yaml'), 'utf8');
@@ -234,7 +235,7 @@ function readSnapMetadata(snapFile, workDir) {
   }
   if (unread.length > 0) {
     throw new Error(
-      `cannot read ${unread.length} primed-stage-packages entr${unread.length === 1 ? 'y' : 'ies'} of snap/manifest.yaml as <package>[:<architecture>]=<version>:\n  ${unread.join('\n  ')}`,
+      `cannot read ${unread.length} primed-stage-packages entr${unread.length === 1 ? 'y' : 'ies'} of snap/manifest.yaml as <package>[:<architecture>]=<version> (the architecture qualifier must match the snap architecture: ${arch}):\n  ${unread.join('\n  ')}`,
     );
   }
   if (packages.length === 0) throw new Error('the primed-stage-packages list of snap/manifest.yaml has no entries');
