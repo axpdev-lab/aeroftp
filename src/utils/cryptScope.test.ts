@@ -1,7 +1,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, it, expect } from 'vitest';
-import { normCryptScope, isWithinCryptScope, resolveBoundCryptScope } from './cryptScope';
+import { normCryptScope, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './cryptScope';
 
 describe('normCryptScope', () => {
   it('collapses the empty scope and the root onto "whole remote"', () => {
@@ -16,6 +16,52 @@ describe('normCryptScope', () => {
     expect(normCryptScope('vault')).toBe('/vault');
     expect(normCryptScope('/vault/')).toBe('/vault');
     expect(normCryptScope('//vault//sub//')).toBe('/vault//sub');
+  });
+});
+
+describe('connectLandsOutsideOverlay', () => {
+  it('opens a root Remote Path outside a subfolder island', () => {
+    expect(connectLandsOutsideOverlay('/', '/Crypt')).toBe(true);
+    expect(connectLandsOutsideOverlay('', '/Crypt')).toBe(true);
+    expect(connectLandsOutsideOverlay('   ', '/Crypt-rclone')).toBe(true);
+    expect(connectLandsOutsideOverlay('/docs', '/docs/secret')).toBe(true);
+  });
+
+  it('opens inside the island when the Remote Path is the encrypted folder', () => {
+    expect(connectLandsOutsideOverlay('/Crypt', '/Crypt')).toBe(false);
+    expect(connectLandsOutsideOverlay('/Crypt/sub', '/Crypt')).toBe(false);
+    expect(connectLandsOutsideOverlay('/Crypt/', '/Crypt')).toBe(false);
+  });
+
+  it('treats an empty Overlays Path as the Remote Path itself', () => {
+    expect(connectLandsOutsideOverlay('/', '')).toBe(false);
+    expect(connectLandsOutsideOverlay('/', '/')).toBe(false);
+    expect(connectLandsOutsideOverlay('/Crypt', '')).toBe(false);
+    expect(connectLandsOutsideOverlay('/Crypt', null)).toBe(false);
+  });
+});
+
+describe('resolveUsernameTemplate', () => {
+  it('resolves both sides of the landing comparison before classification', () => {
+    const remotePath = resolveUsernameTemplate('/{username}/Crypt', 'alice');
+    const overlayPath = resolveUsernameTemplate('/{username}/Crypt', 'alice');
+    expect(connectLandsOutsideOverlay(remotePath, overlayPath)).toBe(false);
+  });
+
+  it('keeps the path unchanged without a username', () => {
+    expect(resolveUsernameTemplate('/{username}/Crypt', '')).toBe('/{username}/Crypt');
+  });
+});
+
+describe('shouldAutoUnlockOverlayOnConnect', () => {
+  it('defers an outside landing and unlocks an inside one', () => {
+    expect(shouldAutoUnlockOverlayOnConnect({ opensOutside: true })).toBe(false);
+    expect(shouldAutoUnlockOverlayOnConnect({ opensOutside: false })).toBe(true);
+  });
+
+  it('keeps the no-hint path for locked-overlay discovery', () => {
+    expect(shouldAutoUnlockOverlayOnConnect(null)).toBe(true);
+    expect(shouldAutoUnlockOverlayOnConnect(undefined)).toBe(true);
   });
 });
 

@@ -11,7 +11,7 @@
 import { transformWithOxc } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 import app from '../App.tsx?raw';
-import { normCryptScope } from './cryptScope';
+import { connectLandsOutsideOverlay, isWithinCryptScope, normCryptScope, resolveUsernameTemplate } from './cryptScope';
 
 async function execute<T>(source: string, context: Record<string, unknown>, suffix: string): Promise<T> {
     const { code } = await transformWithOxc(source, 'crypt-connect-landing.ts');
@@ -95,4 +95,122 @@ describe('crypt overlay connect landing (#1211)', () => {
         expect(positionWrappedProviderAtScope).toHaveBeenCalledWith('/docs');
         expect(invoke).not.toHaveBeenCalled();
     });
+});
+
+describe('crypt overlay deferred connect unlock', () => {
+    const DECISION_START = 'const overlayBinding = isProvider ? rawActiveCryptOverlay() : null;';
+    const DECISION_END = 'let reactivatedOverlayForNav = false;';
+
+    async function navigationDecisionFor(activeSession: { savedServerId?: string; cryptOverlayKind?: string | null }) {
+        const start = app.indexOf(DECISION_START);
+        const end = app.indexOf(DECISION_END, start);
+        if (start < 0 || end < 0) throw new Error('overlay navigation decision block not found in App.tsx');
+        return execute(app.slice(start, end), {
+            isProvider: true,
+            rawActiveCryptOverlay: () => null,
+            activeSession,
+            resolveTargetDisplayPath: (_current: string, path: string) => path,
+            currentRemoteDisplayPath: '/',
+            path: '/Crypt',
+            plainPath: true,
+            activeBoundRemoteScope: '/Crypt',
+            isWithinCryptScope,
+        }, 'return { crossingIn, crossingOut, providerNavPath };');
+    }
+
+    it('enters the scope through a saved capability before any vault exists', async () => {
+        await expect(navigationDecisionFor({ savedServerId: 'srv_1', cryptOverlayKind: 'aerocrypt' })).resolves.toEqual({
+            crossingIn: true,
+            crossingOut: false,
+            providerNavPath: '/Crypt',
+        });
+    });
+
+    it('does not route a plain session through the overlay', async () => {
+        await expect(navigationDecisionFor({ savedServerId: 'srv_1', cryptOverlayKind: null })).resolves.toEqual({
+            crossingIn: false,
+            crossingOut: false,
+            providerNavPath: '/Crypt',
+        });
+    });
+
+    it('gates every connect-time pending unlock on the landing policy', () => {
+        expect(app.match(/shouldAutoUnlockOverlayOnConnect\(/g)).toHaveLength(4);
+    });
+
+    it('lists OAuth at the configured Remote Path on both connect paths', () => {
+        expect(app).toContain("invoke<FileListResponse>('provider_change_dir', { path: oauthInitialPath })");
+        expect(app).toContain("invoke<FileListResponse>('provider_change_dir', { path: savedOauthInitialPath })");
+    });
+
+    it('classifies the Quick Connect landing instead of the saved profile default', async () => {
+        const start = app.indexOf('const getProfileOverlayHint = async (');
+        const end = app.indexOf('// Open and Create from', start);
+        if (start < 0 || end < 0) throw new Error('profile overlay hint block not found in App.tsx');
+        const hintFor = (landingPath?: string, profilePath = '/', overlayScope: string | null = '/Crypt') => execute(app.slice(start, end), {
+            landingPath,
+            loadSavedServerProfiles: async () => [{
+                id: 'srv_1',
+                initialPath: profilePath,
+                username: 'alice',
+                hasStoredAeroCryptPassword: true,
+                aeroCryptOverlay: { enabled: true, kind: 'aerocrypt', remoteScope: overlayScope },
+            }],
+            resolveUsernameTemplate,
+            connectLandsOutsideOverlay,
+        }, "return getProfileOverlayHint('srv_1', landingPath);");
+
+        await expect(hintFor()).resolves.toMatchObject({ opensOutside: true });
+        await expect(hintFor('/Crypt')).resolves.toMatchObject({ opensOutside: false });
+        await expect(hintFor('/', '/Crypt', null)).resolves.toMatchObject({ anchor: '/Crypt', opensOutside: true });
+        expect(app).toContain('getProfileOverlayHint(overlaySavedId, oauthInitialPath)');
+        expect(app).toContain('getProfileOverlayHint(overlaySavedId, resolvedRemoteDir)');
+        expect(app).toContain('serverInitialPath: initialPathOverride ?? cachedInitialPath');
+        expect(app).toContain('savedOverlayHint ? savedOauthInitialPath : undefined');
+        expect(app).toContain("overlayHint ? resolvedSavedInitialPath || '/' : undefined");
+    });
+});
+
+
+describe('new overlay connection replaces stale frontend vault mirrors', () => {
+    const starts = [
+        ['Quick Connect OAuth', "const overlayAnchor = overlayHint.anchor || oauthResponse?.current_path || '/';", 'overlaySavedId'],
+        ['Quick Connect provider', 'const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, resolvedRemoteDir) : null;', 'overlaySavedId'],
+        ['saved OAuth', "const savedOverlayAnchor = savedOverlayHint.anchor || savedOauthResp?.current_path || '/';", 'savedOverlaySavedId'],
+        ['saved provider', 'const overlayHint = await connectScope.step(() => getProfileOverlayHint(overlaySavedId));', 'overlaySavedId'],
+    ] as const;
+
+    for (const [index, [label, marker, ownerKey]] of starts.entries()) {
+        for (const previousKind of ['aerocrypt', 'rclone-crypt']) {
+            it(`${label} clears a previous ${previousKind} mirror before arming the new owner`, async () => {
+                const first = app.indexOf(marker);
+                const start = index === 1 || index === 3
+                    ? app.indexOf('if (overlayHint && overlaySavedId) {', first)
+                    : first;
+                const end = app.indexOf('markSessionOverlayKind(', start);
+                if (start < 0 || end < 0) throw new Error(`${label} activation block missing`);
+                // Drop the opening conditional so this runs the actual activation
+                // statements without needing the remainder of the connect handler.
+                const source = app.slice(start, end).replace(/^if \(overlayHint && overlaySavedId\) \{/, '');
+                let aeroId: string | null = previousKind === 'aerocrypt' ? 'previous-aero-vault' : null;
+                let rcloneId: string | null = previousKind === 'rclone-crypt' ? 'previous-rclone-vault' : null;
+                const setCryptOverlayOwner = vi.fn((owner: unknown) => {
+                    expect(aeroId).toBeNull();
+                    expect(rcloneId).toBeNull();
+                    expect(owner).toEqual({ savedServerId: 'new-profile', sessionId: null });
+                });
+                await execute(source, {
+                    [ownerKey]: 'new-profile',
+                    overlayHint: { anchor: '/Crypt' },
+                    savedOverlayHint: { anchor: '/Crypt' },
+                    oauthResponse: null,
+                    savedOauthResp: null,
+                    setAeroCryptVaultId: (id: string | null) => { aeroId = id; },
+                    setRcloneCryptVaultId: (id: string | null) => { rcloneId = id; },
+                    setCryptOverlayOwner,
+                }, '');
+                expect(setCryptOverlayOwner).toHaveBeenCalledOnce();
+            });
+        }
+    }
 });
