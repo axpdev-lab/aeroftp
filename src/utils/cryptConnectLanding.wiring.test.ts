@@ -112,6 +112,8 @@ describe('crypt overlay scope-entry recovery', () => {
             setOverlayDecrypting: vi.fn(),
             setPendingOverlayUnlock: vi.fn(),
             setLockedOverlayProfile,
+            setAeroCryptVaultId: vi.fn(), setRcloneCryptVaultId: vi.fn(), setCryptOverlayOwner: vi.fn(),
+            overlayReloadedVaultRef: { current: null }, lockSessionCryptOverlay: vi.fn(),
             overlayRefusalRef: { current: { savedServerId: refusalProfile, kind: kind ?? 'aerocrypt', reason: 'Supply the missing salt.' } },
             refusalFor,
         }, '');
@@ -131,6 +133,43 @@ describe('crypt overlay scope-entry recovery', () => {
         const { run, setLockedOverlayProfile } = await enterScope('rclone-crypt', false, 'srv_other');
         await expect(run).rejects.toThrow('Failed to re-apply crypt overlay for this scope.');
         expect(setLockedOverlayProfile).toHaveBeenCalledWith({ savedServerId: 'srv_1', kind: 'rclone-crypt', reason: undefined });
+    });
+
+
+    it.each(['aerocrypt', 'rclone-crypt'])('clears stale %s state so the real banner gate opens after a failed return', async (kind) => {
+        const start = app.indexOf('const reactivated = await maybeAutoUnlockProfileOverlay(activeSession.savedServerId);');
+        const end = app.indexOf('reactivatedOverlayForNav = true;', start);
+        const lockStart = app.indexOf('const lockSessionCryptOverlay = (');
+        const lockEnd = app.indexOf('// Tab is no longer an overlay tab', lockStart);
+        const gate = app.match(/\{(lockedOverlayProfile && isConnected && [^\n]+) && \(/)?.[1];
+        if (start < 0 || end < 0 || lockStart < 0 || lockEnd < 0 || !gate) throw new Error('recovery or banner block missing');
+        const activeSession = { id: 'tab_1', savedServerId: 'srv_1', cryptOverlayKind: kind, cryptOverlayScope: '/Crypt', cryptOverlay: { vaultId: 'stale', kind } };
+        let sessions = [activeSession, { ...activeSession, id: 'tab_other', savedServerId: 'srv_other' }];
+        let aeroCryptVaultId: string | null = kind === 'aerocrypt' ? 'stale' : null;
+        let rcloneCryptVaultId: string | null = kind === 'rclone-crypt' ? 'stale' : null;
+        let lockedOverlayProfile: unknown = null;
+        let owner: unknown = { savedServerId: 'srv_1' };
+        const overlayReloadedVaultRef = { current: 'stale' as string | null };
+        const lockSessionCryptOverlay = await execute<(match: { sessionId: string }) => void>(app.slice(lockStart, lockEnd), {
+            setSessions: (update: (prev: typeof sessions) => typeof sessions) => { sessions = update(sessions); },
+            sessionMatches: (session: typeof activeSession, match: { sessionId: string }) => session.id === match.sessionId,
+        }, 'return lockSessionCryptOverlay;');
+        await expect(execute(app.slice(start, end), {
+            activeSession, overlayBinding: null,
+            maybeAutoUnlockProfileOverlay: async () => null,
+            setOverlayDecrypting: vi.fn(), setPendingOverlayUnlock: vi.fn(),
+            setAeroCryptVaultId: (id: string | null) => { aeroCryptVaultId = id; },
+            setRcloneCryptVaultId: (id: string | null) => { rcloneCryptVaultId = id; },
+            setCryptOverlayOwner: (value: unknown) => { owner = value; },
+            overlayReloadedVaultRef, lockSessionCryptOverlay,
+            setLockedOverlayProfile: (value: unknown) => { lockedOverlayProfile = value; },
+            overlayRefusalRef: { current: null }, refusalFor,
+        }, '')).rejects.toThrow('Failed to re-apply crypt overlay');
+        expect(await execute('', { lockedOverlayProfile, isConnected: true, aeroCryptVaultId, rcloneCryptVaultId, overlayDecrypting: false }, `return !!(${gate});`)).toBe(true);
+        expect(sessions[0]).toMatchObject({ cryptOverlay: null, cryptOverlayKind: kind, cryptOverlayScope: '/Crypt' });
+        expect(sessions[1].cryptOverlay).toEqual(activeSession.cryptOverlay);
+        expect(owner).toBeNull();
+        expect(overlayReloadedVaultRef.current).toBeNull();
     });
 
     it('keeps the recovery banner closed after a successful scope-entry unlock', async () => {
@@ -313,6 +352,66 @@ describe('outside-scope provider landing survives Refresh', () => {
                     expect(invoke).toHaveBeenCalledWith('provider_list_files', { path: '/Parent' });
                     expect(cwd).toBe('/');
                 }
+            });
+        }
+    }
+});
+
+
+describe('OAuth landing probe recovers the current provider directory', () => {
+    for (const saved of [false, true]) {
+        async function probe(outcome: 'missing' | 'cancel' | 'fallback-cancel' | 'fallback-error' | 'scope-stale' | 'success') {
+            const variable = saved ? 'savedOauthResp' : 'oauthResponse';
+            const start = app.indexOf(`let ${variable}: FileListResponse | null = null;`);
+            const end = app.indexOf(saved ? 'const savedOverlayAnchor =' : 'const overlayAnchor =', start);
+            if (start < 0 || end < 0) throw new Error('OAuth landing probe block missing');
+            const source = app.slice(start, end) + '}';
+            const current = { current_path: '/home', files: [{ name: 'existing.txt' }] };
+            const invoke = vi.fn(async (command: string) => {
+                if (command === 'provider_change_dir') {
+                    if (outcome === 'success') return { ...current, current_path: '/Landing' };
+                    throw new Error(outcome === 'cancel' ? 'LISTING_CANCELLED' : 'directory missing');
+                }
+                if (outcome === 'fallback-cancel') throw new Error('LISTING_CANCELLED');
+                if (outcome === 'fallback-error') throw new Error('listing unavailable');
+                return current;
+            });
+            const assert = vi.fn(() => { if (outcome === 'scope-stale') throw new Error('connect attempt stale'); });
+            const run = execute(source, {
+                overlayHint: { opensOutside: true }, overlaySavedId: 'srv_1',
+                savedOverlayHint: { opensOutside: true }, savedOverlaySavedId: 'srv_1',
+                oauthInitialPath: '/Landing', savedOauthInitialPath: '/Landing',
+                invoke, withRemoteListSpinner: (op: () => Promise<unknown>) => op(),
+                isListingCancelled: (error: unknown) => String(error).includes('LISTING_CANCELLED'),
+                connectScope: { step: (op: () => Promise<unknown>) => op(), assert },
+            }, `return ${variable};`);
+            return { run, invoke, current };
+        }
+
+        it(`${saved ? 'saved' : 'Quick Connect'} falls back to a usable current listing after landing failure`, async () => {
+            const { run, invoke, current } = await probe('missing');
+            await expect(run).resolves.toEqual(current);
+            expect(invoke).toHaveBeenNthCalledWith(2, 'provider_list_files', { path: null });
+        });
+        it.each(['cancel', 'fallback-cancel'] as const)(`${saved ? 'saved' : 'Quick Connect'} stops on %s`, async (outcome) => {
+            const { run, invoke } = await probe(outcome);
+            await expect(run).resolves.toBe(saved ? 'failed' : undefined);
+            expect(invoke).toHaveBeenCalledTimes(outcome === 'cancel' ? 1 : 2);
+        });
+        it(`${saved ? 'saved' : 'Quick Connect'} preserves a transient fallback-listing error`, async () => {
+            const { run } = await probe('fallback-error');
+            await expect(run).resolves.toBeNull();
+        });
+        it(`${saved ? 'saved' : 'Quick Connect'} does not fall back when landing succeeds`, async () => {
+            const { run, invoke } = await probe('success');
+            await expect(run).resolves.toMatchObject({ current_path: '/Landing' });
+            expect(invoke).toHaveBeenCalledTimes(1);
+        });
+        if (saved) {
+            it('never falls back after the saved connect scope becomes stale', async () => {
+                const { run, invoke } = await probe('scope-stale');
+                await expect(run).rejects.toThrow('connect attempt stale');
+                expect(invoke).toHaveBeenCalledTimes(1);
             });
         }
     }

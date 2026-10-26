@@ -7698,7 +7698,12 @@ const App: React.FC = () => {
           // arming the overlay on a session the user just tore down would paint
           // a decrypting panel over My Servers.
           if (isListingCancelled(error)) return;
-          oauthResponse = null;
+          try {
+            oauthResponse = await withRemoteListSpinner(() => invoke<FileListResponse>('provider_list_files', { path: null }));
+          } catch (fallbackError) {
+            if (isListingCancelled(fallbackError)) return;
+            oauthResponse = null;
+          }
         }
         const overlayAnchor = overlayHint.anchor || oauthResponse?.current_path || '/';
         // A new connection must not inherit another session's vault mirrors.
@@ -9377,6 +9382,13 @@ const App: React.FC = () => {
             const kind = activeSession.cryptOverlayKind ?? (overlayBinding
               ? overlayBinding.prefix === 'aerocrypt_provider' ? 'aerocrypt' : 'rclone-crypt'
               : null);
+            // A failed return must not leave the old live binding masking the
+            // manual-unlock banner. Keep the session's capability and scope.
+            setAeroCryptVaultId(null);
+            setRcloneCryptVaultId(null);
+            overlayReloadedVaultRef.current = null;
+            setCryptOverlayOwner(null);
+            lockSessionCryptOverlay({ sessionId: activeSession.id });
             if (kind) {
               setLockedOverlayProfile({
                 savedServerId: activeSession.savedServerId,
@@ -18203,7 +18215,12 @@ const App: React.FC = () => {
                       // return as 'connected' and leave the GUI controller
                       // waiting for a connected commit that will never come.
                       if (isListingCancelled(error)) return 'failed' as const;
-                      savedOauthResp = null;
+                      try {
+                        savedOauthResp = await connectScope.step(() => withRemoteListSpinner(() => invoke<FileListResponse>('provider_list_files', { path: null })));
+                      } catch (fallbackError) { connectScope.assert();
+                        if (isListingCancelled(fallbackError)) return 'failed' as const;
+                        savedOauthResp = null;
+                      }
                     }
                     const savedOverlayAnchor = savedOverlayHint.anchor || savedOauthResp?.current_path || '/';
                     // A new connection must not inherit another session's vault mirrors.
