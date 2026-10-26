@@ -18224,7 +18224,9 @@ const App: React.FC = () => {
                     normalizedParams,
                     savedOauthResp?.current_path || savedOauthInitialPath,
                     resolvedLocalPath,
-                    savedOverlayHint && !savedOverlayHint.opensOutside ? [] : savedOauthResp?.files
+                    savedOverlayHint && !savedOverlayHint.opensOutside ? [] : savedOauthResp?.files,
+                    undefined,
+                    savedOverlayHint ? savedOauthInitialPath : undefined
                   ));
                   if (savedOverlayHint && savedOverlaySavedId) {
                     markSessionOverlayKind({ savedServerId: savedOverlaySavedId }, savedOverlayHint.kind, savedOverlayHint.anchor);
@@ -18396,7 +18398,9 @@ const App: React.FC = () => {
                       connectedParams,
                       response.current_path,
                       resolvedLocalPath2,
-                      overlayHint && !overlayHint.opensOutside ? [] : files
+                      overlayHint && !overlayHint.opensOutside ? [] : files,
+                      undefined,
+                      overlayHint ? resolvedSavedInitialPath || '/' : undefined
                     ));
                     if (overlayHint && overlaySavedId) {
                       markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);

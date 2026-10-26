@@ -166,5 +166,7 @@ describe('crypt overlay deferred connect unlock', () => {
         expect(app).toContain('getProfileOverlayHint(overlaySavedId, oauthInitialPath)');
         expect(app).toContain('getProfileOverlayHint(overlaySavedId, resolvedRemoteDir)');
         expect(app).toContain('serverInitialPath: initialPathOverride ?? cachedInitialPath');
+        expect(app).toContain('savedOverlayHint ? savedOauthInitialPath : undefined');
+        expect(app).toContain("overlayHint ? resolvedSavedInitialPath || '/' : undefined");
     });
 });
