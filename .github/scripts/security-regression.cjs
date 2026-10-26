@@ -191,9 +191,12 @@ function checkSettingsVaultMigration() {
     `settings vault migration regression: plaintext settings write still present in ${settingsPanelFile}`
   );
 
+  // The legacy migration reads the vault strictly (a store that is not ready
+  // is a failure, never an absent key) and stays pending until a write lands.
   assert(
     useSettings.includes("secureGetWithFallback<Record<string, unknown>>(SETTINGS_VAULT_KEY, SETTINGS_KEY)") &&
-      useSettings.includes('updateAppSettings(existing => existing ?? parsed).catch(() => {});'),
+      useSettings.includes('updateAppSettings(existing => existing ?? parsed, undefined, true)') &&
+      useSettings.includes('.then(() => { migrationPending = false; })'),
     `settings vault migration regression: missing vault-first load/migration in ${useSettingsFile}`
   );
 
