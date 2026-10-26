@@ -29,7 +29,8 @@ function removeLegacySettings(): void {
 
 function publish(updated: Settings, scope?: ConnectScope): Settings {
     scope?.assert();
-    // Reached only after a confirmed vault write, so a plaintext copy goes.
+    // Reached only after a confirmed vault write (the broker's commit, or the
+    // store above), so a plaintext copy goes.
     removeLegacySettings();
     window.dispatchEvent(new CustomEvent(APP_SETTINGS_EVENT, { detail: updated }));
     return updated;
@@ -50,8 +51,11 @@ export function updateAppSettings(mutate: (existing: Settings | null) => Setting
         const existing = scope ? await scope.step(() => secureGetConfigStrict<Settings>('app_settings')) : strict ? await secureGetConfigStrict<Settings>('app_settings') :
             (await secureGetConfigStrict<Settings>('app_settings', { awaitReady: true })) ?? readLegacySettings();
         const updated = mutate(existing);
-        if (scope) await scope.step(() => secureStore('app_settings', updated));
-        else await secureStore('app_settings', updated);
+        // The plaintext copy goes the moment the vault write lands, inside the
+        // step: a scope that ends right after it skips publish, not the cleanup.
+        const store = async () => { await secureStore('app_settings', updated); removeLegacySettings(); };
+        if (scope) await scope.step(store);
+        else await store();
         return publish(updated, scope);
     });
     // A rejected mutation does not block subsequent saves.

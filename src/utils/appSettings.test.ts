@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { migrateLegacySettings, updateAppSettings } from './appSettings';
+import { ConnectScope } from '../gui/connectScope';
 
 const backend = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: backend.invoke }));
@@ -72,6 +73,19 @@ describe('confirmed app-settings persistence', () => {
         await updateAppSettings(existing => ({ ...existing, lastLocalPath: '/data' }));
         expect(stores()).toHaveLength(1);
         expect(JSON.parse(stores()[0][1].password)).toEqual({ theme: 'dark', fontSize: 18, lastLocalPath: '/data' });
+    });
+
+    it('removes the legacy copy as soon as a scoped vault write lands, even if the scope then ends', async () => {
+        localStorage.setItem(LEGACY, JSON.stringify({ theme: 'dark' }));
+        let leased = true;
+        backend.invoke.mockImplementation(async (command: string) => {
+            if (command === 'get_credential') return JSON.stringify({ theme: 'dark' });
+            leased = false; // the lease ends while the vault write is in flight
+        });
+        const scope = new ConnectScope(() => { if (!leased) throw new Error('lease_interrupted'); });
+        await expect(updateAppSettings(existing => ({ ...existing, theme: 'light' }), scope)).rejects.toThrow('lease_interrupted');
+        expect(stores()).toHaveLength(1);
+        expect(localStorage.getItem(LEGACY)).toBeNull();
     });
 
     it('rejects a write when the vault cannot be read, instead of replacing every setting', async () => {

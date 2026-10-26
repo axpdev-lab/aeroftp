@@ -182,7 +182,8 @@ function checkSettingsVaultMigration() {
 
   assert(
     settingsPanel.includes('await updateAppSettings(existing => mergeAppSettingsDraft(base, captured,') &&
-    read('src/utils/appSettings.ts').includes("await scope.step(() => secureStore('app_settings', updated))"),
+    read('src/utils/appSettings.ts').includes("const store = async () => { await secureStore('app_settings', updated); removeLegacySettings(); };") &&
+    read('src/utils/appSettings.ts').includes('if (scope) await scope.step(store);'),
     `settings vault migration regression: missing vault-backed settings save in ${settingsPanelFile}`
   );
 
