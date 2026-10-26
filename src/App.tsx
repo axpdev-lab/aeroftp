@@ -7973,9 +7973,13 @@ const App: React.FC = () => {
         // path computed above so a Nextcloud-based preset's basePath like
         // `/remote.php/dav/files/{username}/` doesn't reach the backend
         // with the placeholder unresolved (would 404 on the literal path).
+        // Listing a path need not change a provider's cwd (for example Filen).
+        // An outside-scope landing must also survive Refresh at path:null.
+        const overlaySavedId = effectiveParams.savedServerId;
+        const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, resolvedRemoteDir) : null;
         logger.debug('[connectToFtp] Calling provider_list_files for:', protocol);
-        const response = await withRemoteListSpinner(() => invoke<{ files: any[]; current_path: string }>('provider_list_files', {
-          path: resolvedRemoteDir || null
+        const response = await withRemoteListSpinner(() => invoke<{ files: any[]; current_path: string }>(overlayHint?.opensOutside ? 'provider_change_dir' : 'provider_list_files', {
+          path: overlayHint?.opensOutside ? resolvedRemoteDir || '/' : resolvedRemoteDir || null
         }), listingReason(resolvedRemoteDir));
         logger.debug('[connectToFtp] provider_list_files response:', {
           fileCount: response.files?.length ?? 0,
@@ -8004,8 +8008,6 @@ const App: React.FC = () => {
         // Suppress the raw encrypted listing during the Argon2id unlock window
         // and let the deferred phase-2 reload paint the decrypted names anchored
         // at the bound scope.
-        const overlaySavedId = effectiveParams.savedServerId;
-        const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, resolvedRemoteDir) : null;
         if (overlayHint && overlaySavedId) {
           // A new connection must not inherit another session's vault mirrors.
           setAeroCryptVaultId(null);
@@ -18363,8 +18365,10 @@ const App: React.FC = () => {
                     // path computed above so a Nextcloud-based saved profile's
                     // initialPath (e.g. `/remote.php/dav/files/{username}/`) does
                     // not reach the backend with the placeholder unresolved.
-                    const response = await connectScope.step(() => withRemoteListSpinner(() => invoke<{ files: any[]; current_path: string }>('provider_list_files', {
-                      path: resolvedSavedInitialPath || null
+                    const overlaySavedId = connectedParams.savedServerId || normalizedParams.savedServerId;
+                    const overlayHint = await connectScope.step(() => getProfileOverlayHint(overlaySavedId));
+                    const response = await connectScope.step(() => withRemoteListSpinner(() => invoke<{ files: any[]; current_path: string }>(overlayHint?.opensOutside ? 'provider_change_dir' : 'provider_list_files', {
+                      path: overlayHint?.opensOutside ? resolvedSavedInitialPath || '/' : resolvedSavedInitialPath || null
                     }), listingReason(resolvedSavedInitialPath)));
 
                     const files = response.files.map(f => ({
@@ -18380,8 +18384,6 @@ const App: React.FC = () => {
                     // profile: hide the blobs + "/" path during the Argon2id
                     // unlock window and let the phase-2 decrypted reload paint the
                     // real names. Plain profiles render the listing as usual.
-                    const overlaySavedId = connectedParams.savedServerId || normalizedParams.savedServerId;
-                    const overlayHint = await connectScope.step(() => getProfileOverlayHint(overlaySavedId));
                     setCurrentRemotePath(response.current_path);
                     if (overlayHint && overlaySavedId) {
                       // A new connection must not inherit another session's vault mirrors.
