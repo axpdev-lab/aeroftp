@@ -20,6 +20,7 @@ The complete change record and remaining follow-ups are in the [4.2.5 release tr
 
 #### Fixed
 
+- **Crypt connections open at the configured Remote Path.** A landing above an encrypted island stays in plaintext until that island is entered, without visiting it during connection. Saved and Quick Connect paths retain their resolved landing and clear the previous session's frontend vault IDs (#1390).
 - **CLI checks request both sides of a checksum comparison.** `check --checksum` detects different same-size contents when the provider supplies SHA-256; JSON `compare_method` identifies pairs that fall back to size.
 - **AeroSync preserves folders and converged files.** Compare retains shared and empty remote directories, S3 implicit parents and typed rclone entries, and skips files that already match while preserving actionable checksum and type conflicts (#1322).
 - **Literal Unix backslashes remain literal.** Recursive uploads, sync, watchers and GUI transfers no longer confuse a backslash in a filename with a nested path. Windows drive and UNC roots remain navigable, remote parent-creation errors are handled, and escaped ignore reinclusions stay reachable (#1324, #1325).
@@ -49,6 +50,7 @@ The complete change record and remaining follow-ups are in the [4.2.5 release tr
 
 #### Security
 
+- **AeroVault uses the patched compression dependency.** AeroVault 0.6.7 removes the zstd 0.13 and zstd-safe 7 dependency path while preserving the existing container formats. The application now resolves only zstd 0.14.3 and zstd-safe 8.2.0.
 - **Application settings stay in the encrypted vault.** Confirmed writes remove the legacy plaintext WebView copy, migration writes only into an empty settings vault, and a starting or unreadable vault cannot cause a partial settings write to replace the saved configuration (#1379).
 - **Diagnostic and agent errors redact complete credentials.** Authorization headers, quoted and escaped secret fields, and bulk-refusal errors are scrubbed consistently before reaching diagnostic bundles, AeroAgent, the CLI agent or MCP (#1375).
 - **Transfer checks preserve local and remote data.** Download-folder probes cannot delete an existing file, ambiguous destination names are refused, incomplete scans retain a partial verdict, and sync does not overwrite a remote object whose absence was never established (#1350, #1367, #1369).
