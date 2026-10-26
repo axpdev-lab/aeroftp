@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-// Regression wiring for issue #1211: a profile with a crypt overlay and an
-// EMPTY Remote Path must land on the on-wire root at connect, not inside the
-// Overlays Path. The phase-2 overlay effect in App.tsx computes the landing
-// from the session's serverInitialPath, and smartReanchorOverlay maps an empty
-// landing to '/'. Both halves of that contract are exercised here by slicing
-// the production blocks out of App.tsx and running them.
+// Connect landing for a crypt overlay. A blank Remote Path and a Remote Path
+// of "/" are the account root: the connect opens on the Overlays Path, and the
+// plaintext root stays reachable by walking up. A Remote Path that names a
+// folder stays that folder. smartReanchorOverlay still maps an empty landing
+// to '/'. Both halves are exercised by slicing the production blocks out of
+// App.tsx and running them.
 
 import { transformWithOxc } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
@@ -63,15 +63,20 @@ async function reanchorWith(opts: { initialLandingPath?: string | null } | undef
     return { invoke, positionWrappedProviderAtScope };
 }
 
-describe('crypt overlay connect landing (#1211)', () => {
-    it('empty Remote Path with a non-empty scope lands on the on-wire root', async () => {
+describe('crypt overlay connect landing', () => {
+    it('empty Remote Path with a non-empty scope opens the Overlays Path', async () => {
         const opts = await landingFor({ id: 's1', cryptOverlay: { remoteScope: '/Vault' }, serverInitialPath: undefined });
-        expect(opts).toEqual({ initialLandingPath: '' });
+        expect(opts).toEqual({ initialLandingPath: '/Vault' });
     });
 
-    it('blank Remote Path behaves like an empty one', async () => {
+    it('blank Remote Path opens the Overlays Path', async () => {
         const opts = await landingFor({ id: 's1', cryptOverlay: { remoteScope: '/Vault' }, serverInitialPath: '   ' });
-        expect(opts).toEqual({ initialLandingPath: '' });
+        expect(opts).toEqual({ initialLandingPath: '/Vault' });
+    });
+
+    it('a Remote Path of "/" opens the Overlays Path', async () => {
+        const opts = await landingFor({ id: 's1', cryptOverlay: { remoteScope: '/Vault' }, serverInitialPath: '/' });
+        expect(opts).toEqual({ initialLandingPath: '/Vault' });
     });
 
     it('a configured Remote Path remains the landing', async () => {

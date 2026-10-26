@@ -5813,18 +5813,16 @@ const App: React.FC = () => {
     appliedScope: string | null | undefined,
     opts?: { initialLandingPath?: string | null },
   ): Promise<void> => {
-    // EF-03: the INITIAL connect lands on the connection Remote Path (which may
-    // sit OUTSIDE the Overlays Path), NOT on the anchor. This is a DIFFERENT
-    // trigger from the #390 toggle re-anchor, so it deliberately bypasses both
-    // the cwd-in-view "keep position" check AND the outside-scope bounce: it
-    // moves the wrapped provider straight to the Remote Path regardless of where
-    // read_config/connect left the cwd (aerocrypt cd's into the scope; rclone
-    // leaves it at "/"). Callers only pass a landing path for non-empty scopes;
-    // empty scope (whole-remote overlay) never reaches here and lands as today.
+    // The initial connect passes a landing path and skips the #390 "keep the
+    // current folder" check, so neither AeroCrypt (read_config already entered
+    // the scope) nor rclone-crypt (unlock leaves cwd at "/") decides the
+    // destination. An empty landing is the on-wire root. A non-empty landing
+    // is the folder the caller chose: the Overlays Path when the Remote Path
+    // is blank or "/", or the Remote Path when the profile named a folder.
+    // A whole-remote overlay never passes a landing and keeps the legacy path.
     if (opts && opts.initialLandingPath !== undefined) {
       const landing = opts.initialLandingPath;
       if (normCryptScope(landing) === '') {
-        // Remote Path is the on-wire root.
         await invoke('provider_change_dir', { path: '/' }).catch(() => undefined);
       } else {
         await positionWrappedProviderAtScope(landing);
@@ -6177,33 +6175,26 @@ const App: React.FC = () => {
     if (overlayReloadedVaultRef.current === activeVault) return;
     overlayReloadedVaultRef.current = activeVault;
     let cancelled = false;
-    // EF-03: anchor the decrypted reload to the connection Remote Path (the
-    // profile's initialPath, carried on the session as serverInitialPath), NOT
-    // the Overlays Path (crypt scope). The Remote Path is the natural connect
-    // landing dir; the Overlays Path is the encrypted island inside it. Landing
-    // on the Remote Path may put the cwd OUTSIDE the scope (plaintext view + the
-    // EF-02 'Overlays Path' button), which is the intended behavior.
-    //   - Only for a NON-EMPTY scope: a whole-remote overlay (scope === '') has
-    //     no plaintext Remote Path and keeps the legacy re-anchor. An empty or
-    //     missing Remote Path means the on-wire root (#1211): it is passed
-    //     through as the landing and smartReanchorOverlay maps it to '/', so
-    //     the connect no longer drops the user into the Overlays Path.
-    // rclone-crypt needs the explicit move (its unlock does not touch the cwd);
-    // aerocrypt's read_config cd'd into the scope, so the initial-landing branch
-    // in smartReanchorOverlay moves it out to the Remote Path.
+    // A blank or "/" Remote Path is the account root. The connect opens on the
+    // Overlays Path, for AeroCrypt and rclone-crypt alike, and the plaintext
+    // root stays reachable by walking up. A Remote Path that names a real
+    // folder stays the landing. A whole-remote overlay (empty scope) keeps the
+    // legacy re-anchor.
     const activeSess = sessions.find((s) => s.id === activeSessionId);
     const reloadScope = activeSess?.cryptOverlay?.remoteScope || null;
-    const scopeNonEmpty = normCryptScope(reloadScope) !== '';
+    const scope = normCryptScope(reloadScope);
+    const scopeNonEmpty = scope !== '';
     const remotePath = activeSess?.serverInitialPath?.trim() || '';
+    const landingPath = scopeNonEmpty && normCryptScope(remotePath) === ''
+      ? scope
+      : remotePath;
     const initialLandingOpts = scopeNonEmpty
-      ? { initialLandingPath: remotePath }
+      ? { initialLandingPath: landingPath }
       : undefined;
     void (async () => {
       try {
-        // #390 smart re-anchor is preserved for the toggle path (activateProvider
-        // CryptOverlay); here we pass the initial-connect landing so the connect
-        // opens on the Remote Path without bouncing into the scope. Only an empty
-        // scope (whole-remote overlay) falls through to the legacy re-anchor.
+        // #390 smart re-anchor stays on the toggle path. This connect passes
+        // the landing chosen above. An empty scope keeps the legacy re-anchor.
         await smartReanchorOverlay(reloadScope, initialLandingOpts);
         let reloaded = await loadRemoteFiles(undefined, undefined, null);
         if (!reloaded && !cancelled) {
