@@ -192,11 +192,14 @@ describe('new overlay connection replaces stale frontend vault mirrors', () => {
                 // Drop the opening conditional so this runs the actual activation
                 // statements without needing the remainder of the connect handler.
                 const source = app.slice(start, end).replace(/^if \(overlayHint && overlaySavedId\) \{/, '');
+                const vaultId = `provider-overlay:${previousKind}:new-profile`;
+                const overlayReloadedVaultRef = { current: vaultId as string | null };
                 let aeroId: string | null = previousKind === 'aerocrypt' ? 'previous-aero-vault' : null;
                 let rcloneId: string | null = previousKind === 'rclone-crypt' ? 'previous-rclone-vault' : null;
                 const setCryptOverlayOwner = vi.fn((owner: unknown) => {
                     expect(aeroId).toBeNull();
                     expect(rcloneId).toBeNull();
+                    expect(overlayReloadedVaultRef.current).toBeNull();
                     expect(owner).toEqual({ savedServerId: 'new-profile', sessionId: null });
                 });
                 await execute(source, {
@@ -208,8 +211,22 @@ describe('new overlay connection replaces stale frontend vault mirrors', () => {
                     setAeroCryptVaultId: (id: string | null) => { aeroId = id; },
                     setRcloneCryptVaultId: (id: string | null) => { rcloneId = id; },
                     setCryptOverlayOwner,
+                    overlayReloadedVaultRef,
                 }, '');
                 expect(setCryptOverlayOwner).toHaveBeenCalledOnce();
+                // Re-unlocking the same profile reuses its sentinel. Its first
+                // phase-2 reload must run, while a StrictMode repeat stays gated.
+                const guardStart = app.indexOf('const activeVault = aeroCryptVaultId || rcloneCryptVaultId;', app.indexOf('// P3.3 (phase 2)'));
+                const guardEnd = app.indexOf('let cancelled = false;', guardStart);
+                if (guardStart < 0 || guardEnd < 0) throw new Error('phase-2 reload guard missing');
+                const guardContext = {
+                    aeroCryptVaultId: previousKind === 'aerocrypt' ? vaultId : null,
+                    rcloneCryptVaultId: previousKind === 'rclone-crypt' ? vaultId : null,
+                    pendingOverlayUnlock: 'new-profile',
+                    overlayReloadedVaultRef,
+                };
+                await expect(execute(app.slice(guardStart, guardEnd), guardContext, 'return true;')).resolves.toBe(true);
+                await expect(execute(app.slice(guardStart, guardEnd), guardContext, 'return true;')).resolves.toBeUndefined();
             });
         }
     }

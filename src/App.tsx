@@ -6158,7 +6158,7 @@ const App: React.FC = () => {
     if (!pendingOverlayUnlock || !activeVault) return;
     // StrictMode (dev) double-invokes this effect; the ref makes the decrypted
     // reload + log finalization run once per activated vault (no double "Loaded
-    // N items"). A fresh unlock always yields a new vault id, so re-unlocks pass.
+    // N items"). Connect resets this ref because a saved profile reuses its sentinel.
     if (overlayReloadedVaultRef.current === activeVault) return;
     overlayReloadedVaultRef.current = activeVault;
     let cancelled = false;
@@ -7704,6 +7704,7 @@ const App: React.FC = () => {
         // A new connection must not inherit another session's vault mirrors.
         setAeroCryptVaultId(null);
         setRcloneCryptVaultId(null);
+        overlayReloadedVaultRef.current = null;
         setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
         markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
         if (overlayHint.opensOutside) {
@@ -8009,6 +8010,7 @@ const App: React.FC = () => {
           // A new connection must not inherit another session's vault mirrors.
           setAeroCryptVaultId(null);
           setRcloneCryptVaultId(null);
+          overlayReloadedVaultRef.current = null;
           setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
           markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
         }
@@ -18195,6 +18197,7 @@ const App: React.FC = () => {
                     // A new connection must not inherit another session's vault mirrors.
                     setAeroCryptVaultId(null);
                     setRcloneCryptVaultId(null);
+                    overlayReloadedVaultRef.current = null;
                     setCryptOverlayOwner({ savedServerId: savedOverlaySavedId, sessionId: null });
                     markSessionOverlayKind({ savedServerId: savedOverlaySavedId }, savedOverlayHint.kind, savedOverlayHint.anchor);
                     if (savedOverlayHint.opensOutside) {
@@ -18384,6 +18387,7 @@ const App: React.FC = () => {
                       // A new connection must not inherit another session's vault mirrors.
                       setAeroCryptVaultId(null);
                       setRcloneCryptVaultId(null);
+                      overlayReloadedVaultRef.current = null;
                       setCryptOverlayOwner({ savedServerId: overlaySavedId, sessionId: null });
                       markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
                     }
