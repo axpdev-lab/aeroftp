@@ -55,7 +55,7 @@
     "react-dom": "^18.2.0",
     "react-markdown": "^10.1.0",
     "react-virtuoso": "^4.18.19",
-    "react-window": "^2.3.4",
+    "react-window": "^2.5.0",
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
