@@ -231,3 +231,46 @@ describe('new overlay connection replaces stale frontend vault mirrors', () => {
         }
     }
 });
+
+
+describe('outside-scope provider landing survives Refresh', () => {
+    for (const saved of [false, true]) {
+        for (const hint of [{ opensOutside: true }, { opensOutside: false }, null]) {
+            it(`${saved ? 'saved' : 'Quick Connect'} ${hint === null ? 'plain' : hint.opensOutside ? 'outside-scope' : 'in-scope'} listing keeps its directory contract`, async () => {
+                const marker = saved
+                    ? "const response = await connectScope.step(() => withRemoteListSpinner(() => invoke<{ files: any[]; current_path: string }>"
+                    : "logger.debug('[connectToFtp] Calling provider_list_files for:', protocol);";
+                const start = app.indexOf(marker);
+                const end = app.indexOf('const files = response.files.map', start);
+                if (start < 0 || end < 0) throw new Error('provider landing listing block missing');
+                // Filen list(path) can read a folder without moving its cwd.
+                // Refresh uses path:null and therefore reads that stored cwd.
+                let cwd = '/';
+                const invoke = vi.fn(async (command: string, args: { path: string | null }) => {
+                    if (command === 'provider_change_dir') cwd = args.path || '/';
+                    return { current_path: args.path || cwd, files: [{ name: args.path || cwd }] };
+                });
+                const response = await execute<{ current_path: string; files: unknown[] }>(app.slice(start, end), {
+                    overlayHint: hint,
+                    resolvedRemoteDir: '/Parent',
+                    resolvedSavedInitialPath: '/Parent',
+                    connectScope: { step: (op: () => Promise<unknown>) => op() },
+                    withRemoteListSpinner: (op: () => Promise<unknown>) => op(),
+                    listingReason: () => undefined,
+                    logger: { debug: vi.fn() },
+                    protocol: 'filen',
+                    invoke,
+                }, 'return response;');
+                expect(response.current_path).toBe('/Parent');
+                if (hint?.opensOutside) {
+                    expect(invoke).toHaveBeenCalledWith('provider_change_dir', { path: '/Parent' });
+                    const refreshed = await invoke('provider_list_files', { path: null });
+                    expect(refreshed).toEqual(response);
+                } else {
+                    expect(invoke).toHaveBeenCalledWith('provider_list_files', { path: '/Parent' });
+                    expect(cwd).toBe('/');
+                }
+            });
+        }
+    }
+});
