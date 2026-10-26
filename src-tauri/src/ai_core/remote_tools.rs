@@ -1238,15 +1238,19 @@ async fn run_bulk_uploads(
                 // Refused before any item reached the wire. The backend hands
                 // the refusal over as text, so the shared predicate reads it
                 // the way the batch driver does: a transport failure sends the
-                // group to `upload_file`, any other refusal is final.
+                // group to `upload_file`, any other refusal is final. A final
+                // refusal goes into every item's error, so it is sanitized like
+                // an item's own failure below: the GUI and CLI backends hand it
+                // over raw.
                 if error_goes_back_to_single_file(&crate::providers::ProviderError::TransferFailed(
                     error.clone(),
                 )) {
                     let indices: Vec<usize> = pending.iter().map(|(index, _)| *index).collect();
                     upload_each(ctx, &item_args, &indices, tally).await?;
                 } else {
+                    let safe_error = crate::providers::sanitize_api_error(&error);
                     for (index, _) in pending {
-                        tally.record(index, Err(ToolError::Exec(error.clone())));
+                        tally.record(index, Err(ToolError::Exec(safe_error.clone())));
                     }
                 }
                 continue;
@@ -5296,9 +5300,14 @@ mod tests {
             assert_eq!(report["summary"]["errors"], 0, "{refusal}");
         }
 
+        // A final refusal that echoes the request reaches every item
+        // sanitized: the credential and the body after the first line go.
         let (_dir, items) = bulk_fixture(&names);
         let fake = Arc::new(FakeBackend {
-            bulk_refusal: Some("Permission denied: read-only share".into()),
+            bulk_refusal: Some(
+                "Permission denied: read-only share (Authorization: Basic dXNlcjpwYXNz)\n<html>reflected request</html>"
+                    .into(),
+            ),
             ..bulk_backend(|_| BulkTransferOutcome::Completed)
         });
         let ctx = test_ctx(Arc::clone(&fake));
@@ -5308,8 +5317,12 @@ mod tests {
         assert!(fake.local_uploads.lock().unwrap().is_empty());
         assert_eq!(report["summary"]["uploaded"], 0);
         assert_eq!(report["summary"]["errors"], 3);
-        let error = report["results"][0]["error"].as_str().unwrap();
-        assert!(error.contains("read-only share"), "{error}");
+        for result in report["results"].as_array().unwrap() {
+            let error = result["error"].as_str().unwrap();
+            assert!(error.contains("read-only share"), "{error}");
+            assert!(!error.contains("dXNlcjpwYXNz"), "{error}");
+            assert!(!error.contains("reflected request"), "{error}");
+        }
     }
 
     /// An uncertain item may already be on the server: it is reported and
