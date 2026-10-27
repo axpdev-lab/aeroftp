@@ -591,6 +591,28 @@ impl S3Provider {
 
     /// Create a new S3 provider with the given configuration
     pub fn new(config: S3Config) -> Result<Self, ProviderError> {
+        if !config.path_style && !config.bucket.is_empty() {
+            // The bucket becomes URL authority in virtual-hosted mode, not path data.
+            let endpoint = config
+                .endpoint
+                .as_deref()
+                .map(str::to_owned)
+                .unwrap_or_else(|| format!("https://s3.{}.amazonaws.com", config.region));
+            let mut endpoint_url = url::Url::parse(&endpoint)
+                .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+            let endpoint_host = endpoint_url
+                .host_str()
+                .ok_or_else(|| {
+                    ProviderError::InvalidConfig("S3 endpoint must include a host".to_string())
+                })?
+                .to_string();
+            let virtual_host = format!("{}.{}", config.bucket, endpoint_host);
+            endpoint_url.set_host(Some(&virtual_host)).map_err(|_| {
+                ProviderError::InvalidConfig(
+                    "S3 bucket is not valid for virtual-hosted addressing".to_string(),
+                )
+            })?;
+        }
         debug!(
             "[S3] new(): endpoint={:?} bucket={} region={} path_style={} verify_cert={}",
             config.endpoint, config.bucket, config.region, config.path_style, config.verify_cert,
@@ -1320,7 +1342,11 @@ impl S3Provider {
             // No endpoint means AWS, which `endpoint()` builds over https.
             return Ok(());
         };
-        let endpoint = endpoint.trim();
+        self.validate_url_confidentiality(endpoint)
+    }
+
+    fn validate_url_confidentiality(&self, url: &str) -> Result<(), ProviderError> {
+        let endpoint = url.trim();
         if !crate::profile_export::endpoint_needs_cleartext_consent(Some(endpoint)) {
             return Ok(());
         }
@@ -1840,6 +1866,7 @@ impl S3Provider {
         // function, and it fails the session before any work is done rather
         // than at the first request.
         self.validate_endpoint_confidentiality()?;
+        self.validate_url_confidentiality(url)?;
 
         // Single consistent snapshot of the effective credentials for this
         // signing pass (temporary STS creds when a role is assumed, else base).
@@ -5870,6 +5897,7 @@ impl StorageProvider for S3Provider {
         let credential = format!("{}/{}", creds.access_key_id, credential_scope);
 
         let url = self.build_url(key);
+        self.validate_url_confidentiality(&url)?;
         let parsed =
             url::Url::parse(&url).map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
 
@@ -9123,6 +9151,60 @@ mod tests {
             provider.build_url("path/to/file.txt"),
             "https://my-bucket.s3.us-west-2.amazonaws.com/path/to/file.txt"
         );
+    }
+
+    #[test]
+    fn virtual_hosted_bucket_cannot_escape_endpoint_authority() {
+        let base = cleartext_test_provider("http://127.0.0.1:9000", false, None);
+        for bucket in [
+            "attacker.example/",
+            "attacker.example\\",
+            "attacker.example@",
+            "attacker.example?",
+            "attacker.example#",
+        ] {
+            let mut config = base.config.clone();
+            config.path_style = false;
+            config.bucket = bucket.to_string();
+            assert!(
+                matches!(
+                    S3Provider::new(config),
+                    Err(ProviderError::InvalidConfig(_))
+                ),
+                "virtual-hosted bucket must be rejected: {bucket:?}"
+            );
+        }
+
+        let mut path_style = base.config.clone();
+        path_style.path_style = true;
+        path_style.bucket = "legacy/bucket".to_string();
+        assert!(
+            S3Provider::new(path_style).is_ok(),
+            "path-style compatibility must not inherit virtual-host DNS rules"
+        );
+
+        let mut discovery = base.config.clone();
+        discovery.path_style = false;
+        discovery.bucket.clear();
+        assert!(
+            S3Provider::new(discovery).is_ok(),
+            "bucket discovery before selection must remain available"
+        );
+    }
+
+    #[test]
+    fn signing_rechecks_final_destination_confidentiality() {
+        let provider = cleartext_test_provider("http://127.0.0.1:9000", false, None);
+        let mut headers = HashMap::new();
+        let err = provider
+            .sign_request(
+                "GET",
+                "http://minio.example.com:9000/private/key",
+                &mut headers,
+                "UNSIGNED-PAYLOAD",
+            )
+            .expect_err("the final remote HTTP destination must need consent");
+        assert!(err.to_string().contains("minio.example.com"));
     }
 
     /// Issue #128: spaces and emojis in S3 keys must be percent-encoded in
