@@ -37,7 +37,7 @@ Remote Streamable HTTP has a separate transport and OAuth lifecycle.
 
 ## Approval levels
 
-The catalog contains 31 safe, 42 medium and 13 high entries. These are the GUI
+The catalog contains 30 safe, 43 medium and 13 high entries. These are the GUI
 catalog classifications, not the CLI's auto-approval policy or MCP rate-limit
 categories. Backend grants, path validation, cancellation, account context and
 agent-mode policy still apply. Discovery never approves execution. Native
@@ -137,8 +137,10 @@ for the closed public action contract.
 | `coding_git_show` | safe |
 | `coding_run_checks` | medium |
 | `coding_verify` | medium |
-| `coding_diagnostics` | safe |
+| `coding_diagnostics` | medium |
 | `coding_search` | safe |
+
+`coding_diagnostics` requires a backend approval grant because compiler and linter runs can execute workspace build scripts, proc-macros and configuration code. Its GUI classification is medium, like curated checks and verification; a diagnostic run is not a read-only safety guarantee.
 
 ### Archives and recovery
 
