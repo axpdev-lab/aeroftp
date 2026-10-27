@@ -9150,6 +9150,8 @@ const App: React.FC = () => {
             region: cloudS3Location.signingRegion,
             endpoint: cloudS3Location.endpoint,
             path_style: cloudServer.options?.pathStyle,
+            sse_mode: cloudServer.options?.sse_mode || null,
+            sse_kms_key_id: cloudServer.options?.sse_kms_key_id || null,
             private_key_path: cloudServer.options?.private_key_path || null,
             key_passphrase: cloudServer.options?.key_passphrase || null,
             timeout: cloudServer.options?.timeout || 30,

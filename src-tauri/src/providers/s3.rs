@@ -3307,6 +3307,7 @@ impl S3Provider {
         headers.insert("x-amz-copy-source".to_string(), copy_source);
         // COPY-01: Preserve original object metadata during copy
         headers.insert("x-amz-metadata-directive".to_string(), "COPY".to_string());
+        self.append_upload_headers(&mut headers);
         let authorization = self.sign_request("PUT", &url, &mut headers, &payload_hash)?;
 
         let mut request = self.client.put(&url);
@@ -10791,7 +10792,16 @@ mod tests {
                 let (store, seen) = (Arc::clone(&store), Arc::clone(&seen));
                 async move {
                     let method = req.method().as_str().to_string();
-                    seen.lock().unwrap().push(format!("{method} {}", req.uri()));
+                    let mut observed = format!("{method} {}", req.uri());
+                    for name in [
+                        "x-amz-server-side-encryption",
+                        "x-amz-server-side-encryption-aws-kms-key-id",
+                    ] {
+                        if let Some(value) = req.headers().get(name) {
+                            observed.push_str(&format!(" | {name}={}", value.to_str().unwrap()));
+                        }
+                    }
+                    seen.lock().unwrap().push(observed);
                     let url = reqwest::Url::parse(&format!("http://h{}", req.uri())).unwrap();
                     let query: HashMap<String, String> = url.query_pairs().into_owned().collect();
                     let key = urlencoding::decode(
@@ -10902,6 +10912,26 @@ mod tests {
         let mut provider = make_provider(Some(&format!("http://{addr}")));
         provider.connected = true;
         (provider, bucket, log)
+    }
+
+    #[tokio::test]
+    async fn copy_object_preserves_profile_sse_kms_policy() {
+        let (mut provider, _, seen) = provider_on_memory_bucket(&[("source.txt", "payload")]).await;
+        provider.config.sse_mode = Some("aws:kms".to_string());
+        provider.config.sse_kms_key_id = Some("alias/private-key".to_string());
+        provider
+            .server_side_copy_single("source.txt", "destination.txt")
+            .await
+            .expect("CopyObject");
+        let seen = seen.lock().unwrap();
+        assert!(
+            seen.iter().any(|request| {
+                request.contains("x-amz-server-side-encryption=aws:kms")
+                    && request
+                        .contains("x-amz-server-side-encryption-aws-kms-key-id=alias/private-key")
+            }),
+            "{seen:?}"
+        );
     }
 
     /// `replace` is the verb for "put this over that": the CLI `edit`, the
