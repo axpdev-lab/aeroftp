@@ -288,13 +288,23 @@ fn response_declares_opaque_etag(headers: &reqwest::header::HeaderMap) -> bool {
 /// dispatched as `x-amz-copy-source-range: bytes=A-B` headers.
 ///
 /// Pure function so the part-planning logic can be unit-tested without
-/// any HTTP mocking. The S3 cap of 10000 parts per upload is not
-/// enforced here: the caller decides how to surface it.
-fn plan_copy_parts(source_size: u64, part_size: u64) -> Vec<(u32, u64, u64)> {
+/// any HTTP mocking. The S3 cap of 10000 parts per upload is enforced
+/// before allocating the plan.
+fn plan_copy_parts(
+    source_size: u64,
+    part_size: u64,
+) -> Result<Vec<(u32, u64, u64)>, ProviderError> {
     if source_size == 0 || part_size == 0 {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     let total = source_size.div_ceil(part_size);
+    if total > 10_000 {
+        return Err(ProviderError::ServerError(format!(
+            "Server-side copy of {} bytes would need {} parts at {} bytes each; \
+             exceeds S3 cap of 10000 parts per multipart upload",
+            source_size, total, part_size
+        )));
+    }
     let mut out = Vec::with_capacity(total as usize);
     let mut offset = 0u64;
     let mut part_number = 1u32;
@@ -304,7 +314,7 @@ fn plan_copy_parts(source_size: u64, part_size: u64) -> Vec<(u32, u64, u64)> {
         offset = end_inclusive + 1;
         part_number = part_number.saturating_add(1);
     }
-    out
+    Ok(out)
 }
 
 /// Whether an endpoint is a *local bridge*, for the purpose of accepting a
@@ -591,6 +601,28 @@ impl S3Provider {
 
     /// Create a new S3 provider with the given configuration
     pub fn new(config: S3Config) -> Result<Self, ProviderError> {
+        if !config.path_style && !config.bucket.is_empty() {
+            // The bucket becomes URL authority in virtual-hosted mode, not path data.
+            let endpoint = config
+                .endpoint
+                .as_deref()
+                .map(str::to_owned)
+                .unwrap_or_else(|| format!("https://s3.{}.amazonaws.com", config.region));
+            let mut endpoint_url = url::Url::parse(&endpoint)
+                .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+            let endpoint_host = endpoint_url
+                .host_str()
+                .ok_or_else(|| {
+                    ProviderError::InvalidConfig("S3 endpoint must include a host".to_string())
+                })?
+                .to_string();
+            let virtual_host = format!("{}.{}", config.bucket, endpoint_host);
+            endpoint_url.set_host(Some(&virtual_host)).map_err(|_| {
+                ProviderError::InvalidConfig(
+                    "S3 bucket is not valid for virtual-hosted addressing".to_string(),
+                )
+            })?;
+        }
         debug!(
             "[S3] new(): endpoint={:?} bucket={} region={} path_style={} verify_cert={}",
             config.endpoint, config.bucket, config.region, config.path_style, config.verify_cert,
@@ -1320,7 +1352,11 @@ impl S3Provider {
             // No endpoint means AWS, which `endpoint()` builds over https.
             return Ok(());
         };
-        let endpoint = endpoint.trim();
+        self.validate_url_confidentiality(endpoint)
+    }
+
+    fn validate_url_confidentiality(&self, url: &str) -> Result<(), ProviderError> {
+        let endpoint = url.trim();
         if !crate::profile_export::endpoint_needs_cleartext_consent(Some(endpoint)) {
             return Ok(());
         }
@@ -1347,6 +1383,39 @@ impl S3Provider {
 
         self.warn_cleartext_once(host);
         Ok(())
+    }
+
+    /// Confidentiality of the URL a request is actually signed for. A URL built
+    /// from the endpoint keeps its scheme, port and host, or in virtual-hosted
+    /// mode `<bucket>.<host>` (`new` keeps the bucket inside that authority), so
+    /// it takes the endpoint's verdict: `bucket.localhost` behind a local
+    /// endpoint needs no consent. Any other destination is judged on its own.
+    fn validate_request_url_confidentiality(&self, url: &str) -> Result<(), ProviderError> {
+        if self.is_endpoint_authority(url) {
+            return self.validate_endpoint_confidentiality();
+        }
+        self.validate_url_confidentiality(url)
+    }
+
+    fn is_endpoint_authority(&self, url: &str) -> bool {
+        let (Ok(request), Ok(endpoint)) = (
+            url::Url::parse(url.trim()),
+            url::Url::parse(&self.endpoint()),
+        ) else {
+            return false;
+        };
+        let (Some(host), Some(endpoint_host)) = (request.host_str(), endpoint.host_str()) else {
+            return false;
+        };
+        request.scheme() == endpoint.scheme()
+            && request.port_or_known_default() == endpoint.port_or_known_default()
+            && (host == endpoint_host
+                || (!self.config.path_style
+                    && !self.config.bucket.is_empty()
+                    && host.eq_ignore_ascii_case(&format!(
+                        "{}.{}",
+                        self.config.bucket, endpoint_host
+                    ))))
     }
 
     /// Log the cleartext warning the first time this provider needs it, and
@@ -1840,6 +1909,7 @@ impl S3Provider {
         // function, and it fails the session before any work is done rather
         // than at the first request.
         self.validate_endpoint_confidentiality()?;
+        self.validate_request_url_confidentiality(url)?;
 
         // Single consistent snapshot of the effective credentials for this
         // signing pass (temporary STS creds when a role is assumed, else base).
@@ -3391,21 +3461,7 @@ impl S3Provider {
         let copy_source = format!("/{}/{}", self.config.bucket, encode_s3_key_path(from_key));
 
         let part_size = Self::COPY_MULTIPART_PART_SIZE;
-        let planned = plan_copy_parts(source_size, part_size);
-        // S3 caps multipart at 10000 parts per upload. With a 100 MiB
-        // part size that's 1 TiB; refuse louder than failing mid-stream
-        // so the caller can re-tune part size in a follow-up if they
-        // really need to copy a >1 TiB object.
-        if planned.len() > 10_000 {
-            return Err(ProviderError::ServerError(format!(
-                "Server-side copy of {} ({} bytes) would need {} parts at {} MiB each; \
-                 exceeds S3 cap of 10000 parts per multipart upload",
-                from_key,
-                source_size,
-                planned.len(),
-                part_size / (1024 * 1024)
-            )));
-        }
+        let planned = plan_copy_parts(source_size, part_size)?;
 
         // UploadPartCopy carries no metadata directive: whatever the source
         // object holds must be re-emitted here or the copy loses it.
@@ -5870,6 +5926,7 @@ impl StorageProvider for S3Provider {
         let credential = format!("{}/{}", creds.access_key_id, credential_scope);
 
         let url = self.build_url(key);
+        self.validate_request_url_confidentiality(&url)?;
         let parsed =
             url::Url::parse(&url).map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
 
@@ -9125,6 +9182,97 @@ mod tests {
         );
     }
 
+    #[test]
+    fn virtual_hosted_bucket_cannot_escape_endpoint_authority() {
+        // A host name endpoint: on an IP endpoint every virtual-hosted bucket
+        // fails (the host would end in a number), which would prove nothing.
+        let base = cleartext_test_provider("https://s3.example.test", false, None);
+        let mut valid = base.config.clone();
+        valid.path_style = false;
+        valid.bucket = "good-bucket".to_string();
+        assert!(
+            S3Provider::new(valid).is_ok(),
+            "a DNS-safe bucket stays valid in virtual-hosted mode"
+        );
+        for bucket in [
+            "attacker.example/",
+            "attacker.example\\",
+            "attacker.example@",
+            "attacker.example?",
+            "attacker.example#",
+        ] {
+            let mut config = base.config.clone();
+            config.path_style = false;
+            config.bucket = bucket.to_string();
+            assert!(
+                matches!(
+                    S3Provider::new(config),
+                    Err(ProviderError::InvalidConfig(_))
+                ),
+                "virtual-hosted bucket must be rejected: {bucket:?}"
+            );
+        }
+
+        let mut path_style = base.config.clone();
+        path_style.path_style = true;
+        path_style.bucket = "legacy/bucket".to_string();
+        assert!(
+            S3Provider::new(path_style).is_ok(),
+            "path-style compatibility must not inherit virtual-host DNS rules"
+        );
+
+        let mut discovery = base.config.clone();
+        discovery.path_style = false;
+        discovery.bucket.clear();
+        assert!(
+            S3Provider::new(discovery).is_ok(),
+            "bucket discovery before selection must remain available"
+        );
+    }
+
+    #[test]
+    fn virtual_hosted_local_endpoint_signs_without_consent() {
+        let mut config = cleartext_test_provider("http://localhost:9000", false, None)
+            .config
+            .clone();
+        config.path_style = false;
+        config.bucket = "photos".to_string();
+        let provider = S3Provider::new(config).expect("local virtual-hosted profile");
+        let url = provider.build_url("key.txt");
+        assert_eq!(url, "http://photos.localhost:9000/key.txt");
+        let mut headers = HashMap::new();
+        provider
+            .sign_request("GET", &url, &mut headers, "UNSIGNED-PAYLOAD")
+            .expect("bucket.localhost takes the local endpoint's verdict");
+        let mut headers = HashMap::new();
+        assert!(
+            provider
+                .sign_request(
+                    "GET",
+                    "http://other.example.com:9000/key.txt",
+                    &mut headers,
+                    "UNSIGNED-PAYLOAD",
+                )
+                .is_err(),
+            "another remote HTTP host is still judged on its own"
+        );
+    }
+
+    #[test]
+    fn signing_rechecks_final_destination_confidentiality() {
+        let provider = cleartext_test_provider("http://127.0.0.1:9000", false, None);
+        let mut headers = HashMap::new();
+        let err = provider
+            .sign_request(
+                "GET",
+                "http://minio.example.com:9000/private/key",
+                &mut headers,
+                "UNSIGNED-PAYLOAD",
+            )
+            .expect_err("the final remote HTTP destination must need consent");
+        assert!(err.to_string().contains("minio.example.com"));
+    }
+
     /// Issue #128: spaces and emojis in S3 keys must be percent-encoded in
     /// the wire URL. Without this, Filen's local S3 bridge returned 401
     /// because the SigV4 signature didn't match the wire path that the
@@ -11627,20 +11775,44 @@ mod tests {
     /// in the owner-side MinIO smoke documented in the task plan.
     #[test]
     fn plan_copy_parts_returns_empty_for_zero_size_or_part_size() {
-        assert!(plan_copy_parts(0, 100).is_empty());
-        assert!(plan_copy_parts(1024, 0).is_empty());
+        assert!(plan_copy_parts(0, 100).unwrap().is_empty());
+        assert!(plan_copy_parts(1024, 0).unwrap().is_empty());
+    }
+
+    #[test]
+    fn plan_copy_parts_rejects_more_than_ten_thousand_parts() {
+        let error = plan_copy_parts(10_001, 1).unwrap_err();
+        assert!(matches!(&error, ProviderError::ServerError(_)));
+        let message = error.to_string();
+        assert!(message.contains("10001 parts"), "{message}");
+        assert!(message.contains("cap of 10000 parts"), "{message}");
+    }
+
+    #[test]
+    fn plan_copy_parts_allows_exactly_ten_thousand_parts() {
+        let parts = plan_copy_parts(10_000, 1).unwrap();
+        assert_eq!(parts.len(), 10_000);
+        assert_eq!(parts.first(), Some(&(1, 0, 0)));
+        assert_eq!(parts.last(), Some(&(10_000, 9_999, 9_999)));
+    }
+
+    #[test]
+    fn plan_copy_parts_rejects_u64_max_before_allocation() {
+        let error = plan_copy_parts(u64::MAX, 1).unwrap_err();
+        assert!(matches!(&error, ProviderError::ServerError(_)));
+        assert!(error.to_string().contains("18446744073709551615 parts"));
     }
 
     #[test]
     fn plan_copy_parts_single_aligned_full_part() {
-        let parts = plan_copy_parts(100, 100);
+        let parts = plan_copy_parts(100, 100).unwrap();
         assert_eq!(parts, vec![(1, 0, 99)]);
     }
 
     #[test]
     fn plan_copy_parts_unaligned_tail_under_part_size() {
         // 250 bytes at part size 100 → parts [0-99], [100-199], [200-249]
-        let parts = plan_copy_parts(250, 100);
+        let parts = plan_copy_parts(250, 100).unwrap();
         assert_eq!(parts, vec![(1, 0, 99), (2, 100, 199), (3, 200, 249)]);
     }
 
@@ -11650,7 +11822,7 @@ mod tests {
         // Last part covers 44 MiB and 1-indexed numbering caps at 62.
         let six_gib: u64 = 6 * 1024 * 1024 * 1024;
         let hundred_mib: u64 = 100 * 1024 * 1024;
-        let parts = plan_copy_parts(six_gib, hundred_mib);
+        let parts = plan_copy_parts(six_gib, hundred_mib).unwrap();
         assert_eq!(parts.len(), 62);
         // Part numbers are contiguous starting at 1.
         for (idx, (pn, _, _)) in parts.iter().enumerate() {
@@ -11679,7 +11851,7 @@ mod tests {
         // emits the obvious one-part plan when called below the cap.
         let four_gib: u64 = 4 * 1024 * 1024 * 1024;
         let huge_part: u64 = 8 * 1024 * 1024 * 1024;
-        let parts = plan_copy_parts(four_gib, huge_part);
+        let parts = plan_copy_parts(four_gib, huge_part).unwrap();
         assert_eq!(parts, vec![(1, 0, four_gib - 1)]);
     }
 
@@ -12640,7 +12812,12 @@ mod tests {
         // Above the cap a copy would otherwise fan out into dozens of
         // UploadPartCopy parts: prove the planner really would plan them,
         // then prove the Filebase gate suppresses the whole path.
-        assert!(plan_copy_parts(above, S3Provider::COPY_MULTIPART_PART_SIZE).len() > 1);
+        assert!(
+            plan_copy_parts(above, S3Provider::COPY_MULTIPART_PART_SIZE)
+                .unwrap()
+                .len()
+                > 1
+        );
         assert!(!filebase.copy_via_multipart(below));
         assert!(!filebase.copy_via_multipart(above));
         // The generic endpoint keeps the historical behavior.

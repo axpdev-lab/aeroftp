@@ -459,7 +459,32 @@ impl JottacloudProvider {
             &self.profile_id,
             self.refresh_source_account.as_deref(),
         );
+        // Another user's chain stays in its partition only: the shared vault
+        // and its singleton belong to the legacy owner.
+        let private_user =
+            match crate::user_partitions::private_token_user(None, "jottacloud_refresh") {
+                Ok(user) => user,
+                Err(e) => {
+                    jotta_log(&format!("Refresh token not persisted: {}", e));
+                    return;
+                }
+            };
         let write_all = |store: &crate::credential_store::CredentialStore| -> bool {
+            if let Some(user) = private_user {
+                return accounts
+                    .iter()
+                    .filter(|account| account.as_str() != "jottacloud_refresh")
+                    .all(|account| {
+                        crate::user_partitions::store_credential_for_user(
+                            store,
+                            user,
+                            account,
+                            "jottacloud_refresh",
+                            &json,
+                        )
+                        .is_ok()
+                    });
+            }
             let mut ok = true;
             for account in &accounts {
                 if store.store(account, &json).is_err() {
@@ -496,8 +521,8 @@ impl JottacloudProvider {
         }
     }
 
-    /// Read one refresh chain from the vault: the active user's partition
-    /// first (vault fallback inside), then the raw vault key.
+    /// Read one refresh chain: the active user's partition, falling back to the
+    /// shared vault only for the legacy owner (owner-aware).
     fn load_refresh_chain(account: &str) -> Option<(String, String, String)> {
         let store = crate::credential_store::CredentialStore::from_cache()?;
         let parse = |json: String| -> Option<(String, String, String)> {
@@ -511,12 +536,10 @@ impl JottacloudProvider {
                 Some((rt, te, un))
             }
         };
-        if let Ok(Some(json)) = crate::user_partitions::resolve_active_credential(&store, account) {
-            if let Some(parsed) = parse(json.to_string()) {
-                return Some(parsed);
-            }
-        }
-        store.get(account).ok().and_then(parse)
+        crate::user_partitions::resolve_active_credential_owner_aware(&store, account)
+            .ok()
+            .flatten()
+            .and_then(|json| parse(json.to_string()))
     }
 
     /// Try to connect using a persisted refresh token (no login token needed).
@@ -572,8 +595,15 @@ impl JottacloudProvider {
                 // found the same dead chain again. Measured 2026-09-02: three
                 // exports in a row carried a 707-char chain Jotta refused
                 // with the same `invalid_grant` on the other station.
-                if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                    let _ = store.delete(&account);
+                // Another user's chain lived only in its partition; the vault
+                // key of the same name belongs to the legacy owner.
+                let private =
+                    crate::user_partitions::private_token_user(None, "jottacloud_refresh")
+                        .map_or(true, |user| user.is_some());
+                if !private {
+                    if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+                        let _ = store.delete(&account);
+                    }
                 }
                 crate::user_partitions::unmirror_active_credential(&account);
                 continue;

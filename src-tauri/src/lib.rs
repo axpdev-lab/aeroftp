@@ -17423,9 +17423,21 @@ async fn get_credential(webview: tauri::Webview, account: String) -> Result<Stri
     only_main_window(webview.label(), "get_credential")?;
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    store
-        .get(&account)
-        .map_err(|e| format!("Failed to get credential: {}", e))
+    if account.starts_with("server_") || account.starts_with("ai_apikey_") {
+        let secret = user_partitions::resolve_active_credential_owner_aware(&store, &account)
+            .map_err(|e| format!("Failed to get credential: {}", e))?
+            .ok_or_else(|| {
+                format!(
+                    "Failed to get credential: {}",
+                    credential_store::CredentialError::NotFound(account.clone())
+                )
+            })?;
+        Ok(secret.to_string())
+    } else {
+        store
+            .get(&account)
+            .map_err(|e| format!("Failed to get credential: {}", e))
+    }
 }
 
 #[tauri::command]
@@ -17854,25 +17866,32 @@ fn collect_provider_secrets_for_server(
     // fallback inside resolve), then the legacy singleton key from the vault.
     if let Some(slug) = oauth_vault_slug_for_protocol(&protocol) {
         let per_profile = format!("oauth_{}_{}", slug, server.id);
-        if let Ok(Some(value)) = user_partitions::resolve_active_credential(store, &per_profile) {
+        if let Ok(Some(value)) =
+            user_partitions::resolve_active_credential_owner_aware(store, &per_profile)
+        {
             out.oauth = Some(value.to_string());
         } else {
             // Legacy singleton key path: only honoured when nothing has been
-            // migrated yet for this provider on this device.
+            // migrated yet for this provider on this device, and only for its
+            // owner (owner-aware: another user never exports it).
             let legacy = format!("oauth_{}", slug);
-            if let Ok(value) = store.get(&legacy) {
-                out.oauth = Some(value);
+            if let Ok(Some(value)) =
+                user_partitions::resolve_active_credential_owner_aware(store, &legacy)
+            {
+                out.oauth = Some(value.to_string());
             }
         }
     }
 
     if protocol == "jottacloud" {
         let per_profile = format!("jottacloud_refresh_{}", server.id);
-        if let Ok(Some(value)) = user_partitions::resolve_active_credential(store, &per_profile) {
-            out.jotta_refresh = Some(value.to_string());
-        } else if let Ok(value) = store.get("jottacloud_refresh") {
-            out.jotta_refresh = Some(value);
-        }
+        let read = |key: &str| {
+            user_partitions::resolve_active_credential_owner_aware(store, key)
+                .ok()
+                .flatten()
+                .map(|value| value.to_string())
+        };
+        out.jotta_refresh = read(&per_profile).or_else(|| read("jottacloud_refresh"));
     }
 
     // Bundle the BYO OAuth app `client_id`/`client_secret` (global vault
@@ -18096,7 +18115,7 @@ async fn import_server_profiles(
     file_path: String,
     password: String,
 ) -> Result<serde_json::Value, String> {
-    import_server_profiles_core(file_path, password).await
+    import_server_profiles_core_skip_existing(file_path, password).await
 }
 
 /// Core of [`import_server_profiles`], callable outside the Tauri command
@@ -18120,15 +18139,86 @@ pub async fn import_server_profiles_core(
 /// vault credential overwritten by the one from the file. Callers that dedup the
 /// profile list (the CLI) pass the set of ids they actually add so the skip
 /// decision and the credential restore stay consistent. `None` preserves the
-/// original "restore all" behaviour for the GUI command.
+/// original "restore all" behaviour for callers that do not deduplicate.
 pub async fn import_server_profiles_core_filtered(
     file_path: String,
     password: String,
     restore_only: Option<std::collections::HashSet<String>>,
 ) -> Result<serde_json::Value, String> {
+    import_server_profiles_core_impl(file_path, password, restore_only, false).await
+}
+
+fn import_restore_ids_after_skip<'a>(
+    imported: impl IntoIterator<Item = &'a str>,
+    existing: &std::collections::HashSet<String>,
+) -> std::collections::HashSet<String> {
+    imported
+        .into_iter()
+        .filter(|id| !existing.contains(*id))
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+#[cfg(test)]
+mod import_restore_ids_tests {
+    use super::*;
+
+    #[test]
+    fn skip_preserves_existing_ids_and_accepts_only_new_profiles() {
+        let existing = std::collections::HashSet::from(["srv_existing".to_string()]);
+        let accepted =
+            import_restore_ids_after_skip(["srv_existing", "srv_new", "srv_new"], &existing);
+        assert_eq!(accepted.len(), 1);
+        assert!(accepted.contains("srv_new"));
+        assert!(!accepted.contains("srv_existing"));
+    }
+}
+
+/// GUI import: preserve every existing profile's secrets when that profile is
+/// skipped by the frontend merge, and restore only newly accepted profile ids.
+pub async fn import_server_profiles_core_skip_existing(
+    file_path: String,
+    password: String,
+) -> Result<serde_json::Value, String> {
+    import_server_profiles_core_impl(file_path, password, None, true).await
+}
+
+async fn import_server_profiles_core_impl(
+    file_path: String,
+    password: String,
+    restore_only: Option<std::collections::HashSet<String>>,
+    skip_existing: bool,
+) -> Result<serde_json::Value, String> {
     let (servers, provider_secrets, metadata) =
         profile_export::import_profiles(std::path::Path::new(&file_path), &password)
             .map_err(|e| e.to_string())?;
+    // Without a cached store the import below is metadata-only and restores no
+    // secret, so there is nothing to protect; a failed lookup stays fatal.
+    let restore_only = if let (true, Some(store)) = (
+        skip_existing,
+        credential_store::CredentialStore::from_cache(),
+    ) {
+        let mut root_key = store.derive_user_partition_wrapping_key();
+        let listed = user_partitions::open_or_init_cli()
+            .and_then(|conn| user_partitions::list_active_server_profiles_scoped(&conn, &root_key));
+        root_key.zeroize();
+        let (_, current) = listed?;
+        let existing: std::collections::HashSet<String> = current
+            .iter()
+            .filter_map(|profile| {
+                profile
+                    .get("id")
+                    .and_then(|value| value.as_str())
+                    .map(ToOwned::to_owned)
+            })
+            .collect();
+        Some(import_restore_ids_after_skip(
+            servers.iter().map(|server| server.id.as_str()),
+            &existing,
+        ))
+    } else {
+        restore_only
+    };
 
     // Store credentials in secure store
     let mut cred_errors: Vec<String> = Vec::new();
@@ -18154,6 +18244,8 @@ pub async fn import_server_profiles_core_filtered(
             let native_owner = providers::proton_native::vault::SessionOwner::for_user(
                 user_partitions::cli_get_active_user(&store)?.map(|user| user.id),
             );
+            let jotta_private_user =
+                user_partitions::private_token_user(None, "jottacloud_refresh")?;
             for server in &servers {
                 // Audit v4.1.0: when the caller deduped the profile list, only
                 // restore credentials for the ids it actually added, so a
@@ -18230,9 +18322,12 @@ pub async fn import_server_profiles_core_filtered(
                         // Dual-write so an imported profile reconnects without
                         // burning a new Personal Login Token. Last writer wins
                         // when two Jotta profiles share a device (same pre-#214
-                        // singleton behaviour).
-                        if let Err(e) = store.store("jottacloud_refresh", jotta_json) {
-                            cred_errors.push(format!("{} jotta singleton: {}", profile_id, e));
+                        // singleton behaviour). Only the legacy owner owns that
+                        // shared singleton; another user's chain stays private.
+                        if jotta_private_user.is_none() {
+                            if let Err(e) = store.store("jottacloud_refresh", jotta_json) {
+                                cred_errors.push(format!("{} jotta singleton: {}", profile_id, e));
+                            }
                         }
                     }
                 }
