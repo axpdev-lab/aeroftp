@@ -5700,6 +5700,25 @@ fn next_user_copy_name(users: &[UserMetadata], src_name: &str) -> String {
     }
 }
 
+fn credential_free_profile_copies(profiles: &[Value]) -> Vec<Value> {
+    profiles
+        .iter()
+        .map(|profile| {
+            let mut copied = profile.clone();
+            let fresh_id = format!("srv_{}", uuid::Uuid::new_v4());
+            if let Some(object) = copied.as_object_mut() {
+                object.insert("id".to_string(), Value::String(fresh_id.clone()));
+                for alias in ["uid", "profileUid"] {
+                    if object.contains_key(alias) {
+                        object.insert(alias.to_string(), Value::String(fresh_id.clone()));
+                    }
+                }
+            }
+            copied
+        })
+        .collect()
+}
+
 /// Duplicate an existing user (GUI mirror of the CLI `users -i` Copy verb,
 /// Ehud #347). Creates a brand-new, password-free, non-admin user that copies
 /// the source's display avatar and all of its server profiles, but NO passwords
@@ -5781,7 +5800,9 @@ pub async fn user_partitions_copy_user(
         }
     };
 
-    // Copy the (credential-free) server profiles into the new user.
+    // Copy the (credential-free) server profiles into the new user with fresh
+    // credential identities, so no lookup can resolve the source user's secrets.
+    let profiles = credential_free_profile_copies(&profiles);
     let result = replace_server_profiles_for(&mut conn, &root_key, new_user.id, &profiles);
     root_key.zeroize();
     result.map(|_| new_user)
@@ -10583,5 +10604,45 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
             .expect("count final");
         assert_eq!(users_final, 2);
+    }
+
+    #[test]
+    fn credential_free_profile_copies_replace_all_identity_aliases() {
+        let original = vec![
+            serde_json::json!({
+                "id": "srv_source",
+                "uid": "srv_source",
+                "profileUid": "srv_source",
+                "host": "one.example.test"
+            }),
+            serde_json::json!({"id": "srv_other", "host": "two.example.test"}),
+        ];
+        let copied = credential_free_profile_copies(&original);
+        let ids: HashSet<String> = copied
+            .iter()
+            .map(|profile| {
+                profile["id"]
+                    .as_str()
+                    .expect("fresh profile id")
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(ids.len(), 2);
+        assert!(ids.iter().all(|id| id.starts_with("srv_")));
+        assert!(!ids.contains("srv_source"));
+        assert!(!ids.contains("srv_other"));
+
+        for profile in &copied {
+            let id = profile["id"].as_str().unwrap();
+            for alias in ["uid", "profileUid"] {
+                if profile.get(alias).is_some() {
+                    assert_eq!(profile[alias].as_str(), Some(id));
+                }
+            }
+        }
+        assert_eq!(copied[0]["host"], "one.example.test");
+        assert_eq!(copied[1]["host"], "two.example.test");
+        assert_eq!(original[0]["id"], "srv_source");
+        assert_eq!(original[1]["id"], "srv_other");
     }
 }
