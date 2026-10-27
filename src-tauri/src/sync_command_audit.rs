@@ -98,10 +98,6 @@ const MAIN_THREAD_ALLOWED: &[(&str, &str)] = &[
          asked.",
     ),
     (
-        "provider_arm_crypt_capability",
-        "two atomic stores on already-managed state.",
-    ),
-    (
         "local_sync_cancel",
         "one atomic store; the cancellation is observed by the worker itself.",
     ),
