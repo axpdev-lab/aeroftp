@@ -284,8 +284,10 @@ also stored in the AVEC payload header, so reconstruction reads K/P back regardl
 the level a vault was created with. Surfaced in AeroVault create (named buttons +
 slider + numeric input) and the CLI (`vault create --recovery-level low|medium|
 quartile|high|<N>`). AeroSync now shares the same `.aerocorrect` sidecar and overhead
-levels via `sync --error-correction` / `--ec-max-overhead`, so a bit-rotted remote
-backup is repaired on the next pull from its sidecar, without the original.
+levels via `sync --error-correction` / `--ec-max-overhead`. CLI `sync --ec` generates
+sidecars after uploads but does not verify or repair downloads. Desktop sync repair
+skips files without an expected SHA-256. For explicit download recovery, fetch both
+files and follow the [trusted-hash repair procedure](CLI-GUIDE.md#aerosync-ec---sync-error-correction-sidecars); a pull alone is not proof of successful repair.
 
 The shipped implementation is in [`aerovault_v3.rs`](../src-tauri/src/aerovault_v3.rs); the shared recovery format and engine are in [`error_correction/mod.rs`](../src-tauri/src/error_correction/mod.rs). "v3 + Error Correction = v4".
 

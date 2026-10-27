@@ -6008,8 +6008,7 @@ const App: React.FC = () => {
     isCurrent?: () => boolean,
   ): Promise<{ vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider'; generation?: number; openingLogId?: string | null } | null> => {
     if (!savedServerId || (isCurrent && !isCurrent())) return null;
-    const ownership = isCurrent ? { isCurrent, generation: await invoke<number>('provider_connection_generation'), activationId: crypto.randomUUID() } : undefined;
-    if (isCurrent && !isCurrent()) return null;
+    let ownership: OverlayActivationOwnership | undefined;
     // Only this attempt's refusal may reach the locked banner.
     overlayRefusalRef.current = null;
     let openingLogId: string | null = null;
@@ -6020,6 +6019,8 @@ const App: React.FC = () => {
       }
     };
     try {
+      ownership = isCurrent ? { isCurrent, generation: await invoke<number>('provider_connection_generation'), activationId: makeConnectToken() } : undefined;
+      assertOverlayActivationCurrent(ownership);
       const profiles = await loadSavedServerProfiles();
       assertOverlayActivationCurrent(ownership);
       const profile = profiles.find((p) => p.id === savedServerId);

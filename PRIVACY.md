@@ -48,7 +48,7 @@ When you connect to a server, AeroFTP communicates directly with that server usi
 When you connect to a cloud provider, AeroFTP uses that provider's authentication flow and API. Depending on the provider this is OAuth, a token, a password, Proton's native browser sign-in, or an installed vendor CLI. AeroFTP does not operate a storage proxy. Enabled background sync and health checks can reconnect or probe configured services while the app is running.
 
 ### AI Assistant (Optional)
-If you configure the AI assistant, AeroFTP sends your prompts directly to the AI provider you selected (OpenAI, Anthropic, Google, etc.) using your own API key. AeroFTP does not proxy, log, or store these requests on any external server. Your API key is stored locally in the encrypted vault. Tool results and file/image context included in a chat are also sent to the selected provider. Local models use their configured local endpoint. If you enable external MCP servers, their tool calls and results pass through those servers, with per-call approval and the configured local-process or HTTP transport boundary.
+If you configure the AI assistant, AeroFTP sends your prompts directly to the AI provider you selected (OpenAI, Anthropic, Google, etc.) using your own API key. AeroFTP does not proxy, log, or store these requests on any external server. Your API key is stored locally in the encrypted vault. Tool results and file/image context included in a chat are also sent to the selected provider. Models use their configured endpoint, which may be remote even for Ollama or a custom provider. That endpoint receives the prompts, tool results and file/image context included in the request. If you enable external MCP servers, their tool calls and results pass through those servers, with per-call approval and the configured local-process or HTTP transport boundary.
 
 ### AeroShare
 When enabled, AeroShare discovers peers and exchanges end-to-end encrypted data. The default discovery combines Mainline DHT, n0 discovery and LAN discovery; Settings also offers DHT-only, n0-only, LAN-only and no-discovery choices. Discovery services can observe network addresses and peer-discovery metadata. A relay can forward encrypted packets when direct connectivity is unavailable; it cannot decrypt file contents. The standing receiver is opt-in, and active shares or receiving can continue communicating in the background.
@@ -85,4 +85,4 @@ For privacy-related questions or concerns:
 
 ---
 
-*AeroFTP v4.2.5 - An open source project by axpnet*
+*AeroFTP v4.2.5 - An open-source project by axpnet*

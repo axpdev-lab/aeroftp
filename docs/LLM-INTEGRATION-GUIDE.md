@@ -297,7 +297,7 @@ The MCP server exposes 78 names: 40 primary tools (39 `aeroftp_*` names plus `se
 | `aeroftp_hashsum` | ReadOnly | Compute a remote file hash through the shared read/download path (cap 256 MiB); do not assume a server-side checksum API |
 | `aeroftp_check_tree` | ReadOnly | Compare local vs remote tree with two-sided checksum, per-group caps (`max_match`, `max_differ`, `max_missing_local`, `max_missing_remote`), `omit_match`, `compare_method` flag per entry |
 | `aeroftp_sync_doctor` | ReadOnly | Preflight risk summary with `suggested_next_command` (lighter than `sync_tree dry_run`) |
-| `aeroftp_reconcile` | ReadOnly | Categorized size-only diff variant of `check_tree` with `elapsed_secs` + `suggested_next_command` |
+| `aeroftp_reconcile` | ReadOnly | Categorized diff with `elapsed_secs` + `suggested_next_command`; default size, optional BLAKE3 through capped remote download, distinct from `check_tree` SHA-256/size fallback |
 | `aeroftp_dedupe` | ReadOnly | SHA-256 duplicate detection grouped per size: modes `newest` / `oldest` / `largest` / `smallest` / `list`, dry-run by default |
 | `aeroftp_upload_file` | Mutative | Upload one local file (`create_parents`, `no_clobber`) |
 | `aeroftp_upload_many` | Mutative | Batch upload from a `files: []` array |

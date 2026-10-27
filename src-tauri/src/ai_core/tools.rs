@@ -1876,7 +1876,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         entry(|| {
             ToolDef {
             name: "aeroftp_reconcile",
-            description: "Categorized diff superset of `aeroftp_check_tree`: reports match, differ, missing_local, missing_remote and checksum_failed buckets plus elapsed time and a `suggested_next_command` (CLI-style `aeroftp-cli sync` invocation). Mirrors `aeroftp reconcile` from the CLI. Use `aeroftp_check_tree` when you want the same diff with per-group caps and `summary_only` short-circuit; use `aeroftp_reconcile` when you want elapsed-time + next-command for an end-to-end agent report. NOT capped by max_entries_reported: full lists returned.",
+            description: "Categorized local/remote diff with match, differ, missing_local, missing_remote and checksum_failed buckets, elapsed time and suggested_next_command. Size comparison by default. With checksum=true, eligible equal-size pairs compare BLAKE3 of local bytes and a capped remote download; oversized pairs retain an explicitly flagged size verdict and checksum failures are unverified/partial. In contrast, aeroftp_check_tree uses comparable SHA-256 where available and otherwise falls back to size, so the two tools can report different verdicts for equal-size content changes. Full lists are returned without max_entries_reported caps; summary_only drops the group arrays.",
             input_schema: json!({
                 "type": "object",
                 "properties": {

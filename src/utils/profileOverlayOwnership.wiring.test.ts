@@ -15,6 +15,7 @@ function block(start: string, end: string): string {
 }
 
 const source = [
+  block('function makeConnectToken(): string {', '// Delay before the'),
   block('  const cryptOverlaySentinel = ', '  // #390 smart re-anchor'),
   block('  const smartReanchorOverlay = ', '  // Cheap, side-effect-free probe:'),
   block('  const maybeAutoUnlockProfileOverlay = ', '  // P3.3 (phase 1)'),
@@ -26,7 +27,7 @@ function signal<T>() {
   return { promise, resolve };
 }
 
-async function activation(hold?: string) {
+async function activation(hold?: string, setup?: 'generation-error' | 'missing-uuid' | 'uuid-error') {
   let current = true;
   const reached = signal<void>();
   const released = signal<void>();
@@ -39,6 +40,7 @@ async function activation(hold?: string) {
     return value;
   }
   const context = {
+    crypto: setup === 'missing-uuid' ? {} : setup === 'uuid-error' ? { randomUUID: () => { throw new Error('synthetic UUID failure'); } } : crypto,
     assertOverlayActivationCurrent, normCryptScope, resolveUsernameTemplate, profileOverlayApplyParams,
     loadSavedServerProfiles: () => stage('profiles', [{
       id: 'old_profile', initialPath: '/', username: 'test',
@@ -48,7 +50,9 @@ async function activation(hold?: string) {
     invoke: async (command: string, args?: any) => {
       calls.push({ command, args });
       switch (command) {
-        case 'provider_connection_generation': return 42;
+        case 'provider_connection_generation':
+          if (setup === 'generation-error') throw new Error('synthetic generation IPC failure');
+          return 42;
         case 'get_credential': return stage(args.account.includes('keyfile') ? 'keyfile' : args.account.includes('_salt_') ? 'salt' : 'password', 'synthetic-factor');
         case 'provider_arm_crypt_capability': return stage('arm', undefined);
         case 'provider_apply_crypt_overlay':
@@ -141,5 +145,25 @@ describe('overlay opening log ownership', () => {
     await expect(op.run).resolves.toBeNull();
     expect(op.logRef.current).toBe('newer-log');
     expect(op.effects).not.toContain('log-update');
+  });
+});
+
+
+describe('overlay activation ownership setup', () => {
+  it('handles a generation IPC rejection without arming or publishing the overlay', async () => {
+    const op = await activation(undefined, 'generation-error');
+    await expect(op.run).resolves.toBeNull();
+    expect(op.calls.map(call => call.command)).toEqual(['provider_connection_generation']);
+    expect(op.effects).toEqual(['debug']);
+    expect(op.logRef.current).toBeNull();
+  });
+
+  it.each(['missing-uuid', 'uuid-error'] as const)('uses the guarded production token helper when UUID support fails (%s)', async (setup) => {
+    const op = await activation(undefined, setup);
+    await expect(op.run).resolves.toMatchObject({ prefix: 'rclone_crypt_provider', generation: 42 });
+    const identity = op.calls.find(call => call.command === 'provider_apply_crypt_overlay')?.args.params.activationId;
+    expect(identity).toMatch(/^conn_[a-z0-9]+$/);
+    expect(op.installed()).toBe(identity);
+    expect(op.effects).toContain('binding');
   });
 });
