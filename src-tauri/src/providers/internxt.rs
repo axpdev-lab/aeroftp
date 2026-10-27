@@ -1975,29 +1975,12 @@ impl StorageProvider for InternxtProvider {
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
-        let tmp = std::env::temp_dir().join(format!("aeroftp_internxt_{}", uuid::Uuid::new_v4()));
-        let tmp_str = tmp.to_string_lossy().to_string();
-        self.download(remote_path, &tmp_str, None).await?;
-
-        // H2: Check file size before reading to prevent OOM
-        let limit = super::MAX_DOWNLOAD_TO_BYTES;
-        let metadata = tokio::fs::metadata(&tmp)
-            .await
-            .map_err(|e| ProviderError::Other(format!("Failed to stat temp file: {}", e)))?;
-        if metadata.len() > limit {
-            let _ = tokio::fs::remove_file(&tmp).await;
-            return Err(ProviderError::TransferFailed(format!(
-                "File too large for in-memory download ({:.1} MB). Use streaming download for files over {:.0} MB.",
-                metadata.len() as f64 / 1_048_576.0,
-                limit as f64 / 1_048_576.0,
-            )));
-        }
-
-        let data = tokio::fs::read(&tmp)
-            .await
-            .map_err(|e| ProviderError::Other(format!("Failed to read temp file: {}", e)))?;
-        let _ = tokio::fs::remove_file(&tmp).await;
-        Ok(data)
+        let staging = plaintext_staging_dir()?;
+        let tmp = staging.path().join("download");
+        let read = self.read_staged_download(remote_path, &tmp).await;
+        // Every handle on the staged file is closed by now. `TempDir`'s drop
+        // ignores removal errors, so close it explicitly and surface them.
+        finish_staged_read(read, staging.close())
     }
 
     async fn upload(
@@ -2706,6 +2689,33 @@ impl StorageProvider for InternxtProvider {
 // ─── Helper methods (not part of trait) ────────────────────────────────────
 
 impl InternxtProvider {
+    /// Download into the staging path and read it back, within the size cap.
+    async fn read_staged_download(
+        &mut self,
+        remote_path: &str,
+        tmp: &std::path::Path,
+    ) -> Result<Vec<u8>, ProviderError> {
+        let tmp_str = tmp.to_string_lossy().to_string();
+        self.download(remote_path, &tmp_str, None).await?;
+
+        // H2: Check file size before reading to prevent OOM
+        let limit = super::MAX_DOWNLOAD_TO_BYTES;
+        let metadata = tokio::fs::metadata(tmp)
+            .await
+            .map_err(|e| ProviderError::Other(format!("Failed to stat temp file: {}", e)))?;
+        if metadata.len() > limit {
+            return Err(ProviderError::TransferFailed(format!(
+                "File too large for in-memory download ({:.1} MB). Use streaming download for files over {:.0} MB.",
+                metadata.len() as f64 / 1_048_576.0,
+                limit as f64 / 1_048_576.0,
+            )));
+        }
+
+        tokio::fs::read(tmp)
+            .await
+            .map_err(|e| ProviderError::Other(format!("Failed to read temp file: {}", e)))
+    }
+
     /// Split "document.pdf" → ("document", "pdf"), "README" → ("README", "")
     fn split_name_ext(filename: &str) -> (String, String) {
         match filename.rfind('.') {
@@ -3065,8 +3075,75 @@ fn start_upload_failure(last_timed_out: bool, last_error: &str) -> ProviderError
     }
 }
 
+/// Private staging for decrypted bytes: a directory only the owner can enter
+/// (`0o700` on Unix; `tempfile` would otherwise follow the umask), removed with
+/// its contents when dropped, on success and on every error path.
+fn plaintext_staging_dir() -> Result<tempfile::TempDir, ProviderError> {
+    let mut builder = tempfile::Builder::new();
+    builder.prefix("aeroftp_internxt_");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        builder.permissions(std::fs::Permissions::from_mode(0o700));
+    }
+    builder
+        .tempdir()
+        .map_err(|e| ProviderError::Other(format!("Failed to create staging directory: {}", e)))
+}
+
+/// Outcome of a staged in-memory download once its directory is closed. A
+/// cleanup failure is never silent: it fails an otherwise good read, because
+/// decrypted bytes stayed on disk, and is logged when the read already failed.
+fn finish_staged_read(
+    read: Result<Vec<u8>, ProviderError>,
+    cleanup: std::io::Result<()>,
+) -> Result<Vec<u8>, ProviderError> {
+    match (read, cleanup) {
+        (read, Ok(())) => read,
+        (Ok(_), Err(e)) => Err(ProviderError::Other(format!(
+            "Failed to remove the staged download: {}",
+            e
+        ))),
+        (Err(error), Err(e)) => {
+            internxt_log(&format!("Failed to remove the staged download: {}", e));
+            Err(error)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn staged_read_never_hides_a_cleanup_failure() {
+        let gone = || std::io::Error::other("busy");
+        assert_eq!(finish_staged_read(Ok(vec![1]), Ok(())).unwrap(), vec![1]);
+        let error = finish_staged_read(Ok(vec![1]), Err(gone())).unwrap_err();
+        assert!(error.to_string().contains("staged download"), "{error}");
+        let failed = || Err(ProviderError::TransferFailed("network".into()));
+        for cleanup in [Ok(()), Err(gone())] {
+            let error = finish_staged_read(failed(), cleanup).unwrap_err();
+            assert!(error.to_string().contains("network"), "{error}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn plaintext_staging_is_owner_only_and_removed_on_drop() {
+        use std::os::unix::fs::PermissionsExt;
+        // The mode is explicit: under a typical 022 umask a default directory
+        // would be 0755. The umask is process-global, so the test leaves it.
+        let staging = plaintext_staging_dir().expect("staging directory");
+        let path = staging.path().to_path_buf();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o700);
+        std::fs::write(path.join("download"), b"decrypted").unwrap();
+        drop(staging);
+        assert!(
+            !path.exists(),
+            "staged plaintext is removed with its directory"
+        );
+    }
+
     use super::*;
 
     #[test]
