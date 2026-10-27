@@ -122,7 +122,7 @@ open still fails, re-toggle File Transfer on the phone and retry.
 
 | Feature | FTP | FTPS | SFTP | WebDAV | S3 | OAuth Providers | MEGA | Box | pCloud | Azure | 4shared | Filen | Internxt | kDrive | FileLu | Yandex | OpenDrive |
 |---------|-----|------|------|--------|-----|-----------------|------|-----|--------|-------|---------|-------|----------|--------|--------|--------|-----------|
-| Insecure Warning | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| Insecure Warning | Yes | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - |
 | TLS/SSL | No | Yes | - | Yes | Yes | Yes | - | Yes | Yes | Yes | Yes | - | - | Yes | Yes | Yes | Yes |
 | SSH Tunnel | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
 | Host Key Check | - | - | TOFU | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
@@ -268,7 +268,7 @@ A backend's own scheme keeps its own name. Dropbox's `content_hash` is a SHA-256
 | FTPS | MD5, SHA-1, SHA-256, SHA-512, CRC32 (negotiated) | Depends on what the server advertises in FEAT: `HASH` (algorithm selected per request with `OPTS HASH`, from the list the server gives), or the older `XMD5` / `XSHA1` / `XCRC`. A server advertising none offers no digest. |
 | SFTP | SHA-256 | Computed by the remote host with `sha256sum` over an SSH exec channel: the bytes are read on the server, never sent to us. Omitted if the host has no `sha256sum`. |
 | WebDAV | SHA-1, MD5, Adler-32 (negotiated) | Only ownCloud and Nextcloud publish the `oc:checksums` property, and only for files uploaded by a client that sent one. Every other WebDAV server omits it. |
-| S3 | MD5 | The ETag is the object MD5 only for single-part plaintext or SSE-S3 objects. The checksum query uses HEAD: multipart ETags are omitted, and response headers identifying SSE-KMS (including DSSE) or SSE-C suppress MD5 even when the ETag has 32 hex characters. |
+| S3 | MD5 | The ETag is the object MD5 only for single-part plaintext or SSE-S3 objects. The checksum query uses HEAD: multipart ETags do not yield an MD5; stat metadata still retains the raw ETag. Response headers identifying SSE-KMS (including DSSE) or SSE-C suppress MD5 even when the ETag has 32 hex characters. |
 | Azure Blob | - |  |
 | Swift | - |  |
 | Google Drive | MD5, SHA-1, SHA-256 | Native Google Workspace documents have no byte stream and therefore no digest. |

@@ -1,7 +1,7 @@
 # AeroShare (Peer-to-Peer Transfer)
 
 > _Last updated: 2026-10-26_
-
+>
 > **Beta preview.** AeroShare first shipped as a Beta preview in v4.1.0 and remains Beta in v4.2.5. The transport is hardened and decentralized by design, while parts of the surface and the notifications are still being refined. Expect rough edges and please report them.
 
 AeroShare lets you send a file or a folder straight to another person, end-to-end encrypted, without a hosted storage account. Instead of uploading to a hosted account and sharing a link to it, AeroShare moves bytes between the two devices over an end-to-end encrypted channel, directly when connectivity permits or through a relay when necessary. AeroFTP does not operate a hosted storage or file-proxy service; third-party relays can forward encrypted packets.

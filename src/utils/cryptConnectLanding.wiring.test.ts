@@ -482,7 +482,7 @@ describe('scope-entry unlock result belongs to its navigation', () => {
         await execute(app.slice(switchStart, switchEnd), {
             remoteNavCounter, remoteNavInFlightRef, sessionId: 'new_tab',
             setActiveSessionId: vi.fn(), setShowRemotePanel: vi.fn(),
-            setRemoteListLoading: vi.fn(), setRemoteListReason: vi.fn(),
+            setRemoteListLoading: vi.fn(), setRemoteListReason: vi.fn(), setOverlayDecrypting: vi.fn(),
         }, '');
         finishUnlock(activated);
         expect(await pending).toBeNull();

@@ -8458,6 +8458,7 @@ const App: React.FC = () => {
     remoteNavInFlightRef.current = 0;
     setRemoteListLoading(false);
     setRemoteListReason(null);
+    setOverlayDecrypting(false);
     setActiveSessionId(sessionId);
     setShowRemotePanel(true); // Exit AeroFile mode when switching to a connection tab
     quotaVersionRef.current++; // Invalidate any in-flight quota response

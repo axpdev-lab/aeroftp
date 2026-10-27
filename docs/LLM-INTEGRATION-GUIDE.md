@@ -374,14 +374,14 @@ aeroftp-cli agent-info --json 2>/dev/null
 ```
 
 Returns:
-- Available commands with syntax (99 top-level commands, grouped in the `commands` object as `safe` / `modify` / `destructive` / `advanced`)
+- `capabilities.main_command_groups` gives the complete top-level command count (99 in this release); the `commands` object is a smaller curated guide grouped as `safe` / `modify` / `destructive` / `advanced`, not the full list. Use `aeroftp-cli inventory` for the complete command catalog, including `vault` and `correct`.
 - Supported protocols and provider integrations (7 transport protocols + 25+ native provider integrations)
 - Per-protocol `protocol_features` map (token vocabulary: `resume`, `find`, `server_copy`, `checksum`, `chmod`, `symlinks`, `permissions`, `share_links`, `versions`, `change_tracking`, `thumbnails`)
 - `agent_connect_supported_protocols` array for the live-connect allowlist
 - Exit code definitions
 - Safety rules
 - Credential model
-- Saved server profiles with per-profile `auth_state` (names only, no passwords)
+- Saved server profiles with connection metadata (`host`, `port`, `username`, `initialPath`) and per-profile `auth_state`, without passwords. `agent-info --redact-identifiers` replaces only `host` and `username` with `[redacted]`; port, initialPath and the remaining profile fields stay visible.
 
 ---
 

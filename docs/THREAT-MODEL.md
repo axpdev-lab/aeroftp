@@ -1,7 +1,7 @@
 # AeroFTP Threat Model
 
 > _Last updated: 2026-10-26_
-
+>
 > Documentation reference: AeroFTP v4.2.5
 > Reviewed: 2026-10-26 (source inspection, not a new penetration test)
 > Methodology: STRIDE (Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege)

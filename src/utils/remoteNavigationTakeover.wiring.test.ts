@@ -111,3 +111,11 @@ it.each(['old-log', 'newer-log'])('a stale scope-entry caller settles only its o
         expect(updateEntry).not.toHaveBeenCalled();
     }
 });
+
+
+it('switch takeover clears abandoned decryption before an outside-scope overlay target restores', async () => {
+    const { state, ctx } = context();
+    await run(between('// Set active session immediately', 'quotaVersionRef.current++;', app.indexOf('const switchSession = async')), ctx);
+    expect(state.decrypting).toBe(false);
+    expect(ctx.setOverlayDecrypting).toHaveBeenCalledWith(false);
+});
