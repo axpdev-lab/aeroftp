@@ -17423,9 +17423,21 @@ async fn get_credential(webview: tauri::Webview, account: String) -> Result<Stri
     only_main_window(webview.label(), "get_credential")?;
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    store
-        .get(&account)
-        .map_err(|e| format!("Failed to get credential: {}", e))
+    if account.starts_with("server_") || account.starts_with("ai_apikey_") {
+        let secret = user_partitions::resolve_active_credential_owner_aware(&store, &account)
+            .map_err(|e| format!("Failed to get credential: {}", e))?
+            .ok_or_else(|| {
+                format!(
+                    "Failed to get credential: {}",
+                    credential_store::CredentialError::NotFound(account.clone())
+                )
+            })?;
+        Ok(secret.to_string())
+    } else {
+        store
+            .get(&account)
+            .map_err(|e| format!("Failed to get credential: {}", e))
+    }
 }
 
 #[tauri::command]

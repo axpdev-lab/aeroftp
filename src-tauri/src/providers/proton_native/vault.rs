@@ -442,20 +442,27 @@ fn read(
     owner: SessionOwner,
     key: &str,
 ) -> Result<Option<ProtonSession>, ProviderError> {
+    let legacy_fallback_allowed = owner.user_id.is_none()
+        || crate::user_partitions::legacy_credential_fallback_allowed(owner.user_id)
+            .map_err(ProviderError::Other)?;
     let result = match owner.user_id {
-        Some(user) => crate::user_partitions::resolve_credential_for_user(store, user, key),
+        Some(user) => {
+            crate::user_partitions::resolve_credential_for_user_owner_aware(store, user, key)
+        }
         None => Ok(store.get(key).ok().map(Zeroizing::new)),
     };
     match result {
         Ok(Some(json)) => {
             let mut session = parse(&json)?;
-            // A locked shared copy may not have accepted its mirror. The
-            // vault is written first, so its newer pair for this SAME UID is
-            // authoritative. A different user's session is never adopted.
-            if let Ok(raw) = store.get(key) {
-                if let Ok(saved) = parse(&raw) {
-                    if saved.tokens.uid == session.tokens.uid {
-                        session.tokens = saved.tokens;
+            // A locked shared copy may not have accepted its mirror. For the
+            // legacy owner only, the vault's newer pair for this SAME UID is
+            // authoritative. Other users never read the global mirror.
+            if legacy_fallback_allowed {
+                if let Ok(raw) = store.get(key) {
+                    if let Ok(saved) = parse(&raw) {
+                        if saved.tokens.uid == session.tokens.uid {
+                            session.tokens = saved.tokens;
+                        }
                     }
                 }
             }

@@ -906,11 +906,10 @@ impl OAuth2Manager {
     }
 
     /// Load tokens for the given provider/profile pair. When `profile_id` is
-    /// non-empty and the per-profile key misses the vault, the legacy
-    /// singleton key is consulted as a one-shot fallback: on hit the value is
-    /// rebound under the per-profile key and the legacy entry is removed, so
-    /// the next profile of the same provider does not inherit the token
-    /// silently. Issue #214.
+    /// non-empty and the proven legacy owner's per-profile key misses the vault,
+    /// the legacy singleton key is consulted as a one-shot fallback: on hit the
+    /// value is rebound under the per-profile key and the legacy entry is removed.
+    /// Other users never inherit global, memory-cached or plaintext legacy tokens.
     pub fn load_tokens(
         &self,
         provider: OAuthProvider,
@@ -918,23 +917,39 @@ impl OAuth2Manager {
     ) -> Result<StoredTokens, ProviderError> {
         let account = Self::token_account_key(provider, profile_id);
         let legacy = Self::legacy_token_account_key(provider);
+        let credential_user = crate::user_partitions::credential_user_or_active(
+            self.credential_user,
+        )
+        .map_err(|e| ProviderError::Other(format!("Failed to resolve token owner: {}", e)))?;
+        let legacy_fallback_allowed = crate::user_partitions::legacy_credential_fallback_allowed(
+            credential_user,
+        )
+        .map_err(|e| ProviderError::Other(format!("Failed to resolve token owner: {}", e)))?;
 
-        // MUV-4: prefer the active user's partition (with vault fallback inside)
-        // for the per-profile key. On a miss we fall through to the legacy
-        // singleton / memory-cache / plaintext-file cascade below.
+        // MUV-4: read the captured user's own partition first. Only the proven
+        // legacy owner may continue into the global migration and compatibility
+        // paths, and an account switch cannot change the owner mid-read.
         if !profile_id.is_empty() {
-            if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                if let Ok(Some(json)) = match self.credential_user {
-                    Some(user) => {
-                        crate::user_partitions::resolve_credential_for_user(&store, user, &account)
-                    }
-                    None => crate::user_partitions::resolve_active_credential(&store, &account),
-                } {
+            if let (Some(store), Some(user)) = (
+                crate::credential_store::CredentialStore::from_cache(),
+                credential_user,
+            ) {
+                let resolved = crate::user_partitions::resolve_credential_for_user_owner_aware(
+                    &store, user, &account,
+                )
+                .map_err(|e| ProviderError::Other(format!("Failed to read user tokens: {}", e)))?;
+                if let Some(json) = resolved {
                     return serde_json::from_str(&json).map_err(|e| {
                         ProviderError::Other(format!("Failed to parse tokens: {}", e))
                     });
                 }
             }
+        }
+
+        if !legacy_fallback_allowed {
+            return Err(ProviderError::AuthenticationFailed(
+                "No stored tokens for this user".to_string(),
+            ));
         }
 
         // Try vault first under the per-profile (or legacy when profile_id is empty) key.

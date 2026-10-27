@@ -3163,7 +3163,7 @@ pub fn unmirror_credential_for_user_best_effort_any(user_id: i64, credential_id:
 
 /// Active-user reader (GUI + shared modules: factory/agent/ai_tools/mcp/AI core).
 /// Resolves `credential_id` for the active user from the per-user store, falling
-/// back to the legacy vault when the row is absent or the account is locked.
+/// back to the legacy vault when the row is absent. A locked account is refused.
 /// With no active user (pre-MU / fresh install) it reads the vault only.
 pub fn resolve_active_credential(
     store: &CredentialStore,
@@ -3188,6 +3188,31 @@ pub fn resolve_credential_for_user(
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
     read_credential_for_user(&conn, store, user_id, credential_id)
+}
+
+/// Owner-aware active-user reader. Only the proven legacy owner may fall back
+/// to the global vault; every other user reads exclusively from their partition.
+pub fn resolve_active_credential_owner_aware(
+    store: &CredentialStore,
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    match active_user_id(&conn)? {
+        None => get_optional_secret(store, credential_id),
+        Some(user_id) => read_credential_for_user_owner_aware(&conn, store, user_id, credential_id),
+    }
+}
+
+/// [`resolve_active_credential_owner_aware`] for an explicit `user_id`.
+pub fn resolve_credential_for_user_owner_aware(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    read_credential_for_user_owner_aware(&conn, store, user_id, credential_id)
 }
 
 /// Owners of a profile-bound credential, including a profile whose first
@@ -3221,6 +3246,27 @@ pub(crate) fn legacy_credential_owner_id() -> Result<Option<i64>, String> {
     nonprofile_secret_owner(&open_or_init_cli()?)
 }
 
+/// Capture an explicit credential owner, or the active user exactly once for
+/// callers whose ownership check and secret read must use the same identity.
+pub fn credential_user_or_active(user_id: Option<i64>) -> Result<Option<i64>, String> {
+    let conn = open_or_init_cli()?;
+    match user_id {
+        Some(user_id) => Ok(Some(user_id)),
+        None => active_user_id(&conn),
+    }
+}
+
+/// Whether this user may read pre-partition global credentials. No active user
+/// means the installation has not entered the multi-user ownership model yet.
+pub fn legacy_credential_fallback_allowed(user_id: Option<i64>) -> Result<bool, String> {
+    let conn = open_or_init_cli()?;
+    let user_id = match user_id {
+        Some(user_id) => Some(user_id),
+        None => active_user_id(&conn)?,
+    };
+    Ok(user_id.is_none() || nonprofile_secret_owner(&conn)? == user_id)
+}
+
 fn read_credential_for_user(
     conn: &Connection,
     store: &CredentialStore,
@@ -3231,6 +3277,34 @@ fn read_credential_for_user(
     let result = read_credential_with_fallback(conn, store, &root_key, user_id, credential_id);
     root_key.zeroize();
     result
+}
+
+fn read_credential_for_user_owner_aware(
+    conn: &Connection,
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let read_secret = |key: &str| get_optional_secret(store, key);
+    let result =
+        read_credential_owner_aware_inner(conn, &root_key, user_id, credential_id, &read_secret);
+    root_key.zeroize();
+    result
+}
+
+fn read_credential_owner_aware_inner(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credential_id: &str,
+    read_secret: &SecretReader<'_>,
+) -> Result<Option<Zeroizing<String>>, String> {
+    if nonprofile_secret_owner(conn)? == Some(user_id) {
+        read_credential_with_fallback_inner(conn, root_key, user_id, credential_id, read_secret)
+    } else {
+        get_user_credential_for(conn, root_key, user_id, credential_id)
+    }
 }
 
 /// Active-user dual writer (GUI): write the vault first, then mirror in-scope
@@ -9710,6 +9784,86 @@ mod tests {
     }
 
     #[test]
+    fn owner_aware_reader_preserves_legacy_owner_fallback() {
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active")
+            .expect("default active");
+        let vault_reads = std::cell::Cell::new(0u32);
+        let read = |_key: &str| {
+            vault_reads.set(vault_reads.get() + 1);
+            Ok(Some(Zeroizing::new("legacy-secret".to_string())))
+        };
+
+        assert_eq!(
+            read_credential_owner_aware_inner(&conn, &root, default.id, "server_legacy", &read)
+                .expect("legacy owner read")
+                .expect("legacy value")
+                .as_str(),
+            "legacy-secret"
+        );
+        assert_eq!(vault_reads.get(), 1, "legacy owner migrates on a miss");
+    }
+
+    #[test]
+    fn owner_aware_reader_never_reads_vault_for_nonowner() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let user = create_passphrase_less_user(&mut conn, &root, "isolated", None, None)
+            .expect("create user");
+        set_user_credential_for(&conn, &root, user.id, "server_own", "server", "own-secret")
+            .expect("seed own credential");
+        let vault_reads = std::cell::Cell::new(0u32);
+        let read = |_key: &str| {
+            vault_reads.set(vault_reads.get() + 1);
+            Ok(Some(Zeroizing::new("another-users-secret".to_string())))
+        };
+
+        assert_eq!(
+            read_credential_owner_aware_inner(&conn, &root, user.id, "server_own", &read)
+                .expect("own read")
+                .expect("own value")
+                .as_str(),
+            "own-secret"
+        );
+        assert!(
+            read_credential_owner_aware_inner(&conn, &root, user.id, "server_missing", &read)
+                .expect("absent own credential")
+                .is_none(),
+            "a global value is not an owned credential"
+        );
+        assert_eq!(vault_reads.get(), 0, "non-owner never reads the vault");
+    }
+
+    #[test]
+    fn owner_aware_reader_preserves_locked_error_without_vault_read() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let bob = create_user(&mut conn, &root, "Bob", None, None, Some("bobpass123"))
+            .expect("create bob");
+        clear_user_session();
+        let vault_reads = std::cell::Cell::new(0u32);
+        let read = |_key: &str| {
+            vault_reads.set(vault_reads.get() + 1);
+            Ok(Some(Zeroizing::new("must-not-leak".to_string())))
+        };
+
+        let error = read_credential_owner_aware_inner(&conn, &root, bob.id, "server_bob", &read)
+            .expect_err("locked partition must fail closed");
+        assert_eq!(error, "USER_LOCKED");
+        assert!(!error.contains("must-not-leak"));
+        assert_eq!(
+            vault_reads.get(),
+            0,
+            "locked non-owner never reads the vault"
+        );
+    }
+
+    #[test]
     fn reader_fallback_consults_vault_only_on_partition_miss_for_nondefault_user() {
         // R-MUV-10 coverage: post-cutover, a non-default user is active and a
         // server_* credential lives ONLY in the legacy vault (never mirrored into
@@ -10425,6 +10579,26 @@ mod tests {
             count_prefix(&conn, alice.id, "server_orphan"),
             0,
             "orphan stays in vault"
+        );
+        assert!(
+            resolve_credential_for_user_owner_aware(&store, alice.id, "server_orphan99")
+                .expect("owner-aware orphan read")
+                .is_none(),
+            "owner-aware reader does not lend the orphan to Alice"
+        );
+        assert!(
+            resolve_credential_for_user_owner_aware(&store, alice.id, "ai_apikey_openai")
+                .expect("owner-aware AI key read")
+                .is_none(),
+            "owner-aware reader does not lend the admin AI key to Alice"
+        );
+        assert_eq!(
+            resolve_credential_for_user_owner_aware(&store, admin_id, "server_orphan99")
+                .expect("legacy owner orphan read")
+                .expect("legacy orphan")
+                .as_str(),
+            "orphan-secret",
+            "legacy owner retains the migration fallback"
         );
         println!("[R-MUV-1] OK: 30 profiles separated per-user, isolation + orphan-fallback hold");
 
