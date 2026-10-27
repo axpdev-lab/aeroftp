@@ -1975,7 +1975,8 @@ impl StorageProvider for InternxtProvider {
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
-        let tmp = std::env::temp_dir().join(format!("aeroftp_internxt_{}", uuid::Uuid::new_v4()));
+        let staging = plaintext_staging_dir()?;
+        let tmp = staging.path().join("download");
         let tmp_str = tmp.to_string_lossy().to_string();
         self.download(remote_path, &tmp_str, None).await?;
 
@@ -1985,7 +1986,6 @@ impl StorageProvider for InternxtProvider {
             .await
             .map_err(|e| ProviderError::Other(format!("Failed to stat temp file: {}", e)))?;
         if metadata.len() > limit {
-            let _ = tokio::fs::remove_file(&tmp).await;
             return Err(ProviderError::TransferFailed(format!(
                 "File too large for in-memory download ({:.1} MB). Use streaming download for files over {:.0} MB.",
                 metadata.len() as f64 / 1_048_576.0,
@@ -1996,7 +1996,6 @@ impl StorageProvider for InternxtProvider {
         let data = tokio::fs::read(&tmp)
             .await
             .map_err(|e| ProviderError::Other(format!("Failed to read temp file: {}", e)))?;
-        let _ = tokio::fs::remove_file(&tmp).await;
         Ok(data)
     }
 
@@ -3065,8 +3064,42 @@ fn start_upload_failure(last_timed_out: bool, last_error: &str) -> ProviderError
     }
 }
 
+/// Private staging for decrypted bytes: a directory only the owner can enter
+/// (`0o700` on Unix; `tempfile` would otherwise follow the umask), removed with
+/// its contents when dropped, on success and on every error path.
+fn plaintext_staging_dir() -> Result<tempfile::TempDir, ProviderError> {
+    let mut builder = tempfile::Builder::new();
+    builder.prefix("aeroftp_internxt_");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        builder.permissions(std::fs::Permissions::from_mode(0o700));
+    }
+    builder
+        .tempdir()
+        .map_err(|e| ProviderError::Other(format!("Failed to create staging directory: {}", e)))
+}
+
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn plaintext_staging_is_owner_only_and_removed_on_drop() {
+        use std::os::unix::fs::PermissionsExt;
+        // The mode is explicit: under a typical 022 umask a default directory
+        // would be 0755. The umask is process-global, so the test leaves it.
+        let staging = plaintext_staging_dir().expect("staging directory");
+        let path = staging.path().to_path_buf();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o700);
+        std::fs::write(path.join("download"), b"decrypted").unwrap();
+        drop(staging);
+        assert!(
+            !path.exists(),
+            "staged plaintext is removed with its directory"
+        );
+    }
+
     use super::*;
 
     #[test]
