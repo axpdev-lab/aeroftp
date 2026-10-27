@@ -572,21 +572,13 @@ impl OAuth2Manager {
         self.credential_user = user_id;
         self
     }
-    /// The user whose unbound (empty `profile_id`) tokens must stay in their own
-    /// partition: anyone but the legacy owner, who keeps the global singleton.
-    fn private_singleton_user(&self, profile_id: &str) -> Result<Option<i64>, ProviderError> {
-        if !profile_id.is_empty() {
-            return Ok(None);
-        }
-        let owner_error =
-            |e: String| ProviderError::Other(format!("Failed to resolve token owner: {}", e));
-        let (user, legacy_fallback_allowed) =
-            crate::user_partitions::credential_owner_and_fallback(self.credential_user)
-                .map_err(owner_error)?;
-        match (user, legacy_fallback_allowed) {
-            (Some(user), false) => Ok(Some(user)),
-            _ => Ok(None),
-        }
+    /// The user whose tokens, bound to a profile or not, must stay in their own
+    /// partition: anyone but the legacy owner. In the shared vault they would
+    /// be readable through the legacy owner's fallback, for example when an
+    /// imported profile keeps its id.
+    fn private_token_user(&self) -> Result<Option<i64>, ProviderError> {
+        crate::user_partitions::oauth_token_private_to(self.credential_user, "oauth")
+            .map_err(|e| ProviderError::Other(format!("Failed to resolve token owner: {}", e)))
     }
 
     fn mirror_tokens(
@@ -884,7 +876,7 @@ impl OAuth2Manager {
 
         let account = Self::token_account_key(provider, profile_id);
 
-        if let Some(user) = self.private_singleton_user(profile_id)? {
+        if let Some(user) = self.private_token_user()? {
             if crate::credential_store::CredentialStore::from_cache().is_none() {
                 let _ = crate::credential_store::CredentialStore::init();
             }
@@ -1110,9 +1102,9 @@ impl OAuth2Manager {
     ) -> Result<(), ProviderError> {
         let account = Self::token_account_key(provider, profile_id);
 
-        // A non-owner's singleton lives only in its partition: the global key,
+        // A non-owner's tokens live only in its partition: the global key,
         // memory cache and plaintext files belong to the legacy owner.
-        if let Some(user) = self.private_singleton_user(profile_id)? {
+        if let Some(user) = self.private_token_user()? {
             let conn = crate::user_partitions::open_or_init_cli()
                 .map_err(|e| ProviderError::Other(format!("Failed to delete tokens: {}", e)))?;
             crate::user_partitions::delete_user_credential_for(&conn, user, &account)
@@ -1808,6 +1800,38 @@ mod tests {
         assert_eq!(global_access(), "locked-vault-decoy");
         assert!(legacy_path.exists(), "nonowner logout keeps owner files");
 
+        // Profile-bound tokens of a non-owner, written at runtime or by an import,
+        // stay in its partition too, so the legacy owner cannot read them back
+        // through its vault fallback when both carry the same profile id.
+        manager
+            .store_tokens(OAuthProvider::Dropbox, "shared-profile", &nonowner_tokens)
+            .expect("nonowner stores a profile-bound token");
+        let imported = serde_json::to_string(&nonowner_tokens).expect("import json");
+        partitions::store_credential_for_user_typed_dual(
+            &store,
+            nonowner.id,
+            "oauth_dropbox_imported-profile",
+            "oauth",
+            &imported,
+        )
+        .expect("import writes the nonowner token");
+        for key in [
+            "oauth_dropbox_shared-profile",
+            "oauth_dropbox_imported-profile",
+        ] {
+            assert!(
+                store.get(key).is_err(),
+                "{key} must not reach the shared vault"
+            );
+        }
+        assert_eq!(
+            manager
+                .load_tokens(OAuthProvider::Dropbox, "imported-profile")
+                .expect("nonowner reads its imported token")
+                .access_token,
+            "nonowner-token"
+        );
+
         partitions::set_active_user(&conn, owner.id).expect("reactivate owner");
         partitions::unlock_user(&conn, &root_key, owner.id, Some("legacy-owner-pass"))
             .expect("unlock owner after switch");
@@ -1817,6 +1841,13 @@ mod tests {
                 .expect("owner keeps its singleton")
                 .access_token,
             "locked-vault-decoy"
+        );
+        // The owner may still lazily rebind its own legacy singleton; it must
+        // never receive the other user's token for the shared profile id.
+        let owner_view = manager.load_tokens(OAuthProvider::Dropbox, "shared-profile");
+        assert!(
+            !format!("{owner_view:?}").contains("nonowner-token"),
+            "{owner_view:?}"
         );
 
         *MEMORY_TOKEN_CACHE.lock().expect("memory cache") = None;

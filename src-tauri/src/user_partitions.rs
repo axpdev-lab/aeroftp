@@ -36,6 +36,7 @@ const LEGACY_PROFILES_KEY: &str = "__legacy_server_profiles";
 const LEGACY_PROFILES_BLOB: &str = "config_server_profiles";
 const LEGACY_SETTINGS_KEY: &str = "__legacy_settings";
 const ACTIVE_USER_KEY: &str = "active_user_id";
+const LEGACY_OWNER_KEY: &str = "legacy_credential_owner_id";
 const SCHEMA_VERSION_KEY: &str = "schema_version";
 const DEFAULT_USER_NAME: &str = "default";
 const DEFAULT_USER_AVATAR: &str = "D";
@@ -2769,17 +2770,57 @@ fn session_user_id() -> Option<i64> {
         .and_then(|session| session.as_ref().map(|s| s.user_id))
 }
 
-/// Owner of the non-profile per-user globals (`ai_apikey_*`, github tokens):
-/// the lowest-id admin (the legacy `default`). Routing them to a single account
-/// avoids duplicating them across every admin (MUV-0 / sec 2.3).
+/// Owner of the pre-partition globals (the legacy vault fallback, `ai_apikey_*`,
+/// github tokens). Routing them to a single account avoids duplicating them
+/// across every admin (MUV-0 / sec 2.3). The owner is established once, as the
+/// lowest-id admin (the migration's `default`, and what every earlier release
+/// computed), then persisted: a later demotion, deletion or new admin never
+/// moves it, and a deleted owner leaves no owner instead of handing its legacy
+/// secrets to the next admin. User ids are AUTOINCREMENT, so never reused.
 fn nonprofile_secret_owner(conn: &Connection) -> Result<Option<i64>, String> {
-    conn.query_row(
-        "SELECT id FROM users WHERE is_admin = 1 ORDER BY id ASC LIMIT 1",
-        [],
-        |row| row.get::<_, i64>(0),
-    )
-    .optional()
-    .map_err(|e| format!("Read nonprofile secret owner: {e}"))
+    let read_stored = || {
+        conn.query_row(
+            "SELECT value FROM global_state WHERE key = ?1",
+            params![LEGACY_OWNER_KEY],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|e| format!("Read legacy credential owner: {e}"))
+    };
+    let stored = match read_stored()? {
+        Some(value) => value,
+        None => {
+            let first_admin = conn
+                .query_row(
+                    "SELECT id FROM users WHERE is_admin = 1 ORDER BY id ASC LIMIT 1",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .optional()
+                .map_err(|e| format!("Read nonprofile secret owner: {e}"))?;
+            let Some(first_admin) = first_admin else {
+                return Ok(None);
+            };
+            conn.execute(
+                "INSERT OR IGNORE INTO global_state(key, value, updated_at) VALUES (?1, ?2, ?3)",
+                params![LEGACY_OWNER_KEY, first_admin.to_string(), now_ms()],
+            )
+            .map_err(|e| format!("Persist legacy credential owner: {e}"))?;
+            // Re-read: concurrent first writers settle on the one row stored.
+            read_stored()?.ok_or_else(|| "Legacy credential owner not stored".to_string())?
+        }
+    };
+    let owner = stored
+        .parse::<i64>()
+        .map_err(|e| format!("Read legacy credential owner: {e}"))?;
+    let exists = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM users WHERE id = ?1)",
+            params![owner],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(|e| format!("Read legacy credential owner: {e}"))?;
+    Ok(exists.then_some(owner))
 }
 
 /// Read one optional secret from the live store, mapping NotFound to None.
@@ -3446,6 +3487,23 @@ pub fn unmirror_active_credential(credential_id: &str) {
     }
 }
 
+/// The user whose OAuth token must stay in its own partition: anyone but the
+/// legacy owner. Written to the shared vault, a token would be readable through
+/// the legacy owner's fallback. The legacy owner and pre-MU installs keep the
+/// dual write; other credential types are unchanged.
+pub fn oauth_token_private_to(
+    user_id: Option<i64>,
+    credential_type: &str,
+) -> Result<Option<i64>, String> {
+    if credential_type != "oauth" {
+        return Ok(None);
+    }
+    Ok(match credential_owner_and_fallback(user_id)? {
+        (Some(user), false) => Some(user),
+        _ => None,
+    })
+}
+
 /// Explicitly-typed dual writer (active user): vault first, then mirror into the
 /// active user's partition. For import/bridge sites without bespoke vault logic.
 pub fn store_active_credential_typed_dual(
@@ -3454,6 +3512,9 @@ pub fn store_active_credential_typed_dual(
     credential_type: &str,
     secret: &str,
 ) -> Result<(), String> {
+    if let Some(user) = oauth_token_private_to(None, credential_type)? {
+        return store_credential_for_user(store, user, credential_id, credential_type, secret);
+    }
     store
         .store(credential_id, secret)
         .map_err(|e| format!("Store credential in vault: {e}"))?;
@@ -3470,6 +3531,9 @@ pub fn store_credential_for_user_typed_dual(
     credential_type: &str,
     secret: &str,
 ) -> Result<(), String> {
+    if let Some(user) = oauth_token_private_to(Some(user_id), credential_type)? {
+        return store_credential_for_user(store, user, credential_id, credential_type, secret);
+    }
     store
         .store(credential_id, secret)
         .map_err(|e| format!("Store credential in vault: {e}"))?;
@@ -9818,6 +9882,41 @@ mod tests {
             read_credential_with_fallback_inner(&conn, &root, bob.id, "server_bp1", &read)
                 .expect_err("locked partition must fail closed"),
             "USER_LOCKED"
+        );
+    }
+
+    #[test]
+    fn legacy_owner_survives_demotion_and_is_not_reassigned_on_delete() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active")
+            .expect("default active");
+        assert_eq!(nonprofile_secret_owner(&conn).unwrap(), Some(default.id));
+        let second = create_passphrase_less_user(&mut conn, &root, "second", None, None)
+            .expect("create second");
+        conn.execute(
+            "UPDATE users SET is_admin = 1 WHERE id = ?1",
+            params![second.id],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE users SET is_admin = 0 WHERE id = ?1",
+            params![default.id],
+        )
+        .unwrap();
+        assert_eq!(
+            nonprofile_secret_owner(&conn).unwrap(),
+            Some(default.id),
+            "a demotion does not move the legacy owner"
+        );
+        conn.execute("DELETE FROM users WHERE id = ?1", params![default.id])
+            .unwrap();
+        assert_eq!(
+            nonprofile_secret_owner(&conn).unwrap(),
+            None,
+            "a deleted owner is not reassigned to the next admin"
         );
     }
 

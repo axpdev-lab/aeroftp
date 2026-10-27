@@ -764,21 +764,21 @@ pub fn resolve_profile_oauth_token(
     slug: &str,
     profile_id: &str,
 ) -> Option<String> {
+    // Owner-aware: only the legacy owner falls back to the shared vault, so a
+    // profile id or singleton shared with another user never lends its token.
+    let read = |key: String| {
+        crate::user_partitions::resolve_active_credential_owner_aware(store, &key)
+            .ok()
+            .flatten()
+            .map(|value| value.to_string())
+            .filter(|value| !value.is_empty())
+    };
     if !profile_id.is_empty() {
-        if let Ok(Some(value)) = crate::user_partitions::resolve_active_credential(
-            store,
-            &format!("oauth_{}_{}", slug, profile_id),
-        ) {
-            let value = value.to_string();
-            if !value.is_empty() {
-                return Some(value);
-            }
+        if let Some(value) = read(format!("oauth_{}_{}", slug, profile_id)) {
+            return Some(value);
         }
     }
-    store
-        .get(&format!("oauth_{}", slug))
-        .ok()
-        .filter(|s| !s.is_empty())
+    read(format!("oauth_{}", slug))
 }
 
 /// Resolve a provider's BYO OAuth app credentials the way the connect paths do:
@@ -855,16 +855,7 @@ pub fn inject_rclone_oauth_export_options(
         None => return,
     };
 
-    let token = if id.is_empty() {
-        None
-    } else {
-        crate::user_partitions::resolve_active_credential(store, &format!("oauth_{}_{}", slug, id))
-            .ok()
-            .flatten()
-            .map(|s| s.to_string())
-    }
-    .or_else(|| store.get(&format!("oauth_{}", slug)).ok())
-    .filter(|s| !s.is_empty());
+    let token = resolve_profile_oauth_token(store, slug, id);
 
     let client_id = store
         .get(&format!("oauth_{}_client_id", cred_key))
