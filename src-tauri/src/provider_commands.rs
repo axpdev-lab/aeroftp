@@ -7250,8 +7250,13 @@ pub async fn oauth2_full_auth(
     }
     .with_profile_id(&params.profile_id);
 
-    // Create manager ONCE and keep it for the entire flow
-    let manager = OAuth2Manager::new();
+    // Create manager ONCE and keep it for the entire flow, bound to the user
+    // who initiated it even if the active account changes before completion.
+    let credential_user = crate::credential_store::CredentialStore::from_cache()
+        .map(|store| crate::user_partitions::cli_get_active_user(&store))
+        .transpose()?
+        .and_then(|user| user.map(|metadata| metadata.id));
+    let manager = OAuth2Manager::new().with_credential_user(credential_user);
 
     // Generate an auth URL with the same stable callback URI shown by the UI.
     let (auth_url, expected_state) = manager
@@ -7311,7 +7316,7 @@ pub async fn oauth2_full_auth(
 
     // pCloud uses non-standard token exchange (GET, no PKCE, no expiry)
     if params.provider.to_lowercase() == "pcloud" {
-        pcloud_exchange_code(&config, &code)
+        pcloud_exchange_code(&config, &code, credential_user)
             .await
             .map_err(|e| format!("Failed to exchange code for tokens: {}", e))?;
     } else {
@@ -7338,6 +7343,7 @@ pub async fn oauth2_full_auth(
 async fn pcloud_exchange_code(
     config: &crate::providers::OAuthConfig,
     code: &str,
+    credential_user: Option<i64>,
 ) -> Result<(), crate::providers::ProviderError> {
     use crate::providers::{oauth2::StoredTokens, OAuth2Manager, ProviderError};
 
@@ -7422,7 +7428,7 @@ async fn pcloud_exchange_code(
             scopes: vec![],
         };
 
-        let manager = OAuth2Manager::new();
+        let manager = OAuth2Manager::new().with_credential_user(credential_user);
         manager.store_tokens(config.provider, config.profile_id(), &tokens)?;
 
         // Persist detected region so oauth2_connect uses the correct API endpoint
