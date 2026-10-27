@@ -288,13 +288,23 @@ fn response_declares_opaque_etag(headers: &reqwest::header::HeaderMap) -> bool {
 /// dispatched as `x-amz-copy-source-range: bytes=A-B` headers.
 ///
 /// Pure function so the part-planning logic can be unit-tested without
-/// any HTTP mocking. The S3 cap of 10000 parts per upload is not
-/// enforced here: the caller decides how to surface it.
-fn plan_copy_parts(source_size: u64, part_size: u64) -> Vec<(u32, u64, u64)> {
+/// any HTTP mocking. The S3 cap of 10000 parts per upload is enforced
+/// before allocating the plan.
+fn plan_copy_parts(
+    source_size: u64,
+    part_size: u64,
+) -> Result<Vec<(u32, u64, u64)>, ProviderError> {
     if source_size == 0 || part_size == 0 {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     let total = source_size.div_ceil(part_size);
+    if total > 10_000 {
+        return Err(ProviderError::ServerError(format!(
+            "Server-side copy of {} bytes would need {} parts at {} bytes each; \
+             exceeds S3 cap of 10000 parts per multipart upload",
+            source_size, total, part_size
+        )));
+    }
     let mut out = Vec::with_capacity(total as usize);
     let mut offset = 0u64;
     let mut part_number = 1u32;
@@ -304,7 +314,7 @@ fn plan_copy_parts(source_size: u64, part_size: u64) -> Vec<(u32, u64, u64)> {
         offset = end_inclusive + 1;
         part_number = part_number.saturating_add(1);
     }
-    out
+    Ok(out)
 }
 
 /// Whether an endpoint is a *local bridge*, for the purpose of accepting a
@@ -3391,21 +3401,7 @@ impl S3Provider {
         let copy_source = format!("/{}/{}", self.config.bucket, encode_s3_key_path(from_key));
 
         let part_size = Self::COPY_MULTIPART_PART_SIZE;
-        let planned = plan_copy_parts(source_size, part_size);
-        // S3 caps multipart at 10000 parts per upload. With a 100 MiB
-        // part size that's 1 TiB; refuse louder than failing mid-stream
-        // so the caller can re-tune part size in a follow-up if they
-        // really need to copy a >1 TiB object.
-        if planned.len() > 10_000 {
-            return Err(ProviderError::ServerError(format!(
-                "Server-side copy of {} ({} bytes) would need {} parts at {} MiB each; \
-                 exceeds S3 cap of 10000 parts per multipart upload",
-                from_key,
-                source_size,
-                planned.len(),
-                part_size / (1024 * 1024)
-            )));
-        }
+        let planned = plan_copy_parts(source_size, part_size)?;
 
         // UploadPartCopy carries no metadata directive: whatever the source
         // object holds must be re-emitted here or the copy loses it.
@@ -11627,20 +11623,44 @@ mod tests {
     /// in the owner-side MinIO smoke documented in the task plan.
     #[test]
     fn plan_copy_parts_returns_empty_for_zero_size_or_part_size() {
-        assert!(plan_copy_parts(0, 100).is_empty());
-        assert!(plan_copy_parts(1024, 0).is_empty());
+        assert!(plan_copy_parts(0, 100).unwrap().is_empty());
+        assert!(plan_copy_parts(1024, 0).unwrap().is_empty());
+    }
+
+    #[test]
+    fn plan_copy_parts_rejects_more_than_ten_thousand_parts() {
+        let error = plan_copy_parts(10_001, 1).unwrap_err();
+        assert!(matches!(&error, ProviderError::ServerError(_)));
+        let message = error.to_string();
+        assert!(message.contains("10001 parts"), "{message}");
+        assert!(message.contains("cap of 10000 parts"), "{message}");
+    }
+
+    #[test]
+    fn plan_copy_parts_allows_exactly_ten_thousand_parts() {
+        let parts = plan_copy_parts(10_000, 1).unwrap();
+        assert_eq!(parts.len(), 10_000);
+        assert_eq!(parts.first(), Some(&(1, 0, 0)));
+        assert_eq!(parts.last(), Some(&(10_000, 9_999, 9_999)));
+    }
+
+    #[test]
+    fn plan_copy_parts_rejects_u64_max_before_allocation() {
+        let error = plan_copy_parts(u64::MAX, 1).unwrap_err();
+        assert!(matches!(&error, ProviderError::ServerError(_)));
+        assert!(error.to_string().contains("18446744073709551615 parts"));
     }
 
     #[test]
     fn plan_copy_parts_single_aligned_full_part() {
-        let parts = plan_copy_parts(100, 100);
+        let parts = plan_copy_parts(100, 100).unwrap();
         assert_eq!(parts, vec![(1, 0, 99)]);
     }
 
     #[test]
     fn plan_copy_parts_unaligned_tail_under_part_size() {
         // 250 bytes at part size 100 → parts [0-99], [100-199], [200-249]
-        let parts = plan_copy_parts(250, 100);
+        let parts = plan_copy_parts(250, 100).unwrap();
         assert_eq!(parts, vec![(1, 0, 99), (2, 100, 199), (3, 200, 249)]);
     }
 
@@ -11650,7 +11670,7 @@ mod tests {
         // Last part covers 44 MiB and 1-indexed numbering caps at 62.
         let six_gib: u64 = 6 * 1024 * 1024 * 1024;
         let hundred_mib: u64 = 100 * 1024 * 1024;
-        let parts = plan_copy_parts(six_gib, hundred_mib);
+        let parts = plan_copy_parts(six_gib, hundred_mib).unwrap();
         assert_eq!(parts.len(), 62);
         // Part numbers are contiguous starting at 1.
         for (idx, (pn, _, _)) in parts.iter().enumerate() {
@@ -11679,7 +11699,7 @@ mod tests {
         // emits the obvious one-part plan when called below the cap.
         let four_gib: u64 = 4 * 1024 * 1024 * 1024;
         let huge_part: u64 = 8 * 1024 * 1024 * 1024;
-        let parts = plan_copy_parts(four_gib, huge_part);
+        let parts = plan_copy_parts(four_gib, huge_part).unwrap();
         assert_eq!(parts, vec![(1, 0, four_gib - 1)]);
     }
 
@@ -12640,7 +12660,12 @@ mod tests {
         // Above the cap a copy would otherwise fan out into dozens of
         // UploadPartCopy parts: prove the planner really would plan them,
         // then prove the Filebase gate suppresses the whole path.
-        assert!(plan_copy_parts(above, S3Provider::COPY_MULTIPART_PART_SIZE).len() > 1);
+        assert!(
+            plan_copy_parts(above, S3Provider::COPY_MULTIPART_PART_SIZE)
+                .unwrap()
+                .len()
+                > 1
+        );
         assert!(!filebase.copy_via_multipart(below));
         assert!(!filebase.copy_via_multipart(above));
         // The generic endpoint keeps the historical behavior.
