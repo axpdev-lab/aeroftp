@@ -515,11 +515,11 @@ Exposed in the AeroVault GUI (create with Error Correction, scrub, repair) and t
 
 ---
 
-### AeroTools - Code Editor, Terminal & AI Chat
+### AeroTools - Security Tools, Code Editor, Terminal & AI Chat
 
 > [Full documentation →](https://docs.aeroftp.app/features/aerotools.html)
 
-Integrated development panel with three tools in a tabbed interface: **Monaco Editor** (VS Code engine, 50+ languages, remote file editing), **SSH Terminal** (13 themes, multiple tabs), and **AeroAgent AI Chat** with bidirectional editor sync.
+Four independent launchers open **Security Tools** (Hash Forge, CryptoLab and Password Forge), **Monaco Editor** (VS Code engine, 50+ languages, remote file editing), **Terminal** (local PTY and SSH sessions, 13 themes, multiple tabs), and **AeroAgent AI Chat** with bidirectional editor sync.
 
 #### AeroAgent - AI-Powered Assistant
 

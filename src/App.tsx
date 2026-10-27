@@ -6274,6 +6274,12 @@ const App: React.FC = () => {
   // whitespace, so the flag is carried by a wrapper instead of by the body.
   const asConnectPhase = <A extends unknown[], R>(fn: (...args: A) => Promise<R>) =>
     async (...args: A): Promise<R> => {
+      // A new connection owns the remote panel before any await or early exit.
+      // Invalidate old scope-entry work and release its latch and spinner.
+      ++remoteNavCounter.current;
+      remoteNavInFlightRef.current = 0;
+      setRemoteListLoading(false);
+      setRemoteListReason(null);
       const phaseVersion = ++remoteConnectPhaseVersionRef.current;
       remoteConnectPhaseRef.current = 'connect';
       try {
@@ -8429,6 +8435,8 @@ const App: React.FC = () => {
     // finally block must not mutate the newly active session or block its nav.
     ++remoteNavCounter.current;
     remoteNavInFlightRef.current = 0;
+    setRemoteListLoading(false);
+    setRemoteListReason(null);
     setActiveSessionId(sessionId);
     setShowRemotePanel(true); // Exit AeroFile mode when switching to a connection tab
     quotaVersionRef.current++; // Invalidate any in-flight quota response

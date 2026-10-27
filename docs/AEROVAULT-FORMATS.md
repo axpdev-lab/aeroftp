@@ -66,11 +66,11 @@ Cross-family opens are **rejected before any allocation or decrypt** by a magic
 check, so there is no cross-parser confusion or type-confusion primitive. This
 non-interoperability is by design: the two binary layouts are not convertible in
 place. To move data between families, extract from one and re-add to the other
-(the GUI and CLI both expose extract + create). The shipped **Change Mode** operation performs this extract-and-rebuild
-(v2<->v3, and v2 standard<->cascade) and atomically swaps the rebuilt container.
-It is available from an open vault next to Change Password and through
-`aeroftp-cli vault change-mode`; it keeps the password and requires enough free
-space for the rebuilt container.
+(the GUI and CLI both expose extract + create). The shipped **Change Mode** operation performs this extract-and-rebuild (v2<->v3, and v2 standard<->cascade). It is available from an open vault next to Change Password and through `aeroftp-cli vault change-mode`, keeping the password.
+
+`repack_vault_blocking` extracts the full plaintext tree into a `.aerovault-repack-*` temporary directory beside the vault before building the replacement. The filesystem needs free space for both that plaintext tree and the rebuilt container, alongside the existing vault. Normal cleanup removes the scratch directory, but an abrupt interruption can leave plaintext behind; choose a suitable filesystem and check for leftovers after an interrupted operation.
+
+Replacement uses two renames: the original is moved to `.<vault-name>.repack-bak-<pid>`, then the rebuilt container is moved to the original path. This is not an atomic swap. If the process stops between renames, the original path is absent and the original vault must be restored from the backup. A reported failure of the second rename attempts to restore that backup.
 
 ## Header authentication
 
