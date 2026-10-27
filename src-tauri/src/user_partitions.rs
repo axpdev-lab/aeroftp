@@ -3487,15 +3487,19 @@ pub fn unmirror_active_credential(credential_id: &str) {
     }
 }
 
-/// The user whose OAuth token must stay in its own partition: anyone but the
-/// legacy owner. Written to the shared vault, a token would be readable through
-/// the legacy owner's fallback. The legacy owner and pre-MU installs keep the
-/// dual write; other credential types are unchanged.
-pub fn oauth_token_private_to(
+/// Token types that belong to one user only: OAuth tokens and Jottacloud
+/// refresh chains.
+const PRIVATE_TOKEN_TYPES: [&str; 2] = ["oauth", "jottacloud_refresh"];
+
+/// The user whose tokens of `credential_type` must stay in its own partition:
+/// anyone but the legacy owner. Written to the shared vault, a token would be
+/// readable through the legacy owner's fallback. The legacy owner and pre-MU
+/// installs keep the dual write; other credential types are unchanged.
+pub fn private_token_user(
     user_id: Option<i64>,
     credential_type: &str,
 ) -> Result<Option<i64>, String> {
-    if credential_type != "oauth" {
+    if !PRIVATE_TOKEN_TYPES.contains(&credential_type) {
         return Ok(None);
     }
     Ok(match credential_owner_and_fallback(user_id)? {
@@ -3512,7 +3516,7 @@ pub fn store_active_credential_typed_dual(
     credential_type: &str,
     secret: &str,
 ) -> Result<(), String> {
-    if let Some(user) = oauth_token_private_to(None, credential_type)? {
+    if let Some(user) = private_token_user(None, credential_type)? {
         return store_credential_for_user(store, user, credential_id, credential_type, secret);
     }
     store
@@ -3531,7 +3535,7 @@ pub fn store_credential_for_user_typed_dual(
     credential_type: &str,
     secret: &str,
 ) -> Result<(), String> {
-    if let Some(user) = oauth_token_private_to(Some(user_id), credential_type)? {
+    if let Some(user) = private_token_user(Some(user_id), credential_type)? {
         return store_credential_for_user(store, user, credential_id, credential_type, secret);
     }
     store

@@ -577,7 +577,7 @@ impl OAuth2Manager {
     /// be readable through the legacy owner's fallback, for example when an
     /// imported profile keeps its id.
     fn private_token_user(&self) -> Result<Option<i64>, ProviderError> {
-        crate::user_partitions::oauth_token_private_to(self.credential_user, "oauth")
+        crate::user_partitions::private_token_user(self.credential_user, "oauth")
             .map_err(|e| ProviderError::Other(format!("Failed to resolve token owner: {}", e)))
     }
 
@@ -1815,9 +1815,17 @@ mod tests {
             &imported,
         )
         .expect("import writes the nonowner token");
+        partitions::store_active_credential_typed_dual(
+            &store,
+            "jottacloud_refresh_imported-profile",
+            "jottacloud_refresh",
+            &imported,
+        )
+        .expect("import writes the nonowner Jottacloud chain");
         for key in [
             "oauth_dropbox_shared-profile",
             "oauth_dropbox_imported-profile",
+            "jottacloud_refresh_imported-profile",
         ] {
             assert!(
                 store.get(key).is_err(),
