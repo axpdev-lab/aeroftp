@@ -2184,7 +2184,7 @@ It also emits the transfer-scheduler surface: a `protocol_transfer_capabilities`
 | `--max-size <size>` | Maximum file size filter (e.g., `1G`) |
 | `--min-age <duration>` | Skip files newer than duration (e.g., `7d`, `24h`) |
 | `--max-age <duration>` | Skip files older than duration (e.g., `30d`) |
-| `--max-transfer <size>` | Abort session after transferring N bytes (e.g., `10G`). Exit code 8, the code for "stopped at a limit and nothing failed". On `sync` that code means this budget specifically: a timeout there fails transfers and is reported as a failure (exit 4) instead. With `--json` the budget is named by an `over_budget` count of the files it left behind |
+| `--max-transfer <size>` | Abort session after transferring N bytes (e.g., `10G`). Exit code 8 indicates a budget stop on this path. On `sync` that code means this budget specifically: a timeout there fails transfers and is reported as a failure (exit 4) instead. With `--json`, `over_budget` counts files left behind; an exact-budget stop can return 8 without that field |
 | `--retries <n>` | Retry failed transfers N times (default: 3). Auth/usage errors not retried, and neither is a transfer stopped by Ctrl+C: a Ctrl+C after a failed attempt, or during `--retries-sleep`, ends the command with 130 |
 | `--retries-sleep <dur>` | Delay between retries (e.g., `5s`, `1m`, `500ms`). Default: 1s |
 | `--max-backlog <n>` | Max queued transfer tasks for parallel operations (default: 10000) |
@@ -2455,7 +2455,7 @@ given. See [MULTI-USER.md](./MULTI-USER.md) for the partition model.
 | 5 | Invalid config / usage error. Also a file larger than the provider accepts (a per-file size limit, as on OpenDrive's free plan): the same upload fails again, so it shares the code `--retries` does not repeat |
 | 6 | Authentication failed (credentials refused, or the server's host key rejected) |
 | 7 | Not supported |
-| 8 | Stopped at a limit and nothing failed. Which limit depends on the command: a timeout for most, the `--max-transfer` budget on `sync`, where a timeout that fails a transfer reports 4 instead. `--json` names a reached budget with `over_budget` |
+| 8 | Timeout or transfer-budget stop, with command-specific outcomes. A SITE reply timeout can follow a command the server applied: verify before retrying a mutation. On sync, a timeout that fails a transfer reports 4; the budget stop reports 8. JSON `over_budget` counts skipped files and can be absent at the exact budget, so inspect the configured limits |
 | 9 | Already exists / directory not empty (--immutable, --no-clobber) |
 | 10 | Server error / parse error |
 | 11 | I/O error |

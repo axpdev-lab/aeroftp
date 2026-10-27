@@ -262,7 +262,7 @@ aeroftp-cli ls --profile "Server" / --json 2>/dev/null | jq '.entries[].name'
 | 5 | Invalid usage | Fix command syntax (an invalid `--exclude` pattern or `--multi-thread-cutoff` value is one). Also a file over the provider's per-file size limit: do not retry the same file |
 | 6 | Auth failed | Ask user to re-authorize |
 | 7 | Not supported | Use alternative approach |
-| 8 | Stopped at a limit, nothing failed | Raise the limit: a timeout on most commands, the `--max-transfer` budget on `sync` (JSON `over_budget`) |
+| 8 | Timeout or transfer-budget stop; inspect command outcome | Check configured limits. A SITE reply timeout can leave a mutation applied: verify before retrying. Sync `over_budget` counts skipped files; an exact-budget stop can omit it |
 | 9 | Already exists / directory not empty | Do not overwrite or delete unless the user asks: the target exists (`--immutable`, `--no-clobber`) or the directory is not empty |
 | 10 | Server/parse error | Check server status |
 | 11 | I/O error | Check disk space/permissions |

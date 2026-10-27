@@ -43,7 +43,7 @@ Use `--json` for machine-readable output and keep stdout/stderr separate. Preser
 | 5 | Invalid usage | No | Fix command syntax |
 | 6 | Auth failed | No | Re-authenticate |
 | 7 | Not supported | No | Use different operation |
-| 8 | Stopped at a limit, nothing failed | Inspect first | Inspect the configured timeout and `--max-transfer` limits. JSON `over_budget` counts files skipped by the budget; reaching the exact budget can return 8 without this field, so absence does not imply a timeout |
+| 8 | Timeout or transfer-budget stop; outcome depends on the command | Inspect first | Inspect the configured timeout and `--max-transfer` limits. JSON `over_budget` counts files skipped by the budget; reaching the exact budget can return 8 without this field, so absence does not imply a timeout. A SITE reply timeout can follow a command the server already applied; verify its outcome before retrying a mutation |
 | 9 | Already exists / not empty | No | Preserve the target; overwrite/delete only with explicit authorization |
 | 10 | Server/parse error | Maybe | Check server status |
 | 11 | Local I/O error | Maybe | Check disk, permissions |
@@ -381,7 +381,7 @@ Returns:
 - Exit code definitions
 - Safety rules
 - Credential model
-- Saved server profiles with connection metadata (`host`, `port`, `username`, `initialPath`) and per-profile `auth_state`, without passwords. `agent-info --redact-identifiers` replaces only `host` and `username` with `[redacted]`; port, initialPath and the remaining profile fields stay visible.
+- Saved server profiles with connection metadata (`host`, `port`, `username`, `initialPath`) without passwords. This `agent-info` projection does not forward `auth_state`; use `profiles --json` for that per-profile local readiness signal. `agent-info --redact-identifiers` replaces only `host` and `username` with `[redacted]`; port, initialPath and the remaining profile fields stay visible.
 
 ---
 
