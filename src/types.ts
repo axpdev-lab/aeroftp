@@ -347,7 +347,6 @@ export const supportsNativeShareLink = (type: ProviderType): boolean => {
     "mega",
     "box",
     "pcloud",
-    "filen",
     "zohoworkdrive",
     "filelu",
     "koofr",

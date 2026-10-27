@@ -149,7 +149,7 @@ open still fails, re-toggle File Transfer on the phone and retry.
 | Mkdir | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | Chmod | Yes | Yes | Yes | No | No | No | No | No | No | No | No | No | No | No | No | No | No | No | No | No |
 | Stat | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Share Link | AeroCloud | AeroCloud | AeroCloud | AeroCloud | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No | No | Yes | Yes | Yes | No | Yes | Yes | Yes |
+| Share Link | AeroCloud | AeroCloud | AeroCloud | AeroCloud | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No | No | No | Yes | Yes | No | Yes | Yes | Yes |
 
 *S3 rename = copy+delete
 **Azure rename = copy+delete
@@ -326,7 +326,7 @@ The sync engine never uses these digests: `supports_checksum()` stays false for 
 | **MEGA.nz** | Native | - | - | - | Native API (recommended) or MEGAcmd bridge |
 | **Box** | Native | Paid | Paid | view/edit | Password and expiry require paid Box plan |
 | **pCloud** | Native | Premium | Premium | - | Password and expiry require pCloud Premium |
-| **Filen** | Native | Yes (Argon2id) | Presets (1h-30d) | - | E2E encrypted, password hashed client-side |
+| **Filen** | No | - | - | - | Link creation disabled until per-share encryption is supported; existing links can still be revoked |
 | **Zoho WorkDrive** | Native | Yes | Yes | view/edit | Full advanced options on all plans |
 | **kDrive** | Native | Paid | Paid | view/edit | Password and expiry require paid Infomaniak plan |
 | **Jottacloud** | Native | - | - | - | Basic share only (API limitation) |
@@ -439,7 +439,7 @@ FileLu exposes a binary `only_me` flag per file (private / public). Toggling thi
 
 #### Filen and Internxt
 
-Both providers are **zero-knowledge end-to-end encrypted**: visibility is implicitly private at all times since the provider cannot read the cleartext. Public sharing is opt-in, file-by-file, by generating a share link. Internxt additionally encrypts file names; Filen encrypts both content and file names.
+Both providers are **zero-knowledge end-to-end encrypted**: visibility is implicitly private at all times since the provider cannot read the cleartext. On Internxt, public sharing is opt-in, file-by-file, by generating a share link; Filen share-link creation is disabled until per-share encryption is supported. Internxt additionally encrypts file names; Filen encrypts both content and file names.
 
 #### MEGA
 
