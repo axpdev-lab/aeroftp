@@ -1828,8 +1828,34 @@ where
 /// wrapped. If it fails, the raw-write guard remains active and refuses direct
 /// writes into the still-raw encrypted store until disconnect or retry.
 #[tauri::command]
-pub fn provider_arm_crypt_capability(state: State<'_, ProviderState>) -> Result<(), String> {
+pub async fn provider_arm_crypt_capability(
+    state: State<'_, ProviderState>,
+    expected_generation: Option<u64>,
+) -> Result<(), String> {
+    provider_arm_crypt_capability_inner(&state, expected_generation).await
+}
+
+async fn provider_arm_crypt_capability_inner(
+    state: &ProviderState,
+    expected_generation: Option<u64>,
+) -> Result<(), String> {
+    let _guard = state.provider.lock().await;
+    ensure_overlay_connection_generation(state, expected_generation)?;
     state.arm_crypt_capability();
+    Ok(())
+}
+
+/// Must be called while holding the provider lock, including publication of
+/// overlay flags and cached keys, so a connection swap cannot interleave.
+fn ensure_overlay_connection_generation(
+    state: &ProviderState,
+    expected: Option<u64>,
+) -> Result<(), String> {
+    if expected.is_some_and(|value| state.connection_generation.load(Ordering::SeqCst) != value) {
+        return Err(format!(
+            "{CONNECTION_CHANGED_MARKER}: overlay activation no longer owns this connection"
+        ));
+    }
     Ok(())
 }
 
@@ -1840,6 +1866,9 @@ pub fn provider_arm_crypt_capability(state: State<'_, ProviderState>) -> Result<
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApplyCryptOverlayParams {
+    /// Optional connection identity captured before reading unlock factors.
+    #[serde(default)]
+    pub expected_generation: Option<u64>,
     /// "rclone-crypt" or "aerocrypt".
     pub kind: String,
     /// Plaintext anchor where the overlay is rooted (`""`/`"/"` = whole remote).
@@ -1946,6 +1975,13 @@ pub async fn provider_apply_crypt_overlay(
     state: State<'_, ProviderState>,
     params: ApplyCryptOverlayParams,
 ) -> Result<crate::crypt_overlay_provider::ApplyOverlayResult, String> {
+    provider_apply_crypt_overlay_inner(&state, params).await
+}
+
+async fn provider_apply_crypt_overlay_inner(
+    state: &ProviderState,
+    params: ApplyCryptOverlayParams,
+) -> Result<crate::crypt_overlay_provider::ApplyOverlayResult, String> {
     let (local_config_json, local_config_salt) = if let Some(id) = &params.profile_id {
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
             let json = crate::user_partitions::resolve_active_credential(
@@ -2008,8 +2044,9 @@ pub async fn provider_apply_crypt_overlay(
         Some(p) => Some(crate::crypt_overlay_provider::keyfile_digest_from_path(p)?),
         None => None,
     };
+    let mut guard = state.provider.lock().await;
+    ensure_overlay_connection_generation(state, params.expected_generation)?;
     let result = {
-        let mut guard = state.provider.lock().await;
         match crate::crypt_overlay_provider::apply_overlay_in_place(
             &mut guard,
             &binding,
@@ -2041,7 +2078,6 @@ pub async fn provider_apply_crypt_overlay(
     // the cache is bound to the current generation and wiped on any connection
     // change or hard lock.
     {
-        let mut guard = state.provider.lock().await;
         if let Some(dec) = guard.as_mut().and_then(|p| {
             p.as_any_mut()
                 .downcast_mut::<crate::crypt_overlay_provider::CryptOverlayProvider>()
@@ -2053,6 +2089,7 @@ pub async fn provider_apply_crypt_overlay(
             );
         }
     }
+    drop(guard);
     info!(
         "Crypt overlay applied to live provider (scope: {:?}, marker_restored={})",
         result.scope, result.marker_restored
@@ -2439,10 +2476,11 @@ pub async fn provider_change_dir(
     state: State<'_, ProviderState>,
     listing_cancel: State<'_, ListingCancelState>,
     path: String,
+    expected_generation: Option<u64>,
 ) -> Result<ProviderListResponse, String> {
     run_cancellable_listing(
         &listing_cancel,
-        provider_change_dir_inner(&app, &state, path),
+        provider_change_dir_inner(&app, &state, path, expected_generation),
     )
     .await
 }
@@ -2451,8 +2489,10 @@ async fn provider_change_dir_inner(
     app: &AppHandle,
     state: &ProviderState,
     path: String,
+    expected_generation: Option<u64>,
 ) -> Result<ProviderListResponse, String> {
     let mut provider_lock = state.provider.lock().await;
+    ensure_overlay_connection_generation(state, expected_generation)?;
 
     let provider = provider_lock
         .as_mut()
@@ -18881,5 +18921,76 @@ mod folder_download_live_tests {
                 .count(),
             0
         );
+    }
+}
+
+#[cfg(test)]
+mod overlay_activation_generation_tests {
+    use super::*;
+
+    fn params(generation: u64) -> ApplyCryptOverlayParams {
+        serde_json::from_value(serde_json::json!({
+            "kind": "aerocrypt", "password": "synthetic-test-only",
+            "expectedGeneration": generation, "openOnly": true
+        }))
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn stale_overlay_apply_refuses_before_dispatching_to_the_provider() {
+        let state = ProviderState::new();
+        state.connection_generation.store(1, Ordering::SeqCst);
+        let error = provider_apply_crypt_overlay_inner(&state, params(0))
+            .await
+            .unwrap_err();
+        assert!(error.starts_with(CONNECTION_CHANGED_MARKER), "{error}");
+        assert!(!state.active_crypt_overlay.load(Ordering::SeqCst));
+        assert!(!state.overlay_wrapped.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn queued_overlay_apply_refuses_a_generation_swapped_under_the_lock() {
+        let state = Arc::new(ProviderState::new());
+        let guard = state.provider.lock().await;
+        let queued = {
+            let state = Arc::clone(&state);
+            tokio::spawn(async move { provider_apply_crypt_overlay_inner(&state, params(0)).await })
+        };
+        tokio::task::yield_now().await;
+        state.connection_generation.fetch_add(1, Ordering::SeqCst);
+        drop(guard);
+        let error = queued.await.unwrap().unwrap_err();
+        assert!(error.starts_with(CONNECTION_CHANGED_MARKER), "{error}");
+        assert!(!state.active_crypt_overlay.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn queued_overlay_arm_cannot_mark_a_replacement_connection() {
+        let state = Arc::new(ProviderState::new());
+        let guard = state.provider.lock().await;
+        let queued = {
+            let state = Arc::clone(&state);
+            tokio::spawn(async move { provider_arm_crypt_capability_inner(&state, Some(0)).await })
+        };
+        tokio::task::yield_now().await;
+        state.connection_generation.fetch_add(1, Ordering::SeqCst);
+        drop(guard);
+        let error = queued.await.unwrap().unwrap_err();
+        assert!(error.starts_with(CONNECTION_CHANGED_MARKER), "{error}");
+        assert!(!state.active_crypt_overlay.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn matching_generation_can_arm_and_legacy_callers_remain_supported() {
+        let state = ProviderState::new();
+        provider_arm_crypt_capability_inner(&state, Some(0))
+            .await
+            .unwrap();
+        assert!(state.active_crypt_overlay.load(Ordering::SeqCst));
+        state.active_crypt_overlay.store(false, Ordering::SeqCst);
+        provider_arm_crypt_capability_inner(&state, None)
+            .await
+            .unwrap();
+        assert!(state.active_crypt_overlay.load(Ordering::SeqCst));
     }
 }

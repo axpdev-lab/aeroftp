@@ -13,8 +13,10 @@ import { describe, expect, it, vi } from 'vitest';
 import app from '../App.tsx?raw';
 import { connectLandsOutsideOverlay, isWithinCryptScope, normCryptScope, resolveUsernameTemplate } from './cryptScope';
 import { refusalFor } from './overlayRefusal';
+import { assertOverlayActivationCurrent } from './profileOverlayUnlock';
 
 async function execute<T>(source: string, context: Record<string, unknown>, suffix: string): Promise<T> {
+    context = { ownership: undefined, assertOverlayActivationCurrent, ...context };
     const { code } = await transformWithOxc(source, 'crypt-connect-landing.ts');
     return new Function(...Object.keys(context), `return (async () => { ${code}\n${suffix} })();`)(...Object.values(context));
 }
@@ -93,19 +95,19 @@ describe('crypt overlay connect landing (#1211)', () => {
 
     it('smartReanchorOverlay moves to a non-empty landing path', async () => {
         const { invoke, positionWrappedProviderAtScope } = await reanchorWith({ initialLandingPath: '/docs' });
-        expect(positionWrappedProviderAtScope).toHaveBeenCalledWith('/docs');
+        expect(positionWrappedProviderAtScope).toHaveBeenCalledWith('/docs', undefined);
         expect(invoke).not.toHaveBeenCalled();
     });
 });
 
 describe('crypt overlay scope-entry recovery', () => {
     async function enterScope(kind: string | null, reactivated: boolean, refusalProfile = 'srv_1') {
-        const start = app.indexOf('const reactivated = await maybeAutoUnlockProfileOverlay(activeSession.savedServerId);');
+        const start = app.indexOf('const reactivated = await maybeAutoUnlockProfileOverlay(activeSession.savedServerId,');
         const marker = 'reactivatedOverlayForNav = true;';
         const end = app.indexOf(marker, start);
         if (start < 0 || end < 0) throw new Error('scope-entry unlock block not found in App.tsx');
         const setLockedOverlayProfile = vi.fn();
-        const run = execute('let reactivatedOverlayForNav = false;\n' + app.slice(start, end + marker.length), {
+        const run = execute('let reactivatedOverlayForNav = false; let reactivatedOverlayGeneration;\n' + app.slice(start, end + marker.length), {
             activeSession: { savedServerId: 'srv_1', cryptOverlayKind: kind },
             navId: 7, remoteNavCounter: { current: 7 },
             overlayBinding: { vaultId: 'live_vault', prefix: 'aerocrypt_provider' },
@@ -138,7 +140,7 @@ describe('crypt overlay scope-entry recovery', () => {
 
 
     it.each(['aerocrypt', 'rclone-crypt'])('clears stale %s state so the real banner gate opens after a failed return', async (kind) => {
-        const start = app.indexOf('const reactivated = await maybeAutoUnlockProfileOverlay(activeSession.savedServerId);');
+        const start = app.indexOf('const reactivated = await maybeAutoUnlockProfileOverlay(activeSession.savedServerId,');
         const end = app.indexOf('reactivatedOverlayForNav = true;', start);
         const lockStart = app.indexOf('const lockSessionCryptOverlay = (');
         const lockEnd = app.indexOf('// Tab is no longer an overlay tab', lockStart);
@@ -455,7 +457,7 @@ describe('OAuth landing probe recovers the current provider directory', () => {
 
 describe('scope-entry unlock result belongs to its navigation', () => {
     it.each([false, true])('discards an old unlock result (%s) after switching sessions', async (activated) => {
-        const start = app.indexOf('const reactivated = await maybeAutoUnlockProfileOverlay(activeSession.savedServerId);');
+        const start = app.indexOf('const reactivated = await maybeAutoUnlockProfileOverlay(activeSession.savedServerId,');
         const marker = 'reactivatedOverlayForNav = true;';
         const end = app.indexOf(marker, start) + marker.length;
         const switchStart = app.indexOf('// Set active session immediately', app.indexOf('const switchSession = async'));
@@ -470,7 +472,7 @@ describe('scope-entry unlock result belongs to its navigation', () => {
         };
         let finishUnlock!: (value: boolean) => void;
         const unlock = new Promise<boolean>((resolve) => { finishUnlock = resolve; });
-        const pending = execute('let reactivatedOverlayForNav = false;\n' + app.slice(start, end), {
+        const pending = execute('let reactivatedOverlayForNav = false; let reactivatedOverlayGeneration;\n' + app.slice(start, end), {
             activeSession: { id: 'old_tab', savedServerId: 'old_profile', cryptOverlayKind: 'aerocrypt' },
             overlayBinding: null, navId: 7, remoteNavCounter,
             maybeAutoUnlockProfileOverlay: () => unlock,
