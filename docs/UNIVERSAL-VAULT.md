@@ -45,7 +45,7 @@ Since **v1.9.0**, the vault scope has been expanded into a **Unified Encrypted K
 
 **Auto / keyring mode** (default) stores the passphrase in the OS keyring; vault.key on disk holds only a mode marker and is protected by file permissions:
 - Unix: `chmod 0o600` (owner read/write only)
-- Windows: `icacls` ACL restricting access to current user
+- Windows: native ACL hardening attempts to grant full control to the current user, SYSTEM and BUILTIN\Administrators. Failures are logged without aborting vault operations; inheritance may remain or be restored if hardening makes the object inaccessible. A successful vault operation does not guarantee restricted access.
 
 **Local fallback / legacy auto mode** (`0x00`) keeps the cleartext passphrase inside vault.key, protected only by the same file permissions. It is still written when a keyring slot cannot be claimed, including first initialization and disabling a master password. On subsequent startup, the app attempts migration into a fresh keyring slot; failure keeps the local key usable. The database remains encrypted, but a copy of both files is enough to open it in this mode.
 
@@ -483,9 +483,9 @@ Import flow:
 
 ### Auto Mode Threat Model
 
-- **Physical access**: vault.key is readable only by the current OS user (file permissions). An attacker with same-user access can read credentials.
+- **File access**: Unix files are restricted to owner read/write (`0600`). Windows ACL hardening is best effort and also grants SYSTEM and BUILTIN\Administrators full control when successful; failure or restored inheritance can leave broader access. In local fallback mode, anyone able to copy both vault.key and vault.db can open the credential database.
 - **Root access**: Root can read any file. This is the same threat model as OS keyring on Linux (gnome-keyring is also accessible to root).
-- **Mitigation**: Enable master password mode for stronger protection.
+- **Mitigation**: Enable master password mode when filesystem permissions cannot be trusted; it cryptographically wraps the passphrase rather than relying only on access restrictions.
 
 ### Master Mode Threat Model
 

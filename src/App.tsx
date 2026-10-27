@@ -5805,7 +5805,7 @@ const App: React.FC = () => {
       const landing = opts.initialLandingPath;
       if (normCryptScope(landing) === '') {
         // Remote Path is the on-wire root.
-        await invoke('provider_change_dir', { path: '/', ...(ownership ? { expectedGeneration: ownership.generation } : {}) }).catch((error) => { if (ownership) throw error; });
+        await invoke('provider_change_dir', { path: '/', ...(ownership ? { expectedGeneration: ownership.generation } : {}) }).catch((error) => { if (ownership && String(error).startsWith('CONNECTION_CHANGED')) throw error; });
         assertOverlayActivationCurrent(ownership);
       } else {
         await positionWrappedProviderAtScope(landing, ownership);
@@ -5817,7 +5817,7 @@ const App: React.FC = () => {
     if (cwdInView) return; // valid encrypted folder: keep the user in place
     await positionWrappedProviderAtScope(appliedScope, ownership);
     if (normCryptScope(appliedScope) === '') {
-      await invoke('provider_change_dir', { path: '/', ...(ownership ? { expectedGeneration: ownership.generation } : {}) }).catch((error) => { if (ownership) throw error; });
+      await invoke('provider_change_dir', { path: '/', ...(ownership ? { expectedGeneration: ownership.generation } : {}) }).catch((error) => { if (ownership && String(error).startsWith('CONNECTION_CHANGED')) throw error; });
       assertOverlayActivationCurrent(ownership);
     }
   };

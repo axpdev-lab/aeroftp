@@ -27,7 +27,7 @@ All sensitive data (server passwords, OAuth tokens, API keys, application config
 | **Master password** | Encrypted with Argon2id (128 MiB, t=4, p=4) + AES-256-GCM |
 | **Keyring unavailable** | Falls back to a permission-protected `vault.key` containing the random passphrase in cleartext; master-password mode remains available |
 
-The credential database stays AES-256-GCM encrypted. In the no-keyring fallback, its unlocking passphrase is on disk beside it, so file permissions are the protection boundary until a master password is enabled. File permissions are hardened to `0600` (Unix) / owner-only ACL (Windows). See [Universal Vault](docs/UNIVERSAL-VAULT.md) for the modes and keyring account lifecycle.
+The credential database stays AES-256-GCM encrypted. In the no-keyring fallback, its unlocking passphrase is on disk beside it, so file permissions are the protection boundary until a master password is enabled. On Unix, files are set to `0600` and directories to `0700`. On Windows, native ACL hardening attempts to grant full control to the current user, SYSTEM and BUILTIN\Administrators. That hardening is best effort: failures are logged without aborting vault operations, and inheritance may be restored if hardening makes the object inaccessible. Successful vault initialization therefore does not prove that Windows permissions were restricted. Enable a master password when filesystem permissions cannot be trusted. See [Universal Vault](docs/UNIVERSAL-VAULT.md) for the modes and keyring account lifecycle.
 
 For the complete credential lifecycle, import/export, and OS keyring integration, see [Credential Management](https://docs.aeroftp.app/security/credentials).
 
