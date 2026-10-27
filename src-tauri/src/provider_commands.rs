@@ -93,6 +93,8 @@ pub struct ProviderState {
     /// view-only lock. `std::sync::Mutex`: the critical sections are tiny and
     /// never await. Wiped (keys zeroized) on connect/disconnect and hard lock.
     cached_overlay: std::sync::Mutex<Option<CachedCryptOverlay>>,
+    /// Identity of the owned activation currently installed; guarded by provider lock.
+    overlay_activation_id: std::sync::Mutex<Option<String>>,
     /// Bumped on every connection change (connect swap, disconnect, hard lock)
     /// so a stale cached key can never be re-armed onto a new connection.
     connection_generation: Arc<AtomicU64>,
@@ -146,6 +148,7 @@ impl ProviderState {
             quota_cancel: ListingCancelState::new(),
             folder_size_cancel: ListingCancelState::new(),
             cached_overlay: std::sync::Mutex::new(None),
+            overlay_activation_id: std::sync::Mutex::new(None),
             connection_generation: Arc::new(AtomicU64::new(0)),
             config: Arc::new(Mutex::new(None)),
             cancel_flag: Arc::new(AtomicBool::new(false)),
@@ -310,7 +313,15 @@ impl ProviderState {
         self.folder_size_cancel.cancel();
     }
 
+    fn set_overlay_activation_id(&self, id: Option<String>) {
+        *self
+            .overlay_activation_id
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = id;
+    }
+
     fn invalidate_overlay_key_cache(&self) {
+        self.set_overlay_activation_id(None);
         self.connection_generation.fetch_add(1, Ordering::SeqCst);
         if let Ok(mut slot) = self.cached_overlay.lock() {
             *slot = None;
@@ -1869,6 +1880,9 @@ pub struct ApplyCryptOverlayParams {
     /// Optional connection identity captured before reading unlock factors.
     #[serde(default)]
     pub expected_generation: Option<u64>,
+    /// Opaque caller identity used only to discard this exact installed activation.
+    #[serde(default)]
+    pub activation_id: Option<String>,
     /// "rclone-crypt" or "aerocrypt".
     pub kind: String,
     /// Plaintext anchor where the overlay is rooted (`""`/`"/"` = whole remote).
@@ -2089,6 +2103,7 @@ async fn provider_apply_crypt_overlay_inner(
             );
         }
     }
+    state.set_overlay_activation_id(params.activation_id);
     drop(guard);
     info!(
         "Crypt overlay applied to live provider (scope: {:?}, marker_restored={})",
@@ -2236,26 +2251,56 @@ pub async fn crypt_generate_keyfile(path: String) -> Result<(), String> {
 pub async fn provider_clear_crypt_overlay(
     state: State<'_, ProviderState>,
     full: Option<bool>,
+    expected_generation: Option<u64>,
+    activation_id: Option<String>,
 ) -> Result<bool, String> {
-    Ok(clear_crypt_overlay_inner(&state, full.unwrap_or(false)).await)
+    match (expected_generation, activation_id) {
+        (Some(generation), Some(id)) => {
+            Ok(discard_crypt_activation_inner(&state, generation, &id).await)
+        }
+        (None, None) => Ok(clear_crypt_overlay_inner(&state, full.unwrap_or(false)).await),
+        _ => Err(
+            "Scoped overlay cleanup requires both connection generation and activation identity"
+                .to_string(),
+        ),
+    }
+}
+
+/// Discard only an owned activation, without cancelling another listing.
+/// The capability stays armed so raw writes cannot corrupt the encrypted scope.
+async fn discard_crypt_activation_inner(
+    state: &ProviderState,
+    expected_generation: u64,
+    activation_id: &str,
+) -> bool {
+    let mut guard = state.provider.lock().await;
+    let owner_matches = state
+        .overlay_activation_id
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_deref()
+        == Some(activation_id);
+    if state.connection_generation.load(Ordering::SeqCst) != expected_generation || !owner_matches {
+        return false;
+    }
+    let removed = crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard);
+    state.overlay_wrapped.store(false, Ordering::SeqCst);
+    state.invalidate_overlay_key_cache();
+    removed
 }
 
 /// Body of [`provider_clear_crypt_overlay`]. It runs first on the GUI's
 /// disconnect path, so it must not queue behind a stalled storage read (#958).
 async fn clear_crypt_overlay_inner(state: &ProviderState, full: bool) -> bool {
     state.cancel_storage_reads();
-    let removed = {
-        let mut guard = state.provider.lock().await;
-        let removed = crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard);
-        if full {
-            state.invalidate_overlay_key_cache();
-        }
-        removed
-    };
-    state.overlay_wrapped.store(false, Ordering::SeqCst);
+    let mut guard = state.provider.lock().await;
+    let removed = crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard);
+    state.set_overlay_activation_id(None);
     if full {
+        state.invalidate_overlay_key_cache();
         state.active_crypt_overlay.store(false, Ordering::SeqCst);
     }
+    state.overlay_wrapped.store(false, Ordering::SeqCst);
     removed
 }
 
@@ -2269,12 +2314,14 @@ async fn clear_crypt_overlay_inner(state: &ProviderState, full: bool) -> bool {
 pub async fn provider_lock_crypt_overlay(state: State<'_, ProviderState>) -> Result<bool, String> {
     let removed = {
         let mut guard = state.provider.lock().await;
-        crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard)
+        let removed = crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard);
+        state.set_overlay_activation_id(None);
+        state.overlay_wrapped.store(false, Ordering::SeqCst);
+        if removed {
+            state.active_crypt_overlay.store(true, Ordering::SeqCst);
+        }
+        removed
     };
-    state.overlay_wrapped.store(false, Ordering::SeqCst);
-    if removed {
-        state.active_crypt_overlay.store(true, Ordering::SeqCst);
-    }
     Ok(removed)
 }
 
@@ -2314,9 +2361,10 @@ pub async fn provider_rearm_cached_crypt_overlay(
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     let wrapped = crate::crypt_overlay_provider::CryptOverlayProvider::new(raw, keys, &scope);
     *guard = Some(Box::new(wrapped));
-    drop(guard);
+    state.set_overlay_activation_id(None);
     state.active_crypt_overlay.store(true, Ordering::SeqCst);
     state.overlay_wrapped.store(true, Ordering::SeqCst);
+    drop(guard);
     Ok(RearmCryptOverlayResult { scope, kind })
 }
 
@@ -18992,5 +19040,81 @@ mod overlay_activation_generation_tests {
             .await
             .unwrap();
         assert!(state.active_crypt_overlay.load(Ordering::SeqCst));
+    }
+}
+
+#[cfg(test)]
+mod overlay_activation_discard_tests {
+    use super::*;
+
+    async fn installed(id: &str) -> Arc<ProviderState> {
+        use crate::crypt_overlay_provider::{CryptOverlayProvider, OverlayKeys};
+        let state = Arc::new(ProviderState::new());
+        let keys = OverlayKeys::AeroCrypt {
+            master_key: [7; 32],
+            config: crate::aerocrypt::overlay::OverlayConfig::v3_bootstrap([9; 32]),
+        };
+        let raw = crate::providers::ftp::FtpProvider::new(crate::providers::FtpConfig {
+            host: "unused.test".to_string(),
+            port: 21,
+            username: String::new(),
+            password: secrecy::SecretString::from(String::new()),
+            tls_mode: crate::providers::FtpTlsMode::None,
+            verify_cert: true,
+            initial_path: None,
+        });
+        *state.provider.lock().await = Some(Box::new(CryptOverlayProvider::new(
+            Box::new(raw),
+            keys.clone(),
+            "/Crypt",
+        )));
+        state.store_overlay_key_cache(keys, "/Crypt".to_string(), "aerocrypt".to_string());
+        state.arm_crypt_capability();
+        state.overlay_wrapped.store(true, Ordering::SeqCst);
+        state.set_overlay_activation_id(Some(id.to_string()));
+        state
+    }
+
+    #[tokio::test]
+    async fn matching_discard_removes_real_wrapper_and_cached_keys_but_keeps_write_guard() {
+        let state = installed("old").await;
+        assert!(discard_crypt_activation_inner(&state, 0, "old").await);
+        assert!(!crate::crypt_overlay_provider::is_crypt_overlay_provider(
+            state.provider.lock().await.as_mut().unwrap().as_mut()
+        ));
+        assert!(!state.overlay_wrapped.load(Ordering::SeqCst));
+        assert!(state.active_crypt_overlay.load(Ordering::SeqCst));
+        assert!(state.cached_overlay_for_rearm().is_none());
+    }
+
+    #[tokio::test]
+    async fn stale_connection_discard_keeps_replacement_wrapper_and_cache() {
+        let state = installed("old").await;
+        assert!(!discard_crypt_activation_inner(&state, 1, "old").await);
+        assert!(state.overlay_wrapped.load(Ordering::SeqCst));
+        assert!(state.cached_overlay_for_rearm().is_some());
+    }
+
+    #[tokio::test]
+    async fn old_identity_cannot_remove_a_newer_activation_on_the_same_connection() {
+        let state = installed("new").await;
+        assert!(!discard_crypt_activation_inner(&state, 0, "old").await);
+        assert!(state.overlay_wrapped.load(Ordering::SeqCst));
+        assert!(state.cached_overlay_for_rearm().is_some());
+    }
+
+    #[tokio::test]
+    async fn queued_discard_checks_identity_after_acquiring_provider_lock() {
+        let state = installed("old").await;
+        let guard = state.provider.lock().await;
+        let pending = {
+            let state = Arc::clone(&state);
+            tokio::spawn(async move { discard_crypt_activation_inner(&state, 0, "old").await })
+        };
+        tokio::task::yield_now().await;
+        state.set_overlay_activation_id(Some("new".to_string()));
+        drop(guard);
+        assert!(!pending.await.unwrap());
+        assert!(state.overlay_wrapped.load(Ordering::SeqCst));
     }
 }

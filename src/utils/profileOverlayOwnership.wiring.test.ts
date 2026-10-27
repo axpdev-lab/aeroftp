@@ -32,6 +32,7 @@ async function activation(hold?: string) {
   const released = signal<void>();
   const effects: string[] = [];
   const calls: Array<{ command: string; args?: any }> = [];
+  let installedId: string | null = null;
   const kind = hold === 'keyfile' ? 'aerocrypt' : 'rclone-crypt';
   async function stage<T>(name: string, value: T): Promise<T> {
     if (name === hold) { reached.resolve(); await released.promise; }
@@ -50,7 +51,12 @@ async function activation(hold?: string) {
         case 'provider_connection_generation': return 42;
         case 'get_credential': return stage(args.account.includes('keyfile') ? 'keyfile' : args.account.includes('_salt_') ? 'salt' : 'password', 'synthetic-factor');
         case 'provider_arm_crypt_capability': return stage('arm', undefined);
-        case 'provider_apply_crypt_overlay': return stage('apply', { scope: '/Crypt', warning: 'synthetic notice', markerRestored: false });
+        case 'provider_apply_crypt_overlay':
+          installedId = args.params.activationId ?? 'legacy';
+          return stage('apply', { scope: '/Crypt', warning: 'synthetic notice', markerRestored: false });
+        case 'provider_clear_crypt_overlay':
+          if (args.expectedGeneration === 42 && args.activationId === installedId) { installedId = null; return true; }
+          return false;
         case 'provider_crypt_cwd_in_view': return stage('view', false);
         case 'provider_change_dir': return stage('cd', undefined);
         default: throw new Error(`Unexpected command: ${command}`);
@@ -71,7 +77,7 @@ async function activation(hold?: string) {
   };
   const { code } = await transformWithOxc(source, 'overlay-ownership.ts');
   const run: Promise<unknown> = new Function(...Object.keys(context), `return (async () => { ${code}\n return maybeAutoUnlockProfileOverlay('old_profile', isCurrent); })();`)(...Object.values(context));
-  return { run, calls, effects, reached, released, leave: () => { current = false; } };
+  return { run, calls, effects, reached, released, leave: () => { current = false; }, installed: () => installedId, replace: () => { installedId = 'newer'; } };
 }
 
 describe('overlay activation owns every asynchronous boundary', () => {
@@ -84,7 +90,23 @@ describe('overlay activation owns every asynchronous boundary', () => {
     op.released.resolve();
     await expect(op.run).resolves.toBeNull();
     expect(op.effects).toEqual(beforeEffects);
-    expect(op.calls).toHaveLength(beforeCalls);
+    const cleanup = op.calls.slice(beforeCalls);
+    if (['apply', 'view', 'cd'].includes(hold)) {
+      expect(op.installed()).toBeNull();
+      expect(cleanup).toHaveLength(1);
+      expect(cleanup[0].command).toBe('provider_clear_crypt_overlay');
+      expect(cleanup[0].args.expectedGeneration).toBe(42);
+    } else expect(cleanup).toEqual([]);
+  });
+
+  it('does not discard a newer activation on the same connection', async () => {
+    const op = await activation('apply');
+    await op.reached.promise;
+    op.replace();
+    op.leave();
+    op.released.resolve();
+    await expect(op.run).resolves.toBeNull();
+    expect(op.installed()).toBe('newer');
   });
 
   it('carries the captured connection generation through every owned mutation', async () => {

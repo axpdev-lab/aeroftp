@@ -1100,7 +1100,7 @@ For explicit recovery, download the damaged file and its `.aerocorrect` sidecar,
 ```bash
 aeroftp-cli get --profile "Backup" /backup/report.bin ./report.bin
 aeroftp-cli get --profile "Backup" /backup/report.bin.aerocorrect ./report.bin.aerocorrect
-aeroftp-cli correct repair ./report.bin --parity ./report.bin.aerocorrect --expect-sha256 <trusted-64-hex-sha256>
+aeroftp-cli correct repair ./report.bin --parity ./report.bin.aerocorrect --expect-sha256 YOUR_64_HEX_SHA256
 ```
 
 Replace the hash placeholder before running the command. A bare `correct repair` checks the sidecar's own content hash for integrity, but that hash does not authenticate a sidecar supplied by an attacker who can replace both objects. Detached recovery data must be refreshed after content changes.

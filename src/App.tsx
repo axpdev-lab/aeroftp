@@ -5735,6 +5735,7 @@ const App: React.FC = () => {
     const result = await invoke<ProviderApplyCryptOverlayResult | string>('provider_apply_crypt_overlay', {
       params: {
         expectedGeneration: ownership?.generation,
+        activationId: ownership?.activationId,
         kind: params.kind,
         remoteScope: params.remoteScope ?? '',
         filenameEncryption: params.filenameEncryption ?? (params.kind === 'rclone-crypt' ? 'standard' : null),
@@ -5827,27 +5828,39 @@ const App: React.FC = () => {
     sentinelOwner?: string | null,
     ownership?: OverlayActivationOwnership,
   ): Promise<{ vaultId: string; scope: string }> => {
-    assertOverlayActivationCurrent(ownership);
-    const appliedScope = await applyProviderCryptOverlay(params, ownership);
-    // #390 (option 1, strict): after arming, re-anchor to a valid encrypted-view
-    // location ONLY when the current folder would be hidden under the overlay (a
-    // plaintext folder navigated to while it was off, or a spot outside the scope),
-    // so the user is never left standing inside a hidden folder that lists empty
-    // and where an upload would be refused by the backend guard. When the current
-    // folder is a genuine encrypted folder, the user keeps their position.
-    assertOverlayActivationCurrent(ownership);
-    await smartReanchorOverlay(appliedScope, undefined, ownership);
-    assertOverlayActivationCurrent(ownership);
-    const vaultId = cryptOverlaySentinel(params.kind, sentinelOwner);
-    if (params.kind === 'rclone-crypt') {
-      setAeroCryptVaultId(null);
-      setRcloneCryptVaultId(vaultId);
-    } else {
-      setRcloneCryptVaultId(null);
-      setAeroCryptVaultId(vaultId);
+    try {
+      assertOverlayActivationCurrent(ownership);
+      const appliedScope = await applyProviderCryptOverlay(params, ownership);
+      // #390 (option 1, strict): after arming, re-anchor to a valid encrypted-view
+      // location ONLY when the current folder would be hidden under the overlay (a
+      // plaintext folder navigated to while it was off, or a spot outside the scope),
+      // so the user is never left standing inside a hidden folder that lists empty
+      // and where an upload would be refused by the backend guard. When the current
+      // folder is a genuine encrypted folder, the user keeps their position.
+      assertOverlayActivationCurrent(ownership);
+      await smartReanchorOverlay(appliedScope, undefined, ownership);
+      assertOverlayActivationCurrent(ownership);
+      const vaultId = cryptOverlaySentinel(params.kind, sentinelOwner);
+      if (params.kind === 'rclone-crypt') {
+        setAeroCryptVaultId(null);
+        setRcloneCryptVaultId(vaultId);
+      } else {
+        setRcloneCryptVaultId(null);
+        setAeroCryptVaultId(vaultId);
+      }
+      bindSessionCryptOverlay(match, vaultId, params.kind, appliedScope);
+      return { vaultId, scope: appliedScope };
+    } catch (error) {
+      if (ownership) {
+        // Backend checks both identities under its provider lock. An old
+        // cancellation cannot unwrap a newer activation or another connection.
+        await invoke('provider_clear_crypt_overlay', {
+          expectedGeneration: ownership.generation,
+          activationId: ownership.activationId,
+        });
+      }
+      throw error;
     }
-    bindSessionCryptOverlay(match, vaultId, params.kind, appliedScope);
-    return { vaultId, scope: appliedScope };
   };
 
   // Cheap, side-effect-free probe: profile carries an ENABLED overlay binding
@@ -5995,7 +6008,7 @@ const App: React.FC = () => {
     isCurrent?: () => boolean,
   ): Promise<{ vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider'; generation?: number } | null> => {
     if (!savedServerId || (isCurrent && !isCurrent())) return null;
-    const ownership = isCurrent ? { isCurrent, generation: await invoke<number>('provider_connection_generation') } : undefined;
+    const ownership = isCurrent ? { isCurrent, generation: await invoke<number>('provider_connection_generation'), activationId: crypto.randomUUID() } : undefined;
     if (isCurrent && !isCurrent()) return null;
     // Only this attempt's refusal may reach the locked banner.
     overlayRefusalRef.current = null;

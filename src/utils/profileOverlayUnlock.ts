@@ -73,6 +73,7 @@ export function profileOverlayApplyParams(input: {
 /** Connection identity and caller ownership for an asynchronous overlay activation. */
 export interface OverlayActivationOwnership {
   generation: number;
+  activationId: string;
   isCurrent: () => boolean;
 }
 
