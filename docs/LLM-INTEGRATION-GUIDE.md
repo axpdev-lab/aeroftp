@@ -300,7 +300,7 @@ The MCP server exposes 78 names: 40 primary tools (39 `aeroftp_*` names plus `se
 | `aeroftp_reconcile` | ReadOnly | Categorized diff with `elapsed_secs` + `suggested_next_command`; default size, optional BLAKE3 through capped remote download, distinct from `check_tree` SHA-256/size fallback |
 | `aeroftp_dedupe` | ReadOnly | SHA-256 duplicate detection grouped per size: modes `newest` / `oldest` / `largest` / `smallest` / `list`, dry-run by default |
 | `aeroftp_upload_file` | Mutative | Upload one local file (`create_parents`, `no_clobber`) |
-| `aeroftp_upload_many` | Mutative | Batch upload from a `files: []` array |
+| `aeroftp_upload_many` | Mutative | Batch upload from an `items: []` array of objects with `local_path` and `remote_path` |
 | `aeroftp_download_file` | Mutative | Download one remote file with progress stream |
 | `aeroftp_create_directory` | Mutative | Create a remote directory (idempotent with `parents`) |
 | `aeroftp_rename` | Mutative | Rename / move a remote file or directory |
