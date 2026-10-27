@@ -8399,6 +8399,10 @@ const App: React.FC = () => {
     ));
 
     // Set active session immediately
+    // The old navigation may still be awaiting a crypt unlock. Its result and
+    // finally block must not mutate the newly active session or block its nav.
+    ++remoteNavCounter.current;
+    remoteNavInFlightRef.current = 0;
     setActiveSessionId(sessionId);
     setShowRemotePanel(true); // Exit AeroFile mode when switching to a connection tab
     quotaVersionRef.current++; // Invalidate any in-flight quota response
@@ -9380,6 +9384,7 @@ const App: React.FC = () => {
             throw new Error('Re-open the crypt overlay to enter its encrypted scope.');
           }
           const reactivated = await maybeAutoUnlockProfileOverlay(activeSession.savedServerId);
+          if (navId !== remoteNavCounter.current) return null;
           setOverlayDecrypting(false);
           setPendingOverlayUnlock(null);
           if (!reactivated) {

@@ -107,6 +107,7 @@ describe('crypt overlay scope-entry recovery', () => {
         const setLockedOverlayProfile = vi.fn();
         const run = execute('let reactivatedOverlayForNav = false;\n' + app.slice(start, end + marker.length), {
             activeSession: { savedServerId: 'srv_1', cryptOverlayKind: kind },
+            navId: 7, remoteNavCounter: { current: 7 },
             overlayBinding: { vaultId: 'live_vault', prefix: 'aerocrypt_provider' },
             maybeAutoUnlockProfileOverlay: vi.fn().mockResolvedValue(reactivated),
             setOverlayDecrypting: vi.fn(),
@@ -155,7 +156,7 @@ describe('crypt overlay scope-entry recovery', () => {
             sessionMatches: (session: typeof activeSession, match: { sessionId: string }) => session.id === match.sessionId,
         }, 'return lockSessionCryptOverlay;');
         await expect(execute(app.slice(start, end), {
-            activeSession, overlayBinding: null,
+            activeSession, overlayBinding: null, navId: 7, remoteNavCounter: { current: 7 },
             maybeAutoUnlockProfileOverlay: async () => null,
             setOverlayDecrypting: vi.fn(), setPendingOverlayUnlock: vi.fn(),
             setAeroCryptVaultId: (id: string | null) => { aeroCryptVaultId = id; },
@@ -449,4 +450,41 @@ describe('OAuth landing probe recovers the current provider directory', () => {
             });
         }
     }
+});
+
+
+describe('scope-entry unlock result belongs to its navigation', () => {
+    it.each([false, true])('discards an old unlock result (%s) after switching sessions', async (activated) => {
+        const start = app.indexOf('const reactivated = await maybeAutoUnlockProfileOverlay(activeSession.savedServerId);');
+        const marker = 'reactivatedOverlayForNav = true;';
+        const end = app.indexOf(marker, start) + marker.length;
+        const switchStart = app.indexOf('// Set active session immediately', app.indexOf('const switchSession = async'));
+        const switchEnd = app.indexOf('quotaVersionRef.current++;', switchStart);
+        if (start < 0 || end <= start || switchStart < 0 || switchEnd < 0) throw new Error('navigation ownership blocks missing');
+        const remoteNavCounter = { current: 7 };
+        const remoteNavInFlightRef = { current: 7 };
+        const setters = {
+            setOverlayDecrypting: vi.fn(), setPendingOverlayUnlock: vi.fn(),
+            setAeroCryptVaultId: vi.fn(), setRcloneCryptVaultId: vi.fn(),
+            setCryptOverlayOwner: vi.fn(), lockSessionCryptOverlay: vi.fn(), setLockedOverlayProfile: vi.fn(),
+        };
+        let finishUnlock!: (value: boolean) => void;
+        const unlock = new Promise<boolean>((resolve) => { finishUnlock = resolve; });
+        const pending = execute('let reactivatedOverlayForNav = false;\n' + app.slice(start, end), {
+            activeSession: { id: 'old_tab', savedServerId: 'old_profile', cryptOverlayKind: 'aerocrypt' },
+            overlayBinding: null, navId: 7, remoteNavCounter,
+            maybeAutoUnlockProfileOverlay: () => unlock,
+            overlayReloadedVaultRef: { current: 'new_tab_vault' },
+            overlayRefusalRef: { current: null }, refusalFor, ...setters,
+        }, "return 'completed';").catch(() => 'failed');
+        await execute(app.slice(switchStart, switchEnd), {
+            remoteNavCounter, remoteNavInFlightRef, sessionId: 'new_tab',
+            setActiveSessionId: vi.fn(), setShowRemotePanel: vi.fn(),
+        }, '');
+        finishUnlock(activated);
+        expect(await pending).toBeNull();
+        expect(remoteNavCounter.current).toBe(8);
+        expect(remoteNavInFlightRef.current).toBe(0);
+        for (const setter of Object.values(setters)) expect(setter).not.toHaveBeenCalled();
+    });
 });
