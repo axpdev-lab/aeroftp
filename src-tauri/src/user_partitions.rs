@@ -3256,6 +3256,51 @@ pub fn credential_user_or_active(user_id: Option<i64>) -> Result<Option<i64>, St
     }
 }
 
+/// `Err("USER_LOCKED")` for a passphrase account whose session is not unlocked.
+/// Needs no vault, so readers can refuse before any global, cached or plaintext
+/// fallback even while the credential store is closed.
+pub fn ensure_credential_user_unlocked(user_id: i64) -> Result<(), String> {
+    let conn = open_or_init_cli()?;
+    if !read_user_key_row(&conn, user_id)?.has_passphrase {
+        return Ok(());
+    }
+    let _session = hold_session()?;
+    let unlocked = HELD_SESSION.with_borrow(|held| {
+        held.as_ref()
+            .and_then(Option::as_ref)
+            .is_some_and(|(session_user, _)| *session_user == user_id)
+    });
+    if unlocked {
+        Ok(())
+    } else {
+        Err("USER_LOCKED".to_string())
+    }
+}
+
+/// Strict write of one secret into `user_id`'s partition only, never the
+/// global vault. For credentials that belong to that user alone.
+pub fn store_credential_for_user(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = set_user_credential_for(
+        &conn,
+        &root_key,
+        user_id,
+        credential_id,
+        credential_type,
+        secret,
+    );
+    root_key.zeroize();
+    result
+}
+
 /// Whether this user may read pre-partition global credentials. No active user
 /// means the installation has not entered the multi-user ownership model yet.
 pub fn legacy_credential_fallback_allowed(user_id: Option<i64>) -> Result<bool, String> {

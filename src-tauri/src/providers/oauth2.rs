@@ -572,6 +572,27 @@ impl OAuth2Manager {
         self.credential_user = user_id;
         self
     }
+    /// The user whose unbound (empty `profile_id`) tokens must stay in their own
+    /// partition: anyone but the legacy owner, who keeps the global singleton.
+    fn private_singleton_user(&self, profile_id: &str) -> Result<Option<i64>, ProviderError> {
+        if !profile_id.is_empty() {
+            return Ok(None);
+        }
+        let owner_error =
+            |e: String| ProviderError::Other(format!("Failed to resolve token owner: {}", e));
+        let user = crate::user_partitions::credential_user_or_active(self.credential_user)
+            .map_err(owner_error)?;
+        match user {
+            Some(user)
+                if !crate::user_partitions::legacy_credential_fallback_allowed(Some(user))
+                    .map_err(owner_error)? =>
+            {
+                Ok(Some(user))
+            }
+            _ => Ok(None),
+        }
+    }
+
     fn mirror_tokens(
         &self,
         store: &crate::credential_store::CredentialStore,
@@ -867,6 +888,24 @@ impl OAuth2Manager {
 
         let account = Self::token_account_key(provider, profile_id);
 
+        if let Some(user) = self.private_singleton_user(profile_id)? {
+            if crate::credential_store::CredentialStore::from_cache().is_none() {
+                let _ = crate::credential_store::CredentialStore::init();
+            }
+            let store =
+                crate::credential_store::CredentialStore::from_cache().ok_or_else(|| {
+                    ProviderError::Other(
+                        "Credential vault is not open; tokens not stored".to_string(),
+                    )
+                })?;
+            crate::user_partitions::store_credential_for_user(
+                &store, user, &account, "oauth", &json,
+            )
+            .map_err(|e| ProviderError::Other(format!("Failed to store tokens: {}", e)))?;
+            info!("Tokens stored in user partition for {:?}", provider);
+            return Ok(());
+        }
+
         // Store in universal vault
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
             store
@@ -942,6 +981,13 @@ impl OAuth2Manager {
                 return serde_json::from_str(&json)
                     .map_err(|e| ProviderError::Other(format!("Failed to parse tokens: {}", e)));
             }
+        }
+
+        // The partition read above refuses a locked user only while the vault is
+        // open; the lock alone must also stop the memory and plaintext fallbacks.
+        if let Some(user) = credential_user {
+            crate::user_partitions::ensure_credential_user_unlocked(user)
+                .map_err(|e| ProviderError::Other(format!("Failed to read user tokens: {}", e)))?;
         }
 
         if !legacy_fallback_allowed {
@@ -1071,6 +1117,17 @@ impl OAuth2Manager {
         profile_id: &str,
     ) -> Result<(), ProviderError> {
         let account = Self::token_account_key(provider, profile_id);
+
+        // A non-owner's singleton lives only in its partition: the global key,
+        // memory cache and plaintext files belong to the legacy owner.
+        if let Some(user) = self.private_singleton_user(profile_id)? {
+            let conn = crate::user_partitions::open_or_init_cli()
+                .map_err(|e| ProviderError::Other(format!("Failed to delete tokens: {}", e)))?;
+            crate::user_partitions::delete_user_credential_for(&conn, user, &account)
+                .map_err(|e| ProviderError::Other(format!("Failed to delete tokens: {}", e)))?;
+            info!("Tokens deleted from user partition for {:?}", provider);
+            return Ok(());
+        }
 
         // Delete from vault
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
@@ -1698,6 +1755,16 @@ mod tests {
             "locked read must not migrate or delete"
         );
 
+        // The lock alone refuses even while the vault is closed, before the
+        // memory or plaintext fallbacks run.
+        CredentialStore::clear_cache();
+        let error = manager
+            .load_tokens(OAuthProvider::Dropbox, "")
+            .expect_err("locked owner must not read plaintext with the vault closed");
+        assert!(format!("{error:?}").contains("USER_LOCKED"), "{error:?}");
+        assert!(legacy_path.exists(), "closed-vault read must not migrate");
+        CredentialStore::unlock_with_master("oauth-owner-test-pass", None).expect("reopen vault");
+
         partitions::unlock_user(&conn, &root_key, owner.id, Some("legacy-owner-pass"))
             .expect("unlock legacy owner");
         store
@@ -1715,6 +1782,50 @@ mod tests {
             .load_tokens(OAuthProvider::Dropbox, "")
             .expect_err("nonowner must not inherit the legacy singleton");
         assert!(!format!("{error:?}").contains("locked-vault-decoy"));
+
+        // A non-owner singleton login lives in its own partition only: the
+        // legacy owner's global token and plaintext file survive store/delete.
+        let global_access = || {
+            serde_json::from_str::<StoredTokens>(&store.get("oauth_dropbox").expect("owner token"))
+                .expect("owner token json")
+                .access_token
+                .clone()
+        };
+        let nonowner_tokens = StoredTokens {
+            access_token: "nonowner-token".into(),
+            refresh_token: None,
+            expires_at: None,
+            token_type: "Bearer".into(),
+            scopes: vec![],
+        };
+        manager
+            .store_tokens(OAuthProvider::Dropbox, "", &nonowner_tokens)
+            .expect("nonowner stores its own singleton");
+        assert_eq!(global_access(), "locked-vault-decoy");
+        assert_eq!(
+            manager
+                .load_tokens(OAuthProvider::Dropbox, "")
+                .expect("nonowner reads its own singleton")
+                .access_token,
+            "nonowner-token"
+        );
+        manager
+            .delete_tokens(OAuthProvider::Dropbox, "")
+            .expect("nonowner logout");
+        assert!(manager.load_tokens(OAuthProvider::Dropbox, "").is_err());
+        assert_eq!(global_access(), "locked-vault-decoy");
+        assert!(legacy_path.exists(), "nonowner logout keeps owner files");
+
+        partitions::set_active_user(&conn, owner.id).expect("reactivate owner");
+        partitions::unlock_user(&conn, &root_key, owner.id, Some("legacy-owner-pass"))
+            .expect("unlock owner after switch");
+        assert_eq!(
+            manager
+                .load_tokens(OAuthProvider::Dropbox, "")
+                .expect("owner keeps its singleton")
+                .access_token,
+            "locked-vault-decoy"
+        );
 
         *MEMORY_TOKEN_CACHE.lock().expect("memory cache") = None;
         CredentialStore::clear_cache();
