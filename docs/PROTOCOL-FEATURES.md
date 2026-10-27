@@ -646,7 +646,7 @@ Bidirectional directory synchronization compares local and remote files by times
 |----------|---------|--------|----------|----------|-------|
 | **FTP** | Yes | Yes | Yes | Yes | Via provider/session pipeline |
 | **FTPS** | Yes | Yes | Yes | Yes | Via provider/session pipeline |
-| **SFTP** | Yes | Yes | Yes | Yes | Single-session russh/russh-sftp file I/O; delta acceleration uses its separate native transport |
+| **SFTP** | Yes | Yes | Yes | Yes | Native russh/russh-sftp file I/O; batch and sync may use the SFTP connection pool; delta acceleration uses its separate native transport |
 | **WebDAV** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 | **S3** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 | **Google Drive** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |

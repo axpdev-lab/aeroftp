@@ -1,7 +1,7 @@
 # AeroFTP LLM Integration Guide
 
 > _Last updated: 2026-10-26_
-
+>
 > AeroFTP reference: v4.2.5
 > Reviewed: 2026-10-26
 > For: LLM/AI agent developers integrating with AeroFTP CLI or MCP server
@@ -43,7 +43,7 @@ Use `--json` for machine-readable output and keep stdout/stderr separate. Preser
 | 5 | Invalid usage | No | Fix command syntax |
 | 6 | Auth failed | No | Re-authenticate |
 | 7 | Not supported | No | Use different operation |
-| 8 | Stopped at a limit, nothing failed | Inspect first | Raise the timeout or sync `--max-transfer` budget; JSON `over_budget` identifies the latter |
+| 8 | Stopped at a limit, nothing failed | Inspect first | Inspect the configured timeout and `--max-transfer` limits. JSON `over_budget` counts files skipped by the budget; reaching the exact budget can return 8 without this field, so absence does not imply a timeout |
 | 9 | Already exists / not empty | No | Preserve the target; overwrite/delete only with explicit authorization |
 | 10 | Server/parse error | Maybe | Check server status |
 | 11 | Local I/O error | Maybe | Check disk, permissions |

@@ -1108,7 +1108,7 @@ Replace the hash placeholder before running the command. A bare `correct repair`
 EC covers damage within the selected Reed-Solomon budget. It does not recover
 logical deletes, ransomware replacing a whole file, complete file loss or damage
 beyond that budget. Each protected file adds a remote object and the selected
-storage overhead. The CLI receipt and JSON counters report generation and skip outcomes; inspect them before treating a backup as protected. Desktop sync also reports its verification and repair outcomes.
+storage overhead. The text EC summary reports generated, skipped-too-large and failure outcomes, but omits low-benefit skips. Those skips appear per file on stderr unless quiet mode suppresses the messages, and in the `ec_skipped_low_benefit` JSON counter. Inspect stderr or request JSON and check the EC counters before treating a backup as protected. Desktop sync also reports its verification and repair outcomes.
 
 ### transfer - Cross-Profile Transfer
 

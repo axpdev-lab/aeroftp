@@ -72,6 +72,8 @@ place. To move data between families, extract from one and re-add to the other
 
 Replacement uses two renames: the original is moved to `.<vault-name>.repack-bak-<pid>`, then the rebuilt container is moved to the original path. This is not an atomic swap. If the process stops between renames, the original path is absent and the original vault must be restored from the backup. A reported failure of the second rename attempts to restore that backup.
 
+Change Mode does not automatically preserve recovery protection. A v3-to-v2 conversion drops embedded parity, and every successful repack attempts to delete the old default `<vault>.aerocorrect` sidecar because it describes the previous bytes. Deletion is best effort; any leftover old sidecar is stale and must not be reused. The CLI `aeroftp-cli vault change-mode` defaults `--error-correction` to false. For a v3 target, explicitly enable Error Correction in the GUI or pass `--security-level archive --error-correction` in the CLI to build fresh embedded parity. A v2 target has no embedded parity; generate a new standalone sidecar for the rebuilt file with `aeroftp-cli correct gen`. Keep a separate verified backup before conversion and verify the new recovery data afterward.
+
 ## Header authentication
 
 - **`AEROVAULT2` (crate):** 512-byte header, HMAC-SHA512 over the full 512 bytes
