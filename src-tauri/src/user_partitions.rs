@@ -36,6 +36,7 @@ const LEGACY_PROFILES_KEY: &str = "__legacy_server_profiles";
 const LEGACY_PROFILES_BLOB: &str = "config_server_profiles";
 const LEGACY_SETTINGS_KEY: &str = "__legacy_settings";
 const ACTIVE_USER_KEY: &str = "active_user_id";
+const LEGACY_OWNER_KEY: &str = "legacy_credential_owner_id";
 const SCHEMA_VERSION_KEY: &str = "schema_version";
 const DEFAULT_USER_NAME: &str = "default";
 const DEFAULT_USER_AVATAR: &str = "D";
@@ -2769,17 +2770,57 @@ fn session_user_id() -> Option<i64> {
         .and_then(|session| session.as_ref().map(|s| s.user_id))
 }
 
-/// Owner of the non-profile per-user globals (`ai_apikey_*`, github tokens):
-/// the lowest-id admin (the legacy `default`). Routing them to a single account
-/// avoids duplicating them across every admin (MUV-0 / sec 2.3).
+/// Owner of the pre-partition globals (the legacy vault fallback, `ai_apikey_*`,
+/// github tokens). Routing them to a single account avoids duplicating them
+/// across every admin (MUV-0 / sec 2.3). The owner is established once, as the
+/// lowest-id admin (the migration's `default`, and what every earlier release
+/// computed), then persisted: a later demotion, deletion or new admin never
+/// moves it, and a deleted owner leaves no owner instead of handing its legacy
+/// secrets to the next admin. User ids are AUTOINCREMENT, so never reused.
 fn nonprofile_secret_owner(conn: &Connection) -> Result<Option<i64>, String> {
-    conn.query_row(
-        "SELECT id FROM users WHERE is_admin = 1 ORDER BY id ASC LIMIT 1",
-        [],
-        |row| row.get::<_, i64>(0),
-    )
-    .optional()
-    .map_err(|e| format!("Read nonprofile secret owner: {e}"))
+    let read_stored = || {
+        conn.query_row(
+            "SELECT value FROM global_state WHERE key = ?1",
+            params![LEGACY_OWNER_KEY],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|e| format!("Read legacy credential owner: {e}"))
+    };
+    let stored = match read_stored()? {
+        Some(value) => value,
+        None => {
+            let first_admin = conn
+                .query_row(
+                    "SELECT id FROM users WHERE is_admin = 1 ORDER BY id ASC LIMIT 1",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .optional()
+                .map_err(|e| format!("Read nonprofile secret owner: {e}"))?;
+            let Some(first_admin) = first_admin else {
+                return Ok(None);
+            };
+            conn.execute(
+                "INSERT OR IGNORE INTO global_state(key, value, updated_at) VALUES (?1, ?2, ?3)",
+                params![LEGACY_OWNER_KEY, first_admin.to_string(), now_ms()],
+            )
+            .map_err(|e| format!("Persist legacy credential owner: {e}"))?;
+            // Re-read: concurrent first writers settle on the one row stored.
+            read_stored()?.ok_or_else(|| "Legacy credential owner not stored".to_string())?
+        }
+    };
+    let owner = stored
+        .parse::<i64>()
+        .map_err(|e| format!("Read legacy credential owner: {e}"))?;
+    let exists = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM users WHERE id = ?1)",
+            params![owner],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(|e| format!("Read legacy credential owner: {e}"))?;
+    Ok(exists.then_some(owner))
 }
 
 /// Read one optional secret from the live store, mapping NotFound to None.
@@ -2939,9 +2980,8 @@ fn migrate_user_credentials_inner(
 }
 
 /// Reader-fallback net (sec 3.3), engine form: prefer the per-user encrypted
-/// store, fall back to the legacy vault when the per-user row is absent or the
-/// account is locked. MUV-3/4/5 point real readers here; MUV-6 drops the
-/// fallback once the vault is purged.
+/// store, falling back to the legacy vault only when its per-user row is absent.
+/// A locked partition refuses access; MUV-6 drops the fallback once purged.
 fn read_credential_with_fallback_inner(
     conn: &Connection,
     root_key: &[u8; 32],
@@ -2952,9 +2992,6 @@ fn read_credential_with_fallback_inner(
     match get_user_credential_for(conn, root_key, user_id, credential_id) {
         Ok(Some(value)) => return Ok(Some(value)),
         Ok(None) => {}
-        // Locked passphrase account: the per-user row is unreadable right now,
-        // but the legacy vault copy still is. Fall back instead of failing.
-        Err(e) if e == "USER_LOCKED" => {}
         Err(e) => return Err(e),
     }
     read_secret(credential_id)
@@ -3048,7 +3085,7 @@ pub fn read_credential_with_fallback(
 // MUV-3 points the real `server_*` credential resolution at the per-user store
 // while keeping the legacy vault as source of truth + fallback during the
 // rollout (dual-write). Readers prefer the partition row and fall back to the
-// vault (a not-yet-migrated key or a locked passphrase account still resolves);
+// vault only for a not-yet-migrated key; a locked partition refuses access.
 // writers always write the vault first, then best-effort mirror the secret into
 // the active (GUI) or scoped (CLI `--user`) user's partition. No vault entry is
 // ever removed here (that is MUV-6). The mirror is confined to in-scope keys by
@@ -3167,7 +3204,7 @@ pub fn unmirror_credential_for_user_best_effort_any(user_id: i64, credential_id:
 
 /// Active-user reader (GUI + shared modules: factory/agent/ai_tools/mcp/AI core).
 /// Resolves `credential_id` for the active user from the per-user store, falling
-/// back to the legacy vault when the row is absent or the account is locked.
+/// back to the legacy vault when the row is absent. A locked account is refused.
 /// With no active user (pre-MU / fresh install) it reads the vault only.
 pub fn resolve_active_credential(
     store: &CredentialStore,
@@ -3192,6 +3229,31 @@ pub fn resolve_credential_for_user(
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
     read_credential_for_user(&conn, store, user_id, credential_id)
+}
+
+/// Owner-aware active-user reader. Only the proven legacy owner may fall back
+/// to the global vault; every other user reads exclusively from their partition.
+pub fn resolve_active_credential_owner_aware(
+    store: &CredentialStore,
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    match active_user_id(&conn)? {
+        None => get_optional_secret(store, credential_id),
+        Some(user_id) => read_credential_for_user_owner_aware(&conn, store, user_id, credential_id),
+    }
+}
+
+/// [`resolve_active_credential_owner_aware`] for an explicit `user_id`.
+pub fn resolve_credential_for_user_owner_aware(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    read_credential_for_user_owner_aware(&conn, store, user_id, credential_id)
 }
 
 /// Owners of a profile-bound credential, including a profile whose first
@@ -3225,6 +3287,65 @@ pub(crate) fn legacy_credential_owner_id() -> Result<Option<i64>, String> {
     nonprofile_secret_owner(&open_or_init_cli()?)
 }
 
+/// Capture an explicit credential owner, or the active user exactly once, and
+/// whether that user may read pre-partition global credentials, on one
+/// connection. No user means the installation has not entered the multi-user
+/// ownership model yet, so the legacy fallback stays open.
+pub fn credential_owner_and_fallback(explicit: Option<i64>) -> Result<(Option<i64>, bool), String> {
+    let conn = open_or_init_cli()?;
+    let user = match explicit {
+        Some(user) => Some(user),
+        None => active_user_id(&conn)?,
+    };
+    let allowed = user.is_none() || nonprofile_secret_owner(&conn)? == user;
+    Ok((user, allowed))
+}
+
+/// `Err("USER_LOCKED")` for a passphrase account whose session is not unlocked.
+/// Needs no vault, so readers can refuse before any global, cached or plaintext
+/// fallback even while the credential store is closed.
+pub fn ensure_credential_user_unlocked(user_id: i64) -> Result<(), String> {
+    let conn = open_or_init_cli()?;
+    if !read_user_key_row(&conn, user_id)?.has_passphrase {
+        return Ok(());
+    }
+    let _session = hold_session()?;
+    let unlocked = HELD_SESSION.with_borrow(|held| {
+        held.as_ref()
+            .and_then(Option::as_ref)
+            .is_some_and(|(session_user, _)| *session_user == user_id)
+    });
+    if unlocked {
+        Ok(())
+    } else {
+        Err("USER_LOCKED".to_string())
+    }
+}
+
+/// Strict write of one secret into `user_id`'s partition only, never the
+/// global vault. For credentials that belong to that user alone.
+pub fn store_credential_for_user(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = set_user_credential_for(
+        &conn,
+        &root_key,
+        user_id,
+        credential_id,
+        credential_type,
+        secret,
+    );
+    root_key.zeroize();
+    result
+}
+
 fn read_credential_for_user(
     conn: &Connection,
     store: &CredentialStore,
@@ -3235,6 +3356,34 @@ fn read_credential_for_user(
     let result = read_credential_with_fallback(conn, store, &root_key, user_id, credential_id);
     root_key.zeroize();
     result
+}
+
+fn read_credential_for_user_owner_aware(
+    conn: &Connection,
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let read_secret = |key: &str| get_optional_secret(store, key);
+    let result =
+        read_credential_owner_aware_inner(conn, &root_key, user_id, credential_id, &read_secret);
+    root_key.zeroize();
+    result
+}
+
+fn read_credential_owner_aware_inner(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credential_id: &str,
+    read_secret: &SecretReader<'_>,
+) -> Result<Option<Zeroizing<String>>, String> {
+    if nonprofile_secret_owner(conn)? == Some(user_id) {
+        read_credential_with_fallback_inner(conn, root_key, user_id, credential_id, read_secret)
+    } else {
+        get_user_credential_for(conn, root_key, user_id, credential_id)
+    }
 }
 
 /// Active-user dual writer (GUI): write the vault first, then mirror in-scope
@@ -3338,6 +3487,27 @@ pub fn unmirror_active_credential(credential_id: &str) {
     }
 }
 
+/// Token types that belong to one user only: OAuth tokens and Jottacloud
+/// refresh chains.
+const PRIVATE_TOKEN_TYPES: [&str; 2] = ["oauth", "jottacloud_refresh"];
+
+/// The user whose tokens of `credential_type` must stay in its own partition:
+/// anyone but the legacy owner. Written to the shared vault, a token would be
+/// readable through the legacy owner's fallback. The legacy owner and pre-MU
+/// installs keep the dual write; other credential types are unchanged.
+pub fn private_token_user(
+    user_id: Option<i64>,
+    credential_type: &str,
+) -> Result<Option<i64>, String> {
+    if !PRIVATE_TOKEN_TYPES.contains(&credential_type) {
+        return Ok(None);
+    }
+    Ok(match credential_owner_and_fallback(user_id)? {
+        (Some(user), false) => Some(user),
+        _ => None,
+    })
+}
+
 /// Explicitly-typed dual writer (active user): vault first, then mirror into the
 /// active user's partition. For import/bridge sites without bespoke vault logic.
 pub fn store_active_credential_typed_dual(
@@ -3346,6 +3516,9 @@ pub fn store_active_credential_typed_dual(
     credential_type: &str,
     secret: &str,
 ) -> Result<(), String> {
+    if let Some(user) = private_token_user(None, credential_type)? {
+        return store_credential_for_user(store, user, credential_id, credential_type, secret);
+    }
     store
         .store(credential_id, secret)
         .map_err(|e| format!("Store credential in vault: {e}"))?;
@@ -3362,6 +3535,9 @@ pub fn store_credential_for_user_typed_dual(
     credential_type: &str,
     secret: &str,
 ) -> Result<(), String> {
+    if let Some(user) = private_token_user(Some(user_id), credential_type)? {
+        return store_credential_for_user(store, user, credential_id, credential_type, secret);
+    }
     store
         .store(credential_id, secret)
         .map_err(|e| format!("Store credential in vault: {e}"))?;
@@ -4651,10 +4827,9 @@ pub fn cli_set_user_setting(
 /// env the CLI honours), priming the process session so the subsequent
 /// `resolve_active_credential` reads of `server_<id>` decrypt as well.
 ///
-/// Falls back to the dual-maintained legacy blob only when the partition cannot
-/// serve the active user: no active user, a locked passphrase account with no
-/// usable env passphrase, or a partition error (downgrade). The fallback keeps
-/// MCP working during the rollout; MUV-6 drops it once the vault is purged.
+/// Falls back to the dual-maintained legacy blob only when there is no active
+/// user or the partition errors (downgrade). A locked partition refuses access;
+/// MUV-6 drops the fallback once the vault is purged.
 pub fn mcp_list_active_server_profiles(store: &CredentialStore) -> Result<Vec<Value>, String> {
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
@@ -4665,8 +4840,7 @@ pub fn mcp_list_active_server_profiles(store: &CredentialStore) -> Result<Vec<Va
 
     // Unlock a passphrase-protected active user transiently from the env so the
     // session DEK is primed for both this profile read and later credential
-    // reads. Best-effort: a wrong/absent passphrase just leaves the account
-    // locked and the legacy fallback below answers.
+    // reads. A wrong/absent passphrase leaves the account locked and fails closed.
     if active.has_passphrase && session_user_id() != Some(active.id) {
         if let Ok(passphrase) = std::env::var("AEROFTP_USER_PASSPHRASE") {
             if !passphrase.is_empty() {
@@ -4682,11 +4856,7 @@ pub fn mcp_list_active_server_profiles(store: &CredentialStore) -> Result<Vec<Va
     root_key.zeroize();
     match result {
         Ok(profiles) => Ok(profiles),
-        // Locked passphrase account (no usable env passphrase) or no active
-        // user: the partition cannot serve, so the dual-written legacy blob does.
-        Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => {
-            read_legacy_server_profiles_blob(store)
-        }
+        Err(e) if e == "NO_ACTIVE_USER" => read_legacy_server_profiles_blob(store),
         Err(e) => Err(e),
     }
 }
@@ -5700,6 +5870,25 @@ fn next_user_copy_name(users: &[UserMetadata], src_name: &str) -> String {
     }
 }
 
+fn credential_free_profile_copies(profiles: &[Value]) -> Vec<Value> {
+    profiles
+        .iter()
+        .map(|profile| {
+            let mut copied = profile.clone();
+            let fresh_id = format!("srv_{}", uuid::Uuid::new_v4());
+            if let Some(object) = copied.as_object_mut() {
+                object.insert("id".to_string(), Value::String(fresh_id.clone()));
+                for alias in ["uid", "profileUid"] {
+                    if object.contains_key(alias) {
+                        object.insert(alias.to_string(), Value::String(fresh_id.clone()));
+                    }
+                }
+            }
+            copied
+        })
+        .collect()
+}
+
 /// Duplicate an existing user (GUI mirror of the CLI `users -i` Copy verb,
 /// Ehud #347). Creates a brand-new, password-free, non-admin user that copies
 /// the source's display avatar and all of its server profiles, but NO passwords
@@ -5781,7 +5970,9 @@ pub async fn user_partitions_copy_user(
         }
     };
 
-    // Copy the (credential-free) server profiles into the new user.
+    // Copy the (credential-free) server profiles into the new user with fresh
+    // credential identities, so no lookup can resolve the source user's secrets.
+    let profiles = credential_free_profile_copies(&profiles);
     let result = replace_server_profiles_for(&mut conn, &root_key, new_user.id, &profiles);
     root_key.zeroize();
     result.map(|_| new_user)
@@ -9682,22 +9873,134 @@ mod tests {
     }
 
     #[test]
-    fn reader_fallback_uses_vault_for_locked_passphrase_user() {
+    fn reader_fallback_refuses_locked_passphrase_user() {
         let _guard = test_lock();
         let mut conn = migrated_conn(0);
         let root = test_root();
         let bob = create_user(&mut conn, &root, "Bob", None, None, Some("bobpass123"))
             .expect("create bob");
-        clear_user_session(); // bob is locked: per-user read would be USER_LOCKED
+        clear_user_session();
 
         let (_keys, read) = fake_vault(&[("server_bp1", "vault-bob")]);
-        // The locked per-user partition is skipped; the legacy vault still serves.
         assert_eq!(
             read_credential_with_fallback_inner(&conn, &root, bob.id, "server_bp1", &read)
-                .expect("read")
-                .expect("present")
+                .expect_err("locked partition must fail closed"),
+            "USER_LOCKED"
+        );
+    }
+
+    #[test]
+    fn legacy_owner_survives_demotion_and_is_not_reassigned_on_delete() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active")
+            .expect("default active");
+        assert_eq!(nonprofile_secret_owner(&conn).unwrap(), Some(default.id));
+        let second = create_passphrase_less_user(&mut conn, &root, "second", None, None)
+            .expect("create second");
+        conn.execute(
+            "UPDATE users SET is_admin = 1 WHERE id = ?1",
+            params![second.id],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE users SET is_admin = 0 WHERE id = ?1",
+            params![default.id],
+        )
+        .unwrap();
+        assert_eq!(
+            nonprofile_secret_owner(&conn).unwrap(),
+            Some(default.id),
+            "a demotion does not move the legacy owner"
+        );
+        conn.execute("DELETE FROM users WHERE id = ?1", params![default.id])
+            .unwrap();
+        assert_eq!(
+            nonprofile_secret_owner(&conn).unwrap(),
+            None,
+            "a deleted owner is not reassigned to the next admin"
+        );
+    }
+
+    #[test]
+    fn owner_aware_reader_preserves_legacy_owner_fallback() {
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active")
+            .expect("default active");
+        let vault_reads = std::cell::Cell::new(0u32);
+        let read = |_key: &str| {
+            vault_reads.set(vault_reads.get() + 1);
+            Ok(Some(Zeroizing::new("legacy-secret".to_string())))
+        };
+
+        assert_eq!(
+            read_credential_owner_aware_inner(&conn, &root, default.id, "server_legacy", &read)
+                .expect("legacy owner read")
+                .expect("legacy value")
                 .as_str(),
-            "vault-bob"
+            "legacy-secret"
+        );
+        assert_eq!(vault_reads.get(), 1, "legacy owner migrates on a miss");
+    }
+
+    #[test]
+    fn owner_aware_reader_never_reads_vault_for_nonowner() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let user = create_passphrase_less_user(&mut conn, &root, "isolated", None, None)
+            .expect("create user");
+        set_user_credential_for(&conn, &root, user.id, "server_own", "server", "own-secret")
+            .expect("seed own credential");
+        let vault_reads = std::cell::Cell::new(0u32);
+        let read = |_key: &str| {
+            vault_reads.set(vault_reads.get() + 1);
+            Ok(Some(Zeroizing::new("another-users-secret".to_string())))
+        };
+
+        assert_eq!(
+            read_credential_owner_aware_inner(&conn, &root, user.id, "server_own", &read)
+                .expect("own read")
+                .expect("own value")
+                .as_str(),
+            "own-secret"
+        );
+        assert!(
+            read_credential_owner_aware_inner(&conn, &root, user.id, "server_missing", &read)
+                .expect("absent own credential")
+                .is_none(),
+            "a global value is not an owned credential"
+        );
+        assert_eq!(vault_reads.get(), 0, "non-owner never reads the vault");
+    }
+
+    #[test]
+    fn owner_aware_reader_preserves_locked_error_without_vault_read() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let bob = create_user(&mut conn, &root, "Bob", None, None, Some("bobpass123"))
+            .expect("create bob");
+        clear_user_session();
+        let vault_reads = std::cell::Cell::new(0u32);
+        let read = |_key: &str| {
+            vault_reads.set(vault_reads.get() + 1);
+            Ok(Some(Zeroizing::new("must-not-leak".to_string())))
+        };
+
+        let error = read_credential_owner_aware_inner(&conn, &root, bob.id, "server_bob", &read)
+            .expect_err("locked partition must fail closed");
+        assert_eq!(error, "USER_LOCKED");
+        assert!(!error.contains("must-not-leak"));
+        assert_eq!(
+            vault_reads.get(),
+            0,
+            "locked non-owner never reads the vault"
         );
     }
 
@@ -10418,6 +10721,26 @@ mod tests {
             0,
             "orphan stays in vault"
         );
+        assert!(
+            resolve_credential_for_user_owner_aware(&store, alice.id, "server_orphan99")
+                .expect("owner-aware orphan read")
+                .is_none(),
+            "owner-aware reader does not lend the orphan to Alice"
+        );
+        assert!(
+            resolve_credential_for_user_owner_aware(&store, alice.id, "ai_apikey_openai")
+                .expect("owner-aware AI key read")
+                .is_none(),
+            "owner-aware reader does not lend the admin AI key to Alice"
+        );
+        assert_eq!(
+            resolve_credential_for_user_owner_aware(&store, admin_id, "server_orphan99")
+                .expect("legacy owner orphan read")
+                .expect("legacy orphan")
+                .as_str(),
+            "orphan-secret",
+            "legacy owner retains the migration fallback"
+        );
         println!("[R-MUV-1] OK: 30 profiles separated per-user, isolation + orphan-fallback hold");
 
         // --- R-MUV-8: idempotent re-run (kill/restart safety) -----------------
@@ -10583,5 +10906,45 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
             .expect("count final");
         assert_eq!(users_final, 2);
+    }
+
+    #[test]
+    fn credential_free_profile_copies_replace_all_identity_aliases() {
+        let original = vec![
+            serde_json::json!({
+                "id": "srv_source",
+                "uid": "srv_source",
+                "profileUid": "srv_source",
+                "host": "one.example.test"
+            }),
+            serde_json::json!({"id": "srv_other", "host": "two.example.test"}),
+        ];
+        let copied = credential_free_profile_copies(&original);
+        let ids: HashSet<String> = copied
+            .iter()
+            .map(|profile| {
+                profile["id"]
+                    .as_str()
+                    .expect("fresh profile id")
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(ids.len(), 2);
+        assert!(ids.iter().all(|id| id.starts_with("srv_")));
+        assert!(!ids.contains("srv_source"));
+        assert!(!ids.contains("srv_other"));
+
+        for profile in &copied {
+            let id = profile["id"].as_str().unwrap();
+            for alias in ["uid", "profileUid"] {
+                if profile.get(alias).is_some() {
+                    assert_eq!(profile[alias].as_str(), Some(id));
+                }
+            }
+        }
+        assert_eq!(copied[0]["host"], "one.example.test");
+        assert_eq!(copied[1]["host"], "two.example.test");
+        assert_eq!(original[0]["id"], "srv_source");
+        assert_eq!(original[1]["id"], "srv_other");
     }
 }

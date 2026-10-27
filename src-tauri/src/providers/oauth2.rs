@@ -572,6 +572,15 @@ impl OAuth2Manager {
         self.credential_user = user_id;
         self
     }
+    /// The user whose tokens, bound to a profile or not, must stay in their own
+    /// partition: anyone but the legacy owner. In the shared vault they would
+    /// be readable through the legacy owner's fallback, for example when an
+    /// imported profile keeps its id.
+    fn private_token_user(&self) -> Result<Option<i64>, ProviderError> {
+        crate::user_partitions::private_token_user(self.credential_user, "oauth")
+            .map_err(|e| ProviderError::Other(format!("Failed to resolve token owner: {}", e)))
+    }
+
     fn mirror_tokens(
         &self,
         store: &crate::credential_store::CredentialStore,
@@ -867,6 +876,24 @@ impl OAuth2Manager {
 
         let account = Self::token_account_key(provider, profile_id);
 
+        if let Some(user) = self.private_token_user()? {
+            if crate::credential_store::CredentialStore::from_cache().is_none() {
+                let _ = crate::credential_store::CredentialStore::init();
+            }
+            let store =
+                crate::credential_store::CredentialStore::from_cache().ok_or_else(|| {
+                    ProviderError::Other(
+                        "Credential vault is not open; tokens not stored".to_string(),
+                    )
+                })?;
+            crate::user_partitions::store_credential_for_user(
+                &store, user, &account, "oauth", &json,
+            )
+            .map_err(|e| ProviderError::Other(format!("Failed to store tokens: {}", e)))?;
+            info!("Tokens stored in user partition for {:?}", provider);
+            return Ok(());
+        }
+
         // Store in universal vault
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
             store
@@ -906,11 +933,10 @@ impl OAuth2Manager {
     }
 
     /// Load tokens for the given provider/profile pair. When `profile_id` is
-    /// non-empty and the per-profile key misses the vault, the legacy
-    /// singleton key is consulted as a one-shot fallback: on hit the value is
-    /// rebound under the per-profile key and the legacy entry is removed, so
-    /// the next profile of the same provider does not inherit the token
-    /// silently. Issue #214.
+    /// non-empty and the proven legacy owner's per-profile key misses the vault,
+    /// the legacy singleton key is consulted as a one-shot fallback: on hit the
+    /// value is rebound under the per-profile key and the legacy entry is removed.
+    /// Other users never inherit global, memory-cached or plaintext legacy tokens.
     pub fn load_tokens(
         &self,
         provider: OAuthProvider,
@@ -918,23 +944,40 @@ impl OAuth2Manager {
     ) -> Result<StoredTokens, ProviderError> {
         let account = Self::token_account_key(provider, profile_id);
         let legacy = Self::legacy_token_account_key(provider);
+        let (credential_user, legacy_fallback_allowed) =
+            crate::user_partitions::credential_owner_and_fallback(self.credential_user).map_err(
+                |e| ProviderError::Other(format!("Failed to resolve token owner: {}", e)),
+            )?;
 
-        // MUV-4: prefer the active user's partition (with vault fallback inside)
-        // for the per-profile key. On a miss we fall through to the legacy
-        // singleton / memory-cache / plaintext-file cascade below.
-        if !profile_id.is_empty() {
-            if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                if let Ok(Some(json)) = match self.credential_user {
-                    Some(user) => {
-                        crate::user_partitions::resolve_credential_for_user(&store, user, &account)
-                    }
-                    None => crate::user_partitions::resolve_active_credential(&store, &account),
-                } {
-                    return serde_json::from_str(&json).map_err(|e| {
-                        ProviderError::Other(format!("Failed to parse tokens: {}", e))
-                    });
-                }
+        // MUV-4: read the captured user's own partition first, including the
+        // legacy singleton key. A locked owner fails here before any global,
+        // memory or plaintext fallback. Only the proven legacy owner may
+        // continue, and an account switch cannot change the owner mid-read.
+        if let (Some(store), Some(user)) = (
+            crate::credential_store::CredentialStore::from_cache(),
+            credential_user,
+        ) {
+            let resolved = crate::user_partitions::resolve_credential_for_user_owner_aware(
+                &store, user, &account,
+            )
+            .map_err(|e| ProviderError::Other(format!("Failed to read user tokens: {}", e)))?;
+            if let Some(json) = resolved {
+                return serde_json::from_str(&json)
+                    .map_err(|e| ProviderError::Other(format!("Failed to parse tokens: {}", e)));
             }
+        }
+
+        // The partition read above refuses a locked user only while the vault is
+        // open; the lock alone must also stop the memory and plaintext fallbacks.
+        if let Some(user) = credential_user {
+            crate::user_partitions::ensure_credential_user_unlocked(user)
+                .map_err(|e| ProviderError::Other(format!("Failed to read user tokens: {}", e)))?;
+        }
+
+        if !legacy_fallback_allowed {
+            return Err(ProviderError::AuthenticationFailed(
+                "No stored tokens for this user".to_string(),
+            ));
         }
 
         // Try vault first under the per-profile (or legacy when profile_id is empty) key.
@@ -1058,6 +1101,17 @@ impl OAuth2Manager {
         profile_id: &str,
     ) -> Result<(), ProviderError> {
         let account = Self::token_account_key(provider, profile_id);
+
+        // A non-owner's tokens live only in its partition: the global key,
+        // memory cache and plaintext files belong to the legacy owner.
+        if let Some(user) = self.private_token_user()? {
+            let conn = crate::user_partitions::open_or_init_cli()
+                .map_err(|e| ProviderError::Other(format!("Failed to delete tokens: {}", e)))?;
+            crate::user_partitions::delete_user_credential_for(&conn, user, &account)
+                .map_err(|e| ProviderError::Other(format!("Failed to delete tokens: {}", e)))?;
+            info!("Tokens deleted from user partition for {:?}", provider);
+            return Ok(());
+        }
 
         // Delete from vault
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
@@ -1594,6 +1648,228 @@ mod tests {
         assert!(!config.scopes.is_empty());
     }
 
+    #[test]
+    #[ignore = "process-global vault/session/env; run alone with --ignored --test-threads=1"]
+    fn legacy_singleton_fails_closed_for_locked_legacy_owner() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("oauth-owner-test-pass")
+            .expect("bootstrap vault");
+        CredentialStore::unlock_with_master("oauth-owner-test-pass", None).expect("unlock vault");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let mut conn = partitions::open_or_init_cli().expect("partition DB");
+        let root_key = store.derive_user_partition_wrapping_key();
+        let owner = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("legacy owner");
+        partitions::change_user_passphrase(
+            &conn,
+            &root_key,
+            owner.id,
+            None,
+            Some("legacy-owner-pass"),
+        )
+        .expect("protect legacy owner");
+
+        let manager = OAuth2Manager::new();
+        let vault_json = serde_json::to_string(&StoredTokens {
+            access_token: "locked-vault-decoy".into(),
+            refresh_token: None,
+            expires_at: None,
+            token_type: "Bearer".into(),
+            scopes: vec![],
+        })
+        .expect("vault decoy");
+        store
+            .store("oauth_dropbox", &vault_json)
+            .expect("seed vault decoy");
+        *MEMORY_TOKEN_CACHE.lock().expect("memory cache") = None;
+        partitions::cli_lock_session();
+
+        let error = manager
+            .load_tokens(OAuthProvider::Dropbox, "")
+            .expect_err("locked owner must not read the global vault");
+        assert!(format!("{error:?}").contains("USER_LOCKED"), "{error:?}");
+        assert!(!format!("{error:?}").contains("locked-vault-decoy"));
+
+        store.delete("oauth_dropbox").expect("remove vault decoy");
+        let memory_json = serde_json::to_string(&StoredTokens {
+            access_token: "locked-memory-decoy".into(),
+            refresh_token: None,
+            expires_at: None,
+            token_type: "Bearer".into(),
+            scopes: vec![],
+        })
+        .expect("memory decoy");
+        *MEMORY_TOKEN_CACHE.lock().expect("memory cache") =
+            Some(HashMap::from([("oauth_dropbox".to_string(), memory_json)]));
+        let error = manager
+            .load_tokens(OAuthProvider::Dropbox, "")
+            .expect_err("locked owner must not read the memory cache");
+        assert!(format!("{error:?}").contains("USER_LOCKED"), "{error:?}");
+        assert!(!format!("{error:?}").contains("locked-memory-decoy"));
+        assert!(MEMORY_TOKEN_CACHE
+            .lock()
+            .expect("memory cache")
+            .as_ref()
+            .is_some_and(|map| map.contains_key("oauth_dropbox")));
+
+        *MEMORY_TOKEN_CACHE.lock().expect("memory cache") = None;
+        let legacy_path = OAuth2Manager::token_dir()
+            .expect("token directory")
+            .join("oauth2_dropbox.json");
+        std::fs::write(&legacy_path, &vault_json).expect("seed plaintext decoy");
+        let error = manager
+            .load_tokens(OAuthProvider::Dropbox, "")
+            .expect_err("locked owner must not read the plaintext fallback");
+        assert!(format!("{error:?}").contains("USER_LOCKED"), "{error:?}");
+        assert!(!format!("{error:?}").contains("locked-vault-decoy"));
+        assert!(
+            legacy_path.exists(),
+            "locked read must not migrate or delete"
+        );
+
+        // The lock alone refuses even while the vault is closed, before the
+        // memory or plaintext fallbacks run.
+        CredentialStore::clear_cache();
+        let error = manager
+            .load_tokens(OAuthProvider::Dropbox, "")
+            .expect_err("locked owner must not read plaintext with the vault closed");
+        assert!(format!("{error:?}").contains("USER_LOCKED"), "{error:?}");
+        assert!(legacy_path.exists(), "closed-vault read must not migrate");
+        CredentialStore::unlock_with_master("oauth-owner-test-pass", None).expect("reopen vault");
+
+        partitions::unlock_user(&conn, &root_key, owner.id, Some("legacy-owner-pass"))
+            .expect("unlock legacy owner");
+        store
+            .store("oauth_dropbox", &vault_json)
+            .expect("restore positive control");
+        let unlocked = manager
+            .load_tokens(OAuthProvider::Dropbox, "")
+            .expect("unlocked legacy owner retains migration path");
+        assert_eq!(unlocked.access_token, "locked-vault-decoy");
+
+        let nonowner = partitions::create_user(&mut conn, &root_key, "Nonowner", None, None, None)
+            .expect("create nonowner");
+        partitions::set_active_user(&conn, nonowner.id).expect("activate nonowner");
+        let error = manager
+            .load_tokens(OAuthProvider::Dropbox, "")
+            .expect_err("nonowner must not inherit the legacy singleton");
+        assert!(!format!("{error:?}").contains("locked-vault-decoy"));
+
+        // A non-owner singleton login lives in its own partition only: the
+        // legacy owner's global token and plaintext file survive store/delete.
+        let global_access = || {
+            serde_json::from_str::<StoredTokens>(&store.get("oauth_dropbox").expect("owner token"))
+                .expect("owner token json")
+                .access_token
+                .clone()
+        };
+        let nonowner_tokens = StoredTokens {
+            access_token: "nonowner-token".into(),
+            refresh_token: None,
+            expires_at: None,
+            token_type: "Bearer".into(),
+            scopes: vec![],
+        };
+        manager
+            .store_tokens(OAuthProvider::Dropbox, "", &nonowner_tokens)
+            .expect("nonowner stores its own singleton");
+        assert_eq!(global_access(), "locked-vault-decoy");
+        assert_eq!(
+            manager
+                .load_tokens(OAuthProvider::Dropbox, "")
+                .expect("nonowner reads its own singleton")
+                .access_token,
+            "nonowner-token"
+        );
+        manager
+            .delete_tokens(OAuthProvider::Dropbox, "")
+            .expect("nonowner logout");
+        assert!(manager.load_tokens(OAuthProvider::Dropbox, "").is_err());
+        assert_eq!(global_access(), "locked-vault-decoy");
+        assert!(legacy_path.exists(), "nonowner logout keeps owner files");
+
+        // Profile-bound tokens of a non-owner, written at runtime or by an import,
+        // stay in its partition too, so the legacy owner cannot read them back
+        // through its vault fallback when both carry the same profile id.
+        manager
+            .store_tokens(OAuthProvider::Dropbox, "shared-profile", &nonowner_tokens)
+            .expect("nonowner stores a profile-bound token");
+        let imported = serde_json::to_string(&nonowner_tokens).expect("import json");
+        partitions::store_credential_for_user_typed_dual(
+            &store,
+            nonowner.id,
+            "oauth_dropbox_imported-profile",
+            "oauth",
+            &imported,
+        )
+        .expect("import writes the nonowner token");
+        partitions::store_active_credential_typed_dual(
+            &store,
+            "jottacloud_refresh_imported-profile",
+            "jottacloud_refresh",
+            &imported,
+        )
+        .expect("import writes the nonowner Jottacloud chain");
+        for key in [
+            "oauth_dropbox_shared-profile",
+            "oauth_dropbox_imported-profile",
+            "jottacloud_refresh_imported-profile",
+        ] {
+            assert!(
+                store.get(key).is_err(),
+                "{key} must not reach the shared vault"
+            );
+        }
+        assert_eq!(
+            manager
+                .load_tokens(OAuthProvider::Dropbox, "imported-profile")
+                .expect("nonowner reads its imported token")
+                .access_token,
+            "nonowner-token"
+        );
+
+        partitions::set_active_user(&conn, owner.id).expect("reactivate owner");
+        partitions::unlock_user(&conn, &root_key, owner.id, Some("legacy-owner-pass"))
+            .expect("unlock owner after switch");
+        assert_eq!(
+            manager
+                .load_tokens(OAuthProvider::Dropbox, "")
+                .expect("owner keeps its singleton")
+                .access_token,
+            "locked-vault-decoy"
+        );
+        // The owner may still lazily rebind its own legacy singleton; it must
+        // never receive the other user's token for the shared profile id.
+        let owner_view = manager.load_tokens(OAuthProvider::Dropbox, "shared-profile");
+        assert!(
+            !format!("{owner_view:?}").contains("nonowner-token"),
+            "{owner_view:?}"
+        );
+
+        *MEMORY_TOKEN_CACHE.lock().expect("memory cache") = None;
+        CredentialStore::clear_cache();
+        match previous_xdg {
+            Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(value) => std::env::set_var("AEROFTP_USER_PASSPHRASE", value),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+    }
+
     /// Issue #214: an empty `profile_id` keeps the legacy singleton vault key,
     /// preserving historic behaviour for callers that have not yet been wired
     /// through the per-profile flow.
@@ -1714,8 +1990,65 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn clones_re_read_shared_profile_token_source() {
+    /// Runs in a re-executed copy of the test binary with its own config, vault
+    /// and partition DB, as `native_relocation_tests` does, so the developer's
+    /// real vault and active user are never read or written.
+    #[test]
+    fn clones_re_read_shared_profile_token_source() {
+        const MODE: &str = "AEROFTP_OAUTH_CLONES_TEST";
+        const TEST: &str = "providers::oauth2::tests::clones_re_read_shared_profile_token_source";
+        if std::env::var(MODE).as_deref() == Ok("child") {
+            crate::credential_store::CredentialStore::init().expect("temporary vault");
+            let store =
+                crate::credential_store::CredentialStore::from_cache().expect("cached vault");
+            crate::user_partitions::init_or_migrate_cli(&store).expect("partitions");
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("runtime")
+                .block_on(clones_re_read_shared_profile_token_source_body());
+            return;
+        }
+        let executable = std::env::current_exe().expect("test binary");
+        let root = tempfile::Builder::new()
+            .prefix("oauth-clones-")
+            .tempdir_in(executable.parent().expect("binary directory"))
+            .expect("temporary root");
+        let child = root
+            .path()
+            .join(format!("oauth-clones-test{}", std::env::consts::EXE_SUFFIX));
+        std::fs::hard_link(&executable, &child)
+            .or_else(|_| std::fs::copy(&executable, &child).map(|_| ()))
+            .expect("child binary");
+        std::fs::write(root.path().join("portable.marker"), b"").expect("portable marker");
+        let empty_path = root.path().join("no-external-tools");
+        std::fs::create_dir(&empty_path).expect("empty PATH");
+        let output = std::process::Command::new(child)
+            .args(["--exact", TEST, "--nocapture", "--test-threads=1"])
+            .env(MODE, "child")
+            .env("PATH", empty_path)
+            .env(
+                "AEROFTP_MASTER_PASSWORD",
+                "synthetic oauth clones fixture master",
+            )
+            .env("XDG_CONFIG_HOME", root.path().join("config"))
+            .env("XDG_DATA_HOME", root.path().join("data"))
+            .env("XDG_CACHE_HOME", root.path().join("cache"))
+            .env(
+                "DBUS_SESSION_BUS_ADDRESS",
+                "unix:path=/nonexistent-oauth-clones",
+            )
+            .output()
+            .expect("run isolated child");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            output.status.success() && stdout.contains("1 passed"),
+            "{stdout}\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    async fn clones_re_read_shared_profile_token_source_body() {
         use secrecy::ExposeSecret;
 
         let primary = OAuth2Manager::new();

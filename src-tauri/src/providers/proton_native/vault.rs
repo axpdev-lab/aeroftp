@@ -443,15 +443,19 @@ fn read(
     key: &str,
 ) -> Result<Option<ProtonSession>, ProviderError> {
     let result = match owner.user_id {
-        Some(user) => crate::user_partitions::resolve_credential_for_user(store, user, key),
+        Some(user) => {
+            crate::user_partitions::resolve_credential_for_user_owner_aware(store, user, key)
+        }
         None => Ok(store.get(key).ok().map(Zeroizing::new)),
     };
     match result {
         Ok(Some(json)) => {
             let mut session = parse(&json)?;
-            // A locked shared copy may not have accepted its mirror. The
-            // vault is written first, so its newer pair for this SAME UID is
-            // authoritative. A different user's session is never adopted.
+            // A locked shared copy may not have accepted its mirror. The vault
+            // is written first, so its newer pair for this SAME UID is
+            // authoritative. The UID match confines this to the session the
+            // caller's own partition already holds: a different user's session
+            // is never adopted, so non-owners need it too after a refresh.
             if let Ok(raw) = store.get(key) {
                 if let Ok(saved) = parse(&raw) {
                     if saved.tokens.uid == session.tokens.uid {
