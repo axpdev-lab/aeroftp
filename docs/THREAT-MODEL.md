@@ -115,7 +115,7 @@ profiles and shares the foreground run's budget and cancellation.
 | T-03 | Agent memory poisoning | File with injected instructions read into context | `is_prompt_injection_line()`: 24 patterns (EN+IT) stripped before storage. Category sanitization (alphanumeric only) | Novel injection patterns not covered |
 | T-04 | Plugin tampering | Modified plugin script between install and execution | SHA-256 hash at install, verified before every execution. Env isolation | Plugin scripts have full shell access within user context |
 | T-05 | Sync journal tampering | Modified journal to skip/repeat files | HMAC-SHA512 journal integrity verification | Journal file writable by same user |
-| T-06 | Download file replacement | Interrupted download leaves partial file | Atomic writes: every provider integration writes to `.aerotmp`, renamed on completion | Temp file visible during transfer |
+| T-06 | Download file replacement | Interrupted download leaves partial file | Default downloads stage through `.aerotmp` and rename on completion; CLI `--inplace` writes directly to the final path | Temp file visible during transfer; interrupted `--inplace` downloads can leave the final file partial |
 
 ### R - Repudiation
 

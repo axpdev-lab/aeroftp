@@ -5857,7 +5857,7 @@ const App: React.FC = () => {
         await invoke('provider_clear_crypt_overlay', {
           expectedGeneration: ownership.generation,
           activationId: ownership.activationId,
-        });
+        }).catch(() => undefined);
       }
       throw error;
     }
@@ -6006,12 +6006,19 @@ const App: React.FC = () => {
   const maybeAutoUnlockProfileOverlay = async (
     savedServerId?: string,
     isCurrent?: () => boolean,
-  ): Promise<{ vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider'; generation?: number } | null> => {
+  ): Promise<{ vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider'; generation?: number; openingLogId?: string | null } | null> => {
     if (!savedServerId || (isCurrent && !isCurrent())) return null;
     const ownership = isCurrent ? { isCurrent, generation: await invoke<number>('provider_connection_generation'), activationId: crypto.randomUUID() } : undefined;
     if (isCurrent && !isCurrent()) return null;
     // Only this attempt's refusal may reach the locked banner.
     overlayRefusalRef.current = null;
+    let openingLogId: string | null = null;
+    const settleOpeningLog = () => {
+      if (openingLogId && overlayLogIdRef.current === openingLogId) {
+        humanLog.updateEntry(openingLogId, { status: 'error', message: t('activity.overlay_failed') });
+        overlayLogIdRef.current = null;
+      }
+    };
     try {
       const profiles = await loadSavedServerProfiles();
       assertOverlayActivationCurrent(ownership);
@@ -6042,7 +6049,8 @@ const App: React.FC = () => {
       setOverlayDecrypting(true);
 
       // T3: live activity-log entry, settled to green by the phase-2 reload.
-      overlayLogIdRef.current = humanLog.logRaw('activity.overlay_opening', 'CONNECT', {}, 'running');
+      openingLogId = humanLog.logRaw('activity.overlay_opening', 'CONNECT', {}, 'running');
+      overlayLogIdRef.current = openingLogId;
 
       // Anchor the decorator at the profile's configured remote folder (the
       // "AeroCrypt bucket"), NOT the live provider pwd. Path-based providers like
@@ -6075,16 +6083,13 @@ const App: React.FC = () => {
         );
         assertOverlayActivationCurrent(ownership);
         if (binding.kind === 'rclone-crypt') {
-          return { vaultId: activated.vaultId, prefix: 'rclone_crypt_provider', generation: ownership?.generation };
+          return { vaultId: activated.vaultId, prefix: 'rclone_crypt_provider', generation: ownership?.generation, openingLogId };
         } else {
-          return { vaultId: activated.vaultId, prefix: 'aerocrypt_provider', generation: ownership?.generation };
+          return { vaultId: activated.vaultId, prefix: 'aerocrypt_provider', generation: ownership?.generation, openingLogId };
         }
       } catch (e) {
+        settleOpeningLog();
         if (isCurrent && !isCurrent()) return null;
-        if (overlayLogIdRef.current) {
-          humanLog.updateEntry(overlayLogIdRef.current, { status: 'error', message: t('activity.overlay_failed') });
-          overlayLogIdRef.current = null;
-        }
         // rclone-crypt opens with any key, so a failure here is a secret it
         // refuses to guess at (or one it cannot read). The locked banner shows
         // why, with how to answer it; a toast would close before it is read.
@@ -6092,6 +6097,7 @@ const App: React.FC = () => {
         throw e;
       }
     } catch (e) {
+      settleOpeningLog();
       if (isCurrent && !isCurrent()) return null;
       logger.debug('[maybeAutoUnlockProfileOverlay] failed', e);
       // Tier 1 import re-point: a stored-but-unreadable keyfile (moved,
@@ -6295,6 +6301,7 @@ const App: React.FC = () => {
       setRemoteListReason(null);
       const phaseVersion = ++remoteConnectPhaseVersionRef.current;
       remoteConnectPhaseRef.current = 'connect';
+      setOverlayDecrypting(false);
       try {
         const scope = args[args.length - 1];
         return scope instanceof ConnectScope
@@ -8777,6 +8784,7 @@ const App: React.FC = () => {
         setRcloneCryptVaultId(null);
         setAeroCryptVaultId(null);
         setCryptOverlayOwner(null);
+        setOverlayDecrypting(false);
         await connectScope.step(() => invoke('provider_clear_crypt_overlay', { full: true }).catch(() => undefined));
       }
 
@@ -9391,6 +9399,13 @@ const App: React.FC = () => {
     remoteNavInFlightRef.current = navId;
     setRemoteListLoading(true);
     setRemoteListReason(listingReason(resolveTargetDisplayPath(currentRemoteDisplayPath, path, plainPath)));
+    let navigationOverlayLogId: string | null = null;
+    const settleNavigationOverlayLog = (status: 'success' | 'error') => {
+      if (navigationOverlayLogId && overlayLogIdRef.current === navigationOverlayLogId) {
+        humanLog.updateEntry(navigationOverlayLogId, { status, message: t(status === 'success' ? 'activity.overlay_unlocked' : 'activity.overlay_failed') });
+        overlayLogIdRef.current = null;
+      }
+    };
     try {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
       // The override when a connect passes the protocol it is opening, else
@@ -9432,7 +9447,11 @@ const App: React.FC = () => {
             throw new Error('Re-open the crypt overlay to enter its encrypted scope.');
           }
           const reactivated = await maybeAutoUnlockProfileOverlay(activeSession.savedServerId, () => navId === remoteNavCounter.current);
-          if (navId !== remoteNavCounter.current) return null;
+          navigationOverlayLogId = reactivated?.openingLogId ?? null;
+          if (navId !== remoteNavCounter.current) {
+            settleNavigationOverlayLog('error');
+            return null;
+          }
           setOverlayDecrypting(false);
           setPendingOverlayUnlock(null);
           if (!reactivated) {
@@ -9459,10 +9478,7 @@ const App: React.FC = () => {
           reactivatedOverlayForNav = true;
         }
         response = await invoke('provider_change_dir', { path: providerNavPath, ...(reactivatedOverlayGeneration !== undefined ? { expectedGeneration: reactivatedOverlayGeneration } : {}) });
-        if (reactivatedOverlayForNav && overlayLogIdRef.current) {
-          humanLog.updateEntry(overlayLogIdRef.current, { status: 'success', message: t('activity.overlay_unlocked') });
-          overlayLogIdRef.current = null;
-        }
+        if (reactivatedOverlayForNav && navId === remoteNavCounter.current) settleNavigationOverlayLog('success');
       } else {
         // Use FTP API
         response = await invoke('change_directory', { path });
@@ -9549,6 +9565,9 @@ const App: React.FC = () => {
       notify.error(t('common.error'), t('toast.changeDirFailed', { error: String(error) }));
       return null;
     } finally {
+      // A failed or obsolete scope entry must not leave its own log running.
+      // The identity check preserves any newer attempt's entry.
+      settleNavigationOverlayLog('error');
       // Release OUR latch only if we still own it (token === our navId): a Cancel
       // or a superseding refresh may have already handed the latch to someone else
       // (or freed it), and clobbering that would trap the user or reopen the

@@ -89,7 +89,7 @@ Profile matching supports exact names, IDs, and disambiguated substring matching
 The built-in AI assistant uses the same isolation architecture through two dedicated tools:
 
 - **`server_list_saved`**: Returns profile names, protocols, hosts, and paths. Never includes passwords or tokens.
-- **`server_exec`**: Accepts a server name and an operation (`ls`, `cat`, `stat`, `find`, `df`). The Rust backend resolves credentials from the vault and executes the operation. The AI model sees only the result. Mutations such as upload, download, mkdir, rename and delete require their dedicated approval-gated tools; `server_exec` rejects `get`, `put`, `mkdir`, `rm` and `mv`.
+- **`server_exec`**: Accepts a server name and an operation (`ls`, `cat`, `stat`, `find`, `df`). The Rust backend resolves credentials from the vault and executes the operation. The AI model sees only the result. Uploads, downloads, mkdir, rename and delete use their dedicated tools. In the GUI AeroAgent flow, `execute_ai_tool` enforces approval before dispatching these operations; the shared dispatcher itself does not enforce that GUI grant for CLI or inbound MCP callers. Those surfaces require their own caller or host authorization policy; `server_exec` rejects `get`, `put`, `mkdir`, `rm` and `mv`.
 
 This means a developer can instruct AeroAgent: *"Upload the build folder to the staging server and verify the deployment"* - and the agent completes the entire workflow without any credential material entering the AI context.
 

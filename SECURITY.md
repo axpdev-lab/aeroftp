@@ -97,7 +97,7 @@ All release artifacts are signed with Sigstore Cosign via GitHub Actions OIDC ke
 - **Client-side verification**: The app verifies `.sigstore.json` bundles against the CI workflow identity before installing updates. As of v4.1.0 (sigstore 0.14) the in-app check parses GitHub's current v0.3 signing bundles and returns a real verified result; it stays a non-blocking second factor, with the artifact SHA-256 as the primary integrity check
 - **Linux hardening**: The privileged update helper re-verifies SHA-256 before executing `dpkg`/`rpm`
 - **Plugin registry**: Remote installation disabled until cryptographic registry authentication is implemented (fail-closed)
-- **Build gates**: pushes to `main` and release tags run Clippy (`--all-targets --features test-seed -- -D warnings`) and `cargo audit --deny warnings` as hard CI gates; release artifacts are signed and published only after the lint, audit, and test jobs pass
+- **Build gates**: the Checks workflow runs `cargo audit --deny warnings` on pull requests and pushes to `main`. A clean audit and complete CI on the exact release source are separate pre-tag requirements. The tag publication workflow gates signing and publication on its validation/build jobs; it does not depend on the separate Checks audit job
 
 ### Continuous Monitoring
 

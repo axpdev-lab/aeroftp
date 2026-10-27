@@ -320,12 +320,17 @@ impl ProviderState {
             .unwrap_or_else(|e| e.into_inner()) = id;
     }
 
-    fn invalidate_overlay_key_cache(&self) {
+    /// Retire only the overlay activation; the transport is still the same.
+    fn clear_overlay_key_cache(&self) {
         self.set_overlay_activation_id(None);
-        self.connection_generation.fetch_add(1, Ordering::SeqCst);
         if let Ok(mut slot) = self.cached_overlay.lock() {
             *slot = None;
         }
+    }
+
+    fn invalidate_overlay_key_cache(&self) {
+        self.connection_generation.fetch_add(1, Ordering::SeqCst);
+        self.clear_overlay_key_cache();
     }
 
     /// Take the cached keys for an instant re-arm IF one exists AND still belongs
@@ -2285,7 +2290,7 @@ async fn discard_crypt_activation_inner(
     }
     let removed = crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard);
     state.overlay_wrapped.store(false, Ordering::SeqCst);
-    state.invalidate_overlay_key_cache();
+    state.clear_overlay_key_cache();
     removed
 }
 
@@ -19085,6 +19090,25 @@ mod overlay_activation_discard_tests {
         assert!(!state.overlay_wrapped.load(Ordering::SeqCst));
         assert!(state.active_crypt_overlay.load(Ordering::SeqCst));
         assert!(state.cached_overlay_for_rearm().is_none());
+    }
+
+    #[tokio::test]
+    async fn matching_discard_preserves_the_live_connection_generation() {
+        let state = installed("old").await;
+        let captured = state.connection_generation.load(Ordering::SeqCst);
+        assert!(discard_crypt_activation_inner(&state, captured, "old").await);
+        assert_eq!(state.connection_generation.load(Ordering::SeqCst), captured);
+    }
+
+    #[tokio::test]
+    async fn pending_activation_can_arm_after_older_activation_discards_itself() {
+        let state = installed("old").await;
+        let captured = state.connection_generation.load(Ordering::SeqCst);
+        assert!(discard_crypt_activation_inner(&state, captured, "old").await);
+        provider_arm_crypt_capability_inner(&state, Some(captured))
+            .await
+            .expect("same-connection retry must retain its captured generation");
+        assert!(state.active_crypt_overlay.load(Ordering::SeqCst));
     }
 
     #[tokio::test]

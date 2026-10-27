@@ -62,7 +62,7 @@ async function activation(hold?: string) {
         default: throw new Error(`Unexpected command: ${command}`);
       }
     },
-    overlayRefusalRef: { current: null }, overlayLogIdRef: { current: null },
+    overlayRefusalRef: { current: null }, overlayLogIdRef: { current: null as string | null },
     setCryptOverlayOwner: () => effects.push('owner'),
     markSessionOverlayKind: () => effects.push('kind'),
     setOverlayDecrypting: () => effects.push('decrypting'),
@@ -77,7 +77,7 @@ async function activation(hold?: string) {
   };
   const { code } = await transformWithOxc(source, 'overlay-ownership.ts');
   const run: Promise<unknown> = new Function(...Object.keys(context), `return (async () => { ${code}\n return maybeAutoUnlockProfileOverlay('old_profile', isCurrent); })();`)(...Object.values(context));
-  return { run, calls, effects, reached, released, leave: () => { current = false; }, installed: () => installedId, replace: () => { installedId = 'newer'; } };
+  return { logRef: context.overlayLogIdRef, run, calls, effects, reached, released, leave: () => { current = false; }, installed: () => installedId, replace: () => { installedId = 'newer'; } };
 }
 
 describe('overlay activation owns every asynchronous boundary', () => {
@@ -89,7 +89,7 @@ describe('overlay activation owns every asynchronous boundary', () => {
     op.leave();
     op.released.resolve();
     await expect(op.run).resolves.toBeNull();
-    expect(op.effects).toEqual(beforeEffects);
+    expect(op.effects).toEqual(beforeEffects.includes('log-start') ? [...beforeEffects, 'log-update'] : beforeEffects);
     const cleanup = op.calls.slice(beforeCalls);
     if (['apply', 'view', 'cd'].includes(hold)) {
       expect(op.installed()).toBeNull();
@@ -116,5 +116,30 @@ describe('overlay activation owns every asynchronous boundary', () => {
     expect(op.calls.find(c => c.command === 'provider_apply_crypt_overlay')?.args.params.expectedGeneration).toBe(42);
     expect(op.calls.find(c => c.command === 'provider_change_dir')?.args).toEqual({ path: '/Crypt', expectedGeneration: 42 });
     expect(op.effects).toContain('binding');
+  });
+});
+
+
+describe('overlay opening log ownership', () => {
+  it.each(['arm', 'salt', 'apply', 'view', 'cd'])('settles its abandoned running entry after %s', async (hold) => {
+    const op = await activation(hold);
+    await op.reached.promise;
+    expect(op.logRef.current).toBe('log');
+    op.leave();
+    op.released.resolve();
+    await expect(op.run).resolves.toBeNull();
+    expect(op.logRef.current).toBeNull();
+    expect(op.effects).toContain('log-update');
+  });
+
+  it.each(['profiles', 'arm'])('does not settle a newer log when abandoned at %s', async (hold) => {
+    const op = await activation(hold);
+    await op.reached.promise;
+    op.logRef.current = 'newer-log';
+    op.leave();
+    op.released.resolve();
+    await expect(op.run).resolves.toBeNull();
+    expect(op.logRef.current).toBe('newer-log');
+    expect(op.effects).not.toContain('log-update');
   });
 });

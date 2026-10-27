@@ -188,9 +188,10 @@ App start
   → init_credential_store()
   → vault.key NOT found
   → Generate 64-byte CSPRNG passphrase
-  → If AEROFTP_MASTER_PASSWORD was explicitly supplied:
+  → If AEROFTP_MASTER_PASSWORD is non-empty:
+      → Require at least 8 bytes; reject a shorter supplied password
       → Initialize master mode; do not claim a keyring account
-    Otherwise:
+    Otherwise (variable unset or empty):
       → Claim a free install-scoped OS keyring account; write vault.key (12-byte marker, optional account trailer)
       → If no keyring slot is usable, write the permission-protected 76-byte local fallback instead
   → Set file permissions (0o600 / ACL)

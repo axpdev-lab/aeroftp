@@ -16,7 +16,7 @@ import { refusalFor } from './overlayRefusal';
 import { assertOverlayActivationCurrent } from './profileOverlayUnlock';
 
 async function execute<T>(source: string, context: Record<string, unknown>, suffix: string): Promise<T> {
-    context = { ownership: undefined, assertOverlayActivationCurrent, ...context };
+    context = { ownership: undefined, navigationOverlayLogId: null, settleNavigationOverlayLog: vi.fn(), assertOverlayActivationCurrent, ...context };
     const { code } = await transformWithOxc(source, 'crypt-connect-landing.ts');
     return new Function(...Object.keys(context), `return (async () => { ${code}\n${suffix} })();`)(...Object.values(context));
 }

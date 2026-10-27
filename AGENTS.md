@@ -457,7 +457,7 @@ Use this mode for Claude Desktop, Cursor, VS Code, or any other MCP client that 
 
 ### Delivered operations and remaining proposals
 
-Mutative server operations are available through `remote_upload`, `remote_download`, `remote_mkdir`, `remote_delete` and `remote_rename`. Cross-profile copies use the CLI `transfer` command or MCP `aeroftp_transfer` / `aeroftp_transfer_tree`.
+Remote downloads use `remote_download`; mutative server operations use `remote_upload`, `remote_mkdir`, `remote_delete` and `remote_rename`. Cross-profile copies use the CLI `transfer` command or MCP `aeroftp_transfer` / `aeroftp_transfer_tree`.
 
 Dedicated remote-to-remote `server_diff` / `server_sync` and pre-authorized scoped agent-session tokens remain proposals; do not assume these tools exist. Discover the live catalog with `aeroftp-cli agent-info --json` or MCP `tools/list`.
 

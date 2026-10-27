@@ -15,11 +15,12 @@ if (start < 0 || end < 0) throw new Error('Missing production overlay activation
 const source = app.slice(start, end);
 const generationError = 'CONNECTION_CHANGED: overlay activation no longer owns this connection';
 
-async function handlers(error: unknown, owned: boolean, staleAfterNavigation = false) {
+async function handlers(error: unknown, owned: boolean, staleAfterNavigation = false, cleanupFailure = false) {
   let current = true;
   const ownership = owned ? { generation: 42, activationId: 'test-activation', isCurrent: () => current } : undefined;
   const invoke = vi.fn(async (command: string) => {
     if (command === 'provider_crypt_cwd_in_view') return false;
+    if (command === 'provider_clear_crypt_overlay' && cleanupFailure) throw new Error('synthetic IPC failure');
     if (command === 'provider_change_dir') {
       if (staleAfterNavigation) current = false;
       throw error;
@@ -74,5 +75,12 @@ it('rolls back only the owned activation after a root-generation refusal', async
   const op = await handlers(generationError, true);
   await expect(op.activateProviderCryptOverlay({ sessionId: 's1' }, { kind: 'rclone-crypt' }, undefined, op.ownership)).rejects.toBe(generationError);
   expect(op.bindSessionCryptOverlay).not.toHaveBeenCalled();
+  expect(op.invoke).toHaveBeenCalledWith('provider_clear_crypt_overlay', { expectedGeneration: 42, activationId: 'test-activation' });
+});
+
+
+it('preserves the activation error if awaited scoped cleanup IPC rejects', async () => {
+  const op = await handlers(generationError, true, false, true);
+  await expect(op.activateProviderCryptOverlay({ sessionId: 's1' }, { kind: 'rclone-crypt' }, undefined, op.ownership)).rejects.toBe(generationError);
   expect(op.invoke).toHaveBeenCalledWith('provider_clear_crypt_overlay', { expectedGeneration: 42, activationId: 'test-activation' });
 });
