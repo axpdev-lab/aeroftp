@@ -7684,8 +7684,8 @@ const App: React.FC = () => {
       // saved on an OAuth profile (Google Drive, Dropbox, ...) was never unlocked:
       // no decrypted names, and the path-bar overlay badge/button never appeared.
       const overlaySavedId = effectiveParams.savedServerId;
-      const oauthInitialPath = resolveUsernameTemplate(quickConnectDirs.remoteDir, effectiveParams.username) || '/';
-      const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, oauthInitialPath) : null;
+      let oauthInitialPath = resolveUsernameTemplate(quickConnectDirs.remoteDir, effectiveParams.username) || '/';
+      let overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, oauthInitialPath) : null;
       let oauthResponse: FileListResponse | null = null;
       if (overlayHint && overlaySavedId) {
         // Probe the configured landing, but never let a transient listing error
@@ -7700,6 +7700,10 @@ const App: React.FC = () => {
           if (isListingCancelled(error)) return;
           try {
             oauthResponse = await withRemoteListSpinner(() => invoke<FileListResponse>('provider_list_files', { path: null }));
+            // The fallback is the actual landing, including for the deferred
+            // unlock and its phase-2 reload. Do not retry the rejected path.
+            oauthInitialPath = oauthResponse.current_path;
+            overlayHint = { ...overlayHint, opensOutside: connectLandsOutsideOverlay(oauthInitialPath, overlayHint.anchor) };
           } catch (fallbackError) {
             if (isListingCancelled(fallbackError)) return;
             oauthResponse = null;
@@ -18199,8 +18203,8 @@ const App: React.FC = () => {
                   // previously skipped that block, so an OAuth crypt overlay never
                   // unlocked (no decrypted names, no path-bar overlay badge/button).
                   const savedOverlaySavedId = normalizedParams.savedServerId;
-                  const savedOverlayHint = savedOverlaySavedId ? await connectScope.step(() => getProfileOverlayHint(savedOverlaySavedId)) : null;
-                  const savedOauthInitialPath = resolveUsernameTemplate(initialPath, normalizedParams.username) || '/';
+                  let savedOverlayHint = savedOverlaySavedId ? await connectScope.step(() => getProfileOverlayHint(savedOverlaySavedId)) : null;
+                  let savedOauthInitialPath = resolveUsernameTemplate(initialPath, normalizedParams.username) || '/';
                   let savedOauthResp: FileListResponse | null = null;
                   if (savedOverlayHint && savedOverlaySavedId) {
                     // Probe the configured landing, but never let a transient
@@ -18217,6 +18221,8 @@ const App: React.FC = () => {
                       if (isListingCancelled(error)) return 'failed' as const;
                       try {
                         savedOauthResp = await connectScope.step(() => withRemoteListSpinner(() => invoke<FileListResponse>('provider_list_files', { path: null })));
+                        savedOauthInitialPath = savedOauthResp.current_path;
+                        savedOverlayHint = { ...savedOverlayHint, opensOutside: connectLandsOutsideOverlay(savedOauthInitialPath, savedOverlayHint.anchor) };
                       } catch (fallbackError) { connectScope.assert();
                         if (isListingCancelled(fallbackError)) return 'failed' as const;
                         savedOauthResp = null;

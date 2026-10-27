@@ -378,15 +378,49 @@ describe('OAuth landing probe recovers the current provider directory', () => {
             });
             const assert = vi.fn(() => { if (outcome === 'scope-stale') throw new Error('connect attempt stale'); });
             const run = execute(source, {
-                overlayHint: { opensOutside: true }, overlaySavedId: 'srv_1',
-                savedOverlayHint: { opensOutside: true }, savedOverlaySavedId: 'srv_1',
+                overlayHint: { anchor: '/Crypt', opensOutside: true }, overlaySavedId: 'srv_1',
+                savedOverlayHint: { anchor: '/Crypt', opensOutside: true }, savedOverlaySavedId: 'srv_1',
                 oauthInitialPath: '/Landing', savedOauthInitialPath: '/Landing',
-                invoke, withRemoteListSpinner: (op: () => Promise<unknown>) => op(),
+                invoke, connectLandsOutsideOverlay, withRemoteListSpinner: (op: () => Promise<unknown>) => op(),
                 isListingCancelled: (error: unknown) => String(error).includes('LISTING_CANCELLED'),
                 connectScope: { step: (op: () => Promise<unknown>) => op(), assert },
             }, `return ${variable};`);
             return { run, invoke, current };
         }
+
+        it.each([
+            ['/Crypt/missing', '/home', true],
+            ['/Crypt/missing', '/', true],
+            ['/outside/missing', '/Crypt/exists', false],
+            ['/Crypt/missing', '/Crypt/exists', false],
+        ] as const)(`${saved ? 'saved' : 'Quick Connect'} classifies and stores fallback from %s to %s`, async (landing, fallback, outside) => {
+            const variable = saved ? 'savedOauthResp' : 'oauthResponse';
+            const start = app.indexOf(`let ${variable}: FileListResponse | null = null;`);
+            const end = app.indexOf(saved ? 'const savedOverlayAnchor =' : 'const overlayAnchor =', start);
+            const sessionStart = app.indexOf(saved ? 'await connectScope.step(() => createSession(' : 'await createSession(', start);
+            const sessionEnd = app.indexOf(saved ? '));' : ');', sessionStart) + (saved ? 3 : 2);
+            if (start < 0 || end < 0 || sessionStart < 0 || sessionEnd <= sessionStart) throw new Error('OAuth probe/session block missing');
+            const current = { current_path: fallback, files: [{ name: 'actual-file' }] };
+            const createSession = vi.fn();
+            const invoke = vi.fn(async (command: string) => {
+                if (command === 'provider_change_dir') throw new Error('stale Remote Path');
+                return current;
+            });
+            const opensOutside = connectLandsOutsideOverlay(landing, '/Crypt');
+            const hint = await execute<{ opensOutside: boolean }>(app.slice(start, end) + '}\n' + app.slice(sessionStart, sessionEnd), {
+                oauthInitialPath: landing, savedOauthInitialPath: landing,
+                overlayHint: { anchor: '/Crypt', opensOutside }, overlaySavedId: 'srv_1',
+                savedOverlayHint: { anchor: '/Crypt', opensOutside }, savedOverlaySavedId: 'srv_1',
+                connectLandsOutsideOverlay, invoke, createSession,
+                isListingCancelled: () => false,
+                withRemoteListSpinner: (op: () => Promise<unknown>) => op(),
+                connectScope: { step: (op: () => Promise<unknown>) => op(), assert: vi.fn() },
+                oauthTabName: 'Profile', providerName: 'Profile', effectiveParams: {}, normalizedParams: {},
+                oauthLocalDir: '/local', currentLocalPath: '/local', resolvedLocalPath: '/local',
+            }, `return ${saved ? 'savedOverlayHint' : 'overlayHint'};`);
+            expect(hint.opensOutside).toBe(outside);
+            expect(createSession).toHaveBeenCalledWith('Profile', {}, fallback, '/local', outside ? current.files : [], undefined, fallback);
+        });
 
         it(`${saved ? 'saved' : 'Quick Connect'} falls back to a usable current listing after landing failure`, async () => {
             const { run, invoke, current } = await probe('missing');
