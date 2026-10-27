@@ -149,7 +149,7 @@ open still fails, re-toggle File Transfer on the phone and retry.
 | Mkdir | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | Chmod | Yes | Yes | Yes | No | No | No | No | No | No | No | No | No | No | No | No | No | No | No | No | No |
 | Stat | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Share Link | AeroCloud | AeroCloud | AeroCloud | AeroCloud | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No | No | Yes | Yes | Yes | No | Yes | Yes | Yes |
+| Share Link | AeroCloud | AeroCloud | AeroCloud | AeroCloud | Yes | Yes | Yes | Yes | Yes | Yes | Yes | No | No | No | Yes | Yes | No | Yes | Yes | Yes |
 
 *S3 rename = copy+delete
 **Azure rename = copy+delete

@@ -353,13 +353,6 @@ struct LinkStatusData {
     uuid: Option<String>,
 }
 
-/// Filen link edit response
-#[derive(Debug, Deserialize)]
-struct LinkEditResponse {
-    status: bool,
-    message: Option<String>,
-}
-
 /// Filen create folder response
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
@@ -2759,158 +2752,21 @@ impl StorageProvider for FilenProvider {
     }
 
     fn supports_share_links(&self) -> bool {
-        true
+        false
     }
 
     fn share_link_capabilities(&self) -> ShareLinkCapabilities {
-        ShareLinkCapabilities {
-            supports_expiration: true,
-            supports_password: true,
-            supports_permissions: false,
-            available_permissions: vec![],
-            ..Default::default()
-        }
+        ShareLinkCapabilities::default()
     }
 
     async fn create_share_link(
         &mut self,
-        path: &str,
-        options: ShareLinkOptions,
+        _path: &str,
+        _options: ShareLinkOptions,
     ) -> Result<ShareLinkResult, ProviderError> {
-        // Find file/folder UUID from path
-        let normalized = Self::normalize_path(path);
-        let (parent_path, name) = match normalized.rfind('/') {
-            Some(pos) if pos > 0 => (&normalized[..pos], &normalized[pos + 1..]),
-            _ => ("/", normalized.trim_start_matches('/')),
-        };
-
-        let entry = self.read_listing(parent_path).await?.find(name, false)?;
-
-        let uuid = entry
-            .metadata
-            .get("uuid")
-            .ok_or_else(|| ProviderError::Other("No UUID".to_string()))?;
-
-        let endpoint = if entry.is_dir {
-            "v3/dir/link/edit"
-        } else {
-            "v3/file/link/edit"
-        };
-
-        // Generate a link UUID
-        let link_uuid = uuid::Uuid::new_v4().to_string();
-
-        // F-SHARE-01: Generate a link key for the recipient to decrypt the shared content.
-        // The link key is the first master key, which is used to encrypt the shared metadata.
-        let link_key = self
-            .auth
-            .master_keys
-            .first()
-            .map(|k| k.expose_secret().to_string())
-            .unwrap_or_default();
-
-        // Map expires_in_secs to Filen preset: "never","1h","6h","1d","3d","7d","14d","30d"
-        let expiration = match options.expires_in_secs {
-            None => "never".to_string(),
-            Some(secs) => if secs <= 3600 {
-                "1h"
-            } else if secs <= 21600 {
-                "6h"
-            } else if secs <= 86400 {
-                "1d"
-            } else if secs <= 259200 {
-                "3d"
-            } else if secs <= 604800 {
-                "7d"
-            } else if secs <= 1209600 {
-                "14d"
-            } else {
-                "30d"
-            }
-            .to_string(),
-        };
-
-        // Filen password hashing: Argon2id v3 (client-side, zero-knowledge).
-        //
-        // The v3 API requires a 128-byte hex salt regardless of whether the
-        // link is password-protected. Sending `""` as salt for a passwordless
-        // link triggers an "Invalid salt" server-side validation error, so we
-        // always generate a random salt even when no password is set.
-        let salt_bytes: [u8; 128] = {
-            let mut buf = [0u8; 128];
-            use rand::RngCore;
-            rand::thread_rng().fill_bytes(&mut buf);
-            buf
-        };
-        let salt_hex: String = salt_bytes.iter().map(|b| format!("{:02x}", b)).collect();
-
-        let (password_raw, password_hashed) = if let Some(ref pw) = options.password {
-            let params = argon2::Params::new(65536, 3, 4, Some(64))
-                .map_err(|e| ProviderError::Other(format!("Argon2 params: {}", e)))?;
-            let argon2 =
-                argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
-            let mut hash_out = [0u8; 64];
-            argon2
-                .hash_password_into(pw.as_bytes(), &salt_bytes, &mut hash_out)
-                .map_err(|e| ProviderError::Other(format!("Argon2 hash: {}", e)))?;
-            let hash_hex: String = hash_out.iter().map(|b| format!("{:02x}", b)).collect();
-            (pw.clone(), hash_hex)
-        } else {
-            ("empty".to_string(), "empty".to_string())
-        };
-
-        let mut link_body = serde_json::json!({
-            "uuid": uuid,
-            "linkUUID": link_uuid,
-            "expiration": expiration,
-            "password": password_raw,
-            "passwordHashed": password_hashed,
-            "salt": salt_hex,
-            "downloadBtn": true,
-            "type": "enable",
-        });
-        // fileUUID required by API for file links
-        if !entry.is_dir {
-            link_body["fileUUID"] = serde_json::json!(uuid);
-        }
-
-        let request = self
-            .client
-            .post(format!("{}/{}", self.gateway_base(), endpoint))
-            .header(
-                "Authorization",
-                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
-                    .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
-            )
-            .json(&link_body)
-            .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        let resp: LinkEditResponse = self
-            .send_retry(request)
-            .await?
-            .json()
-            .await
-            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
-
-        if !resp.status {
-            return Err(ProviderError::Other(
-                resp.message
-                    .unwrap_or_else(|| "Failed to create share link".to_string()),
-            ));
-        }
-
-        // F-SHARE-01: Append #<linkKey> fragment so recipients can decrypt shared content.
-        // M8 SECURITY WARNING: The link key IS the user's first master key.
-        let url = if link_key.is_empty() {
-            format!("https://filen.io/d/{}", link_uuid)
-        } else {
-            format!("https://filen.io/d/{}#{}", link_uuid, link_key)
-        };
-        Ok(ShareLinkResult {
-            url,
-            password: None,
-            expires_at: None,
-        })
+        Err(ProviderError::NotSupported(
+            "Filen share-link creation is disabled until per-share encryption is supported".into(),
+        ))
     }
 
     async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -3759,6 +3615,53 @@ impl ChunkError {
 
 #[cfg(test)]
 mod tests {
+
+    #[tokio::test]
+    async fn share_link_creation_fails_closed_without_requests() {
+        let requests = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = std::sync::Arc::clone(&requests);
+        let app = axum::Router::new().fallback(axum::routing::any(move || {
+            let counted = std::sync::Arc::clone(&counted);
+            async move {
+                counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind request counter");
+        let addr = listener.local_addr().expect("counter address");
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = FilenProvider::connected_for_test(demo_cfg());
+        provider.gateway_base_override = Some(format!("http://{addr}"));
+
+        assert!(!provider.supports_share_links());
+        let capabilities = provider.share_link_capabilities();
+        assert!(!capabilities.supports_expiration);
+        assert!(!capabilities.supports_password);
+        assert!(!capabilities.supports_permissions);
+        assert!(capabilities.available_permissions.is_empty());
+
+        for path in ["/selected.txt", "/selected-directory"] {
+            let error = provider
+                .create_share_link(path, ShareLinkOptions::default())
+                .await
+                .expect_err("creation must fail closed");
+            assert!(
+                matches!(
+                    &error,
+                    ProviderError::NotSupported(message) if message.contains("disabled")
+                ),
+                "{path}: {error:?}"
+            );
+            let rendered = format!("{error:?}");
+            assert!(!rendered.contains(TEST_MASTER_KEY));
+            assert!(!rendered.contains("filen.io/d/"));
+        }
+
+        server.abort();
+        assert_eq!(requests.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
 
     async fn r47_review_filen_mixed_listing() -> (FilenProvider, tokio::task::JoinHandle<()>) {
         let app = axum::Router::new().route("/v3/dir/content", axum::routing::post(|| async {
