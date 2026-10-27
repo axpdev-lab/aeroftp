@@ -580,15 +580,11 @@ impl OAuth2Manager {
         }
         let owner_error =
             |e: String| ProviderError::Other(format!("Failed to resolve token owner: {}", e));
-        let user = crate::user_partitions::credential_user_or_active(self.credential_user)
-            .map_err(owner_error)?;
-        match user {
-            Some(user)
-                if !crate::user_partitions::legacy_credential_fallback_allowed(Some(user))
-                    .map_err(owner_error)? =>
-            {
-                Ok(Some(user))
-            }
+        let (user, legacy_fallback_allowed) =
+            crate::user_partitions::credential_owner_and_fallback(self.credential_user)
+                .map_err(owner_error)?;
+        match (user, legacy_fallback_allowed) {
+            (Some(user), false) => Ok(Some(user)),
             _ => Ok(None),
         }
     }
@@ -956,14 +952,10 @@ impl OAuth2Manager {
     ) -> Result<StoredTokens, ProviderError> {
         let account = Self::token_account_key(provider, profile_id);
         let legacy = Self::legacy_token_account_key(provider);
-        let credential_user = crate::user_partitions::credential_user_or_active(
-            self.credential_user,
-        )
-        .map_err(|e| ProviderError::Other(format!("Failed to resolve token owner: {}", e)))?;
-        let legacy_fallback_allowed = crate::user_partitions::legacy_credential_fallback_allowed(
-            credential_user,
-        )
-        .map_err(|e| ProviderError::Other(format!("Failed to resolve token owner: {}", e)))?;
+        let (credential_user, legacy_fallback_allowed) =
+            crate::user_partitions::credential_owner_and_fallback(self.credential_user).map_err(
+                |e| ProviderError::Other(format!("Failed to resolve token owner: {}", e)),
+            )?;
 
         // MUV-4: read the captured user's own partition first, including the
         // legacy singleton key. A locked owner fails here before any global,

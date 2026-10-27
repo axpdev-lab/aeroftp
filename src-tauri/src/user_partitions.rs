@@ -3246,14 +3246,18 @@ pub(crate) fn legacy_credential_owner_id() -> Result<Option<i64>, String> {
     nonprofile_secret_owner(&open_or_init_cli()?)
 }
 
-/// Capture an explicit credential owner, or the active user exactly once for
-/// callers whose ownership check and secret read must use the same identity.
-pub fn credential_user_or_active(user_id: Option<i64>) -> Result<Option<i64>, String> {
+/// Capture an explicit credential owner, or the active user exactly once, and
+/// whether that user may read pre-partition global credentials, on one
+/// connection. No user means the installation has not entered the multi-user
+/// ownership model yet, so the legacy fallback stays open.
+pub fn credential_owner_and_fallback(explicit: Option<i64>) -> Result<(Option<i64>, bool), String> {
     let conn = open_or_init_cli()?;
-    match user_id {
-        Some(user_id) => Ok(Some(user_id)),
-        None => active_user_id(&conn),
-    }
+    let user = match explicit {
+        Some(user) => Some(user),
+        None => active_user_id(&conn)?,
+    };
+    let allowed = user.is_none() || nonprofile_secret_owner(&conn)? == user;
+    Ok((user, allowed))
 }
 
 /// `Err("USER_LOCKED")` for a passphrase account whose session is not unlocked.
@@ -3299,17 +3303,6 @@ pub fn store_credential_for_user(
     );
     root_key.zeroize();
     result
-}
-
-/// Whether this user may read pre-partition global credentials. No active user
-/// means the installation has not entered the multi-user ownership model yet.
-pub fn legacy_credential_fallback_allowed(user_id: Option<i64>) -> Result<bool, String> {
-    let conn = open_or_init_cli()?;
-    let user_id = match user_id {
-        Some(user_id) => Some(user_id),
-        None => active_user_id(&conn)?,
-    };
-    Ok(user_id.is_none() || nonprofile_secret_owner(&conn)? == user_id)
 }
 
 fn read_credential_for_user(
