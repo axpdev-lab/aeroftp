@@ -1,13 +1,13 @@
 # AeroAgent - AI Assistant Documentation
 
-> _Last updated: 2026-06-28_
+> _Last updated: 2026-10-26_
 
 **Status**: Public architecture overview
 **Tool catalog**: Built-in tool suite + extensible via plugins
 
 For the code-grounded status of the MCP client, scoped workers, GUI control and
 the remaining 2.0 proposals, see the [AeroAgent roadmap](AEROAGENT-ROADMAP.md).
-The architecture and tool tables below are the June 2026 overview.
+This overview targets AeroFTP v4.2.5; AeroAgent has its own product version (1.7).
 
 ---
 
@@ -25,7 +25,7 @@ AeroAgent is an AI-powered assistant integrated into AeroFTP that can manage fil
 - **RAG integration** for project-aware context
 - **Persistent agent memory** across sessions
 - **Plugin system** for custom tool extensions
-- **Backend-agnostic architecture** - same tools work in GUI and CLI
+- **Shared backend architecture** with surface-specific GUI, CLI-agent and MCP catalogs
 
 ---
 
@@ -70,142 +70,17 @@ AeroAgent is an AI-powered assistant integrated into AeroFTP that can manage fil
 
 ## Tool Reference
 
-### Remote Operations (10 tools)
+The desktop catalog contains **86 built-in tools** (31 safe, 42 medium, 13 high).
+Use [AEROAGENT-CAPABILITIES.md](AEROAGENT-CAPABILITIES.md) for the complete current
+GUI catalog, linked to `src/types/tools.ts`. The CLI agent exposes 39 tools; the
+native MCP server exposes 78 names (40 primary tools plus 38 aliases), counted
+separately in [COMMAND-INVENTORY.json](COMMAND-INVENTORY.json).
 
-| Tool | Danger | Description |
-| ---- | ------ | ----------- |
-| `remote_list` | safe | List files in remote directory |
-| `remote_read` | safe | Read remote text file (max 5 KB) |
-| `remote_info` | safe | Get file/directory metadata |
-| `remote_search` | safe | Search files by glob pattern |
-| `remote_download` | medium | Download single file |
-| `remote_upload` | medium | Upload single file |
-| `remote_mkdir` | medium | Create remote directory |
-| `remote_rename` | medium | Rename/move remote file |
-| `remote_edit` | medium | Find and replace in remote file (download, edit, upload) |
-| `remote_delete` | high | Delete remote file or directory |
-
-### Local File Operations (15 tools)
-
-| Tool | Danger | Description |
-| ---- | ------ | ----------- |
-| `local_list` | medium | List local files |
-| `local_read` | medium | Read local text file (max 5 KB) |
-| `local_write` | medium | Write text to local file |
-| `local_mkdir` | medium | Create local directory |
-| `local_rename` | medium | Rename/move local file |
-| `local_edit` | medium | Find and replace in local file |
-| `local_move_files` | medium | Batch move files to destination |
-| `local_batch_rename` | medium | Batch rename (regex/prefix/suffix/sequential) |
-| `local_copy_files` | medium | Batch copy files |
-| `local_trash` | medium | Move files to system recycle bin |
-| `local_file_info` | safe | Get detailed file properties |
-| `local_disk_usage` | safe | Calculate directory size recursively |
-| `local_find_duplicates` | safe | Find duplicate files via hash |
-| `local_search` | medium | Search local files by pattern |
-| `local_delete` | high | Delete local file or directory |
-
-### Content Inspection (7 tools)
-
-| Tool | Danger | Description |
-| ---- | ------ | ----------- |
-| `local_grep` | medium | Regex search in directory files |
-| `local_head` | medium | Read first N lines of file (max 500) |
-| `local_tail` | medium | Read last N lines of file (max 500) |
-| `local_stat_batch` | medium | Metadata for multiple paths (max 100) |
-| `local_diff` | medium | Unified diff between two files |
-| `local_tree` | medium | Recursive directory tree (max depth 10) |
-| `preview_edit` | safe | Preview find/replace without applying |
-
-### Batch Transfer (4 tools)
-
-| Tool | Danger | Description |
-| ---- | ------ | ----------- |
-| `generate_transfer_plan` | safe | Build a reviewable upload/download plan before executing any transfer |
-| `upload_files` | medium | Upload multiple local files to remote |
-| `download_files` | medium | Download multiple remote files to local |
-| `sync_preview` | medium | Preview sync differences between a local and a remote directory |
-
-### Archive Operations (2 tools)
-
-| Tool | Danger | Description |
-| ---- | ------ | ----------- |
-| `archive_compress` | medium | Create ZIP/7z/TAR archives (optional AES-256 password) |
-| `archive_decompress` | medium | Extract archives with password support |
-
-### Context and Indexing (2 tools)
-
-| Tool | Danger | Description |
-| ---- | ------ | ----------- |
-| `rag_index` | medium | Index directory files with previews (max 200 files) |
-| `rag_search` | medium | Full-text search across indexed files |
-
-### Cryptography (2 tools)
-
-| Tool | Danger | Description |
-| ---- | ------ | ----------- |
-| `hash_file` | safe | Compute hash (MD5, SHA-1, SHA-256, SHA-512, BLAKE3) |
-| `vault_peek` | safe | Inspect AeroVault header without password |
-
-### Application Control (3 tools)
-
-| Tool | Danger | Description |
-| ---- | ------ | ----------- |
-| `set_theme` | safe | Change app theme (light/dark/tokyo/cyber) |
-| `app_info` | safe | Get app state, connection info, version |
-| `sync_control` | medium | Start/stop/status AeroSync service |
-
-### Clipboard (2 tools)
-
-| Tool | Danger | Description |
-| ---- | ------ | ----------- |
-| `clipboard_read` | medium | Read text from system clipboard |
-| `clipboard_write` | medium | Write text to system clipboard |
-
-> A separate `clipboard_read_image` Tauri command reads a clipboard image as RGBA. It is invoked directly by the chat UI as a multimodal-paste fallback on WebKitGTK Linux (where the standard `clipboardData.items` doesn't expose images), not exposed to the AI model as an agent tool.
-
-### Agent Memory (1 tool)
-
-| Tool | Danger | Description |
-| ---- | ------ | ----------- |
-| `agent_memory_write` | medium | Save persistent note (convention/preference/issue/pattern) |
-
-### Server Management (3 tools)
-
-| Tool | Danger | Description |
-| ---- | ------ | ----------- |
-| `server_list_saved` | safe | List saved server profiles (no passwords exposed) |
-| `server_exec` | high | Execute operation on saved server (ls/cat/get/put/mkdir/rm/mv/stat/find/df) |
-| `cross_profile_transfer` | high | Copy files directly between two saved server profiles (recursive, skip-existing, dry-run) |
-
-### Shell Execution (1 tool)
-
-| Tool | Danger | Description |
-| ---- | ------ | ----------- |
-| `shell_execute` | high | Execute shell command (30s timeout, 512 KB output limit) |
-
-### Coding (13 tools, GUI-only)
-
-The v4.1.0 AeroAgent coding loop (foundation) is a curated GUI tool set for local
-coding work. These tools are **GUI-only**: they are not exposed over the MCP
-server, and they are read-only or approval-gated. Mutating tools take automatic
-workspace checkpoints before they run.
-
-| Tool | Danger | Description |
-| ---- | ------ | ----------- |
-| `coding_search` | safe | Ripgrep workspace search, returns structured matches (respects `.gitignore`) |
-| `coding_diagnostics` | safe | Read-only structured diagnostics (cargo check / tsc / eslint) |
-| `coding_git_status` | safe | Branch and working-tree status |
-| `coding_git_diff` | safe | Unstaged or staged diff |
-| `coding_git_log` | safe | Recent commits, newest first |
-| `coding_git_show` | safe | Single commit metadata, per-file stats, capped diff |
-| `coding_checkpoint_create` | medium | Snapshot workspace files before mutations |
-| `coding_run_checks` | medium | Run one curated check (build / test / lint / typecheck) |
-| `coding_verify` | medium | Run an ordered list of curated checks in one pass |
-| `coding_apply_patch` | high | Dry-run or apply a unified multi-file diff (auto-checkpoint) |
-| `coding_checkpoint_restore` | high | Restore files from a workspace checkpoint |
-| `coding_git_stage` | high | Stage explicit workspace paths |
-| `coding_git_commit` | high | Commit the staged index |
+Coding tools, semantic GUI control, discovered MCP tools, scoped read-only
+workers and plugin/macro tools have distinct context and approval requirements.
+Sharing a Rust backend does not make every tool available on every surface.
+The [roadmap reconciliation](AEROAGENT-ROADMAP.md) records those delivered
+foundations and the remaining proposals.
 
 ---
 
@@ -215,9 +90,14 @@ workspace checkpoints before they run.
 
 | Level | Behavior | Count |
 | ----- | -------- | ----- |
-| **safe** | Auto-execute without user confirmation | 20 tools |
-| **medium** | Show approval modal, user must confirm | 36 tools |
-| **high** | Explicit confirmation with danger warning | 9 tools |
+| **safe** | No ordinary per-tool approval prompt | 31 tools |
+| **medium** | Approval/grant required under the selected mode | 42 tools |
+| **high** | Higher-risk approval/grant policy | 13 tools |
+
+These are GUI catalog counts. Safe and Normal use native confirmation for
+mutating grants, Expert uses the in-app approval panel, and Extreme can
+auto-approve tools. CLI auto-approval levels and MCP rate categories are separate
+contracts; see [AGENTS.md](../AGENTS.md#auto-approval-levels).
 
 ### Path Validation
 
@@ -234,12 +114,13 @@ All file operations validate paths against:
 
 ### Size Guards
 
-- AI file downloads: 50 MB maximum
-- `cat`/`read` operations: 5 KB for AI context
+- Remote text previews: default 5 KiB, with a 1 MiB hard limit in the shared read path
+- Local text reads: bounded previews; file transfer limits are separate from preview limits
+- Remote hash tools: 256 MiB file cap; head/tail: 16 MiB file cap
 - Shell output: 512 KB capture limit
 - Path length: 4096 characters
 - `local_stat_batch`: 100 paths maximum
-- `rag_index`: 200 files maximum
+- `rag_index`: default 200 files; inspect the current handler for the accepted override bounds
 
 ---
 
@@ -306,7 +187,7 @@ The system prompt is dynamically composed from:
 1. **Base personality** - AeroAgent identity and behavioral rules
 2. **Provider profile** - Optimized for each AI provider's strengths
 3. **Connection context** - Current protocol, server, path, mode (AeroCloud/Server/AeroFile)
-4. **Tool definitions** - Full tool list with JSON Schema parameters
+4. **Tool definitions** - Current callable schemas selected by the registry; `tool_search` discovers additional tools without approving execution
 5. **Project context** - Language, framework, dependencies
 6. **RAG context** - Indexed file content matching the user's query
 7. **Agent memory** - Persistent notes from previous sessions

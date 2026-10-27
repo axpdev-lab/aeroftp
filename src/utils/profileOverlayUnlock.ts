@@ -68,3 +68,18 @@ export function profileOverlayApplyParams(input: {
     useDefaultSalt: !!binding.useDefaultSalt,
   };
 }
+
+
+/** Connection identity and caller ownership for an asynchronous overlay activation. */
+export interface OverlayActivationOwnership {
+  generation: number;
+  activationId: string;
+  isCurrent: () => boolean;
+}
+
+/** Stop before an obsolete activation can dispatch work or publish frontend state. */
+export function assertOverlayActivationCurrent(ownership?: OverlayActivationOwnership): void {
+  if (ownership && !ownership.isCurrent()) {
+    throw new Error('LISTING_CANCELLED: overlay activation no longer owns the session');
+  }
+}

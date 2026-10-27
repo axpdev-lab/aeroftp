@@ -1,9 +1,9 @@
 # AeroFTP Threat Model
 
-> _Last updated: 2026-08-27_
-
-> Version: 1.1
-> Date: 2026-05-06
+> _Last updated: 2026-10-26_
+>
+> Documentation reference: AeroFTP v4.2.5
+> Reviewed: 2026-10-26 (source inspection, not a new penetration test)
 > Methodology: STRIDE (Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege)
 > Scope: Desktop application (Tauri 2), CLI binary, MCP server, AeroAgent AI system
 
@@ -36,7 +36,7 @@
               +-----v----+  +-----v-----+   +------v------+
               | AI Model  |  | Storage   |   | OAuth       |
               | Provider  |  | Provider  |   | Provider    |
-              | (24 APIs) |  | (33 proto)|   | (10 flows)  |
+              | (26 types)|  | (catalog) |   | (per vendor)|
               +-----------+  +-----------+   +-------------+
 ```
 
@@ -50,13 +50,32 @@
 | Backend <-> Local Filesystem | High | Same-user permissions |
 | Backend <-> Shell Execution | Critical | Full system access within user context |
 | MCP Client <-> MCP Server | Low | stdin/stdout, client is external process |
-| Peer <-> Peer (AeroShare) | Low | Network. End-to-end-encrypted P2P transfer over iroh 1.0; the remote peer is untrusted |
+| Peer <-> Peer (AeroShare) | Low | Network. End-to-end-encrypted P2P transfer over iroh; the remote peer is untrusted |
 
 > **AeroShare (v4.1.0 preview, Beta).** AeroShare introduces a peer-to-peer
-> user-to-user transfer path: it is end-to-end-encrypted and built on iroh 1.0,
-> with Mainline-DHT peer discovery and federated relays (optional). No central
+> user-to-user transfer path: it is end-to-end-encrypted and built on iroh.
+> Default discovery combines Mainline DHT, n0 discovery and LAN mDNS; Settings
+> offers narrower discovery modes, including none. Relays can forward encrypted
+> traffic when direct connectivity is unavailable. No central
 > AeroFTP server sits in the transfer path. The remote peer is treated as
 > untrusted.
+
+### Newer integration boundaries
+
+The MCP client is separate from the native stdio MCP server. An enabled external
+MCP server is untrusted: its schemas carry provenance and revisions, calls are
+approved against a backend-held snapshot, and discovery grants no permission.
+Local STDIO production launch is Linux-only and requires the sandbox and explicit
+directory/network grants; Windows/macOS local launch fails closed. Remote
+Streamable HTTP has its own OAuth and cancellation lifecycle. See
+[MCP managed installation](MCP-MANAGED-INSTALL.md) and
+[the code-grounded AeroAgent status](AEROAGENT-ROADMAP.md).
+
+The semantic GUI controller accepts only bounded intents, carries account/unlock
+and revision context, redacts locked state and secrets, and yields to human
+Pause/Stop or account changes. It does not grant arbitrary renderer execution.
+Scoped worker delegation is read-only for bounded local roots or pinned S3
+profiles and shares the foreground run's budget and cancellation.
 
 ---
 
@@ -82,8 +101,8 @@
 
 | ID | Threat | Attack Vector | Mitigation | Residual Risk |
 |----|--------|--------------|------------|---------------|
-| S-01 | AI model impersonation via prompt injection | Malicious file content injected into context | Backend-enforced grant system: mutative (medium/high danger) tools require a grant bound to the prepared request (tool, arguments, context; one-shot with a 2-minute TTL, or an 8-hour session grant that is never issued for `shell_execute` or destructive tools). In safe and normal mode the grant is confirmed through a native OS dialog. The model never controls whether that dialog is shown | In expert mode the confirmation is the in-app approval panel: after the user approves there, the frontend asks the backend to skip the native dialog, so a compromised webview could mint grants without it (it could equally drive the integrated terminal). Extreme mode auto-approves all tools |
-| S-02 | Rogue MCP client | External process connects to MCP server | MCP server accepts only stdin/stdout (no network). Rate limiting per category (60/30/10 req/min) | MCP trusts any process that can write to stdin |
+| S-01 | AI model impersonation via prompt injection | Malicious file content injected into context | Backend-enforced grant system: mutative (medium/high danger) tools require a grant bound to the prepared request (tool, arguments, context; one-shot with a 2-minute TTL, or an 8-hour session grant that is never issued for `shell_execute` or destructive tools). In safe and normal mode the grant is confirmed through a backend-created AeroFTP approval window. The model never controls whether that dialog is shown | In expert mode the confirmation is the in-app approval panel: after the user approves there, the frontend asks the backend to skip a duplicate window for session-eligible requests. Protected requests still require the backend-created approval window. Extreme mode accepts frontend requests automatically but does not remove that protected-operation boundary |
+| S-02 | Rogue MCP client | External process connects to MCP server | MCP server accepts only stdin/stdout (no network). Rate limiting per category (1200/400/100 req/min, ReadOnly/Mutative/Destructive) | MCP trusts any process that can write to stdin |
 | S-03 | SFTP host key spoofing | MITM on first connection | TOFU dialog with SHA-256 fingerprint display. Known hosts persistence | First-connection trust (TOFU model) |
 | S-04 | OAuth token replay | Stolen access token reused | Tokens wrapped in SecretString, vault-encrypted. Refresh tokens rotated | Token valid until expiry |
 
@@ -96,7 +115,7 @@
 | T-03 | Agent memory poisoning | File with injected instructions read into context | `is_prompt_injection_line()`: 24 patterns (EN+IT) stripped before storage. Category sanitization (alphanumeric only) | Novel injection patterns not covered |
 | T-04 | Plugin tampering | Modified plugin script between install and execution | SHA-256 hash at install, verified before every execution. Env isolation | Plugin scripts have full shell access within user context |
 | T-05 | Sync journal tampering | Modified journal to skip/repeat files | HMAC-SHA512 journal integrity verification | Journal file writable by same user |
-| T-06 | Download file replacement | Interrupted download leaves partial file | Atomic writes: every provider integration writes to `.aerotmp`, renamed on completion | Temp file visible during transfer |
+| T-06 | Download file replacement | Interrupted download leaves partial file | Default downloads stage through `.aerotmp` and rename on completion; CLI `--inplace` writes directly to the final path | Temp file visible during transfer; interrupted `--inplace` downloads can leave the final file partial |
 
 ### R - Repudiation
 
@@ -246,12 +265,12 @@ shared dump directory.
 | Token isolation | SecretString wrapper, never in AI prompts | All OAuth providers |
 | Path validation | `validate_path()` + `validate_mcp_path()` | All AI tools + MCP |
 | Shell denylist | 34 regex patterns + meta-char block | shell_execute tool |
-| Tool approval | Backend-enforced grant system + native OS confirmation; agent modes (safe/expert/extreme) gate auto-approval | All 50+ AI tools |
+| Tool approval | Backend-enforced grants with native or in-app confirmation according to mode; Extreme can auto-approve | 86 built-in GUI tools plus registry-sourced extensions |
 | Rate limiting | Token bucket per category | MCP server |
-| Atomic writes | .aerotmp + rename | Every provider integration |
+| Atomic writes | Temporary-file publication / provider-native replace where supported; weaker paths must be explicit | Capability- and command-dependent, see [transfer engine](DAG-TRANSFER-ENGINE.md) |
 | Memory sanitization | 24 injection patterns (EN+IT) | Agent memory DB |
 | Error sanitization | 5 regex patterns for API keys | AI error responses |
-| Exit codes | 12 structured codes (0-11, 99, 130) | CLI binary |
+| Exit codes | 14 structured codes (0-11, 99, 130) | CLI binary |
 | Transfer caps | BFS depth 100, entries 500K, cat 256MB | CLI + GUI |
 | Strict mode | `--strict` / `AEROFTP_STRICT=1` refuses safety-relaxing flags (exit 5) | CLI binary |
 
@@ -263,4 +282,4 @@ AeroFTP's full audit history (every release round: auditors, methodology, grades
 
 ---
 
-*This threat model covers AeroFTP v4.1.x, including the `aeroftp-cli vault` subcommand (v1/v2/v3), the `aeroftp-cli archive` plaintext `.aerozip` lane, the `aeroftp crypt` transparent overlay (AECR v3), the recursive used-storage scan (`df --scan`), and the AeroRsync operator environment overrides. Update when new attack surfaces are added (new providers, new AI tools, new CLI commands).*
+*This threat model covers AeroFTP v4.2.5, including the `aeroftp-cli vault` subcommand (v1/v2/v3), the `aeroftp-cli archive` plaintext `.aerozip` lane, the `aeroftp crypt` transparent overlay (AECR v3), the recursive used-storage scan (`df --scan`), and the AeroRsync operator environment overrides. Update when new attack surfaces are added (new providers, new AI tools, new CLI commands).*

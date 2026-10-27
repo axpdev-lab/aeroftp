@@ -1,6 +1,6 @@
 # AeroFTP Documentation
 
-> _Last updated: 2026-09-19_
+> _Last updated: 2026-10-26_
 
 Welcome to the AeroFTP documentation folder. This contains all technical documentation, compatibility audits, and guides.
 
@@ -19,8 +19,13 @@ Welcome to the AeroFTP documentation folder. This contains all technical documen
 | **[MULTI-USER.md](./MULTI-USER.md)** | Multi-User Account Partition - per-user encrypted vault partitions, Account Lock Screen, admin role, CLI `--user` flag (v4.0.0) |
 | **[SECURITY-AUDIT-SUMMARY.md](./SECURITY-AUDIT-SUMMARY.md)** | Independent security and quality audit reports (v2.5.0 + v2.6.0 provider audit) |
 | **[AEROAGENT.md](./AEROAGENT.md)** | AeroAgent AI assistant - architecture, tool catalog, safety system, CLI/MCP modes |
+| **[AEROAGENT-CAPABILITIES.md](./AEROAGENT-CAPABILITIES.md)** | Current GUI built-in tool catalog, approval levels and surface boundaries |
+| **[AEROAGENT-ROADMAP.md](./AEROAGENT-ROADMAP.md)** | Delivered AeroAgent 1.7 foundations and remaining 2.0 proposals |
+| **[MCP-MANAGED-INSTALL.md](./MCP-MANAGED-INSTALL.md)** | MCP client managed installation, directory grants and platform isolation limits |
+| **[PROVIDER-BULK-TRANSFERS.md](./PROVIDER-BULK-TRANSFERS.md)** | Proton CLI multi-file batching, path handling and measured process-launch reductions |
+| **[AEROVAULT-FORMATS.md](./AEROVAULT-FORMATS.md)** | Container families, plaintext `.aerozip`, cross-open rules and current format naming |
 | **[AEROVAULT-V2-SPEC.md](./AEROVAULT-V2-SPEC.md)** | AeroVault v2.2 encrypted container format - cryptography, operations, security, application integration (Recent Vaults, folder encryption, OS integration, entry lifecycle parity move/rename/copy, Tauri commands reference) |
-| **[AEROVAULT-V3-SPEC.md](./AEROVAULT-V3-SPEC.md)** | AeroVault v3 (Published, shipped in v3.8.0) - chunk-then-compress pipeline (gear-CDC + zstd profiles + AES-256-GCM-SIV per chunk), BLAKE3-128 chunk id / BLAKE3-256 cipher hash, HMAC-SHA512 header, reserved extension directory + payload region for the future v4 Error Correction layer |
+| **[AEROVAULT-V3-SPEC.md](./AEROVAULT-V3-SPEC.md)** | AeroVault v3 (Published, shipped in v3.8.0) - chunk-then-compress pipeline (gear-CDC + zstd profiles + AES-256-GCM-SIV per chunk), BLAKE3-128 chunk id / BLAKE3-256 cipher hash, HMAC-SHA512 header, extension directory + payload region for optional embedded v4 Error Correction, plus separate detached `.aerocorrect` recovery files that must be copied alongside the unchanged container |
 | **[CLI-GUIDE.md](./CLI-GUIDE.md)** | AeroFTP CLI - command guide, profiles, batch scripting, aliases, completions, agent integration |
 | **[COMMUNITY-BENCHMARK.md](./COMMUNITY-BENCHMARK.md)** | Privacy-preserving community benchmark guide and report submission flow |
 | **[PROVIDER-INTEGRATION-GUIDE.md](./PROVIDER-INTEGRATION-GUIDE.md)** | Provider integration reference - StorageProvider trait, auth patterns, upload/pagination/XML parsing, adding new providers |
@@ -36,7 +41,7 @@ See **[RELEASE.md](./RELEASE.md)** for complete CI/CD documentation.
 **Quick version:**
 ```bash
 # Update the version in every site `npm run check:version-sites` compares (see RELEASE.md), then:
-git commit -m "chore(release): vX.Y.Z Description"
+git commit -s -m "chore(release): vX.Y.Z Description"
 git push origin main
 # Wait until CI on main is green on Linux, Windows AND macOS, then:
 git tag -a vX.Y.Z -m "Release vX.Y.Z"
@@ -98,7 +103,7 @@ AeroAgent provides a broad built-in tool catalog across local files, remote oper
 
 ## Transfer Engine (DAG)
 
-Since v4.0.0, AeroFTP has a shared provider-agnostic DAG core. Single-file transfers, batch, non-dry-run sync, same-provider copy and segmented downloads all run through DAG runners: batch and sync reach file-level parallelism on providers with a clone or session pool and stay serial elsewhere, and the range graph is the only production range scheduler. Cross-profile copy still uses its temp-file/provider-owned path. See **[DAG-TRANSFER-ENGINE.md](./DAG-TRANSFER-ENGINE.md)** for the call-path matrix.
+Since v4.0.0, AeroFTP has a shared provider-agnostic DAG core. Eligible single-file transfers, batch, non-dry-run sync, same-provider copy and segmented downloads use DAG runners, with explicit provider-direct, resume and delta exceptions: batch and sync reach file-level parallelism on providers with a clone or session pool and stay serial elsewhere, and the range graph is the only production range scheduler. Cross-profile copy still uses its temp-file/provider-owned path. See **[DAG-TRANSFER-ENGINE.md](./DAG-TRANSFER-ENGINE.md)** for the call-path matrix.
 
 ## Multi-User Account Partition
 
@@ -106,8 +111,8 @@ Since v4.0.0, the vault can be split into per-user encrypted partitions with a b
 
 ---
 
-- **Documentation Version**: 4.2.0
-- **Last Update**: 19 September 2026
+- **Documentation Version**: 4.2.5
+- **Last Update**: 26 October 2026
 
 ---
 

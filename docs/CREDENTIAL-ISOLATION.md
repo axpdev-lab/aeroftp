@@ -1,6 +1,6 @@
 # Credential Isolation for AI Agents
 
-> _Last updated: 2026-06-28_
+> _Last updated: 2026-10-26_
 
 > How AeroFTP enables AI coding agents to operate on remote servers and cloud providers without exposing credentials.
 
@@ -57,12 +57,12 @@ When an AI agent needs to operate on a remote server, it never receives the cred
 4. The operation executes entirely within the Rust process
 5. The agent receives only the result - a directory listing, a transfer confirmation, file content - with no credential material attached
 
-The credential material exists only inside the Rust process memory during the operation. It never appears in:
+For vault-backed automation, credentials are resolved inside the Rust backend rather than supplied in the agent request or returned in tool output. This keeps saved credentials out of:
 
 - Command-line arguments (`/proc/*/cmdline`)
 - Environment variables
 - Shell history
-- IPC messages between backend and frontend
+- Agent tool arguments and operation results
 - AI model context or conversation history
 - Log output or error messages (errors are sanitized to remove credential patterns)
 
@@ -89,7 +89,7 @@ Profile matching supports exact names, IDs, and disambiguated substring matching
 The built-in AI assistant uses the same isolation architecture through two dedicated tools:
 
 - **`server_list_saved`**: Returns profile names, protocols, hosts, and paths. Never includes passwords or tokens.
-- **`server_exec`**: Accepts a server name and an operation (ls, cat, get, put, mkdir, rm, mv, stat, find, df). The Rust backend resolves credentials from the vault and executes the operation. The AI model sees only the result.
+- **`server_exec`**: Accepts a server name and an operation (`ls`, `cat`, `stat`, `find`, `df`). The Rust backend resolves credentials from the vault and executes the operation. The AI model sees only the result. Uploads, downloads, mkdir, rename and delete use their dedicated tools. In the GUI AeroAgent flow, `execute_ai_tool` enforces approval before dispatching these operations; the shared dispatcher itself does not enforce that GUI grant for CLI or inbound MCP callers. Those surfaces require their own caller or host authorization policy; `server_exec` rejects `get`, `put`, `mkdir`, `rm` and `mv`.
 
 This means a developer can instruct AeroAgent: *"Upload the build folder to the staging server and verify the deployment"* - and the agent completes the entire workflow without any credential material entering the AI context.
 
@@ -105,7 +105,7 @@ This breadth is significant because credential proxy services that have emerged 
 
 ### AeroShare peer-to-peer transfers (v4.1.0 preview, Beta)
 
-AeroFTP v4.1.0 previews AeroShare, an end-to-end-encrypted peer-to-peer user-to-user transfer path built on iroh 1.0, with Mainline-DHT peer discovery and federated relays (optional). No central AeroFTP server sits in the transfer path. AeroShare moves files directly between peers and does not require sharing any storage-provider credential, so it stays within the same no-credential-exposure model described above.
+AeroFTP v4.1.0 previews AeroShare, an end-to-end-encrypted peer-to-peer user-to-user transfer path built on iroh 1.0, with configurable DHT/n0/LAN discovery and relay fallback. See [AeroShare](AEROSHARE-P2P.md) for current discovery and opt-in receive behavior. No central AeroFTP server sits in the transfer path. AeroShare moves files directly between peers and does not require sharing any storage-provider credential, so it stays within the same no-credential-exposure model described above.
 
 ---
 

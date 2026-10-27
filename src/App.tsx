@@ -39,9 +39,9 @@ import {
   SyncDirection, VerifyPolicy, DeltaTransferStats,
   CompareReport, RetryPolicy, SyncJournal, OpenRequest
 } from './types';
-import { profileOverlayApplyParams } from './utils/profileOverlayUnlock';
+import { assertOverlayActivationCurrent, profileOverlayApplyParams } from './utils/profileOverlayUnlock';
 import { cryptUnlockTargetKey, overlayAnchor, type CryptUnlockTarget } from './utils/cryptUnlockTarget';
-import type { ProviderCryptOverlayApply, ProviderCryptOverlayKind } from './utils/profileOverlayUnlock';
+import type { OverlayActivationOwnership, ProviderCryptOverlayApply, ProviderCryptOverlayKind } from './utils/profileOverlayUnlock';
 import { bannerOverlayParams } from './utils/rcloneCryptBanner';
 import { overlayWarningTitleKey } from './utils/overlayWarningTitle';
 import { refusalFor, type OverlayRefusal } from './utils/overlayRefusal';
@@ -5730,9 +5730,12 @@ const App: React.FC = () => {
   const cryptOverlaySentinel = (kind: ProviderCryptOverlayKind, owner: string | null | undefined) =>
     `provider-overlay:${kind}:${owner || 'adhoc'}`;
 
-  const applyProviderCryptOverlay = async (params: ProviderCryptOverlayApply): Promise<string> => {
+  const applyProviderCryptOverlay = async (params: ProviderCryptOverlayApply, ownership?: OverlayActivationOwnership): Promise<string> => {
+    assertOverlayActivationCurrent(ownership);
     const result = await invoke<ProviderApplyCryptOverlayResult | string>('provider_apply_crypt_overlay', {
       params: {
+        expectedGeneration: ownership?.generation,
+        activationId: ownership?.activationId,
         kind: params.kind,
         remoteScope: params.remoteScope ?? '',
         filenameEncryption: params.filenameEncryption ?? (params.kind === 'rclone-crypt' ? 'standard' : null),
@@ -5754,6 +5757,7 @@ const App: React.FC = () => {
     });
     // Backend returns ApplyOverlayResult { scope, markerRestored, warning, … };
     // tolerate a plain string for forward/back compat during hot reload.
+    assertOverlayActivationCurrent(ownership);
     const appliedScope = typeof result === 'string' ? result : result.scope;
     // The backend's one-time notices (the AeroCrypt marker notices, or an
     // rclone-crypt key under which no name decrypts), titled by what they are
@@ -5767,10 +5771,12 @@ const App: React.FC = () => {
     return normCryptScope(appliedScope);
   };
 
-  const positionWrappedProviderAtScope = async (scope: string | null | undefined): Promise<void> => {
+  const positionWrappedProviderAtScope = async (scope: string | null | undefined, ownership?: OverlayActivationOwnership): Promise<void> => {
+    assertOverlayActivationCurrent(ownership);
     const normalized = normCryptScope(scope);
     if (normalized) {
-      await invoke('provider_change_dir', { path: normalized });
+      await invoke('provider_change_dir', { path: normalized, ...(ownership ? { expectedGeneration: ownership.generation } : {}) });
+      assertOverlayActivationCurrent(ownership);
     }
   };
 
@@ -5784,7 +5790,9 @@ const App: React.FC = () => {
   const smartReanchorOverlay = async (
     appliedScope: string | null | undefined,
     opts?: { initialLandingPath?: string | null },
+    ownership?: OverlayActivationOwnership,
   ): Promise<void> => {
+    assertOverlayActivationCurrent(ownership);
     // EF-03: the INITIAL connect lands on the connection Remote Path (which may
     // sit OUTSIDE the Overlays Path), NOT on the anchor. This is a DIFFERENT
     // trigger from the #390 toggle re-anchor, so it deliberately bypasses both
@@ -5797,17 +5805,20 @@ const App: React.FC = () => {
       const landing = opts.initialLandingPath;
       if (normCryptScope(landing) === '') {
         // Remote Path is the on-wire root.
-        await invoke('provider_change_dir', { path: '/' }).catch(() => undefined);
+        await invoke('provider_change_dir', { path: '/', ...(ownership ? { expectedGeneration: ownership.generation } : {}) }).catch((error) => { if (ownership && String(error).startsWith('CONNECTION_CHANGED')) throw error; });
+        assertOverlayActivationCurrent(ownership);
       } else {
-        await positionWrappedProviderAtScope(landing);
+        await positionWrappedProviderAtScope(landing, ownership);
       }
       return;
     }
     const cwdInView = await invoke<boolean>('provider_crypt_cwd_in_view').catch(() => false);
+    assertOverlayActivationCurrent(ownership);
     if (cwdInView) return; // valid encrypted folder: keep the user in place
-    await positionWrappedProviderAtScope(appliedScope);
+    await positionWrappedProviderAtScope(appliedScope, ownership);
     if (normCryptScope(appliedScope) === '') {
-      await invoke('provider_change_dir', { path: '/' }).catch(() => undefined);
+      await invoke('provider_change_dir', { path: '/', ...(ownership ? { expectedGeneration: ownership.generation } : {}) }).catch((error) => { if (ownership && String(error).startsWith('CONNECTION_CHANGED')) throw error; });
+      assertOverlayActivationCurrent(ownership);
     }
   };
 
@@ -5815,25 +5826,41 @@ const App: React.FC = () => {
     match: { savedServerId?: string; sessionId?: string },
     params: ProviderCryptOverlayApply,
     sentinelOwner?: string | null,
+    ownership?: OverlayActivationOwnership,
   ): Promise<{ vaultId: string; scope: string }> => {
-    const appliedScope = await applyProviderCryptOverlay(params);
-    // #390 (option 1, strict): after arming, re-anchor to a valid encrypted-view
-    // location ONLY when the current folder would be hidden under the overlay (a
-    // plaintext folder navigated to while it was off, or a spot outside the scope),
-    // so the user is never left standing inside a hidden folder that lists empty
-    // and where an upload would be refused by the backend guard. When the current
-    // folder is a genuine encrypted folder, the user keeps their position.
-    await smartReanchorOverlay(appliedScope);
-    const vaultId = cryptOverlaySentinel(params.kind, sentinelOwner);
-    if (params.kind === 'rclone-crypt') {
-      setAeroCryptVaultId(null);
-      setRcloneCryptVaultId(vaultId);
-    } else {
-      setRcloneCryptVaultId(null);
-      setAeroCryptVaultId(vaultId);
+    try {
+      assertOverlayActivationCurrent(ownership);
+      const appliedScope = await applyProviderCryptOverlay(params, ownership);
+      // #390 (option 1, strict): after arming, re-anchor to a valid encrypted-view
+      // location ONLY when the current folder would be hidden under the overlay (a
+      // plaintext folder navigated to while it was off, or a spot outside the scope),
+      // so the user is never left standing inside a hidden folder that lists empty
+      // and where an upload would be refused by the backend guard. When the current
+      // folder is a genuine encrypted folder, the user keeps their position.
+      assertOverlayActivationCurrent(ownership);
+      await smartReanchorOverlay(appliedScope, undefined, ownership);
+      assertOverlayActivationCurrent(ownership);
+      const vaultId = cryptOverlaySentinel(params.kind, sentinelOwner);
+      if (params.kind === 'rclone-crypt') {
+        setAeroCryptVaultId(null);
+        setRcloneCryptVaultId(vaultId);
+      } else {
+        setRcloneCryptVaultId(null);
+        setAeroCryptVaultId(vaultId);
+      }
+      bindSessionCryptOverlay(match, vaultId, params.kind, appliedScope);
+      return { vaultId, scope: appliedScope };
+    } catch (error) {
+      if (ownership) {
+        // Backend checks both identities under its provider lock. An old
+        // cancellation cannot unwrap a newer activation or another connection.
+        await invoke('provider_clear_crypt_overlay', {
+          expectedGeneration: ownership.generation,
+          activationId: ownership.activationId,
+        }).catch(() => undefined);
+      }
+      throw error;
     }
-    bindSessionCryptOverlay(match, vaultId, params.kind, appliedScope);
-    return { vaultId, scope: appliedScope };
   };
 
   // Cheap, side-effect-free probe: profile carries an ENABLED overlay binding
@@ -5978,12 +6005,24 @@ const App: React.FC = () => {
   // list through it immediately without waiting for async state to settle.
   const maybeAutoUnlockProfileOverlay = async (
     savedServerId?: string,
-  ): Promise<{ vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider' } | null> => {
-    if (!savedServerId) return null;
+    isCurrent?: () => boolean,
+  ): Promise<{ vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider'; generation?: number; openingLogId?: string | null } | null> => {
+    if (!savedServerId || (isCurrent && !isCurrent())) return null;
+    let ownership: OverlayActivationOwnership | undefined;
     // Only this attempt's refusal may reach the locked banner.
     overlayRefusalRef.current = null;
+    let openingLogId: string | null = null;
+    const settleOpeningLog = () => {
+      if (openingLogId && overlayLogIdRef.current === openingLogId) {
+        humanLog.updateEntry(openingLogId, { status: 'error', message: t('activity.overlay_failed') });
+        overlayLogIdRef.current = null;
+      }
+    };
     try {
+      ownership = isCurrent ? { isCurrent, generation: await invoke<number>('provider_connection_generation'), activationId: makeConnectToken() } : undefined;
+      assertOverlayActivationCurrent(ownership);
       const profiles = await loadSavedServerProfiles();
+      assertOverlayActivationCurrent(ownership);
       const profile = profiles.find((p) => p.id === savedServerId);
       const binding = profile?.aeroCryptOverlay;
       if (!binding?.enabled) return null;
@@ -5992,9 +6031,11 @@ const App: React.FC = () => {
       const keyfileEligible = binding.kind === 'aerocrypt' && profile?.hasStoredAeroCryptKeyfilePath;
       if (!profile?.hasStoredAeroCryptPassword && !keyfileEligible) return null;
       const password = await invoke<string>('get_credential', { account: `aerocrypt_overlay_pw_${savedServerId}` }).catch(() => '');
+      assertOverlayActivationCurrent(ownership);
       const keyfilePath = keyfileEligible
         ? await invoke<string>('get_credential', { account: `aerocrypt_overlay_keyfile_path_${savedServerId}` }).catch(() => '')
         : '';
+      assertOverlayActivationCurrent(ownership);
       if (!password && !keyfilePath) return null;
 
       // Only NOW that a real overlay binding is confirmed do we arm the
@@ -6009,7 +6050,8 @@ const App: React.FC = () => {
       setOverlayDecrypting(true);
 
       // T3: live activity-log entry, settled to green by the phase-2 reload.
-      overlayLogIdRef.current = humanLog.logRaw('activity.overlay_opening', 'CONNECT', {}, 'running');
+      openingLogId = humanLog.logRaw('activity.overlay_opening', 'CONNECT', {}, 'running');
+      overlayLogIdRef.current = openingLogId;
 
       // Anchor the decorator at the profile's configured remote folder (the
       // "AeroCrypt bucket"), NOT the live provider pwd. Path-based providers like
@@ -6021,10 +6063,12 @@ const App: React.FC = () => {
       const overlayScope = remoteScope?.trim() || initialPath?.trim() || '';
 
       try {
-        await invoke('provider_arm_crypt_capability');
+        await invoke('provider_arm_crypt_capability', ownership ? { expectedGeneration: ownership.generation } : undefined);
+        assertOverlayActivationCurrent(ownership);
         const salt = binding.kind === 'rclone-crypt'
           ? await invoke<string>('get_credential', { account: `aerocrypt_overlay_salt_${savedServerId}` }).catch(() => '')
           : '';
+        assertOverlayActivationCurrent(ownership);
         const activated = await activateProviderCryptOverlay(
           { savedServerId },
           profileOverlayApplyParams({
@@ -6036,17 +6080,17 @@ const App: React.FC = () => {
             keyfilePath,
           }),
           savedServerId,
+          ownership,
         );
+        assertOverlayActivationCurrent(ownership);
         if (binding.kind === 'rclone-crypt') {
-          return { vaultId: activated.vaultId, prefix: 'rclone_crypt_provider' };
+          return { vaultId: activated.vaultId, prefix: 'rclone_crypt_provider', generation: ownership?.generation, openingLogId };
         } else {
-          return { vaultId: activated.vaultId, prefix: 'aerocrypt_provider' };
+          return { vaultId: activated.vaultId, prefix: 'aerocrypt_provider', generation: ownership?.generation, openingLogId };
         }
       } catch (e) {
-        if (overlayLogIdRef.current) {
-          humanLog.updateEntry(overlayLogIdRef.current, { status: 'error', message: t('activity.overlay_failed') });
-          overlayLogIdRef.current = null;
-        }
+        settleOpeningLog();
+        if (isCurrent && !isCurrent()) return null;
         // rclone-crypt opens with any key, so a failure here is a secret it
         // refuses to guess at (or one it cannot read). The locked banner shows
         // why, with how to answer it; a toast would close before it is read.
@@ -6054,6 +6098,8 @@ const App: React.FC = () => {
         throw e;
       }
     } catch (e) {
+      settleOpeningLog();
+      if (isCurrent && !isCurrent()) return null;
       logger.debug('[maybeAutoUnlockProfileOverlay] failed', e);
       // Tier 1 import re-point: a stored-but-unreadable keyfile (moved,
       // deleted, or a profile imported on another machine) fails closed;
@@ -6248,8 +6294,15 @@ const App: React.FC = () => {
   // whitespace, so the flag is carried by a wrapper instead of by the body.
   const asConnectPhase = <A extends unknown[], R>(fn: (...args: A) => Promise<R>) =>
     async (...args: A): Promise<R> => {
+      // A new connection owns the remote panel before any await or early exit.
+      // Invalidate old scope-entry work and release its latch and spinner.
+      ++remoteNavCounter.current;
+      remoteNavInFlightRef.current = 0;
+      setRemoteListLoading(false);
+      setRemoteListReason(null);
       const phaseVersion = ++remoteConnectPhaseVersionRef.current;
       remoteConnectPhaseRef.current = 'connect';
+      setOverlayDecrypting(false);
       try {
         const scope = args[args.length - 1];
         return scope instanceof ConnectScope
@@ -7684,8 +7737,8 @@ const App: React.FC = () => {
       // saved on an OAuth profile (Google Drive, Dropbox, ...) was never unlocked:
       // no decrypted names, and the path-bar overlay badge/button never appeared.
       const overlaySavedId = effectiveParams.savedServerId;
-      const oauthInitialPath = resolveUsernameTemplate(quickConnectDirs.remoteDir, effectiveParams.username) || '/';
-      const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, oauthInitialPath) : null;
+      let oauthInitialPath = resolveUsernameTemplate(quickConnectDirs.remoteDir, effectiveParams.username) || '/';
+      let overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, oauthInitialPath) : null;
       let oauthResponse: FileListResponse | null = null;
       if (overlayHint && overlaySavedId) {
         // Probe the configured landing, but never let a transient listing error
@@ -7698,7 +7751,16 @@ const App: React.FC = () => {
           // arming the overlay on a session the user just tore down would paint
           // a decrypting panel over My Servers.
           if (isListingCancelled(error)) return;
-          oauthResponse = null;
+          try {
+            oauthResponse = await withRemoteListSpinner(() => invoke<FileListResponse>('provider_list_files', { path: null }));
+            // The fallback is the actual landing, including for the deferred
+            // unlock and its phase-2 reload. Do not retry the rejected path.
+            oauthInitialPath = oauthResponse.current_path;
+            overlayHint = { ...overlayHint, opensOutside: connectLandsOutsideOverlay(oauthInitialPath, overlayHint.anchor) };
+          } catch (fallbackError) {
+            if (isListingCancelled(fallbackError)) return;
+            oauthResponse = null;
+          }
         }
         const overlayAnchor = overlayHint.anchor || oauthResponse?.current_path || '/';
         // A new connection must not inherit another session's vault mirrors.
@@ -8390,6 +8452,13 @@ const App: React.FC = () => {
     ));
 
     // Set active session immediately
+    // The old navigation may still be awaiting a crypt unlock. Its result and
+    // finally block must not mutate the newly active session or block its nav.
+    ++remoteNavCounter.current;
+    remoteNavInFlightRef.current = 0;
+    setRemoteListLoading(false);
+    setRemoteListReason(null);
+    setOverlayDecrypting(false);
     setActiveSessionId(sessionId);
     setShowRemotePanel(true); // Exit AeroFile mode when switching to a connection tab
     quotaVersionRef.current++; // Invalidate any in-flight quota response
@@ -8717,6 +8786,7 @@ const App: React.FC = () => {
         setRcloneCryptVaultId(null);
         setAeroCryptVaultId(null);
         setCryptOverlayOwner(null);
+        setOverlayDecrypting(false);
         await connectScope.step(() => invoke('provider_clear_crypt_overlay', { full: true }).catch(() => undefined));
       }
 
@@ -9331,6 +9401,13 @@ const App: React.FC = () => {
     remoteNavInFlightRef.current = navId;
     setRemoteListLoading(true);
     setRemoteListReason(listingReason(resolveTargetDisplayPath(currentRemoteDisplayPath, path, plainPath)));
+    let navigationOverlayLogId: string | null = null;
+    const settleNavigationOverlayLog = (status: 'success' | 'error') => {
+      if (navigationOverlayLogId && overlayLogIdRef.current === navigationOverlayLogId) {
+        humanLog.updateEntry(navigationOverlayLogId, { status, message: t(status === 'success' ? 'activity.overlay_unlocked' : 'activity.overlay_failed') });
+        overlayLogIdRef.current = null;
+      }
+    };
     try {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
       // The override when a connect passes the protocol it is opening, else
@@ -9356,6 +9433,7 @@ const App: React.FC = () => {
       const crossingIn = overlayCapable && !currentInScope && targetInScope;
       const providerNavPath = (crossingOut || crossingIn) ? targetDisplay : path;
       let reactivatedOverlayForNav = false;
+      let reactivatedOverlayGeneration: number | undefined;
 
       let response: FileListResponse;
       if (isAeroVaultOverlay) {
@@ -9370,19 +9448,39 @@ const App: React.FC = () => {
           if (!activeSession?.savedServerId) {
             throw new Error('Re-open the crypt overlay to enter its encrypted scope.');
           }
-          const reactivated = await maybeAutoUnlockProfileOverlay(activeSession.savedServerId);
+          const reactivated = await maybeAutoUnlockProfileOverlay(activeSession.savedServerId, () => navId === remoteNavCounter.current);
+          navigationOverlayLogId = reactivated?.openingLogId ?? null;
+          if (navId !== remoteNavCounter.current) {
+            settleNavigationOverlayLog('error');
+            return null;
+          }
           setOverlayDecrypting(false);
           setPendingOverlayUnlock(null);
           if (!reactivated) {
+            const kind = activeSession.cryptOverlayKind ?? (overlayBinding
+              ? overlayBinding.prefix === 'aerocrypt_provider' ? 'aerocrypt' : 'rclone-crypt'
+              : null);
+            // A failed return must not leave the old live binding masking the
+            // manual-unlock banner. Keep the session's capability and scope.
+            setAeroCryptVaultId(null);
+            setRcloneCryptVaultId(null);
+            overlayReloadedVaultRef.current = null;
+            setCryptOverlayOwner(null);
+            lockSessionCryptOverlay({ sessionId: activeSession.id });
+            if (kind) {
+              setLockedOverlayProfile({
+                savedServerId: activeSession.savedServerId,
+                kind,
+                reason: refusalFor(overlayRefusalRef.current, activeSession.savedServerId),
+              });
+            }
             throw new Error('Failed to re-apply crypt overlay for this scope.');
           }
+          reactivatedOverlayGeneration = reactivated.generation;
           reactivatedOverlayForNav = true;
         }
-        response = await invoke('provider_change_dir', { path: providerNavPath });
-        if (reactivatedOverlayForNav && overlayLogIdRef.current) {
-          humanLog.updateEntry(overlayLogIdRef.current, { status: 'success', message: t('activity.overlay_unlocked') });
-          overlayLogIdRef.current = null;
-        }
+        response = await invoke('provider_change_dir', { path: providerNavPath, ...(reactivatedOverlayGeneration !== undefined ? { expectedGeneration: reactivatedOverlayGeneration } : {}) });
+        if (reactivatedOverlayForNav && navId === remoteNavCounter.current) settleNavigationOverlayLog('success');
       } else {
         // Use FTP API
         response = await invoke('change_directory', { path });
@@ -9469,6 +9567,9 @@ const App: React.FC = () => {
       notify.error(t('common.error'), t('toast.changeDirFailed', { error: String(error) }));
       return null;
     } finally {
+      // A failed or obsolete scope entry must not leave its own log running.
+      // The identity check preserves any newer attempt's entry.
+      settleNavigationOverlayLog('error');
       // Release OUR latch only if we still own it (token === our navId): a Cancel
       // or a superseding refresh may have already handed the latch to someone else
       // (or freed it), and clobbering that would trap the user or reopen the
@@ -18177,8 +18278,8 @@ const App: React.FC = () => {
                   // previously skipped that block, so an OAuth crypt overlay never
                   // unlocked (no decrypted names, no path-bar overlay badge/button).
                   const savedOverlaySavedId = normalizedParams.savedServerId;
-                  const savedOverlayHint = savedOverlaySavedId ? await connectScope.step(() => getProfileOverlayHint(savedOverlaySavedId)) : null;
-                  const savedOauthInitialPath = resolveUsernameTemplate(initialPath, normalizedParams.username) || '/';
+                  let savedOverlayHint = savedOverlaySavedId ? await connectScope.step(() => getProfileOverlayHint(savedOverlaySavedId)) : null;
+                  let savedOauthInitialPath = resolveUsernameTemplate(initialPath, normalizedParams.username) || '/';
                   let savedOauthResp: FileListResponse | null = null;
                   if (savedOverlayHint && savedOverlaySavedId) {
                     // Probe the configured landing, but never let a transient
@@ -18193,7 +18294,14 @@ const App: React.FC = () => {
                       // return as 'connected' and leave the GUI controller
                       // waiting for a connected commit that will never come.
                       if (isListingCancelled(error)) return 'failed' as const;
-                      savedOauthResp = null;
+                      try {
+                        savedOauthResp = await connectScope.step(() => withRemoteListSpinner(() => invoke<FileListResponse>('provider_list_files', { path: null })));
+                        savedOauthInitialPath = savedOauthResp.current_path;
+                        savedOverlayHint = { ...savedOverlayHint, opensOutside: connectLandsOutsideOverlay(savedOauthInitialPath, savedOverlayHint.anchor) };
+                      } catch (fallbackError) { connectScope.assert();
+                        if (isListingCancelled(fallbackError)) return 'failed' as const;
+                        savedOauthResp = null;
+                      }
                     }
                     const savedOverlayAnchor = savedOverlayHint.anchor || savedOauthResp?.current_path || '/';
                     // A new connection must not inherit another session's vault mirrors.

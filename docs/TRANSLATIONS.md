@@ -1,11 +1,13 @@
 # AeroFTP Internationalization (i18n) Guide
 
-> Last Updated: 2026-09-19
-> Version: v4.2.0
+> Last Updated: 2026-10-26
+> Version: v4.2.5
 > Languages: 47 | Coverage: 100%
 
-All 47 languages remain at 100% coverage, including the new v4.1.0 UI strings
-(AeroShare, `sidebar.ejectFailed`).
+All 47 locale files have the English reference key set and no
+`[NEEDS TRANSLATION]` placeholders on the reviewed snapshot. Structural coverage
+does not certify linguistic quality; the diacritic, contamination, untranslated
+and stale-English checks provide additional release gates.
 
 ---
 
@@ -119,9 +121,12 @@ AeroFTP uses a lightweight, custom i18n system built on React Context:
 
 ---
 
-## Translation Keys (4400+)
+## Translation Keys
 
-Translations are organized by 90+ namespaces (95 in the current 4.0.x series), covering core UI plus per-provider, security/vault, sync, AI, and tooling sections:
+On the v4.2.5 preparation snapshot, `en.json` contains 112 translation namespaces
+and 6,479 translation leaves (excluding the four locale metadata fields). These
+counts change as UI strings are added; `npm run i18n:stats` reports current counts.
+The namespace table below is illustrative, not an exhaustive registry:
 
 | Namespace | Description | Keys (approx.) |
 |-----------|-------------|----------------|
@@ -177,7 +182,7 @@ src/i18n/
 ├── I18nContext.tsx        # Provider, hooks, getNestedValue
 ├── types.ts              # TypeScript interfaces, AVAILABLE_LANGUAGES (47)
 └── locales/
-    ├── en.json           # English (base, 4400+ keys)
+    ├── en.json           # English (base translations)
     ├── it.json           # Italian (manually translated)
     ├── ...               # 44 more languages
     └── zh.json           # Chinese
@@ -403,4 +408,4 @@ const { t, language, setLanguage } = useI18n();
 ---
 
 **Maintainer**: axpnet
-**Last Updated**: 2026-06-22
+**Last Updated**: 2026-10-26

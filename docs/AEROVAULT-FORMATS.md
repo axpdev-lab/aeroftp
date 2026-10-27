@@ -66,10 +66,13 @@ Cross-family opens are **rejected before any allocation or decrypt** by a magic
 check, so there is no cross-parser confusion or type-confusion primitive. This
 non-interoperability is by design: the two binary layouts are not convertible in
 place. To move data between families, extract from one and re-add to the other
-(the GUI and CLI both expose extract + create). A "Change Mode" repack that
-performs this extract-and-rebuild as a single operation (v2<->v3, and v2
-standard<->cascade), atomically swapping the rebuilt container, is in preparation
-for a future release and is not yet shipped.
+(the GUI and CLI both expose extract + create). The shipped **Change Mode** operation performs this extract-and-rebuild (v2<->v3, and v2 standard<->cascade). It is available from an open vault next to Change Password and through `aeroftp-cli vault change-mode`, keeping the password.
+
+`repack_vault_blocking` extracts the full plaintext tree into a `.aerovault-repack-*` temporary directory beside the vault before building the replacement. The filesystem needs free space for both that plaintext tree and the rebuilt container, alongside the existing vault. Normal cleanup removes the scratch directory, but an abrupt interruption can leave plaintext behind; choose a suitable filesystem and check for leftovers after an interrupted operation.
+
+Replacement uses two renames: the original is moved to `.<vault-name>.repack-bak-<pid>`, then the rebuilt container is moved to the original path. This is not an atomic swap. If the process stops between renames, the original path is absent and the original vault must be restored from the backup. A reported failure of the second rename attempts to restore that backup.
+
+Change Mode does not automatically preserve recovery protection. A v3-to-v2 conversion drops embedded parity, and every successful repack attempts to delete the old default `<vault>.aerocorrect` sidecar because it describes the previous bytes. Deletion is best effort; any leftover old sidecar is stale and must not be reused. The CLI `aeroftp-cli vault change-mode` defaults `--error-correction` to false. For a v3 target, explicitly enable Error Correction in the GUI or pass `--security-level archive --error-correction` in the CLI to build fresh embedded parity. A v2 target has no embedded parity; generate a new standalone sidecar for the rebuilt file with `aeroftp-cli correct gen`. Keep a separate verified backup before conversion and verify the new recovery data afterward.
 
 ## Header authentication
 
@@ -91,4 +94,4 @@ for a future release and is not yet shipped.
 - `AEROVAULT3` block AAD = `b"AeroVault v3 block"` + block_index (u64 LE) + the
   128-bit keyed-BLAKE3 chunk id as its 32-character hex string.
 
-_Last updated: 2026-06-22._
+_Last updated: 2026-10-26._

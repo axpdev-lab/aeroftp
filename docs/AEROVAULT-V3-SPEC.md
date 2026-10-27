@@ -232,8 +232,8 @@ engine is placement-agnostic (`reconstruct_from_error_correction` takes the pari
 bytes), so a detached file simply carries the same AVEC payloads in a framed sidecar.
 
 The detached file is the **unified `.aerocorrect` sidecar** shared with AeroSync
-(Ehud's #276 call: one detached parity format for any file; the full binary
-layout is documented in [section 11 below](#11-v4-evolution-note-t-aerovault-ecc-shipped)). It supersedes
+(Ehud's #276 call: one detached parity format for any file; the app consumes the shared crate API through
+[`error_correction/mod.rs`](../src-tauri/src/error_correction/mod.rs)). It supersedes
 the earlier vault-only `.aerovault.rec` / `AVREC1` format. The sidecar is content
 addressed: it binds to the SHA-256 of the whole container, not to a vault salt.
 
@@ -284,9 +284,11 @@ also stored in the AVEC payload header, so reconstruction reads K/P back regardl
 the level a vault was created with. Surfaced in AeroVault create (named buttons +
 slider + numeric input) and the CLI (`vault create --recovery-level low|medium|
 quartile|high|<N>`). AeroSync now shares the same `.aerocorrect` sidecar and overhead
-levels via `sync --error-correction` / `--ec-max-overhead`, so a bit-rotted remote
-backup is repaired on the next pull from its sidecar, without the original.
+levels via `sync --error-correction` / `--ec-max-overhead`. CLI `sync --ec` generates
+sidecars after uploads but does not verify or repair downloads. Desktop sync repair
+skips files without an expected SHA-256. For explicit download recovery, fetch both
+files and follow the [trusted-hash repair procedure](CLI-GUIDE.md#aerosync-ec---sync-error-correction-sidecars); a pull alone is not proof of successful repair.
 
-Implementation, tests, live proof, surfaces (P3), docs and close tracked in `docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/`. "v3 + Error Correction = v4".
+The shipped implementation is in [`aerovault_v3.rs`](../src-tauri/src/aerovault_v3.rs); the shared recovery format and engine are in [`error_correction/mod.rs`](../src-tauri/src/error_correction/mod.rs). "v3 + Error Correction = v4".
 
-See also: CHANGELOG (Unreleased), SECURITY.md (formats table), CLI-GUIDE (vault subcommand), ROADMAP.
+See also: [CHANGELOG](../CHANGELOG.md), [SECURITY.md](../SECURITY.md) (formats table), [CLI-GUIDE](CLI-GUIDE.md#error-correction-v4-track-reed-solomon-error-correction) (vault commands), [ROADMAP](../ROADMAP.md).

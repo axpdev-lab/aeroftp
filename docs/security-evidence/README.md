@@ -1,6 +1,10 @@
 # Security Evidence
 
-Audit remediation evidence files for AeroFTP, organized by version.
+Audit remediation evidence files for AeroFTP, organized by version. These are
+dated records of their stated revision, not a fresh audit of v4.2.5. Some reports
+retain `docs/dev/...` paths as provenance for internal working notes; those ignored
+files are not public evidence and cannot be followed from this repository. Public
+findings and remediation summaries are in the linked reports themselves.
 
 ## Reports
 
@@ -30,6 +34,11 @@ Audit remediation evidence files for AeroFTP, organized by version.
   - [AEROFTP-CLI-AUDIT-EXECUTIVE-2026-05-06.md](AEROFTP-CLI-AUDIT-EXECUTIVE-2026-05-06.md)
 
 ## Dependency Evaluations
+
+- **2026-07**: historical russh advisory investigation with the subsequent July resolution and patch-watch exit condition
+  - [RUSSH-DEPENDABOT-ADVISORIES-2026-07.md](RUSSH-DEPENDABOT-ADVISORIES-2026-07.md)
+- **2026-06**: iroh peer dependency advisory reachability and upgrade evaluation
+  - [IROH-PEER-L0-ADVISORIES-2026-06.md](IROH-PEER-L0-ADVISORIES-2026-06.md)
 
 - **2026-06-08**: `reed-solomon-erasure` evaluation for AeroVault v4 Error Correction (transitive RUSTSEC-2024-0384 accepted with rationale)
   - [REED-SOLOMON-ERASURE-EVALUATION-2026-06.md](REED-SOLOMON-ERASURE-EVALUATION-2026-06.md)

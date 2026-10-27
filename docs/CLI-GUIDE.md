@@ -1,7 +1,7 @@
 # AeroFTP CLI - User Guide
 
 > **Binary**: `aeroftp-cli` (ships alongside the GUI)
-> **Version reference**: v4.2.2 - last reviewed 5 October 2026
+> **Version reference**: v4.2.5 - reviewed against the release preparation snapshot on 26 October 2026
 > **License**: GPL-3.0
 
 ---
@@ -770,7 +770,7 @@ When the backend can supply the requested digest without transferring the file, 
 # Compare local and remote directories
 aeroftp-cli check --profile "server" /local/dir /remote/dir
 
-# Use SHA-256 checksums (slower but more accurate)
+# Request content comparison where both sides provide SHA-256
 aeroftp-cli check --profile "server" /local/ /remote/ --checksum
 
 # One-way: only check files that exist locally
@@ -780,7 +780,7 @@ aeroftp-cli check --profile "server" /local/ /remote/ --one-way
 aeroftp-cli check --profile "server" /local/ /remote/ --json
 ```
 
-Verifies that a local directory and remote directory are identical. Compares by file size (default) or SHA-256 checksum (`--checksum`). Reports: matches, differences, files missing on either side. When either scan could not read its whole tree (a local directory it cannot read, a remote directory that fails to list, the entry cap), the result is `partial` rather than `ok`, and the JSON output says which scan: `local_scan_incomplete`, `local_scan_errors`, `local_scan_truncated`, `remote_scan_incomplete`, `remote_scan_errors`, `remote_scan_truncated`. The paths a scan did not see are named as well, in `local_scan_boundaries` and `remote_scan_boundaries`, each entry a `{"path": ..., "reason": ...}` object, with the same list printed on stderr in text mode; a scan that saw everything adds no key, so the document of a clean run is unchanged. A link the walk did not follow is in that list too, with the reason `link_not_followed`, because what sits behind it was not read either. On stderr the list stops at 20 paths and says how many more there are, so it cannot bury the summary line above it. A gap with a name makes the result `partial`: the comparison still runs and the report says which paths the verdict does not cover. A gap the scan cannot name at all (its own root did not open, it was cancelled, it stopped at the entry cap) is refused instead: exit `4` with no report, because nothing can say which part of the tree a verdict would cover. Exit codes: `0` (the trees match, both scans are complete and neither left a named path out), `4` (differences found, the result is partial, or the run was refused for a gap with no name), `5` (invalid usage).
+Compares local and remote tree state and reports matches, differences and missing paths. The default comparison is size-based. With `--checksum`, plain (non-crypt) paths request local SHA-256 and the provider's remote checksum. A pair is compared by content only when the remote checksum is also SHA-256; otherwise it falls back to size, including unsupported checksums and crypt overlays. The `check` JSON `details` array omits matching entries, and its entries have no `compare_method` field. Use `reconcile --checksum --json` for per-pair `compare_method` (`checksum` or `size`) on matching and differing pairs; do not treat every exit `0` as content-integrity proof. Reports: matches, differences, files missing on either side. When either scan could not read its whole tree (a local directory it cannot read, a remote directory that fails to list, the entry cap), the result is `partial` rather than `ok`, and the JSON output says which scan: `local_scan_incomplete`, `local_scan_errors`, `local_scan_truncated`, `remote_scan_incomplete`, `remote_scan_errors`, `remote_scan_truncated`. The paths a scan did not see are named as well, in `local_scan_boundaries` and `remote_scan_boundaries`, each entry a `{"path": ..., "reason": ...}` object, with the same list printed on stderr in text mode; a scan that saw everything adds no key, so the document of a clean run is unchanged. A link the walk did not follow is in that list too, with the reason `link_not_followed`, because what sits behind it was not read either. On stderr the list stops at 20 paths and says how many more there are, so it cannot bury the summary line above it. A gap with a name makes the result `partial`: the comparison still runs and the report says which paths the verdict does not cover. A gap the scan cannot name at all (its own root did not open, it was cancelled, it stopped at the entry cap) is refused instead: exit `4` with no report, because nothing can say which part of the tree a verdict would cover. Exit codes: `0` (the trees match, both scans are complete and neither left a named path out), `4` (differences found, the result is partial, or the run was refused for a gap with no name), `5` (invalid usage).
 
 ### cryptcheck - Verify Crypt/Cleartext Integrity
 
@@ -973,7 +973,7 @@ With `--immutable`, a planned transfer whose destination already exists is not m
 
 Ctrl+C stops a `sync` in any phase (transfers, renames, deletes, the removal of emptied directories) and ends it with exit 130 and `"status": "interrupted"`; the counters say what was done before it. `get -r`, `put -r` and `get` / `put` with a glob do the same. A second Ctrl+C force-exits.
 
-`--error-correction` is opt-in for CLI sync and protects uploaded remote files at rest by writing a sibling `<remote>.aerorec` sidecar after each successful upload. If no level is supplied the CLI uses `medium` (15% target overhead). When enabled, sync automatically excludes `*.aerorec` from comparisons so parity sidecars are not mirrored back as user data or deleted as orphans. Remote deletes best-effort remove the protected file's companion sidecar after the primary delete succeeds; missing sidecars are ignored and sidecar delete failures do not fail the file delete. Phase 1 sidecar generation is capped at 256 MiB per source file; larger files are uploaded normally and counted as `ec_skipped_too_large`. JSON sync reports include `ec_generated`, `ec_skipped_too_large`, `ec_generate_failed`, `ec_sidecar_deleted`, and `ec_sidecar_delete_failed` when EC is enabled. Local-to-local sync ignores this flag.
+`--error-correction` is opt-in for CLI sync and protects uploaded remote files at rest by writing a sibling `<remote>.aerocorrect` sidecar after each successful upload. If no level is supplied the CLI uses `medium` (15% target overhead). When enabled, sync automatically excludes `*.aerocorrect` from comparisons so parity sidecars are not mirrored back as user data or deleted as orphans. Remote deletes best-effort remove the protected file's companion sidecar after the primary delete succeeds; missing sidecars are ignored and sidecar delete failures do not fail the file delete. Windowed sidecar generation has a default 1 GiB per-source-file cap; larger files are uploaded normally and counted as `ec_skipped_too_large`. JSON sync reports include `ec_generated`, `ec_skipped_too_large`, `ec_skipped_low_benefit`, `ec_generate_failed`, `ec_sidecar_deleted`, and `ec_sidecar_delete_failed` when EC is enabled. Local-to-local sync ignores this flag.
 
 #### Bisync (bidirectional)
 
@@ -1073,23 +1073,42 @@ aeroftp-cli sync-doctor --profile "server" ./local /remote --json
 aeroftp-cli sync-doctor --profile "server" ./local /remote --ec=medium --json
 ```
 
-Emits a JSON report with planned upload/download/delete counts, bandwidth estimate, top-level diff buckets, and a `next_command` field with the exact `aeroftp-cli sync ...` invocation that matches the preflight. When either scan could not read its whole tree (a local directory it cannot open, a local file it can list but not stat, a remote directory that fails to list, the remote depth limit, the entry cap), the counts above are a lower bound: the status is `attention` rather than `ok`, the exit code is `4` rather than `0`, the `checks` array gains `local_scan_complete` and `remote_scan_complete` with the error count and the truncation flag, the summary gains `local_scan_incomplete`, `local_scan_errors`, `local_scan_truncated`, `remote_scan_incomplete`, `remote_scan_errors` and `remote_scan_truncated`, and `risks` says which side is partial. No field is renamed or removed. With `--error-correction[=LEVEL]` / `--ec[=LEVEL]`, sync-doctor automatically excludes `*.aerorec` from scans and adds estimate fields (`ec_enabled`, `ec_level_pct`, `ec_estimated_sidecars`, `ec_estimated_overhead_bytes`, `ec_skipped_too_large`, `ec_phase1_max_file_size`) without computing or uploading parity. **Recommended discovery surface for AI coding agents** before they execute mutating sync.
+Emits a JSON report with planned upload/download/delete counts, bandwidth estimate, top-level diff buckets, and a `suggested_next_command` field containing an `aeroftp-cli sync ... --dry-run --json` follow-up. The suggestion omits `--ec-max-overhead`; append the same value used in preflight when that estimate limit matters. When either scan could not read its whole tree (a local directory it cannot open, a local file it can list but not stat, a remote directory that fails to list, the remote depth limit, the entry cap), the counts above are a lower bound: the status is `attention` rather than `ok`, the exit code is `4` rather than `0`, the `checks` array gains `local_scan_complete` and `remote_scan_complete` with the error count and the truncation flag, the summary gains `local_scan_incomplete`, `local_scan_errors`, `local_scan_truncated`, `remote_scan_incomplete`, `remote_scan_errors` and `remote_scan_truncated`, and `risks` says which side is partial. No field is renamed or removed. With `--error-correction[=LEVEL]` / `--ec[=LEVEL]`, sync-doctor automatically excludes `*.aerocorrect` from scans and adds estimate fields (`ec_enabled`, `ec_level_pct`, `ec_estimated_sidecars`, `ec_estimated_overhead_bytes`, `ec_skipped_too_large`, `ec_max_file_size`, `ec_skipped_low_benefit`) without computing or uploading parity. **Recommended discovery surface for AI coding agents** before they execute mutating sync.
 
 ### AEROSYNC-EC - Sync Error Correction Sidecars
 
-AEROSYNC-EC extends AeroSync backups with Reed-Solomon parity stored next to each protected remote file. It reuses the same AVEC codec family as AeroVault error correction, but wraps sync parity in an `AERC1` sidecar:
+AeroSync stores Reed-Solomon parity next to each protected remote file as
+`<remote-file>.aerocorrect`, using the same unified `AEROCORR` format v2 as
+standalone `correct` and detached AeroVault recovery. The locator is triplicated
+with per-copy checksums; per-shard checksums localize damaged parity rather than
+rejecting the whole file for a single flipped bit. The locked `aerovault` crate
+provides this shared engine through `src-tauri/src/error_correction/mod.rs`.
 
-```text
-<remote-file>.aerorec
-magic: "AERC1\0\0\0"
-binding: BLAKE3("aerosync-recovery-binding-v1" || relative_path || file_size || content_sha256)
-segments: Phase 1 emits one whole-file AVEC segment
-checksum: trailing BLAKE3 over the sidecar body
+Generation and verification process 64 MiB windows. The default source-file cap
+is 1 GiB, so the old 256 MiB single-buffer limit no longer applies. The CLI opts
+in per run with `sync --error-correction` or `--ec` (default level `medium`, 15%).
+`--ec-max-overhead <PCT>` skips a sidecar whose serialized size would exceed that
+percentage of the protected file; `0` disables this benefit gate. This matters
+for tiny files, where fixed parity-shard floors dominate the nominal overhead.
+The sync-doctor estimate uses the same windowed geometry without generating
+parity and reports skipped-large and skipped-low-benefit candidates.
+
+In v4.2.5, CLI `sync --ec` generates sidecars after successful uploads; it does not automatically verify or repair downloaded files. The separate desktop sync repair path requires an expected SHA-256 from the scanned item and skips repair when that hash is unavailable; an S3 MD5 is not a SHA-256 authenticity anchor.
+
+For explicit recovery, download the damaged file and its `.aerocorrect` sidecar, then use a SHA-256 of the known-good content obtained independently from a trusted source:
+
+```bash
+aeroftp-cli get --profile "Backup" /backup/report.bin ./report.bin
+aeroftp-cli get --profile "Backup" /backup/report.bin.aerocorrect ./report.bin.aerocorrect
+aeroftp-cli correct repair ./report.bin --parity ./report.bin.aerocorrect --expect-sha256 YOUR_64_HEX_SHA256
 ```
 
-The binding prevents stale or mismatched sidecars from being trusted: if the file path, size, or content hash changes, the sidecar no longer matches that file. Backup-class sync profiles use Medium EC by default in the app; the CLI command surface is explicit per run via `sync --error-correction` or `sync --ec`.
+Replace the hash placeholder before running the command. A bare `correct repair` checks the sidecar's own content hash for integrity, but that hash does not authenticate a sidecar supplied by an attacker who can replace both objects. Detached recovery data must be refreshed after content changes.
 
-Honest limits: EC protects against localized at-rest corruption after upload, not TCP/SSH/TLS wire corruption, logical deletes, ransomware, whole-file loss, or truncation beyond the Reed-Solomon parity budget. Each protected file creates one extra remote object and consumes the selected storage overhead. Phase 1 skips files larger than 256 MiB until the later windowed multi-segment generator lands.
+EC covers damage within the selected Reed-Solomon budget. It does not recover
+logical deletes, ransomware replacing a whole file, complete file loss or damage
+beyond that budget. Each protected file adds a remote object and the selected
+storage overhead. The text EC summary reports generated, skipped-too-large and failure outcomes, but omits low-benefit skips. Those skips appear per file on stderr unless quiet mode suppresses the messages, and in the `ec_skipped_low_benefit` JSON counter. Inspect stderr or request JSON and check the EC counters before treating a backup as protected. Desktop sync also reports its verification and repair outcomes.
 
 ### transfer - Cross-Profile Transfer
 
@@ -1349,13 +1368,14 @@ aeroftp-cli vault repair myvault.aerovault
 ```
 
 **Recovery placement (the SIDECAR slice, #276).** Parity can live inside the
-container (`embedded`, the default), in a sibling `.aerovault.rec` recovery file
+container (`embedded`, the default), in a sibling `.aerocorrect` recovery file
 (`detached`), or `both`. Detached keeps the encrypted container byte-identical to
 a plain vault (so a remote storage/browse view stays stable) and lets you add or
 refresh parity *after* the fact, the concrete win over Kopia (which can only
-enable EC at creation). par2-style: the recovery file carries a binding id to its
-vault, so a wrong file is refused early; staleness after edits is caught by the
-payload's own per-shard checksums.
+enable EC at creation). The unified sidecar records the container's SHA-256.
+A damaged container cannot match its original hash, so vault repair verifies the
+reconstructed header and manifest/data against their authenticated values before
+persisting anything. A foreign or stale sidecar must fail that verification.
 
 ```bash
 # Create with a detached sidecar instead of embedded parity
@@ -1367,23 +1387,23 @@ AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault create myvault.aerovault --ec --
 AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault create myvault.aerovault --ec --recovery-level 12
 
 # Add parity later to a vault created without it (reads the container, never rewrites it)
-AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault export-parity myvault.aerovault            # -> myvault.aerovault.rec
-AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault export-parity myvault.aerovault -o out.rec # custom path
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault export-parity myvault.aerovault            # -> myvault.aerovault.aerocorrect
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault export-parity myvault.aerovault -o out.aerocorrect # custom path
 
-# Repair from an explicit recovery file (binding id verified against the vault)
-aeroftp-cli vault repair myvault.aerovault --parity myvault.aerovault.rec
-aeroftp-cli vault scrub  myvault.aerovault --parity myvault.aerovault.rec   # reports parity_source
+# Repair from an explicit recovery file (authenticated reconstructed regions are verified)
+aeroftp-cli vault repair myvault.aerovault --parity myvault.aerovault.aerocorrect
+aeroftp-cli vault scrub  myvault.aerovault --parity myvault.aerovault.aerocorrect   # reports parity_source
 
 # Drop the embedded copy once a sidecar exists (refused without one unless --force)
 AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault strip-parity myvault.aerovault
 ```
 
 Repair resolves the parity source in priority order: explicit `--parity` ->
-`<vault>.aerovault.rec` sidecar -> embedded extension, and reports which it used
+`<vault>.aerocorrect` sidecar -> embedded extension, and reports which it used
 (`parity_source` in `--json`). Detached parity tracks a fixed data set, so re-run
 `export-parity` after editing a detached/both vault.
 
-See `aeroftp-cli vault --help`, the APPENDIX-AEROVAULT-V4-ECC, AEROVAULT-V3-SPEC §11, and AGENTS.md (use direct paths for vault; --profile for remote servers). Receipts (`--receipt` or GUI) now include error_correction_* fields when present (P3-03). All via the shared engine (22 tests, live verified 20.1% overhead + full corrupt→repair→extract SHA-256 match). 
+See `aeroftp-cli vault --help`, [AEROVAULT-V3-SPEC §11](AEROVAULT-V3-SPEC.md#11-v4-evolution-note-t-aerovault-ecc-shipped), and [AGENTS.md](../AGENTS.md) (use direct paths for vault; `--profile` for remote servers). Receipts (`--receipt` or GUI) now include error_correction_* fields when present (P3-03). All via the shared engine (22 tests, live verified 20.1% overhead + full corrupt→repair→extract SHA-256 match).
 
 (Closes T-AEROVAULT-ECC.)
 `--password` / `-p`, `AEROFTP_VAULT_PASSWORD`, or a TTY prompt. `vault
@@ -2123,7 +2143,7 @@ Replaces the boilerplate `connect -> about -> df -> ls /` sequence agents would 
 aeroftp-cli agent-info --json
 ```
 
-Prints structured JSON describing safe/modify/destructive command groups, credential model, output hygiene, saved profile inventory with per-profile auth state, and a `protocol_features` map keyed by protocol (share_links, resume, server_copy, versions, thumbnails, change_tracking) plus an `agent_connect_supported_protocols` array. This is the recommended discovery surface for AI coding agents and the canonical input for capability-aware tool routing.
+Prints structured JSON describing safe/modify/destructive command groups, credential model, output hygiene, saved profile inventory with connection metadata, and a `protocol_features` map keyed by protocol (share_links, resume, server_copy, versions, thumbnails, change_tracking) plus an `agent_connect_supported_protocols` array. This is the recommended discovery surface for AI coding agents and the canonical input for capability-aware tool routing. Its profile projection omits `auth_state`; use `profiles --json` for per-profile local readiness.
 
 It also emits the transfer-scheduler surface: a `protocol_transfer_capabilities` map (one block per protocol, `source: "protocol_defaults"`) and a per-profile `transfer_capabilities` block (`source: "profile_defaults"`) under `profiles.servers[]`, alongside the safe profile fields `id`, `name`, `protocol`, `host`, `port`, `username`, `initialPath`, `providerId`. Each block is `{ status, source, source_is_live, capabilities }`, where `capabilities` is the `TransferCapabilities` object documented in [Transfer Capabilities by Protocol](#transfer-capabilities-by-protocol). The top-level `capability_source_semantics` object explains the three source labels (`protocol_defaults` / `profile_defaults` / `live_provider`) so agents never treat the static registry as a live probe. Baselines are capability-driven from the provider implementations even without a session. These fields are additive: consumers reading only `protocol_features` keep working unchanged.
 
@@ -2164,7 +2184,7 @@ It also emits the transfer-scheduler surface: a `protocol_transfer_capabilities`
 | `--max-size <size>` | Maximum file size filter (e.g., `1G`) |
 | `--min-age <duration>` | Skip files newer than duration (e.g., `7d`, `24h`) |
 | `--max-age <duration>` | Skip files older than duration (e.g., `30d`) |
-| `--max-transfer <size>` | Abort session after transferring N bytes (e.g., `10G`). Exit code 8, the code for "stopped at a limit and nothing failed". On `sync` that code means this budget specifically: a timeout there fails transfers and is reported as a failure (exit 4) instead. With `--json` the budget is named by an `over_budget` count of the files it left behind |
+| `--max-transfer <size>` | Abort session after transferring N bytes (e.g., `10G`). Exit code 8 indicates a budget stop on this path. On `sync` that code means this budget specifically: a timeout there fails transfers and is reported as a failure (exit 4) instead. With `--json`, `over_budget` counts files left behind; an exact-budget stop can return 8 without that field |
 | `--retries <n>` | Retry failed transfers N times (default: 3). Auth/usage errors not retried, and neither is a transfer stopped by Ctrl+C: a Ctrl+C after a failed attempt, or during `--retries-sleep`, ends the command with 130 |
 | `--retries-sleep <dur>` | Delay between retries (e.g., `5s`, `1m`, `500ms`). Default: 1s |
 | `--max-backlog <n>` | Max queued transfer tasks for parallel operations (default: 10000) |
@@ -2435,7 +2455,7 @@ given. See [MULTI-USER.md](./MULTI-USER.md) for the partition model.
 | 5 | Invalid config / usage error. Also a file larger than the provider accepts (a per-file size limit, as on OpenDrive's free plan): the same upload fails again, so it shares the code `--retries` does not repeat |
 | 6 | Authentication failed (credentials refused, or the server's host key rejected) |
 | 7 | Not supported |
-| 8 | Stopped at a limit and nothing failed. Which limit depends on the command: a timeout for most, the `--max-transfer` budget on `sync`, where a timeout that fails a transfer reports 4 instead. `--json` names a reached budget with `over_budget` |
+| 8 | Timeout or transfer-budget stop, with command-specific outcomes. A SITE reply timeout can follow a command the server applied: verify before retrying a mutation. On sync, a timeout that fails a transfer reports 4; the budget stop reports 8. JSON `over_budget` counts skipped files and can be absent at the exact budget, so inspect the configured limits |
 | 9 | Already exists / directory not empty (--immutable, --no-clobber) |
 | 10 | Server error / parse error |
 | 11 | I/O error |

@@ -3,7 +3,12 @@
 > **Classification**: Public
 > **Last Updated**: 2026-06-25
 
-This document contains all public security and quality audit reports for AeroFTP releases.
+This document summarizes historical security and quality audits at their stated
+release revisions. It is not a fresh audit or a complete security status for
+v4.2.5. Use the [public evidence index](security-evidence/README.md) for later
+release packs and dependency evaluations, and [SECURITY.md](../SECURITY.md) for
+the current architecture and reporting policy. Historical counts, planned fixes
+and grades below remain attached to their original scope.
 
 ---
 

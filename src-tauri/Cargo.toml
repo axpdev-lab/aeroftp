@@ -1,6 +1,6 @@
 [package]
 name = "aeroftp"
-version = "4.2.4"
+version = "4.2.5"
 description = "AeroFTP - Fast, Beautiful, Reliable FTP Client"
 authors = ["axpdev"]
 license = "GPL-3.0-or-later"
@@ -126,7 +126,10 @@ futures-util = "0.3"
 # WebKit origin-scoped state (localStorage, IndexedDB, server filters, theme).
 # The CVE vector requires loading remote/untrusted content, which AeroFTP does
 # not do, so the residual risk is not applicable to our surface.
-# Keep =2.11.0; ignore tauri 2.11.x in dependabot.yml.
+# Keep =2.11.0 and the matching build/runtime layers pinned together. Newer
+# plugin releases can require tauri ^2.12 and matching @tauri-apps/api versions,
+# so this hold also constrains the Rust and JavaScript plugin family. Revisit
+# the family in one dedicated Linux/runtime validation, not an isolated bump.
 tauri = { version = "=2.11.0", features = ["tray-icon", "protocol-asset"] }
 # Hold the layer under the pin on the pin's own line. `tauri` 2.11.0 accepts
 # tauri-runtime and tauri-runtime-wry `^2.11.0` and tauri-utils `^2.9.0`, so
@@ -266,7 +269,7 @@ jsonwebtoken = { version = "10.4", default-features = false, features = ["aws_lc
 # AeroVault v2 - Military-Grade Encryption (v1.8.0)
 # T7 convergence: the app consumes the crate's AEROVAULT3 core (aerovault::v3);
 # the vault_v3_* handlers are thin wrappers over it (see src/aerovault_v3.rs).
-aerovault = "0.6.6"                                                    # M7: converged AEROVAULT3 core + standalone/AeroSync EC engine (published on crates.io)
+aerovault = "0.6.7"                                                    # M7: converged AEROVAULT3 core + standalone/AeroSync EC engine (published on crates.io)
 aes-gcm-siv = "0.11"                                                   # AeroVault v3 AEAD content encryption
 chacha20poly1305 = "0.11"                                              # ChaCha20-Poly1305 (used by CryptoLab in cyber_tools)
 hkdf = "0.12"                                                          # HKDF key derivation (used by crypto.rs keystore)

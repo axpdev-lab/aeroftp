@@ -13,8 +13,10 @@ that tool's own config format can express it.
 
 ## At a glance
 
-- AeroFTP connects over **5 transfer protocols** (FTP, FTPS, SFTP, WebDAV, S3)
-  plus roughly **28 cloud providers**.
+- The five broadly shared bridge protocols are **FTP, FTPS, SFTP, WebDAV and S3**.
+  AeroFTP itself has seven transport protocols and 26 native provider integrations;
+  Azure Blob and OpenStack Swift have rclone bridges in the table below. See the
+  generated [provider inventory](PROVIDER-INVENTORY.json) for product counts.
 - **15 external tools** have an import/export bridge.
 - The transfer protocols interoperate widely across tools. The native cloud
   providers interoperate **only through rclone**: no other tool's config format
@@ -166,4 +168,4 @@ way: an importer reads whatever connection types it recognizes in the file.)
 ---
 
 *This matrix tracks the shipped bridge code and is updated on every bridge change.
-Last reviewed for v4.2.4.*
+Last reviewed for v4.2.5 (26 October 2026).*

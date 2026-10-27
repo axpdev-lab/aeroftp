@@ -1,291 +1,186 @@
-# AeroAgent - AI-Powered File Management
+# AeroAgent capabilities and built-in tools
 
-> _Last updated: 2026-06-28_
+> AeroFTP v4.2.5 documentation, reviewed 26 October 2026.
 
-For the current delivered foundations and remaining proposals, use the
-[AeroAgent roadmap](AEROAGENT-ROADMAP.md), reconciled against main on
-2026-10-18. The counts and examples below describe the June 2026 snapshot.
+AeroAgent 1.7 is the desktop app's optional AI assistant. It supports **26 AI
+provider presets** and **86 built-in GUI tools**. The tool names and approval
+levels below come from [`AGENT_TOOLS`](../src/types/tools.ts); provider presets
+come from [`PROVIDER_PRESETS`](../src/types/ai.ts). Model capabilities depend on
+the selected model and transport, rather than every model of a provider
+supporting the same features. Unknown-model metadata uses conservative limits.
 
-AeroAgent is AeroFTP's integrated AI assistant with **60+ agent tools (35+ exposed over MCP)** across 9 categories. It can create, read, edit, and manage files locally and on remote servers using natural language commands. The v4.1.0 coding tools are GUI-only and are not exposed over MCP, so the MCP-exposed count is unchanged.
+The GUI, CLI agent and MCP server share Rust operations but expose different
+catalogs. The CLI agent has 39 tools. The native MCP server has **78 callable
+names: 40 primary tools plus 38 compatibility aliases**, as recorded in the
+[command inventory](COMMAND-INVENTORY.json). Do not add those names to the GUI
+count or assume an alias exists on every surface. Coding and semantic GUI
+control require the desktop context and are not exposed by the native MCP
+server. External MCP tools, plugins, macros and the `tool_search` discovery
+helper are additional to the 86 built-in GUI entries.
 
-> Full test results, prompt examples, and provider compatibility matrix available at [docs.aeroftp.app/aeroagent](https://docs.aeroftp.app/aeroagent)
+## What the assistant can do
 
-## Supported AI Providers
+AeroAgent can inspect and manage local files, operate on active or saved remote
+profiles, prepare transfers, run checks, review and apply coding patches, create
+checkpoints, and use approved MCP servers. Remote operations consume each
+provider's actual capabilities: sharing, server-side copy, checksums, trash,
+versions and quota are provider-dependent. Cross-profile copies can stage data
+locally; they are not a universal direct server-to-server protocol.
 
-AeroAgent works with **26 AI providers** - choose your preferred model:
+The [AeroAgent roadmap](AEROAGENT-ROADMAP.md) documents the delivered Responses
+adapter, tool discovery, local/S3 read-only workers, MCP client and semantic GUI
+control, plus the boundaries of remaining 2.0 proposals. Workers do not provide
+arbitrary provider writes or durable background jobs. The
+[MCP managed-install guide](MCP-MANAGED-INSTALL.md) describes Linux STDIO
+isolation; production local STDIO launch remains refused on Windows and macOS.
+Remote Streamable HTTP has a separate transport and OAuth lifecycle.
 
-| Provider | Tool Calling | Streaming | Vision | Thinking |
-|----------|:---:|:---:|:---:|:---:|
-| OpenAI (GPT-4o, o3) | Yes | Yes | Yes | Yes |
-| Anthropic (Claude) | Yes | Yes | Yes | Yes |
-| Google Gemini | Yes | Yes | Yes | Yes |
-| xAI (Grok) | Yes | Yes | Yes | Yes |
-| Cohere (Command A) | Yes | Yes | Yes | Yes |
-| DeepSeek | Yes | Yes | - | Yes |
-| Mistral | Yes | Yes | - | - |
-| Groq | Yes | Yes | - | - |
-| Qwen (Alibaba) | Yes | Yes | Yes | Yes |
-| Kimi (Moonshot) | Yes | Yes | - | - |
-| Ollama (Local) | Yes | Yes | Varies | Varies |
-| OpenRouter | Yes | Yes | Varies | Varies |
-| Together AI | Yes | Yes | - | - |
-| Perplexity | - | Yes | - | - |
-| AI21 Labs | Yes | Yes | - | - |
-| Cerebras | Yes | Yes | - | - |
-| SambaNova | Yes | Yes | - | - |
-| Fireworks AI | Yes | Yes | - | - |
-| Nvidia (NIM) | Yes | Yes | - | - |
-| Z.AI (GLM) | Yes | Yes | - | Yes |
-| Hyperbolic | Yes | Yes | - | - |
-| Novita | Yes | Yes | - | - |
-| Yi (01.AI) | Yes | Yes | - | - |
-| Kilo (Gateway) | Yes | Yes | Yes | - |
-| Amazon Bedrock | - | Yes | - | - |
-| Custom (OpenAI-compatible) | Yes | Yes | - | - |
+## Approval levels
 
-## Tool Categories
+The catalog contains 30 safe, 43 medium and 13 high entries. These are the GUI
+catalog classifications, not the CLI's auto-approval policy or MCP rate-limit
+categories. Backend grants, path validation, cancellation, account context and
+agent-mode policy still apply. Discovery never approves execution. Native
+confirmation depends on mode; Expert uses the in-app approval panel and Extreme
+can auto-approve tools. Choose a mode appropriate for the workspace and data.
 
-The 60+ agent tools span nine categories (the per-category rows below count each `aeroftp_*` and `remote_*` alias separately, so they tally higher than the distinct-tool figure). Each tool carries a danger level (read-only / medium / high); every medium or high tool requires explicit user approval before it runs.
+The semantic GUI controller uses bounded intents and redacted state, with a
+visible control banner and Stop. It does not grant arbitrary clicks, scripts,
+master-password access or secret editing. See [AGENTS.md](../AGENTS.md#controlling-the-desktop-gui)
+for the closed public action contract.
 
-### Remote operations (21 tools)
-List, read, stat, search, upload, download, create directories, rename, edit, delete, hash, head/tail, tree, and check quota on any saved server. These route through the `StorageProvider` trait, so they behave identically across all 7 transport protocols and 25+ native provider integrations.
+## Built-in GUI catalog
 
-```
-> Connect to my-server.com and list the contents of /var/www/html/
-```
-```
-AeroAgent: Connected to my-server.com via FTP/TLS
-  / css/           FOLDER   2026-03-15
-  / js/            FOLDER   2026-03-15
-  / index.html     4.2 KB   2026-03-18
-  / favicon.ico    1.1 KB   2026-03-10
-```
+### Remote files and provider maintenance
 
-### Local file operations (21 tools)
-Create, read, write, edit, move, copy, rename, trash, and inspect files on the local filesystem, plus grep, head, tail, diff, tree, batch stat, disk usage, and duplicate detection.
+| Tool | GUI approval level |
+|---|---|
+| `remote_list` | safe |
+| `remote_read` | safe |
+| `remote_info` | safe |
+| `remote_search` | safe |
+| `remote_edit` | medium |
+| `remote_download` | medium |
+| `remote_upload` | medium |
+| `remote_mkdir` | medium |
+| `remote_rename` | medium |
+| `remote_delete` | high |
+| `server_list_saved` | safe |
+| `server_exec` | high |
+| `remote_hashsum` | safe |
+| `remote_head` | safe |
+| `remote_tail` | safe |
+| `remote_tree` | safe |
+| `remote_storage_quota` | safe |
+| `remote_sync_doctor` | safe |
+| `remote_reconcile` | safe |
+| `remote_speed` | medium |
+| `remote_touch` | medium |
+| `remote_cleanup` | high |
+| `remote_dedupe` | high |
+| `remote_versions` | high |
+| `remote_trash` | high |
 
-```
-> Create three files in the project folder: index.html with a dark theme,
-  style.css with custom colors, and app.js with a console.log.
-```
-```
-AeroAgent: Created 3 files:
-  + index.html (496 bytes)
-  + style.css (286 bytes)
-  + app.js (22 bytes)
-```
+### Transfers, sync and telemetry
 
-```
-> Search for "TODO" in all files, then show the directory tree
-```
-```
-AeroAgent: 2 match(es) in 3 files for "TODO"
-  app.js:15 - // TODO: add error handling
-  config.json:3 - // TODO: update API key
+| Tool | GUI approval level |
+|---|---|
+| `generate_transfer_plan` | safe |
+| `upload_files` | medium |
+| `download_files` | medium |
+| `sync_preview` | medium |
+| `sync_control` | medium |
+| `cross_profile_transfer` | high |
+| `aeroftp_benchmark` | medium |
+| `aeroftp_transfer_stats` | safe |
 
-  project/
-  ├── app.js (1.2 KB)
-  ├── config.json (256 B)
-  └── styles/
-      └── main.css (890 B)
-```
+### Local files and inspection
 
-### Cross-profile transfer (4 tools)
-Upload and download in bulk, and copy files directly between two saved profiles without staging them locally.
+| Tool | GUI approval level |
+|---|---|
+| `preview_edit` | safe |
+| `local_list` | medium |
+| `local_read` | medium |
+| `local_search` | medium |
+| `local_mkdir` | medium |
+| `local_write` | medium |
+| `local_rename` | medium |
+| `local_move_files` | medium |
+| `local_edit` | medium |
+| `local_batch_rename` | medium |
+| `local_copy_files` | medium |
+| `local_trash` | medium |
+| `local_grep` | medium |
+| `local_head` | medium |
+| `local_tail` | medium |
+| `local_stat_batch` | medium |
+| `local_tree` | medium |
+| `local_diff` | medium |
+| `local_file_info` | safe |
+| `local_disk_usage` | safe |
+| `local_find_duplicates` | safe |
+| `hash_file` | safe |
+| `local_delete` | high |
 
-```
-> Upload the entire build/ folder to the remote server
-```
-```
-AeroAgent: Uploaded 12 file(s) to /www/build/
-  + build/index.html
-  + build/css/style.css
-  + build/js/app.js
-  ...
-```
+### Coding foundation
 
-### Sync & verification (7 tools)
-Preview and run directory syncs, preflight risk checks, reconcile and dedupe remote trees, clean up orphan temp files, control background sync, and benchmark throughput.
+| Tool | GUI approval level |
+|---|---|
+| `coding_checkpoint_create` | medium |
+| `coding_checkpoint_restore` | high |
+| `coding_apply_patch` | high |
+| `coding_git_status` | safe |
+| `coding_git_diff` | safe |
+| `coding_git_stage` | high |
+| `coding_git_commit` | high |
+| `coding_git_log` | safe |
+| `coding_git_show` | safe |
+| `coding_run_checks` | medium |
+| `coding_verify` | medium |
+| `coding_diagnostics` | medium |
+| `coding_search` | safe |
 
-### Archives (2 tools)
-Compress and extract ZIP, 7z, TAR, GZ, XZ, BZ2 archives.
+`coding_diagnostics` requires a backend approval grant because compiler and linter runs can execute workspace build scripts, proc-macros and configuration code. Its GUI classification is medium, like curated checks and verification; a diagnostic run is not a read-only safety guarantee.
 
-```
-> Compress all files in the project/ folder into project.zip
-```
-```
-AeroAgent: Created /project/project.zip (357 bytes)
-```
+### Archives and recovery
 
-### System & shell (4 tools)
-Execute system commands with captured stdout/stderr and exit codes, read/write the clipboard, and hash local files.
+| Tool | GUI approval level |
+|---|---|
+| `archive_compress` | medium |
+| `archive_decompress` | medium |
+| `vault_peek` | safe |
+| `aeroftp_correct_gen` | medium |
+| `aeroftp_correct_verify` | safe |
+| `aeroftp_correct_repair` | medium |
 
-```
-> Run "uname -a" to check the system info
-```
-```
-AeroAgent: uname -a - exit code 0
-  Linux server 6.17.0-19-generic #19~24.04.2-Ubuntu SMP x86_64
-```
+### Context, system and app control
 
-### Knowledge & memory (3 tools)
-RAG indexing, full-text search across your workspace, and persistent per-project memory notes.
+| Tool | GUI approval level |
+|---|---|
+| `clipboard_read` | medium |
+| `clipboard_write` | medium |
+| `shell_execute` | high |
+| `rag_index` | medium |
+| `rag_search` | medium |
+| `agent_memory_write` | medium |
+| `gui_state` | safe |
+| `gui_wait` | safe |
+| `gui_run` | medium |
+| `set_theme` | safe |
+| `app_info` | safe |
 
-```
-> Index the current project and search for authentication-related code
-```
-```
-AeroAgent: Indexed 45 files. Found 3 matches for "authentication":
-  - auth.ts:12 - export function validateToken()
-  - middleware.ts:8 - const authGuard = ...
-  - config.ts:25 - AUTH_ENDPOINT: "https://..."
-```
+## Example workflows
 
-### App & server control (6 tools)
-Inspect the app and vault state, switch theme, preview an edit before applying, list saved profiles, and run vault-backed operations on any saved server (`server_exec`) without exposing credentials to the model.
+- Inspect a saved deployment profile with `server_list_saved`, then
+  `remote_list` / `remote_info` using its exact name or ID. Credentials are
+  resolved internally; use an approved transfer tool for writes.
+- Search a coding workspace with `coding_search`, inspect diagnostics, review
+  a proposed patch, then approve `coding_apply_patch` and run the relevant checks.
+- Preview a transfer with `generate_transfer_plan` or `sync_preview`, review its
+  destination and conflicts, then approve execution. A preview does not authorize
+  a later destructive operation.
+- Ask for visible work in AeroFTP with `gui_state`, a supported `gui_run` intent
+  and `gui_wait`. Headless CLI operations do not substitute for visible GUI work.
 
-### Coding (13 tools, GUI-only)
-The v4.1.0 AeroAgent coding loop (foundation): a curated GUI tool set for local
-coding work. Ripgrep workspace search, structured cargo / tsc / eslint
-diagnostics, git read (log / show) plus stage / commit, a run-checks runner and
-an ordered multi-check verify, safe patch apply with automatic checkpoints, and
-review cards. These tools are GUI-only (not exposed over MCP) and are read-only
-or approval-gated.
-
-## Multi-Step Workflows
-
-AeroAgent executes complex tasks autonomously with tool chaining:
-
-| Workflow | Tools Used | Steps |
-|----------|-----------|:---:|
-| Create website + deploy | `local_mkdir` → `local_write` x4 → `upload_files` | 6 |
-| Read + edit + upload | `local_read` → `local_edit` → `upload_files` | 3 |
-| Backup + compress | `local_copy_files` → `archive_compress` | 2 |
-| Audit remote server | `server_list_saved` → `server_exec(ls)` → `server_exec(df)` | 3 |
-| Extract + analyze | `archive_decompress` → `local_tree` → `local_grep` | 3 |
-
-## Safety Features
-
-- **Tool approval**: All file modifications require explicit user approval (Allow/Reject)
-- **Diff preview**: See exactly what changes will be made before approving
-- **Danger levels**: Tools classified read-only / safe / medium / high, with appropriate warnings; every medium- or high-danger tool requires explicit user approval before it runs
-- **Password isolation**: Server credentials resolved in Rust backend, never exposed to AI model
-- **Command denylist**: Dangerous shell commands blocked at backend level
-
-## Tested Providers
-
-Validated with real-world file operations (create, read, edit, upload, server connect):
-
-| Provider | Model | Tool Calling | Multi-Step | Server Exec |
-|----------|-------|:---:|:---:|:---:|
-| Cohere | Command A Reasoning 08 2025 | Yes | Yes | Yes |
-| Google | Gemini 3.1 Flash Lite Preview | Yes | Yes | Yes |
-| Google | Gemini 2.5 Flash | Yes | Yes | Yes |
-
-> Full provider compatibility matrix and test results: [docs.aeroftp.app/aeroagent/providers](https://docs.aeroftp.app/aeroagent/providers)
-
-## Complete Tool List (60+ agent tools, 35+ exposed over MCP)
-
-<details>
-<summary>Click to expand</summary>
-
-The rows below enumerate each tool name, including aliases. Many remote tools ship under both an `aeroftp_*` (MCP) and a `remote_*` (GUI / cross-profile) alias for the same capability, so listing every alias tallies higher than the distinct-tool figure; 35+ canonical `aeroftp_*` capabilities are exposed over the MCP server.
-
-**Remote operations (21)**
-
-| Tool | Danger | Tool | Danger |
-|------|--------|------|--------|
-| `remote_list` | Read-only | `remote_upload` | Medium |
-| `remote_read` | Read-only | `upload_files` | Medium |
-| `remote_info` | Read-only | `remote_upload_many` | Medium |
-| `remote_search` | Read-only | `remote_download` | Medium |
-| `remote_head` | Read-only | `download_files` | Safe |
-| `remote_tail` | Read-only | `remote_mkdir` | Medium |
-| `remote_tree` | Read-only | `remote_rename` | Medium |
-| `remote_storage_quota` | Read-only | `remote_edit` | Medium |
-| `remote_hashsum` | Read-only | `remote_touch` | Medium |
-| `server_list_saved` | Read-only | `remote_delete` | High |
-| | | `remote_delete_many` | High |
-
-**Local file operations (21)**
-
-| Tool | Danger | Tool | Danger |
-|------|--------|------|--------|
-| `local_list` | Read-only | `local_write` | Medium |
-| `local_read` | Read-only | `local_mkdir` | Medium |
-| `local_search` | Read-only | `local_rename` | Medium |
-| `local_file_info` | Read-only | `local_edit` | Medium |
-| `local_disk_usage` | Read-only | `local_move_files` | Medium |
-| `local_find_duplicates` | Read-only | `local_copy_files` | Medium |
-| `local_diff` | Read-only | `local_batch_rename` | Medium |
-| `local_tree` | Read-only | `local_trash` | Medium |
-| `local_grep` | Read-only | `local_delete` | High |
-| `local_head` | Read-only | `local_stat_batch` | Read-only |
-| `local_tail` | Read-only | | |
-
-**Cross-profile transfer (4)**
-
-| Tool | Danger |
-|------|--------|
-| `remote_transfer` | Medium |
-| `remote_transfer_tree` | Medium |
-| `cross_profile_transfer` | Medium |
-| `generate_transfer_plan` | Safe |
-
-**Sync & verification (7)**
-
-| Tool | Danger | Tool | Danger |
-|------|--------|------|--------|
-| `remote_sync_doctor` | Read-only | `remote_cleanup` | High |
-| `remote_reconcile` | Read-only | `sync_control` | Safe |
-| `remote_dedupe` | High | `sync_preview` | Safe |
-| `remote_speed` | Medium | | |
-
-**Archives (2)**
-
-| Tool | Danger |
-|------|--------|
-| `archive_compress` | Medium |
-| `archive_decompress` | Medium |
-
-**System & shell (4)**
-
-| Tool | Danger |
-|------|--------|
-| `shell_execute` | High |
-| `clipboard_read` | Safe |
-| `clipboard_write` | Safe |
-| `hash_file` | Safe |
-
-**Knowledge & memory (3)**
-
-| Tool | Danger |
-|------|--------|
-| `rag_index` | Read-only |
-| `rag_search` | Read-only |
-| `agent_memory_write` | Medium |
-
-**App & server control (6)**
-
-| Tool | Danger |
-|------|--------|
-| `app_info` | Safe |
-| `set_theme` | Safe |
-| `vault_peek` | Safe |
-| `preview_edit` | Safe |
-| `agent_connect` | Read-only |
-| `server_exec` | High |
-
-**Coding (13, GUI-only, not exposed over MCP)**
-
-| Tool | Danger | Tool | Danger |
-|------|--------|------|--------|
-| `coding_search` | Read-only | `coding_checkpoint_create` | Medium |
-| `coding_diagnostics` | Read-only | `coding_run_checks` | Medium |
-| `coding_git_status` | Read-only | `coding_verify` | Medium |
-| `coding_git_diff` | Read-only | `coding_apply_patch` | High |
-| `coding_git_log` | Read-only | `coding_checkpoint_restore` | High |
-| `coding_git_show` | Read-only | `coding_git_stage` | High |
-| | | `coding_git_commit` | High |
-
-</details>
+Use [AEROAGENT.md](AEROAGENT.md) for the architecture and
+[LLM-INTEGRATION-GUIDE.md](LLM-INTEGRATION-GUIDE.md) for native CLI/MCP integration.

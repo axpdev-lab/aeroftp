@@ -20,7 +20,7 @@ AeroFTP is tested at several layers, each catching a different class of problem.
 | Cross-implementation / format golden | Our crypto and container formats checked against an independent implementation (e.g. the official `cryptomator-cli`) | Behavior outside the tested format |
 | Manual live-test runs | Real round-trips against live cloud accounts, recorded with byte-identity (sha256) proof and the app version | Not re-run automatically on every release |
 
-Current headline counts: about 2,700 Rust unit tests, about 25 Rust live-integration tests (credential or Docker gated), and about 175 frontend test files. All of these run; none are placeholders.
+Test counts change with the source revision and enabled Cargo features. Use the actual `cargo test` / Vitest summary and the smoke PASS/SKIP/FAIL matrix for a release's executed counts. The presence of a test file is inspection evidence, not proof that its credential-gated or ignored tests ran for v4.2.5.
 
 A note on honesty: a fully automated, "click to run before every release" suite is realistic for the deterministic tests and for the lab-backed protocols. It is not realistic to put 25 or more live OAuth cloud accounts into public CI without shipping credentials, hitting rate limits, and producing flaky results. For those providers we use documented manual verification per release cycle, plus community testers. The matrix below is explicit about which is which.
 
@@ -75,6 +75,8 @@ Legend:
 | ImageKit | yes | - | n/a | No multipart by design |
 | Uploadcare | yes | - | pending | |
 | Cloudinary | yes | - | pending | |
+| Proton Drive | yes | credential-gated native/CLI fixtures | pending (v4.2.5 release run) | Native provider and official CLI wrapper have separate authentication and bulk-transfer paths |
+| Twake Drive | yes | - | pending | OAuth on a user-configured instance |
 
 ### Cross-cutting features
 
@@ -85,7 +87,7 @@ Legend:
 | AeroCrypt overlay | Unit tests plus live encrypt/decrypt round-trips (byte-identical, zero-knowledge at rest verified) |
 | rclone-crypt interoperability | Unit tests for the rclone crypt format |
 | Sync engine | State machine, journal, retry, and conflict-mode tests plus a Docker rsync-over-SSH integration fixture |
-| Transfer engine (DAG) | Single-file runner plus batch/sync wrappers; live multipart, direct server-side copy, and segmented-download coverage are path/provider-specific (DAG range is opt-in) |
+| Transfer engine (DAG) | Single-file runner plus batch/sync wrappers; live multipart, direct server-side copy, and segmented-download coverage are path/provider-specific (the range graph is the only production concurrent range scheduler; provider support and size thresholds decide eligibility) |
 | Profile imports | Tests for importing from rclone, FileZilla, PuTTY, WinSCP, Cyberduck, and more |
 | Archive compression | Live round-trip across zip, 7z, tar, tar.gz, tar.xz, tar.bz2 with password and level variations |
 | Provider offline parsers (v4.1.0) | A deterministic offline parser plus an HTTP-status-to-error test net now covers all 16 unit-only storage providers (Azure, Koofr, Yandex, Cloudinary, Uploadcare, GitLab, Filen, 4shared, kDrive, Jottacloud, Zoho, Internxt, Drime, Immich; GitHub was already covered; Swift is skipped, as its only profile, Blomp, is inactive) |

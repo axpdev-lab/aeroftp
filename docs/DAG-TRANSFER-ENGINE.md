@@ -695,8 +695,10 @@ outside the nightly) that moves bytes through a temp file and serializes an
 `EngineTransferStats` envelope as an uploaded JSON artifact. It never runs on
 push or pull request and never needs lab hardware. WAN and competitor cells
 stay manual in `tests/gtc/parity_harness.sh`. This wave adds no WAN benchmark
-numbers; evidence is the deterministic test suite listed in the appendix
-tracker (`docs/dev/drafts/TRACKER-DAG-P2-07-DRAFT-telemetry-benchmark.md`).
+numbers. Public inspection points are the telemetry tests in
+[`engine_stats.rs`](../src-tauri/src/transfer_dag/engine_stats.rs),
+[`telemetry_nightly.rs`](../src-tauri/tests/telemetry_nightly.rs), and the
+[nightly workflow](../.github/workflows/nightly-telemetry.yml).
 
 Residuals carried forward (unchanged from blocks A-D): unmetered retry sites
 (`CrossProfileExecutor`, http_retry for the range family, provider-internal
@@ -768,9 +770,9 @@ is an explicit reminder that the transfer architecture is transitional.
 | Range graph migration | `shaped_ranges` is the only production concurrent range scheduler; the old `JoinSet` is test-only |
 | One fully converged engine for every surface | Shared core plus selected wrappers; batch/sync/copy/cross-profile still have documented adapters and limits |
 
-For the planned next steps (complete telemetry and global resource governance), see
-the audit appendix at
-`docs/dev/roadmap/APPENDIX-DAG-ENGINE_Parallel-Transfers-Audit.md`.
+Remaining telemetry and resource-governance limits are described in the
+telemetry and capability sections above; internal planning notes are not a
+public implementation contract.
 Bounded dispatch (P0-04), typed outcomes (P0-03), and graph-scoped
 fail-fast cancel/timeout (P0-05) are already in the core executor.
 

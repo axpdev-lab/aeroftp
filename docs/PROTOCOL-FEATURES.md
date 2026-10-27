@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 5 October 2026
-> Version: v4.2.2
+> Last Updated: 26 October 2026
+> Version: v4.2.5
 >
 > **Note**: AeroFTP organizes integrations on three tiers:
 >
@@ -93,8 +93,8 @@ open still fails, re-toggle File Transfer on the phone and retry.
 |----------|-----------|-------------|-------------------|-------------------|
 | **FTP** | None | Password | Universal Vault | N/A |
 | **FTPS** | TLS/SSL (Explicit/Implicit) | Password | Universal Vault | TLS Certificate |
-| **SFTP** | SSH (hybrid: russh + ssh2/SCP) | Password / SSH Key | Universal Vault | TOFU + known_hosts |
-| **WebDAV** | HTTPS | Password (Basic + Digest RFC 2617) | Universal Vault | TLS Certificate |
+| **SFTP** | SSH (russh + russh-sftp; delta has separate SSH transport adapters) | Password / SSH Key | Universal Vault | TOFU + known_hosts |
+| **WebDAV** | HTTPS, or unencrypted HTTP when configured | Password (Basic + Digest RFC 2617) | Universal Vault | TLS Certificate |
 | **S3** | HTTPS (plain HTTP to an endpoint off this machine only with the profile's explicit consent) | Access Key + Secret | Universal Vault | TLS Certificate |
 | **Google Drive** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
 | **Dropbox** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
@@ -122,7 +122,7 @@ open still fails, re-toggle File Transfer on the phone and retry.
 
 | Feature | FTP | FTPS | SFTP | WebDAV | S3 | OAuth Providers | MEGA | Box | pCloud | Azure | 4shared | Filen | Internxt | kDrive | FileLu | Yandex | OpenDrive |
 |---------|-----|------|------|--------|-----|-----------------|------|-----|--------|-------|---------|-------|----------|--------|--------|--------|-----------|
-| Insecure Warning | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| Insecure Warning | Yes | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - |
 | TLS/SSL | No | Yes | - | Yes | Yes | Yes | - | Yes | Yes | Yes | Yes | - | - | Yes | Yes | Yes | Yes |
 | SSH Tunnel | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
 | Host Key Check | - | - | TOFU | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
@@ -247,7 +247,11 @@ buckets, rclone uploads or mkdir may also need `--s3-no-check-bucket`.
 
 ## Checksums and Hashes
 
-Which digests a backend can hand back **without downloading the file**, and which it cannot. AeroFTP never downloads a remote file in order to hash it: a digest either comes from metadata the backend already holds (an S3 ETag, a Drive `file.hashes` field, an ownCloud `oc:checksums` property) or from work the *server* does on its own disk (`sha256sum` over an SSH exec channel). Where a backend has nothing to offer, the Properties → Checksum tab says so instead of offering a button that cannot succeed.
+Which digests a backend can hand back **without downloading the file**, and which it cannot. The Properties checksum surface does not download remote files to hash them: a digest either comes from metadata the backend already holds (an S3 ETag, a Drive `file.hashes` field, an ownCloud `oc:checksums` property) or from work the *server* does on its own disk (`sha256sum` over an SSH exec channel). Where a backend has nothing to offer, the Properties → Checksum tab says so instead of offering a button that cannot succeed.
+
+Other surfaces have their own contract: for example, the agent/MCP
+`aeroftp_hashsum` / `remote_hashsum` tool can download and locally hash a bounded
+remote file. Do not infer its behavior from this server-side capability matrix.
 
 **Local files** are different: AeroFTP reads them itself, so MD5, SHA-1, SHA-256, SHA-512 and BLAKE3 are all available for anything on your own disk, on every platform.
 
@@ -264,7 +268,7 @@ A backend's own scheme keeps its own name. Dropbox's `content_hash` is a SHA-256
 | FTPS | MD5, SHA-1, SHA-256, SHA-512, CRC32 (negotiated) | Depends on what the server advertises in FEAT: `HASH` (algorithm selected per request with `OPTS HASH`, from the list the server gives), or the older `XMD5` / `XSHA1` / `XCRC`. A server advertising none offers no digest. |
 | SFTP | SHA-256 | Computed by the remote host with `sha256sum` over an SSH exec channel: the bytes are read on the server, never sent to us. Omitted if the host has no `sha256sum`. |
 | WebDAV | SHA-1, MD5, Adler-32 (negotiated) | Only ownCloud and Nextcloud publish the `oc:checksums` property, and only for files uploaded by a client that sent one. Every other WebDAV server omits it. |
-| S3 | MD5 | The ETag is the object MD5 only for single-part objects that are not SSE-KMS or SSE-C encrypted. A multipart ETag carries a `-N` suffix and is omitted rather than guessed. An SSE-KMS or SSE-C ETag can still be 32 hex characters and then passes the same shape check as a real digest, so a reported ETag is advisory for such an object. |
+| S3 | MD5 | The ETag is the object MD5 only for single-part plaintext or SSE-S3 objects. The checksum query uses HEAD: multipart ETags do not yield an MD5; stat metadata still retains the raw ETag. Response headers identifying SSE-KMS (including DSSE) or SSE-C suppress MD5 even when the ETag has 32 hex characters. |
 | Azure Blob | - |  |
 | Swift | - |  |
 | Google Drive | MD5, SHA-1, SHA-256 | Native Google Workspace documents have no byte stream and therefore no digest. |
@@ -642,7 +646,7 @@ Bidirectional directory synchronization compares local and remote files by times
 |----------|---------|--------|----------|----------|-------|
 | **FTP** | Yes | Yes | Yes | Yes | Via provider/session pipeline |
 | **FTPS** | Yes | Yes | Yes | Yes | Via provider/session pipeline |
-| **SFTP** | Yes | Yes (ssh2/SCP) | Yes | Yes | Uploads via ssh2/SCP fallback (russh write bug) |
+| **SFTP** | Yes | Yes | Yes | Yes | Native russh/russh-sftp file I/O; batch and sync may use the SFTP connection pool; delta acceleration uses its separate native transport |
 | **WebDAV** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 | **S3** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 | **Google Drive** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
@@ -807,7 +811,7 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 
 ### AI Tool Support by Protocol
 
-The remote-facing tools route through the `StorageProvider` trait, so they behave identically across the 7 transport protocols and 26 native provider integrations. Local-only tools (file management, search, archives, clipboard, shell) act on the local filesystem.
+The remote-facing tools route through the `StorageProvider` trait, with capability-dependent behavior across the 7 transport protocols and 26 native provider integrations. Features such as quota, checksum, server-side copy, versions and trash depend on the selected provider and wrapper. Local-only tools (file management, search, archives, clipboard, shell) act on the local filesystem.
 
 **Remote tools (protocol-routed)**
 
@@ -817,7 +821,7 @@ The remote-facing tools route through the `StorageProvider` trait, so they behav
 | Medium | `remote_upload`, `upload_files`, `upload_many`, `remote_download`, `download_files`, `remote_mkdir`, `remote_rename`, `remote_edit`, `remote_touch`, `remote_speed`, `transfer`, `transfer_tree`, `cross_profile_transfer` |
 | High | `remote_delete`, `remote_delete_many`, `remote_dedupe`, `remote_cleanup`, `server_exec` |
 
-See the full tool breakdown in [AeroAgent Tool Categories](#aeroagent-tool-categories-50-agent-tools-35-exposed-over-mcp) below.
+See the full tool breakdown in [AeroAgent capabilities](AEROAGENT-CAPABILITIES.md).
 
 ### AI Features
 
@@ -858,9 +862,15 @@ See the full tool breakdown in [AeroAgent Tool Categories](#aeroagent-tool-categ
 
 ---
 
-## AeroAgent Pro (v2.0.0)
+## AeroAgent provider adapter foundation
 
 ### AI Provider Feature Matrix
+
+This table records the historical adapter foundation introduced with AeroFTP
+v2.0.0. It is not a current per-model capability guarantee: Responses-native
+continuations, registry-backed model metadata, MCP client support and tool
+discovery have since shipped. Use [AEROAGENT-ROADMAP.md](AEROAGENT-ROADMAP.md)
+and the model registry for current transport/model boundaries.
 
 | Feature | OpenAI | Anthropic | Google Gemini | xAI | OpenRouter | Ollama | Kimi | Qwen | DeepSeek | Custom |
 |---------|--------|-----------|---------------|-----|------------|--------|------|------|----------|--------|
@@ -877,20 +887,18 @@ See the full tool breakdown in [AeroAgent Tool Categories](#aeroagent-tool-categ
 | GPU Monitoring | N/A | N/A | N/A | N/A | N/A | **Yes** | N/A | N/A | N/A | N/A |
 | Model Family Templates | N/A | N/A | N/A | N/A | N/A | **8 families** | N/A | N/A | N/A | N/A |
 
-### AeroAgent Tool Categories (50+ agent tools, 35+ exposed over MCP)
+### AeroAgent tool surfaces (v4.2.5)
 
-| Category | Tools | Danger |
-|----------|-------|--------|
-| Remote operations (21) | `remote_list`, `remote_read`, `remote_info`, `remote_search`, `remote_head`, `remote_tail`, `remote_tree`, `remote_storage_quota`, `remote_hashsum`, `remote_upload`, `upload_files`, `upload_many`, `remote_download`, `download_files`, `remote_mkdir`, `remote_rename`, `remote_edit`, `remote_touch`, `remote_delete`, `remote_delete_many`, `list_servers` | read-only / medium / high |
-| Local file operations (21) | `local_list`, `local_read`, `local_write`, `local_mkdir`, `local_delete`, `local_rename`, `local_search`, `local_edit`, `local_move_files`, `local_batch_rename`, `local_copy_files`, `local_trash`, `local_file_info`, `local_disk_usage`, `local_find_duplicates`, `local_diff`, `local_stat_batch`, `local_tree`, `local_grep`, `local_head`, `local_tail` | read-only / medium / high |
-| Cross-profile transfer (4) | `transfer`, `transfer_tree`, `cross_profile_transfer`, `generate_transfer_plan` | safe / medium |
-| Sync & verification (7) | `sync_doctor`, `reconcile`, `dedupe`, `cleanup`, `sync_control`, `sync_preview`, `speed` | read-only / medium / high |
-| Archives (2) | `archive_compress`, `archive_decompress` | medium |
-| System & shell (4) | `shell_execute`, `clipboard_read`, `clipboard_write`, `hash_file` | safe / high |
-| Knowledge & memory (3) | `rag_index`, `rag_search`, `agent_memory_write` | read-only / medium |
-| App & server control (6) | `app_info`, `set_theme`, `vault_peek`, `preview_edit`, `agent_connect`, `server_exec` | safe / read-only / high |
+The GUI has 86 built-in tools (31 safe, 42 medium, 13 high), plus discovered
+MCP/plugin/macro tools. The CLI agent has 39 tools. The native MCP server has
+78 callable names: 40 primary tools and 38 compatibility aliases. These are
+separate catalogs; a shared provider backend does not make them interchangeable.
 
-> Many remote tools ship under both an `aeroftp_*` (MCP) and a `remote_*` (GUI / cross-profile) alias for the same capability, so the per-category rows above count every alias name and tally higher than the distinct-tool figure. 35+ canonical capabilities are exposed over the MCP server.
+The current GUI names and approval levels are listed in
+[AEROAGENT-CAPABILITIES.md](AEROAGENT-CAPABILITIES.md), with their source registry.
+The generated [COMMAND-INVENTORY.json](COMMAND-INVENTORY.json) records CLI and
+MCP counts. [AEROAGENT-ROADMAP.md](AEROAGENT-ROADMAP.md) documents the delivered
+MCP client, GUI control and bounded read-only workers, including platform limits.
 
 ---
 

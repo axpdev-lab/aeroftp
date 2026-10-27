@@ -1,6 +1,6 @@
 name: aeroftp
 title: AeroFTP
-version: '4.2.4'
+version: '4.2.5'
 summary: Modern Multi-Protocol File Transfer & Cloud Client for Humans and Agents
 description: |
   AeroFTP is a modern file transfer client that goes beyond traditional FTP.
@@ -12,26 +12,26 @@ description: |
   - SFTP (SSH File Transfer)
   - WebDAV (Nextcloud, CloudMe, Seafile, DriveHQ)
   - S3-compatible (AWS, Backblaze B2, Wasabi, MinIO, and more)
-  - Google Drive (OAuth2, 15 GB free)
-  - Dropbox (OAuth2, 2 GB free)
-  - OneDrive (OAuth2, 5 GB free)
-  - MEGA.nz (E2E encryption, 20 GB free)
-  - Filen (E2E encryption, 10 GB free)
-  - Box, pCloud (OAuth2, 10 GB free)
+  - Google Drive (OAuth2)
+  - Dropbox (OAuth2)
+  - OneDrive (OAuth2)
+  - MEGA.nz (E2E encryption)
+  - Filen (E2E encryption)
+  - Box, pCloud (OAuth2)
   - Azure Blob Storage (HMAC)
-  - 4shared (OAuth 1.0, 15 GB free)
-  - Zoho WorkDrive (OAuth2, 8 regional endpoints, 5 GB free)
-  - Internxt Drive (E2E, zero-knowledge, 1 GB free)
-  - kDrive (Infomaniak, 15 GB free)
-  - Koofr (EU-based, OAuth2 PKCE, 10 GB free)
+  - 4shared (OAuth 1.0)
+  - Zoho WorkDrive (OAuth2, 8 regional endpoints)
+  - Internxt Drive (E2E, zero-knowledge)
+  - kDrive (Infomaniak)
+  - Koofr (EU-based, OAuth2 PKCE)
   - Jottacloud (Norwegian-hosted, unlimited plans)
-  - FileLu (API Key, file passwords, privacy toggle, 1 GB free)
-  - Yandex Disk (OAuth2, 5 GB free)
-  - OpenDrive (API Key, 5 GB free)
+  - FileLu (API Key, file passwords, privacy toggle)
+  - Yandex Disk (OAuth2)
+  - OpenDrive (native API)
   - GitHub (repository as filesystem, commits, releases)
 
   Data Protection:
-  - AeroVault v2 encrypted containers (AES-256-GCM-SIV, Argon2id)
+  - AeroVault encrypted containers (AES-256-GCM-SIV, Argon2id)
   - Master Password with auto-lock
   - Cryptomator vault support (format 8)
   - OS Keyring integration (libsecret / Keychain / Credential Manager)
@@ -44,7 +44,7 @@ description: |
   Built-in Developer Suite:
   - Monaco Editor (VS Code engine) for remote file editing
   - Integrated terminal with theme sync
-  - AeroAgent AI assistant (24 providers including OpenAI, Anthropic,
+  - AeroAgent AI assistant (26 providers including OpenAI, Anthropic,
     Gemini, Ollama, and more)
 
   AeroSync, Reliable Synchronization:
@@ -53,7 +53,7 @@ description: |
   - Configurable retry with exponential backoff
 
   More Features:
-  - 4 app themes (Light, Dark, Tokyo Night, Cyber) with 3 icon styles
+  - 8 app themes with day/night scheduling and configurable icon styles
   - Archive browser (ZIP, 7z, TAR, RAR) with selective extraction
   - AeroPlayer media player with 14 visualizers and 10-band EQ
   - Dual-pane browser with drag-and-drop and batch rename
