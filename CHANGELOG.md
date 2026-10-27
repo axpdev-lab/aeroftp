@@ -51,7 +51,9 @@ The complete change record and remaining follow-ups are in the [4.2.5 release tr
 
 #### Security
 
-- **AeroVault uses the patched compression dependency.** AeroVault 0.6.7 removes the zstd 0.13 and zstd-safe 7 dependency path while preserving the existing container formats. The application now resolves only zstd 0.14.3 and zstd-safe 8.2.0.
+- **AeroVault 0.6.8 hardens legacy vault replacement.** Exclusive random temporary files replace predictable paths, and regular-file Unix permission bits survive updates while new vaults remain private. Existing container formats and cryptographic algorithms are unchanged. The patched compression stack remains zstd 0.14.3 and zstd-safe 8.2.0 ([aerovault#14](https://github.com/axpdev-lab/aerovault/pull/14)).
+- **Remote download names stay inside the selected local directory.** Unsafe remote leaf names are refused before preflight and local writes in single-file, folder, batch and retry paths, with literal POSIX backslashes preserved (#1392).
+- **S3 copies preserve the destination encryption policy.** Single-request CopyObject applies configured upload-policy headers before signing, and AeroCloud forwards saved SSE settings. Configured ACL and storage class follow the shared policy, with the existing MegaS4 exclusion preserved (#1393).
 - **Application settings stay in the encrypted vault.** Confirmed writes remove the legacy plaintext WebView copy, migration writes only into an empty settings vault, and a starting or unreadable vault cannot cause a partial settings write to replace the saved configuration (#1379).
 - **Diagnostic and agent errors redact complete credentials.** Authorization headers, quoted and escaped secret fields, and bulk-refusal errors are scrubbed consistently before reaching diagnostic bundles, AeroAgent, the CLI agent or MCP (#1375).
 - **Transfer checks preserve local and remote data.** Download-folder probes cannot delete an existing file, ambiguous destination names are refused, incomplete scans retain a partial verdict, and sync does not overwrite a remote object whose absence was never established (#1350, #1367, #1369).
