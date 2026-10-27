@@ -2939,9 +2939,8 @@ fn migrate_user_credentials_inner(
 }
 
 /// Reader-fallback net (sec 3.3), engine form: prefer the per-user encrypted
-/// store, fall back to the legacy vault when the per-user row is absent or the
-/// account is locked. MUV-3/4/5 point real readers here; MUV-6 drops the
-/// fallback once the vault is purged.
+/// store, falling back to the legacy vault only when its per-user row is absent.
+/// A locked partition refuses access; MUV-6 drops the fallback once purged.
 fn read_credential_with_fallback_inner(
     conn: &Connection,
     root_key: &[u8; 32],
@@ -2952,9 +2951,6 @@ fn read_credential_with_fallback_inner(
     match get_user_credential_for(conn, root_key, user_id, credential_id) {
         Ok(Some(value)) => return Ok(Some(value)),
         Ok(None) => {}
-        // Locked passphrase account: the per-user row is unreadable right now,
-        // but the legacy vault copy still is. Fall back instead of failing.
-        Err(e) if e == "USER_LOCKED" => {}
         Err(e) => return Err(e),
     }
     read_secret(credential_id)
@@ -3048,7 +3044,7 @@ pub fn read_credential_with_fallback(
 // MUV-3 points the real `server_*` credential resolution at the per-user store
 // while keeping the legacy vault as source of truth + fallback during the
 // rollout (dual-write). Readers prefer the partition row and fall back to the
-// vault (a not-yet-migrated key or a locked passphrase account still resolves);
+// vault only for a not-yet-migrated key; a locked partition refuses access.
 // writers always write the vault first, then best-effort mirror the secret into
 // the active (GUI) or scoped (CLI `--user`) user's partition. No vault entry is
 // ever removed here (that is MUV-6). The mirror is confined to in-scope keys by
@@ -4651,10 +4647,9 @@ pub fn cli_set_user_setting(
 /// env the CLI honours), priming the process session so the subsequent
 /// `resolve_active_credential` reads of `server_<id>` decrypt as well.
 ///
-/// Falls back to the dual-maintained legacy blob only when the partition cannot
-/// serve the active user: no active user, a locked passphrase account with no
-/// usable env passphrase, or a partition error (downgrade). The fallback keeps
-/// MCP working during the rollout; MUV-6 drops it once the vault is purged.
+/// Falls back to the dual-maintained legacy blob only when there is no active
+/// user or the partition errors (downgrade). A locked partition refuses access;
+/// MUV-6 drops the fallback once the vault is purged.
 pub fn mcp_list_active_server_profiles(store: &CredentialStore) -> Result<Vec<Value>, String> {
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
@@ -4665,8 +4660,7 @@ pub fn mcp_list_active_server_profiles(store: &CredentialStore) -> Result<Vec<Va
 
     // Unlock a passphrase-protected active user transiently from the env so the
     // session DEK is primed for both this profile read and later credential
-    // reads. Best-effort: a wrong/absent passphrase just leaves the account
-    // locked and the legacy fallback below answers.
+    // reads. A wrong/absent passphrase leaves the account locked and fails closed.
     if active.has_passphrase && session_user_id() != Some(active.id) {
         if let Ok(passphrase) = std::env::var("AEROFTP_USER_PASSPHRASE") {
             if !passphrase.is_empty() {
@@ -4682,11 +4676,7 @@ pub fn mcp_list_active_server_profiles(store: &CredentialStore) -> Result<Vec<Va
     root_key.zeroize();
     match result {
         Ok(profiles) => Ok(profiles),
-        // Locked passphrase account (no usable env passphrase) or no active
-        // user: the partition cannot serve, so the dual-written legacy blob does.
-        Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => {
-            read_legacy_server_profiles_blob(store)
-        }
+        Err(e) if e == "NO_ACTIVE_USER" => read_legacy_server_profiles_blob(store),
         Err(e) => Err(e),
     }
 }
@@ -9703,22 +9693,19 @@ mod tests {
     }
 
     #[test]
-    fn reader_fallback_uses_vault_for_locked_passphrase_user() {
+    fn reader_fallback_refuses_locked_passphrase_user() {
         let _guard = test_lock();
         let mut conn = migrated_conn(0);
         let root = test_root();
         let bob = create_user(&mut conn, &root, "Bob", None, None, Some("bobpass123"))
             .expect("create bob");
-        clear_user_session(); // bob is locked: per-user read would be USER_LOCKED
+        clear_user_session();
 
         let (_keys, read) = fake_vault(&[("server_bp1", "vault-bob")]);
-        // The locked per-user partition is skipped; the legacy vault still serves.
         assert_eq!(
             read_credential_with_fallback_inner(&conn, &root, bob.id, "server_bp1", &read)
-                .expect("read")
-                .expect("present")
-                .as_str(),
-            "vault-bob"
+                .expect_err("locked partition must fail closed"),
+            "USER_LOCKED"
         );
     }
 
