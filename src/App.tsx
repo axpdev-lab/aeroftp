@@ -406,7 +406,7 @@ const Github = ({ size = 24, className = '' }: { size?: number; className?: stri
   </svg>
 );
 import PanelSwitcher from './components/PanelSwitcher';
-import { normalizeLocalPath, localPathBasename, localDropTarget } from './utils/localPath';
+import { normalizeLocalPath, localPathBasename, localDropTarget, isSafeRemoteDownloadName } from './utils/localPath';
 import { BreadcrumbBar } from './components/BreadcrumbBar';
 import { LargeIconsGrid } from './components/LargeIconsGrid';
 import { LocalFilePanel } from './components/LocalFilePanel';
@@ -9963,6 +9963,9 @@ const App: React.FC = () => {
     let completed = false;
 
     try {
+      if (!isSafeRemoteDownloadName(fileName)) {
+        throw new Error('Unsafe remote download name');
+      }
       if (isDir) {
         if (isAeroVaultOverlay) {
           throw new Error('AeroVault overlay: folder download not yet supported in main browser');
@@ -12427,6 +12430,9 @@ const App: React.FC = () => {
     // A failed listing is a failed preflight, never an empty destination.
     let destinationFiles: LocalFile[] | RemoteFile[];
     try {
+      if (isDownload && items.some(item => !isSafeRemoteDownloadName(item.name))) {
+        throw new Error('Unsafe remote download name in batch');
+      }
       destinationFiles = [...await getOverwriteDestination(direction, targetDir)];
     } catch (error) {
       resetOverwriteSettings();

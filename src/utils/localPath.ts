@@ -28,3 +28,9 @@ export function localDropTarget(source: string, destinationDir: string): string 
     const name = localPathBasename(source);
     return name ? `${normalizeLocalPath(destinationDir).replace(/\/+$/, '')}/${name}` : null;
 }
+
+/** Remote entries must remain a single leaf when mapped to a local download root. */
+export function isSafeRemoteDownloadName(name: string): boolean {
+    return name.length > 0 && name !== '.' && name !== '..'
+        && !name.includes('/') && !name.includes('\\') && !name.includes('\0');
+}

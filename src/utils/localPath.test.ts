@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 import { expect, it, vi } from 'vitest';
-import { isWindowsLocalPath, normalizeLocalPath, editorPathsMatch, localPathBasename, localDropTarget } from './localPath';
+import { isWindowsLocalPath, normalizeLocalPath, editorPathsMatch, localPathBasename, localDropTarget, isSafeRemoteDownloadName } from './localPath';
 
 it('literal_unix_paths editor events never reload a colliding twin', () => {
     const literal = String.raw`/tmp/back\slash.txt`;
@@ -28,4 +28,13 @@ it('interprets slash-only UNC roots using the native host', () => {
         vi.stubGlobal('navigator', { platform: 'Win32' });
         expect(isWindowsLocalPath('//server/share')).toBe(true);
     } finally { vi.unstubAllGlobals(); }
+});
+
+it('accepts only single-component remote download names', () => {
+    for (const name of ['report.txt', 'report..txt', '...', 'name with spaces.txt']) {
+        expect(isSafeRemoteDownloadName(name)).toBe(true);
+    }
+    for (const name of ['', '.', '..', '../.bashrc', '..\\..\\file.txt', '/tmp/file.txt', 'dir/file.txt', 'dir\\file.txt', 'bad\0name']) {
+        expect(isSafeRemoteDownloadName(name)).toBe(false);
+    }
 });
