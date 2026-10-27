@@ -9,6 +9,7 @@ import { usesProviderApi, type RemoteFile } from '../types';
 import { loadOverwriteDestination } from './overwriteDestination';
 import { fileBatchCommand, folderTransferIsComplete, keepsSingleFilePath } from './fileBatchRouting';
 import { createFileBatchDispatcher, rearmedOnUserAction } from '../components/transferQueueActions';
+import { isSafeRemoteDownloadName, remoteDownloadTarget } from './localPath';
 
 // Run the actual App transfer closures with a mocked IPC boundary. This catches
 // a caller that forgets to pass the snapshot, lists inside the loop, or writes
@@ -49,6 +50,7 @@ function fixture(options: { direction: Direction; policy?: Policy; destination?:
       return { completed: entries.length, failed: 0, cancelled: false, succeeded: entries.map((_: unknown, i: number) => i) };
     }
     if (['reset_cancel_flag', 'provider_download_file', 'provider_upload_file'].includes(command)) return undefined;
+    if (command === 'provider_download_folder') return { cancelled: false, failed: 0, skipped: 0 };
     throw new Error(`Unexpected IPC: ${command}`);
   });
   // Execute the real hook policy as well as the real App batch planner. This
@@ -70,6 +72,7 @@ function fixture(options: { direction: Direction; policy?: Policy; destination?:
   const resetOverwriteSettings = vi.fn();
   const context = {
     invoke, checkOverwrite, loadOverwriteDestination: resolveDestination, resetOverwriteSettings,
+    isSafeRemoteDownloadName, remoteDownloadTarget,
     sessions: [{ id: 'A', connectionParams: { protocol } }], activeSessionId: 'A', connectionParams: { protocol },
     liveConnectionParams: { protocol },
     usesProviderApi, aeroVaultOverlaySession: null, currentRemotePath: '/panel',
@@ -88,7 +91,7 @@ function fixture(options: { direction: Direction; policy?: Policy; destination?:
     formatBytes: (size: number) => String(size), t: (key: string) => key, notify,
   };
   const runtime = new Function(...Object.keys(context), `${code}; return { downloadFile, uploadFile, runFileBatch };`)(...Object.values(context));
-  const writers = () => invoke.mock.calls.filter(([name]) => /provider_(upload|download)_(file|files_batch)$/.test(name));
+  const writers = () => invoke.mock.calls.filter(([name]) => /provider_(upload|download)_(file|files_batch|folder)$/.test(name));
   const listings = () => invoke.mock.calls.filter(([name]) => ['get_local_files', 'provider_list_files'].includes(name));
   return { runtime, invoke, checkOverwrite, resolveDestination, notify, transferQueue, listings, writers, resetOverwriteSettings };
 }
@@ -183,4 +186,51 @@ it('carries ImageKit skip policy to native single and batch uploads', async () =
   const batch = fixture({ direction: 'upload', protocol: 'imagekit', policy: 'skip', destination: [] });
   await batch.runtime.runFileBatch('upload', items, '/actual');
   expect(batch.writers()[0]).toEqual(['provider_upload_files_batch', expect.objectContaining({ params: expect.objectContaining({ no_clobber: true }) })]);
+});
+
+describe('App remote download leaf safety', () => {
+  const literalUnixName = String.raw`back\slash.txt`;
+
+  it.each([false, true])('preserves a literal POSIX backslash in single/folder download (isDir=%s)', async isDir => {
+    const f = fixture({ direction: 'download', destination: [] });
+    expect(await f.runtime.downloadFile(`/source/${literalUnixName}`, literalUnixName, '/actual', isDir, 100)).toBe(true);
+    const [command, args] = f.writers()[0];
+    expect(command).toBe(isDir ? 'provider_download_folder' : 'provider_download_file');
+    expect(args!.localPath).toBe(`/actual/${literalUnixName}`);
+  });
+
+  it.each([false, true])('rejects traversal in single/folder download before prompt or writer (isDir=%s)', async isDir => {
+    const f = fixture({ direction: 'download', destination: [] });
+    expect(await f.runtime.downloadFile('/source/../outside', '../outside', '/actual', isDir, 100)).toBe(false);
+    expect(f.writers()).toHaveLength(0);
+    expect(f.checkOverwrite).not.toHaveBeenCalled();
+  });
+
+  it('preserves a literal POSIX backslash in the real batch planner', async () => {
+    const f = fixture({ direction: 'download', destination: [] });
+    const result = await f.runtime.runFileBatch('download', [{ name: literalUnixName, sourcePath: `/source/${literalUnixName}`, size: 100, modified: null }], '/actual');
+    expect(result).toMatchObject({ completed: 1, failed: 0, aborted: false });
+    expect(f.writers()[0][1]!.params.entries[0].local_path).toBe(`/actual/${literalUnixName}`);
+  });
+
+  it('rejects batch traversal before listing, prompt or writer', async () => {
+    const f = fixture({ direction: 'download', destination: [] });
+    const result = await f.runtime.runFileBatch('download', [{ name: '../outside', sourcePath: '/source/../outside', size: 100, modified: null }], '/actual');
+    expect(result).toMatchObject({ failed: 1, aborted: true, sent: 0 });
+    expect(f.listings()).toHaveLength(0);
+    expect(f.checkOverwrite).not.toHaveBeenCalled();
+    expect(f.writers()).toHaveLength(0);
+  });
+
+  it('rejects backslash as a separator on Windows single and batch targets', async () => {
+    const target = String.raw`C:\actual`;
+    const singleFixture = fixture({ direction: 'download', destination: [] });
+    expect(await singleFixture.runtime.downloadFile(`/source/${literalUnixName}`, literalUnixName, target, false, 100)).toBe(false);
+    expect(singleFixture.writers()).toHaveLength(0);
+
+    const batchFixture = fixture({ direction: 'download', destination: [] });
+    const result = await batchFixture.runtime.runFileBatch('download', [{ name: literalUnixName, sourcePath: `/source/${literalUnixName}`, size: 100, modified: null }], target);
+    expect(result).toMatchObject({ failed: 1, aborted: true, sent: 0 });
+    expect(batchFixture.writers()).toHaveLength(0);
+  });
 });

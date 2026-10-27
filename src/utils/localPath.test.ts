@@ -30,11 +30,17 @@ it('interprets slash-only UNC roots using the native host', () => {
     } finally { vi.unstubAllGlobals(); }
 });
 
-it('accepts only single-component remote download names', () => {
-    for (const name of ['report.txt', 'report..txt', '...', 'name with spaces.txt']) {
-        expect(isSafeRemoteDownloadName(name)).toBe(true);
+it('accepts only single-component remote download names for the destination filesystem', () => {
+    for (const name of ['report.txt', 'report..txt', '...', 'name with spaces.txt', 'back\\slash.txt', '..\\..\\literal.txt']) {
+        expect(isSafeRemoteDownloadName(name, '/chosen')).toBe(true);
     }
-    for (const name of ['', '.', '..', '../.bashrc', '..\\..\\file.txt', '/tmp/file.txt', 'dir/file.txt', 'dir\\file.txt', 'bad\0name']) {
-        expect(isSafeRemoteDownloadName(name)).toBe(false);
+    for (const name of ['', '.', '..', '../.bashrc', '/tmp/file.txt', 'dir/file.txt', 'bad\0name']) {
+        expect(isSafeRemoteDownloadName(name, '/chosen')).toBe(false);
+    }
+    for (const name of ['report.txt', 'back\\slash.txt', 'dir\\file.txt']) {
+        expect(isSafeRemoteDownloadName(name, 'C:\\chosen')).toBe(name === 'report.txt');
+    }
+    for (const name of ['../.bashrc', '..\\..\\file.txt', '/tmp/file.txt', 'dir/file.txt', 'dir\\file.txt', 'bad\0name']) {
+        expect(isSafeRemoteDownloadName(name, 'C:\\chosen')).toBe(false);
     }
 });

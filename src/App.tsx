@@ -406,7 +406,7 @@ const Github = ({ size = 24, className = '' }: { size?: number; className?: stri
   </svg>
 );
 import PanelSwitcher from './components/PanelSwitcher';
-import { normalizeLocalPath, localPathBasename, localDropTarget, isSafeRemoteDownloadName } from './utils/localPath';
+import { normalizeLocalPath, localPathBasename, localDropTarget, isSafeRemoteDownloadName, remoteDownloadTarget } from './utils/localPath';
 import { BreadcrumbBar } from './components/BreadcrumbBar';
 import { LargeIconsGrid } from './components/LargeIconsGrid';
 import { LocalFilePanel } from './components/LocalFilePanel';
@@ -9963,16 +9963,13 @@ const App: React.FC = () => {
     let completed = false;
 
     try {
-      if (!isSafeRemoteDownloadName(fileName)) {
-        throw new Error('Unsafe remote download name');
-      }
       if (isDir) {
         if (isAeroVaultOverlay) {
           throw new Error('AeroVault overlay: folder download not yet supported in main browser');
         }
         const downloadPath = destinationPath || await pickFile({ directory: true, multiple: false, defaultPath: await downloadDir() });
         if (downloadPath) {
-          const folderPath = `${downloadPath}/${fileName}`;
+          const folderPath = remoteDownloadTarget(downloadPath, fileName);
           // For folders, 'ask' defaults to 'overwrite' (FolderOverwriteDialog handles the ask mode at batch level)
           const folderAction = fileExistsAction === 'ask' ? '' : fileExistsAction;
           let folderResult: FolderTransferOutcome;
@@ -10014,6 +10011,9 @@ const App: React.FC = () => {
       } else {
         const downloadPath = destinationPath || await pickFile({ directory: true, multiple: false, defaultPath: await downloadDir() });
         if (downloadPath) {
+          if (!isSafeRemoteDownloadName(fileName, downloadPath)) {
+            throw new Error('Unsafe remote download name');
+          }
           let targetName = fileName;
           const remoteFileInfo = remoteFiles.find(f => f.name === fileName && !f.is_dir);
 
@@ -10039,7 +10039,7 @@ const App: React.FC = () => {
             }
           }
 
-          const localFilePath = `${downloadPath}/${targetName}`;
+          const localFilePath = remoteDownloadTarget(downloadPath, targetName);
           const remoteModified = remoteFileInfo?.modified || undefined;
           if (isAeroVaultOverlay) {
             await invoke<string>('aerovault_overlay_extract_entry', {
@@ -12430,7 +12430,7 @@ const App: React.FC = () => {
     // A failed listing is a failed preflight, never an empty destination.
     let destinationFiles: LocalFile[] | RemoteFile[];
     try {
-      if (isDownload && items.some(item => !isSafeRemoteDownloadName(item.name))) {
+      if (isDownload && items.some(item => !isSafeRemoteDownloadName(item.name, targetDir))) {
         throw new Error('Unsafe remote download name in batch');
       }
       destinationFiles = [...await getOverwriteDestination(direction, targetDir)];
@@ -12471,7 +12471,7 @@ const App: React.FC = () => {
         id: '',
         display_name: finalName,
         remote_path: isDownload ? item.sourcePath : joinRemotePath(targetDir, finalName),
-        local_path: isDownload ? `${targetDir}/${finalName}` : item.sourcePath,
+        local_path: isDownload ? remoteDownloadTarget(targetDir, finalName) : item.sourcePath,
         size: item.size,
         modified: isDownload ? item.modified : null,
       };
@@ -13222,7 +13222,7 @@ const App: React.FC = () => {
         const id = transferQueue.addItem(file.name, file.path, file.size || 0, 'download', stagedDownloadMode ? { staged: true } : undefined);
         recordQueueDescriptor(id, {
           direction: 'download',
-          local_path: `${frozenLocalPath}/${file.name}`,
+          local_path: remoteDownloadTarget(frozenLocalPath, file.name),
           remote_path: file.path,
           profile_id: sequentialDownloadProfileId,
           filename: file.name,
