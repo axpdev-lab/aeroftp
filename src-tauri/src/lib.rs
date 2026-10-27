@@ -18096,7 +18096,7 @@ async fn import_server_profiles(
     file_path: String,
     password: String,
 ) -> Result<serde_json::Value, String> {
-    import_server_profiles_core(file_path, password).await
+    import_server_profiles_core_skip_existing(file_path, password).await
 }
 
 /// Core of [`import_server_profiles`], callable outside the Tauri command
@@ -18120,15 +18120,81 @@ pub async fn import_server_profiles_core(
 /// vault credential overwritten by the one from the file. Callers that dedup the
 /// profile list (the CLI) pass the set of ids they actually add so the skip
 /// decision and the credential restore stay consistent. `None` preserves the
-/// original "restore all" behaviour for the GUI command.
+/// original "restore all" behaviour for callers that do not deduplicate.
 pub async fn import_server_profiles_core_filtered(
     file_path: String,
     password: String,
     restore_only: Option<std::collections::HashSet<String>>,
 ) -> Result<serde_json::Value, String> {
+    import_server_profiles_core_impl(file_path, password, restore_only, false).await
+}
+
+fn import_restore_ids_after_skip<'a>(
+    imported: impl IntoIterator<Item = &'a str>,
+    existing: &std::collections::HashSet<String>,
+) -> std::collections::HashSet<String> {
+    imported
+        .into_iter()
+        .filter(|id| !existing.contains(*id))
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+#[cfg(test)]
+mod import_restore_ids_tests {
+    use super::*;
+
+    #[test]
+    fn skip_preserves_existing_ids_and_accepts_only_new_profiles() {
+        let existing = std::collections::HashSet::from(["srv_existing".to_string()]);
+        let accepted =
+            import_restore_ids_after_skip(["srv_existing", "srv_new", "srv_new"], &existing);
+        assert_eq!(accepted.len(), 1);
+        assert!(accepted.contains("srv_new"));
+        assert!(!accepted.contains("srv_existing"));
+    }
+}
+
+/// GUI import: preserve every existing profile's secrets when that profile is
+/// skipped by the frontend merge, and restore only newly accepted profile ids.
+pub async fn import_server_profiles_core_skip_existing(
+    file_path: String,
+    password: String,
+) -> Result<serde_json::Value, String> {
+    import_server_profiles_core_impl(file_path, password, None, true).await
+}
+
+async fn import_server_profiles_core_impl(
+    file_path: String,
+    password: String,
+    restore_only: Option<std::collections::HashSet<String>>,
+    skip_existing: bool,
+) -> Result<serde_json::Value, String> {
     let (servers, provider_secrets, metadata) =
         profile_export::import_profiles(std::path::Path::new(&file_path), &password)
             .map_err(|e| e.to_string())?;
+    let restore_only = if skip_existing {
+        let store = credential_store::CredentialStore::from_cache()
+            .ok_or_else(|| "STORE_NOT_READY".to_string())?;
+        let root_key = store.derive_user_partition_wrapping_key();
+        let conn = user_partitions::open_or_init_cli()?;
+        let (_, current) = user_partitions::list_active_server_profiles_scoped(&conn, &root_key)?;
+        let existing: std::collections::HashSet<String> = current
+            .iter()
+            .filter_map(|profile| {
+                profile
+                    .get("id")
+                    .and_then(|value| value.as_str())
+                    .map(ToOwned::to_owned)
+            })
+            .collect();
+        Some(import_restore_ids_after_skip(
+            servers.iter().map(|server| server.id.as_str()),
+            &existing,
+        ))
+    } else {
+        restore_only
+    };
 
     // Store credentials in secure store
     let mut cred_errors: Vec<String> = Vec::new();
