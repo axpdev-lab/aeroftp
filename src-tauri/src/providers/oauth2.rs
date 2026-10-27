@@ -1951,8 +1951,65 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn clones_re_read_shared_profile_token_source() {
+    /// Runs in a re-executed copy of the test binary with its own config, vault
+    /// and partition DB, as `native_relocation_tests` does, so the developer's
+    /// real vault and active user are never read or written.
+    #[test]
+    fn clones_re_read_shared_profile_token_source() {
+        const MODE: &str = "AEROFTP_OAUTH_CLONES_TEST";
+        const TEST: &str = "providers::oauth2::tests::clones_re_read_shared_profile_token_source";
+        if std::env::var(MODE).as_deref() == Ok("child") {
+            crate::credential_store::CredentialStore::init().expect("temporary vault");
+            let store =
+                crate::credential_store::CredentialStore::from_cache().expect("cached vault");
+            crate::user_partitions::init_or_migrate_cli(&store).expect("partitions");
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("runtime")
+                .block_on(clones_re_read_shared_profile_token_source_body());
+            return;
+        }
+        let executable = std::env::current_exe().expect("test binary");
+        let root = tempfile::Builder::new()
+            .prefix("oauth-clones-")
+            .tempdir_in(executable.parent().expect("binary directory"))
+            .expect("temporary root");
+        let child = root
+            .path()
+            .join(format!("oauth-clones-test{}", std::env::consts::EXE_SUFFIX));
+        std::fs::hard_link(&executable, &child)
+            .or_else(|_| std::fs::copy(&executable, &child).map(|_| ()))
+            .expect("child binary");
+        std::fs::write(root.path().join("portable.marker"), b"").expect("portable marker");
+        let empty_path = root.path().join("no-external-tools");
+        std::fs::create_dir(&empty_path).expect("empty PATH");
+        let output = std::process::Command::new(child)
+            .args(["--exact", TEST, "--nocapture", "--test-threads=1"])
+            .env(MODE, "child")
+            .env("PATH", empty_path)
+            .env(
+                "AEROFTP_MASTER_PASSWORD",
+                "synthetic oauth clones fixture master",
+            )
+            .env("XDG_CONFIG_HOME", root.path().join("config"))
+            .env("XDG_DATA_HOME", root.path().join("data"))
+            .env("XDG_CACHE_HOME", root.path().join("cache"))
+            .env(
+                "DBUS_SESSION_BUS_ADDRESS",
+                "unix:path=/nonexistent-oauth-clones",
+            )
+            .output()
+            .expect("run isolated child");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            output.status.success() && stdout.contains("1 passed"),
+            "{stdout}\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    async fn clones_re_read_shared_profile_token_source_body() {
         use secrecy::ExposeSecret;
 
         let primary = OAuth2Manager::new();
