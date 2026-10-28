@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [4.2.5] - 2026-10-27
+## [4.2.5] - 2026-10-28
 
 ### Safer Sync, Faster Proton Transfers, and Desktop Reliability
 
@@ -51,7 +51,16 @@ The complete change record and remaining follow-ups are in the [4.2.5 release tr
 
 #### Security
 
-- **AeroVault uses the patched compression dependency.** AeroVault 0.6.7 removes the zstd 0.13 and zstd-safe 7 dependency path while preserving the existing container formats. The application now resolves only zstd 0.14.3 and zstd-safe 8.2.0.
+- **Pre-tag commit audit: PASS.** Every commit since 4.2.4 was reviewed in domain lanes, then counter-reviewed with exact-head evidence for each later change. Fixed before the tag: credential ownership across users (locked users, the legacy owner, OAuth and Jottacloud tokens), Filen share links, S3 request authority and encryption policy, oversized S3 multipart plans, Internxt plaintext staging, AeroVault temporary files and permissions, remote download names, and the earlier lane findings on sync, portable updates and Proton. Gate on the release candidate: 7871 Rust tests and 2782 frontend tests pass, Clippy with all features denies warnings for the library and the CLI, all 47 locales are complete, and the dependency audit reports no vulnerability. Recursive sensitive-path checks for AeroAgent archives and MCP sync and S3 version-listing progress are deferred to 4.2.6 in the tracker.
+- **AeroVault 0.6.8 hardens legacy vault replacement.** Exclusive random temporary files replace predictable paths, and regular-file Unix permission bits survive updates while new vaults remain private. Existing container formats and cryptographic algorithms are unchanged. The patched compression stack remains zstd 0.14.3 and zstd-safe 8.2.0 ([aerovault#14](https://github.com/axpdev-lab/aerovault/pull/14)).
+- **Remote download names stay inside the selected local directory.** Unsafe remote leaf names are refused before preflight and local writes in single-file, folder, batch and retry paths, with literal POSIX backslashes preserved (#1392).
+- **S3 copies preserve the destination encryption policy.** Single-request CopyObject applies configured upload-policy headers before signing, and AeroCloud forwards saved SSE settings. Configured ACL and storage class follow the shared policy, with the existing MegaS4 exclusion preserved (#1393).
+- **Credentials stay with the user who owns them.** Copied users get fresh profile identities, a skipped import keeps existing secrets, OAuth sign-ins are bound to the user who started them, and a locked partition refuses access before any shared, cached or plaintext fallback. The legacy credential owner is fixed once and survives demotion or deletion of other admins, and OAuth tokens and Jottacloud refresh chains of other users stay in their own partition, including imports and exports (#1394).
+- **Filen share-link creation is disabled until per-share encryption exists.** File and folder link creation is refused before any request, the master-key link format is removed, and revoking existing links keeps working (#1395).
+- **The peer transport lockfile uses the patched TLS and runtime versions.** The standalone peer-l0 lockfile now matches the application on rustls, rustls-webpki, tokio and the certificate roots (#1397).
+- **S3 signed requests stay on the configured endpoint.** A virtual-hosted bucket that would change the request host is refused when the profile is built, and the plain-HTTP consent check follows the final request URL while local endpoints keep working (#1398).
+- **S3 multipart copies refuse oversized plans before allocating them.** The 10,000-part limit is checked while planning a server-side copy (#1399).
+- **Internxt in-memory downloads stage in a private directory.** Decrypted bytes are staged in an owner-only temporary directory that is removed on success and on every error, and a failed removal is reported (#1400).
 - **Application settings stay in the encrypted vault.** Confirmed writes remove the legacy plaintext WebView copy, migration writes only into an empty settings vault, and a starting or unreadable vault cannot cause a partial settings write to replace the saved configuration (#1379).
 - **Diagnostic and agent errors redact complete credentials.** Authorization headers, quoted and escaped secret fields, and bulk-refusal errors are scrubbed consistently before reaching diagnostic bundles, AeroAgent, the CLI agent or MCP (#1375).
 - **Transfer checks preserve local and remote data.** Download-folder probes cannot delete an existing file, ambiguous destination names are refused, incomplete scans retain a partial verdict, and sync does not overwrite a remote object whose absence was never established (#1350, #1367, #1369).

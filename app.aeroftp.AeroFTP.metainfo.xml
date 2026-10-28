@@ -146,7 +146,7 @@
   </languages>
 
   <releases>
-    <release version="4.2.5" date="2026-10-27">
+    <release version="4.2.5" date="2026-10-28">
       <description>
         <p>Safer synchronization, faster Proton Drive transfers, and desktop reliability improvements.</p>
         <ul>
@@ -154,6 +154,7 @@
           <li>Native Proton Drive reduces redundant requests and overlaps transfers, while CLI compatibility mode uses native bulk groups in more operations.</li>
           <li>Windows portable updates, startup preferences, logging, and desktop Open with integration are repaired.</li>
           <li>Application settings remain in the encrypted vault, diagnostic errors redact complete secret values, and security dependencies are refreshed.</li>
+          <li>Credentials of each user on a shared device stay with that user, Filen share-link creation is disabled until per-share encryption exists, and S3 and Internxt transfers keep signed requests on the configured endpoint and decrypted staging private.</li>
           <li>Benchmark latency, scoped cleanup, provider operations, interface translations, and public documentation are updated.</li>
         </ul>
       </description>
