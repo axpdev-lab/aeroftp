@@ -37590,8 +37590,8 @@ fn put_run_note_failures(errors: &[String]) {
 /// `put` with the text mode's retries. An attempt that exits with a
 /// retryable code runs again, unless every failure in it was a refusal the
 /// next attempt would meet again (a remote file of another size under
-/// `--immutable`, a partial an earlier attempt left): repeating those would
-/// only print them again. An attempt that also failed some other way (a
+/// `--immutable`, a partial an earlier attempt left, a rejected filename):
+/// repeating those would only print them again. An attempt that also failed some other way (a
 /// 503, a lost connection) runs again, and its refusals are reported again.
 /// Ctrl-C ends the retries as in [`retry_transfer_command`].
 #[allow(clippy::too_many_arguments)]
@@ -38239,9 +38239,12 @@ async fn cmd_put_recursive(
     let mut skipped: u32 = restricted_files;
     // G102: files the --max-transfer budget left behind on this run.
     let mut over_budget: u32 = 0;
+    if !restricted_skipped.is_empty() {
+        put_run_note_refused();
+    }
     let mut errors: Vec<String> = restricted_skipped
         .iter()
-        .map(|note| format!("skipped (restricted name): {}", note))
+        .map(|note| format!("{UPLOAD_REFUSED_PREFIX}skipped (restricted name): {note}"))
         .collect();
 
     // DAG-P2-07 (block E): engine-level stats when this folder upload ran on
@@ -92909,6 +92912,105 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 assert_eq!(code, 0, "{case}");
             }
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn put_retries_do_not_repeat_restricted_names_only() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        for pooled in [false, true] {
+            for rejected_directory in [false, true] {
+                let dir = tempfile::tempdir().unwrap();
+                let (local_dir, mut cli) = local_batch(&dir, 1);
+                let rejected = std::path::Path::new(&local_dir).join("bad\tname");
+                if rejected_directory {
+                    std::fs::create_dir(rejected).unwrap();
+                } else {
+                    std::fs::write(rejected, b"rejected").unwrap();
+                }
+                cli.skip_restricted = true;
+                cli.retries = 3;
+                cli.retries_sleep = "0".into();
+                let state = WorkerFake::state();
+                state.lock().unwrap().pooled = pooled;
+                let code = run_on_fake(&state, || {
+                    put_with_retries(
+                        "memory://",
+                        &local_dir,
+                        Some("/root"),
+                        true,
+                        false,
+                        false,
+                        None,
+                        &cli,
+                        OutputFormat::Text,
+                        Arc::new(AtomicBool::new(false)),
+                    )
+                });
+                let st = state.lock().unwrap();
+                let case = format!("pooled {pooled}, rejected directory {rejected_directory}");
+                assert_eq!(code, 4, "{case}: rejected names remain a partial failure");
+                assert_eq!(st.files.len(), 5, "{case}: valid siblings arrive");
+                assert_eq!(st.served.len(), 5, "{case}: each valid file uploads once");
+                assert_eq!(
+                    st.mkdirs
+                        .iter()
+                        .filter(|(_, path, _)| path == "/root")
+                        .count(),
+                    1,
+                    "{case}: one command attempt"
+                );
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn put_retries_restricted_names_still_retry_a_temporary_failure() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let (local_dir, mut cli) = local_batch(&dir, 1);
+        std::fs::write(
+            std::path::Path::new(&local_dir).join("bad\tname"),
+            b"rejected",
+        )
+        .unwrap();
+        cli.skip_restricted = true;
+        cli.immutable = true;
+        cli.retries = 3;
+        cli.retries_sleep = "0".into();
+        let state = WorkerFake::state();
+        state
+            .lock()
+            .unwrap()
+            .session_kills
+            .insert("/root/f1.txt".into(), 1);
+        let code = run_on_fake(&state, || {
+            put_with_retries(
+                "memory://",
+                &local_dir,
+                Some("/root"),
+                true,
+                false,
+                false,
+                None,
+                &cli,
+                OutputFormat::Text,
+                Arc::new(AtomicBool::new(false)),
+            )
+        });
+        let st = state.lock().unwrap();
+        assert_eq!(code, 4, "the restricted name is still reported");
+        assert_eq!(st.files.len(), 5, "the temporary failure recovers");
+        assert_eq!(st.files["/root/f1.txt"], b"file 1");
+        assert_eq!(
+            st.mkdirs
+                .iter()
+                .filter(|(_, path, _)| path == "/root")
+                .count(),
+            2,
+            "retry the lost connection, then stop on the permanent refusal"
+        );
     }
 
     /// The text mode's `--retries` reruns a failed `put`. A rerun of `put -r
