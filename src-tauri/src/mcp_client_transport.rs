@@ -778,27 +778,36 @@ mod tests {
 
     #[tokio::test]
     async fn cancellation_tears_down_session_without_result_or_restart() {
-        let mut supervisor = connect("modern").await.unwrap();
-        let cancel = CancellationToken::new();
-        let trigger = cancel.clone();
-        tokio::spawn(async move {
-            time::sleep(Duration::from_millis(50)).await;
-            trigger.cancel();
-        });
-        let mut params = Map::new();
-        params.insert("name".into(), Value::String("wait".into()));
-        params.insert("arguments".into(), Value::Object(Map::new()));
-        assert_eq!(
-            supervisor.call("tools/call", params, &cancel).await,
-            Err(TransportError::Cancelled)
-        );
-        assert_eq!(supervisor.restarts, 0);
-        assert_eq!(
-            supervisor
-                .call("tools/list", Map::new(), &CancellationToken::new())
-                .await,
-            Err(TransportError::Closed)
-        );
+        // A slow Windows probe can select a legacy handshake. Force that
+        // path too, without relying on runner load or a short probe timeout.
+        for mode in ["modern", "modern-fallback"] {
+            let mut supervisor = connect(mode).await.unwrap();
+            if mode == "modern-fallback" {
+                assert_eq!(supervisor.era(), Era::Legacy(protocol::LEGACY_AEROFTP));
+            }
+            let cancel = CancellationToken::new();
+            let trigger = cancel.clone();
+            tokio::spawn(async move {
+                time::sleep(Duration::from_millis(50)).await;
+                trigger.cancel();
+            });
+            let mut params = Map::new();
+            params.insert("name".into(), Value::String("wait".into()));
+            params.insert("arguments".into(), Value::Object(Map::new()));
+            assert_eq!(
+                supervisor.call("tools/call", params, &cancel).await,
+                Err(TransportError::Cancelled),
+                "{mode}"
+            );
+            assert_eq!(supervisor.restarts, 0, "{mode}");
+            assert_eq!(
+                supervisor
+                    .call("tools/list", Map::new(), &CancellationToken::new())
+                    .await,
+                Err(TransportError::Closed),
+                "{mode}"
+            );
+        }
     }
 
     #[tokio::test]
