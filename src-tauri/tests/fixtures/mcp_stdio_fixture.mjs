@@ -60,6 +60,10 @@ lines.on('line', (line) => {
     }
   }
   if (method === 'server/discover') {
+    if (mode === 'modern-fallback') {
+      send({ jsonrpc: '2.0', id, error: { code: -32601, message: 'Use initialize' } });
+      return;
+    }
     if (mode === 'modern-slow-probe') {
       setTimeout(() => send({ jsonrpc: '2.0', id, result: { resultType: 'complete', supportedVersions: ['2026-07-28'], capabilities: { tools: {} }, ttlMs: 0, cacheScope: 'private', _meta: { 'io.modelcontextprotocol/serverInfo': { name: 'fixture', version: '1' } } } }), 3500);
       return;
@@ -87,7 +91,10 @@ lines.on('line', (line) => {
     process.stderr.write('cancelled');
     return;
   }
-  if (!mode.startsWith('legacy')) {
+  // A modern probe can time out on a loaded host, followed by a fresh legacy
+  // initialize. Once accepted, use that session's negotiated wire format.
+  const legacy = initialized || mode.startsWith('legacy');
+  if (!legacy) {
     const meta = req.params?._meta;
     if (meta?.['io.modelcontextprotocol/protocolVersion'] !== '2026-07-28' || typeof meta?.['io.modelcontextprotocol/clientCapabilities'] !== 'object') {
       send({ jsonrpc: '2.0', id, error: { code: -32602, message: 'missing modern metadata' } });
@@ -95,10 +102,10 @@ lines.on('line', (line) => {
     }
   }
   if (method === 'tools/list') {
-    send({ jsonrpc: '2.0', id, result: { ...(mode.startsWith('legacy') ? {} : { resultType: 'complete' }), tools: [{ name: 'echo', inputSchema: { type: 'object', properties: { text: { type: 'string' } } } }] } });
+    send({ jsonrpc: '2.0', id, result: { ...(legacy ? {} : { resultType: 'complete' }), tools: [{ name: 'echo', inputSchema: { type: 'object', properties: { text: { type: 'string' } } } }] } });
   } else if (method === 'tools/call') {
     if (req.params.name === 'wait') return;
-    send({ jsonrpc: '2.0', id, result: { ...(mode.startsWith('legacy') ? {} : { resultType: 'complete' }), content: [{ type: 'text', text: req.params.arguments?.text ?? '' }] } });
+    send({ jsonrpc: '2.0', id, result: { ...(legacy ? {} : { resultType: 'complete' }), content: [{ type: 'text', text: req.params.arguments?.text ?? '' }] } });
   } else {
     send({ jsonrpc: '2.0', id, error: { code: -32601, message: 'unknown method' } });
   }
