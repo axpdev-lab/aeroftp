@@ -2479,6 +2479,61 @@ mod tests {
         assert!(result.unwrap_err().contains("policy_denied"));
     }
 
+    /// Empty inventories cannot reconstruct a denial the scanner discarded.
+    /// Exercise real local and both remote scan routes before comparison.
+    #[tokio::test]
+    async fn requested103_check_tree_rejects_scanner_policy_budget_overflow() {
+        use crate::sync_core::scan::{
+            scan_local_tree_checked, scan_remote_tree_checked, tests::requested103_tree,
+        };
+        let home = tempfile::tempdir().unwrap();
+        for rel in [".ssh", ".aws"] {
+            std::fs::create_dir(home.path().join(rel)).unwrap();
+        }
+        let root = home.path().to_str().unwrap();
+        let opts = crate::sync_core::ScanOptions {
+            local_access: Some(
+                super::mcp_local_access_with_policy(
+                    root,
+                    super::security::McpLocalPathPolicy::for_home(home.path()).unwrap(),
+                )
+                .unwrap(),
+            ),
+            max_entries: Some(1),
+            ..Default::default()
+        };
+        for pool in [false, true] {
+            let mut tree = requested103_tree(pool);
+            tree.dirs
+                .get_mut("/root")
+                .unwrap()
+                .retain(|entry| entry.name == ".ssh");
+            tree.dirs
+                .get_mut("/root")
+                .unwrap()
+                .push(crate::providers::RemoteEntry::directory(
+                    ".aws".into(),
+                    "/root/.aws".into(),
+                ));
+            let mut provider: Box<dyn crate::providers::StorageProvider> = Box::new(tree);
+            let (locals, _, local) = scan_local_tree_checked(root, &opts);
+            let (remotes, _, remote) =
+                scan_remote_tree_checked(&mut provider, "/root", &opts).await;
+            assert!(locals.is_empty() && remotes.is_empty());
+            for (mut local, remote) in [(local, Default::default()), (Default::default(), remote)] {
+                let result = super::bound_check_tree(
+                    root,
+                    &opts,
+                    &mut locals.clone(),
+                    &mut remotes.clone(),
+                    &mut local,
+                    &remote,
+                );
+                assert!(result.unwrap_err().contains("policy_denied"), "pool={pool}");
+            }
+        }
+    }
+
     #[test]
     fn check_tree_result_counts_a_link_as_an_incomplete_scan() {
         let clean = crate::sync_core::ScanCompleteness::default();

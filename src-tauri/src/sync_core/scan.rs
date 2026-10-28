@@ -529,7 +529,11 @@ impl ScanBoundaries {
     pub(crate) fn unseen(&mut self, rel_path: &str, reason: &'static str, is_dir: Option<bool>) {
         if rel_path.is_empty() {
             tracing::warn!("[scan] not seen: the scan root ({})", reason);
-            self.unbounded.get_or_insert(reason);
+            if reason == "policy_denied" {
+                self.unbounded = Some(reason);
+            } else {
+                self.unbounded.get_or_insert(reason);
+            }
         } else {
             tracing::warn!("[scan] not seen: {} ({})", rel_path, reason);
             self.unseen.push(UnseenPath {
@@ -863,7 +867,7 @@ pub fn scan_local_tree_checked(
                 if opts.local_access.is_some()
                     && error.path().is_some_and(|path| path.to_str().is_none())
                 {
-                    boundaries.unbounded.get_or_insert("policy_denied");
+                    boundaries.unbounded = Some("policy_denied");
                 }
                 // A directory we could not read (the root itself when the mount
                 // is gone, or any subtree) makes the scan incomplete: files
@@ -1408,7 +1412,7 @@ async fn scan_remote_tree_inventory_internal(
                 );
                 if batch.policy_denied_over_budget {
                     completeness.truncated = true;
-                    boundaries.unbounded.get_or_insert("entry_cap");
+                    boundaries.unbounded = Some("policy_denied");
                 }
                 for denied in batch.policy_denied {
                     record_unseen(
@@ -1647,7 +1651,7 @@ async fn scan_remote_tree_locked(
                 );
                 if batch.policy_denied_over_budget {
                     completeness.truncated = true;
-                    boundaries.unbounded.get_or_insert("entry_cap");
+                    boundaries.unbounded = Some("policy_denied");
                 }
                 for denied in batch.policy_denied {
                     record_unseen(
@@ -1780,7 +1784,8 @@ fn absorb_skipped_links(
 /// Record a path a walk did not see within the room the entry cap leaves (the
 /// cap less the entries kept): a gap that no longer fits cannot be named, so the
 /// scan is truncated and unbounded instead. The root takes no room, since a root
-/// the scan did not see is unbounded whatever the cap.
+/// the scan did not see is unbounded whatever the cap. A policy refusal must
+/// remain identifiable even when a prior generic failure exhausted the budget.
 fn record_unseen(
     boundaries: &mut ScanBoundaries,
     completeness: &mut ScanCompleteness,
@@ -1791,7 +1796,11 @@ fn record_unseen(
 ) {
     if !rel_path.is_empty() && boundaries.len() >= room {
         completeness.truncated = true;
-        boundaries.unbounded.get_or_insert("entry_cap");
+        if reason == "policy_denied" {
+            boundaries.unbounded = Some(reason);
+        } else {
+            boundaries.unbounded.get_or_insert("entry_cap");
+        }
     } else {
         boundaries.unseen(rel_path, reason, is_dir);
     }
@@ -2500,11 +2509,34 @@ pub(crate) mod tests {
             let home = tempdir().unwrap();
             let opts = ScanOptions {
                 local_access: Some(requested103_scope(home.path())),
-                max_entries: Some(0),
+                max_entries: Some(1),
                 ..Default::default()
             };
-            let (_, _, bounded) = walk_tree_with(requested103_tree(pool), opts, None).await;
-            assert!(bounded.unbounded.is_some());
+            let mut tree = requested103_tree(pool);
+            tree.dirs
+                .get_mut("/root")
+                .unwrap()
+                .push(crate::providers::RemoteEntry::directory(
+                    ".aws".into(),
+                    "/root/.aws".into(),
+                ));
+            let events = tree.events.clone();
+            let (_, health, bounded) = walk_tree_with(tree, opts.clone(), None).await;
+            assert!(health.truncated);
+            assert_eq!(bounded.unbounded, Some("policy_denied"));
+            assert!(events
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|(_, path)| !path.contains(".ssh") && !path.contains(".aws")));
+            // With no budget the scheduler never lists a directory, so it has
+            // observed no policy denial and must keep ordinary truncation.
+            let zero = ScanOptions {
+                max_entries: Some(0),
+                ..opts
+            };
+            let (_, _, bounded) = walk_tree_with(requested103_tree(pool), zero, None).await;
+            assert_eq!(bounded.unbounded, Some("entry_cap"));
             let mut tree = requested103_tree(pool);
             tree.dirs
                 .get_mut("/root")
@@ -2521,6 +2553,74 @@ pub(crate) mod tests {
             let (_, _, bounded) = walk_tree_with(tree, opts, None).await;
             assert_eq!(bounded.unbounded, Some("policy_denied"));
         }
+    }
+
+    #[test]
+    fn requested103_local_policy_budget_overflow_is_unbounded() {
+        let home = tempdir().unwrap();
+        for rel in [".ssh", ".aws"] {
+            fs::create_dir(home.path().join(rel)).unwrap();
+        }
+        let opts = ScanOptions {
+            local_access: Some(requested103_scope(home.path())),
+            max_entries: Some(1),
+            ..Default::default()
+        };
+        let (files, health, boundaries) =
+            scan_local_tree_checked(home.path().to_str().unwrap(), &opts);
+        assert!(files.is_empty());
+        assert!(health.truncated);
+        assert_eq!(boundaries.unseen.len(), 1);
+        assert_eq!(boundaries.unbounded, Some("policy_denied"));
+    }
+
+    /// Policy must replace an earlier generic gap and survive later generic
+    /// errors, for both a root denial and a named denial without budget room.
+    #[test]
+    fn requested103_policy_boundary_reason_survives_generic_failures() {
+        for earlier in [
+            "entry_cap",
+            "cancelled",
+            "list_error",
+            "depth_limit",
+            "scan_session_lost",
+        ] {
+            for rel in ["", ".ssh"] {
+                let mut boundaries = ScanBoundaries {
+                    unbounded: Some(earlier),
+                    ..Default::default()
+                };
+                let mut health = ScanCompleteness::default();
+                record_unseen(&mut boundaries, &mut health, rel, "policy_denied", None, 0);
+                assert_eq!(
+                    boundaries.unbounded,
+                    Some("policy_denied"),
+                    "{earlier}: {rel}"
+                );
+                assert!(boundaries.unseen.is_empty());
+                record_cancelled(&mut health, &mut boundaries);
+                absorb_skipped_links(&mut boundaries, &mut health, Vec::new(), true, 0);
+                record_unseen(
+                    &mut boundaries,
+                    &mut health,
+                    "ordinary",
+                    "unreadable",
+                    None,
+                    0,
+                );
+                assert_eq!(boundaries.unbounded, Some("policy_denied"));
+            }
+        }
+        let mut boundaries = ScanBoundaries::default();
+        record_unseen(
+            &mut boundaries,
+            &mut Default::default(),
+            "ordinary",
+            "unreadable",
+            None,
+            0,
+        );
+        assert_eq!(boundaries.unbounded, Some("entry_cap"));
     }
 
     #[cfg(unix)]
