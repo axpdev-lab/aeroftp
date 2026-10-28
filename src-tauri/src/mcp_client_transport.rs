@@ -79,6 +79,8 @@ struct Peer {
     stderr_drain: Option<JoinHandle<usize>>,
     decoder: McpLineDecoder,
     queued: VecDeque<Value>,
+    #[cfg(test)]
+    exit_observer: Option<tokio::sync::oneshot::Sender<std::process::ExitStatus>>,
 }
 
 impl Peer {
@@ -136,6 +138,8 @@ impl Peer {
             stderr_drain: Some(stderr_drain),
             decoder: McpLineDecoder::default(),
             queued: VecDeque::new(),
+            #[cfg(test)]
+            exit_observer: None,
         })
     }
 
@@ -191,6 +195,15 @@ impl Peer {
         if let Some(mut drain) = self.stderr_drain.take() {
             if time::timeout(timeout, &mut drain).await.is_err() {
                 drain.abort();
+            }
+        }
+        // The test observer receives an OS exit status only after the owned
+        // child has exited, including the forced-kill path. Dropping a Peer
+        // or clearing the supervisor slot alone cannot satisfy this check.
+        #[cfg(test)]
+        if let Some(observer) = self.exit_observer.take() {
+            if let Ok(Some(status)) = self.child.try_wait() {
+                let _ = observer.send(status);
             }
         }
         graceful
@@ -487,6 +500,12 @@ mod tests {
     use std::collections::BTreeMap;
     use std::path::PathBuf;
 
+    fn observe_exit(peer: &mut Peer) -> tokio::sync::oneshot::Receiver<std::process::ExitStatus> {
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        assert!(peer.exit_observer.replace(sender).is_none());
+        receiver
+    }
+
     fn fixture(mode: &str) -> (McpServerConfig, ResolvedMcpEnvironment) {
         let executable = if cfg!(windows) { "node.exe" } else { "node" };
         let node = std::env::split_paths(&std::env::var_os("PATH").expect("PATH"))
@@ -782,6 +801,7 @@ mod tests {
         // path too, without relying on runner load or a short probe timeout.
         for mode in ["modern", "modern-fallback"] {
             let mut supervisor = connect(mode).await.unwrap();
+            let mut exited = observe_exit(supervisor.peer.as_mut().unwrap());
             if mode == "modern-fallback" {
                 assert_eq!(supervisor.era(), Era::Legacy(protocol::LEGACY_AEROFTP));
             }
@@ -800,6 +820,9 @@ mod tests {
                 "{mode}"
             );
             assert_eq!(supervisor.restarts, 0, "{mode}");
+            let _status = exited
+                .try_recv()
+                .expect("the fixture must exit before cancellation completes");
             assert_eq!(
                 supervisor
                     .call("tools/list", Map::new(), &CancellationToken::new())
@@ -830,6 +853,10 @@ mod tests {
                 .unwrap(),
         )
         .unwrap();
+        let mut exited = observe_exit(&mut peer);
         assert!(!peer.shutdown(expiring().shutdown).await);
+        let _status = exited
+            .try_recv()
+            .expect("the stubborn fixture must exit after forced shutdown");
     }
 }
