@@ -1359,6 +1359,28 @@ pub(crate) fn remote_listing_delete_guard(
     Ok(())
 }
 
+/// Shared pre-scan policy refusal, with the caller's report context preserved.
+pub(crate) fn restricted_sync_refusal(opts: &SyncOptions, local_root: &str) -> Option<SyncReport> {
+    let message = if opts.scan.local_access.is_some() && opts.error_correction.enabled() {
+        "restricted sync does not support error correction".to_string()
+    } else {
+        crate::sync_core::access::authorize(opts.scan.local_access.as_deref(), local_root, "")
+            .err()?
+    };
+    Some(SyncReport {
+        dry_run: opts.dry_run,
+        direction: Some(opts.direction),
+        delta_policy: Some(opts.delta_policy),
+        errors: vec![SyncError {
+            rel_path: String::new(),
+            operation: "policy",
+            message,
+            decision_policy: opts.delta_policy,
+        }],
+        ..Default::default()
+    })
+}
+
 /// Run a sync between `local_root` and `remote_root` using `provider` and
 /// record progress via `sink`.
 pub async fn sync_tree_core(
@@ -1382,32 +1404,8 @@ pub async fn sync_tree_core(
         .await;
     }
 
-    if opts.scan.local_access.is_some() && opts.error_correction.enabled() {
-        return SyncReport {
-            errors: vec![SyncError {
-                rel_path: String::new(),
-                operation: "policy",
-                message: "restricted sync does not support error correction".into(),
-                decision_policy: opts.delta_policy,
-            }],
-            ..Default::default()
-        };
-    }
-    if let Err(message) =
-        crate::sync_core::access::authorize(opts.scan.local_access.as_deref(), local_root, "")
-    {
-        return SyncReport {
-            dry_run: opts.dry_run,
-            direction: Some(opts.direction),
-            delta_policy: Some(opts.delta_policy),
-            errors: vec![SyncError {
-                rel_path: String::new(),
-                operation: "policy",
-                message,
-                decision_policy: opts.delta_policy,
-            }],
-            ..Default::default()
-        };
+    if let Some(report) = restricted_sync_refusal(opts, local_root) {
+        return report;
     }
     let start = std::time::Instant::now();
     let resolved_segments = crate::transfer_settings::resolve_download_segments(

@@ -1420,32 +1420,8 @@ pub async fn execute_sync_dag(
     opts: &SyncOptions,
     sink: &mut dyn SyncProgressSink,
 ) -> SyncReport {
-    if opts.scan.local_access.is_some() && opts.error_correction.enabled() {
-        return SyncReport {
-            errors: vec![SyncError {
-                rel_path: String::new(),
-                operation: "policy",
-                message: "restricted sync does not support error correction".into(),
-                decision_policy: opts.delta_policy,
-            }],
-            ..Default::default()
-        };
-    }
-    if let Err(message) =
-        crate::sync_core::access::authorize(opts.scan.local_access.as_deref(), local_root, "")
-    {
-        return SyncReport {
-            dry_run: opts.dry_run,
-            direction: Some(opts.direction),
-            delta_policy: Some(opts.delta_policy),
-            errors: vec![SyncError {
-                rel_path: String::new(),
-                operation: "policy",
-                message,
-                decision_policy: opts.delta_policy,
-            }],
-            ..Default::default()
-        };
+    if let Some(report) = crate::sync::restricted_sync_refusal(opts, local_root) {
+        return report;
     }
     let start = Instant::now();
     let resolved_segments = crate::transfer_settings::resolve_download_segments(
@@ -1625,6 +1601,8 @@ pub async fn execute_sync_dag(
                 message,
                 decision_policy: opts.delta_policy,
             });
+            finish_sync_report(&mut report, start, None, resource_guard);
+            sink.on_phase(SyncPhase::Done);
             return report;
         }
     }
@@ -2126,10 +2104,19 @@ mod tests {
     struct TestSyncSink {
         starts: Vec<String>,
         done: Vec<String>,
+        phases: Vec<SyncPhase>,
+        deny_on_execute: Option<Arc<std::sync::atomic::AtomicBool>>,
     }
 
     impl SyncProgressSink for TestSyncSink {
-        fn on_phase(&mut self, _phase: SyncPhase) {}
+        fn on_phase(&mut self, phase: SyncPhase) {
+            if matches!(phase, SyncPhase::Executing) {
+                if let Some(denied) = &self.deny_on_execute {
+                    denied.store(true, Ordering::SeqCst);
+                }
+            }
+            self.phases.push(phase);
+        }
 
         fn on_file_start(
             &mut self,
@@ -4297,6 +4284,101 @@ mod tests {
             "{:?}",
             report.errors
         );
+    }
+
+    /// Both early-refusal routes preserve the initiating options without I/O.
+    #[tokio::test]
+    async fn requested103_early_policy_refusals_preserve_caller_context() {
+        use crate::sync_core::scan::tests::{requested103_scope, WalkTreeProvider};
+        let home = tempfile::tempdir().unwrap();
+        for dry_run in [false, true] {
+            for ec in [false, true] {
+                let mut options = opts(SyncDirection::Download);
+                options.dry_run = dry_run;
+                options.error_correction.enabled = ec;
+                options.scan.local_access = Some(requested103_scope(home.path()));
+                let mut provider: Box<dyn StorageProvider> =
+                    Box::new(WalkTreeProvider::new(Default::default(), true));
+                let mut sink = TestSyncSink::default();
+                // EC refuses before scans; otherwise the mismatched scope root
+                // refuses. Both public entry routes must preserve these fields.
+                let report = crate::sync::sync_tree_core(
+                    &mut provider,
+                    home.path().join("other").to_str().unwrap(),
+                    "/root",
+                    &options,
+                    &mut sink,
+                )
+                .await;
+                assert_eq!(report.dry_run, dry_run);
+                assert_eq!(report.direction, Some(SyncDirection::Download));
+                assert_eq!(report.delta_policy, Some(options.delta_policy));
+                assert_eq!(report.errors.len(), 1);
+                assert_eq!(report.errors[0].operation, "policy");
+                assert!(sink.phases.is_empty());
+            }
+        }
+    }
+
+    /// A late root denial must settle the phase and replace stale engine stats.
+    #[tokio::test]
+    async fn requested103_remote_root_refusal_closes_report_and_phase() {
+        use crate::sync_core::access::{LocalAccessScope, LocalPathAuthorizer};
+        use crate::sync_core::scan::tests::WalkTreeProvider;
+        #[derive(Debug)]
+        struct DenyOnExecute(Arc<std::sync::atomic::AtomicBool>);
+        impl LocalPathAuthorizer for DenyOnExecute {
+            fn validate(&self, _: &std::path::Path) -> Result<(), String> {
+                if self.0.load(Ordering::SeqCst) {
+                    Err("fixture late root denial".into())
+                } else {
+                    Ok(())
+                }
+            }
+        }
+        let home = tempfile::tempdir().unwrap();
+        let root = home.path().to_str().unwrap();
+        std::fs::write(home.path().join("allowed.txt"), b"a").unwrap();
+        let mut provider: Box<dyn StorageProvider> =
+            Box::new(WalkTreeProvider::new(Default::default(), true));
+        let earlier = crate::sync::sync_tree_core(
+            &mut provider,
+            root,
+            "/root",
+            &opts(SyncDirection::Upload),
+            &mut TestSyncSink::default(),
+        )
+        .await
+        .engine_stats
+        .unwrap();
+        let denied = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut options = opts(SyncDirection::Upload);
+        options.scan.local_access = Some(Arc::new(
+            LocalAccessScope::new(home.path(), Arc::new(DenyOnExecute(denied.clone()))).unwrap(),
+        ));
+        let tree = WalkTreeProvider::new(Default::default(), true);
+        let writes = tree.writes.clone();
+        let mut provider: Box<dyn StorageProvider> = Box::new(tree);
+        let mut sink = TestSyncSink {
+            deny_on_execute: Some(denied),
+            ..Default::default()
+        };
+        let report =
+            crate::sync::sync_tree_core(&mut provider, root, "/root", &options, &mut sink).await;
+        assert!(report
+            .errors
+            .iter()
+            .any(|error| error.operation == "policy"));
+        assert!(report.elapsed_secs > 0.0);
+        assert!(report.engine_stats.is_some());
+        assert_ne!(crate::transfer_dag::engine_stats::latest(), Some(earlier));
+        assert!(matches!(sink.phases.last(), Some(SyncPhase::Done)));
+        assert!(sink
+            .phases
+            .iter()
+            .any(|phase| matches!(phase, SyncPhase::Executing)));
+        assert!(sink.starts.is_empty());
+        assert_eq!(writes.load(Ordering::SeqCst), 0);
     }
 
     /// A refused run closes its report like every other exit of the DAG route:

@@ -2602,7 +2602,7 @@ pub(crate) mod tests {
         };
         let mut boundaries = ScanBoundaries::default();
         super::super::access::preflight(&capped, &[local(".ssh/key")], &[], &mut boundaries);
-        assert_eq!(boundaries.unbounded, Some("entry_cap"));
+        assert_eq!(boundaries.unbounded, Some("policy_denied"));
         assert!(!uses_recursive_fastpath(&opts, &None));
     }
 

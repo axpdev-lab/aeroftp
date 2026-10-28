@@ -86,9 +86,15 @@ impl McpLocalPathPolicy {
 }
 
 fn policy_prefix(path: &std::path::Path, prefix: &std::path::Path) -> bool {
-    #[cfg(not(windows))]
+    #[cfg(any(target_os = "linux", not(any(unix, windows))))]
     {
         path.starts_with(prefix)
+    }
+    // Missing tails retain the caller's spelling. Conservatively fold Unix
+    // names outside Linux, including default case-insensitive macOS volumes.
+    #[cfg(all(unix, not(target_os = "linux")))]
+    {
+        folded_policy_prefix(path, prefix)
     }
     #[cfg(windows)]
     {
@@ -108,8 +114,31 @@ fn policy_prefix(path: &std::path::Path, prefix: &std::path::Path) -> bool {
     }
 }
 
-impl crate::sync_core::access::LocalPathAuthorizer for McpLocalPathPolicy {
-    fn validate(&self, path: &std::path::Path) -> Result<(), String> {
+#[cfg(any(test, all(unix, not(target_os = "linux"))))]
+fn folded_policy_prefix(path: &std::path::Path, prefix: &std::path::Path) -> bool {
+    match (path.to_str(), prefix.to_str()) {
+        (Some(path), Some(prefix)) => {
+            std::path::Path::new(&path.to_lowercase()).starts_with(prefix.to_lowercase())
+        }
+        _ => true,
+    }
+}
+
+impl McpLocalPathPolicy {
+    /// Refresh mutable protected aliases once per admission, shared by all its
+    /// prefixes. Nothing is cached across scans, retries or side effects.
+    fn current_denied(&self) -> Result<Vec<std::path::PathBuf>, String> {
+        DENIED_HOME_DIRS
+            .iter()
+            .map(|dir| crate::sync_core::access::resolve_missing(&self.home.join(dir)))
+            .collect()
+    }
+
+    fn validate_with_denied(
+        &self,
+        path: &std::path::Path,
+        current_denied: &[std::path::PathBuf],
+    ) -> Result<(), String> {
         let text = path.to_str().ok_or("unrepresentable local path")?;
         validate_remote_path(text)?;
         if path
@@ -160,11 +189,28 @@ impl crate::sync_core::access::LocalPathAuthorizer for McpLocalPathPolicy {
                 return Err("Access denied: resolved home path".into());
             }
         }
-        for dir in DENIED_HOME_DIRS {
-            let denied = crate::sync_core::access::resolve_missing(&self.home.join(dir))?;
-            if policy_prefix(&absolute, &denied) || policy_prefix(&effective, &denied) {
+        for denied in current_denied {
+            if policy_prefix(&absolute, denied) || policy_prefix(&effective, denied) {
                 return Err("Access denied: resolved home path".into());
             }
+        }
+        Ok(())
+    }
+}
+
+impl crate::sync_core::access::LocalPathAuthorizer for McpLocalPathPolicy {
+    fn validate(&self, path: &std::path::Path) -> Result<(), String> {
+        self.validate_with_denied(path, &self.current_denied()?)
+    }
+
+    fn validate_many(
+        &self,
+        paths: &mut dyn Iterator<Item = std::path::PathBuf>,
+    ) -> Result<(), usize> {
+        let current_denied = self.current_denied().map_err(|_| 0usize)?;
+        for (index, path) in paths.enumerate() {
+            self.validate_with_denied(&path, &current_denied)
+                .map_err(|_| index)?;
         }
         Ok(())
     }
@@ -389,6 +435,91 @@ mod tests {
         assert!(policy.validate(Path::new("/etc/shadow")).is_err());
         #[cfg(unix)]
         assert!(policy.validate(Path::new("/etcetera/new/key")).is_ok());
+    }
+
+    /// Exercise the folded comparison on every CI host, including missing tails
+    /// and component boundaries; the native policy is also tested on macOS.
+    #[test]
+    fn requested103_case_insensitive_prefix_comparison() {
+        assert!(folded_policy_prefix(
+            Path::new("/Users/U/.SSH/new/key"),
+            Path::new("/users/u/.ssh")
+        ));
+        assert!(!folded_policy_prefix(
+            Path::new("/Users/U/.SSH-backup/new/key"),
+            Path::new("/users/u/.ssh")
+        ));
+        assert!(!folded_policy_prefix(
+            Path::new("/Users/U/.Config/aeroftp-backup/key"),
+            Path::new("/users/u/.config/aeroftp")
+        ));
+    }
+
+    #[cfg(all(unix, not(target_os = "linux")))]
+    #[test]
+    fn requested103_native_case_variants_of_missing_protected_paths() {
+        let home = tempfile::tempdir().unwrap();
+        let scope = LocalAccessScope::new(
+            home.path(),
+            Arc::new(McpLocalPathPolicy::for_home(home.path()).unwrap()),
+        )
+        .unwrap();
+        for rel in [
+            ".SSH/new/key",
+            ".AWS/config",
+            ".Config/aeroftp/db",
+            ".Vault-Token",
+        ] {
+            assert!(scope.validate_relative(rel).is_err(), "{rel}");
+        }
+        assert!(!home.path().join(".ssh").exists());
+        assert!(scope.validate_relative(".SSH-backup/new/key").is_ok());
+    }
+
+    /// Count real canonicalization calls, then change a protected alias between
+    /// admissions. The optimization must remain bounded without a stale cache.
+    #[cfg(unix)]
+    #[test]
+    fn requested103_resolution_cost_and_fresh_alias_admission() {
+        use crate::sync_core::access::{authorize, RESOLUTION_COUNT};
+        use std::os::unix::fs::symlink;
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir(home.path().join("old-secrets")).unwrap();
+        symlink(home.path().join("old-secrets"), home.path().join(".ssh")).unwrap();
+        let scope = LocalAccessScope::new(
+            home.path(),
+            Arc::new(McpLocalPathPolicy::for_home(home.path()).unwrap()),
+        )
+        .unwrap();
+        RESOLUTION_COUNT.with(|count| count.set(Some(0)));
+        let result = authorize(Some(&scope), home.path().to_str().unwrap(), "a/b/c/d/e/f");
+        let count = RESOLUTION_COUNT.with(|count| count.replace(None).unwrap());
+        assert!(result.is_ok());
+        eprintln!("six-level policy admission: {count} canonicalizations");
+        assert!(
+            count <= 20,
+            "six-level admission used {count} canonicalizations"
+        );
+        std::fs::create_dir(home.path().join("a")).unwrap();
+        std::fs::remove_file(home.path().join(".ssh")).unwrap();
+        symlink(home.path().join("a"), home.path().join(".ssh")).unwrap();
+        assert_eq!(
+            scope.validate_relative("a/b/c/d/e/f").unwrap_err().rel_path,
+            "a"
+        );
+        for rel in ["a/b/c/d/e/f", "old-secrets/key"] {
+            assert!(
+                authorize(Some(&scope), home.path().to_str().unwrap(), rel).is_err(),
+                "{rel}"
+            );
+        }
+        assert!(authorize(Some(&scope), home.path().to_str().unwrap(), "allowed/new").is_ok());
+        assert!(authorize(
+            Some(&scope),
+            home.path().join("other").to_str().unwrap(),
+            "allowed/new"
+        )
+        .is_err());
     }
 
     #[test]

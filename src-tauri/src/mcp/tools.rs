@@ -1370,25 +1370,19 @@ pub async fn execute_tool(
                             );
                         }
                     }
-                    crate::sync_core::access::preflight(
-                        &opts,
-                        &locals,
-                        &remotes,
-                        &mut local_boundaries,
-                    );
-                    let bound = crate::sync_core::ScanBound::apply(
+                    if let Err(reason) = bound_check_tree(
                         &local_dir,
+                        &opts,
                         &mut locals,
                         &mut remotes,
-                        &local_boundaries,
-                        remote_boundaries.clone(),
-                    );
-                    if let Some(reason) = bound.refusal() {
+                        &mut local_boundaries,
+                        &remote_boundaries,
+                    ) {
                         return finish(
                             tool_name,
                             Some(&server),
                             Some(&remote_dir),
-                            err(reason.to_string()),
+                            err(reason),
                             start,
                         );
                     }
@@ -1969,6 +1963,29 @@ pub async fn execute_tool(
 /// Most entries of each boundary list a `sync_tree` result carries.
 const SYNC_BOUNDARIES_JSON_CAP: usize = 1000;
 
+/// Comparison can report incomplete observations, while a policy refusal with
+/// no named boundary cannot safely describe a permitted comparison scope.
+fn bound_check_tree(
+    local_root: &str,
+    opts: &crate::sync_core::ScanOptions,
+    locals: &mut Vec<crate::sync_core::LocalEntry>,
+    remotes: &mut Vec<crate::sync_core::RemoteEntry>,
+    local: &mut crate::sync_core::ScanBoundaries,
+    remote: &crate::sync_core::ScanBoundaries,
+) -> Result<(), String> {
+    crate::sync_core::access::preflight(opts, locals, remotes, local);
+    for (side, boundaries) in [("local", &*local), ("remote", remote)] {
+        if boundaries.unbounded == Some("policy_denied") {
+            return Err(crate::sync_core::scan::unbounded_refusal(
+                side,
+                "policy_denied",
+            ));
+        }
+    }
+    crate::sync_core::ScanBound::apply(local_root, locals, remotes, local, remote.clone());
+    Ok(())
+}
+
 /// The additive keys a `sync_tree` result gains when the run left paths alone:
 /// the symbolic links it did not follow and the paths its scans could not see.
 /// Each list is capped, with its total and a truncation flag, and absent
@@ -2016,7 +2033,7 @@ fn check_boundaries_json(
         let left_out = !boundaries.links.is_empty() || !boundaries.unseen.is_empty();
         keys.insert(
             format!("{side}_scan_incomplete"),
-            (!scan.is_complete() || left_out).into(),
+            (!scan.is_complete() || left_out || boundaries.unbounded.is_some()).into(),
         );
         keys.insert(format!("{side}_scan_errors"), scan.list_errors.into());
         keys.insert(format!("{side}_scan_truncated"), scan.truncated.into());
@@ -2362,6 +2379,104 @@ mod tests {
             assert_eq!(check["local_policy_denied_total"], 1);
             assert_eq!(check["local_scan_incomplete"], true);
         }
+    }
+
+    #[test]
+    fn requested103_check_tree_partial_observations_and_policy_refusal() {
+        let home = tempfile::tempdir().unwrap();
+        let opts = crate::sync_core::ScanOptions {
+            local_access: Some(
+                super::mcp_local_access_with_policy(
+                    home.path().to_str().unwrap(),
+                    super::security::McpLocalPathPolicy::for_home(home.path()).unwrap(),
+                )
+                .unwrap(),
+            ),
+            ..Default::default()
+        };
+        for side in ["local", "remote"] {
+            for reason in [
+                "entry_cap",
+                "cancelled",
+                "list_error",
+                "depth_limit",
+                "scan_session_lost",
+                "policy_denied",
+            ] {
+                let mut local = crate::sync_core::ScanBoundaries::default();
+                let mut remote = crate::sync_core::ScanBoundaries::default();
+                if side == "local" {
+                    local.unbounded = Some(reason);
+                } else {
+                    remote.unbounded = Some(reason);
+                }
+                let mut locals = vec![crate::sync_core::LocalEntry {
+                    rel_path: "allowed.txt".into(),
+                    size: 1,
+                    mtime: None,
+                    sha256: None,
+                }];
+                let mut remotes = Vec::new();
+                let result = super::bound_check_tree(
+                    home.path().to_str().unwrap(),
+                    &opts,
+                    &mut locals,
+                    &mut remotes,
+                    &mut local,
+                    &remote,
+                );
+                if reason == "policy_denied" {
+                    assert!(result.unwrap_err().contains("policy_denied"));
+                } else {
+                    result.unwrap();
+                    let diff = crate::sync_core::compare_trees(&locals, &remotes, false);
+                    assert_eq!(diff.missing_remote_count(), 1);
+                    for summary in [false, true] {
+                        let keys = super::check_boundaries_json(
+                            (&Default::default(), &local),
+                            (&Default::default(), &remote),
+                            summary,
+                        );
+                        assert_eq!(keys[&format!("{side}_scan_incomplete")], true);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn requested103_check_tree_policy_failure_cannot_be_masked_by_entry_cap() {
+        let home = tempfile::tempdir().unwrap();
+        let opts = crate::sync_core::ScanOptions {
+            local_access: Some(
+                super::mcp_local_access_with_policy(
+                    home.path().to_str().unwrap(),
+                    super::security::McpLocalPathPolicy::for_home(home.path()).unwrap(),
+                )
+                .unwrap(),
+            ),
+            max_entries: Some(0),
+            ..Default::default()
+        };
+        let mut locals = vec![crate::sync_core::LocalEntry {
+            rel_path: ".ssh/key".into(),
+            size: 1,
+            mtime: None,
+            sha256: None,
+        }];
+        let mut local = crate::sync_core::ScanBoundaries {
+            unbounded: Some("entry_cap"),
+            ..Default::default()
+        };
+        let result = super::bound_check_tree(
+            home.path().to_str().unwrap(),
+            &opts,
+            &mut locals,
+            &mut Vec::new(),
+            &mut local,
+            &Default::default(),
+        );
+        assert!(result.unwrap_err().contains("policy_denied"));
     }
 
     #[test]
