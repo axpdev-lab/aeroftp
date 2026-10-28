@@ -641,7 +641,8 @@ impl ProtonCliProvider {
     }
 
     fn resolve_path(&self, path: &str) -> String {
-        let p = path.trim();
+        // A path is an exact name, including whitespace-only leaves.
+        let p = path;
         if p.is_empty() || p == "." {
             return self.current_path.clone();
         }
@@ -3945,6 +3946,135 @@ mod cli_sequence_tests {
         assert!(matches!(error, ProviderError::InvalidPath(_)), "{error:?}");
         assert!(verbs(&read_argv(&dir), "upload").is_empty());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn proton_cli_lists_raw_control_names_and_restores_them_after_download() {
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        let mut p = provider(&shim);
+        let names = [
+            "tab\tname.txt",
+            "line\nname.txt",
+            "del\u{7f}name.txt",
+            "c1\u{85}name.txt",
+        ];
+        let nodes: Vec<_> = names.iter().map(|name| serde_json::json!({
+            "name": {"ok": true, "value": name}, "type": "file", "activeRevision": {"claimedSize": 14}
+        })).collect();
+        std::fs::write(
+            dir.path().join("my-files_scratch.json"),
+            serde_json::to_vec(&nodes).unwrap(),
+        )
+        .unwrap();
+        let listed = p.list("/my-files/scratch").await.unwrap();
+        assert_eq!(
+            listed.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(),
+            names
+        );
+        for name in names {
+            let remote = format!("/my-files/scratch/{name}");
+            let local = dir.path().join(name);
+            p.download(&remote, local.to_str().unwrap(), None)
+                .await
+                .unwrap();
+            assert_eq!(std::fs::read(&local).unwrap(), b"REMOTE-CONTENT");
+            assert!(
+                !dir.path().join(cli_local_name(name)).exists() || cli_local_name(name) == name
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn filename_whitespace_survives_upload_bulk_mkdir_rename_and_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        let local = dir.path().join("source.txt");
+        std::fs::write(&local, b"DATA").unwrap();
+        let mut p = provider(&shim);
+        for name in [
+            " leading.txt",
+            "trailing.txt ",
+            " both.txt ",
+            " ",
+            "\tname\t",
+        ] {
+            let remote = format!("/my-files/scratch/{name}");
+            p.upload(local.to_str().unwrap(), &remote, None)
+                .await
+                .unwrap();
+            let argv = read_argv(dir.path());
+            let uploads = verbs(&argv, "upload");
+            assert_eq!(
+                Path::new(uploads.last().unwrap().iter().rev().nth(1).unwrap())
+                    .file_name()
+                    .unwrap(),
+                name
+            );
+            let bulk_local = dir.path().join(name);
+            std::fs::write(&bulk_local, b"DATA").unwrap();
+            let before = verbs(&read_argv(dir.path()), "upload").len();
+            let outcomes = p
+                .upload_bulk(
+                    &[BulkTransferItem {
+                        local_path: bulk_local.to_string_lossy().into_owned(),
+                        remote_path: remote.clone(),
+                        size: 4,
+                    }],
+                    None,
+                )
+                .await
+                .unwrap();
+            if plain_bulk_name(&remote).is_some() {
+                assert!(matches!(outcomes[0], BulkTransferOutcome::Completed));
+                let argv = read_argv(dir.path());
+                let uploads = verbs(&argv, "upload");
+                assert_eq!(uploads.len(), before + 1);
+                assert_eq!(
+                    Path::new(uploads.last().unwrap().iter().rev().nth(1).unwrap())
+                        .file_name()
+                        .unwrap(),
+                    name
+                );
+            } else {
+                assert!(matches!(outcomes[0], BulkTransferOutcome::NotAttempted(_)));
+                assert_eq!(verbs(&read_argv(dir.path()), "upload").len(), before);
+                p.upload(bulk_local.to_str().unwrap(), &remote, None)
+                    .await
+                    .unwrap();
+                let argv = read_argv(dir.path());
+                let uploads = verbs(&argv, "upload");
+                assert_eq!(
+                    Path::new(uploads.last().unwrap().iter().rev().nth(1).unwrap())
+                        .file_name()
+                        .unwrap(),
+                    name
+                );
+            }
+            p.mkdir(&remote).await.unwrap();
+            let argv = read_argv(dir.path());
+            assert_eq!(
+                verbs(&argv, "create-folder")
+                    .last()
+                    .unwrap()
+                    .last()
+                    .unwrap(),
+                name
+            );
+            std::fs::write(
+                dir.path().join("existing.json"),
+                r#"["/my-files/scratch/source.txt"]"#,
+            )
+            .unwrap();
+            p.rename("/my-files/scratch/source.txt", &remote)
+                .await
+                .unwrap();
+            let argv = read_argv(dir.path());
+            assert_eq!(verbs(&argv, "rename").last().unwrap().last().unwrap(), name);
+            p.list(&remote).await.unwrap();
+            let argv = read_argv(dir.path());
+            assert_eq!(verbs(&argv, "list").last().unwrap()[2], remote);
+        }
     }
 
     #[tokio::test]
