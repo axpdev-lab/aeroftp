@@ -7486,7 +7486,7 @@ fn render_pending_warnings(format: OutputFormat) {
 
 fn print_error(format: OutputFormat, msg: &str, code: i32) {
     match format {
-        OutputFormat::Text => eprintln!("Error: {}", msg),
+        OutputFormat::Text => eprintln!("Error: {}", sanitize_filename(msg)),
         OutputFormat::Json => {
             // JSON errors go to stderr so stdout remains clean for piping
             eprintln!(
@@ -9344,7 +9344,11 @@ fn has_filters(cli: &Cli) -> bool {
 }
 
 fn create_progress_bar(filename: &str, total: u64) -> ProgressBar {
-    if !use_color() {
+    create_progress_bar_with_color(filename, total, use_color())
+}
+
+fn create_progress_bar_with_color(filename: &str, total: u64, color: bool) -> ProgressBar {
+    if !color {
         let pb = ProgressBar::hidden();
         return pb;
     }
@@ -9355,7 +9359,7 @@ fn create_progress_bar(filename: &str, total: u64) -> ProgressBar {
             .unwrap()
             .progress_chars("━╸─"),
     );
-    pb.set_message(filename.to_string());
+    pb.set_message(sanitize_filename(filename));
     pb
 }
 
@@ -85040,6 +85044,60 @@ mod tests {
             load_aimd_overrides_from_file(&path).is_err(),
             "a malformed file must surface a parse error to the operator"
         );
+    }
+
+    #[test]
+    fn terminal_progress_message_sanitizes_filename() {
+        let bar = create_progress_bar_with_color("before\x1b[2Jafter.txt", 10, true);
+        assert_eq!(bar.message(), "beforeafter.txt");
+        bar.finish_and_clear();
+    }
+
+    #[test]
+    fn terminal_error_display_preserves_json_payload() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_PRINT_ERROR_CHILD";
+        const RAW: &str = "Cannot create remote directory '/root/\x1b[2Jfolder': denied";
+        if let Ok(mode) = std::env::var(CHILD) {
+            print_error(
+                if mode == "json" {
+                    OutputFormat::Json
+                } else {
+                    OutputFormat::Text
+                },
+                RAW,
+                3,
+            );
+            return;
+        }
+        for mode in ["text", "json"] {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "tests::terminal_error_display_preserves_json_payload",
+                    "--nocapture",
+                    "--test-threads=1",
+                ])
+                .env(CHILD, mode)
+                .output()
+                .unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(
+                output.status.success() && stdout.contains("1 passed"),
+                "{mode}: {stdout}\n{stderr}"
+            );
+            if mode == "json" {
+                let report: serde_json::Value = serde_json::from_str(stderr.trim()).unwrap();
+                assert_eq!(report["error"], RAW);
+                assert_eq!(report["code"], 3);
+            } else {
+                assert!(
+                    !stderr.contains('\x1b'),
+                    "terminal escape leaked: {stderr:?}"
+                );
+                assert!(stderr.contains("Cannot create remote directory '/root/folder': denied"));
+            }
+        }
     }
 
     // ── sanitize_filename tests ───────────────────────────────────────
