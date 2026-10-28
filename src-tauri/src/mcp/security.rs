@@ -499,7 +499,7 @@ mod tests {
         let opaque = home.path().join("opaque");
         std::fs::create_dir(&opaque).unwrap();
         let policy = McpLocalPathPolicy::for_home(home.path()).unwrap();
-        std::fs::set_permissions(&opaque, std::fs::Permissions::from_mode(0)).unwrap();
+        std::fs::set_permissions(&opaque, std::fs::Permissions::from_mode(0o0)).unwrap();
         let result = policy.validate(&opaque.join("new/key"));
         std::fs::set_permissions(&opaque, std::fs::Permissions::from_mode(0o700)).unwrap();
         // A root test runner can traverse mode 0000; do not claim a permission proof there.

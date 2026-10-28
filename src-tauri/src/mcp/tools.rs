@@ -2283,6 +2283,27 @@ impl crate::sync_core::SyncProgressSink for NotifierSyncSink<'_> {
     }
 }
 
+/// Shared by check_tree and sync_tree; clients cannot turn off the policy.
+fn mcp_local_access(
+    root: &str,
+) -> Result<std::sync::Arc<crate::sync_core::access::LocalAccessScope>, String> {
+    security::validate_remote_path(root)?;
+    mcp_local_access_with_policy(root, security::McpLocalPathPolicy::capture()?)
+}
+
+fn mcp_local_access_with_policy(
+    root: &str,
+    policy: security::McpLocalPathPolicy,
+) -> Result<std::sync::Arc<crate::sync_core::access::LocalAccessScope>, String> {
+    security::validate_remote_path(root)?;
+    Ok(std::sync::Arc::new(
+        crate::sync_core::access::LocalAccessScope::new(
+            std::path::Path::new(root),
+            std::sync::Arc::new(policy),
+        )?,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -3275,25 +3296,4 @@ mod tests {
             serde_json::json!("FileLu (webdav): mode 'webdav' needs its own credentials")
         );
     }
-}
-
-/// Shared by check_tree and sync_tree; clients cannot turn off the policy.
-fn mcp_local_access(
-    root: &str,
-) -> Result<std::sync::Arc<crate::sync_core::access::LocalAccessScope>, String> {
-    security::validate_remote_path(root)?;
-    mcp_local_access_with_policy(root, security::McpLocalPathPolicy::capture()?)
-}
-
-fn mcp_local_access_with_policy(
-    root: &str,
-    policy: security::McpLocalPathPolicy,
-) -> Result<std::sync::Arc<crate::sync_core::access::LocalAccessScope>, String> {
-    security::validate_remote_path(root)?;
-    Ok(std::sync::Arc::new(
-        crate::sync_core::access::LocalAccessScope::new(
-            std::path::Path::new(root),
-            std::sync::Arc::new(policy),
-        )?,
-    ))
 }
