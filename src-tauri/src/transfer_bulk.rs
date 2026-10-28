@@ -977,6 +977,7 @@ pub(crate) mod tests {
     #[derive(Default)]
     pub(crate) struct ScriptedBulk {
         pub(crate) kind: Option<crate::providers::ProviderType>,
+        pub(crate) kind_queries: Arc<std::sync::atomic::AtomicUsize>,
         pub(crate) bulks: Arc<std::sync::Mutex<Vec<Vec<String>>>>,
         pub(crate) singles: Arc<std::sync::Mutex<Vec<String>>>,
         pub(crate) hang: bool,
@@ -989,6 +990,7 @@ pub(crate) mod tests {
             self
         }
         fn provider_type(&self) -> crate::providers::ProviderType {
+            self.kind_queries.fetch_add(1, Ordering::SeqCst);
             self.kind.unwrap_or(crate::providers::ProviderType::Sftp)
         }
         fn display_name(&self) -> String {

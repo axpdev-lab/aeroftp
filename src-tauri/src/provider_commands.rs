@@ -17036,6 +17036,18 @@ mod tests {
 
     #[tokio::test]
     async fn proton_file_batch_isolates_a_restricted_name_and_reports_partial() {
+        struct Errors(std::sync::Mutex<Vec<String>>);
+        impl TransferEventSink for Errors {
+            fn emit_transfer_event(&self, event: crate::TransferEvent) {
+                if event.event_type == "file_error" {
+                    self.0
+                        .lock()
+                        .unwrap()
+                        .push(event.message.unwrap_or_default());
+                }
+            }
+        }
+        let errors = Arc::new(Errors(std::sync::Mutex::new(Vec::new())));
         let scripted = crate::transfer_bulk::tests::ScriptedBulk {
             kind: Some(ProviderType::Proton),
             ..Default::default()
@@ -17060,7 +17072,7 @@ mod tests {
             .collect();
         let outcome = super::run_provider_file_batch(
             provider,
-            Arc::new(crate::transfer_event_sink::NoopTransferSink),
+            errors.clone(),
             Arc::new(|_| {}),
             Arc::new(AtomicBool::new(false)),
             CancellationToken::new(),
@@ -17069,7 +17081,7 @@ mod tests {
                 no_clobber: false,
                 entries,
                 max_concurrent: Some(1),
-                retry_count: Some(0),
+                retry_count: Some(3),
                 timeout_seconds: Some(30),
                 download_segments: None,
                 sftp_download_preset: None,
@@ -17082,6 +17094,9 @@ mod tests {
         assert_eq!((outcome.completed, outcome.failed), (2, 1));
         assert_eq!(outcome.succeeded, vec![0, 2]);
         assert!(!outcome.cancelled);
+        let errors = errors.0.lock().unwrap();
+        assert_eq!(errors.len(), 1, "one terminal error for the rejected row");
+        assert!(errors[0].contains("U+0000"), "{errors:?}");
         let sent: Vec<String> = singles
             .lock()
             .unwrap()

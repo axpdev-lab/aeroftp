@@ -1653,6 +1653,24 @@ impl ProviderUploadExecutor {
         let file_size = transfer_entry_upload_size(&entry).await;
         self.emit_upload_start(&entry, &file_transfer_id, file_size);
 
+        if self.cancel_token.is_cancelled() {
+            return self.failed_upload(entry, "Transfer cancelled by user".into());
+        }
+        // Name refusals are permanent per-file failures. Validate once before
+        // retrying any I/O, retaining the actionable restricted-character reason.
+        if let Err(error) =
+            crate::restricted_chars::validate_path(provider.provider_type(), &entry.remote_path)
+        {
+            return self.emit_upload_failure(
+                entry,
+                TransferFailure::new(
+                    crate::transfer_domain::TransferFailureKind::InvalidPath,
+                    error.to_string(),
+                    false,
+                ),
+            );
+        }
+
         let mut retry_policy = self.runtime_settings.retry_policy();
         if provider.manages_upload_retries() {
             retry_policy.max_retries = 0;
@@ -1749,11 +1767,6 @@ impl ProviderUploadExecutor {
     ) -> Result<bool, String> {
         let remote_path = entry.remote_path.clone();
         let local_path = entry.local_path.clone();
-        // Reject names with characters this provider's backend forbids before
-        // the per-file upload (covers folder uploads and engine/CLI transfers).
-        // Surfaces as a clear per-file error instead of a silent backend failure.
-        crate::restricted_chars::validate_path(provider.provider_type(), &remote_path)
-            .map_err(|e| e.to_string())?;
         let commit_message = self.commit_message.clone();
         let size_secs = file_size / 50_000;
         let eff_timeout = self
@@ -1914,6 +1927,14 @@ impl ProviderUploadExecutor {
             TransferFailure::from_raw_message(&last_error)
         };
 
+        self.emit_upload_failure(entry, failure)
+    }
+
+    fn emit_upload_failure(
+        &self,
+        entry: TransferEntry,
+        failure: TransferFailure,
+    ) -> TransferOutcome {
         self.sink.emit_transfer_event(crate::TransferEvent {
             event_type: "file_error".to_string(),
             transfer_id: entry.id,
@@ -3974,6 +3995,58 @@ mod tests {
             pool.take().await.is_none(),
             "a provider that did not opt in is never recycled"
         );
+    }
+
+    #[tokio::test]
+    async fn rejected_upload_name_is_validated_once_without_transfer_attempts() {
+        let scripted = crate::transfer_bulk::tests::ScriptedBulk {
+            kind: Some(ProviderType::Proton),
+            ..Default::default()
+        };
+        let kind_queries = scripted.kind_queries.clone();
+        let singles = scripted.singles.clone();
+        let executor = ProviderUploadExecutor::new(
+            Arc::new(crate::transfer_event_sink::NoopTransferSink),
+            Arc::new(Mutex::new(Some(
+                Box::new(scripted) as Box<dyn StorageProvider>
+            ))),
+            ResolvedTransferSettings {
+                requested_max_concurrent: 1,
+                max_concurrent: 1,
+                retry_count: 3,
+                timeout_seconds: 30,
+                download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(1),
+                sftp_download_preset: None,
+            },
+            None,
+            CancellationToken::new(),
+            ProviderExecutorSessionModel::locked(Some(ProviderType::Proton)),
+            TransferCapabilities::default(),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let mut entry = retry_entry(dir.path());
+        entry.remote_path = "/my-files/bad\0name.txt".into();
+        let outcome = executor.execute(entry).await;
+        assert_eq!(
+            kind_queries.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "the provider kind is queried once for name validation, outside retries"
+        );
+        let TransferOutcome::Failed(failure) = outcome else {
+            panic!("invalid name must fail: {outcome:?}");
+        };
+        assert_eq!(
+            failure.kind,
+            crate::transfer_domain::TransferFailureKind::InvalidPath
+        );
+        assert!(!failure.retryable);
+        assert!(failure.message.contains("U+0000"), "{failure:?}");
+        assert_eq!(
+            executor.take_transfer_attempts("flaky"),
+            None,
+            "a validation rejection must not enter the transfer retry loop"
+        );
+        assert!(singles.lock().unwrap().is_empty());
     }
 
     fn retry_download_executor(
