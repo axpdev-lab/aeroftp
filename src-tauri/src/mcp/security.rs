@@ -44,72 +44,148 @@ pub fn validate_remote_path(path: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Validate a local path for download targets.
-/// Re-uses the CLI's deny-list approach with symlink resolution for TOCTOU safety.
-pub fn validate_local_path(path: &str) -> Result<(), String> {
-    validate_remote_path(path)?;
+/// Per-request MCP policy. Path checks precede I/O but are not atomic open capabilities.
+#[derive(Debug)]
+pub(crate) struct McpLocalPathPolicy {
+    home: std::path::PathBuf,
+    resolved_home: std::path::PathBuf,
+    resolved_denied: Vec<std::path::PathBuf>,
+    resolved_system: Vec<std::path::PathBuf>,
+}
 
-    // Deny sensitive system prefixes
-    const DENIED_PREFIXES: &[&str] = &[
-        "/etc",
-        "/boot",
-        "/proc",
-        "/sys",
-        "/dev",
-        "/usr/sbin",
-        "/sbin",
-        "/root",
-        "/run/secrets",
-    ];
-
-    // Check raw path first
-    let normalized = path.replace('\\', "/");
-    for prefix in DENIED_PREFIXES {
-        if normalized.starts_with(prefix) {
-            return Err(format!("Access denied: {}", prefix));
-        }
+impl McpLocalPathPolicy {
+    pub(crate) fn capture() -> Result<Self, String> {
+        #[cfg(windows)]
+        let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"));
+        #[cfg(not(windows))]
+        let home = std::env::var_os("HOME");
+        Self::for_home(std::path::Path::new(&home.ok_or("MCP home unavailable")?))
     }
 
-    // Resolve symlinks and re-check (prevents /tmp/evil -> /etc/shadow bypass).
-    // For non-existent paths, canonicalize the parent to cover write targets.
-    let resolved = std::fs::canonicalize(path).or_else(|_| {
-        std::path::Path::new(path)
-            .parent()
-            .map(std::fs::canonicalize)
-            .unwrap_or(Err(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "no parent",
-            )))
-    });
-    if let Ok(canonical) = resolved {
-        let resolved_str = canonical.to_string_lossy();
-        for prefix in DENIED_PREFIXES {
-            if resolved_str.starts_with(prefix) {
-                return Err(format!("Access denied (resolved): {}", prefix));
-            }
+    pub(crate) fn for_home(home: &std::path::Path) -> Result<Self, String> {
+        if !home.is_absolute() {
+            return Err("MCP home must be absolute".into());
         }
-        // Check resolved home-relative paths
-        if let Ok(home) = std::env::var("HOME") {
-            for dir in DENIED_HOME_DIRS {
-                let full = format!("{}/{}", home, dir);
-                if resolved_str.starts_with(&full) {
-                    return Err(format!("Access denied: ~/{}", dir));
+        let resolved_home =
+            std::fs::canonicalize(home).map_err(|_| "MCP home resolution refused")?;
+        let resolved_denied = DENIED_HOME_DIRS
+            .iter()
+            .map(|dir| crate::sync_core::access::resolve_missing(&home.join(dir)))
+            .collect::<Result<Vec<_>, _>>()?;
+        let resolved_system = DENIED_SYSTEM_DIRS
+            .iter()
+            .map(|dir| crate::sync_core::access::resolve_missing(std::path::Path::new(dir)))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self {
+            home: home.to_path_buf(),
+            resolved_home,
+            resolved_denied,
+            resolved_system,
+        })
+    }
+}
+
+fn policy_prefix(path: &std::path::Path, prefix: &std::path::Path) -> bool {
+    #[cfg(not(windows))]
+    {
+        path.starts_with(prefix)
+    }
+    #[cfg(windows)]
+    {
+        fn comparison(path: &std::path::Path) -> Option<std::path::PathBuf> {
+            let text = path.to_str()?.replace('/', "\\").to_lowercase();
+            let text = if let Some(unc) = text.strip_prefix("\\\\?\\unc\\") {
+                format!("\\\\{unc}")
+            } else {
+                text.strip_prefix("\\\\?\\").unwrap_or(&text).to_string()
+            };
+            Some(text.into())
+        }
+        match (comparison(path), comparison(prefix)) {
+            (Some(path), Some(prefix)) => path.starts_with(prefix),
+            _ => true, // Unrepresentable names fail closed.
+        }
+    }
+}
+
+impl crate::sync_core::access::LocalPathAuthorizer for McpLocalPathPolicy {
+    fn validate(&self, path: &std::path::Path) -> Result<(), String> {
+        let text = path.to_str().ok_or("unrepresentable local path")?;
+        validate_remote_path(text)?;
+        if path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            return Err("Path traversal is not allowed".into());
+        }
+        #[cfg(windows)]
+        for part in path.components() {
+            if let std::path::Component::Normal(name) = part {
+                let name = name.to_str().ok_or("unrepresentable local path")?;
+                if name.contains(':') || name.ends_with(['.', ' ']) {
+                    return Err("Ambiguous Windows path refused".into());
                 }
             }
         }
-    }
-
-    // Deny sensitive home directories (raw path check)
-    if let Ok(home) = std::env::var("HOME") {
-        for dir in DENIED_HOME_DIRS {
-            let full = format!("{}/{}", home, dir);
-            if normalized.starts_with(&full) {
-                return Err(format!("Access denied: ~/{}", dir));
+        let absolute = std::path::absolute(path).map_err(|_| "invalid local path")?;
+        let check = |path: &std::path::Path| -> Result<(), String> {
+            for prefix in DENIED_SYSTEM_DIRS {
+                if policy_prefix(path, std::path::Path::new(prefix)) {
+                    return Err("Access denied: system path".into());
+                }
+            }
+            for denied in &self.resolved_system {
+                if policy_prefix(path, denied) {
+                    return Err("Access denied: resolved system path".into());
+                }
+            }
+            for home in [&self.home, &self.resolved_home] {
+                for dir in DENIED_HOME_DIRS {
+                    if policy_prefix(path, &home.join(dir)) {
+                        return Err(format!("Access denied: ~/{dir}"));
+                    }
+                }
+            }
+            Ok(())
+        };
+        check(path)?;
+        check(&absolute)?;
+        let effective = crate::sync_core::access::resolve_missing(&absolute)?;
+        check(&effective)?;
+        // A protected directory may itself be a symlink (for example an SSH
+        // folder kept on another volume). Protect its effective root too, and
+        // refresh it at admission if the protected link has changed since capture.
+        for denied in &self.resolved_denied {
+            if policy_prefix(&absolute, denied) || policy_prefix(&effective, denied) {
+                return Err("Access denied: resolved home path".into());
             }
         }
+        for dir in DENIED_HOME_DIRS {
+            let denied = crate::sync_core::access::resolve_missing(&self.home.join(dir))?;
+            if policy_prefix(&absolute, &denied) || policy_prefix(&effective, &denied) {
+                return Err("Access denied: resolved home path".into());
+            }
+        }
+        Ok(())
     }
+}
 
-    Ok(())
+const DENIED_SYSTEM_DIRS: &[&str] = &[
+    "/etc",
+    "/boot",
+    "/proc",
+    "/sys",
+    "/dev",
+    "/usr/sbin",
+    "/sbin",
+    "/root",
+    "/run/secrets",
+];
+
+pub fn validate_local_path(path: &str) -> Result<(), String> {
+    use crate::sync_core::access::LocalPathAuthorizer;
+    validate_remote_path(path)?;
+    McpLocalPathPolicy::capture()?.validate(std::path::Path::new(path))
 }
 
 const DENIED_HOME_DIRS: &[&str] = &[
@@ -283,4 +359,172 @@ pub fn audit_log(
         "duration_ms": duration_ms,
     });
     eprintln!("{}", entry);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sync_core::access::{LocalAccessScope, LocalPathAuthorizer};
+    use std::{path::Path, sync::Arc};
+
+    #[test]
+    fn requested103_home_prefixes_and_missing_tails() {
+        let home = tempfile::tempdir().unwrap();
+        let policy = McpLocalPathPolicy::for_home(home.path()).unwrap();
+        for rel in DENIED_HOME_DIRS {
+            assert!(policy.validate(&home.path().join(rel)).is_err(), "{rel}");
+            assert!(
+                policy
+                    .validate(&home.path().join(rel).join("new/key"))
+                    .is_err(),
+                "{rel}"
+            );
+            assert!(
+                policy
+                    .validate(&home.path().join(format!("{rel}-backup/new/key")))
+                    .is_ok(),
+                "{rel}"
+            );
+        }
+        assert!(policy.validate(Path::new("/etc/shadow")).is_err());
+        #[cfg(unix)]
+        assert!(policy.validate(Path::new("/etcetera/new/key")).is_ok());
+    }
+
+    #[test]
+    fn requested103_scope_checks_prefixes_root_and_native_names() {
+        let home = tempfile::tempdir().unwrap();
+        let scope = LocalAccessScope::new(
+            home.path(),
+            Arc::new(McpLocalPathPolicy::for_home(home.path()).unwrap()),
+        )
+        .unwrap();
+        for (rel, denied) in [
+            (".ssh/new/key", ".ssh"),
+            (".config/aeroftp/db", ".config/aeroftp"),
+            (".vault-token", ".vault-token"),
+        ] {
+            assert_eq!(scope.validate_relative(rel).unwrap_err().rel_path, denied);
+        }
+        assert!(scope.validate_relative("../escape").is_err());
+        assert!(scope.validate_relative("sub/..notes").is_ok());
+        #[cfg(unix)]
+        assert!(scope.validate_relative(r"sub\literal").is_ok());
+        assert!(scope.validate_root(&home.path().join("other")).is_err());
+        assert!(LocalAccessScope::new(
+            &home.path().join(".ssh"),
+            Arc::new(McpLocalPathPolicy::for_home(home.path()).unwrap())
+        )
+        .is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn requested103_aliases_symlinked_home_and_dangling_links() {
+        use std::os::unix::fs::symlink;
+        let tmp = tempfile::tempdir().unwrap();
+        let real_home = tmp.path().join("real-home");
+        std::fs::create_dir_all(real_home.join(".ssh")).unwrap();
+        let home = tmp.path().join("home");
+        symlink(&real_home, &home).unwrap();
+        let policy = McpLocalPathPolicy::for_home(&home).unwrap();
+        symlink(real_home.join(".ssh"), tmp.path().join("alias")).unwrap();
+        symlink(tmp.path().join("missing"), tmp.path().join("dangling")).unwrap();
+        for path in [
+            home.join(".ssh/key"),
+            real_home.join(".ssh/key"),
+            tmp.path().join("alias/new/key"),
+            tmp.path().join("dangling/new/key"),
+        ] {
+            assert!(policy.validate(&path).is_err(), "{}", path.display());
+        }
+        symlink(tmp.path().join("loop"), tmp.path().join("loop")).unwrap();
+        assert!(policy.validate(&tmp.path().join("loop/new")).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn requested103_swap_before_admission_and_unrepresentable_names() {
+        use std::os::unix::{ffi::OsStrExt, fs::symlink};
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir(home.path().join("safe")).unwrap();
+        std::fs::create_dir(home.path().join(".ssh")).unwrap();
+        symlink(home.path().join("safe"), home.path().join("alias")).unwrap();
+        let scope = LocalAccessScope::new(
+            home.path(),
+            Arc::new(McpLocalPathPolicy::for_home(home.path()).unwrap()),
+        )
+        .unwrap();
+        assert!(scope.validate_relative("alias/new/key").is_ok());
+        std::fs::remove_file(home.path().join("alias")).unwrap();
+        symlink(home.path().join(".ssh"), home.path().join("alias")).unwrap();
+        assert_eq!(
+            scope
+                .validate_relative("alias/new/key")
+                .unwrap_err()
+                .rel_path,
+            "alias"
+        );
+        let bad = home.path().join(std::ffi::OsStr::from_bytes(b"bad\xff"));
+        assert!(scope.validate_local(&bad).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn requested103_protected_directory_itself_is_a_symlink() {
+        use std::os::unix::fs::symlink;
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let secrets = tmp.path().join("secrets");
+        let replacement = tmp.path().join("replacement");
+        for path in [&home, &secrets, &replacement] {
+            std::fs::create_dir(path).unwrap();
+        }
+        symlink(&secrets, home.join(".ssh")).unwrap();
+        let policy = McpLocalPathPolicy::for_home(&home).unwrap();
+        assert!(policy.validate(&secrets.join("new/key")).is_err());
+        symlink(&secrets, tmp.path().join("alias")).unwrap();
+        assert!(policy.validate(&tmp.path().join("alias/new/key")).is_err());
+        std::fs::remove_file(home.join(".ssh")).unwrap();
+        symlink(&replacement, home.join(".ssh")).unwrap();
+        assert!(policy.validate(&replacement.join("new/key")).is_err());
+        assert!(policy.validate(&secrets.join("old/key")).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn requested103_permission_failure_does_not_become_missing_parent() {
+        use std::os::unix::fs::PermissionsExt;
+        let home = tempfile::tempdir().unwrap();
+        let opaque = home.path().join("opaque");
+        std::fs::create_dir(&opaque).unwrap();
+        let policy = McpLocalPathPolicy::for_home(home.path()).unwrap();
+        std::fs::set_permissions(&opaque, std::fs::Permissions::from_mode(0)).unwrap();
+        let result = policy.validate(&opaque.join("new/key"));
+        std::fs::set_permissions(&opaque, std::fs::Permissions::from_mode(0o700)).unwrap();
+        // A root test runner can traverse mode 0000; do not claim a permission proof there.
+        if unsafe { libc::geteuid() } != 0 {
+            assert!(result.is_err());
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn requested103_windows_case_verbatim_ads_and_trailing_aliases() {
+        let home = tempfile::tempdir().unwrap();
+        let policy = McpLocalPathPolicy::for_home(home.path()).unwrap();
+        let canonical = std::fs::canonicalize(home.path()).unwrap();
+        assert!(policy.validate(&canonical.join(".SSH/new/key")).is_err());
+        for rel in [
+            ".ssh./new/key",
+            ".ssh /new/key",
+            ".ssh:stream",
+            ".ssh::$INDEX_ALLOCATION/new/key",
+        ] {
+            assert!(policy.validate(&home.path().join(rel)).is_err(), "{rel}");
+        }
+        assert!(policy
+            .validate(&canonical.join(".ssh-backup/new/key"))
+            .is_ok());
+    }
 }

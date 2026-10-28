@@ -69,7 +69,7 @@ use crate::delta_transport::DeltaBatch;
 use crate::provider_transfer_executor::compose_runtime_transfer_capabilities;
 use crate::providers::{ProviderTransferExecutorKind, StorageProvider};
 use crate::sync::{
-    apply_sync_tree_outcome, decide_download, decide_upload, ensure_remote_dir, perform_download,
+    apply_sync_tree_outcome, decide_download, decide_upload, perform_download,
     perform_local_delete, perform_remote_delete, perform_upload, scan_options_for_sync,
     DeltaPolicy, FileOutcome, SyncDirection, SyncError, SyncOptions, SyncPhase, SyncProgressSink,
     SyncReport, SyncTransferSpec, SyncTreeAction,
@@ -104,6 +104,7 @@ pub fn should_route_sync_to_dag(dry_run: bool) -> bool {
 /// One resolved transfer in a sync plan, in plan order.
 #[derive(Clone)]
 struct PlannedTransfer {
+    local_access: Option<Arc<crate::sync_core::access::LocalAccessScope>>,
     rel: String,
     /// `"upload"` or `"download"`: the operation label the legacy core
     /// passes to `apply_sync_tree_outcome`.
@@ -139,9 +140,22 @@ fn sync_job_disk_requests(
             ))
             .or_insert(request);
     };
+    let scope = transfers.first().and_then(|t| t.local_access.as_deref());
+    if crate::sync_core::access::authorize(scope, local_root, "").is_err() {
+        return Vec::new();
+    }
     add(DiskLeaseRequest::read(local_root));
     add(DiskLeaseRequest::write(local_root));
     for transfer in transfers {
+        if crate::sync_core::access::authorize(
+            transfer.local_access.as_deref(),
+            local_root,
+            &transfer.rel,
+        )
+        .is_err()
+        {
+            continue;
+        }
         // Same path construction as perform_upload/perform_download.
         let path = crate::sync::join_clean(local_root, &transfer.rel);
         if transfer.op == "upload" {
@@ -235,6 +249,7 @@ fn plan_sync_dag(
                         upload_resolved_for_both.insert(local_entry.rel_path.clone());
                     }
                     transfers.push(PlannedTransfer {
+                        local_access: opts.scan.local_access.clone(),
                         rel: local_entry.rel_path.clone(),
                         op: "upload",
                         total: local_entry.size,
@@ -275,6 +290,7 @@ fn plan_sync_dag(
             match decision.action {
                 SyncTreeAction::Copy => {
                     transfers.push(PlannedTransfer {
+                        local_access: opts.scan.local_access.clone(),
                         rel: remote_entry.rel_path.clone(),
                         op: "download",
                         total: remote_entry.size,
@@ -646,6 +662,21 @@ fn sync_bulk_groups(
 /// enclosing sync drops the owned native process and its staging directory.
 /// `None` asks the driver to run that transfer on the per-file path: the item
 /// never reached the wire, or failed there for a transient reason.
+fn refused_bulk_members(
+    transfers: &[&PlannedTransfer],
+    local_root: &str,
+) -> Option<Vec<Option<FileOutcome>>> {
+    let results: Vec<_> = transfers
+        .iter()
+        .map(|t| {
+            crate::sync_core::access::authorize(t.local_access.as_deref(), local_root, &t.rel)
+                .err()
+                .map(|error| FileOutcome::Failed { error })
+        })
+        .collect();
+    results.iter().any(Option::is_some).then_some(results)
+}
+
 async fn perform_sync_bulk(
     provider: &mut Box<dyn StorageProvider>,
     transfers: &[&PlannedTransfer],
@@ -654,6 +685,9 @@ async fn perform_sync_bulk(
     sink: &mut dyn SyncProgressSink,
 ) -> Vec<Option<FileOutcome>> {
     use crate::transfer_bulk::{bulk_item, settle_bulk_outcome, BulkSettlement};
+    if let Some(refused) = refused_bulk_members(transfers, local_root) {
+        return refused;
+    }
     let upload = transfers[0].op == "upload";
     let items: Vec<_> = transfers
         .iter()
@@ -675,8 +709,16 @@ async fn perform_sync_bulk(
     }
     if upload {
         if let Some(parent) = crate::providers::bulk::remote_parent(&items[0].remote_path) {
-            ensure_remote_dir(provider.as_mut(), parent).await;
+            for path in crate::sync::remote_dir_chain(parent) {
+                if let Some(refused) = refused_bulk_members(transfers, local_root) {
+                    return refused;
+                }
+                let _ = provider.mkdir(&path).await;
+            }
         }
+    }
+    if let Some(refused) = refused_bulk_members(transfers, local_root) {
+        return refused;
     }
     // Keep only the latest trustworthy sample per file; this remains bounded
     // by MAX_BULK_FILES even if a future adapter streams many progress updates.
@@ -706,7 +748,8 @@ async fn perform_sync_bulk(
         // failure sends every file to the single-file path, as it does for a
         // file the bulk lost the same way; any other refusal is final.
         Err(error) if crate::providers::bulk::error_goes_back_to_single_file(&error) => {
-            return transfers.iter().map(|_| None).collect();
+            return refused_bulk_members(transfers, local_root)
+                .unwrap_or_else(|| transfers.iter().map(|_| None).collect());
         }
         Err(error) => {
             return transfers
@@ -728,6 +771,13 @@ async fn perform_sync_bulk(
             if let Some((sent, total)) = samples.lock().expect("bulk sync progress poisoned")[index]
             {
                 sink.on_file_progress(&transfer.rel, sent, total);
+            }
+            if let Err(error) = crate::sync_core::access::authorize(
+                transfer.local_access.as_deref(),
+                local_root,
+                &transfer.rel,
+            ) {
+                return Some(FileOutcome::Failed { error });
             }
             match settle_bulk_outcome(result, &item.local_path) {
                 BulkSettlement::Done if upload => Some(FileOutcome::Uploaded {
@@ -988,6 +1038,7 @@ async fn perform_sync_transfer(
     error_correction: &crate::sync::SyncErrorCorrectionOptions,
 ) -> FileOutcome {
     let spec = SyncTransferSpec {
+        local_access: transfer.local_access.as_deref(),
         rel: &transfer.rel,
         total: transfer.total,
         decision_policy: transfer.decision_policy,
@@ -1369,6 +1420,33 @@ pub async fn execute_sync_dag(
     opts: &SyncOptions,
     sink: &mut dyn SyncProgressSink,
 ) -> SyncReport {
+    if opts.scan.local_access.is_some() && opts.error_correction.enabled() {
+        return SyncReport {
+            errors: vec![SyncError {
+                rel_path: String::new(),
+                operation: "policy",
+                message: "restricted sync does not support error correction".into(),
+                decision_policy: opts.delta_policy,
+            }],
+            ..Default::default()
+        };
+    }
+    if let Err(message) =
+        crate::sync_core::access::authorize(opts.scan.local_access.as_deref(), local_root, "")
+    {
+        return SyncReport {
+            dry_run: opts.dry_run,
+            direction: Some(opts.direction),
+            delta_policy: Some(opts.delta_policy),
+            errors: vec![SyncError {
+                rel_path: String::new(),
+                operation: "policy",
+                message,
+                decision_policy: opts.delta_policy,
+            }],
+            ..Default::default()
+        };
+    }
     let start = Instant::now();
     let resolved_segments = crate::transfer_settings::resolve_download_segments(
         &opts.download_segments,
@@ -1438,6 +1516,7 @@ pub async fn execute_sync_dag(
     );
     // What the scans did not see stays out of the plan on both sides, so no copy
     // or orphan delete reaches into it (see `ScanBound`).
+    crate::sync_core::access::preflight(&scan, &locals, &remotes, &mut local_boundaries);
     let bound = crate::sync_core::ScanBound::apply(
         local_root,
         &mut locals,
@@ -1532,7 +1611,22 @@ pub async fn execute_sync_dag(
     // legacy core does) is decision-equivalent: `scan_remote_tree` already
     // tolerates a missing directory by returning an empty listing.
     if !locals.is_empty() && matches!(opts.direction, SyncDirection::Upload | SyncDirection::Both) {
-        ensure_remote_dir(&mut **provider, remote_root).await;
+        if let Err(message) = crate::sync::ensure_remote_dir_scoped(
+            provider.as_mut(),
+            remote_root,
+            opts.scan.local_access.as_deref(),
+            local_root,
+        )
+        .await
+        {
+            report.errors.push(SyncError {
+                rel_path: String::new(),
+                operation: "policy",
+                message,
+                decision_policy: opts.delta_policy,
+            });
+            return report;
+        }
     }
 
     // Skips carry no I/O: emit them up front in plan order, before the
@@ -1719,6 +1813,8 @@ pub async fn execute_sync_dag(
             "delete_remote" => {
                 perform_remote_delete(
                     provider,
+                    local_root,
+                    opts.scan.local_access.as_deref(),
                     remote_root,
                     &delete.rel,
                     opts.delta_policy,
@@ -1728,7 +1824,14 @@ pub async fn execute_sync_dag(
                 )
                 .await
             }
-            _ => perform_local_delete(local_root, &delete.rel, opts.delta_policy, false, sink),
+            _ => perform_local_delete(
+                local_root,
+                opts.scan.local_access.as_deref(),
+                &delete.rel,
+                opts.delta_policy,
+                false,
+                sink,
+            ),
         };
         apply_sync_tree_outcome(
             &mut report,
@@ -2259,12 +2362,304 @@ mod tests {
 
     fn planned_upload(rel: &str, policy: DeltaPolicy) -> PlannedTransfer {
         PlannedTransfer {
+            local_access: None,
             rel: rel.to_string(),
             op: "upload",
             total: 1,
             decision_policy: policy,
             expected_sha256_hex: None,
         }
+    }
+
+    #[tokio::test]
+    async fn requested103_bulk_mixed_terminal_mapping_and_allowed_native_bulk() {
+        use crate::transfer_bulk::tests::ScriptedBulk;
+        let home = tempfile::tempdir().unwrap();
+        let scope = crate::sync_core::scan::tests::requested103_scope(home.path());
+        let mut transfers = [
+            planned_upload("allowed.txt", DeltaPolicy::SizeOnly),
+            planned_upload(".ssh/new/key", DeltaPolicy::SizeOnly),
+        ];
+        for transfer in &mut transfers {
+            transfer.local_access = Some(scope.clone());
+        }
+        let scripted = ScriptedBulk::default();
+        let bulks = scripted.bulks.clone();
+        let mut provider: Box<dyn StorageProvider> = Box::new(scripted);
+        let outcomes = perform_sync_bulk(
+            &mut provider,
+            &transfers.iter().collect::<Vec<_>>(),
+            home.path().to_str().unwrap(),
+            "/root",
+            &mut TestSyncSink::default(),
+        )
+        .await;
+        assert_eq!(outcomes.len(), 2);
+        assert!(outcomes[0].is_none());
+        assert!(matches!(outcomes[1], Some(FileOutcome::Failed { .. })));
+        assert!(bulks.lock().unwrap().is_empty());
+        transfers[1].rel = "another.txt".into();
+        let outcomes = perform_sync_bulk(
+            &mut provider,
+            &transfers.iter().collect::<Vec<_>>(),
+            home.path().to_str().unwrap(),
+            "/root",
+            &mut TestSyncSink::default(),
+        )
+        .await;
+        assert!(outcomes
+            .iter()
+            .all(|o| matches!(o, Some(FileOutcome::Uploaded { .. }))));
+        assert_eq!(bulks.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn requested103_sync_upload_download_both_and_symmetric_orphans() {
+        use crate::sync_core::scan::tests::{requested103_scope, requested103_tree};
+        for direction in [
+            SyncDirection::Upload,
+            SyncDirection::Download,
+            SyncDirection::Both,
+        ] {
+            for dry_run in [false, true] {
+                let home = tempfile::tempdir().unwrap();
+                std::fs::create_dir(home.path().join(".ssh")).unwrap();
+                std::fs::write(home.path().join(".ssh/key"), b"secret fixture").unwrap();
+                let allowed: &[u8] = if direction == SyncDirection::Download {
+                    b"x"
+                } else {
+                    b"different-size"
+                };
+                std::fs::write(home.path().join("allowed.txt"), allowed).unwrap();
+                std::fs::write(home.path().join("local-orphan.txt"), b"fixture").unwrap();
+                let tree = requested103_tree(false);
+                let events = tree.events.clone();
+                let mut provider: Box<dyn StorageProvider> = Box::new(tree);
+                let mut options = opts(direction);
+                options.dry_run = dry_run;
+                options.conflict_mode = crate::sync::ConflictMode::Larger;
+                options.delete_orphans = direction != SyncDirection::Both;
+                options.scan.local_access = Some(requested103_scope(home.path()));
+                let report = crate::sync::sync_tree_core(
+                    &mut provider,
+                    home.path().to_str().unwrap(),
+                    "/root",
+                    &options,
+                    &mut TestSyncSink::default(),
+                )
+                .await;
+                assert!(
+                    report.errors.is_empty(),
+                    "{direction:?}, {dry_run}: {:?}",
+                    report.errors
+                );
+                assert!(report
+                    .unseen_paths
+                    .iter()
+                    .any(|e| e.rel_path == ".ssh" && e.reason == "policy_denied"));
+                assert_eq!(
+                    std::fs::read(home.path().join(".ssh/key")).unwrap(),
+                    b"secret fixture"
+                );
+                let events = events.lock().unwrap();
+                assert!(
+                    events.iter().all(|(_, path)| !path.contains(".ssh")),
+                    "{events:?}"
+                );
+                if !dry_run {
+                    assert!(
+                        events
+                            .iter()
+                            .any(|(op, path)| (op == "upload" || op == "download")
+                                && path == "/root/allowed.txt"),
+                        "{events:?}"
+                    );
+                    match direction {
+                        SyncDirection::Upload => assert!(events
+                            .iter()
+                            .any(|(op, path)| op == "delete" && path == "/root/orphan.txt")),
+                        SyncDirection::Download => {
+                            assert!(!home.path().join("local-orphan.txt").exists())
+                        }
+                        _ => {}
+                    }
+                } else {
+                    assert!(events.iter().all(|(op, _)| op == "list"));
+                    assert!(home.path().join("local-orphan.txt").exists());
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn requested103_missing_local_protected_download_and_delete_sinks() {
+        use crate::sync_core::scan::tests::{requested103_scope, requested103_tree};
+        let home = tempfile::tempdir().unwrap();
+        let scope = requested103_scope(home.path());
+        let tree = requested103_tree(false);
+        let events = tree.events.clone();
+        let mut provider: Box<dyn StorageProvider> = Box::new(tree);
+        for policy in [DeltaPolicy::SizeOnly, DeltaPolicy::Delta] {
+            let mut transfer = planned_upload(".ssh/new/key", policy);
+            transfer.op = "download";
+            transfer.local_access = Some(scope.clone());
+            let outcome = perform_sync_transfer(
+                &mut provider,
+                &mut None,
+                &transfer,
+                home.path().to_str().unwrap(),
+                "/root",
+                4,
+                policy,
+                &mut TestSyncSink::default(),
+                &Default::default(),
+            )
+            .await;
+            assert!(matches!(outcome, FileOutcome::Failed { .. }));
+        }
+        let outcome = perform_remote_delete(
+            &mut provider,
+            home.path().to_str().unwrap(),
+            Some(&scope),
+            "/root",
+            ".ssh/key",
+            DeltaPolicy::SizeOnly,
+            false,
+            &mut TestSyncSink::default(),
+            &Default::default(),
+        )
+        .await;
+        assert!(matches!(outcome, FileOutcome::Failed { .. }));
+        let outcome = perform_local_delete(
+            home.path().to_str().unwrap(),
+            Some(&scope),
+            ".ssh/key",
+            DeltaPolicy::SizeOnly,
+            false,
+            &mut TestSyncSink::default(),
+        );
+        assert!(matches!(outcome, FileOutcome::Failed { .. }));
+        assert!(events.lock().unwrap().is_empty());
+        assert!(!home.path().join(".ssh").exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn requested103_delta_batch_fallback_rechecks_before_single_and_classic() {
+        use crate::rsync_over_ssh::{RsyncError, RsyncStats};
+        struct SwapBatch {
+            root: std::path::PathBuf,
+            calls: Arc<std::sync::atomic::AtomicUsize>,
+        }
+        #[async_trait]
+        impl DeltaBatch for SwapBatch {
+            async fn upload(
+                &mut self,
+                _: &std::path::Path,
+                _: &str,
+            ) -> Result<RsyncStats, RsyncError> {
+                self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                std::fs::remove_file(self.root.join("alias")).unwrap();
+                std::os::unix::fs::symlink(self.root.join(".ssh"), self.root.join("alias"))
+                    .unwrap();
+                Err(RsyncError::TooSmall {
+                    size: 4,
+                    threshold: 1024,
+                })
+            }
+            async fn download(
+                &mut self,
+                _: &str,
+                local: &std::path::Path,
+            ) -> Result<RsyncStats, RsyncError> {
+                self.upload(local, "unused").await
+            }
+            fn cancel(&self) {}
+            async fn finalize(
+                self: Box<Self>,
+            ) -> Result<crate::delta_transport::BatchStats, RsyncError> {
+                Ok(Default::default())
+            }
+        }
+        for op in ["upload", "download"] {
+            let home = tempfile::tempdir().unwrap();
+            std::fs::create_dir(home.path().join("safe")).unwrap();
+            std::fs::create_dir(home.path().join(".ssh")).unwrap();
+            std::fs::write(home.path().join("safe/key"), b"data").unwrap();
+            std::os::unix::fs::symlink(home.path().join("safe"), home.path().join("alias"))
+                .unwrap();
+            let tree = crate::sync_core::scan::tests::requested103_tree(false);
+            let events = tree.events.clone();
+            let mut provider: Box<dyn StorageProvider> = Box::new(tree);
+            let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let mut batch: Option<Box<dyn DeltaBatch>> = Some(Box::new(SwapBatch {
+                root: home.path().into(),
+                calls: calls.clone(),
+            }));
+            let mut transfer = planned_upload("alias/key", DeltaPolicy::Delta);
+            transfer.op = op;
+            transfer.local_access = Some(crate::sync_core::scan::tests::requested103_scope(
+                home.path(),
+            ));
+            let outcome = perform_sync_transfer(
+                &mut provider,
+                &mut batch,
+                &transfer,
+                home.path().to_str().unwrap(),
+                "/root",
+                1,
+                DeltaPolicy::Delta,
+                &mut TestSyncSink::default(),
+                &Default::default(),
+            )
+            .await;
+            assert!(matches!(outcome, FileOutcome::Failed { .. }));
+            assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+            assert!(events
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|(op, _)| op != "upload" && op != "download"));
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn requested103_clone_worker_revalidates_after_canonical_swap() {
+        use crate::sync_core::scan::tests::{requested103_scope, requested103_tree};
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir(home.path().join("safe")).unwrap();
+        std::fs::create_dir(home.path().join(".ssh")).unwrap();
+        std::os::unix::fs::symlink(home.path().join("safe"), home.path().join("alias")).unwrap();
+        let mut transfer = planned_upload("alias/key", DeltaPolicy::SizeOnly);
+        transfer.local_access = Some(requested103_scope(home.path()));
+        std::fs::remove_file(home.path().join("alias")).unwrap();
+        std::os::unix::fs::symlink(home.path().join(".ssh"), home.path().join("alias")).unwrap();
+        let tree = requested103_tree(false);
+        let events = tree.events.clone();
+        let mut workers: VecDeque<Box<dyn StorageProvider>> =
+            VecDeque::from(vec![Box::new(tree) as Box<dyn StorageProvider>]);
+        let mut jobs = JoinSet::new();
+        let (ack, _) = oneshot::channel();
+        spawn_normal_worker(
+            &mut workers,
+            &mut jobs,
+            &Arc::new(RunningTransfers::default()),
+            TransferJob {
+                transfer_index: 0,
+                lane: SyncTransferLane::NormalPool,
+                ack,
+            },
+            transfer,
+            home.path().to_str().unwrap().into(),
+            "/root".into(),
+            1,
+            DeltaPolicy::SizeOnly,
+            Default::default(),
+        );
+        let completion = jobs.join_next().await.unwrap().unwrap();
+        assert!(matches!(completion.outcome, FileOutcome::Failed { .. }));
+        assert!(events.lock().unwrap().is_empty());
     }
 
     /// `Err` from a native bulk means nothing reached the wire. A transport
@@ -3010,6 +3405,7 @@ mod tests {
         let transfers = Arc::new(vec![
             planned_upload("a.txt", DeltaPolicy::SizeOnly),
             PlannedTransfer {
+                local_access: None,
                 rel: "b.txt".to_string(),
                 op: "download",
                 total: 1,
@@ -3127,6 +3523,7 @@ mod tests {
     async fn streaming_sync_folds_driver_attested_bytes_into_job_total() {
         let transfers = Arc::new(vec![
             PlannedTransfer {
+                local_access: None,
                 rel: "up.txt".to_string(),
                 op: "upload",
                 total: 100,
@@ -3134,6 +3531,7 @@ mod tests {
                 expected_sha256_hex: None,
             },
             PlannedTransfer {
+                local_access: None,
                 rel: "down.txt".to_string(),
                 op: "download",
                 total: 250,
@@ -3277,6 +3675,7 @@ mod tests {
     #[tokio::test]
     async fn streaming_sync_folds_delta_wire_bytes_into_job_total() {
         let transfers = Arc::new(vec![PlannedTransfer {
+            local_access: None,
             rel: "delta.bin".to_string(),
             op: "upload",
             total: 1_000,
