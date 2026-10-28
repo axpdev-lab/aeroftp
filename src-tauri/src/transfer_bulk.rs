@@ -279,7 +279,14 @@ pub(crate) async fn execute_provider_bulk(
     // any item; its siblings still travel together.
     let mut submitted = Vec::with_capacity(entries.len());
     for (index, entry) in entries.iter().enumerate() {
-        match crate::restricted_chars::validate_path(provider.provider_type(), &entry.remote_path) {
+        let validation = if upload {
+            crate::restricted_chars::validate_path(provider.provider_type(), &entry.remote_path)
+        } else {
+            // Read existing remote names as-is; creation rules do not apply
+            // to downloads, whose local destination is already explicit.
+            Ok(())
+        };
+        match validation {
             Ok(()) => submitted.push(index),
             Err(error) => {
                 let failure = TransferFailure::new(
@@ -829,6 +836,71 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
+    async fn proton_bulk_upload_isolates_a_restricted_item_before_the_native_call() {
+        let scripted = ScriptedBulk {
+            kind: Some(crate::providers::ProviderType::Proton),
+            ..Default::default()
+        };
+        let bulks = scripted.bulks.clone();
+        let provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>> =
+            Arc::new(Mutex::new(Some(Box::new(scripted))));
+        let sink: Arc<dyn TransferEventSink> = Arc::new(NoopTransferSink);
+        let mut files = entries(3);
+        files[1].remote_path = "/r/bad\0name".into();
+        let outcomes = execute_provider_bulk(
+            &provider,
+            &sink,
+            &files,
+            true,
+            &CancellationToken::new(),
+            &AtomicBool::new(false),
+            30,
+        )
+        .await;
+        assert!(matches!(outcomes[0], TransferOutcome::Success));
+        assert!(
+            matches!(&outcomes[1], TransferOutcome::Failed(e) if e.message.contains("U+0000") && !e.retryable)
+        );
+        assert!(matches!(outcomes[2], TransferOutcome::Success));
+        assert_eq!(
+            bulks.lock().unwrap()[0],
+            vec![files[0].remote_path.clone(), files[2].remote_path.clone()]
+        );
+    }
+
+    #[tokio::test]
+    async fn bulk_download_reads_existing_control_names_without_upload_validation() {
+        let scripted = ScriptedBulk::default();
+        let bulks = scripted.bulks.clone();
+        let provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>> =
+            Arc::new(Mutex::new(Some(Box::new(scripted))));
+        let sink: Arc<dyn TransferEventSink> = Arc::new(NoopTransferSink);
+        let mut files = entries(2);
+        files[0].remote_path = "/existing/tab\tname".into();
+        files[1].remote_path = "/existing/line\nname".into();
+        let outcomes = execute_provider_bulk(
+            &provider,
+            &sink,
+            &files,
+            false,
+            &CancellationToken::new(),
+            &AtomicBool::new(false),
+            30,
+        )
+        .await;
+        assert!(outcomes
+            .iter()
+            .all(|o| matches!(o, TransferOutcome::Success)));
+        assert_eq!(
+            bulks.lock().unwrap()[0],
+            files
+                .iter()
+                .map(|e| e.remote_path.clone())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
     async fn bulk_early_failure_keeps_per_file_start_size_and_terminal_events() {
         #[derive(Default)]
         struct Events(std::sync::Mutex<Vec<crate::TransferEvent>>);
@@ -904,6 +976,8 @@ pub(crate) mod tests {
     /// `refusal` refuses the whole call.
     #[derive(Default)]
     pub(crate) struct ScriptedBulk {
+        pub(crate) kind: Option<crate::providers::ProviderType>,
+        pub(crate) kind_queries: Arc<std::sync::atomic::AtomicUsize>,
         pub(crate) bulks: Arc<std::sync::Mutex<Vec<Vec<String>>>>,
         pub(crate) singles: Arc<std::sync::Mutex<Vec<String>>>,
         pub(crate) hang: bool,
@@ -916,7 +990,8 @@ pub(crate) mod tests {
             self
         }
         fn provider_type(&self) -> crate::providers::ProviderType {
-            crate::providers::ProviderType::Sftp
+            self.kind_queries.fetch_add(1, Ordering::SeqCst);
+            self.kind.unwrap_or(crate::providers::ProviderType::Sftp)
         }
         fn display_name(&self) -> String {
             "scripted bulk".into()

@@ -57,12 +57,14 @@ pub fn validate_filename(provider: ProviderType, leaf: &str) -> Result<(), Provi
     if encode_spec(provider).is_some() {
         return Ok(());
     }
-    // Control-characters-only providers: ASCII/Unicode control characters (C0,
-    // DEL, C1) break virtually every storage API and never appear in a
-    // legitimate name. Path separators are not checked here: callers validate a
-    // single leaf.
+    // Proton stores non-NUL C0, DEL and C1 verbatim, as measured against
+    // the official CLI 0.9.0 and JSON listing (2026-10-28). Keep its raw-name
+    // contract for both native and CLI profiles: decoding rclone pictures
+    // here would corrupt literal names created by the web/official client.
+    // NUL cannot be passed to the official CLI or local filesystem APIs.
+    // Other non-encoding providers retain their existing control-char rule.
     for c in leaf.chars() {
-        if c.is_control() {
+        if c.is_control() && (provider != ProviderType::Proton || c == '\0') {
             return Err(ProviderError::RestrictedChar {
                 ch_display: display_char(c),
                 provider: provider_label(provider),
@@ -103,8 +105,8 @@ pub fn validate_path(provider: ProviderType, path: &str) -> Result<(), ProviderE
 //     escaped with `QUOTE` so decoding is unambiguous (the collision case).
 //
 // Only Box, Dropbox, Jottacloud and OpenDrive forbid printable characters and
-// therefore need encoding; every other provider is control-characters-only and
-// keeps Phase 1's hard error. The per-provider punctuation tables live in
+// therefore need encoding. Non-encoding providers keep their explicit
+// validation policy above, including Proton's raw-name contract. The per-provider punctuation tables live in
 // [`encode_spec`] below (the owner-verified rclone source of truth); having a
 // spec is also what makes [`validate_filename`] skip the hard error.
 //
@@ -404,6 +406,31 @@ mod tests {
         // Providers with a Phase 2 spec no longer hard-fail: the control
         // character is encoded instead (see Phase 2 round-trip tests).
         assert!(validate_filename(ProviderType::Box, "bad\u{0001}name").is_ok());
+    }
+
+    #[test]
+    fn proton_control_names_match_the_official_cli_without_encoding() {
+        // Live CLI 0.9.0 upload + JSON listing, 2026-10-28: all non-NUL
+        // C0, DEL and C1 characters survive verbatim (64 tiny files).
+        for code in (1..=31).chain(127..=159) {
+            let c = char::from_u32(code).unwrap();
+            let name = format!("before{c}after.txt");
+            assert!(
+                validate_filename(ProviderType::Proton, &name).is_ok(),
+                "U+{code:04X}"
+            );
+            assert_eq!(encode_leaf(ProviderType::Proton, &name), name);
+            assert_eq!(decode_leaf(ProviderType::Proton, &name), name);
+        }
+        assert!(validate_filename(ProviderType::Proton, "a\0b").is_err());
+        // Existing literal rclone replacement runes must never be silently
+        // reinterpreted as control characters in official-client names.
+        for name in ["␉", "‛␉", " leading ", "trailing."] {
+            assert_eq!(decode_leaf(ProviderType::Proton, name), name);
+            assert_eq!(encode_leaf(ProviderType::Proton, name), name);
+        }
+        // No relaxation for other backends.
+        assert!(validate_filename(ProviderType::S3, "a\tb").is_err());
     }
 
     #[test]

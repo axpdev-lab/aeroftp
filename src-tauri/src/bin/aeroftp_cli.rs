@@ -477,7 +477,8 @@ struct Cli {
     /// Recursive `put`: skip a file or folder whose name contains a character
     /// the destination backend forbids and upload the rest, reporting each
     /// skipped path, instead of refusing the whole batch up front (the
-    /// default, which uploads nothing when one name is bad). The run still
+    /// default on providers other than Proton Drive). Proton recursive
+    /// uploads already isolate rejected entries by default. The run still
     /// ends "partial" with exit 4 because not everything requested landed,
     /// the way rclone reports a batch with failed items.
     #[arg(
@@ -7485,7 +7486,7 @@ fn render_pending_warnings(format: OutputFormat) {
 
 fn print_error(format: OutputFormat, msg: &str, code: i32) {
     match format {
-        OutputFormat::Text => eprintln!("Error: {}", msg),
+        OutputFormat::Text => eprintln!("Error: {}", sanitize_filename(msg)),
         OutputFormat::Json => {
             // JSON errors go to stderr so stdout remains clean for piping
             eprintln!(
@@ -9343,7 +9344,11 @@ fn has_filters(cli: &Cli) -> bool {
 }
 
 fn create_progress_bar(filename: &str, total: u64) -> ProgressBar {
-    if !use_color() {
+    create_progress_bar_with_color(filename, total, use_color())
+}
+
+fn create_progress_bar_with_color(filename: &str, total: u64, color: bool) -> ProgressBar {
+    if !color {
         let pb = ProgressBar::hidden();
         return pb;
     }
@@ -9354,7 +9359,7 @@ fn create_progress_bar(filename: &str, total: u64) -> ProgressBar {
             .unwrap()
             .progress_chars("━╸─"),
     );
-    pb.set_message(filename.to_string());
+    pb.set_message(sanitize_filename(filename));
     pb
 }
 
@@ -37589,8 +37594,8 @@ fn put_run_note_failures(errors: &[String]) {
 /// `put` with the text mode's retries. An attempt that exits with a
 /// retryable code runs again, unless every failure in it was a refusal the
 /// next attempt would meet again (a remote file of another size under
-/// `--immutable`, a partial an earlier attempt left): repeating those would
-/// only print them again. An attempt that also failed some other way (a
+/// `--immutable`, a partial an earlier attempt left, a rejected filename):
+/// repeating those would only print them again. An attempt that also failed some other way (a
 /// 503, a lost connection) runs again, and its refusals are reported again.
 /// Ctrl-C ends the retries as in [`retry_transfer_command`].
 #[allow(clippy::too_many_arguments)]
@@ -38162,26 +38167,21 @@ async fn cmd_put_recursive(
         .map(|(local, remote, size)| (local, resolve_cli_remote_path(&initial_path, &remote), size))
         .collect();
 
-    // Pre-flight: reject the whole batch up front if any target dir or file name
-    // contains a character this provider's backend forbids, before creating or
-    // uploading anything (mirrors the single-file `put` guard). With
-    // `--skip-restricted` the offending entries are set aside and reported,
-    // and the rest of the batch proceeds.
+    // Proton recursive uploads report rejected entries independently, as
+    // the official client does. Other providers retain their existing default
+    // refusal unless --skip-restricted requests the same partition.
     let ptype = provider.provider_type();
-    let (dirs, mut files, restricted_skipped) = if cli.skip_restricted {
-        let split = split_restricted_targets(ptype, dirs, files);
-        (split.dirs, split.files, split.notes)
-    } else {
-        for target in dirs.iter().chain(files.iter().map(|(_, remote, _)| remote)) {
-            if let Err(e) = ftp_client_gui_lib::restricted_chars::validate_path(ptype, target) {
-                let code = provider_error_to_exit_code(&e);
-                print_error(format, &format!("put failed: {}", e), code);
-                let _ = provider.disconnect().await;
-                return code;
-            }
+    let split = match prepare_recursive_upload_targets(ptype, cli.skip_restricted, dirs, files) {
+        Ok(split) => split,
+        Err(e) => {
+            let code = provider_error_to_exit_code(&e);
+            print_error(format, &format!("put failed: {}", e), code);
+            let _ = provider.disconnect().await;
+            return code;
         }
-        (dirs, files, Vec::new())
     };
+    let (dirs, mut files, restricted_skipped) = (split.dirs, split.files, split.notes);
+    let restricted_files = total_files.saturating_sub(files.len()) as u32;
     if !quiet {
         for note in &restricted_skipped {
             eprintln!("  Skipped (restricted name): {}", note);
@@ -38203,7 +38203,7 @@ async fn cmd_put_recursive(
     // because FTP mapped every MKD failure onto one generic ServerError and
     // "it is already there" could not be told from "you may not". The provider
     // reports `AlreadyExists` now, so the answer is read rather than guessed.
-    if resolved_remote_base != "/" {
+    if resolved_remote_base != "/" && dirs.contains(&resolved_remote_base) {
         let strict_ancestors = matches!(ptype, ProviderType::Ftp | ProviderType::Ftps);
         if let Err((ancestor, mkd_err)) = ftp_client_gui_lib::providers::create_folder_chain(
             &mut *provider,
@@ -38240,12 +38240,15 @@ async fn cmd_put_recursive(
     let mut uploaded: u32 = 0;
     // What arrived, for the summary (see `batch_bytes_summary`).
     let mut done_bytes: u64 = 0;
-    let mut skipped: u32 = 0;
+    let mut skipped: u32 = restricted_files;
     // G102: files the --max-transfer budget left behind on this run.
     let mut over_budget: u32 = 0;
+    if !restricted_skipped.is_empty() {
+        put_run_note_refused();
+    }
     let mut errors: Vec<String> = restricted_skipped
         .iter()
-        .map(|note| format!("skipped (restricted name): {}", note))
+        .map(|note| format!("{UPLOAD_REFUSED_PREFIX}skipped (restricted name): {note}"))
         .collect();
 
     // DAG-P2-07 (block E): engine-level stats when this folder upload ran on
@@ -38287,14 +38290,10 @@ async fn cmd_put_recursive(
     }
     // A screened batch is handed only the files the listings left, and the
     // ones it skipped moved no bytes.
-    let (sent_files, sent_bytes) = if screened {
-        (
-            files.len(),
-            files.iter().map(|(_, _, size)| *size).sum::<u64>(),
-        )
-    } else {
-        (total_files, total_bytes)
-    };
+    let (sent_files, sent_bytes) = (
+        files.len(),
+        files.iter().map(|(_, _, size)| *size).sum::<u64>(),
+    );
     let use_legacy = if (cli.immutable || no_clobber) && !screened {
         if !cli.quiet {
             eprintln!(
@@ -38417,6 +38416,7 @@ async fn cmd_put_recursive(
     let elapsed = start.elapsed();
     let interrupted = cancelled.load(Ordering::Relaxed) && uploaded + skipped < total_files as u32;
 
+    let has_errors = !errors.is_empty();
     match format {
         OutputFormat::Text => {
             if !cli.quiet {
@@ -38430,10 +38430,12 @@ async fn cmd_put_recursive(
                         format!(
                             " ({} skipped, {})",
                             skipped,
-                            if cli.immutable {
-                                "--immutable"
+                            if restricted_files > 0 {
+                                format!("{} restricted names", restricted_files)
+                            } else if cli.immutable {
+                                "--immutable".to_string()
                             } else {
-                                "--no-clobber"
+                                "--no-clobber".to_string()
                             }
                         )
                     } else {
@@ -38441,7 +38443,7 @@ async fn cmd_put_recursive(
                     }
                 );
                 for err in &errors {
-                    eprintln!("  Error: {}", err);
+                    eprintln!("  Error: {}", sanitize_filename(err));
                 }
             }
         }
@@ -38480,7 +38482,25 @@ async fn cmd_put_recursive(
             });
         }
     }
-    if uploaded + skipped == total_files as u32 {
+    recursive_put_exit_code(
+        uploaded,
+        skipped,
+        total_files as u32,
+        has_errors,
+        interrupted,
+        session_transfer_exceeded(resolve_max_transfer(cli)),
+    )
+}
+
+fn recursive_put_exit_code(
+    uploaded: u32,
+    skipped: u32,
+    total_files: u32,
+    has_errors: bool,
+    interrupted: bool,
+    over_budget: bool,
+) -> i32 {
+    if uploaded + skipped == total_files && !has_errors {
         if skipped > 0 && uploaded == 0 {
             9
         } else {
@@ -38488,10 +38508,7 @@ async fn cmd_put_recursive(
         }
     } else if interrupted {
         130
-    } else if session_transfer_exceeded(resolve_max_transfer(cli)) {
-        // Intentional --max-transfer cap (honest note already emitted),
-        // not a transfer failure: the dedicated exit code, consistent
-        // with the legacy path.
+    } else if over_budget && !has_errors {
         8
     } else {
         4
@@ -48858,6 +48875,25 @@ struct RestrictedSplit {
     notes: Vec<String>,
 }
 
+fn prepare_recursive_upload_targets(
+    ptype: ProviderType,
+    skip_restricted: bool,
+    dirs: Vec<String>,
+    files: Vec<(String, String, u64)>,
+) -> Result<RestrictedSplit, ProviderError> {
+    if skip_restricted || ptype == ProviderType::Proton {
+        return Ok(split_restricted_targets(ptype, dirs, files));
+    }
+    for target in dirs.iter().chain(files.iter().map(|(_, remote, _)| remote)) {
+        ftp_client_gui_lib::restricted_chars::validate_path(ptype, target)?;
+    }
+    Ok(RestrictedSplit {
+        dirs,
+        files,
+        notes: Vec::new(),
+    })
+}
+
 /// `--skip-restricted`: separate the targets a backend would refuse by name.
 ///
 /// A folder with a forbidden character takes every file under it along, since
@@ -48869,22 +48905,37 @@ fn split_restricted_targets(
     files: Vec<(String, String, u64)>,
 ) -> RestrictedSplit {
     let mut kept_dirs = Vec::with_capacity(dirs.len());
-    let mut bad_dirs: Vec<String> = Vec::new();
+    let mut bad_dirs = std::collections::HashSet::new();
     let mut notes = Vec::new();
     for dir in dirs {
         match ftp_client_gui_lib::restricted_chars::validate_path(ptype, &dir) {
             Ok(()) => kept_dirs.push(dir),
             Err(e) => {
                 notes.push(format!("{}: {}", dir, e));
-                bad_dirs.push(dir);
+                bad_dirs.insert(dir.trim_end_matches('/').to_string());
             }
         }
     }
     let under_bad_dir = |remote: &str| {
-        bad_dirs
-            .iter()
-            .any(|d| remote.starts_with(&format!("{}/", d.trim_end_matches('/'))))
+        let mut ancestor = remote.trim_end_matches('/');
+        while let Some((parent, _)) = ancestor.rsplit_once('/') {
+            if bad_dirs.contains(parent) {
+                return true;
+            }
+            ancestor = parent;
+        }
+        false
     };
+    // Walk order is not a validity order: remove descendant directories
+    // after every rejected parent is known, before any mkdir reaches the wire.
+    kept_dirs.retain(|dir| {
+        if under_bad_dir(dir) {
+            notes.push(format!("{}: inside a folder with a restricted name", dir));
+            false
+        } else {
+            true
+        }
+    });
     let mut kept_files = Vec::with_capacity(files.len());
     for (local, remote, size) in files {
         if under_bad_dir(&remote) {
@@ -64710,7 +64761,7 @@ async fn cmd_put_glob(
                 // As `put -r` does: without them a refusal showed only as
                 // exit 4, and only `--json` said why.
                 for err in &errors {
-                    eprintln!("  Error: {}", err);
+                    eprintln!("  Error: {}", sanitize_filename(err));
                 }
             }
         }
@@ -83526,6 +83577,86 @@ mod tests {
         });
     }
 
+    #[tokio::test]
+    async fn proton_recursive_upload_keeps_valid_files_without_skip_flag() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("source.txt");
+        std::fs::write(&local, b"ok").unwrap();
+        let files = ["first.txt", "bad\0name.txt", "last.txt"]
+            .into_iter()
+            .map(|name| {
+                (
+                    local.to_string_lossy().into_owned(),
+                    format!("/my-files/tree/{name}"),
+                    2,
+                )
+            })
+            .collect();
+        let split = prepare_recursive_upload_targets(
+            ProviderType::Proton,
+            false,
+            vec!["/my-files/tree".into()],
+            files,
+        )
+        .expect("only the rejected file must fail");
+        assert_eq!(split.notes.len(), 1);
+        assert!(split.notes[0].contains("U+0000"));
+        let state = WorkerFake::state();
+        {
+            let mut st = state.lock().unwrap();
+            st.kind = Some(ProviderType::Proton);
+            st.pooled = true;
+        }
+        let mut cli = test_cli();
+        cli.quiet = true;
+        let outcome = match run_shared_provider_upload_batch(
+            WorkerFake::held(&state),
+            &split.files,
+            &cli,
+            None,
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await
+        {
+            Ok(outcome) => outcome,
+            Err(_) => panic!("the pooled Proton provider must take the shared upload batch"),
+        };
+        assert_eq!(outcome.uploaded, 2);
+        assert!(outcome.errors.is_empty());
+        let st = state.lock().unwrap();
+        assert_eq!(st.files.len(), 2);
+        assert_eq!(st.files["/my-files/tree/first.txt"], b"ok");
+        assert_eq!(st.files["/my-files/tree/last.txt"], b"ok");
+    }
+
+    #[test]
+    fn recursive_put_reports_partial_even_if_only_a_directory_was_rejected() {
+        assert_eq!(recursive_put_exit_code(0, 0, 0, true, false, false), 4);
+        assert_eq!(recursive_put_exit_code(2, 0, 2, true, false, false), 4);
+        assert_eq!(recursive_put_exit_code(2, 0, 2, false, false, false), 0);
+        assert_eq!(recursive_put_exit_code(0, 2, 2, false, false, false), 9);
+        assert_eq!(recursive_put_exit_code(1, 0, 2, true, true, false), 130);
+        assert_eq!(recursive_put_exit_code(1, 0, 2, false, false, true), 8);
+        assert_eq!(recursive_put_exit_code(1, 0, 2, true, false, true), 4);
+    }
+
+    #[test]
+    fn restricted_directory_prunes_descendant_directories_in_any_scan_order() {
+        let split = split_restricted_targets(
+            ProviderType::Proton,
+            vec![
+                "/ok".into(),
+                "/bad\0dir/child/grandchild".into(),
+                "/bad\0dir".into(),
+                "/bad\0dir/child".into(),
+            ],
+            vec![("local".into(), "/bad\0dir/child/file".into(), 2)],
+        );
+        assert_eq!(split.dirs, vec!["/ok"]);
+        assert!(split.files.is_empty());
+        assert_eq!(split.notes.len(), 4);
+    }
+
     #[test]
     fn split_restricted_targets_keeps_the_clean_rest_and_names_every_skip() {
         let dirs = vec!["/ok".to_string(), "/bad\tdir".to_string()];
@@ -84913,6 +85044,60 @@ mod tests {
             load_aimd_overrides_from_file(&path).is_err(),
             "a malformed file must surface a parse error to the operator"
         );
+    }
+
+    #[test]
+    fn terminal_progress_message_sanitizes_filename() {
+        let bar = create_progress_bar_with_color("before\x1b[2Jafter.txt", 10, true);
+        assert_eq!(bar.message(), "beforeafter.txt");
+        bar.finish_and_clear();
+    }
+
+    #[test]
+    fn terminal_error_display_preserves_json_payload() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_PRINT_ERROR_CHILD";
+        const RAW: &str = "Cannot create remote directory '/root/\x1b[2Jfolder': denied";
+        if let Ok(mode) = std::env::var(CHILD) {
+            print_error(
+                if mode == "json" {
+                    OutputFormat::Json
+                } else {
+                    OutputFormat::Text
+                },
+                RAW,
+                3,
+            );
+            return;
+        }
+        for mode in ["text", "json"] {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "tests::terminal_error_display_preserves_json_payload",
+                    "--nocapture",
+                    "--test-threads=1",
+                ])
+                .env(CHILD, mode)
+                .output()
+                .unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(
+                output.status.success() && stdout.contains("1 passed"),
+                "{mode}: {stdout}\n{stderr}"
+            );
+            if mode == "json" {
+                let report: serde_json::Value = serde_json::from_str(stderr.trim()).unwrap();
+                assert_eq!(report["error"], RAW);
+                assert_eq!(report["code"], 3);
+            } else {
+                assert!(
+                    !stderr.contains('\x1b'),
+                    "terminal escape leaked: {stderr:?}"
+                );
+                assert!(stderr.contains("Cannot create remote directory '/root/folder': denied"));
+            }
+        }
     }
 
     // ── sanitize_filename tests ───────────────────────────────────────
@@ -92787,6 +92972,105 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         }
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn put_retries_do_not_repeat_restricted_names_only() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        for pooled in [false, true] {
+            for rejected_directory in [false, true] {
+                let dir = tempfile::tempdir().unwrap();
+                let (local_dir, mut cli) = local_batch(&dir, 1);
+                let rejected = std::path::Path::new(&local_dir).join("bad\tname");
+                if rejected_directory {
+                    std::fs::create_dir(rejected).unwrap();
+                } else {
+                    std::fs::write(rejected, b"rejected").unwrap();
+                }
+                cli.skip_restricted = true;
+                cli.retries = 3;
+                cli.retries_sleep = "0".into();
+                let state = WorkerFake::state();
+                state.lock().unwrap().pooled = pooled;
+                let code = run_on_fake(&state, || {
+                    put_with_retries(
+                        "memory://",
+                        &local_dir,
+                        Some("/root"),
+                        true,
+                        false,
+                        false,
+                        None,
+                        &cli,
+                        OutputFormat::Text,
+                        Arc::new(AtomicBool::new(false)),
+                    )
+                });
+                let st = state.lock().unwrap();
+                let case = format!("pooled {pooled}, rejected directory {rejected_directory}");
+                assert_eq!(code, 4, "{case}: rejected names remain a partial failure");
+                assert_eq!(st.files.len(), 5, "{case}: valid siblings arrive");
+                assert_eq!(st.served.len(), 5, "{case}: each valid file uploads once");
+                assert_eq!(
+                    st.mkdirs
+                        .iter()
+                        .filter(|(_, path, _)| path == "/root")
+                        .count(),
+                    1,
+                    "{case}: one command attempt"
+                );
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn put_retries_restricted_names_still_retry_a_temporary_failure() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let (local_dir, mut cli) = local_batch(&dir, 1);
+        std::fs::write(
+            std::path::Path::new(&local_dir).join("bad\tname"),
+            b"rejected",
+        )
+        .unwrap();
+        cli.skip_restricted = true;
+        cli.immutable = true;
+        cli.retries = 3;
+        cli.retries_sleep = "0".into();
+        let state = WorkerFake::state();
+        state
+            .lock()
+            .unwrap()
+            .session_kills
+            .insert("/root/f1.txt".into(), 1);
+        let code = run_on_fake(&state, || {
+            put_with_retries(
+                "memory://",
+                &local_dir,
+                Some("/root"),
+                true,
+                false,
+                false,
+                None,
+                &cli,
+                OutputFormat::Text,
+                Arc::new(AtomicBool::new(false)),
+            )
+        });
+        let st = state.lock().unwrap();
+        assert_eq!(code, 4, "the restricted name is still reported");
+        assert_eq!(st.files.len(), 5, "the temporary failure recovers");
+        assert_eq!(st.files["/root/f1.txt"], b"file 1");
+        assert_eq!(
+            st.mkdirs
+                .iter()
+                .filter(|(_, path, _)| path == "/root")
+                .count(),
+            2,
+            "retry the lost connection, then stop on the permanent refusal"
+        );
+    }
+
     /// The text mode's `--retries` reruns a failed `put`. A rerun of `put -r
     /// -n` or `put -n` used to find the partial the failed attempt left and
     /// skip it as already there, ending with exit 9 or 0 on a truncated file
@@ -93572,6 +93856,111 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                     && line.contains("/root/f2.txt exists with 3 bytes")),
             "the refusal is printed: {stderr}"
         );
+    }
+
+    #[test]
+    fn put_batches_sanitize_text_errors_and_preserve_json_names() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_PUT_SAFE_ERRORS_CHILD";
+        const REMOTE: &str = "/root/\x1b[2Jfolder";
+        if let Ok(mode) = std::env::var(CHILD) {
+            let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+            let dir = tempfile::tempdir().unwrap();
+            let source = dir.path().join("source");
+            std::fs::create_dir(&source).unwrap();
+            std::fs::write(source.join("payload.txt"), b"payload").unwrap();
+            let local = source.to_string_lossy().into_owned();
+            let mut cli = test_cli();
+            cli.quiet = false;
+            let state = WorkerFake::state();
+            {
+                let mut st = state.lock().unwrap();
+                st.kind = Some(ProviderType::Proton);
+                st.refuse_unlisted_absence = true;
+            }
+            let format = if mode.ends_with("json") {
+                OutputFormat::Json
+            } else {
+                OutputFormat::Text
+            };
+            let code = run_on_fake(&state, || async {
+                let cancelled = Arc::new(AtomicBool::new(false));
+                if mode.starts_with("glob") {
+                    cmd_put_glob(
+                        "memory://",
+                        &format!("{local}/*.txt"),
+                        Some(REMOTE),
+                        true,
+                        &cli,
+                        format,
+                        cancelled,
+                    )
+                    .await
+                } else {
+                    cmd_put_recursive(
+                        "memory://",
+                        &local,
+                        Some(REMOTE),
+                        true,
+                        &cli,
+                        format,
+                        cancelled,
+                    )
+                    .await
+                }
+            });
+            assert_eq!(code, 4, "unverified destinations remain refused");
+            let st = state.lock().unwrap();
+            assert!(st.served.is_empty());
+            assert!(
+                st.mkdirs.iter().any(|(_, path, _)| path == REMOTE),
+                "raw remote name reaches the provider"
+            );
+            return;
+        }
+        for mode in ["recursive-text", "glob-text", "recursive-json", "glob-json"] {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "tests::put_batches_sanitize_text_errors_and_preserve_json_names",
+                    "--nocapture",
+                    "--test-threads=1",
+                ])
+                .env(CHILD, mode)
+                .output()
+                .unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(
+                output.status.success() && stdout.contains("1 passed"),
+                "{mode}: {stdout}\n{stderr}"
+            );
+            if mode.ends_with("json") {
+                let start = stdout.find('{').expect("JSON report");
+                let report = serde_json::Deserializer::from_str(&stdout[start..])
+                    .into_iter::<serde_json::Value>()
+                    .next()
+                    .unwrap()
+                    .unwrap();
+                let errors = report["errors"].as_array().unwrap();
+                assert_eq!(errors.len(), 1);
+                assert!(
+                    errors[0]
+                        .as_str()
+                        .unwrap()
+                        .contains(&format!("{REMOTE}/payload.txt")),
+                    "{mode}: JSON retains the raw path"
+                );
+            } else {
+                assert!(
+                    !stdout.contains('\x1b') && !stderr.contains('\x1b'),
+                    "{mode}: terminal escape leaked: {stdout:?}\n{stderr:?}"
+                );
+                assert!(
+                    stderr.contains("--no-clobber: cannot verify that /root/folder/payload.txt"),
+                    "{mode}: readable error retained: {stderr}"
+                );
+            }
+        }
     }
 
     /// `sync` opens a base connection for its transfer batch, which a
