@@ -5224,6 +5224,16 @@ mod tests {
             .unwrap();
         assert_eq!(report["summary"]["uploaded"], 3);
         assert_eq!(report["summary"]["errors"], 1);
+        let failures: Vec<_> = report["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|result| result["uploaded"] == false)
+            .collect();
+        assert_eq!(failures.len(), 1);
+        assert_eq!(report["results"].as_array().unwrap().len(), 4);
+        assert_eq!(*failures[0], report["results"][1]);
+        assert!(failures[0]["error"].is_string());
         assert!(report["results"]
             .as_array()
             .unwrap()

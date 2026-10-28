@@ -38439,7 +38439,7 @@ async fn cmd_put_recursive(
                     }
                 );
                 for err in &errors {
-                    eprintln!("  Error: {}", err);
+                    eprintln!("  Error: {}", sanitize_filename(err));
                 }
             }
         }
@@ -64757,7 +64757,7 @@ async fn cmd_put_glob(
                 // As `put -r` does: without them a refusal showed only as
                 // exit 4, and only `--json` said why.
                 for err in &errors {
-                    eprintln!("  Error: {}", err);
+                    eprintln!("  Error: {}", sanitize_filename(err));
                 }
             }
         }
@@ -93798,6 +93798,111 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                     && line.contains("/root/f2.txt exists with 3 bytes")),
             "the refusal is printed: {stderr}"
         );
+    }
+
+    #[test]
+    fn put_batches_sanitize_text_errors_and_preserve_json_names() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_PUT_SAFE_ERRORS_CHILD";
+        const REMOTE: &str = "/root/\x1b[2Jfolder";
+        if let Ok(mode) = std::env::var(CHILD) {
+            let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+            let dir = tempfile::tempdir().unwrap();
+            let source = dir.path().join("source");
+            std::fs::create_dir(&source).unwrap();
+            std::fs::write(source.join("payload.txt"), b"payload").unwrap();
+            let local = source.to_string_lossy().into_owned();
+            let mut cli = test_cli();
+            cli.quiet = false;
+            let state = WorkerFake::state();
+            {
+                let mut st = state.lock().unwrap();
+                st.kind = Some(ProviderType::Proton);
+                st.refuse_unlisted_absence = true;
+            }
+            let format = if mode.ends_with("json") {
+                OutputFormat::Json
+            } else {
+                OutputFormat::Text
+            };
+            let code = run_on_fake(&state, || async {
+                let cancelled = Arc::new(AtomicBool::new(false));
+                if mode.starts_with("glob") {
+                    cmd_put_glob(
+                        "memory://",
+                        &format!("{local}/*.txt"),
+                        Some(REMOTE),
+                        true,
+                        &cli,
+                        format,
+                        cancelled,
+                    )
+                    .await
+                } else {
+                    cmd_put_recursive(
+                        "memory://",
+                        &local,
+                        Some(REMOTE),
+                        true,
+                        &cli,
+                        format,
+                        cancelled,
+                    )
+                    .await
+                }
+            });
+            assert_eq!(code, 4, "unverified destinations remain refused");
+            let st = state.lock().unwrap();
+            assert!(st.served.is_empty());
+            assert!(
+                st.mkdirs.iter().any(|(_, path, _)| path == REMOTE),
+                "raw remote name reaches the provider"
+            );
+            return;
+        }
+        for mode in ["recursive-text", "glob-text", "recursive-json", "glob-json"] {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "tests::put_batches_sanitize_text_errors_and_preserve_json_names",
+                    "--nocapture",
+                    "--test-threads=1",
+                ])
+                .env(CHILD, mode)
+                .output()
+                .unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(
+                output.status.success() && stdout.contains("1 passed"),
+                "{mode}: {stdout}\n{stderr}"
+            );
+            if mode.ends_with("json") {
+                let start = stdout.find('{').expect("JSON report");
+                let report = serde_json::Deserializer::from_str(&stdout[start..])
+                    .into_iter::<serde_json::Value>()
+                    .next()
+                    .unwrap()
+                    .unwrap();
+                let errors = report["errors"].as_array().unwrap();
+                assert_eq!(errors.len(), 1);
+                assert!(
+                    errors[0]
+                        .as_str()
+                        .unwrap()
+                        .contains(&format!("{REMOTE}/payload.txt")),
+                    "{mode}: JSON retains the raw path"
+                );
+            } else {
+                assert!(
+                    !stdout.contains('\x1b') && !stderr.contains('\x1b'),
+                    "{mode}: terminal escape leaked: {stdout:?}\n{stderr:?}"
+                );
+                assert!(
+                    stderr.contains("--no-clobber: cannot verify that /root/folder/payload.txt"),
+                    "{mode}: readable error retained: {stderr}"
+                );
+            }
+        }
     }
 
     /// `sync` opens a base connection for its transfer batch, which a
