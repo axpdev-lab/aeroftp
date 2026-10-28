@@ -5209,6 +5209,36 @@ mod tests {
     /// folder now make one native call, and every item keeps its own result,
     /// in order, in the shape `upload_file` reports.
     #[tokio::test]
+    async fn proton_upload_many_accepts_a_tab_and_isolates_an_invalid_sibling() {
+        let (_dir, mut items) =
+            bulk_fixture(&["first.txt", "invalid.txt", "last.txt", "tab-source.txt"]);
+        items[1]["remote_path"] = json!("/root/bad\0name.txt");
+        items[3]["remote_path"] = json!("/root/tab\tname.txt");
+        let fake = Arc::new(
+            bulk_backend(|_| BulkTransferOutcome::Completed)
+                .with_provider_type(ProviderType::Proton),
+        );
+        let ctx = test_ctx(Arc::clone(&fake));
+        let report = upload_many(&ctx, &json!({"server": "srv", "items": items}))
+            .await
+            .unwrap();
+        assert_eq!(report["summary"]["uploaded"], 3);
+        assert_eq!(report["summary"]["errors"], 1);
+        assert!(report["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["remote_path"] == "/root/tab\tname.txt" && r["uploaded"] == true));
+        assert!(fake
+            .bulk_calls
+            .lock()
+            .unwrap()
+            .iter()
+            .flatten()
+            .all(|p| !p.contains('\0')));
+    }
+
+    #[tokio::test]
     async fn upload_many_sends_one_folder_as_one_native_bulk() {
         let names = ["n0.txt", "n1.txt", "n2.txt", "n3.txt", "n4.txt"];
         let (_dir, items) = bulk_fixture(&names);

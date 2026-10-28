@@ -4161,15 +4161,10 @@ pub(crate) async fn run_provider_file_batch(
                 &transfer_settings.download_segments,
                 transfer_settings.sftp_download_preset,
             );
-        } else {
-            // Reject the whole batch up front when a target name is one the
-            // backend forbids, as `provider_upload_file` does for one file.
-            let provider_type = provider.provider_type();
-            for entry in &params.entries {
-                crate::restricted_chars::validate_path(provider_type, &entry.remote_path)
-                    .map_err(|e| e.to_string())?;
-            }
         }
+        // Upload name validation belongs to the per-file executor (including
+        // the native bulk), which reports an error for that row and continues
+        // its valid siblings. The crypt-overlay batch guard still runs above.
     }
 
     let (runtime_settings, session_model, capabilities) =
@@ -17037,6 +17032,69 @@ mod tests {
             "too long"
         );
         assert_eq!(ok(None, true), None);
+    }
+
+    #[tokio::test]
+    async fn proton_file_batch_isolates_a_restricted_name_and_reports_partial() {
+        let scripted = crate::transfer_bulk::tests::ScriptedBulk {
+            kind: Some(ProviderType::Proton),
+            ..Default::default()
+        };
+        let singles = scripted.singles.clone();
+        let bulks = scripted.bulks.clone();
+        let provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>> =
+            Arc::new(Mutex::new(Some(Box::new(scripted))));
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("source.txt");
+        std::fs::write(&local, b"ok").unwrap();
+        let entries = ["valid.txt", "bad\0name.txt", "last.txt"]
+            .into_iter()
+            .map(|name| TransferEntry {
+                id: String::new(),
+                display_name: name.into(),
+                remote_path: format!("/my-files/tree/{name}"),
+                local_path: local.to_string_lossy().into_owned(),
+                size: 2,
+                modified: None,
+            })
+            .collect();
+        let outcome = super::run_provider_file_batch(
+            provider,
+            Arc::new(crate::transfer_event_sink::NoopTransferSink),
+            Arc::new(|_| {}),
+            Arc::new(AtomicBool::new(false)),
+            CancellationToken::new(),
+            TransferDirection::Upload,
+            super::ProviderFileBatchParams {
+                no_clobber: false,
+                entries,
+                max_concurrent: Some(1),
+                retry_count: Some(0),
+                timeout_seconds: Some(30),
+                download_segments: None,
+                sftp_download_preset: None,
+                commit_message: None,
+                batch_id: None,
+            },
+        )
+        .await
+        .expect("a rejected leaf must not reject its siblings");
+        assert_eq!((outcome.completed, outcome.failed), (2, 1));
+        assert_eq!(outcome.succeeded, vec![0, 2]);
+        assert!(!outcome.cancelled);
+        let sent: Vec<String> = singles
+            .lock()
+            .unwrap()
+            .iter()
+            .cloned()
+            .chain(bulks.lock().unwrap().iter().flatten().cloned())
+            .collect();
+        assert_eq!(
+            sent.len(),
+            2,
+            "only valid leaves reach the provider: {sent:?}"
+        );
+        assert!(sent.iter().all(|path| !path.contains('\0')));
     }
 
     /// Every per-file event of a batch carries `<batch_id>-<index>`, the key

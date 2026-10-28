@@ -477,7 +477,8 @@ struct Cli {
     /// Recursive `put`: skip a file or folder whose name contains a character
     /// the destination backend forbids and upload the rest, reporting each
     /// skipped path, instead of refusing the whole batch up front (the
-    /// default, which uploads nothing when one name is bad). The run still
+    /// default on providers other than Proton Drive). Proton recursive
+    /// uploads already isolate rejected entries by default. The run still
     /// ends "partial" with exit 4 because not everything requested landed,
     /// the way rclone reports a batch with failed items.
     #[arg(
@@ -38162,26 +38163,21 @@ async fn cmd_put_recursive(
         .map(|(local, remote, size)| (local, resolve_cli_remote_path(&initial_path, &remote), size))
         .collect();
 
-    // Pre-flight: reject the whole batch up front if any target dir or file name
-    // contains a character this provider's backend forbids, before creating or
-    // uploading anything (mirrors the single-file `put` guard). With
-    // `--skip-restricted` the offending entries are set aside and reported,
-    // and the rest of the batch proceeds.
+    // Proton recursive uploads report rejected entries independently, as
+    // the official client does. Other providers retain their existing default
+    // refusal unless --skip-restricted requests the same partition.
     let ptype = provider.provider_type();
-    let (dirs, mut files, restricted_skipped) = if cli.skip_restricted {
-        let split = split_restricted_targets(ptype, dirs, files);
-        (split.dirs, split.files, split.notes)
-    } else {
-        for target in dirs.iter().chain(files.iter().map(|(_, remote, _)| remote)) {
-            if let Err(e) = ftp_client_gui_lib::restricted_chars::validate_path(ptype, target) {
-                let code = provider_error_to_exit_code(&e);
-                print_error(format, &format!("put failed: {}", e), code);
-                let _ = provider.disconnect().await;
-                return code;
-            }
+    let split = match prepare_recursive_upload_targets(ptype, cli.skip_restricted, dirs, files) {
+        Ok(split) => split,
+        Err(e) => {
+            let code = provider_error_to_exit_code(&e);
+            print_error(format, &format!("put failed: {}", e), code);
+            let _ = provider.disconnect().await;
+            return code;
         }
-        (dirs, files, Vec::new())
     };
+    let (dirs, mut files, restricted_skipped) = (split.dirs, split.files, split.notes);
+    let restricted_files = total_files.saturating_sub(files.len()) as u32;
     if !quiet {
         for note in &restricted_skipped {
             eprintln!("  Skipped (restricted name): {}", note);
@@ -38203,7 +38199,7 @@ async fn cmd_put_recursive(
     // because FTP mapped every MKD failure onto one generic ServerError and
     // "it is already there" could not be told from "you may not". The provider
     // reports `AlreadyExists` now, so the answer is read rather than guessed.
-    if resolved_remote_base != "/" {
+    if resolved_remote_base != "/" && dirs.contains(&resolved_remote_base) {
         let strict_ancestors = matches!(ptype, ProviderType::Ftp | ProviderType::Ftps);
         if let Err((ancestor, mkd_err)) = ftp_client_gui_lib::providers::create_folder_chain(
             &mut *provider,
@@ -38240,7 +38236,7 @@ async fn cmd_put_recursive(
     let mut uploaded: u32 = 0;
     // What arrived, for the summary (see `batch_bytes_summary`).
     let mut done_bytes: u64 = 0;
-    let mut skipped: u32 = 0;
+    let mut skipped: u32 = restricted_files;
     // G102: files the --max-transfer budget left behind on this run.
     let mut over_budget: u32 = 0;
     let mut errors: Vec<String> = restricted_skipped
@@ -38287,14 +38283,10 @@ async fn cmd_put_recursive(
     }
     // A screened batch is handed only the files the listings left, and the
     // ones it skipped moved no bytes.
-    let (sent_files, sent_bytes) = if screened {
-        (
-            files.len(),
-            files.iter().map(|(_, _, size)| *size).sum::<u64>(),
-        )
-    } else {
-        (total_files, total_bytes)
-    };
+    let (sent_files, sent_bytes) = (
+        files.len(),
+        files.iter().map(|(_, _, size)| *size).sum::<u64>(),
+    );
     let use_legacy = if (cli.immutable || no_clobber) && !screened {
         if !cli.quiet {
             eprintln!(
@@ -38417,6 +38409,7 @@ async fn cmd_put_recursive(
     let elapsed = start.elapsed();
     let interrupted = cancelled.load(Ordering::Relaxed) && uploaded + skipped < total_files as u32;
 
+    let has_errors = !errors.is_empty();
     match format {
         OutputFormat::Text => {
             if !cli.quiet {
@@ -38430,10 +38423,12 @@ async fn cmd_put_recursive(
                         format!(
                             " ({} skipped, {})",
                             skipped,
-                            if cli.immutable {
-                                "--immutable"
+                            if restricted_files > 0 {
+                                format!("{} restricted names", restricted_files)
+                            } else if cli.immutable {
+                                "--immutable".to_string()
                             } else {
-                                "--no-clobber"
+                                "--no-clobber".to_string()
                             }
                         )
                     } else {
@@ -38480,7 +38475,25 @@ async fn cmd_put_recursive(
             });
         }
     }
-    if uploaded + skipped == total_files as u32 {
+    recursive_put_exit_code(
+        uploaded,
+        skipped,
+        total_files as u32,
+        has_errors,
+        interrupted,
+        session_transfer_exceeded(resolve_max_transfer(cli)),
+    )
+}
+
+fn recursive_put_exit_code(
+    uploaded: u32,
+    skipped: u32,
+    total_files: u32,
+    has_errors: bool,
+    interrupted: bool,
+    over_budget: bool,
+) -> i32 {
+    if uploaded + skipped == total_files && !has_errors {
         if skipped > 0 && uploaded == 0 {
             9
         } else {
@@ -38488,10 +38501,7 @@ async fn cmd_put_recursive(
         }
     } else if interrupted {
         130
-    } else if session_transfer_exceeded(resolve_max_transfer(cli)) {
-        // Intentional --max-transfer cap (honest note already emitted),
-        // not a transfer failure: the dedicated exit code, consistent
-        // with the legacy path.
+    } else if over_budget && !has_errors {
         8
     } else {
         4
@@ -48858,6 +48868,25 @@ struct RestrictedSplit {
     notes: Vec<String>,
 }
 
+fn prepare_recursive_upload_targets(
+    ptype: ProviderType,
+    skip_restricted: bool,
+    dirs: Vec<String>,
+    files: Vec<(String, String, u64)>,
+) -> Result<RestrictedSplit, ProviderError> {
+    if skip_restricted || ptype == ProviderType::Proton {
+        return Ok(split_restricted_targets(ptype, dirs, files));
+    }
+    for target in dirs.iter().chain(files.iter().map(|(_, remote, _)| remote)) {
+        ftp_client_gui_lib::restricted_chars::validate_path(ptype, target)?;
+    }
+    Ok(RestrictedSplit {
+        dirs,
+        files,
+        notes: Vec::new(),
+    })
+}
+
 /// `--skip-restricted`: separate the targets a backend would refuse by name.
 ///
 /// A folder with a forbidden character takes every file under it along, since
@@ -48869,22 +48898,37 @@ fn split_restricted_targets(
     files: Vec<(String, String, u64)>,
 ) -> RestrictedSplit {
     let mut kept_dirs = Vec::with_capacity(dirs.len());
-    let mut bad_dirs: Vec<String> = Vec::new();
+    let mut bad_dirs = std::collections::HashSet::new();
     let mut notes = Vec::new();
     for dir in dirs {
         match ftp_client_gui_lib::restricted_chars::validate_path(ptype, &dir) {
             Ok(()) => kept_dirs.push(dir),
             Err(e) => {
                 notes.push(format!("{}: {}", dir, e));
-                bad_dirs.push(dir);
+                bad_dirs.insert(dir.trim_end_matches('/').to_string());
             }
         }
     }
     let under_bad_dir = |remote: &str| {
-        bad_dirs
-            .iter()
-            .any(|d| remote.starts_with(&format!("{}/", d.trim_end_matches('/'))))
+        let mut ancestor = remote.trim_end_matches('/');
+        while let Some((parent, _)) = ancestor.rsplit_once('/') {
+            if bad_dirs.contains(parent) {
+                return true;
+            }
+            ancestor = parent;
+        }
+        false
     };
+    // Walk order is not a validity order: remove descendant directories
+    // after every rejected parent is known, before any mkdir reaches the wire.
+    kept_dirs.retain(|dir| {
+        if under_bad_dir(dir) {
+            notes.push(format!("{}: inside a folder with a restricted name", dir));
+            false
+        } else {
+            true
+        }
+    });
     let mut kept_files = Vec::with_capacity(files.len());
     for (local, remote, size) in files {
         if under_bad_dir(&remote) {
@@ -83524,6 +83568,86 @@ mod tests {
                 "--checksum and --size-only contradict each other"
             );
         });
+    }
+
+    #[tokio::test]
+    async fn proton_recursive_upload_keeps_valid_files_without_skip_flag() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("source.txt");
+        std::fs::write(&local, b"ok").unwrap();
+        let files = ["first.txt", "bad\0name.txt", "last.txt"]
+            .into_iter()
+            .map(|name| {
+                (
+                    local.to_string_lossy().into_owned(),
+                    format!("/my-files/tree/{name}"),
+                    2,
+                )
+            })
+            .collect();
+        let split = prepare_recursive_upload_targets(
+            ProviderType::Proton,
+            false,
+            vec!["/my-files/tree".into()],
+            files,
+        )
+        .expect("only the rejected file must fail");
+        assert_eq!(split.notes.len(), 1);
+        assert!(split.notes[0].contains("U+0000"));
+        let state = WorkerFake::state();
+        {
+            let mut st = state.lock().unwrap();
+            st.kind = Some(ProviderType::Proton);
+            st.pooled = true;
+        }
+        let mut cli = test_cli();
+        cli.quiet = true;
+        let outcome = match run_shared_provider_upload_batch(
+            WorkerFake::held(&state),
+            &split.files,
+            &cli,
+            None,
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await
+        {
+            Ok(outcome) => outcome,
+            Err(_) => panic!("the pooled Proton provider must take the shared upload batch"),
+        };
+        assert_eq!(outcome.uploaded, 2);
+        assert!(outcome.errors.is_empty());
+        let st = state.lock().unwrap();
+        assert_eq!(st.files.len(), 2);
+        assert_eq!(st.files["/my-files/tree/first.txt"], b"ok");
+        assert_eq!(st.files["/my-files/tree/last.txt"], b"ok");
+    }
+
+    #[test]
+    fn recursive_put_reports_partial_even_if_only_a_directory_was_rejected() {
+        assert_eq!(recursive_put_exit_code(0, 0, 0, true, false, false), 4);
+        assert_eq!(recursive_put_exit_code(2, 0, 2, true, false, false), 4);
+        assert_eq!(recursive_put_exit_code(2, 0, 2, false, false, false), 0);
+        assert_eq!(recursive_put_exit_code(0, 2, 2, false, false, false), 9);
+        assert_eq!(recursive_put_exit_code(1, 0, 2, true, true, false), 130);
+        assert_eq!(recursive_put_exit_code(1, 0, 2, false, false, true), 8);
+        assert_eq!(recursive_put_exit_code(1, 0, 2, true, false, true), 4);
+    }
+
+    #[test]
+    fn restricted_directory_prunes_descendant_directories_in_any_scan_order() {
+        let split = split_restricted_targets(
+            ProviderType::Proton,
+            vec![
+                "/ok".into(),
+                "/bad\0dir/child/grandchild".into(),
+                "/bad\0dir".into(),
+                "/bad\0dir/child".into(),
+            ],
+            vec![("local".into(), "/bad\0dir/child/file".into(), 2)],
+        );
+        assert_eq!(split.dirs, vec!["/ok"]);
+        assert!(split.files.is_empty());
+        assert_eq!(split.notes.len(), 4);
     }
 
     #[test]

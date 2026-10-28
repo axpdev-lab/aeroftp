@@ -2423,6 +2423,30 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn proton_raw_control_names_survive_upload_listing_and_download() {
+        let (mut p, _) = provider();
+        let dir = tempfile::tempdir().unwrap();
+        let source = local_file_with(&dir, "source.txt", b"RAW-NAME-CONTENT");
+        let target = dir.path().join("downloaded.txt");
+        for c in ['\t', '\n', '\r', '\u{1}', '\u{7f}', '\u{85}'] {
+            let name = format!("before{c}after.txt");
+            let remote = format!("/docs/{name}");
+            crate::restricted_chars::validate_path(ProviderType::Proton, &remote).unwrap();
+            p.upload(&source, &remote, None).await.unwrap();
+            assert!(p
+                .list("/docs")
+                .await
+                .unwrap()
+                .iter()
+                .any(|e| e.name == name && e.path == remote));
+            p.download(&remote, target.to_str().unwrap(), None)
+                .await
+                .unwrap();
+            assert_eq!(std::fs::read(&target).unwrap(), b"RAW-NAME-CONTENT");
+        }
+    }
+
     /// Uploads into one folder resolve it once: a write forgets only what it
     /// made stale, so the next upload does not walk the parents again (the
     /// many-small-files upload of the rclone comparison re-listed them).
