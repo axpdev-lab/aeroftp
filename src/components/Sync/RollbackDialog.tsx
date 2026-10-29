@@ -19,6 +19,8 @@ import { useDraggableModal } from '../../hooks/useDraggableModal';
 
 interface RollbackDialogProps {
     isOpen: boolean;
+    /** Render inside an AeroSync tab instead of a separate modal. */
+    embedded?: boolean;
     onClose: () => void;
     localPath: string;
     remotePath: string;
@@ -28,6 +30,7 @@ interface RollbackDialogProps {
 
 export const RollbackDialog: React.FC<RollbackDialogProps> = ({
     isOpen,
+    embedded = false,
     onClose,
     localPath,
     remotePath,
@@ -47,11 +50,11 @@ export const RollbackDialog: React.FC<RollbackDialogProps> = ({
     const cancelledRef = useRef(false);
 
     useEffect(() => {
-        if (!isOpen) return;
+        if (!isOpen || embedded) return;
         const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [isOpen, onClose]);
+    }, [isOpen, embedded, onClose]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -131,19 +134,19 @@ export const RollbackDialog: React.FC<RollbackDialogProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4" onClick={onClose} role="dialog" aria-modal="true" aria-label={t('syncPanel.rollbackDialogLabel')}>
+        <div className={embedded ? "relative flex flex-col" : "fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4"} onClick={embedded ? undefined : onClose} role={embedded ? undefined : "dialog"} aria-modal={embedded ? undefined : true} aria-label={embedded ? undefined : t('syncPanel.rollbackDialogLabel')}>
             <div
-                {...modalDrag.panelProps}
-                className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col animate-scale-in"
+                {...(embedded ? {} : modalDrag.panelProps)}
+                className={embedded ? "flex flex-1 min-h-0 flex-col" : "bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col animate-scale-in"}
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}
-                <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
+                <div {...(embedded ? {} : modalDrag.dragHandleProps)} className={embedded ? "flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700" : "flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing"}>
                     <div className="flex items-center gap-2">
                         <Undo2 size={18} className="text-amber-500" />
                         <h3 className="font-semibold text-sm">{t('syncPanel.rollback')}</h3>
                     </div>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-200">
+                    <button hidden={embedded} onClick={onClose} className="text-gray-400 hover:text-gray-200">
                         <X size={18} />
                     </button>
                 </div>
@@ -252,6 +255,7 @@ export const RollbackDialog: React.FC<RollbackDialogProps> = ({
                         </button>
                         <button
                             className="text-xs px-4 py-1.5 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
+                            hidden={embedded}
                             onClick={onClose}
                         >
                             {t('common.close')}

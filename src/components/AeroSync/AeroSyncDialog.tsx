@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 //
 // AeroSync: unified modal that bundles Compare, Plan, and Sync into a
-// single 3-tab workflow. Replaces the legacy LocalSyncPanel,
+// single tabbed workflow. Replaces the legacy LocalSyncPanel,
 // UnifiedCompareDialog, and SyncPresetDialog dialogs which were
 // disconnected entries in the View menu.
 
@@ -18,14 +18,14 @@ import { ScanProgressProvider } from './CompareScanState';
 import { PlanTabContent } from './PlanTabContent';
 import { SyncTabContent } from './SyncTabContent';
 import { JournalHistoryDialog } from './JournalHistoryDialog';
-import { SyncSchedulerDialog } from './SyncSchedulerDialog';
+import { SyncScheduler } from '../SyncScheduler';
 import { SyncTemplateDialog } from '../Sync/SyncTemplateDialog';
 import { MultiPathEditor } from '../Sync/MultiPathEditor';
 import { RollbackDialog } from '../Sync/RollbackDialog';
 import { TabStateStoreContext, createTabStateStore } from './tabStateStore';
 import { buildAeroSyncTabStatePatch, type ImportedSyncSettings } from '../../utils/syncTemplateApply';
 import type { VersionedBackupConfig } from '../../utils/syncPresets';
-import { aeroSyncTabsFor, effectiveAeroSyncTab, type AeroSyncDialogProps, type AeroSyncTab } from './types';
+import { AERO_SYNC_TOOL_TABS, aeroSyncTabsFor, effectiveAeroSyncTab, type AeroSyncDialogProps, type AeroSyncTab, type AeroSyncToolTab } from './types';
 import type { TransferOptimizationHints } from '../../types';
 import { limitsFromHints, type ProviderFileLimits } from '../../utils/providerFileLimits';
 
@@ -45,17 +45,24 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
 }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
-    const visibleTabs = aeroSyncTabsFor(context.pairKind);
+    const isConnectedRemote = (context.pairKind === 'local-remote' || context.pairKind === 'remote-local')
+        && !!context.activeProfileId;
+    const visibleTabs = aeroSyncTabsFor(context.pairKind, isConnectedRemote);
     const [selectedTab, setActiveTab] = React.useState<AeroSyncTab>(initialTab);
-    const [showTemplates, setShowTemplates] = React.useState(false);
-    const [showMultiPath, setShowMultiPath] = React.useState(false);
-    const [showRollback, setShowRollback] = React.useState(false);
-    const [showHistory, setShowHistory] = React.useState(false);
-    const [showScheduler, setShowScheduler] = React.useState(false);
+    // Keep visited tool panes mounted: switching tabs must not discard drafts
+    // or detach an import, export or snapshot operation already in flight.
+    const [visitedTools, setVisitedTools] = React.useState<readonly AeroSyncToolTab[]>([]);
+    const tabId = React.useId();
     // Lifted from the Sync tab so the close path can guard against losing an
     // in-progress local sync (issue #332).
     const [syncRunning, setSyncRunning] = React.useState(false);
-    const activeTab = effectiveAeroSyncTab(selectedTab, context.pairKind, syncRunning);
+    const activeTab = effectiveAeroSyncTab(selectedTab, context.pairKind, syncRunning, isConnectedRemote);
+
+    React.useEffect(() => {
+        if (isOpen && AERO_SYNC_TOOL_TABS.includes(activeTab as AeroSyncToolTab)) {
+            setVisitedTools(previous => previous.includes(activeTab as AeroSyncToolTab) ? previous : [...previous, activeTab as AeroSyncToolTab]);
+        }
+    }, [isOpen, activeTab]);
 
     const cancelSync = React.useCallback(() => {
         invoke('local_sync_cancel').catch(() => { /* no run in flight */ });
@@ -85,14 +92,18 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
             tabState.get<VersionedBackupConfig | undefined>('plan.versionedBackup', undefined),
         );
         Object.entries(patch).forEach(([key, value]) => tabState.set(key, value));
-        setShowTemplates(false);
         // Plan summarizes the imported direction/preset. Sync is populated in
         // the same store and shows the imported paths when the user opens it.
         setActiveTab('plan');
-    }, [context.pairKind, tabState]);
+        document.getElementById(`${tabId}-tab-plan`)?.focus();
+    }, [context.pairKind, tabState, tabId]);
     React.useEffect(() => {
-        if (!isOpen) tabState.reset();
-    }, [isOpen, tabState]);
+        if (!isOpen) {
+            tabState.reset();
+            setVisitedTools([]);
+            setActiveTab(initialTab);
+        }
+    }, [isOpen, initialTab, tabState]);
 
     React.useEffect(() => {
         if (isOpen) setActiveTab(initialTab);
@@ -121,11 +132,6 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
         || context.pairKind === 'remote-local';
     const canExecutePlan = canMirrorAny;
 
-    // Header launchers (Templates / Multi-Path / Rollback) require a
-    // connected remote session; they piggy-back on the existing Sync/*
-    // dialogs which were originally wired to SyncPanel.
-    const isConnectedRemote = (context.pairKind === 'local-remote' || context.pairKind === 'remote-local')
-        && !!context.activeProfileId;
     const localPath = context.initialSource || '';
     const remotePath = context.initialDestination || '';
     const serverProfileName = context.activeProfileName || '';
@@ -136,6 +142,18 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
         compare: t('aerosync.tabCompare') || 'Compare',
         plan: t('aerosync.tabPlan') || 'Plan',
         sync: t('aerosync.tabSync') || 'Local mirror',
+        templates: t('aerosync.launcherTemplates'),
+        multiPath: t('aerosync.launcherMultiPath'),
+        rollback: t('aerosync.launcherRollback'),
+        history: t('aerosync.launcherHistory'),
+        scheduler: t('aerosync.launcherScheduler'),
+    };
+
+    const toolIcons = { templates: FileDown, multiPath: Layers, rollback: Undo2, history: History, scheduler: CalendarClock };
+    const selectTab = (tab: AeroSyncTab) => {
+        if (syncRunning && tab !== 'sync') return;
+        setActiveTab(tab);
+        document.getElementById(`${tabId}-tab-${tab}`)?.focus();
     };
 
     return (
@@ -164,32 +182,6 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                         </h2>
                     </div>
                     <div className="flex items-center gap-1">
-                        {isConnectedRemote && (
-                            <>
-                                {([
-                                    { Icon: FileDown, labelKey: 'aerosync.launcherTemplates', fallback: 'Templates', onClick: () => setShowTemplates(true) },
-                                    { Icon: Layers, labelKey: 'aerosync.launcherMultiPath', fallback: 'Multi-Path', onClick: () => setShowMultiPath(true) },
-                                    { Icon: Undo2, labelKey: 'aerosync.launcherRollback', fallback: 'Rollback snapshots', onClick: () => setShowRollback(true) },
-                                    { Icon: History, labelKey: 'aerosync.launcherHistory', fallback: 'Sync journals', onClick: () => setShowHistory(true) },
-                                    { Icon: CalendarClock, labelKey: 'aerosync.launcherScheduler', fallback: 'Scheduler', onClick: () => setShowScheduler(true) },
-                                ] as const).map(({ Icon, labelKey, fallback, onClick }) => {
-                                    const label = t(labelKey) || fallback;
-                                    return (
-                                        <button
-                                            key={labelKey}
-                                            type="button"
-                                            onClick={onClick}
-                                            className="p-2 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                                            title={label}
-                                            aria-label={label}
-                                        >
-                                            <Icon size={16} />
-                                        </button>
-                                    );
-                                })}
-                                <div className="mx-1 h-6 w-px bg-gray-300 dark:bg-gray-600" />
-                            </>
-                        )}
                         <button
                             type="button"
                             onClick={guarded.requestClose}
@@ -201,29 +193,51 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                     </div>
                 </div>
 
-                <div className="flex gap-1 px-4 pt-3 border-b border-gray-200 dark:border-gray-700">
+                <div
+                    role="tablist"
+                    aria-label={t('aerosync.title')}
+                    className="flex shrink-0 gap-1 px-4 pt-3 overflow-x-auto border-b border-gray-200 dark:border-gray-700"
+                    onKeyDown={(event) => {
+                        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                        const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]:not(:disabled)'));
+                        const index = tabs.indexOf(document.activeElement as HTMLButtonElement);
+                        if (index < 0 || tabs.length === 0) return;
+                        event.preventDefault();
+                        const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+                            : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+                        tabs[next].focus();
+                        tabs[next].click();
+                    }}
+                >
                     {(visibleTabs.includes(activeTab) ? visibleTabs : [...visibleTabs, activeTab]).map((tab) => {
                         const active = activeTab === tab;
+                        const Icon = toolIcons[tab as AeroSyncToolTab];
                         // While a local sync runs, lock the user onto the Sync
                         // tab: leaving it would unmount SyncTabContent and orphan
                         // the in-flight run (issue #332).
                         const locked = syncRunning && tab !== 'sync';
                         return (
+                            <React.Fragment key={tab}>
+                            {tab === 'templates' && <span role="separator" aria-orientation="vertical" className="mx-1 mb-2 w-px shrink-0 self-stretch bg-gray-300 dark:bg-gray-600" />}
                             <button
-                                key={tab}
+                                id={`${tabId}-tab-${tab}`}
                                 type="button"
-                                onClick={() => { if (!locked) setActiveTab(tab); }}
+                                onClick={() => selectTab(tab)}
                                 disabled={locked}
-                                className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors border-b-2 ${
+                                className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-2 text-sm font-medium rounded-t-lg transition-colors border-b-2 ${
                                     active
                                         ? 'border-blue-500 text-blue-600 dark:text-blue-300'
                                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700/50'
                                 } ${locked ? 'opacity-40 cursor-not-allowed hover:bg-transparent dark:hover:bg-transparent' : ''}`}
                                 aria-selected={active}
+                                aria-controls={`${tabId}-panel`}
+                                tabIndex={active ? 0 : -1}
                                 role="tab"
                             >
+                                {Icon && <Icon size={14} aria-hidden="true" />}
                                 {tabLabels[tab]}
                             </button>
+                            </React.Fragment>
                         );
                     })}
                 </div>
@@ -271,7 +285,8 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
 
                 <TabStateStoreContext.Provider value={tabState}>
                 <ScanProgressProvider active={!!context.compareLoading} progressId={context.scanProgressId}>
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 min-h-0 overflow-y-auto">
+                    <div role="tabpanel" id={`${tabId}-panel`} aria-labelledby={`${tabId}-tab-${activeTab}`} tabIndex={0}>
                     {activeTab === 'compare' && (
                         <CompareTabContent
                             result={context.compareResult}
@@ -326,53 +341,27 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                             onRunningChange={setSyncRunning}
                         />
                     )}
+                    {isConnectedRemote && AERO_SYNC_TOOL_TABS.map(tool => (
+                        (visitedTools.includes(tool) || activeTab === tool) && (
+                            <div key={`${context.activeProfileId}:${localPath}:${remotePath}:${tool}`} hidden={activeTab !== tool}>
+                                {tool === 'templates' && <SyncTemplateDialog embedded isOpen onClose={() => selectTab('plan')}
+                                    localPath={localPath} remotePath={remotePath} serverProfileName={serverProfileName}
+                                    excludePatterns={excludePatterns} pairKind={context.pairKind} onApplyImport={applyImportedSettings} />}
+                                {tool === 'multiPath' && <MultiPathEditor embedded isOpen onClose={() => selectTab('plan')}
+                                    localPath={localPath} remotePath={remotePath} />}
+                                {tool === 'rollback' && <RollbackDialog embedded isOpen onClose={() => selectTab('plan')}
+                                    localPath={localPath} remotePath={remotePath} isProvider={isProvider} />}
+                                {tool === 'history' && <JournalHistoryDialog embedded isOpen onClose={() => selectTab('plan')}
+                                    localPath={localPath} remotePath={remotePath} />}
+                                {tool === 'scheduler' && <div className="p-4"><SyncScheduler /></div>}
+                            </div>
+                        )
+                    ))}
+                    </div>
                 </div>
                 </ScanProgressProvider>
                 </TabStateStoreContext.Provider>
             </div>
-
-            {/* Re-mounted Sync/* dialogs, surfaced from the AeroSync
-                header. Templates read the same tab store so export keeps
-                the live Plan knobs (#514). */}
-            {isConnectedRemote && (
-                <>
-                    <TabStateStoreContext.Provider value={tabState}>
-                    <SyncTemplateDialog
-                        isOpen={showTemplates}
-                        onClose={() => setShowTemplates(false)}
-                        localPath={localPath}
-                        remotePath={remotePath}
-                        serverProfileName={serverProfileName}
-                        excludePatterns={excludePatterns}
-                        pairKind={context.pairKind}
-                        onApplyImport={applyImportedSettings}
-                    />
-                    </TabStateStoreContext.Provider>
-                    <MultiPathEditor
-                        isOpen={showMultiPath}
-                        onClose={() => setShowMultiPath(false)}
-                        localPath={localPath}
-                        remotePath={remotePath}
-                    />
-                    <RollbackDialog
-                        isOpen={showRollback}
-                        onClose={() => setShowRollback(false)}
-                        localPath={localPath}
-                        remotePath={remotePath}
-                        isProvider={isProvider}
-                    />
-                    <JournalHistoryDialog
-                        isOpen={showHistory}
-                        onClose={() => setShowHistory(false)}
-                        localPath={localPath}
-                        remotePath={remotePath}
-                    />
-                    <SyncSchedulerDialog
-                        isOpen={showScheduler}
-                        onClose={() => setShowScheduler(false)}
-                    />
-                </>
-            )}
 
             {guarded.confirmOpen && guarded.confirmKind && (
                 <GuardedCloseConfirm

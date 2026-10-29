@@ -20,6 +20,8 @@ const MAX_PATH_PAIRS = 50;
 
 interface MultiPathEditorProps {
     isOpen: boolean;
+    /** Render inside an AeroSync tab instead of a separate modal. */
+    embedded?: boolean;
     onClose: () => void;
     localPath: string;
     remotePath: string;
@@ -27,6 +29,7 @@ interface MultiPathEditorProps {
 
 export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
     isOpen,
+    embedded = false,
     onClose,
     localPath,
     remotePath,
@@ -37,11 +40,11 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!isOpen) return;
+        if (!isOpen || embedded) return;
         const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [isOpen, onClose]);
+    }, [isOpen, embedded, onClose]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -117,19 +120,19 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4" onClick={onClose} role="dialog" aria-modal="true" aria-label={t('syncPanel.multiPathEditorLabel')}>
+        <div className={embedded ? "relative flex flex-col" : "fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4"} onClick={embedded ? undefined : onClose} role={embedded ? undefined : "dialog"} aria-modal={embedded ? undefined : true} aria-label={embedded ? undefined : t('syncPanel.multiPathEditorLabel')}>
             <div
-                {...modalDrag.panelProps}
-                className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col animate-scale-in"
+                {...(embedded ? {} : modalDrag.panelProps)}
+                className={embedded ? "flex flex-1 min-h-0 flex-col" : "bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col animate-scale-in"}
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}
-                <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing">
+                <div {...(embedded ? {} : modalDrag.dragHandleProps)} className={embedded ? "flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700" : "flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing"}>
                     <div className="flex items-center gap-2">
                         <FolderTree size={18} className="text-blue-500" />
                         <h3 className="font-semibold text-sm">{t('syncPanel.multiPath')}</h3>
                     </div>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-200">
+                    <button hidden={embedded} onClick={onClose} className="text-gray-400 hover:text-gray-200">
                         <X size={18} />
                     </button>
                 </div>

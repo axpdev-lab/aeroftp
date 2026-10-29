@@ -25,6 +25,8 @@ import { logger } from '../../utils/logger';
 
 interface JournalHistoryDialogProps {
     isOpen: boolean;
+    /** Render inside an AeroSync tab instead of a separate modal. */
+    embedded?: boolean;
     onClose: () => void;
     /** When provided, the list is filtered to journals that share this
      *  local path. The dialog still lists every journal returned by
@@ -60,6 +62,7 @@ const ENTRY_STATUS_TINT: Record<string, string> = {
 
 export const JournalHistoryDialog: React.FC<JournalHistoryDialogProps> = ({
     isOpen,
+    embedded = false,
     onClose,
     localPath,
     remotePath,
@@ -76,11 +79,11 @@ export const JournalHistoryDialog: React.FC<JournalHistoryDialogProps> = ({
     const [confirmingClearAll, setConfirmingClearAll] = useState(false);
 
     useEffect(() => {
-        if (!isOpen) return;
+        if (!isOpen || embedded) return;
         const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [isOpen, onClose]);
+    }, [isOpen, embedded, onClose]);
 
     const loadList = useCallback(async () => {
         setLoading(true);
@@ -233,20 +236,20 @@ export const JournalHistoryDialog: React.FC<JournalHistoryDialogProps> = ({
 
     return (
         <div
-            className="fixed inset-0 z-[9998] flex items-start justify-center pt-[5vh] bg-black/50 animate-scale-in"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t('aerosync.history.title') || 'AeroSync journals'}
-            onClick={onClose}
+            className={embedded ? "relative flex min-h-[24rem] flex-col" : "fixed inset-0 z-[9998] flex items-start justify-center pt-[5vh] bg-black/50 animate-scale-in"}
+            role={embedded ? undefined : "dialog"}
+            aria-modal={embedded ? undefined : true}
+            aria-label={embedded ? undefined : t('aerosync.history.title') || 'AeroSync journals'}
+            onClick={embedded ? undefined : onClose}
         >
             <div
-                {...modalDrag.panelProps}
-                className="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
+                {...(embedded ? {} : modalDrag.panelProps)}
+                className={embedded ? "flex flex-1 min-h-0 flex-col" : "relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"}
                 onClick={(e) => e.stopPropagation()}
             >
                 <div
-                    {...modalDrag.dragHandleProps}
-                    className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing"
+                    {...(embedded ? {} : modalDrag.dragHandleProps)}
+                    className={embedded ? "flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700" : "flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 cursor-grab active:cursor-grabbing"}
                 >
                     <div className="flex items-center gap-2 pointer-events-none">
                         <History size={18} className="text-blue-500" />
@@ -284,6 +287,7 @@ export const JournalHistoryDialog: React.FC<JournalHistoryDialogProps> = ({
                         </button>
                         <button
                             type="button"
+                            hidden={embedded}
                             onClick={onClose}
                             aria-label={t('common.close') || 'Close'}
                             className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
