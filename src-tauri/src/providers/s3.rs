@@ -14907,6 +14907,12 @@ mod tests {
         );
         assert!(next_versions_page(true, marker("a"), marker(" v1 "), &mut sent).is_err());
         assert!(next_versions_page(true, marker("a"), None, &mut sent).is_err());
+        // A key can be a single space, so only an empty marker is missing; a
+        // whitespace-only one continues unchanged.
+        assert_eq!(
+            next_versions_page(true, marker(" "), marker("v1"), &mut sent).unwrap(),
+            Some((" ".to_string(), Some("v1".to_string())))
+        );
     }
 }
 
