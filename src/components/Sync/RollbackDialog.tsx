@@ -25,6 +25,8 @@ interface RollbackDialogProps {
     localPath: string;
     remotePath: string;
     isProvider: boolean;
+    /** Keep the containing AeroSync workflow from executing during restore. */
+    onRestoringChange?: (restoring: boolean) => void;
     versioningStrategy?: 'disabled' | 'trash_can' | 'simple' | 'staggered';
 }
 
@@ -35,6 +37,7 @@ export const RollbackDialog: React.FC<RollbackDialogProps> = ({
     localPath,
     remotePath,
     isProvider,
+    onRestoringChange,
     versioningStrategy,
 }) => {
     const t = useTranslation();
@@ -105,6 +108,7 @@ export const RollbackDialog: React.FC<RollbackDialogProps> = ({
         if (!selectedId) return;
         setConfirmRestore(false);
         setRestoring(true);
+        onRestoringChange?.(true);
         setRestoreResult(null);
         try {
             const result = await invoke<RestoreSnapshotResult>('restore_sync_snapshot_cmd', {
@@ -126,6 +130,7 @@ export const RollbackDialog: React.FC<RollbackDialogProps> = ({
             setRestoreResult(t('syncPanel.rollbackRestoreFailed', { error: e?.toString() || t('errors.unknown') }));
         } finally {
             setRestoring(false);
+            onRestoringChange?.(false);
         }
     };
 

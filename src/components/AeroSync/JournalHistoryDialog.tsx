@@ -8,7 +8,7 @@
 // `clear_all_journals_cmd` Tauri commands plus the per-pair
 // `verify_journal_signature` (gated by `get_journal_signing_key`).
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
     X, History, Trash2, AlertTriangle, CheckCircle2, RefreshCw, ShieldCheck, ShieldAlert, Eraser,
@@ -27,6 +27,8 @@ interface JournalHistoryDialogProps {
     isOpen: boolean;
     /** Render inside an AeroSync tab instead of a separate modal. */
     embedded?: boolean;
+    /** Reload after an external journal mutation has completed. */
+    refreshRevision?: number;
     onClose: () => void;
     /** When provided, the list is filtered to journals that share this
      *  local path. The dialog still lists every journal returned by
@@ -63,12 +65,14 @@ const ENTRY_STATUS_TINT: Record<string, string> = {
 export const JournalHistoryDialog: React.FC<JournalHistoryDialogProps> = ({
     isOpen,
     embedded = false,
+    refreshRevision,
     onClose,
     localPath,
     remotePath,
 }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
+    const listRequest = useRef(0);
     const [summaries, setSummaries] = useState<JournalSummary[]>([]);
     const [loading, setLoading] = useState(false);
     const [selected, setSelected] = useState<JournalSummary | null>(null);
@@ -86,16 +90,18 @@ export const JournalHistoryDialog: React.FC<JournalHistoryDialogProps> = ({
     }, [isOpen, embedded, onClose]);
 
     const loadList = useCallback(async () => {
+        const request = ++listRequest.current;
         setLoading(true);
         try {
             const list = await invoke<JournalSummary[]>('list_sync_journals_cmd');
+            if (request !== listRequest.current) return;
             list.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
             setSummaries(list);
         } catch (e) {
             logger.error('[JournalHistory] list failed:', e);
-            setSummaries([]);
+            if (request === listRequest.current) setSummaries([]);
         } finally {
-            setLoading(false);
+            if (request === listRequest.current) setLoading(false);
         }
     }, []);
 
@@ -106,7 +112,8 @@ export const JournalHistoryDialog: React.FC<JournalHistoryDialogProps> = ({
         setJournal(null);
         setVerifyState({});
         setConfirmingClearAll(false);
-    }, [isOpen, loadList]);
+        return () => { listRequest.current += 1; };
+    }, [isOpen, loadList, refreshRevision]);
 
     const openJournal = async (s: JournalSummary) => {
         setSelected(s);

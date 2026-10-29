@@ -26,12 +26,12 @@ vi.mock('../../i18n', () => ({
     ),
 }));
 vi.mock('./CompareTabContent', () => ({ CompareTabContent: () => createElement('p', null, 'Compare content') }));
-vi.mock('./PlanTabContent', () => ({ PlanTabContent: () => {
+vi.mock('./PlanTabContent', () => ({ PlanTabContent: ({ canExecute, onExecute }: { canExecute: boolean; onExecute: () => void }) => {
     const store = useContext(TabStateStoreContext);
-    return createElement('output', { 'data-testid': 'plan-settings' }, JSON.stringify({
+    return createElement('div', null, createElement('button', { disabled: !canExecute, onClick: onExecute }, 'Execute plan'), createElement('output', { 'data-testid': 'plan-settings' }, JSON.stringify({
         preset: store?.get('plan.preset', null), direction: store?.get('plan.direction', null),
         source: store?.get('sync.source', null), destination: store?.get('sync.destination', null),
-    }));
+    })));
 } }));
 vi.mock('./SyncTabContent', () => ({
     SyncTabContent: ({ onRunningChange }: { onRunningChange: (running: boolean) => void }) =>
@@ -205,4 +205,169 @@ it('applies a template from its embedded pane to the shared Plan store', async (
         preset: 'backup', direction: 'right-to-left', source: '/new-local', destination: '/new-remote',
     });
     expect(props.onExecutePreset).not.toHaveBeenCalled();
+});
+
+
+const editFirstPairName = async (name: string) => {
+    const input = panel().querySelector<HTMLInputElement>('input')!;
+    await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, name);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+};
+const clickVisible = async (name: string) => {
+    const button = visibleButtons().find(b => b.textContent?.trim() === name);
+    expect(button, name).toBeDefined();
+    await act(async () => button!.click());
+};
+
+it('Cancel discards a Multi-Path draft without re-reading or saving it later', async () => {
+    await render(); await choose('Multi-Path'); await editFirstPairName('Cancelled draft');
+    await clickVisible('Cancel'); await choose('Multi-Path');
+    expect(panel().querySelector<HTMLInputElement>('input')!.value).toBe('Original');
+    expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === 'get_multi_path_config')).toHaveLength(1);
+    await clickVisible('Save');
+    expect(invoke).toHaveBeenLastCalledWith('save_multi_path_config_cmd', expect.objectContaining({
+        config: expect.objectContaining({ pairs: [expect.objectContaining({ name: 'Original' })] }),
+    }));
+});
+
+it('Cancel restores the last successful save rather than the initial list', async () => {
+    await render(); await choose('Multi-Path'); await editFirstPairName('Saved');
+    await clickVisible('Save'); await choose('Multi-Path'); await editFirstPairName('Not saved');
+    await clickVisible('Cancel'); await choose('Multi-Path');
+    expect(panel().querySelector<HTMLInputElement>('input')!.value).toBe('Saved');
+});
+
+it('a failed Multi-Path save does not become the Cancel baseline', async () => {
+    await render(); await choose('Multi-Path'); await editFirstPairName('Rejected');
+    vi.mocked(invoke).mockRejectedValueOnce(new Error('fixture save refusal'));
+    await clickVisible('Save'); await clickVisible('Cancel'); await choose('Multi-Path');
+    expect(panel().querySelector<HTMLInputElement>('input')!.value).toBe('Original');
+});
+
+it('reloads History when it becomes active again after the backend journal list changes', async () => {
+    const journal = { local_path: '/local', remote_path: '/remote', updated_at: '2026-10-29T19:00:00Z',
+        completed: false, total_entries: 1, completed_entries: 0 };
+    vi.mocked(invoke).mockResolvedValue([journal]);
+    await render(); await choose('Sync journals');
+    expect(panel().textContent).toContain('INCOMPLETE');
+    await choose('Plan'); vi.mocked(invoke).mockResolvedValue([]); await choose('Sync journals');
+    expect(panel().textContent).toContain('No sync journals to show.');
+    expect(panel().textContent).not.toContain('INCOMPLETE');
+});
+
+it.each(['success', 'failure'])('blocks Plan during restore and unlocks on %s', async outcome => {
+    let resolveRestore!: (result: unknown) => void;
+    let rejectRestore!: (error: Error) => void;
+    const restoring = new Promise((resolve, reject) => { resolveRestore = resolve; rejectRestore = reject; });
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'list_sync_snapshots_cmd') return [{ id: 'snapshot-a', name: 'Snapshot A',
+            created_at: '2026-10-29T19:00:00Z', files: {} }];
+        if (command === 'restore_sync_snapshot_cmd') return restoring;
+        return [];
+    });
+    await render(); await choose('Rollback snapshots');
+    await act(async () => panel().querySelector<HTMLElement>('[class*=cursor-pointer]')!.click());
+    await clickVisible('Restore');
+    // Confirm restoration in the pane's confirmation overlay.
+    const restoreButtons = visibleButtons().filter(b => b.textContent?.trim() === 'Restore');
+    await act(async () => restoreButtons[restoreButtons.length - 1].click());
+    expect(invoke).toHaveBeenCalledWith('restore_sync_snapshot_cmd', expect.anything());
+    await choose('Plan');
+    const execute = visibleButtons().find(b => b.textContent === 'Execute plan')!;
+    expect(execute.disabled).toBe(true);
+    await act(async () => execute.click()); expect(props.onExecutePreset).not.toHaveBeenCalled();
+    await act(async () => {
+        if (outcome === 'failure') rejectRestore(new Error('fixture restore failure'));
+        else resolveRestore({ restored_from_remote: 1, restored_to_remote: 0, skipped: 0, failed: [] });
+    });
+    expect(execute.disabled).toBe(false);
+});
+
+
+it('refreshes an already-active History pane only after journal dismissal settles', async () => {
+    const journal = { local_path: '/local', remote_path: '/remote', updated_at: '2026-10-29T19:00:00Z',
+        completed: false, total_entries: 1, completed_entries: 0 };
+    let finishDismiss!: () => void;
+    const dismissed = new Promise<void>(resolve => { finishDismiss = resolve; });
+    vi.mocked(invoke).mockResolvedValue([journal]);
+    await render({ context: { ...context, pendingJournal: { ...journal, id: 'journal-a', created_at: journal.updated_at, entries: [],
+            direction: 'local_to_remote', verify_policy: 'none',
+            retry_policy: { max_retries: 0, base_delay_ms: 1, max_delay_ms: 1, timeout_ms: 1, backoff_multiplier: 1 } } },
+        onDismissJournal: () => dismissed });
+    await choose('Sync journals'); await clickVisible('Dismiss');
+    expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === 'list_sync_journals_cmd')).toHaveLength(1);
+    vi.mocked(invoke).mockResolvedValue([]);
+    await act(async () => finishDismiss());
+    expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === 'list_sync_journals_cmd')).toHaveLength(2);
+    expect(panel().textContent).toContain('No sync journals to show.');
+});
+
+
+it('Cancel keeps an immediately persisted added pair but discards edits to an existing pair', async () => {
+    await render(); await choose('Multi-Path'); await editFirstPairName('Unsaved');
+    await clickVisible('Add Path Pair'); await clickVisible('Cancel'); await choose('Multi-Path');
+    const names = panel().querySelectorAll<HTMLInputElement>('input[spellcheck=false]');
+    expect(names[0].value).toBe('Original');
+    expect(names[3].value).toBe('Path 2');
+    expect(invoke).toHaveBeenCalledWith('add_path_pair', expect.anything());
+});
+
+it('Cancel uses the list confirmed by a successful toggle, not a later unsaved edit', async () => {
+    await render(); await choose('Multi-Path');
+    await act(async () => panel().querySelector<HTMLButtonElement>('button[title="Disable"]')!.click());
+    await editFirstPairName('Unsaved'); await clickVisible('Cancel'); await choose('Multi-Path');
+    expect(panel().querySelector<HTMLInputElement>('input')!.value).toBe('Original');
+    expect(panel().querySelector('button[title="Enable"]')).not.toBeNull();
+});
+
+it('serializes backend writes and keeps Cancel disabled until the accepted write settles', async () => {
+    let finishSave!: () => void;
+    const saving = new Promise<void>(resolve => { finishSave = resolve; });
+    await render(); await choose('Multi-Path'); await editFirstPairName('Saved in flight');
+    vi.mocked(invoke).mockImplementation(async command => command === 'save_multi_path_config_cmd' ? saving : []);
+    await clickVisible('Save');
+    expect(visibleButtons().find(b => b.textContent?.trim() === 'Cancel')!.matches(':disabled')).toBe(true);
+    await clickVisible('Add Path Pair');
+    expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === 'add_path_pair')).toHaveLength(0);
+    await act(async () => finishSave()); await choose('Multi-Path');
+    await editFirstPairName('Later draft'); await clickVisible('Cancel'); await choose('Multi-Path');
+    expect(panel().querySelector<HTMLInputElement>('input')!.value).toBe('Saved in flight');
+});
+
+it('ignores a stale History listing that finishes after a newer activation reload', async () => {
+    let finishOld!: (journals: unknown[]) => void;
+    const oldListing = new Promise<unknown[]>(resolve => { finishOld = resolve; });
+    vi.mocked(invoke).mockResolvedValueOnce(oldListing);
+    await render(); await choose('Sync journals'); await choose('Plan');
+    vi.mocked(invoke).mockResolvedValue([]); await choose('Sync journals');
+    await act(async () => finishOld([{ local_path: '/local', remote_path: '/remote', completed: false,
+        updated_at: '2026-10-29T19:00:00Z', total_entries: 1, completed_entries: 0 }]));
+    expect(panel().textContent).toContain('No sync journals to show.');
+    expect(panel().textContent).not.toContain('INCOMPLETE');
+});
+
+
+it('retains the saved Cancel baseline when a later read of the same pair fails', async () => {
+    const editorProps = { isOpen: true, onClose: vi.fn(), localPath: '/local', remotePath: '/remote' };
+    await act(async () => root.render(createElement(MultiPathEditor, editorProps)));
+    await act(async () => root.render(createElement(MultiPathEditor, { ...editorProps, isOpen: false })));
+    vi.mocked(invoke).mockRejectedValueOnce(new Error('fixture read refusal'));
+    await act(async () => root.render(createElement(MultiPathEditor, editorProps)));
+    expect(host.querySelector<HTMLInputElement>('input')!.value).toBe('Original');
+});
+
+it('does not offer writes with an unconfirmed initial config or reuse another pair after a failed read', async () => {
+    const editorProps = { isOpen: true, onClose: vi.fn(), localPath: '/local', remotePath: '/remote' };
+    vi.mocked(invoke).mockRejectedValueOnce(new Error('fixture initial read refusal'));
+    await act(async () => root.render(createElement(MultiPathEditor, editorProps)));
+    expect(visibleButtons().find(b => b.textContent?.trim() === 'Save')!.matches(':disabled')).toBe(true);
+    await act(async () => root.render(createElement(MultiPathEditor, { ...editorProps, isOpen: false })));
+    vi.mocked(invoke).mockResolvedValue({ pairs: [{ id: 'p', name: 'Old pair', local_path: '/local', remote_path: '/remote', enabled: true, exclude_overrides: [] }], parallel_pairs: false });
+    await act(async () => root.render(createElement(MultiPathEditor, editorProps)));
+    vi.mocked(invoke).mockRejectedValueOnce(new Error('fixture other pair read refusal'));
+    await act(async () => root.render(createElement(MultiPathEditor, { ...editorProps, remotePath: '/other' })));
+    expect(host.querySelector('input')).toBeNull();
+    expect(visibleButtons().find(b => b.textContent?.trim() === 'Save')!.matches(':disabled')).toBe(true);
 });

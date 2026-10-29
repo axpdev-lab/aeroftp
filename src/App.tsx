@@ -12051,15 +12051,15 @@ const App: React.FC = () => {
 
   // GAP-6: discard an interrupted journal and clear the resume banner
   // without closing the dialog.
-  const handleDismissJournal = useCallback(() => {
+  const handleDismissJournal = useCallback(async () => {
     const context = aeroSync?.context;
     if (!context) return;
-    void invoke('delete_sync_journal_cmd', {
+    await invoke('delete_sync_journal_cmd', {
       localPath: context.initialSource || '',
       remotePath: context.initialDestination || '',
     }).catch(() => undefined);
     setAeroSync((prev) =>
-      prev ? { ...prev, context: { ...prev.context, pendingJournal: null } } : prev,
+      prev?.context === context ? { ...prev, context: { ...prev.context, pendingJournal: null } } : prev,
     );
   }, [aeroSync]);
 

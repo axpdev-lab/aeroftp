@@ -6,7 +6,7 @@
  * Allows adding/removing multiple local↔remote path pairs
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
     X, Plus, Trash2, FolderTree, Folder, Globe, ToggleLeft, ToggleRight
@@ -37,6 +37,13 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
     const t = useTranslation();
     const modalDrag = useDraggableModal();
     const [pairs, setPairs] = useState<PathPair[]>([]);
+    // Only backend-confirmed lists are a Cancel baseline; drafts stay separate.
+    const persistedPairs = useRef<PathPair[]>([]);
+    const persistenceScope = JSON.stringify([localPath, remotePath]);
+    const persistedScope = useRef(persistenceScope);
+    const hasConfirmedConfig = useRef(false);
+    const writeInFlight = useRef(false);
+    const [writing, setWriting] = useState(false);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -48,15 +55,44 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
 
     useEffect(() => {
         if (!isOpen) return;
+        let active = true;
+        if (persistedScope.current !== persistenceScope) {
+            persistedScope.current = persistenceScope;
+            persistedPairs.current = [];
+            hasConfirmedConfig.current = false;
+            setPairs([]);
+        }
         setLoading(true);
         invoke<MultiPathConfig>('get_multi_path_config', { localPath, remotePath })
-            .then(config => setPairs(config.pairs))
-            .catch(() => setPairs([]))
-            .finally(() => setLoading(false));
-    }, [isOpen, localPath, remotePath]);
+            .then(config => {
+                if (!active) return;
+                persistedPairs.current = config.pairs;
+                hasConfirmedConfig.current = true;
+                setPairs(config.pairs);
+            })
+            .catch(() => { if (active) setPairs(persistedPairs.current); })
+            .finally(() => { if (active) setLoading(false); });
+        return () => { active = false; };
+    }, [isOpen, localPath, remotePath, persistenceScope]);
+
+    const beginWrite = () => {
+        if (loading || !hasConfirmedConfig.current || writeInFlight.current) return false;
+        writeInFlight.current = true;
+        setWriting(true);
+        return true;
+    };
+    const endWrite = () => {
+        writeInFlight.current = false;
+        setWriting(false);
+    };
+    const handleCancel = () => {
+        if (loading || writeInFlight.current) return;
+        setPairs(persistedPairs.current);
+        onClose();
+    };
 
     const handleAdd = async () => {
-        if (pairs.length >= MAX_PATH_PAIRS) return;
+        if (pairs.length >= MAX_PATH_PAIRS || !beginWrite()) return;
         const newPair: PathPair = {
             id: crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
             name: `Path ${pairs.length + 1}`,
@@ -69,20 +105,28 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
             await invoke('add_path_pair', {
                 localPath, remotePath, pair: newPair,
             });
+            if (persistedScope.current !== persistenceScope) return;
+            persistedPairs.current = [...persistedPairs.current, newPair];
             setPairs(prev => [...prev, newPair]);
         } catch (e) { logger.error('[MultiPathEditor] add_path_pair failed:', e); }
+        finally { endWrite(); }
     };
 
     const handleRemove = async (pairId: string) => {
+        if (!beginWrite()) return;
         try {
             await invoke('remove_path_pair', {
                 localPath, remotePath, pairId,
             });
+            if (persistedScope.current !== persistenceScope) return;
+            persistedPairs.current = persistedPairs.current.filter(p => p.id !== pairId);
             setPairs(prev => prev.filter(p => p.id !== pairId));
         } catch (e) { logger.error('[MultiPathEditor] remove_path_pair failed:', e); }
+        finally { endWrite(); }
     };
 
     const handleToggle = async (pairId: string) => {
+        if (!beginWrite()) return;
         const previous = pairs;
         const updated = pairs.map(p =>
             p.id === pairId ? { ...p, enabled: !p.enabled } : p
@@ -93,10 +137,12 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
                 localPath, remotePath,
                 config: { pairs: updated, parallel_pairs: false },
             });
+            if (persistedScope.current !== persistenceScope) return;
+            persistedPairs.current = updated;
         } catch (e) {
             logger.error('[MultiPathEditor] toggle save failed, rolling back:', e);
-            setPairs(previous);
-        }
+            if (persistedScope.current === persistenceScope) setPairs(previous);
+        } finally { endWrite(); }
     };
 
     const handleNameChange = (pairId: string, name: string) => {
@@ -108,13 +154,17 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
     };
 
     const handleSave = async () => {
+        if (!beginWrite()) return;
         try {
             await invoke('save_multi_path_config_cmd', {
                 localPath, remotePath,
                 config: { pairs, parallel_pairs: false },
             });
+            if (persistedScope.current !== persistenceScope) return;
+            persistedPairs.current = pairs;
             onClose();
         } catch (e) { logger.error('[MultiPathEditor] save failed:', e); }
+        finally { endWrite(); }
     };
 
     if (!isOpen) return null;
@@ -137,6 +187,7 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
                     </button>
                 </div>
 
+                <fieldset disabled={loading || writing || !hasConfirmedConfig.current} className="contents">
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
                     {loading ? (
@@ -215,7 +266,7 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
                     <div className="flex items-center gap-2">
                         <button
                             className="text-xs px-4 py-1.5 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
-                            onClick={onClose}
+                            onClick={handleCancel}
                         >
                             {t('common.cancel')}
                         </button>
@@ -227,6 +278,7 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
                         </button>
                     </div>
                 </div>
+                </fieldset>
             </div>
         </div>
     );

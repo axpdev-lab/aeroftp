@@ -56,6 +56,8 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     // Lifted from the Sync tab so the close path can guard against losing an
     // in-progress local sync (issue #332).
     const [syncRunning, setSyncRunning] = React.useState(false);
+    const [restoreRunning, setRestoreRunning] = React.useState(false);
+    const [journalRefresh, setJournalRefresh] = React.useState(0);
     const activeTab = effectiveAeroSyncTab(selectedTab, context.pairKind, syncRunning, isConnectedRemote);
 
     React.useEffect(() => {
@@ -130,7 +132,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     const canMirrorAny = context.pairKind === 'local-local'
         || context.pairKind === 'local-remote'
         || context.pairKind === 'remote-local';
-    const canExecutePlan = canMirrorAny;
+    const canExecutePlan = canMirrorAny && !restoreRunning;
 
     const localPath = context.initialSource || '';
     const remotePath = context.initialDestination || '';
@@ -264,6 +266,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                         <div className="flex gap-2">
                             <button
                                 type="button"
+                                disabled={restoreRunning}
                                 onClick={() => {
                                     if (context.pendingJournal) onResumeJournal(context.pendingJournal);
                                 }}
@@ -274,7 +277,13 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                             </button>
                             <button
                                 type="button"
-                                onClick={onDismissJournal}
+                                onClick={() => {
+                                    // Wait for deletion before reloading the active journal pane.
+                                    void Promise.resolve(onDismissJournal()).then(
+                                        () => setJournalRefresh(revision => revision + 1),
+                                        () => { /* Leave the current list available if dismissal fails. */ },
+                                    );
+                                }}
                                 className="rounded bg-gray-200 px-3 py-1 text-xs font-medium hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600"
                             >
                                 {t('syncPanel.dismissJournal') || 'Dismiss'}
@@ -298,8 +307,8 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                             leftLabel={context.leftLabel}
                             rightLabel={context.rightLabel}
                             pairKind={context.pairKind}
-                            canMirrorLeftToRight={canMirrorAny}
-                            canMirrorRightToLeft={canMirrorAny}
+                            canMirrorLeftToRight={canMirrorAny && !restoreRunning}
+                            canMirrorRightToLeft={canMirrorAny && !restoreRunning}
                             onApplyMirrorLeftToRight={onApplyMirrorLeftToRight}
                             onApplyMirrorRightToLeft={onApplyMirrorRightToLeft}
                             remoteLimits={remoteLimits}
@@ -350,8 +359,10 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                                 {tool === 'multiPath' && <MultiPathEditor embedded isOpen onClose={() => selectTab('plan')}
                                     localPath={localPath} remotePath={remotePath} />}
                                 {tool === 'rollback' && <RollbackDialog embedded isOpen onClose={() => selectTab('plan')}
+                                    onRestoringChange={setRestoreRunning}
                                     localPath={localPath} remotePath={remotePath} isProvider={isProvider} />}
-                                {tool === 'history' && <JournalHistoryDialog embedded isOpen onClose={() => selectTab('plan')}
+                                {tool === 'history' && <JournalHistoryDialog embedded isOpen={activeTab === 'history'} onClose={() => selectTab('plan')}
+                                    refreshRevision={journalRefresh}
                                     localPath={localPath} remotePath={remotePath} />}
                                 {tool === 'scheduler' && <div className="p-4"><SyncScheduler /></div>}
                             </div>

@@ -174,7 +174,7 @@ export interface AeroSyncDialogProps {
     /** GAP-6: resume an interrupted journal from the resume banner. */
     onResumeJournal: (journal: SyncJournal) => void;
     /** GAP-6: discard the interrupted journal and clear the banner. */
-    onDismissJournal: () => void;
+    onDismissJournal: () => void | Promise<void>;
     /** Re-run the compare with the Plan tab's exclude patterns and backup folder. */
     onRescan?: (args: { userExcludes: string[]; backupDir: string }) => void;
     /** Start the recursive compare of the pair (context.compareIdle). */
