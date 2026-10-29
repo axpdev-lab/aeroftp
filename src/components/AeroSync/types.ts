@@ -5,7 +5,10 @@ import type { CompareResult, CompareResultEntry } from '../../utils/compareEndpo
 import type { PresetPlan } from '../../utils/syncPresets';
 import type { ProviderType, RetryPolicy, SyncJournal } from '../../types';
 
-export type AeroSyncTab = 'compare' | 'plan' | 'sync';
+export type AeroSyncToolTab = 'templates' | 'multiPath' | 'rollback' | 'history' | 'scheduler';
+export type AeroSyncTab = 'compare' | 'plan' | 'sync' | AeroSyncToolTab;
+
+export const AERO_SYNC_TOOL_TABS: readonly AeroSyncToolTab[] = ['templates', 'multiPath', 'rollback', 'history', 'scheduler'];
 
 export type AeroSyncPairKind = 'local-local' | 'local-remote' | 'remote-local';
 
@@ -16,9 +19,12 @@ export type AeroSyncPairKind = 'local-local' | 'local-remote' | 'remote-local';
  * offered only when both sides are local (or there is no panel context). A
  * pair with a remote is synced from the Plan tab.
  */
-export const aeroSyncTabsFor = (pairKind: AeroSyncPairKind | null | undefined): AeroSyncTab[] =>
+export const aeroSyncTabsFor = (
+    pairKind: AeroSyncPairKind | null | undefined,
+    connectedProfile = false,
+): AeroSyncTab[] =>
     pairKind === 'local-remote' || pairKind === 'remote-local'
-        ? ['compare', 'plan']
+        ? ['compare', 'plan', ...(connectedProfile ? AERO_SYNC_TOOL_TABS : [])]
         : ['compare', 'plan', 'sync'];
 
 /**
@@ -31,8 +37,9 @@ export const effectiveAeroSyncTab = (
     selected: AeroSyncTab,
     pairKind: AeroSyncPairKind | null | undefined,
     syncRunning: boolean,
+    connectedProfile = false,
 ): AeroSyncTab =>
-    aeroSyncTabsFor(pairKind).includes(selected) || (syncRunning && selected === 'sync')
+    aeroSyncTabsFor(pairKind, connectedProfile).includes(selected) || (syncRunning && selected === 'sync')
         ? selected
         : 'compare';
 
@@ -115,11 +122,11 @@ export interface AeroSyncContext {
     initialDestination?: string;
     /**
      * Optional rich-sync context (SLICE 3+). When the dialog is opened
-     * against a connected remote, these fields enable the header
-     * launchers (Templates, Multi-Path, Rollback) and the Verify /
+     * against a connected remote, these fields enable the tool
+     * tabs (Templates, Multi-Path, Rollback, Journals, Scheduler) and the Verify /
      * Speed-mode controls in the Plan tab. They are populated by
      * App.tsx based on the active remote profile; for local-only or
-     * disconnected sessions they remain undefined and the launchers
+     * disconnected sessions they remain undefined and the tool tabs
      * stay hidden.
      */
     activeProfileId?: string;
@@ -167,7 +174,9 @@ export interface AeroSyncDialogProps {
     /** GAP-6: resume an interrupted journal from the resume banner. */
     onResumeJournal: (journal: SyncJournal) => void;
     /** GAP-6: discard the interrupted journal and clear the banner. */
-    onDismissJournal: () => void;
+    onDismissJournal: () => void | Promise<void>;
+    /** Discard stale results and in-flight scans when snapshot restore changes files. */
+    onInvalidateComparison: () => void;
     /** Re-run the compare with the Plan tab's exclude patterns and backup folder. */
     onRescan?: (args: { userExcludes: string[]; backupDir: string }) => void;
     /** Start the recursive compare of the pair (context.compareIdle). */

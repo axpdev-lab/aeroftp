@@ -248,6 +248,7 @@ import {
   type TransferSpeedPreset,
 } from './utils/ftpTransferSpeedPresets';
 import { AeroSyncDialog } from './components/AeroSync/AeroSyncDialog';
+import { useAeroSyncContextActions } from './components/AeroSync/useAeroSyncContextActions';
 import { DeltaEligibilityDialog } from './components/AeroSync/DeltaEligibilityDialog';
 import type { AeroSyncTab, AeroSyncContext, AeroSyncRuntime } from './components/AeroSync/types';
 import { RemoteSyncResultDialog } from './components/AeroSync/RemoteSyncResultDialog';
@@ -12049,19 +12050,8 @@ const App: React.FC = () => {
     });
   }, [aeroSync, runConnectedRemoteSync, runLocalLocalSync]);
 
-  // GAP-6: discard an interrupted journal and clear the resume banner
-  // without closing the dialog.
-  const handleDismissJournal = useCallback(() => {
-    const context = aeroSync?.context;
-    if (!context) return;
-    void invoke('delete_sync_journal_cmd', {
-      localPath: context.initialSource || '',
-      remotePath: context.initialDestination || '',
-    }).catch(() => undefined);
-    setAeroSync((prev) =>
-      prev ? { ...prev, context: { ...prev.context, pendingJournal: null } } : prev,
-    );
-  }, [aeroSync]);
+  const { dismissJournal: handleDismissJournal, invalidateComparison: invalidateAeroSyncComparison } =
+    useAeroSyncContextActions(aeroSync, setAeroSync, aeroSyncCompareSeqRef);
 
 
   /**
@@ -17083,6 +17073,7 @@ const App: React.FC = () => {
             onExecutePreset={executeSyncPresetPlan}
             onResumeJournal={handleResumeJournal}
             onDismissJournal={handleDismissJournal}
+            onInvalidateComparison={invalidateAeroSyncComparison}
             onRescan={({ userExcludes, backupDir }) => openAeroSync('plan', userExcludes, backupDir, true)}
             onStartCompare={() => openAeroSync(
               aeroSync.initialTab,
