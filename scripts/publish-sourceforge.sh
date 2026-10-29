@@ -13,11 +13,12 @@
 #   ./scripts/publish-sourceforge.sh 4.1.3            # dry run, prints what it would do
 #   ./scripts/publish-sourceforge.sh 4.1.3 --force    # actually upload
 #   ./scripts/publish-sourceforge.sh 4.1.3 --force --prune   # also prune old folders
-#   ./scripts/publish-sourceforge.sh 4.1.3 --prune-only      # dry run of the prune alone
-#   ./scripts/publish-sourceforge.sh 4.1.3 --force --prune-only   # prune, upload nothing
+#   ./scripts/publish-sourceforge.sh --prune-only            # dry run of the prune alone
+#   ./scripts/publish-sourceforge.sh --force --prune-only    # prune, upload nothing
 #
 # A re-run is safe and cheap: an asset already in the release folder with the size of
-# its GitHub counterpart is neither downloaded nor uploaded again.
+# its GitHub counterpart, and uploaded after GitHub last changed it, is neither
+# downloaded nor uploaded again.
 #
 set -euo pipefail
 # Every aeroftp-cli call in this script runs unattended, so strict mode is set
@@ -37,12 +38,15 @@ for arg in "$@"; do
     --force) FORCE=1 ;;
     --prune) PRUNE=1 ;;
     --prune-only) PRUNE=1 ; UPLOAD=0 ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
     -*) echo "unknown flag: $arg" >&2; exit 2 ;;
     *) VERSION="${arg#v}" ;;
   esac
 done
-[ -n "$VERSION" ] || { echo "usage: $0 <X.Y.Z> [--force] [--prune | --prune-only]" >&2; exit 2; }
+# --prune-only reads nothing but SourceForge listings, so it needs no version and no
+# GitHub Release: a missing release or a failing `gh` must not block the retention pass.
+[ -n "$VERSION" ] || [ "$UPLOAD" -eq 0 ] || {
+  echo "usage: $0 <X.Y.Z> [--force] [--prune] | $0 --prune-only [--force]" >&2; exit 2; }
 
 # Dry run is the default. Deleting 846 files by hand once was enough: nothing here
 # uploads or removes anything until you say --force.
@@ -54,7 +58,8 @@ run() {
 }
 
 need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 1; }; }
-need gh ; need jq ; need curl
+need jq ; need curl
+[ "$UPLOAD" -eq 0 ] || need gh
 CLI="${AEROFTP_CLI:-$(command -v aeroftp-cli || echo /usr/bin/aeroftp-cli)}"
 [ -x "$CLI" ] || { echo "missing: aeroftp-cli" >&2; exit 1; }
 
@@ -66,8 +71,6 @@ PROFILE_ID="$("$CLI" profiles --json | jq -r --arg n "$PROFILE_NAME" \
 echo "profile: $PROFILE_NAME ($PROFILE_ID)"
 
 TAG="v$VERSION"
-gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 || {
-  echo "no published GitHub Release $TAG on $REPO" >&2; exit 1; }
 
 # Every remote listing goes through sfls, the upload's as much as the prune's.
 #
@@ -110,23 +113,30 @@ sfls() {
 # it would have pulled is not a dry run. `assets` excludes GitHub's auto-generated source
 # archives, so they never enter the picture. Drop the snap (the Snap Store serves it, and
 # at 287 MB it was about 30% of a release folder) and its sigstore, which attests a file
-# we deliberately do not ship here. The size comes along with the name: it is what tells
-# an asset already on SourceForge from one still to upload.
-declare -A GH_SIZE=()
+# we deliberately do not ship here. The size and the last change come along with the
+# name: they are what tells an asset already on SourceForge from one still to upload.
+declare -A GH_SIZE=() GH_TIME=()
 ASSETS=()
-while IFS=$'\t' read -r name size; do
-  ASSETS+=("$name"); GH_SIZE["$name"]="$size"
-done < <(gh release view "$TAG" --repo "$REPO" --json assets \
-  -q '.assets[] | select(.name | endswith(".snap") or endswith(".snap.sigstore.json") | not) | [.name, (.size | tostring)] | @tsv')
-[ "${#ASSETS[@]}" -gt 0 ] || { echo "release $TAG has no assets to publish" >&2; exit 1; }
-
 if [ "$UPLOAD" -eq 1 ]; then
+  gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 || {
+    echo "no published GitHub Release $TAG on $REPO" >&2; exit 1; }
+  # Capture first, then read: a `gh` failure inside a process substitution would be
+  # invisible and pass for a release with no assets.
+  GH_ASSETS="$(gh release view "$TAG" --repo "$REPO" --json assets \
+    -q '.assets[] | select(.name | endswith(".snap") or endswith(".snap.sigstore.json") | not)
+        | [.name, (.size | tostring), (.updatedAt | fromdateiso8601 | tostring)] | @tsv')"
+  while IFS=$'\t' read -r name size time; do
+    [ -n "$name" ] || continue
+    ASSETS+=("$name"); GH_SIZE["$name"]="$size"; GH_TIME["$name"]="$time"
+  done <<<"$GH_ASSETS"
+  [ "${#ASSETS[@]}" -gt 0 ] || { echo "release $TAG has no assets to publish" >&2; exit 1; }
+
   BYTES=0
   for a in "${ASSETS[@]}"; do BYTES=$((BYTES + GH_SIZE["$a"])); done
   echo "to upload: $((${#ASSETS[@]} + 1)) files (incl. README.md), $((BYTES/1024/1024)) MiB -> $SF_ROOT/$TAG"
   printf '  %s\n' "${ASSETS[@]}" | sort
   echo "  README.md (from the release notes)"
-  echo "  (an asset already in $SF_ROOT/$TAG with the same size is skipped at upload time)"
+  echo "  (an asset already in $SF_ROOT/$TAG with the same size, uploaded after GitHub last changed it, is skipped)"
 fi
 
 if [ "$FORCE" -eq 0 ] && [ "$UPLOAD" -eq 1 ]; then
@@ -175,24 +185,34 @@ SFNOTE
   # full, about 981 MiB over 19 SFTP sessions, into a folder that was already complete:
   # SourceForge started timing out, then refused port 22 for minutes, the script died
   # before the prune, and the file being replaced at the cut (an attestation) was gone
-  # from the folder afterwards. One listing decides instead: an asset whose remote size
-  # equals its GitHub size is neither downloaded nor uploaded, so a complete file is never
-  # touched again. A different size (an upload cut short) still goes through
-  # `put --partial`, which resumes it. Release assets do not change under a published tag,
-  # so the size is a sufficient test here, and SourceForge's SFTP offers no checksum to do
-  # better. README.md is always uploaded: it is a few KiB and the notes may have been edited.
-  # The listing goes through sfls, so a failed read stops the publish instead of passing
-  # for an empty folder and re-uploading everything.
+  # from the folder afterwards. One listing decides instead. An asset is skipped, neither
+  # downloaded nor uploaded, only when both hold:
+  #   - its size on SourceForge equals its GitHub size. An upload cut short is shorter,
+  #     and still goes through `put --partial`, which resumes it;
+  #   - its SourceForge mtime is not older than the GitHub asset's last change. An asset
+  #     replaced on GitHub after the mirror (`gh release upload --clobber`) is the one way
+  #     the same name and size can carry other bytes, and it fails this test and is
+  #     uploaded again. A listing without a usable mtime never skips.
+  # Bytes are not compared: SourceForge's SFTP has no checksum command, and hashing the
+  # remote copy would mean downloading it over the same SSH sessions this skip exists to
+  # spare. Corruption in flight is not a same-size case either: SSH authenticates every
+  # packet. README.md is always uploaded: it is a few KiB and the notes may have been
+  # edited. The listing goes through sfls, so a failed read stops the publish instead of
+  # passing for an empty folder and re-uploading everything.
   TAG_JSON="$(sfls "$SF_ROOT/$TAG" --files-only)"
-  declare -A SF_SIZE=()
-  while IFS=$'\t' read -r name size; do
-    SF_SIZE["$name"]="$size"
-  done < <(jq -r '.entries[] | [.name, (.size | tostring)] | @tsv' <<<"$TAG_JSON")
+  SF_ENTRIES="$(jq -r '.entries[] | [.name, (.size | tostring),
+      ((.modified // "" | sub(" "; "T") | fromdateiso8601? // 0) | tostring)] | @tsv' <<<"$TAG_JSON")"
+  declare -A SF_SIZE=() SF_TIME=()
+  while IFS=$'\t' read -r name size time; do
+    [ -n "$name" ] || continue
+    SF_SIZE["$name"]="$size"; SF_TIME["$name"]="$time"
+  done <<<"$SF_ENTRIES"
 
   SKIPPED=0
   for a in "${ASSETS[@]}"; do
-    if [ "${SF_SIZE["$a"]:-}" = "${GH_SIZE["$a"]}" ]; then
-      echo "already on SourceForge with the same size, skipped: $a"
+    if [ "${SF_SIZE["$a"]:-}" = "${GH_SIZE["$a"]}" ] \
+       && [ "${SF_TIME["$a"]:-0}" -ge "${GH_TIME["$a"]}" ]; then
+      echo "already on SourceForge, same size and newer than the GitHub asset, skipped: $a"
       SKIPPED=$((SKIPPED + 1))
       continue
     fi
