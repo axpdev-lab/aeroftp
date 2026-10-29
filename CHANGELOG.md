@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **AeroAgent archive creation enforces sensitive-path rules recursively.** ZIP, 7z and TAR inputs are checked before directory listing and file reads. A refused or unreadable source aborts the operation and preserves an existing destination instead of publishing a partial archive.
 - **MCP recursive sync preserves protected paths.** Local and projected remote descendants inherit the MCP path policy before scans, checksums, transfers and orphan deletes. Refused prefixes protect both counterparts and appear in scan reports, while allowed siblings continue to sync.
 
 ## [4.2.5] - 2026-10-28

@@ -787,9 +787,10 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             danger: DangerLevel::High,
             surfaces: local_surfaces,
         }),
-        entry(|| ToolDef {
+        entry(|| {
+            ToolDef {
             name: "archive_compress",
-            description: "Compress files into an archive (ZIP, 7z, TAR, etc.).",
+            description: "Compress files into ZIP, 7z or TAR. Sensitive-path rules apply to every descendant; forbidden or unreadable sources abort the operation without replacing an existing archive.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -803,6 +804,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             }),
             danger: DangerLevel::Medium,
             surfaces: local_surfaces,
+        }
         }),
         entry(|| ToolDef {
             name: "archive_decompress",
@@ -3080,6 +3082,83 @@ mod tests {
                 def.surfaces.contains(Surfaces::CLI),
                 "{name} must declare the CLI surface"
             );
+        }
+    }
+
+    // Requested 102: exercise the real dispatcher and initiating policy, without
+    // reading a protected file. The directory link is never traversed by the old
+    // walkers, but must still make this operation refuse rather than report success.
+    #[cfg(unix)]
+    macro_rules! requested102_dispatch_rejects_sensitive_alias {
+        ($name:ident, $format:literal) => {
+            #[tokio::test]
+            // Serialize HOME readers with env-mutating tests for the whole call.
+            #[allow(clippy::await_holding_lock)]
+            async fn $name() {
+                let _env = crate::test_env::lock();
+                let dir = tempfile::tempdir().unwrap();
+                let source = dir.path().join("source");
+                std::fs::create_dir(&source).unwrap();
+                std::fs::write(source.join("ordinary.txt"), b"ordinary fixture").unwrap();
+                std::os::unix::fs::symlink("/dev", source.join("sensitive-alias")).unwrap();
+                let output = dir.path().join("existing.archive");
+                std::fs::write(&output, b"original archive").unwrap();
+                let args = json!({"paths": [source], "output_path": output, "format": $format, "compression_level": 0});
+                let ctx = mock_ctx(Surfaces::GUI);
+                let err = dispatch_tool(&ctx, "archive_compress", &args).await.unwrap_err();
+                assert!(err.to_string().contains("system path denied"), "{err}");
+                assert_eq!(std::fs::read(output).unwrap(), b"original archive");
+                assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
+            }
+        };
+    }
+    #[cfg(unix)]
+    requested102_dispatch_rejects_sensitive_alias!(requested102_dispatch_zip, "zip");
+    #[cfg(unix)]
+    requested102_dispatch_rejects_sensitive_alias!(requested102_dispatch_7z, "7z");
+    #[cfg(unix)]
+    requested102_dispatch_rejects_sensitive_alias!(requested102_dispatch_tar, "tar");
+    #[cfg(unix)]
+    requested102_dispatch_rejects_sensitive_alias!(requested102_dispatch_targz, "tar.gz");
+    #[cfg(unix)]
+    requested102_dispatch_rejects_sensitive_alias!(requested102_dispatch_tarxz, "tar.xz");
+    #[cfg(unix)]
+    requested102_dispatch_rejects_sensitive_alias!(requested102_dispatch_tarbz2, "tar.bz2");
+
+    #[tokio::test]
+    // The shared test-only env lock must cover the async call using this HOME.
+    #[allow(clippy::await_holding_lock)]
+    async fn requested102_dispatch_home_sensitive_descendants() {
+        let _env = crate::test_env::lock();
+        struct RestoreHome(Option<std::ffi::OsString>);
+        impl Drop for RestoreHome {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(home) => std::env::set_var("HOME", home),
+                    None => std::env::remove_var("HOME"),
+                }
+            }
+        }
+        let _home = RestoreHome(std::env::var_os("HOME"));
+        for format in ["zip", "7z", "tar", "tar.gz", "tar.xz", "tar.bz2"] {
+            let dir = tempfile::tempdir().unwrap();
+            let home = dir.path().join("dummy-home");
+            std::fs::create_dir_all(home.join(".ssh/deeper")).unwrap();
+            std::fs::write(home.join(".ssh/deeper/id_fixture"), b"DUMMY SECRET").unwrap();
+            std::fs::write(home.join("ordinary.txt"), b"ordinary fixture").unwrap();
+            std::env::set_var("HOME", &home);
+            let output = dir.path().join("existing.archive");
+            std::fs::write(&output, b"original archive").unwrap();
+            let args = json!({"paths": [home], "output_path": output, "format": format, "compression_level": 0});
+            let err = dispatch_tool(&mock_ctx(Surfaces::CLI), "archive_compress", &args)
+                .await
+                .unwrap_err();
+            assert!(
+                err.to_string().contains("sensitive path denied"),
+                "{format}: {err}"
+            );
+            assert_eq!(std::fs::read(&output).unwrap(), b"original archive");
+            assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
         }
     }
 }

@@ -367,10 +367,12 @@ jobs:
 
       # Compilation alone does not exercise missing-tail case aliases on APFS.
       # Run the policy fixtures natively once, on the arm64 macOS leg.
-      - name: MCP path policy regressions (macOS)
+      - name: MCP and archive path policy regressions (macOS)
         if: matrix.target == 'macos' && matrix.arch == 'aarch64'
         working-directory: src-tauri
-        run: cargo test --locked --lib mcp::security::tests
+        run: |
+          cargo test --locked --lib mcp::security::tests
+          cargo test --locked --lib requested102
         env:
           CARGO_BUILD_JOBS: "1"
           CARGO_INCREMENTAL: "0"
