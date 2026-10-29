@@ -71,6 +71,8 @@ pub struct RemoteScanInventory {
 /// Shared scan tuning.
 #[derive(Debug, Clone, Default)]
 pub struct ScanOptions {
+    /// Trusted caller policy; None preserves unrestricted GUI/CLI behavior.
+    pub local_access: Option<Arc<super::access::LocalAccessScope>>,
     /// Max recursion depth (None = default 100). 0 means root only.
     pub max_depth: Option<usize>,
     /// Glob patterns to exclude (compiled internally once).
@@ -527,7 +529,11 @@ impl ScanBoundaries {
     pub(crate) fn unseen(&mut self, rel_path: &str, reason: &'static str, is_dir: Option<bool>) {
         if rel_path.is_empty() {
             tracing::warn!("[scan] not seen: the scan root ({})", reason);
-            self.unbounded.get_or_insert(reason);
+            if reason == "policy_denied" {
+                self.unbounded = Some(reason);
+            } else {
+                self.unbounded.get_or_insert(reason);
+            }
         } else {
             tracing::warn!("[scan] not seen: {} ({})", rel_path, reason);
             self.unseen.push(UnseenPath {
@@ -842,23 +848,27 @@ pub fn scan_local_tree_checked(
     let mut entries = Vec::new();
     let mut completeness = ScanCompleteness::default();
     let mut boundaries = ScanBoundaries::default();
-    for result in walkdir::WalkDir::new(root)
+    if opts
+        .local_access
+        .as_deref()
+        .is_some_and(|scope| scope.validate_root(Path::new(root)).is_err())
+    {
+        boundaries.unbounded = Some("policy_denied");
+        return (entries, completeness, boundaries);
+    }
+    let mut walk = walkdir::WalkDir::new(root)
         .follow_links(false)
         .max_depth(depth)
-        .into_iter()
-        // An excluded directory is not descended into: its subtree is excluded.
-        // A download's private staging folder is never content.
-        .filter_entry(|e| {
-            e.depth() == 0
-                || !(excludes.is_excluded(&relative_of(e.path()))
-                    || e.file_name()
-                        .to_str()
-                        .is_some_and(crate::providers::atomic_write::is_download_staging_dir_name))
-        })
-    {
+        .into_iter();
+    while let Some(result) = walk.next() {
         let walk_entry = match result {
             Ok(e) => e,
             Err(error) => {
+                if opts.local_access.is_some()
+                    && error.path().is_some_and(|path| path.to_str().is_none())
+                {
+                    boundaries.unbounded = Some("policy_denied");
+                }
                 // A directory we could not read (the root itself when the mount
                 // is gone, or any subtree) makes the scan incomplete: files
                 // under it are invisible. Count it so delete propagation can
@@ -900,6 +910,46 @@ pub fn scan_local_tree_checked(
                 continue;
             }
         };
+        if walk_entry.depth() > 0
+            && (excludes.is_excluded(&relative_of(walk_entry.path()))
+                || walk_entry
+                    .file_name()
+                    .to_str()
+                    .is_some_and(crate::providers::atomic_write::is_download_staging_dir_name))
+        {
+            if walk_entry.file_type().is_dir() {
+                walk.skip_current_dir();
+            }
+            continue;
+        }
+        if let Some(scope) = opts.local_access.as_deref() {
+            let relative = walk_entry
+                .path()
+                .strip_prefix(root)
+                .ok()
+                .and_then(Path::to_str);
+            let refusal = match relative {
+                Some("") => None,
+                Some(rel) => scope.validate_relative(rel).err(),
+                None => Some(super::access::AccessRefusal {
+                    rel_path: String::new(),
+                }),
+            };
+            if let Some(refused) = refusal {
+                record_unseen(
+                    &mut boundaries,
+                    &mut completeness,
+                    &refused.rel_path,
+                    "policy_denied",
+                    None,
+                    cap.saturating_sub(entries.len()),
+                );
+                if walk_entry.file_type().is_dir() {
+                    walk.skip_current_dir();
+                }
+                continue;
+            }
+        }
         if entries.len() + boundaries.len() >= cap {
             completeness.truncated = true;
             boundaries.unbounded.get_or_insert("entry_cap");
@@ -1163,6 +1213,20 @@ async fn scan_remote_tree_inventory_internal(
     observer: Option<&dyn DagObserver>,
     mut directory_rows: Option<&mut Vec<RemoteDirectoryEntry>>,
 ) -> (Vec<RemoteEntry>, ScanCompleteness, ScanBoundaries) {
+    if opts
+        .local_access
+        .as_deref()
+        .is_some_and(|scope| scope.validate_relative("").is_err())
+    {
+        return (
+            Vec::new(),
+            ScanCompleteness::default(),
+            ScanBoundaries {
+                unbounded: Some("policy_denied"),
+                ..Default::default()
+            },
+        );
+    }
     // Compiled once for the whole walk; every directory reads this one.
     let excludes = opts.excludes_or_everything();
     if excludes.excludes_everything() {
@@ -1346,6 +1410,20 @@ async fn scan_remote_tree_inventory_internal(
                     batch.links_over_budget,
                     cap.saturating_sub(cap_spent(files_seen, 0, dirs_seen, count_dirs)),
                 );
+                if batch.policy_denied_over_budget {
+                    completeness.truncated = true;
+                    boundaries.unbounded = Some("policy_denied");
+                }
+                for denied in batch.policy_denied {
+                    record_unseen(
+                        &mut boundaries,
+                        &mut completeness,
+                        &denied.rel_path,
+                        "policy_denied",
+                        None,
+                        cap.saturating_sub(cap_spent(files_seen, 0, dirs_seen, count_dirs)),
+                    );
+                }
                 for file in batch.files {
                     if cap_spent(files_seen, boundaries.len(), dirs_seen, count_dirs) >= cap {
                         completeness.truncated = true;
@@ -1571,6 +1649,20 @@ async fn scan_remote_tree_locked(
                     batch.links_over_budget,
                     cap.saturating_sub(cap_spent(files_seen, 0, dirs_seen, count_dirs)),
                 );
+                if batch.policy_denied_over_budget {
+                    completeness.truncated = true;
+                    boundaries.unbounded = Some("policy_denied");
+                }
+                for denied in batch.policy_denied {
+                    record_unseen(
+                        &mut boundaries,
+                        &mut completeness,
+                        &denied.rel_path,
+                        "policy_denied",
+                        None,
+                        cap.saturating_sub(cap_spent(files_seen, 0, dirs_seen, count_dirs)),
+                    );
+                }
                 for file in batch.files {
                     if cap_spent(files_seen, boundaries.len(), dirs_seen, count_dirs) >= cap {
                         completeness.truncated = true;
@@ -1692,7 +1784,8 @@ fn absorb_skipped_links(
 /// Record a path a walk did not see within the room the entry cap leaves (the
 /// cap less the entries kept): a gap that no longer fits cannot be named, so the
 /// scan is truncated and unbounded instead. The root takes no room, since a root
-/// the scan did not see is unbounded whatever the cap.
+/// the scan did not see is unbounded whatever the cap. A policy refusal must
+/// remain identifiable even when a prior generic failure exhausted the budget.
 fn record_unseen(
     boundaries: &mut ScanBoundaries,
     completeness: &mut ScanCompleteness,
@@ -1703,7 +1796,11 @@ fn record_unseen(
 ) {
     if !rel_path.is_empty() && boundaries.len() >= room {
         completeness.truncated = true;
-        boundaries.unbounded.get_or_insert("entry_cap");
+        if reason == "policy_denied" {
+            boundaries.unbounded = Some(reason);
+        } else {
+            boundaries.unbounded.get_or_insert("entry_cap");
+        }
     } else {
         boundaries.unseen(rel_path, reason, is_dir);
     }
@@ -1793,6 +1890,8 @@ struct RemoteScanBatch {
     /// The directory held more skipped links than the budget the walk gave
     /// the listing, and the ones beyond it were not kept.
     links_over_budget: bool,
+    policy_denied: Vec<UnseenPath>,
+    policy_denied_over_budget: bool,
 }
 
 /// A directory a scan could not list, and why.
@@ -1850,6 +1949,8 @@ fn spawn_remote_scan_task(
                 skipped_links: Vec::new(),
                 cancelled: true,
                 links_over_budget: false,
+                policy_denied: Vec::new(),
+                policy_denied_over_budget: false,
             });
         }
         let mut worker = match warm_workers.take().await {
@@ -1920,7 +2021,8 @@ fn uses_recursive_fastpath(
     opts: &ScanOptions,
     cancel: &Option<Arc<std::sync::atomic::AtomicBool>>,
 ) -> bool {
-    !opts.compute_remote_checksum
+    opts.local_access.is_none()
+        && !opts.compute_remote_checksum
         && !opts.remote_totals_only
         && !opts.disable_recursive_fastpath
         && opts.max_depth != Some(0)
@@ -1981,6 +2083,9 @@ async fn scan_remote_dir(
     let mut file_rels = HashSet::new();
     let mut dirs = Vec::new();
     let mut skipped_links = Vec::new();
+    let mut policy_denied: Vec<UnseenPath> = Vec::new();
+    let mut denied_keys = HashSet::new();
+    let mut policy_denied_over_budget = false;
     let mut cancelled = false;
     let mut links_over_budget = false;
     let mut root_spellings: Vec<String> = Vec::new();
@@ -2024,6 +2129,17 @@ async fn scan_remote_dir(
         // keeps it out of the rel_prefix of its children). This is the one
         // walker every scan path uses, so the guard lives here once.
         if let Err(reason) = crate::sync::validate_relative_path(&entry_rel) {
+            if opts.local_access.is_some() {
+                if policy_denied.len() + skipped_links.len() < link_budget {
+                    policy_denied.push(UnseenPath {
+                        rel_path: String::new(),
+                        reason: "policy_denied",
+                        is_dir: None,
+                    });
+                } else {
+                    policy_denied_over_budget = true;
+                }
+            }
             tracing::warn!(
                 "[scan_remote_tree] skipping remote entry {:?} under {}: {}",
                 entry.name,
@@ -2037,6 +2153,23 @@ async fn scan_remote_dir(
         if excludes.is_excluded_entry(&entry_rel, &entry.name) {
             continue;
         }
+        if let Some(scope) = opts.local_access.as_deref() {
+            if let Err(refused) = scope.validate_relative(&entry_rel) {
+                if !denied_keys.contains(&refused.rel_path) {
+                    if policy_denied.len() + skipped_links.len() < link_budget {
+                        denied_keys.insert(refused.rel_path.clone());
+                        policy_denied.push(UnseenPath {
+                            rel_path: refused.rel_path,
+                            reason: "policy_denied",
+                            is_dir: None,
+                        });
+                    } else {
+                        policy_denied_over_budget = true;
+                    }
+                }
+                continue;
+            }
+        }
         if entry.is_dir {
             // A symlink to a directory is never walked (GAP-A02): syncing
             // through one would duplicate the target's tree, and a link to
@@ -2048,7 +2181,7 @@ async fn scan_remote_dir(
                     rel_prefix: entry_rel,
                     depth: dir.depth + 1,
                 });
-            } else if skipped_links.len() < link_budget {
+            } else if skipped_links.len() + policy_denied.len() < link_budget {
                 // Reported, so a sync leaves the link's path alone on both
                 // sides instead of reading the absence behind it as a delete.
                 tracing::warn!(
@@ -2109,6 +2242,8 @@ async fn scan_remote_dir(
         skipped_links,
         cancelled,
         links_over_budget,
+        policy_denied,
+        policy_denied_over_budget,
     })
 }
 
@@ -2237,7 +2372,18 @@ fn pick_preferred_checksum(
         .unwrap_or((None, None))
 }
 
+#[cfg(test)]
+thread_local! {
+    static REQUESTED103_HASHES: std::cell::RefCell<Option<Vec<std::path::PathBuf>>> = const { std::cell::RefCell::new(None) };
+}
+
 fn compute_sha256(path: &Path) -> std::io::Result<String> {
+    #[cfg(test)]
+    REQUESTED103_HASHES.with(|paths| {
+        if let Some(paths) = paths.borrow_mut().as_mut() {
+            paths.push(path.to_path_buf());
+        }
+    });
     use std::fs::File;
     use std::io::Read;
 
@@ -2259,6 +2405,306 @@ pub(crate) mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
+
+    pub(crate) fn requested103_scope(root: &Path) -> Arc<super::super::access::LocalAccessScope> {
+        Arc::new(
+            super::super::access::LocalAccessScope::new(
+                root,
+                Arc::new(crate::mcp::security::McpLocalPathPolicy::for_home(root).unwrap()),
+            )
+            .unwrap(),
+        )
+    }
+
+    pub(crate) fn requested103_tree(pool: bool) -> WalkTreeProvider {
+        use crate::providers::RemoteEntry as E;
+        WalkTreeProvider::new(
+            HashMap::from([
+                (
+                    "/root".into(),
+                    vec![
+                        E::directory(".ssh".into(), "/root/.ssh".into()),
+                        E::file("allowed.txt".into(), "/root/allowed.txt".into(), 4),
+                        E::file("orphan.txt".into(), "/root/orphan.txt".into(), 4),
+                    ],
+                ),
+                (
+                    "/root/.ssh".into(),
+                    vec![E::file("key".into(), "/root/.ssh/key".into(), 4)],
+                ),
+            ]),
+            pool,
+        )
+    }
+
+    #[test]
+    fn requested103_local_denial_precedes_descend_and_hash() {
+        let home = tempdir().unwrap();
+        for rel in [
+            ".ssh/key",
+            ".config/aeroftp/db",
+            ".config/gcloud/token",
+            ".vault-token",
+            ".ssh-backup/key",
+            "allowed.txt",
+        ] {
+            fs::create_dir_all(home.path().join(rel).parent().unwrap()).unwrap();
+            fs::write(home.path().join(rel), b"fixture").unwrap();
+        }
+        let opts = ScanOptions {
+            local_access: Some(requested103_scope(home.path())),
+            compute_checksum: true,
+            ..Default::default()
+        };
+        REQUESTED103_HASHES.with(|paths| *paths.borrow_mut() = Some(Vec::new()));
+        let (entries, health, boundaries) =
+            scan_local_tree_checked(home.path().to_str().unwrap(), &opts);
+        let hashed = REQUESTED103_HASHES.with(|paths| paths.borrow_mut().take().unwrap());
+        assert!(health.is_complete());
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().all(|e| e.sha256.is_some()));
+        assert_eq!(hashed.len(), 2);
+        assert!(hashed
+            .iter()
+            .all(|p| p == &home.path().join("allowed.txt")
+                || p == &home.path().join(".ssh-backup/key")));
+        assert_eq!(boundaries.unseen.len(), 4);
+        assert!(boundaries
+            .unseen
+            .iter()
+            .all(|p| p.reason == "policy_denied"));
+    }
+
+    #[tokio::test]
+    async fn requested103_remote_projection_protects_missing_local_and_both_aggregators() {
+        for pool in [false, true] {
+            let home = tempdir().unwrap();
+            let mut provider = requested103_tree(pool);
+            provider.record_checksums = true;
+            let events = provider.events.clone();
+            let opts = ScanOptions {
+                local_access: Some(requested103_scope(home.path())),
+                compute_remote_checksum: true,
+                ..Default::default()
+            };
+            let (files, health, boundaries) = walk_tree_with(provider, opts, None).await;
+            assert!(health.is_complete(), "{health:?}");
+            assert_eq!(files.len(), 2);
+            assert_eq!(boundaries.unseen.len(), 1);
+            assert_eq!(boundaries.unseen[0].rel_path, ".ssh");
+            assert_eq!(boundaries.unseen[0].reason, "policy_denied");
+            let events = events.lock().unwrap();
+            assert!(
+                events.iter().all(|(_, path)| !path.contains(".ssh")),
+                "{events:?}"
+            );
+            assert_eq!(events.iter().filter(|(op, _)| op == "checksum").count(), 2);
+            assert!(!home.path().join(".ssh").exists());
+        }
+    }
+
+    #[tokio::test]
+    async fn requested103_budget_overflow_and_invalid_remote_keys_refuse_whole_run() {
+        for pool in [false, true] {
+            let home = tempdir().unwrap();
+            let opts = ScanOptions {
+                local_access: Some(requested103_scope(home.path())),
+                max_entries: Some(1),
+                ..Default::default()
+            };
+            let mut tree = requested103_tree(pool);
+            tree.dirs
+                .get_mut("/root")
+                .unwrap()
+                .push(crate::providers::RemoteEntry::directory(
+                    ".aws".into(),
+                    "/root/.aws".into(),
+                ));
+            let events = tree.events.clone();
+            let (_, health, bounded) = walk_tree_with(tree, opts.clone(), None).await;
+            assert!(health.truncated);
+            assert_eq!(bounded.unbounded, Some("policy_denied"));
+            assert!(events
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|(_, path)| !path.contains(".ssh") && !path.contains(".aws")));
+            // With no budget the scheduler never lists a directory, so it has
+            // observed no policy denial and must keep ordinary truncation.
+            let zero = ScanOptions {
+                max_entries: Some(0),
+                ..opts
+            };
+            let (_, _, bounded) = walk_tree_with(requested103_tree(pool), zero, None).await;
+            assert_eq!(bounded.unbounded, Some("entry_cap"));
+            let mut tree = requested103_tree(pool);
+            tree.dirs
+                .get_mut("/root")
+                .unwrap()
+                .push(crate::providers::RemoteEntry::file(
+                    "../escape".into(),
+                    "/root/../escape".into(),
+                    4,
+                ));
+            let opts = ScanOptions {
+                local_access: Some(requested103_scope(home.path())),
+                ..Default::default()
+            };
+            let (_, _, bounded) = walk_tree_with(tree, opts, None).await;
+            assert_eq!(bounded.unbounded, Some("policy_denied"));
+        }
+    }
+
+    #[test]
+    fn requested103_local_policy_budget_overflow_is_unbounded() {
+        let home = tempdir().unwrap();
+        for rel in [".ssh", ".aws"] {
+            fs::create_dir(home.path().join(rel)).unwrap();
+        }
+        let opts = ScanOptions {
+            local_access: Some(requested103_scope(home.path())),
+            max_entries: Some(1),
+            ..Default::default()
+        };
+        let (files, health, boundaries) =
+            scan_local_tree_checked(home.path().to_str().unwrap(), &opts);
+        assert!(files.is_empty());
+        assert!(health.truncated);
+        assert_eq!(boundaries.unseen.len(), 1);
+        assert_eq!(boundaries.unbounded, Some("policy_denied"));
+    }
+
+    /// Policy must replace an earlier generic gap and survive later generic
+    /// errors, for both a root denial and a named denial without budget room.
+    #[test]
+    fn requested103_policy_boundary_reason_survives_generic_failures() {
+        for earlier in [
+            "entry_cap",
+            "cancelled",
+            "list_error",
+            "depth_limit",
+            "scan_session_lost",
+        ] {
+            for rel in ["", ".ssh"] {
+                let mut boundaries = ScanBoundaries {
+                    unbounded: Some(earlier),
+                    ..Default::default()
+                };
+                let mut health = ScanCompleteness::default();
+                record_unseen(&mut boundaries, &mut health, rel, "policy_denied", None, 0);
+                assert_eq!(
+                    boundaries.unbounded,
+                    Some("policy_denied"),
+                    "{earlier}: {rel}"
+                );
+                assert!(boundaries.unseen.is_empty());
+                record_cancelled(&mut health, &mut boundaries);
+                absorb_skipped_links(&mut boundaries, &mut health, Vec::new(), true, 0);
+                record_unseen(
+                    &mut boundaries,
+                    &mut health,
+                    "ordinary",
+                    "unreadable",
+                    None,
+                    0,
+                );
+                assert_eq!(boundaries.unbounded, Some("policy_denied"));
+            }
+        }
+        let mut boundaries = ScanBoundaries::default();
+        record_unseen(
+            &mut boundaries,
+            &mut Default::default(),
+            "ordinary",
+            "unreadable",
+            None,
+            0,
+        );
+        assert_eq!(boundaries.unbounded, Some("entry_cap"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn requested103_unrepresentable_local_path_is_unbounded() {
+        use std::os::unix::ffi::OsStrExt;
+        let home = tempdir().unwrap();
+        fs::write(
+            home.path()
+                .join(std::ffi::OsStr::from_bytes(b"invalid\xff")),
+            b"data",
+        )
+        .unwrap();
+        let opts = ScanOptions {
+            local_access: Some(requested103_scope(home.path())),
+            compute_checksum: true,
+            ..Default::default()
+        };
+        let (files, _, boundaries) = scan_local_tree_checked(home.path().to_str().unwrap(), &opts);
+        assert!(files.is_empty());
+        assert_eq!(boundaries.unbounded, Some("policy_denied"));
+    }
+
+    #[test]
+    fn requested103_preflight_symmetry_cap_and_fastpath() {
+        let home = tempdir().unwrap();
+        let opts = ScanOptions {
+            local_access: Some(requested103_scope(home.path())),
+            ..Default::default()
+        };
+        assert!(!uses_recursive_fastpath(&opts, &None));
+        assert!(uses_recursive_fastpath(&ScanOptions::default(), &None));
+        let local = |rel: &str| LocalEntry {
+            rel_path: rel.into(),
+            size: 4,
+            mtime: None,
+            sha256: None,
+        };
+        let remote = |rel: &str| RemoteEntry {
+            rel_path: rel.into(),
+            size: 4,
+            mtime: None,
+            checksum_alg: None,
+            checksum_hex: None,
+        };
+        let mut locals = vec![local(".ssh/key"), local("allowed.txt")];
+        let mut remotes = vec![
+            remote(".ssh/new/key"),
+            remote(".vault-token"),
+            remote(".ssh-backup/key"),
+        ];
+        let mut boundaries = ScanBoundaries::default();
+        super::super::access::preflight(&opts, &locals, &remotes, &mut boundaries);
+        let bound = ScanBound::apply(
+            home.path().to_str().unwrap(),
+            &mut locals,
+            &mut remotes,
+            &boundaries,
+            ScanBoundaries::default(),
+        );
+        assert!(bound.refusal().is_none());
+        assert_eq!(
+            locals
+                .iter()
+                .map(|e| e.rel_path.as_str())
+                .collect::<Vec<_>>(),
+            ["allowed.txt"]
+        );
+        assert_eq!(
+            remotes
+                .iter()
+                .map(|e| e.rel_path.as_str())
+                .collect::<Vec<_>>(),
+            [".ssh-backup/key"]
+        );
+        let capped = ScanOptions {
+            max_entries: Some(0),
+            ..opts.clone()
+        };
+        let mut boundaries = ScanBoundaries::default();
+        super::super::access::preflight(&capped, &[local(".ssh/key")], &[], &mut boundaries);
+        assert_eq!(boundaries.unbounded, Some("policy_denied"));
+        assert!(!uses_recursive_fastpath(&opts, &None));
+    }
 
     /// The compare command answers the unbounded verdict on its own, before it
     /// decrypts the remote paths, so it never reaches `for_sync` for that case.
@@ -3463,6 +3909,8 @@ pub(crate) mod tests {
         /// Paths `stat` reports missing even though `list` has them. An S3
         /// prefix is a folder to `list` and `NotFound` to `HEAD`.
         pub(crate) stat_misses: std::collections::HashSet<String>,
+        pub(crate) events: Arc<std::sync::Mutex<Vec<(String, String)>>>,
+        pub(crate) record_checksums: bool,
     }
 
     impl WalkTreeProvider {
@@ -3481,6 +3929,8 @@ pub(crate) mod tests {
                 cwd: "/".to_string(),
                 reads: Arc::default(),
                 stat_misses: std::collections::HashSet::new(),
+                events: Arc::default(),
+                record_checksums: false,
             }
         }
 
@@ -3552,6 +4002,8 @@ pub(crate) mod tests {
                 cwd: self.cwd.clone(),
                 reads: Arc::clone(&self.reads),
                 stat_misses: self.stat_misses.clone(),
+                events: self.events.clone(),
+                record_checksums: self.record_checksums,
             }))
         }
         async fn connect(&mut self) -> Result<(), ProviderError> {
@@ -3567,6 +4019,10 @@ pub(crate) mod tests {
             &mut self,
             path: &str,
         ) -> Result<Vec<crate::providers::RemoteEntry>, ProviderError> {
+            self.events
+                .lock()
+                .unwrap()
+                .push(("list".into(), path.into()));
             if self.cancel_on.as_deref() == Some(path) {
                 self.cancel.store(true, std::sync::atomic::Ordering::SeqCst);
             }
@@ -3595,6 +4051,10 @@ pub(crate) mod tests {
             local_path: &str,
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
+            self.events
+                .lock()
+                .unwrap()
+                .push(("download".into(), remote_path.into()));
             let data = self.read(remote_path)?;
             std::fs::write(local_path, data).map_err(|e| ProviderError::Other(e.to_string()))
         }
@@ -3604,15 +4064,23 @@ pub(crate) mod tests {
         async fn upload(
             &mut self,
             _local_path: &str,
-            _remote_path: &str,
+            remote_path: &str,
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
+            self.events
+                .lock()
+                .unwrap()
+                .push(("upload".into(), remote_path.into()));
             self.count_write()
         }
         async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
             self.count_write()
         }
-        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+        async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.events
+                .lock()
+                .unwrap()
+                .push(("delete".into(), path.into()));
             self.count_write()
         }
         async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
@@ -3652,6 +4120,20 @@ pub(crate) mod tests {
         }
         async fn keep_alive(&mut self) -> Result<(), ProviderError> {
             Ok(())
+        }
+        fn supports_checksum(&self) -> bool {
+            self.record_checksums
+        }
+        async fn checksum_for(
+            &mut self,
+            path: &str,
+            _algorithm: &str,
+        ) -> Result<HashMap<String, String>, ProviderError> {
+            self.events
+                .lock()
+                .unwrap()
+                .push(("checksum".into(), path.into()));
+            Ok(HashMap::from([("sha256".into(), "ab".repeat(32))]))
         }
         async fn server_info(&mut self) -> Result<String, ProviderError> {
             Ok("walk-tree".to_string())

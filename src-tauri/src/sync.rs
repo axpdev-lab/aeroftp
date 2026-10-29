@@ -795,6 +795,7 @@ struct SyncFileMeta<'a> {
 
 #[derive(Clone, Copy)]
 pub(crate) struct SyncTransferSpec<'a> {
+    pub(crate) local_access: Option<&'a crate::sync_core::access::LocalAccessScope>,
     pub(crate) rel: &'a str,
     pub(crate) total: u64,
     pub(crate) decision_policy: DeltaPolicy,
@@ -1358,6 +1359,28 @@ pub(crate) fn remote_listing_delete_guard(
     Ok(())
 }
 
+/// Shared pre-scan policy refusal, with the caller's report context preserved.
+pub(crate) fn restricted_sync_refusal(opts: &SyncOptions, local_root: &str) -> Option<SyncReport> {
+    let message = if opts.scan.local_access.is_some() && opts.error_correction.enabled() {
+        "restricted sync does not support error correction".to_string()
+    } else {
+        crate::sync_core::access::authorize(opts.scan.local_access.as_deref(), local_root, "")
+            .err()?
+    };
+    Some(SyncReport {
+        dry_run: opts.dry_run,
+        direction: Some(opts.direction),
+        delta_policy: Some(opts.delta_policy),
+        errors: vec![SyncError {
+            rel_path: String::new(),
+            operation: "policy",
+            message,
+            decision_policy: opts.delta_policy,
+        }],
+        ..Default::default()
+    })
+}
+
 /// Run a sync between `local_root` and `remote_root` using `provider` and
 /// record progress via `sink`.
 pub async fn sync_tree_core(
@@ -1381,6 +1404,9 @@ pub async fn sync_tree_core(
         .await;
     }
 
+    if let Some(report) = restricted_sync_refusal(opts, local_root) {
+        return report;
+    }
     let start = std::time::Instant::now();
     let resolved_segments = crate::transfer_settings::resolve_download_segments(
         &opts.download_segments,
@@ -1410,6 +1436,7 @@ pub async fn sync_tree_core(
     // What the scans did not see stays out of the run on both sides, so no pass
     // below reads it as deleted, as missing or as safe to copy over (see
     // `ScanBound`).
+    crate::sync_core::access::preflight(&scan, &locals, &remotes, &mut local_boundaries);
     let bound = crate::sync_core::ScanBound::apply(
         local_root,
         &mut locals,
@@ -1501,6 +1528,7 @@ pub async fn sync_tree_core(
                         local_root,
                         remote_root,
                         SyncTransferSpec {
+                            local_access: opts.scan.local_access.as_deref(),
                             rel: &local_entry.rel_path,
                             total: local_entry.size,
                             decision_policy: decision.decision_policy,
@@ -1564,6 +1592,7 @@ pub async fn sync_tree_core(
                         local_root,
                         remote_root,
                         SyncTransferSpec {
+                            local_access: opts.scan.local_access.as_deref(),
                             rel: &remote_entry.rel_path,
                             total: remote_entry.size,
                             decision_policy: decision.decision_policy,
@@ -1635,6 +1664,8 @@ pub async fn sync_tree_core(
                         if !local_entries_by_path.contains_key(remote_entry.rel_path.as_str()) {
                             let outcome = perform_remote_delete(
                                 provider,
+                                local_root,
+                                opts.scan.local_access.as_deref(),
                                 remote_root,
                                 &remote_entry.rel_path,
                                 opts.delta_policy,
@@ -1659,6 +1690,7 @@ pub async fn sync_tree_core(
                         if !remote_entries_by_path.contains_key(local_entry.rel_path.as_str()) {
                             let outcome = perform_local_delete(
                                 local_root,
+                                opts.scan.local_access.as_deref(),
                                 &local_entry.rel_path,
                                 opts.delta_policy,
                                 opts.dry_run,
@@ -2188,10 +2220,17 @@ async fn generate_sync_ec_after_upload(
     local_path: &str,
     remote_path: &str,
     options: &SyncErrorCorrectionOptions,
+    local_access: Option<&crate::sync_core::access::LocalAccessScope>,
 ) -> Option<SyncEcStatus> {
     if !options.enabled() {
         return None;
     }
+    // EC scratch/repair APIs do not yet carry a caller filesystem capability.
+    // A restricted caller must never fall back to those unrestricted paths.
+    if local_access.is_some() {
+        return Some(SyncEcStatus::GenerateFailed);
+    }
+
     let generated = match generate_sync_sidecar_for_file_capped(
         rel,
         Path::new(local_path),
@@ -2282,11 +2321,12 @@ pub async fn generate_sync_error_correction_sidecar_after_upload(
         max_file_size: AEROSYNC_EC_MAX_FILE_SIZE,
         max_overhead_pct,
     };
-    generate_sync_ec_after_upload(provider, rel, local_path, remote_path, &options)
+    generate_sync_ec_after_upload(provider, rel, local_path, remote_path, &options, None)
         .await
         .unwrap_or(SyncEcStatus::GenerateFailed)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn verify_repair_sync_ec_after_download(
     provider: &mut dyn StorageProvider,
     rel: &str,
@@ -2294,10 +2334,17 @@ async fn verify_repair_sync_ec_after_download(
     remote_path: &str,
     expected_sha256_hex: Option<&str>,
     options: &SyncErrorCorrectionOptions,
+    local_access: Option<&crate::sync_core::access::LocalAccessScope>,
 ) -> Option<SyncEcStatus> {
     if !options.enabled() {
         return None;
     }
+    // EC scratch/repair APIs do not yet carry a caller filesystem capability.
+    // A restricted caller must never fall back to those unrestricted paths.
+    if local_access.is_some() {
+        return Some(SyncEcStatus::VerifyFailed);
+    }
+
     let Some(expected_sha256_hex) = expected_sha256_hex else {
         return Some(SyncEcStatus::MissingExpectedHash);
     };
@@ -2353,6 +2400,14 @@ async fn verify_repair_sync_ec_after_download(
     }
 }
 
+macro_rules! authorize_sync_io {
+    ($scope:expr, $root:expr, $rel:expr) => {
+        if let Err(error) = crate::sync_core::access::authorize($scope, $root, $rel) {
+            return FileOutcome::Failed { error };
+        }
+    };
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn perform_upload(
     provider: &mut Box<dyn StorageProvider>,
@@ -2364,6 +2419,7 @@ pub(crate) async fn perform_upload(
     delta_batch: &mut Option<Box<dyn DeltaBatch>>,
     error_correction: &SyncErrorCorrectionOptions,
 ) -> FileOutcome {
+    authorize_sync_io!(transfer.local_access, local_root, transfer.rel);
     sink.on_file_start(
         transfer.rel,
         transfer.total,
@@ -2377,8 +2433,20 @@ pub(crate) async fn perform_upload(
     }
     let local_path = join_clean(local_root, transfer.rel);
     let remote_path = join_clean_remote(remote_root, transfer.rel);
-    ensure_remote_parent(provider, &remote_path).await;
+    authorize_sync_io!(transfer.local_access, local_root, transfer.rel);
+    if let Err(error) = ensure_remote_parent(
+        provider,
+        &remote_path,
+        transfer.local_access,
+        local_root,
+        transfer.rel,
+    )
+    .await
+    {
+        return FileOutcome::Failed { error };
+    }
 
+    authorize_sync_io!(transfer.local_access, local_root, transfer.rel);
     // P3-T01 W4.2: when a session-reuse batch is open, try it first.
     // The batch keeps a single SSH session alive across N files, so the
     // per-file cost drops to a channel-exec open. On used_delta the
@@ -2387,6 +2455,7 @@ pub(crate) async fn perform_upload(
     // path below, which is the same recovery the legacy code does.
     if matches!(transfer.requested_policy, DeltaPolicy::Delta) {
         if let Some(batch) = delta_batch.as_deref_mut() {
+            authorize_sync_io!(transfer.local_access, local_root, transfer.rel);
             let local_path_buf = std::path::PathBuf::from(&local_path);
             let result = crate::delta_sync_rsync::try_delta_transfer_with_batch(
                 batch,
@@ -2407,6 +2476,7 @@ pub(crate) async fn perform_upload(
                     &local_path,
                     &remote_path,
                     error_correction,
+                    transfer.local_access,
                 )
                 .await;
                 return FileOutcome::Uploaded {
@@ -2440,6 +2510,7 @@ pub(crate) async fn perform_upload(
     // host-key mismatch) surfaces as `FileOutcome::Failed` without falling
     // back, so security failures never get masked by the classic path.
     if matches!(transfer.requested_policy, DeltaPolicy::Delta) {
+        authorize_sync_io!(transfer.local_access, local_root, transfer.rel);
         let local_path_buf = std::path::PathBuf::from(&local_path);
         match crate::delta_sync_rsync::try_delta_transfer(
             &mut **provider,
@@ -2461,6 +2532,7 @@ pub(crate) async fn perform_upload(
                     &local_path,
                     &remote_path,
                     error_correction,
+                    transfer.local_access,
                 )
                 .await;
                 return FileOutcome::Uploaded {
@@ -2483,6 +2555,7 @@ pub(crate) async fn perform_upload(
                         remote_path,
                         reason
                     );
+                    authorize_sync_io!(transfer.local_access, local_root, transfer.rel);
                     return match provider.upload(&local_path, &remote_path, None).await {
                         Ok(()) => {
                             let ec_status = generate_sync_ec_after_upload(
@@ -2491,6 +2564,7 @@ pub(crate) async fn perform_upload(
                                 &local_path,
                                 &remote_path,
                                 error_correction,
+                                transfer.local_access,
                             )
                             .await;
                             FileOutcome::Uploaded {
@@ -2510,6 +2584,7 @@ pub(crate) async fn perform_upload(
         }
     }
 
+    authorize_sync_io!(transfer.local_access, local_root, transfer.rel);
     match provider.upload(&local_path, &remote_path, None).await {
         Ok(()) => {
             let ec_status = generate_sync_ec_after_upload(
@@ -2518,6 +2593,7 @@ pub(crate) async fn perform_upload(
                 &local_path,
                 &remote_path,
                 error_correction,
+                transfer.local_access,
             )
             .await;
             FileOutcome::Uploaded {
@@ -2551,6 +2627,7 @@ pub(crate) async fn perform_download(
     expected_sha256_hex: Option<&str>,
     error_correction: &SyncErrorCorrectionOptions,
 ) -> FileOutcome {
+    authorize_sync_io!(transfer.local_access, local_root, transfer.rel);
     sink.on_file_start(
         transfer.rel,
         transfer.total,
@@ -2573,13 +2650,16 @@ pub(crate) async fn perform_download(
     }
     let remote_path = join_clean_remote(remote_root, transfer.rel);
     let local_path = join_clean(local_root, transfer.rel);
+    authorize_sync_io!(transfer.local_access, local_root, transfer.rel);
     if let Some(parent) = Path::new(&local_path).parent() {
         let _ = std::fs::create_dir_all(parent);
     }
 
+    authorize_sync_io!(transfer.local_access, local_root, transfer.rel);
     // P3-T01 W4.2: same batch-first routing as perform_upload, direction=Download.
     if matches!(transfer.requested_policy, DeltaPolicy::Delta) {
         if let Some(batch) = delta_batch.as_deref_mut() {
+            authorize_sync_io!(transfer.local_access, local_root, transfer.rel);
             let local_path_buf = std::path::PathBuf::from(&local_path);
             let result = crate::delta_sync_rsync::try_delta_transfer_with_batch(
                 batch,
@@ -2601,6 +2681,7 @@ pub(crate) async fn perform_download(
                     &remote_path,
                     expected_sha256_hex,
                     error_correction,
+                    transfer.local_access,
                 )
                 .await;
                 return FileOutcome::Downloaded {
@@ -2625,6 +2706,7 @@ pub(crate) async fn perform_download(
 
     // P1-T01: see `perform_upload` above. Same contract, direction=Download.
     if matches!(transfer.requested_policy, DeltaPolicy::Delta) {
+        authorize_sync_io!(transfer.local_access, local_root, transfer.rel);
         let local_path_buf = std::path::PathBuf::from(&local_path);
         match crate::delta_sync_rsync::try_delta_transfer(
             &mut **provider,
@@ -2647,6 +2729,7 @@ pub(crate) async fn perform_download(
                     &remote_path,
                     expected_sha256_hex,
                     error_correction,
+                    transfer.local_access,
                 )
                 .await;
                 return FileOutcome::Downloaded {
@@ -2669,12 +2752,16 @@ pub(crate) async fn perform_download(
                         remote_path,
                         reason
                     );
+                    authorize_sync_io!(transfer.local_access, local_root, transfer.rel);
                     return match sync_download_transfer(
                         provider.as_mut(),
                         &remote_path,
                         &local_path,
                         transfer.total,
                         download_segments,
+                        transfer.local_access,
+                        local_root,
+                        transfer.rel,
                     )
                     .await
                     {
@@ -2686,6 +2773,7 @@ pub(crate) async fn perform_download(
                                 &remote_path,
                                 expected_sha256_hex,
                                 error_correction,
+                                transfer.local_access,
                             )
                             .await;
                             FileOutcome::Downloaded {
@@ -2711,6 +2799,9 @@ pub(crate) async fn perform_download(
         &local_path,
         transfer.total,
         download_segments,
+        transfer.local_access,
+        local_root,
+        transfer.rel,
     )
     .await
     {
@@ -2722,6 +2813,7 @@ pub(crate) async fn perform_download(
                 &remote_path,
                 expected_sha256_hex,
                 error_correction,
+                transfer.local_access,
             )
             .await;
             FileOutcome::Downloaded {
@@ -2737,13 +2829,18 @@ pub(crate) async fn perform_download(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn sync_download_transfer(
     provider: &mut dyn StorageProvider,
     remote_path: &str,
     local_path: &str,
     file_size: u64,
     download_segments: u32,
+    local_access: Option<&crate::sync_core::access::LocalAccessScope>,
+    local_root: &str,
+    rel: &str,
 ) -> Result<(), String> {
+    crate::sync_core::access::authorize(local_access, local_root, rel)?;
     if download_segments > 1
         && provider.transfer_executor_kind() != ProviderTransferExecutorKind::FtpConnectionPool
     {
@@ -2786,6 +2883,7 @@ async fn sync_download_transfer(
         }
     }
 
+    crate::sync_core::access::authorize(local_access, local_root, rel)?;
     provider
         .download_with_size_hint(
             remote_path,
@@ -2797,8 +2895,11 @@ async fn sync_download_transfer(
         .map_err(|e| e.to_string())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn perform_remote_delete(
     provider: &mut Box<dyn StorageProvider>,
+    local_root: &str,
+    local_access: Option<&crate::sync_core::access::LocalAccessScope>,
     remote_root: &str,
     rel: &str,
     decision_policy: DeltaPolicy,
@@ -2806,6 +2907,7 @@ pub(crate) async fn perform_remote_delete(
     sink: &mut dyn SyncProgressSink,
     error_correction: &SyncErrorCorrectionOptions,
 ) -> FileOutcome {
+    authorize_sync_io!(local_access, local_root, rel);
     sink.on_file_start(rel, 0, "delete_remote", decision_policy);
     if dry_run {
         return FileOutcome::Skipped {
@@ -2813,6 +2915,7 @@ pub(crate) async fn perform_remote_delete(
         };
     }
     let remote_path = join_clean_remote(remote_root, rel);
+    authorize_sync_io!(local_access, local_root, rel);
     match provider.delete(&remote_path).await {
         Ok(()) => {
             let ec_sidecar_status = if error_correction.enabled() {
@@ -2836,11 +2939,13 @@ pub(crate) async fn perform_remote_delete(
 
 pub(crate) fn perform_local_delete(
     local_root: &str,
+    local_access: Option<&crate::sync_core::access::LocalAccessScope>,
     rel: &str,
     decision_policy: DeltaPolicy,
     dry_run: bool,
     sink: &mut dyn SyncProgressSink,
 ) -> FileOutcome {
+    authorize_sync_io!(local_access, local_root, rel);
     sink.on_file_start(rel, 0, "delete_local", decision_policy);
     if dry_run {
         return FileOutcome::Skipped {
@@ -2848,6 +2953,7 @@ pub(crate) fn perform_local_delete(
         };
     }
     let path = join_clean(local_root, rel);
+    authorize_sync_io!(local_access, local_root, rel);
     match std::fs::remove_file(&path) {
         Ok(()) => FileOutcome::Deleted {
             ec_sidecar_status: None,
@@ -2858,13 +2964,21 @@ pub(crate) fn perform_local_delete(
     }
 }
 
-async fn ensure_remote_parent(provider: &mut Box<dyn StorageProvider>, remote_path: &str) {
+async fn ensure_remote_parent(
+    provider: &mut Box<dyn StorageProvider>,
+    remote_path: &str,
+    local_access: Option<&crate::sync_core::access::LocalAccessScope>,
+    local_root: &str,
+    rel: &str,
+) -> Result<(), String> {
     if let Some(idx) = remote_path.rfind('/') {
-        let parent = &remote_path[..idx];
-        if !parent.is_empty() {
-            ensure_remote_dir(&mut **provider, parent).await;
+        for path in remote_dir_chain(&remote_path[..idx]) {
+            crate::sync_core::access::authorize(local_access, local_root, rel)?;
+            // Parent creation remains best effort; the transfer reports real I/O errors.
+            let _ = provider.mkdir(&path).await;
         }
     }
+    Ok(())
 }
 
 pub(crate) fn remote_dir_chain(dir: &str) -> Vec<String> {
@@ -2905,6 +3019,24 @@ fn mkdir_error_is_idempotent(err: &ProviderError) -> bool {
     }
 }
 
+/// Restricted remote-parent preparation rechecks after each awaited mkdir.
+pub(crate) async fn ensure_remote_dir_scoped(
+    provider: &mut dyn StorageProvider,
+    dir: &str,
+    scope: Option<&crate::sync_core::access::LocalAccessScope>,
+    local_root: &str,
+) -> Result<(), String> {
+    if scope.is_none() {
+        ensure_remote_dir(provider, dir).await;
+        return Ok(());
+    }
+    for path in remote_dir_chain(dir) {
+        crate::sync_core::access::authorize(scope, local_root, "")?;
+        let _ = provider.mkdir(&path).await;
+    }
+    Ok(())
+}
+
 pub(crate) async fn ensure_remote_dir<P: StorageProvider + ?Sized>(provider: &mut P, dir: &str) {
     // Walk the parent chain top-down. A failure on an intermediate level
     // (e.g. mkdir on `/mnt` denied because the user has no write access on
@@ -2932,7 +3064,7 @@ pub(crate) fn join_clean(root: &str, rel: &str) -> String {
     let rel = rel.trim_start_matches('/');
     if root.is_empty() {
         rel.to_string()
-    } else if root.ends_with('/') || root.ends_with('\\') {
+    } else if root.ends_with('/') || (cfg!(windows) && root.ends_with('\\')) {
         format!("{}{}", root, rel)
     } else {
         format!("{}/{}", root, rel)
@@ -9347,6 +9479,7 @@ mod tests {
         // separation a `Hash`-requested transfer that the decide layer
         // downgrades to `Mtime` would silently bypass the native path.
         let spec = SyncTransferSpec {
+            local_access: None,
             rel: "alpha.txt",
             total: 1234,
             decision_policy: DeltaPolicy::Mtime,

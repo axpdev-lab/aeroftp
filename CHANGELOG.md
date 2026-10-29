@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.6] - Unreleased
+
+### Fixed
+
+- **MCP recursive sync preserves protected paths.** Local and projected remote descendants inherit the MCP path policy before scans, checksums, transfers and orphan deletes. Refused prefixes protect both counterparts and appear in scan reports, while allowed siblings continue to sync.
+
 ## [4.2.5] - 2026-10-28
 
 ### Safer Sync, Faster Proton Transfers, and Desktop Reliability

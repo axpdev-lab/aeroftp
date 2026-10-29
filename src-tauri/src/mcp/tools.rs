@@ -110,7 +110,7 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
         },
         McpToolDef {
             name: "aeroftp_check_tree",
-            description: "Compare a local directory against a remote directory and report differences. The result also says how much of each tree the comparison actually covers: `local_scan_incomplete` and `remote_scan_incomplete`, with `{side}_scan_errors` (directory listings that failed) and `{side}_scan_truncated` (the walk stopped at its depth or entry cap). A side is reported incomplete when its counters are non-zero OR when the walk left out a path it can name, because a symbolic link is a gap without being a failure: no walk follows one, so the subtree behind it was never compared. Those paths are listed in `{side}_skipped_links` and `{side}_unseen_paths`, each capped at 1000 entries with `_total` and `_truncated` alongside, and OMITTED entirely when empty. The six counter keys are always present, zero included, so an agent can branch on them without first checking whether they exist. Under summary_only=true only the counters and flags are returned, not the path lists. A file reported as missing on one side by an incomplete scan may simply be unread rather than absent: do not turn it into a delete.",
+            description: "Compare a local directory against a remote directory and report differences. The result also says how much of each tree the comparison actually covers: `local_scan_incomplete` and `remote_scan_incomplete`, with `{side}_scan_errors` (directory listings that failed), `{side}_scan_truncated` (the walk stopped at its depth or entry cap), and `{side}_policy_denied_total` (named prefixes excluded by the local-path policy). A side is reported incomplete when its counters are non-zero OR when the walk left out a path it can name, because a symbolic link is a gap without being a failure: no walk follows one, so the subtree behind it was never compared. Those paths are listed in `{side}_skipped_links` and `{side}_unseen_paths`, each capped at 1000 entries with `_total` and `_truncated` alongside, and OMITTED entirely when empty. The eight counter keys are always present, zero included, so an agent can branch on them without first checking whether they exist. An unnameable `policy_denied` boundary on either side returns an error instead of a partial comparison. Under summary_only=true only the counters and flags are returned, not the path lists. A file reported as missing on one side by an incomplete scan may simply be unread rather than absent: do not turn it into a delete.",
             input_schema: json!({ "type": "object", "properties": {
                 "server": { "type": "string", "description": "Server name or ID" },
                 "local_dir": { "type": "string", "description": "Local directory to compare" },
@@ -141,7 +141,7 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
         },
         McpToolDef {
             name: "aeroftp_sync_tree",
-            description: "Synchronize a local directory with a remote directory. Direction: upload, download, or both. Supports dry_run, delete_orphans (upload/download only), conflict resolution (larger/newer/skip), explicit delta_policy (disabled/size_only/mtime/hash/delta), and glob excludes. Emits progress notifications when the caller supplies a progressToken. Output shape: dry_run=true returns {plan, plan_by_op, plan_by_op_totals, plan_total, planned, scan_stats, errors}; dry_run=false returns {summary (with summary.totals), errors}. The two fields never coexist. Each plan/error entry reports the per-file `decision_policy` actually used by the core. `plan_by_op` groups the plan per operation (upload/download/delete/skip) with per-bucket caps of 250 so an agent can see every candidate of a given type even when the total plan is huge. Set summary_only=true to drop the per-entry plan/plan_by_op/errors arrays when the response would otherwise exceed MCP size limits. When at least one file traveled through the rsync delta path, `summary.delta_savings` is added with {files_using_delta, total_bytes_sent, total_size, bytes_saved, average_speedup}; the block is OMITTED entirely when no file used the delta path. `bytes_saved` can be negative when rsync overhead exceeds the savings on small-file runs. `average_speedup` is omitted when `total_bytes_sent==0`. Alongside `delta_savings`, `summary.delta_files` carries a per-file breakdown as an array of `{path, bytes_sent, total_size, speedup}`, capped at 500 entries; on runs above the cap, `summary.delta_files_truncated: true` is added and the `delta_savings` aggregate keeps counting past the cap. Both keys are OMITTED on classic-only runs.",
+            description: "Synchronize a local directory with a remote directory. Direction: upload, download, or both. Supports dry_run, delete_orphans (upload/download only), conflict resolution (larger/newer/skip), explicit delta_policy (disabled/size_only/mtime/hash/delta), and glob excludes. Emits progress notifications when the caller supplies a progressToken. Output shape: dry_run=true returns {plan, plan_by_op, plan_by_op_totals, plan_total, planned, scan_stats, errors}; dry_run=false returns {summary (with summary.totals), errors}. The two fields never coexist. Each plan/error entry reports the per-file `decision_policy` actually used by the core. `plan_by_op` groups the plan per operation (upload/download/delete/skip) with per-bucket caps of 250 so an agent can see every candidate of a given type even when the total plan is huge. Set summary_only=true to drop the per-entry plan/plan_by_op/errors arrays when the response would otherwise exceed MCP size limits. When at least one file traveled through the rsync delta path, `summary.delta_savings` is added with {files_using_delta, total_bytes_sent, total_size, bytes_saved, average_speedup}; the block is OMITTED entirely when no file used the delta path. `bytes_saved` can be negative when rsync overhead exceeds the savings on small-file runs. `average_speedup` is omitted when `total_bytes_sent==0`. Alongside `delta_savings`, `summary.delta_files` carries a per-file breakdown as an array of `{path, bytes_sent, total_size, speedup}`, capped at 500 entries; on runs above the cap, `summary.delta_files_truncated: true` is added and the `delta_savings` aggregate keeps counting past the cap. Both keys are OMITTED on classic-only runs. When named policy-denied prefixes are excluded, `policy_denied_total` reports their count and remains available under summary_only=true; this key is omitted when zero.",
             input_schema: json!({ "type": "object", "properties": {
                 "server": { "type": "string", "description": "Server name or ID" },
                 "local_dir": { "type": "string", "description": "Local root directory" },
@@ -1178,9 +1178,12 @@ pub async fn execute_tool(
             if let Err(e) = validate_sp(&server, Some(&remote_dir)) {
                 return finish(tool_name, Some(&server), Some(&remote_dir), err(e), start);
             }
-            if let Err(e) = security::validate_local_path(&local_dir) {
-                return finish(tool_name, Some(&server), Some(&remote_dir), err(e), start);
-            }
+            let local_access = match mcp_local_access(&local_dir) {
+                Ok(scope) => scope,
+                Err(e) => {
+                    return finish(tool_name, Some(&server), Some(&remote_dir), err(e), start)
+                }
+            };
             let one_way = get_bool_opt(args, "one_way").unwrap_or(false);
             let checksum = get_bool_opt(args, "checksum").unwrap_or(false);
             let summary_only = get_bool_opt(args, "summary_only").unwrap_or(false);
@@ -1269,6 +1272,7 @@ pub async fn execute_tool(
             // crypt overlay the remote hash is over ciphertext, so it is never
             // requested.
             let opts = ScanOptions {
+                local_access: Some(local_access),
                 max_depth,
                 exclude_patterns: exclude,
                 files_from,
@@ -1285,6 +1289,18 @@ pub async fn execute_tool(
                     let supports_remote_checksum = p.supports_checksum();
                     let provider_is_crypt_overlay =
                         crate::crypt_overlay_provider::is_crypt_overlay_provider(p.as_mut());
+                    if crypt_active && !provider_is_crypt_overlay {
+                        return finish(
+                            tool_name,
+                            Some(&server),
+                            Some(&remote_dir),
+                            err(
+                                "Restricted check requires a plaintext crypt-overlay provider"
+                                    .into(),
+                            ),
+                            start,
+                        );
+                    }
                     // Unlock the overlay keys (rclone-crypt from password+salt,
                     // aerocrypt by downloading the remote config) while holding
                     // the provider lock, before the remote scan. If the MCP
@@ -1324,7 +1340,7 @@ pub async fn execute_tool(
                     // a directory that did not list, or one behind a link the
                     // walk does not follow, came back indistinguishable from a
                     // directory that is genuinely absent on the other side.
-                    let (locals, local_scan, local_boundaries) =
+                    let (mut locals, local_scan, mut local_boundaries) =
                         scan_local_tree_checked(&local_dir, &opts);
                     let (remote_rows, remote_scan, remote_boundaries) = scan_remote_tree_checked(
                         &mut p,
@@ -1353,6 +1369,22 @@ pub async fn execute_tool(
                                 start,
                             );
                         }
+                    }
+                    if let Err(reason) = bound_check_tree(
+                        &local_dir,
+                        &opts,
+                        &mut locals,
+                        &mut remotes,
+                        &mut local_boundaries,
+                        &remote_boundaries,
+                    ) {
+                        return finish(
+                            tool_name,
+                            Some(&server),
+                            Some(&remote_dir),
+                            err(reason),
+                            start,
+                        );
                     }
                     let diff = compare_trees(&locals, &remotes, one_way);
                     if summary_only {
@@ -1521,9 +1553,12 @@ pub async fn execute_tool(
             if let Err(e) = validate_sp(&server, Some(&remote_dir)) {
                 return finish(tool_name, Some(&server), Some(&remote_dir), err(e), start);
             }
-            if let Err(e) = security::validate_local_path(&local_dir) {
-                return finish(tool_name, Some(&server), Some(&remote_dir), err(e), start);
-            }
+            let local_access = match mcp_local_access(&local_dir) {
+                Ok(scope) => scope,
+                Err(e) => {
+                    return finish(tool_name, Some(&server), Some(&remote_dir), err(e), start)
+                }
+            };
             let dry_run = get_bool_opt(args, "dry_run").unwrap_or(false);
             let delete_orphans = get_bool_opt(args, "delete_orphans").unwrap_or(false);
             if delete_orphans && matches!(direction, SyncDirection::Both) {
@@ -1613,6 +1648,7 @@ pub async fn execute_tool(
                 delete_orphans,
                 conflict_mode,
                 scan: ScanOptions {
+                    local_access: Some(local_access),
                     exclude_patterns: exclude,
                     files_from: parse_files_from(args),
                     max_depth,
@@ -1927,6 +1963,29 @@ pub async fn execute_tool(
 /// Most entries of each boundary list a `sync_tree` result carries.
 const SYNC_BOUNDARIES_JSON_CAP: usize = 1000;
 
+/// Comparison can report incomplete observations, while a policy refusal with
+/// no named boundary cannot safely describe a permitted comparison scope.
+fn bound_check_tree(
+    local_root: &str,
+    opts: &crate::sync_core::ScanOptions,
+    locals: &mut Vec<crate::sync_core::LocalEntry>,
+    remotes: &mut Vec<crate::sync_core::RemoteEntry>,
+    local: &mut crate::sync_core::ScanBoundaries,
+    remote: &crate::sync_core::ScanBoundaries,
+) -> Result<(), String> {
+    crate::sync_core::access::preflight(opts, locals, remotes, local);
+    for (side, boundaries) in [("local", &*local), ("remote", remote)] {
+        if boundaries.unbounded == Some("policy_denied") {
+            return Err(crate::sync_core::scan::unbounded_refusal(
+                side,
+                "policy_denied",
+            ));
+        }
+    }
+    crate::sync_core::ScanBound::apply(local_root, locals, remotes, local, remote.clone());
+    Ok(())
+}
+
 /// The additive keys a `sync_tree` result gains when the run left paths alone:
 /// the symbolic links it did not follow and the paths its scans could not see.
 /// Each list is capped, with its total and a truncation flag, and absent
@@ -1962,10 +2021,19 @@ fn check_boundaries_json(
 ) -> serde_json::Map<String, Value> {
     let mut keys = serde_json::Map::new();
     for (side, (scan, boundaries)) in [("local", local), ("remote", remote)] {
+        keys.insert(
+            format!("{side}_policy_denied_total"),
+            boundaries
+                .unseen
+                .iter()
+                .filter(|p| p.reason == "policy_denied")
+                .count()
+                .into(),
+        );
         let left_out = !boundaries.links.is_empty() || !boundaries.unseen.is_empty();
         keys.insert(
             format!("{side}_scan_incomplete"),
-            (!scan.is_complete() || left_out).into(),
+            (!scan.is_complete() || left_out || boundaries.unbounded.is_some()).into(),
         );
         keys.insert(format!("{side}_scan_errors"), scan.list_errors.into());
         keys.insert(format!("{side}_scan_truncated"), scan.truncated.into());
@@ -1990,6 +2058,14 @@ fn sync_boundaries_json(
     counters_only: bool,
 ) -> serde_json::Map<String, Value> {
     let mut keys = serde_json::Map::new();
+    let denied = report
+        .unseen_paths
+        .iter()
+        .filter(|p| p.reason == "policy_denied")
+        .count();
+    if denied > 0 {
+        keys.insert("policy_denied_total".into(), denied.into());
+    }
     insert_capped_list(
         &mut keys,
         "skipped_links",
@@ -2224,6 +2300,27 @@ impl crate::sync_core::SyncProgressSink for NotifierSyncSink<'_> {
     }
 }
 
+/// Shared by check_tree and sync_tree; clients cannot turn off the policy.
+fn mcp_local_access(
+    root: &str,
+) -> Result<std::sync::Arc<crate::sync_core::access::LocalAccessScope>, String> {
+    security::validate_remote_path(root)?;
+    mcp_local_access_with_policy(root, security::McpLocalPathPolicy::capture()?)
+}
+
+fn mcp_local_access_with_policy(
+    root: &str,
+    policy: security::McpLocalPathPolicy,
+) -> Result<std::sync::Arc<crate::sync_core::access::LocalAccessScope>, String> {
+    security::validate_remote_path(root)?;
+    Ok(std::sync::Arc::new(
+        crate::sync_core::access::LocalAccessScope::new(
+            std::path::Path::new(root),
+            std::sync::Arc::new(policy),
+        )?,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -2240,6 +2337,203 @@ mod tests {
     /// A guard rather than a red-then-green test: these keys are new, so there
     /// was nothing to be red. What it pins is the term that would be dropped
     /// first by anyone simplifying the helper into `is_complete()`.
+    #[test]
+    fn requested103_mcp_factory_and_summary_report_policy_denials() {
+        let home = tempfile::tempdir().unwrap();
+        let scope = super::mcp_local_access_with_policy(
+            home.path().to_str().unwrap(),
+            super::security::McpLocalPathPolicy::for_home(home.path()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            scope
+                .validate_relative(".ssh/new/key")
+                .unwrap_err()
+                .rel_path,
+            ".ssh"
+        );
+        let denied = crate::sync_core::UnseenPath {
+            rel_path: ".ssh".into(),
+            reason: "policy_denied",
+            is_dir: None,
+        };
+        let report = crate::sync_core::SyncReport {
+            unseen_paths: vec![denied.clone()],
+            ..Default::default()
+        };
+        let boundaries = crate::sync_core::ScanBoundaries {
+            unseen: vec![denied],
+            ..Default::default()
+        };
+        let health = crate::sync_core::ScanCompleteness::default();
+        for summary in [true, false] {
+            let sync = super::sync_boundaries_json(&report, summary);
+            assert_eq!(sync["policy_denied_total"], 1);
+            assert_eq!(sync["unseen_paths_total"], 1);
+            assert_eq!(sync.contains_key("unseen_paths"), !summary);
+            let check = super::check_boundaries_json(
+                (&health, &boundaries),
+                (&health, &Default::default()),
+                summary,
+            );
+            assert_eq!(check["local_policy_denied_total"], 1);
+            assert_eq!(check["local_scan_incomplete"], true);
+        }
+    }
+
+    #[test]
+    fn requested103_check_tree_partial_observations_and_policy_refusal() {
+        let home = tempfile::tempdir().unwrap();
+        let opts = crate::sync_core::ScanOptions {
+            local_access: Some(
+                super::mcp_local_access_with_policy(
+                    home.path().to_str().unwrap(),
+                    super::security::McpLocalPathPolicy::for_home(home.path()).unwrap(),
+                )
+                .unwrap(),
+            ),
+            ..Default::default()
+        };
+        for side in ["local", "remote"] {
+            for reason in [
+                "entry_cap",
+                "cancelled",
+                "list_error",
+                "depth_limit",
+                "scan_session_lost",
+                "policy_denied",
+            ] {
+                let mut local = crate::sync_core::ScanBoundaries::default();
+                let mut remote = crate::sync_core::ScanBoundaries::default();
+                if side == "local" {
+                    local.unbounded = Some(reason);
+                } else {
+                    remote.unbounded = Some(reason);
+                }
+                let mut locals = vec![crate::sync_core::LocalEntry {
+                    rel_path: "allowed.txt".into(),
+                    size: 1,
+                    mtime: None,
+                    sha256: None,
+                }];
+                let mut remotes = Vec::new();
+                let result = super::bound_check_tree(
+                    home.path().to_str().unwrap(),
+                    &opts,
+                    &mut locals,
+                    &mut remotes,
+                    &mut local,
+                    &remote,
+                );
+                if reason == "policy_denied" {
+                    assert!(result.unwrap_err().contains("policy_denied"));
+                } else {
+                    result.unwrap();
+                    let diff = crate::sync_core::compare_trees(&locals, &remotes, false);
+                    assert_eq!(diff.missing_remote_count(), 1);
+                    for summary in [false, true] {
+                        let keys = super::check_boundaries_json(
+                            (&Default::default(), &local),
+                            (&Default::default(), &remote),
+                            summary,
+                        );
+                        assert_eq!(keys[&format!("{side}_scan_incomplete")], true);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn requested103_check_tree_policy_failure_cannot_be_masked_by_entry_cap() {
+        let home = tempfile::tempdir().unwrap();
+        let opts = crate::sync_core::ScanOptions {
+            local_access: Some(
+                super::mcp_local_access_with_policy(
+                    home.path().to_str().unwrap(),
+                    super::security::McpLocalPathPolicy::for_home(home.path()).unwrap(),
+                )
+                .unwrap(),
+            ),
+            max_entries: Some(0),
+            ..Default::default()
+        };
+        let mut locals = vec![crate::sync_core::LocalEntry {
+            rel_path: ".ssh/key".into(),
+            size: 1,
+            mtime: None,
+            sha256: None,
+        }];
+        let mut local = crate::sync_core::ScanBoundaries {
+            unbounded: Some("entry_cap"),
+            ..Default::default()
+        };
+        let result = super::bound_check_tree(
+            home.path().to_str().unwrap(),
+            &opts,
+            &mut locals,
+            &mut Vec::new(),
+            &mut local,
+            &Default::default(),
+        );
+        assert!(result.unwrap_err().contains("policy_denied"));
+    }
+
+    /// Empty inventories cannot reconstruct a denial the scanner discarded.
+    /// Exercise real local and both remote scan routes before comparison.
+    #[tokio::test]
+    async fn requested103_check_tree_rejects_scanner_policy_budget_overflow() {
+        use crate::sync_core::scan::{
+            scan_local_tree_checked, scan_remote_tree_checked, tests::requested103_tree,
+        };
+        let home = tempfile::tempdir().unwrap();
+        for rel in [".ssh", ".aws"] {
+            std::fs::create_dir(home.path().join(rel)).unwrap();
+        }
+        let root = home.path().to_str().unwrap();
+        let opts = crate::sync_core::ScanOptions {
+            local_access: Some(
+                super::mcp_local_access_with_policy(
+                    root,
+                    super::security::McpLocalPathPolicy::for_home(home.path()).unwrap(),
+                )
+                .unwrap(),
+            ),
+            max_entries: Some(1),
+            ..Default::default()
+        };
+        for pool in [false, true] {
+            let mut tree = requested103_tree(pool);
+            tree.dirs
+                .get_mut("/root")
+                .unwrap()
+                .retain(|entry| entry.name == ".ssh");
+            tree.dirs
+                .get_mut("/root")
+                .unwrap()
+                .push(crate::providers::RemoteEntry::directory(
+                    ".aws".into(),
+                    "/root/.aws".into(),
+                ));
+            let mut provider: Box<dyn crate::providers::StorageProvider> = Box::new(tree);
+            let (locals, _, local) = scan_local_tree_checked(root, &opts);
+            let (remotes, _, remote) =
+                scan_remote_tree_checked(&mut provider, "/root", &opts).await;
+            assert!(locals.is_empty() && remotes.is_empty());
+            for (mut local, remote) in [(local, Default::default()), (Default::default(), remote)] {
+                let result = super::bound_check_tree(
+                    root,
+                    &opts,
+                    &mut locals.clone(),
+                    &mut remotes.clone(),
+                    &mut local,
+                    &remote,
+                );
+                assert!(result.unwrap_err().contains("policy_denied"), "pool={pool}");
+            }
+        }
+    }
+
     #[test]
     fn check_tree_result_counts_a_link_as_an_incomplete_scan() {
         let clean = crate::sync_core::ScanCompleteness::default();
@@ -2335,6 +2629,9 @@ mod tests {
         let desc = t.description;
         for needle in [
             "remote_scan_incomplete",
+            "_policy_denied_total",
+            "eight counter keys",
+            "returns an error",
             "_skipped_links",
             "_unseen_paths",
             "summary_only",
@@ -2806,6 +3103,7 @@ mod tests {
             t.description.contains("plan_by_op"),
             "sync_tree description should mention plan_by_op"
         );
+        assert!(t.description.contains("policy_denied_total"));
     }
 
     #[test]
