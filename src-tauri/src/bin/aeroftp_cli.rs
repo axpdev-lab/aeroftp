@@ -55926,7 +55926,7 @@ async fn cmd_sync(
     // already in `local_map` can win anything. A file absent locally would
     // travel in full anyway, plus the cost of exchanging a signature, so it
     // goes straight to the classic path below.
-    #[cfg_attr(not(feature = "aerorsync"), allow(unused_mut))]
+    #[cfg(feature = "aerorsync")]
     let mut leftover_download_jobs: Vec<(String, String, String, u64)> = download_jobs;
     #[cfg(feature = "aerorsync")]
     if use_aerorsync_batch && !error_correction_enabled && !leftover_download_jobs.is_empty() {
@@ -56062,6 +56062,7 @@ async fn cmd_sync(
             );
         }
     }
+    #[cfg(feature = "aerorsync")]
     let download_jobs = leftover_download_jobs;
     let relative_of_local: HashMap<String, String> = download_jobs
         .iter()

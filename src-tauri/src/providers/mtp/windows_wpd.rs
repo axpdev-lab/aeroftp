@@ -382,6 +382,9 @@ fn get_guid_prop(
     }
 }
 
+/// Enumerate storage objects and read their display names and capacities.
+/// Collection/setup failures abort discovery; unreadable or malformed entries
+/// are skipped, and a missing display name gets a storage-ID-based fallback.
 fn list_storages_on(device: &IPortableDevice) -> Result<Vec<MtpStorage>, ProviderError> {
     let caps = unsafe {
         device
