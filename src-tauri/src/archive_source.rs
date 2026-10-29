@@ -147,6 +147,24 @@ fn source(path: &Path, name: &Path, meta: &std::fs::Metadata) -> Result<Source, 
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
+    #[test]
+    fn requested102_non_utf8_manifest_name_is_refused() {
+        use std::os::unix::ffi::OsStrExt;
+
+        // Keep metadata real while testing name conversion independently of
+        // filesystem encoding rules: APFS cannot create the invalid name.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fixture.txt");
+        std::fs::write(&path, b"fixture").unwrap();
+        let metadata = std::fs::metadata(&path).unwrap();
+        let name = Path::new(std::ffi::OsStr::from_bytes(b"invalid-\xff.txt"));
+        assert!(source(&path, name, &metadata)
+            .err()
+            .unwrap()
+            .contains("not valid UTF-8"));
+    }
+
     #[test]
     fn requested102_manifest_limit_refuses_instead_of_truncating() {
         let dir = tempfile::tempdir().unwrap();

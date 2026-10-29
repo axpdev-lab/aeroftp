@@ -458,7 +458,10 @@ fn requested102_denied_directory_is_checked_before_descent() {
     assert!(!child_checked.load(Ordering::SeqCst));
 }
 
-#[cfg(unix)]
+// APFS rejects invalid UTF-8 filenames at creation (EILSEQ), so the real
+// filesystem fixture runs on Linux. The manifest conversion is tested on all
+// Unix platforms without asking the filesystem to accept an invalid name.
+#[cfg(target_os = "linux")]
 #[tokio::test]
 async fn requested102_non_utf8_names_fail_without_publishing_a_lossy_archive() {
     use std::os::unix::ffi::OsStringExt;
