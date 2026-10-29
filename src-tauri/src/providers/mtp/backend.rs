@@ -708,7 +708,7 @@ pub fn platform_backend() -> Box<dyn MtpBackend> {
     #[cfg(windows)]
     {
         use crate::providers::mtp::windows_wpd::WindowsWpdBackend;
-        return Box::new(WindowsWpdBackend::new());
+        Box::new(WindowsWpdBackend::new())
     }
     #[cfg(not(any(all(target_os = "linux", mtp_libmtp), windows)))]
     {

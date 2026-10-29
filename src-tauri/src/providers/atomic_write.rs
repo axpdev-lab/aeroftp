@@ -1059,6 +1059,19 @@ pub(crate) mod temp_claim {
         .contains(&kind)
     }
 
+    /// Only Linux says what a mount is here: elsewhere a network share could
+    /// turn the lock into a mandatory one (macOS smbfs maps flock onto SMB
+    /// locks), so the temporaries go unlocked, as before these locks.
+    #[cfg(all(unix, not(target_os = "linux")))]
+    fn locks_usable(_path: &Path) -> bool {
+        false
+    }
+
+    #[cfg(not(unix))]
+    fn locks_usable(_path: &Path) -> bool {
+        false
+    }
+
     /// Where the locks are not used, on every platform.
     #[cfg(test)]
     mod fresh_tests {
@@ -1089,19 +1102,6 @@ pub(crate) mod temp_claim {
                 "the interrupted part was kept under the fresh download"
             );
         }
-    }
-
-    /// Only Linux says what a mount is here: elsewhere a network share could
-    /// turn the lock into a mandatory one (macOS smbfs maps flock onto SMB
-    /// locks), so the temporaries go unlocked, as before these locks.
-    #[cfg(all(unix, not(target_os = "linux")))]
-    fn locks_usable(_path: &Path) -> bool {
-        false
-    }
-
-    #[cfg(not(unix))]
-    fn locks_usable(_path: &Path) -> bool {
-        false
     }
 
     #[cfg(all(test, target_os = "linux"))]
