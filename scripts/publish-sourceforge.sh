@@ -13,6 +13,12 @@
 #   ./scripts/publish-sourceforge.sh 4.1.3            # dry run, prints what it would do
 #   ./scripts/publish-sourceforge.sh 4.1.3 --force    # actually upload
 #   ./scripts/publish-sourceforge.sh 4.1.3 --force --prune   # also prune old folders
+#   ./scripts/publish-sourceforge.sh --prune-only            # dry run of the prune alone
+#   ./scripts/publish-sourceforge.sh --force --prune-only    # prune, upload nothing
+#
+# A re-run is safe and cheap: an asset already in the release folder with the size of
+# its GitHub counterpart, and uploaded after GitHub last changed it, is neither
+# downloaded nor uploaded again.
 #
 set -euo pipefail
 # Every aeroftp-cli call in this script runs unattended, so strict mode is set
@@ -26,17 +32,21 @@ REPO="${SF_GH_REPO:-axpdev-lab/aeroftp}"
 SF_ROOT="${SF_ROOT:-/home/frs/project/aeroftp}"
 KEEP_COMPLETE="${SF_KEEP_COMPLETE:-2}"   # newest N release folders keep their full asset set
 
-VERSION="" ; FORCE=0 ; PRUNE=0
+VERSION="" ; FORCE=0 ; PRUNE=0 ; UPLOAD=1
 for arg in "$@"; do
   case "$arg" in
     --force) FORCE=1 ;;
     --prune) PRUNE=1 ;;
-    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+    --prune-only) PRUNE=1 ; UPLOAD=0 ;;
+    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
     -*) echo "unknown flag: $arg" >&2; exit 2 ;;
     *) VERSION="${arg#v}" ;;
   esac
 done
-[ -n "$VERSION" ] || { echo "usage: $0 <X.Y.Z> [--force] [--prune]" >&2; exit 2; }
+# --prune-only reads nothing but SourceForge listings, so it needs no version and no
+# GitHub Release: a missing release or a failing `gh` must not block the retention pass.
+[ -n "$VERSION" ] || [ "$UPLOAD" -eq 0 ] || {
+  echo "usage: $0 <X.Y.Z> [--force] [--prune] | $0 --prune-only [--force]" >&2; exit 2; }
 
 # Dry run is the default. Deleting 846 files by hand once was enough: nothing here
 # uploads or removes anything until you say --force.
@@ -48,7 +58,8 @@ run() {
 }
 
 need() { command -v "$1" >/dev/null || { echo "missing: $1" >&2; exit 1; }; }
-need gh ; need jq ; need curl
+need jq ; need curl
+[ "$UPLOAD" -eq 0 ] || need gh
 CLI="${AEROFTP_CLI:-$(command -v aeroftp-cli || echo /usr/bin/aeroftp-cli)}"
 [ -x "$CLI" ] || { echo "missing: aeroftp-cli" >&2; exit 1; }
 
@@ -60,31 +71,81 @@ PROFILE_ID="$("$CLI" profiles --json | jq -r --arg n "$PROFILE_NAME" \
 echo "profile: $PROFILE_NAME ($PROFILE_ID)"
 
 TAG="v$VERSION"
-gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 || {
-  echo "no published GitHub Release $TAG on $REPO" >&2; exit 1; }
+
+# Every remote listing goes through sfls, the upload's as much as the prune's.
+#
+# Parse JSON, never the text listing: it carries a banner line, a trailing summary, and
+# a `/` suffix on directory names. Scraping it silently matched nothing the first time,
+# which is the worst way for a delete loop to fail: it looks like it worked.
+#
+# And fail LOUDLY on a failed listing. The CLI prints `{"status":"error",...}` and exits
+# nonzero, but inside a process substitution that exit status is lost, `jq '.entries[]'`
+# yields nothing, and an empty folder is indistinguishable from a clean one. SourceForge
+# started refusing SSH connections mid-test (it rate-limits) and the script cheerfully
+# reported "0 files would be deleted" for eleven folders it never managed to read.
+#
+# SourceForge rate-limits and times out under a burst of SFTP sessions (it refused us
+# outright after a few hundred operations), so retry a couple of times with a pause
+# before giving up. Give up loudly, never quietly.
+sfls() {
+  local path="$1"; shift
+  local out attempt
+  for attempt in 1 2 3; do
+    # `entries` must be an ARRAY, not merely present: `null` or an object would
+    # make every later `.entries[]` query answer "not there", and a delete loop
+    # reading "not there" as "gone" would count files it never verified.
+    if out="$("$CLI" --profile "$PROFILE_ID" ls "$path" --json --no-banner "$@" 2>/dev/null)" \
+      && jq -e '.entries | type == "array"' >/dev/null 2>&1 <<<"$out"; then
+      printf '%s' "$out"
+      return 0
+    fi
+    [ "$attempt" -lt 3 ] && sleep $((attempt * 10))
+  done
+  echo "listing failed after 3 attempts: $path" >&2
+  # Print the raw last response. Piping it through jq here would replace the real cause
+  # ("Connection refused", "SFTP session Timeout") with a jq parse error.
+  echo "  last response: ${out:-<no output>}" >&2
+  echo "  SourceForge rate-limits bursts of SFTP sessions; wait a few minutes." >&2
+  exit 1
+}
 
 # Plan from the API, never from a download: a dry run that pulls 690 MiB to tell you what
 # it would have pulled is not a dry run. `assets` excludes GitHub's auto-generated source
 # archives, so they never enter the picture. Drop the snap (the Snap Store serves it, and
 # at 287 MB it was about 30% of a release folder) and its sigstore, which attests a file
-# we deliberately do not ship here.
-mapfile -t ASSETS < <(gh release view "$TAG" --repo "$REPO" --json assets \
-  -q '.assets[] | select(.name | endswith(".snap") or endswith(".snap.sigstore.json") | not) | .name')
-[ "${#ASSETS[@]}" -gt 0 ] || { echo "release $TAG has no assets to publish" >&2; exit 1; }
-BYTES=$(gh release view "$TAG" --repo "$REPO" --json assets \
-  -q '[.assets[] | select(.name | endswith(".snap") or endswith(".snap.sigstore.json") | not) | .size] | add')
+# we deliberately do not ship here. The size and the last change come along with the
+# name: they are what tells an asset already on SourceForge from one still to upload.
+declare -A GH_SIZE=() GH_TIME=()
+ASSETS=()
+if [ "$UPLOAD" -eq 1 ]; then
+  gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1 || {
+    echo "no published GitHub Release $TAG on $REPO" >&2; exit 1; }
+  # Capture first, then read: a `gh` failure inside a process substitution would be
+  # invisible and pass for a release with no assets.
+  GH_ASSETS="$(gh release view "$TAG" --repo "$REPO" --json assets \
+    -q '.assets[] | select(.name | endswith(".snap") or endswith(".snap.sigstore.json") | not)
+        | [.name, (.size | tostring), (.updatedAt | fromdateiso8601 | tostring)] | @tsv')"
+  while IFS=$'\t' read -r name size time; do
+    [ -n "$name" ] || continue
+    ASSETS+=("$name"); GH_SIZE["$name"]="$size"; GH_TIME["$name"]="$time"
+  done <<<"$GH_ASSETS"
+  [ "${#ASSETS[@]}" -gt 0 ] || { echo "release $TAG has no assets to publish" >&2; exit 1; }
 
-echo "to upload: $((${#ASSETS[@]} + 1)) files (incl. README.md), $((BYTES/1024/1024)) MiB -> $SF_ROOT/$TAG"
-printf '  %s\n' "${ASSETS[@]}" | sort
-echo "  README.md (from the release notes)"
+  BYTES=0
+  for a in "${ASSETS[@]}"; do BYTES=$((BYTES + GH_SIZE["$a"])); done
+  echo "to upload: $((${#ASSETS[@]} + 1)) files (incl. README.md), $((BYTES/1024/1024)) MiB -> $SF_ROOT/$TAG"
+  printf '  %s\n' "${ASSETS[@]}" | sort
+  echo "  README.md (from the release notes)"
+  echo "  (an asset already in $SF_ROOT/$TAG with the same size, uploaded after GitHub last changed it, is skipped)"
+fi
 
-if [ "$FORCE" -eq 0 ]; then
+if [ "$FORCE" -eq 0 ] && [ "$UPLOAD" -eq 1 ]; then
   echo
   echo "Dry run: nothing downloaded, nothing uploaded. Re-run with --force."
   [ "$PRUNE" -eq 0 ] && exit 0
 fi
 
-if [ "$FORCE" -eq 1 ]; then
+if [ "$FORCE" -eq 1 ] && [ "$UPLOAD" -eq 1 ]; then
   STAGE="$(mktemp -d)" ; trap 'rm -rf "$STAGE"' EXIT
   echo "staging: $STAGE"
   # Release notes become the folder README that SourceForge renders under the file list.
@@ -98,9 +159,6 @@ if [ "$FORCE" -eq 1 ]; then
 
 _This release was published to SourceForge through AeroFTP's own SFTP integration. The artifacts on this page were uploaded with `aeroftp-cli`, the same secure file-transfer engine that AeroFTP provides to its users. See the [SourceForge provider guide](https://docs.aeroftp.app/providers/sourceforge.html) to connect AeroFTP to SourceForge yourself._
 SFNOTE
-  for a in "${ASSETS[@]}"; do
-    gh release download "$TAG" --repo "$REPO" --dir "$STAGE" --pattern "$a" --skip-existing
-  done
 
   # An existing folder is not a failure here: a re-run after an interrupted
   # upload is the normal way this script is used a second time. SourceForge
@@ -122,6 +180,46 @@ SFNOTE
       exit 11
     fi
   fi
+
+  # Skip what is already there. The v4.2.5 re-run (2026-10-28) put every asset again in
+  # full, about 981 MiB over 19 SFTP sessions, into a folder that was already complete:
+  # SourceForge started timing out, then refused port 22 for minutes, the script died
+  # before the prune, and the file being replaced at the cut (an attestation) was gone
+  # from the folder afterwards. One listing decides instead. An asset is skipped, neither
+  # downloaded nor uploaded, only when both hold:
+  #   - its size on SourceForge equals its GitHub size. An upload cut short is shorter,
+  #     and still goes through `put --partial`, which resumes it;
+  #   - its SourceForge mtime is not older than the GitHub asset's last change. An asset
+  #     replaced on GitHub after the mirror (`gh release upload --clobber`) is the one way
+  #     the same name and size can carry other bytes, and it fails this test and is
+  #     uploaded again. A listing without a usable mtime never skips.
+  # Bytes are not compared: SourceForge's SFTP has no checksum command, and hashing the
+  # remote copy would mean downloading it over the same SSH sessions this skip exists to
+  # spare. Corruption in flight is not a same-size case either: SSH authenticates every
+  # packet. README.md is always uploaded: it is a few KiB and the notes may have been
+  # edited. The listing goes through sfls, so a failed read stops the publish instead of
+  # passing for an empty folder and re-uploading everything.
+  TAG_JSON="$(sfls "$SF_ROOT/$TAG" --files-only)"
+  SF_ENTRIES="$(jq -r '.entries[] | [.name, (.size | tostring),
+      ((.modified // "" | sub(" "; "T") | fromdateiso8601? // 0) | tostring)] | @tsv' <<<"$TAG_JSON")"
+  declare -A SF_SIZE=() SF_TIME=()
+  while IFS=$'\t' read -r name size time; do
+    [ -n "$name" ] || continue
+    SF_SIZE["$name"]="$size"; SF_TIME["$name"]="$time"
+  done <<<"$SF_ENTRIES"
+
+  SKIPPED=0
+  for a in "${ASSETS[@]}"; do
+    if [ "${SF_SIZE["$a"]:-}" = "${GH_SIZE["$a"]}" ] \
+       && [ "${SF_TIME["$a"]:-0}" -ge "${GH_TIME["$a"]}" ]; then
+      echo "already on SourceForge, same size and newer than the GitHub asset, skipped: $a"
+      SKIPPED=$((SKIPPED + 1))
+      continue
+    fi
+    gh release download "$TAG" --repo "$REPO" --dir "$STAGE" --pattern "$a" --skip-existing
+  done
+  echo "skipped $SKIPPED of ${#ASSETS[@]} asset(s) already complete on SourceForge"
+
   while IFS= read -r f; do
     "$CLI" --profile "$PROFILE_ID" put --partial "$f" "$SF_ROOT/$TAG/"
   done < <(find "$STAGE" -maxdepth 1 -type f | sort)
@@ -136,41 +234,6 @@ fi
 # not, and are lost either way).
 if [ "$PRUNE" -eq 1 ]; then
   echo "--- prune (keeping the newest $KEEP_COMPLETE complete) ---"
-  # Parse JSON, never the text listing: it carries a banner line, a trailing summary, and
-  # a `/` suffix on directory names. Scraping it silently matched nothing the first time,
-  # which is the worst way for a delete loop to fail: it looks like it worked.
-  #
-  # And fail LOUDLY on a failed listing. The CLI prints `{"status":"error",...}` and exits
-  # nonzero, but inside a process substitution that exit status is lost, `jq '.entries[]'`
-  # yields nothing, and an empty folder is indistinguishable from a clean one. SourceForge
-  # started refusing SSH connections mid-test (it rate-limits) and the script cheerfully
-  # reported "0 files would be deleted" for eleven folders it never managed to read.
-  #
-  # SourceForge rate-limits and times out under a burst of SFTP sessions (it refused us
-  # outright after a few hundred operations), so retry a couple of times with a pause
-  # before giving up. Give up loudly, never quietly.
-  sfls() {
-    local path="$1"; shift
-    local out attempt
-    for attempt in 1 2 3; do
-      # `entries` must be an ARRAY, not merely present: `null` or an object would
-      # make every later `.entries[]` query answer "not there", and a delete loop
-      # reading "not there" as "gone" would count files it never verified.
-      if out="$("$CLI" --profile "$PROFILE_ID" ls "$path" --json --no-banner "$@" 2>/dev/null)" \
-        && jq -e '.entries | type == "array"' >/dev/null 2>&1 <<<"$out"; then
-        printf '%s' "$out"
-        return 0
-      fi
-      [ "$attempt" -lt 3 ] && sleep $((attempt * 10))
-    done
-    echo "listing failed after 3 attempts: $path" >&2
-    # Print the raw last response. Piping it through jq here would replace the real cause
-    # ("Connection refused", "SFTP session Timeout") with a jq parse error.
-    echo "  last response: ${out:-<no output>}" >&2
-    echo "  SourceForge rate-limits bursts of SFTP sessions; wait a few minutes." >&2
-    exit 1
-  }
-
   # `mapfile < <(sfls ...)` would run sfls in a subshell, where its `exit 1` on a failed
   # listing kills only that subshell and leaves the caller with an empty array. Capture
   # into a variable first, so a failure actually stops the script.
@@ -230,7 +293,9 @@ if [ "$PRUNE" -eq 1 ]; then
 fi
 
 echo
-if [ "$FORCE" -eq 1 ]; then
+if [ "$FORCE" -eq 1 ] && [ "$UPLOAD" -eq 0 ]; then
+  echo "Done: prune only, nothing uploaded."
+elif [ "$FORCE" -eq 1 ]; then
   # The default download button does NOT need setting by hand: that instruction stood
   # here from v4.1.3 to v4.1.9 and was false every time, SourceForge picks the newest
   # folder on its own. Verify it instead, from the same endpoint the download button
@@ -262,5 +327,5 @@ if [ "$FORCE" -eq 1 ]; then
     echo "  could not read or parse $BEST_URL; check the download button on the project page."
   fi
 else
-  echo "Dry run. Re-run with --force to upload."
+  echo "Dry run. Re-run with --force to $([ "$UPLOAD" -eq 1 ] && echo upload || echo prune)."
 fi
