@@ -20,6 +20,9 @@ interface TableColResizerProps {
  * listens for pointermove on the window to compute a delta from the start
  * width, and clamps to minWidth on the fly. Reports the final pixel value at
  * pointerup so the parent can persist it once.
+ *
+ * Its divider line shows while the pointer is anywhere over an ancestor marked
+ * `group/colheader`, so a header row can reveal every grip at once.
  */
 export function TableColResizer({
     currentWidth,
@@ -69,6 +72,11 @@ export function TableColResizer({
             role="separator"
             aria-orientation="vertical"
             className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize select-none hover:bg-blue-400/60 active:bg-blue-500/80 transition-colors"
-        />
+        >
+            <span
+                aria-hidden="true"
+                className="absolute right-0 top-1.5 bottom-1.5 w-px bg-transparent group-hover/colheader:bg-gray-300 dark:group-hover/colheader:bg-gray-500 transition-colors"
+            />
+        </div>
     );
 }

@@ -61,7 +61,7 @@ export function AeroFileTableHeader<TColId extends string>({
 
     return (
         <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0" role="rowgroup">
-            <tr role="row">
+            <tr role="row" className="group/colheader">
                 {orderedVisibleColumns.map((col: TableColumnDef<TColId>) => {
                     const label = t(col.labelKey);
                     const isSorted = sort?.colId === col.id;
@@ -71,6 +71,16 @@ export function AeroFileTableHeader<TColId extends string>({
                     const isDragTarget = overId === col.id && dragId !== null && dragId !== col.id;
                     const extraCls = columnHeaderClassName?.(col.id) || '';
                     const sortable = col.sortable;
+                    const isLast = col.id === lastVisibleId;
+                    const resizer = !col.pinnedEnd && (
+                        <TableColResizer
+                            currentWidth={config.widths[col.id]}
+                            minWidth={col.minWidth}
+                            onResize={(w) => onLiveResize(col.id, w)}
+                            onResizeEnd={(w) => setWidth(col.id, w)}
+                            title={t('table.dragToResize')}
+                        />
+                    );
                     const onSortClick = () => {
                         if (!sortable) return;
                         if (!sort || sort.colId !== col.id) {
@@ -123,8 +133,15 @@ export function AeroFileTableHeader<TColId extends string>({
                                         ? <ArrowUp size={12} className="text-blue-500 shrink-0" />
                                         : <ArrowDown size={12} className="text-blue-500 shrink-0" />)}
                                 </button>
-                                {col.id === lastVisibleId && (
-                                    <div ref={wrapRef} className="relative shrink-0">
+                                {isLast && (
+                                    // Sticky to the scroll container's right edge, so on a
+                                    // panel that scrolls sideways the gear and this column's
+                                    // grip stay in view; -mr-3/pr-3 reach the th's edge.
+                                    <div
+                                        ref={wrapRef}
+                                        data-testid="aerofile-header-last-column-tools"
+                                        className="sticky right-0 shrink-0 -mr-3 pr-3 bg-gray-50 dark:bg-gray-700"
+                                    >
                                         <button
                                             type="button"
                                             onMouseDown={(e) => e.stopPropagation()}
@@ -145,18 +162,11 @@ export function AeroFileTableHeader<TColId extends string>({
                                                 onClose={() => setShowManager(false)}
                                             />
                                         )}
+                                        {resizer}
                                     </div>
                                 )}
                             </div>
-                            {!col.pinnedEnd && (
-                                <TableColResizer
-                                    currentWidth={config.widths[col.id]}
-                                    minWidth={col.minWidth}
-                                    onResize={(w) => onLiveResize(col.id, w)}
-                                    onResizeEnd={(w) => setWidth(col.id, w)}
-                                    title={t('table.dragToResize')}
-                                />
-                            )}
+                            {!isLast && resizer}
                         </th>
                     );
                 })}
