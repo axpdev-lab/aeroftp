@@ -14789,29 +14789,43 @@ mod tests {
     }
 
     /// The two ListObjectVersions loops on one server: the per-file history
-    /// (`list_versions`) and the trash sweep (`list_object_versions`). Each
-    /// gets its own fresh server so request counts do not mix.
+    /// (`list_versions`) and the trash sweep (`list_object_versions`, over the
+    /// whole bucket). Each gets its own fresh server so request counts do not
+    /// mix. Returns, per listing, its name, the prefix it must send, the
+    /// version ids it returned in order, and the query of every request.
     async fn both_version_listings(
         path: &str,
         pages: Vec<&'static str>,
     ) -> [(
         &'static str,
-        Result<usize, ProviderError>,
+        String,
+        Result<Vec<String>, ProviderError>,
         Vec<HashMap<String, String>>,
     ); 2] {
         let (mut p, seen, server) = versions_pages_server(pages.clone()).await;
-        let history = p.list_versions(path).await.map(|v| v.len());
+        let history = p
+            .list_versions(path)
+            .await
+            .map(|v| v.into_iter().map(|v| v.id).collect());
         server.abort();
         let history_seen = seen.lock().unwrap().clone();
 
         let (mut p, seen, server) = versions_pages_server(pages).await;
-        let trash = p.list_object_versions("", true).await.map(|v| v.len());
+        let trash = p
+            .list_object_versions("", true)
+            .await
+            .map(|v| v.into_iter().map(|v| v.version_id).collect());
         server.abort();
         let trash_seen = seen.lock().unwrap().clone();
 
         [
-            ("list_versions", history, history_seen),
-            ("list_object_versions", trash, trash_seen),
+            (
+                "list_versions",
+                path.trim_start_matches('/').to_string(),
+                history,
+                history_seen,
+            ),
+            ("list_object_versions", String::new(), trash, trash_seen),
         ]
     }
 
@@ -14823,7 +14837,8 @@ mod tests {
     #[tokio::test]
     async fn version_listings_stop_on_a_truncated_page_without_a_next_key_marker() {
         const NO_MARKER: &str = "<ListVersionsResult><IsTruncated>true</IsTruncated><Version><Key>doc.txt</Key><VersionId>v1</VersionId><IsLatest>false</IsLatest><Size>1</Size></Version></ListVersionsResult>";
-        for (name, outcome, seen) in both_version_listings("/doc.txt", vec![NO_MARKER; 20]).await {
+        for (name, _, outcome, seen) in both_version_listings("/doc.txt", vec![NO_MARKER; 20]).await
+        {
             assert!(
                 matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("did not advance")),
                 "{name}: {outcome:?}"
@@ -14838,7 +14853,7 @@ mod tests {
     #[tokio::test]
     async fn version_listings_stop_on_a_repeated_page_marker() {
         const SAME: &str = "<ListVersionsResult><IsTruncated>true</IsTruncated><NextKeyMarker>doc.txt</NextKeyMarker><NextVersionIdMarker>v1</NextVersionIdMarker><Version><Key>doc.txt</Key><VersionId>v1</VersionId><IsLatest>false</IsLatest><Size>1</Size></Version></ListVersionsResult>";
-        for (name, outcome, seen) in both_version_listings("/doc.txt", vec![SAME; 20]).await {
+        for (name, _, outcome, seen) in both_version_listings("/doc.txt", vec![SAME; 20]).await {
             assert!(
                 matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("did not advance")),
                 "{name}: {outcome:?}"
@@ -14869,9 +14884,25 @@ mod tests {
             ("/doc.txt ", "doc.txt ", vec![FIRST, SECOND]),
             ("/ ", " ", vec![SPACE_FIRST, SPACE_SECOND]),
         ] {
-            for (name, outcome, seen) in both_version_listings(path, pages.clone()).await {
-                assert_eq!(outcome.ok(), Some(2), "{name} {path:?}: both pages kept");
+            for (name, prefix, outcome, seen) in both_version_listings(path, pages.clone()).await {
+                // Both pages, in order: a loop that fetched the first page
+                // twice would also return two versions.
+                assert_eq!(
+                    outcome.ok(),
+                    Some(vec!["v2".to_string(), "v1".to_string()]),
+                    "{name} {path:?}"
+                );
                 assert_eq!(seen.len(), 2, "{name} {path:?}: {seen:?}");
+                // The mock answers by request count, so the requests
+                // themselves must show they asked for this listing.
+                for query in &seen {
+                    assert!(query.contains_key("versions"), "{name} {path:?}: {query:?}");
+                    assert_eq!(
+                        query.get("prefix"),
+                        Some(&prefix),
+                        "{name} {path:?}: {query:?}"
+                    );
+                }
                 assert_eq!(seen[0].get("key-marker"), None, "{name} {path:?}");
                 assert_eq!(
                     seen[1].get("key-marker").map(String::as_str),
