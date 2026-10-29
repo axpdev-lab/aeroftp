@@ -14861,20 +14861,29 @@ mod tests {
     async fn version_listings_follow_markers_exactly_across_pages() {
         const FIRST: &str = "<ListVersionsResult><IsTruncated>true</IsTruncated><NextKeyMarker>doc.txt </NextKeyMarker><NextVersionIdMarker> v2 </NextVersionIdMarker><Version><Key>doc.txt </Key><VersionId>v2</VersionId><IsLatest>false</IsLatest><Size>2</Size></Version></ListVersionsResult>";
         const SECOND: &str = "<ListVersionsResult><IsTruncated>false</IsTruncated><Version><Key>doc.txt </Key><VersionId>v1</VersionId><IsLatest>false</IsLatest><Size>1</Size></Version></ListVersionsResult>";
-        for (name, outcome, seen) in both_version_listings("/doc.txt ", vec![FIRST, SECOND]).await {
-            assert_eq!(outcome.ok(), Some(2), "{name}: both pages kept");
-            assert_eq!(seen.len(), 2, "{name}: {seen:?}");
-            assert_eq!(seen[0].get("key-marker"), None, "{name}");
-            assert_eq!(
-                seen[1].get("key-marker").map(String::as_str),
-                Some("doc.txt "),
-                "{name}"
-            );
-            assert_eq!(
-                seen[1].get("version-id-marker").map(String::as_str),
-                Some("v2"),
-                "{name}"
-            );
+        // A key can be a single space: the marker is whitespace only, and the
+        // parser and both listings must still carry it to the next request.
+        const SPACE_FIRST: &str = "<ListVersionsResult><IsTruncated>true</IsTruncated><NextKeyMarker> </NextKeyMarker><NextVersionIdMarker>v2</NextVersionIdMarker><Version><Key> </Key><VersionId>v2</VersionId><IsLatest>false</IsLatest><Size>2</Size></Version></ListVersionsResult>";
+        const SPACE_SECOND: &str = "<ListVersionsResult><IsTruncated>false</IsTruncated><Version><Key> </Key><VersionId>v1</VersionId><IsLatest>false</IsLatest><Size>1</Size></Version></ListVersionsResult>";
+        for (path, key_marker, pages) in [
+            ("/doc.txt ", "doc.txt ", vec![FIRST, SECOND]),
+            ("/ ", " ", vec![SPACE_FIRST, SPACE_SECOND]),
+        ] {
+            for (name, outcome, seen) in both_version_listings(path, pages.clone()).await {
+                assert_eq!(outcome.ok(), Some(2), "{name} {path:?}: both pages kept");
+                assert_eq!(seen.len(), 2, "{name} {path:?}: {seen:?}");
+                assert_eq!(seen[0].get("key-marker"), None, "{name} {path:?}");
+                assert_eq!(
+                    seen[1].get("key-marker").map(String::as_str),
+                    Some(key_marker),
+                    "{name} {path:?}"
+                );
+                assert_eq!(
+                    seen[1].get("version-id-marker").map(String::as_str),
+                    Some("v2"),
+                    "{name} {path:?}"
+                );
+            }
         }
     }
 
