@@ -15,6 +15,13 @@ interface AeroFileTableHeaderProps<TColId extends string> {
     columnHeaderClassName?: (id: TColId) => string | undefined;
 }
 
+/**
+ * Header row of the local and remote file tables: sortable, draggable and
+ * resizable columns, with the Manage columns gear on the last visible column.
+ * The gear and that column's resize grip share a block that is sticky to the
+ * scroll container's right edge, so both stay reachable while the table
+ * overflows sideways; hovering the row reveals every column divider.
+ */
 export function AeroFileTableHeader<TColId extends string>({
     columns,
     onLiveResize,
@@ -136,11 +143,12 @@ export function AeroFileTableHeader<TColId extends string>({
                                 {isLast && (
                                     // Sticky to the scroll container's right edge, so on a
                                     // panel that scrolls sideways the gear and this column's
-                                    // grip stay in view; -mr-3/pr-3 reach the th's edge.
+                                    // grip stay in view; the negative margins cover the th's
+                                    // padding so the grip keeps the cell's edge and full height.
                                     <div
                                         ref={wrapRef}
                                         data-testid="aerofile-header-last-column-tools"
-                                        className="sticky right-0 shrink-0 -mr-3 pr-3 bg-gray-50 dark:bg-gray-700"
+                                        className="sticky right-0 shrink-0 -my-2 py-2 -mr-3 pr-3 bg-gray-50 dark:bg-gray-700"
                                     >
                                         <button
                                             type="button"

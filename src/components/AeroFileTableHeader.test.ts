@@ -64,13 +64,15 @@ const headerCells = () => Array.from(host.querySelectorAll('th'));
 const gripsIn = (el: Element) => Array.from(el.querySelectorAll('[role="separator"]'));
 
 describe('AeroFileTableHeader column grips', () => {
-    it('keeps the last column grip next to the gear in the sticky tools block', () => {
+    it('places the last column grip next to the gear in the sticky tools block (classes and DOM placement only, not rendered layout)', () => {
         const cells = headerCells();
         const last = cells[cells.length - 1];
         const tools = last.querySelector('[data-testid="aerofile-header-last-column-tools"]');
         expect(tools).not.toBeNull();
         expect(tools!.className).toContain('sticky');
         expect(tools!.className).toContain('right-0');
+        expect(tools!.className).toContain('-my-2');
+        expect(tools!.className).toContain('py-2');
         expect(tools!.querySelector('button[title="table.manageColumns"]')).not.toBeNull();
         expect(gripsIn(tools!)).toHaveLength(1);
         expect(gripsIn(last)).toHaveLength(1);
