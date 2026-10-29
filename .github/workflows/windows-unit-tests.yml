@@ -70,8 +70,10 @@ jobs:
     # rebuild. The same day the two checks got their 40 minutes as step caps,
     # 25 and 15 (slowest of eight runs from 2026-10-09 to 2026-10-11: 15m07s
     # and 6m00s), so every compile and test step now has a cap and they sum
-    # to 140; the remaining 10 are for the uncapped setup steps.
-    timeout-minutes: 150
+    # to 140; the remaining 10 are for the uncapped setup steps. Requested 90
+    # replaces both compile-surface checks with all-targets Clippy and gives
+    # each 10 more minutes for linting. The job cap includes those step caps.
+    timeout-minutes: 170
 
     steps:
       - name: Checkout
@@ -82,6 +84,7 @@ jobs:
         with:
           toolchain: 1.97.1
           targets: x86_64-pc-windows-msvc
+          components: clippy
 
       - name: Rust cache
         uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
@@ -125,11 +128,10 @@ jobs:
             }
           }
 
-      # The two checks below and the test build fail on any warning from this
-      # crate. Clippy with -D warnings runs only on Linux (build.yml,
-      # linux-validate), so code compiled only here, and items whose only users
-      # sit behind a unix cfg, built with warnings nobody had to read: run
-      # 38072169081 printed 19 distinct rustc warnings across these three steps.
+      # Both compile-surface gates run native MSVC Clippy with warnings denied,
+      # including test and binary targets. Linux Clippy cannot see Windows-only
+      # code. Cover both the classic-only fallback and shipping features here.
+      # The test build also fails on any rustc warning from this crate.
       # `build.warnings` counts this crate's warnings only (build-script
       # `cargo:warning` lines do not count, linker output reported through the
       # `linker_messages` lint does) and, unlike RUSTFLAGS, changes no
@@ -145,10 +147,10 @@ jobs:
       # treats as "drop to plain SFTP silently". Regression here means
       # the surgical `#[cfg(unix)]` gate has leaked a Unix-only symbol
       # back into the cross-OS surface.
-      - name: cargo check (--no-default-features, classic-only fallback)
+      - name: Clippy (--no-default-features, classic-only fallback)
         working-directory: src-tauri
-        timeout-minutes: 25
-        run: cargo check --locked --no-default-features --config 'build.warnings="deny"'
+        timeout-minutes: 35
+        run: cargo clippy --locked --all-targets --no-default-features --config 'build.warnings="deny"' -- -D warnings
 
       # Compile-surface gate for the shipping configuration (default
       # features, which include `aerorsync`). This confirms
@@ -156,10 +158,10 @@ jobs:
       # (`RsyncCapability`/`RsyncConfig`/`RsyncError`/`RsyncStats`),
       # the cross-platform adapter, and `SftpProvider::delta_transport()`
       # all build cleanly under MSVC with the feature on.
-      - name: "cargo check (default features: shipping configuration)"
+      - name: "Clippy (default features: shipping configuration)"
         working-directory: src-tauri
-        timeout-minutes: 15
-        run: cargo check --locked --all-targets --config 'build.warnings="deny"'
+        timeout-minutes: 25
+        run: cargo clippy --locked --all-targets --config 'build.warnings="deny"' -- -D warnings
       # G105, 2026-09-18. Until today this job's name promised "native
       # unit tests" and it ran none: every `cargo test` in the repository
       # executes on a Linux runner, so no Rust assertion had ever been

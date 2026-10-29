@@ -1114,7 +1114,7 @@ async fn eject_volume_macos(mount_point: &str) -> Result<String, String> {
 async fn eject_volume_windows(mount_point: &str) -> Result<String, String> {
     // Derive the bare drive letter, e.g. "E:\\" or "E:/" or "E:" -> "E:".
     let trimmed = mount_point.trim();
-    let drive = trimmed.trim_end_matches(|c| c == '\\' || c == '/');
+    let drive = trimmed.trim_end_matches(['\\', '/']);
 
     // Strict validation: exactly one ASCII letter followed by a colon.
     let bytes = drive.as_bytes();
