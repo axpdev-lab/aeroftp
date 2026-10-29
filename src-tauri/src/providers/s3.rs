@@ -6635,6 +6635,7 @@ impl StorageProvider for S3Provider {
         let mut all_versions = Vec::new();
         let mut key_marker: Option<String> = None;
         let mut version_id_marker: Option<String> = None;
+        let mut sent_markers: HashSet<(String, Option<String>)> = HashSet::new();
 
         loop {
             let mut params: Vec<(&str, &str)> = vec![("versions", ""), ("prefix", key)];
@@ -6851,11 +6852,17 @@ impl StorageProvider for S3Provider {
                 buf.clear();
             }
 
-            if is_truncated {
-                key_marker = next_key_marker.map(|m| m.trim().to_string());
-                version_id_marker = next_version_id_marker.map(|m| m.trim().to_string());
-            } else {
-                break;
+            match next_versions_page(
+                is_truncated,
+                next_key_marker,
+                next_version_id_marker,
+                &mut sent_markers,
+            )? {
+                Some((km, vm)) => {
+                    key_marker = Some(km);
+                    version_id_marker = vm;
+                }
+                None => break,
             }
         }
 
@@ -7048,6 +7055,7 @@ impl StorageProvider for S3Provider {
         let mut all_entries: Vec<TrashEntry> = Vec::new();
         let mut key_marker: Option<String> = None;
         let mut version_id_marker: Option<String> = None;
+        let mut sent_markers: HashSet<(String, Option<String>)> = HashSet::new();
 
         loop {
             let mut params: Vec<(&str, &str)> = vec![("versions", ""), ("prefix", prefix)];
@@ -7086,11 +7094,17 @@ impl StorageProvider for S3Provider {
                 parse_object_versions_page(&xml_str)?;
             all_entries.extend(entries);
 
-            if is_truncated {
-                key_marker = next_key_marker;
-                version_id_marker = next_version_id_marker;
-            } else {
-                break;
+            match next_versions_page(
+                is_truncated,
+                next_key_marker,
+                next_version_id_marker,
+                &mut sent_markers,
+            )? {
+                Some((km, vm)) => {
+                    key_marker = Some(km);
+                    version_id_marker = vm;
+                }
+                None => break,
             }
         }
 
@@ -8090,6 +8104,46 @@ fn retain_trash_entries(entries: &mut Vec<TrashEntry>, include_noncurrent: bool)
     });
 }
 
+/// Where the next ListObjectVersions page starts: `None` when the listing is
+/// complete, otherwise the `(key-marker, version-id-marker)` pair to send.
+///
+/// A truncated page must name a NextKeyMarker, and the pair must be one this
+/// listing has not sent yet. Without the first the next request carries no
+/// marker and is the first page again; without the second the server answers
+/// the same page for ever. Either way the loop would never end and would pile
+/// the same versions up, so both stop the listing with an error instead: the
+/// trash sweep purges what it lists, and a partial list must not pass for the
+/// whole one.
+///
+/// The key marker is returned exactly as written, because a key is a name and
+/// whitespace belongs to it. The version id is an opaque token and is trimmed;
+/// a blank one means none.
+fn next_versions_page(
+    is_truncated: bool,
+    next_key_marker: Option<String>,
+    next_version_id_marker: Option<String>,
+    sent: &mut HashSet<(String, Option<String>)>,
+) -> Result<Option<(String, Option<String>)>, ProviderError> {
+    if !is_truncated {
+        return Ok(None);
+    }
+    let key_marker = next_key_marker.filter(|m| !m.is_empty()).ok_or_else(|| {
+        ProviderError::ServerError(
+            "S3 version listing did not advance: a truncated page named no NextKeyMarker".into(),
+        )
+    })?;
+    let version_id_marker = next_version_id_marker
+        .map(|m| m.trim().to_string())
+        .filter(|m| !m.is_empty());
+    let next = (key_marker, version_id_marker);
+    if !sent.insert(next.clone()) {
+        return Err(ProviderError::ServerError(
+            "S3 version listing did not advance past its page".into(),
+        ));
+    }
+    Ok(Some(next))
+}
+
 /// Parse one page of a ListVersionsResult document into `TrashEntry` rows.
 ///
 /// Captures both `<Version>` and `<DeleteMarker>` elements across every key (no
@@ -8270,11 +8324,13 @@ fn parse_object_versions_page(xml_str: &str) -> Result<VersionsPage, ProviderErr
         buf.clear();
     }
 
+    // The markers go back as written: `next_versions_page` keeps the key
+    // marker whole (a key is a name) and trims the opaque version id.
     Ok((
         entries,
         is_truncated,
-        next_key_marker.map(|m| m.trim().to_string()),
-        next_version_id_marker.map(|m| m.trim().to_string()),
+        next_key_marker,
+        next_version_id_marker,
     ))
 }
 
@@ -14690,6 +14746,213 @@ mod tests {
         );
         assert!(S3_TARGET_STORAGE_CLASSES.contains(&"DEEP_ARCHIVE"));
         assert!(!S3_TARGET_STORAGE_CLASSES.contains(&"REDUCED_REDUNDANCY"));
+    }
+
+    /// A ListObjectVersions endpoint answering `pages` in order, then a final
+    /// empty page once `pages` is spent, so a client that never stops still
+    /// ends and the test can count what it sent. Returns the provider and the
+    /// query of every request it received.
+    async fn versions_pages_server(
+        pages: Vec<&'static str>,
+    ) -> (
+        S3Provider,
+        std::sync::Arc<std::sync::Mutex<Vec<HashMap<String, String>>>>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        use std::sync::{Arc, Mutex};
+        const LAST: &str =
+            "<ListVersionsResult><IsTruncated>false</IsTruncated></ListVersionsResult>";
+        let seen: Arc<Mutex<Vec<HashMap<String, String>>>> = Arc::new(Mutex::new(Vec::new()));
+        let app = {
+            let seen = Arc::clone(&seen);
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                let pages = pages.clone();
+                async move {
+                    let url = reqwest::Url::parse(&format!("http://h{}", req.uri())).unwrap();
+                    let query: HashMap<String, String> = url.query_pairs().into_owned().collect();
+                    let mut seen = seen.lock().unwrap();
+                    let body = pages.get(seen.len()).copied().unwrap_or(LAST);
+                    seen.push(query);
+                    axum::http::Response::new(axum::body::Body::from(body))
+                }
+            }))
+        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        (provider, seen, server)
+    }
+
+    /// The two ListObjectVersions loops on one server: the per-file history
+    /// (`list_versions`) and the trash sweep (`list_object_versions`, over the
+    /// whole bucket). Each gets its own fresh server so request counts do not
+    /// mix. Returns, per listing, its name, the prefix it must send, the
+    /// version ids it returned in order, and the query of every request.
+    async fn both_version_listings(
+        path: &str,
+        pages: Vec<&'static str>,
+    ) -> [(
+        &'static str,
+        String,
+        Result<Vec<String>, ProviderError>,
+        Vec<HashMap<String, String>>,
+    ); 2] {
+        let (mut p, seen, server) = versions_pages_server(pages.clone()).await;
+        let history = p
+            .list_versions(path)
+            .await
+            .map(|v| v.into_iter().map(|v| v.id).collect());
+        server.abort();
+        let history_seen = seen.lock().unwrap().clone();
+
+        let (mut p, seen, server) = versions_pages_server(pages).await;
+        let trash = p
+            .list_object_versions("", true)
+            .await
+            .map(|v| v.into_iter().map(|v| v.version_id).collect());
+        server.abort();
+        let trash_seen = seen.lock().unwrap().clone();
+
+        [
+            (
+                "list_versions",
+                path.trim_start_matches('/').to_string(),
+                history,
+                history_seen,
+            ),
+            ("list_object_versions", String::new(), trash, trash_seen),
+        ]
+    }
+
+    /// Deep Scan, tracker Requested 104: a page that says it is truncated but
+    /// names no NextKeyMarker sent the next request with no marker at all,
+    /// which is the first page again, so the loop restarted the listing for
+    /// ever and piled the same versions up in memory. It must stop at the
+    /// first such page with an error, not return the pile.
+    #[tokio::test]
+    async fn version_listings_stop_on_a_truncated_page_without_a_next_key_marker() {
+        const NO_MARKER: &str = "<ListVersionsResult><IsTruncated>true</IsTruncated><Version><Key>doc.txt</Key><VersionId>v1</VersionId><IsLatest>false</IsLatest><Size>1</Size></Version></ListVersionsResult>";
+        for (name, _, outcome, seen) in both_version_listings("/doc.txt", vec![NO_MARKER; 20]).await
+        {
+            assert!(
+                matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("did not advance")),
+                "{name}: {outcome:?}"
+            );
+            assert_eq!(seen.len(), 1, "{name}: one page, then stop: {seen:?}");
+        }
+    }
+
+    /// Same Deep Scan finding, other half: a server that hands back the
+    /// markers it was just sent (or any pair it already gave) never moves
+    /// forward. The listing must refuse the repeat instead of asking again.
+    #[tokio::test]
+    async fn version_listings_stop_on_a_repeated_page_marker() {
+        const SAME: &str = "<ListVersionsResult><IsTruncated>true</IsTruncated><NextKeyMarker>doc.txt</NextKeyMarker><NextVersionIdMarker>v1</NextVersionIdMarker><Version><Key>doc.txt</Key><VersionId>v1</VersionId><IsLatest>false</IsLatest><Size>1</Size></Version></ListVersionsResult>";
+        for (name, _, outcome, seen) in both_version_listings("/doc.txt", vec![SAME; 20]).await {
+            assert!(
+                matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("did not advance")),
+                "{name}: {outcome:?}"
+            );
+            assert_eq!(
+                seen.len(),
+                2,
+                "{name}: the repeat is the second page: {seen:?}"
+            );
+        }
+    }
+
+    /// Positive control for the two guards above: markers that move forward
+    /// are followed, both pages are kept, and the key marker goes back exactly
+    /// as the server wrote it. A key is a name, and a trailing space is part of
+    /// it: `list_versions` used to trim it, so `doc.txt ` came back as the
+    /// marker `doc.txt`, which lists `doc.txt ` again. The version id is an
+    /// opaque token and is still trimmed.
+    #[tokio::test]
+    async fn version_listings_follow_markers_exactly_across_pages() {
+        const FIRST: &str = "<ListVersionsResult><IsTruncated>true</IsTruncated><NextKeyMarker>doc.txt </NextKeyMarker><NextVersionIdMarker> v2 </NextVersionIdMarker><Version><Key>doc.txt </Key><VersionId>v2</VersionId><IsLatest>false</IsLatest><Size>2</Size></Version></ListVersionsResult>";
+        const SECOND: &str = "<ListVersionsResult><IsTruncated>false</IsTruncated><Version><Key>doc.txt </Key><VersionId>v1</VersionId><IsLatest>false</IsLatest><Size>1</Size></Version></ListVersionsResult>";
+        // A key can be a single space: the marker is whitespace only, and the
+        // parser and both listings must still carry it to the next request.
+        const SPACE_FIRST: &str = "<ListVersionsResult><IsTruncated>true</IsTruncated><NextKeyMarker> </NextKeyMarker><NextVersionIdMarker>v2</NextVersionIdMarker><Version><Key> </Key><VersionId>v2</VersionId><IsLatest>false</IsLatest><Size>2</Size></Version></ListVersionsResult>";
+        const SPACE_SECOND: &str = "<ListVersionsResult><IsTruncated>false</IsTruncated><Version><Key> </Key><VersionId>v1</VersionId><IsLatest>false</IsLatest><Size>1</Size></Version></ListVersionsResult>";
+        for (path, key_marker, pages) in [
+            ("/doc.txt ", "doc.txt ", vec![FIRST, SECOND]),
+            ("/ ", " ", vec![SPACE_FIRST, SPACE_SECOND]),
+        ] {
+            for (name, prefix, outcome, seen) in both_version_listings(path, pages.clone()).await {
+                // Both pages, in order: a loop that fetched the first page
+                // twice would also return two versions.
+                assert_eq!(
+                    outcome.ok(),
+                    Some(vec!["v2".to_string(), "v1".to_string()]),
+                    "{name} {path:?}"
+                );
+                assert_eq!(seen.len(), 2, "{name} {path:?}: {seen:?}");
+                // The mock answers by request count, so the requests
+                // themselves must show they asked for this listing.
+                for query in &seen {
+                    assert!(query.contains_key("versions"), "{name} {path:?}: {query:?}");
+                    assert_eq!(
+                        query.get("prefix"),
+                        Some(&prefix),
+                        "{name} {path:?}: {query:?}"
+                    );
+                }
+                assert_eq!(seen[0].get("key-marker"), None, "{name} {path:?}");
+                assert_eq!(
+                    seen[1].get("key-marker").map(String::as_str),
+                    Some(key_marker),
+                    "{name} {path:?}"
+                );
+                assert_eq!(
+                    seen[1].get("version-id-marker").map(String::as_str),
+                    Some("v2"),
+                    "{name} {path:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn next_versions_page_needs_a_new_key_marker_to_continue() {
+        let mut sent = HashSet::new();
+        let marker = |s: &str| Some(s.to_string());
+
+        assert!(matches!(
+            next_versions_page(false, None, None, &mut sent),
+            Ok(None)
+        ));
+        for missing in [None, marker("")] {
+            assert!(
+                matches!(
+                    next_versions_page(true, missing.clone(), marker("v1"), &mut sent),
+                    Err(ProviderError::ServerError(_))
+                ),
+                "{missing:?}"
+            );
+        }
+        // A blank version id means none: S3 omits it for the key's first page.
+        assert_eq!(
+            next_versions_page(true, marker("a"), marker("  "), &mut sent).unwrap(),
+            Some(("a".to_string(), None))
+        );
+        assert_eq!(
+            next_versions_page(true, marker("a"), marker("v1"), &mut sent).unwrap(),
+            Some(("a".to_string(), Some("v1".to_string())))
+        );
+        assert!(next_versions_page(true, marker("a"), marker(" v1 "), &mut sent).is_err());
+        assert!(next_versions_page(true, marker("a"), None, &mut sent).is_err());
+        // A key can be a single space, so only an empty marker is missing; a
+        // whitespace-only one continues unchanged.
+        assert_eq!(
+            next_versions_page(true, marker(" "), marker("v1"), &mut sent).unwrap(),
+            Some((" ".to_string(), Some("v1".to_string())))
+        );
     }
 }
 
