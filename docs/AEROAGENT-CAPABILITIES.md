@@ -153,7 +153,7 @@ for the closed public action contract.
 | `aeroftp_correct_verify` | safe |
 | `aeroftp_correct_repair` | medium |
 
-`archive_compress` applies sensitive-path rules to every source, including nested files and resolved aliases, for ZIP, 7z and the TAR family. A forbidden or unreadable source aborts the whole operation; an existing destination is preserved. A call is limited to 100,000 discovered source entries, including directories and links. Safe nested symlinks are omitted, while selected symlink roots are refused. Ordinary GUI and CLI compression retain their backup behaviour. These pathname checks do not provide atomic protection against concurrent filesystem changes.
+`archive_compress` applies sensitive-path rules to every source, including nested files and resolved aliases, for ZIP, 7z and the TAR family. A forbidden or unreadable source aborts the whole operation; an existing destination is preserved. A call is limited to 100,000 discovered source entries, including directories and links. Safe nested symlinks are omitted, while selected symlink roots are refused. An existing archive temporary (`.aerotmp`) is refused and left intact; wait for its owner or recover it before retrying. Ordinary GUI and CLI compression retain their backup behaviour. These pathname checks do not provide atomic protection against concurrent filesystem changes.
 
 ### Context, system and app control
 

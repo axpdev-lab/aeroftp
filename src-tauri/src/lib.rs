@@ -7509,14 +7509,14 @@ async fn calculate_checksum(path: String, algorithm: String) -> Result<String, S
     }
 }
 
-/// RAII guard for atomic archive writes. The archive is written to a sibling
-/// `<output>.aerotmp` and renamed into place only on success; on any early
-/// error (a `?` return) `Drop` removes the temp file, so the compress path can
-/// never leave a partial or 0-byte sibling next to the source (discussion
-/// #270). Mirrors the atomic pattern already used by extraction.
+/// RAII guard for archive publication. Exclusively claim a sibling temporary
+/// and rename it into place only on success. On an early error, remove only a
+/// temporary created by this call; a pre-existing file or link is refused and
+/// retained. Mirrors extraction's publish-on-success behavior (discussion #270).
 struct ArchiveTempFile {
     tmp: std::path::PathBuf,
     committed: bool,
+    created: bool,
 }
 
 impl ArchiveTempFile {
@@ -7524,7 +7524,19 @@ impl ArchiveTempFile {
         Self {
             tmp: crate::util::temp_name::sibling(std::path::Path::new(final_path), ".aerotmp"),
             committed: false,
+            created: false,
         }
+    }
+
+    /// Claim the temporary exclusively; a pre-existing entry is never opened,
+    /// followed or removed by this guard if creation fails.
+    fn create_file(&mut self) -> std::io::Result<std::fs::File> {
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&self.tmp)?;
+        self.created = true;
+        Ok(file)
     }
 
     fn path(&self) -> &std::path::Path {
@@ -7543,7 +7555,7 @@ impl ArchiveTempFile {
 
 impl Drop for ArchiveTempFile {
     fn drop(&mut self) {
-        if !self.committed {
+        if self.created && !self.committed {
             let _ = std::fs::remove_file(&self.tmp);
         }
     }
@@ -7943,7 +7955,6 @@ async fn compress_files_impl(
         validate_path(p)?;
     }
 
-    use std::fs::File;
     use walkdir::WalkDir;
     use zip::write::SimpleFileOptions;
     use zip::ZipWriter;
@@ -7970,10 +7981,11 @@ async fn compress_files_impl(
     );
 
     // Atomic write: build into <output>.aerotmp, rename on success.
-    let temp = ArchiveTempFile::new(&output_path);
+    let mut temp = ArchiveTempFile::new(&output_path);
     access.authorize_output(temp.path())?;
-    let file =
-        File::create(temp.path()).map_err(|e| format!("Failed to create ZIP file: {}", e))?;
+    let file = temp
+        .create_file()
+        .map_err(|e| format!("Failed to create ZIP file: {}", e))?;
 
     let mut zip = ZipWriter::new(file);
     let level = deflate_effective_level(compression_level.unwrap_or(5));
@@ -8306,10 +8318,11 @@ async fn compress_7z_impl(
     );
 
     // Create the 7z archive (atomic temp; renamed into place on success).
-    let temp = ArchiveTempFile::new(&output_path);
+    let mut temp = ArchiveTempFile::new(&output_path);
     access.authorize_output(temp.path())?;
-    let output_file =
-        File::create(temp.path()).map_err(|e| format!("Failed to create 7z file: {}", e))?;
+    let output_file = temp
+        .create_file()
+        .map_err(|e| format!("Failed to create 7z file: {}", e))?;
 
     let mut sz = ArchiveWriter::new(output_file)
         .map_err(|e| format!("Failed to create 7z writer: {}", e))?;
@@ -9491,7 +9504,6 @@ async fn compress_tar_impl(
     compression_level: Option<i64>,
     access: ArchiveAccess<'_>,
 ) -> Result<String, String> {
-    use std::fs::File;
     use std::path::Path;
     use walkdir::WalkDir;
 
@@ -9555,9 +9567,11 @@ async fn compress_tar_impl(
     );
 
     // Create the archive based on format (atomic temp; renamed on success).
-    let temp = ArchiveTempFile::new(&output_path);
+    let mut temp = ArchiveTempFile::new(&output_path);
     access.authorize_output(temp.path())?;
-    let file = File::create(temp.path()).map_err(|e| format!("Failed to create archive: {}", e))?;
+    let file = temp
+        .create_file()
+        .map_err(|e| format!("Failed to create archive: {}", e))?;
 
     match format.as_str() {
         "tar" => {
@@ -9702,8 +9716,10 @@ async fn compress_single_impl(
     );
 
     // Atomic temp; renamed into place on success (Drop cleans it up on any error).
-    let temp = ArchiveTempFile::new(&output_path);
-    let out = File::create(temp.path()).map_err(|e| format!("Failed to create archive: {}", e))?;
+    let mut temp = ArchiveTempFile::new(&output_path);
+    let out = temp
+        .create_file()
+        .map_err(|e| format!("Failed to create archive: {}", e))?;
     let infile = File::open(src).map_err(|e| format!("Failed to open input: {}", e))?;
     // Count bytes as the encoder pulls them through the source (uncompressed payload).
     let mut reader = crate::archive_progress::ProgressReader::new(infile, &mut progress);

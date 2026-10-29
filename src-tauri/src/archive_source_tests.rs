@@ -471,3 +471,136 @@ async fn requested102_non_utf8_names_fail_without_publishing_a_lossy_archive() {
         fixture.preserved();
     }
 }
+
+#[tokio::test]
+async fn requested102_review_existing_temp_is_not_overwritten_or_removed() {
+    for format in FORMATS {
+        let fixture = Fixture::new();
+        let temp = crate::util::temp_name::sibling(&fixture.output, ".aerotmp");
+        std::fs::write(&temp, b"unrelated existing temporary").unwrap();
+        let outcome = fixture.compress(&fixture.home, format).await;
+        assert!(
+            outcome.is_err(),
+            "{format}: an existing temporary must refuse creation"
+        );
+        assert_eq!(
+            std::fs::read(&fixture.output).unwrap(),
+            b"original archive",
+            "{format}"
+        );
+        assert_eq!(
+            std::fs::read(&temp).unwrap(),
+            b"unrelated existing temporary",
+            "{format}"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn requested102_review_preplaced_temp_link_cannot_truncate_destination() {
+    for format in FORMATS {
+        let fixture = Fixture::new();
+        let source = fixture.home.join("ordinary/nested/hello.txt");
+        let temp = crate::util::temp_name::sibling(&fixture.output, ".aerotmp");
+        std::os::unix::fs::symlink(&fixture.output, &temp).unwrap();
+        let policy = |path: &Path| {
+            fixture.policy(path)?;
+            if path == temp {
+                // Admit the source at scan time, then force a later read to fail.
+                // The old File::create follows the admitted output alias first.
+                std::fs::remove_file(&source).unwrap();
+            }
+            Ok(())
+        };
+        let outcome = compress_archive_with_policy(
+            vec![fixture.home.to_str().unwrap().into()],
+            fixture.output.to_str().unwrap().into(),
+            format,
+            None,
+            Some(0),
+            &policy,
+        )
+        .await;
+        assert!(outcome.is_err(), "{format}: missing source must fail");
+        assert_eq!(
+            std::fs::read(&fixture.output).unwrap(),
+            b"original archive",
+            "{format}: existing destination was truncated through the temporary link"
+        );
+        assert!(
+            std::fs::symlink_metadata(&temp).unwrap().is_symlink(),
+            "{format}: unclaimed link must survive cleanup"
+        );
+    }
+}
+
+#[test]
+fn requested102_review_unclaimed_temp_is_not_deleted_on_drop() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = dir.path().join("archive.zip");
+    let guard = ArchiveTempFile::new(output.to_str().unwrap());
+    let temp = guard.path().to_path_buf();
+    std::fs::write(&temp, b"belongs to another operation").unwrap();
+    drop(guard);
+    assert_eq!(
+        std::fs::read(&temp).unwrap(),
+        b"belongs to another operation"
+    );
+}
+
+#[tokio::test]
+async fn requested102_review_single_stream_temp_is_exclusive() {
+    for format in ["gz", "xz", "bz2"] {
+        let fixture = Fixture::new();
+        let temp = crate::util::temp_name::sibling(&fixture.output, ".aerotmp");
+        std::fs::write(&temp, b"unrelated existing temporary").unwrap();
+        let outcome = compress_single_core(
+            fixture
+                .home
+                .join("ordinary/nested/hello.txt")
+                .to_str()
+                .unwrap()
+                .into(),
+            fixture.output.to_str().unwrap().into(),
+            format.into(),
+            Some(0),
+        )
+        .await;
+        assert!(
+            outcome.is_err(),
+            "{format}: an existing temporary must refuse creation"
+        );
+        assert_eq!(
+            std::fs::read(&fixture.output).unwrap(),
+            b"original archive",
+            "{format}"
+        );
+        assert_eq!(
+            std::fs::read(&temp).unwrap(),
+            b"unrelated existing temporary",
+            "{format}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn requested102_review_single_stream_owned_temp_is_cleaned_on_error() {
+    let fixture = Fixture::new();
+    let outcome = compress_single_core(
+        fixture
+            .home
+            .join("ordinary/nested/hello.txt")
+            .to_str()
+            .unwrap()
+            .into(),
+        fixture.output.to_str().unwrap().into(),
+        "unsupported".into(),
+        Some(0),
+    )
+    .await;
+    assert!(outcome
+        .unwrap_err()
+        .contains("Unsupported standalone format"));
+    fixture.preserved();
+}

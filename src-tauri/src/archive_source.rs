@@ -165,4 +165,29 @@ mod tests {
             .contains("entry limit exceeded"));
         assert_eq!(access.collect_bounded(&roots, 3).unwrap().len(), 2);
     }
+
+    #[test]
+    fn requested102_review_collect_uses_documented_production_limit() {
+        // Repeated selection of one real file exercises every production
+        // admission without creating 100,000 filesystem objects or a test seam.
+        const DOCUMENTED_LIMIT: usize = 100_000;
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("fixture.txt");
+        std::fs::write(&file, b"fixture").unwrap();
+        let allow = |_: &Path| Ok(());
+        let access = ArchiveAccess {
+            app: None,
+            policy: Some(&allow),
+        };
+        let mut roots = vec![file.to_str().unwrap().to_string(); DOCUMENTED_LIMIT];
+        let collected = access.collect(&roots).unwrap().unwrap();
+        assert_eq!(collected.len(), DOCUMENTED_LIMIT);
+        drop(collected);
+        roots.push(file.to_str().unwrap().to_string());
+        assert!(access
+            .collect(&roots)
+            .err()
+            .unwrap()
+            .contains("entry limit exceeded"));
+    }
 }
