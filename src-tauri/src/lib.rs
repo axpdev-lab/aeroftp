@@ -57,6 +57,10 @@ pub mod ai_stream;
 mod ai_tools;
 pub mod app_events;
 mod archive_browse;
+mod archive_source;
+#[cfg(test)]
+mod archive_source_tests;
+use archive_source::ArchiveAccess;
 mod authorization_redaction;
 pub(crate) mod compare_cancel;
 #[cfg(target_os = "linux")]
@@ -7505,14 +7509,14 @@ async fn calculate_checksum(path: String, algorithm: String) -> Result<String, S
     }
 }
 
-/// RAII guard for atomic archive writes. The archive is written to a sibling
-/// `<output>.aerotmp` and renamed into place only on success; on any early
-/// error (a `?` return) `Drop` removes the temp file, so the compress path can
-/// never leave a partial or 0-byte sibling next to the source (discussion
-/// #270). Mirrors the atomic pattern already used by extraction.
+/// RAII guard for archive publication. Exclusively claim a sibling temporary
+/// and rename it into place only on success. On an early error, remove only a
+/// temporary created by this call; a pre-existing file or link is refused and
+/// retained. Mirrors extraction's publish-on-success behavior (discussion #270).
 struct ArchiveTempFile {
     tmp: std::path::PathBuf,
     committed: bool,
+    created: bool,
 }
 
 impl ArchiveTempFile {
@@ -7520,7 +7524,19 @@ impl ArchiveTempFile {
         Self {
             tmp: crate::util::temp_name::sibling(std::path::Path::new(final_path), ".aerotmp"),
             committed: false,
+            created: false,
         }
+    }
+
+    /// Claim the temporary exclusively; a pre-existing entry is never opened,
+    /// followed or removed by this guard if creation fails.
+    fn create_file(&mut self) -> std::io::Result<std::fs::File> {
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&self.tmp)?;
+        self.created = true;
+        Ok(file)
     }
 
     fn path(&self) -> &std::path::Path {
@@ -7539,7 +7555,7 @@ impl ArchiveTempFile {
 
 impl Drop for ArchiveTempFile {
     fn drop(&mut self) {
-        if !self.committed {
+        if self.created && !self.committed {
             let _ = std::fs::remove_file(&self.tmp);
         }
     }
@@ -7631,9 +7647,11 @@ fn add_zip_file_entry(
     level: i64,
     secret_password: &Option<SecretString>,
     progress: &mut crate::archive_progress::ArchiveProgress,
+    policy: Option<&archive_source::SourcePolicy<'_>>,
 ) -> Result<(), String> {
     use std::io::{Read, Write};
 
+    archive_source::authorize_file(file_path, policy)?;
     let file_size = std::fs::metadata(file_path).map(|m| m.len()).unwrap_or(0);
 
     if file_size < ZIP_STORE_TRIAL_CAP {
@@ -7669,6 +7687,7 @@ fn add_zip_file_entry(
             zip.start_file(entry_name, base)
                 .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
         }
+        archive_source::authorize_file(file_path, policy)?;
         let f =
             std::fs::File::open(file_path).map_err(|e| format!("Failed to open file: {}", e))?;
         let mut reader = crate::archive_progress::ProgressReader::new(f, progress);
@@ -7912,7 +7931,14 @@ async fn compress_files(
     compression_level: Option<i64>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
-    compress_files_impl(paths, output_path, password, compression_level, Some(app)).await
+    compress_files_impl(
+        paths,
+        output_path,
+        password,
+        compression_level,
+        Some(app).into(),
+    )
+    .await
 }
 
 /// Implementation shared by the GUI command (passes `Some(app)` for live progress)
@@ -7922,14 +7948,13 @@ async fn compress_files_impl(
     output_path: String,
     password: Option<String>,
     compression_level: Option<i64>,
-    app: Option<tauri::AppHandle>,
+    access: ArchiveAccess<'_>,
 ) -> Result<String, String> {
     validate_path(&output_path)?;
     for p in &paths {
         validate_path(p)?;
     }
 
-    use std::fs::File;
     use walkdir::WalkDir;
     use zip::write::SimpleFileOptions;
     use zip::ZipWriter;
@@ -7939,17 +7964,28 @@ async fn compress_files_impl(
 
     // Byte-true progress denominator: the real input total, mirroring the write-side
     // traversal so the bar closes exactly at the total (HANDOFF section 3.3.A).
-    let total_bytes = sum_compress_input_bytes(&paths);
+    access.authorize_output(std::path::Path::new(&output_path))?;
+    let sources = access.collect(&paths)?;
+    let total_bytes = sources.as_ref().map_or_else(
+        || sum_compress_input_bytes(&paths),
+        |sources| {
+            sources
+                .iter()
+                .fold(0u64, |n, source| n.saturating_add(source.bytes))
+        },
+    );
     let mut progress = crate::archive_progress::ArchiveProgress::for_optional_app(
-        app,
+        access.app.clone(),
         crate::archive_progress::phase::COMPRESSING,
         total_bytes,
     );
 
     // Atomic write: build into <output>.aerotmp, rename on success.
-    let temp = ArchiveTempFile::new(&output_path);
-    let file =
-        File::create(temp.path()).map_err(|e| format!("Failed to create ZIP file: {}", e))?;
+    let mut temp = ArchiveTempFile::new(&output_path);
+    access.authorize_output(temp.path())?;
+    let file = temp
+        .create_file()
+        .map_err(|e| format!("Failed to create ZIP file: {}", e))?;
 
     let mut zip = ZipWriter::new(file);
     let level = deflate_effective_level(compression_level.unwrap_or(5));
@@ -7964,63 +8000,90 @@ async fn compress_files_impl(
             .compression_level(Some(level))
     };
 
-    for path in &paths {
-        let path = std::path::Path::new(path);
+    if let Some(sources) = sources {
+        for source in sources {
+            archive_source::authorize(&source.path, access.policy)?;
+            if source.directory {
+                let options = if let Some(ref pwd) = secret_password {
+                    base_options.with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret())
+                } else {
+                    base_options
+                };
+                zip.add_directory(format!("{}/", source.name), options)
+                    .map_err(|e| format!("Failed to add directory to ZIP: {e}"))?;
+            } else {
+                add_zip_file_entry(
+                    &mut zip,
+                    source.name,
+                    &source.path,
+                    level,
+                    &secret_password,
+                    &mut progress,
+                    access.policy,
+                )?;
+            }
+        }
+    } else {
+        for path in &paths {
+            let path = std::path::Path::new(path);
 
-        if path.is_file() {
-            let file_name = path
-                .file_name()
-                .ok_or("Invalid file name")?
-                .to_string_lossy()
-                .to_string();
-            add_zip_file_entry(
-                &mut zip,
-                file_name,
-                path,
-                level,
-                &secret_password,
-                &mut progress,
-            )?;
-        } else if path.is_dir() {
-            let _base_name = path
-                .file_name()
-                .ok_or("Invalid directory name")?
-                .to_string_lossy();
+            if path.is_file() {
+                let file_name = path
+                    .file_name()
+                    .ok_or("Invalid file name")?
+                    .to_string_lossy()
+                    .to_string();
+                add_zip_file_entry(
+                    &mut zip,
+                    file_name,
+                    path,
+                    level,
+                    &secret_password,
+                    &mut progress,
+                    None,
+                )?;
+            } else if path.is_dir() {
+                let _base_name = path
+                    .file_name()
+                    .ok_or("Invalid directory name")?
+                    .to_string_lossy();
 
-            for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
-                let entry_path = entry.path();
-                let relative_path = entry_path
-                    .strip_prefix(path.parent().unwrap_or(path))
-                    .map_err(|e| format!("Path error: {}", e))?;
+                for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
+                    let entry_path = entry.path();
+                    let relative_path = entry_path
+                        .strip_prefix(path.parent().unwrap_or(path))
+                        .map_err(|e| format!("Path error: {}", e))?;
 
-                // Use symlink_metadata to avoid following symlinks (A7-06)
-                let metadata = std::fs::symlink_metadata(entry_path)
-                    .map_err(|e| format!("Cannot read metadata: {}", e))?;
-                if metadata.file_type().is_symlink() {
-                    continue; // Skip symlinks
-                }
+                    // Use symlink_metadata to avoid following symlinks (A7-06)
+                    let metadata = std::fs::symlink_metadata(entry_path)
+                        .map_err(|e| format!("Cannot read metadata: {}", e))?;
+                    if metadata.file_type().is_symlink() {
+                        continue; // Skip symlinks
+                    }
 
-                if metadata.is_file() {
-                    add_zip_file_entry(
-                        &mut zip,
-                        relative_path.to_string_lossy().to_string(),
-                        entry_path,
-                        level,
-                        &secret_password,
-                        &mut progress,
-                    )?;
-                } else if metadata.is_dir() && entry_path != path {
-                    let dir_path = format!("{}/", relative_path.to_string_lossy());
-                    if let Some(ref pwd) = secret_password {
-                        zip.add_directory(
-                            &dir_path,
-                            base_options
-                                .with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret()),
-                        )
-                        .map_err(|e| format!("Failed to add directory to ZIP: {}", e))?;
-                    } else {
-                        zip.add_directory(&dir_path, base_options)
+                    if metadata.is_file() {
+                        add_zip_file_entry(
+                            &mut zip,
+                            relative_path.to_string_lossy().to_string(),
+                            entry_path,
+                            level,
+                            &secret_password,
+                            &mut progress,
+                            None,
+                        )?;
+                    } else if metadata.is_dir() && entry_path != path {
+                        let dir_path = format!("{}/", relative_path.to_string_lossy());
+                        if let Some(ref pwd) = secret_password {
+                            zip.add_directory(
+                                &dir_path,
+                                base_options
+                                    .with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret()),
+                            )
                             .map_err(|e| format!("Failed to add directory to ZIP: {}", e))?;
+                        } else {
+                            zip.add_directory(&dir_path, base_options)
+                                .map_err(|e| format!("Failed to add directory to ZIP: {}", e))?;
+                        }
                     }
                 }
             }
@@ -8033,6 +8096,7 @@ async fn compress_files_impl(
         zip.finish()
             .map_err(|e| format!("Failed to finalize ZIP: {}", e))?,
     );
+    access.authorize_output(std::path::Path::new(&output_path))?;
     temp.commit(&output_path)?;
     progress.finish();
 
@@ -8168,7 +8232,7 @@ async fn compress_7z(
         compression_level,
         encrypt_header,
         advanced,
-        Some(app),
+        Some(app).into(),
     )
     .await
 }
@@ -8180,7 +8244,7 @@ async fn compress_7z_impl(
     compression_level: Option<i64>,
     encrypt_header: Option<bool>,
     advanced: Option<SevenZAdvanced>,
-    app: Option<tauri::AppHandle>,
+    access: ArchiveAccess<'_>,
 ) -> Result<String, String> {
     use sevenz_rust2::*;
     use std::fs::File;
@@ -8193,32 +8257,46 @@ async fn compress_7z_impl(
     // Collect all files to compress
     let mut entries: Vec<(String, String)> = Vec::new(); // (archive_name, full_path)
 
-    for path_str in &paths {
-        let path = Path::new(path_str);
+    access.authorize_output(Path::new(&output_path))?;
+    if let Some(sources) = access.collect(&paths)? {
+        for source in sources.into_iter().filter(|source| !source.directory) {
+            entries.push((
+                source.name,
+                source
+                    .path
+                    .to_str()
+                    .ok_or("Archive source path is not valid UTF-8")?
+                    .to_string(),
+            ));
+        }
+    } else {
+        for path_str in &paths {
+            let path = Path::new(path_str);
 
-        if path.is_file() {
-            let file_name = path
-                .file_name()
-                .ok_or("Invalid file name")?
-                .to_string_lossy()
-                .to_string();
-            entries.push((file_name, path_str.clone()));
-        } else if path.is_dir() {
-            // Add directory contents recursively
-            for entry in WalkDir::new(path)
-                .follow_links(false)
-                .into_iter()
-                .filter_map(|e| e.ok())
-            {
-                let entry_path = entry.path();
-                if entry_path.is_file() {
-                    let relative_path = entry_path
-                        .strip_prefix(path.parent().unwrap_or(path))
-                        .map_err(|e| format!("Path error: {}", e))?;
-                    entries.push((
-                        relative_path.to_string_lossy().to_string(),
-                        entry_path.to_string_lossy().to_string(),
-                    ));
+            if path.is_file() {
+                let file_name = path
+                    .file_name()
+                    .ok_or("Invalid file name")?
+                    .to_string_lossy()
+                    .to_string();
+                entries.push((file_name, path_str.clone()));
+            } else if path.is_dir() {
+                // Add directory contents recursively
+                for entry in WalkDir::new(path)
+                    .follow_links(false)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                {
+                    let entry_path = entry.path();
+                    if entry_path.is_file() {
+                        let relative_path = entry_path
+                            .strip_prefix(path.parent().unwrap_or(path))
+                            .map_err(|e| format!("Path error: {}", e))?;
+                        entries.push((
+                            relative_path.to_string_lossy().to_string(),
+                            entry_path.to_string_lossy().to_string(),
+                        ));
+                    }
                 }
             }
         }
@@ -8234,15 +8312,17 @@ async fn compress_7z_impl(
         .map(|(_, p)| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
         .sum();
     let mut progress = crate::archive_progress::ArchiveProgress::for_optional_app(
-        app,
+        access.app.clone(),
         crate::archive_progress::phase::COMPRESSING,
         total_bytes,
     );
 
     // Create the 7z archive (atomic temp; renamed into place on success).
-    let temp = ArchiveTempFile::new(&output_path);
-    let output_file =
-        File::create(temp.path()).map_err(|e| format!("Failed to create 7z file: {}", e))?;
+    let mut temp = ArchiveTempFile::new(&output_path);
+    access.authorize_output(temp.path())?;
+    let output_file = temp
+        .create_file()
+        .map_err(|e| format!("Failed to create 7z file: {}", e))?;
 
     let mut sz = ArchiveWriter::new(output_file)
         .map_err(|e| format!("Failed to create 7z writer: {}", e))?;
@@ -8317,6 +8397,7 @@ async fn compress_7z_impl(
         let mut readers = Vec::with_capacity(entries.len());
         for (archive_name, full_path) in &entries {
             let source_path = Path::new(full_path);
+            archive_source::authorize_file(source_path, access.policy)?;
             let file = File::open(source_path)
                 .map_err(|e| format!("Failed to open file '{}': {}", archive_name, e))?;
             zentries.push(ArchiveEntry::from_path(source_path, archive_name.clone()));
@@ -8334,6 +8415,7 @@ async fn compress_7z_impl(
     } else {
         for (archive_name, full_path) in &entries {
             let source_path = Path::new(full_path);
+            archive_source::authorize_file(source_path, access.policy)?;
             let entry = ArchiveEntry::from_path(source_path, archive_name.clone());
 
             // Open the source and count bytes as the 7z writer pulls them through.
@@ -8350,6 +8432,7 @@ async fn compress_7z_impl(
     // rename in commit() succeeds (Windows included).
     sz.finish()
         .map_err(|e| format!("Failed to finalize 7z archive: {}", e))?;
+    access.authorize_output(Path::new(&output_path))?;
     temp.commit(&output_path)?;
     progress.finish();
 
@@ -9378,7 +9461,9 @@ fn tar_append_file<W: std::io::Write>(
     abs_path: &std::path::Path,
     rel_path: &str,
     progress: &mut crate::archive_progress::ArchiveProgress,
+    policy: Option<&archive_source::SourcePolicy<'_>>,
 ) -> Result<(), String> {
+    archive_source::authorize_file(abs_path, policy)?;
     let file =
         std::fs::File::open(abs_path).map_err(|e| format!("Failed to add {}: {}", rel_path, e))?;
     let meta = file
@@ -9402,7 +9487,14 @@ async fn compress_tar(
     compression_level: Option<i64>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
-    compress_tar_impl(paths, output_path, format, compression_level, Some(app)).await
+    compress_tar_impl(
+        paths,
+        output_path,
+        format,
+        compression_level,
+        Some(app).into(),
+    )
+    .await
 }
 
 async fn compress_tar_impl(
@@ -9410,9 +9502,8 @@ async fn compress_tar_impl(
     output_path: String,
     format: String,
     compression_level: Option<i64>,
-    app: Option<tauri::AppHandle>,
+    access: ArchiveAccess<'_>,
 ) -> Result<String, String> {
-    use std::fs::File;
     use std::path::Path;
     use walkdir::WalkDir;
 
@@ -9420,33 +9511,43 @@ async fn compress_tar_impl(
 
     // Collect all files (expanding directories recursively)
     let mut entries: Vec<(std::path::PathBuf, String)> = Vec::new();
-    for p in &paths {
-        let path = Path::new(p);
-        if path.is_dir() {
-            for entry in WalkDir::new(path)
-                .follow_links(false)
+    access.authorize_output(output)?;
+    if let Some(sources) = access.collect(&paths)? {
+        entries.extend(
+            sources
                 .into_iter()
-                .filter_map(|e| e.ok())
-            {
-                if entry.file_type().is_file() {
-                    let rel = entry
-                        .path()
-                        .strip_prefix(path.parent().unwrap_or(path))
-                        .unwrap_or(entry.path());
-                    entries.push((
-                        entry.path().to_path_buf(),
-                        rel.to_string_lossy().to_string(),
-                    ));
+                .filter(|source| !source.directory)
+                .map(|source| (source.path, source.name)),
+        );
+    } else {
+        for p in &paths {
+            let path = Path::new(p);
+            if path.is_dir() {
+                for entry in WalkDir::new(path)
+                    .follow_links(false)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                {
+                    if entry.file_type().is_file() {
+                        let rel = entry
+                            .path()
+                            .strip_prefix(path.parent().unwrap_or(path))
+                            .unwrap_or(entry.path());
+                        entries.push((
+                            entry.path().to_path_buf(),
+                            rel.to_string_lossy().to_string(),
+                        ));
+                    }
                 }
+                // Directory entries are created automatically by tar when adding files
+            } else if path.is_file() {
+                let name = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                entries.push((path.to_path_buf(), name));
             }
-            // Directory entries are created automatically by tar when adding files
-        } else if path.is_file() {
-            let name = path
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string();
-            entries.push((path.to_path_buf(), name));
         }
     }
 
@@ -9460,20 +9561,29 @@ async fn compress_tar_impl(
         .map(|(p, _)| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
         .sum();
     let mut progress = crate::archive_progress::ArchiveProgress::for_optional_app(
-        app,
+        access.app.clone(),
         crate::archive_progress::phase::COMPRESSING,
         total_bytes,
     );
 
     // Create the archive based on format (atomic temp; renamed on success).
-    let temp = ArchiveTempFile::new(&output_path);
-    let file = File::create(temp.path()).map_err(|e| format!("Failed to create archive: {}", e))?;
+    let mut temp = ArchiveTempFile::new(&output_path);
+    access.authorize_output(temp.path())?;
+    let file = temp
+        .create_file()
+        .map_err(|e| format!("Failed to create archive: {}", e))?;
 
     match format.as_str() {
         "tar" => {
             let mut archive = tar::Builder::new(file);
             for (abs_path, rel_path) in &entries {
-                tar_append_file(&mut archive, abs_path, rel_path, &mut progress)?;
+                tar_append_file(
+                    &mut archive,
+                    abs_path,
+                    rel_path,
+                    &mut progress,
+                    access.policy,
+                )?;
             }
             archive
                 .finish()
@@ -9488,7 +9598,13 @@ async fn compress_tar_impl(
             );
             let mut archive = tar::Builder::new(gz);
             for (abs_path, rel_path) in &entries {
-                tar_append_file(&mut archive, abs_path, rel_path, &mut progress)?;
+                tar_append_file(
+                    &mut archive,
+                    abs_path,
+                    rel_path,
+                    &mut progress,
+                    access.policy,
+                )?;
             }
             archive
                 .into_inner()
@@ -9500,7 +9616,13 @@ async fn compress_tar_impl(
             let xz = xz2::write::XzEncoder::new(file, compression_level.unwrap_or(5) as u32);
             let mut archive = tar::Builder::new(xz);
             for (abs_path, rel_path) in &entries {
-                tar_append_file(&mut archive, abs_path, rel_path, &mut progress)?;
+                tar_append_file(
+                    &mut archive,
+                    abs_path,
+                    rel_path,
+                    &mut progress,
+                    access.policy,
+                )?;
             }
             archive
                 .into_inner()
@@ -9517,7 +9639,13 @@ async fn compress_tar_impl(
             );
             let mut archive = tar::Builder::new(bz);
             for (abs_path, rel_path) in &entries {
-                tar_append_file(&mut archive, abs_path, rel_path, &mut progress)?;
+                tar_append_file(
+                    &mut archive,
+                    abs_path,
+                    rel_path,
+                    &mut progress,
+                    access.policy,
+                )?;
             }
             archive
                 .into_inner()
@@ -9528,6 +9656,7 @@ async fn compress_tar_impl(
         _ => return Err(format!("Unsupported format: {}", format)),
     }
 
+    access.authorize_output(output)?;
     temp.commit(&output_path)?;
     progress.finish();
 
@@ -9587,8 +9716,10 @@ async fn compress_single_impl(
     );
 
     // Atomic temp; renamed into place on success (Drop cleans it up on any error).
-    let temp = ArchiveTempFile::new(&output_path);
-    let out = File::create(temp.path()).map_err(|e| format!("Failed to create archive: {}", e))?;
+    let mut temp = ArchiveTempFile::new(&output_path);
+    let out = temp
+        .create_file()
+        .map_err(|e| format!("Failed to create archive: {}", e))?;
     let infile = File::open(src).map_err(|e| format!("Failed to open input: {}", e))?;
     // Count bytes as the encoder pulls them through the source (uncompressed payload).
     let mut reader = crate::archive_progress::ProgressReader::new(infile, &mut progress);
@@ -18741,13 +18872,59 @@ async fn read_keystore_metadata(
 // ============ Public wrappers for AI tool access =====// Cannot make #[tauri::command] functions pub (Tauri 2 macro conflict),
 // so we expose thin wrappers that ai_tools.rs can call via crate::
 
+/// Restricted archive creation for AeroAgent. Policy is supplied by trusted Rust
+/// code, never by model arguments; the ordinary GUI/CLI wrappers remain unrestricted.
+pub(crate) async fn compress_archive_with_policy(
+    paths: Vec<String>,
+    output_path: String,
+    format: &str,
+    password: Option<String>,
+    compression_level: Option<i64>,
+    policy: &archive_source::SourcePolicy<'_>,
+) -> Result<String, String> {
+    let access = ArchiveAccess {
+        app: None,
+        policy: Some(policy),
+    };
+    match format {
+        "zip" => compress_files_impl(paths, output_path, password, compression_level, access).await,
+        "7z" => {
+            compress_7z_impl(
+                paths,
+                output_path,
+                password,
+                compression_level,
+                None,
+                None,
+                access,
+            )
+            .await
+        }
+        "tar" | "tar.gz" | "tar.bz2" | "tar.xz" => {
+            let out = output_path.clone();
+            compress_tar_impl(
+                paths,
+                output_path,
+                format.to_string(),
+                compression_level,
+                access,
+            )
+            .await
+            .map(|_| out)
+        }
+        _ => Err(format!(
+            "Unsupported format: {format}. Use zip, 7z, tar, tar.gz, tar.bz2, or tar.xz"
+        )),
+    }
+}
+
 pub async fn compress_files_core(
     paths: Vec<String>,
     output_path: String,
     password: Option<String>,
     compression_level: Option<i64>,
 ) -> Result<String, String> {
-    compress_files_impl(paths, output_path, password, compression_level, None).await
+    compress_files_impl(paths, output_path, password, compression_level, None.into()).await
 }
 
 pub async fn extract_archive_core(
@@ -18774,7 +18951,7 @@ pub async fn compress_7z_core(
         compression_level,
         encrypt_header,
         advanced,
-        None,
+        None.into(),
     )
     .await
 }
@@ -18799,7 +18976,7 @@ pub async fn compress_tar_core(
     // The tar writer commits to exactly `output_path`, so return that on success,
     // matching the zip/7z `_core` wrappers which already return the path.
     let out = output_path.clone();
-    compress_tar_impl(paths, output_path, format, compression_level, None)
+    compress_tar_impl(paths, output_path, format, compression_level, None.into())
         .await
         .map(|_| out)
 }
@@ -21659,7 +21836,7 @@ mod compress_store_tests {
             out.to_string_lossy().to_string(),
             None,
             Some(6),
-            None,
+            None.into(),
         )
         .await
         .expect("compress");

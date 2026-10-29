@@ -97,38 +97,19 @@ pub async fn archive_compress(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
         validate_path(p, "path").map_err(map_str_err)?;
     }
 
-    let result = match format.as_str() {
-        "zip" => {
-            crate::compress_files_core(paths, output_path.clone(), password, compression_level)
-                .await
-        }
-        "7z" => {
-            // The AI tool does not expose header (filename) encryption yet; keep
-            // the classic content-only encryption (None == off).
-            crate::compress_7z_core(
-                paths,
-                output_path.clone(),
-                password,
-                compression_level,
-                None,
-                None, // AI tool uses the default LZMA2 options (no advanced knobs yet)
-            )
-            .await
-        }
-        "tar" | "tar.gz" | "tar.bz2" | "tar.xz" => {
-            crate::compress_tar_core(
-                paths,
-                output_path.clone(),
-                format.clone(),
-                compression_level,
-            )
-            .await
-        }
-        _ => Err(format!(
-            "Unsupported format: {}. Use zip, 7z, tar, tar.gz, tar.bz2, or tar.xz",
-            format
-        )),
+    let policy = |path: &std::path::Path| {
+        let path = path.to_str().ok_or("Archive path is not valid UTF-8")?;
+        validate_path(path, "path")
     };
+    let result = crate::compress_archive_with_policy(
+        paths,
+        output_path.clone(),
+        &format,
+        password,
+        compression_level,
+        &policy,
+    )
+    .await;
 
     match result {
         Ok(msg) => Ok(json!({

@@ -73755,7 +73755,7 @@ fn cli_tool_definitions() -> Vec<ftp_client_gui_lib::ai::AIToolDefinition> {
             "base_name" => ("string", "Base name for sequential (default: file)", false),
             "start_number" => ("number", "Start number for sequential (default: 1)", false)
         }),
-        tool!("archive_compress", "Compress files into an archive (ZIP, 7z, TAR, etc.)", {
+        tool!("archive_compress", "Compress files into ZIP, 7z or TAR. Sensitive-path rules apply to every descendant; forbidden or unreadable sources abort the operation without replacing an existing archive.", {
             "paths" => ("array", "Array of file/folder paths to compress", true),
             "output_path" => ("string", "Output archive file path", true),
             "format" => ("string", "Archive format: zip, 7z, tar, tar.gz, tar.bz2, tar.xz", false),
