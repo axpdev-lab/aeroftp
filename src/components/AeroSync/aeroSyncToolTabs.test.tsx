@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
-import { act, createElement, useContext } from 'react';
+import { act, createElement, useContext, useRef, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
@@ -10,6 +10,8 @@ import { readTextFile } from '@tauri-apps/plugin-fs';
 import { TabStateStoreContext } from './tabStateStore';
 import english from '../../i18n/locales/en.json';
 import { AeroSyncDialog } from './AeroSyncDialog';
+import { useAeroSyncContextActions, type AeroSyncState } from './useAeroSyncContextActions';
+import { compareEntries, type CompareResult } from '../../utils/compareEndpoints';
 import { MultiPathEditor } from '../Sync/MultiPathEditor';
 import type { AeroSyncContext, AeroSyncDialogProps } from './types';
 
@@ -26,9 +28,10 @@ vi.mock('../../i18n', () => ({
     ),
 }));
 vi.mock('./CompareTabContent', () => ({ CompareTabContent: () => createElement('p', null, 'Compare content') }));
-vi.mock('./PlanTabContent', () => ({ PlanTabContent: ({ canExecute, onExecute }: { canExecute: boolean; onExecute: () => void }) => {
+vi.mock('./PlanTabContent', () => ({ PlanTabContent: ({ canExecute, onExecute, result, onStartCompare }: { canExecute: boolean; onExecute: () => void; result: CompareResult | null; onStartCompare?: () => void }) => {
     const store = useContext(TabStateStoreContext);
-    return createElement('div', null, createElement('button', { disabled: !canExecute, onClick: onExecute }, 'Execute plan'), createElement('output', { 'data-testid': 'plan-settings' }, JSON.stringify({
+    return createElement('div', null, createElement('button', { disabled: !canExecute || !result, onClick: onExecute }, 'Execute plan'),
+        onStartCompare && createElement('button', { onClick: onStartCompare }, 'Start comparison'), createElement('output', { 'data-testid': 'plan-settings' }, JSON.stringify({
         preset: store?.get('plan.preset', null), direction: store?.get('plan.direction', null),
         source: store?.get('sync.source', null), destination: store?.get('sync.destination', null),
     })));
@@ -58,6 +61,22 @@ const choose = async (label: string) => { await act(async () => tab(label).click
 const panel = () => host.querySelector<HTMLElement>('[role=tabpanel]')!;
 const visibleButtons = () => [...host.querySelectorAll<HTMLButtonElement>('button')].filter(b => !b.closest('[hidden]') && !b.hidden);
 
+const AppContextHarness = ({ initialContext }: { initialContext: AeroSyncContext }) => {
+    const [state, setState] = useState<AeroSyncState | null>({ initialTab: 'compare', context: initialContext });
+    const sequence = useRef(0);
+    const actions = useAeroSyncContextActions(state, setState, sequence);
+    if (!state) return null;
+    return createElement(AeroSyncDialog, { ...props, context: state.context,
+        onDismissJournal: actions.dismissJournal, onInvalidateComparison: actions.invalidateComparison,
+        onStartCompare: () => setState(previous => previous && ({ ...previous,
+            context: { ...previous.context, compareResult: compareEntries([], []), compareIdle: false },
+        })),
+    });
+};
+const renderAppContext = async (initialContext: AeroSyncContext) => {
+    await act(async () => root.render(createElement(AppContextHarness, { initialContext })));
+};
+
 beforeEach(() => {
     (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
     vi.mocked(invoke).mockReset().mockImplementation(async command => {
@@ -70,7 +89,7 @@ beforeEach(() => {
     });
     host = document.createElement('div'); document.body.append(host); root = createRoot(host);
     props = { isOpen: true, context, onClose: vi.fn(), onApplyMirrorLeftToRight: vi.fn(), onApplyMirrorRightToLeft: vi.fn(),
-        onExecutePreset: vi.fn(), onResumeJournal: vi.fn(), onDismissJournal: vi.fn(), onRescan: vi.fn() };
+        onExecutePreset: vi.fn(), onResumeJournal: vi.fn(), onDismissJournal: vi.fn(), onInvalidateComparison: vi.fn(), onRescan: vi.fn() };
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
 
@@ -257,7 +276,7 @@ it('reloads History when it becomes active again after the backend journal list 
     expect(panel().textContent).not.toContain('INCOMPLETE');
 });
 
-it.each(['success', 'failure'])('blocks Plan during restore and unlocks on %s', async outcome => {
+it.each(['success', 'failure'])('blocks close and stale Plan through restore %s until a fresh comparison', async outcome => {
     let resolveRestore!: (result: unknown) => void;
     let rejectRestore!: (error: Error) => void;
     const restoring = new Promise((resolve, reject) => { resolveRestore = resolve; rejectRestore = reject; });
@@ -267,14 +286,26 @@ it.each(['success', 'failure'])('blocks Plan during restore and unlocks on %s', 
         if (command === 'restore_sync_snapshot_cmd') return restoring;
         return [];
     });
-    await render(); await choose('Rollback snapshots');
+    await renderAppContext({ ...context, compareResult: compareEntries([], []) });
+    await choose('Plan');
+    expect(visibleButtons().find(b => b.textContent === 'Execute plan')!.disabled).toBe(false);
+    await choose('Rollback snapshots');
     await act(async () => panel().querySelector<HTMLElement>('[class*=cursor-pointer]')!.click());
     await clickVisible('Restore');
     // Confirm restoration in the pane's confirmation overlay.
     const restoreButtons = visibleButtons().filter(b => b.textContent?.trim() === 'Restore');
     await act(async () => restoreButtons[restoreButtons.length - 1].click());
     expect(invoke).toHaveBeenCalledWith('restore_sync_snapshot_cmd', expect.anything());
+    const close = host.querySelector<HTMLButtonElement>('button[aria-label=Close]')!;
+    expect(close.disabled).toBe(true);
+    await act(async () => {
+        close.click();
+        host.querySelector<HTMLElement>('[role=dialog]')!.click();
+    });
+    expect(props.onClose).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalledWith('local_sync_cancel');
     await choose('Plan');
+    expect(visibleButtons().some(b => b.textContent === 'Start comparison')).toBe(false);
     const execute = visibleButtons().find(b => b.textContent === 'Execute plan')!;
     expect(execute.disabled).toBe(true);
     await act(async () => execute.click()); expect(props.onExecutePreset).not.toHaveBeenCalled();
@@ -282,7 +313,12 @@ it.each(['success', 'failure'])('blocks Plan during restore and unlocks on %s', 
         if (outcome === 'failure') rejectRestore(new Error('fixture restore failure'));
         else resolveRestore({ restored_from_remote: 1, restored_to_remote: 0, skipped: 0, failed: [] });
     });
+    expect(execute.disabled).toBe(true);
+    expect(close.disabled).toBe(false);
+    await clickVisible('Start comparison');
     expect(execute.disabled).toBe(false);
+    await act(async () => close.click());
+    expect(props.onClose).toHaveBeenCalledTimes(1);
 });
 
 
@@ -291,17 +327,19 @@ it('refreshes an already-active History pane only after journal dismissal settle
         completed: false, total_entries: 1, completed_entries: 0 };
     let finishDismiss!: () => void;
     const dismissed = new Promise<void>(resolve => { finishDismiss = resolve; });
-    vi.mocked(invoke).mockResolvedValue([journal]);
-    await render({ context: { ...context, pendingJournal: { ...journal, id: 'journal-a', created_at: journal.updated_at, entries: [],
+    vi.mocked(invoke).mockImplementation(async command => command === 'delete_sync_journal_cmd' ? dismissed : [journal]);
+    await renderAppContext({ ...context, pendingJournal: { ...journal, id: 'journal-a', created_at: journal.updated_at, entries: [],
             direction: 'local_to_remote', verify_policy: 'none',
-            retry_policy: { max_retries: 0, base_delay_ms: 1, max_delay_ms: 1, timeout_ms: 1, backoff_multiplier: 1 } } },
-        onDismissJournal: () => dismissed });
+            retry_policy: { max_retries: 0, base_delay_ms: 1, max_delay_ms: 1, timeout_ms: 1, backoff_multiplier: 1 } } });
     await choose('Sync journals'); await clickVisible('Dismiss');
+    expect(invoke).toHaveBeenCalledWith('delete_sync_journal_cmd', { localPath: '/local', remotePath: '/remote' });
+    expect(visibleButtons().some(b => b.textContent?.trim() === 'Dismiss')).toBe(true);
     expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === 'list_sync_journals_cmd')).toHaveLength(1);
     vi.mocked(invoke).mockResolvedValue([]);
     await act(async () => finishDismiss());
     expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === 'list_sync_journals_cmd')).toHaveLength(2);
     expect(panel().textContent).toContain('No sync journals to show.');
+    expect(visibleButtons().some(b => b.textContent?.trim() === 'Dismiss')).toBe(false);
 });
 
 

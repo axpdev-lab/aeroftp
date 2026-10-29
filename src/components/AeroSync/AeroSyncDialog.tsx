@@ -39,6 +39,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     onExecutePreset,
     onResumeJournal,
     onDismissJournal,
+    onInvalidateComparison,
     onRescan,
     onStartCompare,
     onStopCompare,
@@ -72,7 +73,9 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
 
     const guarded = useGuardedClose({
         guard: syncRunning ? 'busy' : null,
-        onClose,
+        // Restore has no cancellation command: keep the workflow mounted until
+        // its native write operation actually settles.
+        onClose: () => { if (!restoreRunning) onClose(); },
         onAbort: cancelSync,
     });
 
@@ -132,7 +135,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     const canMirrorAny = context.pairKind === 'local-local'
         || context.pairKind === 'local-remote'
         || context.pairKind === 'remote-local';
-    const canExecutePlan = canMirrorAny && !restoreRunning;
+    const canExecutePlan = canMirrorAny && !restoreRunning && !!context.compareResult;
 
     const localPath = context.initialSource || '';
     const remotePath = context.initialDestination || '';
@@ -186,6 +189,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                     <div className="flex items-center gap-1">
                         <button
                             type="button"
+                            disabled={restoreRunning}
                             onClick={guarded.requestClose}
                             aria-label={t('common.close') || 'Close'}
                             className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
@@ -302,7 +306,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                             loading={context.compareLoading}
                             scanProgressId={context.scanProgressId}
                             stopped={context.compareStopped}
-                            onStartCompare={context.compareIdle ? onStartCompare : undefined}
+                            onStartCompare={context.compareIdle && !restoreRunning ? onStartCompare : undefined}
                             onStopCompare={onStopCompare}
                             leftLabel={context.leftLabel}
                             rightLabel={context.rightLabel}
@@ -323,14 +327,14 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                             compareStopped={context.compareStopped}
                             leftLabel={context.leftLabel}
                             rightLabel={context.rightLabel}
-                            onStartCompare={context.compareIdle ? onStartCompare : undefined}
+                            onStartCompare={context.compareIdle && !restoreRunning ? onStartCompare : undefined}
                             onStopCompare={onStopCompare}
                             pairKind={context.pairKind}
                             canExecute={canExecutePlan}
                             onExecute={onExecutePreset}
                             compareExcludes={context.compareExcludes ?? []}
                             compareBackupDir={context.compareBackupDir}
-                            onRescan={onRescan}
+                            onRescan={restoreRunning ? undefined : onRescan}
                             isProvider={context.isProvider}
                             cli={{
                                 profileName: context.activeProfileSaved ? context.activeProfileName : null,
@@ -359,7 +363,12 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                                 {tool === 'multiPath' && <MultiPathEditor embedded isOpen onClose={() => selectTab('plan')}
                                     localPath={localPath} remotePath={remotePath} />}
                                 {tool === 'rollback' && <RollbackDialog embedded isOpen onClose={() => selectTab('plan')}
-                                    onRestoringChange={setRestoreRunning}
+                                    onRestoringChange={running => {
+                                        // Invalidate both before writes begin and before Plan is unlocked,
+                                        // including rejected restores that may have partially changed files.
+                                        onInvalidateComparison();
+                                        setRestoreRunning(running);
+                                    }}
                                     localPath={localPath} remotePath={remotePath} isProvider={isProvider} />}
                                 {tool === 'history' && <JournalHistoryDialog embedded isOpen={activeTab === 'history'} onClose={() => selectTab('plan')}
                                     refreshRevision={journalRefresh}

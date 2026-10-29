@@ -175,6 +175,8 @@ export interface AeroSyncDialogProps {
     onResumeJournal: (journal: SyncJournal) => void;
     /** GAP-6: discard the interrupted journal and clear the banner. */
     onDismissJournal: () => void | Promise<void>;
+    /** Discard stale results and in-flight scans when snapshot restore changes files. */
+    onInvalidateComparison: () => void;
     /** Re-run the compare with the Plan tab's exclude patterns and backup folder. */
     onRescan?: (args: { userExcludes: string[]; backupDir: string }) => void;
     /** Start the recursive compare of the pair (context.compareIdle). */

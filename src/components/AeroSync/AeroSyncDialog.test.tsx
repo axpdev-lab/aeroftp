@@ -67,6 +67,7 @@ const props = (): AeroSyncDialogProps => ({
     onExecutePreset: noop,
     onResumeJournal: noop,
     onDismissJournal: noop,
+    onInvalidateComparison: noop,
     onStartCompare: noop,
     onStopCompare: noop,
 });
