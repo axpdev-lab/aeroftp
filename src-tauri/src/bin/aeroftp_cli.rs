@@ -46208,8 +46208,9 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
 
     let resolved = resolve_cli_remote_path(&initial_path, path);
     // Mirror `df --scan`: an empty effective path means "the provider's
-    // canonical root", which the BFS expresses as "/".
-    let root = if resolved.trim().is_empty() {
+    // canonical root", which the BFS expresses as "/". A path of spaces is a
+    // folder's name, not an omitted path.
+    let root = if resolved.is_empty() {
         "/".to_string()
     } else {
         resolved
@@ -46376,14 +46377,14 @@ fn local_size_folder(url: &str, path: &str) -> Option<std::path::PathBuf> {
 /// for it, `/` for the folder given itself. On Windows `sub\child` names the
 /// same folder as `sub/child`, and only the second is a path the provider
 /// takes, so the separators are printed as `/`; elsewhere a backslash is part
-/// of a name and stays.
+/// of a name and stays, as a name of spaces does.
 fn size_path_shown(resolved: String, windows: bool) -> String {
     let resolved = if windows {
         resolved.replace('\\', "/")
     } else {
         resolved
     };
-    if resolved.trim().is_empty() {
+    if resolved.is_empty() {
         "/".to_string()
     } else {
         resolved
@@ -84445,6 +84446,7 @@ mod tests {
     #[test]
     fn size_prints_a_local_folder_path_the_provider_takes() {
         assert_eq!(size_path_shown(String::new(), false), "/");
+        assert_eq!(size_path_shown(" ".into(), false), " ");
         assert_eq!(size_path_shown("docs\\sub".into(), true), "docs/sub");
         assert_eq!(size_path_shown("/docs\\sub".into(), true), "/docs/sub");
         assert_eq!(size_path_shown("docs\\sub".into(), false), "docs\\sub");

@@ -51,6 +51,10 @@ fn size_names_the_folder_as_the_provider_walk_does() {
     let data = tempfile::tempdir().expect("data dir");
     std::fs::create_dir_all(data.path().join("docs/é x#%")).expect("mkdir");
     std::fs::write(data.path().join("docs/é x#%/c.bin"), [0u8; 3]).expect("write");
+    // A name of spaces is a folder, not an omitted path: it was printed as
+    // `/`, and the provider walk measured the whole root.
+    std::fs::create_dir_all(data.path().join(" ")).expect("mkdir");
+    std::fs::write(data.path().join(" /d.bin"), [0u8; 5]).expect("write");
 
     // `--max-depth` leaves the measure to the provider walk.
     let size = |given: &str, depth: Option<&str>| -> serde_json::Value {
@@ -75,14 +79,19 @@ fn size_names_the_folder_as_the_provider_walk_does() {
         );
         serde_json::from_str(&stdout).expect("one JSON document")
     };
-    for (given, printed) in [("/docs/é x#%", "/docs/é x#%"), ("docs/é x#%", "docs/é x#%")] {
+    for (given, printed, bytes) in [
+        ("/docs/é x#%", "/docs/é x#%", 3),
+        ("docs/é x#%", "docs/é x#%", 3),
+        (" ", " ", 5),
+        ("/ ", "/ ", 5),
+    ] {
         let local = size(given, None);
         assert_eq!(local["scan_method"], "parallel local walk", "{local}");
-        assert_eq!(local["bytes"], 3, "{local}");
+        assert_eq!(local["bytes"], bytes, "{local}");
         assert_eq!(local["path"], printed, "{local}");
         let provider = size(given, Some("10"));
         assert_ne!(provider["scan_method"], "parallel local walk", "{provider}");
-        assert_eq!(provider["bytes"], 3, "{provider}");
+        assert_eq!(provider["bytes"], bytes, "{provider}");
         assert_eq!(provider["path"], local["path"], "{provider}");
     }
 }
