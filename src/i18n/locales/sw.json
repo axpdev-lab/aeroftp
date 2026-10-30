@@ -1577,7 +1577,7 @@
             "selectPairLocalFolder": "Chagua folda ya ndani kwa jozi",
             "secondsAgo": "sekunde {count} zilizopita",
             "conflictsCount": "Migogoro inayohitaji umakini: {count}",
-            "updateOnlyHint": "Usasishaji wa upande mmoja huhifadhi faili mpya zaidi za lengwa. Hifadhi rudufu ya kuongeza ikiwa imezimwa, ni faili zilizosawazishwa awali na zilizopo kwenye lengwa pekee zinazofutwa. Faili ambazo hazijawahi kusawazishwa huhifadhiwa kwa ukaguzi katika AeroSync. Sera ya migongano hupuuzwa; tarehe zisizojulikana hubaki bila kutatuliwa.",
+            "updateOnlyHint": "Usasishaji wa upande mmoja huhifadhi faili mpya zaidi za lengwa. Hifadhi rudufu ya kuongeza ikiwa imezimwa, ni faili zisizobadilika, zilizopo kwenye lengwa pekee na zenye risiti ya uhamishaji wa AeroCloud iliyothibitishwa tu zinazofutwa. Faili nyingine hubaki kwa ukaguzi katika AeroSync. Sera ya migongano hupuuzwa; tarehe zisizojulikana hubaki bila kutatuliwa.",
             "untrackedDestinationFiles": "Faili {count} za lengwa zimehifadhiwa kwa ukaguzi: historia yake ya uhamishaji haijathibitishwa au zimebadilika baada ya uhamishaji wa mwisho wa AeroCloud. Zikague katika AeroSync kabla ya kuamua kuzifuta."
         },
         "statusBar": {

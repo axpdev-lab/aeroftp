@@ -1577,7 +1577,7 @@
             "selectPairLocalFolder": "Pilih folder setempat untuk pasangan",
             "secondsAgo": "{count}s lalu",
             "conflictsCount": "{count} konflik memerlukan perhatian",
-            "updateOnlyHint": "Kemas Kini Sehala mengekalkan fail destinasi yang lebih baharu. Apabila sandaran aditif dimatikan, hanya fail yang ada di destinasi sahaja dan pernah disegerakkan akan dipadam. Fail yang tidak pernah disegerakkan dikekalkan untuk semakan dalam AeroSync. Dasar konflik diabaikan; tarikh yang tidak diketahui kekal belum diselesaikan.",
+            "updateOnlyHint": "Kemas Kini Sehala mengekalkan fail destinasi yang lebih baharu. Apabila sandaran aditif dimatikan, hanya fail yang tidak berubah, ada di destinasi sahaja dan mempunyai resit pemindahan AeroCloud yang disahkan akan dipadam. Fail lain kekal untuk semakan dalam AeroSync. Dasar konflik diabaikan; tarikh yang tidak diketahui kekal belum diselesaikan.",
             "untrackedDestinationFiles": "{count} fail destinasi dikekalkan untuk semakan: sejarah pemindahannya belum disahkan atau fail telah berubah selepas pemindahan AeroCloud terakhir. Semak fail tersebut dalam AeroSync sebelum memutuskan untuk memadamnya."
         },
         "statusBar": {

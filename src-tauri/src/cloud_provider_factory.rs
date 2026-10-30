@@ -167,23 +167,34 @@ fn resolved_target_identity(
     let options: std::collections::BTreeMap<_, _> = config
         .extra
         .iter()
+        // Only selectors that can change the addressed namespace belong here.
+        // Retry/session/TLS behavior and one-time authentication inputs do not.
         .filter(|(key, _)| {
-            let key = key.to_ascii_lowercase();
-            ![
-                "secret",
-                "password",
-                "token",
-                "passphrase",
-                "authorization",
-                "api_key",
-            ]
-            .iter()
-            .any(|secret| key.contains(secret))
+            matches!(
+                key.as_str(),
+                "endpoint"
+                    | "bucket"
+                    | "region"
+                    | "container"
+                    | "account_name"
+                    | "drive_id"
+                    | "device"
+                    | "mountpoint"
+                    | "root_folder_id"
+                    | "cloud_name"
+                    | "project_id"
+                    | "tenant_id"
+                    | "role_arn"
+                    | "public_key"
+                    | "imagekit_id"
+                    | "space_id"
+                    | "library_id"
+            )
         })
         .collect();
     Some(identity_digest(serde_json::json!({
-        "protocol": config.provider_type.to_string(), "host": config.host, "port": config.port,
-        "username": username, "principal": principal, "account": account, "root": config.initial_path,
+        "protocol": config.provider_type.to_string(), "host": config.host, "port": config.port.unwrap_or(config.provider_type.default_port()),
+        "principal": principal, "account": account, "root": config.initial_path,
         "options": options, "overlay": binding,
     })))
 }

@@ -1577,7 +1577,7 @@
             "selectPairLocalFolder": "Izberite lokalno mapo za par",
             "secondsAgo": "pred {count}s",
             "conflictsCount": "Spori, ki zahtevajo pozornost: {count}",
-            "updateOnlyHint": "Enosmerno posodabljanje ohrani novejše ciljne datoteke. Ko je dodajalno varnostno kopiranje izklopljeno, se izbrišejo le prej sinhronizirane datoteke, ki obstajajo izključno na cilju. Datoteke, ki še nikoli niso bile sinhronizirane, se ohranijo za pregled v AeroSync. Pravilnik o sporih se prezre; neznani datumi ostanejo nerazrešeni.",
+            "updateOnlyHint": "Enosmerno posodabljanje ohrani novejše ciljne datoteke. Ko je dodajalno varnostno kopiranje izklopljeno, se izbrišejo le nespremenjene datoteke, ki obstajajo izključno na cilju in imajo preverjeno potrdilo o prenosu prek AeroCloud. Druge datoteke ostanejo za pregled v AeroSync. Pravilnik o sporih se prezre; neznani datumi ostanejo nerazrešeni.",
             "untrackedDestinationFiles": "{count} ciljnih datotek je bilo ohranjenih za pregled: njihova zgodovina prenosov ni preverjena ali pa so bile spremenjene po zadnjem prenosu prek AeroCloud. Pred odločitvijo o izbrisu jih preglejte v AeroSync."
         },
         "statusBar": {

@@ -1577,7 +1577,7 @@
             "selectPairLocalFolder": "Lokale map voor paar selecteren",
             "secondsAgo": "{count}s geleden",
             "conflictsCount": "Conflicten die aandacht vereisen: {count}",
-            "updateOnlyHint": "Eenrichtingsupdate behoudt nieuwere doelbestanden. Als additieve back-up uitstaat, worden alleen eerder gesynchroniseerde bestanden verwijderd die uitsluitend op de bestemming bestaan. Bestanden die nooit zijn gesynchroniseerd, blijven bewaard voor beoordeling in AeroSync. Het conflictbeleid wordt genegeerd; onbekende datums blijven onopgelost.",
+            "updateOnlyHint": "Eenrichtingsupdate behoudt nieuwere doelbestanden. Als additieve back-up uitstaat, worden alleen ongewijzigde bestanden verwijderd die uitsluitend op de bestemming bestaan en een geverifieerd AeroCloud-overdrachtsbewijs hebben. Andere bestanden blijven ter beoordeling in AeroSync staan. Het conflictbeleid wordt genegeerd; onbekende datums blijven onopgelost.",
             "untrackedDestinationFiles": "{count} doelbestanden zijn bewaard voor beoordeling: hun overdrachtsgeschiedenis is niet geverifieerd of ze zijn gewijzigd sinds de laatste AeroCloud-overdracht. Bekijk ze in AeroSync voordat je besluit over verwijdering."
         },
         "statusBar": {

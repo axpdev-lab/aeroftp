@@ -1577,7 +1577,7 @@
             "selectPairLocalFolder": "Veldu staðbundna möppu fyrir parið",
             "secondsAgo": "fyrir {count}sek",
             "conflictsCount": "Árekstrar sem þarfnast athygli: {count}",
-            "updateOnlyHint": "Einstefnuuppfærsla heldur nýrri skrám á áfangastað. Þegar slökkt er á viðbótarafritun er aðeins eytt skrám sem eru eingöngu á áfangastað og hafa áður verið samstilltar. Skrár sem hafa aldrei verið samstilltar eru geymdar til yfirferðar í AeroSync. Árekstrareglan er hunsuð; óþekktar dagsetningar eru áfram óleystar.",
+            "updateOnlyHint": "Einstefnuuppfærsla heldur nýrri skrám á áfangastað. Þegar slökkt er á viðbótarafritun er aðeins eytt óbreyttum skrám sem eru eingöngu á áfangastað og hafa staðfesta AeroCloud-flutningskvittun. Aðrar skrár bíða yfirferðar í AeroSync. Árekstrareglan er hunsuð; óþekktar dagsetningar eru áfram óleystar.",
             "untrackedDestinationFiles": "{count} skrár á áfangastað voru varðveittar til yfirferðar: flutningssaga þeirra er óstaðfest eða þær hafa breyst frá síðasta AeroCloud-flutningi. Farðu yfir þær í AeroSync áður en þú ákveður hvort eyða eigi þeim."
         },
         "statusBar": {

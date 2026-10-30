@@ -1623,7 +1623,7 @@
             "selectPairLocalFolder": "Select local folder for pair",
             "secondsAgo": "{count}s ago",
             "conflictsCount": "Conflicts needing attention: {count}",
-            "updateOnlyHint": "One-way Update keeps newer destination files. With additive backup off, only previously synced destination-only files are deleted. Never-synced files are kept for review in AeroSync. The conflict policy is ignored; unknown dates stay unresolved.",
+            "updateOnlyHint": "One-way Update keeps newer destination files. With additive backup off, only unchanged destination-only files with a verified AeroCloud transfer receipt are deleted. Other files stay for review in AeroSync. The conflict policy is ignored; unknown dates stay unresolved.",
             "untrackedDestinationFiles": "{count} destination files were kept for review: their transfer history is unverified or they changed after the last AeroCloud transfer. Review them in AeroSync before deciding on deletion."
         },
         "common": {

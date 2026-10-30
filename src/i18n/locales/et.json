@@ -1577,7 +1577,7 @@
             "selectPairLocalFolder": "Vali paari jaoks kohalik kaust",
             "secondsAgo": "{count}s tagasi",
             "conflictsCount": "Tähelepanu vajavad konfliktid: {count}",
-            "updateOnlyHint": "Ühesuunaline uuendamine säilitab uuemad sihtfailid. Kui lisav varundamine on välja lülitatud, kustutatakse ainult varem sünkroonitud failid, mis asuvad üksnes sihtkohas. Failid, mida pole kunagi sünkroonitud, säilitatakse AeroSyncis ülevaatamiseks. Konfliktireeglit eiratakse; tundmatud kuupäevad jäävad lahendamata.",
+            "updateOnlyHint": "Ühesuunaline uuendamine säilitab uuemad sihtfailid. Kui lisav varundamine on välja lülitatud, kustutatakse ainult muutmata failid, mis asuvad üksnes sihtkohas ja millel on kinnitatud AeroCloudi edastuskviitung. Muud failid jäävad AeroSyncis ülevaatamiseks. Konfliktireeglit eiratakse; tundmatud kuupäevad jäävad lahendamata.",
             "untrackedDestinationFiles": "{count} sihtfaili säilitati ülevaatamiseks: nende edastusajalugu on kinnitamata või on neid pärast viimast AeroCloudi edastust muudetud. Vaata need AeroSyncis üle, enne kui otsustad kustutamise üle."
         },
         "statusBar": {

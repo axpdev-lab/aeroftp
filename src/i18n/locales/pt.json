@@ -1577,7 +1577,7 @@
             "selectPairLocalFolder": "Selecionar pasta local para o par",
             "secondsAgo": "há {count}s",
             "conflictsCount": "Conflitos que exigem atenção: {count}",
-            "updateOnlyHint": "A atualização unidirecional mantém os ficheiros de destino mais recentes. Com a cópia de segurança aditiva desativada, só são eliminados os ficheiros exclusivos do destino que já foram sincronizados. Os ficheiros nunca sincronizados são mantidos para revisão no AeroSync. A política de conflitos é ignorada; as datas desconhecidas ficam por resolver.",
+            "updateOnlyHint": "A atualização unidirecional mantém os ficheiros de destino mais recentes. Com a cópia de segurança aditiva desativada, só são eliminados os ficheiros inalterados que existem apenas no destino e têm um comprovativo de transferência do AeroCloud verificado. Os outros ficheiros ficam para revisão no AeroSync. A política de conflitos é ignorada; as datas desconhecidas ficam por resolver.",
             "untrackedDestinationFiles": "Foram mantidos {count} ficheiros de destino para revisão: o histórico de transferências não está verificado ou foram alterados após a última transferência do AeroCloud. Reveja-os no AeroSync antes de decidir se devem ser eliminados."
         },
         "statusBar": {

@@ -1577,7 +1577,7 @@
             "selectPairLocalFolder": "Selectați folderul local pentru pereche",
             "secondsAgo": "acum {count}s",
             "conflictsCount": "Conflicte care necesită atenție: {count}",
-            "updateOnlyHint": "Actualizarea unidirecțională păstrează fișierele mai noi de la destinație. Când backupul aditiv este dezactivat, sunt șterse doar fișierele sincronizate anterior care există exclusiv la destinație. Fișierele care nu au fost niciodată sincronizate sunt păstrate pentru verificare în AeroSync. Politica de conflicte este ignorată; datele necunoscute rămân nerezolvate.",
+            "updateOnlyHint": "Actualizarea unidirecțională păstrează fișierele mai noi de la destinație. Când backupul aditiv este dezactivat, sunt șterse doar fișierele nemodificate care există exclusiv la destinație și au o confirmare verificată a transferului AeroCloud. Celelalte fișiere rămân pentru verificare în AeroSync. Politica de conflicte este ignorată; datele necunoscute rămân nerezolvate.",
             "untrackedDestinationFiles": "{count} fișiere de la destinație au fost păstrate pentru verificare: istoricul transferurilor nu este verificat sau au fost modificate după ultimul transfer AeroCloud. Verificați-le în AeroSync înainte de a decide dacă le ștergeți."
         },
         "statusBar": {

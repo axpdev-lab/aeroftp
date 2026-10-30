@@ -1577,7 +1577,7 @@
             "selectPairLocalFolder": "Helyi mappa kiválasztása a párhoz",
             "secondsAgo": "{count} mp-e",
             "conflictsCount": "{count} ütközés figyelmet igényel",
-            "updateOnlyHint": "Az egyirányú frissítés megtartja az újabb célfájlokat. Ha a hozzáadó biztonsági mentés ki van kapcsolva, csak a korábban szinkronizált, kizárólag a célhelyen lévő fájlok törlődnek. A még soha nem szinkronizált fájlok megmaradnak az AeroSyncben történő ellenőrzéshez. Az ütközési szabály figyelmen kívül marad; az ismeretlen dátumok megoldatlanok maradnak.",
+            "updateOnlyHint": "Az egyirányú frissítés megtartja az újabb célfájlokat. Ha a hozzáadó biztonsági mentés ki van kapcsolva, csak azok a változatlan, kizárólag a célhelyen lévő fájlok törlődnek, amelyekhez ellenőrzött AeroCloud-átviteli bizonylat tartozik. A többi fájl megmarad az AeroSyncben történő ellenőrzéshez. Az ütközési szabály figyelmen kívül marad; az ismeretlen dátumok megoldatlanok maradnak.",
             "untrackedDestinationFiles": "{count} célfájl megmaradt ellenőrzésre: az átviteli előzményeik nincsenek igazolva, vagy megváltoztak az utolsó AeroCloud-átvitel óta. Ellenőrizze őket az AeroSyncben, mielőtt a törlésükről dönt."
         },
         "statusBar": {

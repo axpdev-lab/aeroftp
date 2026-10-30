@@ -199,6 +199,7 @@ struct SyncPlan {
     /// A refused destructive cycle is reported in preview and execution, and
     /// does not advance the last known good baseline.
     delete_refusal: Option<String>,
+    inspection_errors: Vec<String>,
     comparisons: Vec<FileComparison>,
     /// Identical files with two spellings. Not executed. The baseline records
     /// them so the watcher can stat the remote object.
@@ -922,10 +923,10 @@ impl CloudService {
         let Some(scope) =
             self.bind_receipt_scope(config, Self::receipt_scope_at_root(config, captured_root))
         else {
-            return HashMap::new();
+            return receipts;
         };
         let Ok(landed) = self.landed.lock() else {
-            return HashMap::new();
+            return receipts;
         };
         for row in rows
             .iter()
@@ -1177,6 +1178,7 @@ impl CloudService {
                 &plan.comparisons,
                 plan.index.as_ref(),
                 config.server_profile_id.as_deref(),
+                Some((config, plan.update_policy.root_identity)),
             );
             return;
         }
@@ -1237,6 +1239,7 @@ impl CloudService {
         comparisons: &[FileComparison],
         prior_index: Option<&SyncIndex>,
         profile_id: Option<&str>,
+        transfer_context: Option<(&CloudConfig, Option<LocalRootIdentity>)>,
     ) {
         let unsettled = self
             .unsettled
@@ -1288,6 +1291,53 @@ impl CloudService {
                     is_dir: false,
                 },
             );
+        }
+        // A failure elsewhere must not erase proof of transfers that really
+        // completed. Advance only those landed identities, never Skip/history.
+        if let Some((config, captured_root)) = transfer_context {
+            let landed = self
+                .landed
+                .lock()
+                .map(|rows| rows.clone())
+                .unwrap_or_default();
+            let mut transferred = Vec::new();
+            for row in comparisons
+                .iter()
+                .filter(|row| !row.is_dir && !row.name_match_blocked)
+            {
+                let Some(done) = landed
+                    .get(&row.relative_path)
+                    .filter(|done| done.modified != UNSETTLED_BASELINE)
+                else {
+                    continue;
+                };
+                let Some(size) = done.size else {
+                    continue;
+                };
+                let key = row
+                    .local_relative_path
+                    .as_deref()
+                    .unwrap_or(&row.relative_path);
+                if let Some(old) = row.baseline_key.as_ref().filter(|old| old.as_str() != key) {
+                    idx.files.remove(old);
+                }
+                idx.files.insert(
+                    key.to_string(),
+                    SyncIndexEntry {
+                        size,
+                        modified: Some(done.modified),
+                        is_dir: false,
+                    },
+                );
+                transferred.push(row.clone());
+            }
+            idx.remote_spellings = crate::sync::spellings_after_baseline(
+                &transferred,
+                Some(&idx.remote_spellings),
+                &idx.files,
+            );
+            idx.cloud_receipts =
+                self.receipts_after(&transferred, config, Some(&idx), &idx.files, captured_root);
         }
         idx.profile_id = profile_id.map(str::to_string);
         if let Err(e) = save_sync_index(&idx) {
@@ -1593,27 +1643,6 @@ impl CloudService {
                 )
             };
 
-        // LIST and STAT may expose different clocks (S3 source metadata versus
-        // object upload time). Update uses STAT consistently before classification.
-        if config.update_only && config.sync_direction != CompareDirection::Bidirectional {
-            for info in remote_files.values_mut().filter(|info| !info.is_dir) {
-                let current = incremental::remote_state(provider, &info.path)
-                    .await?
-                    .ok_or(
-                        "Update listed source/destination disappeared during scan; compare again",
-                    )?;
-                if current.is_dir {
-                    return Err("Update listed file changed type; compare again".into());
-                }
-                info.size = current.size;
-                info.checksum = current.metadata.get("content_hash").cloned();
-                info.checksum_alg = None;
-                info.modified = current
-                    .modified
-                    .as_deref()
-                    .and_then(crate::parse_remote_datetime);
-            }
-        }
         let local_str = config.local_folder.to_string_lossy().to_string();
         let remote_str = config.remote_folder.clone();
         // A remote folder that did not list holds files the plan cannot see:
@@ -1678,6 +1707,70 @@ impl CloudService {
             log_size_only_window("AeroCloud", config, options.modify_window);
         }
 
+        // Inspect only rows that can change a decision, not every unchanged or
+        // never-transferred destination file. LIST remains the global alias context.
+        self.remember_cloud_receipts(index.as_ref());
+        let mut inspection_errors = Vec::new();
+        let mut quarantined = std::collections::HashSet::new();
+        if config.update_only && config.sync_direction != CompareDirection::Bidirectional {
+            let initial = classify_with_summary(
+                local_files.clone(),
+                remote_files.clone(),
+                &options,
+                index.as_ref(),
+            );
+            let mut candidates = initial.differences;
+            self.apply_cloud_authority(config, &mut candidates);
+            for row in candidates
+                .iter()
+                .filter(|row| !row.is_dir && !row.name_match_blocked)
+            {
+                let Some(info) = row.remote_info.as_ref().filter(|info| !info.is_dir) else {
+                    continue;
+                };
+                let relevant = row.local_info.is_some()
+                    || config.sync_direction == CompareDirection::RemoteToLocal
+                    || (!config.preserve_remote_deletes
+                        && self.cloud_receipt_for(config, row).is_some());
+                if !relevant {
+                    continue;
+                }
+                match incremental::remote_state(provider, &info.path).await {
+                    Ok(Some(current)) if !current.is_dir => {
+                        let key = row
+                            .remote_relative_path
+                            .as_deref()
+                            .unwrap_or(&row.relative_path);
+                        if let Some(snapshot) = remote_files.get_mut(key) {
+                            snapshot.size = current.size;
+                            snapshot.checksum = current.metadata.get("content_hash").cloned();
+                            snapshot.checksum_alg = None;
+                            snapshot.modified = current
+                                .modified
+                                .as_deref()
+                                .and_then(crate::parse_remote_datetime);
+                        }
+                    }
+                    outcome => {
+                        let reason = match outcome {
+                            Err(error) => format!(
+                                "Remote metadata unavailable: {error}; file kept for a later scan"
+                            ),
+                            Ok(None) => {
+                                "Remote file disappeared during scan; file kept for a later scan"
+                                    .to_string()
+                            }
+                            _ => "Remote file changed type during scan; file kept for a later scan"
+                                .to_string(),
+                        };
+                        inspection_errors.push(format!("{}: {reason}", row.relative_path));
+                        quarantined.insert(row.relative_path.clone());
+                        self.withhold_update(row, &reason);
+                    }
+                }
+            }
+        }
+
         // Exact-name migrated keys regain trust only from verified, identical
         // copies on both sides of this full scan, never from a one-sided skip.
         if let Some(prior) = index.as_mut() {
@@ -1694,6 +1787,11 @@ impl CloudService {
         let mirrored = report.mirrored;
         self.remember_cloud_receipts(index.as_ref());
         self.apply_cloud_authority(config, &mut comparisons);
+        for row in &mut comparisons {
+            if quarantined.contains(&row.relative_path) {
+                row.name_match_blocked = true;
+            }
+        }
 
         // A provider whose successful listing can omit a stored object
         // (`listing_is_authoritative() == false`, ImageKit) cannot authorise
@@ -1724,6 +1822,7 @@ impl CloudService {
                 remote_file_count > 0
             }) && local_complete
                 && remote_complete
+                && inspection_errors.is_empty()
                 && (config.sync_direction != CompareDirection::RemoteToLocal
                     || provider.listing_is_authoritative()),
         };
@@ -1772,11 +1871,13 @@ impl CloudService {
         }
 
         Ok(SyncPlan {
-            inventory_complete: local_complete
+            inventory_complete: inspection_errors.is_empty()
+                && local_complete
                 && remote_complete
                 && provider.listing_is_authoritative(),
             update_policy,
             delete_refusal,
+            inspection_errors,
             comparisons,
             mirrored,
             index,
@@ -1808,6 +1909,7 @@ impl CloudService {
             comparisons,
             update_policy,
             delete_refusal,
+            inspection_errors,
             ..
         } = self
             .build_sync_plan_with_provider(provider, &config, false)
@@ -1820,7 +1922,10 @@ impl CloudService {
             skipped: 0,
             skipped_details: Vec::new(),
             conflicts: 0,
-            errors: delete_refusal.into_iter().collect(),
+            errors: inspection_errors
+                .into_iter()
+                .chain(delete_refusal)
+                .collect(),
             duration_secs: 0,
             file_details: Vec::new(),
         };
@@ -1885,7 +1990,12 @@ impl CloudService {
             skipped: 0,
             skipped_details: Vec::new(),
             conflicts: 0,
-            errors: plan.delete_refusal.iter().cloned().collect(),
+            errors: plan
+                .inspection_errors
+                .iter()
+                .cloned()
+                .chain(plan.delete_refusal.iter().cloned())
+                .collect(),
             duration_secs: 0,
             file_details: Vec::new(),
         };
@@ -5166,7 +5276,14 @@ mod baseline_tests {
             };
             let svc = CloudService::new();
             svc.unsettled.lock().unwrap().push("f.txt".to_string());
-            svc.save_unsettled_into("/l/unverified", "/unverified", &[], Some(&prior), None);
+            svc.save_unsettled_into(
+                "/l/unverified",
+                "/unverified",
+                &[],
+                Some(&prior),
+                None,
+                None,
+            );
             let saved = crate::sync::load_sync_index("/l/unverified", "/unverified")
                 .unwrap()
                 .expect("the sentinel is recorded");

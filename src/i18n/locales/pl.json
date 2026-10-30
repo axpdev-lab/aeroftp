@@ -1577,7 +1577,7 @@
             "selectPairLocalFolder": "Wybierz folder lokalny dla pary",
             "secondsAgo": "{count}s temu",
             "conflictsCount": "Konflikty wymagające uwagi: {count}",
-            "updateOnlyHint": "Aktualizacja jednokierunkowa zachowuje nowsze pliki docelowe. Gdy kopia zapasowa z dodawaniem jest wyłączona, usuwane są tylko wcześniej synchronizowane pliki istniejące wyłącznie w miejscu docelowym. Pliki, które nigdy nie były synchronizowane, są zachowywane do sprawdzenia w AeroSync. Zasady konfliktów są ignorowane; nieznane daty pozostają nierozstrzygnięte.",
+            "updateOnlyHint": "Aktualizacja jednokierunkowa zachowuje nowsze pliki docelowe. Gdy kopia zapasowa z dodawaniem jest wyłączona, usuwane są tylko niezmienione pliki istniejące wyłącznie w miejscu docelowym ze zweryfikowanym potwierdzeniem transferu AeroCloud. Pozostałe pliki pozostają do sprawdzenia w AeroSync. Zasady konfliktów są ignorowane; nieznane daty pozostają nierozstrzygnięte.",
             "untrackedDestinationFiles": "{count} plików docelowych zachowano do sprawdzenia: ich historia transferów nie została zweryfikowana lub zmieniły się od ostatniego transferu AeroCloud. Sprawdź je w AeroSync przed podjęciem decyzji o usunięciu."
         },
         "statusBar": {

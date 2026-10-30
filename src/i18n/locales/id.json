@@ -1577,7 +1577,7 @@
             "selectPairLocalFolder": "Pilih folder lokal untuk pasangan",
             "secondsAgo": "{count}d lalu",
             "conflictsCount": "{count} konflik perlu perhatian",
-            "updateOnlyHint": "Pembaruan Satu Arah mempertahankan file tujuan yang lebih baru. Saat pencadangan aditif dimatikan, hanya file yang ada di tujuan saja dan pernah disinkronkan yang dihapus. File yang belum pernah disinkronkan dipertahankan untuk ditinjau di AeroSync. Kebijakan konflik diabaikan; tanggal yang tidak diketahui tetap belum terselesaikan.",
+            "updateOnlyHint": "Pembaruan Satu Arah mempertahankan file tujuan yang lebih baru. Saat pencadangan aditif dimatikan, hanya file yang tidak berubah, ada di tujuan saja, dan memiliki bukti transfer AeroCloud terverifikasi yang dihapus. File lain tetap tersedia untuk ditinjau di AeroSync. Kebijakan konflik diabaikan; tanggal yang tidak diketahui tetap belum terselesaikan.",
             "untrackedDestinationFiles": "{count} file tujuan dipertahankan untuk ditinjau: riwayat transfernya belum terverifikasi atau file telah berubah sejak transfer AeroCloud terakhir. Tinjau file tersebut di AeroSync sebelum memutuskan untuk menghapusnya."
         },
         "statusBar": {

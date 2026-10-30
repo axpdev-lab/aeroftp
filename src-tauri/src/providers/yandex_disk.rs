@@ -403,6 +403,7 @@ fn is_yandex_retryable_auth_error(err: &ProviderError) -> bool {
 pub struct YandexDiskProvider {
     client: reqwest::Client,
     resume_account: String,
+    authenticated_account: Option<String>,
     access_token: SecretString,
     connected: bool,
     current_path: String,
@@ -422,6 +423,7 @@ impl YandexDiskProvider {
         Self {
             client,
             resume_account: uuid::Uuid::new_v4().to_string(),
+            authenticated_account: None,
             access_token: SecretString::from(access_token),
             connected: false,
             current_path: initial_path.unwrap_or_else(|| "/".to_string()),
@@ -1061,6 +1063,12 @@ impl YandexDiskProvider {
 
 #[async_trait]
 impl StorageProvider for YandexDiskProvider {
+    fn account_email(&self) -> Option<String> {
+        self.connected
+            .then(|| self.authenticated_account.clone())
+            .flatten()
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
@@ -1099,7 +1107,8 @@ impl StorageProvider for YandexDiskProvider {
                 user.uid
             };
             if !account.is_empty() {
-                self.resume_account = account;
+                self.resume_account = account.clone();
+                self.authenticated_account = Some(account);
             }
         }
 

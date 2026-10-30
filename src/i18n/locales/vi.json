@@ -1577,7 +1577,7 @@
             "selectPairLocalFolder": "Chọn thư mục cục bộ cho cặp",
             "secondsAgo": "{count} giây trước",
             "conflictsCount": "{count} xung đột cần xử lý",
-            "updateOnlyHint": "Cập nhật một chiều giữ lại các tệp đích mới hơn. Khi tắt sao lưu bổ sung, chỉ những tệp đã từng đồng bộ và chỉ có ở đích mới bị xóa. Các tệp chưa từng đồng bộ được giữ lại để xem xét trong AeroSync. Chính sách xung đột bị bỏ qua; các ngày không xác định vẫn chưa được giải quyết.",
+            "updateOnlyHint": "Cập nhật một chiều giữ lại các tệp đích mới hơn. Khi tắt sao lưu bổ sung, chỉ những tệp không thay đổi, chỉ có ở đích và có biên nhận truyền AeroCloud đã được xác minh mới bị xóa. Các tệp khác được giữ lại để xem xét trong AeroSync. Chính sách xung đột bị bỏ qua; các ngày không xác định vẫn chưa được giải quyết.",
             "untrackedDestinationFiles": "{count} tệp đích đã được giữ lại để xem xét: lịch sử truyền của chúng chưa được xác minh hoặc chúng đã thay đổi sau lần truyền AeroCloud gần nhất. Hãy xem xét chúng trong AeroSync trước khi quyết định xóa."
         },
         "statusBar": {

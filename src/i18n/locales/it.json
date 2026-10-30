@@ -2066,7 +2066,7 @@
             "selectPairLocalFolder": "Seleziona cartella locale per la coppia",
             "secondsAgo": "{count}s fa",
             "conflictsCount": "Conflitti da risolvere: {count}",
-            "updateOnlyHint": "L’aggiornamento unidirezionale conserva i file di destinazione più recenti. Con il backup additivo disattivato, vengono eliminati solo i file presenti esclusivamente nella destinazione e già sincronizzati in precedenza. I file mai sincronizzati vengono conservati per la revisione in AeroSync. La politica dei conflitti viene ignorata; le date sconosciute restano irrisolte.",
+            "updateOnlyHint": "L’aggiornamento unidirezionale conserva i file di destinazione più recenti. Con il backup additivo disattivato, vengono eliminati solo i file invariati presenti esclusivamente nella destinazione e con una ricevuta di trasferimento AeroCloud verificata. Gli altri file restano da esaminare in AeroSync. La politica dei conflitti viene ignorata; le date sconosciute restano irrisolte.",
             "untrackedDestinationFiles": "{count} file di destinazione sono stati conservati per la revisione: la cronologia dei trasferimenti non è verificata oppure sono stati modificati dopo l’ultimo trasferimento AeroCloud. Esaminali in AeroSync prima di decidere se eliminarli."
         },
         "statusBar": {
