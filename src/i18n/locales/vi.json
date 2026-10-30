@@ -1358,7 +1358,17 @@
             "serverProfilesCount": "{count} hồ sơ máy chủ",
             "aiKeysCount": "{count} khóa AI",
             "oauthTokensCount": "{count} token OAuth",
-            "configEntriesCount": "{count} mục cấu hình"
+            "configEntriesCount": "{count} mục cấu hình",
+            "importExistingLabel": "Nếu hồ sơ đã tồn tại",
+            "importExistingSkip": "Bỏ qua",
+            "importExistingOverwrite": "Ghi đè",
+            "importExistingDuplicate": "Nhân bản",
+            "importExistingSkipHint": "Hồ sơ bạn đã có được giữ nguyên, cùng mật khẩu và token của nó.",
+            "importExistingOverwriteHint": "Hồ sơ bạn đã có được thay thế tại chỗ bằng mật khẩu và token trong tệp. Hồ sơ vẫn nằm trong mục yêu thích và nhóm của bạn.",
+            "importExistingDuplicateHint": "Hồ sơ bạn đã có vẫn được giữ, và bản sao từ tệp được thêm bên cạnh với tên có đánh số.",
+            "overwrittenCount": "Đã ghi đè {count}",
+            "duplicatedCount": "Đã nhân bản {count}",
+            "importJottaChainWarning": "Jottacloud gia hạn đăng nhập ở mỗi lần kết nối, và {names} hiện dùng chung một phiên với bản sao khác: bản sao kết nối trước sẽ đăng xuất bản còn lại (thiết bị chứa tệp gốc, hoặc hồ sơ mà nó được nhân bản từ đó). Hãy đăng nhập lại bản còn lại bằng Personal Login Token mới."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1358,7 +1358,17 @@
             "serverProfilesCount": "{count} zerbitzari-profil",
             "aiKeysCount": "{count} AI gako",
             "oauthTokensCount": "{count} OAuth token",
-            "configEntriesCount": "{count} konfigurazio-sarrera"
+            "configEntriesCount": "{count} konfigurazio-sarrera",
+            "importExistingLabel": "Profila lehendik badago bada",
+            "importExistingSkip": "Saltatu",
+            "importExistingOverwrite": "Gainidatzi",
+            "importExistingDuplicate": "Bikoiztu",
+            "importExistingSkipHint": "Dagoeneko duzun profila dagoen bezala geratzen da, bere pasahitz eta tokenekin.",
+            "importExistingOverwriteHint": "Dagoeneko duzun profila bere lekuan ordezkatzen da, fitxategiak daramatzan pasahitz eta tokenekin. Zure gogokoenetan eta taldeetan geratzen da.",
+            "importExistingDuplicateHint": "Dagoeneko duzun profila geratzen da, eta fitxategiko kopia haren ondoan gehitzen da, zenbakitutako izen batekin.",
+            "overwrittenCount": "{count} gainidatzi dira",
+            "duplicatedCount": "{count} bikoiztu dira",
+            "importJottaChainWarning": "Jottacloudek konexio bakoitzean berritzen du saio-hasiera, eta {names} orain beste kopia batekin partekatzen du bat: lehenengo konektatzen den kopiak bestearen saioa ixten du (fitxategia nondik etorri den gailua, edo bikoiztu zen profila). Hasi saioa berriro bestean Personal Login Token berri batekin."
         },
         "devtools": {
             "title": "AeroTools",

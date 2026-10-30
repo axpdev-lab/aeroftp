@@ -1358,7 +1358,17 @@
             "serverProfilesCount": "{count} sunucu profili",
             "aiKeysCount": "{count} AI anahtarı",
             "oauthTokensCount": "{count} OAuth belirteci",
-            "configEntriesCount": "{count} yapılandırma girdisi"
+            "configEntriesCount": "{count} yapılandırma girdisi",
+            "importExistingLabel": "Profil zaten varsa",
+            "importExistingSkip": "Atla",
+            "importExistingOverwrite": "Üzerine yaz",
+            "importExistingDuplicate": "Çoğalt",
+            "importExistingSkipHint": "Zaten sahip olduğunuz profil, parolaları ve belirteçleriyle birlikte olduğu gibi kalır.",
+            "importExistingOverwriteHint": "Zaten sahip olduğunuz profil, dosyadaki parolalar ve belirteçlerle yerinde değiştirilir. Favorilerinizde ve gruplarınızda kalır.",
+            "importExistingDuplicateHint": "Zaten sahip olduğunuz profil kalır, dosyadaki kopya ise yanına numaralı bir adla eklenir.",
+            "overwrittenCount": "{count} üzerine yazıldı",
+            "duplicatedCount": "{count} çoğaltıldı",
+            "importJottaChainWarning": "Jottacloud her bağlantıda oturum açmayı yeniler ve {names} artık bunu başka bir kopyayla paylaşıyor: önce bağlanan kopya diğerinin oturumunu kapatır (dosyanın geldiği cihaz veya çoğaltıldığı profil). Diğerinde yeni bir Personal Login Token ile yeniden oturum açın."
         },
         "devtools": {
             "title": "AeroTools",

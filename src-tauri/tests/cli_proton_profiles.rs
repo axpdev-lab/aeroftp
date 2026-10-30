@@ -226,16 +226,17 @@ async fn proton_alias_preserves_manifest_options_and_explicit_client_after_savin
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
-    let preview = ftp_client_gui_lib::import_server_profiles_core_filtered(
+    let preview = ftp_client_gui_lib::import_server_profiles_with_mode(
         export.to_string_lossy().into_owned(),
         "synthetic alias export".into(),
-        Some(std::collections::HashSet::new()),
+        ftp_client_gui_lib::profile_import_plan::ExistingProfileMode::Skip,
+        &[],
+        true,
     )
     .await
     .unwrap();
-    let saved = preview["servers"]
-        .as_array()
-        .unwrap()
+    let saved = preview
+        .servers
         .iter()
         .find(|profile| profile["id"] == added["id"])
         .unwrap();
@@ -269,16 +270,17 @@ async fn saved(root: &Path, id: &str) -> serde_json::Value {
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
-    let preview = ftp_client_gui_lib::import_server_profiles_core_filtered(
+    let preview = ftp_client_gui_lib::import_server_profiles_with_mode(
         export.to_string_lossy().into_owned(),
         "synthetic switch export".into(),
-        Some(std::collections::HashSet::new()),
+        ftp_client_gui_lib::profile_import_plan::ExistingProfileMode::Skip,
+        &[],
+        true,
     )
     .await
     .unwrap();
-    preview["servers"]
-        .as_array()
-        .unwrap()
+    preview
+        .servers
         .iter()
         .find(|profile| profile["id"] == id)
         .cloned()

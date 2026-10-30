@@ -1358,7 +1358,17 @@
             "serverProfilesCount": "โปรไฟล์เซิร์ฟเวอร์ {count} รายการ",
             "aiKeysCount": "คีย์ AI {count} รายการ",
             "oauthTokensCount": "โทเค็น OAuth {count} รายการ",
-            "configEntriesCount": "รายการการกำหนดค่า {count} รายการ"
+            "configEntriesCount": "รายการการกำหนดค่า {count} รายการ",
+            "importExistingLabel": "หากมีโปรไฟล์อยู่แล้ว",
+            "importExistingSkip": "ข้าม",
+            "importExistingOverwrite": "เขียนทับ",
+            "importExistingDuplicate": "ทำซ้ำ",
+            "importExistingSkipHint": "โปรไฟล์ที่คุณมีอยู่แล้วจะคงไว้ตามเดิม พร้อมรหัสผ่านและโทเค็น",
+            "importExistingOverwriteHint": "โปรไฟล์ที่คุณมีอยู่แล้วจะถูกแทนที่ในตำแหน่งเดิมด้วยรหัสผ่านและโทเค็นจากไฟล์ และยังคงอยู่ในรายการโปรดและกลุ่มของคุณ",
+            "importExistingDuplicateHint": "โปรไฟล์ที่คุณมีอยู่แล้วจะคงไว้ และสำเนาจากไฟล์จะถูกเพิ่มไว้ข้างกันด้วยชื่อที่มีเลขกำกับ",
+            "overwrittenCount": "เขียนทับ {count} รายการ",
+            "duplicatedCount": "ทำซ้ำ {count} รายการ",
+            "importJottaChainWarning": "Jottacloud ต่ออายุการลงชื่อเข้าใช้ทุกครั้งที่เชื่อมต่อ และตอนนี้ {names} ใช้การลงชื่อเข้าใช้ร่วมกับสำเนาอื่น สำเนาที่เชื่อมต่อก่อนจะทำให้อีกสำเนาหนึ่งออกจากระบบ (อุปกรณ์ที่ไฟล์มา หรือโปรไฟล์ที่ถูกทำซ้ำมา) ให้ลงชื่อเข้าใช้อีกสำเนาหนึ่งอีกครั้งด้วย Personal Login Token ใหม่"
         },
         "devtools": {
             "title": "AeroTools",

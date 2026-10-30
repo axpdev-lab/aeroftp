@@ -60,6 +60,40 @@ describe('the import callback and the commit helper together', () => {
         expect(merged).toEqual(vault.profiles);
     });
 
+    // An overwrite re-import carries the id of the profile it replaces: one
+    // profile per id, in its place, and favourites keyed by that id still hold it.
+    it('replaces only the profiles named as overwritten, in place, and appends the others', async () => {
+        const second: ServerProfile = { ...base, id: 'second', name: 'Second' };
+        const vault = fakeVault([base, second]);
+        const overwritten: ServerProfile = { ...base, name: 'Koofr restored', host: 'restored.example' };
+        const added: ServerProfile = { ...base, id: 'added', name: 'Added' };
+        const merged = await appendImportedProfiles([added, overwritten], new Set([base.id]));
+        expect(merged.map(s => s.id)).toEqual([base.id, 'second', 'added']);
+        expect(merged[0]).toEqual(overwritten);
+        expect(vault.profiles).toEqual(merged);
+    });
+
+    // The profile was deleted elsewhere between the backend's read and this
+    // write: there is nothing to replace, so it is stored rather than lost.
+    it('an overwritten profile whose id is gone is appended, not dropped', async () => {
+        const second: ServerProfile = { ...base, id: 'second', name: 'Second' };
+        const vault = fakeVault([second]);
+        const overwritten: ServerProfile = { ...base, name: 'Koofr restored' };
+        const merged = await appendImportedProfiles([overwritten], new Set([base.id]));
+        expect(merged).toEqual([second, overwritten]);
+        expect(vault.profiles).toEqual(merged);
+    });
+
+    // A bridge import names nothing to replace: a profile it hands over is
+    // appended, the stored one of that id left as it was.
+    it('replaces nothing it was not told to', async () => {
+        const vault = fakeVault([base]);
+        const sameId: ServerProfile = { ...base, name: 'From a bridge' };
+        const merged = await appendImportedProfiles([sameId]);
+        expect(merged).toEqual([base, sameId]);
+        expect(vault.profiles[0]).toEqual(base);
+    });
+
     it('does not resurrect the profile it just replaced when that leaves the vault empty', async () => {
         const vault = fakeVault([base]);
         const replacement: ServerProfile = { ...base, id: 'replacement', name: 'Koofr renamed' };

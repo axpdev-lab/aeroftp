@@ -1358,7 +1358,17 @@
             "serverProfilesCount": "{count}টি সার্ভার প্রোফাইল",
             "aiKeysCount": "{count}টি AI কী",
             "oauthTokensCount": "{count}টি OAuth টোকেন",
-            "configEntriesCount": "{count}টি কনফিগারেশন এন্ট্রি"
+            "configEntriesCount": "{count}টি কনফিগারেশন এন্ট্রি",
+            "importExistingLabel": "যদি প্রোফাইল আগে থেকেই থাকে",
+            "importExistingSkip": "এড়িয়ে যান",
+            "importExistingOverwrite": "ওভাররাইট করুন",
+            "importExistingDuplicate": "ডুপ্লিকেট করুন",
+            "importExistingSkipHint": "আপনার আগে থেকে থাকা প্রোফাইল পাসওয়ার্ড ও টোকেনসহ যেমন আছে তেমনই থাকে।",
+            "importExistingOverwriteHint": "আপনার আগে থেকে থাকা প্রোফাইল ফাইলে থাকা পাসওয়ার্ড ও টোকেন দিয়ে যথাস্থানে প্রতিস্থাপিত হয়। এটি আপনার ফেভারিট ও গ্রুপে থাকে।",
+            "importExistingDuplicateHint": "আপনার আগে থেকে থাকা প্রোফাইল থাকে, আর ফাইলের কপিটি নম্বরযুক্ত নামে তার পাশে যোগ হয়।",
+            "overwrittenCount": "{count}টি ওভাররাইট হয়েছে",
+            "duplicatedCount": "{count}টি ডুপ্লিকেট হয়েছে",
+            "importJottaChainWarning": "Jottacloud প্রতিটি সংযোগে তার সাইন-ইন নবায়ন করে, এবং {names} এখন অন্য একটি কপির সাথে একই সাইন-ইন ভাগ করছে: যে কপি আগে সংযুক্ত হয় সে অন্যটিকে সাইন-আউট করে দেয় (ফাইলটি যে ডিভাইস থেকে এসেছে, বা যে প্রোফাইল থেকে এটি ডুপ্লিকেট করা হয়েছিল)। নতুন Personal Login Token দিয়ে অন্যটিতে আবার সাইন ইন করুন।"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1358,7 +1358,17 @@
             "serverProfilesCount": "Profiluri de server: {count}",
             "aiKeysCount": "Chei AI: {count}",
             "oauthTokensCount": "Tokenuri OAuth: {count}",
-            "configEntriesCount": "Intrări de configurare: {count}"
+            "configEntriesCount": "Intrări de configurare: {count}",
+            "importExistingLabel": "Dacă un profil există deja",
+            "importExistingSkip": "Omite",
+            "importExistingOverwrite": "Suprascrie",
+            "importExistingDuplicate": "Duplică",
+            "importExistingSkipHint": "Un profil pe care îl aveți deja rămâne cum este, cu parolele și token-urile lui.",
+            "importExistingOverwriteHint": "Un profil pe care îl aveți deja este înlocuit pe loc, cu parolele și token-urile din fișier. Rămâne în favorite și în grupuri.",
+            "importExistingDuplicateHint": "Un profil pe care îl aveți deja rămâne, iar copia din fișier este adăugată alături, cu un nume numerotat.",
+            "overwrittenCount": "{count} suprascrise",
+            "duplicatedCount": "{count} duplicate",
+            "importJottaChainWarning": "Jottacloud își reînnoiește autentificarea la fiecare conectare, iar {names} împarte acum una cu altă copie: copia care se conectează prima o deconectează pe cealaltă (dispozitivul de la care provine fișierul sau profilul din care a fost duplicată). Autentificați din nou cealaltă copie cu un nou Personal Login Token."
         },
         "devtools": {
             "title": "AeroTools",

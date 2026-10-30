@@ -1358,7 +1358,17 @@
             "serverProfilesCount": "Perfiles de servidor: {count}",
             "aiKeysCount": "Claves de AI: {count}",
             "oauthTokensCount": "Tokens OAuth: {count}",
-            "configEntriesCount": "Entradas de configuración: {count}"
+            "configEntriesCount": "Entradas de configuración: {count}",
+            "importExistingLabel": "Si un perfil ya existe",
+            "importExistingSkip": "Omitir",
+            "importExistingOverwrite": "Sobrescribir",
+            "importExistingDuplicate": "Duplicar",
+            "importExistingSkipHint": "Un perfil que ya tienes se queda como está, con sus contraseñas y tokens.",
+            "importExistingOverwriteHint": "Un perfil que ya tienes se reemplaza en su sitio, con las contraseñas y tokens que trae el archivo. Sigue en tus favoritos y grupos.",
+            "importExistingDuplicateHint": "Un perfil que ya tienes se conserva, y la copia del archivo se añade a su lado con un nombre numerado.",
+            "overwrittenCount": "{count} sobrescritos",
+            "duplicatedCount": "{count} duplicados",
+            "importJottaChainWarning": "Jottacloud renueva su inicio de sesión en cada conexión, y {names} ahora comparte uno con otra copia: la copia que se conecta primero cierra la sesión de la otra (el dispositivo del que viene el archivo, o el perfil del que se duplicó). Vuelve a iniciar sesión en la otra con un nuevo Personal Login Token."
         },
         "devtools": {
             "title": "AeroTools",

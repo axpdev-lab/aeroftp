@@ -1358,7 +1358,17 @@
             "serverProfilesCount": "Palvelinprofiilit: {count}",
             "aiKeysCount": "AI-avaimet: {count}",
             "oauthTokensCount": "OAuth-tunnukset: {count}",
-            "configEntriesCount": "Määritysmerkinnät: {count}"
+            "configEntriesCount": "Määritysmerkinnät: {count}",
+            "importExistingLabel": "Jos profiili on jo olemassa",
+            "importExistingSkip": "Ohita",
+            "importExistingOverwrite": "Korvaa",
+            "importExistingDuplicate": "Monista",
+            "importExistingSkipHint": "Profiili, joka sinulla jo on, pysyy ennallaan salasanoineen ja tokeneineen.",
+            "importExistingOverwriteHint": "Profiili, joka sinulla jo on, korvataan paikallaan tiedoston salasanoilla ja tokeneilla. Se pysyy suosikeissasi ja ryhmissäsi.",
+            "importExistingDuplicateHint": "Profiili, joka sinulla jo on, säilyy, ja tiedoston kopio lisätään sen viereen numeroidulla nimellä.",
+            "overwrittenCount": "{count} korvattu",
+            "duplicatedCount": "{count} monistettu",
+            "importJottaChainWarning": "Jottacloud uusii kirjautumisensa jokaisella yhteydellä, ja {names} jakaa nyt sellaisen toisen kopion kanssa: ensin yhdistävä kopio kirjaa toisen ulos (laite, josta tiedosto tuli, tai profiili, josta se monistettiin). Kirjaa toinen uudelleen sisään uudella Personal Login Tokenilla."
         },
         "devtools": {
             "title": "AeroTools",

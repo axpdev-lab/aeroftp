@@ -1358,7 +1358,17 @@
             "serverProfilesCount": "Serverprofile: {count}",
             "aiKeysCount": "AI-Schlüssel: {count}",
             "oauthTokensCount": "OAuth-Token: {count}",
-            "configEntriesCount": "Konfigurationseinträge: {count}"
+            "configEntriesCount": "Konfigurationseinträge: {count}",
+            "importExistingLabel": "Wenn ein Profil bereits existiert",
+            "importExistingSkip": "Überspringen",
+            "importExistingOverwrite": "Überschreiben",
+            "importExistingDuplicate": "Duplizieren",
+            "importExistingSkipHint": "Ein vorhandenes Profil bleibt unverändert, mit seinen Passwörtern und Tokens.",
+            "importExistingOverwriteHint": "Ein vorhandenes Profil wird an Ort und Stelle ersetzt, mit den Passwörtern und Tokens aus der Datei. Es bleibt in Ihren Favoriten und Gruppen.",
+            "importExistingDuplicateHint": "Ein vorhandenes Profil bleibt bestehen, und die Kopie aus der Datei wird daneben mit nummeriertem Namen hinzugefügt.",
+            "overwrittenCount": "{count} überschrieben",
+            "duplicatedCount": "{count} dupliziert",
+            "importJottaChainWarning": "Jottacloud erneuert die Anmeldung bei jeder Verbindung, und {names} teilt sich jetzt eine mit einer anderen Kopie: Die Kopie, die sich zuerst verbindet, meldet die andere ab (das Gerät, von dem die Datei stammt, oder das Profil, von dem dupliziert wurde). Melden Sie die andere mit einem neuen Personal Login Token erneut an."
         },
         "devtools": {
             "title": "AeroTools",

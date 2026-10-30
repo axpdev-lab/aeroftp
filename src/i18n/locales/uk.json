@@ -1358,7 +1358,17 @@
             "serverProfilesCount": "Профілі серверів: {count}",
             "aiKeysCount": "Ключі AI: {count}",
             "oauthTokensCount": "Токени OAuth: {count}",
-            "configEntriesCount": "Записи конфігурації: {count}"
+            "configEntriesCount": "Записи конфігурації: {count}",
+            "importExistingLabel": "Якщо профіль уже існує",
+            "importExistingSkip": "Пропустити",
+            "importExistingOverwrite": "Перезаписати",
+            "importExistingDuplicate": "Дублювати",
+            "importExistingSkipHint": "Наявний профіль залишається як є, з його паролями й токенами.",
+            "importExistingOverwriteHint": "Наявний профіль замінюється на місці паролями й токенами з файлу. Він залишається в обраному та в групах.",
+            "importExistingDuplicateHint": "Наявний профіль залишається, а копія з файлу додається поруч із нумерованою назвою.",
+            "overwrittenCount": "Перезаписано: {count}",
+            "duplicatedCount": "Продубльовано: {count}",
+            "importJottaChainWarning": "Jottacloud оновлює вхід під час кожного підключення, і {names} тепер ділить його з іншою копією: копія, що підключиться першою, виконає вихід з іншої (пристрій, звідки прийшов файл, або профіль, з якого зроблено дублікат). Увійдіть в іншу знову з новим Personal Login Token."
         },
         "devtools": {
             "title": "AeroTools",

@@ -32,10 +32,27 @@ export const bridgeProfileKey = (s: Pick<ServerProfile, 'host' | 'port' | 'usern
  * them. The list handed back is the one stored: an imported profile whose
  * name another profile holds is stored with the first free " (1)", " (2)",
  * ... (`storeSavedServerProfiles`).
+ *
+ * @param newServers the imported profiles.
+ * @param replaceIds ids of imported profiles that replace the stored profile of
+ *   the same id where it stands, keeping its place in the list: the profiles a
+ *   `.aeroftp` import set to Overwrite reported as overwritten. Every other
+ *   imported profile is appended, as before; the bridge imports name none. A
+ *   named profile whose id the vault no longer holds when this writes (deleted
+ *   from another window in the meantime) is appended too, never dropped.
  */
-export async function appendImportedProfiles(newServers: ServerProfile[]): Promise<ServerProfile[]> {
+export async function appendImportedProfiles(
+    newServers: ServerProfile[],
+    replaceIds: ReadonlySet<string> = new Set(),
+): Promise<ServerProfile[]> {
     const { profiles: current, userId } = await readSavedServerProfilesForWrite();
-    return storeSavedServerProfiles([...current, ...newServers], false, userId);
+    const currentIds = new Set(current.map(s => s.id));
+    const replacing = new Map(newServers.filter(s => replaceIds.has(s.id)).map(s => [s.id, s]));
+    const merged = [
+        ...current.map(s => replacing.get(s.id) ?? s),
+        ...newServers.filter(s => !replaceIds.has(s.id) || !currentIds.has(s.id)),
+    ];
+    return storeSavedServerProfiles(merged, false, userId);
 }
 
 /**

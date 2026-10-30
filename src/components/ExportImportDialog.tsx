@@ -10,7 +10,6 @@ import { Upload, Download, Shield, AlertCircle, CheckCircle2, X, Eye, EyeOff, Lo
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
 import { ServerProfile } from '../types';
-import { loadSavedServerProfiles, storeSavedServerProfiles } from '../utils/serverProfileStore';
 import { useTranslation } from '../i18n';
 import { SearchBox } from './SearchBox';
 import { Checkbox } from './ui/Checkbox';
@@ -23,7 +22,8 @@ import { ServerChecklistNoMatch, ServerChecklistSearch, ServerChecklistSummary, 
 
 interface ExportImportDialogProps {
     servers: ServerProfile[];
-    onImport: (servers: ServerProfile[]) => void | Promise<void>;
+    /** Store the imported profiles; those in `replaceIds` replace the stored profile of the same id. */
+    onImport: (servers: ServerProfile[], replaceIds?: ReadonlySet<string>) => void | Promise<void>;
     onClose: () => void;
     // Optional starting mode so callers (e.g. the Settings Backup table) can
     // open the dialog straight into a specific action. Undefined preserves the
@@ -68,10 +68,27 @@ interface ImportedServer {
     // #215 Caveat A: the per-protocol "remember credentials" opt-in, round-tripped
     // so an imported profile re-hydrates its server_modes_<id> snapshots.
     persistModeCredentials?: boolean;
+    // What the import did with this profile (`profile_import_plan`). An
+    // overwritten one arrives already laid over the profile it replaces.
+    importOutcome: 'added' | 'overwritten' | 'duplicated';
 }
 
+/** What a `.aeroftp` import does with a profile whose id already exists. */
+type ExistingProfileMode = 'skip' | 'overwrite' | 'duplicate';
+// Each mode's label and the line that says what it does, as i18n keys.
+const EXISTING_PROFILE_MODES: { mode: ExistingProfileMode; label: string; hint: string }[] = [
+    { mode: 'skip', label: 'settings.importExistingSkip', hint: 'settings.importExistingSkipHint' },
+    { mode: 'overwrite', label: 'settings.importExistingOverwrite', hint: 'settings.importExistingOverwriteHint' },
+    { mode: 'duplicate', label: 'settings.importExistingDuplicate', hint: 'settings.importExistingDuplicateHint' },
+];
+
 interface ImportResult {
+    // The profiles to store; the ones the import skipped are only named.
     servers: ImportedServer[];
+    skipped: string[];
+    similar: number;
+    // Stored Jottacloud profiles that brought their rotating refresh chain.
+    jottaChains: string[];
     metadata: {
         exportDate: string;
         aeroftpVersion: string;
@@ -100,6 +117,10 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     const [confirmPassword, setConfirmPassword] = useState('');
     const [includeCredentials, setIncludeCredentials] = useState(true);
     const [showPassword, setShowPassword] = useState(false);
+    const [existingMode, setExistingMode] = useState<ExistingProfileMode>('skip');
+    // Shown after an import that copied a Jottacloud refresh chain; it keeps
+    // the dialog open so the warning can be read.
+    const [jottaWarning, setJottaWarning] = useState<string | null>(null);
     // KeePassXC-style import flow: the .aeroftp file is chosen first and its
     // path is held here, then the decryption password is requested. Null
     // until a file has been selected.
@@ -243,29 +264,17 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             const result = await invoke<ImportResult>('import_server_profiles', {
                 filePath,
                 password,
+                existing: existingMode,
             });
 
-            const importedServers = result.servers;
-
-            // Read current servers directly from the active user's vault
-            // partition (ground truth). The `servers` prop may be stale or
-            // incomplete during an in-flight import.
-            let currentServers = await loadSavedServerProfiles();
-            if (currentServers.length === 0) currentServers = servers;
-
-            // Merge: skip ONLY a true re-import (same stable id). Profiles that
-            // merely share an account (host:port:username) are legitimately
-            // distinct (different protocol, crypt overlay, bound folder, or auth
-            // mode) and must NOT be dropped: keep them and flag them as
-            // resembling an existing profile. Same rule as the CLI profile-import.
-            const existingAccounts = new Set(
-                currentServers.map(s => `${s.host}:${s.port}:${s.username}`)
-            );
-            const existingIds = new Set(currentServers.map(s => s.id));
-
-            const newServers: ServerProfile[] = importedServers
-                .filter(s => !existingIds.has(s.id))
-                .map(s => ({
+            // The backend compared the file with the active user's profiles and
+            // decided each one with `existingMode` (the CLI's profile-import
+            // plans the same way), restoring secrets only for the profiles it
+            // stores. A profile that only shares host:port:username with an
+            // existing one is added and counted as similar.
+            const imported: ServerProfile[] = result.servers.map(({ importOutcome, ...s }) => importOutcome === 'overwritten'
+                ? s as ServerProfile
+                : {
                     id: s.id,
                     name: s.name,
                     host: s.host,
@@ -288,22 +297,27 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                     // #215 Caveat A: preserve the per-protocol "remember credentials"
                     // opt-in so the imported profile loads its restored snapshots.
                     persistModeCredentials: s.persistModeCredentials,
-                }));
-
-            const skipped = importedServers.length - newServers.length; // same-id re-imports
-            // Added profiles that share an account (host:port:username) with one
-            // already present: kept (distinct by protocol/overlay/folder/auth),
-            // just flagged so the user can prune if they were unintended.
-            const similar = newServers.filter(
-                s => existingAccounts.has(`${s.host}:${s.port}:${s.username}`)
-            ).length;
-            await onImport(newServers);
+                });
+            const count = (outcome: ImportedServer['importOutcome']) =>
+                result.servers.filter(s => s.importOutcome === outcome).length;
+            const overwritten = count('overwritten');
+            const duplicated = count('duplicated');
+            await onImport(imported, new Set(
+                result.servers.filter(s => s.importOutcome === 'overwritten').map(s => s.id),
+            ));
             setSuccess(
-                t('settings.importSuccess').replace('{count}', String(newServers.length)) +
-                (skipped > 0 ? ` (${t('settings.duplicatesSkippedCount', { count: skipped })})` : '') +
-                (similar > 0 ? ` (${t('settings.similarToExistingCount', { count: similar })})` : '')
+                // "new servers": the overwritten ones replaced servers already there.
+                t('settings.importSuccess').replace('{count}', String(imported.length - overwritten)) +
+                (overwritten > 0 ? ` (${t('settings.overwrittenCount', { count: overwritten })})` : '') +
+                (duplicated > 0 ? ` (${t('settings.duplicatedCount', { count: duplicated })})` : '') +
+                (result.skipped.length > 0 ? ` (${t('settings.duplicatesSkippedCount', { count: result.skipped.length })})` : '') +
+                (result.similar > 0 ? ` (${t('settings.similarToExistingCount', { count: result.similar })})` : '')
             );
-            setTimeout(() => onClose(), 2500);
+            if (result.jottaChains.length > 0) {
+                setJottaWarning(t('settings.importJottaChainWarning', { names: result.jottaChains.join(', ') }));
+            } else {
+                setTimeout(() => onClose(), 2500);
+            }
         } catch (err) {
             const errStr = String(err);
             if (errStr.includes('Invalid password')) {
@@ -323,6 +337,8 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         setPassword('');
         setConfirmPassword('');
         setImportFilePath(null);
+        setExistingMode('skip');
+        setJottaWarning(null);
         setBridgeSrc(null);
         setBridgePresetPath(null);
         exportFilter.setQuery('');
@@ -779,12 +795,36 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                             {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                         </button>
                                     </div>
+
+                                    {/* What happens to a profile that already exists */}
+                                    <div role="radiogroup" aria-label={t('settings.importExistingLabel')} className="space-y-1.5">
+                                        <div className="text-xs font-medium text-gray-600 dark:text-gray-400">{t('settings.importExistingLabel')}</div>
+                                        <div className="flex gap-1 p-1 rounded-lg bg-gray-100 dark:bg-gray-900/40">
+                                            {EXISTING_PROFILE_MODES.map(({ mode: m, label }) => (
+                                                <button
+                                                    key={m}
+                                                    type="button"
+                                                    role="radio"
+                                                    aria-checked={existingMode === m}
+                                                    data-testid={`import-existing-${m}`}
+                                                    onClick={() => setExistingMode(m)}
+                                                    className={`flex-1 px-2 py-1 text-xs rounded-md transition-colors ${existingMode === m
+                                                        ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm font-medium'
+                                                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'}`}
+                                                >
+                                                    {t(label)}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">{t(EXISTING_PROFILE_MODES.find(o => o.mode === existingMode)!.hint)}</p>
+                                    </div>
                                 </>
                             )}
 
                             {/* Error/Success */}
                             {error && <div className="text-red-500 text-sm flex items-center gap-2"><AlertCircle size={14} />{error}</div>}
                             {success && <div className="text-green-500 text-sm flex items-center gap-2"><CheckCircle2 size={14} />{success}</div>}
+                            {jottaWarning && <div data-testid="import-jotta-warning" className="text-amber-600 dark:text-amber-400 text-sm flex items-start gap-2"><AlertCircle size={14} className="mt-0.5 flex-shrink-0" />{jottaWarning}</div>}
 
                             {/* Actions */}
                             <div className="flex gap-2">

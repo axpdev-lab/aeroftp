@@ -1358,7 +1358,17 @@
             "serverProfilesCount": "{count} profil server",
             "aiKeysCount": "{count} kunci AI",
             "oauthTokensCount": "{count} token OAuth",
-            "configEntriesCount": "{count} entri konfigurasi"
+            "configEntriesCount": "{count} entri konfigurasi",
+            "importExistingLabel": "Jika profil sudah ada",
+            "importExistingSkip": "Lewati",
+            "importExistingOverwrite": "Timpa",
+            "importExistingDuplicate": "Duplikat",
+            "importExistingSkipHint": "Profil yang sudah Anda miliki tetap apa adanya, beserta kata sandi dan token-nya.",
+            "importExistingOverwriteHint": "Profil yang sudah Anda miliki diganti di tempat, dengan kata sandi dan token dari file. Profil tetap ada di favorit dan grup Anda.",
+            "importExistingDuplicateHint": "Profil yang sudah Anda miliki tetap ada, dan salinan dari file ditambahkan di sampingnya dengan nama bernomor.",
+            "overwrittenCount": "{count} ditimpa",
+            "duplicatedCount": "{count} diduplikasi",
+            "importJottaChainWarning": "Jottacloud memperbarui login-nya pada setiap koneksi, dan {names} kini berbagi satu dengan salinan lain: salinan yang terhubung lebih dulu akan mengeluarkan yang lain (perangkat asal file, atau profil tempat salinan ini diduplikasi). Masuk lagi ke yang lain dengan Personal Login Token baru."
         },
         "devtools": {
             "title": "AeroTools",

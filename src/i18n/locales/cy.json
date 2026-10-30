@@ -1358,7 +1358,17 @@
             "serverProfilesCount": "{count} proffil gweinydd",
             "aiKeysCount": "{count} allwedd AI",
             "oauthTokensCount": "{count} tocyn OAuth",
-            "configEntriesCount": "{count} cofnod ffurfweddu"
+            "configEntriesCount": "{count} cofnod ffurfweddu",
+            "importExistingLabel": "Os yw proffil eisoes yn bodoli",
+            "importExistingSkip": "Hepgor",
+            "importExistingOverwrite": "Trosysgrifo",
+            "importExistingDuplicate": "Dyblygu",
+            "importExistingSkipHint": "Mae proffil sydd gennych eisoes yn aros fel y mae, gyda'i gyfrineiriau a'i docynnau.",
+            "importExistingOverwriteHint": "Mae proffil sydd gennych eisoes yn cael ei ddisodli yn ei le, gyda'r cyfrineiriau a'r tocynnau sydd yn y ffeil. Mae'n aros yn eich ffefrynnau a'ch grwpiau.",
+            "importExistingDuplicateHint": "Mae proffil sydd gennych eisoes yn aros, ac mae'r copi o'r ffeil yn cael ei ychwanegu wrth ei ochr gydag enw wedi'i rifo.",
+            "overwrittenCount": "{count} wedi'u trosysgrifo",
+            "duplicatedCount": "{count} wedi'u dyblygu",
+            "importJottaChainWarning": "Mae Jottacloud yn adnewyddu ei fewngofnodi ar bob cysylltiad, ac mae {names} bellach yn rhannu un gyda chopi arall: mae'r copi sy'n cysylltu gyntaf yn allgofnodi'r llall (y ddyfais y daeth y ffeil ohoni, neu'r proffil y cafodd ei ddyblygu ohono). Mewngofnodwch y llall eto gyda Personal Login Token newydd."
         },
         "devtools": {
             "title": "AeroTools",

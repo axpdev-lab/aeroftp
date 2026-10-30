@@ -1358,7 +1358,17 @@
             "serverProfilesCount": "Netþjónssnið: {count}",
             "aiKeysCount": "AI-lyklar: {count}",
             "oauthTokensCount": "OAuth-tókar: {count}",
-            "configEntriesCount": "Stillingafærslur: {count}"
+            "configEntriesCount": "Stillingafærslur: {count}",
+            "importExistingLabel": "Ef prófíll er þegar til",
+            "importExistingSkip": "Sleppa",
+            "importExistingOverwrite": "Skrifa yfir",
+            "importExistingDuplicate": "Afrita",
+            "importExistingSkipHint": "Prófíll sem þú átt nú þegar helst óbreyttur, með lykilorðum sínum og tókum.",
+            "importExistingOverwriteHint": "Prófíll sem þú átt nú þegar er skipt út á staðnum, með lykilorðum og tókum úr skránni. Hann verður áfram í eftirlætum og hópum.",
+            "importExistingDuplicateHint": "Prófíll sem þú átt nú þegar helst, og afritið úr skránni er bætt við hliðina á honum með númeruðu heiti.",
+            "overwrittenCount": "{count} skrifað yfir",
+            "duplicatedCount": "{count} afritað",
+            "importJottaChainWarning": "Jottacloud endurnýjar innskráningu sína við hverja tengingu og {names} deilir nú einni með öðru afriti: afritið sem tengist fyrst skráir hitt út (tækið sem skráin kom frá, eða prófílinn sem það var afritað úr). Skráðu hitt inn aftur með nýju Personal Login Token."
         },
         "devtools": {
             "title": "AeroTools",

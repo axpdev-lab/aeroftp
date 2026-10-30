@@ -484,9 +484,13 @@ async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value)
             "{prefix}"
         );
     }
-    crate::import_server_profiles_core(
+    // Nothing of this id is listed any more: the import restores every secret.
+    crate::import_server_profiles_with_mode(
         file.to_string_lossy().into_owned(),
         "fixture-export-password".into(),
+        crate::profile_import_plan::ExistingProfileMode::Skip,
+        &[],
+        false,
     )
     .await
     .unwrap();
@@ -499,6 +503,92 @@ async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value)
     for prefix in TRANSIENT_KEY_PREFIXES {
         assert!(store.get(&format!("{prefix}_{source}")).is_err());
     }
+
+    // Re-importing a profile the user already has: skip keeps the local
+    // secrets, overwrite replaces them under the same id, duplicate writes them
+    // to a new id only, and a dry run writes nothing.
+    use crate::profile_import_plan::ExistingProfileMode;
+    let current = vec![export_profile.clone()];
+    let entries = auth.entries();
+    let (stale_prefix, expected) = (entries[0].0, entries[0].1.unwrap());
+    let stale_key = format!("{stale_prefix}_{source}");
+    let read = |key: &str| users::resolve_active_credential(store, key).unwrap();
+    let import_with = |mode, dry_run| {
+        crate::import_server_profiles_with_mode(
+            file.to_string_lossy().into_owned(),
+            "fixture-export-password".into(),
+            mode,
+            &current,
+            dry_run,
+        )
+    };
+    users::store_active_credential_typed_dual(store, &stale_key, "oauth", "stale-local").unwrap();
+    let skip = import_with(ExistingProfileMode::Skip, false).await.unwrap();
+    assert!(skip.servers.is_empty());
+    assert_eq!(skip.skipped, [field(&export_profile, "name")]);
+    assert_eq!(read(&stale_key).unwrap().as_str(), "stale-local");
+    let overwrite = import_with(ExistingProfileMode::Overwrite, false)
+        .await
+        .unwrap();
+    assert_eq!(overwrite.servers[0]["importOutcome"], "overwritten");
+    assert_eq!(overwrite.servers[0]["id"], source);
+    assert_eq!(read(&stale_key).unwrap().as_str(), expected);
+    users::store_active_credential_typed_dual(store, &stale_key, "oauth", "stale-local").unwrap();
+    let preview = import_with(ExistingProfileMode::Duplicate, true)
+        .await
+        .unwrap();
+    let preview_id = field(&preview.servers[0], "id");
+    assert_ne!(preview_id, source);
+    assert!(read(&format!("{stale_prefix}_{preview_id}")).is_none());
+    let duplicate = import_with(ExistingProfileMode::Duplicate, false)
+        .await
+        .unwrap();
+    assert_eq!(duplicate.servers[0]["importOutcome"], "duplicated");
+    let copy_id = field(&duplicate.servers[0], "id");
+    assert_ne!(copy_id, source);
+    for (prefix, value) in &entries {
+        let copied = read(&format!("{prefix}_{copy_id}")).unwrap();
+        assert_eq!(copied.as_str(), value.unwrap(), "{prefix}");
+    }
+    assert_eq!(read(&stale_key).unwrap().as_str(), "stale-local");
+    users::store_active_credential_typed_dual(store, &stale_key, "oauth", expected).unwrap();
+    crate::purge_profile_secrets(copy_id.into(), Some("github".into()))
+        .await
+        .unwrap();
+    assert!(overwrite.jotta_chains.is_empty());
+
+    // A Jottacloud profile that brings its rotating refresh chain is named in
+    // the report, for the GUI and CLI warning; a dry run names it too.
+    let jotta = json!({"id":"fixture-jotta","name":"synthetic jotta","protocol":"jottacloud",
+        "host":"","port":443});
+    users::store_active_credential_typed_dual(
+        store,
+        "jottacloud_refresh_fixture-jotta",
+        "jottacloud_refresh",
+        "synthetic-refresh-chain",
+    )
+    .unwrap();
+    let jotta_file = directory.path().join("jotta.aeroftp");
+    crate::export_server_profiles_core(
+        json!([jotta.clone()]).to_string(),
+        "fixture-export-password".into(),
+        true,
+        jotta_file.to_string_lossy().into_owned(),
+    )
+    .await
+    .unwrap();
+    let jotta_report = crate::import_server_profiles_with_mode(
+        jotta_file.to_string_lossy().into_owned(),
+        "fixture-export-password".into(),
+        ExistingProfileMode::Duplicate,
+        &[jotta],
+        true,
+    )
+    .await
+    .unwrap();
+    assert_eq!(jotta_report.servers[0]["importOutcome"], "duplicated");
+    assert_eq!(jotta_report.jotta_chains, ["synthetic jotta"]);
+
     let redacted = directory.path().join("headless-redacted.aeroftp");
     let metadata = crate::export_server_profiles_core(
         json!([export_profile]).to_string(),
@@ -657,9 +747,12 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
         .await
         .unwrap();
     assert_eq!(count(selected_id, &selected_key), 0);
-    crate::import_server_profiles_core(
+    crate::import_server_profiles_with_mode(
         file.to_string_lossy().into_owned(),
         "native-fixture-export-password".into(),
+        crate::profile_import_plan::ExistingProfileMode::Skip,
+        &[],
+        false,
     )
     .await
     .unwrap();

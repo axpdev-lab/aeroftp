@@ -1358,7 +1358,17 @@
             "serverProfilesCount": "Προφίλ διακομιστών: {count}",
             "aiKeysCount": "Κλειδιά AI: {count}",
             "oauthTokensCount": "Διακριτικά OAuth: {count}",
-            "configEntriesCount": "Καταχωρήσεις ρυθμίσεων: {count}"
+            "configEntriesCount": "Καταχωρήσεις ρυθμίσεων: {count}",
+            "importExistingLabel": "Αν ένα προφίλ υπάρχει ήδη",
+            "importExistingSkip": "Παράλειψη",
+            "importExistingOverwrite": "Αντικατάσταση",
+            "importExistingDuplicate": "Διπλασιασμός",
+            "importExistingSkipHint": "Ένα προφίλ που ήδη έχετε μένει ως έχει, με τους κωδικούς και τα διακριτικά του.",
+            "importExistingOverwriteHint": "Ένα προφίλ που ήδη έχετε αντικαθίσταται επιτόπου, με τους κωδικούς και τα διακριτικά του αρχείου. Παραμένει στα αγαπημένα και στις ομάδες σας.",
+            "importExistingDuplicateHint": "Ένα προφίλ που ήδη έχετε παραμένει και το αντίγραφο από το αρχείο προστίθεται δίπλα του με αριθμημένο όνομα.",
+            "overwrittenCount": "{count} αντικαταστάθηκαν",
+            "duplicatedCount": "{count} διπλασιάστηκαν",
+            "importJottaChainWarning": "Το Jottacloud ανανεώνει τη σύνδεσή του σε κάθε σύνδεση, και το {names} μοιράζεται πλέον μία με άλλο αντίγραφο: το αντίγραφο που συνδέεται πρώτο αποσυνδέει το άλλο (τη συσκευή από την οποία προήλθε το αρχείο ή το προφίλ από το οποίο διπλασιάστηκε). Συνδέστε ξανά το άλλο με νέο Personal Login Token."
         },
         "devtools": {
             "title": "AeroTools",

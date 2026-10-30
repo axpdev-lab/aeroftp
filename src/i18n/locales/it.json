@@ -1833,7 +1833,17 @@
             "serverProfilesCount": "Profili server: {count}",
             "aiKeysCount": "Chiavi AI: {count}",
             "oauthTokensCount": "Token OAuth: {count}",
-            "configEntriesCount": "Voci di configurazione: {count}"
+            "configEntriesCount": "Voci di configurazione: {count}",
+            "importExistingLabel": "Se un profilo esiste già",
+            "importExistingSkip": "Salta",
+            "importExistingOverwrite": "Sovrascrivi",
+            "importExistingDuplicate": "Duplica",
+            "importExistingSkipHint": "Un profilo che hai già resta com'è, con le sue password e i suoi token.",
+            "importExistingOverwriteHint": "Un profilo che hai già viene sostituito sul posto, con le password e i token contenuti nel file. Resta nei tuoi preferiti e nei gruppi.",
+            "importExistingDuplicateHint": "Un profilo che hai già resta, e la copia dal file viene aggiunta accanto con un nome numerato.",
+            "overwrittenCount": "{count} sovrascritti",
+            "duplicatedCount": "{count} duplicati",
+            "importJottaChainWarning": "Jottacloud rinnova l'accesso a ogni connessione, e {names} ora ne condivide uno con un'altra copia: la copia che si connette per prima disconnette l'altra (il dispositivo da cui proviene il file, o il profilo da cui è stata duplicata). Accedi di nuovo all'altra con un nuovo Personal Login Token."
         },
         "appearance": {
             "patternCross": "Croce",

@@ -1847,9 +1847,27 @@ aeroftp-cli profile-export --output ./my-servers.aeroftp --include-credentials
 aeroftp-cli profile-export --output ./subset.aeroftp --ids "Backup,3"
 aeroftp-cli profile-export --output ./subset.aeroftp --name "axpbuntu-remote (admin)"
 
-# Re-import (profiles already present by id or host:port:username are skipped)
+# Re-import: a profile you already have (same id) is skipped by default
 aeroftp-cli profile-import --input ./my-servers.aeroftp
+
+# Refresh existing profiles and their secrets from the backup, in place
+aeroftp-cli profile-import --input ./my-servers.aeroftp --on-existing overwrite
+
+# Preview what a duplicate import would do, touching nothing
+aeroftp-cli profile-import --input ./my-servers.aeroftp --on-existing duplicate --dry-run
 ```
+
+`--on-existing` decides what happens to a profile of the file that the active user already has, recognised by its profile id (the GUI import offers the same three choices):
+
+| Mode | Existing profile | Its secrets |
+|------|------------------|-------------|
+| `skip` (default) | kept as it is | kept as they are |
+| `overwrite` | replaced in place under the same id, so it stays in favorites and groups | every secret the file carries replaces the stored one; a secret the file does not carry is kept |
+| `duplicate` | kept; the file's copy is added under a new id with the first free " (1)", " (2)" name | the copy gets the file's secrets, the original keeps its own |
+
+A profile that only shares host, port and username with an existing one is never a conflict: it is added in every mode and reported as resembling an existing profile. Secrets are restored only for the profiles that are added, overwritten or duplicated, never for a skipped one, and `--dry-run` restores none.
+
+A Jottacloud refresh chain changes on every connection, so only one holder of it stays signed in. When an imported, overwritten or duplicated Jottacloud profile brings its chain, the import warns: the first copy that connects signs the other out (the device the file came from, or the profile it was duplicated from), which then needs a new Personal Login Token.
 
 Secrets are **opt-in**: without `--include-credentials` the file carries only the profile configuration and never any secret. The password resolution order (first match wins) is the `AEROFTP_PROFILE_PASSWORD` environment variable, then `--password-stdin`, then `--password <pw>` (visible in `ps`), then an interactive prompt. Use `--json` for a machine-readable summary.
 

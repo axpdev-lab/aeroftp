@@ -3735,14 +3735,16 @@ enum Commands {
         )]
         ids: Option<String>,
     },
-    /// Import server profiles from a `.aeroftp` file (existing profiles are
-    /// SKIPPED, never overwritten)
+    /// Import server profiles from a `.aeroftp` file (`--on-existing` picks
+    /// what happens to a profile that already exists; it is skipped by default)
     ///
     /// Restores profiles and, when the file was exported with credentials,
     /// every saved secret back into the active user's vault, including the
     /// #215 per-protocol snapshots so a one-account-many-protocols profile
-    /// keeps each mode's credentials. Profiles already present (same id or
-    /// host:port:username) are skipped. Byte-compatible with My Servers > Import.
+    /// keeps each mode's credentials. A profile already exists when the active
+    /// user has one of the same id; one that only shares host:port:username is
+    /// added and reported as resembling an existing profile. Byte-compatible
+    /// with My Servers > Import.
     ProfileImport {
         /// Input `.aeroftp` path
         #[arg(long, short = 'i', value_name = "PATH")]
@@ -3754,11 +3756,19 @@ enum Commands {
         #[arg(long = "password-stdin")]
         password_stdin: bool,
         /// Preview only: decrypt the file and print which profiles would be
-        /// added, skipped as duplicates, or resemble an existing profile, then
-        /// exit 0 without touching the vault or the keyring. A duplicate (same
-        /// profile id) is skipped, never overwritten.
+        /// added, overwritten, duplicated or skipped, and which resemble an
+        /// existing profile, then exit 0 without touching the vault or the
+        /// keyring.
         #[arg(long)]
         dry_run: bool,
+        #[arg(
+            long = "on-existing",
+            value_enum,
+            default_value_t = ExistingProfileArg::Skip,
+            value_name = "MODE",
+            help = ON_EXISTING_HELP
+        )]
+        on_existing: ExistingProfileArg,
     },
     /// List configured AI providers and models from the encrypted vault
     AiModels,
@@ -4876,6 +4886,29 @@ impl KeystoreMergeArg {
     }
 }
 
+const ON_EXISTING_HELP: &str = "What to do with a profile of the file that already exists (the active user has a profile of the same id). skip (default): keep it and its secrets. overwrite: replace its configuration in place, so it stays in favourites and groups, and write every secret the file carries over the existing one; a secret the file does not carry is kept. duplicate: import a copy under a new id beside it, named with the first free \" (1)\", \" (2)\" suffix.";
+
+/// Conflict resolution for `profile-import` and `import aeroftp`; see
+/// `ftp_client_gui_lib::profile_import_plan`.
+#[derive(Copy, Clone, Debug, ValueEnum)]
+enum ExistingProfileArg {
+    Skip,
+    Overwrite,
+    Duplicate,
+}
+
+impl ExistingProfileArg {
+    /// The library's mode for this flag value.
+    fn into_inner(self) -> ftp_client_gui_lib::profile_import_plan::ExistingProfileMode {
+        use ftp_client_gui_lib::profile_import_plan::ExistingProfileMode;
+        match self {
+            Self::Skip => ExistingProfileMode::Skip,
+            Self::Overwrite => ExistingProfileMode::Overwrite,
+            Self::Duplicate => ExistingProfileMode::Duplicate,
+        }
+    }
+}
+
 #[derive(Subcommand, Clone)]
 enum KeystoreCommands {
     /// Export an encrypted `.aeroftp-keystore` backup file.
@@ -5256,9 +5289,18 @@ enum ImportCommands {
         /// Read one password line from stdin
         #[arg(long = "password-stdin")]
         password_stdin: bool,
-        /// Preview only: print what would be added or skipped, touch nothing
+        /// Preview only: print what would be added, overwritten, duplicated or
+        /// skipped, touch nothing
         #[arg(long)]
         dry_run: bool,
+        #[arg(
+            long = "on-existing",
+            value_enum,
+            default_value_t = ExistingProfileArg::Skip,
+            value_name = "MODE",
+            help = ON_EXISTING_HELP
+        )]
+        on_existing: ExistingProfileArg,
     },
 }
 
@@ -42441,10 +42483,10 @@ async fn cmd_profile_export(
 }
 
 /// `profile-import`: restore profiles (and, when present, every saved secret)
-/// from a native `.aeroftp` file into the active user's vault. Reuses the exact
-/// GUI command (`import_server_profiles`) for the credential restore, then
-/// merges the redacted profile list into the active user's profile store,
-/// skipping duplicates by id or host:port:username (mirrors the GUI dialog).
+/// from a native `.aeroftp` file into the active user's vault. The decision for
+/// a profile the active user already has, and the secret restore, are the
+/// GUI's (`import_server_profiles_with_mode`); this writes the profile list.
+#[allow(clippy::too_many_arguments)]
 async fn cmd_profile_import(
     cli: &Cli,
     input: &str,
@@ -42452,8 +42494,10 @@ async fn cmd_profile_import(
     password_stdin: bool,
     json: bool,
     dry_run: bool,
+    on_existing: ExistingProfileArg,
     format: OutputFormat,
 ) -> i32 {
+    use ftp_client_gui_lib::profile_import_plan::ImportOutcome;
     use zeroize::Zeroize;
 
     let store = match open_vault(cli) {
@@ -42472,168 +42516,148 @@ async fn cmd_profile_import(
         }
     };
 
-    // Audit v4.1.0: the merge below decides which profiles are duplicates and
-    // skipped. The shared core used to restore EVERY secret before that decision,
-    // so a "skipped" profile silently had its existing vault credential
-    // overwritten. We therefore run import in two phases against the shared path:
-    //  1. preview (restore_only = empty set): decrypt + return the redacted list
-    //     WITHOUT touching the vault, so we can compute the dedup decision;
-    //  2. restore (restore_only = ids we actually add): restore credentials only
-    //     for the new profiles, keeping the skip report and the vault consistent.
-    let preview = ftp_client_gui_lib::import_server_profiles_core_filtered(
-        input.to_string(),
-        password.clone(),
-        Some(std::collections::HashSet::new()),
-    )
-    .await;
-
-    let value = match preview {
-        Ok(v) => v,
+    // The plan compares the file with these profiles, so an unreadable list
+    // is an error: read as empty, every profile would look new and an
+    // overwrite would land as a second profile of the same id.
+    let mut current = match load_active_user_profiles(cli, &store) {
+        Ok(p) => p,
         Err(e) => {
             password.zeroize();
+            print_error(format, &format!("cannot read profiles: {e}"), 1);
+            return 1;
+        }
+    };
+
+    // Audit v4.1.0 holds in every mode: secrets are restored only for the
+    // profiles added, overwritten or duplicated, never for a skipped one, and
+    // for none on --dry-run.
+    let result = ftp_client_gui_lib::import_server_profiles_with_mode(
+        input.to_string(),
+        password.clone(),
+        on_existing.into_inner(),
+        &current,
+        dry_run,
+    )
+    .await;
+    password.zeroize();
+    let report = match result {
+        Ok(r) => r,
+        Err(e) => {
             let exit = if e.contains("Invalid password") { 6 } else { 1 };
             print_error(format, &format!("import failed: {e}"), exit);
             return exit;
         }
     };
 
-    let imported: Vec<serde_json::Value> = value
-        .get("servers")
-        .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default();
-
-    // Merge into the active user's profiles. Skip ONLY a true re-import (same
-    // stable id); profiles that merely share host:port:username are kept (see
-    // decide_import_merge). Same rule as ExportImportDialog.
-    let mut current = load_active_user_profiles(cli, &store).unwrap_or_default();
-    let decision = decide_import_merge(&imported, &current);
-    let added = decision.add_indices.len();
-    let skipped = decision.skipped;
-    let similar = decision.similar;
-
-    // --dry-run: phase 1 already decrypted the file and decide_import_merge
-    // computed the exact plan, both without touching the vault or the keyring.
-    // Print that plan and stop before phase 2 (credential restore) and the
-    // save. Mirrors the delete verbs' --dry-run: the plan goes to stdout, the
-    // notices to stderr, and nothing is moved. A duplicate is skipped, never
-    // overwritten, so there is no "would overwrite" case to report.
-    if dry_run {
-        password.zeroize();
-        let name_of = |idx: usize| -> String {
-            let p = &imported[idx];
-            p.get("name")
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| {
-                    let host = p.get("host").and_then(|v| v.as_str()).unwrap_or("?");
-                    format!("({host})")
-                })
-        };
-        let would_add: Vec<String> = decision.add_indices.iter().map(|&i| name_of(i)).collect();
-        let would_skip: Vec<String> = decision
-            .skipped_indices
+    let outcome_of = |p: &serde_json::Value| -> Option<ImportOutcome> {
+        match p.get("importOutcome").and_then(|v| v.as_str()) {
+            Some("added") => Some(ImportOutcome::Added),
+            Some("overwritten") => Some(ImportOutcome::Overwritten),
+            Some("duplicated") => Some(ImportOutcome::Duplicated),
+            _ => None,
+        }
+    };
+    let names_of = |outcome: ImportOutcome| -> Vec<String> {
+        report
+            .servers
             .iter()
-            .map(|&i| name_of(i))
-            .collect();
+            .filter(|p| outcome_of(p) == Some(outcome))
+            .map(|p| {
+                p.get("name")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| {
+                        let host = p.get("host").and_then(|v| v.as_str()).unwrap_or("?");
+                        format!("({host})")
+                    })
+            })
+            .collect()
+    };
+    let added = names_of(ImportOutcome::Added);
+    let overwritten = names_of(ImportOutcome::Overwritten);
+    let duplicated = names_of(ImportOutcome::Duplicated);
+    let skipped = &report.skipped;
+    let similar = report.similar;
+    let metadata = &report.metadata;
+    let mode = on_existing.into_inner();
+
+    // --dry-run: the file was decrypted and planned without touching the vault
+    // or the keyring. Mirrors the delete verbs' --dry-run: the plan goes to
+    // stdout, the notices to stderr, and nothing is moved.
+    if dry_run {
         if json {
             println!(
                 "{}",
                 serde_json::json!({
                     "status": "ok",
                     "dry_run": true,
-                    "would_import": added,
-                    "would_skip": skipped,
+                    "on_existing": mode,
+                    "would_import": added.len(),
+                    "would_overwrite": overwritten.len(),
+                    "would_duplicate": duplicated.len(),
+                    "would_skip": skipped.len(),
                     "similar": similar,
-                    "total_in_file": imported.len(),
-                    "added": would_add,
-                    "skipped": would_skip,
-                    "metadata": value
-                        .get("metadata")
-                        .cloned()
-                        .unwrap_or(serde_json::Value::Null),
+                    "total_in_file": report.total_in_file,
+                    "added": added,
+                    "overwritten": overwritten,
+                    "duplicated": duplicated,
+                    "skipped": skipped,
+                    "jotta_chains": report.jotta_chains,
+                    "metadata": metadata,
                 })
             );
         } else {
             eprintln!("DRY RUN: no profiles were imported.");
-            for n in &would_add {
-                println!("+ would add   {n}");
+            for n in &added {
+                println!("+ would add        {n}");
             }
-            for n in &would_skip {
-                println!("= would skip  {n} (already present)");
+            for n in &overwritten {
+                println!("~ would overwrite  {n}");
             }
-            let tail = if similar > 0 {
-                format!(", {similar} resemble an existing profile")
-            } else {
-                String::new()
-            };
+            for n in &duplicated {
+                println!("+ would duplicate  {n} (new id, suffixed name)");
+            }
+            for n in skipped {
+                println!("= would skip       {n} (already present)");
+            }
+            print_jotta_chain_notice(&report.jotta_chains, true);
             eprintln!(
-                "Would add {added} profile(s), skip {skipped} (already present){tail} from {input}"
+                "Would add {}, overwrite {}, duplicate {}, skip {} (already present){} from {input}",
+                added.len(),
+                overwritten.len(),
+                duplicated.len(),
+                skipped.len(),
+                similar_tail(similar),
             );
         }
         return 0;
     }
 
-    // Ids of the profiles we actually add: only these get their credentials
-    // restored in phase 2.
-    let mut restore_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for &idx in &decision.add_indices {
-        if let Some(id) = imported[idx]
-            .get("id")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-        {
-            restore_ids.insert(id.to_string());
+    // Overwritten profiles replace the one of their id where it stands, so
+    // the list keeps its order; the others are appended.
+    for profile in &report.servers {
+        let mut profile = profile.clone();
+        let outcome = outcome_of(&profile);
+        if let Some(fields) = profile.as_object_mut() {
+            fields.remove("importOutcome");
         }
-    }
-
-    // Phase 2: restore credentials for the added profiles only. Its returned
-    // servers carry the corrected `hasStoredAeroCrypt*` flags: the phase-1
-    // preview ran with an empty restore set, so ITS flags are always false even
-    // when the secret travels with the file. Persist the phase-2 redaction for
-    // the added profiles, not the preview, so an imported crypt-overlay profile
-    // reports its stored overlay password and the GUI auto-unlock fires
-    // (`maybeAutoUnlockProfileOverlay` gates on `hasStoredAeroCryptPassword`);
-    // otherwise the binding round-trips but the session never decrypts.
-    let mut restored_by_id: std::collections::HashMap<String, serde_json::Value> =
-        std::collections::HashMap::new();
-    if !restore_ids.is_empty() {
-        match ftp_client_gui_lib::import_server_profiles_core_filtered(
-            input.to_string(),
-            password.clone(),
-            Some(restore_ids),
-        )
-        .await
-        {
-            Ok(v) => {
-                if let Some(arr) = v.get("servers").and_then(|s| s.as_array()) {
-                    for s in arr {
-                        if let Some(id) = s.get("id").and_then(|x| x.as_str()) {
-                            restored_by_id.insert(id.to_string(), s.clone());
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                password.zeroize();
-                let exit = if e.contains("Invalid password") { 6 } else { 1 };
-                print_error(format, &format!("import failed: {e}"), exit);
-                return exit;
+        if outcome == Some(ImportOutcome::Overwritten) {
+            if let Some(slot) = current
+                .iter_mut()
+                .find(|p| p.get("id").is_some() && p.get("id") == profile.get("id"))
+            {
+                *slot = profile;
+                continue;
             }
         }
+        current.push(profile);
     }
-    password.zeroize();
-
-    // Append the added profiles, preferring the phase-2 redaction (true
-    // credential-presence flags) over the phase-1 preview (flags all false).
-    let added_profiles = merged_added_profiles(&decision.add_indices, &imported, &restored_by_id);
-    current.extend(added_profiles);
 
     // Read from the list stored: only the write knows which profile had a
     // name first (an older list may hold two of one name).
     let mut renamed = Vec::new();
-    if added > 0 {
+    if !report.servers.is_empty() {
         match save_active_user_profiles(cli, &store, &current) {
             Ok(stored) => renamed = renamed_by_write(&current, &stored),
             Err(e) => {
@@ -42643,41 +42667,71 @@ async fn cmd_profile_import(
         }
     }
 
-    let metadata = value
-        .get("metadata")
-        .cloned()
-        .unwrap_or(serde_json::Value::Null);
+    let imported = report.servers.len();
     if json {
         println!(
             "{}",
             serde_json::json!({
                 "status": "ok",
-                "imported": added,
-                "skipped": skipped,
-                // Added profiles that share an account (host:port:username) with
-                // one already present: legitimately distinct (different protocol,
-                // crypt overlay, folder, or auth mode), kept, just flagged.
+                "on_existing": mode,
+                // Profiles taken from the file: added, overwritten or duplicated.
+                "imported": imported,
+                "added": added.len(),
+                "overwritten": overwritten.len(),
+                "duplicated": duplicated.len(),
+                "skipped": skipped.len(),
+                // Stored profiles that share an account (host:port:username)
+                // with one of another id: legitimately distinct (different
+                // protocol, crypt overlay, folder, or auth mode), just flagged.
                 "similar": similar,
-                // Profiles the write stored under another name: an added one
-                // whose name was taken, or one of an older list's two of one
-                // name. Each `to` is the name that selects that profile.
+                // Profiles the write stored under another name: a duplicate, an
+                // added one whose name was taken, or one of an older list's two
+                // of one name. Each `to` is the name that selects that profile.
                 "renamed": renamed,
-                "total_in_file": imported.len(),
+                "jotta_chains": report.jotta_chains,
+                "total_in_file": report.total_in_file,
                 "metadata": metadata,
             })
         );
     } else {
         let mut tail = String::new();
-        if skipped > 0 {
-            tail.push_str(&format!(", {skipped} skipped (already present)"));
+        if !overwritten.is_empty() {
+            tail.push_str(&format!(", {} overwritten", overwritten.len()));
         }
-        if similar > 0 {
-            tail.push_str(&format!(", {similar} resemble an existing profile"));
+        if !duplicated.is_empty() {
+            tail.push_str(&format!(", {} duplicated", duplicated.len()));
         }
-        eprintln!("Imported {added} profile(s){tail} from {input}");
+        if !skipped.is_empty() {
+            tail.push_str(&format!(", {} skipped (already present)", skipped.len()));
+        }
+        tail.push_str(&similar_tail(similar));
+        eprintln!("Imported {imported} profile(s){tail} from {input}");
         print_profile_renames(&renamed);
+        print_jotta_chain_notice(&report.jotta_chains, false);
     }
     0
+}
+
+/// The summary's ", N resemble an existing profile", or nothing for none.
+fn similar_tail(similar: usize) -> String {
+    if similar > 0 {
+        format!(", {similar} resemble an existing profile")
+    } else {
+        String::new()
+    }
+}
+
+/// Jottacloud rotates a refresh chain on every connection, so two holders of
+/// one chain (this device and the one the file came from, or a profile and its
+/// duplicate) cannot both stay signed in: the first to connect signs the other
+/// out. Said on stderr for each stored profile that brought its chain along.
+fn print_jotta_chain_notice(names: &[String], dry_run: bool) {
+    for name in names {
+        eprintln!(
+            "Warning: \"{name}\" {} a Jottacloud refresh chain. Jottacloud rotates it on every connection, so whichever copy connects first signs the other out: the device the file came from, or the profile it was duplicated from. Sign the other one in again with a new Personal Login Token.",
+            if dry_run { "would bring" } else { "brought" }
+        );
+    }
 }
 
 /// One line per profile the import's write stored under another name.
@@ -42687,97 +42741,6 @@ fn print_profile_renames(renamed: &[ftp_client_gui_lib::util::profile_name::Rena
             "Renamed \"{}\" to \"{}\": a profile already has that name",
             r.from, r.to
         );
-    }
-}
-
-/// Pick the JSON to persist for each newly-added profile, preferring the
-/// phase-2 redaction (which restored credentials and so carries the true
-/// `hasStoredAeroCrypt*` flags) over the phase-1 preview (whose flags are all
-/// false because the preview restores nothing). Falls back to the preview when
-/// a profile had no phase-2 entry (no credential to restore). Keeping the two
-/// in sync is what makes an imported crypt-overlay profile auto-unlock instead
-/// of round-tripping the binding while reporting no stored overlay password.
-fn merged_added_profiles(
-    add_indices: &[usize],
-    imported: &[serde_json::Value],
-    restored_by_id: &std::collections::HashMap<String, serde_json::Value>,
-) -> Vec<serde_json::Value> {
-    add_indices
-        .iter()
-        .map(|&idx| {
-            let preview = &imported[idx];
-            preview
-                .get("id")
-                .and_then(|v| v.as_str())
-                .and_then(|id| restored_by_id.get(id))
-                .cloned()
-                .unwrap_or_else(|| preview.clone())
-        })
-        .collect()
-}
-
-/// Coarse "same account/endpoint" key (host:port:username). NOT a skip key any
-/// more: it used to silently drop legitimately-distinct profiles that share an
-/// account but differ by protocol, crypt overlay, folder, or auth mode. Kept
-/// only to FLAG near-duplicates in the import summary.
-fn profile_account_key(p: &serde_json::Value) -> String {
-    format!(
-        "{}:{}:{}",
-        p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
-        p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
-        p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
-    )
-}
-
-/// Decision for merging imported profiles into the current set.
-struct ImportMergeDecision {
-    /// Indices into `imported` of the profiles to add.
-    add_indices: Vec<usize>,
-    /// Indices into `imported` of the true re-imports skipped (same stable
-    /// `id`). `skipped` is its length; the indices let `--dry-run` name them.
-    skipped_indices: Vec<usize>,
-    /// True re-imports skipped because their stable `id` already exists.
-    skipped: usize,
-    /// Added profiles that share an account with an existing profile.
-    similar: usize,
-}
-
-/// Decide which imported profiles to add. Skips ONLY a true re-import (same
-/// stable `id`): profiles that merely share host:port:username with an existing
-/// one are legitimately distinct (different protocol, crypt overlay, bound
-/// folder, or auth mode) and are added, counted as `similar` so the UI can flag
-/// them without ever silently dropping a wanted profile.
-fn decide_import_merge(
-    imported: &[serde_json::Value],
-    current: &[serde_json::Value],
-) -> ImportMergeDecision {
-    let existing_ids: std::collections::HashSet<&str> = current
-        .iter()
-        .filter_map(|p| p.get("id").and_then(|v| v.as_str()))
-        .filter(|s| !s.is_empty())
-        .collect();
-    let existing_accounts: std::collections::HashSet<String> =
-        current.iter().map(profile_account_key).collect();
-
-    let mut add_indices = Vec::new();
-    let mut skipped_indices = Vec::new();
-    let mut similar = 0usize;
-    for (idx, p) in imported.iter().enumerate() {
-        let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
-        if !id.is_empty() && existing_ids.contains(id) {
-            skipped_indices.push(idx);
-            continue;
-        }
-        if existing_accounts.contains(&profile_account_key(p)) {
-            similar += 1;
-        }
-        add_indices.push(idx);
-    }
-    ImportMergeDecision {
-        add_indices,
-        skipped: skipped_indices.len(),
-        skipped_indices,
-        similar,
     }
 }
 
@@ -78404,6 +78367,7 @@ async fn main() {
             password,
             password_stdin,
             dry_run,
+            on_existing,
         } => {
             cmd_profile_import(
                 &cli,
@@ -78412,6 +78376,7 @@ async fn main() {
                 *password_stdin,
                 json_output,
                 *dry_run,
+                *on_existing,
                 format,
             )
             .await
@@ -79166,6 +79131,7 @@ async fn main() {
                 password,
                 password_stdin,
                 dry_run,
+                on_existing,
             } => {
                 cmd_profile_import(
                     &cli,
@@ -79174,6 +79140,7 @@ async fn main() {
                     *password_stdin,
                     json_output,
                     *dry_run,
+                    *on_existing,
                     format,
                 )
                 .await
@@ -80552,28 +80519,6 @@ mod tests {
     }
 
     #[test]
-    fn test_decide_import_merge_reports_skipped_indices() {
-        // The dry-run lists skipped profiles by name, so the decision must
-        // expose WHICH imported entries were skipped, not just the count. A
-        // same-id profile is skipped (never overwritten); a new id is added,
-        // and flagged `similar` when it shares host:port:username.
-        let current = vec![json!({
-            "id": "a", "name": "Kept", "host": "h", "port": 22, "username": "u"
-        })];
-        let imported = vec![
-            json!({"id": "a", "name": "Dup", "host": "h", "port": 22, "username": "u"}),
-            json!({"id": "b", "name": "New", "host": "h", "port": 22, "username": "u"}),
-            json!({"id": "c", "name": "Fresh", "host": "other", "port": 21, "username": "x"}),
-        ];
-        let d = decide_import_merge(&imported, &current);
-        assert_eq!(d.add_indices, vec![1, 2]);
-        assert_eq!(d.skipped_indices, vec![0]);
-        assert_eq!(d.skipped, 1);
-        // index 1 shares the account of the kept profile, index 2 does not.
-        assert_eq!(d.similar, 1);
-    }
-
-    #[test]
     fn test_lsjson_ndjson_line_is_single_line_compact_json() {
         // The NDJSON path emits `serde_json::to_string(&entry)` per line, so a
         // record must serialise to exactly one line (no embedded newline) and
@@ -80727,34 +80672,6 @@ mod tests {
         std::iter::once("aeroftp-cli".to_string())
             .chain(parts.iter().map(|part| part.to_string()))
             .collect()
-    }
-
-    #[test]
-    fn import_appends_phase2_credential_flags_not_preview() {
-        // Phase-1 preview always reports the crypt-overlay secret as absent
-        // (it restores nothing). Phase-2 restores it and reports it present.
-        // The persisted profile must take the phase-2 flag, otherwise an
-        // imported crypt-overlay profile never auto-unlocks (regression: the
-        // CLI used to push the preview and discard the phase-2 result).
-        let imported = vec![
-            json!({"id": "a", "name": "A", "hasStoredAeroCryptPassword": false}),
-            json!({"id": "b", "name": "B", "hasStoredAeroCryptPassword": false}),
-        ];
-        let mut restored_by_id: std::collections::HashMap<String, serde_json::Value> =
-            std::collections::HashMap::new();
-        restored_by_id.insert(
-            "a".to_string(),
-            json!({"id": "a", "name": "A", "hasStoredAeroCryptPassword": true}),
-        );
-        // "b" had no secret in the file, so phase 2 returns nothing for it.
-        let out = merged_added_profiles(&[0, 1], &imported, &restored_by_id);
-        assert_eq!(out.len(), 2);
-        // Restored profile carries the corrected (true) flag from phase 2.
-        assert_eq!(out[0]["id"], json!("a"));
-        assert_eq!(out[0]["hasStoredAeroCryptPassword"], json!(true));
-        // No phase-2 entry -> falls back to the preview verbatim (flag false).
-        assert_eq!(out[1]["id"], json!("b"));
-        assert_eq!(out[1]["hasStoredAeroCryptPassword"], json!(false));
     }
 
     #[test]
@@ -86980,34 +86897,6 @@ mod tests {
         let sel = select_export_profiles(&profiles, &selectors(&["srv_c"]));
         assert_eq!(sel.selected.iter().copied().collect::<Vec<_>>(), [2]);
         assert!(sel.unmatched.is_empty());
-    }
-
-    #[test]
-    fn decide_import_merge_keeps_distinct_profiles_sharing_an_account() {
-        let current = vec![json!({"id": "a", "host": "h", "port": 22, "username": "u"})];
-        let imported = vec![
-            // same id: a true re-import, skipped
-            json!({"id": "a", "host": "h", "port": 22, "username": "u"}),
-            // same account (host:port:username) but a new id + crypt overlay:
-            // legitimately distinct, must be kept and flagged similar
-            json!({"id": "b", "host": "h", "port": 22, "username": "u",
-                   "aeroCryptOverlay": {"enabled": true, "kind": "rclone-crypt"}}),
-            // same account, new id, different protocol (FTP vs FTPS style): kept, similar
-            json!({"id": "c", "host": "h", "port": 22, "username": "u", "protocol": "ftps"}),
-            // unrelated account: kept, not similar
-            json!({"id": "d", "host": "other", "port": 21, "username": "x"}),
-        ];
-        let decision = decide_import_merge(&imported, &current);
-        assert_eq!(
-            decision.add_indices,
-            vec![1, 2, 3],
-            "only the same-id re-import is skipped"
-        );
-        assert_eq!(decision.skipped, 1);
-        assert_eq!(
-            decision.similar, 2,
-            "b and c share the account with existing 'a'"
-        );
     }
 
     #[test]

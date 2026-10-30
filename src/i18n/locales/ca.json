@@ -1358,7 +1358,17 @@
             "serverProfilesCount": "Perfils de servidor: {count}",
             "aiKeysCount": "Claus d'AI: {count}",
             "oauthTokensCount": "Tokens OAuth: {count}",
-            "configEntriesCount": "Entrades de configuració: {count}"
+            "configEntriesCount": "Entrades de configuració: {count}",
+            "importExistingLabel": "Si un perfil ja existeix",
+            "importExistingSkip": "Omet",
+            "importExistingOverwrite": "Sobreescriu",
+            "importExistingDuplicate": "Duplica",
+            "importExistingSkipHint": "Un perfil que ja teniu es manté tal com és, amb les seves contrasenyes i tokens.",
+            "importExistingOverwriteHint": "Un perfil que ja teniu se substitueix al seu lloc, amb les contrasenyes i els tokens que porta el fitxer. Continua als vostres preferits i grups.",
+            "importExistingDuplicateHint": "Un perfil que ja teniu es manté, i la còpia del fitxer s'afegeix al costat amb un nom numerat.",
+            "overwrittenCount": "{count} sobreescrits",
+            "duplicatedCount": "{count} duplicats",
+            "importJottaChainWarning": "Jottacloud renova l'inici de sessió a cada connexió, i {names} ara en comparteix un amb una altra còpia: la còpia que es connecta primer tanca la sessió de l'altra (el dispositiu d'on ve el fitxer, o el perfil del qual es va duplicar). Torneu a iniciar sessió a l'altra amb un Personal Login Token nou."
         },
         "devtools": {
             "title": "AeroTools",

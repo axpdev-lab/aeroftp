@@ -160,6 +160,9 @@ interface ImportedServerProfile {
 
 interface ServerProfilesImportResult {
   servers: ImportedServerProfile[];
+  // Profiles the backend left alone because the active user already has them
+  // (this path imports with the default mode, skip).
+  skipped: string[];
 }
 
 type MountManagerOpenOptions = {
@@ -15141,9 +15144,10 @@ const App: React.FC = () => {
             password,
           });
           const merged = await mergeImportedServerProfiles(result.servers);
+          const skipped = result.skipped.length + merged.skipped;
           notify.success(
             (t('settings.importSuccess') || 'Imported {count} servers').replace('{count}', String(merged.imported)),
-            merged.skipped > 0 ? t('settings.duplicatesSkippedCount', { count: merged.skipped }) : undefined,
+            skipped > 0 ? t('settings.duplicatesSkippedCount', { count: skipped }) : undefined,
           );
         } catch (err) {
           const message = String(err);
@@ -17527,10 +17531,10 @@ const App: React.FC = () => {
             servers={exportImportServers}
             initialMode={exportImportInitialMode}
             initialBridgeFilePath={exportImportBridgeFile ?? undefined}
-            onImport={async (newServers) => {
+            onImport={async (newServers, replaceIds) => {
               // Bridge imports may have replaced a profile in the persisted
               // list; the dialog's opening snapshot is no longer authoritative.
-              const merged = await appendImportedProfiles(newServers);
+              const merged = await appendImportedProfiles(newServers, replaceIds);
               setExportImportServers(merged);
               setServersRefreshKey(k => k + 1);
               setShowExportImport(false);

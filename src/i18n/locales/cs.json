@@ -1358,7 +1358,17 @@
             "serverProfilesCount": "Profily serverů: {count}",
             "aiKeysCount": "Klíče AI: {count}",
             "oauthTokensCount": "Tokeny OAuth: {count}",
-            "configEntriesCount": "Položky konfigurace: {count}"
+            "configEntriesCount": "Položky konfigurace: {count}",
+            "importExistingLabel": "Pokud profil již existuje",
+            "importExistingSkip": "Přeskočit",
+            "importExistingOverwrite": "Přepsat",
+            "importExistingDuplicate": "Duplikovat",
+            "importExistingSkipHint": "Profil, který již máte, zůstane beze změny, včetně hesel a tokenů.",
+            "importExistingOverwriteHint": "Profil, který již máte, se nahradí na místě hesly a tokeny ze souboru. Zůstane v oblíbených a skupinách.",
+            "importExistingDuplicateHint": "Profil, který již máte, zůstane a kopie ze souboru se přidá vedle něj s číslovaným názvem.",
+            "overwrittenCount": "{count} přepsáno",
+            "duplicatedCount": "{count} duplikováno",
+            "importJottaChainWarning": "Jottacloud obnovuje přihlášení při každém připojení a {names} nyní sdílí přihlášení s jinou kopií: kopie, která se připojí první, odhlásí tu druhou (zařízení, ze kterého soubor pochází, nebo profil, ze kterého byla duplikována). Přihlaste druhou znovu pomocí nového Personal Login Token."
         },
         "devtools": {
             "title": "AeroTools",

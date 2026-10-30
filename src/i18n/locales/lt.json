@@ -1358,7 +1358,17 @@
             "serverProfilesCount": "Serverių profiliai: {count}",
             "aiKeysCount": "AI raktai: {count}",
             "oauthTokensCount": "OAuth prieigos raktai: {count}",
-            "configEntriesCount": "Konfigūracijos įrašai: {count}"
+            "configEntriesCount": "Konfigūracijos įrašai: {count}",
+            "importExistingLabel": "Jei profilis jau egzistuoja",
+            "importExistingSkip": "Praleisti",
+            "importExistingOverwrite": "Perrašyti",
+            "importExistingDuplicate": "Dubliuoti",
+            "importExistingSkipHint": "Jau turimas profilis lieka toks, koks yra, su savo slaptažodžiais ir prieigos raktais.",
+            "importExistingOverwriteHint": "Jau turimas profilis pakeičiamas vietoje failo slaptažodžiais ir prieigos raktais. Jis lieka jūsų mėgstamiausiuose ir grupėse.",
+            "importExistingDuplicateHint": "Jau turimas profilis lieka, o failo kopija pridedama šalia su sunumeruotu pavadinimu.",
+            "overwrittenCount": "{count} perrašyta",
+            "duplicatedCount": "{count} sudubliuota",
+            "importJottaChainWarning": "Jottacloud atnaujina prisijungimą kiekvieną kartą jungiantis, o {names} dabar dalijasi vienu su kita kopija: pirmoji prisijungianti kopija atjungia kitą (įrenginį, iš kurio atkeliavo failas, arba profilį, iš kurio jis buvo sudubliuotas). Prisijunkite prie kitos iš naujo su nauju Personal Login Token."
         },
         "devtools": {
             "title": "AeroTools",

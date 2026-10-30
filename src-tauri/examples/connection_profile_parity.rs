@@ -332,15 +332,18 @@ async fn main() {
         "export failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let preview = ftp_client_gui_lib::import_server_profiles_core_filtered(
+    let preview = ftp_client_gui_lib::import_server_profiles_with_mode(
         export.to_string_lossy().into_owned(),
         "synthetic profile parity export".into(),
-        Some(std::collections::HashSet::new()),
+        ftp_client_gui_lib::profile_import_plan::ExistingProfileMode::Skip,
+        &[],
+        true,
     )
     .await
     .expect("read actual encrypted export without restoring credentials");
     let saved: Vec<SavedProfile> =
-        serde_json::from_value(preview["servers"].clone()).expect("saved profile configuration");
+        serde_json::from_value(serde_json::Value::Array(preview.servers))
+            .expect("saved profile configuration");
     assert_eq!(
         saved.len(),
         saved_count,

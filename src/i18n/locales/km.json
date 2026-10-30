@@ -1358,7 +1358,17 @@
             "serverProfilesCount": "ប្រវត្តិរូបម៉ាស៊ីនមេ {count}",
             "aiKeysCount": "សោ AI {count}",
             "oauthTokensCount": "ថូខឹន OAuth {count}",
-            "configEntriesCount": "ធាតុកំណត់រចនាសម្ព័ន្ធ {count}"
+            "configEntriesCount": "ធាតុកំណត់រចនាសម្ព័ន្ធ {count}",
+            "importExistingLabel": "ប្រសិនបើប្រូហ្វាល់មានរួចហើយ",
+            "importExistingSkip": "រំលង",
+            "importExistingOverwrite": "សរសេរជាន់",
+            "importExistingDuplicate": "ចម្លង",
+            "importExistingSkipHint": "ប្រូហ្វាល់ដែលអ្នកមានរួចហើយនៅដដែល ជាមួយពាក្យសម្ងាត់ និងថូខឹនរបស់វា។",
+            "importExistingOverwriteHint": "ប្រូហ្វាល់ដែលអ្នកមានរួចហើយត្រូវបានជំនួសនៅនឹងកន្លែង ដោយពាក្យសម្ងាត់ និងថូខឹនដែលមាននៅក្នុងឯកសារ។ វានៅតែស្ថិតក្នុងបញ្ជីសំណព្វចិត្ត និងក្រុមរបស់អ្នក។",
+            "importExistingDuplicateHint": "ប្រូហ្វាល់ដែលអ្នកមានរួចហើយនៅដដែល ហើយច្បាប់ចម្លងពីឯកសារត្រូវបានបន្ថែមនៅក្បែរវា ជាមួយឈ្មោះដែលមានលេខ។",
+            "overwrittenCount": "បានសរសេរជាន់ {count}",
+            "duplicatedCount": "បានចម្លង {count}",
+            "importJottaChainWarning": "Jottacloud បន្តការចូលគណនីរបស់វាគ្រប់ពេលភ្ជាប់ ហើយ {names} ឥឡូវចែករំលែកមួយជាមួយច្បាប់ចម្លងមួយទៀត៖ ច្បាប់ចម្លងដែលភ្ជាប់មុនចេញពីគណនីមួយទៀត (ឧបករណ៍ដែលឯកសារមកពី ឬប្រូហ្វាល់ដែលវាត្រូវបានចម្លងពី)។ សូមចូលគណនីមួយទៀតម្តងទៀតដោយប្រើ Personal Login Token ថ្មី។"
         },
         "devtools": {
             "title": "AeroTools",

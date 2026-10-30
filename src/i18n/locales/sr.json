@@ -1358,7 +1358,17 @@
             "serverProfilesCount": "Профили сервера: {count}",
             "aiKeysCount": "AI кључеви: {count}",
             "oauthTokensCount": "OAuth токени: {count}",
-            "configEntriesCount": "Уноси конфигурације: {count}"
+            "configEntriesCount": "Уноси конфигурације: {count}",
+            "importExistingLabel": "Ако профил већ постоји",
+            "importExistingSkip": "Прескочи",
+            "importExistingOverwrite": "Препиши",
+            "importExistingDuplicate": "Дуплирај",
+            "importExistingSkipHint": "Профил који већ имате остаје какав јесте, са својим лозинкама и токенима.",
+            "importExistingOverwriteHint": "Профил који већ имате замењује се на месту лозинкама и токенима из датотеке. Остаје у вашим омиљенима и групама.",
+            "importExistingDuplicateHint": "Профил који већ имате остаје, а копија из датотеке додаје се поред њега са нумерисаним називом.",
+            "overwrittenCount": "{count} преписано",
+            "duplicatedCount": "{count} дуплирано",
+            "importJottaChainWarning": "Jottacloud обнавља пријаву при свакој вези, а {names} сада дели једну са другом копијом: копија која се прва повеже одјављује другу (уређај са ког потиче датотека или профил из ког је дуплирана). Поново пријавите другу новим Personal Login Token-ом."
         },
         "devtools": {
             "title": "AeroTools",

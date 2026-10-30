@@ -1358,7 +1358,17 @@
             "serverProfilesCount": "Serverprofiler: {count}",
             "aiKeysCount": "AI-nøgler: {count}",
             "oauthTokensCount": "OAuth-tokens: {count}",
-            "configEntriesCount": "Konfigurationsposter: {count}"
+            "configEntriesCount": "Konfigurationsposter: {count}",
+            "importExistingLabel": "Hvis en profil allerede findes",
+            "importExistingSkip": "Spring over",
+            "importExistingOverwrite": "Overskriv",
+            "importExistingDuplicate": "Dupliker",
+            "importExistingSkipHint": "En profil, du allerede har, bliver som den er, med sine adgangskoder og tokens.",
+            "importExistingOverwriteHint": "En profil, du allerede har, erstattes på stedet med de adgangskoder og tokens, filen indeholder. Den forbliver i dine favoritter og grupper.",
+            "importExistingDuplicateHint": "En profil, du allerede har, bliver, og kopien fra filen tilføjes ved siden af med et nummereret navn.",
+            "overwrittenCount": "{count} overskrevet",
+            "duplicatedCount": "{count} duplikeret",
+            "importJottaChainWarning": "Jottacloud fornyer sin login ved hver forbindelse, og {names} deler nu en med en anden kopi: den kopi, der forbinder først, logger den anden ud (enheden, filen kom fra, eller den profil, den blev duplikeret fra). Log den anden ind igen med et nyt Personal Login Token."
         },
         "devtools": {
             "title": "AeroTools",

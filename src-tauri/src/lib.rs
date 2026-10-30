@@ -268,6 +268,7 @@ mod plugins;
 pub mod proc_stats;
 pub mod profile_auth_state;
 mod profile_export;
+pub mod profile_import_plan;
 mod trash_guard;
 // The CLI's import listings mark a profile whose endpoint would need cleartext
 // consent, and they share the predicate with the S3 provider rather than
@@ -18241,116 +18242,168 @@ pub async fn export_server_profiles_core(
     .map_err(|e| e.to_string())
 }
 
+/// GUI My Servers > Import: import a `.aeroftp` file into the active user's
+/// vault, with `existing` (Skip when absent) deciding what happens to a profile
+/// the user already has. The frontend writes the returned profiles.
 #[tauri::command]
 async fn import_server_profiles(
     file_path: String,
     password: String,
-) -> Result<serde_json::Value, String> {
-    import_server_profiles_core_skip_existing(file_path, password).await
+    existing: Option<profile_import_plan::ExistingProfileMode>,
+) -> Result<profile_import_plan::ProfileImportReport, String> {
+    let current = active_server_profiles_for_import()?;
+    import_server_profiles_with_mode(
+        file_path,
+        password,
+        existing.unwrap_or_default(),
+        &current,
+        false,
+    )
+    .await
 }
 
-/// Core of [`import_server_profiles`], callable outside the Tauri command
-/// surface. Reused verbatim by `aeroftp-cli profile-import` so the
-/// decrypt + per-secret vault restore (including the #215 per-protocol
-/// snapshots) lives in one place. Restores credentials for every profile in
-/// the file (the GUI computes the profile-list merge separately).
-pub async fn import_server_profiles_core(
+/// The active user's saved profiles, for the import to compare the file
+/// against. Without an unlocked vault they cannot be read, and the import
+/// refuses rather than read them as none: every profile would then look new
+/// and replace a stored one of the same id whatever the mode.
+fn active_server_profiles_for_import() -> Result<Vec<serde_json::Value>, String> {
+    let Some(store) = credential_store::CredentialStore::from_cache() else {
+        return Err(
+            "Vault not ready: the saved profiles cannot be read to compare the import with"
+                .to_string(),
+        );
+    };
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let listed = user_partitions::open_or_init_cli()
+        .and_then(|conn| user_partitions::list_active_server_profiles_scoped(&conn, &root_key));
+    root_key.zeroize();
+    Ok(listed?.1)
+}
+
+/// Import a `.aeroftp` file into the active user's vault, deciding with `mode`
+/// what happens to a profile of the file that `current` (the active user's
+/// profiles) already holds; see [`profile_import_plan`]. The audit v4.1.0 rule
+/// holds in every mode: secrets are restored only for the profiles the import
+/// adds, overwrites or duplicates, never for one it skips, and for none on a
+/// `dry_run`. The report carries the profiles to store; the caller writes the
+/// profile list (the GUI through its partition layer, the CLI through its own).
+pub async fn import_server_profiles_with_mode(
     file_path: String,
     password: String,
-) -> Result<serde_json::Value, String> {
-    import_server_profiles_core_filtered(file_path, password, None).await
-}
+    mode: profile_import_plan::ExistingProfileMode,
+    current: &[serde_json::Value],
+    dry_run: bool,
+) -> Result<profile_import_plan::ProfileImportReport, String> {
+    use profile_import_plan::{ImportCandidate, ImportOutcome};
 
-/// Like [`import_server_profiles_core`] but, when `restore_only` is `Some`, only
-/// the profile ids in the set have their credentials restored into the vault.
-///
-/// Audit v4.1.0 (CLI profile-import): the importer restored every secret in the
-/// file BEFORE the caller decided which profiles to skip as duplicates, so a
-/// profile reported as "skipped (already present)" silently had its existing
-/// vault credential overwritten by the one from the file. Callers that dedup the
-/// profile list (the CLI) pass the set of ids they actually add so the skip
-/// decision and the credential restore stay consistent. `None` preserves the
-/// original "restore all" behaviour for callers that do not deduplicate.
-pub async fn import_server_profiles_core_filtered(
-    file_path: String,
-    password: String,
-    restore_only: Option<std::collections::HashSet<String>>,
-) -> Result<serde_json::Value, String> {
-    import_server_profiles_core_impl(file_path, password, restore_only, false).await
-}
-
-fn import_restore_ids_after_skip<'a>(
-    imported: impl IntoIterator<Item = &'a str>,
-    existing: &std::collections::HashSet<String>,
-) -> std::collections::HashSet<String> {
-    imported
-        .into_iter()
-        .filter(|id| !existing.contains(*id))
-        .map(ToOwned::to_owned)
-        .collect()
-}
-
-#[cfg(test)]
-mod import_restore_ids_tests {
-    use super::*;
-
-    #[test]
-    fn skip_preserves_existing_ids_and_accepts_only_new_profiles() {
-        let existing = std::collections::HashSet::from(["srv_existing".to_string()]);
-        let accepted =
-            import_restore_ids_after_skip(["srv_existing", "srv_new", "srv_new"], &existing);
-        assert_eq!(accepted.len(), 1);
-        assert!(accepted.contains("srv_new"));
-        assert!(!accepted.contains("srv_existing"));
-    }
-}
-
-/// GUI import: preserve every existing profile's secrets when that profile is
-/// skipped by the frontend merge, and restore only newly accepted profile ids.
-pub async fn import_server_profiles_core_skip_existing(
-    file_path: String,
-    password: String,
-) -> Result<serde_json::Value, String> {
-    import_server_profiles_core_impl(file_path, password, None, true).await
-}
-
-async fn import_server_profiles_core_impl(
-    file_path: String,
-    password: String,
-    restore_only: Option<std::collections::HashSet<String>>,
-    skip_existing: bool,
-) -> Result<serde_json::Value, String> {
-    let (servers, provider_secrets, metadata) =
+    let (mut servers, mut provider_secrets, metadata) =
         profile_export::import_profiles(std::path::Path::new(&file_path), &password)
             .map_err(|e| e.to_string())?;
-    // Without a cached store the import below is metadata-only and restores no
-    // secret, so there is nothing to protect; a failed lookup stays fatal.
-    let restore_only = if let (true, Some(store)) = (
-        skip_existing,
-        credential_store::CredentialStore::from_cache(),
-    ) {
-        let mut root_key = store.derive_user_partition_wrapping_key();
-        let listed = user_partitions::open_or_init_cli()
-            .and_then(|conn| user_partitions::list_active_server_profiles_scoped(&conn, &root_key));
-        root_key.zeroize();
-        let (_, current) = listed?;
-        let existing: std::collections::HashSet<String> = current
-            .iter()
-            .filter_map(|profile| {
-                profile
-                    .get("id")
-                    .and_then(|value| value.as_str())
-                    .map(ToOwned::to_owned)
-            })
-            .collect();
-        Some(import_restore_ids_after_skip(
-            servers.iter().map(|server| server.id.as_str()),
-            &existing,
-        ))
-    } else {
-        restore_only
-    };
+    let candidates: Vec<ImportCandidate<'_>> = servers
+        .iter()
+        .map(|s| ImportCandidate {
+            id: &s.id,
+            host: &s.host,
+            port: u64::from(s.port),
+            username: &s.username,
+        })
+        .collect();
+    let plan = profile_import_plan::plan_import(
+        &candidates,
+        current,
+        mode,
+        profile_import_plan::new_profile_id,
+    );
+    drop(candidates);
 
+    // A duplicate travels under its new id from here on, with a copy of the
+    // secrets the file carries for its old id (an earlier profile of the file
+    // may still be stored under that id), so the restore below writes them to
+    // the copy and never to the original.
+    for planned in &plan {
+        if planned.outcome == ImportOutcome::Duplicated {
+            let old = std::mem::replace(&mut servers[planned.index].id, planned.id.clone());
+            if let Some(secrets) = provider_secrets.get(&old).cloned() {
+                provider_secrets.insert(planned.id.clone(), secrets);
+            }
+        }
+    }
+
+    // Only the profiles the import stores reach the restore, picked by their
+    // place in the file: a skipped repeat of a stored id must not write its
+    // credential over that profile's.
+    let stored: Vec<profile_export::ServerProfileExport> = if dry_run {
+        Vec::new()
+    } else {
+        plan.iter()
+            .filter(|p| p.outcome != ImportOutcome::Skipped)
+            .map(|p| servers[p.index].clone())
+            .collect()
+    };
+    let restored = restore_imported_secrets(&stored, &provider_secrets)?;
+
+    let mut report = profile_import_plan::ProfileImportReport {
+        servers: Vec::new(),
+        skipped: Vec::new(),
+        similar: 0,
+        jotta_chains: Vec::new(),
+        total_in_file: servers.len(),
+        metadata: serde_json::to_value(&metadata).unwrap_or(serde_json::Value::Null),
+    };
+    for planned in &plan {
+        let server = &servers[planned.index];
+        if planned.outcome == ImportOutcome::Skipped {
+            report.skipped.push(server.name.clone());
+            continue;
+        }
+        if planned.similar {
+            report.similar += 1;
+        }
+        let jottacloud = server
+            .protocol
+            .as_deref()
+            .is_some_and(|p| p.eq_ignore_ascii_case("jottacloud"));
+        if jottacloud
+            && provider_secrets
+                .get(&planned.id)
+                .is_some_and(|s| s.jotta_refresh.is_some())
+        {
+            report.jotta_chains.push(server.name.clone());
+        }
+        let mut profile = redact_imported_server(server, &restored);
+        if planned.outcome == ImportOutcome::Overwritten {
+            if let Some(existing) = current
+                .iter()
+                .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(planned.id.as_str()))
+            {
+                profile = profile_import_plan::overwrite_profile(existing, &profile);
+            }
+        }
+        profile["importOutcome"] = serde_json::json!(planned.outcome);
+        report.servers.push(profile);
+    }
+    Ok(report)
+}
+
+/// Which profiles had a secret restored whose presence the redaction reports:
+/// a binding or a key can round-trip without its secret when the export left
+/// credentials out or the vault was not ready.
+struct RestoredImportSecrets {
+    aerocrypt_pw: std::collections::HashSet<String>,
+    aerocrypt_salt: std::collections::HashSet<String>,
+    aerocrypt_keyfile_path: std::collections::HashSet<String>,
+    aerocrypt_config: std::collections::HashSet<String>,
+    filen_api_key: std::collections::HashSet<String>,
+}
+
+/// Write the secrets of `servers`, the profiles the import stores, into the
+/// active user's vault: each one's credential and the `provider_secrets` kept
+/// under its id. Audit v4.1.0: a profile of the file left out of `servers`
+/// (skipped) writes nothing, so a stored profile it matches keeps its secrets.
+fn restore_imported_secrets(
+    servers: &[profile_export::ServerProfileExport],
+    provider_secrets: &std::collections::HashMap<String, profile_export::ProviderSecrets>,
+) -> Result<RestoredImportSecrets, String> {
     // Store credentials in secure store
     let mut cred_errors: Vec<String> = Vec::new();
     // CWP-20B: track which profiles actually had their crypt-overlay secret
@@ -18377,16 +18430,7 @@ async fn import_server_profiles_core_impl(
             );
             let jotta_private_user =
                 user_partitions::private_token_user(None, "jottacloud_refresh")?;
-            for server in &servers {
-                // Audit v4.1.0: when the caller deduped the profile list, only
-                // restore credentials for the ids it actually added, so a
-                // "skipped" profile never has its existing credential clobbered.
-                if restore_only
-                    .as_ref()
-                    .is_some_and(|allow| !allow.contains(&server.id))
-                {
-                    continue;
-                }
+            for server in servers {
                 if let Some(ref cred) = server.credential {
                     // MUV-3: dual-write the imported credential (vault + active
                     // user's partition).
@@ -18401,9 +18445,10 @@ async fn import_server_profiles_core_impl(
             }
             // Issue #214: restore provider tokens under the per-profile vault
             // key. The protocol identifier comes from the matching server
-            // entry: when the same id is missing from `servers` (corrupted
-            // export) we silently skip, which preserves the rule that
-            // tokens have no meaning without the profile they belong to.
+            // entry: when the id is missing from `servers` (a profile the
+            // import does not store, or a corrupted export) we silently skip,
+            // which preserves the rule that tokens have no meaning without the
+            // profile they belong to.
             let protocol_by_id: std::collections::HashMap<&str, String> = servers
                 .iter()
                 .map(|s| {
@@ -18413,14 +18458,7 @@ async fn import_server_profiles_core_impl(
                     )
                 })
                 .collect();
-            for (profile_id, secrets) in &provider_secrets {
-                // Same dedup-consistency gate as the server_<id> loop above.
-                if restore_only
-                    .as_ref()
-                    .is_some_and(|allow| !allow.contains(profile_id))
-                {
-                    continue;
-                }
+            for (profile_id, secrets) in provider_secrets {
                 let protocol = match protocol_by_id.get(profile_id.as_str()) {
                     Some(p) => p,
                     None => continue,
@@ -18648,64 +18686,65 @@ async fn import_server_profiles_core_impl(
     if !cred_errors.is_empty() {
         log::warn!("Import credential issues: {:?}", cred_errors);
     }
+    Ok(RestoredImportSecrets {
+        aerocrypt_pw: restored_aerocrypt_pw,
+        aerocrypt_salt: restored_aerocrypt_salt,
+        aerocrypt_keyfile_path: restored_aerocrypt_keyfile_path,
+        aerocrypt_config: restored_aerocrypt_config,
+        filen_api_key: restored_filen_api_key,
+    })
+}
 
-    // H16 fix: Redact credentials before returning to renderer.
-    // Only return non-sensitive fields + a boolean flag indicating stored credentials.
-    let redacted_servers: Vec<serde_json::Value> = servers
-        .iter()
-        .map(|s| {
-            serde_json::json!({
-                "id": s.id,
-                "name": s.name,
-                "host": s.host,
-                "port": s.port,
-                "username": s.username,
-                "protocol": s.protocol,
-                "initialPath": s.initial_path,
-                "localInitialPath": s.local_initial_path,
-                "color": s.color,
-                "lastConnected": s.last_connected,
-                "options": s.options,
-                "providerId": s.provider_id,
-                // Top-level ServerProfile fields that live OUTSIDE `options` and
-                // so must be re-emitted explicitly or the import drops them:
-                // the share-link base (GAP 2), the custom/detected icons (GAP 3)
-                // and the silenced classic-fallback modal preference (GAP 4).
-                "publicUrlBase": s.public_url_base,
-                "customIconUrl": s.custom_icon_url,
-                "faviconUrl": s.favicon_url,
-                "skipDeltaEligibilityPrompt": s.skip_delta_eligibility_prompt,
-                "hasStoredCredential": s.credential.is_some(),
-                // Issue #230: reflect whether the Filen CLI API key was actually
-                // restored so the profile reconnects via the key (skipping the
-                // TOTP window) instead of falling back to password + 2FA.
-                "hasStoredFilenApiKey": restored_filen_api_key.contains(&s.id),
-                // CWP-20B: re-import a Crypt profile AS a Crypt profile (both
-                // kinds). The flags reflect what was actually restored, not the
-                // source state, so the UI prompts for the overlay password only
-                // when the secret did not travel with the export.
-                "aeroCryptOverlay": s.aero_crypt_overlay,
-                "hasStoredAeroCryptPassword": restored_aerocrypt_pw.contains(&s.id),
-                "hasStoredAeroCryptSalt": restored_aerocrypt_salt.contains(&s.id),
-                // A keyfile PATH may have been restored; the UI validates it exists
-                // (it can be stale on a different device) and re-points before unlock.
-                "hasStoredAeroCryptKeyfilePath": restored_aerocrypt_keyfile_path.contains(&s.id),
-                "hasStoredAeroCryptConfig": restored_aerocrypt_config.contains(&s.id),
-                // Issue #215 Caveat A: surface the opt-in so the imported profile
-                // re-hydrates per-mode snapshots. It is a user preference, not a
-                // secret-presence flag, so it round-trips verbatim: ConnectionScreen
-                // only reads `server_modes_<id>` when this is true, and finds the
-                // creds restored above (or prompts normally if the export omitted them).
-                "persistModeCredentials": s.persist_mode_credentials,
-            })
-        })
-        .collect();
-
-    let result = serde_json::json!({
-        "servers": redacted_servers,
-        "metadata": metadata,
-    });
-    Ok(result)
+/// H16 fix: the profile as returned to the renderer, without its secrets: only
+/// non-sensitive fields and flags saying which secrets are stored.
+fn redact_imported_server(
+    s: &profile_export::ServerProfileExport,
+    restored: &RestoredImportSecrets,
+) -> serde_json::Value {
+    serde_json::json!({
+        "id": s.id,
+        "name": s.name,
+        "host": s.host,
+        "port": s.port,
+        "username": s.username,
+        "protocol": s.protocol,
+        "initialPath": s.initial_path,
+        "localInitialPath": s.local_initial_path,
+        "color": s.color,
+        "lastConnected": s.last_connected,
+        "options": s.options,
+        "providerId": s.provider_id,
+        // Top-level ServerProfile fields that live OUTSIDE `options` and
+        // so must be re-emitted explicitly or the import drops them:
+        // the share-link base (GAP 2), the custom/detected icons (GAP 3)
+        // and the silenced classic-fallback modal preference (GAP 4).
+        "publicUrlBase": s.public_url_base,
+        "customIconUrl": s.custom_icon_url,
+        "faviconUrl": s.favicon_url,
+        "skipDeltaEligibilityPrompt": s.skip_delta_eligibility_prompt,
+        "hasStoredCredential": s.credential.is_some(),
+        // Issue #230: reflect whether the Filen CLI API key was actually
+        // restored so the profile reconnects via the key (skipping the
+        // TOTP window) instead of falling back to password + 2FA.
+        "hasStoredFilenApiKey": restored.filen_api_key.contains(&s.id),
+        // CWP-20B: re-import a Crypt profile AS a Crypt profile (both
+        // kinds). The flags reflect what was actually restored, not the
+        // source state, so the UI prompts for the overlay password only
+        // when the secret did not travel with the export.
+        "aeroCryptOverlay": s.aero_crypt_overlay,
+        "hasStoredAeroCryptPassword": restored.aerocrypt_pw.contains(&s.id),
+        "hasStoredAeroCryptSalt": restored.aerocrypt_salt.contains(&s.id),
+        // A keyfile PATH may have been restored; the UI validates it exists
+        // (it can be stale on a different device) and re-points before unlock.
+        "hasStoredAeroCryptKeyfilePath": restored.aerocrypt_keyfile_path.contains(&s.id),
+        "hasStoredAeroCryptConfig": restored.aerocrypt_config.contains(&s.id),
+        // Issue #215 Caveat A: surface the opt-in so the imported profile
+        // re-hydrates per-mode snapshots. It is a user preference, not a
+        // secret-presence flag, so it round-trips verbatim: ConnectionScreen
+        // only reads `server_modes_<id>` when this is true, and finds the
+        // creds restored above (or prompts normally if the export omitted them).
+        "persistModeCredentials": s.persist_mode_credentials,
+    })
 }
 
 // ============ Full Keystore Export/Import =====

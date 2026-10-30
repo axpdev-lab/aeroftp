@@ -1358,7 +1358,17 @@
             "serverProfilesCount": "{count} სერვერის პროფილი",
             "aiKeysCount": "{count} AI გასაღები",
             "oauthTokensCount": "{count} OAuth ტოკენი",
-            "configEntriesCount": "{count} კონფიგურაციის ჩანაწერი"
+            "configEntriesCount": "{count} კონფიგურაციის ჩანაწერი",
+            "importExistingLabel": "თუ პროფილი უკვე არსებობს",
+            "importExistingSkip": "გამოტოვება",
+            "importExistingOverwrite": "გადაწერა",
+            "importExistingDuplicate": "დუბლირება",
+            "importExistingSkipHint": "უკვე არსებული პროფილი უცვლელი რჩება, პაროლებითა და ტოკენებით.",
+            "importExistingOverwriteHint": "უკვე არსებული პროფილი იცვლება ადგილზე ფაილში მოცემული პაროლებითა და ტოკენებით. ის რჩება თქვენს რჩეულებსა და ჯგუფებში.",
+            "importExistingDuplicateHint": "უკვე არსებული პროფილი რჩება, ხოლო ფაილიდან ასლი ემატება მის გვერდით დანომრილი სახელით.",
+            "overwrittenCount": "{count} გადაიწერა",
+            "duplicatedCount": "{count} დუბლირდა",
+            "importJottaChainWarning": "Jottacloud ახლებს შესვლას ყოველ დაკავშირებაზე, და {names} ახლა ერთს იზიარებს სხვა ასლთან: ასლი, რომელიც პირველი დაუკავშირდება, მეორეს გამოიყვანს სისტემიდან (მოწყობილობა, საიდანაც ფაილი მოვიდა, ან პროფილი, საიდანაც დუბლირდა). მეორეში ხელახლა შედით ახალი Personal Login Token-ით."
         },
         "devtools": {
             "title": "AeroTools",
