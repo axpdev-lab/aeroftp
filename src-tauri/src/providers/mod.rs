@@ -43,6 +43,7 @@ pub mod github;
 pub mod gitlab;
 pub mod google_drive;
 pub mod google_photos;
+pub mod http_limits;
 pub mod http_retry;
 pub mod imagekit;
 pub mod immich;

@@ -68,8 +68,12 @@ impl GitLabHttpClient {
         // `PRIVATE-TOKEN` is not a header reqwest strips on a cross-origin
         // redirect: keep redirects on the configured instance.
         let client = Client::builder()
-            .connect_timeout(std::time::Duration::from_secs(30))
-            .read_timeout(std::time::Duration::from_secs(1800))
+            .connect_timeout(crate::providers::http_limits::limit(
+                std::time::Duration::from_secs(30),
+            ))
+            .read_timeout(crate::providers::http_limits::limit(
+                crate::providers::http_limits::READ_TIMEOUT,
+            ))
             .user_agent(USER_AGENT)
             .redirect(crate::providers::redirect_policy::same_origin_redirect_policy())
             .danger_accept_invalid_certs(accept_invalid_certs)

@@ -241,10 +241,18 @@ const FOLDER_JOB_FIRST_POLL: std::time::Duration = std::time::Duration::from_mil
 const FOLDER_JOB_MAX_POLL: std::time::Duration = std::time::Duration::from_secs(5);
 
 impl ImageKitProvider {
+    /// Build the provider and its HTTP client, with the limits of [`crate::providers::http_limits`].
+    /// Nothing is sent until the first request.
     pub fn new(config: ImageKitConfig) -> Self {
         let current_path = normalize_path(config.initial_path.as_deref().unwrap_or("/"));
         let client = reqwest::Client::builder()
             .user_agent(AEROFTP_USER_AGENT)
+            .connect_timeout(crate::providers::http_limits::limit(
+                std::time::Duration::from_secs(30),
+            ))
+            .read_timeout(crate::providers::http_limits::limit(
+                crate::providers::http_limits::READ_TIMEOUT,
+            ))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
 

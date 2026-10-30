@@ -193,11 +193,17 @@ pub struct SwiftProvider {
 }
 
 impl SwiftProvider {
+    /// Build the provider and its HTTP client, with the limits of [`crate::providers::http_limits`].
+    /// Nothing is sent until the first request.
     pub fn new(config: SwiftConfig) -> Self {
         let client = Client::builder()
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
-            .connect_timeout(Duration::from_secs(30))
-            .read_timeout(Duration::from_secs(1800))
+            .connect_timeout(crate::providers::http_limits::limit(Duration::from_secs(
+                30,
+            )))
+            .read_timeout(crate::providers::http_limits::limit(
+                crate::providers::http_limits::READ_TIMEOUT,
+            ))
             // Swift requests carry the non-standard X-Auth-Token header.
             // reqwest strips a few standard credentials on cross-origin
             // redirects, but cannot know this provider-specific header is a
@@ -384,7 +390,7 @@ impl SwiftProvider {
         match self
             .client
             .get(base)
-            .timeout(AUTH_REQUEST_TIMEOUT)
+            .timeout(crate::providers::http_limits::limit(AUTH_REQUEST_TIMEOUT))
             .send()
             .await
         {
@@ -426,7 +432,7 @@ impl SwiftProvider {
         let resp = self
             .client
             .get(&url)
-            .timeout(AUTH_REQUEST_TIMEOUT)
+            .timeout(crate::providers::http_limits::limit(AUTH_REQUEST_TIMEOUT))
             .header("X-Auth-User", &self.config.username)
             .header("X-Auth-Key", self.config.password.expose_secret())
             .send()
@@ -525,6 +531,7 @@ impl SwiftProvider {
             && a.port_or_known_default() == b.port_or_known_default()
     }
 
+    /// POST a Keystone token request, bounded like the other auth requests.
     async fn post_keystone_json(
         &self,
         url: &str,
@@ -532,7 +539,7 @@ impl SwiftProvider {
     ) -> Result<reqwest::Response, ProviderError> {
         self.client
             .post(url)
-            .timeout(AUTH_REQUEST_TIMEOUT)
+            .timeout(crate::providers::http_limits::limit(AUTH_REQUEST_TIMEOUT))
             .header("Content-Type", "application/json")
             .json(body)
             .send()
