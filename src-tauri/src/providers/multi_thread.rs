@@ -326,6 +326,7 @@ pub fn range_read_failed(what: &str, offset: u64, e: ProviderError) -> ProviderE
         ProviderError::NetworkError(_) => ProviderError::NetworkError(text),
         ProviderError::ConnectionLost(_) => ProviderError::ConnectionLost(text),
         ProviderError::ParallelRefused(_) => ProviderError::ParallelRefused(text),
+        ProviderError::PinRefused(_) => ProviderError::PinRefused(text),
         _ => ProviderError::TransferFailed(text),
     }
 }
@@ -955,26 +956,16 @@ pub fn source_changed(scope: &str, remote_path: &str, what: &str) -> String {
     format!("{scope}: {remote_path} {SOURCE_CHANGED_MARKER} ({what})")
 }
 
-/// The phrase a window carries when the server answered `412` to the
-/// `If-Match` it was pinned with.
-pub const PIN_REFUSED_MARKER: &str = "refused the version pin of a range";
-
-/// The phrase of a pin refusal on an object a second reading found unchanged.
-pub const PIN_UNSUPPORTED_MARKER: &str = "does not honour If-Match on range reads";
-
-/// The message for a window the server refused under its version pin.
+/// The refusal for a window the server answered `412` under its version pin.
 ///
 /// It says what the server did, not why: a `412` answers both an object
 /// replaced since the first reading and a server that refuses `If-Match` on
 /// the version it still serves. Only one more reading of the object tells
 /// them apart ([`PinRefusal::from_second_reading`]).
-pub fn pin_refused(scope: &str, remote_path: &str) -> String {
-    format!("{scope}: the server {PIN_REFUSED_MARKER} of {remote_path} (412)")
-}
-
-/// Whether `e` is a window the server refused under its version pin.
-pub fn is_pin_refusal(e: &ProviderError) -> bool {
-    matches!(e, ProviderError::ParallelRefused(text) if text.contains(PIN_REFUSED_MARKER))
+pub fn pin_refused(scope: &str, remote_path: &str) -> ProviderError {
+    ProviderError::PinRefused(format!(
+        "{scope}: the server refused the version pin of a range of {remote_path} (412)"
+    ))
 }
 
 /// The refusal for a range the server answered `412` although it carried no
@@ -995,33 +986,47 @@ pub fn same_entity_tag(a: &str, b: &str) -> bool {
     a.trim().trim_matches('"') == b.trim().trim_matches('"')
 }
 
-/// The refusal for a window read without `If-Match` whose answer names
-/// another entity tag than `expected`: the object moved while the windows
-/// read it, or the reading that found it unchanged came from a stale replica.
-/// `None` when the answer names no tag or the expected one; the reading
-/// after the windows still decides then.
-pub fn window_from_another_version(
+/// The refusal for a `206` read without `If-Match` whose headers describe
+/// another object than the one the windows were planned on: another entity
+/// tag than `expected`, or another total than `planned_size`. The object moved
+/// while the windows read it, or the reading that found it unchanged came from
+/// a stale replica. `None` when the headers say nothing against it; the
+/// reading after the windows still decides then.
+pub fn unpinned_window_refusal(
     scope: &str,
     remote_path: &str,
     expected: Option<&str>,
-    answered: Option<&str>,
+    planned_size: u64,
+    headers: &reqwest::header::HeaderMap,
 ) -> Option<ProviderError> {
-    let (Some(expected), Some(answered)) = (expected, answered) else {
-        return None;
+    let text = |name| {
+        headers
+            .get(name)
+            .and_then(|value: &HeaderValue| value.to_str().ok())
     };
-    (!same_entity_tag(expected, answered)).then(|| {
-        ProviderError::ParallelRefused(source_changed(
+    let refused = |what: String| {
+        Some(ProviderError::ParallelRefused(source_changed(
             scope,
             remote_path,
-            &format!("a window came from entity tag {answered}, not {expected}"),
-        ))
-    })
-}
-
-/// Whether `e` is a pin refusal a second reading found to be the server's,
-/// on an object that did not change.
-pub fn is_pin_unsupported(e: &ProviderError) -> bool {
-    matches!(e, ProviderError::ParallelRefused(text) if text.contains(PIN_UNSUPPORTED_MARKER))
+            &what,
+        )))
+    };
+    if let (Some(expected), Some(answered)) = (expected, text(reqwest::header::ETAG)) {
+        if !same_entity_tag(expected, answered) {
+            return refused(format!(
+                "a window came from entity tag {answered}, not {expected}"
+            ));
+        }
+    }
+    let total = text(reqwest::header::CONTENT_RANGE)
+        .and_then(parse_content_range)
+        .and_then(|(_, _, total)| total);
+    match total {
+        Some(total) if total != planned_size => refused(format!(
+            "a window came from an object of {total} bytes, not {planned_size}"
+        )),
+        _ => None,
+    }
 }
 
 /// What a window refused under its version pin turns out to be, once the
@@ -1052,8 +1057,8 @@ impl PinRefusal {
         match self {
             Self::SourceChanged(what) => source_changed(scope, remote_path, what),
             Self::PinUnsupported => format!(
-                "{scope}: the server {PIN_UNSUPPORTED_MARKER}: it refused the version pin of \
-                 {remote_path}, which did not change"
+                "{scope}: the server does not honour If-Match on range reads: it refused the \
+                 version pin of {remote_path}, which did not change"
             ),
         }
     }
@@ -2376,22 +2381,19 @@ pub(crate) async fn try_http_concurrent_range_download(
                     .await
                     .map_err(range_read_error)?;
                 if response.status() == reqwest::StatusCode::PRECONDITION_FAILED {
-                    return Err(ProviderError::ParallelRefused(if send_pin {
+                    return Err(if send_pin {
                         pin_refused("http range", url.as_ref())
                     } else {
-                        unpinned_412("http range", url.as_ref())
-                    }));
+                        ProviderError::ParallelRefused(unpinned_412("http range", url.as_ref()))
+                    });
                 }
                 if !send_pin && response.status() == reqwest::StatusCode::PARTIAL_CONTENT {
-                    let tag = response
-                        .headers()
-                        .get(reqwest::header::ETAG)
-                        .and_then(|v| v.to_str().ok());
-                    if let Some(refused) = window_from_another_version(
+                    if let Some(refused) = unpinned_window_refusal(
                         "http range",
                         url.as_ref(),
                         expected.as_deref(),
-                        tag,
+                        total,
+                        response.headers(),
                     ) {
                         return Err(refused);
                     }
@@ -2442,7 +2444,7 @@ pub(crate) async fn try_http_concurrent_range_download(
                 );
                 HttpRangeAttempt::Fallback(fallback_progress)
             }
-            Err(e) if is_pin_refusal(&e) => {
+            Err(ProviderError::PinRefused(_)) => {
                 // A 412 to the pin: the object moved, or the server refuses
                 // If-Match on the version it still serves. One more probe,
                 // once for the file, tells which.
@@ -2786,6 +2788,9 @@ pub(crate) mod pin_server {
         /// windows come from a newer one: a stale replica answering the
         /// readings. Only the tag each window carries shows it.
         RefusedWithStaleReadings,
+        /// Refused, with readings that stay put while the unpinned windows,
+        /// which carry no entity tag, say they belong to a larger object.
+        RefusedWithLargerWindows,
         /// Refused, and every reading after a refusal fails (`404`, which no
         /// HTTP retry repeats, so the count is the readings' own).
         RefusedThenUnreadable,
@@ -2848,9 +2853,9 @@ pub(crate) mod pin_server {
                         _ => Some("\"v1\""),
                     };
                     let window_tag = match mode {
-                        PinMode::RefusedThenReplacedUnpinned | PinMode::UntaggedRangesRefused => {
-                            None
-                        }
+                        PinMode::RefusedThenReplacedUnpinned
+                        | PinMode::UntaggedRangesRefused
+                        | PinMode::RefusedWithLargerWindows => None,
                         PinMode::RefusedWithStaleReadings => Some("\"v2\""),
                         _ => reading_tag,
                     };
@@ -2880,9 +2885,10 @@ pub(crate) mod pin_server {
                         }
                     }
                     if req.method() == axum::http::Method::HEAD {
-                        return respond(StatusCode::OK, reading_tag)
+                        let head =
+                            respond(StatusCode::OK, reading_tag).header("accept-ranges", "bytes");
+                        return head
                             .header("content-length", OBJECT_SIZE.to_string())
-                            .header("accept-ranges", "bytes")
                             .body(axum::body::Body::empty())
                             .unwrap();
                     }
@@ -2904,13 +2910,19 @@ pub(crate) mod pin_server {
                     match range {
                         Some((start, end)) => {
                             let tag = if probe { reading_tag } else { window_tag };
+                            let window_total =
+                                if mode == PinMode::RefusedWithLargerWindows && !probe {
+                                    OBJECT_SIZE * 2
+                                } else {
+                                    OBJECT_SIZE
+                                };
                             if !probe && !pinned {
                                 unpinned.fetch_add(1, Ordering::SeqCst);
                             }
                             respond(StatusCode::PARTIAL_CONTENT, tag)
                                 .header(
                                     "content-range",
-                                    format!("bytes {start}-{end}/{OBJECT_SIZE}"),
+                                    format!("bytes {start}-{end}/{window_total}"),
                                 )
                                 .body(axum::body::Body::from(vec![7u8; end - start + 1]))
                                 .unwrap()
@@ -5973,20 +5985,14 @@ mod tests {
     /// claim a replacement, and the marker survives a window's wrapping.
     #[test]
     fn a_pin_refusal_names_the_refusal_until_a_second_reading_names_its_cause() {
-        let refused = ProviderError::ParallelRefused(pin_refused("S3 range read", "big.bin"));
-        assert!(is_pin_refusal(&refused));
+        let refused = pin_refused("S3 range read", "big.bin");
+        assert!(matches!(refused, ProviderError::PinRefused(_)));
         assert!(
             !refused.to_string().contains(SOURCE_CHANGED_MARKER),
             "{refused}"
         );
         let wrapped = range_read_failed("segmented download", 7, refused);
-        assert!(is_pin_refusal(&wrapped), "{wrapped}");
-        assert!(!is_pin_refusal(&ProviderError::ParallelRefused(
-            source_changed("x", "big.bin", "entity tag v1 became v2")
-        )));
-        assert!(!is_pin_refusal(&ProviderError::TransferFailed(
-            PIN_REFUSED_MARKER.to_string()
-        )));
+        assert!(matches!(wrapped, ProviderError::PinRefused(_)), "{wrapped}");
 
         let changed = PinRefusal::from_second_reading(Some("entity tag v1 became v2".into()));
         assert_eq!(
@@ -5999,9 +6005,8 @@ mod tests {
         let unsupported = PinRefusal::from_second_reading(None);
         assert_eq!(unsupported, PinRefusal::PinUnsupported);
         let message = unsupported.message("scope", "big.bin");
-        assert!(message.contains(PIN_UNSUPPORTED_MARKER), "{message}");
+        assert!(message.contains("does not honour If-Match"), "{message}");
         assert!(!message.contains(SOURCE_CHANGED_MARKER), "{message}");
-        assert!(is_pin_unsupported(&ProviderError::ParallelRefused(message)));
         for notice in [changed.notice(), unsupported.notice()] {
             assert!(!notice.contains("big.bin"), "{notice}");
         }
@@ -6113,20 +6118,28 @@ mod tests {
     /// mixture published.
     #[tokio::test]
     async fn the_http_range_path_refuses_windows_newer_than_a_stale_reading() {
-        let (attempt, warnings, published, server) =
-            http_range_against(pin_server::PinMode::RefusedWithStaleReadings).await;
-        assert!(matches!(attempt, HttpRangeAttempt::Fallback(Some(_))));
-        assert_eq!(
-            warnings,
-            vec![
-                "parallel download unavailable: the server refused a range or its version check; using a single stream"
-                    .to_string()
-            ]
-        );
-        assert_eq!(published, None);
-        assert!(server.unpinned() >= 1);
-        // The planning probe and the diagnosis; the windows stopped the run.
-        assert_eq!(server.readings(), 2);
+        for mode in [
+            pin_server::PinMode::RefusedWithStaleReadings,
+            pin_server::PinMode::RefusedWithLargerWindows,
+        ] {
+            let (attempt, warnings, published, server) = http_range_against(mode).await;
+            assert!(
+                matches!(attempt, HttpRangeAttempt::Fallback(Some(_))),
+                "{mode:?}"
+            );
+            assert_eq!(
+                warnings,
+                vec![
+                    "parallel download unavailable: the server refused a range or its version check; using a single stream"
+                        .to_string()
+                ],
+                "{mode:?}"
+            );
+            assert_eq!(published, None, "{mode:?}");
+            assert!(server.unpinned() >= 1, "{mode:?}");
+            // The planning probe and the diagnosis; the windows stopped the run.
+            assert_eq!(server.readings(), 2, "{mode:?}");
+        }
     }
 
     /// A diagnosis that cannot read the object is no proof that it did not
@@ -6175,21 +6188,40 @@ mod tests {
     }
 
     #[test]
-    fn a_window_is_refused_only_when_it_names_another_entity_tag() {
+    fn a_window_is_refused_only_when_its_headers_name_another_object() {
+        let answer = |tag: Option<&str>, range: Option<&str>| {
+            let mut headers = reqwest::header::HeaderMap::new();
+            if let Some(tag) = tag {
+                headers.insert(reqwest::header::ETAG, tag.parse().unwrap());
+            }
+            if let Some(range) = range {
+                headers.insert(reqwest::header::CONTENT_RANGE, range.parse().unwrap());
+            }
+            headers
+        };
+        let refusal = |expected: Option<&str>, headers: &reqwest::header::HeaderMap| {
+            unpinned_window_refusal("s", "p", expected, 100, headers)
+        };
         assert!(same_entity_tag("\"v1\"", "v1"));
         assert!(!same_entity_tag("\"v1\"", "W/\"v1\""));
-        assert!(window_from_another_version("s", "p", Some("\"v1\""), None).is_none());
-        assert!(window_from_another_version("s", "p", None, Some("\"v2\"")).is_none());
-        assert!(window_from_another_version("s", "p", Some("v1"), Some("\"v1\"")).is_none());
-        let refused = window_from_another_version("s", "p", Some("\"v1\""), Some("\"v2\""))
-            .expect("another tag is another version");
-        assert!(
-            refused.to_string().contains(SOURCE_CHANGED_MARKER),
-            "{refused}"
-        );
-        assert!(!is_pin_refusal(&refused));
-        assert!(!is_pin_refusal(&ProviderError::ParallelRefused(
-            unpinned_412("s", "p")
-        )));
+        let v1 = Some("\"v1\"");
+        assert!(refusal(v1, &answer(None, None)).is_none());
+        assert!(refusal(None, &answer(Some("\"v2\""), None)).is_none());
+        assert!(refusal(Some("v1"), &answer(v1, Some("bytes 0-9/100"))).is_none());
+        assert!(refusal(v1, &answer(None, Some("bytes 0-9/*"))).is_none());
+        for headers in [
+            answer(Some("\"v2\""), Some("bytes 0-9/100")),
+            answer(None, Some("bytes 0-9/101")),
+        ] {
+            let refused = refusal(v1, &headers).expect("the headers name another object");
+            assert!(
+                matches!(refused, ProviderError::ParallelRefused(_)),
+                "{refused}"
+            );
+            assert!(
+                refused.to_string().contains(SOURCE_CHANGED_MARKER),
+                "{refused}"
+            );
+        }
     }
 }

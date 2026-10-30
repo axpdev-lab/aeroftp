@@ -7627,6 +7627,7 @@ fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
         ProviderError::TransferFailed(msg) if provider_error_message_looks_not_found(msg) => 2,
         ProviderError::TransferFailed(_)
         | ProviderError::ParallelRefused(_)
+        | ProviderError::PinRefused(_)
         | ProviderError::Cancelled => 4,
         ProviderError::InvalidConfig(_)
         | ProviderError::InvalidPath(_)
@@ -35974,7 +35975,7 @@ async fn pget_segmented_download(
     unpinned_from: Option<ftp_client_gui_lib::providers::multi_thread::RangeSourceFingerprint>,
 ) -> i32 {
     use ftp_client_gui_lib::providers::multi_thread::{
-        is_pin_refusal, range_read_failed, read_range_paced, read_range_source_through,
+        range_read_failed, read_range_paced, read_range_source_through,
         replace_failed_range_worker, report_download_fallback, run_concurrent_range_download,
         settle_range_attempt, ConcurrentRangeConfig, ConcurrentRangeOutcome, PinRefusal, RangeMark,
         SegmentedRun,
@@ -36064,7 +36065,9 @@ async fn pget_segmented_download(
                     // the shared executor does: on S3 this is the `If-Match` that
                     // refuses a window the moment the object is replaced.
                     p.set_range_validator(before.validator());
-                    p.send_range_pin(pinned);
+                    if !pinned {
+                        p.read_ranges_unpinned(before.size());
+                    }
                     conns.push(p)
                 }
                 Err(_) => {
@@ -36348,7 +36351,7 @@ async fn pget_segmented_download(
             // temp): the user asked to stop, not for a single stream.
             interrupted_exit(None, format, "the download did not finish").await
         }
-        Err(e) if is_pin_refusal(&e) => {
+        Err(ProviderError::PinRefused(_)) => {
             // A 412 to the pin: the object moved, or the server refuses
             // If-Match on the version it still serves. One more reading,
             // once for the file, names which; one stream follows either way.
@@ -66639,8 +66642,8 @@ async fn digest_in_order(
     digest: &mut LocalDigest,
 ) -> Result<Option<u64>, ProviderError> {
     use ftp_client_gui_lib::providers::multi_thread::{
-        is_pin_refusal, range_source_changed_through, read_range_source_through,
-        report_download_fallback, PinRefusal,
+        range_source_changed_through, read_range_source_through, report_download_fallback,
+        PinRefusal,
     };
     let Ok(before) = read_range_source_through(provider, path).await else {
         return Ok(None);
@@ -66653,7 +66656,7 @@ async fn digest_in_order(
             .map(Some);
     }
     let mut outcome = digest_in_order_attempt(provider, path, digest, &before, true).await;
-    if matches!(&outcome, Err(e) if is_pin_refusal(e)) {
+    if matches!(outcome, Err(ProviderError::PinRefused(_))) {
         // A 412 to the pin: one more reading, once for the file, names a
         // replacement apart from a server that refuses If-Match.
         let verdict = PinRefusal::from_second_reading(
@@ -66708,7 +66711,9 @@ async fn digest_in_order_attempt(
                 break;
             };
             worker.set_range_validator(before.validator());
-            worker.send_range_pin(send_pin);
+            if !send_pin {
+                worker.read_ranges_unpinned(size);
+            }
             workers.push(worker);
         }
     }
@@ -67083,6 +67088,8 @@ mod hashsum_digest_tests {
     pub(super) struct RangeHashFixture {
         pub(super) provider: ftp_client_gui_lib::providers::s3::S3Provider,
         pub(super) body: Vec<u8>,
+        /// What the object holds once it is replaced (modes 5 and 6).
+        pub(super) replacement: Vec<u8>,
         pub(super) whole_gets: Arc<std::sync::atomic::AtomicUsize>,
         ranged_gets: Arc<std::sync::atomic::AtomicUsize>,
         pub(super) heads: Arc<std::sync::atomic::AtomicUsize>,
@@ -67100,8 +67107,10 @@ mod hashsum_digest_tests {
     /// `range_mode` picks how ranged GETs are answered: 0 the whole object,
     /// 1 every range, 2 only the first window, 3 the whole object with the
     /// HEAD reading as replaced after one whole GET, 4 a 412 to every range
-    /// pinned with If-Match and the others served, 5 as 4 with the HEAD
-    /// reading as replaced after one refusal.
+    /// pinned with If-Match and the others served, 5 as 4 with the object
+    /// replaced after one refusal, 6 as 4 with the unpinned ranges coming from
+    /// a replacement, under its own tag, while the HEAD and a whole GET stay
+    /// at the first version.
     pub(super) async fn range_hash_fixture(
         size: usize,
         body_delta: isize,
@@ -67117,7 +67126,9 @@ mod hashsum_digest_tests {
         let body: Vec<u8> = (0..size.saturating_add_signed(body_delta))
             .map(|n| (n % 251) as u8)
             .collect();
+        let replacement: Vec<u8> = body.iter().map(|byte| byte.wrapping_add(1)).collect();
         let served = Arc::new(body.clone());
+        let replaced = Arc::new(replacement.clone());
         let whole_gets = Arc::new(AtomicUsize::new(0));
         let ranged_gets = Arc::new(AtomicUsize::new(0));
         let heads = Arc::new(AtomicUsize::new(0));
@@ -67128,11 +67139,17 @@ mod hashsum_digest_tests {
             let heads = heads.clone();
             move |request: axum::extract::Request| {
                 let served = served.clone();
+                let replaced = replaced.clone();
                 let whole_gets = whole_gets.clone();
                 let ranged_gets = ranged_gets.clone();
                 let heads = heads.clone();
                 let refused = refused.clone();
                 async move {
+                    let current = if range_mode == 5 && refused.load(Ordering::SeqCst) > 0 {
+                        replaced.clone()
+                    } else {
+                        served.clone()
+                    };
                     if request.method() == Method::HEAD {
                         heads.fetch_add(1, Ordering::SeqCst);
                         return Response::builder()
@@ -67154,15 +67171,31 @@ mod hashsum_digest_tests {
                     assert_eq!(request.method(), Method::GET);
                     if let Some(range) = request.headers().get("range") {
                         ranged_gets.fetch_add(1, Ordering::SeqCst);
-                        // Modes 4 and 5 refuse every range pinned with
-                        // If-Match and serve the others; in mode 5 the object
-                        // reads as replaced once a range has been refused.
-                        if matches!(range_mode, 4 | 5) && request.headers().contains_key("if-match")
+                        // Modes 4, 5 and 6 refuse every range pinned with
+                        // If-Match and serve the others.
+                        if matches!(range_mode, 4..=6) && request.headers().contains_key("if-match")
                         {
                             refused.fetch_add(1, Ordering::SeqCst);
                             return Response::builder()
                                 .status(StatusCode::PRECONDITION_FAILED)
                                 .body(Body::empty())
+                                .unwrap();
+                        }
+                        if range_mode == 6 {
+                            let (start, end) = range
+                                .to_str()
+                                .unwrap()
+                                .strip_prefix("bytes=")
+                                .unwrap()
+                                .split_once('-')
+                                .unwrap();
+                            let start: usize = start.parse().unwrap();
+                            let end: usize = end.parse().unwrap();
+                            return Response::builder()
+                                .status(StatusCode::PARTIAL_CONTENT)
+                                .header("content-range", format!("bytes {start}-{end}/{size}"))
+                                .header("etag", "\"newer-version\"")
+                                .body(Body::from(replaced[start..=end].to_vec()))
                                 .unwrap();
                         }
                         if matches!(range_mode, 1 | 2 | 4 | 5) {
@@ -67179,7 +67212,7 @@ mod hashsum_digest_tests {
                                 return Response::builder()
                                     .status(StatusCode::PARTIAL_CONTENT)
                                     .header("content-range", format!("bytes {start}-{end}/{size}"))
-                                    .body(Body::from(served[start..=end].to_vec()))
+                                    .body(Body::from(current[start..=end].to_vec()))
                                     .unwrap();
                             }
                         }
@@ -67191,7 +67224,7 @@ mod hashsum_digest_tests {
                     Response::builder()
                         .status(StatusCode::OK)
                         .header("etag", "\"fixed-version\"")
-                        .body(Body::from(served.as_ref().clone()))
+                        .body(Body::from(current.as_ref().clone()))
                         .unwrap()
                 }
             }
@@ -67234,6 +67267,7 @@ mod hashsum_digest_tests {
         RangeHashFixture {
             provider,
             body,
+            replacement,
             whole_gets,
             ranged_gets,
             heads,
@@ -67405,6 +67439,43 @@ mod hashsum_digest_tests {
         assert!(warnings.take().is_empty());
         // The reading before the windows, the diagnosis, the reading after.
         assert_eq!(fixture.heads.load(Ordering::SeqCst), 3);
+    }
+
+    /// A stale HEAD and unpinned windows from a replacement under its own tag:
+    /// the windows are refused and never reach the digest, and the hash comes
+    /// from one whole download.
+    #[tokio::test]
+    async fn ranged_hashsum_refuses_windows_from_another_version() {
+        let mut fixture = range_hash_fixture(
+            (ftp_client_gui_lib::providers::multi_thread::IN_ORDER_WINDOW * 2 + 31) as usize,
+            0,
+            6,
+        )
+        .await;
+        let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+        let (hash, _size) = warnings
+            .scope(hashsum_digest(
+                &mut fixture.provider,
+                PATH,
+                HashAlgorithm::Sha256,
+                true,
+            ))
+            .await
+            .expect("the whole download hashes the first version");
+        assert_eq!(
+            hash,
+            format!(
+                "{:x}",
+                <sha2::Sha256 as sha2::Digest>::digest(&fixture.body)
+            )
+        );
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+        let messages = warnings.take();
+        assert_eq!(messages.len(), 1, "{messages:?}");
+        assert!(
+            messages[0].contains("refused ranged hashing"),
+            "{messages:?}"
+        );
     }
 
     /// A 412 on an object that did change is a replacement: no unpinned
@@ -89618,6 +89689,26 @@ mod tests {
         assert_eq!(fixture.heads.load(Ordering::SeqCst), 3);
     }
 
+    /// A stale HEAD and unpinned segments from a replacement under its own
+    /// tag: nothing from the segments is published, whatever the HEAD says.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn pget_does_not_publish_segments_from_another_version() {
+        let size = 8 * 1024 * 1024 + 31;
+        let fixture = super::hashsum_digest_tests::range_hash_fixture(size, 0, 6).await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("f.bin");
+        let (code, warnings) = pget_against(
+            fixture.provider.clone(),
+            size as u64,
+            out.to_string_lossy().into_owned(),
+        )
+        .await;
+        assert_eq!(code, 0, "{warnings:?}");
+        assert!(!warnings.is_empty(), "the fallback is announced");
+        assert_eq!(std::fs::read(&out).unwrap(), fixture.body);
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+    }
+
     /// A 412 on an object that did change: no unpinned retry, the fallback
     /// notice names the change, and one stream downloads the object.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -89643,7 +89734,8 @@ mod tests {
                 .notice()
             )]
         );
-        assert_eq!(std::fs::read(&out).unwrap(), fixture.body);
+        // The new version whole: a stale copy of the first one must not pass.
+        assert_eq!(std::fs::read(&out).unwrap(), fixture.replacement);
     }
 
     /// A quiet CLI for these tests.

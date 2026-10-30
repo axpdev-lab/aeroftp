@@ -466,10 +466,11 @@ pub struct S3Provider {
     /// that reads several windows of one object in parallel. `None` leaves
     /// ranges unpinned, which is right for a single read.
     range_validator: Option<String>,
-    /// Whether `range_validator` goes with each range as `If-Match` (the
-    /// default) or is only compared with the tag each answer carries, for a
-    /// gateway that refuses `If-Match` on an object that did not change.
-    range_pin_sent: bool,
+    /// `None` sends `range_validator` with each range as `If-Match`. `Some`
+    /// is the object's size, for a gateway that refuses `If-Match` on an
+    /// object that did not change: no header is sent, and each answer's tag
+    /// and total are compared with `range_validator` and this size.
+    range_unpinned_size: Option<u64>,
     /// KE-B1.1: Override for multipart upload parallelism. `None` keeps the
     /// historical 4-part-in-flight ceiling used by both `upload_multipart_streaming`
     /// and the server-side multipart copy planner. Set via
@@ -693,7 +694,7 @@ impl S3Provider {
             multi_thread_streams: 1,
             multi_thread_cutoff: Self::MULTI_THREAD_CUTOFF_DEFAULT,
             range_validator: None,
-            range_pin_sent: true,
+            range_unpinned_size: None,
             upload_concurrency_override: None,
             no_check_bucket: false,
             disable_checksum: false,
@@ -4019,7 +4020,7 @@ impl S3Provider {
                         let etag = etag.clone();
                         async move {
                             download_range_to_offset(
-                                provider, key, temp, start, end, etag, pin, bytes, mark,
+                                provider, key, temp, start, end, etag, pin, total_size, bytes, mark,
                             )
                             .await
                             .map(|()| super::multi_thread::ConcurrentRangeOutcome::Completed)
@@ -4075,13 +4076,21 @@ impl S3Provider {
             // A 412 to the pin is either a replacement or a gateway that
             // refuses If-Match on the version it still serves: the same HEAD
             // a completed download takes tells which, once for the file.
-            if super::multi_thread::is_pin_refusal(&err) {
+            // `PinRefused` leaves here only for the second: its caller reads
+            // the windows again.
+            if matches!(err, ProviderError::PinRefused(_)) {
                 let verdict = super::multi_thread::PinRefusal::from_second_reading(
                     self.object_moved_since(key, &validator, total_size).await,
                 );
-                return Err(ProviderError::ParallelRefused(
-                    verdict.message("S3 multi-thread", key),
-                ));
+                let message = verdict.message("S3 multi-thread", key);
+                return Err(match verdict {
+                    super::multi_thread::PinRefusal::PinUnsupported => {
+                        ProviderError::PinRefused(message)
+                    }
+                    super::multi_thread::PinRefusal::SourceChanged(_) => {
+                        ProviderError::ParallelRefused(message)
+                    }
+                });
             }
             return Err(err);
         }
@@ -4148,9 +4157,18 @@ impl S3Provider {
                         .get(reqwest::header::CONTENT_LENGTH)
                         .and_then(|v| v.to_str().ok())
                         .and_then(|v| v.parse::<u64>().ok());
-                    if let Some(after) = now_size {
-                        if after != size {
+                    // The windows were cut for `size`: a HEAD that no longer
+                    // says the size cannot show the object still has it.
+                    match now_size {
+                        Some(after) if after != size => {
                             return Some(format!("size {} became {}", size, after));
+                        }
+                        Some(_) => {}
+                        None => {
+                            return Some(format!(
+                                "size {} is no longer reported, so the windows are not checked",
+                                size
+                            ));
                         }
                     }
                     return None;
@@ -5224,12 +5242,8 @@ impl StorageProvider for S3Provider {
                                 // more, for this file only and with no pin, and
                                 // the HEAD after them compares entity tag and
                                 // size, as for a gateway that ignores the header.
-                                let pin_unsupported = matches!(
-                                    &outcome,
-                                    Err(e) if super::multi_thread::is_pin_unsupported(e)
-                                );
                                 let fallback_progress = match outcome {
-                                    Err(e) if pin_unsupported => {
+                                    Err(e @ ProviderError::PinRefused(_)) => {
                                         warn!(
                                             "S3: {}; reading the windows again without If-Match",
                                             e
@@ -6567,8 +6581,8 @@ impl StorageProvider for S3Provider {
         });
     }
 
-    fn send_range_pin(&mut self, send: bool) {
-        self.range_pin_sent = send;
+    fn read_ranges_unpinned(&mut self, size: u64) {
+        self.range_unpinned_size = Some(size);
     }
 
     async fn read_range(
@@ -6606,7 +6620,7 @@ impl StorageProvider for S3Provider {
         // newer version, instead of handing back bytes that assemble into a
         // file made of two.
         let validator = self.range_validator.clone();
-        let pinned = validator.is_some() && self.range_pin_sent;
+        let pinned = validator.is_some() && self.range_unpinned_size.is_none();
         let mut headers: Vec<(&str, &str)> = vec![("range", &range_value)];
         if let Some(tag) = validator.as_deref().filter(|_| pinned) {
             headers.push(("if-match", tag));
@@ -6619,16 +6633,13 @@ impl StorageProvider for S3Provider {
             StatusCode::PARTIAL_CONTENT => {
                 // Read without If-Match, a window still has to come from the
                 // version the windows were planned on.
-                if !pinned {
-                    let tag = response
-                        .headers()
-                        .get(reqwest::header::ETAG)
-                        .and_then(|v| v.to_str().ok());
-                    if let Some(refused) = super::multi_thread::window_from_another_version(
+                if let Some(size) = self.range_unpinned_size {
+                    if let Some(refused) = super::multi_thread::unpinned_window_refusal(
                         "S3 range read",
                         path,
                         validator.as_deref(),
-                        tag,
+                        size,
+                        response.headers(),
                     ) {
                         return Err(refused);
                     }
@@ -6687,9 +6698,9 @@ impl StorageProvider for S3Provider {
                     ),
                 ))
             }
-            StatusCode::PRECONDITION_FAILED if pinned => Err(ProviderError::ParallelRefused(
-                super::multi_thread::pin_refused("S3 range read", key),
-            )),
+            StatusCode::PRECONDITION_FAILED if pinned => {
+                Err(super::multi_thread::pin_refused("S3 range read", key))
+            }
             StatusCode::PRECONDITION_FAILED => Err(ProviderError::ParallelRefused(
                 super::multi_thread::unpinned_412("S3 range read", path),
             )),
@@ -7868,8 +7879,9 @@ async fn drain_bounded(response: &mut reqwest::Response, limit: usize) {
 
 /// Read the window `start..=end` of `key` into `temp_path` at its offset.
 /// With `send_pin` the request carries `validator` as `If-Match`; without it
-/// the answer's entity tag is compared with `validator` instead, so a window
-/// from another version is refused either way.
+/// the answer's entity tag and total are compared with `validator` and
+/// `total_size` instead, so a window from another object is refused either
+/// way.
 #[allow(clippy::too_many_arguments)]
 async fn download_range_to_offset(
     provider: S3Provider,
@@ -7879,6 +7891,7 @@ async fn download_range_to_offset(
     end: u64,
     validator: String,
     send_pin: bool,
+    total_size: u64,
     aggregate: Arc<AtomicU64>,
     mark: super::multi_thread::RangeMark,
 ) -> Result<(), ProviderError> {
@@ -7895,15 +7908,12 @@ async fn download_range_to_offset(
     match status {
         StatusCode::PARTIAL_CONTENT => {
             if !send_pin {
-                let tag = response
-                    .headers()
-                    .get(reqwest::header::ETAG)
-                    .and_then(|v| v.to_str().ok());
-                if let Some(refused) = super::multi_thread::window_from_another_version(
+                if let Some(refused) = super::multi_thread::unpinned_window_refusal(
                     "S3 multi-thread",
                     &key,
                     Some(&validator),
-                    tag,
+                    total_size,
+                    response.headers(),
                 ) {
                     return Err(refused);
                 }
@@ -7948,9 +7958,7 @@ async fn download_range_to_offset(
         }
         StatusCode::NOT_FOUND => return Err(ProviderError::NotFound(key)),
         StatusCode::PRECONDITION_FAILED if send_pin => {
-            return Err(ProviderError::ParallelRefused(
-                super::multi_thread::pin_refused("S3 multi-thread", &key),
-            ));
+            return Err(super::multi_thread::pin_refused("S3 multi-thread", &key));
         }
         StatusCode::PRECONDITION_FAILED => {
             return Err(ProviderError::ParallelRefused(
@@ -12408,12 +12416,82 @@ mod tests {
     #[tokio::test]
     async fn a_window_newer_than_a_stale_head_is_refused() {
         use super::super::multi_thread::pin_server::{PinMode, OBJECT_SIZE};
-        let (messages, bytes, _progress, server) =
-            download_against_pin_server(PinMode::RefusedWithStaleReadings).await;
-        assert_eq!(messages.len(), 1, "{messages:?}");
-        assert!(messages[0].contains("one confirmed object version"));
-        assert_eq!(bytes, vec![9u8; OBJECT_SIZE], "one whole version");
-        assert!(server.unpinned() >= 1);
+        for mode in [
+            PinMode::RefusedWithStaleReadings,
+            PinMode::RefusedWithLargerWindows,
+        ] {
+            let (messages, bytes, _progress, server) = download_against_pin_server(mode).await;
+            assert_eq!(messages.len(), 1, "{mode:?}: {messages:?}");
+            assert!(messages[0].contains("one confirmed object version"));
+            assert_eq!(bytes, vec![9u8; OBJECT_SIZE], "{mode:?}: one whole version");
+            assert!(server.unpinned() >= 1, "{mode:?}");
+        }
+    }
+
+    /// The windows were cut for the size the first HEAD gave. A HEAD after
+    /// them that no longer says the size cannot show the object still has it,
+    /// so the file is not published on its word.
+    #[tokio::test]
+    async fn a_head_without_a_length_does_not_pass_the_publish_check() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        const SIZE: usize = 8 * 1024 * 1024;
+        // Raw HTTP: an axum handler's HEAD always gets a `content-length`.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let mut head = Vec::new();
+                    let mut byte = [0u8; 1];
+                    while !head.ends_with(b"\r\n\r\n") {
+                        match stream.read(&mut byte).await {
+                            Ok(1) => head.push(byte[0]),
+                            _ => return,
+                        }
+                    }
+                    let head = String::from_utf8_lossy(&head).to_lowercase();
+                    let window = head
+                        .lines()
+                        .find_map(|line| line.strip_prefix("range: "))
+                        .and_then(requested_window);
+                    let answer = match window {
+                        Some((start, end)) => {
+                            let mut answer = format!(
+                                "HTTP/1.1 206 Partial Content\r\ncontent-range: bytes {start}-{end}/{SIZE}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                                end - start + 1
+                            )
+                            .into_bytes();
+                            answer.extend(vec![7u8; end - start + 1]);
+                            answer
+                        }
+                        None => {
+                            b"HTTP/1.1 200 OK\r\netag: \"v1\"\r\nconnection: close\r\n\r\n".to_vec()
+                        }
+                    };
+                    let _ = stream.write_all(&answer).await;
+                });
+            }
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        let err = provider
+            .download_multi_thread(
+                "big.bin",
+                out.to_str().unwrap(),
+                SIZE as u64,
+                "\"v1\"".to_string(),
+                true,
+                None,
+            )
+            .await
+            .expect_err("an object of unknown size is not published");
+        assert!(err.to_string().contains("no longer reported"), "{err}");
+        assert!(!out.exists());
     }
 
     /// The unpinned retry is guarded by the HEAD after it: an object replaced
@@ -12446,6 +12524,7 @@ mod tests {
             (PinMode::RefusedReplaced, false, 2),
             (PinMode::RefusedThenReplacedUnpinned, false, 3),
             (PinMode::RefusedWithStaleReadings, false, 2),
+            (PinMode::RefusedWithLargerWindows, false, 2),
             (PinMode::RefusedThenUnreadable, false, 3),
         ] {
             let server = pin_server::start(mode).await;
@@ -12492,10 +12571,9 @@ mod tests {
     #[tokio::test]
     async fn the_native_path_takes_one_reading_for_a_refused_pin() {
         use super::super::multi_thread::pin_server::{self, PinMode, OBJECT_SIZE};
-        use super::super::multi_thread::{PIN_UNSUPPORTED_MARKER, SOURCE_CHANGED_MARKER};
-        for (mode, marker) in [
-            (PinMode::RefusedUnchanged, PIN_UNSUPPORTED_MARKER),
-            (PinMode::RefusedReplaced, SOURCE_CHANGED_MARKER),
+        for (mode, unchanged) in [
+            (PinMode::RefusedUnchanged, true),
+            (PinMode::RefusedReplaced, false),
         ] {
             let server = pin_server::start(mode).await;
             let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
@@ -12514,7 +12592,17 @@ mod tests {
                 )
                 .await
                 .expect_err("a refused pin is not published");
-            assert!(err.to_string().contains(marker), "{mode:?}: {err}");
+            assert_eq!(
+                matches!(err, ProviderError::PinRefused(_)),
+                unchanged,
+                "{mode:?}: {err}"
+            );
+            assert_eq!(
+                !matches!(err, ProviderError::PinRefused(_)),
+                err.to_string()
+                    .contains(super::super::multi_thread::SOURCE_CHANGED_MARKER),
+                "{mode:?}: {err}"
+            );
             assert!(!out.exists());
             assert!(server.refused() >= 2, "{mode:?}");
             assert_eq!(server.readings(), 1, "{mode:?}: one HEAD for the file");
@@ -12935,7 +13023,7 @@ mod tests {
             .read_range("/big.bin", 0, 1024)
             .await
             .expect_err("a refused pin must fail the read");
-        assert!(super::super::multi_thread::is_pin_refusal(&err), "{err}");
+        assert!(matches!(err, ProviderError::PinRefused(_)), "{err}");
         assert!(
             !format!("{err}").contains(super::super::multi_thread::SOURCE_CHANGED_MARKER),
             "{err}"

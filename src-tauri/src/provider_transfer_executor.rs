@@ -520,7 +520,7 @@ async fn run_provider_segmented_download_with(
 /// the reading compared with `before` that decides whether the file is
 /// published. Every worker knows the version `before` names; with `send_pin`
 /// each range carries it as `If-Match`, without it each answer is compared
-/// with it ([`StorageProvider::send_range_pin`]).
+/// with it ([`StorageProvider::read_ranges_unpinned`]).
 #[allow(clippy::too_many_arguments)]
 async fn run_provider_segmented_windows(
     governor: Arc<crate::transfer_dag::governor::GlobalTransferGovernor>,
@@ -553,7 +553,9 @@ async fn run_provider_segmented_windows(
         match primary.clone_for_transfer() {
             Ok(mut w) => {
                 w.set_range_validator(before.validator());
-                w.send_range_pin(send_pin);
+                if !send_pin {
+                    w.read_ranges_unpinned(before.size());
+                }
                 workers.push(w);
             }
             Err(e) => {
@@ -705,7 +707,7 @@ async fn run_provider_segmented_windows(
     // A 412 to the pin: the object moved, or the server refuses If-Match on the
     // version it still serves. The reading a completed run takes tells which,
     // once for the file.
-    if matches!(&outcome, Err(e) if crate::providers::multi_thread::is_pin_refusal(e)) {
+    if matches!(outcome, Err(ProviderError::PinRefused(_))) {
         let changed = tokio::select! {
             biased;
             _ = cancel_token.cancelled() => return Err(SegmentedDownloadError::Cancelled),
