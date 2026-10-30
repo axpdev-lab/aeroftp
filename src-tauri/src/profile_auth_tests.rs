@@ -844,6 +844,46 @@ async fn durable_profile_auth_lifecycle(
         drop(held);
     }
 
+    // Another writer saving between the secrets and the list: the real write
+    // refuses, the secrets go back, and the import plans again on the new list,
+    // keeping that save. Saving again on the second plan refuses the import, with
+    // the secrets back.
+    let raced_write = move || {
+        let store = CredentialStore::from_cache().unwrap();
+        let (_, revision) = users::cli_read_active_profiles_at_revision(&store, active_id).unwrap();
+        users::cli_update_profiles_at_revision(&store, active_id, &revision, |list| {
+            list.retain(|p| p["id"] != "raced");
+            list.push(
+                json!({"id": "raced", "name": "raced", "host": "h", "port": 1, "username": "u"}),
+            );
+        })
+        .unwrap();
+    };
+    users::store_active_credential_typed_dual(store, &stale_key, "oauth", "stale-local").unwrap();
+    let mut left = 1;
+    crate::IMPORT_BEFORE_COMMIT.with_borrow_mut(|hook| {
+        *hook = Some(Box::new(move || {
+            if left > 0 {
+                left -= 1;
+                raced_write();
+            }
+        }))
+    });
+    let replanned = import_with(ExistingProfileMode::Overwrite, false)
+        .await
+        .unwrap();
+    assert_eq!(replanned.servers[0]["importOutcome"], "overwritten");
+    assert!(replanned.stored.iter().any(|p| p["id"] == "raced"));
+    assert_eq!(read(&stale_key).unwrap().as_str(), expected);
+    users::store_active_credential_typed_dual(store, &stale_key, "oauth", "stale-local").unwrap();
+    crate::IMPORT_BEFORE_COMMIT.with_borrow_mut(|hook| *hook = Some(Box::new(raced_write)));
+    let refused_twice = import_with(ExistingProfileMode::Overwrite, false)
+        .await
+        .unwrap_err();
+    crate::IMPORT_BEFORE_COMMIT.with_borrow_mut(|hook| *hook = None);
+    assert_eq!(refused_twice, users::PROFILES_CHANGED);
+    assert_eq!(read(&stale_key).unwrap().as_str(), "stale-local");
+
     // A file repeating an id holds one set of provider secrets: the first profile
     // brings the chain, the later one stored under a new id does not.
     let repeated_file = directory.path().join("repeated.aeroftp");

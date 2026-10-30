@@ -5,7 +5,7 @@ import * as React from 'react';
 import { useState, useEffect, useCallback } from 'react';
 import { Shield, Server, Bot, Cloud, X, CheckCircle2, AlertTriangle, ArrowRight, Loader2 } from 'lucide-react';
 import { secureStore } from '../utils/secureStorage';
-import { storeSavedServerProfiles } from '../utils/serverProfileStore';
+import { replaceSavedServerProfiles } from '../utils/serverProfileStore';
 import type { ServerProfile } from '../types';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
@@ -140,7 +140,7 @@ export const KeystoreMigrationWizard: React.FC<KeystoreMigrationWizardProps> = (
                     // Route into the active user's vault partition so the
                     // migrated profiles land under the default-user id and
                     // not in the legacy shared blob.
-                    await storeSavedServerProfiles(task.data as ServerProfile[]);
+                    await replaceSavedServerProfiles(() => task.data as ServerProfile[]);
                 } else {
                     await secureStore(task.key, task.data);
                 }

@@ -133,6 +133,11 @@ export interface SavedProfilesRead {
     revision?: string;
 }
 
+// The revision of a list read from the legacy store. A write carrying it stays in
+// that store: if the partition can be reached by then, this list is older than
+// what the partition holds, and the write is refused like any other stale one.
+const LEGACY_STORE_REVISION = 'legacy-store';
+
 /**
  * `loadSavedServerProfilesStrict` plus the account the list belongs to. Pass
  * `userId` to `storeSavedServerProfiles` so the write lands in that account or
@@ -151,7 +156,7 @@ export const readSavedServerProfilesForWrite = async (): Promise<SavedProfilesRe
     } catch (error) {
         if (!canUseLegacyProfileFallback(error)) throw error;
         const legacy = await loadLegacySavedServerProfiles();
-        if (legacy.length > 0) return { profiles: legacy };
+        if (legacy.length > 0) return { profiles: legacy, revision: LEGACY_STORE_REVISION };
         throw error;
     }
 };
@@ -203,6 +208,10 @@ export const storeSavedServerProfiles = async (
     const accountBefore = accountChangeGeneration();
     let stored: ServerProfile[];
     try {
+        if (expectedRevision === LEGACY_STORE_REVISION) {
+            await loadActiveServerProfilesScoped();
+            throw new Error('PROFILES_CHANGED: the saved profiles were read from the legacy store and the account store is available now; nothing was saved');
+        }
         const written = await saveActiveServerProfiles(profiles, expectedUserId, expectedRevision);
         stored = Array.isArray(written) ? written : profiles;
     } catch (error) {
@@ -294,6 +303,31 @@ export const mergeSavedServerProfile = async (
     profileWriteQueue = queued.then(() => undefined, () => undefined);
     await queued;
     return result;
+};
+
+/**
+ * Replace the active account's list with one that is meant to replace it whole (a
+ * keystore restore, a migration), bound to the account and the revision read just
+ * before. `list` is asked for after that read: a save landing in between is
+ * refused, and redone once on what `list` answers then.
+ */
+export const replaceSavedServerProfiles = async (
+    list: () => ServerProfile[] | null | Promise<ServerProfile[] | null>,
+): Promise<ServerProfile[] | null> => {
+    const attempt = async () => {
+        const { userId, revision } = await readSavedServerProfilesForWrite().catch(error => {
+            if (!canUseLegacyProfileFallback(error)) throw error;
+            return {} as Partial<SavedProfilesRead>;
+        });
+        const profiles = await list();
+        return profiles === null ? null : storeSavedServerProfiles(profiles, false, userId, revision);
+    };
+    try {
+        return await attempt();
+    } catch (error) {
+        if (!String(error).includes('PROFILES_CHANGED')) throw error;
+        return attempt();
+    }
 };
 
 /**

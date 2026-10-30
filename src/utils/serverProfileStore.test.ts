@@ -21,6 +21,7 @@ import {
     loadSavedServerProfilesStrict,
     mergeSavedServerProfile,
     readSavedServerProfilesForWrite,
+    replaceSavedServerProfiles,
     revertConvertedProfile,
     savedProfilesGeneration,
     storeSavedServerProfiles,
@@ -325,6 +326,80 @@ describe('loadSavedServerProfilesStrict', () => {
         mockInvoke.mockRejectedValueOnce(boom);
 
         await expect(loadSavedServerProfilesStrict()).rejects.toBe(boom);
+    });
+});
+
+describe('replaceSavedServerProfiles', () => {
+    it('binds the replacement to the account and revision read before the list was asked for', async () => {
+        const order: string[] = [];
+        mockInvoke.mockImplementationOnce(async () => {
+            order.push('read');
+            return { userId: 4, profiles: [], revision: 'r1' };
+        }).mockResolvedValueOnce(undefined);
+        const list = [sampleProfile()];
+        await replaceSavedServerProfiles(() => {
+            order.push('list');
+            return list;
+        });
+        expect(order).toEqual(['read', 'list']);
+        expect(mockInvoke).toHaveBeenLastCalledWith('user_partitions_save_active_server_profiles', {
+            profiles: list, expectedUserId: 4, expectedRevision: 'r1',
+        });
+    });
+
+    it('redoes a replacement once with the list as it answers then, and writes nothing for no list', async () => {
+        mockInvoke
+            .mockResolvedValueOnce({ userId: 4, profiles: [], revision: 'r1' })
+            .mockRejectedValueOnce(new Error('PROFILES_CHANGED: nothing was saved'))
+            .mockResolvedValueOnce({ userId: 4, profiles: [], revision: 'r2' })
+            .mockResolvedValueOnce(undefined);
+        let asked = 0;
+        await replaceSavedServerProfiles(() => {
+            asked += 1;
+            return [sampleProfile({ name: `answer ${asked}` })];
+        });
+        expect(mockInvoke).toHaveBeenLastCalledWith('user_partitions_save_active_server_profiles', {
+            profiles: [sampleProfile({ name: 'answer 2' })], expectedUserId: 4, expectedRevision: 'r2',
+        });
+
+        mockInvoke.mockClear();
+        mockInvoke.mockResolvedValueOnce({ userId: 4, profiles: [], revision: 'r3' });
+        await expect(replaceSavedServerProfiles(() => null)).resolves.toBeNull();
+        expect(mockInvoke).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('a list read from the legacy store', () => {
+    it('never replaces the partition once that can be reached, and stays in the legacy store while it cannot', async () => {
+        const legacy = [sampleProfile({ name: 'from the legacy store' })];
+        let partition: unknown = new Error('STORE_NOT_READY');
+        mockInvoke.mockImplementation(async (command: string) => {
+            if (command === 'user_partitions_load_active_server_profiles_scoped') {
+                if (partition instanceof Error) throw partition;
+                return partition;
+            }
+            if (command === 'get_credential') return JSON.stringify(legacy);
+            if (command === 'user_partitions_save_active_server_profiles') throw new Error('STORE_NOT_READY');
+            return undefined;
+        });
+        const read = await readSavedServerProfilesForWrite();
+        expect(read.profiles).toEqual(legacy);
+        expect(read.userId).toBeUndefined();
+        const savedToPartition = () => mockInvoke.mock.calls.some(call => call[0] === 'user_partitions_save_active_server_profiles');
+
+        // Not ready yet: the list stays in the store it came from.
+        await storeSavedServerProfiles(read.profiles, false, read.userId, read.revision);
+        expect(savedToPartition()).toBe(false);
+        expect(mockInvoke.mock.calls.some(call => call[0] === 'store_credential')).toBe(true);
+
+        // Ready by the time of the write: refused, and no save reaches the partition.
+        partition = { userId: 4, profiles: [], revision: 'r1' };
+        mockInvoke.mockClear();
+        await expect(storeSavedServerProfiles(read.profiles, false, read.userId, read.revision))
+            .rejects.toThrow('PROFILES_CHANGED');
+        expect(savedToPartition()).toBe(false);
+        expect(mockInvoke.mock.calls.some(call => call[0] === 'store_credential')).toBe(false);
+        mockInvoke.mockReset();
     });
 });
 

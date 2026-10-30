@@ -321,6 +321,9 @@ pub enum KeystoreExportError {
     UnsupportedCodec(String),
     #[error("Vault not ready")]
     VaultNotReady,
+    /// Another writer held the saved profile list for the whole wait.
+    #[error("{0}")]
+    ProfileListBusy(String),
     /// The per-profile decisions do not match what this import would change:
     /// the backup or this device changed since the preview was answered.
     #[error("Import choices are out of date: {0}")]
@@ -1596,8 +1599,10 @@ fn save_partition_list(
     let mut conn =
         rusqlite::Connection::open(db).map_err(|e| format!("open {}: {e}", db.display()))?;
     let mut root_key = store.derive_user_partition_wrapping_key();
-    let saved =
-        crate::user_partitions::replace_active_server_profiles(&mut conn, &root_key, profiles);
+    // Under the lock of the import that calls this.
+    let saved = crate::user_partitions::replace_active_server_profiles_under_lock(
+        &mut conn, &root_key, profiles,
+    );
     root_key.zeroize();
     saved
 }
@@ -1813,6 +1818,17 @@ fn import_keystore_with_store(
 ) -> Result<KeystoreImportResult, KeystoreExportError> {
     let merge_strategy = normalize_merge_strategy(merge_strategy)?;
     let mut payload = open_backup(password, file_path, on_progress)?;
+    // From the first read of this device's list to the last write: the plan below
+    // reads it, the partition file may be replaced with its journals removed, and
+    // the decisions are written from that read. No other writer may land between.
+    let _list_lock = config_dir
+        .map(|cfg| {
+            crate::user_partitions::ProfileListLock::acquire_for_path(
+                &cfg.join("user_partitions.db"),
+            )
+        })
+        .transpose()
+        .map_err(KeystoreExportError::ProfileListBusy)?;
     // #347: read both profile lists and their secrets before anything is
     // written, so "keep this device's version" can put back what was here,
     // and refuse decisions that do not match this plan while nothing has
@@ -2085,23 +2101,7 @@ fn import_keystore_with_store(
                     // explicitly remove them so SQLite does not try
                     // to replay a journal that refers to a different
                     // page layout.
-                    // The file holds the profile list: no import may be writing it
-                    // while it is replaced. Busy, it stays as it is, like any write
-                    // that failed here.
-                    let list_lock = if name.as_str() == "user_partitions.db" {
-                        match crate::user_partitions::ProfileListLock::acquire_for_path(&target) {
-                            Ok(lock) => Some(lock),
-                            Err(e) => {
-                                tracing::warn!("SQLite restore failed for {}: {}", name, e);
-                                continue;
-                            }
-                        }
-                    } else {
-                        None
-                    };
-                    let written = atomic_write_synced(&target, &bytes);
-                    drop(list_lock);
-                    match written {
+                    match atomic_write_synced(&target, &bytes) {
                         Ok(_) => {
                             let _ = std::fs::remove_file(cfg.join(format!("{name}-wal")));
                             let _ = std::fs::remove_file(cfg.join(format!("{name}-shm")));
@@ -3868,6 +3868,37 @@ mod tests {
         );
         // The GUI copies the blob into the partition after the import.
         assert_eq!(blob_of(&store), my_servers(&store, &cfg));
+    }
+
+    /// A restore holds the list lock from its first read of this device's list:
+    /// another writer holding it stops the import before anything changes.
+    #[test]
+    fn a_restore_waits_for_the_profile_list_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, cfg) = machine_with_a_frozen_blob(dir.path());
+        let (backup, _other_vault) = backup_of_another_machine(dir.path());
+        let blob = store.get("config_server_profiles").unwrap();
+        let held = crate::user_partitions::ProfileListLock::acquire_for_path(
+            &cfg.join("user_partitions.db"),
+        )
+        .unwrap();
+        let refused = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        );
+        assert!(
+            matches!(refused, Err(KeystoreExportError::ProfileListBusy(_))),
+            "{:?}",
+            refused.map(|_| ()).map_err(|e| e.to_string())
+        );
+        assert_eq!(store.get("config_server_profiles").unwrap(), blob);
+        drop(held);
     }
 
     /// Review of #980: with no review, "Skip existing" leaves out a backup

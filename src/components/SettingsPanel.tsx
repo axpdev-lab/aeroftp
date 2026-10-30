@@ -44,7 +44,7 @@ import { secureGetWithFallback } from '../utils/secureStorage';
 import { loadOAuthClientCredentials } from '../utils/oauthClientCredentials';
 import { keyReadFailure, notifyOAuthKeysUnavailable } from '../utils/oauthKeysMissing';
 import { dispatchMasterPasswordChanged } from '../utils/masterPasswordEvents';
-import { loadSavedServerProfiles, readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../utils/serverProfileStore';
+import { loadSavedServerProfiles, readSavedServerProfilesForWrite, replaceSavedServerProfiles } from '../utils/serverProfileStore';
 import { appendImportedProfiles } from './bridge/bridgeImportCommit';
 import {
     DEFAULT_APP_FONT_FAMILY,
@@ -3825,20 +3825,22 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                         // restored partition when that partition is readable here, and
                                                                         // to the backup's own list when it is not (a vault-only backup,
                                                                         // another machine without a transport key); #736.
-                                                                        // storeSavedServerProfiles routes that list through the
+                                                                        // replaceSavedServerProfiles routes that list through the
                                                                         // partition layer so it lands under the active user id.
                                                                         try {
-                                                                            const profilesJson = await invoke<string>('get_credential', { account: 'config_server_profiles' });
-                                                                            if (profilesJson) {
+                                                                            // With decisions the list is what the user chose, and
+                                                                            // an empty one is a real answer, not a missing list.
+                                                                            const decided = result.profilesAfterDecisions !== undefined && result.profilesAfterDecisions !== null;
+                                                                            const stored = await replaceSavedServerProfiles(async () => {
+                                                                                const profilesJson = await invoke<string>('get_credential', { account: 'config_server_profiles' });
+                                                                                if (!profilesJson) return null;
                                                                                 const importedProfiles = JSON.parse(profilesJson) as ServerProfile[];
-                                                                                // With decisions the list is what the user chose, and
-                                                                                // an empty one is a real answer, not a missing list.
-                                                                                const decided = result.profilesAfterDecisions !== undefined && result.profilesAfterDecisions !== null;
-                                                                                if (Array.isArray(importedProfiles) && (importedProfiles.length > 0 || decided)) {
-                                                                                    // As stored: a name another profile holds comes back as " (1)".
-                                                                                    setServers(await storeSavedServerProfiles(importedProfiles));
-                                                                                    onServersChanged?.();
-                                                                                }
+                                                                                return Array.isArray(importedProfiles) && (importedProfiles.length > 0 || decided) ? importedProfiles : null;
+                                                                            });
+                                                                            // As stored: a name another profile holds comes back as " (1)".
+                                                                            if (stored) {
+                                                                                setServers(stored);
+                                                                                onServersChanged?.();
                                                                             }
                                                                         } catch (err) {
                                                                             logger.warn('Imported server profiles could not be persisted', err);

@@ -1653,6 +1653,13 @@ impl ProfileListLock {
         let take = || match file.try_lock() {
             Ok(()) => Ok(true),
             Err(std::fs::TryLockError::WouldBlock) => Ok(false),
+            // A filesystem without file locks (some network mounts) must not end
+            // every save: the revision still refuses a list written from a stale
+            // read, and only two imports at once lose their ordering.
+            Err(std::fs::TryLockError::Error(e)) if file_locks_unavailable(&e) => {
+                tracing::warn!("Profile list lock not available on this filesystem: {e}");
+                Ok(true)
+            }
             Err(std::fs::TryLockError::Error(e)) => Err(format!("Take profile list lock: {e}")),
         };
         if take()? {
@@ -1680,6 +1687,14 @@ impl ProfileListLock {
         }
         Ok(Self { _file: file })
     }
+}
+
+/// Whether a failed lock says the filesystem has no file locks at all.
+fn file_locks_unavailable(error: &std::io::Error) -> bool {
+    // ENOLCK on Linux; the portable kind covers a platform without them.
+    const ENOLCK: i32 = 37;
+    error.kind() == std::io::ErrorKind::Unsupported
+        || (cfg!(unix) && error.raw_os_error() == Some(ENOLCK))
 }
 
 /// Refusal of a writer that waited for [`ProfileListLock`] in vain.
@@ -1865,10 +1880,30 @@ pub fn replace_server_profiles_for(
     profiles: &[Value],
 ) -> Result<Vec<Value>, String> {
     let _lock = ProfileListLock::acquire(conn)?;
+    replace_server_profiles_under_lock(conn, root_key, user_id, profiles)
+}
+
+fn replace_server_profiles_under_lock(
+    conn: &mut Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    profiles: &[Value],
+) -> Result<Vec<Value>, String> {
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
         write_profiles_with_dek(conn, &root_secret, user_id, dek, profiles)
     })
+}
+
+/// [`replace_active_server_profiles`] for a caller that already holds
+/// [`ProfileListLock`]: the keystore restore, which holds it for the whole import.
+pub(crate) fn replace_active_server_profiles_under_lock(
+    conn: &mut Connection,
+    root_key: &[u8; 32],
+    profiles: &[Value],
+) -> Result<Vec<Value>, String> {
+    let user_id = active_user_id(conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    replace_server_profiles_under_lock(conn, root_key, user_id, profiles)
 }
 
 /// Overwrite every server profile row for `user_id` with an already-resolved
@@ -1991,7 +2026,6 @@ fn put_right_profile_names(
     conn: &mut Connection,
     root_key: &[u8; 32],
 ) -> Result<(usize, usize), String> {
-    let _lock = ProfileListLock::acquire(conn)?;
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     let (mut renamed, mut left) = (0, 0);
     for user in list_users(conn)? {
@@ -3693,7 +3727,10 @@ pub fn snapshot_credential_for_user(
 /// Undo a write of `written` to `credential_id`, place by place: a place still
 /// holding `written` gets back what `before` holds there, or loses the key if it
 /// held none; a place holding anything else was changed by someone else since
-/// and stays as it is ([`crate::profile_import_plan::rollback_action`]).
+/// and stays as it is ([`crate::profile_import_plan::rollback_action`]). In the
+/// partition that is atomic. The vault has no such transaction across processes,
+/// so there a value stored between the check and the restore can be lost, and the
+/// profile it belongs to asks for a new sign-in.
 pub fn restore_credential_for_user(
     store: &CredentialStore,
     user_id: i64,
@@ -3717,9 +3754,15 @@ pub fn restore_credential_for_user(
             .delete(credential_id)
             .map_err(|e| format!("Delete credential from vault: {e}"))?,
     }
-    let conn = open_or_init_cli()?;
+    let mut conn = open_or_init_cli()?;
     let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
-    let partition = get_user_credential_for(&conn, &root_key, user_id, credential_id)?;
+    // Check and restore in one transaction: a token refreshed in between stays.
+    // The session before the reservation ([`SessionHold`]).
+    let _session = hold_user_session(&conn, user_id);
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| format!("Start credential restore: {e}"))?;
+    let partition = get_user_credential_for(&tx, &root_key, user_id, credential_id)?;
     match rollback_action(
         partition.as_ref().map(|v| v.as_str()),
         written,
@@ -3727,13 +3770,14 @@ pub fn restore_credential_for_user(
     ) {
         RollbackAction::Leave => {}
         RollbackAction::Restore(value) => {
-            let kind = partition_credential_type(&conn, user_id, credential_id, credential_type)?
+            let kind = partition_credential_type(&tx, user_id, credential_id, credential_type)?
                 .ok_or_else(|| format!("No credential type for {credential_id}"))?;
-            set_user_credential_for(&conn, &root_key, user_id, credential_id, &kind, value)?;
+            set_user_credential_for(&tx, &root_key, user_id, credential_id, &kind, value)?;
         }
-        RollbackAction::Delete => delete_user_credential_for(&conn, user_id, credential_id)?,
+        RollbackAction::Delete => delete_user_credential_for(&tx, user_id, credential_id)?,
     }
-    Ok(())
+    tx.commit()
+        .map_err(|e| format!("Commit credential restore: {e}"))
 }
 
 /// Active-user dual delete (GUI): delete from the vault and best-effort from the
@@ -4640,6 +4684,7 @@ pub fn set_default_user(
 }
 
 pub fn delete_user(conn: &mut Connection, user_id: i64) -> Result<(), String> {
+    let _lock = ProfileListLock::acquire(conn)?;
     if active_user_id(conn)? == Some(user_id) {
         clear_user_session();
     }
@@ -4732,12 +4777,13 @@ fn run_eager_credential_migration_cli(conn: &Connection, store: &CredentialStore
     root_key.zeroize();
 }
 
-/// The one writer of profile rows that does not take [`ProfileListLock`]: the
-/// legacy-payload migration of a database without a schema yet. The secret writes
-/// of an import call this while the import holds the lock, which is not
-/// re-entrant. That migration runs in its own IMMEDIATE transaction and moves the
-/// revision, so an import in progress would plan again; on a database with a
-/// schema it writes no profile row, and neither do the schema upgrades.
+/// This and the GUI's [`init_or_migrate`] are the writers of profile rows that do
+/// not take [`ProfileListLock`], through the legacy-payload migration of a
+/// database without a schema yet: the secret writes of an import call this while
+/// the import holds the lock, which is not re-entrant. That migration runs in its
+/// own IMMEDIATE transaction and moves the revision, so an import in progress
+/// would plan again; on a database with a schema it writes no profile row, and
+/// neither do the schema upgrades.
 pub fn init_or_migrate_cli(store: &CredentialStore) -> Result<MigrationReport, String> {
     let mut conn = open_or_init_cli()?;
     // Same cascade as the GUI path (`init_or_migrate`): bring an existing
@@ -5057,6 +5103,26 @@ pub fn cli_read_active_profiles_at_revision(
     }
     let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
     list_server_profiles_at_revision(&conn, &root_key, user_id)
+}
+
+/// Mirror `user_id`'s list as it stands now into the legacy blob, under
+/// [`ProfileListLock`]: two writers mirroring after their own write could leave
+/// the older list there. A no-op unless `user_id` is the active account. A failure
+/// is only logged: the partition holds the list, and the next load heals the blob.
+pub fn mirror_latest_profiles_to_legacy_blob(store: &CredentialStore, user_id: i64) {
+    let mirrored = (|| {
+        let conn = open_or_init_cli()?;
+        let _lock = ProfileListLock::acquire(&conn)?;
+        if active_user_id(&conn)? != Some(user_id) {
+            return Ok(());
+        }
+        let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+        let list = list_server_profiles_for(&conn, &root_key, user_id)?;
+        mirror_active_profiles_to_legacy_blob(store, &list).map(|_| ())
+    })();
+    if let Err(e) = mirrored {
+        tracing::warn!("Could not mirror server profiles to the legacy blob: {e}");
+    }
 }
 
 /// CLI-path [`update_server_profiles_at_revision`].
@@ -5982,16 +6048,11 @@ pub async fn user_partitions_save_active_server_profiles(
     // The list stored, whose names the write made unique: the caller shows
     // this one, not the one it sent.
     let stored = result?;
-    // The blob mirrors the active account; a switch that landed after a bound
-    // write leaves it to the next load of the new account.
-    if expected_user_id.is_some() && active_user_id(&conn)? != expected_user_id {
-        return Ok(stored);
-    }
-    // #736: the same mirror the CLI's `save_active_user_profiles` does, so a
-    // profile deleted or renamed here is deleted or renamed in the blob too.
-    // The partition write already succeeded, so a mirror failure is a warning.
-    if let Err(e) = mirror_active_profiles_to_legacy_blob(&store, &stored) {
-        tracing::warn!("Could not mirror server profiles to the legacy blob: {e}");
+    // The blob mirrors the account now active, in the latest list, not this one:
+    // another writer may have saved since. The write succeeded, so a mirror
+    // failure is a warning (#736).
+    if let Some(user) = active_user_id(&conn)? {
+        mirror_latest_profiles_to_legacy_blob(&store, user);
     }
     Ok(stored)
 }
@@ -7391,6 +7452,17 @@ mod tests {
         assert_eq!(reloaded_ops, ops_profiles);
     }
 
+    #[test]
+    fn only_a_filesystem_without_locks_lets_a_writer_go_on_unlocked() {
+        use std::io::{Error, ErrorKind};
+        assert!(file_locks_unavailable(&Error::from(ErrorKind::Unsupported)));
+        assert!(!file_locks_unavailable(&Error::from(
+            ErrorKind::PermissionDenied
+        )));
+        #[cfg(unix)]
+        assert!(file_locks_unavailable(&Error::from_raw_os_error(37)));
+    }
+
     /// Every kind of list write waits for the lock, so a holder that writes secrets
     /// and list together (an import) never has another write land inside it.
     #[test]
@@ -7435,13 +7507,10 @@ mod tests {
             Some(busy.clone())
         );
         assert_eq!(
-            put_right_profile_names(&mut conn, &root).map(|_| ()).err(),
+            admin_reset_user_passphrase(&mut conn, &root, other.id, None).err(),
             Some(busy.clone())
         );
-        assert_eq!(
-            admin_reset_user_passphrase(&mut conn, &root, other.id, None).err(),
-            Some(busy)
-        );
+        assert_eq!(delete_user(&mut conn, other.id).err(), Some(busy));
         drop(held);
         replace_server_profiles_for(&mut conn, &root, user, &list).expect("free again");
     }

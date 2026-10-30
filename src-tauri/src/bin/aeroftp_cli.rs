@@ -13947,7 +13947,7 @@ fn reorder_saved_profiles(
 /// transaction. Nothing is written when it fails. Returns its result, the list
 /// sent and the list stored (names made unique by the write). With the partition
 /// unavailable the change is laid over the list read and goes to the legacy blob
-/// through [`save_active_user_profiles`].
+/// ([`save_profiles_to_legacy_blob`]).
 fn update_active_user_profiles<R, E>(
     cli: &Cli,
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
@@ -13987,75 +13987,63 @@ fn update_active_user_profiles<R, E>(
     match (written, outcome) {
         (_, Some(Err(e))) => Err(e),
         (Ok((stored, _)), Some(Ok(result))) => {
-            mirror_profiles_to_legacy_blob_if_active(store, target.id, &stored);
+            user_partitions::mirror_latest_profiles_to_legacy_blob(store, target.id);
             Ok((result, sent, stored))
         }
         (Err(e), _) if !e.starts_with(user_partitions::PARTITION_UNAVAILABLE) => {
             Err(store_error(format!("Failed to write profiles: {e}")))
         }
-        _ => {
+        (Err(e), _) => {
+            // The partition answers again: this was a passing fault, and the blob
+            // would hold a change the next load replaces with the partition's list.
+            if user_partitions::cli_list_server_profiles_for_user(store, target.id).is_ok() {
+                return Err(store_error(format!(
+                    "Failed to write profiles: {e}. Nothing was changed; run the command again"
+                )));
+            }
             let result = change(&mut read)?;
-            let stored = save_active_user_profiles(cli, store, &read)
+            let stored = save_profiles_to_legacy_blob(store, target.id, &read)
                 .map_err(|e| store_error(format!("Failed to write profiles: {e}")))?;
             Ok((result, read, stored))
         }
+        (Ok(_), None) => Err(store_error(
+            "Failed to write profiles: the list write did not run".to_string(),
+        )),
     }
 }
 
-/// Write the active user's profile list. Returns the list stored: a profile
-/// saved onto a name another one holds is stored with the first free " (1)",
-/// " (2)", ... (`util::profile_name`), so a command that names a profile it
-/// saved takes the name from this list, never from the one it sent.
-fn save_active_user_profiles(
-    cli: &Cli,
+/// Keep `profiles` in the legacy blob alone, the partition being unavailable
+/// (downgrade, unreachable file), and only when this would have been the active
+/// user anyway: the blob has no accounts. Same R3-safety reasoning as the mirror.
+fn save_profiles_to_legacy_blob(
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    user_id: i64,
     profiles: &[serde_json::Value],
 ) -> Result<Vec<serde_json::Value>, String> {
     use ftp_client_gui_lib::user_partitions;
-    let target = match ensure_active_user_unlocked(cli, store)? {
-        Some(t) => t,
-        None => return Err("NO_ACTIVE_USER".to_string()),
-    };
-    let writing_to_active = is_active_user(store, target.id);
-
-    match user_partitions::cli_replace_server_profiles_for_user(store, target.id, profiles) {
-        // The list stored, whose names the write made unique, is the one the
-        // blob mirrors.
-        Ok(stored) => {
-            mirror_profiles_to_legacy_blob_if_active(store, target.id, &stored);
-            Ok(stored)
-        }
-        // A write refused on an open partition (a lock, another process's
-        // save in between) did not happen: the blob alone would report the
-        // list saved while the partition, which the GUI reads first, lacks it.
-        Err(e) if !e.starts_with(user_partitions::PARTITION_UNAVAILABLE) => Err(e),
-        Err(_) => {
-            // Partition unavailable (downgrade, unreachable file): write the
-            // legacy blob only when this would have been the active user
-            // anyway. Same R3-safety reasoning as the success path.
-            if !writing_to_active {
-                return Err(
-                    "User partition unavailable; --user override cannot fall back to legacy blob"
-                        .to_string(),
-                );
-            }
-            // No two profiles of one name in the blob either: the list it
-            // holds now decides who had a name first, as the partition does.
-            let previous: Vec<serde_json::Value> = store
-                .get("config_server_profiles")
-                .ok()
-                .and_then(|raw| serde_json::from_str(&raw).ok())
-                .unwrap_or_default();
-            let (profiles, _) =
-                ftp_client_gui_lib::util::profile_name::unique_profile_names(&previous, profiles);
-            let serialized = serde_json::to_string(&profiles)
-                .map_err(|e| format!("Failed to serialize profiles: {}", e))?;
-            store
-                .store("config_server_profiles", &serialized)
-                .map_err(|e| format!("Failed to save server profiles: {}", e))?;
-            Ok(profiles)
-        }
+    if !is_active_user(store, user_id) {
+        return Err(
+            "User partition unavailable; --user override cannot fall back to legacy blob"
+                .to_string(),
+        );
     }
+    let _lock =
+        user_partitions::ProfileListLock::acquire_for_path(&user_partitions::cli_db_path()?)?;
+    // No two profiles of one name in the blob either: the list it holds now
+    // decides who had a name first, as the partition does.
+    let previous: Vec<serde_json::Value> = store
+        .get("config_server_profiles")
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default();
+    let (profiles, _) =
+        ftp_client_gui_lib::util::profile_name::unique_profile_names(&previous, profiles);
+    let serialized = serde_json::to_string(&profiles)
+        .map_err(|e| format!("Failed to serialize profiles: {}", e))?;
+    store
+        .store("config_server_profiles", &serialized)
+        .map_err(|e| format!("Failed to save server profiles: {}", e))?;
+    Ok(profiles)
 }
 
 fn user_env_suffix(name: &str) -> String {
@@ -44461,6 +44449,7 @@ fn classify_keystore_error(err: &ftp_client_gui_lib::keystore_export::KeystoreEx
     match err {
         E::InvalidPassword => 6,          // auth failure
         E::VaultNotReady => 5,            // configuration / vault-locked
+        E::ProfileListBusy(_) => 5,       // same family: not available right now, try again
         E::UnsupportedVersion(_) => 7,    // not-supported / unsupported version
         E::UnsupportedCodec(_) => 7,      // same family: this build cannot read it
         E::StaleProfileDecisions(_) => 5, // usage: the choices do not fit this backup

@@ -542,12 +542,9 @@ describe('the saved-profile list shown after a write', () => {
     });
 
     it('Settings never shows the list it sent once the write has stored it', () => {
-        const lines = settingsSource.split('\n');
-        const writes = lines.flatMap((line, i) => (/await storeSavedServerProfiles\(\w+/.test(line) && !line.trim().startsWith('//') ? [i] : []));
-        expect(writes.length).toBeGreaterThan(0);
-        for (const i of writes) {
-            const sent = /await storeSavedServerProfiles\((\w+)/.exec(lines[i])![1];
-            expect(lines.slice(i, i + 3).join('\n')).not.toMatch(new RegExp(`setServers\\(${sent}\\)`));
-        }
+        // Its one list write is the keystore restore, which shows what that stored.
+        expect(settingsSource).not.toMatch(/await storeSavedServerProfiles\(\w+/);
+        expect(settingsSource).toContain('const stored = await replaceSavedServerProfiles(');
+        expect(settingsSource).toContain('setServers(stored);');
     });
 });

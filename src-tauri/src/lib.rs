@@ -18551,6 +18551,12 @@ pub async fn import_server_profiles_with_mode(
         };
         let committed =
             profile_import_plan::write_secrets_and_commit(&slots, writes, !replanned, || {
+                #[cfg(test)]
+                IMPORT_BEFORE_COMMIT.with_borrow_mut(|hook| {
+                    if let Some(hook) = hook {
+                        hook();
+                    }
+                });
                 user_partitions::cli_update_profiles_at_revision(&store, user, &revision, |list| {
                     profile_import_plan::lay_import_over(list, &report_servers)
                 })
@@ -18579,6 +18585,14 @@ pub async fn import_server_profiles_with_mode(
             &prepared, &stored, shared, list, renamed, metadata,
         ));
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Runs between an import's secret writes and its list write, for a test to
+    /// play another writer there.
+    pub(crate) static IMPORT_BEFORE_COMMIT: std::cell::RefCell<Option<Box<dyn FnMut()>>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 /// The per-profile keys an import writes for `user`, in the vault and its

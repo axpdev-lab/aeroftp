@@ -254,30 +254,41 @@ pub fn rollback_action<'a>(
     }
 }
 
-/// Write `writes` in order, having first read what every key holds, so a key that
-/// cannot be read stops the import before anything changes. A failed write puts
-/// back every key written so far, itself included, since it may have reached one
-/// of its two places. Returns what [`roll_back_secret_writes`] needs. Errors name
-/// keys only: the underlying error stays in the log, as it could quote a value.
+/// Write `writes` in order, having first checked that every key can be read, so
+/// one that cannot stops the import before anything changes. What a key holds is
+/// kept right before its own write, not at the start, so a token refreshed while
+/// earlier keys were written is the value a rollback puts back. A failed write
+/// puts back every key written so far, itself included, since it may have reached
+/// one of its two places. Returns what [`roll_back_secret_writes`] needs. Errors
+/// name keys only: the underlying error stays in the log, as it could quote a
+/// value.
 pub fn apply_secret_writes<S: SecretSlots>(
     slots: &S,
     writes: Vec<SecretWrite>,
 ) -> Result<Vec<(SecretWrite, S::Snapshot)>, String> {
-    let mut pending = Vec::with_capacity(writes.len());
-    for write in writes {
-        match slots.snapshot(&write) {
-            Ok(before) => pending.push((write, before)),
-            Err(e) => {
-                log::warn!("Import: {} could not be read: {e}", write.key);
-                return Err(format!(
-                    "the secret stored under {} could not be read, so nothing was imported",
-                    write.key
-                ));
-            }
-        }
+    let unreadable = |key: &str, e: String| {
+        log::warn!("Import: {key} could not be read: {e}");
+        format!("the secret stored under {key} could not be read, so nothing was imported")
+    };
+    for write in &writes {
+        slots
+            .snapshot(write)
+            .map_err(|e| unreadable(&write.key, e))?;
     }
-    let mut applied = Vec::with_capacity(pending.len());
-    for (write, before) in pending {
+    let mut applied = Vec::with_capacity(writes.len());
+    for write in writes {
+        let before = match slots.snapshot(&write) {
+            Ok(before) => before,
+            Err(e) => {
+                let cause = unreadable(&write.key, e);
+                let left = roll_back_secret_writes(slots, applied);
+                return Err(if left.is_empty() {
+                    cause
+                } else {
+                    failed_rollback_message(&cause, &left)
+                });
+            }
+        };
         let result = slots.write(&write);
         applied.push((write, before));
         if let Err(e) = result {
@@ -936,6 +947,8 @@ mod tests {
         values: RefCell<HashMap<String, String>>,
         fail_write: Option<&'static str>,
         fail_restore: Option<&'static str>,
+        /// Another writer storing `.1` under `.2` just after `.0` is written.
+        refresh_after: Option<(&'static str, &'static str, &'static str)>,
     }
 
     impl SecretSlots for FakeSlots {
@@ -950,6 +963,13 @@ mod tests {
             self.values
                 .borrow_mut()
                 .insert(write.key.clone(), write.value.to_string());
+            if let Some((after, key, value)) = self.refresh_after {
+                if after == write.key {
+                    self.values
+                        .borrow_mut()
+                        .insert(key.to_string(), value.to_string());
+                }
+            }
             Ok(())
         }
         fn restore(&self, write: &SecretWrite, before: Self::Snapshot) -> Result<(), String> {
@@ -1046,6 +1066,29 @@ mod tests {
         let values = slots.values.borrow();
         assert!(!values.contains_key("server_a"));
         assert_eq!(values.get("server_b").map(String::as_str), Some("file-b"));
+    }
+
+    /// A token refreshed while earlier keys were written is what a rollback puts
+    /// back, not the value from before the import began.
+    #[test]
+    fn a_rollback_restores_a_value_refreshed_before_its_key_was_written() {
+        let slots = FakeSlots {
+            refresh_after: Some(("server_a", "server_b", "refreshed")),
+            ..Default::default()
+        };
+        slots
+            .values
+            .borrow_mut()
+            .insert("server_b".into(), "before-import".into());
+        let result = write_secrets_and_commit(&slots, secret_writes(), true, || {
+            Err::<(), _>("disk full".to_string())
+        });
+        assert!(result.is_err());
+        let values = slots.values.borrow();
+        assert_eq!(
+            values.get("server_b").map(String::as_str),
+            Some("refreshed")
+        );
     }
 
     /// A list write that fails takes the secrets back, except a value another

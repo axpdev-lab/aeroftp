@@ -425,7 +425,7 @@ import {
   PROFILES_CHANGED_EVENT,
 } from './utils/serverProfileStore';
 import { appendImportedProfiles } from './components/bridge/bridgeImportCommit';
-import { announceStoredServerProfiles, readSavedServerProfilesForWrite } from './utils/serverProfileStore';
+import { announceStoredServerProfiles, readSavedServerProfilesForWrite, replaceSavedServerProfiles } from './utils/serverProfileStore';
 import { maskCredential } from './utils/maskCredential';
 import { getOpenWithDefaultRoute } from './utils/openWithDefault';
 import { createRemoteEndpoint } from './utils/panelEndpoints';
@@ -15037,16 +15037,22 @@ const App: React.FC = () => {
 
   const refreshProfilesFromImportedKeystore = useCallback(async () => {
     try {
-      const profilesJson = await invoke<string>('get_credential', { account: 'config_server_profiles' });
-      if (!profilesJson) return;
-      const importedProfiles = JSON.parse(profilesJson) as ServerProfile[];
-      if (!Array.isArray(importedProfiles) || importedProfiles.length === 0) return;
-      await storeSavedServerProfiles(importedProfiles);
-      setServersRefreshKey(k => k + 1);
-    } catch {
+      const stored = await replaceSavedServerProfiles(async () => {
+        const profilesJson = await invoke<string>('get_credential', { account: 'config_server_profiles' });
+        if (!profilesJson) return null;
+        const importedProfiles = JSON.parse(profilesJson) as ServerProfile[];
+        return Array.isArray(importedProfiles) && importedProfiles.length > 0 ? importedProfiles : null;
+      });
+      if (stored) setServersRefreshKey(k => k + 1);
+    } catch (err) {
       // Keystore may not include a profile list. Credentials are still imported.
+      // Another save or an account switch is another matter: the list was not moved.
+      const message = String(err);
+      if (message.includes('PROFILES_CHANGED') || message.includes('ACCOUNT_CHANGED')) {
+        toast.warning(t('settings.importServers') || 'Import Servers', message);
+      }
     }
-  }, []);
+  }, [t, toast]);
 
   /**
    * Import a `.aeroftp` file opened from the file panel: ask its password,
