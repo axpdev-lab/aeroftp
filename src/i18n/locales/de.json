@@ -1369,7 +1369,8 @@
             "overwrittenCount": "{count} überschrieben",
             "duplicatedCount": "{count} dupliziert",
             "importJottaChainWarning": "Jottacloud erneuert die Anmeldung bei jeder Verbindung, und {names} teilt sich jetzt eine mit einer anderen Kopie: Die Kopie, die sich zuerst verbindet, meldet die andere ab (das Gerät, von dem die Datei stammt, oder das Profil, von dem dupliziert wurde). Melden Sie die andere mit einem neuen Personal Login Token erneut an.",
-            "importNotSavedSecretsKept": "Die Profile wurden nicht gespeichert, aber die Passwörter und Anmelde-Token, die die Datei für {count} davon enthält, wurden bereits gespeichert. Importiere dieselbe Datei erneut mit derselben Option, um den Vorgang abzuschließen."
+            "importNotSavedSecretsKept": "Die Profile wurden nicht gespeichert, aber die Passwörter und Anmelde-Token, die die Datei für {count} davon enthält, wurden bereits gespeichert. Importiere dieselbe Datei erneut mit derselben Option, um den Vorgang abzuschließen.",
+            "importOauthAppKept": "{names} kamen mit einer anderen benutzerdefinierten OAuth-App als der, die dieses Gerät für diesen Anbieter hat. Die gespeicherte App wurde beibehalten, weil andere Profile sie verwenden. Melde dich erneut an, falls diese Profile keine Verbindung mehr herstellen."
         },
         "devtools": {
             "title": "AeroTools",

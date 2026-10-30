@@ -136,6 +136,8 @@ interface ServerProfilesImportResult {
   userId: number | null;
   // Stored Jottacloud profiles that brought their rotating refresh chain.
   jottaChains: { id: string; name: string }[];
+  // Stored profiles whose custom OAuth app differs from the one kept here.
+  oauthAppsKept: string[];
 }
 
 type MountManagerOpenOptions = {
@@ -15107,6 +15109,12 @@ const App: React.FC = () => {
           notify.warning(
             t('settings.importServers') || 'Import Servers',
             t('settings.importJottaChainWarning', { names: result.jottaChains.map(c => c.name).join(', ') }),
+          );
+        }
+        if (result.oauthAppsKept.length > 0) {
+          notify.warning(
+            t('settings.importServers') || 'Import Servers',
+            t('settings.importOauthAppKept', { names: result.oauthAppsKept.join(', ') }),
           );
         }
       },

@@ -1369,7 +1369,8 @@
             "overwrittenCount": "{count} prepisano",
             "duplicatedCount": "{count} duplicirano",
             "importJottaChainWarning": "Jottacloud obnavlja prijavu pri svakom povezivanju, a {names} sada dijeli jednu s drugom kopijom: kopija koja se prva poveže odjavljuje drugu (uređaj s kojeg datoteka dolazi ili profil iz kojeg je dupliciran). Ponovno prijavite drugu novim Personal Login Tokenom.",
-            "importNotSavedSecretsKept": "Profili nisu spremljeni, ali lozinke i tokeni za prijavu koje datoteka sadrži za {count} njih već su pohranjeni. Za dovršetak ponovno uvezite istu datoteku s istom opcijom."
+            "importNotSavedSecretsKept": "Profili nisu spremljeni, ali lozinke i tokeni za prijavu koje datoteka sadrži za {count} njih već su pohranjeni. Za dovršetak ponovno uvezite istu datoteku s istom opcijom.",
+            "importOauthAppKept": "{names} su stigli s drugom prilagođenom OAuth aplikacijom od one koju ovaj uređaj ima za tog pružatelja. Spremljena aplikacija je zadržana jer je koriste drugi profili, pa se ponovno prijavite ako se ovi profili prestanu povezivati."
         },
         "devtools": {
             "title": "AeroTools",

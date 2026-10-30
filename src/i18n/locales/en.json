@@ -4059,6 +4059,7 @@
             "overwrittenCount": "{count} overwritten",
             "duplicatedCount": "{count} duplicated",
             "importNotSavedSecretsKept": "The profiles were not saved, but the passwords and tokens the file carries for {count} of them were already stored. Import the same file again with the same option to finish.",
+            "importOauthAppKept": "{names} came with a different custom OAuth app than the one this device has for that provider. The stored app was kept because other profiles use it, so sign in again if these profiles stop connecting.",
             "importJottaChainWarning": "Jottacloud renews its sign-in on every connection, and {names} now shares one with another copy: the copy that connects first signs the other out (the device the file came from, or the profile it was duplicated from). Sign the other one in again with a new Personal Login Token.",
             "includeCredentials": "Include saved credentials",
             "serversUpdated": "{count} updated",

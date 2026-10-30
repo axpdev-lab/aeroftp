@@ -31,20 +31,72 @@ export const STORED_SECRET_FLAGS = [
 ] as const;
 
 /**
+ * Profile fields the export format omits when empty, so a null says nothing
+ * about the backup and an overwrite keeps the stored value. Twin of
+ * `OMITTED_WHEN_EMPTY` in `src-tauri/src/profile_import_plan.rs`.
+ */
+export const OMITTED_WHEN_EMPTY = [
+    'publicUrlBase',
+    'customIconUrl',
+    'faviconUrl',
+    'skipDeltaEligibilityPrompt',
+    'aeroCryptOverlay',
+    'persistModeCredentials',
+] as const;
+
+/**
+ * Options keys that carry secrets, stripped from a backup exported without
+ * credentials. Twin of `OPTIONS_SECRET_KEYS` in `src-tauri/src/profile_export.rs`.
+ */
+export const OPTIONS_SECRET_KEYS = [
+    'totp_secret',
+    'key_passphrase',
+    'sessionToken',
+    'sasToken',
+    'clientSecret',
+    'client_secret',
+    'secret_key',
+    'secretKey',
+    'access_key_secret',
+    'password',
+    'passphrase',
+    'privateKey',
+    'private_key',
+    'api_key',
+    'apiKey',
+    'token',
+    'refresh_token',
+    'refreshToken',
+    'peerTicket',
+    'proton_native_session',
+] as const;
+
+/**
  * The profile an overwrite stores: `stored`, the record read in the same write,
- * with every field of `imported` laid over it, and each secret-presence flag
- * set when either side has it. The file is a whole snapshot of the profile's
- * configuration: a null field and the `options` object are the backup's values
- * (a Crypt overlay turned off on the source device stays off), so they replace
- * the stored ones; a field the file does not carry, one only this device has,
- * survives. `undefined` is not a value (JSON has none) and never clears one.
- * Twin of `overwrite_profile` in `src-tauri/src/profile_import_plan.rs`.
+ * with the fields of `imported` laid over it. A field the format always writes
+ * follows the file, null included, and so does `options` as a whole, except
+ * that an options-borne secret the file does not carry stays. A field of
+ * `OMITTED_WHEN_EMPTY` left null keeps the stored value, as does a field outside
+ * the format, one only this device has. Each secret-presence flag is set when
+ * either side has it. `undefined` is not a value (JSON has none) and never
+ * clears one. Twin of `overwrite_profile` in `src-tauri/src/profile_import_plan.rs`.
  */
 export function overwriteProfile(stored: ServerProfile, imported: ServerProfile): ServerProfile {
+    const omitted: readonly string[] = OMITTED_WHEN_EMPTY;
     const merged: Record<string, unknown> = {
         ...stored,
-        ...Object.fromEntries(Object.entries(imported).filter(([, value]) => value !== undefined)),
+        ...Object.fromEntries(Object.entries(imported).filter(([key, value]) =>
+            value !== undefined && !(value === null && omitted.includes(key)))),
     };
+    const storedOptions = (stored.options ?? {}) as Record<string, unknown>;
+    const importedOptions = (imported.options ?? {}) as Record<string, unknown>;
+    const keptSecrets = OPTIONS_SECRET_KEYS.filter(key => key in storedOptions && !(key in importedOptions));
+    if (keptSecrets.length > 0) {
+        merged.options = {
+            ...(merged.options as Record<string, unknown> | null | undefined),
+            ...Object.fromEntries(keptSecrets.map(key => [key, storedOptions[key]])),
+        };
+    }
     const has = (p: ServerProfile, flag: string) => (p as unknown as Record<string, unknown>)[flag] === true;
     for (const flag of STORED_SECRET_FLAGS) {
         if (has(stored, flag) || has(imported, flag)) merged[flag] = true;
@@ -72,9 +124,8 @@ export function overwriteProfile(stored: ServerProfile, imported: ServerProfile)
  * @param newServers the imported profiles.
  * @param replaceIds ids of imported profiles laid over the stored profile of
  *   the same id where it stands (`overwriteProfile`, against the record read
- *   here, so an edit made since the import began is kept where the file has no
- *   value for it): the profiles a `.aeroftp` import set to Overwrite reported
- *   as overwritten. Every other
+ *   here): the profiles a `.aeroftp` import set to Overwrite reported as
+ *   overwritten. Every other
  *   imported profile is appended, as before; the bridge imports name none. A
  *   named profile whose id the vault no longer holds when this writes (deleted
  *   from another window in the meantime) is appended too, never dropped.

@@ -74,6 +74,8 @@ interface ImportResult {
     // Stored Jottacloud profiles that brought their rotating refresh chain,
     // named as in the file.
     jottaChains: { id: string; name: string }[];
+    // Stored profiles whose custom OAuth app differs from the one kept here.
+    oauthAppsKept: string[];
     metadata: {
         exportDate: string;
         aeroftpVersion: string;
@@ -108,9 +110,9 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     const [includeCredentials, setIncludeCredentials] = useState(true);
     const [showPassword, setShowPassword] = useState(false);
     const [existingMode, setExistingMode] = useState<ExistingProfileMode>('skip');
-    // Shown after an import that copied a Jottacloud refresh chain; it keeps
-    // the dialog open so the warning can be read.
-    const [jottaWarning, setJottaWarning] = useState<string | null>(null);
+    // Shown after an import that copied a Jottacloud refresh chain or kept the
+    // stored OAuth app over the file's; it keeps the dialog open to be read.
+    const [importWarning, setImportWarning] = useState<string | null>(null);
     // KeePassXC-style import flow: the .aeroftp file is chosen first and its
     // path is held here, then the decryption password is requested. Null
     // until a file has been selected.
@@ -256,7 +258,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         if (!filePath || typeof filePath !== 'string') return;
         setError(null);
         setSuccess(null);
-        setJottaWarning(null);
+        setImportWarning(null);
         setPassword('');
         setImportFilePath(filePath);
     };
@@ -271,7 +273,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         const filePath = importFilePath;
         // Done once it succeeded (Enter in the password field as well as the
         // button): importing the same file again needs choosing it again.
-        if (!filePath || loading || success !== null || jottaWarning !== null) {
+        if (!filePath || loading || success !== null || importWarning !== null) {
             return;
         }
         if (password.length < 1) {
@@ -282,7 +284,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         cancelScheduledClose();
         setLoading(true);
         setError(null);
-        setJottaWarning(null);
+        setImportWarning(null);
         try {
             const result = await invoke<ImportResult>('import_server_profiles', {
                 filePath,
@@ -323,8 +325,16 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                 (result.skipped.length > 0 ? ` (${t('settings.duplicatesSkippedCount', { count: result.skipped.length })})` : '') +
                 (result.similar > 0 ? ` (${t('settings.similarToExistingCount', { count: result.similar })})` : '')
             );
-            if (result.jottaChains.length > 0) {
-                setJottaWarning(t('settings.importJottaChainWarning', { names: result.jottaChains.map(c => c.name).join(', ') }));
+            const warnings = [
+                ...(result.jottaChains.length > 0
+                    ? [t('settings.importJottaChainWarning', { names: result.jottaChains.map(c => c.name).join(', ') })]
+                    : []),
+                ...(result.oauthAppsKept.length > 0
+                    ? [t('settings.importOauthAppKept', { names: result.oauthAppsKept.join(', ') })]
+                    : []),
+            ];
+            if (warnings.length > 0) {
+                setImportWarning(warnings.join(' '));
             } else {
                 closeTimerRef.current = setTimeout(() => onClose(), 2500);
             }
@@ -350,7 +360,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         setConfirmPassword('');
         setImportFilePath(null);
         setExistingMode('skip');
-        setJottaWarning(null);
+        setImportWarning(null);
         setBridgeSrc(null);
         setBridgePresetPath(null);
         exportFilter.setQuery('');
@@ -837,7 +847,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                             {/* Error/Success */}
                             {error && <div className="text-red-500 text-sm flex items-center gap-2"><AlertCircle size={14} />{error}</div>}
                             {success && <div className="text-green-500 text-sm flex items-center gap-2"><CheckCircle2 size={14} />{success}</div>}
-                            {jottaWarning && <div data-testid="import-jotta-warning" className="text-amber-600 dark:text-amber-400 text-sm flex items-start gap-2"><AlertCircle size={14} className="mt-0.5 flex-shrink-0" />{jottaWarning}</div>}
+                            {importWarning && <div data-testid="import-warning" className="text-amber-600 dark:text-amber-400 text-sm flex items-start gap-2"><AlertCircle size={14} className="mt-0.5 flex-shrink-0" />{importWarning}</div>}
 
                             {/* Actions */}
                             <div className="flex gap-2">
@@ -853,7 +863,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                         // Done once it succeeded: a second click would import the
                                         // file again (in Duplicate mode, another copy and
                                         // another holder of a Jottacloud chain).
-                                        disabled={loading || password.length < 1 || success !== null || jottaWarning !== null}
+                                        disabled={loading || password.length < 1 || success !== null || importWarning !== null}
                                         className="flex-1 px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 flex items-center justify-center gap-2"
                                     >
                                         {loading ? (

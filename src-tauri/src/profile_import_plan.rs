@@ -183,6 +183,22 @@ pub fn may_write_shared(stored: Option<&str>, own: Option<&str>) -> bool {
     }
 }
 
+/// Whether an import may write a provider's custom OAuth app (client id, secret
+/// and region, one unit) when the vault holds `stored_id` and `stored_secret`
+/// and the file carries `file_id`. With an id: when no app is stored or it is
+/// this same app, whose secret or region the file then refreshes. Without one
+/// the file cannot say which app its secret belongs to, so only into empty slots.
+pub fn may_write_oauth_app(
+    stored_id: Option<&str>,
+    stored_secret: Option<&str>,
+    file_id: Option<&str>,
+) -> bool {
+    match file_id {
+        Some(_) => may_write_shared(stored_id, file_id),
+        None => stored_id.is_none() && stored_secret.is_none(),
+    }
+}
+
 /// How a report names a profile: its name, or `(host)` when it has none.
 pub fn display_name(name: &str, host: &str) -> String {
     if name.is_empty() {
@@ -219,6 +235,11 @@ pub struct ProfileImportReport {
     /// The user whose profiles the file was compared with and whose partition
     /// the secrets went to: the caller writes the list for this user only.
     pub user_id: Option<i64>,
+    /// Names of the stored profiles whose custom OAuth app differs from the one
+    /// this device already has for the provider. The stored app is kept, because
+    /// other profiles refresh their tokens with it, so these may need a new
+    /// sign-in.
+    pub oauth_apps_kept: Vec<String>,
     /// How many profiles the file holds, whatever their outcome.
     pub total_in_file: usize,
     /// The file's public envelope metadata.
@@ -246,13 +267,27 @@ pub const STORED_SECRET_FLAGS: [&str; 6] = [
     "hasStoredAeroCryptConfig",
 ];
 
-/// The profile an overwrite stores: `existing` with every field of `imported`
-/// laid over it, and each [`STORED_SECRET_FLAGS`] flag set when either side has
-/// it. The file is a whole snapshot of the profile's configuration: a field it
-/// carries as null and its `options` object are the backup's values (a Crypt
-/// overlay turned off on the source device must stay off), so they replace the
-/// stored ones; only a field the export format does not carry, one only this
-/// device knows, survives.
+/// Profile fields the export format omits when empty (`skip_serializing_if` on
+/// `ServerProfileExport`), and an older file lacks altogether: a null here says
+/// nothing about the backup. An overwrite keeps the stored value, which for
+/// `aeroCryptOverlay` is also the safe side: turning an overlay off by accident
+/// would upload plaintext into an encrypted folder.
+pub const OMITTED_WHEN_EMPTY: [&str; 6] = [
+    "publicUrlBase",
+    "customIconUrl",
+    "faviconUrl",
+    "skipDeltaEligibilityPrompt",
+    "aeroCryptOverlay",
+    "persistModeCredentials",
+];
+
+/// The profile an overwrite stores: `existing` with the fields of `imported`
+/// laid over it. A field the format always writes follows the file, null
+/// included, and so does `options` as a whole, except that an options-borne
+/// secret the file does not carry (it was exported without credentials) stays.
+/// A field of [`OMITTED_WHEN_EMPTY`] left null keeps the stored value, as does
+/// a field outside the format, one only this device knows. Each
+/// [`STORED_SECRET_FLAGS`] flag is set when either side has it.
 pub fn overwrite_profile(
     existing: &serde_json::Value,
     imported: &serde_json::Value,
@@ -260,7 +295,33 @@ pub fn overwrite_profile(
     let mut merged = existing.clone();
     if let (Some(target), Some(source)) = (merged.as_object_mut(), imported.as_object()) {
         for (key, value) in source {
+            if value.is_null() && OMITTED_WHEN_EMPTY.contains(&key.as_str()) {
+                continue;
+            }
             target.insert(key.clone(), value.clone());
+        }
+        let kept: serde_json::Map<String, serde_json::Value> = existing
+            .get("options")
+            .and_then(|v| v.as_object())
+            .into_iter()
+            .flatten()
+            .filter(|(key, _)| crate::profile_export::OPTIONS_SECRET_KEYS.contains(&key.as_str()))
+            .filter(|(key, _)| {
+                source
+                    .get("options")
+                    .and_then(|v| v.get(key.as_str()))
+                    .is_none()
+            })
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect();
+        if !kept.is_empty() {
+            let mut options = target
+                .get("options")
+                .and_then(|v| v.as_object())
+                .cloned()
+                .unwrap_or_default();
+            options.extend(kept);
+            target.insert("options".to_string(), serde_json::Value::Object(options));
         }
         for flag in STORED_SECRET_FLAGS {
             let set = |p: &serde_json::Value| p.get(flag).and_then(|v| v.as_bool()) == Some(true);
@@ -457,28 +518,53 @@ mod tests {
         assert_ne!(new_profile_id(), id);
     }
 
-    /// The file's fields win, nulls and options included, a field only the
-    /// device has stays, and a stored secret flag stays set.
+    /// The file's fields win, nulls and options included, except what the file
+    /// cannot speak to: a field the format omits when empty, an options-borne
+    /// secret it does not carry, a field only the device has. A stored secret
+    /// flag stays set.
     #[test]
     fn overwrite_lays_the_file_over_the_profile_and_keeps_its_stored_flags() {
         let existing = json!({
             "id": "srv_a", "name": "Old", "host": "old.example", "localOnly": "kept",
+            "color": "#f00", "initialPath": "/old",
             "aeroCryptOverlay": {"enabled": true, "kind": "rclone-crypt"},
             "hasStoredCredential": true, "hasStoredAeroCryptPassword": false,
-            "options": {"verifyCert": false, "timeout": 30}
+            "options": {"verifyCert": false, "timeout": 30, "totp_secret": "stored-seed",
+                "sasToken": "stored-sas"}
         });
         let imported = json!({
             "id": "srv_a", "name": "New", "host": "new.example",
+            "color": null, "initialPath": null,
             "aeroCryptOverlay": null, "hasStoredCredential": false,
-            "hasStoredAeroCryptPassword": true, "options": {"timeout": 60}
+            "hasStoredAeroCryptPassword": true,
+            "options": {"timeout": 60, "sasToken": "file-sas"}
         });
         let merged = overwrite_profile(&existing, &imported);
         assert_eq!(merged["name"], "New");
         assert_eq!(merged["host"], "new.example");
-        // The backup turned the Crypt overlay off: it stays off.
-        assert_eq!(merged["aeroCryptOverlay"], serde_json::Value::Null);
-        // The backup's options are the profile's options.
-        assert_eq!(merged["options"], json!({"timeout": 60}));
+        // A field the format always writes follows the file, null included.
+        assert_eq!(merged["color"], serde_json::Value::Null);
+        assert_eq!(merged["initialPath"], serde_json::Value::Null);
+        // A field the format omits when empty says nothing when null: an
+        // overlay is never turned off by a file that does not mention it.
+        assert_eq!(merged["aeroCryptOverlay"]["kind"], "rclone-crypt");
+        // The file's options are the profile's, plus a stored secret the file
+        // does not carry; a local non-secret option does not survive.
+        assert_eq!(
+            merged["options"],
+            json!({"timeout": 60, "sasToken": "file-sas", "totp_secret": "stored-seed"})
+        );
+
+        // A backup exported without credentials (its options stripped to
+        // nothing) still leaves the stored secret in place.
+        let stripped = json!({"id": "srv_a", "options": null});
+        let merged = overwrite_profile(&existing, &stripped);
+        assert_eq!(
+            merged["options"],
+            json!({"totp_secret": "stored-seed", "sasToken": "stored-sas"})
+        );
+
+        let merged = overwrite_profile(&existing, &imported);
         assert_eq!(merged["localOnly"], "kept");
         assert_eq!(merged["hasStoredCredential"], true);
         assert_eq!(merged["hasStoredAeroCryptPassword"], true);
@@ -493,6 +579,18 @@ mod tests {
         assert!(may_write_shared(Some("app-a"), Some("app-a")));
         assert!(!may_write_shared(Some("app-a"), Some("app-b")));
         assert!(!may_write_shared(Some("app-a"), None));
+    }
+
+    /// The OAuth app unit: a new or the same app is written, another app is
+    /// not, and a secret without an id only goes into empty slots.
+    #[test]
+    fn an_oauth_app_is_written_only_when_free_or_the_same() {
+        assert!(may_write_oauth_app(None, None, Some("a")));
+        assert!(may_write_oauth_app(Some("a"), Some("s"), Some("a")));
+        assert!(!may_write_oauth_app(Some("a"), Some("s"), Some("b")));
+        assert!(may_write_oauth_app(None, None, None));
+        assert!(!may_write_oauth_app(None, Some("s"), None));
+        assert!(!may_write_oauth_app(Some("a"), None, None));
     }
 
     /// The GUI sends the mode as a lowercase string.

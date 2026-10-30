@@ -42742,6 +42742,9 @@ async fn cmd_profile_import(
                 // of one name. Each `to` is the name that selects that profile.
                 "renamed": renamed,
                 "jotta_chains": jotta,
+                // Stored profiles whose custom OAuth app differs from the one
+                // this device keeps for the provider.
+                "oauth_apps_kept": report.oauth_apps_kept,
                 "total_in_file": report.total_in_file,
                 "metadata": metadata,
             })
@@ -42761,6 +42764,11 @@ async fn cmd_profile_import(
         eprintln!("Imported {imported} profile(s){tail} from {input}");
         print_profile_renames(&renamed);
         print_jotta_chain_notice(&jotta, false);
+        for name in &report.oauth_apps_kept {
+            eprintln!(
+                "Warning: \"{name}\" came with another custom OAuth app than the one this device has for that provider. The stored app was kept, because other profiles use it, so sign this profile in again if it stops connecting."
+            );
+        }
     }
     0
 }

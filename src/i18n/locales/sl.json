@@ -1369,7 +1369,8 @@
             "overwrittenCount": "{count} prepisanih",
             "duplicatedCount": "{count} podvojenih",
             "importJottaChainWarning": "Jottacloud ob vsaki povezavi obnovi prijavo, {names} pa zdaj deli eno z drugo kopijo: kopija, ki se poveže prva, odjavi drugo (napravo, od koder izvira datoteka, ali profil, iz katerega je bila podvojena). Drugo znova prijavite z novim Personal Login Token.",
-            "importNotSavedSecretsKept": "Profili niso bili shranjeni, vendar so gesla in prijavni žetoni, ki jih datoteka vsebuje za {count} izmed njih, že shranjeni. Za dokončanje znova uvozite isto datoteko z isto možnostjo."
+            "importNotSavedSecretsKept": "Profili niso bili shranjeni, vendar so gesla in prijavni žetoni, ki jih datoteka vsebuje za {count} izmed njih, že shranjeni. Za dokončanje znova uvozite isto datoteko z isto možnostjo.",
+            "importOauthAppKept": "{names} so prišli z drugačno aplikacijo OAuth po meri, kot jo ima ta naprava za tega ponudnika. Shranjena aplikacija je bila ohranjena, ker jo uporabljajo drugi profili, zato se znova prijavite, če se ti profili prenehajo povezovati."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1369,7 +1369,8 @@
             "overwrittenCount": "{count} ditulis ganti",
             "duplicatedCount": "{count} digandakan",
             "importJottaChainWarning": "Jottacloud memperbaharui log masuknya pada setiap sambungan, dan {names} kini berkongsi satu dengan salinan lain: salinan yang bersambung dahulu akan melog keluar yang satu lagi (peranti asal fail, atau profil tempat ia digandakan). Log masuk semula yang satu lagi dengan Personal Login Token baharu.",
-            "importNotSavedSecretsKept": "Profil tidak disimpan, tetapi kata laluan dan token log masuk yang dibawa oleh fail untuk {count} daripadanya telah pun disimpan. Import fail yang sama sekali lagi dengan pilihan yang sama untuk menyelesaikan."
+            "importNotSavedSecretsKept": "Profil tidak disimpan, tetapi kata laluan dan token log masuk yang dibawa oleh fail untuk {count} daripadanya telah pun disimpan. Import fail yang sama sekali lagi dengan pilihan yang sama untuk menyelesaikan.",
+            "importOauthAppKept": "{names} datang dengan apl OAuth tersuai yang berbeza daripada yang dimiliki peranti ini untuk penyedia itu. Apl yang disimpan telah dikekalkan kerana profil lain menggunakannya, jadi log masuk semula jika profil ini berhenti bersambung."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1369,7 +1369,8 @@
             "overwrittenCount": "{count} wedi'u trosysgrifo",
             "duplicatedCount": "{count} wedi'u dyblygu",
             "importJottaChainWarning": "Mae Jottacloud yn adnewyddu ei fewngofnodi ar bob cysylltiad, ac mae {names} bellach yn rhannu un gyda chopi arall: mae'r copi sy'n cysylltu gyntaf yn allgofnodi'r llall (y ddyfais y daeth y ffeil ohoni, neu'r proffil y cafodd ei ddyblygu ohono). Mewngofnodwch y llall eto gyda Personal Login Token newydd.",
-            "importNotSavedSecretsKept": "Ni chafodd y proffiliau eu cadw, ond mae'r cyfrineiriau a'r tocynnau mewngofnodi y mae'r ffeil yn eu cynnwys ar gyfer {count} ohonynt eisoes wedi'u storio. Mewnforiwch yr un ffeil eto gyda'r un opsiwn i orffen."
+            "importNotSavedSecretsKept": "Ni chafodd y proffiliau eu cadw, ond mae'r cyfrineiriau a'r tocynnau mewngofnodi y mae'r ffeil yn eu cynnwys ar gyfer {count} ohonynt eisoes wedi'u storio. Mewnforiwch yr un ffeil eto gyda'r un opsiwn i orffen.",
+            "importOauthAppKept": "Daeth {names} gydag ap OAuth personol gwahanol i'r un sydd gan y ddyfais hon ar gyfer y darparwr hwnnw. Cadwyd yr ap sydd wedi'i storio oherwydd bod proffiliau eraill yn ei ddefnyddio, felly mewngofnodwch eto os bydd y proffiliau hyn yn peidio â chysylltu."
         },
         "devtools": {
             "title": "AeroTools",

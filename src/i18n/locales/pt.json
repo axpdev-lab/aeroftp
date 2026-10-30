@@ -1369,7 +1369,8 @@
             "overwrittenCount": "{count} substituídos",
             "duplicatedCount": "{count} duplicados",
             "importJottaChainWarning": "O Jottacloud renova o seu início de sessão em cada ligação, e {names} partilha agora um com outra cópia: a cópia que se liga primeiro termina a sessão da outra (o dispositivo de onde veio o ficheiro, ou o perfil de que foi duplicada). Inicie sessão novamente na outra com um novo Personal Login Token.",
-            "importNotSavedSecretsKept": "Os perfis não foram salvos, mas as senhas e os tokens de login que o arquivo contém para {count} deles já foram armazenados. Importe o mesmo arquivo novamente com a mesma opção para concluir."
+            "importNotSavedSecretsKept": "Os perfis não foram salvos, mas as senhas e os tokens de login que o arquivo contém para {count} deles já foram armazenados. Importe o mesmo arquivo novamente com a mesma opção para concluir.",
+            "importOauthAppKept": "{names} chegaram com um app OAuth personalizado diferente do que este dispositivo tem para esse provedor. O app armazenado foi mantido porque outros perfis o usam, então entre novamente se estes perfis deixarem de conectar."
         },
         "devtools": {
             "title": "AeroTools",

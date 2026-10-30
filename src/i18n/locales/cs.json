@@ -1369,7 +1369,8 @@
             "overwrittenCount": "{count} přepsáno",
             "duplicatedCount": "{count} duplikováno",
             "importJottaChainWarning": "Jottacloud obnovuje přihlášení při každém připojení a {names} nyní sdílí přihlášení s jinou kopií: kopie, která se připojí první, odhlásí tu druhou (zařízení, ze kterého soubor pochází, nebo profil, ze kterého byla duplikována). Přihlaste druhou znovu pomocí nového Personal Login Token.",
-            "importNotSavedSecretsKept": "Profily nebyly uloženy, ale hesla a přihlašovací tokeny, které soubor obsahuje pro {count} z nich, už byly uloženy. Pro dokončení importujte stejný soubor znovu se stejnou volbou."
+            "importNotSavedSecretsKept": "Profily nebyly uloženy, ale hesla a přihlašovací tokeny, které soubor obsahuje pro {count} z nich, už byly uloženy. Pro dokončení importujte stejný soubor znovu se stejnou volbou.",
+            "importOauthAppKept": "{names} přišly s jinou vlastní aplikací OAuth, než jakou má toto zařízení pro daného poskytovatele. Uložená aplikace byla ponechána, protože ji používají jiné profily, takže se přihlaste znovu, pokud se tyto profily přestanou připojovat."
         },
         "devtools": {
             "title": "AeroTools",

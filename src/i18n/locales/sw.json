@@ -1369,7 +1369,8 @@
             "overwrittenCount": "{count} zimeandikwa juu",
             "duplicatedCount": "{count} zimenakiliwa",
             "importJottaChainWarning": "Jottacloud hufanya upya uingiaji wake kila inapounganisha, na sasa {names} inashiriki mmoja na nakala nyingine: nakala inayounganisha kwanza huitoa nyingine (kifaa ambako faili lilitoka, au wasifu ambao ulinakiliwa kutoka kwake). Ingia tena kwenye nyingine kwa Personal Login Token mpya.",
-            "importNotSavedSecretsKept": "Wasifu haukuhifadhiwa, lakini nenosiri na tokeni za kuingia ambazo faili inazo kwa {count} kati yao tayari zimehifadhiwa. Ingiza faili ile ile tena kwa chaguo lile lile ili kukamilisha."
+            "importNotSavedSecretsKept": "Wasifu haukuhifadhiwa, lakini nenosiri na tokeni za kuingia ambazo faili inazo kwa {count} kati yao tayari zimehifadhiwa. Ingiza faili ile ile tena kwa chaguo lile lile ili kukamilisha.",
+            "importOauthAppKept": "{names} zilikuja na programu maalum ya OAuth tofauti na ile ambayo kifaa hiki kina kwa mtoa huduma huyo. Programu iliyohifadhiwa ilibakizwa kwa sababu wasifu mwingine unaitumia, kwa hivyo ingia tena ikiwa wasifu huu utaacha kuunganika."
         },
         "devtools": {
             "title": "AeroTools",

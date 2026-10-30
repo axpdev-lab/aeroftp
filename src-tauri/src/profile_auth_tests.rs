@@ -640,6 +640,28 @@ async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value)
                 .unwrap();
         }
     }
+    // The profile whose own chain is the singleton refreshes it on an overwrite.
+    users::store_active_credential_typed_dual(
+        store,
+        "jottacloud_refresh_fixture-jotta",
+        "jottacloud_refresh",
+        "other-profile-chain",
+    )
+    .unwrap();
+    crate::import_server_profiles_with_mode(
+        jotta_file.to_string_lossy().into_owned(),
+        "fixture-export-password".into(),
+        ExistingProfileMode::Overwrite,
+        std::slice::from_ref(&jotta),
+        active,
+        false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        store.get("jottacloud_refresh").unwrap(),
+        "synthetic-refresh-chain"
+    );
 
     let redacted = directory.path().join("headless-redacted.aeroftp");
     let metadata = crate::export_server_profiles_core(

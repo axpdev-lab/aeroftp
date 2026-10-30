@@ -85,6 +85,7 @@ describe('ExportImportDialog .aeroftp import', () => {
             skipped: [],
             similar: 0,
             jottaChains: [{ id: 'srv_copy', name: 'Jotta' }],
+            oauthAppsKept: ['Drive copy'],
             userId: 7,
             totalInFile: 2,
             metadata: { exportDate: '', aeroftpVersion: '', serverCount: 2, hasCredentials: true },
@@ -109,8 +110,10 @@ describe('ExportImportDialog .aeroftp import', () => {
         expect(stored.every(s => !('importOutcome' in s))).toBe(true);
         expect(host.textContent).toContain('settings.overwrittenCount {"count":1}');
         expect(host.textContent).toContain('settings.duplicatedCount {"count":1}');
-        expect(host.querySelector('[data-testid="import-jotta-warning"]')?.textContent)
+        expect(host.querySelector('[data-testid="import-warning"]')?.textContent)
             .toContain('settings.importJottaChainWarning {"names":"Jotta"}');
+        expect(host.querySelector('[data-testid="import-warning"]')?.textContent)
+            .toContain('settings.importOauthAppKept {"names":"Drive copy"}');
         // Enter in the password field cannot import (and duplicate) again.
         const field = host.querySelector<HTMLInputElement>('input[type="password"]')!;
         await act(async () => {
@@ -134,6 +137,7 @@ describe('ExportImportDialog .aeroftp import', () => {
             similar: 0,
             secretsStored: 2,
             jottaChains: [],
+            oauthAppsKept: [],
             totalInFile: 1,
             metadata: { exportDate: '', aeroftpVersion: '', serverCount: 1, hasCredentials: true },
         });
@@ -155,6 +159,7 @@ describe('ExportImportDialog .aeroftp import', () => {
             skipped: ['Kept'],
             similar: 0,
             jottaChains: [],
+            oauthAppsKept: [],
             totalInFile: 2,
             metadata: { exportDate: '', aeroftpVersion: '', serverCount: 2, hasCredentials: false },
         });
@@ -165,7 +170,7 @@ describe('ExportImportDialog .aeroftp import', () => {
         await runImport('skip');
         expect(vi.mocked(invoke).mock.calls[0][1]).toMatchObject({ existing: 'skip' });
         expect(host.textContent).toContain('settings.duplicatesSkippedCount {"count":1}');
-        expect(host.querySelector('[data-testid="import-jotta-warning"]')).toBeNull();
+        expect(host.querySelector('[data-testid="import-warning"]')).toBeNull();
         // Done: neither a second click nor Enter imports the same file again.
         expect(button(b => b.textContent === 'settings.importServers').disabled).toBe(true);
         const field = host.querySelector<HTMLInputElement>('input[type="password"]')!;

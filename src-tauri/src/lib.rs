@@ -18372,6 +18372,7 @@ pub async fn import_server_profiles_with_mode(
         jotta_chains: Vec::new(),
         secrets_stored,
         user_id: expected_user,
+        oauth_apps_kept: Vec::new(),
         total_in_file: servers.len(),
         metadata: serde_json::to_value(&metadata).unwrap_or(serde_json::Value::Null),
     };
@@ -18381,6 +18382,9 @@ pub async fn import_server_profiles_with_mode(
         if planned.outcome == ImportOutcome::Skipped {
             report.skipped.push(name);
             continue;
+        }
+        if restored.kept_oauth_apps.contains(&planned.id) {
+            report.oauth_apps_kept.push(name.clone());
         }
         if planned.similar {
             report.similar += 1;
@@ -18419,6 +18423,7 @@ struct RestoredImportSecrets {
     aerocrypt_keyfile_path: std::collections::HashSet<String>,
     aerocrypt_config: std::collections::HashSet<String>,
     filen_api_key: std::collections::HashSet<String>,
+    kept_oauth_apps: std::collections::HashSet<String>,
 }
 
 /// The non-empty value the vault holds under `key`, `None` when it holds none.
@@ -18442,8 +18447,8 @@ fn vault_value(
 /// The provider-wide singletons (an OAuth app's credentials, the legacy
 /// Jottacloud chain) are written only when empty or already this profile's or
 /// app's own ([`profile_import_plan::may_write_shared`]), never over another
-/// profile's. Fails, writing nothing, when the vault is not open and a profile
-/// to store carries secrets.
+/// profile's; a custom OAuth app left out that way is reported. Fails, writing
+/// nothing, when the vault is not open and a profile to store carries secrets.
 fn restore_imported_secrets(
     servers: &[profile_export::ServerProfileExport],
     provider_secrets: &std::collections::HashMap<String, profile_export::ProviderSecrets>,
@@ -18466,6 +18471,9 @@ fn restore_imported_secrets(
     // the `hasStoredFilenApiKey` flag returned to the UI reflects reality.
     let mut restored_filen_api_key: std::collections::HashSet<String> =
         std::collections::HashSet::new();
+    // Profiles whose custom OAuth app was not written, the provider's stored
+    // app being another one.
+    let mut kept_oauth_apps: std::collections::HashSet<String> = std::collections::HashSet::new();
     match credential_store::CredentialStore::from_cache() {
         Some(store) => {
             #[cfg(feature = "proton-native")]
@@ -18542,7 +18550,8 @@ fn restore_imported_secrets(
                         // shared singleton; another user's chain stays private.
                         // Written only while empty or still this profile's own
                         // chain: another profile reconnecting through the
-                        // singleton keeps its chain, and a duplicate never takes it.
+                        // singleton keeps its chain, and a duplicate never
+                        // replaces it.
                         if jotta_private_user.is_none() {
                             match (vault_value(&store, "jottacloud_refresh"), own) {
                                 (Ok(stored), Ok(own))
@@ -18577,13 +18586,20 @@ fn restore_imported_secrets(
                 // reads, written as one unit: only when no app is stored yet or
                 // the stored app is this same one (same client id, whose secret
                 // or region the file then refreshes). An imported or duplicated
-                // profile never swaps the app another profile refreshes with.
+                // profile never swaps the app another profile refreshes with;
+                // one that keeps the stored app is reported, since its token
+                // was issued by the other app and may need a new sign-in.
                 if secrets.oauth_client_id.is_some() || secrets.oauth_client_secret.is_some() {
                     if let Some(cred_slug) = bridge_commands::oauth_client_cred_key(protocol) {
-                        match vault_value(&store, &format!("oauth_{cred_slug}_client_id")) {
-                            Ok(stored)
-                                if profile_import_plan::may_write_shared(
-                                    stored.as_deref(),
+                        let stored_id =
+                            vault_value(&store, &format!("oauth_{cred_slug}_client_id"));
+                        let stored_secret =
+                            vault_value(&store, &format!("oauth_{cred_slug}_client_secret"));
+                        match (stored_id, stored_secret) {
+                            (Ok(stored_id), Ok(stored_secret))
+                                if profile_import_plan::may_write_oauth_app(
+                                    stored_id.as_deref(),
+                                    stored_secret.as_deref(),
                                     secrets.oauth_client_id.as_deref(),
                                 ) =>
                             {
@@ -18600,10 +18616,13 @@ fn restore_imported_secrets(
                                     }
                                 }
                             }
-                            Ok(_) => cred_errors.push(format!(
-                                "{profile_id} oauth app: kept the other app already stored for {cred_slug}"
-                            )),
-                            Err(e) => cred_errors.push(format!("{profile_id} oauth app: {e}")),
+                            (Ok(_), Ok(_)) => {
+                                kept_oauth_apps.insert(profile_id.clone());
+                            }
+                            (Err(e), _) | (_, Err(e)) => {
+                                kept_oauth_apps.insert(profile_id.clone());
+                                cred_errors.push(format!("{profile_id} oauth app: {e}"));
+                            }
                         }
                     }
                 }
@@ -18759,6 +18778,7 @@ fn restore_imported_secrets(
         aerocrypt_keyfile_path: restored_aerocrypt_keyfile_path,
         aerocrypt_config: restored_aerocrypt_config,
         filen_api_key: restored_filen_api_key,
+        kept_oauth_apps,
     })
 }
 

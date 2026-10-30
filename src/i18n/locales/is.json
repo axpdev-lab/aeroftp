@@ -1369,7 +1369,8 @@
             "overwrittenCount": "{count} skrifað yfir",
             "duplicatedCount": "{count} afritað",
             "importJottaChainWarning": "Jottacloud endurnýjar innskráningu sína við hverja tengingu og {names} deilir nú einni með öðru afriti: afritið sem tengist fyrst skráir hitt út (tækið sem skráin kom frá, eða prófílinn sem það var afritað úr). Skráðu hitt inn aftur með nýju Personal Login Token.",
-            "importNotSavedSecretsKept": "Prófílarnir voru ekki vistaðir, en lykilorðin og innskráningartáknin sem skráin geymir fyrir {count} þeirra hafa þegar verið vistuð. Fluttu sömu skrá inn aftur með sama valkosti til að ljúka."
+            "importNotSavedSecretsKept": "Prófílarnir voru ekki vistaðir, en lykilorðin og innskráningartáknin sem skráin geymir fyrir {count} þeirra hafa þegar verið vistuð. Fluttu sömu skrá inn aftur með sama valkosti til að ljúka.",
+            "importOauthAppKept": "{names} komu með annað sérsniðið OAuth-forrit en það sem þetta tæki hefur fyrir þann þjónustuaðila. Vistaða forritið var haldið því önnur snið nota það, svo skráðu þig inn aftur ef þessi snið hætta að tengjast."
         },
         "devtools": {
             "title": "AeroTools",

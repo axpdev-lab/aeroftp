@@ -1369,7 +1369,8 @@
             "overwrittenCount": "{count} üzerine yazıldı",
             "duplicatedCount": "{count} çoğaltıldı",
             "importJottaChainWarning": "Jottacloud her bağlantıda oturum açmayı yeniler ve {names} artık bunu başka bir kopyayla paylaşıyor: önce bağlanan kopya diğerinin oturumunu kapatır (dosyanın geldiği cihaz veya çoğaltıldığı profil). Diğerinde yeni bir Personal Login Token ile yeniden oturum açın.",
-            "importNotSavedSecretsKept": "Profiller kaydedilmedi, ancak dosyanın bunlardan {count} tanesi için taşıdığı parolalar ve oturum açma belirteçleri zaten depolandı. Tamamlamak için aynı dosyayı aynı seçenekle yeniden içe aktarın."
+            "importNotSavedSecretsKept": "Profiller kaydedilmedi, ancak dosyanın bunlardan {count} tanesi için taşıdığı parolalar ve oturum açma belirteçleri zaten depolandı. Tamamlamak için aynı dosyayı aynı seçenekle yeniden içe aktarın.",
+            "importOauthAppKept": "{names}, bu cihazın o sağlayıcı için sahip olduğundan farklı özel bir OAuth uygulamasıyla geldi. Kayıtlı uygulama, diğer profiller kullandığı için korundu; bu profiller bağlanmayı bırakırsa yeniden oturum açın."
         },
         "devtools": {
             "title": "AeroTools",

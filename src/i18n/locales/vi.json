@@ -1369,7 +1369,8 @@
             "overwrittenCount": "Đã ghi đè {count}",
             "duplicatedCount": "Đã nhân bản {count}",
             "importJottaChainWarning": "Jottacloud gia hạn đăng nhập ở mỗi lần kết nối, và {names} hiện dùng chung một phiên với bản sao khác: bản sao kết nối trước sẽ đăng xuất bản còn lại (thiết bị chứa tệp gốc, hoặc hồ sơ mà nó được nhân bản từ đó). Hãy đăng nhập lại bản còn lại bằng Personal Login Token mới.",
-            "importNotSavedSecretsKept": "Các hồ sơ chưa được lưu, nhưng mật khẩu và token đăng nhập mà tệp chứa cho {count} hồ sơ trong số đó đã được lưu trữ. Hãy nhập lại cùng tệp với cùng tùy chọn để hoàn tất."
+            "importNotSavedSecretsKept": "Các hồ sơ chưa được lưu, nhưng mật khẩu và token đăng nhập mà tệp chứa cho {count} hồ sơ trong số đó đã được lưu trữ. Hãy nhập lại cùng tệp với cùng tùy chọn để hoàn tất.",
+            "importOauthAppKept": "{names} đến cùng một ứng dụng OAuth tùy chỉnh khác với ứng dụng mà thiết bị này có cho nhà cung cấp đó. Ứng dụng đã lưu được giữ lại vì các hồ sơ khác đang dùng, vì vậy hãy đăng nhập lại nếu các hồ sơ này ngừng kết nối."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1369,7 +1369,8 @@
             "overwrittenCount": "{count} écrasés",
             "duplicatedCount": "{count} dupliqués",
             "importJottaChainWarning": "Jottacloud renouvelle sa connexion à chaque session, et {names} en partage désormais une avec une autre copie : la copie qui se connecte en premier déconnecte l'autre (l'appareil d'où vient le fichier, ou le profil dont elle a été dupliquée). Reconnectez l'autre avec un nouveau Personal Login Token.",
-            "importNotSavedSecretsKept": "Les profils n'ont pas été enregistrés, mais les mots de passe et les jetons de connexion que le fichier contient pour {count} d'entre eux ont déjà été stockés. Importez à nouveau le même fichier avec la même option pour terminer."
+            "importNotSavedSecretsKept": "Les profils n'ont pas été enregistrés, mais les mots de passe et les jetons de connexion que le fichier contient pour {count} d'entre eux ont déjà été stockés. Importez à nouveau le même fichier avec la même option pour terminer.",
+            "importOauthAppKept": "{names} sont arrivés avec une application OAuth personnalisée différente de celle que cet appareil possède pour ce fournisseur. L'application enregistrée a été conservée car d'autres profils l'utilisent, donc reconnectez-vous si ces profils ne se connectent plus."
         },
         "devtools": {
             "title": "AeroTools",

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ServerProfile } from '../../types';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { appendImportedProfiles, bridgeProfileKey, commitImportedServers, overwriteProfile, STORED_SECRET_FLAGS } from './bridgeImportCommit';
+import { appendImportedProfiles, bridgeProfileKey, commitImportedServers, OMITTED_WHEN_EMPTY, OPTIONS_SECRET_KEYS, overwriteProfile, STORED_SECRET_FLAGS } from './bridgeImportCommit';
 import { readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 
 vi.mock('../../utils/serverProfileStore', () => ({
@@ -123,30 +123,42 @@ describe('the import callback and the commit helper together', () => {
         expect(merged.map(s => s.id)).toEqual([base.id, 'imported']);
     });
 
-    // The backup is the profile: its null (a Crypt overlay turned off) and its
-    // options win; undefined is no value; a field it does not carry stays.
-    it('an overwrite takes the nulls and options of the file, ignores undefined and keeps local-only fields', () => {
-        const stored = { ...base, color: '#ff0000', localOnly: 'kept', aeroCryptOverlay: { enabled: true, kind: 'rclone-crypt' },
-            options: { verifyCert: false, timeout: 30 } } as unknown as ServerProfile;
-        const imported = { ...base, host: 'new.example', color: undefined, aeroCryptOverlay: null,
-            options: { timeout: 60 } } as unknown as ServerProfile;
+    // Same cases as the Rust planner test: a field the format always writes
+    // follows the file, null included; one it omits when empty says nothing when
+    // null; a stored options secret the file does not carry stays.
+    it('an overwrite follows the file except for what the file cannot speak to', () => {
+        const stored = { ...base, color: '#ff0000', initialPath: '/old', localOnly: 'kept',
+            aeroCryptOverlay: { enabled: true, kind: 'rclone-crypt' },
+            options: { verifyCert: false, timeout: 30, totp_secret: 'stored-seed', sasToken: 'stored-sas' } } as unknown as ServerProfile;
+        const imported = { ...base, host: 'new.example', color: null, initialPath: undefined, aeroCryptOverlay: null,
+            options: { timeout: 60, sasToken: 'file-sas' } } as unknown as ServerProfile;
         const merged = overwriteProfile(stored, imported) as unknown as Record<string, unknown>;
         expect(merged.host).toBe('new.example');
-        expect(merged.color).toBe('#ff0000');
+        expect(merged.color).toBeNull();
+        expect(merged.initialPath).toBe('/old');
         expect(merged.localOnly).toBe('kept');
-        expect(merged.aeroCryptOverlay).toBeNull();
-        expect(merged.options).toEqual({ timeout: 60 });
+        expect(merged.aeroCryptOverlay).toEqual({ enabled: true, kind: 'rclone-crypt' });
+        expect(merged.options).toEqual({ timeout: 60, sasToken: 'file-sas', totp_secret: 'stored-seed' });
+        // A backup without credentials, its options stripped to nothing.
+        const stripped = overwriteProfile(stored, { ...base, options: null } as unknown as ServerProfile) as unknown as Record<string, unknown>;
+        expect(stripped.options).toEqual({ totp_secret: 'stored-seed', sasToken: 'stored-sas' });
     });
 
-    // The twin must list the same flags as the Rust planner, or an overwrite
-    // would drop a stored-secret flag on one side only.
-    it('lists the same secret-presence flags as profile_import_plan.rs', () => {
-        const rust = readFileSync(resolve(__dirname, '../../../src-tauri/src/profile_import_plan.rs'), 'utf8');
-        const block = rust.match(/pub const STORED_SECRET_FLAGS: \[&str; \d+\] = \[([^\]]*)\]/);
-        expect(block).not.toBeNull();
-        const flags = [...block![1].matchAll(/"([^"]+)"/g)].map(m => m[1]);
-        expect(flags.length).toBeGreaterThan(0);
-        expect([...STORED_SECRET_FLAGS]).toEqual(flags);
+    // The twins must list what the Rust side lists, or an overwrite would treat
+    // a flag, an omitted field or an options secret differently on one side.
+    it('lists the same keys as the Rust overwrite', () => {
+        const rustList = (file: string, name: string) => {
+            const source = readFileSync(resolve(__dirname, '../../../src-tauri/src', file), 'utf8');
+            const block = source.match(new RegExp(`pub const ${name}: [^=]*= &?\\[([\\s\\S]*?)\\];`));
+            expect(block).not.toBeNull();
+            const code = block![1].split('\n').filter(line => !line.trim().startsWith('//')).join('\n');
+            const keys = [...code.matchAll(/"([^"]+)"/g)].map(m => m[1]);
+            expect(keys.length).toBeGreaterThan(0);
+            return keys;
+        };
+        expect([...STORED_SECRET_FLAGS]).toEqual(rustList('profile_import_plan.rs', 'STORED_SECRET_FLAGS'));
+        expect([...OMITTED_WHEN_EMPTY]).toEqual(rustList('profile_import_plan.rs', 'OMITTED_WHEN_EMPTY'));
+        expect([...OPTIONS_SECRET_KEYS]).toEqual(rustList('profile_export.rs', 'OPTIONS_SECRET_KEYS'));
     });
 
     // A profile to append whose id the vault already holds was saved by
