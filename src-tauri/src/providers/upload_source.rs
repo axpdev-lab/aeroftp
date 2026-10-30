@@ -11,10 +11,11 @@
 //! [`UploadSource`] takes the file's size and modification time before the first
 //! byte is read and compares them once the last byte has been read, before the
 //! commit. When they differ the upload is refused and nothing is committed, so
-//! the remote keeps its previous content. The native multipart path of the
-//! transfer engine has its own check of the same facts before its commit
-//! (`DurableMultipartCheckpoint::verify_against_source`); this one covers the
-//! uploads a provider runs by itself.
+//! the remote keeps its previous content. The transfer engine's single-file
+//! multipart path has its own check of the same facts before its commit
+//! (`DurableMultipartCheckpoint::verify_against_source`); its batch multipart
+//! path, which reads each file's parts at their offsets concurrently, and the
+//! uploads a provider runs by itself use this one.
 //!
 //! Declared limit: a rewrite that keeps both the size and the modification time
 //! (a file system with coarse timestamps, or a writer that restores the time)
@@ -53,6 +54,12 @@ impl UploadSource {
         })
     }
 
+    /// The size the file had when it was observed: the size an upload must be
+    /// planned for, since a size read earlier may describe another version.
+    pub fn size(&self) -> u64 {
+        self.size
+    }
+
     /// Refuse the commit when the file no longer has the facts it had before
     /// the upload read it. `scope` names the upload in the message.
     pub async fn ensure_unchanged(&self, scope: &str) -> Result<(), ProviderError> {
@@ -73,27 +80,12 @@ impl UploadSource {
     /// and refuse it when it changed while it was being read: the bytes are
     /// coherent only if the file kept its facts from before the read to after.
     pub async fn read_whole(local_path: &str, scope: &str) -> Result<Vec<u8>, ProviderError> {
-        Self::read_whole_with(local_path, scope, |path| async move {
-            tokio::fs::read(path).await
-        })
-        .await
-    }
-
-    /// [`Self::read_whole`] with the read itself supplied, so a test can change
-    /// the file between the read and the check.
-    async fn read_whole_with<F, Fut>(
-        local_path: &str,
-        scope: &str,
-        read: F,
-    ) -> Result<Vec<u8>, ProviderError>
-    where
-        F: FnOnce(String) -> Fut,
-        Fut: std::future::Future<Output = std::io::Result<Vec<u8>>>,
-    {
         let source = Self::observe(local_path).await?;
-        let data = read(local_path.to_string())
+        let data = tokio::fs::read(local_path)
             .await
             .map_err(ProviderError::IoError)?;
+        #[cfg(test)]
+        tests::run_after_read_hook();
         source.ensure_unchanged(scope).await?;
         Ok(data)
     }
@@ -111,6 +103,19 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
+    thread_local! {
+        /// Run by [`UploadSource::read_whole`] between its read and its check,
+        /// on the test's own thread (`#[tokio::test]` is single-threaded).
+        static AFTER_READ: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+            const { std::cell::RefCell::new(None) };
+    }
+
+    pub(super) fn run_after_read_hook() {
+        if let Some(hook) = AFTER_READ.with(|slot| slot.borrow_mut().take()) {
+            hook();
+        }
+    }
+
     fn rewrite_keeping_size(path: &std::path::Path, data: &[u8], modified: SystemTime) {
         std::fs::write(path, data).unwrap();
         let file = std::fs::File::options().write(true).open(path).unwrap();
@@ -123,6 +128,7 @@ mod tests {
         let path = dir.path().join("a.bin");
         std::fs::write(&path, b"0123456789").unwrap();
         let source = UploadSource::observe(path.to_str().unwrap()).await.unwrap();
+        assert_eq!(source.size(), 10);
         source.ensure_unchanged("test upload").await.unwrap();
     }
 
@@ -170,12 +176,12 @@ mod tests {
         let before = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
         rewrite_keeping_size(&path, b"AAAAAAAAAA", before);
         let rewrite = path.clone();
-        let err =
-            UploadSource::read_whole_with(path.to_str().unwrap(), "test upload", |p| async move {
-                let data = tokio::fs::read(p).await;
+        AFTER_READ.with(|slot| {
+            *slot.borrow_mut() = Some(Box::new(move || {
                 rewrite_keeping_size(&rewrite, b"BBBBBBBBBB", before + Duration::from_secs(1));
-                data
-            })
+            }));
+        });
+        let err = UploadSource::read_whole(path.to_str().unwrap(), "test upload")
             .await
             .unwrap_err();
         assert!(

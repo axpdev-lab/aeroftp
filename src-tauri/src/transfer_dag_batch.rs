@@ -85,6 +85,12 @@ struct MultipartFileRuntime {
     /// Owns a second handle until complete or an awaited abort returns. The
     /// state's take_for_abort consumes its handle before doing any wire I/O.
     abort_guard: std::sync::Mutex<Option<MultipartAbortGuard>>,
+    /// The local file as it was before any part was read from it, or `None`
+    /// when it could not be read. The parts are read at their own offsets,
+    /// concurrently, so a file rewritten meanwhile would be completed as a
+    /// mixture of two versions; the complete is refused unless the file still
+    /// matches this observation and the size the parts were cut for.
+    source: Option<crate::providers::upload_source::UploadSource>,
 }
 
 impl MultipartFileRuntime {
@@ -917,11 +923,15 @@ where
         let state = MultipartFileState::new(layout, node_to_part);
         node_to_entry.insert(shaped.acquire, 0);
         node_to_entry.insert(shaped.commit, 0);
+        let source = crate::providers::upload_source::UploadSource::observe(&entry.local_path)
+            .await
+            .ok();
         Some(Arc::new(MultipartFileRuntime {
             state,
             session_lease: Mutex::new(SessionLeaseSlot::Vacant),
             governor_lease: Mutex::new(None),
             abort_guard: std::sync::Mutex::new(None),
+            source,
         }))
     } else {
         None
@@ -1752,6 +1762,32 @@ where
     node_outcome
 }
 
+/// Refuse to complete a multipart upload whose parts may not come from one
+/// version of the local file: the file could not be observed before the parts
+/// were read, its size then was not the one the parts were cut for, or it no
+/// longer matches that observation.
+async fn check_multipart_source(
+    source: Option<&crate::providers::upload_source::UploadSource>,
+    planned_size: u64,
+) -> Result<(), String> {
+    let Some(source) = source else {
+        return Err(
+            "multipart upload: the local file could not be read before its parts were; nothing was committed"
+                .to_string(),
+        );
+    };
+    if source.size() != planned_size {
+        return Err(format!(
+            "multipart upload: the parts were planned for {planned_size} bytes but the local file had {} when the upload started; nothing was committed",
+            source.size()
+        ));
+    }
+    source
+        .ensure_unchanged("multipart upload")
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Map a batch file terminal into the DAG node outcome (DAG-P1-04).
 ///
 /// Success and skip remain honest healthy completions. Failures — including
@@ -1795,6 +1831,20 @@ where
                 "multipart receipt count {count} != expected {}",
                 state.layout().total_parts
             ),
+            retryable: false,
+            retry_after_secs: None,
+        };
+        abort_multipart_file(executor, entry, runtime).await;
+        executor.multipart_emit_file_error(entry, &failure);
+        return TransferOutcome::Failed(failure);
+    }
+
+    if let Err(message) =
+        check_multipart_source(runtime.source.as_ref(), state.layout().total_size).await
+    {
+        let failure = TransferFailure {
+            kind: TransferFailureKind::LocalIo,
+            message,
             retryable: false,
             retry_after_secs: None,
         };
@@ -3599,6 +3649,83 @@ mod tests {
         (result, executor)
     }
 
+    /// A local file rewritten while its parts are in flight is not completed:
+    /// the parts are read at their own offsets, so the object would be a
+    /// mixture of two versions. The session is aborted instead (before the
+    /// check the complete was sent).
+    #[tokio::test]
+    async fn multipart_upload_of_a_file_rewritten_during_its_parts_is_not_completed() {
+        let chunk = 8u64;
+        let file_size = 24u64; // 3 parts
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("source.bin");
+        std::fs::write(&path, vec![b'A'; file_size as usize]).expect("write");
+        let entries = vec![entry_with_local("m", file_size, path.to_str().unwrap())];
+        let mut mock = MockExecutor::new(4)
+            .with_capabilities(multipart_caps(1, chunk))
+            .with_multipart_wire();
+        mock.part_delay = Duration::from_millis(40);
+        let executor = Arc::new(mock);
+        let rewriter = {
+            let executor = Arc::clone(&executor);
+            let path = path.clone();
+            tokio::spawn(async move {
+                while executor.part_calls.load(AtomicOrdering::SeqCst) == 0 {
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
+                let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+                std::fs::write(&path, vec![b'B'; file_size as usize]).unwrap();
+                std::fs::File::options()
+                    .write(true)
+                    .open(&path)
+                    .unwrap()
+                    .set_modified(modified + Duration::from_secs(5))
+                    .unwrap();
+            })
+        };
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            upload_batch(entries, 4),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        rewriter.await.expect("rewriter");
+        assert_eq!(result.failed, 1, "{result:?}");
+        assert_eq!(result.completed, 0);
+        assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 1);
+    }
+
+    /// Parts cut for a size the file no longer has when the upload starts are
+    /// not completed either: they would cover a truncated or padded file.
+    #[tokio::test]
+    async fn multipart_upload_planned_for_another_size_is_not_completed() {
+        let chunk = 8u64;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("source.bin");
+        std::fs::write(&path, vec![b'A'; 30]).expect("write");
+        // The scan saw 24 bytes; the file has 30 by the time the upload runs.
+        let entries = vec![entry_with_local("m", 24, path.to_str().unwrap())];
+        let executor = Arc::new(
+            MockExecutor::new(4)
+                .with_capabilities(multipart_caps(1, chunk))
+                .with_multipart_wire(),
+        );
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            upload_batch(entries, 4),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        assert_eq!(result.failed, 1, "{result:?}");
+        assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 1);
+    }
+
     #[tokio::test]
     async fn multipart_soft_stop_after_begin_lets_the_file_finish() {
         let (result, executor) = run_multipart_with_stop_on_first_part(1, 4, false).await;
@@ -3783,6 +3910,7 @@ mod tests {
             session_lease: Mutex::new(SessionLeaseSlot::Vacant),
             governor_lease: Mutex::new(None),
             abort_guard: std::sync::Mutex::new(None),
+            source: None,
         });
 
         let whole_outcome = run_whole_file_node(

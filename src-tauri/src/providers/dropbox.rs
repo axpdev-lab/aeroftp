@@ -1226,10 +1226,12 @@ impl StorageProvider for DropboxProvider {
         use tokio::io::AsyncReadExt;
 
         let path = self.normalize_path(remote_path);
-        let file_size = tokio::fs::metadata(local_path)
+        // The size the session is cut to and the size the check before
+        // `finish` compares against come from one observation of the file.
+        let source = super::upload_source::UploadSource::observe(local_path)
             .await
-            .map_err(|e| ProviderError::Other(format!("Metadata error: {}", e)))?
-            .len();
+            .map_err(|e| ProviderError::Other(format!("Metadata error: {}", e)))?;
+        let file_size = source.size();
 
         const UPLOAD_SESSION_THRESHOLD: u64 = 150 * 1024 * 1024; // 150MB
 
@@ -1239,7 +1241,6 @@ impl StorageProvider for DropboxProvider {
             let progress = super::upload_progress::UploadProgress::new(on_progress, file_size);
             // Upload session for large files: read chunks from file, not all in memory
             const CHUNK_SIZE: u64 = 128 * 1024 * 1024; // 128MB
-            let source = super::upload_source::UploadSource::observe(local_path).await?;
             let mut file = tokio::fs::File::open(local_path)
                 .await
                 .map_err(|e| ProviderError::Other(format!("Open error: {}", e)))?;

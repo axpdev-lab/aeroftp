@@ -30,6 +30,9 @@ const API_BASE: &str = "https://api.box.com/2.0";
 /// threshold so single-PUT files keep the legacy path.
 const BOX_SESSION_THRESHOLD: u64 = 20 * 1024 * 1024;
 
+/// How long the best-effort deletion of an abandoned upload session may take.
+const BOX_ABORT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// Honest file/session ceiling for chunked-upload part workers (DAG-P1-05B).
 /// Matches `multipart_max_parallel` and the AIMD default.
 const BOX_TRANSFER_MAX_SESSIONS: u16 = 4;
@@ -492,12 +495,16 @@ impl BoxProvider {
                     self.upload_api_base(),
                     session_id
                 );
-                let _ = self
-                    .client
-                    .delete(&abort_url)
-                    .header(AUTHORIZATION, header)
-                    .send()
-                    .await;
+                // Best effort with its own deadline: a caller that is already
+                // returning an error does not wait out the client's read timeout.
+                let _ = tokio::time::timeout(
+                    BOX_ABORT_TIMEOUT,
+                    self.client
+                        .delete(&abort_url)
+                        .header(AUTHORIZATION, header)
+                        .send(),
+                )
+                .await;
             }
         }
     }
@@ -1482,7 +1489,7 @@ impl BoxProvider {
         &self,
         session_resp: reqwest::Response,
         local_path: &str,
-        total_size: u64,
+        source: super::upload_source::UploadSource,
         progress: &super::upload_progress::UploadProgress,
     ) -> Result<(), ProviderError> {
         use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -1531,74 +1538,82 @@ impl BoxProvider {
             });
 
         // Stream from file handle instead of buffered &[u8]
-        let source = super::upload_source::UploadSource::observe(local_path).await?;
-        let mut file = tokio::fs::File::open(local_path)
-            .await
-            .map_err(ProviderError::IoError)?;
-        let mut parts: Vec<serde_json::Value> = Vec::new();
-        let mut offset: u64 = 0;
-        let mut whole_sha1 = Sha1::new();
-
-        while offset < total_size {
-            let remaining = (total_size - offset) as usize;
-            let this_chunk = std::cmp::min(chunk_size, remaining);
-            let mut chunk = vec![0u8; this_chunk];
-            file.read_exact(&mut chunk)
+        // Every failure after the session exists deletes it, so the parts it
+        // already holds do not wait for Box to expire it.
+        let sent = async {
+            let total_size = source.size();
+            let mut file = tokio::fs::File::open(local_path)
                 .await
                 .map_err(ProviderError::IoError)?;
+            let mut parts: Vec<serde_json::Value> = Vec::new();
+            let mut offset: u64 = 0;
+            let mut whole_sha1 = Sha1::new();
 
-            let chunk_sha1 = {
-                let mut h = Sha1::new();
-                h.update(&chunk);
-                BASE64.encode(h.finalize())
-            };
-            whole_sha1.update(&chunk);
+            while offset < total_size {
+                let remaining = (total_size - offset) as usize;
+                let this_chunk = std::cmp::min(chunk_size, remaining);
+                let mut chunk = vec![0u8; this_chunk];
+                file.read_exact(&mut chunk)
+                    .await
+                    .map_err(ProviderError::IoError)?;
 
-            let token = self.get_token().await?;
-            let end = offset + this_chunk as u64;
-            let content_range = format!("bytes {}-{}/{}", offset, end - 1, total_size);
+                let chunk_sha1 = {
+                    let mut h = Sha1::new();
+                    h.update(&chunk);
+                    BASE64.encode(h.finalize())
+                };
+                whole_sha1.update(&chunk);
 
-            let resp = self
-                .client
-                .put(&upload_part_url)
-                .header(AUTHORIZATION, Self::bearer_header(&token)?)
-                .header(CONTENT_TYPE, "application/octet-stream")
-                .header("Content-Range", &content_range)
-                .header("Digest", format!("sha={}", chunk_sha1))
-                .body(chunk)
-                .send()
-                .await
-                .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                let token = self.get_token().await?;
+                let end = offset + this_chunk as u64;
+                let content_range = format!("bytes {}-{}/{}", offset, end - 1, total_size);
 
-            if !resp.status().is_success() {
-                let t = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::TransferFailed(format!(
-                    "Chunk upload failed: {}",
-                    sanitize_api_error(&t)
-                )));
+                let resp = self
+                    .client
+                    .put(&upload_part_url)
+                    .header(AUTHORIZATION, Self::bearer_header(&token)?)
+                    .header(CONTENT_TYPE, "application/octet-stream")
+                    .header("Content-Range", &content_range)
+                    .header("Digest", format!("sha={}", chunk_sha1))
+                    .body(chunk)
+                    .send()
+                    .await
+                    .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+                if !resp.status().is_success() {
+                    let t = resp.text().await.unwrap_or_default();
+                    return Err(ProviderError::TransferFailed(format!(
+                        "Chunk upload failed: {}",
+                        sanitize_api_error(&t)
+                    )));
+                }
+
+                let part_resp: serde_json::Value = resp
+                    .json()
+                    .await
+                    .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+                if let Some(part) = part_resp.get("part") {
+                    parts.push(part.clone());
+                }
+
+                offset = end;
+                progress.report(offset);
             }
 
-            let part_resp: serde_json::Value = resp
-                .json()
-                .await
-                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
-
-            if let Some(part) = part_resp.get("part") {
-                parts.push(part.clone());
+            // The whole-file SHA-1 is computed from the bytes read, so Box
+            // cannot tell a file rewritten during the read from the one on disk.
+            source.ensure_unchanged("Box chunked upload").await?;
+            Ok((parts, whole_sha1))
+        }
+        .await;
+        let (parts, whole_sha1) = match sent {
+            Ok(sent) => sent,
+            Err(e) => {
+                self.abort_upload_session_best_effort(&session.id).await;
+                return Err(e);
             }
-
-            offset = end;
-            progress.report(offset);
-        }
-
-        // Commit
-        // The whole-file SHA-1 is computed from the bytes read, so Box cannot
-        // tell a file rewritten during the read from the one on disk. The
-        // refused session is deleted rather than left to expire.
-        if let Err(changed) = source.ensure_unchanged("Box chunked upload").await {
-            self.abort_upload_session_best_effort(&session.id).await;
-            return Err(changed);
-        }
+        };
 
         let file_sha1 = BASE64.encode(whole_sha1.finalize());
         let commit_body = serde_json::json!({"parts": parts});
@@ -2025,10 +2040,11 @@ impl StorageProvider for BoxProvider {
         let file_name = crate::restricted_chars::encode_leaf(ProviderType::Box, file_name);
 
         let parent_id = self.resolve_folder_id(parent_path).await?;
-        let total_size = tokio::fs::metadata(local_path)
-            .await
-            .map_err(ProviderError::IoError)?
-            .len();
+        // The size the session declares and the parts cover is the one the
+        // source check compares against before the commit, so both come from
+        // one observation of the file.
+        let source = super::upload_source::UploadSource::observe(local_path).await?;
+        let total_size = source.size();
 
         const CHUNKED_THRESHOLD: u64 = 50 * 1024 * 1024; // 50MB
 
@@ -2088,7 +2104,7 @@ impl StorageProvider for BoxProvider {
                     }
 
                     return self
-                        .chunked_upload_session(ver_resp, local_path, total_size, &progress)
+                        .chunked_upload_session(ver_resp, local_path, source, &progress)
                         .await;
                 }
                 return Err(ProviderError::TransferFailed(format!(
@@ -2098,7 +2114,7 @@ impl StorageProvider for BoxProvider {
             }
 
             return self
-                .chunked_upload_session(session_resp, local_path, total_size, &progress)
+                .chunked_upload_session(session_resp, local_path, source, &progress)
                 .await;
         }
 
@@ -4638,8 +4654,11 @@ mod tests {
             .await
             .unwrap();
         let progress = super::super::upload_progress::UploadProgress::new(None, 12);
+        let source = super::super::upload_source::UploadSource::observe(local.to_str().unwrap())
+            .await
+            .unwrap();
         let err = provider
-            .chunked_upload_session(session, local.to_str().unwrap(), 12, &progress)
+            .chunked_upload_session(session, local.to_str().unwrap(), source, &progress)
             .await
             .expect_err("a rewritten source must not be committed");
         assert!(
@@ -4658,6 +4677,98 @@ mod tests {
             1,
             "the refused session must be deleted"
         );
+        server.abort();
+    }
+
+    /// A part the server refuses ends the upload and deletes the session, so
+    /// the parts it already holds do not wait for Box to expire it.
+    #[tokio::test]
+    async fn a_refused_part_deletes_the_chunked_upload_session() {
+        use std::sync::{Arc, Mutex};
+
+        use axum::{extract::Request, routing::post, routing::put, Router};
+
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("big.bin");
+        std::fs::write(&local, b"AAAAAAAAAAAA").unwrap();
+        let aborts: Arc<Mutex<u32>> = Arc::default();
+        let commits: Arc<Mutex<u32>> = Arc::default();
+        let (aborts_h, commits_h) = (Arc::clone(&aborts), Arc::clone(&commits));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let base = format!("http://{addr}");
+        let session_base = base.clone();
+        let app = Router::new()
+            .route(
+                "/files/upload_sessions",
+                post(move || {
+                    let base = session_base.clone();
+                    async move {
+                        axum::Json(serde_json::json!({
+                            "id": "sess-refused",
+                            "part_size": 4,
+                            "session_endpoints": {
+                                "upload_part": format!("{base}/part"),
+                                "commit": format!("{base}/commit")
+                            }
+                        }))
+                    }
+                }),
+            )
+            .route(
+                "/part",
+                put(|req: Request| async move {
+                    let _ = axum::body::to_bytes(req.into_body(), usize::MAX).await;
+                    (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "no")
+                }),
+            )
+            .route(
+                "/files/upload_sessions/{id}",
+                axum::routing::delete(
+                    move |axum::extract::Path(id): axum::extract::Path<String>| {
+                        let aborts = Arc::clone(&aborts_h);
+                        async move {
+                            assert_eq!(id, "sess-refused");
+                            *aborts.lock().unwrap() += 1;
+                            axum::http::StatusCode::NO_CONTENT
+                        }
+                    },
+                ),
+            )
+            .route(
+                "/commit",
+                post(move || {
+                    let commits = Arc::clone(&commits_h);
+                    async move {
+                        *commits.lock().unwrap() += 1;
+                        axum::Json(serde_json::json!({"entries": []}))
+                    }
+                }),
+            );
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut provider = fixture_connected();
+        provider.upload_base_override = Some(base.clone());
+        let session = reqwest::Client::new()
+            .post(format!("{base}/files/upload_sessions"))
+            .send()
+            .await
+            .unwrap();
+        let progress = super::super::upload_progress::UploadProgress::new(None, 12);
+        let source = super::super::upload_source::UploadSource::observe(local.to_str().unwrap())
+            .await
+            .unwrap();
+        let err = provider
+            .chunked_upload_session(session, local.to_str().unwrap(), source, &progress)
+            .await
+            .expect_err("a refused part fails the upload");
+        assert!(err.to_string().contains("Chunk upload failed"), "{err}");
+        assert_eq!(*aborts.lock().unwrap(), 1, "the session must be deleted");
+        assert_eq!(*commits.lock().unwrap(), 0, "nothing is committed");
         server.abort();
     }
 
