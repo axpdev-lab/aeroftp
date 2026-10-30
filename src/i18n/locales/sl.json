@@ -1577,7 +1577,8 @@
             "selectPairLocalFolder": "Izberite lokalno mapo za par",
             "secondsAgo": "pred {count}s",
             "conflictsCount": "Spori, ki zahtevajo pozornost: {count}",
-            "updateOnlyHint": "Enosmerno posodabljanje kopira samo iz izvora in ohrani novejše ciljne datoteke. Izklopite dodajalno varnostno kopiranje, da izbrišete tudi datoteke, ki obstajajo samo na cilju, vključno z datotekami brez zgodovine sinhronizacije. Pravilnik o sporih se prezre; neznani datumi ostanejo nerazrešeni."
+            "updateOnlyHint": "Enosmerno posodabljanje ohrani novejše ciljne datoteke. Ko je dodajalno varnostno kopiranje izklopljeno, se izbrišejo le prej sinhronizirane datoteke, ki obstajajo izključno na cilju. Datoteke, ki še nikoli niso bile sinhronizirane, se ohranijo za pregled v AeroSync. Pravilnik o sporih se prezre; neznani datumi ostanejo nerazrešeni.",
+            "untrackedDestinationFiles": "{count} ciljnih datotek še nikoli ni bilo sinhroniziranih in so bile ohranjene. Odprite isti izvor in cilj v AeroSync, izberite Zrcaljenje z enosmernim posodabljanjem, preglejte načrt in potrdite želene izbrise."
         },
         "statusBar": {
             "connected": "Povezano",

@@ -15261,10 +15261,12 @@ fn aerocloud_print_sync_result(
             // each carries the reason the comparison already computed.
             "skippedFolders": r.skipped_details.iter().filter(|e| e.is_dir).count(),
             "skippedFiles": r.skipped_details.iter().filter(|e| !e.is_dir).count(),
+            "reviewRequiredFiles": r.skipped_details.iter().filter(|e| e.needs_review).count(),
             "skippedDetails": r.skipped_details.iter().map(|e| serde_json::json!({
                 "path": e.path,
                 "reason": e.reason,
                 "isDir": e.is_dir,
+                "needsReview": e.needs_review,
             })).collect::<Vec<_>>(),
             "conflicts": r.conflicts,
             "errors": r.errors,
@@ -15285,9 +15287,22 @@ fn aerocloud_print_sync_result(
         // list goes to stderr so the summary on stdout keeps its shape for
         // whoever parses it, and it is capped because a large exclude rule
         // should not turn a summary into a listing.
+        let review_required = r
+            .skipped_details
+            .iter()
+            .filter(|entry| entry.needs_review)
+            .count();
+        if review_required > 0 {
+            println!("  review required: {review_required} never-synced destination files kept");
+        }
         if !r.skipped_details.is_empty() && !quiet {
             const SHOWN: usize = 10;
-            for entry in r.skipped_details.iter().take(SHOWN) {
+            let entries = r
+                .skipped_details
+                .iter()
+                .filter(|entry| entry.needs_review)
+                .chain(r.skipped_details.iter().filter(|entry| !entry.needs_review));
+            for entry in entries.take(SHOWN) {
                 eprintln!(
                     "  skipped: {}{} ({})",
                     entry.path,

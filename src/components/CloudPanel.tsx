@@ -21,6 +21,7 @@ import { WatcherStatus } from './WatcherStatus';
 import { SelectiveSyncTree } from './Sync/SelectiveSyncTree';
 import { VersionBrowser } from './Sync/VersionBrowser';
 import { CloudPairsEditor } from './CloudPairsEditor';
+import { CloudReviewNotice, type CloudSkippedEntry } from './CloudReviewNotice';
 import { ConfirmOverlay } from './common/ConfirmOverlay';
 import { MODAL_Z } from '../utils/modalLayers';
 import { useTranslation } from '../i18n';
@@ -133,6 +134,7 @@ interface SyncResult {
     downloaded: number;
     deleted: number;
     skipped: number;
+    skipped_details?: CloudSkippedEntry[];
     conflicts: number;
     errors: string[];
     duration_secs: number;
@@ -355,6 +357,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     const [showCloudPairs, setShowCloudPairs] = useState(false);
     const [pendingDisableConfirm, setPendingDisableConfirm] = useState(false);
     const [reauthRequired, setReauthRequired] = useState<{ provider: string; message: string } | null>(null);
+    const [reviewFiles, setReviewFiles] = useState<CloudSkippedEntry[]>([]);
 
     // Use modular tray sync hook. Pause/Resume/Disable now go through the
     // dedicated aerocloud commands (pause_aerocloud/resume_aerocloud/disable_aerocloud)
@@ -376,6 +379,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
 
     useTauriListener<SyncResult>('cloud_sync_complete', (event) => {
         const result = event.payload;
+        setReviewFiles(result.skipped_details ?? []);
         if (result.errors.length > 0) {
             logger.debug(`Sync completed with ${result.errors.length} errors`);
         } else {
@@ -827,6 +831,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                         </button>
                     </div>
                 )}
+                <CloudReviewNotice entries={reviewFiles} />
                 <CloudDashboard
                     config={config}
                     status={status}

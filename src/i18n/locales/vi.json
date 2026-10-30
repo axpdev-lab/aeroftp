@@ -1577,7 +1577,8 @@
             "selectPairLocalFolder": "Chọn thư mục cục bộ cho cặp",
             "secondsAgo": "{count} giây trước",
             "conflictsCount": "{count} xung đột cần xử lý",
-            "updateOnlyHint": "Cập nhật một chiều chỉ sao chép từ nguồn và giữ lại các tệp đích mới hơn. Tắt sao lưu bổ sung để xóa cả các tệp chỉ có ở đích, kể cả tệp không có lịch sử đồng bộ. Chính sách xung đột bị bỏ qua; các ngày không xác định vẫn chưa được giải quyết."
+            "updateOnlyHint": "Cập nhật một chiều giữ lại các tệp đích mới hơn. Khi tắt sao lưu bổ sung, chỉ những tệp đã từng đồng bộ và chỉ có ở đích mới bị xóa. Các tệp chưa từng đồng bộ được giữ lại để xem xét trong AeroSync. Chính sách xung đột bị bỏ qua; các ngày không xác định vẫn chưa được giải quyết.",
+            "untrackedDestinationFiles": "{count} tệp đích chưa từng được đồng bộ và đã được giữ lại. Mở cùng nguồn và đích trong AeroSync, chọn Phản chiếu với cập nhật một chiều, xem lại kế hoạch rồi xác nhận các thao tác xóa mong muốn."
         },
         "statusBar": {
             "connected": "Đã kết nối",

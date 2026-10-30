@@ -1577,7 +1577,8 @@
             "selectPairLocalFolder": "Lokale map voor paar selecteren",
             "secondsAgo": "{count}s geleden",
             "conflictsCount": "Conflicten die aandacht vereisen: {count}",
-            "updateOnlyHint": "Eenrichtingsupdate kopieert alleen vanuit de bron en behoudt nieuwere doelbestanden. Schakel additieve back-up uit om ook bestanden te verwijderen die alleen op de bestemming bestaan, inclusief bestanden zonder synchronisatiegeschiedenis. Het conflictbeleid wordt genegeerd; onbekende datums blijven onopgelost."
+            "updateOnlyHint": "Eenrichtingsupdate behoudt nieuwere doelbestanden. Als additieve back-up uitstaat, worden alleen eerder gesynchroniseerde bestanden verwijderd die uitsluitend op de bestemming bestaan. Bestanden die nooit zijn gesynchroniseerd, blijven bewaard voor beoordeling in AeroSync. Het conflictbeleid wordt genegeerd; onbekende datums blijven onopgelost.",
+            "untrackedDestinationFiles": "{count} doelbestanden zijn nooit gesynchroniseerd en zijn behouden. Open dezelfde bron en bestemming in AeroSync, selecteer Spiegelen met eenrichtingsupdate, bekijk het plan en bevestig de gewenste verwijderingen."
         },
         "statusBar": {
             "connected": "Verbonden",

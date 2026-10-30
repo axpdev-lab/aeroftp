@@ -1577,7 +1577,8 @@
             "selectPairLocalFolder": "Atlasiet lokālo mapi pārim",
             "secondsAgo": "pirms {count}s",
             "conflictsCount": "Konflikti, kam nepieciešama uzmanība: {count}",
-            "updateOnlyHint": "Vienvirziena atjaunināšana kopē tikai no avota un saglabā jaunākus mērķa failus. Izslēdziet papildinošo dublēšanu, lai dzēstu arī tikai mērķī esošos failus, tostarp failus bez sinhronizācijas vēstures. Konfliktu politika tiek ignorēta; nezināmi datumi paliek neatrisināti."
+            "updateOnlyHint": "Vienvirziena atjaunināšana saglabā jaunākus mērķa failus. Ja papildinošā dublēšana ir izslēgta, tiek dzēsti tikai iepriekš sinhronizēti faili, kas ir vienīgi mērķī. Nekad nesinhronizētie faili tiek saglabāti pārskatīšanai AeroSync. Konfliktu politika tiek ignorēta; nezināmi datumi paliek neatrisināti.",
+            "untrackedDestinationFiles": "{count} mērķa faili nekad nav sinhronizēti un tika saglabāti. Atveriet to pašu avotu un mērķi AeroSync, atlasiet Spoguli ar vienvirziena atjaunināšanu, pārskatiet plānu un apstipriniet vēlamās dzēšanas darbības."
         },
         "statusBar": {
             "connected": "Savienots",

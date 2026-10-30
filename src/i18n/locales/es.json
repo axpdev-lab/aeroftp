@@ -1577,7 +1577,8 @@
             "selectPairLocalFolder": "Seleccionar carpeta local para el par",
             "secondsAgo": "Hace {count}s",
             "conflictsCount": "Conflictos por revisar: {count}",
-            "updateOnlyHint": "La actualización unidireccional solo copia desde el origen y conserva los archivos de destino más recientes. Desactiva la copia de seguridad aditiva para eliminar también los archivos que solo existan en el destino, incluidos los que no tengan historial de sincronización. Se ignora la política de conflictos; las fechas desconocidas quedan sin resolver."
+            "updateOnlyHint": "La actualización unidireccional conserva los archivos de destino más recientes. Con la copia de seguridad aditiva desactivada, solo se eliminan los archivos exclusivos del destino que ya se habían sincronizado. Los archivos nunca sincronizados se conservan para revisarlos en AeroSync. Se ignora la política de conflictos; las fechas desconocidas quedan sin resolver.",
+            "untrackedDestinationFiles": "{count} archivos de destino nunca se han sincronizado y se han conservado. Abre el mismo origen y destino en AeroSync, selecciona Espejo con actualización unidireccional, revisa el plan y confirma las eliminaciones que quieras realizar."
         },
         "statusBar": {
             "connected": "Conectado",

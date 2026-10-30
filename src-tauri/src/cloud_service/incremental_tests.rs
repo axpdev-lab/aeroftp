@@ -899,6 +899,77 @@ async fn one_way_update_watcher_does_not_delete_from_an_empty_source() {
 }
 
 #[tokio::test]
+async fn one_way_update_watcher_keeps_and_reports_untracked_destinations_every_pass() {
+    for direction in [
+        CompareDirection::LocalToRemote,
+        CompareDirection::RemoteToLocal,
+    ] {
+        for bulk in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            let upload = direction == CompareDirection::LocalToRemote;
+            let config = CloudConfig {
+                sync_direction: direction,
+                update_only: true,
+                preserve_remote_deletes: false,
+                ..pair(root.path())
+            };
+            let mut remote = MemRemote::new();
+            remote.state().bulk = bulk;
+            let mut index = empty_index(&config);
+            synced(
+                &mut index,
+                &remote,
+                root.path(),
+                "keep",
+                b"source stays available",
+            );
+            if upload {
+                synced(
+                    &mut index,
+                    &remote,
+                    root.path(),
+                    "gone",
+                    b"previously synced",
+                );
+                std::fs::remove_file(root.path().join("gone")).unwrap();
+                remote.put("/remote/phone", b"only copy from lost phone", SYNCED_AT);
+            } else {
+                std::fs::write(root.path().join("phone"), b"only copy from lost phone").unwrap();
+            }
+            for round in 0..3 {
+                let prepared = work(prep(&config, &index, &["phone", "gone"]));
+                let (run, saved) = execute(&config, prepared, &mut remote, None).await;
+                let (result, failed) = done(run);
+                assert!(failed.is_empty());
+                assert!(result.errors.is_empty(), "{:?}", result.errors);
+                assert_eq!(result.deleted, u32::from(upload && round == 0));
+                let warnings: Vec<_> = result
+                    .skipped_details
+                    .iter()
+                    .filter(|entry| entry.needs_review)
+                    .collect();
+                assert_eq!(warnings.len(), 1);
+                assert_eq!(warnings[0].path, "phone");
+                assert!(warnings[0].reason.contains("AeroSync"));
+                assert!(!saved.files.contains_key("phone"));
+                let bytes = if upload {
+                    remote.state().files["/remote/phone"].0.clone()
+                } else {
+                    std::fs::read(root.path().join("phone")).unwrap()
+                };
+                assert_eq!(bytes, b"only copy from lost phone");
+                assert!(remote
+                    .state()
+                    .deletes
+                    .iter()
+                    .all(|path| path == "/remote/gone"));
+                index = saved;
+            }
+        }
+    }
+}
+
+#[tokio::test]
 async fn one_way_update_rename_does_not_replace_a_newer_destination() {
     let root = tempfile::tempdir().unwrap();
     let config = CloudConfig {

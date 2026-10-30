@@ -1577,7 +1577,8 @@
             "selectPairLocalFolder": "Välj lokal mapp för paret",
             "secondsAgo": "{count}s sedan",
             "conflictsCount": "Konflikter som kräver åtgärd: {count}",
-            "updateOnlyHint": "Envägsuppdatering kopierar bara från källan och behåller nyare målfiler. Stäng av additiv säkerhetskopiering för att även ta bort filer som bara finns på målet, inklusive filer utan synkroniseringshistorik. Konfliktpolicyn ignoreras; okända datum förblir olösta."
+            "updateOnlyHint": "Envägsuppdatering behåller nyare målfiler. När additiv säkerhetskopiering är avstängd tas bara tidigare synkroniserade filer som enbart finns på målet bort. Filer som aldrig har synkroniserats behålls för granskning i AeroSync. Konfliktpolicyn ignoreras; okända datum förblir olösta.",
+            "untrackedDestinationFiles": "{count} målfiler har aldrig synkroniserats och behölls. Öppna samma källa och mål i AeroSync, välj Spegling med envägsuppdatering, granska planen och bekräfta önskade borttagningar."
         },
         "statusBar": {
             "connected": "Ansluten",

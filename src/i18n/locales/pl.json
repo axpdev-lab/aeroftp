@@ -1577,7 +1577,8 @@
             "selectPairLocalFolder": "Wybierz folder lokalny dla pary",
             "secondsAgo": "{count}s temu",
             "conflictsCount": "Konflikty wymagające uwagi: {count}",
-            "updateOnlyHint": "Aktualizacja jednokierunkowa kopiuje tylko ze źródła i zachowuje nowsze pliki docelowe. Wyłącz kopię zapasową z dodawaniem, aby usuwać także pliki istniejące tylko w miejscu docelowym, w tym pliki bez historii synchronizacji. Zasady konfliktów są ignorowane; nieznane daty pozostają nierozstrzygnięte."
+            "updateOnlyHint": "Aktualizacja jednokierunkowa zachowuje nowsze pliki docelowe. Gdy kopia zapasowa z dodawaniem jest wyłączona, usuwane są tylko wcześniej synchronizowane pliki istniejące wyłącznie w miejscu docelowym. Pliki, które nigdy nie były synchronizowane, są zachowywane do sprawdzenia w AeroSync. Zasady konfliktów są ignorowane; nieznane daty pozostają nierozstrzygnięte.",
+            "untrackedDestinationFiles": "{count} plików docelowych nigdy nie było synchronizowanych i zostało zachowanych. Otwórz to samo źródło i miejsce docelowe w AeroSync, wybierz Odbicie lustrzane z aktualizacją jednokierunkową, przejrzyj plan i potwierdź żądane usunięcia."
         },
         "statusBar": {
             "connected": "Połączono",

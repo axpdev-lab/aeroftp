@@ -1577,7 +1577,8 @@
             "selectPairLocalFolder": "Vælg lokal mappe til parret",
             "secondsAgo": "{count}s siden",
             "conflictsCount": "Konflikter, der kræver opmærksomhed: {count}",
-            "updateOnlyHint": "Envejsopdatering kopierer kun fra kilden og beholder nyere destinationsfiler. Slå additiv sikkerhedskopiering fra for også at slette filer, der kun findes på destinationen, herunder filer uden synkroniseringshistorik. Konfliktpolitikken ignoreres; ukendte datoer forbliver uafklarede."
+            "updateOnlyHint": "Envejsopdatering beholder nyere destinationsfiler. Når additiv sikkerhedskopiering er slået fra, slettes kun tidligere synkroniserede filer, der kun findes på destinationen. Filer, der aldrig er blevet synkroniseret, bevares til gennemgang i AeroSync. Konfliktpolitikken ignoreres; ukendte datoer forbliver uafklarede.",
+            "untrackedDestinationFiles": "{count} destinationsfiler er aldrig blevet synkroniseret og blev bevaret. Åbn samme kilde og destination i AeroSync, vælg Spejling med envejsopdatering, gennemgå planen, og bekræft de ønskede sletninger."
         },
         "statusBar": {
             "connected": "Forbundet",

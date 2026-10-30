@@ -126,6 +126,9 @@ pub struct SkippedEntry {
     pub path: String,
     pub reason: String,
     pub is_dir: bool,
+    /// A never-synced destination file needs an explicit AeroSync decision.
+    #[serde(default)]
+    pub needs_review: bool,
 }
 
 /// Result of a sync operation
@@ -197,7 +200,10 @@ impl UpdatePolicy {
         };
         match (source, destination) {
             (None, Some(_))
-                if !config.preserve_remote_deletes && self.allow_orphan_deletes && !row.is_dir =>
+                if row.previously_synced
+                    && !config.preserve_remote_deletes
+                    && self.allow_orphan_deletes
+                    && !row.is_dir =>
             {
                 if upload {
                     SyncAction::DeleteRemote
@@ -223,6 +229,28 @@ impl UpdatePolicy {
                 }
             }
             _ => SyncAction::Skip,
+        }
+    }
+
+    /// A file this device never synced is not evidence of a source deletion.
+    /// Keep it out of the baseline and report the explicit manual decision.
+    fn untracked_destination(config: &CloudConfig, row: &FileComparison) -> bool {
+        if !config.update_only
+            || config.preserve_remote_deletes
+            || row.previously_synced
+            || row.is_dir
+            || row.name_match_blocked
+        {
+            return false;
+        }
+        match config.sync_direction {
+            CompareDirection::LocalToRemote => {
+                row.local_info.is_none() && row.remote_info.is_some()
+            }
+            CompareDirection::RemoteToLocal => {
+                row.remote_info.is_none() && row.local_info.is_some()
+            }
+            CompareDirection::Bidirectional => false,
         }
     }
 }
@@ -1205,7 +1233,9 @@ impl CloudService {
         // (`listing_is_authoritative() == false`, ImageKit) cannot authorise
         // deleting a local file by that file's absence: the same rule
         // `sync::remote_listing_delete_guard` applies on the shared path.
-        if !provider.listing_is_authoritative() {
+        if !provider.listing_is_authoritative()
+            && !(config.update_only && config.sync_direction != CompareDirection::Bidirectional)
+        {
             for c in &mut comparisons {
                 if c.status == SyncStatus::LocalOnly {
                     c.previously_synced = false;
@@ -1266,7 +1296,9 @@ impl CloudService {
                 remote_complete
             );
             for c in &mut comparisons {
-                if c.status == SyncStatus::LocalOnly || c.status == SyncStatus::RemoteOnly {
+                if !(config.update_only && config.sync_direction != CompareDirection::Bidirectional)
+                    && (c.status == SyncStatus::LocalOnly || c.status == SyncStatus::RemoteOnly)
+                {
                     c.previously_synced = false;
                 }
             }
@@ -1334,7 +1366,7 @@ impl CloudService {
             }
             match self.resolve_action(&config, comparison, update_policy) {
                 SyncAction::AskUser => result.conflicts += 1,
-                action => Self::record_sync_action(&mut result, comparison, &action),
+                action => Self::record_sync_action(&mut result, &config, comparison, &action),
             }
         }
 
@@ -1415,7 +1447,7 @@ impl CloudService {
                         result.conflicts += 1;
                         self.push_conflict(comparison).await;
                     }
-                    _ => Self::record_sync_action(&mut result, comparison, &action),
+                    _ => Self::record_sync_action(&mut result, &config, comparison, &action),
                 },
                 Err(e) => {
                     result
@@ -1508,6 +1540,7 @@ impl CloudService {
 
     fn record_sync_action(
         result: &mut SyncOperationResult,
+        config: &CloudConfig,
         comparison: &FileComparison,
         action: &SyncAction,
     ) {
@@ -1545,10 +1578,20 @@ impl CloudService {
             SyncAction::DeleteLocal | SyncAction::DeleteRemote => result.deleted += 1,
             SyncAction::Skip => {
                 result.skipped += 1;
+                let needs_review = UpdatePolicy::untracked_destination(config, comparison);
+                let reason = if needs_review {
+                    "Never-synced destination file kept. Open the same source and destination in AeroSync, select Mirror with One-way Update, review the plan and confirm any intended deletions.".to_string()
+                } else {
+                    comparison.sync_reason.clone()
+                };
+                if needs_review {
+                    tracing::warn!("AeroCloud: {}: {}", comparison.relative_path, reason);
+                }
                 result.skipped_details.push(SkippedEntry {
                     path: comparison.relative_path.clone(),
-                    reason: comparison.sync_reason.clone(),
+                    reason,
                     is_dir: comparison.is_dir,
+                    needs_review,
                 });
             }
             SyncAction::AskUser => {}
@@ -2631,7 +2674,7 @@ mod baseline_tests {
     }
 
     #[test]
-    fn one_way_update_keeps_newer_destinations_and_deletes_untracked_orphans() {
+    fn one_way_update_keeps_newer_destinations_and_deletes_only_baselined_orphans() {
         let svc = CloudService::new();
         for direction in [
             CompareDirection::LocalToRemote,
@@ -2660,7 +2703,7 @@ mod baseline_tests {
                     svc.resolve_action(&config, &row, UpdatePolicy::default()),
                     SyncAction::Skip
                 );
-                let orphan = cmp(
+                let mut orphan = cmp(
                     if upload {
                         SyncStatus::RemoteOnly
                     } else {
@@ -2676,6 +2719,16 @@ mod baseline_tests {
                 } else {
                     SyncAction::DeleteLocal
                 };
+                let allowed = UpdatePolicy {
+                    allow_orphan_deletes: true,
+                    ..Default::default()
+                };
+                assert_eq!(
+                    svc.resolve_action(&config, &orphan, allowed),
+                    SyncAction::Skip
+                );
+                assert!(UpdatePolicy::untracked_destination(&config, &orphan));
+                orphan.previously_synced = true;
                 assert_eq!(
                     svc.resolve_action(
                         &config,
@@ -4988,43 +5041,71 @@ mod baseline_tests {
                     ..Default::default()
                 })
                 .await;
-                let preview = svc
-                    .preview_full_sync_with_provider(&mut provider)
-                    .await
-                    .unwrap();
-                assert_eq!(preview.deleted, 1);
-                assert_eq!(
-                    (preview.uploaded, preview.downloaded),
-                    if upload { (1, 0) } else { (0, 1) }
-                );
-                assert_eq!(
-                    provider.stored.contains_key(&format!("{remote}/orphan")),
-                    upload
-                );
-                assert_eq!(local.path().join("orphan").exists(), !upload);
-                let result = svc
-                    .perform_full_sync_with_provider(&mut provider)
-                    .await
-                    .unwrap();
-                assert!(result.errors.is_empty(), "{:?}", result.errors);
-                assert_eq!(
-                    (result.uploaded, result.downloaded, result.deleted),
-                    (preview.uploaded, preview.downloaded, preview.deleted)
-                );
-                assert_eq!(
-                    std::fs::read(local.path().join("keep")).unwrap(),
-                    before_local
-                );
-                assert_eq!(provider.stored[&format!("{remote}/keep")].0, before_remote);
-                assert!(!local.path().join("orphan").exists());
-                assert!(!provider.stored.contains_key(&format!("{remote}/orphan")));
-                if upload {
-                    assert_eq!(provider.stored[&format!("{remote}/new")].0, b"source only");
-                } else {
+                for round in 0..3 {
+                    let preview = svc
+                        .preview_full_sync_with_provider(&mut provider)
+                        .await
+                        .unwrap();
+                    assert_eq!(preview.deleted, 0);
                     assert_eq!(
-                        std::fs::read(local.path().join("new")).unwrap(),
-                        b"source only"
+                        (preview.uploaded, preview.downloaded),
+                        if round > 0 {
+                            (0, 0)
+                        } else if upload {
+                            (1, 0)
+                        } else {
+                            (0, 1)
+                        }
                     );
+                    assert_eq!(
+                        provider.stored.contains_key(&format!("{remote}/orphan")),
+                        upload
+                    );
+                    assert_eq!(local.path().join("orphan").exists(), !upload);
+                    let result = svc
+                        .perform_full_sync_with_provider(&mut provider)
+                        .await
+                        .unwrap();
+                    assert!(result.errors.is_empty(), "{:?}", result.errors);
+                    assert_eq!(
+                        (result.uploaded, result.downloaded, result.deleted),
+                        (preview.uploaded, preview.downloaded, preview.deleted)
+                    );
+                    assert_eq!(
+                        std::fs::read(local.path().join("keep")).unwrap(),
+                        before_local
+                    );
+                    assert_eq!(provider.stored[&format!("{remote}/keep")].0, before_remote);
+                    assert_eq!(local.path().join("orphan").exists(), !upload);
+                    assert_eq!(
+                        provider.stored.contains_key(&format!("{remote}/orphan")),
+                        upload
+                    );
+                    let warnings: Vec<_> = result
+                        .skipped_details
+                        .iter()
+                        .filter(|entry| entry.needs_review)
+                        .collect();
+                    assert_eq!(warnings.len(), 1);
+                    assert_eq!(warnings[0].path, "orphan");
+                    assert!(warnings[0].reason.contains("AeroSync"));
+                    assert!(preview
+                        .skipped_details
+                        .iter()
+                        .any(|entry| entry.path == "orphan" && entry.needs_review));
+                    assert!(!svc
+                        .load_index(&svc.config.read().await)
+                        .unwrap()
+                        .files
+                        .contains_key("orphan"));
+                    if upload {
+                        assert_eq!(provider.stored[&format!("{remote}/new")].0, b"source only");
+                    } else {
+                        assert_eq!(
+                            std::fs::read(local.path().join("new")).unwrap(),
+                            b"source only"
+                        );
+                    }
                 }
             }
         });
@@ -5041,7 +5122,7 @@ mod baseline_tests {
     // The scratch-index fixture isolates the application data root through XDG only on Linux.
     #[test]
     #[cfg(target_os = "linux")]
-    fn one_way_update_first_cycle_mass_delete_is_refused_in_preview_and_execution() {
+    fn one_way_update_first_cycle_untracked_files_stay_out_of_the_baseline() {
         with_scratch_index(async {
             for direction in [
                 CompareDirection::LocalToRemote,
@@ -5086,13 +5167,14 @@ mod baseline_tests {
                         .await
                         .unwrap();
                     assert_eq!(preview.deleted, 0);
-                    assert!(
+                    assert!(preview.errors.is_empty(), "{:?}", preview.errors);
+                    assert_eq!(
                         preview
-                            .errors
+                            .skipped_details
                             .iter()
-                            .any(|e| e.contains("blocked 20 deletes")),
-                        "{:?}",
-                        preview.errors
+                            .filter(|entry| entry.needs_review)
+                            .count(),
+                        20
                     );
                     let result = svc
                         .perform_full_sync_with_provider(&mut provider)
@@ -5100,6 +5182,20 @@ mod baseline_tests {
                         .unwrap();
                     assert_eq!(result.deleted, 0);
                     assert_eq!(result.errors, preview.errors);
+                    assert_eq!(
+                        result
+                            .skipped_details
+                            .iter()
+                            .filter(|entry| entry.needs_review)
+                            .count(),
+                        20
+                    );
+                    assert!(!svc
+                        .load_index(&svc.config.read().await)
+                        .unwrap()
+                        .files
+                        .keys()
+                        .any(|name| name.starts_with("orphan-")));
                     for i in 0..20 {
                         let name = format!("orphan-{i}");
                         let bytes = if upload {
@@ -5108,6 +5204,97 @@ mod baseline_tests {
                             std::fs::read(local.path().join(name)).unwrap()
                         };
                         assert_eq!(bytes, b"destination");
+                    }
+                }
+            }
+        });
+    }
+
+    // The scratch-index fixture relocates the application data root only on Linux.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn one_way_update_baselined_deletes_respect_the_mass_limit() {
+        with_scratch_index(async {
+            for direction in [
+                CompareDirection::LocalToRemote,
+                CompareDirection::RemoteToLocal,
+            ] {
+                for removed in [1, 20] {
+                    let local = tempfile::tempdir().unwrap();
+                    let upload = direction == CompareDirection::LocalToRemote;
+                    let remote = "/baselined-update";
+                    let mut provider = MemoryProvider::default();
+                    for i in 0..removed + 3 {
+                        let name = format!("file-{i}");
+                        if upload {
+                            std::fs::write(local.path().join(name), b"synced bytes").unwrap();
+                        } else {
+                            provider.put(&format!("{remote}/{name}"), b"synced bytes");
+                        }
+                    }
+                    let svc = CloudService::new();
+                    let config = CloudConfig {
+                        enabled: true,
+                        local_folder: local.path().into(),
+                        remote_folder: remote.into(),
+                        sync_direction: direction,
+                        update_only: true,
+                        preserve_remote_deletes: false,
+                        ..Default::default()
+                    };
+                    svc.init(config.clone()).await;
+                    let first = svc
+                        .perform_full_sync_with_provider(&mut provider)
+                        .await
+                        .unwrap();
+                    assert!(first.errors.is_empty(), "{:?}", first.errors);
+                    assert_eq!(svc.load_index(&config).unwrap().files.len(), removed + 3);
+                    for i in 0..removed {
+                        let name = format!("file-{i}");
+                        if upload {
+                            std::fs::remove_file(local.path().join(name)).unwrap();
+                        } else {
+                            provider.stored.remove(&format!("{remote}/{name}"));
+                        }
+                    }
+                    let preview = svc
+                        .preview_full_sync_with_provider(&mut provider)
+                        .await
+                        .unwrap();
+                    let result = svc
+                        .perform_full_sync_with_provider(&mut provider)
+                        .await
+                        .unwrap();
+                    let expected = if removed == 1 { 1 } else { 0 };
+                    assert_eq!(preview.deleted, expected);
+                    assert_eq!(result.deleted, expected);
+                    assert_eq!(preview.errors, result.errors);
+                    assert_eq!(result.errors.is_empty(), removed == 1);
+                    assert!(result
+                        .skipped_details
+                        .iter()
+                        .all(|entry| !entry.needs_review));
+                    for i in 0..removed {
+                        let name = format!("file-{i}");
+                        let present = if upload {
+                            provider.stored.contains_key(&format!("{remote}/{name}"))
+                        } else {
+                            local.path().join(name).exists()
+                        };
+                        assert_eq!(present, removed == 20);
+                    }
+                    if removed == 20 {
+                        assert!(result.errors[0].contains("blocked 20 deletes"));
+                        let again = svc
+                            .perform_full_sync_with_provider(&mut provider)
+                            .await
+                            .unwrap();
+                        assert_eq!(again.deleted, 0);
+                        assert!(again
+                            .skipped_details
+                            .iter()
+                            .all(|entry| !entry.needs_review));
+                        assert_eq!(svc.load_index(&config).unwrap().files.len(), 23);
                     }
                 }
             }

@@ -1577,7 +1577,8 @@
             "selectPairLocalFolder": "Pasirinkite vietinį aplanką porai",
             "secondsAgo": "prieš {count}s",
             "conflictsCount": "Konfliktai, kuriems reikia dėmesio: {count}",
-            "updateOnlyHint": "Vienkryptis atnaujinimas kopijuoja tik iš šaltinio ir išsaugo naujesnius paskirties failus. Išjunkite papildomąjį atsarginį kopijavimą, kad būtų pašalinti ir tik paskirties vietoje esantys failai, įskaitant failus be sinchronizavimo istorijos. Konfliktų politika nepaisoma; nežinomos datos lieka neišspręstos."
+            "updateOnlyHint": "Vienkryptis atnaujinimas išsaugo naujesnius paskirties failus. Kai papildomasis atsarginis kopijavimas išjungtas, pašalinami tik anksčiau sinchronizuoti failai, esantys vien paskirties vietoje. Niekada nesinchronizuoti failai išsaugomi peržiūrai programoje AeroSync. Konfliktų politika nepaisoma; nežinomos datos lieka neišspręstos.",
+            "untrackedDestinationFiles": "{count} paskirties failų niekada nebuvo sinchronizuoti ir buvo išsaugoti. Atverkite tą patį šaltinį ir paskirties vietą programoje AeroSync, pasirinkite Veidrodį su vienkrypčiu atnaujinimu, peržiūrėkite planą ir patvirtinkite norimus pašalinimus."
         },
         "statusBar": {
             "connected": "Prisijungta",

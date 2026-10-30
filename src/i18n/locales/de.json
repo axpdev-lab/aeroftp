@@ -1577,7 +1577,8 @@
             "selectPairLocalFolder": "Lokalen Ordner für Paar auswählen",
             "secondsAgo": "vor {count}s",
             "conflictsCount": "Zu prüfende Konflikte: {count}",
-            "updateOnlyHint": "Die Einweg-Aktualisierung kopiert nur aus der Quelle und behält neuere Zieldateien bei. Deaktivieren Sie die additive Sicherung, um auch Dateien zu löschen, die nur im Ziel vorhanden sind, einschließlich Dateien ohne Synchronisierungsverlauf. Die Konfliktrichtlinie wird ignoriert; unbekannte Datumsangaben bleiben ungeklärt."
+            "updateOnlyHint": "Die Einweg-Aktualisierung behält neuere Zieldateien bei. Bei deaktivierter additiver Sicherung werden nur zuvor synchronisierte Dateien gelöscht, die ausschließlich im Ziel vorhanden sind. Nie synchronisierte Dateien bleiben zur Prüfung in AeroSync erhalten. Die Konfliktrichtlinie wird ignoriert; unbekannte Datumsangaben bleiben ungeklärt.",
+            "untrackedDestinationFiles": "{count} Zieldateien wurden noch nie synchronisiert und daher beibehalten. Öffnen Sie dieselbe Quelle und dasselbe Ziel in AeroSync, wählen Sie Spiegeln mit Einweg-Aktualisierung, prüfen Sie den Plan und bestätigen Sie die gewünschten Löschungen."
         },
         "statusBar": {
             "connected": "Verbunden",

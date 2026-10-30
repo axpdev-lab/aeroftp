@@ -1577,7 +1577,8 @@
             "selectPairLocalFolder": "Sélectionner le dossier local de la paire",
             "secondsAgo": "Il y a {count}s",
             "conflictsCount": "Conflits à traiter : {count}",
-            "updateOnlyHint": "La mise à jour unidirectionnelle copie uniquement depuis la source et conserve les fichiers de destination plus récents. Désactivez la sauvegarde additive pour supprimer aussi les fichiers présents uniquement à destination, y compris ceux sans historique de synchronisation. La politique de conflit est ignorée ; les dates inconnues restent non résolues."
+            "updateOnlyHint": "La mise à jour unidirectionnelle conserve les fichiers de destination plus récents. Lorsque la sauvegarde additive est désactivée, seuls les fichiers présents uniquement à destination et déjà synchronisés sont supprimés. Les fichiers jamais synchronisés sont conservés pour examen dans AeroSync. La politique de conflit est ignorée ; les dates inconnues restent non résolues.",
+            "untrackedDestinationFiles": "{count} fichiers de destination n’ont jamais été synchronisés et ont été conservés. Ouvrez les mêmes source et destination dans AeroSync, sélectionnez Miroir avec la mise à jour unidirectionnelle, examinez le plan et confirmez les suppressions souhaitées."
         },
         "statusBar": {
             "connected": "Connecté",

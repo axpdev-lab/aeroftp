@@ -1577,7 +1577,8 @@
             "selectPairLocalFolder": "Valitse paikallinen kansio parille",
             "secondsAgo": "{count}s sitten",
             "conflictsCount": "Huomiota vaativat ristiriidat: {count}",
-            "updateOnlyHint": "Yksisuuntainen päivitys kopioi vain lähteestä ja säilyttää uudemmat kohdetiedostot. Poista lisäävä varmuuskopiointi käytöstä, jos haluat poistaa myös vain kohteessa olevat tiedostot, mukaan lukien tiedostot ilman synkronointihistoriaa. Ristiriitakäytäntö ohitetaan; tuntemattomat päivämäärät jäävät ratkaisematta."
+            "updateOnlyHint": "Yksisuuntainen päivitys säilyttää uudemmat kohdetiedostot. Kun lisäävä varmuuskopiointi on pois käytöstä, vain aiemmin synkronoidut, pelkästään kohteessa olevat tiedostot poistetaan. Tiedostot, joita ei ole koskaan synkronoitu, säilytetään tarkistettaviksi AeroSyncissä. Ristiriitakäytäntö ohitetaan; tuntemattomat päivämäärät jäävät ratkaisematta.",
+            "untrackedDestinationFiles": "{count} kohdetiedostoa ei ole koskaan synkronoitu, joten ne säilytettiin. Avaa sama lähde ja kohde AeroSyncissä, valitse Peilaus ja yksisuuntainen päivitys, tarkista suunnitelma ja vahvista haluamasi poistot."
         },
         "statusBar": {
             "connected": "Yhdistetty",

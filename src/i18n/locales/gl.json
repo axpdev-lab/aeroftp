@@ -1577,7 +1577,8 @@
             "selectPairLocalFolder": "Seleccionar cartafol local para o par",
             "secondsAgo": "hai {count}s",
             "conflictsCount": "Conflitos por revisar: {count}",
-            "updateOnlyHint": "A actualización unidireccional só copia desde a orixe e conserva os ficheiros de destino máis recentes. Desactiva a copia de seguranza aditiva para eliminar tamén os ficheiros que só existan no destino, incluídos os que non teñan historial de sincronización. Ignórase a política de conflitos; as datas descoñecidas quedan sen resolver."
+            "updateOnlyHint": "A actualización unidireccional conserva os ficheiros de destino máis recentes. Coa copia de seguranza aditiva desactivada, só se eliminan os ficheiros exclusivos do destino que xa se sincronizaran. Os ficheiros nunca sincronizados consérvanse para revisalos en AeroSync. Ignórase a política de conflitos; as datas descoñecidas quedan sen resolver.",
+            "untrackedDestinationFiles": "{count} ficheiros de destino nunca se sincronizaron e conserváronse. Abre a mesma orixe e destino en AeroSync, selecciona Espello con actualización unidireccional, revisa o plan e confirma as eliminacións que queiras realizar."
         },
         "statusBar": {
             "connected": "Conectado",

@@ -456,6 +456,15 @@ fn plan(
             (Local::File(info), Some(entry))
                 if !entry.is_dir && !changed_since(info, entry, hints.compare_size) => {}
             (Local::Dir(_), Some(entry)) if entry.is_dir => {}
+            (Local::Absent, None)
+                if config.update_only
+                    && config.sync_direction == CompareDirection::LocalToRemote =>
+            {
+                // A remove event can name a file this device never synced.
+                // Stat the destination so it can be kept and reported, never
+                // inferred to be a user-approved delete from the event alone.
+                work.insert(key.clone(), None);
+            }
             (Local::Absent, None) => {}
             (Local::Absent, Some(_)) => {
                 work.insert(key.clone(), None);
@@ -776,6 +785,7 @@ impl CloudService {
                     path: key.clone(),
                     reason: "this path has an ambiguous or occupied remote spelling; it waits for the next full scan".to_string(),
                     is_dir: local.as_ref().is_some_and(|info| info.is_dir),
+                    needs_review: false,
                 });
                 continue;
             };
@@ -857,7 +867,9 @@ impl CloudService {
                 comparison.remote_relative_path = Some(remote.clone());
             }
         }
-        if !provider.listing_is_authoritative() {
+        if !provider.listing_is_authoritative()
+            && !(config.update_only && config.sync_direction != CompareDirection::Bidirectional)
+        {
             for c in &mut comparisons {
                 if c.status == SyncStatus::LocalOnly {
                     c.previously_synced = false;
@@ -869,7 +881,8 @@ impl CloudService {
             window: options.modify_window,
             // This bounded pass stats only changed paths, not the entire
             // destination. Missing remote copies are deferred to a full scan
-            // below; absent local paths enter the plan only from the baseline.
+            // below. Unknown remove events are inspected only to report a
+            // never-synced destination file; deletion still needs a baseline.
             // A failed stat stays out of the comparisons altogether.
             allow_orphan_deletes: config.sync_direction == CompareDirection::LocalToRemote
                 && !local_root_is_empty(&config.local_folder),
@@ -887,6 +900,7 @@ impl CloudService {
                 path: c.relative_path.clone(),
                 reason: "the remote copy is gone; deletes from the remote side wait for the next full scan".to_string(),
                 is_dir: c.is_dir,
+                needs_review: false,
             });
         }
 
@@ -904,7 +918,9 @@ impl CloudService {
                 local_empty
             );
             for c in &mut comparisons {
-                if c.status == SyncStatus::LocalOnly || c.status == SyncStatus::RemoteOnly {
+                if !(config.update_only && config.sync_direction != CompareDirection::Bidirectional)
+                    && (c.status == SyncStatus::LocalOnly || c.status == SyncStatus::RemoteOnly)
+                {
                     c.previously_synced = false;
                 }
             }
@@ -931,7 +947,7 @@ impl CloudService {
                     done.push(comparison.clone());
                 }
                 Ok(action) => {
-                    Self::record_sync_action(&mut result, comparison, &action);
+                    Self::record_sync_action(&mut result, &config, comparison, &action);
                     done.push(comparison.clone());
                 }
                 Err(e) => {

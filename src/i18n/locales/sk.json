@@ -1577,7 +1577,8 @@
             "selectPairLocalFolder": "Vyberte miestny priečinok pre pár",
             "secondsAgo": "pred {count}s",
             "conflictsCount": "Konflikty vyžadujúce pozornosť: {count}",
-            "updateOnlyHint": "Jednosmerná aktualizácia kopíruje iba zo zdroja a zachováva novšie cieľové súbory. Vypnite prídavné zálohovanie, aby sa odstránili aj súbory existujúce iba v cieli vrátane súborov bez histórie synchronizácie. Zásady konfliktov sa ignorujú; neznáme dátumy zostávajú nevyriešené."
+            "updateOnlyHint": "Jednosmerná aktualizácia zachováva novšie cieľové súbory. Keď je prídavné zálohovanie vypnuté, odstránia sa iba predtým synchronizované súbory, ktoré existujú výlučne v cieli. Súbory, ktoré nikdy neboli synchronizované, sa zachovajú na kontrolu v AeroSync. Zásady konfliktov sa ignorujú; neznáme dátumy zostávajú nevyriešené.",
+            "untrackedDestinationFiles": "{count} cieľových súborov nebolo nikdy synchronizovaných a boli zachované. Otvorte rovnaký zdroj a cieľ v AeroSync, vyberte Zrkadlenie s jednosmernou aktualizáciou, skontrolujte plán a potvrďte požadované odstránenia."
         },
         "statusBar": {
             "connected": "Pripojený",

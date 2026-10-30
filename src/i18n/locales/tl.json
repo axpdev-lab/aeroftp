@@ -1577,7 +1577,8 @@
             "selectPairLocalFolder": "Pumili ng lokal na folder para sa pares",
             "secondsAgo": "{count}s nakalipas",
             "conflictsCount": "{count} salungatan ang nangangailangan ng pansin",
-            "updateOnlyHint": "Ang isang direksiyong pag-update ay kumokopya lang mula sa pinagmulan at nagpapanatili ng mas bagong mga file sa destinasyon. I-off ang backup na nagdaragdag lang para burahin din ang mga file na nasa destinasyon lang, pati ang mga walang kasaysayan ng pag-sync. Hindi sinusunod ang patakaran sa salungatan; nananatiling hindi nalulutas ang mga hindi kilalang petsa."
+            "updateOnlyHint": "Pinapanatili ng isang direksiyong pag-update ang mas bagong mga file sa destinasyon. Kapag naka-off ang backup na nagdaragdag lang, tanging mga file na nasa destinasyon lang at dati nang na-sync ang binubura. Pinapanatili ang mga file na hindi pa kailanman na-sync para sa pagsusuri sa AeroSync. Hindi sinusunod ang patakaran sa salungatan; nananatiling hindi nalulutas ang mga hindi kilalang petsa.",
+            "untrackedDestinationFiles": "{count} file sa destinasyon ang hindi pa kailanman na-sync at pinanatili ang mga ito. Buksan ang parehong pinagmulan at destinasyon sa AeroSync, piliin ang Mirror na may isang direksiyong pag-update, suriin ang plano at kumpirmahin ang mga nais mong burahin."
         },
         "statusBar": {
             "connected": "Nakakonekta",

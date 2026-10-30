@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "ee0293086b54e503ba82b8ee0f82e15519d24b659cf771a14489086d6f186689",
+    "enHash": "9dbf5756813a4ba3b09e7af70a1ac5cb44f2a1c1f4b6523d9e2561af285e453a",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -264,6 +264,9 @@
         ],
         "cloud.syncing": [
             "Syncing..."
+        ],
+        "cloud.updateOnlyHint": [
+            "One-way Update copies only from the source and keeps newer destination files. Turn off additive backup to also delete destination-only files, including files with no sync history. The conflict policy is ignored; unknown dates stay unresolved."
         ],
         "connection.aerocloudDesc": [
             "Turn any FTP server into your personal cloud with automatic sync"

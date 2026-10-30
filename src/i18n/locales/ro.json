@@ -1577,7 +1577,8 @@
             "selectPairLocalFolder": "Selectați folderul local pentru pereche",
             "secondsAgo": "acum {count}s",
             "conflictsCount": "Conflicte care necesită atenție: {count}",
-            "updateOnlyHint": "Actualizarea unidirecțională copiază doar din sursă și păstrează fișierele mai noi de la destinație. Dezactivați backupul aditiv pentru a șterge și fișierele existente doar la destinație, inclusiv pe cele fără istoric de sincronizare. Politica de conflicte este ignorată; datele necunoscute rămân nerezolvate."
+            "updateOnlyHint": "Actualizarea unidirecțională păstrează fișierele mai noi de la destinație. Când backupul aditiv este dezactivat, sunt șterse doar fișierele sincronizate anterior care există exclusiv la destinație. Fișierele care nu au fost niciodată sincronizate sunt păstrate pentru verificare în AeroSync. Politica de conflicte este ignorată; datele necunoscute rămân nerezolvate.",
+            "untrackedDestinationFiles": "{count} fișiere de la destinație nu au fost niciodată sincronizate și au fost păstrate. Deschideți aceeași sursă și destinație în AeroSync, selectați Oglindire cu actualizare unidirecțională, verificați planul și confirmați ștergerile dorite."
         },
         "statusBar": {
             "connected": "Conectat",

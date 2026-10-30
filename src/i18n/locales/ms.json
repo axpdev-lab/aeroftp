@@ -1577,7 +1577,8 @@
             "selectPairLocalFolder": "Pilih folder setempat untuk pasangan",
             "secondsAgo": "{count}s lalu",
             "conflictsCount": "{count} konflik memerlukan perhatian",
-            "updateOnlyHint": "Kemas Kini Sehala hanya menyalin daripada sumber dan mengekalkan fail destinasi yang lebih baharu. Matikan sandaran aditif untuk turut memadam fail yang hanya ada di destinasi, termasuk fail tanpa sejarah penyegerakan. Dasar konflik diabaikan; tarikh yang tidak diketahui kekal belum diselesaikan."
+            "updateOnlyHint": "Kemas Kini Sehala mengekalkan fail destinasi yang lebih baharu. Apabila sandaran aditif dimatikan, hanya fail yang ada di destinasi sahaja dan pernah disegerakkan akan dipadam. Fail yang tidak pernah disegerakkan dikekalkan untuk semakan dalam AeroSync. Dasar konflik diabaikan; tarikh yang tidak diketahui kekal belum diselesaikan.",
+            "untrackedDestinationFiles": "{count} fail destinasi tidak pernah disegerakkan dan telah dikekalkan. Buka sumber dan destinasi yang sama dalam AeroSync, pilih Cermin dengan Kemas Kini Sehala, semak pelan dan sahkan pemadaman yang dikehendaki."
         },
         "statusBar": {
             "connected": "Disambung",

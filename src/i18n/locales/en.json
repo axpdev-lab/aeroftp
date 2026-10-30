@@ -1623,7 +1623,8 @@
             "selectPairLocalFolder": "Select local folder for pair",
             "secondsAgo": "{count}s ago",
             "conflictsCount": "Conflicts needing attention: {count}",
-            "updateOnlyHint": "One-way Update copies only from the source and keeps newer destination files. Turn off additive backup to also delete destination-only files, including files with no sync history. The conflict policy is ignored; unknown dates stay unresolved."
+            "updateOnlyHint": "One-way Update keeps newer destination files. With additive backup off, only previously synced destination-only files are deleted. Never-synced files are kept for review in AeroSync. The conflict policy is ignored; unknown dates stay unresolved.",
+            "untrackedDestinationFiles": "{count} destination files have never been synced and were kept. Open the same source and destination in AeroSync, select Mirror with One-way Update, review the plan and confirm any intended deletions."
         },
         "common": {
             "about": "About",

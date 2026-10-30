@@ -1577,7 +1577,8 @@
             "selectPairLocalFolder": "Veldu staðbundna möppu fyrir parið",
             "secondsAgo": "fyrir {count}sek",
             "conflictsCount": "Árekstrar sem þarfnast athygli: {count}",
-            "updateOnlyHint": "Einstefnuuppfærsla afritar aðeins frá uppruna og heldur nýrri skrám á áfangastað. Slökktu á viðbótarafritun til að eyða einnig skrám sem eru aðeins á áfangastað, þar á meðal skrám án samstillingarsögu. Árekstrareglan er hunsuð; óþekktar dagsetningar eru áfram óleystar."
+            "updateOnlyHint": "Einstefnuuppfærsla heldur nýrri skrám á áfangastað. Þegar slökkt er á viðbótarafritun er aðeins eytt skrám sem eru eingöngu á áfangastað og hafa áður verið samstilltar. Skrár sem hafa aldrei verið samstilltar eru geymdar til yfirferðar í AeroSync. Árekstrareglan er hunsuð; óþekktar dagsetningar eru áfram óleystar.",
+            "untrackedDestinationFiles": "{count} skrár á áfangastað hafa aldrei verið samstilltar og voru varðveittar. Opnaðu sama uppruna og áfangastað í AeroSync, veldu Speglun með einstefnuuppfærslu, farðu yfir áætlunina og staðfestu þær eyðingar sem þú vilt framkvæma."
         },
         "statusBar": {
             "connected": "Tengt",
