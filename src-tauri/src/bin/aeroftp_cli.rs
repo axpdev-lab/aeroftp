@@ -42497,7 +42497,8 @@ async fn cmd_profile_import(
     on_existing: ExistingProfileArg,
     format: OutputFormat,
 ) -> i32 {
-    use ftp_client_gui_lib::profile_import_plan::ImportOutcome;
+    use ftp_client_gui_lib::profile_import_plan::{display_name, overwrite_profile, ImportOutcome};
+    use ftp_client_gui_lib::util::profile_name::unique_profile_names;
     use zeroize::Zeroize;
 
     let store = match open_vault(cli) {
@@ -42519,7 +42520,7 @@ async fn cmd_profile_import(
     // The plan compares the file with these profiles, so an unreadable list
     // is an error: read as empty, every profile would look new and an
     // overwrite would land as a second profile of the same id.
-    let mut current = match load_active_user_profiles(cli, &store) {
+    let current = match load_active_user_profiles(cli, &store) {
         Ok(p) => p,
         Err(e) => {
             password.zeroize();
@@ -42557,26 +42558,63 @@ async fn cmd_profile_import(
             _ => None,
         }
     };
-    let names_of = |outcome: ImportOutcome| -> Vec<String> {
+    let overwritten_count = report
+        .servers
+        .iter()
+        .filter(|p| outcome_of(p) == Some(ImportOutcome::Overwritten))
+        .count();
+    // The import laid over a list: an overwritten profile over the stored one
+    // of its id, where it stands, so a field only this device has survives and
+    // the list keeps its order (`overwrite_profile`); every other one appended.
+    let apply_import = |list: &mut Vec<serde_json::Value>| {
+        for profile in &report.servers {
+            let mut profile = profile.clone();
+            let outcome = outcome_of(&profile);
+            if let Some(fields) = profile.as_object_mut() {
+                fields.remove("importOutcome");
+            }
+            if outcome == Some(ImportOutcome::Overwritten) {
+                if let Some(slot) = list
+                    .iter_mut()
+                    .find(|p| p.get("id").is_some() && p.get("id") == profile.get("id"))
+                {
+                    let merged = overwrite_profile(slot, &profile);
+                    *slot = merged;
+                    continue;
+                }
+            }
+            list.push(profile);
+        }
+    };
+    // How each stored profile of an outcome is named in `list`, the list
+    // written (or, on --dry-run, the one a write would store): a duplicate or
+    // a profile whose name was taken carries the write's " (1)", " (2)".
+    let names_in = |list: &[serde_json::Value], outcome: ImportOutcome| -> Vec<String> {
         report
             .servers
             .iter()
             .filter(|p| outcome_of(p) == Some(outcome))
             .map(|p| {
-                p.get("name")
-                    .and_then(|v| v.as_str())
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| {
-                        let host = p.get("host").and_then(|v| v.as_str()).unwrap_or("?");
-                        format!("({host})")
-                    })
+                let field = |key: &str| p.get(key).and_then(|v| v.as_str()).unwrap_or("");
+                name_of(list, field("id"))
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| display_name(field("name"), field("host")))
             })
             .collect()
     };
-    let added = names_of(ImportOutcome::Added);
-    let overwritten = names_of(ImportOutcome::Overwritten);
-    let duplicated = names_of(ImportOutcome::Duplicated);
+    let jotta_names = |list: &[serde_json::Value]| -> Vec<String> {
+        report
+            .jotta_chains
+            .iter()
+            .map(|c| {
+                name_of(list, &c.id)
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| c.name.clone())
+            })
+            .collect()
+    };
     let skipped = &report.skipped;
     let similar = report.similar;
     let metadata = &report.metadata;
@@ -42584,8 +42622,16 @@ async fn cmd_profile_import(
 
     // --dry-run: the file was decrypted and planned without touching the vault
     // or the keyring. Mirrors the delete verbs' --dry-run: the plan goes to
-    // stdout, the notices to stderr, and nothing is moved.
+    // stdout, the notices to stderr, and nothing is moved. The names are the
+    // ones the write would store, from the same naming rule.
     if dry_run {
+        let mut sent = current.clone();
+        apply_import(&mut sent);
+        let (preview, renamed) = unique_profile_names(&current, &sent);
+        let added = names_in(&preview, ImportOutcome::Added);
+        let overwritten = names_in(&preview, ImportOutcome::Overwritten);
+        let duplicated = names_in(&preview, ImportOutcome::Duplicated);
+        let jotta = jotta_names(&preview);
         if json {
             println!(
                 "{}",
@@ -42603,7 +42649,8 @@ async fn cmd_profile_import(
                     "overwritten": overwritten,
                     "duplicated": duplicated,
                     "skipped": skipped,
-                    "jotta_chains": report.jotta_chains,
+                    "renamed": renamed,
+                    "jotta_chains": jotta,
                     "metadata": metadata,
                 })
             );
@@ -42616,12 +42663,12 @@ async fn cmd_profile_import(
                 println!("~ would overwrite  {n}");
             }
             for n in &duplicated {
-                println!("+ would duplicate  {n} (new id, suffixed name)");
+                println!("+ would duplicate  {n} (new id)");
             }
             for n in skipped {
                 println!("= would skip       {n} (already present)");
             }
-            print_jotta_chain_notice(&report.jotta_chains, true);
+            print_jotta_chain_notice(&jotta, true);
             eprintln!(
                 "Would add {}, overwrite {}, duplicate {}, skip {} (already present){} from {input}",
                 added.len(),
@@ -42634,39 +42681,35 @@ async fn cmd_profile_import(
         return 0;
     }
 
-    // Overwritten profiles replace the one of their id where it stands, so
-    // the list keeps its order; the others are appended.
-    for profile in &report.servers {
-        let mut profile = profile.clone();
-        let outcome = outcome_of(&profile);
-        if let Some(fields) = profile.as_object_mut() {
-            fields.remove("importOutcome");
-        }
-        if outcome == Some(ImportOutcome::Overwritten) {
-            if let Some(slot) = current
-                .iter_mut()
-                .find(|p| p.get("id").is_some() && p.get("id") == profile.get("id"))
-            {
-                *slot = profile;
-                continue;
-            }
-        }
-        current.push(profile);
-    }
-
-    // Read from the list stored: only the write knows which profile had a
-    // name first (an older list may hold two of one name).
+    // The import is laid over the list read inside the write's own
+    // transaction, not over `current`, so a profile another window or process
+    // saved or edited since `current` was read is kept.
     let mut renamed = Vec::new();
+    let mut stored = current;
     if !report.servers.is_empty() {
-        match save_active_user_profiles(cli, &store, &current) {
-            Ok(stored) => renamed = renamed_by_write(&current, &stored),
+        match update_active_user_profiles(cli, &store, &stored, apply_import) {
+            Ok((sent, written)) => {
+                renamed = renamed_by_write(&sent, &written);
+                stored = written;
+            }
             Err(e) => {
-                print_error(format, &format!("save profiles: {e}"), 1);
+                // The secrets were restored before this write: say what the
+                // failure leaves behind, and that the same import finishes it.
+                let note = if overwritten_count > 0 {
+                    format!("; the passwords and tokens of {overwritten_count} overwritten profile(s) were already replaced from the file, so run the same import again to finish it")
+                } else {
+                    String::new()
+                };
+                print_error(format, &format!("save profiles: {e}{note}"), 1);
                 return 1;
             }
         }
     }
 
+    let added = names_in(&stored, ImportOutcome::Added);
+    let overwritten = names_in(&stored, ImportOutcome::Overwritten);
+    let duplicated = names_in(&stored, ImportOutcome::Duplicated);
+    let jotta = jotta_names(&stored);
     let imported = report.servers.len();
     if json {
         println!(
@@ -42688,7 +42731,7 @@ async fn cmd_profile_import(
                 // added one whose name was taken, or one of an older list's two
                 // of one name. Each `to` is the name that selects that profile.
                 "renamed": renamed,
-                "jotta_chains": report.jotta_chains,
+                "jotta_chains": jotta,
                 "total_in_file": report.total_in_file,
                 "metadata": metadata,
             })
@@ -42707,9 +42750,48 @@ async fn cmd_profile_import(
         tail.push_str(&similar_tail(similar));
         eprintln!("Imported {imported} profile(s){tail} from {input}");
         print_profile_renames(&renamed);
-        print_jotta_chain_notice(&report.jotta_chains, false);
+        print_jotta_chain_notice(&jotta, false);
     }
     0
+}
+
+/// Write the active user's profile list as `apply` changes it. The list is
+/// read inside the write's own transaction, so a profile another window or
+/// process saved since `fallback` was read is kept. Returns the list sent
+/// (`apply`'s result) and the list stored (names made unique by the write).
+/// When the partition is unavailable, `apply` is laid over `fallback` (the
+/// list read before) and written through `save_active_user_profiles`, which
+/// owns the legacy-blob fallback.
+fn update_active_user_profiles(
+    cli: &Cli,
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    fallback: &[serde_json::Value],
+    apply: impl Fn(&mut Vec<serde_json::Value>),
+) -> Result<(Vec<serde_json::Value>, Vec<serde_json::Value>), String> {
+    use ftp_client_gui_lib::user_partitions;
+    let target = match ensure_active_user_unlocked(cli, store)? {
+        Some(t) => t,
+        None => return Err("NO_ACTIVE_USER".to_string()),
+    };
+    let mut sent = Vec::new();
+    let written = user_partitions::cli_update_server_profiles_for_user(store, target.id, |list| {
+        apply(list);
+        sent = list.clone();
+        true
+    });
+    match written {
+        Ok((stored, _)) => {
+            mirror_profiles_to_legacy_blob_if_active(store, target.id, &stored);
+            Ok((sent, stored))
+        }
+        Err(e) if !e.starts_with(user_partitions::PARTITION_UNAVAILABLE) => Err(e),
+        Err(_) => {
+            let mut sent = fallback.to_vec();
+            apply(&mut sent);
+            let stored = save_active_user_profiles(cli, store, &sent)?;
+            Ok((sent, stored))
+        }
+    }
 }
 
 /// The summary's ", N resemble an existing profile", or nothing for none.

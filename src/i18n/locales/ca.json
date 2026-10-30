@@ -1368,7 +1368,8 @@
             "importExistingDuplicateHint": "Un perfil que ja teniu es manté, i la còpia del fitxer s'afegeix al costat amb un nom numerat.",
             "overwrittenCount": "{count} sobreescrits",
             "duplicatedCount": "{count} duplicats",
-            "importJottaChainWarning": "Jottacloud renova l'inici de sessió a cada connexió, i {names} ara en comparteix un amb una altra còpia: la còpia que es connecta primer tanca la sessió de l'altra (el dispositiu d'on ve el fitxer, o el perfil del qual es va duplicar). Torneu a iniciar sessió a l'altra amb un Personal Login Token nou."
+            "importJottaChainWarning": "Jottacloud renova l'inici de sessió a cada connexió, i {names} ara en comparteix un amb una altra còpia: la còpia que es connecta primer tanca la sessió de l'altra (el dispositiu d'on ve el fitxer, o el perfil del qual es va duplicar). Torneu a iniciar sessió a l'altra amb un Personal Login Token nou.",
+            "importOverwriteNotSaved": "Els perfils no s'han desat, però les contrasenyes i els tokens d'inici de sessió de {count} perfils sobreescrits ja s'han substituït des del fitxer. Torna a importar el mateix fitxer per acabar."
         },
         "devtools": {
             "title": "AeroTools",

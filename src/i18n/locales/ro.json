@@ -1368,7 +1368,8 @@
             "importExistingDuplicateHint": "Un profil pe care îl aveți deja rămâne, iar copia din fișier este adăugată alături, cu un nume numerotat.",
             "overwrittenCount": "{count} suprascrise",
             "duplicatedCount": "{count} duplicate",
-            "importJottaChainWarning": "Jottacloud își reînnoiește autentificarea la fiecare conectare, iar {names} împarte acum una cu altă copie: copia care se conectează prima o deconectează pe cealaltă (dispozitivul de la care provine fișierul sau profilul din care a fost duplicată). Autentificați din nou cealaltă copie cu un nou Personal Login Token."
+            "importJottaChainWarning": "Jottacloud își reînnoiește autentificarea la fiecare conectare, iar {names} împarte acum una cu altă copie: copia care se conectează prima o deconectează pe cealaltă (dispozitivul de la care provine fișierul sau profilul din care a fost duplicată). Autentificați din nou cealaltă copie cu un nou Personal Login Token.",
+            "importOverwriteNotSaved": "Profilurile nu au fost salvate, dar parolele și token-urile de autentificare ale celor {count} profiluri suprascrise au fost deja înlocuite din fișier. Importă din nou același fișier pentru a termina."
         },
         "devtools": {
             "title": "AeroTools",

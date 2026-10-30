@@ -1843,7 +1843,8 @@
             "importExistingDuplicateHint": "Un profilo che hai già resta, e la copia dal file viene aggiunta accanto con un nome numerato.",
             "overwrittenCount": "{count} sovrascritti",
             "duplicatedCount": "{count} duplicati",
-            "importJottaChainWarning": "Jottacloud rinnova l'accesso a ogni connessione, e {names} ora ne condivide uno con un'altra copia: la copia che si connette per prima disconnette l'altra (il dispositivo da cui proviene il file, o il profilo da cui è stata duplicata). Accedi di nuovo all'altra con un nuovo Personal Login Token."
+            "importJottaChainWarning": "Jottacloud rinnova l'accesso a ogni connessione, e {names} ora ne condivide uno con un'altra copia: la copia che si connette per prima disconnette l'altra (il dispositivo da cui proviene il file, o il profilo da cui è stata duplicata). Accedi di nuovo all'altra con un nuovo Personal Login Token.",
+            "importOverwriteNotSaved": "I profili non sono stati salvati, ma le password e i token di {count} profili sovrascritti sono già stati sostituiti con quelli del file. Importa di nuovo lo stesso file per completare."
         },
         "appearance": {
             "patternCross": "Croce",

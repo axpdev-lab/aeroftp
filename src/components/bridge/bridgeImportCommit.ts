@@ -17,6 +17,35 @@ export const bridgeProfileKey = (s: Pick<ServerProfile, 'host' | 'port' | 'usern
         s.aeroCryptOverlay?.enabled ? (s.aeroCryptOverlay.remoteScope || '') : '']);
 
 /**
+ * Secret-presence flags an overwrite keeps set when the stored profile has
+ * them: a secret the imported file does not carry stays in the vault. Twin of
+ * `STORED_SECRET_FLAGS` in `src-tauri/src/profile_import_plan.rs`.
+ */
+const STORED_SECRET_FLAGS = [
+    'hasStoredCredential',
+    'hasStoredFilenApiKey',
+    'hasStoredAeroCryptPassword',
+    'hasStoredAeroCryptSalt',
+    'hasStoredAeroCryptKeyfilePath',
+    'hasStoredAeroCryptConfig',
+] as const;
+
+/**
+ * The profile an overwrite stores: `stored`, the record read in the same write,
+ * with every field of `imported` laid over it, so a field only this device has
+ * survives, and each secret-presence flag set when either side has it. Twin of
+ * `overwrite_profile` in `src-tauri/src/profile_import_plan.rs`.
+ */
+export function overwriteProfile(stored: ServerProfile, imported: ServerProfile): ServerProfile {
+    const merged: Record<string, unknown> = { ...stored, ...imported };
+    const has = (p: ServerProfile, flag: string) => (p as unknown as Record<string, unknown>)[flag] === true;
+    for (const flag of STORED_SECRET_FLAGS) {
+        if (has(stored, flag) || has(imported, flag)) merged[flag] = true;
+    }
+    return merged as unknown as ServerProfile;
+}
+
+/**
  * Persist imported profiles onto the vault's current contents and hand the
  * merged list back for the caller's local state.
  *
@@ -34,9 +63,11 @@ export const bridgeProfileKey = (s: Pick<ServerProfile, 'host' | 'port' | 'usern
  * ... (`storeSavedServerProfiles`).
  *
  * @param newServers the imported profiles.
- * @param replaceIds ids of imported profiles that replace the stored profile of
- *   the same id where it stands, keeping its place in the list: the profiles a
- *   `.aeroftp` import set to Overwrite reported as overwritten. Every other
+ * @param replaceIds ids of imported profiles laid over the stored profile of
+ *   the same id where it stands (`overwriteProfile`, against the record read
+ *   here, so an edit made since the import began is kept where the file has no
+ *   value for it): the profiles a `.aeroftp` import set to Overwrite reported
+ *   as overwritten. Every other
  *   imported profile is appended, as before; the bridge imports name none. A
  *   named profile whose id the vault no longer holds when this writes (deleted
  *   from another window in the meantime) is appended too, never dropped.
@@ -49,7 +80,10 @@ export async function appendImportedProfiles(
     const currentIds = new Set(current.map(s => s.id));
     const replacing = new Map(newServers.filter(s => replaceIds.has(s.id)).map(s => [s.id, s]));
     const merged = [
-        ...current.map(s => replacing.get(s.id) ?? s),
+        ...current.map(s => {
+            const imported = replacing.get(s.id);
+            return imported ? overwriteProfile(s, imported) : s;
+        }),
         ...newServers.filter(s => !replaceIds.has(s.id) || !currentIds.has(s.id)),
     ];
     return storeSavedServerProfiles(merged, false, userId);

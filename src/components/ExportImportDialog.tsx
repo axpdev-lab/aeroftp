@@ -43,35 +43,11 @@ interface ExportImportDialogProps {
 const defaultExportSelection = (servers: ServerProfile[], preselected?: string[]): Set<string> =>
     new Set(preselected ?? servers.map(s => s.id));
 
-interface ImportedServer {
-    id: string;
-    name: string;
-    host: string;
-    port: number;
-    username: string;
-    protocol?: string;
-    initialPath?: string;
-    localInitialPath?: string;
-    color?: string;
-    lastConnected?: string;
-    options?: Record<string, unknown>;
-    providerId?: string;
-    credential?: string;
-    hasStoredCredential?: boolean;
-    // CWP-20B: crypt-overlay binding (both kinds) + secret-presence flags.
-    aeroCryptOverlay?: ServerProfile['aeroCryptOverlay'];
-    hasStoredAeroCryptPassword?: boolean;
-    hasStoredAeroCryptSalt?: boolean;
-    // Tier 1: keyfile PATH presence flag (the path travels in the encrypted
-    // export like the other secrets; the keyfile itself never leaves the disk).
-    hasStoredAeroCryptKeyfilePath?: boolean;
-    // #215 Caveat A: the per-protocol "remember credentials" opt-in, round-tripped
-    // so an imported profile re-hydrates its server_modes_<id> snapshots.
-    persistModeCredentials?: boolean;
-    // What the import did with this profile (`profile_import_plan`). An
-    // overwritten one arrives already laid over the profile it replaces.
-    importOutcome: 'added' | 'overwritten' | 'duplicated';
-}
+// A profile the backend stores, redacted (secret-presence flags, never a
+// secret), with what the import did with it (`profile_import_plan`). An
+// overwritten one is laid over the stored profile of its id when written
+// (`appendImportedProfiles`).
+type ImportedServer = ServerProfile & { importOutcome: 'added' | 'overwritten' | 'duplicated' };
 
 /** What a `.aeroftp` import does with a profile whose id already exists. */
 type ExistingProfileMode = 'skip' | 'overwrite' | 'duplicate';
@@ -87,8 +63,9 @@ interface ImportResult {
     servers: ImportedServer[];
     skipped: string[];
     similar: number;
-    // Stored Jottacloud profiles that brought their rotating refresh chain.
-    jottaChains: string[];
+    // Stored Jottacloud profiles that brought their rotating refresh chain,
+    // named as in the file.
+    jottaChains: { id: string; name: string }[];
     metadata: {
         exportDate: string;
         aeroftpVersion: string;
@@ -97,6 +74,11 @@ interface ImportResult {
     };
 }
 
+/**
+ * My Servers export and import: the encrypted `.aeroftp` backup (export with
+ * or without credentials; import with Skip, Overwrite or Duplicate for a
+ * profile that already exists) and the bridges to other clients' configs.
+ */
 export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers, onImport, onClose, initialMode, initialBridgeFilePath, initialSelectedServerIds }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
@@ -247,7 +229,12 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         setImportFilePath(filePath);
     };
 
-    // Step 2 of the import: decrypt the already-chosen file with the password.
+    /**
+     * Step 2 of the import: decrypt the already-chosen file with the password,
+     * let the backend decide each profile with `existingMode`, store the
+     * result, and report it. The dialog then closes itself, or stays open on a
+     * Jottacloud warning, or on an error that says what a failed write left.
+     */
     const handleImport = async () => {
         const filePath = importFilePath;
         if (!filePath) {
@@ -272,39 +259,25 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             // plans the same way), restoring secrets only for the profiles it
             // stores. A profile that only shares host:port:username with an
             // existing one is added and counted as similar.
-            const imported: ServerProfile[] = result.servers.map(({ importOutcome, ...s }) => importOutcome === 'overwritten'
-                ? s as ServerProfile
-                : {
-                    id: s.id,
-                    name: s.name,
-                    host: s.host,
-                    port: s.port,
-                    username: s.username,
-                    protocol: s.protocol as ServerProfile['protocol'],
-                    initialPath: s.initialPath,
-                    localInitialPath: s.localInitialPath,
-                    color: s.color,
-                    lastConnected: s.lastConnected,
-                    options: s.options,
-                    providerId: s.providerId,
-                    hasStoredCredential: s.credential ? true : (s.hasStoredCredential || false),
-                    // CWP-20B: carry crypt-overlay binding + secret flags so the
-                    // imported profile reconnects as Crypt (both kinds).
-                    aeroCryptOverlay: s.aeroCryptOverlay,
-                    hasStoredAeroCryptPassword: s.hasStoredAeroCryptPassword || false,
-                    hasStoredAeroCryptSalt: s.hasStoredAeroCryptSalt || false,
-                    hasStoredAeroCryptKeyfilePath: s.hasStoredAeroCryptKeyfilePath || false,
-                    // #215 Caveat A: preserve the per-protocol "remember credentials"
-                    // opt-in so the imported profile loads its restored snapshots.
-                    persistModeCredentials: s.persistModeCredentials,
-                });
+            // Every field the backend returns is kept: share-link base, icons,
+            // the Filen API key flag and the rest ride along with the profile.
+            const imported: ServerProfile[] = result.servers.map(({ importOutcome: _outcome, ...profile }) => profile);
             const count = (outcome: ImportedServer['importOutcome']) =>
                 result.servers.filter(s => s.importOutcome === outcome).length;
             const overwritten = count('overwritten');
             const duplicated = count('duplicated');
-            await onImport(imported, new Set(
-                result.servers.filter(s => s.importOutcome === 'overwritten').map(s => s.id),
-            ));
+            try {
+                await onImport(imported, new Set(
+                    result.servers.filter(s => s.importOutcome === 'overwritten').map(s => s.id),
+                ));
+            } catch (err) {
+                // The backend restored the secrets before this write: say what
+                // a failed write leaves behind, and that the same import ends it.
+                setError(String(err) + (overwritten > 0
+                    ? ` ${t('settings.importOverwriteNotSaved', { count: overwritten })}`
+                    : ''));
+                return;
+            }
             setSuccess(
                 // "new servers": the overwritten ones replaced servers already there.
                 t('settings.importSuccess').replace('{count}', String(imported.length - overwritten)) +
@@ -314,7 +287,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                 (result.similar > 0 ? ` (${t('settings.similarToExistingCount', { count: result.similar })})` : '')
             );
             if (result.jottaChains.length > 0) {
-                setJottaWarning(t('settings.importJottaChainWarning', { names: result.jottaChains.join(', ') }));
+                setJottaWarning(t('settings.importJottaChainWarning', { names: result.jottaChains.map(c => c.name).join(', ') }));
             } else {
                 setTimeout(() => onClose(), 2500);
             }

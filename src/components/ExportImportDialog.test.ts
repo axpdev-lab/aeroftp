@@ -73,17 +73,18 @@ async function runImport(mode: 'skip' | 'overwrite' | 'duplicate') {
 }
 
 describe('ExportImportDialog .aeroftp import', () => {
-    it('sends the chosen mode, stores an overwritten profile as merged and keeps the dialog open on a Jottacloud chain', async () => {
+    it('sends the chosen mode, passes every returned field through and keeps the dialog open on a Jottacloud chain', async () => {
         vi.mocked(invoke).mockResolvedValue({
             servers: [
                 { id: 'srv_a', name: 'Restored', host: 'a.example', port: 21, username: 'u', protocol: 'ftp',
-                    localOnlyField: 'kept by the backend merge', hasStoredCredential: true, importOutcome: 'overwritten' },
+                    hasStoredCredential: true, importOutcome: 'overwritten' },
                 { id: 'srv_copy', name: 'Jotta', host: '', port: 443, username: 'u', protocol: 'jottacloud',
+                    publicUrlBase: 'https://share.example', hasStoredFilenApiKey: true,
                     hasStoredCredential: false, importOutcome: 'duplicated' },
             ],
             skipped: [],
             similar: 0,
-            jottaChains: ['Jotta'],
+            jottaChains: [{ id: 'srv_copy', name: 'Jotta' }],
             totalInFile: 2,
             metadata: { exportDate: '', aeroftpVersion: '', serverCount: 2, hasCredentials: true },
         });
@@ -100,12 +101,34 @@ describe('ExportImportDialog .aeroftp import', () => {
         const stored = onImport.mock.calls[0][0] as (ServerProfile & Record<string, unknown>)[];
         expect([...onImport.mock.calls[0][1] as Set<string>]).toEqual(['srv_a']);
         expect(stored.map(s => s.id)).toEqual(['srv_a', 'srv_copy']);
-        expect(stored[0].localOnlyField).toBe('kept by the backend merge');
+        expect(stored[1].publicUrlBase).toBe('https://share.example');
+        expect(stored[1].hasStoredFilenApiKey).toBe(true);
         expect(stored.every(s => !('importOutcome' in s))).toBe(true);
         expect(host.textContent).toContain('settings.overwrittenCount {"count":1}');
         expect(host.textContent).toContain('settings.duplicatedCount {"count":1}');
         expect(host.querySelector('[data-testid="import-jotta-warning"]')?.textContent)
             .toContain('settings.importJottaChainWarning {"names":"Jotta"}');
+        await act(async () => {
+            vi.advanceTimersByTime(5000);
+        });
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('says what a failed write after an overwrite leaves, and stays open', async () => {
+        vi.mocked(invoke).mockResolvedValue({
+            servers: [{ id: 'srv_a', name: 'A', host: 'a.example', port: 21, username: 'u', importOutcome: 'overwritten' }],
+            skipped: [],
+            similar: 0,
+            jottaChains: [],
+            totalInFile: 1,
+            metadata: { exportDate: '', aeroftpVersion: '', serverCount: 1, hasCredentials: true },
+        });
+        const onImport = vi.fn(async () => { throw new Error('vault write refused'); });
+        const onClose = vi.fn();
+        await openImport(onImport, onClose);
+        await runImport('overwrite');
+        expect(host.textContent).toContain('vault write refused');
+        expect(host.textContent).toContain('settings.importOverwriteNotSaved {"count":1}');
         await act(async () => {
             vi.advanceTimersByTime(5000);
         });

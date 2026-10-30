@@ -1368,7 +1368,8 @@
             "importExistingDuplicateHint": "Zaten sahip olduğunuz profil kalır, dosyadaki kopya ise yanına numaralı bir adla eklenir.",
             "overwrittenCount": "{count} üzerine yazıldı",
             "duplicatedCount": "{count} çoğaltıldı",
-            "importJottaChainWarning": "Jottacloud her bağlantıda oturum açmayı yeniler ve {names} artık bunu başka bir kopyayla paylaşıyor: önce bağlanan kopya diğerinin oturumunu kapatır (dosyanın geldiği cihaz veya çoğaltıldığı profil). Diğerinde yeni bir Personal Login Token ile yeniden oturum açın."
+            "importJottaChainWarning": "Jottacloud her bağlantıda oturum açmayı yeniler ve {names} artık bunu başka bir kopyayla paylaşıyor: önce bağlanan kopya diğerinin oturumunu kapatır (dosyanın geldiği cihaz veya çoğaltıldığı profil). Diğerinde yeni bir Personal Login Token ile yeniden oturum açın.",
+            "importOverwriteNotSaved": "Profiller kaydedilmedi, ancak üzerine yazılan {count} profilin parolaları ve oturum açma belirteçleri dosyadan zaten değiştirildi. Tamamlamak için aynı dosyayı yeniden içe aktarın."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1368,7 +1368,8 @@
             "importExistingDuplicateHint": "Mae proffil sydd gennych eisoes yn aros, ac mae'r copi o'r ffeil yn cael ei ychwanegu wrth ei ochr gydag enw wedi'i rifo.",
             "overwrittenCount": "{count} wedi'u trosysgrifo",
             "duplicatedCount": "{count} wedi'u dyblygu",
-            "importJottaChainWarning": "Mae Jottacloud yn adnewyddu ei fewngofnodi ar bob cysylltiad, ac mae {names} bellach yn rhannu un gyda chopi arall: mae'r copi sy'n cysylltu gyntaf yn allgofnodi'r llall (y ddyfais y daeth y ffeil ohoni, neu'r proffil y cafodd ei ddyblygu ohono). Mewngofnodwch y llall eto gyda Personal Login Token newydd."
+            "importJottaChainWarning": "Mae Jottacloud yn adnewyddu ei fewngofnodi ar bob cysylltiad, ac mae {names} bellach yn rhannu un gyda chopi arall: mae'r copi sy'n cysylltu gyntaf yn allgofnodi'r llall (y ddyfais y daeth y ffeil ohoni, neu'r proffil y cafodd ei ddyblygu ohono). Mewngofnodwch y llall eto gyda Personal Login Token newydd.",
+            "importOverwriteNotSaved": "Ni chafodd y proffiliau eu cadw, ond mae cyfrineiriau a thocynnau mewngofnodi {count} proffil a drosysgrifwyd eisoes wedi'u disodli o'r ffeil. Mewnforiwch yr un ffeil eto i orffen."
         },
         "devtools": {
             "title": "AeroTools",

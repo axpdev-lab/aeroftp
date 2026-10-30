@@ -1368,7 +1368,8 @@
             "importExistingDuplicateHint": "A már meglévő profil megmarad, a fájlból származó másolat pedig mellé kerül sorszámozott névvel.",
             "overwrittenCount": "{count} felülírva",
             "duplicatedCount": "{count} duplikálva",
-            "importJottaChainWarning": "A Jottacloud minden csatlakozáskor megújítja a bejelentkezését, és a(z) {names} most egyet megoszt egy másik másolattal: amelyik másolat előbb csatlakozik, kijelentkezteti a másikat (az eszközt, ahonnan a fájl származik, vagy a profilt, amelyből duplikálták). Jelentkeztesse be újra a másikat egy új Personal Login Tokennel."
+            "importJottaChainWarning": "A Jottacloud minden csatlakozáskor megújítja a bejelentkezését, és a(z) {names} most egyet megoszt egy másik másolattal: amelyik másolat előbb csatlakozik, kijelentkezteti a másikat (az eszközt, ahonnan a fájl származik, vagy a profilt, amelyből duplikálták). Jelentkeztesse be újra a másikat egy új Personal Login Tokennel.",
+            "importOverwriteNotSaved": "A profilok nem lettek mentve, de a felülírt {count} profil jelszavai és bejelentkezési tokenjei már le lettek cserélve a fájlból. A befejezéshez importáld újra ugyanazt a fájlt."
         },
         "devtools": {
             "title": "AeroTools",

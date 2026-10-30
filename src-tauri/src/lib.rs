@@ -18316,12 +18316,13 @@ pub async fn import_server_profiles_with_mode(
     );
     drop(candidates);
 
-    // A duplicate travels under its new id from here on, with a copy of the
-    // secrets the file carries for its old id (an earlier profile of the file
-    // may still be stored under that id), so the restore below writes them to
-    // the copy and never to the original.
+    // A profile given a new id (a duplicate, or one the file gave no id)
+    // travels under it from here on, with a copy of the secrets the file
+    // carries for its old id (an earlier profile of the file may still be
+    // stored under that id), so the restore below writes them to the new id
+    // and never to the original.
     for planned in &plan {
-        if planned.outcome == ImportOutcome::Duplicated {
+        if servers[planned.index].id != planned.id {
             let old = std::mem::replace(&mut servers[planned.index].id, planned.id.clone());
             if let Some(secrets) = provider_secrets.get(&old).cloned() {
                 provider_secrets.insert(planned.id.clone(), secrets);
@@ -18352,8 +18353,9 @@ pub async fn import_server_profiles_with_mode(
     };
     for planned in &plan {
         let server = &servers[planned.index];
+        let name = profile_import_plan::display_name(&server.name, &server.host);
         if planned.outcome == ImportOutcome::Skipped {
-            report.skipped.push(server.name.clone());
+            report.skipped.push(name);
             continue;
         }
         if planned.similar {
@@ -18368,17 +18370,16 @@ pub async fn import_server_profiles_with_mode(
                 .get(&planned.id)
                 .is_some_and(|s| s.jotta_refresh.is_some())
         {
-            report.jotta_chains.push(server.name.clone());
+            report
+                .jotta_chains
+                .push(profile_import_plan::ImportedProfileRef {
+                    id: planned.id.clone(),
+                    name,
+                });
         }
+        // An overwritten profile is laid over the stored one by the caller's
+        // write, against the record read there (`overwrite_profile`).
         let mut profile = redact_imported_server(server, &restored);
-        if planned.outcome == ImportOutcome::Overwritten {
-            if let Some(existing) = current
-                .iter()
-                .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(planned.id.as_str()))
-            {
-                profile = profile_import_plan::overwrite_profile(existing, &profile);
-            }
-        }
         profile["importOutcome"] = serde_json::json!(planned.outcome);
         report.servers.push(profile);
     }

@@ -62,14 +62,17 @@ describe('the import callback and the commit helper together', () => {
 
     // An overwrite re-import carries the id of the profile it replaces: one
     // profile per id, in its place, and favourites keyed by that id still hold it.
-    it('replaces only the profiles named as overwritten, in place, and appends the others', async () => {
+    it('lays the profiles named as overwritten over the record read at write time, and appends the others', async () => {
         const second: ServerProfile = { ...base, id: 'second', name: 'Second' };
-        const vault = fakeVault([base, second]);
-        const overwritten: ServerProfile = { ...base, name: 'Koofr restored', host: 'restored.example' };
+        // Edited on this device after the import read the list: a field the
+        // file does not carry, and a stored credential the file did not bring.
+        const editedSince: ServerProfile = { ...base, color: '#ff0000', hasStoredCredential: true };
+        const vault = fakeVault([editedSince, second]);
+        const overwritten: ServerProfile = { ...base, name: 'Koofr restored', host: 'restored.example', hasStoredCredential: false };
         const added: ServerProfile = { ...base, id: 'added', name: 'Added' };
         const merged = await appendImportedProfiles([added, overwritten], new Set([base.id]));
         expect(merged.map(s => s.id)).toEqual([base.id, 'second', 'added']);
-        expect(merged[0]).toEqual(overwritten);
+        expect(merged[0]).toEqual({ ...overwritten, color: '#ff0000', hasStoredCredential: true });
         expect(vault.profiles).toEqual(merged);
     });
 

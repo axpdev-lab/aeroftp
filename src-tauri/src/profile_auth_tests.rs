@@ -587,7 +587,12 @@ async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value)
     .await
     .unwrap();
     assert_eq!(jotta_report.servers[0]["importOutcome"], "duplicated");
-    assert_eq!(jotta_report.jotta_chains, ["synthetic jotta"]);
+    assert_eq!(jotta_report.jotta_chains.len(), 1);
+    assert_eq!(jotta_report.jotta_chains[0].name, "synthetic jotta");
+    assert_eq!(
+        jotta_report.jotta_chains[0].id,
+        jotta_report.servers[0]["id"]
+    );
 
     let redacted = directory.path().join("headless-redacted.aeroftp");
     let metadata = crate::export_server_profiles_core(

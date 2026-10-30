@@ -59,8 +59,8 @@ pub struct PlannedProfile {
     pub index: usize,
     /// What the import does with it.
     pub outcome: ImportOutcome,
-    /// The id the profile is stored under: the file's id, or the new one for a
-    /// duplicate.
+    /// The id the profile is stored under: the file's id, or a new one for a
+    /// duplicate or a profile the file gives no id.
     pub id: String,
     /// Shares host:port:username with a profile of another id.
     pub similar: bool,
@@ -78,15 +78,18 @@ pub struct ImportCandidate<'a> {
     pub username: &'a str,
 }
 
-/// The host:port:username key two profiles of one account share.
-fn account_key(host: &str, port: u64, username: &str) -> String {
-    format!("{host}:{port}:{username}")
+/// The (host, port, username) two profiles of one account share. A tuple, not
+/// a joined string: a host or username may contain the separator (an IPv6
+/// host does), and two accounts must not collide.
+fn account_key(host: &str, port: u64, username: &str) -> (String, u64, String) {
+    (host.to_string(), port, username.to_string())
 }
 
 /// Decide what happens to each profile of the file (`imported`, in file order)
 /// against the active user's `current` profiles. `new_id` mints ids for
-/// duplicates; one already taken by a current profile or an earlier decision
-/// is drawn again.
+/// duplicates and for profiles the file gives no id (each is added under its
+/// own, so two of them never share a vault key); one already taken by a
+/// current profile or an earlier decision is drawn again.
 pub fn plan_import(
     imported: &[ImportCandidate<'_>],
     current: &[serde_json::Value],
@@ -98,7 +101,7 @@ pub fn plan_import(
         .filter_map(|p| p.get("id").and_then(|v| v.as_str()))
         .filter(|s| !s.is_empty())
         .collect();
-    let existing_accounts: HashSet<String> = current
+    let existing_accounts: HashSet<(String, u64, String)> = current
         .iter()
         .map(|p| {
             account_key(
@@ -111,6 +114,13 @@ pub fn plan_import(
     let mut taken: HashSet<String> = existing_ids.iter().map(|s| s.to_string()).collect();
     taken.extend(imported.iter().map(|p| p.id.to_string()));
     let mut seen_in_file: HashSet<&str> = HashSet::new();
+    let mut mint = || {
+        let mut id = new_id();
+        while !taken.insert(id.clone()) {
+            id = new_id();
+        }
+        id
+    };
 
     imported
         .iter()
@@ -123,12 +133,9 @@ pub fn plan_import(
             let repeated = !p.id.is_empty() && !seen_in_file.insert(p.id);
             let exists = !p.id.is_empty() && existing_ids.contains(p.id);
             let (outcome, id) = match (repeated, exists, mode) {
+                _ if p.id.is_empty() => (ImportOutcome::Added, mint()),
                 (_, _, ExistingProfileMode::Duplicate) if repeated || exists => {
-                    let mut id = new_id();
-                    while !taken.insert(id.clone()) {
-                        id = new_id();
-                    }
-                    (ImportOutcome::Duplicated, id)
+                    (ImportOutcome::Duplicated, mint())
                 }
                 (true, _, _) | (false, true, ExistingProfileMode::Skip) => {
                     (ImportOutcome::Skipped, p.id.to_string())
@@ -150,22 +157,44 @@ pub fn plan_import(
         .collect()
 }
 
+/// A stored profile named in a report: its id and the name the file gave it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct ImportedProfileRef {
+    /// The id the profile is stored under.
+    pub id: String,
+    /// Its name in the file (see [`display_name`]).
+    pub name: String,
+}
+
+/// How a report names a profile: its name, or `(host)` when it has none.
+pub fn display_name(name: &str, host: &str) -> String {
+    if name.is_empty() {
+        format!("({host})")
+    } else {
+        name.to_string()
+    }
+}
+
 /// The result of an import, or of its dry run.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileImportReport {
     /// The profiles to store, redacted, each with its `importOutcome`: added
-    /// and duplicated ones to append, overwritten ones (already laid over the
-    /// existing profile by [`overwrite_profile`]) to replace by id.
+    /// and duplicated ones to append, overwritten ones to lay over the stored
+    /// profile of their id with [`overwrite_profile`] when the list is written,
+    /// against the record read in that same write, so an edit made since the
+    /// import read the list is kept.
     pub servers: Vec<serde_json::Value>,
-    /// Names of the profiles skipped because the active user already has them.
+    /// Names (see [`display_name`]) of the profiles skipped because the active
+    /// user already has them, or the file already gave their id.
     pub skipped: Vec<String>,
     /// Stored profiles that share host:port:username with a profile of another id.
     pub similar: usize,
-    /// Names of the stored Jottacloud profiles whose refresh chain came with the
-    /// file. Jottacloud rotates that chain on every connection, so the device
-    /// or profile that connects first with it signs the other copies out.
-    pub jotta_chains: Vec<String>,
+    /// The stored Jottacloud profiles whose refresh chain came with the file.
+    /// Jottacloud rotates that chain on every connection, so the device or
+    /// profile that connects first with it signs the other copies out. The id
+    /// finds the name the profile write gave it.
+    pub jotta_chains: Vec<ImportedProfileRef>,
     /// How many profiles the file holds, whatever their outcome.
     pub total_in_file: usize,
     /// The file's public envelope metadata.
@@ -220,6 +249,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// A profile of the file on port 21 as user `u`.
     fn candidate<'a>(id: &'a str, host: &'a str) -> ImportCandidate<'a> {
         ImportCandidate {
             id,
@@ -229,6 +259,7 @@ mod tests {
         }
     }
 
+    /// The device's profiles: `srv_a` and `srv_b`.
     fn current() -> Vec<serde_json::Value> {
         vec![
             json!({"id": "srv_a", "host": "a.example", "port": 21, "username": "u"}),
@@ -236,10 +267,13 @@ mod tests {
         ]
     }
 
+    /// The outcomes of `plan`, in file order.
     fn outcomes(plan: &[PlannedProfile]) -> Vec<ImportOutcome> {
         plan.iter().map(|p| p.outcome).collect()
     }
 
+    /// Skip, Overwrite and Duplicate act only on a profile whose id the device
+    /// has; the others are added, and only an added copy of an account is similar.
     #[test]
     fn each_mode_decides_only_the_profiles_whose_id_exists() {
         let file = [
@@ -277,6 +311,7 @@ mod tests {
         assert!(duplicate[0].similar);
     }
 
+    /// A minted id already held by the device or the file is drawn again.
     #[test]
     fn duplicate_ids_avoid_every_id_in_use() {
         let file = [
@@ -293,6 +328,8 @@ mod tests {
         assert_eq!(plan[1].id, "srv_fresh2");
     }
 
+    /// A repeat of an id within the file is skipped, or duplicated with
+    /// Duplicate, so no id is stored twice.
     #[test]
     fn an_id_the_file_repeats_is_skipped_or_duplicated_never_stored_twice() {
         // srv_dup is new to the device and appears twice; srv_a exists and
@@ -342,6 +379,45 @@ mod tests {
         assert_eq!(ids.len(), 4, "every stored profile has its own id");
     }
 
+    /// Profiles the file gives no id each get their own new one, in every mode.
+    #[test]
+    fn profiles_without_an_id_get_their_own() {
+        let file = [candidate("", "x.example"), candidate("", "y.example")];
+        for mode in [
+            ExistingProfileMode::Skip,
+            ExistingProfileMode::Overwrite,
+            ExistingProfileMode::Duplicate,
+        ] {
+            let mut n = 0;
+            let plan = plan_import(&file, &current(), mode, || {
+                n += 1;
+                format!("srv_minted_{n}")
+            });
+            assert_eq!(
+                outcomes(&plan),
+                [ImportOutcome::Added, ImportOutcome::Added]
+            );
+            assert_eq!(plan[0].id, "srv_minted_1");
+            assert_eq!(plan[1].id, "srv_minted_2");
+        }
+    }
+
+    /// Accounts are compared field by field: a colon in the host or username
+    /// (an IPv6 host) never makes two accounts look like one.
+    #[test]
+    fn accounts_with_colons_do_not_collide() {
+        let device = vec![json!({"id": "srv_v6", "host": "fe80::1", "port": 21, "username": "u"})];
+        let file = [ImportCandidate {
+            id: "srv_other",
+            host: "fe80:",
+            port: 1,
+            username: "21:u",
+        }];
+        let plan = plan_import(&file, &device, ExistingProfileMode::Skip, || unreachable!());
+        assert!(!plan[0].similar);
+    }
+
+    /// New ids look like the frontend's `srv_<millis>_<9 chars>` and differ.
     #[test]
     fn new_ids_have_the_frontend_shape() {
         let id = new_profile_id();
@@ -353,6 +429,8 @@ mod tests {
         assert_ne!(new_profile_id(), id);
     }
 
+    /// The file's fields win, a field only the device has stays, and a stored
+    /// secret flag stays set.
     #[test]
     fn overwrite_lays_the_file_over_the_profile_and_keeps_its_stored_flags() {
         let existing = json!({
@@ -374,6 +452,7 @@ mod tests {
         assert_eq!(merged["hasStoredAeroCryptPassword"], true);
     }
 
+    /// The GUI sends the mode as a lowercase string.
     #[test]
     fn modes_parse_from_lowercase() {
         for (text, mode) in [

@@ -9,6 +9,7 @@
 use std::path::Path;
 use std::process::{Command, Output};
 
+/// Exit code, stdout and stderr of a run, for an assertion message.
 fn describe(out: &Output) -> String {
     format!(
         "exit {:?}\nstdout: {}\nstderr: {}",
@@ -36,6 +37,7 @@ fn cli(config: &Path, args: &[&str]) -> Output {
         .expect("run aeroftp-cli")
 }
 
+/// The JSON a successful run printed.
 fn json(out: &Output) -> serde_json::Value {
     assert!(out.status.success(), "{}", describe(out));
     serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{e}: {}", describe(out)))
@@ -61,6 +63,7 @@ fn saved(config: &Path) -> Vec<(String, String)> {
 
 const PASSWORD: &str = "existing profile import probe export";
 
+/// `profile-import --json` of `file` with `extra` flags, as JSON.
 fn import(config: &Path, file: &Path, extra: &[&str]) -> serde_json::Value {
     let mut args = vec![
         "profile-import",
@@ -74,8 +77,38 @@ fn import(config: &Path, file: &Path, extra: &[&str]) -> serde_json::Value {
     json(&cli(config, &args))
 }
 
-#[test]
-fn a_backup_of_a_profile_still_held_is_skipped_overwritten_or_duplicated() {
+/// The saved profiles whole (`profiles --json` lists no host or options),
+/// read back through an export without restoring anything.
+async fn saved_whole(config: &Path) -> Vec<serde_json::Value> {
+    let file = config.join(format!("{}.aeroftp", uuid::Uuid::new_v4()));
+    let out = cli(
+        config,
+        &[
+            "profile-export",
+            "-o",
+            file.to_str().unwrap(),
+            "--password",
+            PASSWORD,
+        ],
+    );
+    assert!(out.status.success(), "{}", describe(&out));
+    ftp_client_gui_lib::import_server_profiles_with_mode(
+        file.to_string_lossy().into_owned(),
+        PASSWORD.into(),
+        ftp_client_gui_lib::profile_import_plan::ExistingProfileMode::Skip,
+        &[],
+        true,
+    )
+    .await
+    .unwrap()
+    .servers
+}
+
+/// Skip leaves a profile still held alone, Overwrite applies the backup's
+/// fields to it in place (same id and name), and Duplicate adds a copy under a
+/// new id and the next free name, which its dry run already reports.
+#[tokio::test]
+async fn a_backup_of_a_profile_still_held_is_skipped_overwritten_or_duplicated() {
     let config = tempfile::tempdir().unwrap();
     let config = config.path();
     let conf = config.join("rclone.conf");
@@ -116,7 +149,21 @@ fn a_backup_of_a_profile_still_held_is_skipped_overwritten_or_duplicated() {
     assert_eq!(skip["skipped"], 1, "{skip}");
     assert_eq!(saved(config), original);
 
-    let overwrite = import(config, &file, &["--on-existing", "overwrite"]);
+    // A backup of the same profile (same id) whose host differs from the one
+    // saved: an Overwrite must apply it.
+    let mut restored = saved_whole(config).await.remove(0);
+    assert_eq!(restored["host"], "sftp.example.invalid");
+    restored["host"] = "restored.example.invalid".into();
+    let backup = config.join("restored.aeroftp");
+    ftp_client_gui_lib::export_server_profiles_core(
+        serde_json::json!([restored]).to_string(),
+        PASSWORD.into(),
+        false,
+        backup.to_string_lossy().into_owned(),
+    )
+    .await
+    .unwrap();
+    let overwrite = import(config, &backup, &["--on-existing", "overwrite"]);
     assert_eq!(overwrite["imported"], 1, "{overwrite}");
     assert_eq!(overwrite["overwritten"], 1, "{overwrite}");
     assert_eq!(overwrite["similar"], 0, "{overwrite}");
@@ -125,14 +172,24 @@ fn a_backup_of_a_profile_still_held_is_skipped_overwritten_or_duplicated() {
         original,
         "replaced in place, same id and name"
     );
+    assert_eq!(
+        saved_whole(config).await[0]["host"],
+        "restored.example.invalid"
+    );
 
-    let preview = import(config, &file, &["--on-existing", "duplicate", "--dry-run"]);
+    // Duplicated from the backup, whose account (the restored host) the saved
+    // profile now shares, so the copy is reported as similar.
+    let preview = import(
+        config,
+        &backup,
+        &["--on-existing", "duplicate", "--dry-run"],
+    );
     assert_eq!(preview["dry_run"], true, "{preview}");
     assert_eq!(preview["would_duplicate"], 1, "{preview}");
-    assert_eq!(preview["duplicated"][0], "lab", "{preview}");
+    assert_eq!(preview["duplicated"][0], "lab (1)", "{preview}");
     assert_eq!(saved(config), original, "a dry run writes nothing");
 
-    let duplicate = import(config, &file, &["--on-existing", "duplicate"]);
+    let duplicate = import(config, &backup, &["--on-existing", "duplicate"]);
     assert_eq!(duplicate["duplicated"], 1, "{duplicate}");
     assert_eq!(duplicate["similar"], 1, "{duplicate}");
     assert_eq!(duplicate["renamed"][0]["to"], "lab (1)", "{duplicate}");

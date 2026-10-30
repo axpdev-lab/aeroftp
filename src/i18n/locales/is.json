@@ -1368,7 +1368,8 @@
             "importExistingDuplicateHint": "Prófíll sem þú átt nú þegar helst, og afritið úr skránni er bætt við hliðina á honum með númeruðu heiti.",
             "overwrittenCount": "{count} skrifað yfir",
             "duplicatedCount": "{count} afritað",
-            "importJottaChainWarning": "Jottacloud endurnýjar innskráningu sína við hverja tengingu og {names} deilir nú einni með öðru afriti: afritið sem tengist fyrst skráir hitt út (tækið sem skráin kom frá, eða prófílinn sem það var afritað úr). Skráðu hitt inn aftur með nýju Personal Login Token."
+            "importJottaChainWarning": "Jottacloud endurnýjar innskráningu sína við hverja tengingu og {names} deilir nú einni með öðru afriti: afritið sem tengist fyrst skráir hitt út (tækið sem skráin kom frá, eða prófílinn sem það var afritað úr). Skráðu hitt inn aftur með nýju Personal Login Token.",
+            "importOverwriteNotSaved": "Prófílarnir voru ekki vistaðir, en lykilorð og innskráningartákn {count} yfirskrifaðra prófíla hafa þegar verið skipt út fyrir gögn úr skránni. Fluttu sömu skrá inn aftur til að ljúka."
         },
         "devtools": {
             "title": "AeroTools",

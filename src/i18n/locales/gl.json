@@ -1368,7 +1368,8 @@
             "importExistingDuplicateHint": "Un perfil que xa tes mantense, e a copia do ficheiro engádese ao seu carón cun nome numerado.",
             "overwrittenCount": "{count} sobrescritos",
             "duplicatedCount": "{count} duplicados",
-            "importJottaChainWarning": "Jottacloud renova o seu inicio de sesión en cada conexión, e {names} agora comparte un con outra copia: a copia que se conecta primeiro pecha a sesión da outra (o dispositivo de onde vén o ficheiro, ou o perfil do que se duplicou). Volve iniciar sesión na outra cun novo Personal Login Token."
+            "importJottaChainWarning": "Jottacloud renova o seu inicio de sesión en cada conexión, e {names} agora comparte un con outra copia: a copia que se conecta primeiro pecha a sesión da outra (o dispositivo de onde vén o ficheiro, ou o perfil do que se duplicou). Volve iniciar sesión na outra cun novo Personal Login Token.",
+            "importOverwriteNotSaved": "Os perfís non se gardaron, pero os contrasinais e os tokens de inicio de sesión de {count} perfís sobrescritos xa se substituíron cos do ficheiro. Importa de novo o mesmo ficheiro para rematar."
         },
         "devtools": {
             "title": "AeroTools",

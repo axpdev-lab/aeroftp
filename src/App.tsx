@@ -17534,12 +17534,11 @@ const App: React.FC = () => {
             onImport={async (newServers, replaceIds) => {
               // Bridge imports may have replaced a profile in the persisted
               // list; the dialog's opening snapshot is no longer authoritative.
+              // The dialog closes itself (onClose) once its result has been
+              // read, or stays open on a warning that must be seen.
               const merged = await appendImportedProfiles(newServers, replaceIds);
               setExportImportServers(merged);
               setServersRefreshKey(k => k + 1);
-              setShowExportImport(false);
-              setExportImportInitialMode(undefined);
-              setExportImportBridgeFile(null);
             }}
             onClose={() => {
               setShowExportImport(false);

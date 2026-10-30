@@ -1368,7 +1368,8 @@
             "importExistingDuplicateHint": "Profil, který již máte, zůstane a kopie ze souboru se přidá vedle něj s číslovaným názvem.",
             "overwrittenCount": "{count} přepsáno",
             "duplicatedCount": "{count} duplikováno",
-            "importJottaChainWarning": "Jottacloud obnovuje přihlášení při každém připojení a {names} nyní sdílí přihlášení s jinou kopií: kopie, která se připojí první, odhlásí tu druhou (zařízení, ze kterého soubor pochází, nebo profil, ze kterého byla duplikována). Přihlaste druhou znovu pomocí nového Personal Login Token."
+            "importJottaChainWarning": "Jottacloud obnovuje přihlášení při každém připojení a {names} nyní sdílí přihlášení s jinou kopií: kopie, která se připojí první, odhlásí tu druhou (zařízení, ze kterého soubor pochází, nebo profil, ze kterého byla duplikována). Přihlaste druhou znovu pomocí nového Personal Login Token.",
+            "importOverwriteNotSaved": "Profily nebyly uloženy, ale hesla a přihlašovací tokeny {count} přepsaných profilů již byly nahrazeny ze souboru. Pro dokončení importujte stejný soubor znovu."
         },
         "devtools": {
             "title": "AeroTools",

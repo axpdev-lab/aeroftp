@@ -1368,7 +1368,8 @@
             "importExistingDuplicateHint": "Hồ sơ bạn đã có vẫn được giữ, và bản sao từ tệp được thêm bên cạnh với tên có đánh số.",
             "overwrittenCount": "Đã ghi đè {count}",
             "duplicatedCount": "Đã nhân bản {count}",
-            "importJottaChainWarning": "Jottacloud gia hạn đăng nhập ở mỗi lần kết nối, và {names} hiện dùng chung một phiên với bản sao khác: bản sao kết nối trước sẽ đăng xuất bản còn lại (thiết bị chứa tệp gốc, hoặc hồ sơ mà nó được nhân bản từ đó). Hãy đăng nhập lại bản còn lại bằng Personal Login Token mới."
+            "importJottaChainWarning": "Jottacloud gia hạn đăng nhập ở mỗi lần kết nối, và {names} hiện dùng chung một phiên với bản sao khác: bản sao kết nối trước sẽ đăng xuất bản còn lại (thiết bị chứa tệp gốc, hoặc hồ sơ mà nó được nhân bản từ đó). Hãy đăng nhập lại bản còn lại bằng Personal Login Token mới.",
+            "importOverwriteNotSaved": "Các hồ sơ chưa được lưu, nhưng mật khẩu và token đăng nhập của {count} hồ sơ bị ghi đè đã được thay thế từ tệp. Hãy nhập lại cùng tệp đó để hoàn tất."
         },
         "devtools": {
             "title": "AeroTools",
