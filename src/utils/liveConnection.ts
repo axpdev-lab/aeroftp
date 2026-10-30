@@ -99,6 +99,29 @@ export function connectionTargetKey(params: ConnectionParams): string {
     return JSON.stringify([params.protocol || '', hostOf(params), params.port ?? null, params.username || '', target]);
 }
 
+const connectionNumbers = new WeakMap<ConnectionParams, number>();
+let lastConnectionNumber = 0;
+
+/**
+ * A number for one connection as opened, to key what that connection read (a
+ * folder's size) where the target alone is not enough. Two accounts on one
+ * server can differ only in a credential, which {@link connectionTargetKey}
+ * leaves out: FileLu's API key is the password, and an OAuth token is not in
+ * the params at all. A session tab keeps the params object copied at its
+ * connect for as long as the connection lasts (updates of the tab spread it
+ * unchanged), and a connect or a reconnect copies a new one; so one number
+ * per object is one number per connection, and a reconnect of the same
+ * profile starts afresh.
+ */
+export function connectionNumberOf(params: ConnectionParams): number {
+    let number = connectionNumbers.get(params);
+    if (number === undefined) {
+        number = ++lastConnectionNumber;
+        connectionNumbers.set(params, number);
+    }
+    return number;
+}
+
 /**
  * Whether the live connection reaches what `target` describes: the same
  * protocol, host, port and account, and the same value for every option that

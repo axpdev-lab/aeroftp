@@ -523,7 +523,7 @@ import { useLocalPanel } from './hooks/useLocalPanel';
 import { useTerminalCwd } from './hooks/useTerminalCwd';
 import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 import { isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
-import { connectionTargetKey, isSameConnection, resolveLiveConnectionParams, savedProfileIdOf } from './utils/liveConnection';
+import { connectionNumberOf, connectionTargetKey, isSameConnection, resolveLiveConnectionParams, savedProfileIdOf } from './utils/liveConnection';
 import { selectedLocalRows } from './utils/localSelection';
 
 // W3.1 (#270.5): marker the backend connect commands return when the user
@@ -664,6 +664,9 @@ const resolveTargetDisplayPath = (
  * for the remote half).
  */
 const localSizeKey = (path: string) => `local:${path}`;
+
+/** An id for one folder size scan, which its progress events carry. */
+const newSizeScanId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 
 /** A local listing entry as the Properties dialogs take it. */
 const localEntryProperties = (f: LocalFile, dir: string): FileProperties => ({
@@ -1571,8 +1574,10 @@ const App: React.FC = () => {
   const folderSizeCalculatingRef = useRef<Set<string>>(new Set());
   // A remote path names a folder on every connection target (server, port,
   // bucket, container, drive, branch), so the target is part of the key:
-  // "/docs" sized in one is not the size of "/docs" in the next.
-  const remoteSizeKey = (path: string) => `remote:${connectionTargetKey(liveConnectionParams)}:${path}`;
+  // "/docs" sized in one is not the size of "/docs" in the next. So is the
+  // connection itself, for two accounts that differ only in a credential
+  // (connectionNumberOf); a reconnect counts afresh.
+  const remoteSizeKey = (path: string) => `remote:${connectionTargetKey(liveConnectionParams)}#${connectionNumberOf(liveConnectionParams)}:${path}`;
   const propertiesSizeKey = propertiesDialog
     ? (propertiesDialog.isRemote ? remoteSizeKey(propertiesDialog.path) : localSizeKey(propertiesDialog.path))
     : '';
@@ -5161,7 +5166,7 @@ const App: React.FC = () => {
 
   // One walk of a local folder, with its progress, for calculateFolderSize.
   const countLocalFolder = async (path: string, key: string) => {
-    const scanId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    const scanId = newSizeScanId();
     const current = () => localSizeScanRef.current.get(key) === scanId;
     localSizeScanRef.current.set(key, scanId);
     folderSizeCalculatingRef.current.add(key);
@@ -5178,7 +5183,15 @@ const App: React.FC = () => {
       const result = await invoke<FolderSizeResult>('calculate_folder_size', { path, scanId });
       if (current()) setFolderSizeCache(prev => new Map(prev).set(key, result));
     } catch (err) {
-      if (current()) notify.error(t('toast.sizeFailed'), String(err));
+      if (current()) {
+        // The total of an earlier walk is not the folder's size now.
+        setFolderSizeCache(prev => {
+          const next = new Map(prev);
+          next.delete(key);
+          return next;
+        });
+        notify.error(t('toast.sizeFailed'), String(err));
+      }
     } finally {
       unlisten?.();
       if (current()) {
@@ -5218,11 +5231,16 @@ const App: React.FC = () => {
     folderSizeCalculatingRef.current.add(key);
     setFolderSizeCalculating(new Set(folderSizeCalculatingRef.current));
 
-    // Listen for progress events
-    const unlisten = await listen<FolderSizeResult & { scanning: boolean }>(
+    // The provider walks one folder at a time and a new walk cancels the last,
+    // which may still report before it returns: each walk has an id, and this
+    // listener takes only the events of its own, so the cache of one folder
+    // never holds the counts of another, nor does the catch below mark them.
+    const scanId = newSizeScanId();
+    const unlisten = await listen<FolderSizeResult & { scanning: boolean; scan_id?: string | null }>(
       'folder-size-progress',
       (event) => {
         const p = event.payload;
+        if (p.scan_id !== scanId) return;
         // Update cache with partial results during scan
         setFolderSizeCache(prev => {
           const next = new Map(prev);
@@ -5233,7 +5251,7 @@ const App: React.FC = () => {
     );
 
     try {
-      const result = await invoke<FolderSizeResult>('provider_calculate_folder_size', { path });
+      const result = await invoke<FolderSizeResult>('provider_calculate_folder_size', { path, scanId });
       setFolderSizeCache(prev => new Map(prev).set(key, result));
     } catch (err) {
       setFolderSizeCache(prev => {

@@ -99,11 +99,30 @@ describe('a folder\'s size shows where it is asked for (#1441)', () => {
         expect([...dialogs.matchAll(/cancelLocalFolderSizes\(/g)]).toHaveLength(2);
     });
 
+    it('drops a folder\'s earlier total when its recount fails', () => {
+        // The dialog showed the total of the walk before as the folder's size.
+        const scan = body('countLocalFolder');
+        const failed = scan.slice(scan.indexOf('} catch (err) {'), scan.indexOf('} finally {'));
+        expect(failed).toMatch(/if \(current\(\)\) \{\s*\/\/[^\n]*\n\s*setFolderSizeCache\(prev => \{\s*const next = new Map\(prev\);\s*next\.delete\(key\);/);
+    });
+
+    it('takes the progress of a remote folder only from its own scan', () => {
+        // A scan cancelled by the next one reported on: the dialog of one
+        // folder showed the counts of another, and the catch kept them.
+        const remote = body('calculateRemoteFolderSize');
+        expect(remote).toMatch(/const scanId = newSizeScanId\(\);/);
+        expect(remote).toMatch(/'folder-size-progress',\s*\(event\) => \{\s*const p = event\.payload;\s*if \(p\.scan_id !== scanId\) return;/);
+        expect(remote).toMatch(/invoke<FolderSizeResult>\('provider_calculate_folder_size', \{ path, scanId \}\)/);
+        // Registered before the scan starts, so its first event is not missed.
+        expect(remote.indexOf("listen<")).toBeLessThan(remote.indexOf("invoke<FolderSizeResult>('provider_calculate_folder_size'"));
+    });
+
     it('lets a second caller wait for the walk of a folder already counted', () => {
         // It returned at once: the multi-selection count went on to the next
         // folder while the first was still walked, two walks at a time.
         const calculate = body('calculateFolderSize');
         expect(calculate).toMatch(/const running = localSizeRunsRef\.current\.get\(key\);\s*if \(running\) return running;/);
+        expect(calculate).toMatch(/localSizeRunsRef\.current\.set\(key, run\);/);
         expect(calculate).not.toMatch(/folderSizeCalculatingRef\.current\.has\(key\)\) return;/);
         // A cancelled walk is not waited on: a new count starts afresh.
         expect(body('cancelLocalFolderSizes')).toMatch(/localSizeRunsRef\.current\.delete\(key\);/);
@@ -125,7 +144,9 @@ describe('a folder\'s size shows where it is asked for (#1441)', () => {
         expect(appRaw).toMatch(/const remoteSizeKey = /);
         // The whole connection target: bucket, container, drive, branch, port
         // (connectionTargetKey, tested in liveConnection.test.ts).
-        expect(appRaw).toMatch(/const remoteSizeKey = \(path: string\) => `remote:\$\{connectionTargetKey\(liveConnectionParams\)\}:\$\{path\}`;/);
+        // And the connection itself: two accounts can differ only in a
+        // credential (connectionNumberOf, tested there too).
+        expect(appRaw).toMatch(/const remoteSizeKey = \(path: string\) => `remote:\$\{connectionTargetKey\(liveConnectionParams\)\}#\$\{connectionNumberOf\(liveConnectionParams\)\}:\$\{path\}`;/);
         expect(appRaw).not.toMatch(/folderSizeCache\.get\(propertiesDialog\.path\)/);
     });
 });

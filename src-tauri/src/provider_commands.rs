@@ -10739,16 +10739,35 @@ pub struct FolderSizeProgress {
     scanning: bool,
 }
 
+/// A folder size scan's progress, tagged with the id its caller gave the scan.
+/// A new scan cancels the one before, which may still report before it
+/// returns: a dialog takes only the events of its own scan.
+#[derive(Serialize, Clone)]
+struct TaggedFolderSizeProgress<'a> {
+    scan_id: Option<&'a str>,
+    #[serde(flatten)]
+    progress: &'a FolderSizeProgress,
+}
+
 /// Recursively calculate folder size via provider list(): BFS with progress events.
 /// Safety: max 50,000 entries, max depth 50.
+///
+/// Each `folder-size-progress` event carries the `scan_id` given here.
 #[tauri::command]
 pub async fn provider_calculate_folder_size(
     state: State<'_, ProviderState>,
     app: AppHandle,
     path: String,
+    scan_id: Option<String>,
 ) -> Result<FolderSizeProgress, String> {
     provider_calculate_folder_size_inner(&state, path, |progress| {
-        let _ = app.emit("folder-size-progress", progress);
+        let _ = app.emit(
+            "folder-size-progress",
+            TaggedFolderSizeProgress {
+                scan_id: scan_id.as_deref(),
+                progress,
+            },
+        );
     })
     .await
 }
@@ -15985,6 +16004,35 @@ mod tests {
         state.disarm(first);
         assert!(state.cancel());
         assert!(b.is_cancelled());
+    }
+
+    /// The scan id reaches every progress event, beside the totals, so the
+    /// dialog of a new scan can drop the events of the one it cancelled.
+    #[test]
+    fn folder_size_progress_carries_the_scan_id() {
+        let progress = FolderSizeProgress {
+            partial: true,
+            total_bytes: 12,
+            file_count: 2,
+            dir_count: 1,
+            scanning: true,
+        };
+        let tagged = serde_json::to_value(TaggedFolderSizeProgress {
+            scan_id: Some("scan-a"),
+            progress: &progress,
+        })
+        .unwrap();
+        assert_eq!(
+            tagged,
+            serde_json::json!({
+                "scan_id": "scan-a",
+                "partial": true,
+                "total_bytes": 12,
+                "file_count": 2,
+                "dir_count": 1,
+                "scanning": true,
+            })
+        );
     }
 
     #[tokio::test]

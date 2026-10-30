@@ -266,6 +266,29 @@ pub fn scan(
     Ok(walk.totals())
 }
 
+/// What the depth cap found in a folder it counts but does not enter.
+#[derive(Debug, PartialEq)]
+enum Beyond {
+    /// Nothing: the cap left nothing out.
+    Empty,
+    /// At least one entry, which the cap leaves out: a limit was reached.
+    Holds,
+    /// The folder, or its first entry, could not be read: a limit raised
+    /// would not help.
+    Unreadable,
+}
+
+impl Beyond {
+    /// From the first entry of the folder's listing.
+    fn from_first<T, E>(first: Option<Result<T, E>>) -> Self {
+        match first {
+            None => Beyond::Empty,
+            Some(Ok(_)) => Beyond::Holds,
+            Some(Err(_)) => Beyond::Unreadable,
+        }
+    }
+}
+
 /// A directory waiting to be listed.
 struct Dir {
     path: PathBuf,
@@ -575,10 +598,14 @@ impl<'a> Walk<'a> {
             if depth >= self.limits.max_depth {
                 // Counted, not entered: anything inside is left out, and the
                 // rest of the walk goes on.
-                match read_admitted(&child).map(|(mut inside, _open)| inside.next().is_none()) {
-                    Ok(true) => {}
-                    Ok(false) => self.capped.store(true, Ordering::Relaxed),
-                    Err(_) => tally.unreadable_dirs += 1,
+                let beyond = match read_admitted(&child) {
+                    Ok((mut inside, _open)) => Beyond::from_first(inside.next()),
+                    Err(_) => Beyond::Unreadable,
+                };
+                match beyond {
+                    Beyond::Empty => {}
+                    Beyond::Holds => self.capped.store(true, Ordering::Relaxed),
+                    Beyond::Unreadable => tally.unreadable_dirs += 1,
                 }
                 return;
             }
@@ -1221,6 +1248,19 @@ mod tests {
         fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).expect("chmod");
         assert_eq!((result.dir_count, result.unreadable_dirs), (2, 1));
         assert!(result.partial && !result.capped, "{result:?}");
+    }
+
+    /// A folder at the depth cap whose first entry cannot be read is
+    /// unreadable too, not a limit reached. A failed read of a listing cannot
+    /// be produced on demand, so the classification is tested on its own.
+    #[test]
+    fn a_failed_first_entry_at_the_depth_cap_is_unreadable_not_capped() {
+        assert_eq!(Beyond::from_first::<(), ()>(None), Beyond::Empty);
+        assert_eq!(Beyond::from_first::<(), ()>(Some(Ok(()))), Beyond::Holds);
+        assert_eq!(
+            Beyond::from_first::<(), ()>(Some(Err(()))),
+            Beyond::Unreadable
+        );
     }
 
     #[cfg(unix)]
