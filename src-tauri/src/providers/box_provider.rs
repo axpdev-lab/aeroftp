@@ -488,25 +488,29 @@ impl BoxProvider {
         if !self.connected {
             return;
         }
-        if let Ok(token) = self.get_token().await {
-            if let Ok(header) = Self::bearer_header(&token) {
-                let abort_url = format!(
-                    "{}/files/upload_sessions/{}",
-                    self.upload_api_base(),
-                    session_id
-                );
-                // Best effort with its own deadline: a caller that is already
-                // returning an error does not wait out the client's read timeout.
-                let _ = tokio::time::timeout(
-                    BOX_ABORT_TIMEOUT,
-                    self.client
-                        .delete(&abort_url)
-                        .header(AUTHORIZATION, header)
-                        .send(),
-                )
+        // Best effort with one deadline over the token (which may refresh) and
+        // the request: a caller that is already returning an error does not
+        // wait out a stalled token endpoint or the client's read timeout.
+        let abort = async {
+            let Ok(token) = self.get_token().await else {
+                return;
+            };
+            let Ok(header) = Self::bearer_header(&token) else {
+                return;
+            };
+            let abort_url = format!(
+                "{}/files/upload_sessions/{}",
+                self.upload_api_base(),
+                session_id
+            );
+            let _ = self
+                .client
+                .delete(&abort_url)
+                .header(AUTHORIZATION, header)
+                .send()
                 .await;
-            }
-        }
+        };
+        let _ = tokio::time::timeout(BOX_ABORT_TIMEOUT, abort).await;
     }
 
     /// Get access token from OAuth manager (returns SecretString for memory zeroization)
@@ -1538,8 +1542,8 @@ impl BoxProvider {
             });
 
         // Stream from file handle instead of buffered &[u8]
-        // Every failure after the session exists deletes it, so the parts it
-        // already holds do not wait for Box to expire it.
+        // Every failure after the session exists, the commit included, deletes
+        // it, so the parts it already holds do not wait for Box to expire it.
         let sent = async {
             let total_size = source.size();
             let mut file = tokio::fs::File::open(local_path)
@@ -1604,21 +1608,17 @@ impl BoxProvider {
             // The whole-file SHA-1 is computed from the bytes read, so Box
             // cannot tell a file rewritten during the read from the one on disk.
             source.ensure_unchanged("Box chunked upload").await?;
-            Ok((parts, whole_sha1))
+
+            let file_sha1 = BASE64.encode(whole_sha1.finalize());
+            let commit_body = serde_json::json!({"parts": parts});
+            self.commit_upload_session(&commit_url, &commit_body, &file_sha1)
+                .await
         }
         .await;
-        let (parts, whole_sha1) = match sent {
-            Ok(sent) => sent,
-            Err(e) => {
-                self.abort_upload_session_best_effort(&session.id).await;
-                return Err(e);
-            }
-        };
-
-        let file_sha1 = BASE64.encode(whole_sha1.finalize());
-        let commit_body = serde_json::json!({"parts": parts});
-        self.commit_upload_session(&commit_url, &commit_body, &file_sha1)
-            .await?;
+        if let Err(e) = sent {
+            self.abort_upload_session_best_effort(&session.id).await;
+            return Err(e);
+        }
 
         progress.complete();
         Ok(())
@@ -4769,6 +4769,90 @@ mod tests {
         assert!(err.to_string().contains("Chunk upload failed"), "{err}");
         assert_eq!(*aborts.lock().unwrap(), 1, "the session must be deleted");
         assert_eq!(*commits.lock().unwrap(), 0, "nothing is committed");
+        server.abort();
+    }
+
+    /// A commit Box refuses deletes the session too, so the parts it holds do
+    /// not wait for Box to expire it.
+    #[tokio::test]
+    async fn a_refused_commit_deletes_the_chunked_upload_session() {
+        use std::sync::{Arc, Mutex};
+
+        use axum::{extract::Request, routing::post, routing::put, Router};
+
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("big.bin");
+        std::fs::write(&local, b"AAAAAAAAAAAA").unwrap();
+        let aborts: Arc<Mutex<u32>> = Arc::default();
+        let aborts_h = Arc::clone(&aborts);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let base = format!("http://{addr}");
+        let session_base = base.clone();
+        let app = Router::new()
+            .route(
+                "/files/upload_sessions",
+                post(move || {
+                    let base = session_base.clone();
+                    async move {
+                        axum::Json(serde_json::json!({
+                            "id": "sess-commit",
+                            "part_size": 4,
+                            "session_endpoints": {
+                                "upload_part": format!("{base}/part"),
+                                "commit": format!("{base}/commit")
+                            }
+                        }))
+                    }
+                }),
+            )
+            .route(
+                "/part",
+                put(|req: Request| async move {
+                    let _ = axum::body::to_bytes(req.into_body(), usize::MAX).await;
+                    axum::Json(serde_json::json!({"part": {"part_id": "p"}}))
+                }),
+            )
+            .route(
+                "/files/upload_sessions/{id}",
+                axum::routing::delete(
+                    move |axum::extract::Path(id): axum::extract::Path<String>| {
+                        let aborts = Arc::clone(&aborts_h);
+                        async move {
+                            assert_eq!(id, "sess-commit");
+                            *aborts.lock().unwrap() += 1;
+                            axum::http::StatusCode::NO_CONTENT
+                        }
+                    },
+                ),
+            )
+            .route(
+                "/commit",
+                post(|| async { (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "no") }),
+            );
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let mut provider = fixture_connected();
+        provider.upload_base_override = Some(base.clone());
+        let session = reqwest::Client::new()
+            .post(format!("{base}/files/upload_sessions"))
+            .send()
+            .await
+            .unwrap();
+        let progress = super::super::upload_progress::UploadProgress::new(None, 12);
+        let source = super::super::upload_source::UploadSource::observe(local.to_str().unwrap())
+            .await
+            .unwrap();
+        let err = provider
+            .chunked_upload_session(session, local.to_str().unwrap(), source, &progress)
+            .await
+            .expect_err("a refused commit fails the upload");
+        assert!(err.to_string().contains("Box commit failed"), "{err}");
+        assert_eq!(*aborts.lock().unwrap(), 1, "the session must be deleted");
         server.abort();
     }
 

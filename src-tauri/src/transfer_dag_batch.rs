@@ -85,12 +85,12 @@ struct MultipartFileRuntime {
     /// Owns a second handle until complete or an awaited abort returns. The
     /// state's take_for_abort consumes its handle before doing any wire I/O.
     abort_guard: std::sync::Mutex<Option<MultipartAbortGuard>>,
-    /// The local file as it was before any part was read from it, or `None`
-    /// when it could not be read. The parts are read at their own offsets,
-    /// concurrently, so a file rewritten meanwhile would be completed as a
-    /// mixture of two versions; the complete is refused unless the file still
-    /// matches this observation and the size the parts were cut for.
-    source: Option<crate::providers::upload_source::UploadSource>,
+    /// The local file as it was before any part was read from it. The parts
+    /// are read at their own offsets, concurrently, so a file rewritten
+    /// meanwhile would be completed as a mixture of two versions; the complete
+    /// is refused unless the file still matches this observation and the size
+    /// the parts were cut for.
+    source: crate::providers::upload_source::UploadSource,
 }
 
 impl MultipartFileRuntime {
@@ -858,6 +858,27 @@ fn batch_streaming_config(
 /// Returns this file's metrics (executor timing plus runner-attested bytes and
 /// retries) so the streaming frontier can fold them into the job-level total;
 /// a file that never reaches the graph contributes zero.
+/// Account `entry` as failed with `failure` before its subgraph runs: the
+/// executor reports the file error and the batch progress counts one failure.
+async fn fail_before_graph<E>(
+    ctx: &BatchStreamContext<E>,
+    entry: &TransferEntry,
+    failure: TransferFailure,
+) where
+    E: TransferExecutor + Send + Sync + 'static,
+{
+    ctx.executor.multipart_emit_file_error(entry, &failure);
+    let snapshot_clone = {
+        let mut snapshot = ctx.progress.lock().await;
+        snapshot.failed += 1;
+        snapshot.clone()
+    };
+    ctx.sink.emit_batch_progress(&snapshot_clone);
+    if let Some(observer) = ctx.progress_observer.as_ref() {
+        observer(snapshot_clone);
+    }
+}
+
 async fn run_one_batch_file<E>(
     item: TransferWorkItem,
     mut admission: FileAdmission,
@@ -884,19 +905,33 @@ where
     // exactly once (same contract as the former pre-graph preflight); no
     // transfer nodes run for it.
     if is_multipart && !ctx.executor.supports_multipart_wire() {
-        let failure = unsupported_multipart_failure();
-        ctx.executor.multipart_emit_file_error(&entry, &failure);
-        let snapshot_clone = {
-            let mut snapshot = ctx.progress.lock().await;
-            snapshot.failed += 1;
-            snapshot.clone()
-        };
-        ctx.sink.emit_batch_progress(&snapshot_clone);
-        if let Some(observer) = ctx.progress_observer.as_ref() {
-            observer(snapshot_clone);
-        }
+        fail_before_graph(&ctx, &entry, unsupported_multipart_failure()).await;
         return TransferDagMetrics::default();
     }
+
+    // A multipart file reads its parts at their offsets concurrently, so the
+    // complete is checked against the file as it is now, before any part is
+    // read. A file that cannot be observed fails here, before a session or a
+    // part is spent on it.
+    let multipart_source = if is_multipart {
+        match crate::providers::upload_source::UploadSource::observe(&entry.local_path).await {
+            Ok(source) => Some(source),
+            Err(e) => {
+                let failure = TransferFailure {
+                    kind: TransferFailureKind::LocalIo,
+                    message: format!(
+                        "multipart upload: the local file cannot be read before its parts are: {e}"
+                    ),
+                    retryable: false,
+                    retry_after_secs: None,
+                };
+                fail_before_graph(&ctx, &entry, failure).await;
+                return TransferDagMetrics::default();
+            }
+        }
+    } else {
+        None
+    };
 
     // Bind this subgraph's local node ids to the single admitted entry (index 0
     // of a one-element slice), so the shared node runners are reused verbatim
@@ -906,36 +941,34 @@ where
     for &node_id in &shaped.transfer {
         node_to_entry.insert(node_id, 0);
     }
-    let multipart_runtime: Option<Arc<MultipartFileRuntime>> = if is_multipart {
-        let profile = TransferGraphProfile::resolve(ctx.dag_direction, &ctx.caps, entry.size);
-        let layout = MultipartLayout::from_profile(
-            entry.size,
-            profile.upload_parts,
-            profile.preferred_chunk_size,
-            &entry.local_path,
-        );
-        let node_to_part: HashMap<usize, u32> = shaped
-            .transfer
-            .iter()
-            .enumerate()
-            .map(|(idx, node_id)| (*node_id, (idx + 1) as u32))
-            .collect();
-        let state = MultipartFileState::new(layout, node_to_part);
-        node_to_entry.insert(shaped.acquire, 0);
-        node_to_entry.insert(shaped.commit, 0);
-        let source = crate::providers::upload_source::UploadSource::observe(&entry.local_path)
-            .await
-            .ok();
-        Some(Arc::new(MultipartFileRuntime {
-            state,
-            session_lease: Mutex::new(SessionLeaseSlot::Vacant),
-            governor_lease: Mutex::new(None),
-            abort_guard: std::sync::Mutex::new(None),
-            source,
-        }))
-    } else {
-        None
-    };
+    let multipart_runtime: Option<Arc<MultipartFileRuntime>> =
+        if let Some(source) = multipart_source {
+            let profile = TransferGraphProfile::resolve(ctx.dag_direction, &ctx.caps, entry.size);
+            let layout = MultipartLayout::from_profile(
+                entry.size,
+                profile.upload_parts,
+                profile.preferred_chunk_size,
+                &entry.local_path,
+            );
+            let node_to_part: HashMap<usize, u32> = shaped
+                .transfer
+                .iter()
+                .enumerate()
+                .map(|(idx, node_id)| (*node_id, (idx + 1) as u32))
+                .collect();
+            let state = MultipartFileState::new(layout, node_to_part);
+            node_to_entry.insert(shaped.acquire, 0);
+            node_to_entry.insert(shaped.commit, 0);
+            Some(Arc::new(MultipartFileRuntime {
+                state,
+                session_lease: Mutex::new(SessionLeaseSlot::Vacant),
+                governor_lease: Mutex::new(None),
+                abort_guard: std::sync::Mutex::new(None),
+                source,
+            }))
+        } else {
+            None
+        };
 
     let node_to_entry = Arc::new(node_to_entry);
     let multipart_runtimes: Arc<Vec<Option<Arc<MultipartFileRuntime>>>> =
@@ -1763,19 +1796,13 @@ where
 }
 
 /// Refuse to complete a multipart upload whose parts may not come from one
-/// version of the local file: the file could not be observed before the parts
-/// were read, its size then was not the one the parts were cut for, or it no
-/// longer matches that observation.
+/// version of the local file: its size when it was observed, before the parts
+/// were read, was not the one the parts were cut for, or it no longer matches
+/// that observation.
 async fn check_multipart_source(
-    source: Option<&crate::providers::upload_source::UploadSource>,
+    source: &crate::providers::upload_source::UploadSource,
     planned_size: u64,
 ) -> Result<(), String> {
-    let Some(source) = source else {
-        return Err(
-            "multipart upload: the local file could not be read before its parts were; nothing was committed"
-                .to_string(),
-        );
-    };
     if source.size() != planned_size {
         return Err(format!(
             "multipart upload: the parts were planned for {planned_size} bytes but the local file had {} when the upload started; nothing was committed",
@@ -1839,9 +1866,7 @@ where
         return TransferOutcome::Failed(failure);
     }
 
-    if let Err(message) =
-        check_multipart_source(runtime.source.as_ref(), state.layout().total_size).await
-    {
+    if let Err(message) = check_multipart_source(&runtime.source, state.layout().total_size).await {
         let failure = TransferFailure {
             kind: TransferFailureKind::LocalIo,
             message,
@@ -3726,6 +3751,30 @@ mod tests {
         assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 1);
     }
 
+    /// A multipart file that cannot be observed fails before its session or
+    /// any part is spent on it: the complete could never be checked.
+    #[tokio::test]
+    async fn multipart_upload_of_a_file_that_cannot_be_observed_fails_before_its_parts() {
+        let entries = vec![entry("missing", 24)];
+        let executor = Arc::new(
+            MockExecutor::new(4)
+                .with_capabilities(multipart_caps(1, 8))
+                .with_multipart_wire(),
+        );
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            upload_batch(entries, 4),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        assert_eq!(result.failed, 1, "{result:?}");
+        assert_eq!(executor.part_calls.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 0);
+    }
+
     #[tokio::test]
     async fn multipart_soft_stop_after_begin_lets_the_file_finish() {
         let (result, executor) = run_multipart_with_stop_on_first_part(1, 4, false).await;
@@ -3910,7 +3959,9 @@ mod tests {
             session_lease: Mutex::new(SessionLeaseSlot::Vacant),
             governor_lease: Mutex::new(None),
             abort_guard: std::sync::Mutex::new(None),
-            source: None,
+            source: crate::providers::upload_source::UploadSource::observe(&path_str)
+                .await
+                .expect("observe the temp file"),
         });
 
         let whole_outcome = run_whole_file_node(
