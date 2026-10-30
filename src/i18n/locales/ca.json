@@ -1369,8 +1369,8 @@
             "overwrittenCount": "{count} sobreescrits",
             "duplicatedCount": "{count} duplicats",
             "importJottaChainWarning": "Jottacloud renova l'inici de sessió a cada connexió, i {names} ara en comparteix un amb una altra còpia: la còpia que es connecta primer tanca la sessió de l'altra (el dispositiu d'on ve el fitxer, o el perfil del qual es va duplicar). Torneu a iniciar sessió a l'altra amb un Personal Login Token nou.",
-            "importOauthAppKept": "{names} han arribat amb una aplicació OAuth personalitzada diferent de la que aquest dispositiu té per a aquest proveïdor. S'ha mantingut l'aplicació emmagatzemada: torna a iniciar la sessió si aquests perfils deixen de connectar-se.",
-            "importTargetChanged": "{names} no s'han sobreescrit: el fitxer els fa apuntar a un altre servidor, i les contrasenyes i els tokens desats no hi han d'anar. Importa amb Duplica per afegir la còpia del fitxer, o elimina primer el perfil.",
+            "importOauthAppKept": "{names} han arribat amb una aplicació OAuth personalitzada diferent de la que aquest dispositiu té per a aquest proveïdor. S'ha mantingut l'aplicació emmagatzemada: torneu a iniciar la sessió si aquests perfils deixen de connectar-se.",
+            "importTargetChanged": "{names} no s'han sobreescrit: el fitxer els fa apuntar a un altre servidor, i les contrasenyes i els tokens desats no hi han d'anar. Importeu amb Duplica per afegir la còpia del fitxer, o elimineu primer el perfil.",
             "importSharedSecretsFailed": "S'ha importat {names}, però no s'ha pogut desar un secret compartit o una sessió del fitxer. Torneu a iniciar la sessió en aquests perfils si no es connecten."
         },
         "devtools": {

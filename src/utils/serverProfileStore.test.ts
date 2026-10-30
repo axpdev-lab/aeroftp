@@ -416,6 +416,13 @@ describe('revertConvertedProfile', () => {
         expect(revertConvertedProfile([added], 'new', original)).toEqual([added, original]);
         expect(revertConvertedProfile([original, added], 'new', original)).toEqual([original, added]);
     });
+
+    it('stores no id twice, and a convert that kept the id gets the original back in place', () => {
+        const heldAgain = sampleProfile({ id: 'orig', name: 'Saved since' });
+        expect(revertConvertedProfile([converted, heldAgain], 'new', original)).toEqual([heldAgain]);
+        const sameId = sampleProfile({ id: 'orig', name: 'Converted in place' });
+        expect(revertConvertedProfile([sameId, added], 'orig', original)).toEqual([original, added]);
+    });
 });
 
 describe('account-bound profile writes', () => {

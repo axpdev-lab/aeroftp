@@ -1691,10 +1691,11 @@ impl ProfileListLock {
 
 /// Whether a failed lock says the filesystem has no file locks at all.
 fn file_locks_unavailable(error: &std::io::Error) -> bool {
-    // ENOLCK on Linux; the portable kind covers a platform without them.
-    const ENOLCK: i32 = 37;
+    #[cfg(unix)]
+    if error.raw_os_error() == Some(libc::ENOLCK) {
+        return true;
+    }
     error.kind() == std::io::ErrorKind::Unsupported
-        || (cfg!(unix) && error.raw_os_error() == Some(ENOLCK))
 }
 
 /// Refusal of a writer that waited for [`ProfileListLock`] in vain.
@@ -7460,7 +7461,9 @@ mod tests {
             ErrorKind::PermissionDenied
         )));
         #[cfg(unix)]
-        assert!(file_locks_unavailable(&Error::from_raw_os_error(37)));
+        assert!(file_locks_unavailable(&Error::from_raw_os_error(
+            libc::ENOLCK
+        )));
     }
 
     /// Every kind of list write waits for the lock, so a holder that writes secrets

@@ -1369,8 +1369,8 @@
             "overwrittenCount": "{count} suprascrise",
             "duplicatedCount": "{count} duplicate",
             "importJottaChainWarning": "Jottacloud își reînnoiește autentificarea la fiecare conectare, iar {names} împarte acum una cu altă copie: copia care se conectează prima o deconectează pe cealaltă (dispozitivul de la care provine fișierul sau profilul din care a fost duplicată). Autentificați din nou cealaltă copie cu un nou Personal Login Token.",
-            "importOauthAppKept": "{names} au venit cu o aplicație OAuth personalizată diferită de cea pe care acest dispozitiv o are pentru furnizorul respectiv. Aplicația stocată a fost păstrată, așa că autentifică-te din nou dacă aceste profiluri nu se mai conectează.",
-            "importTargetChanged": "{names} nu au fost suprascrise: fișierul le îndreaptă către alt server, iar parolele și token-urile lor salvate nu trebuie să ajungă acolo. Importă cu Duplică pentru a adăuga copia din fișier sau șterge mai întâi profilul.",
+            "importOauthAppKept": "{names} au venit cu o aplicație OAuth personalizată diferită de cea pe care acest dispozitiv o are pentru furnizorul respectiv. Aplicația stocată a fost păstrată, așa că autentificați-vă din nou dacă aceste profiluri nu se mai conectează.",
+            "importTargetChanged": "{names} nu au fost suprascrise: fișierul le îndreaptă către alt server, iar parolele și token-urile lor salvate nu trebuie să ajungă acolo. Importați cu Duplică pentru a adăuga copia din fișier sau ștergeți mai întâi profilul.",
             "importSharedSecretsFailed": "{names} au fost importate, dar un secret partajat sau o sesiune din fișier nu a putut fi stocat. Autentificați-vă din nou în aceste profiluri dacă nu se conectează."
         },
         "devtools": {

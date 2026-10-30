@@ -13946,8 +13946,8 @@ fn reorder_saved_profiles(
 /// edits the JSON: a list save would wait on the lock, and a secret write on the
 /// transaction. Nothing is written when it fails. Returns its result, the list
 /// sent and the list stored (names made unique by the write). With the partition
-/// unavailable the change is laid over the list read and goes to the legacy blob
-/// ([`save_profiles_to_legacy_blob`]).
+/// unavailable the change goes to the legacy blob
+/// ([`change_profiles_in_legacy_blob`]).
 fn update_active_user_profiles<R, E>(
     cli: &Cli,
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
@@ -13958,7 +13958,7 @@ fn update_active_user_profiles<R, E>(
     // The read also moves what an older import left in a profile's options. A list
     // that cannot be read is an error, never an empty list: saved, that would keep
     // only the profiles of this change.
-    let mut read = load_active_user_profiles(cli, store).map_err(|e| {
+    load_active_user_profiles(cli, store).map_err(|e| {
         store_error(format!(
             "Failed to read profiles: {e}. Nothing was changed; unlock the account if it is locked, check that the AeroFTP data folder is readable, then run the command again"
         ))
@@ -14001,10 +14001,7 @@ fn update_active_user_profiles<R, E>(
                     "Failed to write profiles: {e}. Nothing was changed; run the command again"
                 )));
             }
-            let result = change(&mut read)?;
-            let stored = save_profiles_to_legacy_blob(store, target.id, &read)
-                .map_err(|e| store_error(format!("Failed to write profiles: {e}")))?;
-            Ok((result, read, stored))
+            change_profiles_in_legacy_blob(store, target.id, &store_error, change)
         }
         (Ok(_), None) => Err(store_error(
             "Failed to write profiles: the list write did not run".to_string(),
@@ -14012,38 +14009,46 @@ fn update_active_user_profiles<R, E>(
     }
 }
 
-/// Keep `profiles` in the legacy blob alone, the partition being unavailable
+/// Change the list in the legacy blob alone, the partition being unavailable
 /// (downgrade, unreachable file), and only when this would have been the active
 /// user anyway: the blob has no accounts. Same R3-safety reasoning as the mirror.
-fn save_profiles_to_legacy_blob(
+/// The blob is read and written under the lock, so a save made since the command
+/// started is kept. A blob that holds no list yet is an empty list, and one that
+/// cannot be read is an error, so its profiles are never written over.
+fn change_profiles_in_legacy_blob<R, E>(
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
     user_id: i64,
-    profiles: &[serde_json::Value],
-) -> Result<Vec<serde_json::Value>, String> {
+    store_error: &impl Fn(String) -> E,
+    mut change: impl FnMut(&mut Vec<serde_json::Value>) -> Result<R, E>,
+) -> Result<(R, Vec<serde_json::Value>, Vec<serde_json::Value>), E> {
+    use ftp_client_gui_lib::credential_store::CredentialError;
     use ftp_client_gui_lib::user_partitions;
+    let failed = |e: String| store_error(format!("Failed to write profiles: {e}"));
     if !is_active_user(store, user_id) {
-        return Err(
+        return Err(failed(
             "User partition unavailable; --user override cannot fall back to legacy blob"
                 .to_string(),
-        );
+        ));
     }
-    let _lock =
-        user_partitions::ProfileListLock::acquire_for_path(&user_partitions::cli_db_path()?)?;
-    // No two profiles of one name in the blob either: the list it holds now
-    // decides who had a name first, as the partition does.
-    let previous: Vec<serde_json::Value> = store
-        .get("config_server_profiles")
-        .ok()
-        .and_then(|raw| serde_json::from_str(&raw).ok())
-        .unwrap_or_default();
-    let (profiles, _) =
-        ftp_client_gui_lib::util::profile_name::unique_profile_names(&previous, profiles);
-    let serialized = serde_json::to_string(&profiles)
-        .map_err(|e| format!("Failed to serialize profiles: {}", e))?;
+    let db = user_partitions::cli_db_path().map_err(&failed)?;
+    let _lock = user_partitions::ProfileListLock::acquire_for_path(&db).map_err(&failed)?;
+    let held: Vec<serde_json::Value> = match store.get("config_server_profiles") {
+        Ok(raw) => serde_json::from_str(&raw)
+            .map_err(|e| failed(format!("Failed to parse server profiles: {e}")))?,
+        Err(CredentialError::NotFound(_)) => Vec::new(),
+        Err(e) => return Err(failed(format!("Failed to read server profiles: {e}"))),
+    };
+    let mut sent = held.clone();
+    let result = change(&mut sent)?;
+    // No two profiles of one name in the blob either: the list it holds decides
+    // who had a name first, as the partition does.
+    let (stored, _) = ftp_client_gui_lib::util::profile_name::unique_profile_names(&held, &sent);
+    let serialized = serde_json::to_string(&stored)
+        .map_err(|e| failed(format!("Failed to serialize profiles: {e}")))?;
     store
         .store("config_server_profiles", &serialized)
-        .map_err(|e| format!("Failed to save server profiles: {}", e))?;
-    Ok(profiles)
+        .map_err(|e| failed(format!("Failed to save server profiles: {e}")))?;
+    Ok((result, sent, stored))
 }
 
 fn user_env_suffix(name: &str) -> String {
@@ -42635,19 +42640,10 @@ async fn cmd_profile_import(
             print_error(format, "cannot read profiles: NO_ACTIVE_USER", 1);
             return 1;
         }
-        // A --user that names nobody says so; the store answered.
-        Err(e) if e.starts_with("USER_NOT_FOUND") => {
-            password.zeroize();
-            print_error(format, &format!("cannot read profiles: {e}"), 1);
-            return 1;
-        }
+        // A store that cannot be opened stops earlier, at the vault.
         Err(e) => {
             password.zeroize();
-            print_error(
-                format,
-                &format!("{}: {e}", ftp_client_gui_lib::IMPORT_NEEDS_PARTITION),
-                1,
-            );
+            print_error(format, &format!("cannot read profiles: {e}"), 1);
             return 1;
         }
     };

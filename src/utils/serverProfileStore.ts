@@ -333,18 +333,20 @@ export const replaceSavedServerProfiles = async (
 /**
  * The list `profiles` with a convert undone: the converted profile (`convertedId`)
  * gives way to `original` where it stands, and everything else stays. Converted
- * profile already deleted: `original` comes back at the end, unless its id is
- * held again.
+ * profile already deleted: `original` comes back at the end. Its id held again
+ * by then: the converted profile only goes, so no id is stored twice.
  */
 export const revertConvertedProfile = (
     profiles: ServerProfile[],
     convertedId: string,
     original: ServerProfile,
 ): ServerProfile[] => {
-    if (profiles.some(s => s.id === convertedId)) {
-        return profiles.map(s => (s.id === convertedId ? original : s));
+    if (original.id !== convertedId && profiles.some(s => s.id === original.id)) {
+        return profiles.filter(s => s.id !== convertedId);
     }
-    return profiles.some(s => s.id === original.id) ? profiles : [...profiles, original];
+    return profiles.some(s => s.id === convertedId)
+        ? profiles.map(s => (s.id === convertedId ? original : s))
+        : [...profiles, original];
 };
 
 // Trim a connect-error reason to a single short line for tooltip display.
