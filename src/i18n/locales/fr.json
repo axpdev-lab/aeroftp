@@ -2456,7 +2456,9 @@
             "flattenScanning": "Analyse du sous-arbre...",
             "flattenTruncated": "tronqué",
             "flattenTruncatedHint": "Limite de 5 000 entrées atteinte ; affinez votre filtre ou descendez dans un sous-dossier.",
-            "local_placeholder_flatten": "Filtrer les fichiers locaux... (* pour récursif)"
+            "local_placeholder_flatten": "Filtrer les fichiers locaux... (* pour récursif)",
+            "flattenNameClash": "{names} : sélectionnés dans plusieurs dossiers. Placés au même endroit, ils se remplaceraient mutuellement ; agissez sur un seul de chaque nom à la fois.",
+            "flattenNameClashTitle": "Même nom dans plusieurs dossiers"
         },
         "versions": {
             "title": "Versions du fichier",

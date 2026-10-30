@@ -2456,7 +2456,9 @@
             "flattenScanning": "Se scanează subarborele...",
             "flattenTruncated": "trunchiat",
             "flattenTruncatedHint": "A fost atinsă limita de 5.000 de intrări; rafinați filtrul sau coborâți într-un subfolder.",
-            "local_placeholder_flatten": "Filtrează fișiere locale... (* pentru recursiv)"
+            "local_placeholder_flatten": "Filtrează fișiere locale... (* pentru recursiv)",
+            "flattenNameClash": "{names}: selectate în mai multe dosare. Puse într-un singur loc, s-ar înlocui reciproc; acționați asupra unuia din fiecare, pe rând.",
+            "flattenNameClashTitle": "Același nume în mai multe dosare"
         },
         "versions": {
             "title": "Versiuni fișier",

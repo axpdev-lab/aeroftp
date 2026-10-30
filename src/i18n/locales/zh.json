@@ -2456,7 +2456,9 @@
             "flattenScanning": "正在扫描子树...",
             "flattenTruncated": "已截断",
             "flattenTruncatedHint": "已达到 5,000 条目上限；请优化筛选条件或进入子文件夹。",
-            "local_placeholder_flatten": "筛选本地文件...（递归请用 *）"
+            "local_placeholder_flatten": "筛选本地文件...（递归请用 *）",
+            "flattenNameClash": "{names}：在多个文件夹中被选中。放到同一位置会互相覆盖；请每次只对每个名称中的一个进行操作。",
+            "flattenNameClashTitle": "多个文件夹中存在同名项"
         },
         "versions": {
             "title": "文件版本",

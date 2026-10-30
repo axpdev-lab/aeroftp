@@ -2456,7 +2456,9 @@
             "flattenScanning": "A analisar subárvore...",
             "flattenTruncated": "truncado",
             "flattenTruncatedHint": "Limite de 5.000 entradas atingido; refine o filtro ou entre numa subpasta.",
-            "local_placeholder_flatten": "Filtrar ficheiros locais... (* para recursivo)"
+            "local_placeholder_flatten": "Filtrar ficheiros locais... (* para recursivo)",
+            "flattenNameClash": "{names}: selecionados em mais de uma pasta. Colocados em um só lugar, eles se substituiriam; atue em um de cada nome por vez.",
+            "flattenNameClashTitle": "O mesmo nome em mais de uma pasta"
         },
         "versions": {
             "title": "Versões do Arquivo",

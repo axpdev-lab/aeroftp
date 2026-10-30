@@ -2420,7 +2420,9 @@
             "flattenScanning": "サブツリーをスキャン中...",
             "flattenTruncated": "切り捨て",
             "flattenTruncatedHint": "5,000エントリの上限に達しました。フィルターを絞り込むか、サブフォルダに移動してください。",
-            "local_placeholder_flatten": "ローカルファイルをフィルター... (再帰の場合は *)"
+            "local_placeholder_flatten": "ローカルファイルをフィルター... (再帰の場合は *)",
+            "flattenNameClash": "{names}: 複数のフォルダで選択されています。1か所にまとめると互いに上書きされます。同じ名前のものは一度に1つずつ操作してください。",
+            "flattenNameClashTitle": "複数のフォルダに同じ名前があります"
         },
         "versions": {
             "title": "ファイルのバージョン",

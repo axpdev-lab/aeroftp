@@ -2456,7 +2456,9 @@
             "flattenScanning": "Skenuojamas pomedis...",
             "flattenTruncated": "sutrumpinta",
             "flattenTruncatedHint": "Pasiekta 5 000 įrašų riba; patikslinkite filtrą arba įeikite į poaplankį.",
-            "local_placeholder_flatten": "Filtruoti vietinius failus... (* rekursiniam)"
+            "local_placeholder_flatten": "Filtruoti vietinius failus... (* rekursiniam)",
+            "flattenNameClash": "{names}: pasirinkta keliuose aplankuose. Padėti į vieną vietą, jie pakeistų vienas kitą; veikite su vienu iš kiekvieno vienu metu.",
+            "flattenNameClashTitle": "Tas pats pavadinimas keliuose aplankuose"
         },
         "versions": {
             "title": "Failų versijos",

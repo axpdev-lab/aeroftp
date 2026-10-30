@@ -15,6 +15,7 @@ import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { isNonFtpProvider, ProviderType } from '../types';
 import type { HumanizedOperationType, HumanizedLogParams } from './useHumanizedLog';
+import { localRowName } from '../utils/localSelection';
 
 export type PanelKey = 'remote' | 'local' | 'local2';
 
@@ -28,6 +29,12 @@ interface DragData {
 }
 
 interface UseDragAndDropParams {
+    /**
+     * Refuses local rows that one folder cannot hold together (files of two
+     * folders sharing a name, from a flattened search) and tells the user.
+     * True when it refused.
+     */
+    refuseLocalNameClashes?: (rows: readonly { name: string; path: string }[]) => boolean;
     notify: {
         success: (title: string, message?: string) => string | null;
         error: (title: string, message?: string) => string | null;
@@ -52,6 +59,7 @@ interface UseDragAndDropParams {
 }
 
 export function useDragAndDrop({
+    refuseLocalNameClashes,
     notify,
     humanLog,
     currentRemotePath,
@@ -119,10 +127,19 @@ export function useDragAndDrop({
             ? allFiles.filter(f => allSelected.has(f.name))
             : [file];
 
+        // Dropped into one folder, two files of one name would replace each other.
+        if (isLocalPanel(panelKey) && refuseLocalNameClashes?.(filesToDrag)) {
+            e.preventDefault();
+            return;
+        }
+
         const sourceDir = sourceDirFor(panelKey);
 
         setDragData({
-            files: filesToDrag.map(f => f.name),
+            // The name each file lands under. A nested row of a local
+            // flattened search is named by its relative path; the drop gives
+            // the file its own name, as a copy or move would.
+            files: filesToDrag.map(f => (isLocalPanel(panelKey) ? localRowName(f) : f.name)),
             sourcePaths: filesToDrag.map(f => f.path),
             panelKey,
             sourceDir,
@@ -140,7 +157,7 @@ export function useDragAndDrop({
         } else {
             e.dataTransfer.setData('text/plain', filesToDrag.map(f => f.name).join(', '));
         }
-    }, [sourceDirFor]);
+    }, [sourceDirFor, refuseLocalNameClashes]);
 
     /**
      * Allow dropping on files/folders within a panel
@@ -238,9 +255,11 @@ export function useDragAndDrop({
 
             const logId = humanLog.logStart(isCopy ? 'COPY' : 'MOVE', { isRemote: false, filename: fileName });
             try {
+                // Never over an existing entry: a drop asks nothing first.
                 await invoke(isCopy ? 'copy_local_file' : 'rename_local_file', {
                     from: sourcePath,
                     to: destPath,
+                    overwrite: false,
                 });
                 humanLog.logSuccess(isCopy ? 'COPY' : 'MOVE', { isRemote: false, filename: fileName, destination: targetDir }, logId);
                 notify.success(isCopy ? `Copied ${fileName}` : `Moved ${fileName}`, `→ ${targetDir}`);
@@ -300,6 +319,8 @@ export function useDragAndDrop({
             const fileName = files[i];
             const sourcePath = sourcePaths[i];
             const destPath = `${targetPath}/${fileName}`;
+            // A nested row dropped on the folder it is already in.
+            if (destPath === sourcePath) continue;
 
             const logId = humanLog.logStart('MOVE', { isRemote: sourceIsRemote, filename: fileName });
             try {
@@ -310,7 +331,8 @@ export function useDragAndDrop({
                         await invoke('rename_remote_file', { from: sourcePath, to: destPath });
                     }
                 } else {
-                    await invoke('rename_local_file', { from: sourcePath, to: destPath });
+                    // Never over an existing entry: a drop asks nothing first.
+                    await invoke('rename_local_file', { from: sourcePath, to: destPath, overwrite: false });
                 }
                 humanLog.logSuccess('MOVE', { isRemote: sourceIsRemote, filename: fileName, destination: targetPath }, logId);
                 notify.success(`Moved ${fileName}`, `→ ${targetPath}`);

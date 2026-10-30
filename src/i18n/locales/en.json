@@ -3795,6 +3795,8 @@
         },
         "search": {
             "clear": "Clear search",
+            "flattenNameClash": "{names}: selected in more than one folder. Put in one place, they would replace each other; act on one of each at a time.",
+            "flattenNameClashTitle": "Same name in more than one folder",
             "flattenRecursive": "Recursive",
             "flattenScanning": "Scanning subtree...",
             "flattenTruncated": "truncated",

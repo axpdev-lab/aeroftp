@@ -2456,7 +2456,9 @@
             "flattenScanning": "Đang quét cây con...",
             "flattenTruncated": "đã cắt bớt",
             "flattenTruncatedHint": "Đã đạt giới hạn 5.000 mục; tinh chỉnh bộ lọc của bạn hoặc đi vào thư mục con.",
-            "local_placeholder_flatten": "Lọc tệp cục bộ... (* cho đệ quy)"
+            "local_placeholder_flatten": "Lọc tệp cục bộ... (* cho đệ quy)",
+            "flattenNameClash": "{names}: được chọn ở nhiều thư mục. Nếu đặt vào cùng một nơi, chúng sẽ ghi đè lên nhau; hãy thao tác với từng tệp một cho mỗi tên.",
+            "flattenNameClashTitle": "Cùng một tên trong nhiều thư mục"
         },
         "versions": {
             "title": "Phiên bản tệp",

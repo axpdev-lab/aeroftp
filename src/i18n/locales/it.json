@@ -2681,6 +2681,8 @@
             "search_files": "Cerca file",
             "clear": "Cancella ricerca",
             "resultsCount": "{count} risultati",
+            "flattenNameClash": "{names}: selezionati in più di una cartella. Messi in un solo posto si sostituirebbero a vicenda; agisci su uno per volta.",
+            "flattenNameClashTitle": "Stesso nome in più cartelle",
             "flattenRecursive": "Ricorsivo",
             "flattenScanning": "Scansione sottoalbero...",
             "flattenTruncated": "troncato",

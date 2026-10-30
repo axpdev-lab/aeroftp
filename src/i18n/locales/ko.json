@@ -2456,7 +2456,9 @@
             "flattenScanning": "하위 트리 스캔 중...",
             "flattenTruncated": "잘림",
             "flattenTruncatedHint": "5,000개 항목 한도에 도달했습니다. 필터를 세분화하거나 하위 폴더로 이동하세요.",
-            "local_placeholder_flatten": "로컬 파일 필터링... (재귀의 경우 *)"
+            "local_placeholder_flatten": "로컬 파일 필터링... (재귀의 경우 *)",
+            "flattenNameClash": "{names}: 둘 이상의 폴더에서 선택되었습니다. 한 곳에 두면 서로 덮어쓰게 됩니다. 같은 이름은 한 번에 하나씩 작업하세요.",
+            "flattenNameClashTitle": "여러 폴더에 같은 이름이 있습니다"
         },
         "versions": {
             "title": "파일 버전",

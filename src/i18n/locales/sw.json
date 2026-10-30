@@ -2456,7 +2456,9 @@
             "flattenScanning": "Kuchanganua mti mdogo...",
             "flattenTruncated": "kupunguzwa",
             "flattenTruncatedHint": "Imefikia kikomo cha maingizo 5,000; boresha kichujio chako au shuka kwenye folda ndogo.",
-            "local_placeholder_flatten": "Chuja faili za ndani... (* kwa rekursivu)"
+            "local_placeholder_flatten": "Chuja faili za ndani... (* kwa rekursivu)",
+            "flattenNameClash": "{names}: vimechaguliwa katika folda zaidi ya moja. Vikiwekwa mahali pamoja, kimoja kitachukua nafasi ya kingine; shughulikia kimoja kwa kila jina kwa wakati mmoja.",
+            "flattenNameClashTitle": "Jina lile lile katika folda zaidi ya moja"
         },
         "versions": {
             "title": "Matoleo ya Faili",

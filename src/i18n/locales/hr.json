@@ -2456,7 +2456,9 @@
             "flattenScanning": "Skeniranje podstabla...",
             "flattenTruncated": "skraćeno",
             "flattenTruncatedHint": "Dosegnut limit od 5.000 unosa; precizirajte filtar ili uđite u podmapu.",
-            "local_placeholder_flatten": "Filtriraj lokalne datoteke... (* za rekurzivno)"
+            "local_placeholder_flatten": "Filtriraj lokalne datoteke... (* za rekurzivno)",
+            "flattenNameClash": "{names}: odabrano u više mapa. Stavljene na isto mjesto, zamijenile bi jedna drugu; radite s jednom od svake odjednom.",
+            "flattenNameClashTitle": "Isti naziv u više mapa"
         },
         "versions": {
             "title": "Verzije datoteke",

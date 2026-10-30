@@ -2456,7 +2456,9 @@
             "flattenScanning": "Skenování podstromu...",
             "flattenTruncated": "zkráceno",
             "flattenTruncatedHint": "Dosažen limit 5 000 položek; upřesněte filtr nebo přejděte do podsložky.",
-            "local_placeholder_flatten": "Filtrovat místní soubory... (* pro rekurzi)"
+            "local_placeholder_flatten": "Filtrovat místní soubory... (* pro rekurzi)",
+            "flattenNameClash": "{names}: vybráno ve více složkách. Po vložení na jedno místo by se navzájem přepsaly; pracujte vždy s jedním z každého.",
+            "flattenNameClashTitle": "Stejný název ve více složkách"
         },
         "versions": {
             "title": "Verze souborů",

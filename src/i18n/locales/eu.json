@@ -2456,7 +2456,9 @@
             "flattenScanning": "Azpizuhaitza eskaneatzen...",
             "flattenTruncated": "moztua",
             "flattenTruncatedHint": "5.000 sarrerako muga iritsi da; iragazkia findu edo azpikarpeta batera jaitsi.",
-            "local_placeholder_flatten": "Iragazi fitxategi lokalak... (* errekurtsiborako)"
+            "local_placeholder_flatten": "Iragazi fitxategi lokalak... (* errekurtsiborako)",
+            "flattenNameClash": "{names}: karpeta bat baino gehiagotan hautatuta. Toki bakarrean jarriz gero, elkarren ordezkatuko lukete; jardun izen bakoitzeko bat aldiko.",
+            "flattenNameClashTitle": "Izen bera karpeta bat baino gehiagotan"
         },
         "versions": {
             "title": "Fitxategi bertsioak",

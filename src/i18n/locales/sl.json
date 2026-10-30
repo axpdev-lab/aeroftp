@@ -2456,7 +2456,9 @@
             "flattenScanning": "Pregledovanje poddrevesa...",
             "flattenTruncated": "skrajšano",
             "flattenTruncatedHint": "Dosežena omejitev 5.000 vnosov; izboljšajte filter ali se spustite v podmapo.",
-            "local_placeholder_flatten": "Filtriraj lokalne datoteke... (* za rekurzivno)"
+            "local_placeholder_flatten": "Filtriraj lokalne datoteke... (* za rekurzivno)",
+            "flattenNameClash": "{names}: izbrano v več kot eni mapi. Če bi jih dali na isto mesto, bi se prepisali; delajte z enim od vsakega naenkrat.",
+            "flattenNameClashTitle": "Isto ime v več mapah"
         },
         "versions": {
             "title": "Različice datotek",

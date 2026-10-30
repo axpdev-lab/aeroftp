@@ -77,6 +77,8 @@ function fixture(options: { direction: Direction; policy?: Policy; destination?:
     liveConnectionParams: { protocol },
     usesProviderApi, aeroVaultOverlaySession: null, currentRemotePath: '/panel',
     localFiles: direction === 'upload' ? [file('a.bin', 100)] : panel,
+    // The rows shown, which a nested row of a flattened search is found in.
+    sortedLocalFiles: [],
     remoteFiles: direction === 'download' ? [file('a.bin', 100)] : panel,
     humanLog: { logStart: () => 'log', logRaw: vi.fn(), log: vi.fn(), logError: vi.fn(), updateEntry: vi.fn() },
     pendingFileLogIds: { current: new Map() }, batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },

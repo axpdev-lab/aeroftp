@@ -2456,7 +2456,9 @@
             "flattenScanning": "Mengimbas subpokok...",
             "flattenTruncated": "dipotong",
             "flattenTruncatedHint": "Mencapai had 5,000 entri; perhalusi penapis anda atau masuk ke subfolder.",
-            "local_placeholder_flatten": "Tapis fail tempatan... (* untuk rekursif)"
+            "local_placeholder_flatten": "Tapis fail tempatan... (* untuk rekursif)",
+            "flattenNameClash": "{names}: dipilih dalam lebih daripada satu folder. Jika diletakkan di satu tempat, fail-fail itu akan menggantikan satu sama lain; bertindak pada satu bagi setiap nama pada satu masa.",
+            "flattenNameClashTitle": "Nama sama dalam lebih daripada satu folder"
         },
         "versions": {
             "title": "Versi Fail",
