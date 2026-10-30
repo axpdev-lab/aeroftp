@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ServerProfile } from '../../types';
-import { appendImportedProfiles, bridgeProfileKey, commitImportedServers } from './bridgeImportCommit';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { appendImportedProfiles, bridgeProfileKey, commitImportedServers, overwriteProfile, STORED_SECRET_FLAGS } from './bridgeImportCommit';
 import { readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 
 vi.mock('../../utils/serverProfileStore', () => ({
@@ -85,6 +87,27 @@ describe('the import callback and the commit helper together', () => {
         const merged = await appendImportedProfiles([overwritten], new Set([base.id]));
         expect(merged).toEqual([second, overwritten]);
         expect(vault.profiles).toEqual(merged);
+    });
+
+    // `undefined` is no value: a field only this device has survives it,
+    // while an explicit null from the file still clears the stored value.
+    it('an overwrite keeps a stored field the import leaves undefined, and takes an explicit null', () => {
+        const stored: ServerProfile = { ...base, color: '#ff0000', providerId: 'koofr' };
+        const imported = { ...base, color: undefined, providerId: null } as unknown as ServerProfile;
+        const merged = overwriteProfile(stored, imported);
+        expect(merged.color).toBe('#ff0000');
+        expect(merged.providerId).toBeNull();
+    });
+
+    // The twin must list the same flags as the Rust planner, or an overwrite
+    // would drop a stored-secret flag on one side only.
+    it('lists the same secret-presence flags as profile_import_plan.rs', () => {
+        const rust = readFileSync(resolve(__dirname, '../../../src-tauri/src/profile_import_plan.rs'), 'utf8');
+        const block = rust.match(/pub const STORED_SECRET_FLAGS: \[&str; \d+\] = \[([^\]]*)\]/);
+        expect(block).not.toBeNull();
+        const flags = [...block![1].matchAll(/"([^"]+)"/g)].map(m => m[1]);
+        expect(flags.length).toBeGreaterThan(0);
+        expect([...STORED_SECRET_FLAGS]).toEqual(flags);
     });
 
     // A bridge import names nothing to replace: a profile it hands over is

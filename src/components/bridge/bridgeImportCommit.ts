@@ -21,7 +21,7 @@ export const bridgeProfileKey = (s: Pick<ServerProfile, 'host' | 'port' | 'usern
  * them: a secret the imported file does not carry stays in the vault. Twin of
  * `STORED_SECRET_FLAGS` in `src-tauri/src/profile_import_plan.rs`.
  */
-const STORED_SECRET_FLAGS = [
+export const STORED_SECRET_FLAGS = [
     'hasStoredCredential',
     'hasStoredFilenApiKey',
     'hasStoredAeroCryptPassword',
@@ -34,10 +34,15 @@ const STORED_SECRET_FLAGS = [
  * The profile an overwrite stores: `stored`, the record read in the same write,
  * with every field of `imported` laid over it, so a field only this device has
  * survives, and each secret-presence flag set when either side has it. Twin of
- * `overwrite_profile` in `src-tauri/src/profile_import_plan.rs`.
+ * `overwrite_profile` in `src-tauri/src/profile_import_plan.rs`. A key whose
+ * value is `undefined` is not a value (JSON has none), so it never clears the
+ * stored one; an explicit `null` from the file does.
  */
 export function overwriteProfile(stored: ServerProfile, imported: ServerProfile): ServerProfile {
-    const merged: Record<string, unknown> = { ...stored, ...imported };
+    const merged: Record<string, unknown> = {
+        ...stored,
+        ...Object.fromEntries(Object.entries(imported).filter(([, value]) => value !== undefined)),
+    };
     const has = (p: ServerProfile, flag: string) => (p as unknown as Record<string, unknown>)[flag] === true;
     for (const flag of STORED_SECRET_FLAGS) {
         if (has(stored, flag) || has(imported, flag)) merged[flag] = true;
