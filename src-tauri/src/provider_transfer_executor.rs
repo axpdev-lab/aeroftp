@@ -702,6 +702,22 @@ async fn run_provider_segmented_windows(
         return Err(SegmentedDownloadError::Cancelled);
     }
 
+    // A 412 to the pin: the object moved, or the server refuses If-Match on the
+    // version it still serves. The reading a completed run takes tells which,
+    // once for the file.
+    if matches!(&outcome, Err(e) if crate::providers::multi_thread::is_pin_refusal(e)) {
+        let changed = tokio::select! {
+            biased;
+            _ = cancel_token.cancelled() => return Err(SegmentedDownloadError::Cancelled),
+            changed = range_source_changed_through(primary, remote_path, before) => changed,
+        };
+        let verdict = PinRefusal::from_second_reading(changed);
+        return Err(SegmentedDownloadError::unavailable(
+            verdict.message("segmented download", remote_path),
+            verdict.notice(),
+        ));
+    }
+
     match outcome {
         Ok(SegmentedRun::Completed(temp)) => {
             // The temporary stays claimed through this reading and the rename.
@@ -740,21 +756,6 @@ async fn run_provider_segmented_windows(
             "segmented download: server ignored Range; falling back to single-stream".to_string(),
             "the server ignored Range",
         )),
-        Err(e) if crate::providers::multi_thread::is_pin_refusal(&e) => {
-            // A 412 to the pin: the object moved, or the server refuses
-            // If-Match on the version it still serves. The reading a
-            // completed run takes tells which, once for the file.
-            let changed = tokio::select! {
-                biased;
-                _ = cancel_token.cancelled() => return Err(SegmentedDownloadError::Cancelled),
-                changed = range_source_changed_through(primary, remote_path, before) => changed,
-            };
-            let verdict = PinRefusal::from_second_reading(changed);
-            Err(SegmentedDownloadError::unavailable(
-                verdict.message("segmented download", remote_path),
-                verdict.notice(),
-            ))
-        }
         Err(e) => {
             let reason = if matches!(e, ProviderError::ParallelRefused(_)) {
                 "a ranged response or its version check was refused"
