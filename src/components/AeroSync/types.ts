@@ -113,6 +113,8 @@ export interface AeroSyncContext {
     compareIdle?: boolean;
     /** The last compare was stopped by the user. */
     compareStopped?: boolean;
+    /** Why the last compare was refused: its scan did not see the whole tree. */
+    compareRefused?: string;
     /**
      * GAP-6: an interrupted connected-remote sync journal for this path
      * pair, if one exists. When set, the dialog surfaces a resume banner.

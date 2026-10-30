@@ -3,7 +3,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { CompareScanState, ScanProgressContext } from './CompareScanState';
-import { isCompareCancelled } from '../../utils/scanCompleteness';
+import { compareOutcome, isCompareCancelled } from '../../utils/scanCompleteness';
 
 vi.mock('../../i18n', () => ({ useTranslation: () => (key: string) => key }));
 vi.mock('../../hooks/useScanProgress', () => ({ formatElapsed: () => '0:26' }));
@@ -48,6 +48,18 @@ it('says a stopped compare was stopped and offers to start it again', async () =
     await render({ stopped: true, onStart: vi.fn() });
     expect(host.textContent).toContain('aerosync.compareStopped');
     expect(buttons()).toEqual(['aerosync.startCompare']);
+});
+
+it('says why a compare was refused and offers to start it again', async () => {
+    await render({ refused: 'failed to list /x: 400', onStart: vi.fn() });
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe('failed to list /x: 400');
+    expect(buttons()).toEqual(['aerosync.startCompare']);
+});
+
+it('leaves no result behind a refused compare, and clears the reason on one that ran', () => {
+    const result = { entries: [] };
+    expect(compareOutcome(result, 'unreadable')).toEqual({ compareResult: null, compareRefused: 'unreadable', compareIdle: true });
+    expect(compareOutcome(result, undefined)).toEqual({ compareResult: result, compareRefused: undefined, compareIdle: false });
 });
 
 it('recognizes only the exact cancelled error, never another failure', () => {
