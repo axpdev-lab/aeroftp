@@ -31,7 +31,9 @@ describe('directory actions reach the current directory (#347)', () => {
         }
         // From the argument, not from a listing entry: that is what lets the same
         // list serve a folder row, the panel background and a breadcrumb segment.
-        expect(items).toMatch(/calculateFolderSize\(dirPath\)/);
+        // Calculate Size opens Properties on that path, where the size shows
+        // (#1441), rather than running a scan nothing displays.
+        expect(items).toMatch(/openLocalProperties\(selection \?\? \[\{[\s\S]*?path: dirPath,/);
         expect(items).toMatch(/setDuplicateFinderPath\(dirPath\)/);
         expect(items).toMatch(/setDiskUsagePath\(dirPath\)/);
     });

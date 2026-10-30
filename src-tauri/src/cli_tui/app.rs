@@ -3151,12 +3151,21 @@ impl AppState {
                     if *binary { " (binary)" } else { "" }
                 );
             }
-            WorkerEvent::DirSize { path, bytes, files } => {
+            WorkerEvent::DirSize {
+                path,
+                bytes,
+                files,
+                lower_bound,
+            } => {
                 self.status = format!(
-                    "{}: {} in {} file(s).",
+                    "{}: {} in {} file(s){}.",
                     path,
                     format_size_compact(*bytes),
-                    files
+                    files,
+                    lower_bound
+                        .as_deref()
+                        .map(|why| format!(" ({why})"))
+                        .unwrap_or_default()
                 );
             }
             WorkerEvent::EditReady { remote_path, .. } => {

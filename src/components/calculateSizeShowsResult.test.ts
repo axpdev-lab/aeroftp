@@ -1,0 +1,83 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
+import { describe, it, expect } from 'vitest';
+import appRaw from '../App.tsx?raw';
+
+/**
+ * Calculate Size did nothing (#1441).
+ *
+ * The menu entry ran the scan and wrote the result into the folder size cache,
+ * and the one reader of that cache is the Properties dialog. With the dialog
+ * closed, which is always the case when the entry is clicked, the scan ran and
+ * nothing on screen changed. The entry now opens Properties on the folder (or
+ * on the selection), where the size shows as it is counted.
+ */
+describe('Calculate Size shows what it calculates (#1441)', () => {
+    /** The body of a component-level `const name = ...`, up to the next one. */
+    const body = (name: string): string => {
+        const start = appRaw.indexOf(`\n  const ${name} = `);
+        expect(start, `${name} exists in App.tsx`).toBeGreaterThan(-1);
+        const end = appRaw.indexOf('\n  const ', start + 1);
+        return appRaw.slice(start, end === -1 ? undefined : end);
+    };
+
+    it('starts no size scan from a menu, where no dialog would show it', () => {
+        for (const menu of ['directoryActionItems', 'showLocalContextMenu', 'showLocalEmptyContextMenu', 'showLocalPathContextMenu']) {
+            expect(body(menu), menu).not.toMatch(/calculate(Remote)?FolderSize\(/);
+        }
+    });
+
+    it('opens Properties on the folder, or on the selection it belongs to', () => {
+        const items = body('directoryActionItems');
+        const entry = items.slice(items.indexOf("t('contextMenu.calculateSize')"));
+        expect(entry).toMatch(/action: \(\) => openLocalProperties\(/);
+        // A folder right-clicked inside a selection of several items answers for
+        // the selection, as Properties, Copy and Delete in the same menu do.
+        expect(body('showLocalContextMenu')).toMatch(/file\.is_dir \? directoryActionItems\([^)]*, count > 1 \? selectedEntries\(\) : undefined\)/);
+    });
+
+    it('opens it on the tab that shows the size', () => {
+        const open = body('openLocalProperties');
+        // The tab is remembered from the last remote Properties (OpenDrive opens
+        // it on Permissions), so a local open has to choose it.
+        expect(open).toMatch(/setPropertiesInitialTab\('general'\)/);
+        expect(open).toMatch(/setPropertiesDialog\(/);
+        expect(open).toMatch(/setMultiPropertiesDialog\(/);
+        expect(open).toMatch(/get_file_properties/);
+    });
+
+    it('opens local Properties one way, from the menu and from Alt+Enter', () => {
+        const altEnter = appRaw.slice(appRaw.indexOf("'Alt+Enter': () => {"), appRaw.indexOf("'Alt+Enter': () => {") + 900);
+        expect(altEnter).toMatch(/openLocalProperties\(/);
+        expect(altEnter).not.toMatch(/setPropertiesDialog\(|setMultiPropertiesDialog\(/);
+        const menuItem = body('showLocalContextMenu');
+        const properties = menuItem.slice(menuItem.indexOf("label: t('contextMenu.properties')"));
+        expect(properties.slice(0, 300)).toMatch(/openLocalProperties\(/);
+    });
+
+    it('measures a local folder afresh each time its Properties open', () => {
+        // A local scan is cheap and the folder may have changed since the last
+        // one; only a remote figure is worth keeping between opens.
+        const effect = appRaw.slice(appRaw.indexOf('// Start the folder size scans of the dialog that just opened'));
+        expect(effect.slice(0, 1400)).toMatch(/if \(!propertiesDialog\.isRemote\) \{\s*calculateFolderSize\(p\);/);
+    });
+
+    it('follows a local scan by its own id and stops it when the dialog closes', () => {
+        const scan = body('calculateFolderSize');
+        expect(scan).toMatch(/'local-folder-size-progress'/);
+        expect(scan).toMatch(/scan_id !== scanId/);
+        expect(scan).toMatch(/invoke<FolderSizeResult>\('calculate_folder_size', \{ path, scanId \}\)/);
+        expect(body('cancelLocalFolderSizes')).toMatch(/invoke\('cancel_folder_size', \{ scanId \}\)/);
+        const dialogs = appRaw.slice(appRaw.indexOf('{propertiesDialog && ('), appRaw.indexOf('{quickLookTarget && ('));
+        expect([...dialogs.matchAll(/cancelLocalFolderSizes\(/g)]).toHaveLength(2);
+    });
+
+    it('keeps a local folder and a remote one at the same path apart', () => {
+        // One cache served both sides, and every server: "/docs" sized on one
+        // server was shown for "/docs" on the next.
+        expect(appRaw).toMatch(/const localSizeKey = \(path: string\) => `local:\$\{path\}`/);
+        expect(appRaw).toMatch(/const remoteSizeKey = /);
+        expect(appRaw).not.toMatch(/folderSizeCache\.get\(propertiesDialog\.path\)/);
+    });
+});
