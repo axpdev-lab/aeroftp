@@ -44,6 +44,8 @@ export interface RemoteFolderSizes {
  * ended (its dialog closed, another started) leaves no figure: a stopped walk
  * is not the folder's size, and the next open counts the folder afresh. Its
  * cancel names it, so arriving late it cannot stop the count that followed.
+ * A count the provider reports cancelled leaves no figure either, where one
+ * a cap left partial keeps its lower bound.
  */
 export function remoteFolderSizes(deps: RemoteFolderSizeDeps): RemoteFolderSizes {
     let kept: { key: string; scanId: string } | null = null;
@@ -78,7 +80,7 @@ export function remoteFolderSizes(deps: RemoteFolderSizeDeps): RemoteFolderSizes
             // The dialog may have closed while the listener was set up.
             if (!current()) return;
             const result = await deps.count(path, scanId);
-            if (current()) deps.setFigure(key, () => result);
+            if (current()) deps.setFigure(key, () => (result.cancelled ? undefined : result));
         } catch (err) {
             if (current()) {
                 deps.setFigure(key, (prev) => (prev ? { ...prev, partial: true } : prev));

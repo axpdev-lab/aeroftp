@@ -10800,6 +10800,9 @@ pub struct FolderSizeProgress {
     file_count: u64,
     dir_count: u64,
     scanning: bool,
+    /// A cancel stopped the walk: the counts are not the folder's size, where
+    /// a cap leaves a lower bound worth showing.
+    cancelled: bool,
 }
 
 /// A folder size scan's progress, tagged with the id its caller gave the scan.
@@ -10862,6 +10865,7 @@ async fn provider_calculate_folder_size_with_limits(
     let _guard = ListingTokenGuard::new(&state.folder_size_cancel, id);
 
     let mut partial = false;
+    let mut cancelled = false;
     let mut total_bytes: u64 = 0;
     let mut file_count: u64 = 0;
     let mut dir_count: u64 = 0;
@@ -10889,6 +10893,7 @@ async fn provider_calculate_folder_size_with_limits(
                 file_count,
                 dir_count,
                 scanning: false,
+                cancelled: true,
             };
             emit_progress(&result);
             return Ok(result);
@@ -10913,6 +10918,7 @@ async fn provider_calculate_folder_size_with_limits(
         .await;
         let Some(entries) = entries else {
             partial = true;
+            cancelled = true;
             break;
         };
         let entries = entries?;
@@ -10965,6 +10971,7 @@ async fn provider_calculate_folder_size_with_limits(
             file_count,
             dir_count,
             scanning: true,
+            cancelled: false,
         };
         emit_progress(&progress);
     }
@@ -10975,6 +10982,7 @@ async fn provider_calculate_folder_size_with_limits(
         file_count,
         dir_count,
         scanning: false,
+        cancelled,
     };
     emit_progress(&result);
     Ok(result)
@@ -16099,6 +16107,7 @@ mod tests {
             file_count: 2,
             dir_count: 1,
             scanning: true,
+            cancelled: false,
         };
         let tagged = serde_json::to_value(TaggedFolderSizeProgress {
             scan_id: Some("scan-a"),
@@ -16114,6 +16123,7 @@ mod tests {
                 "file_count": 2,
                 "dir_count": 1,
                 "scanning": true,
+                "cancelled": false,
             })
         );
     }
@@ -17698,6 +17708,8 @@ mod tests {
             .expect("the cancel naming the reopened scan stops it")
             .expect("a cancelled scan reports what it counted");
         assert!(reopened.partial);
+        // Stopped inside a listing: no figure to keep.
+        assert!(reopened.cancelled);
         assert!(!state.folder_size_cancel.is_armed());
     }
 
@@ -18468,6 +18480,7 @@ mod walk_scope_tests {
             .unwrap();
             let value = serde_json::to_value(result).unwrap();
             assert_eq!(value["partial"], true, "{value}");
+            assert_eq!(value["cancelled"], false, "a cap is no cancel: {value}");
             assert!(value["file_count"].as_u64().unwrap() <= limit, "{value}");
         }
     }
@@ -18501,6 +18514,7 @@ mod walk_scope_tests {
             .await
             .unwrap();
             assert_eq!(result.partial, cancel);
+            assert_eq!(result.cancelled, cancel);
             if !cancel {
                 assert_eq!((result.file_count, result.total_bytes), (1, 7));
             }

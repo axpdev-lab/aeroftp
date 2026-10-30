@@ -55,6 +55,26 @@ describe('remote folder sizes in Properties', () => {
         expect(h.figures.get('k')).toEqual(totals(10));
     });
 
+    it('keeps no figure of a count the provider reports cancelled, and the lower bound of a capped one', async () => {
+        // A cancel the dialog did not send (a late command of a closed dialog)
+        // stopped its count: the partial figure was kept, and the next open
+        // showed it instead of counting.
+        const h = harness();
+        void h.sizes.count('/a', 'k');
+        await settle();
+        h.emit({ scan_id: 'scan-1', ...totals(5, true) });
+        h.counts[0].resolve({ ...totals(5, true), cancelled: true });
+        await settle();
+        expect(h.figures.has('k')).toBe(false);
+        expect(h.calculating.has('k')).toBe(false);
+        void h.sizes.count('/a', 'k');
+        await settle();
+        expect(h.counts).toHaveLength(2);
+        h.counts[1].resolve({ ...totals(9, true), cancelled: false });
+        await settle();
+        expect(h.figures.get('k')).toEqual({ ...totals(9, true), cancelled: false });
+    });
+
     it('stops on the provider the count it ends, by that count\'s id', async () => {
         // The cancel named no count: sent as a dialog closed and arriving after
         // a reopened dialog's count began, it stopped that one.
