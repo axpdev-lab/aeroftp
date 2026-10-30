@@ -1369,7 +1369,7 @@
             "overwrittenCount": "{count} sobrescritos",
             "duplicatedCount": "{count} duplicados",
             "importJottaChainWarning": "Jottacloud renueva su inicio de sesión en cada conexión, y {names} ahora comparte uno con otra copia: la copia que se conecta primero cierra la sesión de la otra (el dispositivo del que viene el archivo, o el perfil del que se duplicó). Vuelve a iniciar sesión en la otra con un nuevo Personal Login Token.",
-            "importOverwriteNotSaved": "Los perfiles no se guardaron, pero las contraseñas y los tokens de inicio de sesión de {count} perfiles sobrescritos ya se reemplazaron con los del archivo. Importa el mismo archivo de nuevo para terminar."
+            "importNotSavedSecretsKept": "Los perfiles no se guardaron, pero las contraseñas y los tokens de inicio de sesión que el archivo incluye para {count} de ellos ya estaban almacenados. Importa el mismo archivo de nuevo con la misma opción para terminar."
         },
         "devtools": {
             "title": "AeroTools",

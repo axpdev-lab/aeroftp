@@ -1369,7 +1369,7 @@
             "overwrittenCount": "{count} üle kirjutatud",
             "duplicatedCount": "{count} dubleeritud",
             "importJottaChainWarning": "Jottacloud uuendab oma sisselogimist igal ühendumisel ja {names} jagab nüüd ühte teise koopiaga: koopia, mis ühendub esimesena, logib teise välja (seade, kust fail pärineb, või profiil, millest see dubleeriti). Logige teine uuesti sisse uue Personal Login Tokeniga.",
-            "importOverwriteNotSaved": "Profiile ei salvestatud, kuid {count} üle kirjutatud profiili paroolid ja sisselogimistokenid on failist juba asendatud. Lõpetamiseks impordi sama fail uuesti."
+            "importNotSavedSecretsKept": "Profiile ei salvestatud, kuid paroolid ja sisselogimistokenid, mida fail sisaldab {count} profiili jaoks, on juba salvestatud. Lõpetamiseks impordi sama fail uuesti sama valikuga."
         },
         "devtools": {
             "title": "AeroTools",

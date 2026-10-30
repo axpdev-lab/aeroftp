@@ -1369,7 +1369,7 @@
             "overwrittenCount": "{count} perrašyta",
             "duplicatedCount": "{count} sudubliuota",
             "importJottaChainWarning": "Jottacloud atnaujina prisijungimą kiekvieną kartą jungiantis, o {names} dabar dalijasi vienu su kita kopija: pirmoji prisijungianti kopija atjungia kitą (įrenginį, iš kurio atkeliavo failas, arba profilį, iš kurio jis buvo sudubliuotas). Prisijunkite prie kitos iš naujo su nauju Personal Login Token.",
-            "importOverwriteNotSaved": "Profiliai nebuvo išsaugoti, tačiau {count} perrašytų profilių slaptažodžiai ir prisijungimo žetonai jau pakeisti iš failo. Norėdami baigti, dar kartą importuokite tą patį failą."
+            "importNotSavedSecretsKept": "Profiliai nebuvo išsaugoti, bet slaptažodžiai ir prisijungimo žetonai, kuriuos failas turi {count} iš jų, jau išsaugoti. Norėdami baigti, dar kartą importuokite tą patį failą su ta pačia parinktimi."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1369,7 +1369,7 @@
             "overwrittenCount": "{count} 件を上書き",
             "duplicatedCount": "{count} 件を複製",
             "importJottaChainWarning": "Jottacloud は接続のたびにサインインを更新します。{names} は現在、別のコピーとサインインを共有しており、先に接続したコピーがもう一方をサインアウトさせます (ファイルの元のデバイス、または複製元のプロファイル)。もう一方は新しい Personal Login Token で再度サインインしてください。",
-            "importOverwriteNotSaved": "プロファイルは保存されませんでしたが、上書きされた{count}件のプロファイルのパスワードとサインイントークンはすでにファイルの内容に置き換えられています。完了するには、同じファイルをもう一度インポートしてください。"
+            "importNotSavedSecretsKept": "プロファイルは保存されませんでしたが、ファイルに含まれる {count} 件分のパスワードとサインイン用トークンはすでに保存されています。完了するには、同じファイルを同じオプションでもう一度インポートしてください。"
         },
         "devtools": {
             "title": "AeroTools",

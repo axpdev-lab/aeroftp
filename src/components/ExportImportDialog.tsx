@@ -110,6 +110,17 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
+    // The close scheduled after a successful import; a new import or leaving
+    // the dialog cancels it, so it never hides a later attempt's result.
+    const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    /** Cancel the close scheduled after a successful import, if any. */
+    const cancelScheduledClose = () => {
+        if (closeTimerRef.current !== null) {
+            clearTimeout(closeTimerRef.current);
+            closeTimerRef.current = null;
+        }
+    };
+    useEffect(() => cancelScheduledClose, []);
     const [selectedServerIds, setSelectedServerIds] = useState<Set<string>>(
         () => defaultExportSelection(servers, initialSelectedServerIds),
     );
@@ -210,9 +221,12 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         }
     };
 
-    // Step 1 of the import: choose the .aeroftp file. The decryption
-    // password is only requested once a file is loaded (KeePassXC pattern),
-    // so the user sees what they are unlocking before typing a secret.
+    /**
+     * Step 1 of the import: choose the .aeroftp file. The decryption password
+     * is only requested once a file is loaded (KeePassXC pattern), so the user
+     * sees what they are unlocking before typing a secret. Choosing another
+     * file clears the last result, so Import is available for it.
+     */
     const handleChooseImportFile = async () => {
         const filePath = await pickFile({
             title: t('settings.importServers'),
@@ -225,6 +239,8 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         if (!filePath || typeof filePath !== 'string') return;
         setError(null);
         setSuccess(null);
+        setJottaWarning(null);
+        cancelScheduledClose();
         setPassword('');
         setImportFilePath(filePath);
     };
@@ -245,8 +261,10 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             return;
         }
 
+        cancelScheduledClose();
         setLoading(true);
         setError(null);
+        setJottaWarning(null);
         try {
             const result = await invoke<ImportResult>('import_server_profiles', {
                 filePath,
@@ -271,10 +289,11 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                     result.servers.filter(s => s.importOutcome === 'overwritten').map(s => s.id),
                 ));
             } catch (err) {
-                // The backend restored the secrets before this write: say what
-                // a failed write leaves behind, and that the same import ends it.
-                setError(String(err) + (overwritten > 0
-                    ? ` ${t('settings.importOverwriteNotSaved', { count: overwritten })}`
+                // The backend restored the secrets of every profile it planned
+                // to store before this write: say so, and that running the same
+                // import again (any mode) finishes it.
+                setError(String(err) + (imported.length > 0
+                    ? ` ${t('settings.importNotSavedSecretsKept', { count: imported.length })}`
                     : ''));
                 return;
             }
@@ -289,7 +308,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             if (result.jottaChains.length > 0) {
                 setJottaWarning(t('settings.importJottaChainWarning', { names: result.jottaChains.map(c => c.name).join(', ') }));
             } else {
-                setTimeout(() => onClose(), 2500);
+                closeTimerRef.current = setTimeout(() => onClose(), 2500);
             }
         } catch (err) {
             const errStr = String(err);
@@ -303,7 +322,9 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         }
     };
 
+    /** Back to the start screen: clear every field and result, cancel a pending close. */
     const resetMode = () => {
+        cancelScheduledClose();
         setMode(null);
         setError(null);
         setSuccess(null);
@@ -810,7 +831,10 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                 {importFilePath && (
                                     <button
                                         onClick={handleImport}
-                                        disabled={loading || password.length < 1}
+                                        // Done once it succeeded: a second click would import the
+                                        // file again (in Duplicate mode, another copy and
+                                        // another holder of a Jottacloud chain).
+                                        disabled={loading || password.length < 1 || success !== null || jottaWarning !== null}
                                         className="flex-1 px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 flex items-center justify-center gap-2"
                                     >
                                         {loading ? (

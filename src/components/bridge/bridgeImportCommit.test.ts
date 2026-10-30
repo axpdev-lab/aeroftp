@@ -110,14 +110,15 @@ describe('the import callback and the commit helper together', () => {
         expect([...STORED_SECRET_FLAGS]).toEqual(flags);
     });
 
-    // A bridge import names nothing to replace: a profile it hands over is
-    // appended, the stored one of that id left as it was.
-    it('replaces nothing it was not told to', async () => {
+    // A profile to append whose id the vault already holds was saved by
+    // another window after the import was planned: refuse, rather than store
+    // two profiles of one id or replace one nobody asked to replace.
+    it('refuses to append a profile whose id the vault already holds, and writes nothing', async () => {
         const vault = fakeVault([base]);
         const sameId: ServerProfile = { ...base, name: 'From a bridge' };
-        const merged = await appendImportedProfiles([sameId]);
-        expect(merged).toEqual([base, sameId]);
-        expect(vault.profiles[0]).toEqual(base);
+        await expect(appendImportedProfiles([sameId])).rejects.toThrow('saved by another window');
+        expect(vault.writes).toBe(0);
+        expect(vault.profiles).toEqual([base]);
     });
 
     it('does not resurrect the profile it just replaced when that leaves the vault empty', async () => {

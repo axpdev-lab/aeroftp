@@ -42497,7 +42497,7 @@ async fn cmd_profile_import(
     on_existing: ExistingProfileArg,
     format: OutputFormat,
 ) -> i32 {
-    use ftp_client_gui_lib::profile_import_plan::{display_name, overwrite_profile, ImportOutcome};
+    use ftp_client_gui_lib::profile_import_plan::{display_name, ImportOutcome};
     use ftp_client_gui_lib::util::profile_name::unique_profile_names;
     use zeroize::Zeroize;
 
@@ -42517,6 +42517,22 @@ async fn cmd_profile_import(
         }
     };
 
+    // The import reads and writes this user's profiles. Another window or
+    // process may switch the active user meanwhile: the restore and the
+    // write below check it is still this one.
+    let user_id = match import_user_id(cli, &store) {
+        Ok(Some(id)) => id,
+        Ok(None) => {
+            password.zeroize();
+            print_error(format, "cannot read profiles: NO_ACTIVE_USER", 1);
+            return 1;
+        }
+        Err(e) => {
+            password.zeroize();
+            print_error(format, &format!("cannot read profiles: {e}"), 1);
+            return 1;
+        }
+    };
     // The plan compares the file with these profiles, so an unreadable list
     // is an error: read as empty, every profile would look new and an
     // overwrite would land as a second profile of the same id.
@@ -42528,6 +42544,11 @@ async fn cmd_profile_import(
             return 1;
         }
     };
+    if import_user_id(cli, &store).ok().flatten() != Some(user_id) {
+        password.zeroize();
+        print_error(format, ACTIVE_USER_CHANGED, 1);
+        return 1;
+    }
 
     // Audit v4.1.0 holds in every mode: secrets are restored only for the
     // profiles added, overwritten or duplicated, never for a skipped one, and
@@ -42558,34 +42579,7 @@ async fn cmd_profile_import(
             _ => None,
         }
     };
-    let overwritten_count = report
-        .servers
-        .iter()
-        .filter(|p| outcome_of(p) == Some(ImportOutcome::Overwritten))
-        .count();
-    // The import laid over a list: an overwritten profile over the stored one
-    // of its id, where it stands, so a field only this device has survives and
-    // the list keeps its order (`overwrite_profile`); every other one appended.
-    let apply_import = |list: &mut Vec<serde_json::Value>| {
-        for profile in &report.servers {
-            let mut profile = profile.clone();
-            let outcome = outcome_of(&profile);
-            if let Some(fields) = profile.as_object_mut() {
-                fields.remove("importOutcome");
-            }
-            if outcome == Some(ImportOutcome::Overwritten) {
-                if let Some(slot) = list
-                    .iter_mut()
-                    .find(|p| p.get("id").is_some() && p.get("id") == profile.get("id"))
-                {
-                    let merged = overwrite_profile(slot, &profile);
-                    *slot = merged;
-                    continue;
-                }
-            }
-            list.push(profile);
-        }
-    };
+    let apply_import = |list: &mut Vec<serde_json::Value>| lay_import_over(list, &report.servers);
     // How each stored profile of an outcome is named in `list`, the list
     // written (or, on --dry-run, the one a write would store): a duplicate or
     // a profile whose name was taken carries the write's " (1)", " (2)".
@@ -42626,8 +42620,13 @@ async fn cmd_profile_import(
     // ones the write would store, from the same naming rule.
     if dry_run {
         let mut sent = current.clone();
-        apply_import(&mut sent);
-        let (preview, renamed) = unique_profile_names(&current, &sent);
+        // The plan was made against `current`, so it cannot be stale here.
+        let _ = apply_import(&mut sent);
+        let (preview, renamed) = if report.servers.is_empty() {
+            (current.clone(), Vec::new())
+        } else {
+            unique_profile_names(&current, &sent)
+        };
         let added = names_in(&preview, ImportOutcome::Added);
         let overwritten = names_in(&preview, ImportOutcome::Overwritten);
         let duplicated = names_in(&preview, ImportOutcome::Duplicated);
@@ -42687,7 +42686,7 @@ async fn cmd_profile_import(
     let mut renamed = Vec::new();
     let mut stored = current;
     if !report.servers.is_empty() {
-        match update_active_user_profiles(cli, &store, &stored, apply_import) {
+        match update_active_user_profiles(cli, &store, user_id, &stored, apply_import) {
             Ok((sent, written)) => {
                 renamed = renamed_by_write(&sent, &written);
                 stored = written;
@@ -42695,11 +42694,10 @@ async fn cmd_profile_import(
             Err(e) => {
                 // The secrets were restored before this write: say what the
                 // failure leaves behind, and that the same import finishes it.
-                let note = if overwritten_count > 0 {
-                    format!("; the passwords and tokens of {overwritten_count} overwritten profile(s) were already replaced from the file, so run the same import again to finish it")
-                } else {
-                    String::new()
-                };
+                let note = format!(
+                    "; the secrets the file carries for these {} profile(s) were already stored, so run the same import again, with the same --on-existing, to finish it",
+                    report.servers.len()
+                );
                 print_error(format, &format!("save profiles: {e}{note}"), 1);
                 return 1;
             }
@@ -42755,30 +42753,66 @@ async fn cmd_profile_import(
     0
 }
 
-/// Write the active user's profile list as `apply` changes it. The list is
-/// read inside the write's own transaction, so a profile another window or
-/// process saved since `fallback` was read is kept. Returns the list sent
-/// (`apply`'s result) and the list stored (names made unique by the write).
-/// When the partition is unavailable, `apply` is laid over `fallback` (the
-/// list read before) and written through `save_active_user_profiles`, which
-/// owns the legacy-blob fallback.
+/// What a profile import refuses with when the active user changed after it
+/// read that user's profiles.
+const ACTIVE_USER_CHANGED: &str =
+    "the active user changed during the import, so nothing was written; run the import again";
+
+/// The id of the user whose profiles an import reads and writes (`--user`, or
+/// the active user), resolved without unlocking anything.
+fn import_user_id(
+    cli: &Cli,
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+) -> Result<Option<i64>, String> {
+    use ftp_client_gui_lib::user_partitions;
+    Ok(match cli.user {
+        Some(ref name) => Some(user_partitions::cli_find_user_by_name(store, name)?.id),
+        None => user_partitions::cli_get_active_user(store)?.map(|u| u.id),
+    })
+}
+
+/// Write the profile list of `user_id` as `apply` changes it. The list is read
+/// inside the write's own transaction, so a profile another window or process
+/// saved since `fallback` was read is kept, and `apply` can refuse a list that
+/// no longer fits its plan (nothing is written then). The write is refused when
+/// the active user is no longer `user_id`. Returns the list sent (`apply`'s
+/// result) and the list stored (names made unique by the write). When the
+/// partition is unavailable, `apply` is laid over `fallback` (the list read
+/// before) and written through `save_active_user_profiles`, which owns the
+/// legacy-blob fallback.
 fn update_active_user_profiles(
     cli: &Cli,
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    user_id: i64,
     fallback: &[serde_json::Value],
-    apply: impl Fn(&mut Vec<serde_json::Value>),
+    apply: impl Fn(&mut Vec<serde_json::Value>) -> Result<(), String>,
 ) -> Result<(Vec<serde_json::Value>, Vec<serde_json::Value>), String> {
     use ftp_client_gui_lib::user_partitions;
     let target = match ensure_active_user_unlocked(cli, store)? {
         Some(t) => t,
         None => return Err("NO_ACTIVE_USER".to_string()),
     };
+    if target.id != user_id {
+        return Err(ACTIVE_USER_CHANGED.to_string());
+    }
     let mut sent = Vec::new();
-    let written = user_partitions::cli_update_server_profiles_for_user(store, target.id, |list| {
-        apply(list);
-        sent = list.clone();
-        true
-    });
+    let mut refused = None;
+    let written =
+        user_partitions::cli_update_server_profiles_for_user(store, target.id, |list| match apply(
+            list,
+        ) {
+            Ok(()) => {
+                sent = list.clone();
+                true
+            }
+            Err(e) => {
+                refused = Some(e);
+                false
+            }
+        });
+    if let Some(e) = refused {
+        return Err(e);
+    }
     match written {
         Ok((stored, _)) => {
             mirror_profiles_to_legacy_blob_if_active(store, target.id, &stored);
@@ -42787,11 +42821,51 @@ fn update_active_user_profiles(
         Err(e) if !e.starts_with(user_partitions::PARTITION_UNAVAILABLE) => Err(e),
         Err(_) => {
             let mut sent = fallback.to_vec();
-            apply(&mut sent);
+            apply(&mut sent)?;
             let stored = save_active_user_profiles(cli, store, &sent)?;
             Ok((sent, stored))
         }
     }
+}
+
+/// Lay an import's stored profiles (`servers`, each with its `importOutcome`)
+/// over `list`: an overwritten profile over the stored one of its id, where it
+/// stands, so a field only this device has survives and the list keeps its
+/// order (`overwrite_profile`); every other one appended, without its outcome.
+///
+/// A profile planned as new whose id `list` already holds means another
+/// process saved it after the plan was made: the plan is stale and the result
+/// is an error, so the caller writes nothing rather than a second profile of
+/// one id. The secrets were restored before this check, but an id is random
+/// (or minted by this import), so another writer can only hold it by importing
+/// this same backup in parallel: the secret written under that id is the same.
+fn lay_import_over(
+    list: &mut Vec<serde_json::Value>,
+    servers: &[serde_json::Value],
+) -> Result<(), String> {
+    use ftp_client_gui_lib::profile_import_plan::overwrite_profile;
+    for profile in servers {
+        let mut profile = profile.clone();
+        let overwrite =
+            profile.get("importOutcome").and_then(|v| v.as_str()) == Some("overwritten");
+        if let Some(fields) = profile.as_object_mut() {
+            fields.remove("importOutcome");
+        }
+        let slot = list
+            .iter()
+            .position(|p| p.get("id").is_some() && p.get("id") == profile.get("id"));
+        match (overwrite, slot) {
+            (true, Some(i)) => list[i] = overwrite_profile(&list[i], &profile),
+            (false, Some(_)) => {
+                let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                return Err(format!(
+                    "profile {id} was saved by another window or process during the import, so nothing was written"
+                ));
+            }
+            (_, None) => list.push(profile),
+        }
+    }
+    Ok(())
 }
 
 /// The summary's ", N resemble an existing profile", or nothing for none.
@@ -80748,6 +80822,33 @@ mod tests {
             root: "/root".to_string(),
         };
         assert!(!filter.matches_file("outside.txt", "/root/../outside.txt", 1, None));
+    }
+
+    /// An overwrite lands on its profile in place, a new profile is appended,
+    /// an overwrite whose profile is gone is appended, and a new profile whose
+    /// id the list now holds (saved elsewhere after the plan) refuses the write.
+    #[test]
+    fn lay_import_over_merges_appends_and_refuses_a_stale_plan() {
+        let mut list = vec![
+            json!({"id": "a", "name": "A", "host": "old", "color": "#f00"}),
+            json!({"id": "b", "name": "B"}),
+        ];
+        let servers = vec![
+            json!({"id": "a", "name": "A", "host": "new", "importOutcome": "overwritten"}),
+            json!({"id": "c", "name": "C", "importOutcome": "added"}),
+            json!({"id": "gone", "name": "G", "importOutcome": "overwritten"}),
+        ];
+        lay_import_over(&mut list, &servers).unwrap();
+        let ids: Vec<&str> = list.iter().map(|p| p["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, ["a", "b", "c", "gone"]);
+        assert_eq!(list[0]["host"], "new");
+        assert_eq!(list[0]["color"], "#f00");
+        assert!(list.iter().all(|p| p.get("importOutcome").is_none()));
+
+        let mut fresh = vec![json!({"id": "c", "name": "C saved elsewhere"})];
+        let stale = vec![json!({"id": "c", "name": "C", "importOutcome": "added"})];
+        let err = lay_import_over(&mut fresh, &stale).unwrap_err();
+        assert!(err.contains("profile c was saved by another"), "{err}");
     }
 
     fn argv(parts: &[&str]) -> Vec<String> {

@@ -1369,7 +1369,7 @@
             "overwrittenCount": "已覆盖 {count} 个",
             "duplicatedCount": "已复制 {count} 个",
             "importJottaChainWarning": "Jottacloud 每次连接都会更新登录，而 {names} 现在与另一个副本共用同一个登录：先连接的副本会让另一个退出登录（文件来源的设备，或其复制来源的配置文件）。请用新的 Personal Login Token 重新登录另一个。",
-            "importOverwriteNotSaved": "配置文件未保存，但被覆盖的 {count} 个配置文件的密码和登录令牌已从文件中替换。请再次导入同一文件以完成。"
+            "importNotSavedSecretsKept": "配置文件未保存，但文件中包含的其中 {count} 个配置文件的密码和登录令牌已存储。请使用相同选项再次导入同一文件以完成。"
         },
         "devtools": {
             "title": "AeroTools",

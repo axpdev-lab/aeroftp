@@ -76,6 +76,9 @@ export function overwriteProfile(stored: ServerProfile, imported: ServerProfile)
  *   imported profile is appended, as before; the bridge imports name none. A
  *   named profile whose id the vault no longer holds when this writes (deleted
  *   from another window in the meantime) is appended too, never dropped.
+ * @throws when a profile to append has an id the vault already holds: another
+ *   window or process saved it after the import was planned, and appending
+ *   would store two profiles of one id. Nothing is written then.
  */
 export async function appendImportedProfiles(
     newServers: ServerProfile[],
@@ -83,6 +86,10 @@ export async function appendImportedProfiles(
 ): Promise<ServerProfile[]> {
     const { profiles: current, userId } = await readSavedServerProfilesForWrite();
     const currentIds = new Set(current.map(s => s.id));
+    const taken = newServers.find(s => !replaceIds.has(s.id) && currentIds.has(s.id));
+    if (taken) {
+        throw new Error(`Profile ${taken.id} was saved by another window during the import, so nothing was written.`);
+    }
     const replacing = new Map(newServers.filter(s => replaceIds.has(s.id)).map(s => [s.id, s]));
     const merged = [
         ...current.map(s => {

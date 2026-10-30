@@ -1369,7 +1369,7 @@
             "overwrittenCount": "{count} korvattu",
             "duplicatedCount": "{count} monistettu",
             "importJottaChainWarning": "Jottacloud uusii kirjautumisensa jokaisella yhteydellä, ja {names} jakaa nyt sellaisen toisen kopion kanssa: ensin yhdistävä kopio kirjaa toisen ulos (laite, josta tiedosto tuli, tai profiili, josta se monistettiin). Kirjaa toinen uudelleen sisään uudella Personal Login Tokenilla.",
-            "importOverwriteNotSaved": "Profiileja ei tallennettu, mutta {count} korvatun profiilin salasanat ja kirjautumistunnisteet on jo korvattu tiedoston tiedoilla. Viimeistele tuomalla sama tiedosto uudelleen."
+            "importNotSavedSecretsKept": "Profiileja ei tallennettu, mutta tiedoston {count} profiilille sisältämät salasanat ja kirjautumistunnisteet on jo tallennettu. Viimeistele tuomalla sama tiedosto uudelleen samalla vaihtoehdolla."
         },
         "devtools": {
             "title": "AeroTools",

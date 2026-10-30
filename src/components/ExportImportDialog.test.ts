@@ -114,9 +114,12 @@ describe('ExportImportDialog .aeroftp import', () => {
         expect(onClose).not.toHaveBeenCalled();
     });
 
-    it('says what a failed write after an overwrite leaves, and stays open', async () => {
+    it('says what a failed write leaves for every imported profile, and stays open', async () => {
         vi.mocked(invoke).mockResolvedValue({
-            servers: [{ id: 'srv_a', name: 'A', host: 'a.example', port: 21, username: 'u', importOutcome: 'overwritten' }],
+            servers: [
+                { id: 'srv_a', name: 'A', host: 'a.example', port: 21, username: 'u', importOutcome: 'overwritten' },
+                { id: 'srv_b', name: 'B', host: 'b.example', port: 21, username: 'u', importOutcome: 'added' },
+            ],
             skipped: [],
             similar: 0,
             jottaChains: [],
@@ -128,7 +131,7 @@ describe('ExportImportDialog .aeroftp import', () => {
         await openImport(onImport, onClose);
         await runImport('overwrite');
         expect(host.textContent).toContain('vault write refused');
-        expect(host.textContent).toContain('settings.importOverwriteNotSaved {"count":1}');
+        expect(host.textContent).toContain('settings.importNotSavedSecretsKept {"count":2}');
         await act(async () => {
             vi.advanceTimersByTime(5000);
         });
@@ -152,6 +155,8 @@ describe('ExportImportDialog .aeroftp import', () => {
         expect(vi.mocked(invoke).mock.calls[0][1]).toMatchObject({ existing: 'skip' });
         expect(host.textContent).toContain('settings.duplicatesSkippedCount {"count":1}');
         expect(host.querySelector('[data-testid="import-jotta-warning"]')).toBeNull();
+        // Done: a second click cannot import the same file again.
+        expect(button(b => b.textContent === 'settings.importServers').disabled).toBe(true);
         await act(async () => {
             vi.advanceTimersByTime(3000);
         });

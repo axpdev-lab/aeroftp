@@ -1369,7 +1369,7 @@
             "overwrittenCount": "{count} ditimpa",
             "duplicatedCount": "{count} diduplikasi",
             "importJottaChainWarning": "Jottacloud memperbarui login-nya pada setiap koneksi, dan {names} kini berbagi satu dengan salinan lain: salinan yang terhubung lebih dulu akan mengeluarkan yang lain (perangkat asal file, atau profil tempat salinan ini diduplikasi). Masuk lagi ke yang lain dengan Personal Login Token baru.",
-            "importOverwriteNotSaved": "Profil tidak disimpan, tetapi kata sandi dan token masuk dari {count} profil yang ditimpa sudah diganti dari file. Impor file yang sama lagi untuk menyelesaikan."
+            "importNotSavedSecretsKept": "Profil tidak tersimpan, tetapi kata sandi dan token masuk yang dimuat file untuk {count} di antaranya sudah disimpan. Impor file yang sama lagi dengan opsi yang sama untuk menyelesaikan."
         },
         "devtools": {
             "title": "AeroTools",

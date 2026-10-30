@@ -4058,7 +4058,7 @@
             "importExistingDuplicateHint": "A profile you already have stays, and the copy from the file is added beside it with a numbered name.",
             "overwrittenCount": "{count} overwritten",
             "duplicatedCount": "{count} duplicated",
-            "importOverwriteNotSaved": "The profiles were not saved, but the passwords and tokens of {count} overwritten profiles were already replaced from the file. Import the same file again to finish.",
+            "importNotSavedSecretsKept": "The profiles were not saved, but the passwords and tokens the file carries for {count} of them were already stored. Import the same file again with the same option to finish.",
             "importJottaChainWarning": "Jottacloud renews its sign-in on every connection, and {names} now shares one with another copy: the copy that connects first signs the other out (the device the file came from, or the profile it was duplicated from). Sign the other one in again with a new Personal Login Token.",
             "includeCredentials": "Include saved credentials",
             "serversUpdated": "{count} updated",

@@ -1369,7 +1369,7 @@
             "overwrittenCount": "{count} gainidatzi dira",
             "duplicatedCount": "{count} bikoiztu dira",
             "importJottaChainWarning": "Jottacloudek konexio bakoitzean berritzen du saio-hasiera, eta {names} orain beste kopia batekin partekatzen du bat: lehenengo konektatzen den kopiak bestearen saioa ixten du (fitxategia nondik etorri den gailua, edo bikoiztu zen profila). Hasi saioa berriro bestean Personal Login Token berri batekin.",
-            "importOverwriteNotSaved": "Profilak ez dira gorde, baina gainidatzitako {count} profilen pasahitzak eta saio-hasierako tokenak fitxategikoekin ordezkatu dira jada. Inportatu berriro fitxategi bera amaitzeko."
+            "importNotSavedSecretsKept": "Profilak ez dira gorde, baina fitxategiak horietako {count} profilentzat dituen pasahitzak eta saioa hasteko tokenak dagoeneko gordeta daude. Amaitzeko, inportatu berriro fitxategi bera aukera berarekin."
         },
         "devtools": {
             "title": "AeroTools",

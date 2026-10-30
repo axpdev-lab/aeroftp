@@ -1369,7 +1369,7 @@
             "overwrittenCount": "{count} ang na-overwrite",
             "duplicatedCount": "{count} ang na-duplicate",
             "importJottaChainWarning": "Nire-renew ng Jottacloud ang sign-in nito sa bawat koneksyon, at ang {names} ay may kahati na ngayong isa sa ibang kopya: ang kopyang unang kumonekta ang magsa-sign out sa isa pa (ang device kung saan galing ang file, o ang profile na pinagmulan ng duplicate). Mag-sign in muli sa isa pa gamit ang bagong Personal Login Token.",
-            "importOverwriteNotSaved": "Hindi nai-save ang mga profile, pero napalitan na mula sa file ang mga password at sign-in token ng {count} na na-overwrite na profile. I-import muli ang parehong file para matapos."
+            "importNotSavedSecretsKept": "Hindi na-save ang mga profile, ngunit ang mga password at sign-in token na dala ng file para sa {count} sa mga ito ay nakaimbak na. I-import muli ang parehong file gamit ang parehong opsyon para matapos."
         },
         "devtools": {
             "title": "AeroTools",

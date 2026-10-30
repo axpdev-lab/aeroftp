@@ -1369,7 +1369,7 @@
             "overwrittenCount": "{count} felülírva",
             "duplicatedCount": "{count} duplikálva",
             "importJottaChainWarning": "A Jottacloud minden csatlakozáskor megújítja a bejelentkezését, és a(z) {names} most egyet megoszt egy másik másolattal: amelyik másolat előbb csatlakozik, kijelentkezteti a másikat (az eszközt, ahonnan a fájl származik, vagy a profilt, amelyből duplikálták). Jelentkeztesse be újra a másikat egy új Personal Login Tokennel.",
-            "importOverwriteNotSaved": "A profilok nem lettek mentve, de a felülírt {count} profil jelszavai és bejelentkezési tokenjei már le lettek cserélve a fájlból. A befejezéshez importáld újra ugyanazt a fájlt."
+            "importNotSavedSecretsKept": "A profilok nem lettek mentve, de a fájlban található jelszavak és bejelentkezési tokenek {count} profilhoz már el lettek tárolva. A befejezéshez importáld újra ugyanazt a fájlt ugyanazzal a beállítással."
         },
         "devtools": {
             "title": "AeroTools",

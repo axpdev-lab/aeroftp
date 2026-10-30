@@ -1369,7 +1369,7 @@
             "overwrittenCount": "{count} écrasés",
             "duplicatedCount": "{count} dupliqués",
             "importJottaChainWarning": "Jottacloud renouvelle sa connexion à chaque session, et {names} en partage désormais une avec une autre copie : la copie qui se connecte en premier déconnecte l'autre (l'appareil d'où vient le fichier, ou le profil dont elle a été dupliquée). Reconnectez l'autre avec un nouveau Personal Login Token.",
-            "importOverwriteNotSaved": "Les profils n'ont pas été enregistrés, mais les mots de passe et les jetons de connexion de {count} profils écrasés ont déjà été remplacés à partir du fichier. Importez à nouveau le même fichier pour terminer."
+            "importNotSavedSecretsKept": "Les profils n'ont pas été enregistrés, mais les mots de passe et les jetons de connexion que le fichier contient pour {count} d'entre eux ont déjà été stockés. Importez à nouveau le même fichier avec la même option pour terminer."
         },
         "devtools": {
             "title": "AeroTools",
