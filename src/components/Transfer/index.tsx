@@ -5,7 +5,7 @@
  * Transfer progress components
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Download, Upload, Folder, X, Minus, ArrowUpDown } from 'lucide-react';
 import { formatBytes, formatSpeed, formatETA } from '../../utils/formatters';
 import { useTheme, getEffectiveTheme } from '../../hooks/useTheme';
@@ -14,6 +14,7 @@ import { liveEta, useLiveSpeed } from '../../utils/liveSpeed';
 import { hasSpeedData, type SpeedProfile } from '../../utils/speedProfile';
 import { TransferProgressBar } from '../TransferProgressBar';
 import { isTransferComplete } from './transferCompletion';
+import { useNeverShrinkingHeight } from './useNeverShrinkingHeight';
 
 /**
  * Truncate a path smartly: always show the last 2 segments with ellipsis prefix.
@@ -240,7 +241,12 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
     const displayName = summary.path ? truncatePath(summary.path) : summary.filename;
     const transferModeLabel = isUpload ? t('transfer.badgeUpload') : t('transfer.badgeDownload');
     const transferStateLabel = isFolderTransfer ? t('transfer.badgeBatch') : (isIndeterminate ? t('transfer.badgeStream') : t('transfer.badgeLive'));
-    const hasGraph = !!transfer.speedProfile && hasSpeedData(transfer.speedProfile);
+    // Each file of a sync starts with an empty profile: the last one with data
+    // stays on screen until the new file has its own, or the graph and its
+    // toggle would disappear and return once per file.
+    const shownProfile = useRef<SpeedProfile | undefined>(undefined);
+    if (transfer.speedProfile && hasSpeedData(transfer.speedProfile)) shownProfile.current = transfer.speedProfile;
+    const { ref: cardRef, release: releaseCardHeight } = useNeverShrinkingHeight<HTMLDivElement>(isFolderTransfer);
 
     // Auto-dismiss safety: once the summary is complete AND no lane is still
     // active, collapse after 3s (mirrors the legacy toast's behaviour). Same
@@ -256,6 +262,7 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
         // #364: anchor bottom-LEFT (was centered) so this card never overlaps
         // the bottom-right Transfer Queue panel (fixed bottom-12 right-6 w-[33rem]).
         <div
+            ref={cardRef}
             className={`fixed bottom-12 left-6 z-40 overflow-hidden rounded-lg border w-[30rem] max-w-[calc(100vw-2rem)] text-xs ${styles.container}`}
             style={{ isolation: 'isolate', contain: 'layout paint' }}
         >
@@ -337,8 +344,9 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
                             variant={isIndeterminate ? 'indeterminate' : 'gradient'}
                             animated={!isIndeterminate}
                             effectiveTheme={barTheme}
-                            showGraph={hasGraph}
-                            speedProfile={transfer.speedProfile}
+                            showGraph={!!shownProfile.current}
+                            speedProfile={shownProfile.current}
+                            onGraphClose={releaseCardHeight}
                         />
                     </div>
 
