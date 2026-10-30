@@ -12505,6 +12505,113 @@ mod tests {
         assert!(!segmented_temp_path_for(&out).exists());
     }
 
+    /// A Stop while the content is being hashed ends the download at once: the
+    /// reading that precedes the hash grows the temporary to many gigabytes of
+    /// holes, far more than the time allowed here, and nothing is published.
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_stop_during_the_content_hash_ends_the_download_at_once() {
+        use super::super::multi_thread::pin_server::{self, PinMode, OBJECT_SIZE};
+        use super::super::multi_thread::segmented_temp_path_for;
+        const HOLES: u64 = 16 * 1024 * 1024 * 1024;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        std::fs::write(&out, b"what was there before").unwrap();
+        let temp = segmented_temp_path_for(&out);
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let stop = cancel.clone();
+        let hook_temp = temp.clone();
+        let server = pin_server::start_with_hook(
+            PinMode::RefusedRestored,
+            std::sync::Arc::new(move || {
+                let file = std::fs::OpenOptions::new()
+                    .write(true)
+                    .open(&hook_temp)
+                    .expect("the temporary is there while the object is read");
+                file.set_len(HOLES).expect("grow the temporary");
+                let stop = stop.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(300));
+                    stop.cancel();
+                });
+            }),
+        )
+        .await;
+        let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+        provider.connected = true;
+        let target = out.to_str().unwrap().to_string();
+        let error = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            crate::provider_transfer_executor::run_provider_segmented_download(
+                &mut provider,
+                "/big.bin",
+                &target,
+                OBJECT_SIZE as u64,
+                4,
+                None,
+                cancel,
+            ),
+        )
+        .await
+        .expect("a Stop does not wait for the hash")
+        .expect_err("a stopped download is not published");
+        assert!(error.is_cancelled(), "{error}");
+        assert_eq!(std::fs::read(&out).unwrap(), b"what was there before");
+        assert!(!temp.exists());
+    }
+
+    /// A batch with no retries: the object refuses the windows, and the same
+    /// attempt reads it on one stream instead of failing the file.
+    #[tokio::test]
+    async fn a_batch_with_no_retries_takes_one_stream_when_the_object_refuses_the_windows() {
+        use super::super::multi_thread::pin_server::{self, PinMode, OBJECT_SIZE};
+        use crate::provider_transfer_executor::{
+            ProviderDownloadExecutor, ProviderExecutorSessionModel,
+        };
+        use crate::transfer_domain::{TransferEntry, TransferOutcome};
+        use crate::transfer_orchestrator::TransferExecutor;
+        let server = pin_server::start(PinMode::RefusedRestored).await;
+        let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+        provider.connected = true;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        let capabilities = crate::transfer_dag::TransferCapabilities::default();
+        let executor = ProviderDownloadExecutor::new(
+            std::sync::Arc::new(crate::transfer_event_sink::NoopTransferSink),
+            std::sync::Arc::new(tokio::sync::Mutex::new(Some(
+                Box::new(provider) as Box<dyn StorageProvider>
+            ))),
+            crate::transfer_settings::ResolvedTransferSettings {
+                requested_max_concurrent: 1,
+                max_concurrent: 1,
+                retry_count: 0,
+                timeout_seconds: 30,
+                download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(4),
+                sftp_download_preset: None,
+            },
+            tokio_util::sync::CancellationToken::new(),
+            ProviderExecutorSessionModel::HttpClonePool {
+                provider_type: ProviderType::S3,
+                max_leases: 4,
+            },
+            capabilities,
+        );
+        let outcome = executor
+            .execute(TransferEntry {
+                id: "big".to_string(),
+                display_name: "big".to_string(),
+                remote_path: "/big.bin".to_string(),
+                local_path: out.to_string_lossy().to_string(),
+                size: OBJECT_SIZE as u64,
+                modified: None,
+            })
+            .await;
+        assert!(matches!(outcome, TransferOutcome::Success), "{outcome:?}");
+        assert!(server.refused() >= 2, "the segmented path ran first");
+        assert_eq!(executor.take_transfer_attempts("big"), Some(1));
+        assert_eq!(std::fs::read(&out).unwrap(), vec![9u8; OBJECT_SIZE]);
+    }
+
     /// A read without If-Match past the end of a shorter object is a refusal,
     /// not a range the server cannot do: the caller takes one stream, whichever
     /// path it came by.
@@ -12634,6 +12741,7 @@ mod tests {
             (PinMode::RefusedWithStaleReadings, false, 2),
             (PinMode::RefusedWithLargerWindows, false, 2),
             (PinMode::RefusedThenUnreadable, false, 3),
+            (PinMode::HonouredWithAnotherMd5, true, 2),
             (PinMode::RefusedUnchangedMd5, true, 3),
             (PinMode::RefusedRestored, false, 3),
         ] {
@@ -12670,7 +12778,7 @@ mod tests {
             ) {
                 assert_eq!(server.unpinned(), 0, "{mode:?}: never read unpinned");
             }
-            if mode != PinMode::Honoured {
+            if !matches!(mode, PinMode::Honoured | PinMode::HonouredWithAnotherMd5) {
                 assert!(server.refused() >= 2, "{mode:?}");
             }
         }

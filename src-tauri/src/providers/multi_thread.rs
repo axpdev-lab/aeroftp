@@ -786,16 +786,19 @@ impl SegmentedTemp {
 /// Why the file at `path` does not hash to the MD5 `expected`, or `None` when
 /// it does. A file that cannot be read differs: nothing shows it is the one.
 /// The hash reads the whole file on the blocking pool, so a large file costs
-/// its read time there and never holds up the runtime.
+/// its read time there and never holds up the runtime. A caller that stops
+/// awaiting stops the reading too, at its next chunk.
 pub async fn file_differs_from_md5(path: PathBuf, expected: &str) -> Option<String> {
-    let actual = tokio::task::spawn_blocking(move || -> std::io::Result<String> {
-        use md5::{Digest, Md5};
-        let mut hasher = Md5::new();
-        let mut file = std::fs::File::open(path)?;
-        std::io::copy(&mut file, &mut hasher)?;
-        Ok(format!("{:x}", hasher.finalize()))
-    })
-    .await;
+    /// Tells the reading to stop when the future awaiting it is dropped.
+    struct StopOnDrop(Arc<std::sync::atomic::AtomicBool>);
+    impl Drop for StopOnDrop {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::Relaxed);
+        }
+    }
+    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let _stop_on_drop = StopOnDrop(Arc::clone(&stop));
+    let actual = tokio::task::spawn_blocking(move || hash_file_md5(&path, &stop)).await;
     match actual {
         Ok(Ok(actual)) if actual.eq_ignore_ascii_case(expected) => None,
         Ok(Ok(actual)) => Some(format!(
@@ -832,9 +835,10 @@ pub struct RangeSourceFingerprint {
     size: u64,
     modified: Option<String>,
     validator: Option<String>,
-    /// The content's MD5, when the provider publishes one. Not part of the
-    /// comparison between two readings: the entity tag it comes from is.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// The content's MD5, when the provider publishes one. For this run only:
+    /// `differs_from` compares the entity tag it comes from, and a resume reads
+    /// nothing from it, so it is not written next to a part.
+    #[serde(skip)]
     content_md5: Option<String>,
 }
 
@@ -1133,6 +1137,26 @@ impl PinRefusal {
     }
 }
 
+/// The MD5 of the file at `path` as lowercase hex, read a chunk at a time so
+/// `stop` is honoured within one chunk.
+fn hash_file_md5(path: &Path, stop: &std::sync::atomic::AtomicBool) -> std::io::Result<String> {
+    use md5::{Digest, Md5};
+    use std::io::Read;
+    let mut hasher = Md5::new();
+    let mut file = std::fs::File::open(path)?;
+    let mut chunk = vec![0u8; 1024 * 1024];
+    loop {
+        if stop.load(Ordering::Relaxed) {
+            return Err(std::io::Error::other("the hash was stopped"));
+        }
+        let read = file.read(&mut chunk)?;
+        if read == 0 {
+            return Ok(format!("{:x}", hasher.finalize()));
+        }
+        hasher.update(&chunk[..read]);
+    }
+}
+
 /// A transfer progress callback, as every provider download takes it.
 pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send>;
 
@@ -1143,7 +1167,7 @@ pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send>;
 ///
 /// The value never goes back: a fallback counts from zero what the attempt had
 /// already reported, and a bar that shrinks makes the time left grow. The
-/// later half holds the last value until it passes it.
+/// later half holds the last value until it passes it, never above the total.
 pub fn share_progress(
     progress: Option<ProgressCallback>,
 ) -> (Option<ProgressCallback>, Option<ProgressCallback>) {
@@ -1156,7 +1180,13 @@ pub fn share_progress(
             let mut guard = shared.lock().unwrap_or_else(|e| e.into_inner());
             let (progress, reached) = &mut *guard;
             *reached = (*reached).max(done);
-            progress(*reached, total)
+            // A replaced object can be shorter than what was reported.
+            let shown = if total > 0 {
+                (*reached).min(total)
+            } else {
+                *reached
+            };
+            progress(shown, total)
         })
     };
     (Some(half(Arc::clone(&shared))), Some(half(shared)))
@@ -2860,6 +2890,9 @@ pub(crate) mod pin_server {
         /// Refused, with readings that stay put while the unpinned windows,
         /// which carry no entity tag, say they belong to a larger object.
         RefusedWithLargerWindows,
+        /// Served under a pin, on an object whose entity tag is an MD5 the
+        /// windows do not hash to: a pinned read that hashed would refuse.
+        HonouredWithAnotherMd5,
         /// Refused on an object whose entity tag is the MD5 of the bytes the
         /// unpinned windows serve.
         RefusedUnchangedMd5,
@@ -2904,7 +2937,17 @@ pub(crate) mod pin_server {
         Some((start.parse().ok()?, end.parse().ok()?))
     }
 
+    /// [`start_with_hook`] with nothing to run.
     pub(crate) async fn start(mode: PinMode) -> PinServer {
+        start_with_hook(mode, Arc::new(|| {})).await
+    }
+
+    /// Start the server; `after_windows` runs on each reading that comes after
+    /// an unpinned window was served, before the reading is answered.
+    pub(crate) async fn start_with_hook(
+        mode: PinMode,
+        after_windows: Arc<dyn Fn() + Send + Sync>,
+    ) -> PinServer {
         // The MD5 of what a plain GET serves, or of what a window serves.
         let md5_tag = |byte: u8| -> &'static str {
             use md5::{Digest, Md5};
@@ -2913,7 +2956,7 @@ pub(crate) mod pin_server {
         };
         let content_tag = match mode {
             PinMode::RefusedUnchangedMd5 => Some(md5_tag(7)),
-            PinMode::RefusedRestored => Some(md5_tag(9)),
+            PinMode::RefusedRestored | PinMode::HonouredWithAnotherMd5 => Some(md5_tag(9)),
             _ => None,
         };
         let readings = Arc::new(AtomicUsize::new(0));
@@ -2927,6 +2970,7 @@ pub(crate) mod pin_server {
         let app =
             axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
                 let (readings, refused, unpinned) = counters.clone();
+                let after_windows = Arc::clone(&after_windows);
                 async move {
                     use axum::http::StatusCode;
                     use axum::response::Response;
@@ -2969,6 +3013,9 @@ pub(crate) mod pin_server {
                     };
                     if req.method() == axum::http::Method::HEAD || probe {
                         readings.fetch_add(1, Ordering::SeqCst);
+                        if unpinned.load(Ordering::SeqCst) > 0 {
+                            after_windows();
+                        }
                         if unreadable {
                             return respond(StatusCode::NOT_FOUND, None)
                                 .body(axum::body::Body::empty())
@@ -2984,7 +3031,7 @@ pub(crate) mod pin_server {
                             .unwrap();
                     }
                     let refuse = match mode {
-                        PinMode::Honoured => false,
+                        PinMode::Honoured | PinMode::HonouredWithAnotherMd5 => false,
                         PinMode::UntaggedRangesRefused => range.is_some() && !probe,
                         _ => pinned,
                     };
@@ -6309,10 +6356,37 @@ mod tests {
         attempt(40, 100);
         fallback(10, 100);
         fallback(100, 100);
+        fallback(50, 30);
         assert_eq!(
             *seen.lock().unwrap(),
-            vec![(40, 100), (40, 100), (100, 100)]
+            vec![(40, 100), (40, 100), (100, 100), (30, 30)]
         );
+    }
+
+    /// The comparison is case-insensitive, a file that cannot be read differs,
+    /// and a stopped hash ends at its next chunk.
+    #[tokio::test]
+    async fn the_content_comparison_names_what_differs() {
+        use std::sync::atomic::AtomicBool;
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("object.bin");
+        std::fs::write(&file, b"abc").unwrap();
+        let md5 = "900150983cd24fb0d6963f7d28e17f72";
+        assert_eq!(file_differs_from_md5(file.clone(), md5).await, None);
+        assert_eq!(
+            file_differs_from_md5(file.clone(), &md5.to_uppercase()).await,
+            None
+        );
+        let other = file_differs_from_md5(file.clone(), "00000000000000000000000000000000")
+            .await
+            .expect("another MD5 differs");
+        assert!(other.contains(md5), "{other}");
+        let gone = file_differs_from_md5(dir.path().join("gone"), md5)
+            .await
+            .expect("a file that cannot be read differs");
+        assert!(gone.contains("could not be hashed"), "{gone}");
+        assert_eq!(hash_file_md5(&file, &AtomicBool::new(false)).unwrap(), md5);
+        assert!(hash_file_md5(&file, &AtomicBool::new(true)).is_err());
     }
 
     #[test]

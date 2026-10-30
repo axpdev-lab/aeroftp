@@ -339,6 +339,10 @@ pub enum SegmentedDownloadError {
     },
 }
 
+/// Why a finished segmented download is not published, as the notice says it.
+const SOURCE_NOT_VERIFIED: &str =
+    "the source changed or could not be verified after the segmented transfer";
+
 impl SegmentedDownloadError {
     fn unavailable(message: String, reason: &'static str) -> Self {
         Self::Unavailable { message, reason }
@@ -361,6 +365,19 @@ impl SegmentedDownloadError {
                 "segmented download unavailable: {reason}; using the provider download path"
             ));
         }
+    }
+
+    /// Whether the object itself turned the windows down: it changed, or could
+    /// not be shown to be the one they read. Nothing else is wrong with the
+    /// provider, so one stream can read it on this same attempt, with or
+    /// without retries left.
+    fn refused_by_the_source(&self) -> bool {
+        matches!(
+            self,
+            Self::Unavailable { reason, .. }
+                if *reason == SOURCE_NOT_VERIFIED
+                    || *reason == crate::providers::multi_thread::PinRefusal::SourceChanged(String::new()).notice()
+        )
     }
 
     /// Identify user cancellation without interpreting provider text or paths.
@@ -734,7 +751,14 @@ async fn run_provider_segmented_windows(
             // Read without If-Match, a replacement restored before that reading
             // leaves it unmoved; the content shows it where an MD5 is published.
             let changed = match changed {
-                None if !send_pin => temp.differs_from_md5(before.content_md5()).await,
+                None if !send_pin => tokio::select! {
+                    biased;
+                    _ = cancel_token.cancelled() => {
+                        temp.discard();
+                        return Err(SegmentedDownloadError::Cancelled);
+                    }
+                    changed = temp.differs_from_md5(before.content_md5()) => changed,
+                },
                 other => other,
             };
             // Validation can finish in the same tick as Stop. Refuse publication
@@ -748,7 +772,7 @@ async fn run_provider_segmented_windows(
                     temp.discard();
                     Err(SegmentedDownloadError::unavailable(
                         source_changed("segmented download", remote_path, &what),
-                        "the source changed or could not be verified after the segmented transfer",
+                        SOURCE_NOT_VERIFIED,
                     ))
                 }
                 None => match temp.publish(Path::new(local_path)).await {
@@ -1573,18 +1597,25 @@ impl ProviderDownloadExecutor {
                 });
             }));
 
-        Some(
-            run_provider_segmented_download(
-                primary,
-                &entry.remote_path,
-                &entry.local_path,
-                file_size,
-                segments,
-                on_progress,
-                self.cancel_token.clone(),
-            )
-            .await
-            .map_err(|e| {
+        let outcome = run_provider_segmented_download(
+            primary,
+            &entry.remote_path,
+            &entry.local_path,
+            file_size,
+            segments,
+            on_progress,
+            self.cancel_token.clone(),
+        )
+        .await;
+        match outcome {
+            Ok(()) => Some(Ok(())),
+            // The object turned the windows down: one stream reads it on this
+            // attempt, so a run with no retries left does not fail the file.
+            Err(e) if !self.cancel_token.is_cancelled() && e.refused_by_the_source() => {
+                e.report_fallback();
+                None
+            }
+            Err(e) => {
                 if !self.cancel_token.is_cancelled() {
                     if let Some(reason) = e.fallback_reason() {
                         crate::providers::report_warning(format!(
@@ -1592,9 +1623,9 @@ impl ProviderDownloadExecutor {
                         ));
                     }
                 }
-                e.to_string()
-            }),
-        )
+                Some(Err(e.to_string()))
+            }
+        }
     }
 
     fn emit_download_start(&self, entry: &TransferEntry, file_transfer_id: &str) {
@@ -2462,6 +2493,19 @@ fn resumes_from_the_temporary(attempt: u32, supports_resume: bool, inplace: bool
 
 #[cfg(test)]
 mod tests {
+    /// Only a refusal by the object itself goes straight to one stream; a
+    /// failure of the transport keeps the attempt it has.
+    #[test]
+    fn only_the_object_refusing_the_windows_takes_one_stream_at_once() {
+        use crate::providers::multi_thread::PinRefusal;
+        let refused = |reason| SegmentedDownloadError::unavailable(String::new(), reason);
+        assert!(refused(SOURCE_NOT_VERIFIED).refused_by_the_source());
+        assert!(refused(PinRefusal::SourceChanged(String::new()).notice()).refused_by_the_source());
+        assert!(!refused(PinRefusal::PinUnsupported.notice()).refused_by_the_source());
+        assert!(!refused("a segmented range transfer failed").refused_by_the_source());
+        assert!(!SegmentedDownloadError::Cancelled.refused_by_the_source());
+    }
+
     #[test]
     fn segmented_notices_exclude_error_details_and_cancellation() {
         use super::SegmentedDownloadError;

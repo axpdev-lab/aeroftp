@@ -36296,7 +36296,20 @@ async fn pget_segmented_download(
             // Read without If-Match, a replacement restored before that reading
             // leaves it unmoved; the content shows it where an MD5 is published.
             let changed = match changed {
-                None if !pinned => temp.differs_from_md5(before.content_md5()).await,
+                None if !pinned => {
+                    let content = run_until_interrupted(
+                        &cancelled,
+                        temp.differs_from_md5(before.content_md5()),
+                    )
+                    .await;
+                    // Stopped before the content could be checked: nothing is
+                    // published.
+                    let Some(content) = content else {
+                        temp.discard();
+                        return interrupted_exit(None, format, "the download did not finish").await;
+                    };
+                    content
+                }
                 other => other,
             };
             if changed.is_some() {
@@ -66702,6 +66715,24 @@ async fn digest_in_order(
     }
 }
 
+/// A refusal, not a failure, when windows read without `If-Match` do not hash
+/// to the MD5 the object publishes: the object as it stands can still be
+/// hashed whole.
+fn unpinned_content_matches(
+    path: &str,
+    content: Option<(&str, md5::Md5)>,
+) -> Result<(), ProviderError> {
+    if let Some((expected, hasher)) = content {
+        let actual = format!("{:x}", md5::Digest::finalize(hasher));
+        if !actual.eq_ignore_ascii_case(expected) {
+            return Err(ProviderError::ParallelRefused(format!(
+                "{path}: the windows hash to MD5 {actual}, not {expected}"
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// One pass of [`digest_in_order`] over the object `before` describes. The
 /// workers know its version; with `send_pin` each window carries it as
 /// `If-Match`, without it each answer is compared with it. The object is read
@@ -66733,6 +66764,13 @@ async fn digest_in_order_attempt(
         }
     }
 
+    // Read without If-Match, a replacement restored before the reading below
+    // leaves it unmoved; the content shows it where an MD5 is published.
+    let mut content = before
+        .content_md5()
+        .filter(|_| !send_pin)
+        .map(|expected| (expected, <md5::Md5 as md5::Digest>::new()));
+
     if workers.is_empty() {
         // A read may return fewer bytes than asked; only an empty one before
         // the end means the object is shorter than it was listed.
@@ -66748,6 +66786,9 @@ async fn digest_in_order_attempt(
             }
             let take = data.len().min((size - at) as usize);
             digest.update(&data[..take]);
+            if let Some((_, hasher)) = content.as_mut() {
+                md5::Digest::update(hasher, &data[..take]);
+            }
             at += take as u64;
         }
         // Several windows apart, the object may have been replaced between
@@ -66759,15 +66800,10 @@ async fn digest_in_order_attempt(
                 )));
             }
         }
+        unpinned_content_matches(path, content)?;
         return Ok(Some(size));
     }
 
-    // Read without If-Match, a replacement restored before the reading below
-    // leaves it unmoved; the content shows it where an MD5 is published.
-    let mut content = before
-        .content_md5()
-        .filter(|_| !send_pin)
-        .map(|expected| (expected, <md5::Md5 as md5::Digest>::new()));
     let cancel = tokio_util::sync::CancellationToken::new();
     let (read, mut workers) = read_in_order(
         workers,
@@ -66800,16 +66836,7 @@ async fn digest_in_order_attempt(
             "{path} changed while it was hashed: {why}"
         )));
     }
-    // A refusal, not a failure: the object as it stands can still be hashed
-    // whole.
-    if let Some((expected, hasher)) = content {
-        let actual = format!("{:x}", md5::Digest::finalize(hasher));
-        if !actual.eq_ignore_ascii_case(expected) {
-            return Err(ProviderError::ParallelRefused(format!(
-                "{path}: the windows hash to MD5 {actual}, not {expected}"
-            )));
-        }
-    }
+    unpinned_content_matches(path, content)?;
     Ok(Some(size))
 }
 
@@ -67233,8 +67260,8 @@ mod hashsum_digest_tests {
                         if !request.headers().contains_key("if-match") {
                             unpinned_gets.fetch_add(1, Ordering::SeqCst);
                         }
-                        // Modes 4, 5 and 6 refuse every range pinned with
-                        // If-Match and serve the others.
+                        // Modes 4 to 9 refuse every range pinned with If-Match
+                        // and answer the others as their mode says.
                         if matches!(range_mode, 4..=9) && request.headers().contains_key("if-match")
                         {
                             refused.fetch_add(1, Ordering::SeqCst);
@@ -67276,7 +67303,7 @@ mod hashsum_digest_tests {
                                 .body(Body::from(replaced[start..=end].to_vec()))
                                 .unwrap();
                         }
-                        if matches!(range_mode, 1 | 2 | 4 | 5 | 7 | 8) {
+                        if matches!(range_mode, 1 | 2 | 4 | 5 | 8) {
                             let (start, end) = range
                                 .to_str()
                                 .unwrap()
