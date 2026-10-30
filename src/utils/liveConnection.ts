@@ -84,6 +84,22 @@ function hostOf(params: ConnectionParams): string {
 }
 
 /**
+ * The target of a connection as one string: equal for two connections exactly
+ * when {@link isSameConnection} holds, so a cache of what a server holds can
+ * key on it (a folder's size, say) and never serve one bucket, branch, drive
+ * or port the figure of another. Credentials and session settings are left
+ * out, as there.
+ */
+export function connectionTargetKey(params: ConnectionParams): string {
+    const options = (params.options ?? {}) as Record<string, unknown>;
+    const target = Object.keys(options)
+        .filter(key => !OPTIONS_OUTSIDE_THE_TARGET.has(key) && !isAbsent(options[key]))
+        .sort()
+        .map(key => [key, options[key]]);
+    return JSON.stringify([params.protocol || '', hostOf(params), params.port ?? null, params.username || '', target]);
+}
+
+/**
  * Whether the live connection reaches what `target` describes: the same
  * protocol, host, port and account, and the same value for every option that
  * chooses the storage (bucket, region, endpoint, container, branch, ...).

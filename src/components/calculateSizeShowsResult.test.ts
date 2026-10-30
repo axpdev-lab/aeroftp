@@ -90,7 +90,7 @@ describe('a folder\'s size shows where it is asked for (#1441)', () => {
     });
 
     it('follows a local scan by its own id and stops it when the dialog closes', () => {
-        const scan = body('calculateFolderSize');
+        const scan = body('countLocalFolder');
         expect(scan).toMatch(/'local-folder-size-progress'/);
         expect(scan).toMatch(/scan_id !== scanId/);
         expect(scan).toMatch(/invoke<FolderSizeResult>\('calculate_folder_size', \{ path, scanId \}\)/);
@@ -99,11 +99,33 @@ describe('a folder\'s size shows where it is asked for (#1441)', () => {
         expect([...dialogs.matchAll(/cancelLocalFolderSizes\(/g)]).toHaveLength(2);
     });
 
+    it('lets a second caller wait for the walk of a folder already counted', () => {
+        // It returned at once: the multi-selection count went on to the next
+        // folder while the first was still walked, two walks at a time.
+        const calculate = body('calculateFolderSize');
+        expect(calculate).toMatch(/const running = localSizeRunsRef\.current\.get\(key\);\s*if \(running\) return running;/);
+        expect(calculate).not.toMatch(/folderSizeCalculatingRef\.current\.has\(key\)\) return;/);
+        // A cancelled walk is not waited on: a new count starts afresh.
+        expect(body('cancelLocalFolderSizes')).toMatch(/localSizeRunsRef\.current\.delete\(key\);/);
+    });
+
+    it('stops a folder\'s walk only when no Properties dialog shows it any more', () => {
+        // Closing or replacing one dialog stopped the walk the other still showed.
+        const dialogs = appRaw.slice(appRaw.indexOf('{propertiesDialog && ('), appRaw.indexOf('{quickLookTarget && ('));
+        expect(dialogs).toMatch(/const shown = new Set\(localFoldersShownBy\('multi'\)\);\s*cancelLocalFolderSizes\(\[propertiesDialog\.path\]\.filter\(path => !shown\.has\(path\)\)\);/);
+        expect(dialogs).toMatch(/const shown = new Set\(localFoldersShownBy\('single'\)\);\s*cancelLocalFolderSizes\(localFoldersShownBy\('multi'\)\.filter\(path => !shown\.has\(path\)\)\);/);
+        // A replaced dialog stops the folders it alone counted.
+        expect(body('openLocalProperties')).toMatch(/cancelLocalFolderSizes\(localFoldersShownBy\(replacing\)\.filter\(path => !stillShown\.has\(path\)\)\);/);
+    });
+
     it('keeps a local folder and a remote one at the same path apart', () => {
         // One cache served both sides, and every server: "/docs" sized on one
         // server was shown for "/docs" on the next.
         expect(appRaw).toMatch(/const localSizeKey = \(path: string\) => `local:\$\{path\}`/);
         expect(appRaw).toMatch(/const remoteSizeKey = /);
+        // The whole connection target: bucket, container, drive, branch, port
+        // (connectionTargetKey, tested in liveConnection.test.ts).
+        expect(appRaw).toMatch(/const remoteSizeKey = \(path: string\) => `remote:\$\{connectionTargetKey\(liveConnectionParams\)\}:\$\{path\}`;/);
         expect(appRaw).not.toMatch(/folderSizeCache\.get\(propertiesDialog\.path\)/);
     });
 });

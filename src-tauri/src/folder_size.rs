@@ -23,7 +23,9 @@
 //!   no inode in a directory listing, and reading the file index would cost an
 //!   open per file, the very syscall the listing saves; there a hard-linked
 //!   file counts at each name, as Explorer counts it. Symbolic links and
-//!   Windows junctions are not followed on any platform, so neither can loop.
+//!   Windows junctions are not followed on any platform, so neither can loop,
+//!   nor, on Linux, one put in a folder's place while the walk runs
+//!   ([`read_admitted`] says what other platforms check).
 //! - **Only stored data.** On Linux, a kernel pseudo-filesystem met on the way
 //!   (`/proc`, `/sys`, ...) is not entered: its files are generated when read,
 //!   and `/proc/kcore` alone would add the size of the address space to "/".
@@ -147,6 +149,19 @@ pub struct Limits {
 pub(crate) enum Fault {
     Cancel,
     Panic,
+    /// Puts a link to the folder `outside`, next to the walk's root, in the
+    /// place of the named folder after the walk admitted it.
+    #[cfg(unix)]
+    SwapForLink,
+    /// Puts a link to the folder `outside-copy`, next to the walk's root, in
+    /// the place of the named folder's parent: the named folder keeps its
+    /// path, now through a link.
+    #[cfg(unix)]
+    SwapParentForLink,
+    /// Puts a copy of the named folder in its place after the walk admitted
+    /// it: the same path and contents under another inode, as a mount that
+    /// renumbers its inodes shows.
+    ReplaceWithCopy,
 }
 
 impl Default for Limits {
@@ -202,10 +217,14 @@ pub fn scan(
     #[cfg(unix)]
     walk.seen.first_visit(meta.dev(), meta.ino());
     walk.queue_lock().dirs.push(Dir {
-        path: root.to_path_buf(),
+        // The folder named, through any link on the way to it: the walk does
+        // not follow links below the root, and checks each folder it lists.
+        path: fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf()),
         depth: 0,
         #[cfg(unix)]
         dev: meta.dev(),
+        #[cfg(unix)]
+        ino: meta.ino(),
     });
 
     std::thread::scope(|threads| {
@@ -250,6 +269,10 @@ struct Dir {
     /// Device of this directory, to notice the walk crossing into a mount.
     #[cfg(unix)]
     dev: u64,
+    /// Inode of this directory: with `dev`, what the path must still name
+    /// when the folder is listed ([`read_admitted`]).
+    #[cfg(unix)]
+    ino: u64,
 }
 
 struct Queue {
@@ -284,9 +307,14 @@ struct Walk<'a> {
     seen: Seen,
 }
 
+/// Held by each walking thread: a thread that panics ends the walk on its way
+/// out, so the others stop waiting for work it will never hand over and the
+/// panic reaches the caller instead of a hang.
 struct EndOnPanic<'w, 'a>(&'w Walk<'a>);
 
 impl Drop for EndOnPanic<'_, '_> {
+    /// Ends the walk only when unwinding: a thread that returns normally has
+    /// already done its part.
     fn drop(&mut self) {
         if std::thread::panicking() {
             self.0.finish();
@@ -307,6 +335,8 @@ struct Tally {
 }
 
 impl<'a> Walk<'a> {
+    /// An empty walk under `limits`, stopped early by `cancel`; the caller
+    /// queues the root.
     fn new(limits: Limits, cancel: &'a AtomicBool) -> Self {
         Self {
             queue: Mutex::new(Queue {
@@ -436,8 +466,9 @@ impl<'a> Walk<'a> {
         #[cfg(test)]
         self.inject_fault(&dir.path);
         let mut tally = Tally::default();
-        match fs::read_dir(&dir.path) {
-            Ok(entries) => {
+        // `_open` keeps the folder open while its entries are read.
+        match read_admitted(&dir) {
+            Ok((entries, _open)) => {
                 for entry in entries {
                     if self.halted() {
                         break;
@@ -468,6 +499,10 @@ impl<'a> Walk<'a> {
         }
     }
 
+    /// Counts one entry of `dir`: a file into `tally` (once per inode when it
+    /// has several names), a folder into `own`, the thread's own queue, unless
+    /// it was already walked, sits on a kernel pseudo-filesystem, or lies at
+    /// the depth bound. Links and special files are left out.
     fn count(
         &self,
         dir: &Dir,
@@ -511,7 +546,9 @@ impl<'a> Walk<'a> {
             tally.files += 1;
             tally.bytes += meta.len();
         } else if meta.is_dir() {
-            let path = entry.path();
+            // From the folder's path, not the entry's: a folder may be read
+            // through its descriptor ([`read_admitted`]).
+            let path = dir.path.join(entry.file_name());
             #[cfg(unix)]
             {
                 if meta.dev() != dir.dev && is_kernel_filesystem(&path) {
@@ -523,22 +560,25 @@ impl<'a> Walk<'a> {
             }
             tally.dirs += 1;
             let depth = dir.depth + 1;
+            let child = Dir {
+                path,
+                depth,
+                #[cfg(unix)]
+                dev: meta.dev(),
+                #[cfg(unix)]
+                ino: meta.ino(),
+            };
             if depth >= self.limits.max_depth {
                 // Counted, not entered: anything inside is left out, and the
                 // rest of the walk goes on.
-                match fs::read_dir(&path).map(|mut inside| inside.next().is_none()) {
+                match read_admitted(&child).map(|(mut inside, _open)| inside.next().is_none()) {
                     Ok(true) => {}
                     Ok(false) => self.capped.store(true, Ordering::Relaxed),
                     Err(_) => tally.unreadable_dirs += 1,
                 }
                 return;
             }
-            own.push(Dir {
-                path,
-                depth,
-                #[cfg(unix)]
-                dev: meta.dev(),
-            });
+            own.push(child);
         }
         // Otherwise it became a link or a special file since it was listed.
     }
@@ -550,10 +590,101 @@ impl<'a> Walk<'a> {
                 match fault {
                     Fault::Cancel => self.cancel.store(true, Ordering::Relaxed),
                     Fault::Panic => panic!("fault injected at {}", path.display()),
+                    #[cfg(unix)]
+                    Fault::SwapForLink => {
+                        let root = path
+                            .parent()
+                            .and_then(Path::parent)
+                            .expect("a nested folder");
+                        fs::rename(path, path.with_extension("moved"))
+                            .expect("move the folder away");
+                        std::os::unix::fs::symlink(root.join("outside"), path)
+                            .expect("link in its place");
+                    }
+                    #[cfg(unix)]
+                    Fault::SwapParentForLink => {
+                        let parent = path.parent().expect("a nested folder");
+                        let beside_root = parent
+                            .parent()
+                            .and_then(Path::parent)
+                            .expect("a folder two levels down");
+                        fs::rename(parent, parent.with_extension("moved"))
+                            .expect("move the parent away");
+                        std::os::unix::fs::symlink(beside_root.join("outside-copy"), parent)
+                            .expect("link in its place");
+                    }
+                    Fault::ReplaceWithCopy => {
+                        let moved = path.with_extension("moved");
+                        fs::rename(path, &moved).expect("move the folder away");
+                        fs::create_dir(path).expect("a folder in its place");
+                        for entry in fs::read_dir(&moved).expect("the moved folder") {
+                            let entry = entry.expect("an entry");
+                            fs::copy(entry.path(), path.join(entry.file_name()))
+                                .expect("copy a file");
+                        }
+                    }
                 }
             }
         }
     }
+}
+
+/// Opens a queued folder for listing, if its path still names the folder the
+/// walk admitted. Between the two another process can put a symbolic link in
+/// its place, and `read_dir` on the path would follow it out of the tree.
+///
+/// On Unix the folder is opened without following a link at its name, and
+/// its device and inode are compared with the admitted ones. When they differ,
+/// which some mounts do on their own (FUSE without fixed inode numbers, such
+/// as sshfs or rclone; CIFS with `noserverino`), the folder is kept only if no
+/// component of its path is a link ([`link_on_the_way`]). On Linux with
+/// `/proc` mounted the folder is then listed through its descriptor and each
+/// entry examined relative to it, so nothing swapped in afterwards is
+/// followed. Elsewhere, and on Linux without `/proc`, the path is listed and
+/// each entry examined by its path: the check narrows the window to the
+/// listing, it does not close it. Windows refuses a folder that has turned
+/// into a link at its name; a link higher up its path is not checked there.
+/// The returned handle keeps the folder open while it is read.
+#[cfg(unix)]
+fn read_admitted(dir: &Dir) -> std::io::Result<(fs::ReadDir, fs::File)> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let open = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY)
+        .open(&dir.path)?;
+    let meta = open.metadata()?;
+    if (meta.dev() != dir.dev || meta.ino() != dir.ino) && link_on_the_way(&dir.path) {
+        return Err(std::io::Error::other(
+            "the folder was replaced during the walk",
+        ));
+    }
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::fd::AsRawFd;
+        if let Ok(entries) = fs::read_dir(format!("/proc/self/fd/{}", open.as_raw_fd())) {
+            return Ok((entries, open));
+        }
+    }
+    Ok((fs::read_dir(&dir.path)?, open))
+}
+
+/// Whether a component of `path` is a symbolic link. The walk's paths start at
+/// a canonical root and add the names of folders it met, so a link on the way
+/// was put there while the walk ran.
+#[cfg(unix)]
+fn link_on_the_way(path: &Path) -> bool {
+    path.ancestors()
+        .any(|a| fs::symlink_metadata(a).is_ok_and(|m| m.file_type().is_symlink()))
+}
+
+#[cfg(not(unix))]
+fn read_admitted(dir: &Dir) -> std::io::Result<(fs::ReadDir, ())> {
+    if fs::symlink_metadata(&dir.path)?.file_type().is_symlink() {
+        return Err(std::io::Error::other(
+            "the folder was replaced during the walk",
+        ));
+    }
+    Ok((fs::read_dir(&dir.path)?, ()))
 }
 
 /// Locks [`Seen`] is split over.
@@ -652,6 +783,8 @@ struct Registry {
 static REGISTRY: LazyLock<Mutex<Registry>> = LazyLock::new(Mutex::default);
 static NEXT_REGISTRATION: AtomicU64 = AtomicU64::new(0);
 
+/// The registry of running walks, still usable after a thread panicked
+/// holding it: it only maps ids to flags, which a panic cannot leave torn.
 fn registry() -> MutexGuard<'static, Registry> {
     REGISTRY.lock().unwrap_or_else(PoisonError::into_inner)
 }
@@ -681,16 +814,20 @@ impl Registration {
         Self { id, serial, flag }
     }
 
+    /// The id the walk was registered under, the one its progress events carry.
     pub fn id(&self) -> Option<&str> {
         self.id.as_deref()
     }
 
+    /// The flag [`cancel`] sets for this walk: pass it to [`scan`].
     pub fn flag(&self) -> &AtomicBool {
         &self.flag
     }
 }
 
 impl Drop for Registration {
+    /// Leaves the registry, unless a later walk under the same id has taken
+    /// the id over: that walk's entry stays.
     fn drop(&mut self) {
         let Some(id) = &self.id else { return };
         let mut registry = registry();
@@ -837,6 +974,115 @@ mod tests {
                 "{threads} threads walked the whole tree after the cancel: {result:?}"
             );
         }
+    }
+
+    /// A folder replaced by a link after the walk admitted it, before it is
+    /// listed: the link is not followed, and the folder counts as unreadable.
+    #[cfg(unix)]
+    #[test]
+    fn a_folder_swapped_for_a_link_while_queued_is_not_followed() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path().join("root");
+        fs::create_dir_all(root.join("a")).unwrap();
+        fs::write(root.join("a").join("kept.bin"), [0u8; 10]).unwrap();
+        fs::write(root.join("b.bin"), [0u8; 1]).unwrap();
+        fs::create_dir(dir.path().join("outside")).unwrap();
+        fs::write(
+            dir.path().join("outside").join("elsewhere.bin"),
+            [0u8; 1000],
+        )
+        .unwrap();
+        let walk = Limits {
+            fault: Some(("a", Fault::SwapForLink)),
+            ..limits(1)
+        };
+        let result = scan(&root, walk, &AtomicBool::new(false), |_| {}).unwrap();
+        assert!(fs::symlink_metadata(root.join("a"))
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(
+            result.total_bytes, 1,
+            "followed the link swapped in: {result:?}"
+        );
+        assert_eq!(result.unreadable_dirs, 1, "{result:?}");
+        assert!(result.partial, "{result:?}");
+    }
+
+    /// A link put in the place of a folder's parent: the folder keeps its
+    /// path, but the path now leads out of the tree, to a folder of the same
+    /// name. Refused, though its inode is the one thing that tells it apart.
+    #[cfg(unix)]
+    #[test]
+    fn a_folder_reached_through_a_link_swapped_in_above_it_is_not_followed() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path().join("root");
+        fs::create_dir_all(root.join("a").join("c")).unwrap();
+        fs::write(root.join("a").join("c").join("kept.bin"), [0u8; 10]).unwrap();
+        fs::write(root.join("b.bin"), [0u8; 1]).unwrap();
+        let copy = dir.path().join("outside-copy");
+        fs::create_dir_all(copy.join("c")).unwrap();
+        fs::write(copy.join("c").join("elsewhere.bin"), [0u8; 1000]).unwrap();
+        let walk = Limits {
+            fault: Some(("c", Fault::SwapParentForLink)),
+            ..limits(1)
+        };
+        let result = scan(&root, walk, &AtomicBool::new(false), |_| {}).unwrap();
+        assert!(fs::symlink_metadata(root.join("a"))
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(
+            result.total_bytes, 1,
+            "followed the link swapped in above the folder: {result:?}"
+        );
+        assert_eq!(result.unreadable_dirs, 1, "{result:?}");
+        assert!(result.partial, "{result:?}");
+    }
+
+    /// A folder whose inode changed with no link on its path, as on a mount
+    /// that renumbers inodes (FUSE, CIFS with `noserverino`), is counted, not
+    /// reported unreadable.
+    #[test]
+    fn a_folder_under_another_inode_on_the_same_path_is_counted() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path().join("root");
+        fs::create_dir_all(root.join("a")).unwrap();
+        fs::write(root.join("a").join("kept.bin"), [0u8; 10]).unwrap();
+        fs::write(root.join("b.bin"), [0u8; 1]).unwrap();
+        let walk = Limits {
+            fault: Some(("a", Fault::ReplaceWithCopy)),
+            ..limits(1)
+        };
+        let result = scan(&root, walk, &AtomicBool::new(false), |_| {}).unwrap();
+        assert_eq!(
+            (result.total_bytes, result.unreadable_dirs, result.partial),
+            (11, 0, false),
+            "{result:?}"
+        );
+    }
+
+    /// The folder named may be reached through a link: only links below it
+    /// are refused.
+    #[cfg(unix)]
+    #[test]
+    fn the_folder_named_may_be_a_link() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        fs::create_dir(dir.path().join("real")).unwrap();
+        let expected = tree(&dir.path().join("real"), 3, 2, 1);
+        std::os::unix::fs::symlink(dir.path().join("real"), dir.path().join("via")).unwrap();
+        let result = scan(
+            &dir.path().join("via"),
+            limits(2),
+            &AtomicBool::new(false),
+            |_| {},
+        )
+        .unwrap();
+        assert_eq!(
+            (result.total_bytes, result.file_count),
+            (expected.total_bytes, expected.file_count)
+        );
+        assert!(!result.partial, "{result:?}");
     }
 
     /// Runs `scan` on its own thread and says whether it panicked, failing

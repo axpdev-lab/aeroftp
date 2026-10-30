@@ -19604,15 +19604,22 @@ async fn size_remote_dir(
 /// Recursive byte count + file count under a local directory: the engine the
 /// app's folder Properties uses, bounded by [`TUI_SIZE_MAX_ENTRIES`]. A folder it
 /// cannot read, or the cap, no longer fails the whole size: the total comes
-/// back with the reason it is a lower bound.
-async fn size_local_dir(path: &str) -> Result<(u64, u64, Option<String>), String> {
+/// back with the reason it is a lower bound. `stop` ends the walk early, when
+/// the TUI closes: the walk runs on a blocking thread the runtime cannot drop.
+async fn size_local_dir(
+    path: &str,
+    stop: Arc<AtomicBool>,
+) -> Result<(u64, u64, Option<String>), String> {
     let root = std::path::PathBuf::from(path);
     let limits = ftp_client_gui_lib::folder_size::Limits {
         max_entries: TUI_SIZE_MAX_ENTRIES as u64,
+        // No depth bound, as the TUI's walk never had one: the entry cap
+        // already bounds the work, and a deep tree is counted whole.
+        max_depth: usize::MAX,
         ..Default::default()
     };
     let size = tokio::task::spawn_blocking(move || {
-        ftp_client_gui_lib::folder_size::scan(&root, limits, &AtomicBool::new(false), |_| {})
+        ftp_client_gui_lib::folder_size::scan(&root, limits, &stop, |_| {})
     })
     .await
     .map_err(|e| format!("size task failed: {e}"))??;
@@ -19795,11 +19802,15 @@ async fn reconnect_session_after_transfer_cancel(
     }
 }
 
+/// The TUI's worker: runs each command the screen sends and reports back.
+/// `closing` is set when the screen has closed, to stop a local size walk
+/// that would otherwise hold the exit until it finished.
 async fn run_cli_tui_worker(
     cli: &mut Cli,
     format: OutputFormat,
     mut command_rx: cli_tui::worker::WorkerCommandReceiver,
     event_tx: cli_tui::worker::WorkerEventSender,
+    closing: Arc<AtomicBool>,
 ) {
     use cli_tui::worker::{TransferDrive, TuiWorkerOperation, WorkerCommand, WorkerEvent};
     use std::collections::VecDeque;
@@ -20510,7 +20521,7 @@ async fn run_cli_tui_worker(
                     identity: identity.clone(),
                 });
                 let result = if local {
-                    size_local_dir(&path).await
+                    size_local_dir(&path, closing.clone()).await
                 } else {
                     match session.as_mut() {
                         Some(active) => size_remote_dir(active, &path)
@@ -20655,12 +20666,32 @@ fn run_tui_with_cli_worker(
     let (worker_client, command_rx, event_tx) = cli_tui::worker::worker_channels();
     let handle = tokio::runtime::Handle::current();
 
+    let closing = Arc::new(AtomicBool::new(false));
+    let worker_closing = closing.clone();
+
     std::thread::scope(|scope| {
         let worker_thread = scope.spawn(move || {
-            handle.block_on(run_cli_tui_worker(cli, format, command_rx, event_tx));
+            handle.block_on(run_cli_tui_worker(
+                cli,
+                format,
+                command_rx,
+                event_tx,
+                worker_closing,
+            ));
         });
 
-        let result = cli_tui::run_tui_with_worker(context, worker_client);
+        /// Sets the flag however the TUI returns, a panic included: a local
+        /// size still walking would hold the join until it finished.
+        struct Closing<'a>(&'a AtomicBool);
+        impl Drop for Closing<'_> {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::Relaxed);
+            }
+        }
+        let result = {
+            let _closing = Closing(&closing);
+            cli_tui::run_tui_with_worker(context, worker_client)
+        };
         if worker_thread.join().is_err() && result.is_ok() {
             return Err(std::io::Error::other("TUI worker thread panicked"));
         }
@@ -46326,7 +46357,12 @@ fn local_size_folder(url: &str, path: &str) -> Option<std::path::PathBuf> {
         return None;
     }
     let folder = base.join(inner);
-    folder.is_dir().then_some(folder)
+    // Through a link the folder can lie outside the one named: like `..`, it
+    // is left to the provider walk.
+    let inside = std::fs::canonicalize(&folder)
+        .ok()?
+        .starts_with(std::fs::canonicalize(&base).ok()?);
+    (inside && folder.is_dir()).then_some(folder)
 }
 
 /// `size` of a local folder, through [`ftp_client_gui_lib::folder_size`]. The
@@ -84398,6 +84434,20 @@ mod tests {
         }
         assert_eq!(local_size_folder("sftp://host", ""), None);
         assert_eq!(local_size_folder("_", ""), None);
+        // A link inside the folder given reaches the fast path only while it
+        // stays inside: one pointing out is left to the provider walk.
+        #[cfg(unix)]
+        {
+            let outside = tempfile::tempdir().expect("tempdir");
+            std::os::unix::fs::symlink(outside.path(), dir.path().join("docs/away")).expect("link");
+            assert_eq!(local_size_folder(&base, "docs/away"), None);
+            std::os::unix::fs::symlink(dir.path().join("docs/sub"), dir.path().join("docs/near"))
+                .expect("link");
+            assert_eq!(
+                local_size_folder(&base, "docs/near").as_deref(),
+                Some(dir.path().join("docs/near").as_path())
+            );
+        }
         // On Unix a backslash is part of a name, not a separator to strip;
         // the lint reads `\docs` as rooted, which it is only on Windows.
         #[cfg(unix)]

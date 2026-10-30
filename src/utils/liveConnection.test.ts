@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { ConnectionParams } from '../types';
-import { isSameConnection, resolveLiveConnectionParams, savedProfileIdOf } from './liveConnection';
+import { connectionTargetKey, isSameConnection, resolveLiveConnectionParams, savedProfileIdOf } from './liveConnection';
 
 const EMPTY_FORM: ConnectionParams = { server: '', username: '', password: '' };
 
@@ -146,5 +146,32 @@ describe('isSameConnection', () => {
         const live = { ...webdav, options: { webdavScheme: undefined, accountName: '' } } as unknown as ConnectionParams;
         const target = { ...webdav, options: { accountName: null } } as unknown as ConnectionParams;
         expect(isSameConnection(live, target)).toBe(true);
+    });
+});
+
+describe('connectionTargetKey', () => {
+    const s3 = (options: Record<string, unknown>, extra: Partial<ConnectionParams> = {}): ConnectionParams =>
+        ({ protocol: 's3', server: 's3.example.com', username: 'AKIA', password: '', options, ...extra } as ConnectionParams);
+    const pairs: [ConnectionParams, ConnectionParams][] = [
+        [s3({ bucket: 'photos' }), s3({ bucket: 'backups' })],
+        [s3({ bucket: 'photos', region: 'eu' }), s3({ bucket: 'photos', region: 'us' })],
+        [s3({ bucket: 'photos' }), s3({ bucket: 'photos', sessionToken: 'x', timeout: 30 })],
+        [s3({ bucket: 'photos' }, { port: 9000 }), s3({ bucket: 'photos' }, { port: 9001 })],
+        [s3({ githubBranch: 'main' }, { protocol: 'github' }), s3({ githubBranch: 'dev' }, { protocol: 'github' })],
+        [s3({ bucket: 'photos', endpoint: '' }), s3({ bucket: 'photos' })],
+    ];
+
+    it('is equal for two connections exactly when they are the same connection', () => {
+        for (const [a, b] of pairs) {
+            expect(connectionTargetKey(a) === connectionTargetKey(b), JSON.stringify([a.options, b.options, a.port, b.port]))
+                .toBe(isSameConnection(a, b));
+        }
+    });
+
+    it('tells buckets, regions, ports and branches apart, not credentials', () => {
+        expect(connectionTargetKey(pairs[0][0])).not.toBe(connectionTargetKey(pairs[0][1]));
+        expect(connectionTargetKey(pairs[3][0])).not.toBe(connectionTargetKey(pairs[3][1]));
+        expect(connectionTargetKey(pairs[4][0])).not.toBe(connectionTargetKey(pairs[4][1]));
+        expect(connectionTargetKey(pairs[2][0])).toBe(connectionTargetKey(pairs[2][1]));
     });
 });

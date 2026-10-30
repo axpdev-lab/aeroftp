@@ -523,7 +523,7 @@ import { useLocalPanel } from './hooks/useLocalPanel';
 import { useTerminalCwd } from './hooks/useTerminalCwd';
 import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 import { isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
-import { isSameConnection, resolveLiveConnectionParams, savedProfileIdOf } from './utils/liveConnection';
+import { connectionTargetKey, isSameConnection, resolveLiveConnectionParams, savedProfileIdOf } from './utils/liveConnection';
 import { selectedLocalRows } from './utils/localSelection';
 
 // W3.1 (#270.5): marker the backend connect commands return when the user
@@ -1569,17 +1569,18 @@ const App: React.FC = () => {
   const [folderSizeCache, setFolderSizeCache] = useState<Map<string, FolderSizeResult>>(new Map());
   const [folderSizeCalculating, setFolderSizeCalculating] = useState<Set<string>>(new Set());
   const folderSizeCalculatingRef = useRef<Set<string>>(new Set());
-  // A remote path names a folder on every server, so the connection is part
-  // of the key: "/docs" sized on one server is not the size of "/docs" on the
-  // next one.
-  const remoteSizeKey = (path: string) =>
-    `remote:${liveConnectionParams.protocol}:${liveConnectionParams.username}@${liveConnectionParams.server}:${path}`;
+  // A remote path names a folder on every connection target (server, port,
+  // bucket, container, drive, branch), so the target is part of the key:
+  // "/docs" sized in one is not the size of "/docs" in the next.
+  const remoteSizeKey = (path: string) => `remote:${connectionTargetKey(liveConnectionParams)}:${path}`;
   const propertiesSizeKey = propertiesDialog
     ? (propertiesDialog.isRemote ? remoteSizeKey(propertiesDialog.path) : localSizeKey(propertiesDialog.path))
     : '';
   // The local walk each folder is waiting on, by key. Progress and results of
   // any other walk of that folder (one whose dialog closed) are dropped.
   const localSizeScanRef = useRef<Map<string, string>>(new Map());
+  // The walk running for each folder, by key, for a second caller to wait on.
+  const localSizeRunsRef = useRef<Map<string, Promise<void>>>(new Map());
 
   /**
    * Opens Properties on local entries: the one-item dialog for one entry, the
@@ -1589,7 +1590,16 @@ const App: React.FC = () => {
    * from the last remote Properties (OpenDrive opens it on Permissions).
    */
   const openLocalProperties = async (entries: FileProperties[]) => {
+    if (entries.length === 0) return;
     setPropertiesInitialTab('general');
+    // The dialog this one replaces stops counting the folders it alone shows:
+    // not those of the new entries, nor those the other dialog still shows.
+    const replacing: 'single' | 'multi' = entries.length > 1 ? 'multi' : 'single';
+    const stillShown = new Set([
+      ...entries.filter(e => e.is_dir).map(e => e.path),
+      ...localFoldersShownBy(replacing === 'multi' ? 'single' : 'multi'),
+    ]);
+    cancelLocalFolderSizes(localFoldersShownBy(replacing).filter(path => !stillShown.has(path)));
     if (entries.length > 1) {
       setMultiPropertiesDialog({ files: entries, isRemote: false });
       // Lazy-load extended attributes per file (read-only / hidden) so the
@@ -5135,9 +5145,22 @@ const App: React.FC = () => {
   // a dialog shows the totals of its own walk as they grow, and closing the
   // dialog stops the walk (cancelLocalFolderSizes) instead of leaving a walk
   // of a whole disk running behind it.
-  const calculateFolderSize = useCallback(async (path: string) => {
+  const calculateFolderSize = useCallback((path: string): Promise<void> => {
     const key = localSizeKey(path);
-    if (folderSizeCalculatingRef.current.has(key)) return;
+    // A walk of this folder is running: the caller waits for it instead of
+    // starting a second one (a multi-selection counts one folder at a time).
+    const running = localSizeRunsRef.current.get(key);
+    if (running) return running;
+    const run = countLocalFolder(path, key);
+    localSizeRunsRef.current.set(key, run);
+    void run.finally(() => {
+      if (localSizeRunsRef.current.get(key) === run) localSizeRunsRef.current.delete(key);
+    });
+    return run;
+  }, [notify, t]);
+
+  // One walk of a local folder, with its progress, for calculateFolderSize.
+  const countLocalFolder = async (path: string, key: string) => {
     const scanId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
     const current = () => localSizeScanRef.current.get(key) === scanId;
     localSizeScanRef.current.set(key, scanId);
@@ -5164,7 +5187,7 @@ const App: React.FC = () => {
         setFolderSizeCalculating(new Set(folderSizeCalculatingRef.current));
       }
     }
-  }, [notify, t]);
+  };
 
   // Stops the local walks of `paths`, whose dialog closed, and drops what they
   // had counted: a half-counted total is not the folder's size.
@@ -5175,6 +5198,7 @@ const App: React.FC = () => {
       const scanId = localSizeScanRef.current.get(key);
       if (scanId === undefined) continue;
       localSizeScanRef.current.delete(key);
+      localSizeRunsRef.current.delete(key);
       folderSizeCalculatingRef.current.delete(key);
       stopped.push(key);
       invoke('cancel_folder_size', { scanId }).catch(() => {});
@@ -5249,6 +5273,16 @@ const App: React.FC = () => {
       : [],
     [multiPropertiesDialog],
   );
+  // The local folders a Properties dialog shows: a folder's walk goes on
+  // while either dialog still shows it, whichever of them closes or changes.
+  function localFoldersShownBy(dialog: 'single' | 'multi'): string[] {
+    if (dialog === 'single') {
+      return propertiesDialog && !propertiesDialog.isRemote && propertiesDialog.is_dir ? [propertiesDialog.path] : [];
+    }
+    return multiPropertiesDialog && !multiPropertiesDialog.isRemote
+      ? multiPropertiesDialog.files.filter(f => f.is_dir).map(f => f.path)
+      : [];
+  }
   const multiSizeRunning = useSelectionFolderSizes(multiLocalFolders, calculateFolderSize);
 
   // Stuck detection moved to TransferToastContainer (isolated from App re-renders)
@@ -17361,7 +17395,9 @@ const App: React.FC = () => {
               if (propertiesDialog.isRemote && propertiesDialog.is_dir) {
                 invoke('provider_cancel_folder_size').catch(() => {});
               } else if (propertiesDialog.is_dir) {
-                cancelLocalFolderSizes([propertiesDialog.path]);
+                // A folder the multi-item dialog also shows keeps its walk.
+                const shown = new Set(localFoldersShownBy('multi'));
+                cancelLocalFolderSizes([propertiesDialog.path].filter(path => !shown.has(path)));
               }
               setPropertiesDialog(null);
             }}
@@ -17463,7 +17499,9 @@ const App: React.FC = () => {
             selection={multiPropertiesDialog}
             onClose={() => {
               if (!multiPropertiesDialog.isRemote) {
-                cancelLocalFolderSizes(multiPropertiesDialog.files.filter(f => f.is_dir).map(f => f.path));
+                // The folder the one-item dialog also shows keeps its walk.
+                const shown = new Set(localFoldersShownBy('single'));
+                cancelLocalFolderSizes(localFoldersShownBy('multi').filter(path => !shown.has(path)));
               }
               setMultiPropertiesDialog(null);
             }}
