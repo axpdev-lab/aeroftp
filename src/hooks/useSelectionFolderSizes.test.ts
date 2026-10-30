@@ -8,16 +8,16 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import { useSelectionFolderSizes } from './useSelectionFolderSizes';
 
 let calls: string[];
-let pending: Map<string, () => void>;
+let pending: Map<string, { resolve: () => void; reject: (e: Error) => void }>;
 let rerender: () => void;
 
 /** App's shape: a new `calculate` on every render, and renders while it runs. */
 const Probe = ({ folders }: { folders: string[] }) => {
     const [, setTick] = useState(0);
     rerender = () => setTick(t => t + 1);
-    const calculate = (path: string) => new Promise<void>(resolve => {
+    const calculate = (path: string) => new Promise<void>((resolve, reject) => {
         calls.push(path);
-        pending.set(path, resolve);
+        pending.set(path, { resolve, reject });
     });
     return createElement('span', null, useSelectionFolderSizes(folders, calculate) ? 'running' : 'idle');
 };
@@ -28,7 +28,10 @@ const render = async (folders: string[]) => {
     await act(async () => root.render(createElement(Probe, { folders })));
 };
 const finish = async (path: string) => {
-    await act(async () => pending.get(path)!());
+    await act(async () => pending.get(path)!.resolve());
+};
+const fail = async (path: string) => {
+    await act(async () => pending.get(path)!.reject(new Error('unreadable')));
 };
 const renderAgain = async () => {
     for (let i = 0; i < 3; i++) await act(async () => rerender());
@@ -70,6 +73,14 @@ it('starts no further folder once the dialog has closed', async () => {
     expect(host.textContent).toBe('idle');
     await finish('/x/a');
     expect(calls).toEqual(['/x/a']);
+});
+
+it('goes on to the next folder when one cannot be counted', async () => {
+    await render(['/x/a', '/x/b']);
+    await fail('/x/a');
+    expect(calls).toEqual(['/x/a', '/x/b']);
+    await finish('/x/b');
+    expect(host.textContent).toBe('idle');
 });
 
 it('passes a folder name holding a line break whole', async () => {

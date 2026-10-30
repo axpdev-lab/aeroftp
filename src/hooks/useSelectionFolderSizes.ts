@@ -8,6 +8,9 @@ import { useEffect, useRef, useState } from 'react';
  * each walk already keeps the disk busy with its own threads, and the total
  * grows as each folder is counted. True while folders are still being counted.
  *
+ * A folder whose count fails keeps an unknown size, which the dialog already
+ * reports, and the next folder is counted.
+ *
  * The count starts again only when the folders change. `calculate` is read
  * through a ref: App's callback changes identity on most renders, and a count
  * keyed on it restarted at every progress event, said "done" while a folder
@@ -31,7 +34,11 @@ export function useSelectionFolderSizes(
         void (async () => {
             for (const path of key.split('\0')) {
                 if (closed) return;
-                await calculateRef.current(path);
+                try {
+                    await calculateRef.current(path);
+                } catch {
+                    // Its size stays unknown; the rest are still counted.
+                }
             }
             if (!closed) setRunning(false);
         })();

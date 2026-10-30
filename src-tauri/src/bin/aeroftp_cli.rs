@@ -39115,7 +39115,10 @@ async fn run_rm_dry_run(
     format: OutputFormat,
 ) -> i32 {
     let spinner = if recursive {
-        Some(create_spinner(&format!("Scanning {} ...", path)))
+        Some(create_spinner(&format!(
+            "Scanning {} ...",
+            sanitize_filename(path)
+        )))
     } else {
         None
     };
@@ -39230,7 +39233,10 @@ async fn run_filtered_rm(
     format: OutputFormat,
 ) -> i32 {
     let spinner = if recursive {
-        Some(create_spinner(&format!("Scanning {} ...", path)))
+        Some(create_spinner(&format!(
+            "Scanning {} ...",
+            sanitize_filename(path)
+        )))
     } else {
         None
     };
@@ -45917,7 +45923,10 @@ async fn cmd_df(url: &str, scan: bool, full: bool, cli: &Cli, format: OutputForm
             cancel_sig.store(true, Ordering::Relaxed);
         });
 
-        let spinner = create_spinner(&format!("Scanning {} for used storage...", root));
+        let spinner = create_spinner(&format!(
+            "Scanning {} for used storage...",
+            sanitize_filename(&root)
+        ));
         // None = no depth asked, the parachute applies on the BFS only.
         // Flattening this to MAX_SCAN_DEPTH used to make a requested depth
         // indistinguishable from the safety net, so `size --max-depth 2`
@@ -46176,7 +46185,7 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
         cancel_sig.store(true, Ordering::Relaxed);
     });
 
-    let spinner = create_spinner(&format!("Scanning {} ...", root));
+    let spinner = create_spinner(&format!("Scanning {} ...", sanitize_filename(&root)));
     // None = no depth asked; Some is a complete answer to that depth, not a cap.
     let scan_depth = cli.max_depth.map(|d| d as usize);
     let mut last_tick = Instant::now()
@@ -46225,7 +46234,11 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
                         s.used_bytes
                     );
                     if !cli.quiet {
-                        eprintln!("Path: {} (scan method: {})", root, s.method);
+                        eprintln!(
+                            "Path: {} (scan method: {})",
+                            sanitize_filename(&root),
+                            s.method
+                        );
                         // Say WHY the figure is a lower bound. Blaming the
                         // caps when the real cause was an unreadable directory
                         // sends the user to raise --max-depth, which cannot
@@ -46299,7 +46312,11 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
 /// provider walk, which already answers each of those.
 fn local_size_folder(url: &str, path: &str) -> Option<std::path::PathBuf> {
     let base = std::path::absolute(local_path_target(url)?.ok()?).ok()?;
-    let inner = std::path::Path::new(path.trim_start_matches(['/', '\\']));
+    #[cfg(windows)]
+    let inner = path.trim_start_matches(['/', '\\']);
+    #[cfg(not(windows))]
+    let inner = path.trim_start_matches('/');
+    let inner = std::path::Path::new(inner);
     if inner.components().any(|c| {
         !matches!(
             c,
@@ -46327,7 +46344,7 @@ async fn cmd_size_local(folder: &std::path::Path, cli: &Cli, format: OutputForma
     });
 
     let shown = folder.display().to_string();
-    let spinner = create_spinner(&format!("Scanning {} ...", shown));
+    let spinner = create_spinner(&format!("Scanning {} ...", sanitize_filename(&shown)));
     let progress = spinner.clone();
     let walk_cancel = cancel.clone();
     let walk_folder = folder.to_path_buf();
@@ -46366,7 +46383,10 @@ async fn cmd_size_local(folder: &std::path::Path, cli: &Cli, format: OutputForma
                 s.total_bytes
             );
             if !cli.quiet {
-                eprintln!("Path: {} (scan method: parallel local walk)", shown);
+                eprintln!(
+                    "Path: {} (scan method: parallel local walk)",
+                    sanitize_filename(&shown)
+                );
                 if s.unreadable_dirs > 0 {
                     eprintln!(
                         "Warning: {} director{} could not be listed (permission denied or I/O error); figure is a lower bound",
@@ -84378,6 +84398,18 @@ mod tests {
         }
         assert_eq!(local_size_folder("sftp://host", ""), None);
         assert_eq!(local_size_folder("_", ""), None);
+        // On Unix a backslash is part of a name, not a separator to strip;
+        // the lint reads `\docs` as rooted, which it is only on Windows.
+        #[cfg(unix)]
+        #[allow(clippy::join_absolute_paths)]
+        {
+            let named = "\\docs";
+            std::fs::create_dir(dir.path().join(named)).expect("mkdir");
+            assert_eq!(
+                local_size_folder(&base, named).as_deref(),
+                Some(dir.path().join(named).as_path())
+            );
+        }
     }
 
     /// The local walk reports a lower bound the way the provider walk does:

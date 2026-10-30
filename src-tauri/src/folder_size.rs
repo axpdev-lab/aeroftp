@@ -1078,10 +1078,18 @@ mod tests {
         }
     }
 
+    /// The tests that fill `cancelled_early` or rely on an id staying in it,
+    /// one at a time: the queue is global, and one test filling it would push
+    /// out the id another just cancelled.
+    static EARLY_CANCEL_TESTS: Mutex<()> = Mutex::new(());
+
     /// The walk and its cancel are two commands and may run in either order:
     /// a cancel that arrives first still stops the walk.
     #[test]
     fn a_cancel_sent_before_the_walk_registers_still_stops_it() {
+        let _one_at_a_time = EARLY_CANCEL_TESTS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         assert!(!cancel("folder-size-test-early"));
         let late = Registration::new(Some("folder-size-test-early".into()));
         assert!(late.flag().load(Ordering::Relaxed));
@@ -1099,6 +1107,9 @@ mod tests {
     /// A cancel whose walk never comes is not kept for ever.
     #[test]
     fn early_cancels_are_forgotten_oldest_first() {
+        let _one_at_a_time = EARLY_CANCEL_TESTS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         for n in 0..=EARLY_CANCELS {
             cancel(&format!("folder-size-test-forgotten-{n}"));
         }

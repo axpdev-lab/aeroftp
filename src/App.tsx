@@ -1609,7 +1609,13 @@ const App: React.FC = () => {
           return sf;
         }
       }));
-      setMultiPropertiesDialog(prev => prev && prev.files.length === enriched.length ? { ...prev, files: enriched } : prev);
+      // Only into the dialog these attributes were read for: one reopened on
+      // another selection of the same size keeps its own.
+      setMultiPropertiesDialog(prev => prev
+        && prev.files.length === enriched.length
+        && prev.files.every((f, i) => f.path === enriched[i].path)
+        ? { ...prev, files: enriched }
+        : prev);
       return;
     }
     const [entry] = entries;
