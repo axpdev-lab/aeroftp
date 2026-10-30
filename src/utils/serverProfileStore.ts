@@ -309,16 +309,14 @@ export const mergeSavedServerProfile = async (
  * Replace the active account's list with one that is meant to replace it whole (a
  * keystore restore, a migration), bound to the account and the revision read just
  * before. `list` is asked for after that read: a save landing in between is
- * refused, and redone once on what `list` answers then.
+ * refused, and redone once on what `list` answers then. A list that cannot be read
+ * is an error: without its account and revision the write could not be bound.
  */
 export const replaceSavedServerProfiles = async (
     list: () => ServerProfile[] | null | Promise<ServerProfile[] | null>,
 ): Promise<ServerProfile[] | null> => {
     const attempt = async () => {
-        const { userId, revision } = await readSavedServerProfilesForWrite().catch(error => {
-            if (!canUseLegacyProfileFallback(error)) throw error;
-            return {} as Partial<SavedProfilesRead>;
-        });
+        const { userId, revision } = await readSavedServerProfilesForWrite();
         const profiles = await list();
         return profiles === null ? null : storeSavedServerProfiles(profiles, false, userId, revision);
     };

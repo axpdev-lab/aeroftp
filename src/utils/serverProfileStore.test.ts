@@ -369,6 +369,22 @@ describe('replaceSavedServerProfiles', () => {
     });
 });
 
+describe('a replacement that cannot read the list', () => {
+    it('fails without asking for the list or writing', async () => {
+        mockInvoke.mockReset();
+        mockInvoke.mockImplementation(async (command: string) => {
+            if (command === 'get_credential') return null;
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            return undefined;
+        });
+        const list = vi.fn(() => [sampleProfile()]);
+        await expect(replaceSavedServerProfiles(list)).rejects.toThrow('STORE_NOT_READY');
+        expect(list).not.toHaveBeenCalled();
+        expect(mockInvoke.mock.calls.some(call => call[0] === 'user_partitions_save_active_server_profiles')).toBe(false);
+        mockInvoke.mockReset();
+    });
+});
+
 describe('a list read from the legacy store', () => {
     it('never replaces the partition once that can be reached, and stays in the legacy store while it cannot', async () => {
         const legacy = [sampleProfile({ name: 'from the legacy store' })];
