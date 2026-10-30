@@ -580,13 +580,12 @@ impl ListingCancelState {
         self.replace_and_cancel_owned(None)
     }
 
-    /// [`Self::replace_and_cancel`] for a request its caller named `owner`,
-    /// which starts cancelled when a cancel named it before it got here.
+    /// [`Self::replace_and_cancel`] for a request its caller named `owner`.
+    /// A request a cancel named before it got here starts cancelled, and
+    /// leaves the slot to the request in it: its dialog closed, and the one
+    /// in the slot belongs to the dialog open now.
     fn replace_and_cancel_owned(&self, owner: Option<String>) -> (u64, CancellationToken) {
         let mut slot = self.lock();
-        if let Some(previous) = slot.armed.take() {
-            previous.token.cancel();
-        }
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let token = CancellationToken::new();
         if owner
@@ -594,6 +593,10 @@ impl ListingCancelState {
             .is_some_and(|owner| slot.cancelled_early.take(owner))
         {
             token.cancel();
+            return (id, token);
+        }
+        if let Some(previous) = slot.armed.take() {
+            previous.token.cancel();
         }
         slot.armed = Some(Armed {
             id,
@@ -17729,6 +17732,45 @@ mod tests {
         assert!(futures_util::poll!(&mut again).is_pending());
         assert!(super::cancel_folder_size_scan(&state, Some("early")));
         assert!(again.await.unwrap().partial);
+    }
+
+    /// A closed dialog's cancel ran first, then the reopened dialog's scan,
+    /// then the closed dialog's own scan command: that late scan ends at once
+    /// and leaves the reopened one running.
+    #[tokio::test]
+    async fn a_late_scan_of_a_closed_dialog_leaves_the_open_one_running() {
+        let state = stall_state(StallProvider::default());
+        assert!(!super::cancel_folder_size_scan(&state, Some("closed")));
+        let open = super::provider_calculate_folder_size_inner(
+            &state,
+            "/stuck".into(),
+            Some("open".into()),
+            |_| {},
+        );
+        tokio::pin!(open);
+        assert!(futures_util::poll!(&mut open).is_pending());
+        let late = tokio::time::timeout(
+            Duration::from_secs(2),
+            super::provider_calculate_folder_size_inner(
+                &state,
+                "/stuck".into(),
+                Some("closed".into()),
+                |_| {},
+            ),
+        )
+        .await
+        .expect("the closed dialog's scan must not walk")
+        .expect("a cancelled scan reports what it counted");
+        assert!(late.partial);
+        tokio::task::yield_now().await;
+        assert!(
+            futures_util::poll!(&mut open).is_pending(),
+            "the closed dialog's late scan stopped the open one"
+        );
+        assert!(state.folder_size_cancel.is_armed());
+        assert!(super::cancel_folder_size_scan(&state, Some("open")));
+        assert!(open.await.unwrap().partial);
+        assert!(!state.folder_size_cancel.is_armed());
     }
 
     /// Cancels of scans that never start are not kept without end: past

@@ -51,6 +51,8 @@ fn size_names_the_folder_as_the_provider_walk_does() {
     let data = tempfile::tempdir().expect("data dir");
     std::fs::create_dir_all(data.path().join("docs/é x#%")).expect("mkdir");
     std::fs::write(data.path().join("docs/é x#%/c.bin"), [0u8; 3]).expect("write");
+    // Beside it, so that a walk of `docs` gives another total.
+    std::fs::write(data.path().join("docs/top.bin"), [0u8; 1000]).expect("write");
     // A name of spaces is a folder, not an omitted path: it was printed as
     // `/`, and the provider walk measured the whole root.
     std::fs::create_dir_all(data.path().join(" ")).expect("mkdir");
