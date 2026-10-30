@@ -106,15 +106,19 @@ describe('a folder\'s size shows where it is asked for (#1441)', () => {
         expect(failed).toMatch(/if \(current\(\)\) \{\s*\/\/[^\n]*\n\s*setFolderSizeCache\(prev => \{\s*const next = new Map\(prev\);\s*next\.delete\(key\);/);
     });
 
-    it('takes the progress of a remote folder only from its own scan', () => {
-        // A scan cancelled by the next one reported on: the dialog of one
-        // folder showed the counts of another, and the catch kept them.
-        const remote = body('calculateRemoteFolderSize');
-        expect(remote).toMatch(/const scanId = newSizeScanId\(\);/);
-        expect(remote).toMatch(/'folder-size-progress',\s*\(event\) => \{\s*const p = event\.payload;\s*if \(p\.scan_id !== scanId\) return;/);
-        expect(remote).toMatch(/invoke<FolderSizeResult>\('provider_calculate_folder_size', \{ path, scanId \}\)/);
-        // Registered before the scan starts, so its first event is not missed.
-        expect(remote.indexOf("listen<")).toBeLessThan(remote.indexOf("invoke<FolderSizeResult>('provider_calculate_folder_size'"));
+    it('counts a remote folder through the one count it keeps, stopped when its dialog closes', () => {
+        // A scan cancelled by the next one reported on, and returned: the dialog
+        // of one folder showed the counts of another, and a closed dialog's
+        // partial figure was kept and shown on the next open instead of a count.
+        // The rules are in remoteFolderSizes (remoteFolderSizes.test.ts); App
+        // gives it the provider's events and command, and stops it on close.
+        const wiring = appRaw.slice(appRaw.indexOf('remoteSizesRef.current = remoteFolderSizes({'));
+        expect(wiring.slice(0, 400)).toMatch(/listen: \(handler\) => listen<RemoteSizeProgress>\('folder-size-progress', \(event\) => handler\(event\.payload\)\)/);
+        expect(wiring.slice(0, 400)).toMatch(/count: \(path, scanId\) => invoke<FolderSizeResult>\('provider_calculate_folder_size', \{ path, scanId \}\)/);
+        expect(appRaw).toMatch(/const \{ count: calculateRemoteFolderSize, stop: stopRemoteFolderSize \} = remoteSizesRef\.current;/);
+        expect(appRaw).not.toMatch(/'folder-size-progress',\s*\(event\) => \{/);
+        const dialogs = appRaw.slice(appRaw.indexOf('{propertiesDialog && ('), appRaw.indexOf('{quickLookTarget && ('));
+        expect(dialogs).toMatch(/if \(propertiesDialog\.isRemote && propertiesDialog\.is_dir\) \{\s*stopRemoteFolderSize\(\);\s*invoke\('provider_cancel_folder_size'\)/);
     });
 
     it('lets a second caller wait for the walk of a folder already counted', () => {

@@ -189,7 +189,7 @@ describe('connectionNumberOf', () => {
         expect(connectionNumberOf(filelu('key-one'))).not.toBe(connectionNumberOf(one));
     });
 
-    it('stays the same for as long as a connection lasts', () => {
+    it('stays the same for as long as a tab lasts', () => {
         // App resolves the live params anew on every change of its sessions;
         // a session update spreads the session and keeps its params object.
         const params = filelu('key-one');

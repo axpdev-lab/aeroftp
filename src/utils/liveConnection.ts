@@ -108,10 +108,12 @@ let lastConnectionNumber = 0;
  * server can differ only in a credential, which {@link connectionTargetKey}
  * leaves out: FileLu's API key is the password, and an OAuth token is not in
  * the params at all. A session tab keeps the params object copied at its
- * connect for as long as the connection lasts (updates of the tab spread it
- * unchanged), and a connect or a reconnect copies a new one; so one number
- * per object is one number per connection, and a reconnect of the same
- * profile starts afresh.
+ * connect for as long as the tab lasts: updates of the tab spread it
+ * unchanged, and switching back to the tab, which logs in again, restores the
+ * same object. A connect copies a new one, as does a change of what the tab
+ * reaches (a GitHub branch). So one number per object is one number per
+ * tab's connection: a new connect, of the same profile too, starts afresh,
+ * and a tab switched back to keeps what it read, as it keeps its listing.
  */
 export function connectionNumberOf(params: ConnectionParams): number {
     let number = connectionNumbers.get(params);

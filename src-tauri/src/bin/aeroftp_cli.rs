@@ -46197,11 +46197,7 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
             local_size_folder(url, path),
             try_resolve_cli_remote_path("/", path),
         ) {
-            let shown = if resolved.trim().is_empty() {
-                "/".to_string()
-            } else {
-                resolved
-            };
+            let shown = size_path_shown(resolved, cfg!(windows));
             return cmd_size_local(&folder, &shown, cli, format).await;
         }
     }
@@ -46374,6 +46370,24 @@ fn local_size_folder(url: &str, path: &str) -> Option<std::path::PathBuf> {
         .ok()?
         .starts_with(std::fs::canonicalize(&base).ok()?);
     (inside && folder.is_dir()).then_some(folder)
+}
+
+/// The path `size` prints for a local folder: the one the provider walk prints
+/// for it, `/` for the folder given itself. On Windows `sub\child` names the
+/// same folder as `sub/child`, and only the second is a path the provider
+/// takes, so the separators are printed as `/`; elsewhere a backslash is part
+/// of a name and stays.
+fn size_path_shown(resolved: String, windows: bool) -> String {
+    let resolved = if windows {
+        resolved.replace('\\', "/")
+    } else {
+        resolved
+    };
+    if resolved.trim().is_empty() {
+        "/".to_string()
+    } else {
+        resolved
+    }
 }
 
 /// `size` of a local folder, through [`ftp_client_gui_lib::folder_size`]. The
@@ -84423,6 +84437,18 @@ mod tests {
                 .unwrap(),
             "folder/file.txt"
         );
+    }
+
+    /// The path printed for a local folder is one the provider takes: `/` for
+    /// the folder given, Windows separators as `/`, a backslash elsewhere left
+    /// in the name it belongs to.
+    #[test]
+    fn size_prints_a_local_folder_path_the_provider_takes() {
+        assert_eq!(size_path_shown(String::new(), false), "/");
+        assert_eq!(size_path_shown("docs\\sub".into(), true), "docs/sub");
+        assert_eq!(size_path_shown("/docs\\sub".into(), true), "/docs/sub");
+        assert_eq!(size_path_shown("docs\\sub".into(), false), "docs\\sub");
+        assert_eq!(size_path_shown("/docs/sub".into(), false), "/docs/sub");
     }
 
     /// `size` takes the parallel walk only for a folder it can name inside the
