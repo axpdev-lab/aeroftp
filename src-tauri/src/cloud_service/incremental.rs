@@ -645,7 +645,7 @@ fn remote_info(key: &str, path: &str, entry: &RemoteEntry) -> FileInfo {
 
 /// Whether the local folder holds nothing, or is gone: a pass that would
 /// propagate deletes from such a folder trips the safety gate.
-fn local_root_is_empty(root: &Path) -> bool {
+pub(super) fn local_root_is_empty(root: &Path) -> bool {
     std::fs::read_dir(root).map_or(true, |mut entries| entries.next().is_none())
 }
 
@@ -688,6 +688,12 @@ impl CloudService {
         let config = self.config.read().await.clone();
         if !config.enabled {
             return Err("AeroCloud is not enabled".to_string());
+        }
+        // A watcher plan can outlive the mounted/renamed local root. Refuse
+        // before any remote rename or write, rather than interpreting its
+        // disappearance as a batch of user deletes.
+        if !config.local_folder.is_dir() {
+            return Err("AeroCloud local folder is unavailable; incremental sync refused".into());
         }
         let start = std::time::Instant::now();
         let IncrementalPlan {
@@ -861,8 +867,12 @@ impl CloudService {
 
         let mut update_policy = UpdatePolicy {
             window: options.modify_window,
-            allow_orphan_deletes: config.sync_direction != CompareDirection::RemoteToLocal
-                || provider.listing_is_authoritative(),
+            // This bounded pass stats only changed paths, not the entire
+            // destination. Missing remote copies are deferred to a full scan
+            // below; absent local paths enter the plan only from the baseline.
+            // A failed stat stays out of the comparisons altogether.
+            allow_orphan_deletes: config.sync_direction == CompareDirection::LocalToRemote
+                && !local_root_is_empty(&config.local_folder),
         };
 
         // A local file whose remote copy is gone reads as deleted on the

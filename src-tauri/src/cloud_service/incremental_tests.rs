@@ -834,6 +834,71 @@ async fn one_way_update_incremental_bulk_keeps_newer_files_and_propagates_delete
 }
 
 #[tokio::test]
+async fn one_way_update_watcher_refuses_a_root_removed_after_prepare() {
+    for with_baseline in [false, true] {
+        let parent = tempfile::tempdir().unwrap();
+        let root = parent.path().join("source");
+        std::fs::create_dir(&root).unwrap();
+        let config = CloudConfig {
+            sync_direction: CompareDirection::LocalToRemote,
+            update_only: true,
+            preserve_remote_deletes: false,
+            ..pair(&root)
+        };
+        let mut remote = MemRemote::new();
+        let mut index = empty_index(&config);
+        if with_baseline {
+            synced(&mut index, &remote, &root, "gone", b"original");
+            std::fs::remove_file(root.join("gone")).unwrap();
+        }
+        remote.put("/remote/untracked", b"never synced", SYNCED_AT);
+        std::fs::write(root.join("new"), b"source").unwrap();
+        let prepared = work(prep(&config, &index, &["new", "gone", "untracked"]));
+        std::fs::rename(&root, parent.path().join("renamed")).unwrap();
+        let svc = CloudService::new();
+        svc.init(config).await;
+        let outcome = svc.execute_incremental(&mut remote, prepared, None).await;
+        assert!(matches!(outcome, Err(ref error) if error.contains("local folder is unavailable")));
+        let state = remote.state();
+        assert!(state.deletes.is_empty());
+        assert!(state.uploads.is_empty());
+        assert!(state.renames.is_empty());
+        assert_eq!(state.files["/remote/untracked"].0, b"never synced");
+        if with_baseline {
+            assert_eq!(state.files["/remote/gone"].0, b"original");
+        }
+    }
+}
+
+#[tokio::test]
+async fn one_way_update_watcher_does_not_delete_from_an_empty_source() {
+    let root = tempfile::tempdir().unwrap();
+    let config = CloudConfig {
+        sync_direction: CompareDirection::LocalToRemote,
+        update_only: true,
+        preserve_remote_deletes: false,
+        ..pair(root.path())
+    };
+    let mut remote = MemRemote::new();
+    let mut index = empty_index(&config);
+    synced(&mut index, &remote, root.path(), "gone", b"original");
+    std::fs::remove_file(root.path().join("gone")).unwrap();
+    remote.put("/remote/untracked", b"never synced", SYNCED_AT);
+    let (run, _) = execute(
+        &config,
+        work(prep(&config, &index, &["gone", "untracked"])),
+        &mut remote,
+        None,
+    )
+    .await;
+    let (result, _) = done(run);
+    assert_eq!(result.deleted, 0);
+    assert!(remote.state().deletes.is_empty());
+    assert_eq!(remote.state().files["/remote/gone"].0, b"original");
+    assert_eq!(remote.state().files["/remote/untracked"].0, b"never synced");
+}
+
+#[tokio::test]
 async fn one_way_update_rename_does_not_replace_a_newer_destination() {
     let root = tempfile::tempdir().unwrap();
     let config = CloudConfig {

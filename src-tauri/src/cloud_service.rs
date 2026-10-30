@@ -154,6 +154,9 @@ struct RemoteScan {
 /// Internal seam shared by the real executor and the `--dry-run` preview.
 struct SyncPlan {
     update_policy: UpdatePolicy,
+    /// A refused destructive cycle is reported in preview and execution, and
+    /// does not advance the last known good baseline.
+    delete_refusal: Option<String>,
     comparisons: Vec<FileComparison>,
     /// Identical files with two spellings. Not executed. The baseline records
     /// them so the watcher can stat the remote object.
@@ -168,19 +171,10 @@ struct SyncPlan {
 
 /// Timestamp and deletion authority from this cycle's actual scans. The
 /// preview, bulk path, executor and baseline all consume the same policy.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 struct UpdatePolicy {
     window: crate::sync_core::mtime::ModifyWindow,
     allow_orphan_deletes: bool,
-}
-
-impl Default for UpdatePolicy {
-    fn default() -> Self {
-        Self {
-            window: Default::default(),
-            allow_orphan_deletes: true,
-        }
-    }
 }
 
 impl UpdatePolicy {
@@ -769,6 +763,13 @@ impl CloudService {
         prior_count >= MASS_DELETE_FLOOR && pending_deletes * 2 > prior_count
     }
 
+    /// Update can remove files never recorded in a baseline. Bound that
+    /// authority against the destination on every full scan, including the
+    /// first: later baseline updates must not bypass a refused first cycle.
+    fn update_delete_safety_trips(pending_deletes: usize, destination_files: usize) -> bool {
+        pending_deletes >= 10 && pending_deletes > destination_files / 2
+    }
+
     /// Persist the post-sync baseline so the NEXT cycle can tell a deleted file
     /// (was baselined, now gone on one side) from a genuinely new file (never
     /// baselined). See [`Self::post_sync_baseline`] for how it is computed.
@@ -1151,6 +1152,8 @@ impl CloudService {
         let prior_count = index.as_ref().map_or(0, |i| i.files.len());
         let local_len = local_files.len();
         let remote_len = remote_files.len();
+        let local_file_count = local_files.values().filter(|file| !file.is_dir).count();
+        let remote_file_count = remote_files.values().filter(|file| !file.is_dir).count();
         // Only a scan that saw the whole tree can say a path is gone.
         let gone_on_both = if local_complete && remote_complete {
             Self::gone_on_both(
@@ -1217,15 +1220,32 @@ impl CloudService {
             // A partial or non-authoritative source cannot authorize orphan
             // removal, including the first run with no prior sync index.
             allow_orphan_deletes: (if config.sync_direction == CompareDirection::LocalToRemote {
-                local_len > 0
+                local_file_count > 0
             } else {
-                remote_len > 0
+                remote_file_count > 0
             }) && local_complete
                 && remote_complete
                 && (config.sync_direction != CompareDirection::RemoteToLocal
                     || provider.listing_is_authoritative()),
         };
         let pending_deletes = self.count_pending_deletes(config, &comparisons, update_policy);
+        let destination_files = if config.sync_direction == CompareDirection::LocalToRemote {
+            remote_file_count
+        } else {
+            local_file_count
+        };
+        let delete_refusal = (config.update_only
+            && config.sync_direction != CompareDirection::Bidirectional
+            && Self::update_delete_safety_trips(pending_deletes, destination_files))
+        .then(|| {
+            format!(
+                "AeroCloud safety gate: blocked {pending_deletes} deletes out of {destination_files} destination files (at least 10 and more than half). Verify the folder pair before a manually reviewed sync."
+            )
+        });
+        if let Some(reason) = &delete_refusal {
+            tracing::warn!("{}", reason);
+            update_policy.allow_orphan_deletes = false;
+        }
         if Self::delete_safety_trips(
             prior_count,
             local_len == 0,
@@ -1252,6 +1272,7 @@ impl CloudService {
 
         Ok(SyncPlan {
             update_policy,
+            delete_refusal,
             comparisons,
             mirrored,
             index,
@@ -1281,6 +1302,7 @@ impl CloudService {
         let SyncPlan {
             comparisons,
             update_policy,
+            delete_refusal,
             ..
         } = self
             .build_sync_plan_with_provider(provider, &config, false)
@@ -1293,7 +1315,7 @@ impl CloudService {
             skipped: 0,
             skipped_details: Vec::new(),
             conflicts: 0,
-            errors: Vec::new(),
+            errors: delete_refusal.into_iter().collect(),
             duration_secs: 0,
             file_details: Vec::new(),
         };
@@ -1357,7 +1379,7 @@ impl CloudService {
             skipped: 0,
             skipped_details: Vec::new(),
             conflicts: 0,
-            errors: Vec::new(),
+            errors: plan.delete_refusal.iter().cloned().collect(),
             duration_secs: 0,
             file_details: Vec::new(),
         };
@@ -2270,6 +2292,16 @@ impl CloudService {
                 }
             }
             SyncAction::DeleteRemote if !comparison.is_dir => {
+                // Recheck at the destructive operation too: the root may have
+                // disappeared during the asynchronous scan/stat phase.
+                if config.update_only
+                    && config.sync_direction == CompareDirection::LocalToRemote
+                    && incremental::local_root_is_empty(&config.local_folder)
+                {
+                    return Err(
+                        "AeroCloud local source is empty or unavailable; delete refused".into(),
+                    );
+                }
                 let remote_path = format!(
                     "{}/{}",
                     config.remote_folder.trim_end_matches('/'),
@@ -2643,13 +2675,17 @@ mod baseline_tests {
                     SyncAction::DeleteLocal
                 };
                 assert_eq!(
-                    svc.resolve_action(&config, &orphan, UpdatePolicy::default()),
+                    svc.resolve_action(
+                        &config,
+                        &orphan,
+                        UpdatePolicy {
+                            allow_orphan_deletes: true,
+                            ..Default::default()
+                        }
+                    ),
                     delete
                 );
-                let safe = UpdatePolicy {
-                    allow_orphan_deletes: false,
-                    ..Default::default()
-                };
+                let safe = UpdatePolicy::default();
                 assert_eq!(svc.resolve_action(&config, &orphan, safe), SyncAction::Skip);
                 let additive = CloudConfig {
                     preserve_remote_deletes: true,
@@ -4987,6 +5023,89 @@ mod baseline_tests {
                         std::fs::read(local.path().join("new")).unwrap(),
                         b"source only"
                     );
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn update_delete_limit_counts_files_and_keeps_the_small_folder_allowance() {
+        assert!(!CloudService::update_delete_safety_trips(9, 9));
+        assert!(!CloudService::update_delete_safety_trips(10, 20));
+        assert!(CloudService::update_delete_safety_trips(10, 19));
+        assert!(CloudService::update_delete_safety_trips(20, 20));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn one_way_update_first_cycle_mass_delete_is_refused_in_preview_and_execution() {
+        with_scratch_index(async {
+            for direction in [
+                CompareDirection::LocalToRemote,
+                CompareDirection::RemoteToLocal,
+            ] {
+                let local = tempfile::tempdir().unwrap();
+                let upload = direction == CompareDirection::LocalToRemote;
+                let mut provider = MemoryProvider::default();
+                let remote = "/mass-update-only";
+                for i in 0..3 {
+                    let name = format!("source-{i}");
+                    if upload {
+                        std::fs::write(local.path().join(name), b"source").unwrap();
+                    } else {
+                        provider.put(&format!("{remote}/{name}"), b"source");
+                    }
+                }
+                for i in 0..20 {
+                    let name = format!("orphan-{i}");
+                    if upload {
+                        provider.put(&format!("{remote}/{name}"), b"destination");
+                    } else {
+                        std::fs::write(local.path().join(name), b"destination").unwrap();
+                    }
+                }
+                let svc = CloudService::new();
+                svc.init(CloudConfig {
+                    enabled: true,
+                    local_folder: local.path().into(),
+                    remote_folder: remote.into(),
+                    sync_direction: direction,
+                    update_only: true,
+                    preserve_remote_deletes: false,
+                    ..Default::default()
+                })
+                .await;
+                // Repeating the cycle cannot convert refused orphans into
+                // deletion authority via a newly saved baseline.
+                for _ in 0..2 {
+                    let preview = svc
+                        .preview_full_sync_with_provider(&mut provider)
+                        .await
+                        .unwrap();
+                    assert_eq!(preview.deleted, 0);
+                    assert!(
+                        preview
+                            .errors
+                            .iter()
+                            .any(|e| e.contains("blocked 20 deletes")),
+                        "{:?}",
+                        preview.errors
+                    );
+                    let result = svc
+                        .perform_full_sync_with_provider(&mut provider)
+                        .await
+                        .unwrap();
+                    assert_eq!(result.deleted, 0);
+                    assert_eq!(result.errors, preview.errors);
+                    for i in 0..20 {
+                        let name = format!("orphan-{i}");
+                        let bytes = if upload {
+                            provider.stored[&format!("{remote}/{name}")].0.clone()
+                        } else {
+                            std::fs::read(local.path().join(name)).unwrap()
+                        };
+                        assert_eq!(bytes, b"destination");
+                    }
                 }
             }
         });
