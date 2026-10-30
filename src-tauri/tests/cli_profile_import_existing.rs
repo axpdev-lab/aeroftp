@@ -33,6 +33,7 @@ fn cli(config: &Path, args: &[&str]) -> Output {
             "existing profile import probe vault",
         )
         .env_remove("RUST_LOG")
+        .env_remove("AEROFTP_PROFILE_PASSWORD")
         .output()
         .expect("run aeroftp-cli")
 }

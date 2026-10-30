@@ -15079,6 +15079,23 @@ const App: React.FC = () => {
           );
           return;
         }
+        // Same warnings as the import dialog, on a toast regardless of the
+        // notification setting (`notify` alone can reach only the hidden
+        // Activity Log), also after a failed write: those secrets are in effect.
+        const showImportWarnings = () => {
+          if (result.jottaChains.length > 0) {
+            toast.warning(
+              t('settings.importServers') || 'Import Servers',
+              t('settings.importJottaChainWarning', { names: result.jottaChains.map(c => c.name).join(', ') }),
+            );
+          }
+          if (result.oauthAppsKept.length > 0) {
+            toast.warning(
+              t('settings.importServers') || 'Import Servers',
+              t('settings.importOauthAppKept', { names: result.oauthAppsKept.join(', ') }),
+            );
+          }
+        };
         // Skip mode: every profile returned is new to this user. The write
         // refuses one whose id was saved elsewhere since, like the dialog's.
         try {
@@ -15097,27 +15114,14 @@ const App: React.FC = () => {
               ? ` ${t('settings.importNotSavedSecretsKept', { count: result.secretsStored })}`
               : ''),
           );
+          showImportWarnings();
           return;
         }
         notify.success(
           (t('settings.importSuccess') || 'Imported {count} servers').replace('{count}', String(result.servers.length)),
           result.skipped.length > 0 ? t('settings.duplicatesSkippedCount', { count: result.skipped.length }) : undefined,
         );
-        // Same warnings as the import dialog, on a toast regardless of the
-        // notification setting (`notify` alone can reach only the hidden
-        // Activity Log): the user has something to do about them.
-        if (result.jottaChains.length > 0) {
-          toast.warning(
-            t('settings.importServers') || 'Import Servers',
-            t('settings.importJottaChainWarning', { names: result.jottaChains.map(c => c.name).join(', ') }),
-          );
-        }
-        if (result.oauthAppsKept.length > 0) {
-          toast.warning(
-            t('settings.importServers') || 'Import Servers',
-            t('settings.importOauthAppKept', { names: result.oauthAppsKept.join(', ') }),
-          );
-        }
+        showImportWarnings();
       },
     });
   }, [notify, t, toast]);

@@ -104,6 +104,13 @@ describe('the import callback and the commit helper together', () => {
         expect(vault.writes).toBe(0);
     });
 
+    // Every profile skipped: nothing to store, so the list is not rewritten.
+    it('does not rewrite the list when there is nothing to store', async () => {
+        const vault = fakeVault([base]);
+        expect(await appendImportedProfiles([])).toEqual([base]);
+        expect(vault.writes).toBe(0);
+    });
+
     // A bridge that read the legacy store expects no account (null): one that
     // became active since must not receive the profiles.
     it('refuses to write to an account that became active after a legacy read', async () => {

@@ -307,27 +307,6 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                 result.servers.filter(s => s.importOutcome === outcome).length;
             const overwritten = count('overwritten');
             const duplicated = count('duplicated');
-            try {
-                await onImport(imported, new Set(
-                    result.servers.filter(s => s.importOutcome === 'overwritten').map(s => s.id),
-                ), result.userId);
-            } catch (err) {
-                // The backend restored the secrets the file carries before this
-                // write: say for how many profiles, and that the same import
-                // with the same option finishes it.
-                setError(String(err) + (result.secretsStored > 0
-                    ? ` ${t('settings.importNotSavedSecretsKept', { count: result.secretsStored })}`
-                    : ''));
-                return;
-            }
-            setSuccess(
-                // "new servers": the overwritten ones replaced servers already there.
-                t('settings.importSuccess').replace('{count}', String(imported.length - overwritten)) +
-                (overwritten > 0 ? ` (${t('settings.overwrittenCount', { count: overwritten })})` : '') +
-                (duplicated > 0 ? ` (${t('settings.duplicatedCount', { count: duplicated })})` : '') +
-                (result.skipped.length > 0 ? ` (${t('settings.duplicatesSkippedCount', { count: result.skipped.length })})` : '') +
-                (result.similar > 0 ? ` (${t('settings.similarToExistingCount', { count: result.similar })})` : '')
-            );
             const warnings = [
                 ...(result.jottaChains.length > 0
                     ? [t('settings.importJottaChainWarning', { names: result.jottaChains.map(c => c.name).join(', ') })]
@@ -339,6 +318,33 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                     ? [t('settings.importTargetChanged', { names: result.targetChanged.join(', ') })]
                     : []),
             ];
+            try {
+                await onImport(imported, new Set(
+                    result.servers.filter(s => s.importOutcome === 'overwritten').map(s => s.id),
+                ), result.userId);
+            } catch (err) {
+                // The backend restored the secrets the file carries before this
+                // write: say for how many profiles, and that the same import
+                // with the same option finishes it. The warnings go with it (not
+                // in `importWarning`, which would block that retry): those
+                // secrets are already in effect.
+                setError([
+                    String(err),
+                    ...(result.secretsStored > 0
+                        ? [t('settings.importNotSavedSecretsKept', { count: result.secretsStored })]
+                        : []),
+                    ...warnings,
+                ].join(' '));
+                return;
+            }
+            setSuccess(
+                // "new servers": the overwritten ones replaced servers already there.
+                t('settings.importSuccess').replace('{count}', String(imported.length - overwritten)) +
+                (overwritten > 0 ? ` (${t('settings.overwrittenCount', { count: overwritten })})` : '') +
+                (duplicated > 0 ? ` (${t('settings.duplicatedCount', { count: duplicated })})` : '') +
+                (result.skipped.length > 0 ? ` (${t('settings.duplicatesSkippedCount', { count: result.skipped.length })})` : '') +
+                (result.similar > 0 ? ` (${t('settings.similarToExistingCount', { count: result.similar })})` : '')
+            );
             if (warnings.length > 0) {
                 setImportWarning(warnings.join(' '));
             } else {

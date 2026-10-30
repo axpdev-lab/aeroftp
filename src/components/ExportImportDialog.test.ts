@@ -139,7 +139,7 @@ describe('ExportImportDialog .aeroftp import', () => {
             skipped: [],
             similar: 0,
             secretsStored: 2,
-            jottaChains: [],
+            jottaChains: [{ id: 'srv_c', name: 'Jotta' }],
             oauthAppsKept: [],
             targetChanged: [],
             totalInFile: 1,
@@ -151,6 +151,10 @@ describe('ExportImportDialog .aeroftp import', () => {
         await runImport('overwrite');
         expect(host.textContent).toContain('vault write refused');
         expect(host.textContent).toContain('settings.importNotSavedSecretsKept {"count":2}');
+        // The warnings about secrets already in effect go with the error, and
+        // the retry the error asks for stays possible.
+        expect(host.textContent).toContain('settings.importJottaChainWarning {"names":"Jotta"}');
+        expect(button(b => b.textContent === 'settings.importServers').disabled).toBe(false);
         await act(async () => {
             vi.advanceTimersByTime(5000);
         });

@@ -42540,6 +42540,18 @@ async fn cmd_profile_import(
             return 1;
         }
     };
+    // Restored secrets also go to the shared vault key, which an account without
+    // its own copy reads, so they cannot be written for an account that is not the
+    // active one. A dry run writes nothing.
+    if !dry_run && !is_active_user(&store, user_id) {
+        password.zeroize();
+        print_error(
+            format,
+            "--user must name the active account for profile-import, because restored secrets also reach the shared vault; run `users switch` first, or use --dry-run to preview",
+            1,
+        );
+        return 1;
+    }
     // The plan compares the file with these profiles, so an unreadable list
     // is an error: read as empty, every profile would look new and an
     // overwrite would land as a second profile of the same id.
@@ -42551,7 +42563,7 @@ async fn cmd_profile_import(
             return 1;
         }
     };
-    if import_user_id(cli, &store).ok().flatten() != Some(user_id) {
+    if !dry_run && import_user_id(cli, &store).ok().flatten() != Some(user_id) {
         password.zeroize();
         print_error(format, ACTIVE_USER_CHANGED, 1);
         return 1;

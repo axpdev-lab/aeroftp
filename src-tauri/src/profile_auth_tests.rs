@@ -586,6 +586,12 @@ async fn durable_profile_auth_lifecycle(
         "synthetic-refresh-chain",
     )
     .unwrap();
+    users::store_active_credential_dual(
+        store,
+        "aerocrypt_overlay_pw_fixture-jotta",
+        "synthetic-overlay-password",
+    )
+    .unwrap();
     let jotta_file = directory.path().join("jotta.aeroftp");
     crate::export_server_profiles_core(
         json!([jotta.clone()]).to_string(),
@@ -622,6 +628,10 @@ async fn durable_profile_auth_lifecycle(
         } else {
             // A real import wrote the chain to the copy: the warning is due.
             assert_eq!(chain.unwrap().as_str(), "synthetic-refresh-chain");
+            // A restored secret shows in the profile to store, so a Crypt
+            // profile added by an import reports its stored overlay password.
+            assert_eq!(jotta_report.servers[0]["hasStoredAeroCryptPassword"], true);
+            assert_eq!(jotta_report.secrets_stored, 1);
             assert_eq!(
                 store.get("jottacloud_refresh").unwrap(),
                 "other-profile-chain"
@@ -651,6 +661,31 @@ async fn durable_profile_auth_lifecycle(
     .unwrap();
     assert!(refused.servers.is_empty());
     assert_eq!(refused.secrets_stored, 0);
+    // The same with only an option of the backup weakening the connection: the
+    // options reach the comparison.
+    let mut weaker = export_profile.clone();
+    weaker["options"] = json!({"verifyCert": false});
+    let weaker_file = directory.path().join("weaker.aeroftp");
+    crate::export_server_profiles_core(
+        json!([weaker]).to_string(),
+        "fixture-export-password".into(),
+        false,
+        weaker_file.to_string_lossy().into_owned(),
+    )
+    .await
+    .unwrap();
+    let weaker = crate::import_server_profiles_with_mode(
+        weaker_file.to_string_lossy().into_owned(),
+        "fixture-export-password".into(),
+        ExistingProfileMode::Overwrite,
+        &current,
+        active,
+        false,
+    )
+    .await
+    .unwrap();
+    assert!(weaker.servers.is_empty());
+    assert_eq!(weaker.target_changed, [field(&export_profile, "name")]);
     assert_eq!(refused.target_changed, [field(&export_profile, "name")]);
     assert_eq!(refused.skipped, [field(&export_profile, "name")]);
     assert_eq!(read(&stale_key).unwrap().as_str(), "stale-local");

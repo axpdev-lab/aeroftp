@@ -319,13 +319,18 @@ pub fn same_target(a: &serde_json::Value, b: &serde_json::Value) -> bool {
             Some(value) => value.clone(),
         }
     };
-    // `host:2222` with port 2222 reads as `host`, as in `isSameConnection`.
+    // `host:2222` with port 2222 reads as `host`, as in `isSameConnection`. A
+    // host name is case-insensitive, and only that part is folded: a path after
+    // it (a WebDAV URL, a repository) can be case-sensitive.
     let host = |p: &serde_json::Value| -> String {
         let host = p.get("host").and_then(|v| v.as_str()).unwrap_or("");
         let port = p.get("port").and_then(|v| v.as_u64()).unwrap_or(0);
-        host.strip_suffix(&format!(":{port}"))
-            .unwrap_or(host)
-            .to_string()
+        let host = host.strip_suffix(&format!(":{port}")).unwrap_or(host);
+        let authority = host.find("://").map_or(0, |at| at + 3);
+        let end = host[authority..]
+            .find('/')
+            .map_or(host.len(), |at| authority + at);
+        format!("{}{}", host[..end].to_ascii_lowercase(), &host[end..])
     };
     // The value a connection would use when a field is left out.
     let protocol = |p: &serde_json::Value| match present(p.get("protocol")) {
@@ -694,6 +699,20 @@ mod tests {
             moved["options"][key] = json!("other");
             assert!(!same_target(&stored, &moved), "{key}");
         }
+        // A host name is case-insensitive; a path after it is not.
+        let name = |host: &str| json!({"host": host, "port": 21, "username": "u"});
+        assert!(same_target(
+            &name("FTP.Example.com"),
+            &name("ftp.example.com")
+        ));
+        assert!(same_target(
+            &name("HTTPS://DAV.Example.com/Files"),
+            &name("https://dav.example.com/Files")
+        ));
+        assert!(!same_target(
+            &name("https://dav.example.com/Files"),
+            &name("https://dav.example.com/files")
+        ));
         // A backup that weakens the connection takes no saved password with it.
         for (key, value) in [
             ("tlsMode", json!("none")),

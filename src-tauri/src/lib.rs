@@ -18366,11 +18366,17 @@ pub async fn import_server_profiles_with_mode(
     // carries for its old id (an earlier profile of the file may still be
     // stored under that id), so the restore below writes them to the new id
     // and never to the original.
+    let mut seen_in_file = std::collections::HashSet::new();
     for planned in &plan {
+        // The file holds one set of provider secrets per id: a later profile
+        // repeating that id cannot claim them, they may be another account's.
+        let first = seen_in_file.insert(servers[planned.index].id.clone());
         if servers[planned.index].id != planned.id {
             let old = std::mem::replace(&mut servers[planned.index].id, planned.id.clone());
-            if let Some(secrets) = provider_secrets.get(&old).cloned() {
-                provider_secrets.insert(planned.id.clone(), secrets);
+            if first {
+                if let Some(secrets) = provider_secrets.get(&old).cloned() {
+                    provider_secrets.insert(planned.id.clone(), secrets);
+                }
             }
         }
     }
@@ -18478,8 +18484,9 @@ fn vault_value(
 /// The provider-wide singletons (an OAuth app's credentials, the legacy
 /// Jottacloud chain) are written only when empty or already this profile's or
 /// app's own ([`profile_import_plan::may_write_shared`]), never over another
-/// profile's; a custom OAuth app left out that way is reported. Fails, writing
-/// nothing, when the vault is not open and a profile to store carries secrets.
+/// profile's; a custom OAuth app left out that way is reported. Fails when the
+/// vault is not open and a profile to store carries secrets, or when any secret
+/// could not be written, so the caller saves no profile.
 fn restore_imported_secrets(
     servers: &[profile_export::ServerProfileExport],
     provider_secrets: &std::collections::HashMap<String, profile_export::ProviderSecrets>,
@@ -18559,7 +18566,12 @@ fn restore_imported_secrets(
                     )
                 })
                 .collect();
-            for (profile_id, secrets) in provider_secrets {
+            // In file order, so which of two OAuth apps fills an empty slot is
+            // the same on every import.
+            for (profile_id, secrets) in servers
+                .iter()
+                .filter_map(|s| provider_secrets.get(&s.id).map(|secrets| (&s.id, secrets)))
+            {
                 let protocol = match protocol_by_id.get(profile_id.as_str()) {
                     Some(p) => p,
                     None => continue,
@@ -18607,9 +18619,7 @@ fn restore_imported_secrets(
                                             .push(format!("{profile_id} jotta singleton: {e}"));
                                     }
                                 }
-                                (Ok(_), Ok(_)) => cred_errors.push(format!(
-                                    "{profile_id} jotta singleton: kept another profile's chain"
-                                )),
+                                (Ok(_), Ok(_)) => {}
                                 (Err(e), _) | (_, Err(e)) => {
                                     cred_errors.push(format!("{profile_id} jotta singleton: {e}"))
                                 }
@@ -18803,8 +18813,15 @@ fn restore_imported_secrets(
             }
         }
     }
+    // A secret that could not be written stops the import before the list is
+    // written: the profile would otherwise report a credential it does not have,
+    // or keep an older one under a new configuration.
     if !cred_errors.is_empty() {
         log::warn!("Import credential issues: {:?}", cred_errors);
+        return Err(format!(
+            "{} secret(s) could not be stored, so no profile was saved; fix the cause and import the file again",
+            cred_errors.len()
+        ));
     }
     Ok(RestoredImportSecrets {
         aerocrypt_pw: restored_aerocrypt_pw,

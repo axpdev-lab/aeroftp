@@ -155,6 +155,9 @@ export async function appendImportedProfiles(
     if (expectedUserId !== undefined && (userId ?? null) !== expectedUserId) {
         throw new Error('The active account changed during the import, so the profiles were not saved. Make the account you imported into the active one again and import the same file again.');
     }
+    // Nothing to store (every profile skipped): the list is not rewritten, so a
+    // write that could only fail cannot report a failed import.
+    if (newServers.length === 0) return current;
     const currentIds = new Set(current.map(s => s.id));
     const seen = new Set<string>();
     for (const server of newServers) {
