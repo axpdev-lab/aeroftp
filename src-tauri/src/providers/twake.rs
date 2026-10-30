@@ -244,7 +244,9 @@ pub struct TwakePendingSignIn {
 fn auth_http_client() -> reqwest::Client {
     reqwest::Client::builder()
         .user_agent(AEROFTP_USER_AGENT)
-        .connect_timeout(Duration::from_secs(30))
+        .connect_timeout(crate::providers::http_limits::limit(Duration::from_secs(
+            30,
+        )))
         .timeout(Duration::from_secs(60))
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -658,8 +660,12 @@ impl TwakeProvider {
         // redirect on the instance anyway, like the other self-hosted backends.
         let client = reqwest::Client::builder()
             .user_agent(AEROFTP_USER_AGENT)
-            .connect_timeout(Duration::from_secs(30))
-            .read_timeout(Duration::from_secs(1800))
+            .connect_timeout(crate::providers::http_limits::limit(Duration::from_secs(
+                30,
+            )))
+            .read_timeout(crate::providers::http_limits::limit(
+                crate::providers::http_limits::READ_TIMEOUT,
+            ))
             .redirect(super::redirect_policy::same_origin_redirect_policy())
             .build()
             .unwrap_or_default();

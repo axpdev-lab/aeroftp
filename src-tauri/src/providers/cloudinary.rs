@@ -303,6 +303,12 @@ impl CloudinaryProvider {
         let current_path = normalize_path(config.initial_path.as_deref().unwrap_or(""));
         let client = reqwest::Client::builder()
             .user_agent(AEROFTP_USER_AGENT)
+            .connect_timeout(crate::providers::http_limits::limit(
+                std::time::Duration::from_secs(30),
+            ))
+            .read_timeout(crate::providers::http_limits::limit(
+                crate::providers::http_limits::READ_TIMEOUT,
+            ))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
 

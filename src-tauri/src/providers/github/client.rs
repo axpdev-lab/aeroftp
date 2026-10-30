@@ -85,8 +85,12 @@ impl GitHubHttpClient {
     /// QA-GH-004: Returns Result instead of panicking on TLS init failure.
     pub fn new(token: SecretString) -> Result<Self, GitHubError> {
         let client = Client::builder()
-            .connect_timeout(std::time::Duration::from_secs(30))
-            .read_timeout(std::time::Duration::from_secs(1800))
+            .connect_timeout(crate::providers::http_limits::limit(
+                std::time::Duration::from_secs(30),
+            ))
+            .read_timeout(crate::providers::http_limits::limit(
+                crate::providers::http_limits::READ_TIMEOUT,
+            ))
             .user_agent(USER_AGENT)
             .build()
             .map_err(|e| {

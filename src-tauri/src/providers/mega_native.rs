@@ -274,8 +274,12 @@ impl MegaApiClient {
     fn new(session_id: Option<String>) -> Self {
         let client = reqwest::Client::builder()
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
-            .connect_timeout(Duration::from_secs(30))
-            .read_timeout(Duration::from_secs(1800))
+            .connect_timeout(crate::providers::http_limits::limit(Duration::from_secs(
+                30,
+            )))
+            .read_timeout(crate::providers::http_limits::limit(
+                crate::providers::http_limits::READ_TIMEOUT,
+            ))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
 

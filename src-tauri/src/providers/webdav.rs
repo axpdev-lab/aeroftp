@@ -598,6 +598,9 @@ pub struct WebDavProvider {
     /// How long `list_recursive` waits for the `Depth: infinity` response
     /// headers (#958). [`INFINITY_HEADERS_TIMEOUT`] outside tests.
     infinity_headers_timeout: std::time::Duration,
+    /// The whole-request limit of a metadata request. [`METADATA_TIMEOUT`]
+    /// (or the CLI's `--timeout`) outside tests.
+    metadata_timeout: std::time::Duration,
     /// This server refused `PROPFIND Depth: infinity` earlier in this
     /// session, so `list_recursive` does not ask again: each used-storage scan
     /// paid the request before walking (#958). Set from the start for the
@@ -626,6 +629,26 @@ const INFINITY_TIMEOUT_MEMORY: std::time::Duration = std::time::Duration::from_s
 /// large tree streams under the idle read timeout and the scan's own cancel,
 /// never a wall clock. Past the cap the used-storage scan walks Depth:1.
 const INFINITY_HEADERS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// The whole of a metadata request: a listing or a stat (`PROPFIND` with
+/// `Depth` 0 or 1), a modification date (`PROPPATCH`), a new folder
+/// (`MKCOL`), `HEAD` and `OPTIONS`. Without it a server that accepts the
+/// request and never answers holds the command for the 1800 s read timeout.
+/// Measured on Nextcloud 33 (2026-10-30): a 2000-file folder lists in under
+/// 2 s with the connection, a stat in 0.8 s; the limit leaves about sixty
+/// times that. Transfers and the operations a timeout would leave half known
+/// (`MOVE`, `COPY`, `DELETE`, `LOCK`) keep the read timeout only, and so does
+/// `Depth: infinity`, which has its own header cap and may stream a large
+/// tree for longer. The CLI's `--timeout` replaces it.
+const METADATA_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// Whether `method` is a metadata request, bounded by [`METADATA_TIMEOUT`].
+fn is_metadata_method(method: &Method) -> bool {
+    matches!(
+        method.as_str(),
+        "PROPFIND" | "PROPPATCH" | "MKCOL" | "HEAD" | "OPTIONS"
+    )
+}
 
 /// The download body stopped with an error. reqwest's own message for it is
 /// "error decoding response body" whatever happened; the cause sits in its
@@ -995,15 +1018,18 @@ impl WebDavProvider {
         let mut client_builder = Client::builder()
             .user_agent(crate::providers::AEROFTP_WEBDAV_USER_AGENT)
             .danger_accept_invalid_certs(!config.verify_cert)
-            .connect_timeout(std::time::Duration::from_secs(30))
+            .connect_timeout(crate::providers::http_limits::limit(
+                std::time::Duration::from_secs(30),
+            ))
             // A redirect from https to http is refused, never followed
             // anonymously: see `InsecureRedirect`.
             .redirect(webdav_redirect_policy())
-            // 1800s (30 min) accommodates large body uploads on slow links and
-            // server-side post-processing (md5, replication). 300s previously
-            // killed 1 GiB uploads on jianguoyun, InfiniCloud, DriveHQ, and
-            // Koofr WebDAV when sustained throughput dropped below ~27 Mbps.
-            .read_timeout(std::time::Duration::from_secs(1800));
+            // 30 minutes of silence for large uploads on slow links: 300 s
+            // killed 1 GiB uploads on jianguoyun, InfiniCloud, DriveHQ and
+            // Koofr WebDAV below about 27 Mbps.
+            .read_timeout(crate::providers::http_limits::limit(
+                crate::providers::http_limits::READ_TIMEOUT,
+            ));
 
         // Issue #264: MEGAcmd's embedded `mega-webdav` bridge does not
         // reliably honor HTTP keep-alive. A connection kept idle after the
@@ -1034,6 +1060,7 @@ impl WebDavProvider {
             multi_thread_cutoff: 8 * 1024 * 1024,
             single_file_mode: None,
             infinity_headers_timeout: INFINITY_HEADERS_TIMEOUT,
+            metadata_timeout: crate::providers::http_limits::limit(METADATA_TIMEOUT),
             infinity_refused,
             infinity_timed_out_at: None,
             profile_url,
@@ -1428,8 +1455,28 @@ impl WebDavProvider {
             .join("/")
     }
 
-    /// Make an authenticated request (Basic or Digest depending on server)
+    fn bounded(
+        &self,
+        builder: reqwest::RequestBuilder,
+        method: &Method,
+    ) -> reqwest::RequestBuilder {
+        if is_metadata_method(method) {
+            builder.timeout(self.metadata_timeout)
+        } else {
+            builder
+        }
+    }
+
+    /// Make an authenticated request (Basic or Digest depending on server).
+    /// A metadata request is bounded as a whole: see [`METADATA_TIMEOUT`].
     fn request(&self, method: Method, path: &str) -> reqwest::RequestBuilder {
+        let builder = self.request_any_length(method.clone(), path);
+        self.bounded(builder, &method)
+    }
+
+    /// [`Self::request`] without the metadata limit, for a request that may
+    /// rightly take longer: `PROPFIND Depth: infinity`.
+    fn request_any_length(&self, method: Method, path: &str) -> reqwest::RequestBuilder {
         let url = self.build_url(path);
         let builder = self.client.request(method.clone(), &url);
 
@@ -1747,7 +1794,7 @@ impl WebDavProvider {
         // have adopted the rotated nonce this request was refused for.
         let nonce_used = self.digest_nonce_snapshot();
         let response = if depth == "infinity" {
-            self.request(webdav_methods::propfind(), path)
+            self.request_any_length(webdav_methods::propfind(), path)
                 .header("Depth", depth)
                 .header("Content-Type", "application/xml")
                 .body(body)
@@ -2104,7 +2151,7 @@ impl WebDavProvider {
     /// Make an authenticated request to an arbitrary URL (for OCS / trashbin endpoints
     /// that live outside the WebDAV files path).
     fn request_url(&self, method: Method, url: &str) -> reqwest::RequestBuilder {
-        let builder = self.client.request(method.clone(), url);
+        let builder = self.bounded(self.client.request(method.clone(), url), &method);
         if self.config.anonymous {
             return builder;
         }
@@ -6300,6 +6347,66 @@ mod tests {
             provider.transfer_capabilities().atomic_rename,
             crate::transfer_dag::Capability::Unsupported
         );
+    }
+
+    /// A metadata request (a listing, a stat, a date, a folder) is bounded
+    /// as a whole, so a server that accepts it and never answers cannot hold
+    /// a command for the 1800 s read timeout. Transfers, and the operations
+    /// whose outcome a timeout would leave unknown, keep the read timeout.
+    #[test]
+    fn only_metadata_requests_carry_a_whole_request_limit() {
+        let provider = WebDavProvider::new(test_config(
+            "https://dav.example.test/remote.php/dav/files/u/",
+        ))
+        .expect("provider");
+        let limit_of = |method: Method| {
+            provider
+                .request(method, "/folder/")
+                .build()
+                .expect("request")
+                .timeout()
+                .copied()
+        };
+        for method in [
+            webdav_methods::propfind(),
+            Method::from_bytes(b"PROPPATCH").unwrap(),
+            webdav_methods::mkcol(),
+            Method::HEAD,
+            Method::OPTIONS,
+        ] {
+            assert!(limit_of(method.clone()).is_some(), "{method} has no limit");
+        }
+        for method in [
+            Method::GET,
+            Method::PUT,
+            Method::DELETE,
+            webdav_methods::move_method(),
+            webdav_methods::copy(),
+            webdav_methods::lock(),
+        ] {
+            assert_eq!(limit_of(method.clone()), None, "{method} is cut short");
+        }
+    }
+
+    /// End to end, with the provider's own client and its 1800 s read
+    /// timeout: a stat and a listing against a server that never answers
+    /// come back as a timeout once the metadata limit passes.
+    #[tokio::test]
+    async fn a_metadata_request_the_server_never_answers_ends_at_its_limit() {
+        let mut provider =
+            WebDavProvider::new(test_config(&crate::providers::mute_http_endpoint()))
+                .expect("provider");
+        provider.connected = true;
+        provider.metadata_timeout = std::time::Duration::from_millis(300);
+        let bound = std::time::Duration::from_secs(20);
+        let stat = tokio::time::timeout(bound, provider.stat("/file.txt"))
+            .await
+            .expect("the stat is still waiting");
+        assert!(matches!(stat, Err(ProviderError::Timeout)), "{stat:?}");
+        let list = tokio::time::timeout(bound, provider.list("/"))
+            .await
+            .expect("the listing is still waiting");
+        assert!(matches!(list, Err(ProviderError::Timeout)), "{list:?}");
     }
 
     /// The provider's client with its read timeout cut from 1800 s to a

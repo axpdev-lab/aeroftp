@@ -196,8 +196,12 @@ impl SwiftProvider {
     pub fn new(config: SwiftConfig) -> Self {
         let client = Client::builder()
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
-            .connect_timeout(Duration::from_secs(30))
-            .read_timeout(Duration::from_secs(1800))
+            .connect_timeout(crate::providers::http_limits::limit(Duration::from_secs(
+                30,
+            )))
+            .read_timeout(crate::providers::http_limits::limit(
+                crate::providers::http_limits::READ_TIMEOUT,
+            ))
             // Swift requests carry the non-standard X-Auth-Token header.
             // reqwest strips a few standard credentials on cross-origin
             // redirects, but cannot know this provider-specific header is a

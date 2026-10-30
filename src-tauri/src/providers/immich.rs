@@ -239,9 +239,15 @@ impl ImmichProvider {
             .user_agent(AEROFTP_USER_AGENT)
             .default_headers(headers)
             .redirect(super::redirect_policy::same_origin_redirect_policy())
-            .connect_timeout(std::time::Duration::from_secs(15))
-            .connect_timeout(std::time::Duration::from_secs(30))
-            .read_timeout(std::time::Duration::from_secs(1800))
+            .connect_timeout(crate::providers::http_limits::limit(
+                std::time::Duration::from_secs(15),
+            ))
+            .connect_timeout(crate::providers::http_limits::limit(
+                std::time::Duration::from_secs(30),
+            ))
+            .read_timeout(crate::providers::http_limits::limit(
+                crate::providers::http_limits::READ_TIMEOUT,
+            ))
             .build()
             .unwrap_or_default();
 
