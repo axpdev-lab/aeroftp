@@ -422,14 +422,8 @@ async fn run_provider_segmented_download_with(
     cancel_token: CancellationToken,
 ) -> Result<(), SegmentedDownloadError> {
     use crate::providers::multi_thread::{
-        parallel_refused, range_read_failed, range_source_changed_through, read_range_paced_with,
-        read_range_source_through, replace_failed_range_worker, run_concurrent_range_download,
-        settle_range_attempt, source_changed, ConcurrentRangeConfig, ConcurrentRangeOutcome,
-        SegmentedRun,
+        parallel_refused, read_range_source_through, share_progress, PIN_UNSUPPORTED_MARKER,
     };
-    use crate::providers::ProviderError;
-    use std::collections::VecDeque;
-    use std::path::{Path, PathBuf};
 
     if segments < 2 {
         return Err(SegmentedDownloadError::Failed(
@@ -469,6 +463,75 @@ async fn run_provider_segmented_download_with(
         }
     };
 
+    // A server that answers 412 to every pinned window of an object that did
+    // not change refuses If-Match; it did not see a replacement. The windows
+    // are read once more, for this file only and with no pin, and the reading
+    // after them compares entity tag, size and time with `before`, as for a
+    // server that ignores the header: anything that moved is refused there.
+    let (pinned_progress, unpinned_progress) = share_progress(on_progress);
+    let pinned = run_provider_segmented_windows(
+        governor.clone(),
+        primary,
+        remote_path,
+        local_path,
+        file_size,
+        segments,
+        pinned_progress,
+        cancel_token.clone(),
+        &before,
+        before.validator(),
+    )
+    .await;
+    match pinned {
+        Err(SegmentedDownloadError::Unavailable { ref message, .. })
+            if before.validator().is_some() && message.contains(PIN_UNSUPPORTED_MARKER) =>
+        {
+            tracing::warn!(
+                "{message}; reading the windows again without If-Match, checked by the reading after them"
+            );
+            run_provider_segmented_windows(
+                governor,
+                primary,
+                remote_path,
+                local_path,
+                file_size,
+                segments,
+                unpinned_progress,
+                cancel_token,
+                &before,
+                None,
+            )
+            .await
+        }
+        other => other,
+    }
+}
+
+/// One attempt of [`run_provider_segmented_download_with`]: the windows, each
+/// range pinned to `pin` where it is `Some`, then the reading compared with
+/// `before` that decides whether the file is published.
+#[allow(clippy::too_many_arguments)]
+async fn run_provider_segmented_windows(
+    governor: Arc<crate::transfer_dag::governor::GlobalTransferGovernor>,
+    primary: &mut dyn StorageProvider,
+    remote_path: &str,
+    local_path: &str,
+    file_size: u64,
+    segments: usize,
+    on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    cancel_token: CancellationToken,
+    before: &crate::providers::multi_thread::RangeSourceFingerprint,
+    pin: Option<String>,
+) -> Result<(), SegmentedDownloadError> {
+    use crate::providers::multi_thread::{
+        range_read_failed, range_source_changed_through, read_range_paced_with,
+        replace_failed_range_worker, run_concurrent_range_download, settle_range_attempt,
+        source_changed, ConcurrentRangeConfig, ConcurrentRangeOutcome, PinRefusal, SegmentedRun,
+    };
+    use crate::providers::ProviderError;
+    use std::collections::VecDeque;
+    use std::path::{Path, PathBuf};
+
     // Pre-acquire N independent workers. The first failure aborts the
     // segmented path so the caller can fall back to single-stream.
     let mut workers: Vec<Box<dyn StorageProvider>> = Vec::with_capacity(segments);
@@ -478,7 +541,7 @@ async fn run_provider_segmented_download_with(
         }
         match primary.clone_for_transfer() {
             Ok(mut w) => {
-                w.set_range_validator(before.validator());
+                w.set_range_validator(pin.clone());
                 workers.push(w);
             }
             Err(e) => {
@@ -502,7 +565,7 @@ async fn run_provider_segmented_download_with(
     // its mark (`write_range_resuming`) on the worker its failure left here.
     let pool = Arc::new(tokio::sync::Mutex::new(VecDeque::from(workers)));
     let remote_owned = remote_path.to_string();
-    let validator = before.validator();
+    let validator = pin;
 
     let cfg = ConcurrentRangeConfig {
         final_path: PathBuf::from(local_path),
@@ -636,7 +699,7 @@ async fn run_provider_segmented_download_with(
                     temp.discard();
                     return Err(SegmentedDownloadError::Cancelled);
                 }
-                changed = range_source_changed_through(primary, remote_path, &before) => changed,
+                changed = range_source_changed_through(primary, remote_path, before) => changed,
             };
             // Validation can finish in the same tick as Stop. Refuse publication
             // even when the metadata future won the race.
@@ -665,6 +728,21 @@ async fn run_provider_segmented_download_with(
             "segmented download: server ignored Range; falling back to single-stream".to_string(),
             "the server ignored Range",
         )),
+        Err(e) if crate::providers::multi_thread::is_pin_refusal(&e) => {
+            // A 412 to the pin: the object moved, or the server refuses
+            // If-Match on the version it still serves. The reading a
+            // completed run takes tells which, once for the file.
+            let changed = tokio::select! {
+                biased;
+                _ = cancel_token.cancelled() => return Err(SegmentedDownloadError::Cancelled),
+                changed = range_source_changed_through(primary, remote_path, before) => changed,
+            };
+            let verdict = PinRefusal::from_second_reading(changed);
+            Err(SegmentedDownloadError::unavailable(
+                verdict.message("segmented download", remote_path),
+                verdict.notice(),
+            ))
+        }
         Err(e) => {
             let reason = if matches!(e, ProviderError::ParallelRefused(_)) {
                 "a ranged response or its version check was refused"
