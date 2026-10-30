@@ -18251,22 +18251,23 @@ async fn import_server_profiles(
     password: String,
     existing: Option<profile_import_plan::ExistingProfileMode>,
 ) -> Result<profile_import_plan::ProfileImportReport, String> {
-    let current = active_server_profiles_for_import()?;
+    let (user_id, current) = active_server_profiles_for_import()?;
     import_server_profiles_with_mode(
         file_path,
         password,
         existing.unwrap_or_default(),
         &current,
+        Some(user_id),
         false,
     )
     .await
 }
 
-/// The active user's saved profiles, for the import to compare the file
-/// against. Without an unlocked vault they cannot be read, and the import
+/// The active user's id and saved profiles, for the import to compare the
+/// file against. Without an unlocked vault they cannot be read, and the import
 /// refuses rather than read them as none: every profile would then look new
 /// and replace a stored one of the same id whatever the mode.
-fn active_server_profiles_for_import() -> Result<Vec<serde_json::Value>, String> {
+fn active_server_profiles_for_import() -> Result<(i64, Vec<serde_json::Value>), String> {
     let Some(store) = credential_store::CredentialStore::from_cache() else {
         return Err(
             "Vault not ready: the saved profiles cannot be read to compare the import with"
@@ -18277,7 +18278,7 @@ fn active_server_profiles_for_import() -> Result<Vec<serde_json::Value>, String>
     let listed = user_partitions::open_or_init_cli()
         .and_then(|conn| user_partitions::list_active_server_profiles_scoped(&conn, &root_key));
     root_key.zeroize();
-    Ok(listed?.1)
+    listed
 }
 
 /// Import a `.aeroftp` file into the active user's vault, deciding with `mode`
@@ -18287,11 +18288,17 @@ fn active_server_profiles_for_import() -> Result<Vec<serde_json::Value>, String>
 /// adds, overwrites or duplicates, never for one it skips, and for none on a
 /// `dry_run`. The report carries the profiles to store; the caller writes the
 /// profile list (the GUI through its partition layer, the CLI through its own).
+///
+/// `expected_user` is the user whose profiles `current` holds. The restore
+/// writes into the active user's partition, so it is refused (nothing restored)
+/// when that is no longer this user: another window switched account during
+/// the decryption, or the CLI targets `--user` another account than the active.
 pub async fn import_server_profiles_with_mode(
     file_path: String,
     password: String,
     mode: profile_import_plan::ExistingProfileMode,
     current: &[serde_json::Value],
+    expected_user: Option<i64>,
     dry_run: bool,
 ) -> Result<profile_import_plan::ProfileImportReport, String> {
     use profile_import_plan::{ImportCandidate, ImportOutcome};
@@ -18341,13 +18348,29 @@ pub async fn import_server_profiles_with_mode(
             .map(|p| servers[p.index].clone())
             .collect()
     };
+    if let (Some(expected), Some(store), false) = (
+        expected_user,
+        credential_store::CredentialStore::from_cache(),
+        stored.is_empty(),
+    ) {
+        if user_partitions::cli_get_active_user(&store)?.map(|user| user.id) != Some(expected) {
+            return Err(profile_import_plan::NOT_THE_ACTIVE_USER.to_string());
+        }
+    }
     let restored = restore_imported_secrets(&stored, &provider_secrets)?;
+    // The profiles whose secrets the file carried, now in the vault: what a
+    // failed list write afterwards leaves behind.
+    let secrets_stored = stored
+        .iter()
+        .filter(|s| s.credential.is_some() || provider_secrets.contains_key(&s.id))
+        .count();
 
     let mut report = profile_import_plan::ProfileImportReport {
         servers: Vec::new(),
         skipped: Vec::new(),
         similar: 0,
         jotta_chains: Vec::new(),
+        secrets_stored,
         total_in_file: servers.len(),
         metadata: serde_json::to_value(&metadata).unwrap_or(serde_json::Value::Null),
     };

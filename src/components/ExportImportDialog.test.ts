@@ -119,9 +119,11 @@ describe('ExportImportDialog .aeroftp import', () => {
             servers: [
                 { id: 'srv_a', name: 'A', host: 'a.example', port: 21, username: 'u', importOutcome: 'overwritten' },
                 { id: 'srv_b', name: 'B', host: 'b.example', port: 21, username: 'u', importOutcome: 'added' },
+                { id: 'srv_c', name: 'C', host: 'c.example', port: 21, username: 'u', importOutcome: 'added' },
             ],
             skipped: [],
             similar: 0,
+            secretsStored: 2,
             jottaChains: [],
             totalInFile: 1,
             metadata: { exportDate: '', aeroftpVersion: '', serverCount: 1, hasCredentials: true },

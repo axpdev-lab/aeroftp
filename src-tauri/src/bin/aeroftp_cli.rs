@@ -42565,6 +42565,7 @@ async fn cmd_profile_import(
         password.clone(),
         on_existing.into_inner(),
         &current,
+        Some(user_id),
         dry_run,
     )
     .await;
@@ -42701,10 +42702,14 @@ async fn cmd_profile_import(
             Err(e) => {
                 // The secrets were restored before this write: say what the
                 // failure leaves behind, and that the same import finishes it.
-                let note = format!(
-                    "; the secrets the file carries for these {} profile(s) were already stored, so run the same import again, with the same --on-existing, to finish it",
-                    report.servers.len()
-                );
+                let note = if report.secrets_stored > 0 {
+                    format!(
+                        "; the secrets the file carries for {} of these profile(s) were already stored, so run the same import again, with the same --on-existing, to finish it",
+                        report.secrets_stored
+                    )
+                } else {
+                    String::new()
+                };
                 print_error(format, &format!("save profiles: {e}{note}"), 1);
                 return 1;
             }
@@ -42843,7 +42848,9 @@ fn update_active_user_profiles(
 /// A profile planned as new whose id `list` already holds means another
 /// process saved it after the plan was made: the plan is stale and the result
 /// is an error, so the caller writes nothing rather than a second profile of
-/// one id. The secrets were restored before this check, but an id is random
+/// one id. On an error `list` is left partly changed: callers discard it
+/// (the transaction does not commit, the fallback does not save). The secrets
+/// were restored before this check, but an id is random
 /// (or minted by this import), so another writer can only hold it by importing
 /// this same backup in parallel: the secret written under that id is the same.
 fn lay_import_over(

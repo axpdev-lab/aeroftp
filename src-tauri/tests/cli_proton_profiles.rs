@@ -231,6 +231,7 @@ async fn proton_alias_preserves_manifest_options_and_explicit_client_after_savin
         "synthetic alias export".into(),
         ftp_client_gui_lib::profile_import_plan::ExistingProfileMode::Skip,
         &[],
+        None,
         true,
     )
     .await
@@ -275,6 +276,7 @@ async fn saved(root: &Path, id: &str) -> serde_json::Value {
         "synthetic switch export".into(),
         ftp_client_gui_lib::profile_import_plan::ExistingProfileMode::Skip,
         &[],
+        None,
         true,
     )
     .await

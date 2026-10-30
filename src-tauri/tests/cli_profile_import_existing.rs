@@ -97,6 +97,7 @@ async fn saved_whole(config: &Path) -> Vec<serde_json::Value> {
         PASSWORD.into(),
         ftp_client_gui_lib::profile_import_plan::ExistingProfileMode::Skip,
         &[],
+        None,
         true,
     )
     .await

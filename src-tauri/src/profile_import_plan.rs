@@ -157,6 +157,11 @@ pub fn plan_import(
         .collect()
 }
 
+/// What the import refuses with when the active user is no longer the one whose
+/// profiles it compared the file with: the secrets would land in another
+/// account's partition.
+pub const NOT_THE_ACTIVE_USER: &str = "the active user is not the user whose profiles this import read (another window switched account, or --user names another account than the active one), so nothing was restored or written; switch to that account and run the import again";
+
 /// A stored profile named in a report: its id and the name the file gave it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ImportedProfileRef {
@@ -195,6 +200,10 @@ pub struct ProfileImportReport {
     /// profile that connects first with it signs the other copies out. The id
     /// finds the name the profile write gave it.
     pub jotta_chains: Vec<ImportedProfileRef>,
+    /// How many stored profiles had secrets in the file that were restored
+    /// (0 on a dry run). The restore comes before the caller writes the list,
+    /// so this is what a failed write leaves in the vault.
+    pub secrets_stored: usize,
     /// How many profiles the file holds, whatever their outcome.
     pub total_in_file: usize,
     /// The file's public envelope metadata.

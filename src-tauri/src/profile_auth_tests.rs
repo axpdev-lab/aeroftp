@@ -490,6 +490,7 @@ async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value)
         "fixture-export-password".into(),
         crate::profile_import_plan::ExistingProfileMode::Skip,
         &[],
+        None,
         false,
     )
     .await
@@ -519,17 +520,34 @@ async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value)
             "fixture-export-password".into(),
             mode,
             &current,
+            None,
             dry_run,
         )
     };
     users::store_active_credential_typed_dual(store, &stale_key, "oauth", "stale-local").unwrap();
     let skip = import_with(ExistingProfileMode::Skip, false).await.unwrap();
     assert!(skip.servers.is_empty());
+    assert_eq!(skip.secrets_stored, 0);
     assert_eq!(skip.skipped, [field(&export_profile, "name")]);
+    assert_eq!(read(&stale_key).unwrap().as_str(), "stale-local");
+    // Another account active than the one whose profiles were read: the
+    // secrets would land in that account, so nothing is restored.
+    let refused = crate::import_server_profiles_with_mode(
+        file.to_string_lossy().into_owned(),
+        "fixture-export-password".into(),
+        ExistingProfileMode::Overwrite,
+        &current,
+        Some(-1),
+        false,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(refused, crate::profile_import_plan::NOT_THE_ACTIVE_USER);
     assert_eq!(read(&stale_key).unwrap().as_str(), "stale-local");
     let overwrite = import_with(ExistingProfileMode::Overwrite, false)
         .await
         .unwrap();
+    assert_eq!(overwrite.secrets_stored, 1);
     assert_eq!(overwrite.servers[0]["importOutcome"], "overwritten");
     assert_eq!(overwrite.servers[0]["id"], source);
     assert_eq!(read(&stale_key).unwrap().as_str(), expected);
@@ -582,6 +600,7 @@ async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value)
         "fixture-export-password".into(),
         ExistingProfileMode::Duplicate,
         &[jotta],
+        None,
         true,
     )
     .await
@@ -757,6 +776,7 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
         "native-fixture-export-password".into(),
         crate::profile_import_plan::ExistingProfileMode::Skip,
         &[],
+        None,
         false,
     )
     .await

@@ -63,6 +63,8 @@ interface ImportResult {
     servers: ImportedServer[];
     skipped: string[];
     similar: number;
+    // Stored profiles whose secrets the file carried and the backend restored.
+    secretsStored: number;
     // Stored Jottacloud profiles that brought their rotating refresh chain,
     // named as in the file.
     jottaChains: { id: string; name: string }[];
@@ -213,7 +215,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                 filePath,
             });
             setSuccess(t('settings.exportSuccess').replace('{count}', String(selectedServers.length)));
-            setTimeout(() => onClose(), 2000);
+            closeTimerRef.current = setTimeout(() => onClose(), 2000);
         } catch (err) {
             setError(String(err));
         } finally {
@@ -228,6 +230,9 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
      * file clears the last result, so Import is available for it.
      */
     const handleChooseImportFile = async () => {
+        // Before the picker opens: the user may stay in it longer than the
+        // close scheduled by a previous success.
+        cancelScheduledClose();
         const filePath = await pickFile({
             title: t('settings.importServers'),
             filters: [
@@ -240,7 +245,6 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         setError(null);
         setSuccess(null);
         setJottaWarning(null);
-        cancelScheduledClose();
         setPassword('');
         setImportFilePath(filePath);
     };
@@ -289,11 +293,11 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                     result.servers.filter(s => s.importOutcome === 'overwritten').map(s => s.id),
                 ));
             } catch (err) {
-                // The backend restored the secrets of every profile it planned
-                // to store before this write: say so, and that running the same
-                // import again (any mode) finishes it.
-                setError(String(err) + (imported.length > 0
-                    ? ` ${t('settings.importNotSavedSecretsKept', { count: imported.length })}`
+                // The backend restored the secrets the file carries before this
+                // write: say for how many profiles, and that the same import
+                // with the same option finishes it.
+                setError(String(err) + (result.secretsStored > 0
+                    ? ` ${t('settings.importNotSavedSecretsKept', { count: result.secretsStored })}`
                     : ''));
                 return;
             }
@@ -761,7 +765,8 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                         <button
                                             type="button"
                                             onClick={handleChooseImportFile}
-                                            className="text-xs text-blue-500 hover:text-blue-600 font-medium flex-shrink-0"
+                                            disabled={loading}
+                                            className="text-xs text-blue-500 hover:text-blue-600 disabled:opacity-50 font-medium flex-shrink-0"
                                         >
                                             {t('settings.importChangeFile') || 'Change'}
                                         </button>

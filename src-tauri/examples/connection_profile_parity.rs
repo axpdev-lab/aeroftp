@@ -337,6 +337,7 @@ async fn main() {
         "synthetic profile parity export".into(),
         ftp_client_gui_lib::profile_import_plan::ExistingProfileMode::Skip,
         &[],
+        None,
         true,
     )
     .await
