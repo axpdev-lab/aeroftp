@@ -89,6 +89,26 @@ describe('the import callback and the commit helper together', () => {
         expect(vault.profiles).toEqual(merged);
     });
 
+    // Two profiles of one batch with one id would both be stored.
+    it('refuses a batch that holds two profiles of one id', async () => {
+        const vault = fakeVault([]);
+        const one: ServerProfile = { ...base, id: 'twin', name: 'One' };
+        const two: ServerProfile = { ...base, id: 'twin', name: 'Two' };
+        await expect(appendImportedProfiles([one, two])).rejects.toThrow('saved by another window');
+        expect(vault.writes).toBe(0);
+    });
+
+    // The import restored its secrets into account 4; the vault now writes for
+    // account 3 (switched from another window): nothing reaches account 3.
+    it('refuses to write when the active account is not the one the import restored into', async () => {
+        const vault = fakeVault([base]);
+        const imported: ServerProfile = { ...base, id: 'imported', name: 'Imported' };
+        await expect(appendImportedProfiles([imported], new Set(), 4)).rejects.toThrow('active account changed');
+        expect(vault.writes).toBe(0);
+        const merged = await appendImportedProfiles([imported], new Set(), 3);
+        expect(merged.map(s => s.id)).toEqual([base.id, 'imported']);
+    });
+
     // `undefined` is no value: a field only this device has survives it,
     // while an explicit null from the file still clears the stored value.
     it('an overwrite keeps a stored field the import leaves undefined, and takes an explicit null', () => {

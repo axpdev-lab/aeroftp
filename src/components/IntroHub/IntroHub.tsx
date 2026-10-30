@@ -521,9 +521,9 @@ export function IntroHub(props: IntroHubProps) {
                     servers={paletteServers}
                     initialMode={exportPreselect ? 'export' : undefined}
                     initialSelectedServerIds={exportPreselect ?? undefined}
-                    onImport={async (newServers, replaceIds) => {
+                    onImport={async (newServers, replaceIds, expectedUserId) => {
                         // The dialog closes itself (onClose) after its result.
-                        const updated = await appendImportedProfiles(newServers, replaceIds);
+                        const updated = await appendImportedProfiles(newServers, replaceIds, expectedUserId);
                         setPaletteServers(updated);
                         onServersChanged?.();
                     }}

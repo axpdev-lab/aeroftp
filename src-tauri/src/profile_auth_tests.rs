@@ -417,6 +417,8 @@ async fn round_trip() {
     assert!(gaps.is_empty(), "Auth lifecycle gaps: {gaps:?}");
 }
 
+/// Durable profile-auth secrets through copy, export, purge and every import
+/// mode, against the real vault of the forked fixture.
 async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value) {
     let source = field(github, "id");
     let target = "fixture-github-copy";
@@ -514,13 +516,18 @@ async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value)
     let (stale_prefix, expected) = (entries[0].0, entries[0].1.unwrap());
     let stale_key = format!("{stale_prefix}_{source}");
     let read = |key: &str| users::resolve_active_credential(store, key).unwrap();
+    // The import is pinned to the active user, as the GUI and the CLI pin it.
+    let active = users::cli_get_active_user(store)
+        .unwrap()
+        .map(|user| user.id);
+    assert!(active.is_some());
     let import_with = |mode, dry_run| {
         crate::import_server_profiles_with_mode(
             file.to_string_lossy().into_owned(),
             "fixture-export-password".into(),
             mode,
             &current,
-            None,
+            active,
             dry_run,
         )
     };
@@ -595,23 +602,33 @@ async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value)
     )
     .await
     .unwrap();
-    let jotta_report = crate::import_server_profiles_with_mode(
-        jotta_file.to_string_lossy().into_owned(),
-        "fixture-export-password".into(),
-        ExistingProfileMode::Duplicate,
-        &[jotta],
-        None,
-        true,
-    )
-    .await
-    .unwrap();
-    assert_eq!(jotta_report.servers[0]["importOutcome"], "duplicated");
-    assert_eq!(jotta_report.jotta_chains.len(), 1);
-    assert_eq!(jotta_report.jotta_chains[0].name, "synthetic jotta");
-    assert_eq!(
-        jotta_report.jotta_chains[0].id,
-        jotta_report.servers[0]["id"]
-    );
+    for dry_run in [true, false] {
+        let jotta_report = crate::import_server_profiles_with_mode(
+            jotta_file.to_string_lossy().into_owned(),
+            "fixture-export-password".into(),
+            ExistingProfileMode::Duplicate,
+            std::slice::from_ref(&jotta),
+            active,
+            dry_run,
+        )
+        .await
+        .unwrap();
+        assert_eq!(jotta_report.servers[0]["importOutcome"], "duplicated");
+        assert_eq!(jotta_report.jotta_chains.len(), 1);
+        assert_eq!(jotta_report.jotta_chains[0].name, "synthetic jotta");
+        let copy = field(&jotta_report.servers[0], "id");
+        assert_eq!(jotta_report.jotta_chains[0].id, copy);
+        let chain = read(&format!("jottacloud_refresh_{copy}"));
+        if dry_run {
+            assert!(chain.is_none());
+        } else {
+            // A real import wrote the chain to the copy: the warning is due.
+            assert_eq!(chain.unwrap().as_str(), "synthetic-refresh-chain");
+            crate::purge_profile_secrets(copy.into(), Some("jottacloud".into()))
+                .await
+                .unwrap();
+        }
+    }
 
     let redacted = directory.path().join("headless-redacted.aeroftp");
     let metadata = crate::export_server_profiles_core(
@@ -628,6 +645,8 @@ async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value)
     assert!(secrets.is_empty());
 }
 
+/// Native Proton sessions stay with the user who owns them through refresh,
+/// copy, export, import and purge.
 #[cfg(feature = "proton-native")]
 async fn native_session_ownership(store: &CredentialStore, active_id: i64, selected_id: i64) {
     use crate::providers::proton_native::{

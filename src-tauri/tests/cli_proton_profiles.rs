@@ -171,6 +171,8 @@ fn proton_mode_and_sign_in_refuse_what_is_not_a_proton_profile() {
     assert_eq!(out.status.code(), Some(2), "{}", describe(&out));
 }
 
+/// The Proton alias keeps the manifest options and the explicitly chosen client
+/// once saved, as an export of the profile shows.
 #[tokio::test]
 async fn proton_alias_preserves_manifest_options_and_explicit_client_after_saving() {
     let root = isolated_cli::root();

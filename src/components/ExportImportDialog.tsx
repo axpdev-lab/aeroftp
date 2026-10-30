@@ -22,8 +22,12 @@ import { ServerChecklistNoMatch, ServerChecklistSearch, ServerChecklistSummary, 
 
 interface ExportImportDialogProps {
     servers: ServerProfile[];
-    /** Store the imported profiles; those in `replaceIds` replace the stored profile of the same id. */
-    onImport: (servers: ServerProfile[], replaceIds?: ReadonlySet<string>) => void | Promise<void>;
+    /**
+     * Store the imported profiles; those in `replaceIds` replace the stored
+     * profile of the same id, and the write is refused unless the active
+     * account is still `expectedUserId` (the one the secrets were restored into).
+     */
+    onImport: (servers: ServerProfile[], replaceIds?: ReadonlySet<string>, expectedUserId?: number | null) => void | Promise<void>;
     onClose: () => void;
     // Optional starting mode so callers (e.g. the Settings Backup table) can
     // open the dialog straight into a specific action. Undefined preserves the
@@ -65,6 +69,8 @@ interface ImportResult {
     similar: number;
     // Stored profiles whose secrets the file carried and the backend restored.
     secretsStored: number;
+    // The account the file was compared with and the secrets restored into.
+    userId: number | null;
     // Stored Jottacloud profiles that brought their rotating refresh chain,
     // named as in the file.
     jottaChains: { id: string; name: string }[];
@@ -185,6 +191,11 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         });
     };
 
+    /**
+     * Validate the password and the profile selection, choose where to save,
+     * write the encrypted backup (with or without credentials), and close the
+     * dialog shortly after success.
+     */
     const handleExport = async () => {
         if (password !== confirmPassword) {
             setError(t('settings.passwordMismatch'));
@@ -215,6 +226,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                 filePath,
             });
             setSuccess(t('settings.exportSuccess').replace('{count}', String(selectedServers.length)));
+            cancelScheduledClose();
             closeTimerRef.current = setTimeout(() => onClose(), 2000);
         } catch (err) {
             setError(String(err));
@@ -257,7 +269,9 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
      */
     const handleImport = async () => {
         const filePath = importFilePath;
-        if (!filePath) {
+        // Done once it succeeded (Enter in the password field as well as the
+        // button): importing the same file again needs choosing it again.
+        if (!filePath || loading || success !== null || jottaWarning !== null) {
             return;
         }
         if (password.length < 1) {
@@ -291,7 +305,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             try {
                 await onImport(imported, new Set(
                     result.servers.filter(s => s.importOutcome === 'overwritten').map(s => s.id),
-                ));
+                ), result.userId);
             } catch (err) {
                 // The backend restored the secrets the file carries before this
                 // write: say for how many profiles, and that the same import

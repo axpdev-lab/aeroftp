@@ -204,6 +204,9 @@ pub struct ProfileImportReport {
     /// (0 on a dry run). The restore comes before the caller writes the list,
     /// so this is what a failed write leaves in the vault.
     pub secrets_stored: usize,
+    /// The user whose profiles the file was compared with and whose partition
+    /// the secrets went to: the caller writes the list for this user only.
+    pub user_id: Option<i64>,
     /// How many profiles the file holds, whatever their outcome.
     pub total_in_file: usize,
     /// The file's public envelope metadata.

@@ -65,6 +65,8 @@ fn options(protocol: &str) -> Value {
     }
 }
 
+/// Run the connection-profile parity check against the CLI given on the
+/// command line and report each mismatch.
 #[tokio::main]
 async fn main() {
     let source = std::env::args_os()

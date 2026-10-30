@@ -85,6 +85,7 @@ describe('ExportImportDialog .aeroftp import', () => {
             skipped: [],
             similar: 0,
             jottaChains: [{ id: 'srv_copy', name: 'Jotta' }],
+            userId: 7,
             totalInFile: 2,
             metadata: { exportDate: '', aeroftpVersion: '', serverCount: 2, hasCredentials: true },
         });
@@ -98,6 +99,8 @@ describe('ExportImportDialog .aeroftp import', () => {
             password: 'backup-password',
             existing: 'overwrite',
         });
+        // The write is bound to the account the backend restored into.
+        expect(onImport.mock.calls[0][2]).toBe(7);
         const stored = onImport.mock.calls[0][0] as (ServerProfile & Record<string, unknown>)[];
         expect([...onImport.mock.calls[0][1] as Set<string>]).toEqual(['srv_a']);
         expect(stored.map(s => s.id)).toEqual(['srv_a', 'srv_copy']);
@@ -108,6 +111,12 @@ describe('ExportImportDialog .aeroftp import', () => {
         expect(host.textContent).toContain('settings.duplicatedCount {"count":1}');
         expect(host.querySelector('[data-testid="import-jotta-warning"]')?.textContent)
             .toContain('settings.importJottaChainWarning {"names":"Jotta"}');
+        // Enter in the password field cannot import (and duplicate) again.
+        const field = host.querySelector<HTMLInputElement>('input[type="password"]')!;
+        await act(async () => {
+            field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        });
+        expect(invoke).toHaveBeenCalledTimes(1);
         await act(async () => {
             vi.advanceTimersByTime(5000);
         });
@@ -157,8 +166,13 @@ describe('ExportImportDialog .aeroftp import', () => {
         expect(vi.mocked(invoke).mock.calls[0][1]).toMatchObject({ existing: 'skip' });
         expect(host.textContent).toContain('settings.duplicatesSkippedCount {"count":1}');
         expect(host.querySelector('[data-testid="import-jotta-warning"]')).toBeNull();
-        // Done: a second click cannot import the same file again.
+        // Done: neither a second click nor Enter imports the same file again.
         expect(button(b => b.textContent === 'settings.importServers').disabled).toBe(true);
+        const field = host.querySelector<HTMLInputElement>('input[type="password"]')!;
+        await act(async () => {
+            field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        });
+        expect(invoke).toHaveBeenCalledTimes(1);
         await act(async () => {
             vi.advanceTimersByTime(3000);
         });

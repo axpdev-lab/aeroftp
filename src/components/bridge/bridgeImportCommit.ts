@@ -76,19 +76,33 @@ export function overwriteProfile(stored: ServerProfile, imported: ServerProfile)
  *   imported profile is appended, as before; the bridge imports name none. A
  *   named profile whose id the vault no longer holds when this writes (deleted
  *   from another window in the meantime) is appended too, never dropped.
- * @throws when a profile to append has an id the vault already holds: another
- *   window or process saved it after the import was planned, and appending
- *   would store two profiles of one id. Nothing is written then.
+ * @param expectedUserId the account the import compared the file with and
+ *   restored the secrets into (`userId` of a `.aeroftp` import report); the
+ *   bridge imports pass none.
+ * @throws when the vault's active account is not `expectedUserId` (switched
+ *   from another window after the import restored its secrets), or when a
+ *   profile to append has an id the vault already holds, or another profile of
+ *   this same batch has: another window or process saved it after the import
+ *   was planned, and appending would store two profiles of one id. Nothing is
+ *   written then.
  */
 export async function appendImportedProfiles(
     newServers: ServerProfile[],
     replaceIds: ReadonlySet<string> = new Set(),
+    expectedUserId?: number | null,
 ): Promise<ServerProfile[]> {
     const { profiles: current, userId } = await readSavedServerProfilesForWrite();
+    if (expectedUserId != null && userId !== expectedUserId) {
+        throw new Error('The active account changed after the import restored its passwords and tokens, so the profiles were not saved to the other account. Switch back and import the same file again.');
+    }
     const currentIds = new Set(current.map(s => s.id));
-    const taken = newServers.find(s => !replaceIds.has(s.id) && currentIds.has(s.id));
-    if (taken) {
-        throw new Error(`Profile ${taken.id} was saved by another window during the import, so nothing was written.`);
+    const appendIds = new Set(currentIds);
+    for (const server of newServers) {
+        if (replaceIds.has(server.id) && currentIds.has(server.id)) continue;
+        if (appendIds.has(server.id)) {
+            throw new Error(`Profile ${server.id} was saved by another window during the import, so nothing was written.`);
+        }
+        appendIds.add(server.id);
     }
     const replacing = new Map(newServers.filter(s => replaceIds.has(s.id)).map(s => [s.id, s]));
     const merged = [

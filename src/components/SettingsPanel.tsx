@@ -4025,9 +4025,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 <ExportImportDialog
                     servers={servers}
                     initialMode={exportImportInitialMode}
-                    onImport={async (newServers, replaceIds) => {
+                    onImport={async (newServers, replaceIds, expectedUserId) => {
                         // The dialog closes itself (onClose) after its result.
-                        const updated = await appendImportedProfiles(newServers, replaceIds);
+                        const updated = await appendImportedProfiles(newServers, replaceIds, expectedUserId);
                         setServers(updated);
                         onServersChanged?.();
                     }}

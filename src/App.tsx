@@ -132,6 +132,8 @@ interface ServerProfilesImportResult {
   skipped: string[];
   // Stored profiles whose secrets the file carried and the backend restored.
   secretsStored: number;
+  // The account the file was compared with and the secrets restored into.
+  userId: number | null;
 }
 
 type MountManagerOpenOptions = {
@@ -15041,6 +15043,11 @@ const App: React.FC = () => {
     }
   }, []);
 
+  /**
+   * Import a `.aeroftp` file opened from the file panel: ask its password,
+   * import with Skip (profiles already present stay), store the result for the
+   * account the secrets went to, and say what a failed write left behind.
+   */
   const importAeroFtpProfileFile = useCallback((filePath: string) => {
     setInputDialog({
       title: t('settings.importServers') || 'Import Servers',
@@ -15071,7 +15078,11 @@ const App: React.FC = () => {
         // Skip mode: every profile returned is new to this user. The write
         // refuses one whose id was saved elsewhere since, like the dialog's.
         try {
-          await appendImportedProfiles(result.servers.map(({ importOutcome: _outcome, ...profile }) => profile));
+          await appendImportedProfiles(
+            result.servers.map(({ importOutcome: _outcome, ...profile }) => profile),
+            new Set(),
+            result.userId,
+          );
           setServersRefreshKey(k => k + 1);
         } catch (err) {
           // The backend restored the secrets before this write: say so, and
@@ -17463,12 +17474,12 @@ const App: React.FC = () => {
             servers={exportImportServers}
             initialMode={exportImportInitialMode}
             initialBridgeFilePath={exportImportBridgeFile ?? undefined}
-            onImport={async (newServers, replaceIds) => {
+            onImport={async (newServers, replaceIds, expectedUserId) => {
               // Bridge imports may have replaced a profile in the persisted
               // list; the dialog's opening snapshot is no longer authoritative.
               // The dialog closes itself (onClose) once its result has been
               // read, or stays open on a warning that must be seen.
-              const merged = await appendImportedProfiles(newServers, replaceIds);
+              const merged = await appendImportedProfiles(newServers, replaceIds, expectedUserId);
               setExportImportServers(merged);
               setServersRefreshKey(k => k + 1);
             }}

@@ -75544,6 +75544,7 @@ fn is_closed_output_panic(message: &str) -> bool {
 
 /// Parse the command line, apply the process-wide settings (`--tpslimit`,
 /// `--timeout`, ...) and run the command.
+/// Entry point: parse the command line, then run the one subcommand it names.
 #[tokio::main]
 async fn main() {
     // Serve multipart part buffers from mmap, so a freed part goes back to the
@@ -80889,6 +80890,23 @@ mod tests {
         let stale = vec![json!({"id": "c", "name": "C", "importOutcome": "added"})];
         let err = lay_import_over(&mut fresh, &stale).unwrap_err();
         assert!(err.contains("profile c was saved by another"), "{err}");
+
+        // The conflict found after an earlier profile was already appended
+        // still refuses the whole write.
+        let mut fresh = vec![json!({"id": "c", "name": "C saved elsewhere"})];
+        let stale = vec![
+            json!({"id": "n", "name": "N", "importOutcome": "added"}),
+            json!({"id": "c", "name": "C", "importOutcome": "added"}),
+        ];
+        let err = lay_import_over(&mut fresh, &stale).unwrap_err();
+        assert!(err.contains("profile c was saved by another"), "{err}");
+
+        // A secret the file does not carry stays stored: its flag stays set.
+        let mut list = vec![json!({"id": "a", "hasStoredAeroCryptPassword": true})];
+        let servers = vec![json!({"id": "a", "hasStoredAeroCryptPassword": false,
+            "importOutcome": "overwritten"})];
+        lay_import_over(&mut list, &servers).unwrap();
+        assert_eq!(list[0]["hasStoredAeroCryptPassword"], true);
     }
 
     fn argv(parts: &[&str]) -> Vec<String> {

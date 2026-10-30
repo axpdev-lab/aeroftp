@@ -18371,6 +18371,7 @@ pub async fn import_server_profiles_with_mode(
         similar: 0,
         jotta_chains: Vec::new(),
         secrets_stored,
+        user_id: expected_user,
         total_in_file: servers.len(),
         metadata: serde_json::to_value(&metadata).unwrap_or(serde_json::Value::Null),
     };
