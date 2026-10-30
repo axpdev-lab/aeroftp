@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "AeroAgent'a sor...",
             "browseArchive": "Arşivi Gözat",
-            "calculateSize": "Boyutu Hesapla",
             "compress": "Sıkıştır",
             "compress7zMultiple": "7z Sıkıştır ({count})",
             "compressSubmenu": "Sıkıştır",

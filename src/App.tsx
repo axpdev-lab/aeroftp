@@ -524,6 +524,7 @@ import { useTerminalCwd } from './hooks/useTerminalCwd';
 import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 import { isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
 import { isSameConnection, resolveLiveConnectionParams, savedProfileIdOf } from './utils/liveConnection';
+import { selectedLocalRows } from './utils/localSelection';
 
 // W3.1 (#270.5): marker the backend connect commands return when the user
 // aborts an in-progress connection (Esc / "still connecting" Cancel). The
@@ -1582,10 +1583,10 @@ const App: React.FC = () => {
 
   /**
    * Opens Properties on local entries: the one-item dialog for one entry, the
-   * aggregate one for several. The one way in for the Properties entry, for
-   * Alt+Enter and for Calculate Size, and on the General tab, where the size
-   * is: the tab is otherwise remembered from the last remote Properties
-   * (OpenDrive opens it on Permissions).
+   * aggregate one for several. The one way in for every Properties entry (a
+   * row, the panel's empty space, a breadcrumb segment) and for Alt+Enter, and
+   * on the General tab, where the size is: the tab is otherwise remembered
+   * from the last remote Properties (OpenDrive opens it on Permissions).
    */
   const openLocalProperties = async (entries: FileProperties[]) => {
     setPropertiesInitialTab('general');
@@ -2979,8 +2980,7 @@ const App: React.FC = () => {
     'Alt+Enter': () => {
       if (activePanel !== 'local') return;
       const panel = getActiveLocalState();
-      const entries = panel.files
-        .filter(f => panel.selection.has(f.name))
+      const entries = selectedLocalRows(panel.sortedFiles, panel.files, panel.selection)
         .map(f => localEntryProperties(f, panel.currentPath));
       if (entries.length > 0) void openLocalProperties(entries);
     },
@@ -15476,8 +15476,9 @@ const App: React.FC = () => {
       ? (count > 1 ? t('github.commitFiles', { count }) : t('github.commit'))
       : (count > 1 ? t('contextMenu.uploadCount', { count }) : t('common.upload'));
     const filesToUpload = Array.from(selection);
-    const selectedEntries = () => localFiles
-      .filter(f => selection.has(f.name))
+    // From the rows shown: a nested row of a flattened search is not in the
+    // listing.
+    const selectedEntries = () => selectedLocalRows(ctxPanel.sortedFiles, localFiles, selection)
       .map(f => localEntryProperties(f, currentLocalPath));
 
     // Detect AeroFTP container files early for context menu ordering.
@@ -15728,10 +15729,11 @@ const App: React.FC = () => {
       { label: t('contextMenu.copyPath'), icon: <Copy size={14} />, action: () => { copyText(file.path).then(() => notify.success(t('contextMenu.pathCopied')), () => notify.error(t('toast.copyFailed'))); } },
       { label: t('contextMenu.copyName'), icon: <Clipboard size={14} />, action: () => { copyText(file.name).then(() => notify.success(t('contextMenu.nameCopied')), () => notify.error(t('toast.copyFailed'))); }, divider: true },
       { label: t('contextMenu.openInFileManager'), icon: <ExternalLink size={14} />, action: () => openInFileManager(file.is_dir ? file.path : currentLocalPath) },
-      // Directory-specific actions: Calculate Size, Find Duplicates, Disk Usage.
+      // Directory-specific actions: Find Duplicates, Disk Usage. A folder's size
+      // is in Properties, above.
       // Same list the empty-area and breadcrumb menus raise, so a folder answers
       // the same way whether you reach it from its parent or from inside it.
-      ...(file.is_dir ? directoryActionItems(file.path || `${currentLocalPath}/${file.name}`, count > 1 ? selectedEntries() : undefined) : []),
+      ...(file.is_dir ? directoryActionItems(file.path || `${currentLocalPath}/${file.name}`) : []),
     ];
 
     const baseName = count === 1 ? file.name.replace(/\.[^/.]+$/, '') : 'archive';
@@ -16239,25 +16241,10 @@ const App: React.FC = () => {
    * These used to exist only on a folder *entry* in the listing, which meant
    * running any of them on the folder you were already inside required leaving
    * it, finding it in the parent, and right-clicking it there (discussion #347).
-   * They are now built from a path so the same three can be raised from the
+   * They are now built from a path so the same ones can be raised from the
    * empty space of the panel and from a breadcrumb segment.
    */
-  const directoryActionItems = (dirPath: string, selection?: FileProperties[]): ContextMenuItem[] => [
-    {
-      label: t('contextMenu.calculateSize'), icon: <HardDrive size={14} />,
-      // Opens Properties, where the size shows as it is counted (#1441). The
-      // scan used to run on its own and write to a cache only that dialog
-      // reads, so nothing on screen changed. A folder right-clicked inside a
-      // selection answers for the selection, as Properties does.
-      action: () => openLocalProperties(selection ?? [{
-        name: localPathBasename(dirPath) || dirPath,
-        path: dirPath,
-        size: null,
-        is_dir: true,
-        modified: null,
-        isRemote: false,
-      }]),
-    },
+  const directoryActionItems = (dirPath: string): ContextMenuItem[] => [
     {
       label: t('contextMenu.findDuplicates'), icon: <Copy size={14} />,
       action: () => setDuplicateFinderPath(dirPath),
@@ -16267,6 +16254,26 @@ const App: React.FC = () => {
       action: () => setDiskUsagePath(dirPath),
     },
   ];
+
+  /**
+   * Properties of a directory named only by its path: the one a panel shows,
+   * for its empty space, or a breadcrumb segment. A folder row has its own
+   * Properties entry. A folder's size shows in Properties as it is counted, so
+   * this is also how the size of the directory you are in is asked for. These
+   * two menus offered Calculate Size for it instead, which did nothing on its
+   * own (#1441), and no Properties.
+   */
+  const directoryPropertiesItem = (dirPath: string): ContextMenuItem => ({
+    label: t('contextMenu.properties'), icon: <Info size={14} />, divider: true,
+    action: () => openLocalProperties([{
+      name: localPathBasename(dirPath) || dirPath,
+      path: dirPath,
+      size: null,
+      is_dir: true,
+      modified: null,
+      isRemote: false,
+    }]),
+  });
 
   /**
    * Context menu for one segment of the local breadcrumb, i.e. for a directory
@@ -16288,6 +16295,7 @@ const App: React.FC = () => {
         divider: true,
       },
       ...directoryActionItems(dirPath),
+      directoryPropertiesItem(dirPath),
     ]);
   };
 
@@ -16322,7 +16330,9 @@ const App: React.FC = () => {
       },
       // Aimed at the directory this panel is showing, so they no longer require
       // going up a level to find it (#347).
-      ...(ctxPanel.currentPath ? directoryActionItems(ctxPanel.currentPath) : []),
+      ...(ctxPanel.currentPath
+        ? [...directoryActionItems(ctxPanel.currentPath), directoryPropertiesItem(ctxPanel.currentPath)]
+        : []),
     ];
     contextMenu.show(e, items);
   };

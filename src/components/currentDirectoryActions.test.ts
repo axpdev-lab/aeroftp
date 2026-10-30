@@ -7,15 +7,17 @@ import breadcrumb from './BreadcrumbBar.tsx?raw';
 import localPanel from './LocalFilePanel.tsx?raw';
 
 /**
- * Calculate Size, Find Duplicates and Disk Usage can be run on the directory you
- * are in.
+ * Find Duplicates, Disk Usage and the folder's size can be had for the
+ * directory you are in.
  *
  * They used to exist only on a folder *entry* in the listing, so running any of
  * them on the current directory meant leaving it, finding it again in the
  * parent, and right-clicking it there — which is what discussion #347 asked
- * about. They are now built from a path, and the same three are raised from the
+ * about. They are now built from a path, and the same ones are raised from the
  * folder entry, from the empty space of the panel, and from a segment of the
- * breadcrumb (the last of which is the current directory itself).
+ * breadcrumb (the last of which is the current directory itself). The size is
+ * in Properties (#1441): a row has its own entry, the other two menus get one
+ * for the directory they name.
  */
 describe('directory actions reach the current directory (#347)', () => {
     const body = (name: string): string => {
@@ -24,26 +26,29 @@ describe('directory actions reach the current directory (#347)', () => {
         return appRaw.slice(start, start + 1800);
     };
 
-    it('builds the three actions from a path, in one place', () => {
+    it('builds the actions from a path, in one place', () => {
         const items = body('directoryActionItems');
-        for (const key of ['contextMenu.calculateSize', 'contextMenu.findDuplicates', 'contextMenu.diskUsage']) {
+        for (const key of ['contextMenu.findDuplicates', 'contextMenu.diskUsage']) {
             expect(items, key).toContain(key);
         }
         // From the argument, not from a listing entry: that is what lets the same
         // list serve a folder row, the panel background and a breadcrumb segment.
-        // Calculate Size opens Properties on that path, where the size shows
-        // (#1441), rather than running a scan nothing displays.
-        expect(items).toMatch(/openLocalProperties\(selection \?\? \[\{[\s\S]*?path: dirPath,/);
         expect(items).toMatch(/setDuplicateFinderPath\(dirPath\)/);
         expect(items).toMatch(/setDiskUsagePath\(dirPath\)/);
+        // Properties on that path, where the size shows as it is counted.
+        expect(body('directoryPropertiesItem')).toMatch(/openLocalProperties\(\[\{[\s\S]*?path: dirPath,/);
     });
 
     it('offers them on the empty space of the panel', () => {
-        expect(body('showLocalEmptyContextMenu')).toMatch(/directoryActionItems\(ctxPanel\.currentPath\)/);
+        const menu = body('showLocalEmptyContextMenu');
+        expect(menu).toMatch(/directoryActionItems\(ctxPanel\.currentPath\)/);
+        expect(menu).toMatch(/\[\.\.\.directoryActionItems\(ctxPanel\.currentPath\), directoryPropertiesItem\(ctxPanel\.currentPath\)\]/);
     });
 
     it('offers them on a breadcrumb segment', () => {
-        expect(body('showLocalPathContextMenu')).toMatch(/directoryActionItems\(dirPath\)/);
+        const menu = body('showLocalPathContextMenu');
+        expect(menu).toMatch(/directoryActionItems\(dirPath\)/);
+        expect(menu).toMatch(/\.\.\.directoryActionItems\(dirPath\),\s*directoryPropertiesItem\(dirPath\),\s*\]\);/);
     });
 
     it('still offers them on a folder in the listing, from the same list', () => {

@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "Tanya AeroAgent...",
             "browseArchive": "Layari Arkib",
-            "calculateSize": "Kira Saiz",
             "compress": "Mampatkan",
             "compress7zMultiple": "Mampatkan 7z ({count})",
             "compressSubmenu": "Mampat",

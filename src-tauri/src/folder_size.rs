@@ -1,8 +1,8 @@
 //! Size of a local folder: the bytes, files and subfolders under it.
 //!
-//! One engine for every surface that sizes a local folder: Calculate Size and
-//! the Properties dialog in the app, `aeroftp-cli size <folder>`, `Ctrl+S` in
-//! the TUI, and AeroAgent's `local_disk_usage`. It is measured the way a file
+//! One engine for every surface that sizes a local folder: the Properties
+//! dialog in the app, `aeroftp-cli size <folder>`, `Ctrl+S` in the TUI, and
+//! AeroAgent's `local_disk_usage`. It is measured the way a file
 //! manager is expected to measure it, and as fast as the disk will answer:
 //!
 //! - **In parallel.** A small pool of threads lists directories from one shared

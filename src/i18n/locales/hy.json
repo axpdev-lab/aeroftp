@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "Հարցնել AeroAgent...",
             "browseArchive": "Զննել արխիվը",
-            "calculateSize": "Հաշվարկել չափը",
             "compress": "Սեղմել",
             "compress7zMultiple": "Սեղմել 7z-ով ({count})",
             "compressSubmenu": "Սեղմել...",

@@ -1017,7 +1017,7 @@ pub async fn local_disk_usage(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
         )));
     }
 
-    // The engine the app's Calculate Size uses (a parallel walk, each file
+    // The engine the app's folder Properties uses (a parallel walk, each file
     // once), under this tool's own entry cap. A total that leaves out a
     // directory it could not open, or a file whose size it could not read, is
     // smaller than the tree and says nothing about it: both are counted, and

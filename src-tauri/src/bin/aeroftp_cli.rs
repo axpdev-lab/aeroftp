@@ -19602,7 +19602,7 @@ async fn size_remote_dir(
 }
 
 /// Recursive byte count + file count under a local directory: the engine the
-/// app's Calculate Size uses, bounded by [`TUI_SIZE_MAX_ENTRIES`]. A folder it
+/// app's folder Properties uses, bounded by [`TUI_SIZE_MAX_ENTRIES`]. A folder it
 /// cannot read, or the cap, no longer fails the whole size: the total comes
 /// back with the reason it is a lower bound.
 async fn size_local_dir(path: &str) -> Result<(u64, u64, Option<String>), String> {

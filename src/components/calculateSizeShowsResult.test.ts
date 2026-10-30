@@ -10,10 +10,12 @@ import appRaw from '../App.tsx?raw';
  * The menu entry ran the scan and wrote the result into the folder size cache,
  * and the one reader of that cache is the Properties dialog. With the dialog
  * closed, which is always the case when the entry is clicked, the scan ran and
- * nothing on screen changed. The entry now opens Properties on the folder (or
- * on the selection), where the size shows as it is counted.
+ * nothing on screen changed. Properties itself counts a folder as it opens, so
+ * the entry is gone and Properties is the one way to a folder's size: on a
+ * row, and on the panel's empty space and a breadcrumb segment for the
+ * directory they name, which had no Properties entry.
  */
-describe('Calculate Size shows what it calculates (#1441)', () => {
+describe('a folder\'s size shows where it is asked for (#1441)', () => {
     /** The body of a component-level `const name = ...`, up to the next one. */
     const body = (name: string): string => {
         const start = appRaw.indexOf(`\n  const ${name} = `);
@@ -23,18 +25,41 @@ describe('Calculate Size shows what it calculates (#1441)', () => {
     };
 
     it('starts no size scan from a menu, where no dialog would show it', () => {
-        for (const menu of ['directoryActionItems', 'showLocalContextMenu', 'showLocalEmptyContextMenu', 'showLocalPathContextMenu']) {
+        for (const menu of ['directoryActionItems', 'directoryPropertiesItem', 'showLocalContextMenu', 'showLocalEmptyContextMenu', 'showLocalPathContextMenu']) {
             expect(body(menu), menu).not.toMatch(/calculate(Remote)?FolderSize\(/);
         }
     });
 
-    it('opens Properties on the folder, or on the selection it belongs to', () => {
-        const items = body('directoryActionItems');
-        const entry = items.slice(items.indexOf("t('contextMenu.calculateSize')"));
-        expect(entry).toMatch(/action: \(\) => openLocalProperties\(/);
-        // A folder right-clicked inside a selection of several items answers for
-        // the selection, as Properties, Copy and Delete in the same menu do.
-        expect(body('showLocalContextMenu')).toMatch(/file\.is_dir \? directoryActionItems\([^)]*, count > 1 \? selectedEntries\(\) : undefined\)/);
+    it('names one entry for it in each menu, Properties', () => {
+        // Two entries opening the same dialog is the shape that let one of them
+        // break unnoticed.
+        expect(appRaw).not.toMatch(/contextMenu\.calculateSize/);
+        const properties = /label: t\('contextMenu\.properties'\)/g;
+        // A row: one Properties, on the folder or on the selection it belongs to,
+        // and offered on a folder as on a file.
+        const row = body('showLocalContextMenu');
+        expect([...row.matchAll(properties)]).toHaveLength(1);
+        expect(row).not.toMatch(/directoryPropertiesItem\(/);
+        const start = row.indexOf("label: t('contextMenu.properties')");
+        const rowItem = row.slice(start, row.indexOf('\n      },', start));
+        expect(rowItem).toMatch(/action: \(\) => openLocalProperties\(selectedEntries\(\)\)/);
+        expect(rowItem).not.toMatch(/disabled/);
+        // The selection is read from the rows shown: a nested row of a flattened
+        // search is not in the listing.
+        expect(row).toMatch(/const selectedEntries = \(\) => selectedLocalRows\(ctxPanel\.sortedFiles, localFiles, selection\)/);
+        // The actions every folder menu shares carry no Properties of their own,
+        // or a folder row would show two.
+        const shared = body('directoryActionItems');
+        expect(shared).not.toMatch(properties);
+        expect(shared).not.toMatch(/directoryPropertiesItem\(/);
+        // The panel's empty space and a breadcrumb segment: the directory they
+        // name, which has no row there to carry the entry.
+        const item = body('directoryPropertiesItem');
+        expect(item).toMatch(properties);
+        expect(item).not.toMatch(/disabled/);
+        expect(item).toMatch(/action: \(\) => openLocalProperties\(\[\{[\s\S]*?path: dirPath,[\s\S]*?is_dir: true,/);
+        expect(body('showLocalEmptyContextMenu')).toMatch(/\[\.\.\.directoryActionItems\(ctxPanel\.currentPath\), directoryPropertiesItem\(ctxPanel\.currentPath\)\]/);
+        expect(body('showLocalPathContextMenu')).toMatch(/\.\.\.directoryActionItems\(dirPath\),\s*directoryPropertiesItem\(dirPath\),\s*\]\);/);
     });
 
     it('opens it on the tab that shows the size', () => {
@@ -47,9 +72,10 @@ describe('Calculate Size shows what it calculates (#1441)', () => {
         expect(open).toMatch(/get_file_properties/);
     });
 
-    it('opens local Properties one way, from the menu and from Alt+Enter', () => {
+    it('opens local Properties one way, from the menus and from Alt+Enter', () => {
         const altEnter = appRaw.slice(appRaw.indexOf("'Alt+Enter': () => {"), appRaw.indexOf("'Alt+Enter': () => {") + 900);
         expect(altEnter).toMatch(/openLocalProperties\(/);
+        expect(altEnter).toMatch(/selectedLocalRows\(panel\.sortedFiles, panel\.files, panel\.selection\)/);
         expect(altEnter).not.toMatch(/setPropertiesDialog\(|setMultiPropertiesDialog\(/);
         const menuItem = body('showLocalContextMenu');
         const properties = menuItem.slice(menuItem.indexOf("label: t('contextMenu.properties')"));
