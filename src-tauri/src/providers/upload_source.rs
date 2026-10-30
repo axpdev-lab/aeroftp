@@ -33,7 +33,7 @@ pub const UPLOAD_SOURCE_CHANGED_MARKER: &str = "changed while it was being uploa
 
 /// The size and modification time of a local file, taken before an upload
 /// reads it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct UploadSource {
     path: String,
     size: u64,
@@ -51,11 +51,6 @@ impl UploadSource {
             size: meta.len(),
             modified: meta.modified().ok(),
         })
-    }
-
-    /// The size the file had when it was observed.
-    pub fn size(&self) -> u64 {
-        self.size
     }
 
     /// Refuse the commit when the file no longer has the facts it had before
@@ -128,7 +123,6 @@ mod tests {
         let path = dir.path().join("a.bin");
         std::fs::write(&path, b"0123456789").unwrap();
         let source = UploadSource::observe(path.to_str().unwrap()).await.unwrap();
-        assert_eq!(source.size(), 10);
         source.ensure_unchanged("test upload").await.unwrap();
     }
 
