@@ -1523,13 +1523,8 @@ impl StorageProvider for DrimeCloudProvider {
         // M9: Full file read into memory: no streaming upload API available for Drime Cloud.
         // This limits practical upload size to available RAM. For files >500MB, users should
         // consider alternative providers with chunked upload support (S3, OneDrive, Dropbox).
-        let source = super::upload_source::UploadSource::observe(local_path).await?;
-        let data = tokio::fs::read(local_path)
-            .await
-            .map_err(ProviderError::IoError)?;
-        // The whole file is in memory from here on, so it is coherent if it
-        // did not change while it was being read.
-        source.ensure_unchanged("Drime upload").await?;
+        let data =
+            super::upload_source::UploadSource::read_whole(local_path, "Drime upload").await?;
 
         let file_size = data.len() as u64;
         drime_log(&format!(

@@ -74,6 +74,35 @@ impl UploadSource {
         Ok(())
     }
 
+    /// Read the whole file into memory for an upload that sends it from there,
+    /// and refuse it when it changed while it was being read: the bytes are
+    /// coherent only if the file kept its facts from before the read to after.
+    pub async fn read_whole(local_path: &str, scope: &str) -> Result<Vec<u8>, ProviderError> {
+        Self::read_whole_with(local_path, scope, |path| async move {
+            tokio::fs::read(path).await
+        })
+        .await
+    }
+
+    /// [`Self::read_whole`] with the read itself supplied, so a test can change
+    /// the file between the read and the check.
+    async fn read_whole_with<F, Fut>(
+        local_path: &str,
+        scope: &str,
+        read: F,
+    ) -> Result<Vec<u8>, ProviderError>
+    where
+        F: FnOnce(String) -> Fut,
+        Fut: std::future::Future<Output = std::io::Result<Vec<u8>>>,
+    {
+        let source = Self::observe(local_path).await?;
+        let data = read(local_path.to_string())
+            .await
+            .map_err(ProviderError::IoError)?;
+        source.ensure_unchanged(scope).await?;
+        Ok(data)
+    }
+
     fn changed(&self, scope: &str, what: &str) -> ProviderError {
         ProviderError::TransferFailed(format!(
             "{scope}: {} {UPLOAD_SOURCE_CHANGED_MARKER} ({what}); nothing was committed",
@@ -127,6 +156,38 @@ mod tests {
         rewrite_keeping_size(&path, b"BBBBBBBBBB", before + Duration::from_secs(1));
         let err = source.ensure_unchanged("test upload").await.unwrap_err();
         assert!(err.to_string().contains("modification time moved"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn a_whole_read_returns_the_file_when_it_did_not_change() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.bin");
+        std::fs::write(&path, b"0123456789").unwrap();
+        let data = UploadSource::read_whole(path.to_str().unwrap(), "test upload")
+            .await
+            .unwrap();
+        assert_eq!(data, b"0123456789");
+    }
+
+    #[tokio::test]
+    async fn a_whole_read_of_a_file_rewritten_during_the_read_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.bin");
+        let before = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        rewrite_keeping_size(&path, b"AAAAAAAAAA", before);
+        let rewrite = path.clone();
+        let err =
+            UploadSource::read_whole_with(path.to_str().unwrap(), "test upload", |p| async move {
+                let data = tokio::fs::read(p).await;
+                rewrite_keeping_size(&rewrite, b"BBBBBBBBBB", before + Duration::from_secs(1));
+                data
+            })
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains(UPLOAD_SOURCE_CHANGED_MARKER),
+            "{err}"
+        );
     }
 
     #[tokio::test]

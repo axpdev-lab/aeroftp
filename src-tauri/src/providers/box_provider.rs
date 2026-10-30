@@ -1593,8 +1593,12 @@ impl BoxProvider {
 
         // Commit
         // The whole-file SHA-1 is computed from the bytes read, so Box cannot
-        // tell a file rewritten during the read from the one on disk.
-        source.ensure_unchanged("Box chunked upload").await?;
+        // tell a file rewritten during the read from the one on disk. The
+        // refused session is deleted rather than left to expire.
+        if let Err(changed) = source.ensure_unchanged("Box chunked upload").await {
+            self.abort_upload_session_best_effort(&session.id).await;
+            return Err(changed);
+        }
 
         let file_sha1 = BASE64.encode(whole_sha1.finalize());
         let commit_body = serde_json::json!({"parts": parts});
@@ -4546,8 +4550,10 @@ mod tests {
         std::fs::write(&local, b"AAAAAAAAAAAA").unwrap();
         let parts: Arc<Mutex<u32>> = Arc::default();
         let commits: Arc<Mutex<u32>> = Arc::default();
+        let aborts: Arc<Mutex<u32>> = Arc::default();
         let (parts_h, commits_h, rewrite) =
             (Arc::clone(&parts), Arc::clone(&commits), local.clone());
+        let aborts_h = Arc::clone(&aborts);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind");
@@ -4598,6 +4604,19 @@ mod tests {
                 }),
             )
             .route(
+                "/files/upload_sessions/{id}",
+                axum::routing::delete(
+                    move |axum::extract::Path(id): axum::extract::Path<String>| {
+                        let aborts = Arc::clone(&aborts_h);
+                        async move {
+                            assert_eq!(id, "sess-rewrite");
+                            *aborts.lock().unwrap() += 1;
+                            axum::http::StatusCode::NO_CONTENT
+                        }
+                    },
+                ),
+            )
+            .route(
                 "/commit",
                 post(move || {
                     let commits = Arc::clone(&commits_h);
@@ -4611,7 +4630,8 @@ mod tests {
             axum::serve(listener, app).await.ok();
         });
 
-        let provider = fixture_connected();
+        let mut provider = fixture_connected();
+        provider.upload_base_override = Some(base.clone());
         let session = reqwest::Client::new()
             .post(format!("{base}/files/upload_sessions"))
             .send()
@@ -4632,6 +4652,11 @@ mod tests {
             *commits.lock().unwrap(),
             0,
             "the session must not be committed"
+        );
+        assert_eq!(
+            *aborts.lock().unwrap(),
+            1,
+            "the refused session must be deleted"
         );
         server.abort();
     }
