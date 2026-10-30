@@ -729,6 +729,32 @@ async fn durable_profile_auth_lifecycle(
     assert_eq!(mirrored(other_id), 1);
     assert_eq!(mirrored(active_id), 0);
 
+    // A file repeating an id holds one set of provider secrets: the first profile
+    // brings the chain, the later one stored under a new id does not.
+    let repeated_file = directory.path().join("repeated.aeroftp");
+    crate::export_server_profiles_core(
+        json!([jotta.clone(), jotta.clone()]).to_string(),
+        "fixture-export-password".into(),
+        true,
+        repeated_file.to_string_lossy().into_owned(),
+    )
+    .await
+    .unwrap();
+    let repeated = crate::import_server_profiles_with_mode(
+        repeated_file.to_string_lossy().into_owned(),
+        "fixture-export-password".into(),
+        ExistingProfileMode::Duplicate,
+        &[],
+        active,
+        true,
+    )
+    .await
+    .unwrap();
+    assert_eq!(repeated.servers.len(), 2);
+    assert_eq!(repeated.servers[1]["importOutcome"], "duplicated");
+    assert_eq!(repeated.jotta_chains.len(), 1);
+    assert_eq!(repeated.jotta_chains[0].id, repeated.servers[0]["id"]);
+
     // The profile whose own chain is the singleton refreshes it on an overwrite.
     users::store_active_credential_typed_dual(
         store,

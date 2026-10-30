@@ -211,6 +211,48 @@ async fn a_backup_of_a_profile_still_held_is_skipped_overwritten_or_duplicated()
     assert_eq!(preview["duplicated"][0], "lab (1)", "{preview}");
     assert_eq!(saved(config), original, "a dry run writes nothing");
 
+    // Restored secrets also reach the shared vault key, so a --user that is not
+    // the active account is refused; a dry run writes nothing and may preview it.
+    let added = cli(config, &["users", "add", "other"]);
+    assert!(added.status.success(), "{}", describe(&added));
+    let file_arg = file.to_str().unwrap();
+    let foreign = cli(
+        config,
+        &[
+            "--user",
+            "other",
+            "profile-import",
+            "-i",
+            file_arg,
+            "--password",
+            PASSWORD,
+            "--json",
+        ],
+    );
+    assert_eq!(foreign.status.code(), Some(1), "{}", describe(&foreign));
+    assert!(
+        String::from_utf8_lossy(&foreign.stdout).contains("must be the active one")
+            || String::from_utf8_lossy(&foreign.stderr).contains("must be the active one"),
+        "{}",
+        describe(&foreign)
+    );
+    let preview_other = json(&cli(
+        config,
+        &[
+            "--user",
+            "other",
+            "profile-import",
+            "-i",
+            file_arg,
+            "--password",
+            PASSWORD,
+            "--dry-run",
+            "--json",
+        ],
+    ));
+    assert_eq!(preview_other["dry_run"], true, "{preview_other}");
+    assert_eq!(saved(config), original, "the refusal wrote nothing");
+
     let duplicate = import(config, &backup, &["--on-existing", "duplicate"]);
     assert_eq!(duplicate["duplicated"], 1, "{duplicate}");
     assert_eq!(duplicate["similar"], 1, "{duplicate}");

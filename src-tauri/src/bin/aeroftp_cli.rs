@@ -42543,14 +42543,25 @@ async fn cmd_profile_import(
     // Restored secrets also go to the shared vault key, which an account without
     // its own copy reads, so they cannot be written for an account that is not the
     // active one. A dry run writes nothing.
-    if !dry_run && !is_active_user(&store, user_id) {
-        password.zeroize();
-        print_error(
-            format,
-            "--user must name the active account for profile-import, because restored secrets also reach the shared vault; run `users switch` first, or use --dry-run to preview",
-            1,
-        );
-        return 1;
+    if !dry_run {
+        let active = ftp_client_gui_lib::user_partitions::cli_get_active_user(&store);
+        match active.map(|user| user.map(|user| user.id)) {
+            Ok(active) if active == Some(user_id) => {}
+            Ok(_) => {
+                password.zeroize();
+                print_error(
+                    format,
+                    "the account named for this import (--user or AEROFTP_USER) must be the active one, because restored secrets also reach the shared vault; run `users switch` first, or use --dry-run to preview",
+                    1,
+                );
+                return 1;
+            }
+            Err(e) => {
+                password.zeroize();
+                print_error(format, &format!("cannot read the active account: {e}"), 1);
+                return 1;
+            }
+        }
     }
     // The plan compares the file with these profiles, so an unreadable list
     // is an error: read as empty, every profile would look new and an

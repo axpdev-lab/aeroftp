@@ -197,6 +197,18 @@ pub fn may_write_oauth_app(
     }
 }
 
+/// The error for secrets the import could not write, each given as
+/// `"<profile id> <kind>: <error>"`. It names each one by what comes before the
+/// `:` and leaves out the error text, which stays in the log because it could
+/// quote a value, and it says what the failure leaves behind and how to finish.
+pub fn failed_secrets_message(errors: &[String]) -> String {
+    let failed: Vec<&str> = errors.iter().map(|e| e.as_str()).collect();
+    format!(
+        "these secrets could not be stored: {}. No profile was saved, but the secrets written before the failure may already have replaced the stored ones; fix the cause and import the file again",
+        failed.join(", ")
+    )
+}
+
 /// How a report names a profile: its name, or `(host)` when it has none.
 pub fn display_name(name: &str, host: &str) -> String {
     if name.is_empty() {
@@ -320,17 +332,26 @@ pub fn same_target(a: &serde_json::Value, b: &serde_json::Value) -> bool {
         }
     };
     // `host:2222` with port 2222 reads as `host`, as in `isSameConnection`. A
-    // host name is case-insensitive, and only that part is folded: a path after
-    // it (a WebDAV URL, a repository) can be case-sensitive.
+    // scheme and a host name are case-insensitive, and only those are folded: a
+    // user name, path or query around them can be case-sensitive.
     let host = |p: &serde_json::Value| -> String {
         let host = p.get("host").and_then(|v| v.as_str()).unwrap_or("");
         let port = p.get("port").and_then(|v| v.as_u64()).unwrap_or(0);
         let host = host.strip_suffix(&format!(":{port}")).unwrap_or(host);
-        let authority = host.find("://").map_or(0, |at| at + 3);
-        let end = host[authority..]
-            .find('/')
-            .map_or(host.len(), |at| authority + at);
-        format!("{}{}", host[..end].to_ascii_lowercase(), &host[end..])
+        let scheme_end = host.find("://").map_or(0, |at| at + 3);
+        let end = host[scheme_end..]
+            .find(['/', '?', '#'])
+            .map_or(host.len(), |at| scheme_end + at);
+        let name_start = host[scheme_end..end]
+            .rfind('@')
+            .map_or(scheme_end, |at| scheme_end + at + 1);
+        format!(
+            "{}{}{}{}",
+            host[..scheme_end].to_ascii_lowercase(),
+            &host[scheme_end..name_start],
+            host[name_start..end].to_ascii_lowercase(),
+            &host[end..]
+        )
     };
     // The value a connection would use when a field is left out.
     let protocol = |p: &serde_json::Value| match present(p.get("protocol")) {
@@ -699,8 +720,14 @@ mod tests {
             moved["options"][key] = json!("other");
             assert!(!same_target(&stored, &moved), "{key}");
         }
-        // A host name is case-insensitive; a path after it is not.
+        // A host name is case-insensitive; a user name, path or query is not.
         let name = |host: &str| json!({"host": host, "port": 21, "username": "u"});
+        assert!(!same_target(&name("Alice@host"), &name("alice@host")));
+        assert!(same_target(&name("alice@HOST"), &name("alice@host")));
+        assert!(!same_target(
+            &name("https://h?Token=A"),
+            &name("https://h?token=a")
+        ));
         assert!(same_target(
             &name("FTP.Example.com"),
             &name("ftp.example.com")
@@ -730,6 +757,25 @@ mod tests {
         let no_protocol = json!({"host": "h", "port": 21, "username": "u"});
         let ftp = json!({"host": "h", "port": 21, "username": "u", "protocol": "ftp"});
         assert!(same_target(&no_protocol, &ftp));
+    }
+
+    /// The failure message names profile and kind, says what is left behind and
+    /// never carries the error text, which could quote a secret.
+    #[test]
+    fn the_failed_secrets_message_names_what_failed_and_no_error_text() {
+        let message = failed_secrets_message(&[
+            "srv_a oauth: invalid value \"hunter2\" at line 1".to_string(),
+            "srv_b jotta: disk full".to_string(),
+        ]);
+        assert!(message.contains("srv_a oauth, srv_b jotta"), "{message}");
+        assert!(
+            message.contains("may already have replaced the stored ones"),
+            "{message}"
+        );
+        assert!(message.contains("No profile was saved"), "{message}");
+        assert!(message.contains("import the file again"), "{message}");
+        assert!(!message.contains("hunter2"), "{message}");
+        assert!(!message.contains("disk full"), "{message}");
     }
 
     /// The GUI sends the mode as a lowercase string.

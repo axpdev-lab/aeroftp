@@ -18298,8 +18298,8 @@ fn active_server_profiles_for_import() -> Result<(i64, Vec<serde_json::Value>), 
 /// profile list (the GUI through its partition layer, the CLI through its own).
 ///
 /// `expected_user` is the user whose profiles `current` holds, and every secret
-/// is written for that user, so an account switched during the import, or a CLI
-/// `--user` naming another account than the active one, cannot misplace them.
+/// is written for that user, so an account switched during the import cannot
+/// receive the partition copy.
 ///
 /// An overwrite the file would point at another server ([`profile_import_plan::same_target`])
 /// or over a weaker connection, is refused and reported: the stored secrets were
@@ -18485,8 +18485,10 @@ fn vault_value(
 /// Jottacloud chain) are written only when empty or already this profile's or
 /// app's own ([`profile_import_plan::may_write_shared`]), never over another
 /// profile's; a custom OAuth app left out that way is reported. Fails when the
-/// vault is not open and a profile to store carries secrets, or when any secret
-/// could not be written, so the caller saves no profile.
+/// vault is not open and a profile to store carries secrets, or when a credential
+/// or token could not be written, so the caller saves no profile; secrets written
+/// before that failure stay, as the error says. A native Proton session that
+/// cannot be restored is only logged: its profile asks for a new sign-in.
 fn restore_imported_secrets(
     servers: &[profile_export::ServerProfileExport],
     provider_secrets: &std::collections::HashMap<String, profile_export::ProviderSecrets>,
@@ -18620,8 +18622,9 @@ fn restore_imported_secrets(
                                     }
                                 }
                                 (Ok(_), Ok(_)) => {}
+                                // Unreadable: left alone, the per-profile chain is stored.
                                 (Err(e), _) | (_, Err(e)) => {
-                                    cred_errors.push(format!("{profile_id} jotta singleton: {e}"))
+                                    log::warn!("Import: {profile_id} jotta singleton: {e}");
                                 }
                             }
                         }
@@ -18671,9 +18674,10 @@ fn restore_imported_secrets(
                             (Ok(_), Ok(_)) => {
                                 kept_oauth_apps.insert(profile_id.clone());
                             }
+                            // Unreadable: left alone, and reported like a kept app.
                             (Err(e), _) | (_, Err(e)) => {
                                 kept_oauth_apps.insert(profile_id.clone());
-                                cred_errors.push(format!("{profile_id} oauth app: {e}"));
+                                log::warn!("Import: {profile_id} oauth app: {e}");
                             }
                         }
                     }
@@ -18778,8 +18782,10 @@ fn restore_imported_secrets(
                         let key = format!("proton_native_session_{}", profile_id);
                         write_typed_secret(&key, "proton_native_session", v)
                     };
+                    // Not fatal: the fault can be in the file, where a retry could
+                    // never fix it, and the profile only asks for a new sign-in.
                     if let Err(e) = result {
-                        cred_errors.push(format!("{} proton session: {}", profile_id, e));
+                        log::warn!("Import: {profile_id} proton session not restored: {e}");
                     }
                 }
                 if let Some(auth) = &secrets.profile_auth {
@@ -18818,10 +18824,7 @@ fn restore_imported_secrets(
     // or keep an older one under a new configuration.
     if !cred_errors.is_empty() {
         log::warn!("Import credential issues: {:?}", cred_errors);
-        return Err(format!(
-            "{} secret(s) could not be stored, so no profile was saved; fix the cause and import the file again",
-            cred_errors.len()
-        ));
+        return Err(profile_import_plan::failed_secrets_message(&cred_errors));
     }
     Ok(RestoredImportSecrets {
         aerocrypt_pw: restored_aerocrypt_pw,
