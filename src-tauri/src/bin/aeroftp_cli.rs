@@ -42871,7 +42871,7 @@ fn lay_import_over(
     list: &mut Vec<serde_json::Value>,
     servers: &[serde_json::Value],
 ) -> Result<(), String> {
-    use ftp_client_gui_lib::profile_import_plan::overwrite_profile;
+    use ftp_client_gui_lib::profile_import_plan::{overwrite_profile, same_target};
     for profile in servers {
         let mut profile = profile.clone();
         let overwrite =
@@ -42883,7 +42883,17 @@ fn lay_import_over(
             .iter()
             .position(|p| p.get("id").is_some() && p.get("id") == profile.get("id"));
         match (overwrite, slot) {
-            (true, Some(i)) => list[i] = overwrite_profile(&list[i], &profile),
+            (true, Some(i)) => {
+                // Planned against the list read earlier: the record may have been
+                // pointed elsewhere since, and its secrets must not follow the file.
+                if !same_target(&list[i], &profile) {
+                    let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                    return Err(format!(
+                        "profile {id} was pointed at another server by another window or process during the import, so nothing was written"
+                    ));
+                }
+                list[i] = overwrite_profile(&list[i], &profile);
+            }
             (false, Some(_)) => {
                 let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
                 return Err(format!(
@@ -80898,14 +80908,15 @@ mod tests {
             json!({"id": "b", "name": "B"}),
         ];
         let servers = vec![
-            json!({"id": "a", "name": "A", "host": "new", "importOutcome": "overwritten"}),
+            json!({"id": "a", "name": "A", "host": "old", "initialPath": "/new",
+                "importOutcome": "overwritten"}),
             json!({"id": "c", "name": "C", "importOutcome": "added"}),
             json!({"id": "gone", "name": "G", "importOutcome": "overwritten"}),
         ];
         lay_import_over(&mut list, &servers).unwrap();
         let ids: Vec<&str> = list.iter().map(|p| p["id"].as_str().unwrap()).collect();
         assert_eq!(ids, ["a", "b", "c", "gone"]);
-        assert_eq!(list[0]["host"], "new");
+        assert_eq!(list[0]["initialPath"], "/new");
         assert_eq!(list[0]["color"], "#f00");
         assert!(list.iter().all(|p| p.get("importOutcome").is_none()));
 
@@ -80923,6 +80934,15 @@ mod tests {
         ];
         let err = lay_import_over(&mut fresh, &stale).unwrap_err();
         assert!(err.contains("profile c was saved by another"), "{err}");
+
+        // A record pointed elsewhere since the plan refuses the write.
+        let mut moved = vec![json!({"id": "a", "host": "elsewhere"})];
+        let stale = vec![json!({"id": "a", "host": "old", "importOutcome": "overwritten"})];
+        let err = lay_import_over(&mut moved, &stale).unwrap_err();
+        assert!(
+            err.contains("profile a was pointed at another server"),
+            "{err}"
+        );
 
         // A secret the file does not carry stays stored: its flag stays set.
         let mut list = vec![json!({"id": "a", "hasStoredAeroCryptPassword": true})];

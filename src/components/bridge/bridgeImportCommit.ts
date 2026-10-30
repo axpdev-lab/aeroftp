@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { invoke } from '@tauri-apps/api/core';
 import { ServerProfile } from '../../types';
 import { readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 
@@ -133,14 +134,17 @@ export function overwriteProfile(stored: ServerProfile, imported: ServerProfile)
  *   from another window in the meantime) is appended too, never dropped.
  * @param expectedUserId the account the import was made for: the one a
  *   `.aeroftp` import compared the file with and restored the secrets into
- *   (`userId` of its report), or the one a bridge import removed the profiles
- *   it updates from. A vault that reads no account (the legacy store) is not
- *   that account either, and is refused too.
+ *   (`userId` of its report), or the one a bridge import read before removing
+ *   the profiles it updates (`null`: it read the legacy store, which has no
+ *   account). Undefined skips the check. An account that is not this one is
+ *   refused, including one that became active after a legacy read.
  * @throws when the vault's active account is not `expectedUserId` (switched
- *   from another window during the import), or when a profile to append has an
- *   id the vault already holds, or two profiles of this batch share one id:
- *   another window or process saved it after the import was planned, and
- *   storing it would leave two profiles of one id. Nothing is written then.
+ *   from another window during the import); when a profile to append has an id
+ *   the vault already holds, or two profiles of this batch share one id: another
+ *   window or process saved it after the import was planned, and storing it
+ *   would leave two profiles of one id; or when a stored profile to replace was
+ *   pointed at another server since (`profile_same_target`), whose secrets must
+ *   not follow the file. Nothing is written then.
  */
 export async function appendImportedProfiles(
     newServers: ServerProfile[],
@@ -148,7 +152,7 @@ export async function appendImportedProfiles(
     expectedUserId?: number | null,
 ): Promise<ServerProfile[]> {
     const { profiles: current, userId } = await readSavedServerProfilesForWrite();
-    if (expectedUserId != null && userId !== expectedUserId) {
+    if (expectedUserId !== undefined && (userId ?? null) !== expectedUserId) {
         throw new Error('The active account changed during the import, so the profiles were not saved. Make the account you imported into the active one again and import the same file again.');
     }
     const currentIds = new Set(current.map(s => s.id));
@@ -163,6 +167,12 @@ export async function appendImportedProfiles(
         seen.add(server.id);
     }
     const replacing = new Map(newServers.filter(s => replaceIds.has(s.id)).map(s => [s.id, s]));
+    for (const stored of current) {
+        const imported = replacing.get(stored.id);
+        if (imported && !(await invoke<boolean>('profile_same_target', { stored, imported }))) {
+            throw new Error(`Profile ${stored.id} was pointed at another server by another window during the import, so nothing was written.`);
+        }
+    }
     const merged = [
         ...current.map(s => {
             const imported = replacing.get(s.id);

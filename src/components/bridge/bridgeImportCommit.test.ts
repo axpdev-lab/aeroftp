@@ -3,8 +3,10 @@ import type { ServerProfile } from '../../types';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { appendImportedProfiles, bridgeProfileKey, commitImportedServers, OMITTED_WHEN_EMPTY, OPTIONS_SECRET_KEYS, overwriteProfile, STORED_SECRET_FLAGS } from './bridgeImportCommit';
+import { invoke } from '@tauri-apps/api/core';
 import { readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockResolvedValue(true) }));
 vi.mock('../../utils/serverProfileStore', () => ({
     readSavedServerProfilesForWrite: vi.fn(), storeSavedServerProfiles: vi.fn().mockResolvedValue(undefined),
 }));
@@ -99,6 +101,26 @@ describe('the import callback and the commit helper together', () => {
         await expect(appendImportedProfiles([one, two])).rejects.toThrow('share the id twin');
         const again: ServerProfile = { ...base, name: 'Again' };
         await expect(appendImportedProfiles([base, again], new Set([base.id]))).rejects.toThrow(`share the id ${base.id}`);
+        expect(vault.writes).toBe(0);
+    });
+
+    // A bridge that read the legacy store expects no account (null): one that
+    // became active since must not receive the profiles.
+    it('refuses to write to an account that became active after a legacy read', async () => {
+        const vault = fakeVault([]);
+        const imported: ServerProfile = { ...base, id: 'imported' };
+        await expect(appendImportedProfiles([imported], new Set(), null)).rejects.toThrow('active account changed');
+        expect(vault.writes).toBe(0);
+    });
+
+    // The record was pointed elsewhere after the backend planned this overwrite:
+    // its secrets must not follow the file. The rule is asked of the backend.
+    it('refuses to replace a profile pointed at another server since the plan', async () => {
+        const vault = fakeVault([base]);
+        vi.mocked(invoke).mockResolvedValueOnce(false);
+        const overwritten: ServerProfile = { ...base, name: 'From the file' };
+        await expect(appendImportedProfiles([overwritten], new Set([base.id]))).rejects.toThrow('pointed at another server');
+        expect(invoke).toHaveBeenCalledWith('profile_same_target', { stored: base, imported: overwritten });
         expect(vault.writes).toBe(0);
     });
 

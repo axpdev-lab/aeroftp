@@ -18242,6 +18242,14 @@ pub async fn export_server_profiles_core(
     .map_err(|e| e.to_string())
 }
 
+/// Whether a stored profile's secrets may follow `imported`
+/// ([`profile_import_plan::same_target`]). The GUI asks at write time, against
+/// the record it just read, so the rule stays in one place.
+#[tauri::command]
+fn profile_same_target(stored: serde_json::Value, imported: serde_json::Value) -> bool {
+    profile_import_plan::same_target(&stored, &imported)
+}
+
 /// GUI My Servers > Import: import a `.aeroftp` file into the active user's
 /// vault, with `existing` (Skip when absent) deciding what happens to a profile
 /// the user already has. The frontend writes the returned profiles.
@@ -21076,6 +21084,7 @@ pub fn run() {
             // Profile Export/Import
             export_server_profiles,
             import_server_profiles,
+            profile_same_target,
             // Generic profile bridge (12 expansion sources)
             bridge_commands::detect_bridge_config,
             bridge_commands::bridge_source_meta,
