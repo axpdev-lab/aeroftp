@@ -15,7 +15,7 @@ import { getTotalServiceCount } from './discoverData';
 import { getProviderById } from '../../providers';
 import { newFormTabOptions } from './newFormTabOptions';
 import { useTranslation } from '../../i18n';
-import { announceStoredServerProfiles, loadSavedServerProfiles } from '../../utils/serverProfileStore';
+import { loadSavedServerProfiles } from '../../utils/serverProfileStore';
 import { appendImportedProfiles } from '../bridge/bridgeImportCommit';
 import type { ProviderType } from '../../types';
 import type { CatalogCategoryId } from '../../types/catalog';
@@ -528,7 +528,6 @@ export function IntroHub(props: IntroHubProps) {
                         onServersChanged?.();
                     }}
                     onProfilesStored={(stored) => {
-                        announceStoredServerProfiles(stored);
                         setPaletteServers(stored);
                         onServersChanged?.();
                     }}

@@ -417,6 +417,20 @@ async fn parallel_imports_leave_the_list_and_the_secret_of_one_backup() {
     );
 }
 
+/// The file called `name` somewhere under `dir`.
+fn find_file(dir: &Path, name: &str) -> Option<std::path::PathBuf> {
+    std::fs::read_dir(dir).ok()?.flatten().find_map(|entry| {
+        let path = entry.path();
+        if path.file_name().is_some_and(|n| n == name) {
+            Some(path)
+        } else if path.is_dir() {
+            find_file(&path, name)
+        } else {
+            None
+        }
+    })
+}
+
 /// An account store that cannot be opened stops the import with what to do next:
 /// nothing falls back to the legacy blob, whose list would never reach the store.
 #[test]
@@ -452,19 +466,7 @@ fn an_unreadable_account_store_refuses_the_import_and_says_what_to_do() {
     );
     assert!(exported.status.success(), "{}", describe(&exported));
 
-    fn find(dir: &Path, name: &str) -> Option<std::path::PathBuf> {
-        std::fs::read_dir(dir).ok()?.flatten().find_map(|entry| {
-            let path = entry.path();
-            if path.file_name().is_some_and(|n| n == name) {
-                Some(path)
-            } else if path.is_dir() {
-                find(&path, name)
-            } else {
-                None
-            }
-        })
-    }
-    let db = find(config, "user_partitions.db").expect("the account store");
+    let db = find_file(config, "user_partitions.db").expect("the account store");
     std::fs::write(
         &db,
         b"not a database, long enough to be read as a broken header",
@@ -488,4 +490,42 @@ fn an_unreadable_account_store_refuses_the_import_and_says_what_to_do() {
         "{}",
         describe(&refused)
     );
+}
+
+/// An rclone import writes a crypt remote's secrets before the list transaction,
+/// so they also reach the partition row the connect path reads first: written
+/// inside it, the row was refused as busy and lost, silently.
+#[test]
+fn an_rclone_crypt_import_stores_its_secrets_in_the_partition() {
+    let config = tempfile::tempdir().unwrap();
+    let config = config.path();
+    let conf = config.join("rclone.conf");
+    std::fs::write(
+        &conf,
+        "[base]\ntype = sftp\nhost = sftp.example.invalid\nuser = smoke\n\n\
+         [vault]\ntype = crypt\nremote = base:\n\
+         password = Z5gL8_HnB9SyJT5RjJtYcEBwiBrSN8h0fHelLigK\n\
+         password2 = V98yILELzRn3G-7rg4ymQ3B0X0zgFAbWo74vIapw-YnWja9Jn3k\n",
+    )
+    .unwrap();
+    json(&cli(
+        config,
+        &[
+            "import",
+            "rclone",
+            conf.to_str().unwrap(),
+            "--apply",
+            "--json",
+        ],
+    ));
+    let db = find_file(config, "user_partitions.db").expect("the account store");
+    let rows: i64 = rusqlite::Connection::open(db)
+        .unwrap()
+        .query_row(
+            "SELECT COUNT(*) FROM user_credentials WHERE credential_id LIKE 'aerocrypt_overlay_pw_%'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(rows, 1);
 }

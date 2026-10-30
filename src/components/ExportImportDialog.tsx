@@ -18,6 +18,8 @@ import { bridgeProfileKey } from './bridge/bridgeImportCommit';
 import { BridgeSourceDescriptor, GENERIC_BRIDGE_SOURCES } from './bridge/bridgeSources';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useDetectedBridgeConfigs, shortenConfigPath, orderBridgeSourcesByDetection } from '../hooks/useDetectedBridgeConfigs';
+import { announceStoredServerProfiles } from '../utils/serverProfileStore';
+import { accountChangeGeneration } from '../utils/userPartitions';
 import { ServerChecklistNoMatch, ServerChecklistSearch, ServerChecklistSummary, SelectShownButton, useServerChecklistFilter } from './ServerChecklistFilter';
 
 interface ExportImportDialogProps {
@@ -291,6 +293,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         setError(null);
         setImportWarning(null);
         try {
+            const accountBefore = accountChangeGeneration();
             const result = await invoke<ImportResult>('import_server_profiles', {
                 filePath,
                 password,
@@ -303,7 +306,10 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             // arrives as the error below, with nothing changed. A profile that
             // only shares host:port:username with an existing one is added and
             // counted as similar.
-            onProfilesStored(result.stored);
+            announceStoredServerProfiles(result.stored, accountBefore);
+            // A switch during the import brings its own re-read: this list is the
+            // previous account's.
+            if (accountChangeGeneration() === accountBefore) onProfilesStored(result.stored);
             const count = (outcome: ImportedServer['importOutcome']) =>
                 result.servers.filter(s => s.importOutcome === outcome).length;
             const overwritten = count('overwritten');

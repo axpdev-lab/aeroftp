@@ -164,8 +164,8 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.events.filter(e => e.detail?.title === 'connection.convertUndone')).toEqual([]);
     });
 
-    it.each(['read', 'write'] as const)('retains the Settings dialog and dirty state on %s failure', async fail => {
-        const f = fixture(fail);
+    it('retains the Settings dialog and dirty state when the saved profiles cannot be read', async () => {
+        const f = fixture('read');
         Object.assign(f.context, {
             saveState: 'idle', settings: { fontSize: 14, fontFamily: 'system', introHubIconSize: 32 },
             settingsBase: { current: { fontSize: 12, fontFamily: 'system', introHubIconSize: 32 } },
@@ -185,8 +185,8 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.context.setTimeout).not.toHaveBeenCalled();
         expect(f.context.invoke).not.toHaveBeenCalled();
         expect(f.events.filter(e => e.type === 'aeroftp-settings-changed')).toEqual([]);
-        if (fail === 'read') expect(f.context.updateAppSettings).not.toHaveBeenCalled();
-        else expect(f.store).toHaveBeenCalledWith(f.servers, false, 7, 'r7');
+        expect(f.context.updateAppSettings).not.toHaveBeenCalled();
+        expect(f.store).not.toHaveBeenCalled();
     });
 
     it('portable Settings save never changes the installed app autostart', async () => {

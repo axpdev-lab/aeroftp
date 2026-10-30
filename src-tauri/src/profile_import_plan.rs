@@ -314,6 +314,40 @@ pub fn roll_back_secret_writes<S: SecretSlots>(
     left
 }
 
+/// What became of [`write_secrets_and_commit`].
+pub enum SecretCommit<T> {
+    /// The list is stored, with the secrets written.
+    Done(T),
+    /// The list changed since it was read: the secrets are back, plan again.
+    Replan,
+}
+
+/// Write `writes`, then run `commit`, the list write. If that fails the secrets go
+/// back, and a list another writer changed asks for one more plan while
+/// `may_replan` holds. Any other failure, or a change on the last plan, is the
+/// error, joined by the keys that could not be put back.
+pub fn write_secrets_and_commit<S: SecretSlots, T>(
+    slots: &S,
+    writes: Vec<SecretWrite>,
+    may_replan: bool,
+    commit: impl FnOnce() -> Result<T, String>,
+) -> Result<SecretCommit<T>, String> {
+    let applied = apply_secret_writes(slots, writes)?;
+    match commit() {
+        Ok(done) => Ok(SecretCommit::Done(done)),
+        Err(e) => {
+            let left = roll_back_secret_writes(slots, applied);
+            if !left.is_empty() {
+                Err(failed_rollback_message(&e, &left))
+            } else if may_replan && e == crate::user_partitions::PROFILES_CHANGED {
+                Ok(SecretCommit::Replan)
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
 /// The error for a failed import that also left secrets it could not put back,
 /// named by key and never by value.
 pub fn failed_rollback_message(cause: &str, left: &[String]) -> String {
@@ -406,7 +440,7 @@ pub fn new_profile_id() -> String {
 
 /// The secret-presence flags of a profile. On an overwrite a secret the file
 /// does not carry stays in the vault, so its flag stays set too.
-pub const STORED_SECRET_FLAGS: [&str; 6] = [
+const STORED_SECRET_FLAGS: [&str; 6] = [
     "hasStoredCredential",
     "hasStoredFilenApiKey",
     "hasStoredAeroCryptPassword",
@@ -420,7 +454,7 @@ pub const STORED_SECRET_FLAGS: [&str; 6] = [
 /// nothing about the backup. An overwrite keeps the stored value, which for
 /// `aeroCryptOverlay` is also the safe side: turning an overlay off by accident
 /// would upload plaintext into an encrypted folder.
-pub const OMITTED_WHEN_EMPTY: [&str; 6] = [
+const OMITTED_WHEN_EMPTY: [&str; 6] = [
     "publicUrlBase",
     "customIconUrl",
     "faviconUrl",
@@ -1014,23 +1048,62 @@ mod tests {
         assert_eq!(values.get("server_b").map(String::as_str), Some("file-b"));
     }
 
+    /// A list write that fails takes the secrets back, except a value another
+    /// writer stored since, and the import fails with that write's error.
     #[test]
-    fn a_commit_that_fails_rolls_back_what_was_written_and_keeps_a_newer_value() {
+    fn a_failed_list_write_puts_the_secrets_back_and_keeps_a_newer_value() {
         let slots = FakeSlots::default();
-        let applied = match apply_secret_writes(&slots, secret_writes()) {
-            Ok(applied) => applied,
-            Err(message) => panic!("{message}"),
-        };
-        // Another window stored a newer secret after the import wrote its own.
-        slots
-            .values
-            .borrow_mut()
-            .insert("server_b".into(), "newer".into());
-        assert!(roll_back_secret_writes(&slots, applied).is_empty());
+        let result = write_secrets_and_commit(&slots, secret_writes(), true, || {
+            slots
+                .values
+                .borrow_mut()
+                .insert("server_b".into(), "newer".into());
+            Err::<(), _>("disk full".to_string())
+        });
+        assert_eq!(result.err().as_deref(), Some("disk full"));
         let values = slots.values.borrow();
         assert!(!values.contains_key("server_a"));
         assert_eq!(values.get("server_b").map(String::as_str), Some("newer"));
         assert!(!values.contains_key("server_c"));
+    }
+
+    /// A list changed under the import asks for one more plan, with the secrets
+    /// back; changed again on the last plan, it is the error.
+    #[test]
+    fn a_changed_list_is_planned_once_more_and_then_refused() {
+        use crate::user_partitions::PROFILES_CHANGED;
+        let slots = FakeSlots::default();
+        let replan = write_secrets_and_commit(&slots, secret_writes(), true, || {
+            Err::<(), _>(PROFILES_CHANGED.to_string())
+        });
+        assert!(matches!(replan, Ok(SecretCommit::Replan)));
+        assert!(slots.values.borrow().is_empty());
+        let last = write_secrets_and_commit(&slots, secret_writes(), false, || {
+            Err::<(), _>(PROFILES_CHANGED.to_string())
+        });
+        assert_eq!(last.err().as_deref(), Some(PROFILES_CHANGED));
+        assert!(slots.values.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_stored_list_keeps_the_secrets_and_a_key_left_behind_is_named() {
+        let slots = FakeSlots::default();
+        let done = write_secrets_and_commit(&slots, secret_writes(), true, || Ok(7));
+        assert!(matches!(done, Ok(SecretCommit::Done(7))));
+        assert_eq!(slots.values.borrow().len(), 3);
+
+        let slots = FakeSlots {
+            fail_restore: Some("server_a"),
+            ..Default::default()
+        };
+        let message = write_secrets_and_commit(&slots, secret_writes(), true, || {
+            Err::<(), _>("disk full".to_string())
+        })
+        .err()
+        .expect("the list write failed");
+        assert!(message.starts_with("disk full"), "{message}");
+        assert!(message.contains("server_a"), "{message}");
+        assert!(!message.contains("file-a"), "{message}");
     }
 
     #[test]

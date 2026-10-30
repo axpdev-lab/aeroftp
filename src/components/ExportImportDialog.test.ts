@@ -4,6 +4,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ServerProfile } from '../types';
 
+import { PROFILES_CHANGED_EVENT, type ProfilesChangedDetail } from '../utils/serverProfileStore';
+
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/webview', () => ({
     getCurrentWebview: () => ({ onDragDropEvent: async () => () => undefined }),
@@ -15,6 +17,12 @@ vi.mock('../utils/pickPath', () => ({
 vi.mock('../i18n', () => ({
     useTranslation: () => (key: string, params?: Record<string, unknown>) =>
         params ? `${key} ${JSON.stringify(params)}` : key,
+}));
+// An account switch or lock while an import runs, for the test that needs one.
+let accountChanges = 0;
+vi.mock('../utils/userPartitions', async original => ({
+    ...(await original<typeof import('../utils/userPartitions')>()),
+    accountChangeGeneration: () => accountChanges,
 }));
 vi.mock('./BridgeSourcePanel', () => ({ BridgeSourcePanel: () => null }));
 
@@ -124,6 +132,27 @@ describe('ExportImportDialog .aeroftp import', () => {
             vi.advanceTimersByTime(5000);
         });
         expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('does not hand the host the list of an account switched away from during the import', async () => {
+        vi.mocked(invoke).mockImplementation(async () => {
+            accountChanges += 1;
+            return {
+                servers: [{ id: 'srv_a', name: 'A', host: 'a.example', port: 21, username: 'u', importOutcome: 'added' }],
+                stored: [{ id: 'srv_a', name: 'A' }],
+                skipped: [], similar: 0, jottaChains: [], oauthAppsKept: [], sharedSecretsFailed: [], targetChanged: [],
+                totalInFile: 1, metadata: { exportDate: '', aeroftpVersion: '', serverCount: 1, hasCredentials: false },
+            };
+        });
+        const events: ProfilesChangedDetail[] = [];
+        const listen = (e: Event) => events.push((e as CustomEvent<ProfilesChangedDetail>).detail);
+        window.addEventListener(PROFILES_CHANGED_EVENT, listen);
+        const onProfilesStored = vi.fn();
+        await openImport(onProfilesStored, vi.fn());
+        await runImport('skip');
+        window.removeEventListener(PROFILES_CHANGED_EVENT, listen);
+        expect(onProfilesStored).not.toHaveBeenCalled();
+        expect(events).toEqual([{ connectionMetadata: false }]);
     });
 
     it('shows the error of a failed import, stores nothing and lets the import run again', async () => {

@@ -44,7 +44,7 @@ import { secureGetWithFallback } from '../utils/secureStorage';
 import { loadOAuthClientCredentials } from '../utils/oauthClientCredentials';
 import { keyReadFailure, notifyOAuthKeysUnavailable } from '../utils/oauthKeysMissing';
 import { dispatchMasterPasswordChanged } from '../utils/masterPasswordEvents';
-import { announceStoredServerProfiles, loadSavedServerProfiles, readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../utils/serverProfileStore';
+import { loadSavedServerProfiles, readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../utils/serverProfileStore';
 import { appendImportedProfiles } from './bridge/bridgeImportCommit';
 import {
     DEFAULT_APP_FONT_FAMILY,
@@ -851,14 +851,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             fontFamily: normalizeAppFontFamily(settings.fontFamily), introHubIconSize: clampIntroHubIconSize(settings.introHubIconSize) };
         try {
             const scope = await bindSettingsScope(new ConnectScope(() => { if (!panelOpen.current) throw new GuiError('lease_interrupted'); }));
-            // General settings must not replace a newer/unavailable partition
-            // with the list captured when this dialog was opened.
-            const { profiles: currentServers, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
+            // A partition that cannot be read refuses the save. The list itself is
+            // not written back: General settings do not change it, and a write
+            // would fail on, or invalidate, another window's save.
+            await readSavedServerProfilesForWrite();
             const committed = await updateAppSettings(existing => mergeAppSettingsDraft(base, captured,
                 { ...base, ...(existing || {}) }) as unknown as Record<string, unknown>, scope, true) as unknown as AppSettings;
             settingsBase.current = committed;
             setSettings(current => mergeAppSettingsDraft(captured, current, committed));
-            await storeSavedServerProfiles(currentServers, false, profilesUserId, profilesRevision);
             // Save OAuth secrets to secure credential store sequentially (avoid vault write races)
             const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'] as const;
             for (const p of providers) {
@@ -4032,7 +4032,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         onServersChanged?.();
                     }}
                     onProfilesStored={(stored) => {
-                        announceStoredServerProfiles(stored);
                         setServers(stored);
                         onServersChanged?.();
                     }}

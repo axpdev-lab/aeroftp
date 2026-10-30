@@ -775,6 +775,73 @@ async fn durable_profile_auth_lifecycle(
         assert!(read("server_rollback-new").is_none());
         assert!(store.get("server_rollback-new").is_err());
         assert_eq!(read("server_rollback-raced").unwrap().as_str(), "newer");
+
+        // A token private to an account lives in its partition alone, and a key
+        // a partition holds outside the prefix classes is updated there too: its
+        // reader prefers that row.
+        let other_slots = crate::VaultSecretSlots {
+            store,
+            user: other_id,
+        };
+        let partition = |key: &str| {
+            users::get_user_credential_for(
+                &users::open_or_init_cli().unwrap(),
+                &store.derive_user_partition_wrapping_key(),
+                other_id,
+                key,
+            )
+            .unwrap()
+            .map(|value| value.to_string())
+        };
+        users::store_credential_for_user(
+            store,
+            other_id,
+            "filen_api_key_rollback",
+            "filen_api_key",
+            "partition-before",
+        )
+        .unwrap();
+        let applied = apply_secret_writes(
+            &other_slots,
+            vec![
+                SecretWrite::new(
+                    "jottacloud_refresh_rollback".into(),
+                    Some("jottacloud_refresh"),
+                    "file-chain",
+                ),
+                SecretWrite::new("filen_api_key_rollback".into(), None, "file-key"),
+            ],
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(
+            partition("jottacloud_refresh_rollback").unwrap(),
+            "file-chain"
+        );
+        assert!(store.get("jottacloud_refresh_rollback").is_err());
+        assert_eq!(partition("filen_api_key_rollback").unwrap(), "file-key");
+        assert!(roll_back_secret_writes(&other_slots, applied).is_empty());
+        assert!(partition("jottacloud_refresh_rollback").is_none());
+        assert_eq!(
+            partition("filen_api_key_rollback").unwrap(),
+            "partition-before"
+        );
+        assert!(store.get("filen_api_key_rollback").is_err());
+
+        // Relocation takes the list lock too.
+        let held = users::ProfileListLock::acquire(&users::open_or_init_cli().unwrap())
+            .unwrap()
+            .unwrap();
+        let busy = users::cli_relocate_server_profile(
+            store,
+            active_id,
+            other_id,
+            source,
+            "rollback-copy",
+            None,
+            false,
+        );
+        assert_eq!(busy.err().as_deref(), Some(users::PROFILE_LIST_BUSY));
+        drop(held);
     }
 
     // A file repeating an id holds one set of provider secrets: the first profile

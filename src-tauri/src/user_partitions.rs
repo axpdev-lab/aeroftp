@@ -1595,8 +1595,9 @@ const PROFILE_LIST_LOCK_WAIT: std::time::Duration = if cfg!(test) {
 };
 
 /// An exclusive operating-system lock on the profile list of one database, which
-/// every writer of the list takes: an import for its secrets and its list
-/// together, any other for its write. The GUI and the CLI share it across
+/// every writer of the list takes, but for the migration on opening
+/// ([`init_or_migrate_cli`]): an import for its secrets and its list together, any
+/// other for its write. The GUI and the CLI share it across
 /// processes, and the system drops it when the holder exits, however it exits, so
 /// a crash leaves nothing to clean up. It sits next to the database it guards:
 /// another config directory (a portable copy, a test) has its own. Taken before
@@ -1618,52 +1619,72 @@ impl ProfileListLock {
         }
     }
 
-    /// Wait for the lock of the database at `db_path`, up to `wait`.
+    /// Wait for the lock of the database at `db_path`, up to one minute, for a
+    /// writer that replaces the file itself and has no connection to it.
+    pub fn acquire_for_path(db_path: &std::path::Path) -> Result<Self, String> {
+        Self::acquire_within(db_path, PROFILE_LIST_LOCK_WAIT)
+    }
+
+    /// Wait for the lock of the database at `db_path`, up to `wait`. The path is
+    /// resolved first, as SQLite resolves the one a connection reports, so a data
+    /// folder reached through a symbolic link still has one lock. A wait on a
+    /// runtime worker hands its other tasks over first, and stays on this thread,
+    /// which holds the session.
     pub fn acquire_within(
         db_path: &std::path::Path,
         wait: std::time::Duration,
     ) -> Result<Self, String> {
-        if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create user partitions dir: {e}"))?;
-        }
+        let parent = db_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create user partitions dir: {e}"))?;
+        let resolved = std::fs::canonicalize(db_path).or_else(|_| {
+            std::fs::canonicalize(parent)
+                .map(|dir| dir.join(db_path.file_name().unwrap_or_default()))
+        });
+        let resolved = resolved.map_err(|e| format!("Resolve user partitions dir: {e}"))?;
         let file = std::fs::OpenOptions::new()
             .create(true)
             .truncate(false)
             .write(true)
-            .open(db_path.with_extension("write-lock"))
+            .open(resolved.with_extension("write-lock"))
             .map_err(|e| format!("Open profile list lock: {e}"))?;
-        let deadline = std::time::Instant::now() + wait;
-        loop {
-            match file.try_lock() {
-                Ok(()) => return Ok(Self { _file: file }),
-                Err(std::fs::TryLockError::Error(e)) => {
-                    return Err(format!("Take profile list lock: {e}"));
-                }
-                Err(std::fs::TryLockError::WouldBlock) => {}
-            }
-            if std::time::Instant::now() >= deadline {
-                return Err(PROFILE_LIST_BUSY.to_string());
-            }
-            std::thread::sleep(std::time::Duration::from_millis(100));
+        let take = || match file.try_lock() {
+            Ok(()) => Ok(true),
+            Err(std::fs::TryLockError::WouldBlock) => Ok(false),
+            Err(std::fs::TryLockError::Error(e)) => Err(format!("Take profile list lock: {e}")),
+        };
+        if take()? {
+            return Ok(Self { _file: file });
         }
+        let wait_for_it = || {
+            let deadline = std::time::Instant::now() + wait;
+            loop {
+                if std::time::Instant::now() >= deadline {
+                    return Err(PROFILE_LIST_BUSY.to_string());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                if take()? {
+                    return Ok(());
+                }
+            }
+        };
+        let on_worker = tokio::runtime::Handle::try_current().is_ok_and(|handle| {
+            handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread
+        });
+        if on_worker {
+            tokio::task::block_in_place(wait_for_it)?;
+        } else {
+            wait_for_it()?;
+        }
+        Ok(Self { _file: file })
     }
 }
 
 /// Refusal of a writer that waited for [`ProfileListLock`] in vain.
 pub const PROFILE_LIST_BUSY: &str =
     "PROFILE_LIST_BUSY: another import or restore is still writing the saved profiles; nothing was saved, try again when it finishes";
-
-/// The active user's profiles together with that user's id, read on one
-/// connection, so a later write can be bound to the account they came from
-/// (see [`replace_expected_server_profiles`]).
-pub fn list_active_server_profiles_scoped(
-    conn: &Connection,
-    root_key: &[u8; 32],
-) -> Result<(i64, Vec<Value>), String> {
-    let user_id = active_user_id(conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
-    Ok((user_id, list_server_profiles_for(conn, root_key, user_id)?))
-}
 
 /// [`replace_active_server_profiles`] for a list read while `expected_user`
 /// was active. A read-modify-write takes seconds, and an account switched in
@@ -1961,7 +1982,6 @@ pub fn put_right_profile_names_in_db(
     let mut conn =
         Connection::open(db_path).map_err(|e| format!("Open user partitions DB: {e}"))?;
     let mut root_key = store.derive_user_partition_wrapping_key();
-    let _lock = ProfileListLock::acquire(&conn)?;
     let result = put_right_profile_names(&mut conn, &root_key);
     root_key.zeroize();
     result
@@ -1971,6 +1991,7 @@ fn put_right_profile_names(
     conn: &mut Connection,
     root_key: &[u8; 32],
 ) -> Result<(usize, usize), String> {
+    let _lock = ProfileListLock::acquire(conn)?;
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     let (mut renamed, mut left) = (0, 0);
     for user in list_users(conn)? {
@@ -3589,6 +3610,64 @@ pub fn store_credential_for_user_dual(
     Ok(())
 }
 
+/// The type `credential_id` is stored with in a partition: `credential_type` when
+/// the caller knows it, the one its prefix gives, or the one its row already
+/// carries. `None`: the key stays in the vault alone, as other writers keep it.
+fn partition_credential_type(
+    conn: &Connection,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: Option<&str>,
+) -> Result<Option<String>, String> {
+    if let Some(known) = credential_type.or_else(|| muv3_credential_type(credential_id)) {
+        return Ok(Some(known.to_string()));
+    }
+    conn.query_row(
+        "SELECT credential_type FROM user_credentials WHERE user_id = ?1 AND credential_id = ?2",
+        params![user_id, credential_id],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| format!("Read credential type: {e}"))
+}
+
+/// Write one secret of an import to everything that reads it, for `user_id`: the
+/// partition alone for a token private to that user, otherwise the vault and the
+/// partition row a reader prefers. Unlike the dual writers, a partition write
+/// that fails is an error: its reader would go on using the old secret, under a
+/// profile reported as imported.
+pub fn store_imported_credential_for_user(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: Option<&str>,
+    secret: &str,
+) -> Result<(), String> {
+    if let Some(private) = credential_type
+        .map(|kind| private_token_user(Some(user_id), kind))
+        .transpose()?
+        .flatten()
+    {
+        return store_credential_for_user(
+            store,
+            private,
+            credential_id,
+            credential_type.unwrap_or_default(),
+            secret,
+        );
+    }
+    store
+        .store(credential_id, secret)
+        .map_err(|e| format!("Store credential in vault: {e}"))?;
+    let conn = open_or_init_cli()?;
+    let Some(kind) = partition_credential_type(&conn, user_id, credential_id, credential_type)?
+    else {
+        return Ok(());
+    };
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    set_user_credential_for(&conn, &root_key, user_id, credential_id, &kind, secret)
+}
+
 /// What one credential key holds before an import writes it, in the vault and
 /// in `user`'s partition ([`snapshot_credential_for_user`]).
 pub struct CredentialSnapshot {
@@ -3648,17 +3727,9 @@ pub fn restore_credential_for_user(
     ) {
         RollbackAction::Leave => {}
         RollbackAction::Restore(value) => {
-            let credential_type = credential_type
-                .or_else(|| muv3_credential_type(credential_id))
+            let kind = partition_credential_type(&conn, user_id, credential_id, credential_type)?
                 .ok_or_else(|| format!("No credential type for {credential_id}"))?;
-            set_user_credential_for(
-                &conn,
-                &root_key,
-                user_id,
-                credential_id,
-                credential_type,
-                value,
-            )?;
+            set_user_credential_for(&conn, &root_key, user_id, credential_id, &kind, value)?;
         }
         RollbackAction::Delete => delete_user_credential_for(&conn, user_id, credential_id)?,
     }
@@ -4364,6 +4435,7 @@ pub fn admin_reset_user_passphrase(
     target_user_id: i64,
     new_passphrase: Option<&str>,
 ) -> Result<(), String> {
+    let _lock = ProfileListLock::acquire(conn)?;
     let status = user_unlock_status(conn)?;
     let actor_id = status
         .unlocked_user_id
@@ -4377,7 +4449,6 @@ pub fn admin_reset_user_passphrase(
         // destructive path from being used by mistake against self.
         return Err("ADMIN_RESET_NOT_FOR_SELF".to_string());
     }
-    let _lock = ProfileListLock::acquire(conn)?;
     // Generate the new DEK + wrapping key OUTSIDE the transaction so a
     // KDF failure does not leave the partition half-wiped.
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
@@ -4849,21 +4920,6 @@ pub fn cli_list_active_server_profiles(store: &CredentialStore) -> Result<Vec<Va
     let conn = open_or_init_cli()?;
     let mut root_key = store.derive_user_partition_wrapping_key();
     let result = list_active_server_profiles(&conn, &root_key);
-    root_key.zeroize();
-    result
-}
-
-/// Overwrite the active user's server profiles in the per-user partition.
-///
-/// Same locking semantics as [`cli_list_active_server_profiles`].
-pub fn cli_replace_active_server_profiles(
-    store: &CredentialStore,
-    profiles: &[Value],
-) -> Result<Vec<Value>, String> {
-    init_or_migrate_cli(store)?;
-    let mut conn = open_or_init_cli()?;
-    let mut root_key = store.derive_user_partition_wrapping_key();
-    let result = replace_active_server_profiles(&mut conn, &root_key, profiles);
     root_key.zeroize();
     result
 }
@@ -5708,6 +5764,7 @@ pub async fn user_partitions_repair_rebuild(
 ) -> Result<PartitionRebuildReport, String> {
     let path = db_path(&app)?;
     let mut report = PartitionRebuildReport::default();
+    let lock = ProfileListLock::acquire_for_path(&path)?;
 
     if path.is_file() {
         let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
@@ -5727,6 +5784,7 @@ pub async fn user_partitions_repair_rebuild(
 
     // Rebuild from the legacy credential vault under the local root_key.
     let migration = init_or_migrate(&app)?;
+    drop(lock);
     report.created_default_user = migration.created_default_user;
 
     // Count what came back readable on this machine.
@@ -7374,6 +7432,14 @@ mod tests {
             relocate_server_profile(&mut conn, &root, user, other.id, "p", "copy", None, false)
                 .map(|_| ())
                 .err(),
+            Some(busy.clone())
+        );
+        assert_eq!(
+            put_right_profile_names(&mut conn, &root).map(|_| ()).err(),
+            Some(busy.clone())
+        );
+        assert_eq!(
+            admin_reset_user_passphrase(&mut conn, &root, other.id, None).err(),
             Some(busy)
         );
         drop(held);
@@ -7441,8 +7507,8 @@ mod tests {
 
         // The edit form reads the default account's list...
         set_active_user(&conn, default.id).expect("switch default");
-        let (read_user, mut edited) =
-            list_active_server_profiles_scoped(&conn, &root).expect("scoped read");
+        let read_user = active_user_id(&conn).expect("active").expect("a user");
+        let mut edited = list_active_server_profiles(&conn, &root).expect("read");
         assert_eq!(read_user, default.id);
         edited[0]["name"] = json!("Edited");
 

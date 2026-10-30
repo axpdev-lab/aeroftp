@@ -2085,7 +2085,23 @@ fn import_keystore_with_store(
                     // explicitly remove them so SQLite does not try
                     // to replay a journal that refers to a different
                     // page layout.
-                    match atomic_write_synced(&target, &bytes) {
+                    // The file holds the profile list: no import may be writing it
+                    // while it is replaced. Busy, it stays as it is, like any write
+                    // that failed here.
+                    let list_lock = if name.as_str() == "user_partitions.db" {
+                        match crate::user_partitions::ProfileListLock::acquire_for_path(&target) {
+                            Ok(lock) => Some(lock),
+                            Err(e) => {
+                                tracing::warn!("SQLite restore failed for {}: {}", name, e);
+                                continue;
+                            }
+                        }
+                    } else {
+                        None
+                    };
+                    let written = atomic_write_synced(&target, &bytes);
+                    drop(list_lock);
+                    match written {
                         Ok(_) => {
                             let _ = std::fs::remove_file(cfg.join(format!("{name}-wal")));
                             let _ = std::fs::remove_file(cfg.join(format!("{name}-shm")));

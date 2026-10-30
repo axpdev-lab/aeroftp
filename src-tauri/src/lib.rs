@@ -18509,7 +18509,7 @@ pub async fn import_server_profiles_with_mode(
         user,
     };
 
-    let mut retried = false;
+    let mut replanned = false;
     loop {
         let (current, revision) =
             user_partitions::cli_read_active_profiles_at_revision(&store, user).map_err(|e| {
@@ -18535,8 +18535,6 @@ pub async fn import_server_profiles_with_mode(
         // profile's own when it holds the chain this profile held.
         let own_jotta_chains = own_jotta_chains(&store, &stored, &prepared.provider_secrets);
         let writes = import_secret_writes(&stored, &prepared.provider_secrets);
-        let applied = profile_import_plan::apply_secret_writes(&slots, writes)?;
-
         let report_servers: Vec<serde_json::Value> = {
             let restored = restored_import_secrets(&stored, &prepared.provider_secrets);
             prepared
@@ -18552,21 +18550,16 @@ pub async fn import_server_profiles_with_mode(
                 .collect()
         };
         let committed =
-            user_partitions::cli_update_profiles_at_revision(&store, user, &revision, |list| {
-                profile_import_plan::lay_import_over(list, &report_servers)
-            });
+            profile_import_plan::write_secrets_and_commit(&slots, writes, !replanned, || {
+                user_partitions::cli_update_profiles_at_revision(&store, user, &revision, |list| {
+                    profile_import_plan::lay_import_over(list, &report_servers)
+                })
+            })?;
         let (sent, list) = match committed {
-            Ok(written) => written,
-            Err(e) => {
-                let left = profile_import_plan::roll_back_secret_writes(&slots, applied);
-                if !left.is_empty() {
-                    return Err(profile_import_plan::failed_rollback_message(&e, &left));
-                }
-                if e == user_partitions::PROFILES_CHANGED && !retried {
-                    retried = true;
-                    continue;
-                }
-                return Err(e);
+            profile_import_plan::SecretCommit::Done(written) => written,
+            profile_import_plan::SecretCommit::Replan => {
+                replanned = true;
+                continue;
             }
         };
         // The blob mirrors the active account. The partition write succeeded, so
@@ -18603,21 +18596,13 @@ impl profile_import_plan::SecretSlots for VaultSecretSlots<'_> {
     }
 
     fn write(&self, write: &profile_import_plan::SecretWrite) -> Result<(), String> {
-        match write.kind {
-            Some(kind) => user_partitions::store_credential_for_user_typed_dual(
-                self.store,
-                self.user,
-                &write.key,
-                kind,
-                &write.value,
-            ),
-            None => user_partitions::store_credential_for_user_dual(
-                self.store,
-                self.user,
-                &write.key,
-                &write.value,
-            ),
-        }
+        user_partitions::store_imported_credential_for_user(
+            self.store,
+            self.user,
+            &write.key,
+            write.kind,
+            &write.value,
+        )
     }
 
     fn restore(

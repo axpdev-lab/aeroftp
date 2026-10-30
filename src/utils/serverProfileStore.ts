@@ -216,7 +216,7 @@ export const storeSavedServerProfiles = async (
         stored = uniqueProfileNames(Array.isArray(held) ? held : [], profiles);
         await secureStore(SAVED_SERVERS_ACCOUNT, stored);
     }
-    announceStoredServerProfiles(stored, connectionMetadata, accountBefore);
+    announceStoredServerProfiles(stored, accountBefore, connectionMetadata);
     return stored;
 };
 
@@ -227,8 +227,8 @@ export const storeSavedServerProfiles = async (
  */
 export const announceStoredServerProfiles = (
     stored: ServerProfile[],
+    accountBefore: number,
     connectionMetadata = false,
-    accountBefore = accountChangeGeneration(),
 ): void => {
     profilesWriteGeneration += 1;
     try {

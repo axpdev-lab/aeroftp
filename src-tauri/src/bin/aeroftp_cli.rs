@@ -13942,8 +13942,9 @@ fn reorder_saved_profiles(
 /// the result. The list is read and written under one lock and one transaction,
 /// so a save another window or process made since this command started is kept:
 /// any change to a saved list goes through here, never a read followed by a
-/// whole-list save. `change` must not save a list itself (the lock is not
-/// re-entrant); nothing is written when it fails. Returns its result, the list
+/// whole-list save. `change` runs inside that lock and transaction, so it only
+/// edits the JSON: a list save would wait on the lock, and a secret write on the
+/// transaction. Nothing is written when it fails. Returns its result, the list
 /// sent and the list stored (names made unique by the write). With the partition
 /// unavailable the change is laid over the list read and goes to the legacy blob
 /// through [`save_active_user_profiles`].
@@ -41287,28 +41288,37 @@ async fn apply_rclone_import_to_vault(
     // entries are preserved; new ids that already exist in the list are
     // skipped to keep the operation idempotent on retry. Falls back to the
     // legacy blob when the partition layer is unavailable (downgrade).
+    let held = load_active_user_profiles(cli, &store)
+        .map_err(|e| format!("Failed to read profiles: {e}. Nothing was added; unlock the account if it is locked, check that the AeroFTP data folder is readable, then run the import again"))?;
+    let has_id = |list: &[serde_json::Value], id: &str| {
+        list.iter()
+            .any(|p| p.get("id").and_then(|v| v.as_str()) == Some(id))
+    };
+    // Before the list write, whose transaction a secret write would wait on.
+    let mut imported = Vec::new();
+    for server in &result.servers {
+        if has_id(&held, &server.id) {
+            continue;
+        }
+        let profile = imported_server_profile(server, |key, secret| {
+            dual_store_server_cred_checked(&store, scoped_uid, key, secret)
+        })
+        .map_err(|e| format!("vault write failed for {}: {}", server.id, e))?;
+        imported.push((server.id.as_str(), profile));
+    }
     let (profiles_appended, profiles, stored) = update_active_user_profiles(
         cli,
         &store,
         |e| format!("vault write failed for server profiles: {e}"),
         |profiles| {
-            let existing_ids: std::collections::HashSet<String> = profiles
-                .iter()
-                .filter_map(|p| p.get("id").and_then(|v| v.as_str()).map(String::from))
-                .collect();
-            let mut profiles_appended = 0usize;
-            for server in &result.servers {
-                if existing_ids.contains(&server.id) {
-                    continue;
+            let mut appended = 0usize;
+            for (id, profile) in &imported {
+                if !has_id(profiles, id) {
+                    profiles.push(profile.clone());
+                    appended += 1;
                 }
-                let profile = imported_server_profile(server, |key, secret| {
-                    dual_store_server_cred_checked(&store, scoped_uid, key, secret)
-                })
-                .map_err(|e| format!("vault write failed for {}: {}", server.id, e))?;
-                profiles.push(profile);
-                profiles_appended += 1;
             }
-            Ok(profiles_appended)
+            Ok(appended)
         },
     )?;
     // Read from the list stored: only the write knows which profile had a
@@ -42635,6 +42645,12 @@ async fn cmd_profile_import(
         Ok(None) => {
             password.zeroize();
             print_error(format, "cannot read profiles: NO_ACTIVE_USER", 1);
+            return 1;
+        }
+        // A --user that names nobody says so; the store answered.
+        Err(e) if e.starts_with("USER_NOT_FOUND") => {
+            password.zeroize();
+            print_error(format, &format!("cannot read profiles: {e}"), 1);
             return 1;
         }
         Err(e) => {

@@ -305,6 +305,7 @@ import {
     unlockUser,
     writeDefaultAccountId,
     writeUsersListCache,
+  accountChangeGeneration,
 } from './utils/userPartitions';
 import KeystoreMigrationWizard from './components/KeystoreMigrationWizard';
 import { Checkbox } from './components/ui/Checkbox';
@@ -15065,6 +15066,7 @@ const App: React.FC = () => {
         }
 
         let result: ServerProfilesImportResult;
+        const accountBefore = accountChangeGeneration();
         try {
           result = await invoke<ServerProfilesImportResult>('import_server_profiles', {
             filePath,
@@ -15079,7 +15081,7 @@ const App: React.FC = () => {
           return;
         }
         // The backend stored secrets and list as one operation.
-        announceStoredServerProfiles(result.stored);
+        announceStoredServerProfiles(result.stored, accountBefore);
         setServersRefreshKey(k => k + 1);
         notify.success(
           (t('settings.importSuccess') || 'Imported {count} servers').replace('{count}', String(result.servers.length)),
@@ -17491,7 +17493,6 @@ const App: React.FC = () => {
               setServersRefreshKey(k => k + 1);
             }}
             onProfilesStored={(stored) => {
-              announceStoredServerProfiles(stored);
               setExportImportServers(stored);
               setServersRefreshKey(k => k + 1);
             }}
