@@ -771,6 +771,39 @@ impl SegmentedTemp {
 
     /// Remove the temporary while it is still claimed.
     pub fn discard(self) {}
+
+    /// Why the temporary's content is not the one `expected` names, or `None`
+    /// when it is or when there is no MD5 to compare with. Read without
+    /// `If-Match`, a window replaced and restored while the others ran passes
+    /// every reading of the object; only the content shows it.
+    pub async fn differs_from_md5(&self, expected: Option<&str>) -> Option<String> {
+        let expected = expected?;
+        let path = self.held.as_ref()?.path.clone();
+        file_differs_from_md5(path, expected).await
+    }
+}
+
+/// Why the file at `path` does not hash to the MD5 `expected`, or `None` when
+/// it does. A file that cannot be read differs: nothing shows it is the one.
+/// The hash reads the whole file on the blocking pool, so a large file costs
+/// its read time there and never holds up the runtime.
+pub async fn file_differs_from_md5(path: PathBuf, expected: &str) -> Option<String> {
+    let actual = tokio::task::spawn_blocking(move || -> std::io::Result<String> {
+        use md5::{Digest, Md5};
+        let mut hasher = Md5::new();
+        let mut file = std::fs::File::open(path)?;
+        std::io::copy(&mut file, &mut hasher)?;
+        Ok(format!("{:x}", hasher.finalize()))
+    })
+    .await;
+    match actual {
+        Ok(Ok(actual)) if actual.eq_ignore_ascii_case(expected) => None,
+        Ok(Ok(actual)) => Some(format!(
+            "the assembled content hashes to MD5 {actual}, not {expected}"
+        )),
+        Ok(Err(e)) => Some(format!("the assembled content could not be hashed: {e}")),
+        Err(e) => Some(format!("the assembled content could not be hashed: {e}")),
+    }
 }
 
 impl Drop for SegmentedTemp {
@@ -799,6 +832,10 @@ pub struct RangeSourceFingerprint {
     size: u64,
     modified: Option<String>,
     validator: Option<String>,
+    /// The content's MD5, when the provider publishes one. Not part of the
+    /// comparison between two readings: the entity tag it comes from is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    content_md5: Option<String>,
 }
 
 impl RangeSourceFingerprint {
@@ -806,6 +843,7 @@ impl RangeSourceFingerprint {
         Self {
             size: entry.size,
             modified: entry.modified.clone(),
+            content_md5: entry.metadata.get("md5").cloned(),
             validator: entry
                 .metadata
                 .get("etag")
@@ -837,6 +875,7 @@ impl RangeSourceFingerprint {
             size,
             modified: text(reqwest::header::LAST_MODIFIED),
             validator: text(reqwest::header::ETAG),
+            content_md5: None,
         })
     }
 
@@ -873,6 +912,11 @@ impl RangeSourceFingerprint {
     /// The validator to pin ranged reads to, when the provider published one.
     pub fn validator(&self) -> Option<String> {
         self.validator.clone()
+    }
+
+    /// The content's MD5 this reading found, when the provider publishes one.
+    pub fn content_md5(&self) -> Option<&str> {
+        self.content_md5.as_deref()
     }
 
     /// The size this reading found.
@@ -1096,17 +1140,23 @@ pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send>;
 /// attempt, the other stays behind for the single-stream path a refusal falls
 /// back to. The callback is `Send` and not `Sync`, so it is shared behind a
 /// lock rather than cloned; the two halves never run at the same time.
+///
+/// The value never goes back: a fallback counts from zero what the attempt had
+/// already reported, and a bar that shrinks makes the time left grow. The
+/// later half holds the last value until it passes it.
 pub fn share_progress(
     progress: Option<ProgressCallback>,
 ) -> (Option<ProgressCallback>, Option<ProgressCallback>) {
     let Some(progress) = progress else {
         return (None, None);
     };
-    let shared = Arc::new(std::sync::Mutex::new(progress));
-    let half = |shared: Arc<std::sync::Mutex<ProgressCallback>>| -> ProgressCallback {
+    let shared = Arc::new(std::sync::Mutex::new((progress, 0u64)));
+    let half = |shared: Arc<std::sync::Mutex<(ProgressCallback, u64)>>| -> ProgressCallback {
         Box::new(move |done, total| {
-            let progress = shared.lock().unwrap_or_else(|e| e.into_inner());
-            progress(done, total)
+            let mut guard = shared.lock().unwrap_or_else(|e| e.into_inner());
+            let (progress, reached) = &mut *guard;
+            *reached = (*reached).max(done);
+            progress(*reached, total)
         })
     };
     (Some(half(Arc::clone(&shared))), Some(half(shared)))
@@ -2609,11 +2659,13 @@ async fn http_range_source_moved(
             size: total,
             modified: last_modified.map(str::to_owned),
             validator: validator.map(str::to_owned),
+            content_md5: None,
         };
         let after = RangeSourceFingerprint {
             size: now_total,
             modified: now_modified.map(str::to_owned),
             validator: now_tag,
+            content_md5: None,
         };
         return before.differs_from(&after);
     }
@@ -2808,6 +2860,13 @@ pub(crate) mod pin_server {
         /// Refused, with readings that stay put while the unpinned windows,
         /// which carry no entity tag, say they belong to a larger object.
         RefusedWithLargerWindows,
+        /// Refused on an object whose entity tag is the MD5 of the bytes the
+        /// unpinned windows serve.
+        RefusedUnchangedMd5,
+        /// Refused on an object whose entity tag is an MD5, with untagged
+        /// unpinned windows from other content and readings that stay put: a
+        /// replacement restored before the last reading.
+        RefusedRestored,
         /// Refused, with readings that stay put while every unpinned window
         /// is answered `416`: an object shorter than the plan.
         RefusedThenShrunk,
@@ -2846,6 +2905,17 @@ pub(crate) mod pin_server {
     }
 
     pub(crate) async fn start(mode: PinMode) -> PinServer {
+        // The MD5 of what a plain GET serves, or of what a window serves.
+        let md5_tag = |byte: u8| -> &'static str {
+            use md5::{Digest, Md5};
+            let digest = Md5::digest(vec![byte; OBJECT_SIZE]);
+            Box::leak(format!("\"{digest:x}\"").into_boxed_str())
+        };
+        let content_tag = match mode {
+            PinMode::RefusedUnchangedMd5 => Some(md5_tag(7)),
+            PinMode::RefusedRestored => Some(md5_tag(9)),
+            _ => None,
+        };
         let readings = Arc::new(AtomicUsize::new(0));
         let refused = Arc::new(AtomicUsize::new(0));
         let unpinned = Arc::new(AtomicUsize::new(0));
@@ -2870,12 +2940,13 @@ pub(crate) mod pin_server {
                     let reading_tag = match mode {
                         PinMode::UntaggedRangesRefused => None,
                         _ if replaced => Some("\"v2\""),
-                        _ => Some("\"v1\""),
+                        _ => Some(content_tag.unwrap_or("\"v1\"")),
                     };
                     let window_tag = match mode {
                         PinMode::RefusedThenReplacedUnpinned
                         | PinMode::UntaggedRangesRefused
-                        | PinMode::RefusedWithLargerWindows => None,
+                        | PinMode::RefusedWithLargerWindows
+                        | PinMode::RefusedRestored => None,
                         PinMode::RefusedWithStaleReadings => Some("\"v2\""),
                         _ => reading_tag,
                     };
@@ -2953,10 +3024,19 @@ pub(crate) mod pin_server {
                                 .body(axum::body::Body::from(vec![7u8; end - start + 1]))
                                 .unwrap()
                         }
-                        None => respond(StatusCode::OK, reading_tag)
-                            .header("content-length", OBJECT_SIZE.to_string())
-                            .body(axum::body::Body::from(vec![9u8; OBJECT_SIZE]))
-                            .unwrap(),
+                        None => {
+                            // A shorter object: only the whole read shows it,
+                            // since the readings stay put.
+                            let len = if mode == PinMode::RefusedThenShrunk {
+                                OBJECT_SIZE - 1
+                            } else {
+                                OBJECT_SIZE
+                            };
+                            respond(StatusCode::OK, reading_tag)
+                                .header("content-length", len.to_string())
+                                .body(axum::body::Body::from(vec![9u8; len]))
+                                .unwrap()
+                        }
                     }
                 }
             }));
@@ -5599,11 +5679,13 @@ mod tests {
             size: 2048,
             modified: Some("2026-09-21T00:00:00Z".into()),
             validator: None,
+            content_md5: None,
         };
         let after = RangeSourceFingerprint {
             size: 2048,
             modified: None,
             validator: None,
+            content_md5: None,
         };
         assert!(
             before.differs_from(&after).is_some(),
@@ -6212,6 +6294,25 @@ mod tests {
             server.refused()
         );
         assert_eq!(server.readings(), 1, "the planning probe only");
+    }
+
+    /// A fallback counts from zero what the attempt already reported. The bar
+    /// holds until it passes that, and still reaches the end.
+    #[test]
+    fn shared_progress_never_goes_back() {
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = Arc::clone(&seen);
+        let (attempt, fallback) = share_progress(Some(Box::new(move |done, total| {
+            sink.lock().unwrap().push((done, total));
+        })));
+        let (attempt, fallback) = (attempt.unwrap(), fallback.unwrap());
+        attempt(40, 100);
+        fallback(10, 100);
+        fallback(100, 100);
+        assert_eq!(
+            *seen.lock().unwrap(),
+            vec![(40, 100), (40, 100), (100, 100)]
+        );
     }
 
     #[test]

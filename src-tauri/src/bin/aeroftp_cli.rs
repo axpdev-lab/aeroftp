@@ -36293,6 +36293,12 @@ async fn pget_segmented_download(
                 temp.discard();
                 return interrupted_exit(None, format, "the download did not finish").await;
             };
+            // Read without If-Match, a replacement restored before that reading
+            // leaves it unmoved; the content shows it where an MD5 is published.
+            let changed = match changed {
+                None if !pinned => temp.differs_from_md5(before.content_md5()).await,
+                other => other,
+            };
             if changed.is_some() {
                 temp.discard();
                 report_download_fallback(
@@ -66756,6 +66762,12 @@ async fn digest_in_order_attempt(
         return Ok(Some(size));
     }
 
+    // Read without If-Match, a replacement restored before the reading below
+    // leaves it unmoved; the content shows it where an MD5 is published.
+    let mut content = before
+        .content_md5()
+        .filter(|_| !send_pin)
+        .map(|expected| (expected, <md5::Md5 as md5::Digest>::new()));
     let cancel = tokio_util::sync::CancellationToken::new();
     let (read, mut workers) = read_in_order(
         workers,
@@ -66764,7 +66776,12 @@ async fn digest_in_order_attempt(
         before.validator(),
         IN_ORDER_WINDOW,
         &cancel,
-        |bytes| digest.update(bytes),
+        |bytes| {
+            digest.update(bytes);
+            if let Some((_, hasher)) = content.as_mut() {
+                md5::Digest::update(hasher, bytes);
+            }
+        },
     )
     .await;
     // The windows came over separate connections: an object replaced
@@ -66782,6 +66799,16 @@ async fn digest_in_order_attempt(
         return Err(ProviderError::TransferFailed(format!(
             "{path} changed while it was hashed: {why}"
         )));
+    }
+    // A refusal, not a failure: the object as it stands can still be hashed
+    // whole.
+    if let Some((expected, hasher)) = content {
+        let actual = format!("{:x}", md5::Digest::finalize(hasher));
+        if !actual.eq_ignore_ascii_case(expected) {
+            return Err(ProviderError::ParallelRefused(format!(
+                "{path}: the windows hash to MD5 {actual}, not {expected}"
+            )));
+        }
     }
     Ok(Some(size))
 }
@@ -67122,7 +67149,8 @@ mod hashsum_digest_tests {
     /// replaced after one refusal, 6 as 4 with the unpinned ranges coming from
     /// a replacement, under its own tag, while the HEAD and a whole GET stay
     /// at the first version, 7 as 4 with the first HEAD after a refusal
-    /// answered `404`.
+    /// answered `404`, 8 as 4 with the entity tag the MD5 of the content, 9 as
+    /// 8 with the unpinned ranges, untagged, coming from a replacement.
     pub(super) async fn range_hash_fixture(
         size: usize,
         body_delta: isize,
@@ -67185,9 +67213,14 @@ mod hashsum_digest_tests {
                                 if (range_mode == 3 && whole_gets.load(Ordering::SeqCst) > 0)
                                     || (range_mode == 5 && refused.load(Ordering::SeqCst) > 0)
                                 {
-                                    "\"changed-version\""
+                                    "\"changed-version\"".to_string()
+                                } else if matches!(range_mode, 8 | 9) {
+                                    format!(
+                                        "\"{:x}\"",
+                                        <md5::Md5 as md5::Digest>::digest(served.as_slice())
+                                    )
                                 } else {
-                                    "\"fixed-version\""
+                                    "\"fixed-version\"".to_string()
                                 },
                             )
                             .header("accept-ranges", "bytes")
@@ -67202,12 +67235,28 @@ mod hashsum_digest_tests {
                         }
                         // Modes 4, 5 and 6 refuse every range pinned with
                         // If-Match and serve the others.
-                        if matches!(range_mode, 4..=7) && request.headers().contains_key("if-match")
+                        if matches!(range_mode, 4..=9) && request.headers().contains_key("if-match")
                         {
                             refused.fetch_add(1, Ordering::SeqCst);
                             return Response::builder()
                                 .status(StatusCode::PRECONDITION_FAILED)
                                 .body(Body::empty())
+                                .unwrap();
+                        }
+                        if range_mode == 9 {
+                            let (start, end) = range
+                                .to_str()
+                                .unwrap()
+                                .strip_prefix("bytes=")
+                                .unwrap()
+                                .split_once('-')
+                                .unwrap();
+                            let start: usize = start.parse().unwrap();
+                            let end: usize = end.parse().unwrap();
+                            return Response::builder()
+                                .status(StatusCode::PARTIAL_CONTENT)
+                                .header("content-range", format!("bytes {start}-{end}/{size}"))
+                                .body(Body::from(replaced[start..=end].to_vec()))
                                 .unwrap();
                         }
                         if range_mode == 6 {
@@ -67227,7 +67276,7 @@ mod hashsum_digest_tests {
                                 .body(Body::from(replaced[start..=end].to_vec()))
                                 .unwrap();
                         }
-                        if matches!(range_mode, 1 | 2 | 4 | 5) {
+                        if matches!(range_mode, 1 | 2 | 4 | 5 | 7 | 8) {
                             let (start, end) = range
                                 .to_str()
                                 .unwrap()
@@ -67470,6 +67519,48 @@ mod hashsum_digest_tests {
         assert!(warnings.take().is_empty());
         // The reading before the windows, the diagnosis, the reading after.
         assert_eq!(fixture.heads.load(Ordering::SeqCst), 3);
+    }
+
+    /// The entity tag is the content's MD5: unpinned windows that hash to it
+    /// give the digest with no whole download, and ones that do not, from a
+    /// replacement restored before the last reading, do not reach the result.
+    #[tokio::test]
+    async fn ranged_hashsum_checks_unpinned_windows_against_a_published_md5() {
+        for (mode, whole_gets) in [(8, 0), (9, 1)] {
+            let mut fixture = range_hash_fixture(
+                (ftp_client_gui_lib::providers::multi_thread::IN_ORDER_WINDOW * 2 + 31) as usize,
+                0,
+                mode,
+            )
+            .await;
+            let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+            let (hash, _size) = warnings
+                .scope(hashsum_digest(
+                    &mut fixture.provider,
+                    PATH,
+                    HashAlgorithm::Sha256,
+                    true,
+                ))
+                .await
+                .expect("the first version is hashed either way");
+            assert_eq!(
+                hash,
+                format!(
+                    "{:x}",
+                    <sha2::Sha256 as sha2::Digest>::digest(&fixture.body)
+                ),
+                "mode {mode}"
+            );
+            assert_eq!(
+                fixture.whole_gets.load(Ordering::SeqCst),
+                whole_gets,
+                "mode {mode}"
+            );
+            assert!(
+                fixture.unpinned_gets.load(Ordering::SeqCst) > 0,
+                "mode {mode}"
+            );
+        }
     }
 
     /// A stale HEAD and unpinned windows from a replacement under its own tag:
@@ -89783,6 +89874,32 @@ mod tests {
         );
         assert_eq!(std::fs::read(&out).unwrap(), fixture.body);
         assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+    }
+
+    /// Unpinned segments that do not hash to a published MD5, from a
+    /// replacement restored before the last reading, are not published; ones
+    /// that do are.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn pget_checks_unpinned_segments_against_a_published_md5() {
+        for (mode, whole_gets) in [(8, 0), (9, 1)] {
+            let size = 8 * 1024 * 1024 + 31;
+            let fixture = super::hashsum_digest_tests::range_hash_fixture(size, 0, mode).await;
+            let dir = tempfile::tempdir().unwrap();
+            let out = dir.path().join("f.bin");
+            let (code, warnings) = pget_against(
+                fixture.provider.clone(),
+                size as u64,
+                out.to_string_lossy().into_owned(),
+            )
+            .await;
+            assert_eq!(code, 0, "mode {mode}: {warnings:?}");
+            assert_eq!(std::fs::read(&out).unwrap(), fixture.body, "mode {mode}");
+            assert_eq!(
+                fixture.whole_gets.load(Ordering::SeqCst),
+                whole_gets,
+                "mode {mode}: {warnings:?}"
+            );
+        }
     }
 
     /// A 412 on an object that did change: no unpinned retry, the fallback

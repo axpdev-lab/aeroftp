@@ -731,6 +731,12 @@ async fn run_provider_segmented_windows(
                 }
                 changed = range_source_changed_through(primary, remote_path, before) => changed,
             };
+            // Read without If-Match, a replacement restored before that reading
+            // leaves it unmoved; the content shows it where an MD5 is published.
+            let changed = match changed {
+                None if !send_pin => temp.differs_from_md5(before.content_md5()).await,
+                other => other,
+            };
             // Validation can finish in the same tick as Stop. Refuse publication
             // even when the metadata future won the race.
             if cancel_token.is_cancelled() {

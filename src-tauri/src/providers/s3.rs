@@ -3895,7 +3895,9 @@ impl S3Provider {
     /// file is published; with `pin` every window also carries it as
     /// `If-Match`. A gateway that refuses `If-Match` on an object that did not
     /// change is read with `pin` off: each window's answer must then carry
-    /// `validator` or no tag at all, and the HEAD after the windows decides.
+    /// `validator` or no tag at all, the HEAD after the windows must not have
+    /// moved, and the file must hash to `content_md5` where there is one.
+    #[allow(clippy::too_many_arguments)]
     async fn download_multi_thread(
         &self,
         key: &str,
@@ -3903,6 +3905,7 @@ impl S3Provider {
         total_size: u64,
         validator: String,
         pin: bool,
+        content_md5: Option<&str>,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         // R21: window count from the shared planner via the provider gate
@@ -4107,6 +4110,19 @@ impl S3Provider {
                 super::multi_thread::SOURCE_CHANGED_MARKER,
                 what
             )));
+        }
+
+        // Read without If-Match, a replacement restored before that HEAD leaves
+        // it unmoved; the content shows it where an MD5 is published.
+        if !pin {
+            if let Some(what) = segmented.differs_from_md5(content_md5).await {
+                return Err(ProviderError::ParallelRefused(format!(
+                    "Object {} {} ({})",
+                    key,
+                    super::multi_thread::SOURCE_CHANGED_MARKER,
+                    what
+                )));
+            }
         }
 
         // All ranges committed: atomic rename of the temporary onto the final
@@ -5205,6 +5221,7 @@ impl StorageProvider for S3Provider {
                     // otherwise pass every byte count and commit a file made
                     // of two versions. Without a validator the split is not
                     // attempted at all.
+                    let opaque_etag = response_declares_opaque_etag(head.headers());
                     let validator = head
                         .headers()
                         .get(reqwest::header::ETAG)
@@ -5229,6 +5246,7 @@ impl StorageProvider for S3Provider {
                             if let Some(etag) = validator {
                                 let (attempt_progress, fallback_progress) =
                                     super::multi_thread::share_progress(on_progress);
+                                let content_md5 = etag_to_md5(&etag, opaque_etag);
                                 let mut outcome = self
                                     .download_multi_thread(
                                         key,
@@ -5236,6 +5254,7 @@ impl StorageProvider for S3Provider {
                                         size,
                                         etag.clone(),
                                         true,
+                                        None,
                                         attempt_progress,
                                     )
                                     .await;
@@ -5259,6 +5278,7 @@ impl StorageProvider for S3Provider {
                                                 size,
                                                 etag,
                                                 false,
+                                                content_md5.as_deref(),
                                                 retry_progress,
                                             )
                                             .await;
@@ -12435,13 +12455,54 @@ mod tests {
             PinMode::RefusedWithStaleReadings,
             PinMode::RefusedWithLargerWindows,
             PinMode::RefusedThenShrunk,
+            PinMode::RefusedRestored,
         ] {
             let (messages, bytes, _progress, server) = download_against_pin_server(mode).await;
             assert_eq!(messages.len(), 1, "{mode:?}: {messages:?}");
             assert!(messages[0].contains("one confirmed object version"));
-            assert_eq!(bytes, vec![9u8; OBJECT_SIZE], "{mode:?}: one whole version");
+            let whole = if mode == PinMode::RefusedThenShrunk {
+                OBJECT_SIZE - 1
+            } else {
+                OBJECT_SIZE
+            };
+            assert_eq!(bytes, vec![9u8; whole], "{mode:?}: one whole version");
             assert!(server.unpinned() >= 1, "{mode:?}");
         }
+    }
+
+    /// Unpinned windows that hash to the MD5 the entity tag publishes are
+    /// published; a refused content leaves an existing destination alone and
+    /// no temporary behind.
+    #[tokio::test]
+    async fn the_unpinned_content_is_compared_before_the_file_is_published() {
+        use super::super::multi_thread::pin_server::{self, PinMode, OBJECT_SIZE};
+        use super::super::multi_thread::segmented_temp_path_for;
+        let (messages, bytes, _progress, server) =
+            download_against_pin_server(PinMode::RefusedUnchangedMd5).await;
+        assert!(messages.is_empty(), "{messages:?}");
+        assert_eq!(bytes, vec![7u8; OBJECT_SIZE]);
+        assert!(server.unpinned() >= 2);
+
+        let server = pin_server::start(PinMode::RefusedRestored).await;
+        let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+        provider.connected = true;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        std::fs::write(&out, b"what was there before").unwrap();
+        let err = crate::provider_transfer_executor::run_provider_segmented_download(
+            &mut provider,
+            "/big.bin",
+            out.to_str().unwrap(),
+            OBJECT_SIZE as u64,
+            4,
+            None,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .expect_err("content that does not hash to the MD5 is not published");
+        assert!(err.to_string().contains("hashes to MD5"), "{err}");
+        assert_eq!(std::fs::read(&out).unwrap(), b"what was there before");
+        assert!(!segmented_temp_path_for(&out).exists());
     }
 
     /// A read without If-Match past the end of a shorter object is a refusal,
@@ -12533,6 +12594,7 @@ mod tests {
                 "\"v1\"".to_string(),
                 true,
                 None,
+                None,
             )
             .await
             .expect_err("an object of unknown size is not published");
@@ -12572,6 +12634,8 @@ mod tests {
             (PinMode::RefusedWithStaleReadings, false, 2),
             (PinMode::RefusedWithLargerWindows, false, 2),
             (PinMode::RefusedThenUnreadable, false, 3),
+            (PinMode::RefusedUnchangedMd5, true, 3),
+            (PinMode::RefusedRestored, false, 3),
         ] {
             let server = pin_server::start(mode).await;
             let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
@@ -12634,6 +12698,7 @@ mod tests {
                     OBJECT_SIZE as u64,
                     "\"v1\"".to_string(),
                     true,
+                    None,
                     None,
                 )
                 .await
