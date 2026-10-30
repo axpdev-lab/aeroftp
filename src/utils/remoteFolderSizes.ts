@@ -18,6 +18,8 @@ export interface RemoteFolderSizeDeps {
     listen: (handler: (progress: RemoteSizeProgress) => void) => Promise<() => void>;
     /** Counts `path` on the provider, tagging its progress with `scanId`. */
     count: (path: string, scanId: string) => Promise<FolderSizeResult>;
+    /** Stops the provider's count `scanId`, and no count started after it. */
+    cancel: (scanId: string) => void;
     newScanId: () => string;
     /** Replaces the figure under `key`; `undefined` removes it. */
     setFigure: (key: string, update: (prev: FolderSizeResult | undefined) => FolderSizeResult | undefined) => void;
@@ -28,7 +30,7 @@ export interface RemoteFolderSizeDeps {
 export interface RemoteFolderSizes {
     /** Counts the folder `path` under `key`, unless it is being counted. */
     count: (path: string, key: string) => Promise<void>;
-    /** Ends the count in progress: its dialog closed. */
+    /** Ends the count in progress, on the provider too: its dialog closed. */
     stop: () => void;
 }
 
@@ -40,15 +42,17 @@ export interface RemoteFolderSizes {
  * count is kept: its progress events carry its id, and only the count kept
  * writes a figure, marks it partial on an error, or ends the spinner. A count
  * ended (its dialog closed, another started) leaves no figure: a stopped walk
- * is not the folder's size, and the next open counts the folder afresh.
+ * is not the folder's size, and the next open counts the folder afresh. Its
+ * cancel names it, so arriving late it cannot stop the count that followed.
  */
 export function remoteFolderSizes(deps: RemoteFolderSizeDeps): RemoteFolderSizes {
     let kept: { key: string; scanId: string } | null = null;
 
     const stop = () => {
         if (!kept) return;
-        const { key } = kept;
+        const { key, scanId } = kept;
         kept = null;
+        deps.cancel(scanId);
         deps.setCalculating(key, false);
         deps.setFigure(key, () => undefined);
     };

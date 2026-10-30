@@ -111,14 +111,18 @@ describe('a folder\'s size shows where it is asked for (#1441)', () => {
         // of one folder showed the counts of another, and a closed dialog's
         // partial figure was kept and shown on the next open instead of a count.
         // The rules are in remoteFolderSizes (remoteFolderSizes.test.ts); App
-        // gives it the provider's events and command, and stops it on close.
+        // gives it the provider's events and commands, and stops it on close.
+        // A close-time cancel naming no scan, landing after a reopened
+        // dialog's count began, stopped that count.
         const wiring = appRaw.slice(appRaw.indexOf('remoteSizesRef.current = remoteFolderSizes({'));
-        expect(wiring.slice(0, 400)).toMatch(/listen: \(handler\) => listen<RemoteSizeProgress>\('folder-size-progress', \(event\) => handler\(event\.payload\)\)/);
-        expect(wiring.slice(0, 400)).toMatch(/count: \(path, scanId\) => invoke<FolderSizeResult>\('provider_calculate_folder_size', \{ path, scanId \}\)/);
+        expect(wiring.slice(0, 600)).toMatch(/listen: \(handler\) => listen<RemoteSizeProgress>\('folder-size-progress', \(event\) => handler\(event\.payload\)\)/);
+        expect(wiring.slice(0, 600)).toMatch(/count: \(path, scanId\) => invoke<FolderSizeResult>\('provider_calculate_folder_size', \{ path, scanId \}\)/);
+        expect(wiring.slice(0, 600)).toMatch(/cancel: \(scanId\) => \{ invoke\('provider_cancel_folder_size', \{ scanId \}\)/);
+        expect(appRaw.match(/'provider_cancel_folder_size'/g), 'a cancel that names no scan').toHaveLength(1);
         expect(appRaw).toMatch(/const \{ count: calculateRemoteFolderSize, stop: stopRemoteFolderSize \} = remoteSizesRef\.current;/);
         expect(appRaw).not.toMatch(/'folder-size-progress',\s*\(event\) => \{/);
         const dialogs = appRaw.slice(appRaw.indexOf('{propertiesDialog && ('), appRaw.indexOf('{quickLookTarget && ('));
-        expect(dialogs).toMatch(/if \(propertiesDialog\.isRemote && propertiesDialog\.is_dir\) \{\s*stopRemoteFolderSize\(\);\s*invoke\('provider_cancel_folder_size'\)/);
+        expect(dialogs).toMatch(/if \(propertiesDialog\.isRemote && propertiesDialog\.is_dir\) \{\s*stopRemoteFolderSize\(\);\s*\} else if/);
     });
 
     it('lets a second caller wait for the walk of a folder already counted', () => {

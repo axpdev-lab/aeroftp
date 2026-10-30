@@ -5230,12 +5230,15 @@ const App: React.FC = () => {
   // Remote folder sizes: one count kept at a time, which alone writes a
   // figure; a count ended leaves none (remoteFolderSizes, tested there).
   const sizeFailedRef = useRef<(err: unknown) => void>(() => {});
-  sizeFailedRef.current = (err) => notify.error(t('toast.sizeFailed'), String(err));
+  useLayoutEffect(() => {
+    sizeFailedRef.current = (err) => notify.error(t('toast.sizeFailed'), String(err));
+  }, [notify, t]);
   const remoteSizesRef = useRef<RemoteFolderSizes | null>(null);
   if (!remoteSizesRef.current) {
     remoteSizesRef.current = remoteFolderSizes({
       listen: (handler) => listen<RemoteSizeProgress>('folder-size-progress', (event) => handler(event.payload)),
       count: (path, scanId) => invoke<FolderSizeResult>('provider_calculate_folder_size', { path, scanId }),
+      cancel: (scanId) => { invoke('provider_cancel_folder_size', { scanId }).catch(() => {}); },
       newScanId: newSizeScanId,
       setFigure: (key, update) => setFolderSizeCache(prev => {
         const figure = update(prev.get(key));
@@ -17400,7 +17403,6 @@ const App: React.FC = () => {
               // Cancel the folder size scan if active
               if (propertiesDialog.isRemote && propertiesDialog.is_dir) {
                 stopRemoteFolderSize();
-                invoke('provider_cancel_folder_size').catch(() => {});
               } else if (propertiesDialog.is_dir) {
                 // A folder the multi-item dialog also shows keeps its walk.
                 const shown = new Set(localFoldersShownBy('multi'));

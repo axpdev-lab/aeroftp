@@ -529,10 +529,20 @@ pub const LISTING_CANCELLED: &str = "LISTING_CANCELLED";
 /// disarm only its own token and never clear a newer listing's. A replaced token
 /// is left uncancelled on purpose: a superseding listing is not a user cancel,
 /// and the frontend already discards the stale response by generation.
+///
+/// A request may also carry the id its caller gave it, so a cancel that names
+/// it reaches that request and no later one ([`Self::cancel_owned`]).
 #[derive(Default)]
 pub struct ListingCancelState {
-    slot: std::sync::Mutex<Option<(u64, CancellationToken)>>,
+    slot: std::sync::Mutex<Option<Armed>>,
     next_id: AtomicU64,
+}
+
+/// The request a [`ListingCancelState`] slot holds.
+struct Armed {
+    id: u64,
+    owner: Option<String>,
+    token: CancellationToken,
 }
 
 impl ListingCancelState {
@@ -546,7 +556,11 @@ impl ListingCancelState {
     fn arm(&self) -> (u64, CancellationToken) {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let token = CancellationToken::new();
-        *self.lock() = Some((id, token.clone()));
+        *self.lock() = Some(Armed {
+            id,
+            owner: None,
+            token: token.clone(),
+        });
         (id, token)
     }
 
@@ -554,13 +568,22 @@ impl ListingCancelState {
     /// racing requests (quota refreshes, a Properties dialog closed and quickly
     /// reopened) cannot leave the older one without a reachable token.
     fn replace_and_cancel(&self) -> (u64, CancellationToken) {
+        self.replace_and_cancel_owned(None)
+    }
+
+    /// [`Self::replace_and_cancel`] for a request its caller named `owner`.
+    fn replace_and_cancel_owned(&self, owner: Option<String>) -> (u64, CancellationToken) {
         let mut slot = self.lock();
-        if let Some((_, previous)) = slot.take() {
-            previous.cancel();
+        if let Some(previous) = slot.take() {
+            previous.token.cancel();
         }
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let token = CancellationToken::new();
-        *slot = Some((id, token.clone()));
+        *slot = Some(Armed {
+            id,
+            owner,
+            token: token.clone(),
+        });
         (id, token)
     }
 
@@ -573,7 +596,11 @@ impl ListingCancelState {
         }
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let token = CancellationToken::new();
-        *slot = Some((id, token.clone()));
+        *slot = Some(Armed {
+            id,
+            owner: None,
+            token: token.clone(),
+        });
         Ok((id, token))
     }
 
@@ -582,7 +609,7 @@ impl ListingCancelState {
     /// cancel of the one that replaced it.
     fn disarm(&self, id: u64) {
         let mut slot = self.lock();
-        if slot.as_ref().is_some_and(|(current, _)| *current == id) {
+        if slot.as_ref().is_some_and(|armed| armed.id == id) {
             *slot = None;
         }
     }
@@ -592,15 +619,28 @@ impl ListingCancelState {
     /// treats as success, since the outcome the user asked for already holds.
     pub fn cancel(&self) -> bool {
         match self.lock().as_ref() {
-            Some((_, token)) => {
-                token.cancel();
+            Some(armed) => {
+                armed.token.cancel();
                 true
             }
             None => false,
         }
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, Option<(u64, CancellationToken)>> {
+    /// Signal the request its caller named `owner`, and nothing else: a cancel
+    /// sent without waiting can arrive after a newer request took the slot,
+    /// and must not stop that one. `false` when `owner` no longer holds it.
+    pub fn cancel_owned(&self, owner: &str) -> bool {
+        match self.lock().as_ref() {
+            Some(armed) if armed.owner.as_deref() == Some(owner) => {
+                armed.token.cancel();
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, Option<Armed>> {
         self.slot
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -10752,7 +10792,8 @@ struct TaggedFolderSizeProgress<'a> {
 /// Recursively calculate folder size via provider list(): BFS with progress events.
 /// Safety: max 50,000 entries, max depth 50.
 ///
-/// Each `folder-size-progress` event carries the `scan_id` given here.
+/// Each `folder-size-progress` event carries the `scan_id` given here, and
+/// `provider_cancel_folder_size` given the same id stops this scan only.
 #[tauri::command]
 pub async fn provider_calculate_folder_size(
     state: State<'_, ProviderState>,
@@ -10760,7 +10801,8 @@ pub async fn provider_calculate_folder_size(
     path: String,
     scan_id: Option<String>,
 ) -> Result<FolderSizeProgress, String> {
-    provider_calculate_folder_size_inner(&state, path, |progress| {
+    let owner = scan_id.clone();
+    provider_calculate_folder_size_inner(&state, path, owner, |progress| {
         let _ = app.emit(
             "folder-size-progress",
             TaggedFolderSizeProgress {
@@ -10775,22 +10817,25 @@ pub async fn provider_calculate_folder_size(
 async fn provider_calculate_folder_size_inner(
     state: &ProviderState,
     path: String,
+    scan_id: Option<String>,
     emit_progress: impl Fn(&FolderSizeProgress),
 ) -> Result<FolderSizeProgress, String> {
-    provider_calculate_folder_size_with_limits(state, path, emit_progress, 50, 50_000).await
+    provider_calculate_folder_size_with_limits(state, path, scan_id, emit_progress, 50, 50_000)
+        .await
 }
 
 async fn provider_calculate_folder_size_with_limits(
     state: &ProviderState,
     path: String,
+    scan_id: Option<String>,
     emit_progress: impl Fn(&FolderSizeProgress),
     max_depth: usize,
     max_entries: u64,
 ) -> Result<FolderSizeProgress, String> {
     // One Properties dialog at a time: a reopened dialog replaces the request
     // of the one just closed, whose fire-and-forget cancel may not have
-    // released the slot yet.
-    let (id, token) = state.folder_size_cancel.replace_and_cancel();
+    // released the slot yet, and that cancel names the scan it stops.
+    let (id, token) = state.folder_size_cancel.replace_and_cancel_owned(scan_id);
     let _guard = ListingTokenGuard::new(&state.folder_size_cancel, id);
 
     let mut partial = false;
@@ -10912,11 +10957,25 @@ async fn provider_calculate_folder_size_with_limits(
     Ok(result)
 }
 
-/// Cancel an in-progress folder size calculation
+/// Cancel an in-progress folder size calculation: the scan `scan_id` names,
+/// or with no id whichever runs.
 #[tauri::command]
-pub async fn provider_cancel_folder_size(state: State<'_, ProviderState>) -> Result<(), String> {
-    state.folder_size_cancel.cancel();
+pub async fn provider_cancel_folder_size(
+    state: State<'_, ProviderState>,
+    scan_id: Option<String>,
+) -> Result<(), String> {
+    cancel_folder_size_scan(&state, scan_id.as_deref());
     Ok(())
+}
+
+/// A dialog closed sends its cancel without waiting, so the cancel can land
+/// after a reopened dialog's scan has replaced the closed one: given the
+/// closed scan's id it leaves the new scan running.
+fn cancel_folder_size_scan(state: &ProviderState, scan_id: Option<&str>) -> bool {
+    match scan_id {
+        Some(scan_id) => state.folder_size_cancel.cancel_owned(scan_id),
+        None => state.folder_size_cancel.cancel(),
+    }
 }
 
 /// Include mutex acquisition in the cancellable future: a queued scan must
@@ -17415,7 +17474,7 @@ mod tests {
         let (locked, is_locked) = tokio::sync::oneshot::channel();
         let size = async {
             is_locked.await.unwrap();
-            super::provider_calculate_folder_size_inner(&state, "/docs".into(), |_| {}).await
+            super::provider_calculate_folder_size_inner(&state, "/docs".into(), None, |_| {}).await
         };
         let ((), size) = tokio::join!(
             hold_provider(&state, Duration::from_secs(600), locked),
@@ -17561,10 +17620,12 @@ mod tests {
         );
         let state = stall_state(provider);
         // "/stuck" never answers: the closed dialog's request holds the provider.
-        let closed = super::provider_calculate_folder_size_inner(&state, "/stuck".into(), |_| {});
+        let closed =
+            super::provider_calculate_folder_size_inner(&state, "/stuck".into(), None, |_| {});
         tokio::pin!(closed);
         assert!(futures_util::poll!(&mut closed).is_pending());
-        let reopened = super::provider_calculate_folder_size_inner(&state, "/docs".into(), |_| {});
+        let reopened =
+            super::provider_calculate_folder_size_inner(&state, "/docs".into(), None, |_| {});
         let (closed, reopened) = tokio::time::timeout(Duration::from_secs(2), async {
             tokio::join!(closed, reopened)
         })
@@ -17573,6 +17634,46 @@ mod tests {
         let reopened = reopened.expect("a reopened dialog is not refused");
         assert_eq!((reopened.total_bytes, reopened.file_count), (7, 1));
         assert_eq!(closed.expect("the replaced request ends").file_count, 0);
+        assert!(!state.folder_size_cancel.is_armed());
+    }
+
+    /// The closed dialog's cancel, sent without waiting, lands after the
+    /// reopened dialog's scan took the slot: naming the closed scan, it leaves
+    /// the reopened one running; naming the reopened one, it stops it.
+    #[tokio::test]
+    async fn a_late_close_cancel_leaves_the_reopened_folder_size_running() {
+        let state = stall_state(StallProvider::default());
+        let closed = super::provider_calculate_folder_size_inner(
+            &state,
+            "/stuck".into(),
+            Some("closed".into()),
+            |_| {},
+        );
+        tokio::pin!(closed);
+        assert!(futures_util::poll!(&mut closed).is_pending());
+        let reopened = super::provider_calculate_folder_size_inner(
+            &state,
+            "/stuck".into(),
+            Some("reopened".into()),
+            |_| {},
+        );
+        tokio::pin!(reopened);
+        assert!(futures_util::poll!(&mut reopened).is_pending());
+        assert_eq!(closed.await.expect("the replaced scan ends").file_count, 0);
+
+        assert!(!super::cancel_folder_size_scan(&state, Some("closed")));
+        tokio::task::yield_now().await;
+        assert!(
+            futures_util::poll!(&mut reopened).is_pending(),
+            "the closed dialog's cancel stopped the reopened scan"
+        );
+
+        assert!(super::cancel_folder_size_scan(&state, Some("reopened")));
+        let reopened = tokio::time::timeout(Duration::from_secs(2), reopened)
+            .await
+            .expect("the cancel naming the reopened scan stops it")
+            .expect("a cancelled scan reports what it counted");
+        assert!(reopened.partial);
         assert!(!state.folder_size_cancel.is_armed());
     }
 
@@ -17595,7 +17696,7 @@ mod tests {
                     ),
                 ),
                 super::provider_storage_info_inner(state),
-                super::provider_calculate_folder_size_inner(state, "/stuck".into(), |_| {}),
+                super::provider_calculate_folder_size_inner(state, "/stuck".into(), None, |_| {}),
             )
         };
         let ((scan, quota, size), torn_down) =
@@ -18226,6 +18327,7 @@ mod walk_scope_tests {
             let result = provider_calculate_folder_size_with_limits(
                 &state,
                 "/root".into(),
+                None,
                 |_| {},
                 depth,
                 limit,
@@ -18255,6 +18357,7 @@ mod walk_scope_tests {
             let result = provider_calculate_folder_size_with_limits(
                 &state,
                 "/root".into(),
+                None,
                 |progress| {
                     if cancel && progress.scanning {
                         state.folder_size_cancel.cancel();
@@ -18285,7 +18388,8 @@ mod walk_scope_tests {
             let state = ProviderState::new();
             *state.provider.lock().await = Some(Box::new(shape.provider()));
             let sized =
-                provider_calculate_folder_size_inner(&state, "/root".to_string(), |_| {}).await;
+                provider_calculate_folder_size_inner(&state, "/root".to_string(), None, |_| {})
+                    .await;
             if shape.refused > 0 {
                 let err = sized.err().unwrap_or_else(|| panic!("{case}: sized"));
                 assert!(err.contains("Cannot size /root"), "{case}: {err}");
@@ -18366,7 +18470,7 @@ mod walk_scope_tests {
             ),
         ));
         let sized =
-            provider_calculate_folder_size_with_limits(&state, "/root".into(), |_| {}, 10, 1)
+            provider_calculate_folder_size_with_limits(&state, "/root".into(), None, |_| {}, 10, 1)
                 .await
                 .unwrap();
         assert_eq!(

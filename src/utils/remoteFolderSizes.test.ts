@@ -12,6 +12,7 @@ function harness(options: { listenFails?: boolean } = {}) {
     const handlers: ((p: RemoteSizeProgress) => void)[] = [];
     const counts: { path: string; scanId: string; resolve: (r: FolderSizeResult) => void; reject: (e: unknown) => void }[] = [];
     const errors: unknown[] = [];
+    const cancels: string[] = [];
     let ids = 0;
     const deps: RemoteFolderSizeDeps = {
         listen: async (handler) => {
@@ -20,6 +21,7 @@ function harness(options: { listenFails?: boolean } = {}) {
             return () => { handlers.splice(handlers.indexOf(handler), 1); };
         },
         count: (path, scanId) => new Promise((resolve, reject) => { counts.push({ path, scanId, resolve, reject }); }),
+        cancel: (scanId) => { cancels.push(scanId); },
         newScanId: () => `scan-${++ids}`,
         setFigure: (key, update) => {
             const figure = update(figures.get(key));
@@ -30,7 +32,7 @@ function harness(options: { listenFails?: boolean } = {}) {
         onError: (err) => { errors.push(err); },
     };
     const emit = (p: RemoteSizeProgress) => { [...handlers].forEach(handler => handler(p)); };
-    return { sizes: remoteFolderSizes(deps), figures, calculating, counts, emit, errors };
+    return { sizes: remoteFolderSizes(deps), figures, calculating, counts, emit, errors, cancels };
 }
 
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -47,6 +49,26 @@ describe('remote folder sizes in Properties', () => {
         await settle();
         expect(h.figures.get('k')).toEqual(totals(10));
         expect(h.calculating.has('k')).toBe(false);
+        // Its dialog closes: nothing is left to stop.
+        h.sizes.stop();
+        expect(h.cancels).toEqual([]);
+        expect(h.figures.get('k')).toEqual(totals(10));
+    });
+
+    it('stops on the provider the count it ends, by that count\'s id', async () => {
+        // The cancel named no count: sent as a dialog closed and arriving after
+        // a reopened dialog's count began, it stopped that one.
+        const h = harness();
+        void h.sizes.count('/a', 'k');
+        await settle();
+        h.sizes.stop();
+        expect(h.cancels).toEqual(['scan-1']);
+        void h.sizes.count('/a', 'k');
+        await settle();
+        expect(h.counts[1].scanId).toBe('scan-2');
+        expect(h.cancels, 'a new count is not cancelled').toEqual(['scan-1']);
+        h.sizes.stop();
+        expect(h.cancels).toEqual(['scan-1', 'scan-2']);
     });
 
     it('counts a folder afresh when it is opened again after its dialog closed', async () => {
@@ -96,6 +118,7 @@ describe('remote folder sizes in Properties', () => {
         h.emit({ scan_id: 'scan-1', ...totals(5, true) });
         void h.sizes.count('/b', 'b');
         await settle();
+        expect(h.cancels).toEqual(['scan-1']);
         expect(h.figures.has('a')).toBe(false);
         expect(h.calculating.has('a')).toBe(false);
         h.counts[0].resolve(totals(5, true));
