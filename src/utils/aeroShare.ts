@@ -492,7 +492,7 @@ export interface FriendBinding {
 export const upsertFriendProfile = async (b: FriendBinding): Promise<ServerProfile> => {
   // Strict: the whole list is written back below, so a partition that could
   // not be read must not look like one with no profiles in it.
-  const { profiles: profiles, userId: profilesUserId } = await readSavedServerProfilesForWrite();
+  const { profiles: profiles, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
   const id = peerProfileId(b.afid);
   const existing = profiles.find((p) => p.id === id);
 
@@ -519,7 +519,7 @@ export const upsertFriendProfile = async (b: FriendBinding): Promise<ServerProfi
   };
 
   const others = profiles.filter((p) => p.id !== id);
-  const stored = await storeSavedServerProfiles([...others, next], false, profilesUserId);
+  const stored = await storeSavedServerProfiles([...others, next], false, profilesUserId, profilesRevision);
   // Saving a friend (received-folder or share flow) auto-activates AeroShare.
   await ensureAeroShareActivated();
   // As stored: a name another profile holds is stored with " (1)", " (2)", ...

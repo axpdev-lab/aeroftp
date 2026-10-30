@@ -23,11 +23,15 @@ import { ServerChecklistNoMatch, ServerChecklistSearch, ServerChecklistSummary, 
 interface ExportImportDialogProps {
     servers: ServerProfile[];
     /**
-     * Store the imported profiles; those in `replaceIds` replace the stored
-     * profile of the same id, and the write is refused unless the active
-     * account is still `expectedUserId` (the one the secrets were restored into).
+     * Store the profiles a bridge import read from another client's config; the
+     * write is refused unless the active account is still `expectedUserId`.
      */
-    onImport: (servers: ServerProfile[], replaceIds?: ReadonlySet<string>, expectedUserId?: number | null) => void | Promise<void>;
+    onImport: (servers: ServerProfile[], expectedUserId?: number | null) => void | Promise<void>;
+    /**
+     * A `.aeroftp` import stored this list in the backend, secrets and list in one
+     * operation: the host only shows it.
+     */
+    onProfilesStored: (stored: ServerProfile[]) => void;
     onClose: () => void;
     // Optional starting mode so callers (e.g. the Settings Backup table) can
     // open the dialog straight into a specific action. Undefined preserves the
@@ -47,10 +51,8 @@ interface ExportImportDialogProps {
 const defaultExportSelection = (servers: ServerProfile[], preselected?: string[]): Set<string> =>
     new Set(preselected ?? servers.map(s => s.id));
 
-// A profile the backend stores, redacted (secret-presence flags, never a
-// secret), with what the import did with it (`profile_import_plan`). An
-// overwritten one is laid over the stored profile of its id when written
-// (`appendImportedProfiles`).
+// A profile the backend stored, redacted (secret-presence flags, never a
+// secret), with what the import did with it (`profile_import_plan`).
 type ImportedServer = ServerProfile & { importOutcome: 'added' | 'overwritten' | 'duplicated' };
 
 /** What a `.aeroftp` import does with a profile whose id already exists. */
@@ -63,19 +65,19 @@ const EXISTING_PROFILE_MODES: { mode: ExistingProfileMode; label: string; hint: 
 ];
 
 interface ImportResult {
-    // The profiles to store; the ones the import skipped are only named.
+    // The profiles the import stored; the ones it skipped are only named.
     servers: ImportedServer[];
+    // The account's whole list as stored.
+    stored: ServerProfile[];
     skipped: string[];
     similar: number;
-    // Stored profiles whose secrets the file carried and the backend restored.
-    secretsStored: number;
-    // The account the file was compared with and the secrets restored into.
-    userId: number | null;
     // Stored Jottacloud profiles that brought their rotating refresh chain,
     // named as in the file.
     jottaChains: { id: string; name: string }[];
     // Stored profiles whose custom OAuth app differs from the one kept here.
     oauthAppsKept: string[];
+    // Stored profiles a shared secret or session of the file could not reach.
+    sharedSecretsFailed: string[];
     // Profiles an Overwrite refused: the file points them at another server.
     targetChanged: string[];
     metadata: {
@@ -91,7 +93,7 @@ interface ImportResult {
  * or without credentials; import with Skip, Overwrite or Duplicate for a
  * profile that already exists) and the bridges to other clients' configs.
  */
-export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers, onImport, onClose, initialMode, initialBridgeFilePath, initialSelectedServerIds }) => {
+export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers, onImport, onProfilesStored, onClose, initialMode, initialBridgeFilePath, initialSelectedServerIds }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
     const [mode, setMode] = useState<'export' | 'import' | 'bridge-import' | 'bridge-export' | 'bridge-src' | null>(initialMode ?? null);
@@ -295,14 +297,13 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                 existing: existingMode,
             });
 
-            // The backend compared the file with the active user's profiles and
-            // decided each one with `existingMode` (the CLI's profile-import
-            // plans the same way), restoring secrets only for the profiles it
-            // stores. A profile that only shares host:port:username with an
-            // existing one is added and counted as similar.
-            // Every field the backend returns is kept: share-link base, icons,
-            // the Filen API key flag and the rest ride along with the profile.
-            const imported: ServerProfile[] = result.servers.map(({ importOutcome: _outcome, ...profile }) => profile);
+            // The backend compared the file with the active user's profiles,
+            // decided each one with `existingMode` and stored secrets and list as
+            // one operation (the CLI's profile-import is the same one). A failure
+            // arrives as the error below, with nothing changed. A profile that
+            // only shares host:port:username with an existing one is added and
+            // counted as similar.
+            onProfilesStored(result.stored);
             const count = (outcome: ImportedServer['importOutcome']) =>
                 result.servers.filter(s => s.importOutcome === outcome).length;
             const overwritten = count('overwritten');
@@ -314,32 +315,16 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                 ...(result.oauthAppsKept.length > 0
                     ? [t('settings.importOauthAppKept', { names: result.oauthAppsKept.join(', ') })]
                     : []),
+                ...(result.sharedSecretsFailed.length > 0
+                    ? [t('settings.importSharedSecretsFailed', { names: result.sharedSecretsFailed.join(', ') })]
+                    : []),
                 ...(result.targetChanged.length > 0
                     ? [t('settings.importTargetChanged', { names: result.targetChanged.join(', ') })]
                     : []),
             ];
-            try {
-                await onImport(imported, new Set(
-                    result.servers.filter(s => s.importOutcome === 'overwritten').map(s => s.id),
-                ), result.userId);
-            } catch (err) {
-                // The backend restored the secrets the file carries before this
-                // write: say for how many profiles, and that the same import
-                // with the same option finishes it. The warnings go with it (not
-                // in `importWarning`, which would block that retry): those
-                // secrets are already in effect.
-                setError([
-                    String(err),
-                    ...(result.secretsStored > 0
-                        ? [t('settings.importNotSavedSecretsKept', { count: result.secretsStored })]
-                        : []),
-                    ...warnings,
-                ].join(' '));
-                return;
-            }
             setSuccess(
                 // "new servers": the overwritten ones replaced servers already there.
-                t('settings.importSuccess').replace('{count}', String(imported.length - overwritten)) +
+                t('settings.importSuccess').replace('{count}', String(result.servers.length - overwritten)) +
                 (overwritten > 0 ? ` (${t('settings.overwrittenCount', { count: overwritten })})` : '') +
                 (duplicated > 0 ? ` (${t('settings.duplicatedCount', { count: duplicated })})` : '') +
                 (result.skipped.length > 0 ? ` (${t('settings.duplicatesSkippedCount', { count: result.skipped.length })})` : '') +

@@ -1369,9 +1369,9 @@
             "overwrittenCount": "{count} substituídos",
             "duplicatedCount": "{count} duplicados",
             "importJottaChainWarning": "O Jottacloud renova o seu início de sessão em cada ligação, e {names} partilha agora um com outra cópia: a cópia que se liga primeiro termina a sessão da outra (o dispositivo de onde veio o ficheiro, ou o perfil de que foi duplicada). Inicie sessão novamente na outra com um novo Personal Login Token.",
-            "importNotSavedSecretsKept": "Os perfis não foram salvos, mas as senhas e os tokens de login que o arquivo contém para {count} deles já foram armazenados. Importe o mesmo arquivo novamente com a mesma opção para concluir.",
             "importOauthAppKept": "{names} vieram com um app OAuth personalizado diferente do que este dispositivo tem para esse provedor. O app armazenado foi mantido, então entre novamente se esses perfis deixarem de se conectar.",
-            "importTargetChanged": "{names} não foram substituídos: o arquivo os aponta para outro servidor, e as senhas e tokens guardados não devem ir para lá. Importe com Duplicar para adicionar a cópia do arquivo, ou exclua o perfil primeiro."
+            "importTargetChanged": "{names} não foram substituídos: o arquivo os aponta para outro servidor, e as senhas e tokens guardados não devem ir para lá. Importe com Duplicar para adicionar a cópia do arquivo, ou exclua o perfil primeiro.",
+            "importSharedSecretsFailed": "{names} foram importados, mas um segredo compartilhado ou uma sessão do arquivo não pôde ser armazenado. Entre novamente nestes perfis se eles não se conectarem."
         },
         "devtools": {
             "title": "AeroTools",

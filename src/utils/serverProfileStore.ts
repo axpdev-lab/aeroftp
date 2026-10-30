@@ -130,6 +130,7 @@ export const loadSavedServerProfilesStrict = async (): Promise<ServerProfile[]> 
 export interface SavedProfilesRead {
     profiles: ServerProfile[];
     userId?: number;
+    revision?: string;
 }
 
 /**
@@ -137,13 +138,16 @@ export interface SavedProfilesRead {
  * `userId` to `storeSavedServerProfiles` so the write lands in that account or
  * is refused (`ACCOUNT_CHANGED`) when another account became active in between:
  * an edit takes seconds, and a switch from the GUI or the CLI in that window
- * used to receive the previous account's list.
+ * used to receive the previous account's list. Pass `revision` with it so that
+ * a list another window or process saved in between is refused
+ * (`PROFILES_CHANGED`) and not overwritten; it is absent from the legacy store
+ * too.
  */
 export const readSavedServerProfilesForWrite = async (): Promise<SavedProfilesRead> => {
     try {
         await seedLegacyLocalProfilesForPartitionMigration();
         const scoped = await loadActiveServerProfilesScoped();
-        return { profiles: scoped.profiles, userId: scoped.userId };
+        return { profiles: scoped.profiles, userId: scoped.userId, revision: scoped.revision };
     } catch (error) {
         if (!canUseLegacyProfileFallback(error)) throw error;
         const legacy = await loadLegacySavedServerProfiles();
@@ -194,11 +198,12 @@ export const storeSavedServerProfiles = async (
     profiles: ServerProfile[],
     connectionMetadata = false,
     expectedUserId?: number,
+    expectedRevision?: string,
 ): Promise<ServerProfile[]> => {
     const accountBefore = accountChangeGeneration();
     let stored: ServerProfile[];
     try {
-        const written = await saveActiveServerProfiles(profiles, expectedUserId);
+        const written = await saveActiveServerProfiles(profiles, expectedUserId, expectedRevision);
         stored = Array.isArray(written) ? written : profiles;
     } catch (error) {
         // A list bound to an account never falls back to the legacy store,
@@ -211,6 +216,20 @@ export const storeSavedServerProfiles = async (
         stored = uniqueProfileNames(Array.isArray(held) ? held : [], profiles);
         await secureStore(SAVED_SERVERS_ACCOUNT, stored);
     }
+    announceStoredServerProfiles(stored, connectionMetadata, accountBefore);
+    return stored;
+};
+
+/**
+ * Tell this window the list changed, for a list the backend stored itself (a
+ * `.aeroftp` import). `accountBefore` is `accountChangeGeneration()` from before
+ * the write: the list goes out only if no switch overlapped it.
+ */
+export const announceStoredServerProfiles = (
+    stored: ServerProfile[],
+    connectionMetadata = false,
+    accountBefore = accountChangeGeneration(),
+): void => {
     profilesWriteGeneration += 1;
     try {
         localStorage.removeItem(SAVED_SERVERS_STORAGE_KEY);
@@ -225,7 +244,6 @@ export const storeSavedServerProfiles = async (
     } catch {
         // SSR / non-DOM environment: dispatch is a best-effort notification.
     }
-    return stored;
 };
 
 export const mergeSavedServerProfile = async (
@@ -234,7 +252,7 @@ export const mergeSavedServerProfile = async (
     connectionMetadata = false,
 ): Promise<ServerProfile[]> => {
     let result: ServerProfile[] = [];
-    const run = async () => {
+    const attempt = async () => {
         let read: SavedProfilesRead;
         try {
             read = await readSavedServerProfilesForWrite();
@@ -258,13 +276,41 @@ export const mergeSavedServerProfile = async (
         }
         result = found ? next : profiles;
         // As stored: a name another profile holds comes back as " (1)".
-        if (found) result = await storeSavedServerProfiles(result, connectionMetadata, read.userId);
+        if (found) result = await storeSavedServerProfiles(result, connectionMetadata, read.userId, read.revision);
+    };
+    // A merge is one field of one profile, so it can simply be redone on the list
+    // another window or process just saved. Once: a list changing that fast
+    // reports the conflict like any other write.
+    const run = async () => {
+        try {
+            await attempt();
+        } catch (error) {
+            if (!String(error).includes('PROFILES_CHANGED')) throw error;
+            await attempt();
+        }
     };
 
     const queued = profileWriteQueue.then(run, run);
     profileWriteQueue = queued.then(() => undefined, () => undefined);
     await queued;
     return result;
+};
+
+/**
+ * The list `profiles` with a convert undone: the converted profile (`convertedId`)
+ * gives way to `original` where it stands, and everything else stays. Converted
+ * profile already deleted: `original` comes back at the end, unless its id is
+ * held again.
+ */
+export const revertConvertedProfile = (
+    profiles: ServerProfile[],
+    convertedId: string,
+    original: ServerProfile,
+): ServerProfile[] => {
+    if (profiles.some(s => s.id === convertedId)) {
+        return profiles.map(s => (s.id === convertedId ? original : s));
+    }
+    return profiles.some(s => s.id === original.id) ? profiles : [...profiles, original];
 };
 
 // Trim a connect-error reason to a single short line for tooltip display.

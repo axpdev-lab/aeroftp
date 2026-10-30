@@ -1369,9 +1369,9 @@
             "overwrittenCount": "{count} overskrevet",
             "duplicatedCount": "{count} duplikeret",
             "importJottaChainWarning": "Jottacloud fornyer sin login ved hver forbindelse, og {names} deler nu en med en anden kopi: den kopi, der forbinder først, logger den anden ud (enheden, filen kom fra, eller den profil, den blev duplikeret fra). Log den anden ind igen med et nyt Personal Login Token.",
-            "importNotSavedSecretsKept": "Profilerne blev ikke gemt, men adgangskoderne og login-tokens, som filen indeholder til {count} af dem, er allerede gemt. Importér den samme fil igen med den samme indstilling for at afslutte.",
             "importOauthAppKept": "{names} kom med en anden brugerdefineret OAuth-app end den, som denne enhed har til den udbyder. Den gemte app blev beholdt, så log ind igen, hvis disse profiler holder op med at oprette forbindelse.",
-            "importTargetChanged": "{names} blev ikke overskrevet: filen peger dem på en anden server, og deres gemte adgangskoder og tokens må ikke sendes dertil. Importér med Dupliker for at tilføje kopien fra filen, eller slet profilen først."
+            "importTargetChanged": "{names} blev ikke overskrevet: filen peger dem på en anden server, og deres gemte adgangskoder og tokens må ikke sendes dertil. Importér med Dupliker for at tilføje kopien fra filen, eller slet profilen først.",
+            "importSharedSecretsFailed": "{names} blev importeret, men en delt hemmelighed eller session fra filen kunne ikke gemmes. Log ind på disse profiler igen, hvis de ikke forbinder."
         },
         "devtools": {
             "title": "AeroTools",

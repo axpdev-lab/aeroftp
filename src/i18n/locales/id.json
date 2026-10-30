@@ -1369,9 +1369,9 @@
             "overwrittenCount": "{count} ditimpa",
             "duplicatedCount": "{count} diduplikasi",
             "importJottaChainWarning": "Jottacloud memperbarui login-nya pada setiap koneksi, dan {names} kini berbagi satu dengan salinan lain: salinan yang terhubung lebih dulu akan mengeluarkan yang lain (perangkat asal file, atau profil tempat salinan ini diduplikasi). Masuk lagi ke yang lain dengan Personal Login Token baru.",
-            "importNotSavedSecretsKept": "Profil tidak tersimpan, tetapi kata sandi dan token masuk yang dimuat file untuk {count} di antaranya sudah disimpan. Impor file yang sama lagi dengan opsi yang sama untuk menyelesaikan.",
             "importOauthAppKept": "{names} datang dengan aplikasi OAuth kustom yang berbeda dari yang dimiliki perangkat ini untuk penyedia tersebut. Aplikasi yang tersimpan dipertahankan, jadi masuk lagi jika profil ini berhenti terhubung.",
-            "importTargetChanged": "{names} tidak ditimpa: berkas mengarahkannya ke server lain, dan kata sandi serta token tersimpannya tidak boleh dikirim ke sana. Impor dengan Duplikat untuk menambahkan salinan dari berkas, atau hapus profil terlebih dahulu."
+            "importTargetChanged": "{names} tidak ditimpa: berkas mengarahkannya ke server lain, dan kata sandi serta token tersimpannya tidak boleh dikirim ke sana. Impor dengan Duplikat untuk menambahkan salinan dari berkas, atau hapus profil terlebih dahulu.",
+            "importSharedSecretsFailed": "{names} berhasil diimpor, tetapi rahasia bersama atau sesi dari file tidak dapat disimpan. Masuk lagi ke profil ini jika tidak terhubung."
         },
         "devtools": {
             "title": "AeroTools",

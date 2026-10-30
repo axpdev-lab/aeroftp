@@ -6,8 +6,11 @@
 //! place under the same id, or adds a copy under a new id and the next free
 //! name, and `--dry-run` reports the plan without writing it.
 
+use std::collections::HashMap;
+use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
+use std::time::Duration;
 
 /// Exit code, stdout and stderr of a run, for an assertion message.
 fn describe(out: &Output) -> String {
@@ -93,15 +96,12 @@ async fn saved_whole(config: &Path) -> Vec<serde_json::Value> {
         ],
     );
     assert!(out.status.success(), "{}", describe(&out));
-    ftp_client_gui_lib::import_server_profiles_with_mode(
-        file.to_string_lossy().into_owned(),
-        PASSWORD.into(),
+    ftp_client_gui_lib::preview_server_profiles(
+        &file.to_string_lossy(),
+        PASSWORD,
         ftp_client_gui_lib::profile_import_plan::ExistingProfileMode::Skip,
         &[],
-        None,
-        true,
     )
-    .await
     .unwrap()
     .servers
 }
@@ -262,4 +262,230 @@ async fn a_backup_of_a_profile_still_held_is_skipped_overwritten_or_duplicated()
     assert_eq!(after[0], original[0]);
     assert_eq!(after[1].1, "lab (1)");
     assert_ne!(after[1].0, id);
+}
+
+/// Not a test of its own: the other process of the lock test, which holds the
+/// lock of `AEROFTP_TEST_LOCK_DB` until it is killed.
+#[test]
+#[ignore = "started by the lock test"]
+fn lock_holder_process() {
+    let Ok(db) = std::env::var("AEROFTP_TEST_LOCK_DB") else {
+        return;
+    };
+    let _lock = ftp_client_gui_lib::user_partitions::ProfileListLock::acquire_within(
+        Path::new(&db),
+        Duration::from_secs(30),
+    )
+    .unwrap();
+    println!("holding the lock");
+    std::io::stdout().flush().unwrap();
+    std::thread::sleep(Duration::from_secs(300));
+}
+
+/// Two real processes: while one holds the lock the other gives up within its
+/// bounded wait, a holder killed outright leaves no lock behind, and another
+/// config directory never waited on it.
+#[test]
+fn the_profile_list_lock_holds_across_processes_and_dies_with_its_holder() {
+    use ftp_client_gui_lib::user_partitions::{ProfileListLock, PROFILE_LIST_BUSY};
+
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("a").join("partitions.db");
+    let mut holder = Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "lock_holder_process", "--ignored", "--nocapture"])
+        .env("AEROFTP_TEST_LOCK_DB", &db)
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut lines = BufReader::new(holder.stdout.take().unwrap()).lines();
+    assert!(
+        lines.any(|line| line.is_ok_and(|line| line.contains("holding the lock"))),
+        "the other process never took the lock"
+    );
+
+    let refused = ProfileListLock::acquire_within(&db, Duration::from_millis(300));
+    assert_eq!(refused.err().as_deref(), Some(PROFILE_LIST_BUSY));
+    let elsewhere = dir.path().join("b").join("partitions.db");
+    assert!(ProfileListLock::acquire_within(&elsewhere, Duration::ZERO).is_ok());
+
+    holder.kill().unwrap();
+    holder.wait().unwrap();
+    assert!(ProfileListLock::acquire_within(&db, Duration::from_secs(30)).is_ok());
+}
+
+/// Two imports of one id at once, each backup with its own folder and credential:
+/// whichever lands last, the list and the secret come from the same backup.
+#[tokio::test]
+async fn parallel_imports_leave_the_list_and_the_secret_of_one_backup() {
+    use ftp_client_gui_lib::profile_export::{export_profiles, import_profiles};
+
+    let config = tempfile::tempdir().unwrap();
+    let config = config.path();
+    let conf = config.join("rclone.conf");
+    std::fs::write(
+        &conf,
+        "[lab]\ntype = sftp\nhost = sftp.example.invalid\nuser = smoke\n",
+    )
+    .unwrap();
+    json(&cli(
+        config,
+        &[
+            "import",
+            "rclone",
+            conf.to_str().unwrap(),
+            "--apply",
+            "--json",
+        ],
+    ));
+    let base = config.join("base.aeroftp");
+    let exported = cli(
+        config,
+        &[
+            "profile-export",
+            "-o",
+            base.to_str().unwrap(),
+            "--password",
+            PASSWORD,
+        ],
+    );
+    assert!(exported.status.success(), "{}", describe(&exported));
+    let (servers, _, _) = import_profiles(&base, PASSWORD).unwrap();
+
+    let backups: Vec<_> = ["a", "b"]
+        .iter()
+        .map(|side| {
+            let mut server = servers[0].clone();
+            server.initial_path = Some(format!("/{side}"));
+            server.credential = Some(format!("password-{side}"));
+            server.has_stored_credential = Some(true);
+            let file = config.join(format!("{side}.aeroftp"));
+            export_profiles(vec![server], HashMap::new(), PASSWORD, &file).unwrap();
+            file
+        })
+        .collect();
+
+    let imports: Vec<_> = backups
+        .iter()
+        .map(|file| {
+            let (config, file) = (config.to_path_buf(), file.clone());
+            std::thread::spawn(move || {
+                cli(
+                    &config,
+                    &[
+                        "profile-import",
+                        "-i",
+                        file.to_str().unwrap(),
+                        "--password",
+                        PASSWORD,
+                        "--on-existing",
+                        "overwrite",
+                        "--json",
+                    ],
+                )
+            })
+        })
+        .collect();
+    for import in imports {
+        let overwrite = json(&import.join().unwrap());
+        assert_eq!(overwrite["overwritten"], 1, "{overwrite}");
+    }
+
+    let check = config.join("check.aeroftp");
+    let exported = cli(
+        config,
+        &[
+            "profile-export",
+            "-o",
+            check.to_str().unwrap(),
+            "--password",
+            PASSWORD,
+            "--include-credentials",
+        ],
+    );
+    assert!(exported.status.success(), "{}", describe(&exported));
+    let (stored, _, _) = import_profiles(&check, PASSWORD).unwrap();
+    assert_eq!(stored.len(), 1);
+    let side = stored[0]
+        .initial_path
+        .as_deref()
+        .and_then(|path| path.strip_prefix('/'))
+        .unwrap();
+    assert!(["a", "b"].contains(&side), "{side}");
+    assert_eq!(
+        stored[0].credential.as_deref(),
+        Some(format!("password-{side}").as_str())
+    );
+}
+
+/// An account store that cannot be opened stops the import with what to do next:
+/// nothing falls back to the legacy blob, whose list would never reach the store.
+#[test]
+fn an_unreadable_account_store_refuses_the_import_and_says_what_to_do() {
+    let config = tempfile::tempdir().unwrap();
+    let config = config.path();
+    let conf = config.join("rclone.conf");
+    std::fs::write(
+        &conf,
+        "[lab]\ntype = sftp\nhost = sftp.example.invalid\nuser = smoke\n",
+    )
+    .unwrap();
+    json(&cli(
+        config,
+        &[
+            "import",
+            "rclone",
+            conf.to_str().unwrap(),
+            "--apply",
+            "--json",
+        ],
+    ));
+    let file = config.join("profiles.aeroftp");
+    let exported = cli(
+        config,
+        &[
+            "profile-export",
+            "-o",
+            file.to_str().unwrap(),
+            "--password",
+            PASSWORD,
+        ],
+    );
+    assert!(exported.status.success(), "{}", describe(&exported));
+
+    fn find(dir: &Path, name: &str) -> Option<std::path::PathBuf> {
+        std::fs::read_dir(dir).ok()?.flatten().find_map(|entry| {
+            let path = entry.path();
+            if path.file_name().is_some_and(|n| n == name) {
+                Some(path)
+            } else if path.is_dir() {
+                find(&path, name)
+            } else {
+                None
+            }
+        })
+    }
+    let db = find(config, "user_partitions.db").expect("the account store");
+    std::fs::write(
+        &db,
+        b"not a database, long enough to be read as a broken header",
+    )
+    .unwrap();
+
+    let refused = cli(
+        config,
+        &[
+            "profile-import",
+            "-i",
+            file.to_str().unwrap(),
+            "--password",
+            PASSWORD,
+            "--json",
+        ],
+    );
+    assert_eq!(refused.status.code(), Some(6), "{}", describe(&refused));
+    assert!(
+        describe(&refused).contains("Check that the AeroFTP data folder is writable"),
+        "{}",
+        describe(&refused)
+    );
 }

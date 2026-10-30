@@ -125,19 +125,19 @@ interface ProviderApplyCryptOverlayResult {
 }
 
 interface ServerProfilesImportResult {
-  // The profiles to store (redacted), each with what the import did with it.
+  // The profiles stored (redacted), each with what the import did with it.
   servers: (ServerProfile & { importOutcome: string })[];
+  // The account's whole list as stored.
+  stored: ServerProfile[];
   // Profiles the backend left alone because the active user already has them
   // (this path imports with the default mode, skip).
   skipped: string[];
-  // Stored profiles whose secrets the file carried and the backend restored.
-  secretsStored: number;
-  // The account the file was compared with and the secrets restored into.
-  userId: number | null;
   // Stored Jottacloud profiles that brought their rotating refresh chain.
   jottaChains: { id: string; name: string }[];
   // Stored profiles whose custom OAuth app differs from the one kept here.
   oauthAppsKept: string[];
+  // Stored profiles a shared secret or session of the file could not reach.
+  sharedSecretsFailed: string[];
 }
 
 type MountManagerOpenOptions = {
@@ -424,7 +424,7 @@ import {
   PROFILES_CHANGED_EVENT,
 } from './utils/serverProfileStore';
 import { appendImportedProfiles } from './components/bridge/bridgeImportCommit';
-import { readSavedServerProfilesForWrite } from './utils/serverProfileStore';
+import { announceStoredServerProfiles, readSavedServerProfilesForWrite } from './utils/serverProfileStore';
 import { maskCredential } from './utils/maskCredential';
 import { getOpenWithDefaultRoute } from './utils/openWithDefault';
 import { createRemoteEndpoint } from './utils/panelEndpoints';
@@ -2022,7 +2022,7 @@ const App: React.FC = () => {
     let cancelled = false;
     (async () => {
       try {
-        const { profiles: profiles, userId: profilesUserId } = await readSavedServerProfilesForWrite();
+        const { profiles: profiles, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
         const { migrated, changed } = await migrateFilenApiKeysToVault(
           profiles,
           (account, key) => invoke('store_credential', { account, password: key }) as Promise<void>,
@@ -2030,7 +2030,7 @@ const App: React.FC = () => {
         );
         if (cancelled) return;
         if (changed) {
-          await storeSavedServerProfiles(migrated, false, profilesUserId);
+          await storeSavedServerProfiles(migrated, false, profilesUserId, profilesRevision);
           setServersRefreshKey(k => k + 1);
         }
         if (migrated.every((p) => !p.options?.filen_api_key)) {
@@ -8373,12 +8373,12 @@ const App: React.FC = () => {
     ));
     // Update saved servers in vault (localStorage may be empty after vault migration)
     try {
-      const { profiles: servers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
+      const { profiles: servers, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
       if (servers) {
         const idx = servers.findIndex(s => s.id === serverId || s.name === serverId || s.host === serverId);
         if (idx !== -1) {
           servers[idx].faviconUrl = faviconUrl;
-          await storeSavedServerProfiles(servers, false, profilesUserId);
+          await storeSavedServerProfiles(servers, false, profilesUserId, profilesRevision);
           setServersRefreshKey(k => k + 1);
         }
       }
@@ -15049,8 +15049,7 @@ const App: React.FC = () => {
 
   /**
    * Import a `.aeroftp` file opened from the file panel: ask its password,
-   * import with Skip (profiles already present stay), store the result for the
-   * account the secrets went to, and say what a failed write left behind.
+   * import with Skip (profiles already present stay) and show what it did.
    */
   const importAeroFtpProfileFile = useCallback((filePath: string) => {
     setInputDialog({
@@ -15079,49 +15078,34 @@ const App: React.FC = () => {
           );
           return;
         }
-        // Same warnings as the import dialog, on a toast regardless of the
-        // notification setting (`notify` alone can reach only the hidden
-        // Activity Log), also after a failed write: those secrets are in effect.
-        const showImportWarnings = () => {
-          if (result.jottaChains.length > 0) {
-            toast.warning(
-              t('settings.importServers') || 'Import Servers',
-              t('settings.importJottaChainWarning', { names: result.jottaChains.map(c => c.name).join(', ') }),
-            );
-          }
-          if (result.oauthAppsKept.length > 0) {
-            toast.warning(
-              t('settings.importServers') || 'Import Servers',
-              t('settings.importOauthAppKept', { names: result.oauthAppsKept.join(', ') }),
-            );
-          }
-        };
-        // Skip mode: every profile returned is new to this user. The write
-        // refuses one whose id was saved elsewhere since, like the dialog's.
-        try {
-          await appendImportedProfiles(
-            result.servers.map(({ importOutcome: _outcome, ...profile }) => profile),
-            new Set(),
-            result.userId,
-          );
-          setServersRefreshKey(k => k + 1);
-        } catch (err) {
-          // The backend restored the secrets before this write: say so, and
-          // that the same import finishes it.
-          notify.error(
-            'Import failed',
-            String(err) + (result.secretsStored > 0
-              ? ` ${t('settings.importNotSavedSecretsKept', { count: result.secretsStored })}`
-              : ''),
-          );
-          showImportWarnings();
-          return;
-        }
+        // The backend stored secrets and list as one operation.
+        announceStoredServerProfiles(result.stored);
+        setServersRefreshKey(k => k + 1);
         notify.success(
           (t('settings.importSuccess') || 'Imported {count} servers').replace('{count}', String(result.servers.length)),
           result.skipped.length > 0 ? t('settings.duplicatesSkippedCount', { count: result.skipped.length }) : undefined,
         );
-        showImportWarnings();
+        // Same warnings as the import dialog, on a toast regardless of the
+        // notification setting (`notify` alone can reach only the hidden
+        // Activity Log).
+        if (result.jottaChains.length > 0) {
+          toast.warning(
+            t('settings.importServers') || 'Import Servers',
+            t('settings.importJottaChainWarning', { names: result.jottaChains.map(c => c.name).join(', ') }),
+          );
+        }
+        if (result.oauthAppsKept.length > 0) {
+          toast.warning(
+            t('settings.importServers') || 'Import Servers',
+            t('settings.importOauthAppKept', { names: result.oauthAppsKept.join(', ') }),
+          );
+        }
+        if (result.sharedSecretsFailed.length > 0) {
+          toast.warning(
+            t('settings.importServers') || 'Import Servers',
+            t('settings.importSharedSecretsFailed', { names: result.sharedSecretsFailed.join(', ') }),
+          );
+        }
       },
     });
   }, [notify, t, toast]);
@@ -17497,13 +17481,18 @@ const App: React.FC = () => {
             servers={exportImportServers}
             initialMode={exportImportInitialMode}
             initialBridgeFilePath={exportImportBridgeFile ?? undefined}
-            onImport={async (newServers, replaceIds, expectedUserId) => {
+            onImport={async (newServers, expectedUserId) => {
               // Bridge imports may have replaced a profile in the persisted
               // list; the dialog's opening snapshot is no longer authoritative.
               // The dialog closes itself (onClose) once its result has been
               // read, or stays open on a warning that must be seen.
-              const merged = await appendImportedProfiles(newServers, replaceIds, expectedUserId);
+              const merged = await appendImportedProfiles(newServers, expectedUserId);
               setExportImportServers(merged);
+              setServersRefreshKey(k => k + 1);
+            }}
+            onProfilesStored={(stored) => {
+              announceStoredServerProfiles(stored);
+              setExportImportServers(stored);
               setServersRefreshKey(k => k + 1);
             }}
             onClose={() => {

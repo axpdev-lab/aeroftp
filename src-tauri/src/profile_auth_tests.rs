@@ -417,6 +417,31 @@ async fn round_trip() {
     assert!(gaps.is_empty(), "Auth lifecycle gaps: {gaps:?}");
 }
 
+/// Import `file` with `list` as the saved profiles of `user` (the active one when
+/// `None`), or preview it against `list` on a `dry_run`.
+async fn import_over(
+    store: &CredentialStore,
+    file: String,
+    password: String,
+    mode: crate::profile_import_plan::ExistingProfileMode,
+    list: &[serde_json::Value],
+    user: Option<i64>,
+    dry_run: bool,
+) -> Result<crate::profile_import_plan::ProfileImportReport, String> {
+    if dry_run {
+        return crate::preview_server_profiles(&file, &password, mode, list);
+    }
+    let user = match user {
+        Some(user) => user,
+        None => users::cli_get_active_user(store)?.unwrap().id,
+    };
+    users::cli_update_server_profiles_for_user(store, user, |stored| {
+        *stored = list.to_vec();
+        true
+    })?;
+    crate::import_server_profiles_with_mode(file, password, mode, user).await
+}
+
 /// Durable profile-auth secrets through copy, export, purge and every import
 /// mode, against the real vault of the forked fixture.
 async fn durable_profile_auth_lifecycle(
@@ -492,7 +517,8 @@ async fn durable_profile_auth_lifecycle(
         );
     }
     // Nothing of this id is listed any more: the import restores every secret.
-    crate::import_server_profiles_with_mode(
+    import_over(
+        store,
         file.to_string_lossy().into_owned(),
         "fixture-export-password".into(),
         crate::profile_import_plan::ExistingProfileMode::Skip,
@@ -527,7 +553,8 @@ async fn durable_profile_auth_lifecycle(
         .map(|user| user.id);
     assert!(active.is_some());
     let import_with = |mode, dry_run| {
-        crate::import_server_profiles_with_mode(
+        import_over(
+            store,
             file.to_string_lossy().into_owned(),
             "fixture-export-password".into(),
             mode,
@@ -539,15 +566,11 @@ async fn durable_profile_auth_lifecycle(
     users::store_active_credential_typed_dual(store, &stale_key, "oauth", "stale-local").unwrap();
     let skip = import_with(ExistingProfileMode::Skip, false).await.unwrap();
     assert!(skip.servers.is_empty());
-    assert_eq!(skip.secrets_stored, 0);
     assert_eq!(skip.skipped, [field(&export_profile, "name")]);
     assert_eq!(read(&stale_key).unwrap().as_str(), "stale-local");
     let overwrite = import_with(ExistingProfileMode::Overwrite, false)
         .await
         .unwrap();
-    assert_eq!(overwrite.secrets_stored, 1);
-    // The report names the account the secrets went to: the GUI writes there.
-    assert_eq!(overwrite.user_id, active);
     assert_eq!(overwrite.servers[0]["importOutcome"], "overwritten");
     assert_eq!(overwrite.servers[0]["id"], source);
     assert_eq!(read(&stale_key).unwrap().as_str(), expected);
@@ -607,7 +630,8 @@ async fn durable_profile_auth_lifecycle(
         .store("jottacloud_refresh", "other-profile-chain")
         .unwrap();
     for dry_run in [true, false] {
-        let jotta_report = crate::import_server_profiles_with_mode(
+        let jotta_report = import_over(
+            store,
             jotta_file.to_string_lossy().into_owned(),
             "fixture-export-password".into(),
             ExistingProfileMode::Duplicate,
@@ -631,7 +655,6 @@ async fn durable_profile_auth_lifecycle(
             // A restored secret shows in the profile to store, so a Crypt
             // profile added by an import reports its stored overlay password.
             assert_eq!(jotta_report.servers[0]["hasStoredAeroCryptPassword"], true);
-            assert_eq!(jotta_report.secrets_stored, 1);
             assert_eq!(
                 store.get("jottacloud_refresh").unwrap(),
                 "other-profile-chain"
@@ -649,7 +672,8 @@ async fn durable_profile_auth_lifecycle(
     users::store_active_credential_typed_dual(store, &stale_key, "oauth", "stale-local").unwrap();
     let mut elsewhere = export_profile.clone();
     elsewhere["host"] = json!("other-owner/other-repo");
-    let refused = crate::import_server_profiles_with_mode(
+    let refused = import_over(
+        store,
         file.to_string_lossy().into_owned(),
         "fixture-export-password".into(),
         ExistingProfileMode::Overwrite,
@@ -660,7 +684,6 @@ async fn durable_profile_auth_lifecycle(
     .await
     .unwrap();
     assert!(refused.servers.is_empty());
-    assert_eq!(refused.secrets_stored, 0);
     // The same with only an option of the backup weakening the connection: the
     // options reach the comparison.
     let mut weaker = export_profile.clone();
@@ -674,7 +697,8 @@ async fn durable_profile_auth_lifecycle(
     )
     .await
     .unwrap();
-    let weaker = crate::import_server_profiles_with_mode(
+    let weaker = import_over(
+        store,
         weaker_file.to_string_lossy().into_owned(),
         "fixture-export-password".into(),
         ExistingProfileMode::Overwrite,
@@ -703,31 +727,55 @@ async fn durable_profile_auth_lifecycle(
         "stored-password"
     );
 
-    // An import for another account than the active one writes the secrets for
-    // that account: none reaches the active one's partition.
+    // An import for another account than the active one is refused before it
+    // writes anything: restored secrets also reach the shared vault key.
+    let list_of = |user: i64| {
+        users::cli_update_server_profiles_for_user(store, user, |_| false)
+            .unwrap()
+            .0
+    };
+    let other_list = list_of(other_id);
     let for_other = crate::import_server_profiles_with_mode(
         file.to_string_lossy().into_owned(),
         "fixture-export-password".into(),
         ExistingProfileMode::Duplicate,
-        &current,
-        Some(other_id),
-        false,
+        other_id,
     )
     .await
-    .unwrap();
-    let copy = field(&for_other.servers[0], "id");
-    let mirrored = |user: i64| {
-        users::open_or_init_cli()
-            .unwrap()
-            .query_row(
-                "SELECT COUNT(*) FROM user_credentials WHERE user_id=?1 AND credential_id=?2",
-                rusqlite::params![user, format!("{stale_prefix}_{copy}")],
-                |row| row.get::<_, i64>(0),
-            )
-            .unwrap()
-    };
-    assert_eq!(mirrored(other_id), 1);
-    assert_eq!(mirrored(active_id), 0);
+    .unwrap_err();
+    assert!(for_other.starts_with("ACCOUNT_CHANGED"), "{for_other}");
+    assert_eq!(list_of(other_id), other_list);
+
+    // The real vault and partition: a rollback puts the old value back in both,
+    // removes a key that did not exist, and leaves one changed since.
+    {
+        use crate::profile_import_plan::{
+            apply_secret_writes, roll_back_secret_writes, SecretWrite,
+        };
+        let slots = crate::VaultSecretSlots {
+            store,
+            user: active_id,
+        };
+        store.store("server_rollback-held", "vault-before").unwrap();
+        users::store_active_credential_dual(store, "server_rollback-held", "before").unwrap();
+        let applied = apply_secret_writes(
+            &slots,
+            vec![
+                SecretWrite::new("server_rollback-held".into(), None, "file-held"),
+                SecretWrite::new("server_rollback-new".into(), None, "file-new"),
+                SecretWrite::new("server_rollback-raced".into(), None, "file-raced"),
+            ],
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(read("server_rollback-held").unwrap().as_str(), "file-held");
+        users::store_active_credential_dual(store, "server_rollback-raced", "newer").unwrap();
+        assert!(roll_back_secret_writes(&slots, applied).is_empty());
+        assert_eq!(read("server_rollback-held").unwrap().as_str(), "before");
+        assert_eq!(store.get("server_rollback-held").unwrap(), "before");
+        assert!(read("server_rollback-new").is_none());
+        assert!(store.get("server_rollback-new").is_err());
+        assert_eq!(read("server_rollback-raced").unwrap().as_str(), "newer");
+    }
 
     // A file repeating an id holds one set of provider secrets: the first profile
     // brings the chain, the later one stored under a new id does not.
@@ -740,7 +788,8 @@ async fn durable_profile_auth_lifecycle(
     )
     .await
     .unwrap();
-    let repeated = crate::import_server_profiles_with_mode(
+    let repeated = import_over(
+        store,
         repeated_file.to_string_lossy().into_owned(),
         "fixture-export-password".into(),
         ExistingProfileMode::Duplicate,
@@ -763,7 +812,8 @@ async fn durable_profile_auth_lifecycle(
         "other-profile-chain",
     )
     .unwrap();
-    crate::import_server_profiles_with_mode(
+    import_over(
+        store,
         jotta_file.to_string_lossy().into_owned(),
         "fixture-export-password".into(),
         ExistingProfileMode::Overwrite,
@@ -938,7 +988,8 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
         .await
         .unwrap();
     assert_eq!(count(selected_id, &selected_key), 0);
-    crate::import_server_profiles_with_mode(
+    import_over(
+        store,
         file.to_string_lossy().into_owned(),
         "native-fixture-export-password".into(),
         crate::profile_import_plan::ExistingProfileMode::Skip,
@@ -961,25 +1012,24 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
     );
     users::cli_set_active_user(store, active_id).unwrap();
 
-    // Another account is active than the one the import is for: the session is
-    // written for the expected user and none reaches the active one.
+    // Another account is active than the one the import is for: nothing is
+    // written, for either of them.
     users::cli_set_active_user(store, selected_id).unwrap();
     crate::purge_profile_secrets("native-selected".into(), Some("proton".into()))
         .await
         .unwrap();
     users::cli_set_active_user(store, active_id).unwrap();
     assert_eq!(count(selected_id, &selected_key), 0);
-    crate::import_server_profiles_with_mode(
+    let refused = crate::import_server_profiles_with_mode(
         file.to_string_lossy().into_owned(),
         "native-fixture-export-password".into(),
         crate::profile_import_plan::ExistingProfileMode::Skip,
-        &[],
-        Some(selected_id),
-        false,
+        selected_id,
     )
     .await
-    .unwrap();
-    assert_eq!(count(selected_id, &selected_key), 1);
+    .unwrap_err();
+    assert!(refused.starts_with("ACCOUNT_CHANGED"), "{refused}");
+    assert_eq!(count(selected_id, &selected_key), 0);
     assert_eq!(count(active_id, &selected_key), 0);
 
     // Reproduce the old takeover gap using the real vault and local lease:

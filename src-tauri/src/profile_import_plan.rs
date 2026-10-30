@@ -23,6 +23,8 @@
 //! import stores two profiles of one id. The GUI (`import_server_profiles`) and the CLI
 //! (`profile-import`) both plan through [`plan_import`].
 
+use secrecy::zeroize::Zeroizing;
+
 use std::collections::HashSet;
 
 /// What to do with a profile of the file whose id the active user already has.
@@ -197,16 +199,151 @@ pub fn may_write_oauth_app(
     }
 }
 
-/// The error for secrets the import could not write, each given as
-/// `"<profile id> <kind>: <error>"`. It names each one by what comes before the
-/// `:` and leaves out the error text, which stays in the log because it could
-/// quote a value, and it says what the failure leaves behind and how to finish.
-pub fn failed_secrets_message(errors: &[String]) -> String {
-    let failed: Vec<&str> = errors.iter().map(|e| e.as_str()).collect();
+/// One per-profile secret an import writes, with the type its partition copy
+/// carries (`None` lets the key's prefix decide).
+pub struct SecretWrite {
+    pub key: String,
+    pub kind: Option<&'static str>,
+    pub value: Zeroizing<String>,
+}
+
+impl SecretWrite {
+    pub fn new(key: String, kind: Option<&'static str>, value: &str) -> Self {
+        Self {
+            key,
+            kind,
+            value: Zeroizing::new(value.to_string()),
+        }
+    }
+}
+
+/// Where an import's per-profile secrets go. A trait so that a failure at any key
+/// can be tested without a vault that fails.
+pub trait SecretSlots {
+    /// What a key holds before its write.
+    type Snapshot;
+    fn snapshot(&self, write: &SecretWrite) -> Result<Self::Snapshot, String>;
+    fn write(&self, write: &SecretWrite) -> Result<(), String>;
+    /// Undo `write` as [`rollback_action`] decides.
+    fn restore(&self, write: &SecretWrite, before: Self::Snapshot) -> Result<(), String>;
+}
+
+/// How to undo a write of one key, in one place that holds it.
+#[derive(Debug, PartialEq, Eq)]
+pub enum RollbackAction<'a> {
+    /// The key no longer holds what the import wrote: someone changed it since,
+    /// and that change stays.
+    Leave,
+    Restore(&'a str),
+    Delete,
+}
+
+/// Decide [`RollbackAction`] from what the key holds now, what the import wrote
+/// and what it held before.
+pub fn rollback_action<'a>(
+    current: Option<&str>,
+    written: &str,
+    before: Option<&'a str>,
+) -> RollbackAction<'a> {
+    if current != Some(written) {
+        return RollbackAction::Leave;
+    }
+    match before {
+        Some(value) => RollbackAction::Restore(value),
+        None => RollbackAction::Delete,
+    }
+}
+
+/// Write `writes` in order, having first read what every key holds, so a key that
+/// cannot be read stops the import before anything changes. A failed write puts
+/// back every key written so far, itself included, since it may have reached one
+/// of its two places. Returns what [`roll_back_secret_writes`] needs. Errors name
+/// keys only: the underlying error stays in the log, as it could quote a value.
+pub fn apply_secret_writes<S: SecretSlots>(
+    slots: &S,
+    writes: Vec<SecretWrite>,
+) -> Result<Vec<(SecretWrite, S::Snapshot)>, String> {
+    let mut pending = Vec::with_capacity(writes.len());
+    for write in writes {
+        match slots.snapshot(&write) {
+            Ok(before) => pending.push((write, before)),
+            Err(e) => {
+                log::warn!("Import: {} could not be read: {e}", write.key);
+                return Err(format!(
+                    "the secret stored under {} could not be read, so nothing was imported",
+                    write.key
+                ));
+            }
+        }
+    }
+    let mut applied = Vec::with_capacity(pending.len());
+    for (write, before) in pending {
+        let result = slots.write(&write);
+        applied.push((write, before));
+        if let Err(e) = result {
+            let failed = applied
+                .last()
+                .map(|(w, _)| w.key.clone())
+                .unwrap_or_default();
+            log::warn!("Import: {failed} could not be stored: {e}");
+            let left = roll_back_secret_writes(slots, applied);
+            let cause = format!("the secret {failed} could not be stored, so nothing was imported");
+            return Err(if left.is_empty() {
+                format!("{cause}; fix the cause and import the file again")
+            } else {
+                failed_rollback_message(&cause, &left)
+            });
+        }
+    }
+    Ok(applied)
+}
+
+/// Undo what [`apply_secret_writes`] wrote, last first, and return the keys that
+/// could not be put back.
+pub fn roll_back_secret_writes<S: SecretSlots>(
+    slots: &S,
+    applied: Vec<(SecretWrite, S::Snapshot)>,
+) -> Vec<String> {
+    let mut left = Vec::new();
+    for (write, before) in applied.into_iter().rev() {
+        if let Err(e) = slots.restore(&write, before) {
+            log::warn!("Import: {} could not be put back: {e}", write.key);
+            left.push(write.key.clone());
+        }
+    }
+    left
+}
+
+/// The error for a failed import that also left secrets it could not put back,
+/// named by key and never by value.
+pub fn failed_rollback_message(cause: &str, left: &[String]) -> String {
     format!(
-        "these secrets could not be stored: {}. No profile was saved, but the secrets written before the failure may already have replaced the stored ones; fix the cause and import the file again",
-        failed.join(", ")
+        "{cause}; these keys could not be put back and keep the file's value: {}. Check the profiles they belong to, or import the file again",
+        left.join(", ")
     )
+}
+
+/// Lay an import's stored profiles (`servers`, each with its `importOutcome`)
+/// over `list`, the list the plan was made on: an overwritten profile over the
+/// stored one of its id, where it stands, so a field only this device has
+/// survives and the list keeps its order ([`overwrite_profile`]); every other one
+/// appended, without its outcome.
+pub fn lay_import_over(list: &mut Vec<serde_json::Value>, servers: &[serde_json::Value]) {
+    for profile in servers {
+        let mut profile = profile.clone();
+        let overwrite =
+            profile.get("importOutcome").and_then(|v| v.as_str()) == Some("overwritten");
+        if let Some(fields) = profile.as_object_mut() {
+            fields.remove("importOutcome");
+        }
+        let slot = list
+            .iter()
+            .position(|p| p.get("id").is_some() && p.get("id") == profile.get("id"));
+        match (overwrite, slot) {
+            (true, Some(i)) => list[i] = overwrite_profile(&list[i], &profile),
+            _ => list.push(profile),
+        }
+    }
 }
 
 /// How a report names a profile: its name, or `(host)` when it has none.
@@ -222,11 +359,8 @@ pub fn display_name(name: &str, host: &str) -> String {
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileImportReport {
-    /// The profiles to store, redacted, each with its `importOutcome`: added
-    /// and duplicated ones to append, overwritten ones to lay over the stored
-    /// profile of their id with [`overwrite_profile`] when the list is written,
-    /// against the record read in that same write, so an edit made since the
-    /// import read the list is kept.
+    /// The profiles the import stored or, on a preview, would store, redacted,
+    /// each with its `importOutcome`.
     pub servers: Vec<serde_json::Value>,
     /// Names (see [`display_name`]) of the profiles skipped because the active
     /// user already has them, or the file already gave their id.
@@ -238,18 +372,18 @@ pub struct ProfileImportReport {
     /// profile that connects first with it signs the other copies out. The id
     /// finds the name the profile write gave it.
     pub jotta_chains: Vec<ImportedProfileRef>,
-    /// How many stored profiles had secrets in the file that were restored
-    /// (0 on a dry run). The restore comes before the caller writes the list,
-    /// so this is what a failed write leaves in the vault.
-    pub secrets_stored: usize,
-    /// The user whose profiles the file was compared with and whose partition
-    /// the secrets went to: the caller writes the list for this user only.
-    pub user_id: Option<i64>,
+    /// The whole list as stored for the account (on a preview, the list given).
+    pub stored: Vec<serde_json::Value>,
+    /// The profiles the write stored under another name than they were sent with.
+    pub renamed: Vec<crate::util::profile_name::RenamedProfile>,
     /// Names of the stored profiles whose custom OAuth app differs from the one
     /// this device already has for the provider. The stored app is kept, because
     /// other profiles refresh their tokens with it, so these may need a new
     /// sign-in.
     pub oauth_apps_kept: Vec<String>,
+    /// Names of the stored profiles a shared secret or native session of the file
+    /// could not reach after the list was stored: they ask for a new sign-in.
+    pub shared_secrets_failed: Vec<String>,
     /// Names of the profiles an Overwrite refused because the file points them at
     /// another server ([`same_target`]): they keep their configuration and
     /// secrets, and are also listed in `skipped`. Duplicate adds the file's copy.
@@ -431,6 +565,8 @@ pub fn overwrite_profile(
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::cell::RefCell;
+    use std::collections::HashMap;
 
     /// A profile of the file on port 21 as user `u`.
     fn candidate<'a>(id: &'a str, host: &'a str) -> ImportCandidate<'a> {
@@ -759,23 +895,161 @@ mod tests {
         assert!(same_target(&no_protocol, &ftp));
     }
 
-    /// The failure message names profile and kind, says what is left behind and
-    /// never carries the error text, which could quote a secret.
+    /// A fake store: its keys, and the keys whose write or restore fails, with an
+    /// error text that quotes the value as a real one could.
+    #[derive(Default)]
+    struct FakeSlots {
+        values: RefCell<HashMap<String, String>>,
+        fail_write: Option<&'static str>,
+        fail_restore: Option<&'static str>,
+    }
+
+    impl SecretSlots for FakeSlots {
+        type Snapshot = Option<String>;
+        fn snapshot(&self, write: &SecretWrite) -> Result<Self::Snapshot, String> {
+            Ok(self.values.borrow().get(&write.key).cloned())
+        }
+        fn write(&self, write: &SecretWrite) -> Result<(), String> {
+            if self.fail_write == Some(write.key.as_str()) {
+                return Err(format!("rejected value {}", write.value.as_str()));
+            }
+            self.values
+                .borrow_mut()
+                .insert(write.key.clone(), write.value.to_string());
+            Ok(())
+        }
+        fn restore(&self, write: &SecretWrite, before: Self::Snapshot) -> Result<(), String> {
+            if self.fail_restore == Some(write.key.as_str()) {
+                return Err(format!("rejected value {}", write.value.as_str()));
+            }
+            let mut values = self.values.borrow_mut();
+            let current = values.get(&write.key).cloned();
+            match rollback_action(current.as_deref(), &write.value, before.as_deref()) {
+                RollbackAction::Leave => {}
+                RollbackAction::Restore(value) => {
+                    values.insert(write.key.clone(), value.to_string());
+                }
+                RollbackAction::Delete => {
+                    values.remove(&write.key);
+                }
+            }
+            Ok(())
+        }
+    }
+
+    fn secret_writes() -> Vec<SecretWrite> {
+        vec![
+            SecretWrite::new("server_a".into(), None, "file-a"),
+            SecretWrite::new("server_b".into(), None, "file-b"),
+            SecretWrite::new("server_c".into(), None, "file-c"),
+        ]
+    }
+
     #[test]
-    fn the_failed_secrets_message_names_what_failed_and_no_error_text() {
-        let message = failed_secrets_message(&[
-            "srv_a oauth: invalid value \"hunter2\" at line 1".to_string(),
-            "srv_b jotta: disk full".to_string(),
-        ]);
-        assert!(message.contains("srv_a oauth, srv_b jotta"), "{message}");
-        assert!(
-            message.contains("may already have replaced the stored ones"),
-            "{message}"
+    fn rollback_touches_a_key_only_while_it_holds_what_the_import_wrote() {
+        assert_eq!(
+            rollback_action(Some("file"), "file", Some("old")),
+            RollbackAction::Restore("old")
         );
-        assert!(message.contains("No profile was saved"), "{message}");
-        assert!(message.contains("import the file again"), "{message}");
-        assert!(!message.contains("hunter2"), "{message}");
-        assert!(!message.contains("disk full"), "{message}");
+        assert_eq!(
+            rollback_action(Some("file"), "file", None),
+            RollbackAction::Delete
+        );
+        // Another writer stored its value since: it stays.
+        assert_eq!(
+            rollback_action(Some("newer"), "file", Some("old")),
+            RollbackAction::Leave
+        );
+        assert_eq!(
+            rollback_action(None, "file", Some("old")),
+            RollbackAction::Leave
+        );
+    }
+
+    /// A write failing at any key leaves every key as it was before the import,
+    /// and the error names that key, not a value.
+    #[test]
+    fn a_failed_write_puts_back_every_key_and_names_only_the_key() {
+        for failing in ["server_a", "server_b", "server_c"] {
+            let slots = FakeSlots {
+                fail_write: Some(failing),
+                ..Default::default()
+            };
+            slots
+                .values
+                .borrow_mut()
+                .insert("server_a".into(), "stored-a".into());
+            let message = match apply_secret_writes(&slots, secret_writes()) {
+                Ok(_) => panic!("the write of {failing} must fail"),
+                Err(message) => message,
+            };
+            let values = slots.values.borrow();
+            assert_eq!(values.get("server_a").map(String::as_str), Some("stored-a"));
+            assert!(!values.contains_key("server_b"));
+            assert!(!values.contains_key("server_c"));
+            assert!(message.contains(failing), "{message}");
+            assert!(message.contains("nothing was imported"), "{message}");
+            assert!(!message.contains("file-"), "{message}");
+        }
+    }
+
+    /// A key that cannot be put back is named in the error, without its value,
+    /// and the others are still put back.
+    #[test]
+    fn a_failed_rollback_names_the_key_and_never_its_value() {
+        let slots = FakeSlots {
+            fail_write: Some("server_c"),
+            fail_restore: Some("server_b"),
+            ..Default::default()
+        };
+        let message = match apply_secret_writes(&slots, secret_writes()) {
+            Ok(_) => panic!("the write of server_c must fail"),
+            Err(message) => message,
+        };
+        assert!(message.contains("server_b"), "{message}");
+        assert!(message.contains("keep the file's value"), "{message}");
+        assert!(!message.contains("file-b"), "{message}");
+        let values = slots.values.borrow();
+        assert!(!values.contains_key("server_a"));
+        assert_eq!(values.get("server_b").map(String::as_str), Some("file-b"));
+    }
+
+    #[test]
+    fn a_commit_that_fails_rolls_back_what_was_written_and_keeps_a_newer_value() {
+        let slots = FakeSlots::default();
+        let applied = match apply_secret_writes(&slots, secret_writes()) {
+            Ok(applied) => applied,
+            Err(message) => panic!("{message}"),
+        };
+        // Another window stored a newer secret after the import wrote its own.
+        slots
+            .values
+            .borrow_mut()
+            .insert("server_b".into(), "newer".into());
+        assert!(roll_back_secret_writes(&slots, applied).is_empty());
+        let values = slots.values.borrow();
+        assert!(!values.contains_key("server_a"));
+        assert_eq!(values.get("server_b").map(String::as_str), Some("newer"));
+        assert!(!values.contains_key("server_c"));
+    }
+
+    #[test]
+    fn an_import_lays_overwrites_in_place_and_appends_the_rest() {
+        let mut list = vec![
+            json!({"id": "a", "name": "kept", "deviceOnly": 1}),
+            json!({"id": "b", "name": "other"}),
+        ];
+        lay_import_over(
+            &mut list,
+            &[
+                json!({"id": "a", "name": "file", "importOutcome": "overwritten"}),
+                json!({"id": "c", "name": "new", "importOutcome": "added"}),
+            ],
+        );
+        assert_eq!(list[0]["name"], "file");
+        assert_eq!(list[0]["deviceOnly"], 1);
+        assert_eq!(list[1]["name"], "other");
+        assert_eq!(list[2], json!({"id": "c", "name": "new"}));
     }
 
     /// The GUI sends the mode as a lowercase string.

@@ -58,6 +58,8 @@ export const loadActiveServerProfiles = (): Promise<ServerProfile[]> =>
 export interface ScopedServerProfiles {
     userId: number;
     profiles: ServerProfile[];
+    /** Hands the write-back its check that no other writer saved in between. */
+    revision: string;
 }
 
 export const loadActiveServerProfilesScoped = (): Promise<ScopedServerProfiles> =>
@@ -66,14 +68,16 @@ export const loadActiveServerProfilesScoped = (): Promise<ScopedServerProfiles> 
 /**
  * Replace the active account's profiles. With `expectedUserId` (from
  * {@link loadActiveServerProfilesScoped}) the backend refuses the write with
- * `ACCOUNT_CHANGED` when another account became active since that read.
+ * `ACCOUNT_CHANGED` when another account became active since that read, and
+ * with `expectedRevision` (from the same read) with `PROFILES_CHANGED` when
+ * another window or process saved since.
  * Resolves to the list stored: a profile saved onto a name another one holds
  * comes back with the first free " (1)", " (2)", ... (`util::profile_name`).
  */
-export const saveActiveServerProfiles = (profiles: ServerProfile[], expectedUserId?: number): Promise<ServerProfile[] | undefined> =>
+export const saveActiveServerProfiles = (profiles: ServerProfile[], expectedUserId?: number, expectedRevision?: string): Promise<ServerProfile[] | undefined> =>
     invoke<ServerProfile[] | undefined>(
         'user_partitions_save_active_server_profiles',
-        expectedUserId === undefined ? { profiles } : { profiles, expectedUserId },
+        expectedUserId === undefined ? { profiles } : { profiles, expectedUserId, expectedRevision },
     );
 
 export const addUser = (

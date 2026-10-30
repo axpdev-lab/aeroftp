@@ -1369,9 +1369,9 @@
             "overwrittenCount": "{count} felülírva",
             "duplicatedCount": "{count} duplikálva",
             "importJottaChainWarning": "A Jottacloud minden csatlakozáskor megújítja a bejelentkezését, és a(z) {names} most egyet megoszt egy másik másolattal: amelyik másolat előbb csatlakozik, kijelentkezteti a másikat (az eszközt, ahonnan a fájl származik, vagy a profilt, amelyből duplikálták). Jelentkeztesse be újra a másikat egy új Personal Login Tokennel.",
-            "importNotSavedSecretsKept": "A profilok nem lettek mentve, de a fájlban található jelszavak és bejelentkezési tokenek {count} profilhoz már el lettek tárolva. A befejezéshez importáld újra ugyanazt a fájlt ugyanazzal a beállítással.",
             "importOauthAppKept": "{names} a szolgáltatóhoz ezen az eszközön megadottól eltérő egyéni OAuth-alkalmazással érkezett. A tárolt alkalmazás megmaradt, ezért jelentkezz be újra, ha ezek a profilok nem tudnak csatlakozni.",
-            "importTargetChanged": "{names} nem lettek felülírva: a fájl egy másik szerverre irányítja őket, és a mentett jelszavaik és tokenjeik nem kerülhetnek oda. Importálj a Duplikálás opcióval a fájlból származó másolat hozzáadásához, vagy előbb töröld a profilt."
+            "importTargetChanged": "{names} nem lettek felülírva: a fájl egy másik szerverre irányítja őket, és a mentett jelszavaik és tokenjeik nem kerülhetnek oda. Importálj a Duplikálás opcióval a fájlból származó másolat hozzáadásához, vagy előbb töröld a profilt.",
+            "importSharedSecretsFailed": "A(z) {names} importálva lett, de a fájlból egy megosztott titkot vagy munkamenetet nem sikerült tárolni. Jelentkezzen be újra ezekbe a profilokba, ha nem csatlakoznak."
         },
         "devtools": {
             "title": "AeroTools",

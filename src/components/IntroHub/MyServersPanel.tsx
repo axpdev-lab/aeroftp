@@ -807,7 +807,7 @@ export function MyServersPanel({
                     : idx;
             if (fromVisible === rawTarget) { dragServerIdRef.current = null; setDragIdx(null); setOverIdx(null); return; }
 
-            const { profiles: currentServers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
+            const { profiles: currentServers, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
             const updated = reorderVisibleInFull(currentServers, visible, fromVisible, rawTarget);
             if (updated.every((s, i) => s.id === currentServers[i]?.id)) {
                 dragServerIdRef.current = null;
@@ -815,7 +815,7 @@ export function MyServersPanel({
                 setOverIdx(null);
                 return;
             }
-            setServers(await storeSavedServerProfiles(updated, false, profilesUserId));
+            setServers(await storeSavedServerProfiles(updated, false, profilesUserId, profilesRevision));
         } catch (err) {
             logger.warn('Saved profile operation failed', err);
             window.dispatchEvent(new CustomEvent('aeroftp-toast', {
@@ -1382,7 +1382,7 @@ export function MyServersPanel({
 
     const handleDuplicate = useCallback(async (server: ServerProfile) => {
         try {
-            const { profiles: currentServers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
+            const { profiles: currentServers, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
             const newId = `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
             const dup: ServerProfile = {
                 ...server,
@@ -1403,7 +1403,7 @@ export function MyServersPanel({
             // SavedServers duplicate handler. The list has no id/order sort (array
             // position IS the order), so prepending made the copy jump to the top.
             const updated = [...currentServers, dup];
-            const stored = await storeSavedServerProfiles(updated, false, profilesUserId);
+            const stored = await storeSavedServerProfiles(updated, false, profilesUserId, profilesRevision);
             setServers(stored);
             // The name the copy was stored with: " (1)" when another holds it.
             const copy = stored.find(s => s.id === dup.id) ?? dup;
@@ -1443,9 +1443,9 @@ export function MyServersPanel({
         try {
             const trimmed = newName.trim();
             if (trimmed && trimmed !== server.name) {
-                const { profiles: currentServers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
+                const { profiles: currentServers, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
                 const updated = currentServers.map(s => s.id === server.id ? { ...s, name: trimmed } : s);
-                setServers(await storeSavedServerProfiles(updated, false, profilesUserId));
+                setServers(await storeSavedServerProfiles(updated, false, profilesUserId, profilesRevision));
             }
             setRenamingId(null);
         } catch (err) {
@@ -1514,9 +1514,9 @@ export function MyServersPanel({
     const confirmDelete = useCallback(async () => {
         try {
             if (!deleteTarget) return;
-            const { profiles: currentServers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
+            const { profiles: currentServers, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
             const updated = currentServers.filter(s => s.id !== deleteTarget.id);
-            setServers(await storeSavedServerProfiles(updated, false, profilesUserId));
+            setServers(await storeSavedServerProfiles(updated, false, profilesUserId, profilesRevision));
             deleteProfileVaultSecrets(deleteTarget.id, deleteTarget.protocol).catch(() => {});
             // Drop the deleted profile from any group it belonged to (#320).
             pruneServerFromGroups(deleteTarget.id).catch(() => {});

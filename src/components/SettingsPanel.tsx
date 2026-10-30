@@ -44,7 +44,7 @@ import { secureGetWithFallback } from '../utils/secureStorage';
 import { loadOAuthClientCredentials } from '../utils/oauthClientCredentials';
 import { keyReadFailure, notifyOAuthKeysUnavailable } from '../utils/oauthKeysMissing';
 import { dispatchMasterPasswordChanged } from '../utils/masterPasswordEvents';
-import { loadSavedServerProfiles, readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../utils/serverProfileStore';
+import { announceStoredServerProfiles, loadSavedServerProfiles, readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../utils/serverProfileStore';
 import { appendImportedProfiles } from './bridge/bridgeImportCommit';
 import {
     DEFAULT_APP_FONT_FAMILY,
@@ -853,12 +853,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             const scope = await bindSettingsScope(new ConnectScope(() => { if (!panelOpen.current) throw new GuiError('lease_interrupted'); }));
             // General settings must not replace a newer/unavailable partition
             // with the list captured when this dialog was opened.
-            const { profiles: currentServers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
+            const { profiles: currentServers, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
             const committed = await updateAppSettings(existing => mergeAppSettingsDraft(base, captured,
                 { ...base, ...(existing || {}) }) as unknown as Record<string, unknown>, scope, true) as unknown as AppSettings;
             settingsBase.current = committed;
             setSettings(current => mergeAppSettingsDraft(captured, current, committed));
-            await storeSavedServerProfiles(currentServers, false, profilesUserId);
+            await storeSavedServerProfiles(currentServers, false, profilesUserId, profilesRevision);
             // Save OAuth secrets to secure credential store sequentially (avoid vault write races)
             const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'] as const;
             for (const p of providers) {
@@ -4025,10 +4025,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 <ExportImportDialog
                     servers={servers}
                     initialMode={exportImportInitialMode}
-                    onImport={async (newServers, replaceIds, expectedUserId) => {
+                    onImport={async (newServers, expectedUserId) => {
                         // The dialog closes itself (onClose) after its result.
-                        const updated = await appendImportedProfiles(newServers, replaceIds, expectedUserId);
+                        const updated = await appendImportedProfiles(newServers, expectedUserId);
                         setServers(updated);
+                        onServersChanged?.();
+                    }}
+                    onProfilesStored={(stored) => {
+                        announceStoredServerProfiles(stored);
+                        setServers(stored);
                         onServersChanged?.();
                     }}
                     onClose={() => { setShowExportImport(false); setExportImportInitialMode(undefined); }}

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { revertConvertedProfile } from './serverProfileStore';
 import { transformWithOxc } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 import connection from '../components/ConnectionScreen.tsx?raw';
@@ -54,8 +55,8 @@ function fixture(fail: 'read' | 'write' | 'none' = 'write') {
         modeChanged: true, targetModeLabel: 'Native', originalEditMode: { protocol: 'webdav' },
         customIconForSave: undefined, faviconForSave: undefined, editHydratedPasswordRef: { current: '' },
         modeCredentialSnapshotsRef: { current: { ftp: 'fixture' } }, bridgeSaveBlocked: false,
-        loadSavedServerProfiles: read, loadSavedServerProfilesStrict: read, storeSavedServerProfiles: store,
-        readSavedServerProfilesForWrite: async () => ({ profiles: await read(), userId: 7 }),
+        loadSavedServerProfiles: read, loadSavedServerProfilesStrict: read, storeSavedServerProfiles: store, revertConvertedProfile,
+        readSavedServerProfilesForWrite: async () => ({ profiles: await read(), userId: 7, revision: 'r7' }),
         tryStoreCredential: vi.fn(async () => true), stashFilenApiKey: vi.fn(async () => false),
         aeroCryptOverlayFields: vi.fn(async () => ({})), migrateCryptCredentials: vi.fn(),
         normalizeMegaOptions: (v: unknown) => v, getDefaultPort: () => 21, connectionProfileDefaults,
@@ -185,7 +186,7 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.context.invoke).not.toHaveBeenCalled();
         expect(f.events.filter(e => e.type === 'aeroftp-settings-changed')).toEqual([]);
         if (fail === 'read') expect(f.context.updateAppSettings).not.toHaveBeenCalled();
-        else expect(f.store).toHaveBeenCalledWith(f.servers, false, 7);
+        else expect(f.store).toHaveBeenCalledWith(f.servers, false, 7, 'r7');
     });
 
     it('portable Settings save never changes the installed app autostart', async () => {
@@ -300,7 +301,7 @@ describe('saved profile write rejection in production handlers', () => {
         const f = fixture('none');
         const fn = await execute(connection, ['saveToServers', 'handleConnectAndSave'], f.context);
         await fn.handleConnectAndSave();
-        expect(f.store).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ id: 'old', name: 'Edited' })]), false, 7);
+        expect(f.store).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ id: 'old', name: 'Edited' })]), false, 7, 'r7');
         expect(f.context.onFormSaved).toHaveBeenCalledTimes(1);
         expect(f.context.syncPersistedModeCredentials).toHaveBeenCalledWith('old');
     });
@@ -349,7 +350,7 @@ describe('saved profile write rejection in production handlers', () => {
         f.read.mockResolvedValueOnce([...f.servers, unseen]);
         const fn = await execute(hub, ['handleRenameSubmit'], f.context);
         await fn.handleRenameSubmit(f.servers[0], 'Renamed');
-        expect(f.store).toHaveBeenCalledWith([expect.objectContaining({ name: 'Renamed' }), f.servers[1], unseen], false, 7);
+        expect(f.store).toHaveBeenCalledWith([expect.objectContaining({ name: 'Renamed' }), f.servers[1], unseen], false, 7, 'r7');
         expect(f.context.setRenamingId).toHaveBeenCalledWith(null);
     });
 

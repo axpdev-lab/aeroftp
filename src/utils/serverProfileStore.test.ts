@@ -21,6 +21,7 @@ import {
     loadSavedServerProfilesStrict,
     mergeSavedServerProfile,
     readSavedServerProfilesForWrite,
+    revertConvertedProfile,
     savedProfilesGeneration,
     storeSavedServerProfiles,
 } from './serverProfileStore';
@@ -327,12 +328,27 @@ describe('loadSavedServerProfilesStrict', () => {
     });
 });
 
+describe('revertConvertedProfile', () => {
+    const original = sampleProfile({ id: 'orig', name: 'Original' });
+    const converted = sampleProfile({ id: 'new', name: 'Converted' });
+    const added = sampleProfile({ id: 'added', name: 'Added since' });
+
+    it('puts the original where the converted profile stands and keeps what was added since', () => {
+        expect(revertConvertedProfile([converted, added], 'new', original)).toEqual([original, added]);
+    });
+
+    it('brings the original back if the converted one is gone, without a second copy', () => {
+        expect(revertConvertedProfile([added], 'new', original)).toEqual([added, original]);
+        expect(revertConvertedProfile([original, added], 'new', original)).toEqual([original, added]);
+    });
+});
+
 describe('account-bound profile writes', () => {
     it('reads the list together with the account it belongs to', async () => {
         const profiles = [sampleProfile()];
-        mockInvoke.mockResolvedValueOnce({ userId: 4, profiles });
+        mockInvoke.mockResolvedValueOnce({ userId: 4, profiles, revision: 'r1' });
 
-        await expect(readSavedServerProfilesForWrite()).resolves.toEqual({ profiles, userId: 4 });
+        await expect(readSavedServerProfilesForWrite()).resolves.toEqual({ profiles, userId: 4, revision: 'r1' });
         expect(mockInvoke).toHaveBeenCalledWith('user_partitions_load_active_server_profiles_scoped', undefined);
     });
 
@@ -351,7 +367,7 @@ describe('account-bound profile writes', () => {
 
     it('binds a single-profile merge to the account it read', async () => {
         mockInvoke
-            .mockResolvedValueOnce({ userId: 4, profiles: [sampleProfile()] })
+            .mockResolvedValueOnce({ userId: 4, profiles: [sampleProfile()], revision: 'r1' })
             .mockResolvedValueOnce(undefined);
 
         await mergeSavedServerProfile('srv_1', profile => ({ ...profile, name: 'merged' }));
@@ -359,7 +375,30 @@ describe('account-bound profile writes', () => {
         expect(mockInvoke).toHaveBeenLastCalledWith('user_partitions_save_active_server_profiles', {
             profiles: [sampleProfile({ name: 'merged' })],
             expectedUserId: 4,
+            expectedRevision: 'r1',
         });
+    });
+
+    it('redoes a merge once on the list another writer saved, then reports the conflict', async () => {
+        const other = sampleProfile({ id: 'srv_2', name: 'Saved elsewhere' });
+        mockInvoke
+            .mockResolvedValueOnce({ userId: 4, profiles: [sampleProfile()], revision: 'r1' })
+            .mockRejectedValueOnce(new Error('PROFILES_CHANGED: nothing was saved'))
+            .mockResolvedValueOnce({ userId: 4, profiles: [sampleProfile(), other], revision: 'r2' })
+            .mockResolvedValueOnce(undefined);
+        await mergeSavedServerProfile('srv_1', profile => ({ ...profile, name: 'merged' }));
+        expect(mockInvoke).toHaveBeenLastCalledWith('user_partitions_save_active_server_profiles', {
+            profiles: [sampleProfile({ name: 'merged' }), other],
+            expectedUserId: 4,
+            expectedRevision: 'r2',
+        });
+
+        mockInvoke
+            .mockResolvedValueOnce({ userId: 4, profiles: [sampleProfile()], revision: 'r3' })
+            .mockRejectedValueOnce(new Error('PROFILES_CHANGED: nothing was saved'))
+            .mockResolvedValueOnce({ userId: 4, profiles: [sampleProfile()], revision: 'r4' })
+            .mockRejectedValueOnce(new Error('PROFILES_CHANGED: nothing was saved'));
+        await expect(mergeSavedServerProfile('srv_1', profile => profile)).rejects.toThrow('PROFILES_CHANGED');
     });
 
     it('resolves a merge to the list the write stored', async () => {

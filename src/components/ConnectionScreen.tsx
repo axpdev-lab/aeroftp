@@ -54,7 +54,7 @@ import { isBlompAuthUrl, swiftOptionsForAuthUrl } from './swiftAuthUrl';
 import { getProviderDocsUrl, PROVIDER_DOCS_INDEX } from '../providers/docsLinks';
 import { getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
 import { createProfileCredentialJournal, type ProfileCredentialJournal, type ProfileCredentialWriter } from '../utils/profileCredentialJournal';
-import { loadSavedServerProfiles, readSavedServerProfilesForWrite, storeSavedServerProfiles, type SavedProfilesRead } from '../utils/serverProfileStore';
+import { loadSavedServerProfiles, readSavedServerProfilesForWrite, revertConvertedProfile, storeSavedServerProfiles, type SavedProfilesRead } from '../utils/serverProfileStore';
 import { carryFavoriteServer } from '../utils/favoriteServers';
 import { carryServerGroups } from '../utils/serverGroups';
 import { getStorageDedupKey } from '../utils/storageDedup';
@@ -1245,14 +1245,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     };
 
-    const persistProfilesForSave = async (profiles: ServerProfile[], credentials?: ProfileCredentialJournal, userId?: number): Promise<ServerProfile[] | null> => {
+    const persistProfilesForSave = async (profiles: ServerProfile[], credentials?: ProfileCredentialJournal, userId?: number, revision?: string): Promise<ServerProfile[] | null> => {
         // `userId` binds the write to the account the list was read from (see
         // readSavedServerProfilesForWrite): a switch in between refuses it.
         // The list returned is the one stored, names included: a name another
         // profile holds is stored with " (1)", " (2)", ... (null: not saved).
         try {
             credentials?.assertReady();
-            const stored = await storeSavedServerProfiles(profiles, false, userId);
+            const stored = await storeSavedServerProfiles(profiles, false, userId, revision);
             credentials?.commit();
             return stored;
         } catch (err) {
@@ -1351,7 +1351,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
         const profilesRead = await readProfilesForSave();
         if (!profilesRead) return;
-        const { profiles: existingServers, userId: profilesUserId } = profilesRead;
+        const { profiles: existingServers, userId: profilesUserId, revision: profilesRevision } = profilesRead;
         const credentials = createProfileCredentialJournal(invoke);
 
         if (editingProfileId) {
@@ -1456,7 +1456,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 return s;
             });
 
-            const storedServers = await persistProfilesForSave(updatedServers, credentials, profilesUserId);
+            const storedServers = await persistProfilesForSave(updatedServers, credentials, profilesUserId, profilesRevision);
             if (!storedServers) return;
             if (duplicate) {
                 // The duplicate is recorded in the Activity Log only. A blocking/
@@ -1530,7 +1530,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             };
 
             const newServers = [...existingServers, newServer];
-            const storedServers = await persistProfilesForSave(newServers, credentials, profilesUserId);
+            const storedServers = await persistProfilesForSave(newServers, credentials, profilesUserId, profilesRevision);
             if (!storedServers) return;
             if (duplicate) {
                 // Activity-Log only (no flashing alert on save); see the edit path.
@@ -1719,8 +1719,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // reach instead of answering [], which would read as "not found".
         let existingServers: ServerProfile[];
         let profilesUserId: number | undefined;
+        let profilesRevision: string | undefined;
         try {
-            ({ profiles: existingServers, userId: profilesUserId } = await readSavedServerProfilesForWrite());
+            ({ profiles: existingServers, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite());
         } catch (err) {
             logger.warn('Saved profiles could not be read for the OAuth edit Save', err);
             setGitHubAlert({ title: t('toast.saveFailed'), message: String(err), type: 'error' });
@@ -1757,7 +1758,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         let stored: ServerProfile[];
         try {
             credentials.assertReady();
-            stored = await storeSavedServerProfiles(updated, false, profilesUserId);
+            stored = await storeSavedServerProfiles(updated, false, profilesUserId, profilesRevision);
             credentials.commit();
         } catch (err) {
             try {
@@ -1863,7 +1864,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // Validate name is different
         const profilesRead = await readProfilesForSave();
         if (!profilesRead) return;
-        const { profiles: existingServers, userId: profilesUserId } = profilesRead;
+        const { profiles: existingServers, userId: profilesUserId, revision: profilesRevision } = profilesRead;
         const credentials = createProfileCredentialJournal(invoke);
         const originalServer = existingServers.find((s: ServerProfile) => s.id === editingProfileId);
         if (!originalServer) {
@@ -1993,7 +1994,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         } else {
             newServers.push(newServer);
         }
-        const storedServers = await persistProfilesForSave(newServers, credentials, profilesUserId);
+        const storedServers = await persistProfilesForSave(newServers, credentials, profilesUserId, profilesRevision);
         if (!storedServers) return;
         // Persist the duplicate's own per-mode credential snapshots (issue
         // #215): the original keeps its own, so this only writes the new id.
@@ -2036,7 +2037,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
         const profilesRead = await readProfilesForSave();
         if (!profilesRead) return;
-        const { profiles: existingServers, userId: profilesUserId } = profilesRead;
+        const { profiles: existingServers, userId: profilesUserId, revision: profilesRevision } = profilesRead;
         const credentials = createProfileCredentialJournal(invoke);
         const originalIdx = existingServers.findIndex(s => s.id === editingProfileId);
         const originalServer = originalIdx >= 0 ? existingServers[originalIdx] : null;
@@ -2045,8 +2046,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             return;
         }
 
-        // Snapshot for Undo
-        const snapshotServers = existingServers.map(s => ({ ...s }));
+        // For Undo: the profile as it was, without the list around it
+        const originalSnapshot = { ...originalServer };
         const previousMode = originalEditMode?.protocol || originalServer.protocol;
 
         // Same normalization rules as handleSaveAsNew so converted
@@ -2124,7 +2125,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // Replace in slot: remove original, insert new at the same index
         const newServers = [...existingServers];
         newServers.splice(originalIdx, 1, newServer);
-        const storedServers = await persistProfilesForSave(newServers, credentials, profilesUserId);
+        const storedServers = await persistProfilesForSave(newServers, credentials, profilesUserId, profilesRevision);
         if (!storedServers) return;
         // Migrate the persisted per-mode credential snapshots from the old id
         // to the converted one (or clear them when the opt-in is off), so a
@@ -2155,7 +2156,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 action: {
                     label: t('connection.undo'),
                     onClick: async () => {
-                        if (!(await persistProfilesForSave(snapshotServers, undefined, profilesUserId))) return;
+                        // Only what the convert changed goes back, into the list as
+                        // it stands now: a profile saved since the convert stays.
+                        const undoRead = await readProfilesForSave();
+                        if (!undoRead) return;
+                        const reverted = revertConvertedProfile(undoRead.profiles, newId, originalSnapshot);
+                        if (!(await persistProfilesForSave(reverted, undefined, profilesUserId, undoRead.revision))) return;
                         // Drop the converted profile's per-mode credential
                         // snapshots so the discarded new id leaves nothing in
                         // the vault (issue #215).
@@ -3646,7 +3652,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const savePeerEditedProfile = async (v: { alias: string; localFolder: string; customIconUrl?: string }) => {
         const id = editingProfileId ?? editingProfile?.id;
         if (!id) return;
-        const { profiles: servers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
+        const { profiles: servers, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
         if (!servers.some(s => s.id === id)) throw new Error(t('toast.serverNotFound'));
         const alias = v.alias.trim();
         const updated = servers.map((s) => s.id === id ? {
@@ -3656,7 +3662,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             customIconUrl: v.customIconUrl,
             options: { ...(s.options || {}), peerLocalFolder: v.localFolder },
         } : s);
-        const stored = await storeSavedServerProfiles(updated, false, profilesUserId);
+        const stored = await storeSavedServerProfiles(updated, false, profilesUserId, profilesRevision);
         setSavedServersUpdate(Date.now());
         const saved = stored.find((s) => s.id === id);
         if (saved) {
@@ -3995,7 +4001,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     if (saveConnection) {
                                         const profilesRead = await readProfilesForSave();
                                         if (!profilesRead) return;
-                                        const { profiles: existingServers, userId: profilesUserId } = profilesRead;
+                                        const { profiles: existingServers, userId: profilesUserId, revision: profilesRevision } = profilesRead;
                                         const credentials = createProfileCredentialJournal(invoke);
                                         const saveName = connectionName || displayName;
                                         const editTarget = editingProfileId ? existingServers.find(s => s.id === editingProfileId) : undefined;
@@ -4021,7 +4027,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 ...overlayFields,
                                             };
                                             const newServers = [...existingServers, newServer];
-                                            if (!(await persistProfilesForSave(newServers, credentials, profilesUserId))) return;
+                                            if (!(await persistProfilesForSave(newServers, credentials, profilesUserId, profilesRevision))) return;
                                             connectedSavedId = newId;
                                         } else {
                                             const overlayFields = await aeroCryptOverlayFields(duplicate.id, duplicate.hasStoredAeroCryptPassword, duplicate.hasStoredAeroCryptSalt, duplicate.hasStoredAeroCryptKeyfilePath, credentials.write);
@@ -4033,7 +4039,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 customIconUrl: editingProfileId ? customIconForSave : (customIconForSave ?? s.customIconUrl),
                                                 ...overlayFields,
                                             } : s);
-                                            if (!(await persistProfilesForSave(updated, credentials, profilesUserId))) return;
+                                            if (!(await persistProfilesForSave(updated, credentials, profilesUserId, profilesRevision))) return;
                                             connectedSavedId = duplicate.id;
                                         }
                                     }
@@ -4082,7 +4088,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     if (saveConnection) {
                                         const profilesRead = await readProfilesForSave();
                                         if (!profilesRead) return;
-                                        const { profiles: existingServers, userId: profilesUserId } = profilesRead;
+                                        const { profiles: existingServers, userId: profilesUserId, revision: profilesRevision } = profilesRead;
                                         const credentials = createProfileCredentialJournal(invoke);
                                         const saveName = connectionName || displayName;
                                         // Prefer editingProfileId match to support rename (user changed the name in edit mode)
@@ -4106,7 +4112,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 ...(extraOptions?.region && { options: { region: extraOptions.region } }),
                                             };
                                             const newServers = [...existingServers, newServer];
-                                            if (!(await persistProfilesForSave(newServers, credentials, profilesUserId))) return;
+                                            if (!(await persistProfilesForSave(newServers, credentials, profilesUserId, profilesRevision))) return;
                                             connectedSavedId = newId;
                                         } else {
                                             const overlayFields = await aeroCryptOverlayFields(duplicate.id, duplicate.hasStoredAeroCryptPassword, duplicate.hasStoredAeroCryptSalt, duplicate.hasStoredAeroCryptKeyfilePath, credentials.write);
@@ -4122,7 +4128,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     ...(extraOptions?.region && { options: { ...s.options, region: extraOptions.region } }),
                                                 } : s
                                             );
-                                            if (!(await persistProfilesForSave(updated, credentials, profilesUserId))) return;
+                                            if (!(await persistProfilesForSave(updated, credentials, profilesUserId, profilesRevision))) return;
                                             connectedSavedId = duplicate.id;
                                         }
                                     }

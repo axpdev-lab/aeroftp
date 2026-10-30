@@ -15,7 +15,7 @@ import { getTotalServiceCount } from './discoverData';
 import { getProviderById } from '../../providers';
 import { newFormTabOptions } from './newFormTabOptions';
 import { useTranslation } from '../../i18n';
-import { loadSavedServerProfiles } from '../../utils/serverProfileStore';
+import { announceStoredServerProfiles, loadSavedServerProfiles } from '../../utils/serverProfileStore';
 import { appendImportedProfiles } from '../bridge/bridgeImportCommit';
 import type { ProviderType } from '../../types';
 import type { CatalogCategoryId } from '../../types/catalog';
@@ -521,10 +521,15 @@ export function IntroHub(props: IntroHubProps) {
                     servers={paletteServers}
                     initialMode={exportPreselect ? 'export' : undefined}
                     initialSelectedServerIds={exportPreselect ?? undefined}
-                    onImport={async (newServers, replaceIds, expectedUserId) => {
+                    onImport={async (newServers, expectedUserId) => {
                         // The dialog closes itself (onClose) after its result.
-                        const updated = await appendImportedProfiles(newServers, replaceIds, expectedUserId);
+                        const updated = await appendImportedProfiles(newServers, expectedUserId);
                         setPaletteServers(updated);
+                        onServersChanged?.();
+                    }}
+                    onProfilesStored={(stored) => {
+                        announceStoredServerProfiles(stored);
+                        setPaletteServers(stored);
                         onServersChanged?.();
                     }}
                     onClose={closeExportImport}

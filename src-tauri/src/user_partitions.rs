@@ -17,6 +17,7 @@ use secrecy::zeroize::{Zeroize, Zeroizing};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -1581,6 +1582,78 @@ pub fn replace_active_server_profiles(
 pub const ACCOUNT_CHANGED: &str =
     "ACCOUNT_CHANGED: the active account changed since these profiles were read; nothing was saved";
 
+/// Refusal of a write whose list was read before another writer saved. The
+/// caller reads the list again and redoes its change.
+pub const PROFILES_CHANGED: &str =
+    "PROFILES_CHANGED: the saved profiles changed since they were read; nothing was saved";
+
+/// How long a writer waits for [`ProfileListLock`] before giving up.
+const PROFILE_LIST_LOCK_WAIT: std::time::Duration = if cfg!(test) {
+    std::time::Duration::from_millis(300)
+} else {
+    std::time::Duration::from_secs(60)
+};
+
+/// An exclusive operating-system lock on the profile list of one database, which
+/// every writer of the list takes: an import for its secrets and its list
+/// together, any other for its write. The GUI and the CLI share it across
+/// processes, and the system drops it when the holder exits, however it exits, so
+/// a crash leaves nothing to clean up. It sits next to the database it guards:
+/// another config directory (a portable copy, a test) has its own. Taken before
+/// the session and the transaction. Not re-entrant, even in one thread: a holder
+/// must not call a writer that takes it.
+pub struct ProfileListLock {
+    _file: std::fs::File,
+}
+
+impl ProfileListLock {
+    /// Wait for the lock of the database `conn` has open, up to one minute. An
+    /// in-memory database has no other writer and no lock.
+    pub fn acquire(conn: &Connection) -> Result<Option<Self>, String> {
+        match conn.path() {
+            Some(path) if !path.is_empty() => {
+                Self::acquire_within(std::path::Path::new(path), PROFILE_LIST_LOCK_WAIT).map(Some)
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// Wait for the lock of the database at `db_path`, up to `wait`.
+    pub fn acquire_within(
+        db_path: &std::path::Path,
+        wait: std::time::Duration,
+    ) -> Result<Self, String> {
+        if let Some(parent) = db_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create user partitions dir: {e}"))?;
+        }
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(db_path.with_extension("write-lock"))
+            .map_err(|e| format!("Open profile list lock: {e}"))?;
+        let deadline = std::time::Instant::now() + wait;
+        loop {
+            match file.try_lock() {
+                Ok(()) => return Ok(Self { _file: file }),
+                Err(std::fs::TryLockError::Error(e)) => {
+                    return Err(format!("Take profile list lock: {e}"));
+                }
+                Err(std::fs::TryLockError::WouldBlock) => {}
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err(PROFILE_LIST_BUSY.to_string());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+}
+
+/// Refusal of a writer that waited for [`ProfileListLock`] in vain.
+pub const PROFILE_LIST_BUSY: &str =
+    "PROFILE_LIST_BUSY: another import or restore is still writing the saved profiles; nothing was saved, try again when it finishes";
+
 /// The active user's profiles together with that user's id, read on one
 /// connection, so a later write can be bound to the account they came from
 /// (see [`replace_expected_server_profiles`]).
@@ -1599,14 +1672,19 @@ pub fn list_active_server_profiles_scoped(
 /// still active when it commits: the check and the rows share one IMMEDIATE
 /// transaction, which an account switch (a `global_state` write) cannot
 /// interleave. The transaction opens inside [`with_user_dek`], after the
-/// session lock, the same order every partition writer takes.
+/// session lock, the same order every partition writer takes. With
+/// `expected_revision`, the one [`list_server_profiles_at_revision`] returned,
+/// a list another writer saved since that read is refused with
+/// [`PROFILES_CHANGED`] in the same transaction.
 pub fn replace_expected_server_profiles(
     conn: &mut Connection,
     root_key: &[u8; 32],
     expected_user: i64,
+    expected_revision: Option<&str>,
     profiles: &[Value],
 ) -> Result<Vec<Value>, String> {
     let conn: &Connection = conn;
+    let _lock = ProfileListLock::acquire(conn)?;
     // Answer a switch away from a locked account as ACCOUNT_CHANGED, before
     // its DEK lookup can fail as USER_LOCKED.
     if active_user_id(conn)? != Some(expected_user) {
@@ -1619,6 +1697,11 @@ pub fn replace_expected_server_profiles(
                 .map_err(|e| format!("Start expected profile replace: {e}"))?;
         if active_user_id(&tx)? != Some(user_id) {
             return Err(ACCOUNT_CHANGED.to_string());
+        }
+        if let Some(expected) = expected_revision {
+            if profile_rows_revision(&read_profile_rows(&tx, user_id)?) != expected {
+                return Err(PROFILES_CHANGED.to_string());
+            }
         }
         let stored = insert_profiles_with_dek(&tx, &root_secret, user_id, dek, profiles)?;
         tx.commit()
@@ -1652,6 +1735,15 @@ fn read_profiles_with_dek(
     user_id: i64,
     dek: &SecretKey,
 ) -> Result<Vec<Value>, String> {
+    decrypt_profile_rows(&read_profile_rows(conn, user_id)?, dek)
+}
+
+/// One stored server profile: `(encrypted_blob, nonce)`.
+type ProfileRow = (Vec<u8>, Vec<u8>);
+
+/// The stored row of each server profile of `user_id`, in
+/// list order, read by one statement.
+fn read_profile_rows(conn: &Connection, user_id: i64) -> Result<Vec<ProfileRow>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT encrypted_blob, nonce
@@ -1665,13 +1757,82 @@ fn read_profiles_with_dek(
             Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, Vec<u8>>(1)?))
         })
         .map_err(|e| format!("Query profile list: {e}"))?;
+    rows.map(|row| row.map_err(|e| format!("Read profile row: {e}")))
+        .collect()
+}
 
-    let mut profiles = Vec::new();
-    for row in rows {
-        let (encrypted_blob, nonce) = row.map_err(|e| format!("Read profile row: {e}"))?;
-        profiles.push(decrypt_value(dek, &nonce, &encrypted_blob)?);
+fn decrypt_profile_rows(rows: &[ProfileRow], dek: &SecretKey) -> Result<Vec<Value>, String> {
+    rows.iter()
+        .map(|(encrypted_blob, nonce)| decrypt_value(dek, nonce, encrypted_blob))
+        .collect()
+}
+
+/// What a read of the list hands to its write-back: a SHA-256 over the stored
+/// encrypted bytes, never over the decrypted text, because this value reaches
+/// the renderer. Every save re-encrypts under new nonces, so a save of the same
+/// list also counts as a change: a false conflict is refused like a real one and
+/// costs one more read.
+fn profile_rows_revision(rows: &[ProfileRow]) -> String {
+    let mut hash = Sha256::new();
+    for (encrypted_blob, nonce) in rows {
+        hash.update((encrypted_blob.len() as u64).to_le_bytes());
+        hash.update(encrypted_blob);
+        hash.update((nonce.len() as u64).to_le_bytes());
+        hash.update(nonce);
     }
-    Ok(profiles)
+    hex::encode(hash.finalize())
+}
+
+/// `user_id`'s profiles and the revision of exactly those rows, from one read.
+pub fn list_server_profiles_at_revision(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+) -> Result<(Vec<Value>, String), String> {
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
+        let rows = read_profile_rows(conn, user_id)?;
+        Ok((
+            decrypt_profile_rows(&rows, dek)?,
+            profile_rows_revision(&rows),
+        ))
+    })
+}
+
+/// Let `apply` change `user_id`'s profiles and store the result, only if the
+/// list is still the one `revision` was read from and `user_id` is still the
+/// active account ([`PROFILES_CHANGED`], [`ACCOUNT_CHANGED`]): check, read and
+/// write share one IMMEDIATE transaction. Returns the list sent and the list
+/// stored (names made unique by the write). The caller holds [`ProfileListLock`].
+pub fn update_server_profiles_at_revision(
+    conn: &mut Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    revision: &str,
+    apply: impl FnOnce(&mut Vec<Value>),
+) -> Result<(Vec<Value>, Vec<Value>), String> {
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    // The session before the reservation ([`SessionHold`]).
+    let _session = hold_user_session(conn, user_id);
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| format!("Start import write: {e}"))?;
+    if active_user_id(&tx)? != Some(user_id) {
+        return Err(ACCOUNT_CHANGED.to_string());
+    }
+    let written = with_user_dek(&tx, &root_secret, user_id, |user_id, dek| {
+        let rows = read_profile_rows(&tx, user_id)?;
+        if profile_rows_revision(&rows) != revision {
+            return Err(PROFILES_CHANGED.to_string());
+        }
+        let mut sent = decrypt_profile_rows(&rows, dek)?;
+        apply(&mut sent);
+        let stored = insert_profiles_with_dek(&tx, &root_secret, user_id, dek, &sent)?;
+        Ok((sent, stored))
+    })?;
+    tx.commit()
+        .map_err(|e| format!("Commit import write: {e}"))?;
+    Ok(written)
 }
 
 /// Overwrite server profiles for a specific user id without changing
@@ -1682,6 +1843,7 @@ pub fn replace_server_profiles_for(
     user_id: i64,
     profiles: &[Value],
 ) -> Result<Vec<Value>, String> {
+    let _lock = ProfileListLock::acquire(conn)?;
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
         write_profiles_with_dek(conn, &root_secret, user_id, dek, profiles)
@@ -1799,6 +1961,7 @@ pub fn put_right_profile_names_in_db(
     let mut conn =
         Connection::open(db_path).map_err(|e| format!("Open user partitions DB: {e}"))?;
     let mut root_key = store.derive_user_partition_wrapping_key();
+    let _lock = ProfileListLock::acquire(&conn)?;
     let result = put_right_profile_names(&mut conn, &root_key);
     root_key.zeroize();
     result
@@ -1848,6 +2011,7 @@ pub fn update_server_profiles_for(
     user_id: i64,
     apply: impl FnOnce(&mut Vec<Value>) -> bool,
 ) -> Result<(Vec<Value>, bool), String> {
+    let _lock = ProfileListLock::acquire(conn)?;
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     // The session before the reservation ([`SessionHold`]).
     let _session = hold_user_session(conn, user_id);
@@ -1943,6 +2107,7 @@ pub fn relocate_server_profile(
     target_passphrase: Option<&str>,
     remove_from_source: bool,
 ) -> Result<ProfileRelocation, String> {
+    let _lock = ProfileListLock::acquire(conn)?;
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     let target_dek =
         resolve_user_dek_scoped(conn, &root_secret, target_user_id, target_passphrase)?;
@@ -1988,6 +2153,7 @@ fn relocate_server_profile_and_credentials(
     if new_profile_id.trim().is_empty() {
         return Err("NEW_PROFILE_ID_REQUIRED".into());
     }
+    let _lock = ProfileListLock::acquire(conn)?;
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     let target_dek =
         resolve_user_dek_scoped(conn, &root_secret, target_user_id, target_passphrase)?;
@@ -3423,6 +3589,82 @@ pub fn store_credential_for_user_dual(
     Ok(())
 }
 
+/// What one credential key holds before an import writes it, in the vault and
+/// in `user`'s partition ([`snapshot_credential_for_user`]).
+pub struct CredentialSnapshot {
+    vault: Option<Zeroizing<String>>,
+    partition: Option<Zeroizing<String>>,
+}
+
+/// Read what `credential_id` holds now, in both places a dual write reaches. An
+/// error means it could not be read, and then it must not be written either.
+pub fn snapshot_credential_for_user(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<CredentialSnapshot, String> {
+    let conn = open_or_init_cli()?;
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    Ok(CredentialSnapshot {
+        vault: get_optional_secret(store, credential_id)?,
+        partition: get_user_credential_for(&conn, &root_key, user_id, credential_id)?,
+    })
+}
+
+/// Undo a write of `written` to `credential_id`, place by place: a place still
+/// holding `written` gets back what `before` holds there, or loses the key if it
+/// held none; a place holding anything else was changed by someone else since
+/// and stays as it is ([`crate::profile_import_plan::rollback_action`]).
+pub fn restore_credential_for_user(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: Option<&str>,
+    written: &str,
+    before: &CredentialSnapshot,
+) -> Result<(), String> {
+    use crate::profile_import_plan::{rollback_action, RollbackAction};
+    let vault = get_optional_secret(store, credential_id)?;
+    match rollback_action(
+        vault.as_ref().map(|v| v.as_str()),
+        written,
+        before.vault.as_ref().map(|v| v.as_str()),
+    ) {
+        RollbackAction::Leave => {}
+        RollbackAction::Restore(value) => store
+            .store(credential_id, value)
+            .map_err(|e| format!("Restore credential in vault: {e}"))?,
+        RollbackAction::Delete => store
+            .delete(credential_id)
+            .map_err(|e| format!("Delete credential from vault: {e}"))?,
+    }
+    let conn = open_or_init_cli()?;
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let partition = get_user_credential_for(&conn, &root_key, user_id, credential_id)?;
+    match rollback_action(
+        partition.as_ref().map(|v| v.as_str()),
+        written,
+        before.partition.as_ref().map(|v| v.as_str()),
+    ) {
+        RollbackAction::Leave => {}
+        RollbackAction::Restore(value) => {
+            let credential_type = credential_type
+                .or_else(|| muv3_credential_type(credential_id))
+                .ok_or_else(|| format!("No credential type for {credential_id}"))?;
+            set_user_credential_for(
+                &conn,
+                &root_key,
+                user_id,
+                credential_id,
+                credential_type,
+                value,
+            )?;
+        }
+        RollbackAction::Delete => delete_user_credential_for(&conn, user_id, credential_id)?,
+    }
+    Ok(())
+}
+
 /// Active-user dual delete (GUI): delete from the vault and best-effort from the
 /// active user's partition. Part of an explicit user delete, never a purge.
 pub fn delete_active_credential_dual(
@@ -4135,6 +4377,7 @@ pub fn admin_reset_user_passphrase(
         // destructive path from being used by mistake against self.
         return Err("ADMIN_RESET_NOT_FOR_SELF".to_string());
     }
+    let _lock = ProfileListLock::acquire(conn)?;
     // Generate the new DEK + wrapping key OUTSIDE the transaction so a
     // KDF failure does not leave the partition half-wiped.
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
@@ -4418,6 +4661,12 @@ fn run_eager_credential_migration_cli(conn: &Connection, store: &CredentialStore
     root_key.zeroize();
 }
 
+/// The one writer of profile rows that does not take [`ProfileListLock`]: the
+/// legacy-payload migration of a database without a schema yet. The secret writes
+/// of an import call this while the import holds the lock, which is not
+/// re-entrant. That migration runs in its own IMMEDIATE transaction and moves the
+/// revision, so an import in progress would plan again; on a database with a
+/// schema it writes no profile row, and neither do the schema upgrades.
 pub fn init_or_migrate_cli(store: &CredentialStore) -> Result<MigrationReport, String> {
     let mut conn = open_or_init_cli()?;
     // Same cascade as the GUI path (`init_or_migrate`): bring an existing
@@ -4701,7 +4950,8 @@ pub fn cli_list_server_profiles_for_user(
     result
 }
 
-/// What the error of [`cli_replace_server_profiles_for_user`] starts with when
+/// What the error of [`cli_replace_server_profiles_for_user`] and
+/// [`cli_update_server_profiles_for_user`] starts with when
 /// the database could not be opened or brought to this build's schema: the
 /// one failure after which the CLI may keep the list in the legacy blob alone.
 /// A write that fails on an open database (another process holding it) is
@@ -4730,12 +4980,39 @@ pub fn cli_update_server_profiles_for_user(
     user_id: i64,
     apply: impl FnOnce(&mut Vec<Value>) -> bool,
 ) -> Result<(Vec<Value>, bool), String> {
-    init_or_migrate_cli(store)?;
-    let mut conn = open_or_init_cli()?;
+    let unavailable = |e: String| format!("{PARTITION_UNAVAILABLE}: {e}");
+    init_or_migrate_cli(store).map_err(unavailable)?;
+    let mut conn = open_or_init_cli().map_err(unavailable)?;
     let mut root_key = store.derive_user_partition_wrapping_key();
     let result = update_server_profiles_for(&mut conn, &root_key, user_id, apply);
     root_key.zeroize();
     result
+}
+
+/// `user_id`'s profiles and their revision, refused with [`ACCOUNT_CHANGED`]
+/// unless `user_id` is the active account.
+pub fn cli_read_active_profiles_at_revision(
+    store: &CredentialStore,
+    user_id: i64,
+) -> Result<(Vec<Value>, String), String> {
+    let conn = open_or_init_cli()?;
+    if active_user_id(&conn)? != Some(user_id) {
+        return Err(ACCOUNT_CHANGED.to_string());
+    }
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    list_server_profiles_at_revision(&conn, &root_key, user_id)
+}
+
+/// CLI-path [`update_server_profiles_at_revision`].
+pub fn cli_update_profiles_at_revision(
+    store: &CredentialStore,
+    user_id: i64,
+    revision: &str,
+    apply: impl FnOnce(&mut Vec<Value>),
+) -> Result<(Vec<Value>, Vec<Value>), String> {
+    let mut conn = open_or_init_cli()?;
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    update_server_profiles_at_revision(&mut conn, &root_key, user_id, revision, apply)
 }
 
 /// CLI counterpart of [`user_partitions_get_active_setting`]: read a per-user
@@ -5527,7 +5804,7 @@ fn reconcile_overlay_secret_flags<F: Fn(&str) -> bool>(has_secret: F, profiles: 
 pub async fn user_partitions_load_active_server_profiles(
     app: AppHandle,
 ) -> Result<Vec<Value>, String> {
-    load_active_server_profiles_scoped(&app).map(|(_, profiles)| profiles)
+    load_active_server_profiles_scoped(&app).map(|scoped| scoped.profiles)
 }
 
 /// The profiles of [`user_partitions_load_active_server_profiles`] and the id
@@ -5538,6 +5815,8 @@ pub async fn user_partitions_load_active_server_profiles(
 pub struct ScopedServerProfiles {
     pub user_id: i64,
     pub profiles: Vec<Value>,
+    /// Hands the write-back its check that no other writer saved in between.
+    pub revision: String,
 }
 
 #[tauri::command]
@@ -5545,22 +5824,27 @@ pub async fn user_partitions_load_active_server_profiles_scoped(
     app: AppHandle,
 ) -> Result<ScopedServerProfiles, String> {
     load_active_server_profiles_scoped(&app)
-        .map(|(user_id, profiles)| ScopedServerProfiles { user_id, profiles })
 }
 
-fn load_active_server_profiles_scoped(app: &AppHandle) -> Result<(i64, Vec<Value>), String> {
+fn load_active_server_profiles_scoped(app: &AppHandle) -> Result<ScopedServerProfiles, String> {
     init_or_migrate(app)?;
     let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
     let mut root_key = store.derive_user_partition_wrapping_key();
     let mut conn = open_or_init(app)?;
-    let result = list_active_server_profiles_scoped(&conn, &root_key);
-    let (user_id, mut profiles) = match result {
+    let result = active_user_id(&conn)
+        .and_then(|user| user.ok_or_else(|| "NO_ACTIVE_USER".to_string()))
+        .and_then(|user_id| {
+            list_server_profiles_at_revision(&conn, &root_key, user_id)
+                .map(|(profiles, revision)| (user_id, profiles, revision))
+        });
+    let (user_id, mut profiles, mut revision) = match result {
         Ok(scoped) => scoped,
         Err(e) => {
             root_key.zeroize();
             return Err(e);
         }
     };
+    let read = profiles.clone();
     // rclone-crypt secrets an older import left in a profile's options move to
     // the vault and a binding, once; the list is re-read, merged and written
     // in one transaction, and only when a move applied. Secrets and profiles
@@ -5579,6 +5863,17 @@ fn load_active_server_profiles_scoped(app: &AppHandle) -> Result<(i64, Vec<Value
     for note in &notes {
         tracing::warn!("{note}");
     }
+    // A move rewrote the rows: the revision read above would refuse the next
+    // write, so list and revision are read again, together.
+    if profiles != read {
+        match list_server_profiles_at_revision(&conn, &root_key, user_id) {
+            Ok(fresh) => (profiles, revision) = fresh,
+            Err(e) => {
+                root_key.zeroize();
+                return Err(e);
+            }
+        }
+    }
     root_key.zeroize();
     // #736: heal a legacy blob that an older build left frozen, so AeroAgent
     // and MCP see the same list as My Servers without waiting for a save.
@@ -5592,26 +5887,37 @@ fn load_active_server_profiles_scoped(app: &AppHandle) -> Result<(i64, Vec<Value
         |key| store.get(key).map(|v| !v.is_empty()).unwrap_or(false),
         &mut profiles,
     );
-    Ok((user_id, profiles))
+    Ok(ScopedServerProfiles {
+        user_id,
+        profiles,
+        revision,
+    })
 }
 
 /// Replace the active account's profiles. With `expected_user_id` (the id a
 /// scoped load returned) the write is bound to that account and refused with
-/// [`ACCOUNT_CHANGED`] when another account became active since the read.
+/// [`ACCOUNT_CHANGED`] when another account became active since the read. With
+/// `expected_revision` as well (the revision of that load) it is refused with
+/// [`PROFILES_CHANGED`] when another writer saved since.
 #[tauri::command]
 pub async fn user_partitions_save_active_server_profiles(
     app: AppHandle,
     profiles: Vec<Value>,
     expected_user_id: Option<i64>,
+    expected_revision: Option<String>,
 ) -> Result<Vec<Value>, String> {
     init_or_migrate(&app)?;
     let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
     let mut root_key = store.derive_user_partition_wrapping_key();
     let mut conn = open_or_init(&app)?;
     let result = match expected_user_id {
-        Some(expected) => {
-            replace_expected_server_profiles(&mut conn, &root_key, expected, &profiles)
-        }
+        Some(expected) => replace_expected_server_profiles(
+            &mut conn,
+            &root_key,
+            expected,
+            expected_revision.as_deref(),
+            &profiles,
+        ),
         None => replace_active_server_profiles(&mut conn, &root_key, &profiles),
     };
     root_key.zeroize();
@@ -7027,6 +7333,99 @@ mod tests {
         assert_eq!(reloaded_ops, ops_profiles);
     }
 
+    /// Every kind of list write waits for the lock, so a holder that writes secrets
+    /// and list together (an import) never has another write land inside it.
+    #[test]
+    fn every_list_writer_waits_for_the_profile_list_lock() {
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut conn = open_or_init_path(dir.path().join("partitions.db")).expect("open");
+        let root = test_root();
+        let seed = json!([{ "id": "p", "name": "P", "protocol": "sftp", "host": "h", "port": 22, "username": "u" }]);
+        migrate_legacy_payloads(&mut conn, Some(&seed.to_string()), None, &root).expect("seed");
+        let user = active_user_id(&conn).expect("active").expect("a user");
+        let other =
+            create_passphrase_less_user(&mut conn, &root, "Ops", Some("O"), Some("#22c55e"))
+                .expect("create ops");
+        let list = list_server_profiles_for(&conn, &root, user).expect("read");
+
+        let held = ProfileListLock::acquire(&conn)
+            .expect("lock")
+            .expect("a file db");
+        let busy = PROFILE_LIST_BUSY.to_string();
+        assert_eq!(
+            replace_server_profiles_for(&mut conn, &root, user, &list).err(),
+            Some(busy.clone())
+        );
+        assert_eq!(
+            replace_active_server_profiles(&mut conn, &root, &list).err(),
+            Some(busy.clone())
+        );
+        assert_eq!(
+            replace_expected_server_profiles(&mut conn, &root, user, None, &list).err(),
+            Some(busy.clone())
+        );
+        assert_eq!(
+            update_server_profiles_for(&mut conn, &root, user, |_| true).err(),
+            Some(busy.clone())
+        );
+        assert_eq!(
+            relocate_server_profile(&mut conn, &root, user, other.id, "p", "copy", None, false)
+                .map(|_| ())
+                .err(),
+            Some(busy)
+        );
+        drop(held);
+        replace_server_profiles_for(&mut conn, &root, user, &list).expect("free again");
+    }
+
+    /// A list another writer saved after the read is refused, in both write paths,
+    /// and the writer's rows stay; a fresh read carries a revision that passes.
+    #[test]
+    fn a_write_from_a_stale_read_is_refused_by_revision() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let user = active_user_id(&conn).expect("active").expect("a user");
+
+        let (read, revision) = list_server_profiles_at_revision(&conn, &root, user).expect("read");
+        let (reread, same) = list_server_profiles_at_revision(&conn, &root, user).expect("reread");
+        assert_eq!(read, reread);
+        assert_eq!(revision, same, "reading changes nothing");
+
+        // Another writer saves the same list: new nonces, a new revision.
+        replace_expected_server_profiles(&mut conn, &root, user, Some(&revision), &read)
+            .expect("the first writer goes through");
+        let mut edited = read.clone();
+        edited[0]["name"] = json!("Edited");
+        let refused =
+            replace_expected_server_profiles(&mut conn, &root, user, Some(&revision), &edited)
+                .expect_err("a save from the old read");
+        assert_eq!(refused, PROFILES_CHANGED);
+        let refused =
+            update_server_profiles_at_revision(&mut conn, &root, user, &revision, |list| {
+                list.clear()
+            })
+            .expect_err("an import planned on the old read");
+        assert_eq!(refused, PROFILES_CHANGED);
+        assert_eq!(
+            list_active_server_profiles(&conn, &root).expect("load"),
+            read,
+            "the refused writes stored nothing"
+        );
+
+        let (_, fresh) = list_server_profiles_at_revision(&conn, &root, user).expect("fresh");
+        assert_ne!(fresh, revision);
+        let (sent, stored) =
+            update_server_profiles_at_revision(&mut conn, &root, user, &fresh, |list| {
+                list[0]["name"] = json!("Imported");
+            })
+            .expect("a fresh read goes through");
+        assert_eq!(sent[0]["name"], "Imported");
+        assert_eq!(stored[0]["name"], "Imported");
+    }
+
     #[test]
     fn expected_user_write_is_refused_after_an_account_switch() {
         let _guard = test_lock();
@@ -7049,7 +7448,7 @@ mod tests {
 
         // ...the account switches before its Save lands...
         set_active_user(&conn, ops.id).expect("switch ops");
-        let refused = replace_expected_server_profiles(&mut conn, &root, read_user, &edited)
+        let refused = replace_expected_server_profiles(&mut conn, &root, read_user, None, &edited)
             .expect_err("a write for the previous account");
         assert_eq!(refused, ACCOUNT_CHANGED);
 
@@ -7062,7 +7461,7 @@ mod tests {
         assert_eq!(default_profiles[0]["name"], "Profile 0");
 
         // With the account still active, the bound write goes through.
-        replace_expected_server_profiles(&mut conn, &root, read_user, &edited)
+        replace_expected_server_profiles(&mut conn, &root, read_user, None, &edited)
             .expect("write for the active account");
         assert_eq!(
             list_active_server_profiles(&conn, &root).expect("reload default")[0]["name"],

@@ -228,15 +228,12 @@ async fn proton_alias_preserves_manifest_options_and_explicit_client_after_savin
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
-    let preview = ftp_client_gui_lib::import_server_profiles_with_mode(
-        export.to_string_lossy().into_owned(),
-        "synthetic alias export".into(),
+    let preview = ftp_client_gui_lib::preview_server_profiles(
+        &export.to_string_lossy(),
+        "synthetic alias export",
         ftp_client_gui_lib::profile_import_plan::ExistingProfileMode::Skip,
         &[],
-        None,
-        true,
     )
-    .await
     .unwrap();
     let saved = preview
         .servers
@@ -273,15 +270,12 @@ async fn saved(root: &Path, id: &str) -> serde_json::Value {
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
-    let preview = ftp_client_gui_lib::import_server_profiles_with_mode(
-        export.to_string_lossy().into_owned(),
-        "synthetic switch export".into(),
+    let preview = ftp_client_gui_lib::preview_server_profiles(
+        &export.to_string_lossy(),
+        "synthetic switch export",
         ftp_client_gui_lib::profile_import_plan::ExistingProfileMode::Skip,
         &[],
-        None,
-        true,
     )
-    .await
     .unwrap();
     preview
         .servers

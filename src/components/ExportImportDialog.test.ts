@@ -54,9 +54,9 @@ const click = async (el: HTMLElement) => {
 };
 
 /** Open the import step and choose the file. */
-async function openImport(onImport: (s: ServerProfile[]) => void, onClose: () => void) {
+async function openImport(onProfilesStored: (s: ServerProfile[]) => void, onClose: () => void) {
     await act(async () => {
-        root.render(createElement(ExportImportDialog, { servers: [], initialMode: 'import', onImport, onClose }));
+        root.render(createElement(ExportImportDialog, { servers: [], initialMode: 'import', onImport: vi.fn(), onProfilesStored, onClose }));
     });
     await click(button(b => b.textContent?.includes('settings.importChooseFile') ?? false));
 }
@@ -73,7 +73,7 @@ async function runImport(mode: 'skip' | 'overwrite' | 'duplicate') {
 }
 
 describe('ExportImportDialog .aeroftp import', () => {
-    it('sends the chosen mode, passes every returned field through and keeps the dialog open on a Jottacloud chain', async () => {
+    it('sends the chosen mode, hands the host the list stored and keeps the dialog open on a Jottacloud chain', async () => {
         vi.mocked(invoke).mockResolvedValue({
             servers: [
                 { id: 'srv_a', name: 'Restored', host: 'a.example', port: 21, username: 'u', protocol: 'ftp',
@@ -86,14 +86,15 @@ describe('ExportImportDialog .aeroftp import', () => {
             similar: 0,
             jottaChains: [{ id: 'srv_copy', name: 'Jotta' }],
             oauthAppsKept: ['Drive copy'],
+            sharedSecretsFailed: ['Proton'],
             targetChanged: ['Moved'],
-            userId: 7,
+            stored: [{ id: 'srv_a', name: 'Restored' }, { id: 'srv_copy', name: 'Jotta (1)' }],
             totalInFile: 2,
             metadata: { exportDate: '', aeroftpVersion: '', serverCount: 2, hasCredentials: true },
         });
-        const onImport = vi.fn();
+        const onProfilesStored = vi.fn();
         const onClose = vi.fn();
-        await openImport(onImport, onClose);
+        await openImport(onProfilesStored, onClose);
         await runImport('overwrite');
 
         expect(invoke).toHaveBeenCalledWith('import_server_profiles', {
@@ -101,14 +102,8 @@ describe('ExportImportDialog .aeroftp import', () => {
             password: 'backup-password',
             existing: 'overwrite',
         });
-        // The write is bound to the account the backend restored into.
-        expect(onImport.mock.calls[0][2]).toBe(7);
-        const stored = onImport.mock.calls[0][0] as (ServerProfile & Record<string, unknown>)[];
-        expect([...onImport.mock.calls[0][1] as Set<string>]).toEqual(['srv_a']);
-        expect(stored.map(s => s.id)).toEqual(['srv_a', 'srv_copy']);
-        expect(stored[1].publicUrlBase).toBe('https://share.example');
-        expect(stored[1].hasStoredFilenApiKey).toBe(true);
-        expect(stored.every(s => !('importOutcome' in s))).toBe(true);
+        // The backend stored it: the host only shows the list it returned.
+        expect(onProfilesStored).toHaveBeenCalledWith([{ id: 'srv_a', name: 'Restored' }, { id: 'srv_copy', name: 'Jotta (1)' }]);
         expect(host.textContent).toContain('settings.overwrittenCount {"count":1}');
         expect(host.textContent).toContain('settings.duplicatedCount {"count":1}');
         expect(host.querySelector('[data-testid="import-warning"]')?.textContent)
@@ -117,6 +112,8 @@ describe('ExportImportDialog .aeroftp import', () => {
             .toContain('settings.importOauthAppKept {"names":"Drive copy"}');
         expect(host.querySelector('[data-testid="import-warning"]')?.textContent)
             .toContain('settings.importTargetChanged {"names":"Moved"}');
+        expect(host.querySelector('[data-testid="import-warning"]')?.textContent)
+            .toContain('settings.importSharedSecretsFailed {"names":"Proton"}');
         // Enter in the password field cannot import (and duplicate) again.
         const field = host.querySelector<HTMLInputElement>('input[type="password"]')!;
         await act(async () => {
@@ -129,31 +126,14 @@ describe('ExportImportDialog .aeroftp import', () => {
         expect(onClose).not.toHaveBeenCalled();
     });
 
-    it('says what a failed write leaves for every imported profile, and stays open', async () => {
-        vi.mocked(invoke).mockResolvedValue({
-            servers: [
-                { id: 'srv_a', name: 'A', host: 'a.example', port: 21, username: 'u', importOutcome: 'overwritten' },
-                { id: 'srv_b', name: 'B', host: 'b.example', port: 21, username: 'u', importOutcome: 'added' },
-                { id: 'srv_c', name: 'C', host: 'c.example', port: 21, username: 'u', importOutcome: 'added' },
-            ],
-            skipped: [],
-            similar: 0,
-            secretsStored: 2,
-            jottaChains: [{ id: 'srv_c', name: 'Jotta' }],
-            oauthAppsKept: [],
-            targetChanged: [],
-            totalInFile: 1,
-            metadata: { exportDate: '', aeroftpVersion: '', serverCount: 1, hasCredentials: true },
-        });
-        const onImport = vi.fn(async () => { throw new Error('vault write refused'); });
+    it('shows the error of a failed import, stores nothing and lets the import run again', async () => {
+        vi.mocked(invoke).mockRejectedValue('PROFILE_LIST_BUSY: another import is writing');
+        const onProfilesStored = vi.fn();
         const onClose = vi.fn();
-        await openImport(onImport, onClose);
+        await openImport(onProfilesStored, onClose);
         await runImport('overwrite');
-        expect(host.textContent).toContain('vault write refused');
-        expect(host.textContent).toContain('settings.importNotSavedSecretsKept {"count":2}');
-        // The warnings about secrets already in effect go with the error, and
-        // the retry the error asks for stays possible.
-        expect(host.textContent).toContain('settings.importJottaChainWarning {"names":"Jotta"}');
+        expect(host.textContent).toContain('PROFILE_LIST_BUSY');
+        expect(onProfilesStored).not.toHaveBeenCalled();
         expect(button(b => b.textContent === 'settings.importServers').disabled).toBe(false);
         await act(async () => {
             vi.advanceTimersByTime(5000);
@@ -188,6 +168,8 @@ describe('ExportImportDialog .aeroftp import', () => {
             similar: 0,
             jottaChains: [],
             oauthAppsKept: [],
+            sharedSecretsFailed: [],
+            stored: [],
             targetChanged: [],
             totalInFile: 2,
             metadata: { exportDate: '', aeroftpVersion: '', serverCount: 2, hasCredentials: false },
