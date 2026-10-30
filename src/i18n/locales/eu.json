@@ -1370,7 +1370,8 @@
             "duplicatedCount": "{count} bikoiztu dira",
             "importJottaChainWarning": "Jottacloudek konexio bakoitzean berritzen du saio-hasiera, eta {names} orain beste kopia batekin partekatzen du bat: lehenengo konektatzen den kopiak bestearen saioa ixten du (fitxategia nondik etorri den gailua, edo bikoiztu zen profila). Hasi saioa berriro bestean Personal Login Token berri batekin.",
             "importNotSavedSecretsKept": "Profilak ez dira gorde, baina fitxategiak horietako {count} profilentzat dituen pasahitzak eta saioa hasteko tokenak dagoeneko gordeta daude. Amaitzeko, inportatu berriro fitxategi bera aukera berarekin.",
-            "importOauthAppKept": "{names} hornitzaile horretarako gailu honek duenaren desberdina den OAuth aplikazio pertsonalizatu batekin etorri dira. Gordetako aplikazioa mantendu da beste profil batzuek erabiltzen dutelako, beraz hasi saioa berriro profil hauek konektatzeari uzten badiote."
+            "importOauthAppKept": "{names} OAuth aplikazio pertsonalizatu desberdin batekin iritsi dira, gailu honek hornitzaile horretarako duenarekin alderatuta. Gordetako aplikazioa mantendu da, beraz, hasi saioa berriro profil hauek konektatzeari uzten badiote.",
+            "importTargetChanged": "{names} ez dira gainidatzi: fitxategiak beste zerbitzari batera bideratzen ditu, eta gordetako pasahitzak eta tokenak ez dira hara joan behar. Inportatu Bikoiztu aukerarekin fitxategiko kopia gehitzeko, edo ezabatu lehenengo profila."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1845,7 +1845,8 @@
             "duplicatedCount": "{count} duplicati",
             "importJottaChainWarning": "Jottacloud rinnova l'accesso a ogni connessione, e {names} ora ne condivide uno con un'altra copia: la copia che si connette per prima disconnette l'altra (il dispositivo da cui proviene il file, o il profilo da cui è stata duplicata). Accedi di nuovo all'altra con un nuovo Personal Login Token.",
             "importNotSavedSecretsKept": "I profili non sono stati salvati, ma le password e i token che il file contiene per {count} di essi sono già stati memorizzati. Importa di nuovo lo stesso file con la stessa opzione per completare.",
-            "importOauthAppKept": "{names} sono arrivati con un'app OAuth personalizzata diversa da quella che questo dispositivo ha per quel provider. L'app memorizzata è stata mantenuta perché la usano altri profili: accedi di nuovo se questi profili smettono di connettersi."
+            "importOauthAppKept": "{names} sono arrivati con un'app OAuth personalizzata diversa da quella che questo dispositivo ha per quel provider. L'app memorizzata è stata mantenuta: accedi di nuovo se questi profili smettono di connettersi.",
+            "importTargetChanged": "{names} non sono stati sovrascritti: il file li fa puntare a un altro server, e le password e i token memorizzati non devono arrivarci. Importa con Duplica per aggiungere la copia dal file, oppure elimina prima il profilo."
         },
         "appearance": {
             "patternCross": "Croce",

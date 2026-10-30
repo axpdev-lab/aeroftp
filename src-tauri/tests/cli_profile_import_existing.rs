@@ -106,7 +106,8 @@ async fn saved_whole(config: &Path) -> Vec<serde_json::Value> {
 }
 
 /// Skip leaves a profile still held alone, Overwrite applies the backup's
-/// fields to it in place (same id and name), and Duplicate adds a copy under a
+/// fields to it in place (same id and name) unless the backup points it at
+/// another server, and Duplicate adds a copy under a
 /// new id and the next free name, which its dry run already reports.
 #[tokio::test]
 async fn a_backup_of_a_profile_still_held_is_skipped_overwritten_or_duplicated() {
@@ -150,33 +151,52 @@ async fn a_backup_of_a_profile_still_held_is_skipped_overwritten_or_duplicated()
     assert_eq!(skip["skipped"], 1, "{skip}");
     assert_eq!(saved(config), original);
 
-    // A backup of the same profile (same id) whose host differs from the one
-    // saved: an Overwrite must apply it.
+    // A backup of the same profile (same id) whose folder differs from the one
+    // saved: an Overwrite must apply it. Its host differs in `moved`, which an
+    // Overwrite must refuse, so a stored password cannot reach another server.
     let mut restored = saved_whole(config).await.remove(0);
     assert_eq!(restored["host"], "sftp.example.invalid");
-    restored["host"] = "restored.example.invalid".into();
-    let backup = config.join("restored.aeroftp");
-    ftp_client_gui_lib::export_server_profiles_core(
-        serde_json::json!([restored]).to_string(),
-        PASSWORD.into(),
-        false,
-        backup.to_string_lossy().into_owned(),
-    )
-    .await
-    .unwrap();
+    restored["initialPath"] = "/restored".into();
+    let write_backup = |name: &str, profile: &serde_json::Value| {
+        let path = config.join(name);
+        let servers = serde_json::json!([profile]).to_string();
+        let target = path.to_string_lossy().into_owned();
+        async move {
+            ftp_client_gui_lib::export_server_profiles_core(
+                servers,
+                PASSWORD.into(),
+                false,
+                target,
+            )
+            .await
+            .unwrap();
+            path
+        }
+    };
+    let mut moved = restored.clone();
+    moved["host"] = "other.example.invalid".into();
+    let moved_file = write_backup("moved.aeroftp", &moved).await;
+    let refused = import(config, &moved_file, &["--on-existing", "overwrite"]);
+    assert_eq!(refused["overwritten"], 0, "{refused}");
+    assert_eq!(refused["skipped"], 1, "{refused}");
+    assert_eq!(refused["target_changed"][0], "lab", "{refused}");
+    assert_eq!(saved_whole(config).await[0]["host"], "sftp.example.invalid");
+    let backup = write_backup("restored.aeroftp", &restored).await;
     let overwrite = import(config, &backup, &["--on-existing", "overwrite"]);
     assert_eq!(overwrite["imported"], 1, "{overwrite}");
     assert_eq!(overwrite["overwritten"], 1, "{overwrite}");
     assert_eq!(overwrite["similar"], 0, "{overwrite}");
     assert_eq!(
+        overwrite["target_changed"],
+        serde_json::json!([]),
+        "{overwrite}"
+    );
+    assert_eq!(
         saved(config),
         original,
         "replaced in place, same id and name"
     );
-    assert_eq!(
-        saved_whole(config).await[0]["host"],
-        "restored.example.invalid"
-    );
+    assert_eq!(saved_whole(config).await[0]["initialPath"], "/restored");
 
     // Duplicated from the backup, whose account (the restored host) the saved
     // profile now shares, so the copy is reported as similar.

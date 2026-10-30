@@ -537,20 +537,6 @@ async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value)
     assert_eq!(skip.secrets_stored, 0);
     assert_eq!(skip.skipped, [field(&export_profile, "name")]);
     assert_eq!(read(&stale_key).unwrap().as_str(), "stale-local");
-    // Another account active than the one whose profiles were read: the
-    // secrets would land in that account, so nothing is restored.
-    let refused = crate::import_server_profiles_with_mode(
-        file.to_string_lossy().into_owned(),
-        "fixture-export-password".into(),
-        ExistingProfileMode::Overwrite,
-        &current,
-        Some(-1),
-        false,
-    )
-    .await
-    .unwrap_err();
-    assert_eq!(refused, crate::profile_import_plan::NOT_THE_ACTIVE_USER);
-    assert_eq!(read(&stale_key).unwrap().as_str(), "stale-local");
     let overwrite = import_with(ExistingProfileMode::Overwrite, false)
         .await
         .unwrap();
@@ -640,6 +626,43 @@ async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value)
                 .unwrap();
         }
     }
+    // A backup that points the profile at another server is refused, and nothing
+    // is written or removed: the stored password stays, and never reaches the
+    // new server. The same backup over the same target goes through.
+    users::store_active_credential_dual(store, &format!("server_{source}"), "stored-password")
+        .unwrap();
+    users::store_active_credential_typed_dual(store, &stale_key, "oauth", "stale-local").unwrap();
+    let mut elsewhere = export_profile.clone();
+    elsewhere["host"] = json!("other-owner/other-repo");
+    let refused = crate::import_server_profiles_with_mode(
+        file.to_string_lossy().into_owned(),
+        "fixture-export-password".into(),
+        ExistingProfileMode::Overwrite,
+        std::slice::from_ref(&elsewhere),
+        active,
+        false,
+    )
+    .await
+    .unwrap();
+    assert!(refused.servers.is_empty());
+    assert_eq!(refused.secrets_stored, 0);
+    assert_eq!(refused.target_changed, [field(&export_profile, "name")]);
+    assert_eq!(refused.skipped, [field(&export_profile, "name")]);
+    assert_eq!(read(&stale_key).unwrap().as_str(), "stale-local");
+    assert_eq!(
+        read(&format!("server_{source}")).unwrap().as_str(),
+        "stored-password"
+    );
+    let kept = import_with(ExistingProfileMode::Overwrite, false)
+        .await
+        .unwrap();
+    assert!(kept.target_changed.is_empty());
+    assert_eq!(read(&stale_key).unwrap().as_str(), expected);
+    assert_eq!(
+        read(&format!("server_{source}")).unwrap().as_str(),
+        "stored-password"
+    );
+
     // The profile whose own chain is the singleton refreshes it on an overwrite.
     users::store_active_credential_typed_dual(
         store,
@@ -845,6 +868,27 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
         "access-after"
     );
     users::cli_set_active_user(store, active_id).unwrap();
+
+    // Another account is active than the one the import is for: the session is
+    // written for the expected user and none reaches the active one.
+    users::cli_set_active_user(store, selected_id).unwrap();
+    crate::purge_profile_secrets("native-selected".into(), Some("proton".into()))
+        .await
+        .unwrap();
+    users::cli_set_active_user(store, active_id).unwrap();
+    assert_eq!(count(selected_id, &selected_key), 0);
+    crate::import_server_profiles_with_mode(
+        file.to_string_lossy().into_owned(),
+        "native-fixture-export-password".into(),
+        crate::profile_import_plan::ExistingProfileMode::Skip,
+        &[],
+        Some(selected_id),
+        false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(count(selected_id, &selected_key), 1);
+    assert_eq!(count(active_id, &selected_key), 0);
 
     // Reproduce the old takeover gap using the real vault and local lease:
     // connect read U1, a new browser sign-in stored U2, then connect binds U1.

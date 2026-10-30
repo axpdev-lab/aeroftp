@@ -79,7 +79,9 @@ export const OPTIONS_SECRET_KEYS = [
  * `OMITTED_WHEN_EMPTY` left null keeps the stored value, as does a field outside
  * the format, one only this device has. Each secret-presence flag is set when
  * either side has it. `undefined` is not a value (JSON has none) and never
- * clears one. Twin of `overwrite_profile` in `src-tauri/src/profile_import_plan.rs`.
+ * clears one. Twin of `overwrite_profile` in
+ * `src-tauri/src/profile_import_plan.rs`; the backend has already refused an
+ * overwrite that would point the profile at another server.
  */
 export function overwriteProfile(stored: ServerProfile, imported: ServerProfile): ServerProfile {
     const omitted: readonly string[] = OMITTED_WHEN_EMPTY;

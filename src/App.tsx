@@ -15103,23 +15103,24 @@ const App: React.FC = () => {
           (t('settings.importSuccess') || 'Imported {count} servers').replace('{count}', String(result.servers.length)),
           result.skipped.length > 0 ? t('settings.duplicatesSkippedCount', { count: result.skipped.length }) : undefined,
         );
-        // Same warning as the import dialog: the chain rotates on every
-        // connection, so only one holder of it stays signed in.
+        // Same warnings as the import dialog, on a toast regardless of the
+        // notification setting (`notify` alone can reach only the hidden
+        // Activity Log): the user has something to do about them.
         if (result.jottaChains.length > 0) {
-          notify.warning(
+          toast.warning(
             t('settings.importServers') || 'Import Servers',
             t('settings.importJottaChainWarning', { names: result.jottaChains.map(c => c.name).join(', ') }),
           );
         }
         if (result.oauthAppsKept.length > 0) {
-          notify.warning(
+          toast.warning(
             t('settings.importServers') || 'Import Servers',
             t('settings.importOauthAppKept', { names: result.oauthAppsKept.join(', ') }),
           );
         }
       },
     });
-  }, [notify, t]);
+  }, [notify, t, toast]);
 
   const importAeroFtpKeystoreFile = useCallback((filePath: string) => {
     setInputDialog({

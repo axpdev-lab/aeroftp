@@ -1370,7 +1370,8 @@
             "duplicatedCount": "{count} sudubliuota",
             "importJottaChainWarning": "Jottacloud atnaujina prisijungimą kiekvieną kartą jungiantis, o {names} dabar dalijasi vienu su kita kopija: pirmoji prisijungianti kopija atjungia kitą (įrenginį, iš kurio atkeliavo failas, arba profilį, iš kurio jis buvo sudubliuotas). Prisijunkite prie kitos iš naujo su nauju Personal Login Token.",
             "importNotSavedSecretsKept": "Profiliai nebuvo išsaugoti, bet slaptažodžiai ir prisijungimo žetonai, kuriuos failas turi {count} iš jų, jau išsaugoti. Norėdami baigti, dar kartą importuokite tą patį failą su ta pačia parinktimi.",
-            "importOauthAppKept": "{names} atkeliavo su kita pasirinktine OAuth programa nei ta, kurią šis įrenginys turi tam teikėjui. Išsaugota programa buvo palikta, nes ją naudoja kiti profiliai, todėl prisijunkite iš naujo, jei šie profiliai nebeprisijungia."
+            "importOauthAppKept": "{names} atkeliavo su kita pasirinktine OAuth programa nei ta, kurią šis įrenginys turi tam teikėjui. Išsaugota programa buvo palikta, todėl prisijunkite iš naujo, jei šie profiliai nustos jungtis.",
+            "importTargetChanged": "{names} nebuvo perrašyti: failas nukreipia juos į kitą serverį, o jų išsaugoti slaptažodžiai ir žetonai neturi ten patekti. Importuokite su Dubliuoti, kad pridėtumėte failo kopiją, arba pirmiausia ištrinkite profilį."
         },
         "devtools": {
             "title": "AeroTools",

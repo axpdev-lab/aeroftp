@@ -1370,7 +1370,8 @@
             "duplicatedCount": "{count} duplicados",
             "importJottaChainWarning": "Jottacloud renova o seu inicio de sesión en cada conexión, e {names} agora comparte un con outra copia: a copia que se conecta primeiro pecha a sesión da outra (o dispositivo de onde vén o ficheiro, ou o perfil do que se duplicou). Volve iniciar sesión na outra cun novo Personal Login Token.",
             "importNotSavedSecretsKept": "Os perfís non se gardaron, pero os contrasinais e os tokens de inicio de sesión que o ficheiro contén para {count} deles xa se almacenaron. Importa de novo o mesmo ficheiro coa mesma opción para rematar.",
-            "importOauthAppKept": "{names} chegaron cunha aplicación OAuth personalizada distinta da que este dispositivo ten para ese provedor. Conservouse a aplicación almacenada porque outros perfís a usan, así que volve iniciar sesión se estes perfís deixan de conectarse."
+            "importOauthAppKept": "{names} chegaron cunha app OAuth personalizada distinta da que este dispositivo ten para ese provedor. Conservouse a app almacenada, así que inicia sesión de novo se estes perfís deixan de conectarse.",
+            "importTargetChanged": "{names} non se sobrescribiron: o ficheiro apúntaos a outro servidor, e os seus contrasinais e tokens gardados non deben ir alí. Importa con Duplicar para engadir a copia do ficheiro, ou elimina primeiro o perfil."
         },
         "devtools": {
             "title": "AeroTools",

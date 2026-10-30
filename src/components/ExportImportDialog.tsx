@@ -76,6 +76,8 @@ interface ImportResult {
     jottaChains: { id: string; name: string }[];
     // Stored profiles whose custom OAuth app differs from the one kept here.
     oauthAppsKept: string[];
+    // Profiles an Overwrite refused: the file points them at another server.
+    targetChanged: string[];
     metadata: {
         exportDate: string;
         aeroftpVersion: string;
@@ -110,8 +112,9 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     const [includeCredentials, setIncludeCredentials] = useState(true);
     const [showPassword, setShowPassword] = useState(false);
     const [existingMode, setExistingMode] = useState<ExistingProfileMode>('skip');
-    // Shown after an import that copied a Jottacloud refresh chain or kept the
-    // stored OAuth app over the file's; it keeps the dialog open to be read.
+    // Shown after an import that copied a Jottacloud refresh chain, kept the
+    // stored OAuth app over the file's, or refused an overwrite pointing a
+    // profile at another server; it keeps the dialog open to be read.
     const [importWarning, setImportWarning] = useState<string | null>(null);
     // KeePassXC-style import flow: the .aeroftp file is chosen first and its
     // path is held here, then the decryption password is requested. Null
@@ -331,6 +334,9 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                     : []),
                 ...(result.oauthAppsKept.length > 0
                     ? [t('settings.importOauthAppKept', { names: result.oauthAppsKept.join(', ') })]
+                    : []),
+                ...(result.targetChanged.length > 0
+                    ? [t('settings.importTargetChanged', { names: result.targetChanged.join(', ') })]
                     : []),
             ];
             if (warnings.length > 0) {

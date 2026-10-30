@@ -42658,6 +42658,7 @@ async fn cmd_profile_import(
                     "skipped": skipped,
                     "renamed": renamed,
                     "jotta_chains": jotta,
+                    "target_changed": report.target_changed,
                     "metadata": metadata,
                 })
             );
@@ -42676,6 +42677,7 @@ async fn cmd_profile_import(
                 println!("= would skip       {n} (already present)");
             }
             print_jotta_chain_notice(&jotta, true);
+            print_target_changed_notice(&report.target_changed);
             eprintln!(
                 "Would add {}, overwrite {}, duplicate {}, skip {} (already present){} from {input}",
                 added.len(),
@@ -42745,6 +42747,9 @@ async fn cmd_profile_import(
                 // Stored profiles whose custom OAuth app differs from the one
                 // this device keeps for the provider.
                 "oauth_apps_kept": report.oauth_apps_kept,
+                // Profiles the overwrite refused because the file points them at
+                // another server; they are also in the skipped count.
+                "target_changed": report.target_changed,
                 "total_in_file": report.total_in_file,
                 "metadata": metadata,
             })
@@ -42766,9 +42771,10 @@ async fn cmd_profile_import(
         print_jotta_chain_notice(&jotta, false);
         for name in &report.oauth_apps_kept {
             eprintln!(
-                "Warning: \"{name}\" came with another custom OAuth app than the one this device has for that provider. The stored app was kept, because other profiles use it, so sign this profile in again if it stops connecting."
+                "Warning: \"{name}\" came with another custom OAuth app than the one this device has for that provider. The stored app was kept, so sign this profile in again if it stops connecting."
             );
         }
+        print_target_changed_notice(&report.target_changed);
     }
     0
 }
@@ -42888,6 +42894,16 @@ fn lay_import_over(
         }
     }
     Ok(())
+}
+
+/// One line per profile an Overwrite refused because the file points it at
+/// another server, saying what to do instead.
+fn print_target_changed_notice(names: &[String]) {
+    for name in names {
+        eprintln!(
+            "Warning: \"{name}\" was not overwritten: the file points it at another server, and its stored passwords and tokens must not go there. Use --on-existing duplicate to add the file's copy, or delete the profile first."
+        );
+    }
 }
 
 /// The summary's ", N resemble an existing profile", or nothing for none.

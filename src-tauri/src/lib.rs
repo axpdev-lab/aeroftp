@@ -18289,10 +18289,14 @@ fn active_server_profiles_for_import() -> Result<(i64, Vec<serde_json::Value>), 
 /// `dry_run`. The report carries the profiles to store; the caller writes the
 /// profile list (the GUI through its partition layer, the CLI through its own).
 ///
-/// `expected_user` is the user whose profiles `current` holds. The restore
-/// writes into the active user's partition, so it is refused (nothing restored)
-/// when that is no longer this user: another window switched account during
-/// the decryption, or the CLI targets `--user` another account than the active.
+/// `expected_user` is the user whose profiles `current` holds, and every secret
+/// is written for that user, so an account switched during the import, or a CLI
+/// `--user` naming another account than the active one, cannot misplace them.
+///
+/// An overwrite the file would point at another server ([`profile_import_plan::same_target`])
+/// is refused and reported: the stored secrets were saved for the old one, so
+/// keeping them could send a password to the new one, and removing them could
+/// lose them if the import then failed. Nothing is written for such a profile.
 pub async fn import_server_profiles_with_mode(
     file_path: String,
     password: String,
@@ -18315,13 +18319,38 @@ pub async fn import_server_profiles_with_mode(
             username: &s.username,
         })
         .collect();
-    let plan = profile_import_plan::plan_import(
+    let mut plan = profile_import_plan::plan_import(
         &candidates,
         current,
         mode,
         profile_import_plan::new_profile_id,
     );
     drop(candidates);
+
+    // An overwrite that would point the stored profile at another server is
+    // refused: it keeps its configuration and its secrets, and is reported.
+    let mut target_changed = Vec::new();
+    for planned in plan
+        .iter_mut()
+        .filter(|p| p.outcome == ImportOutcome::Overwritten)
+    {
+        let server = &servers[planned.index];
+        let target = serde_json::json!({
+            "host": server.host, "port": server.port, "username": server.username,
+            "protocol": server.protocol, "providerId": server.provider_id, "options": server.options,
+        });
+        let moves = current
+            .iter()
+            .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(planned.id.as_str()))
+            .is_some_and(|existing| !profile_import_plan::same_target(existing, &target));
+        if moves {
+            planned.outcome = ImportOutcome::Skipped;
+            target_changed.push(profile_import_plan::display_name(
+                &server.name,
+                &server.host,
+            ));
+        }
+    }
 
     // A profile given a new id (a duplicate, or one the file gave no id)
     // travels under it from here on, with a copy of the secrets the file
@@ -18348,16 +18377,7 @@ pub async fn import_server_profiles_with_mode(
             .map(|p| servers[p.index].clone())
             .collect()
     };
-    if let (Some(expected), Some(store), false) = (
-        expected_user,
-        credential_store::CredentialStore::from_cache(),
-        stored.is_empty(),
-    ) {
-        if user_partitions::cli_get_active_user(&store)?.map(|user| user.id) != Some(expected) {
-            return Err(profile_import_plan::NOT_THE_ACTIVE_USER.to_string());
-        }
-    }
-    let restored = restore_imported_secrets(&stored, &provider_secrets)?;
+    let restored = restore_imported_secrets(&stored, &provider_secrets, expected_user)?;
     // The profiles whose secrets the file carried, now in the vault: what a
     // failed list write afterwards leaves behind.
     let secrets_stored = stored
@@ -18373,6 +18393,7 @@ pub async fn import_server_profiles_with_mode(
         secrets_stored,
         user_id: expected_user,
         oauth_apps_kept: Vec::new(),
+        target_changed,
         total_in_file: servers.len(),
         metadata: serde_json::to_value(&metadata).unwrap_or(serde_json::Value::Null),
     };
@@ -18452,6 +18473,7 @@ fn vault_value(
 fn restore_imported_secrets(
     servers: &[profile_export::ServerProfileExport],
     provider_secrets: &std::collections::HashMap<String, profile_export::ProviderSecrets>,
+    user: Option<i64>,
 ) -> Result<RestoredImportSecrets, String> {
     // Store credentials in secure store
     let mut cred_errors: Vec<String> = Vec::new();
@@ -18477,20 +18499,34 @@ fn restore_imported_secrets(
     match credential_store::CredentialStore::from_cache() {
         Some(store) => {
             #[cfg(feature = "proton-native")]
-            let native_owner = providers::proton_native::vault::SessionOwner::for_user(
-                user_partitions::cli_get_active_user(&store)?.map(|user| user.id),
-            );
+            let native_owner =
+                providers::proton_native::vault::SessionOwner::for_user(match user {
+                    Some(user) => Some(user),
+                    None => user_partitions::cli_get_active_user(&store)?.map(|user| user.id),
+                });
             let jotta_private_user =
-                user_partitions::private_token_user(None, "jottacloud_refresh")?;
+                user_partitions::private_token_user(user, "jottacloud_refresh")?;
+            // Every write names the user: an account switched during the import
+            // cannot receive these secrets.
+            let write_secret = |key: &str, secret: &str| match user {
+                Some(user) => {
+                    user_partitions::store_credential_for_user_dual(&store, user, key, secret)
+                }
+                None => user_partitions::store_active_credential_dual(&store, key, secret),
+            };
+            let write_typed_secret = |key: &str, kind: &str, secret: &str| match user {
+                Some(user) => user_partitions::store_credential_for_user_typed_dual(
+                    &store, user, key, kind, secret,
+                ),
+                None => {
+                    user_partitions::store_active_credential_typed_dual(&store, key, kind, secret)
+                }
+            };
             for server in servers {
                 if let Some(ref cred) = server.credential {
                     // MUV-3: dual-write the imported credential (vault + active
                     // user's partition).
-                    if let Err(e) = user_partitions::store_active_credential_dual(
-                        &store,
-                        &format!("server_{}", server.id),
-                        cred,
-                    ) {
+                    if let Err(e) = write_secret(&format!("server_{}", server.id), cred) {
                         cred_errors.push(format!("{}: {}", server.id, e));
                     }
                 }
@@ -18519,9 +18555,7 @@ fn restore_imported_secrets(
                     if let Some(slug) = oauth_vault_slug_for_protocol(protocol) {
                         let key = format!("oauth_{}_{}", slug, profile_id);
                         // MUV-4: dual-write into vault + active user's partition.
-                        if let Err(e) = user_partitions::store_active_credential_typed_dual(
-                            &store, &key, "oauth", oauth_json,
-                        ) {
+                        if let Err(e) = write_typed_secret(&key, "oauth", oauth_json) {
                             cred_errors.push(format!("{} oauth: {}", profile_id, e));
                         }
                     }
@@ -18532,12 +18566,7 @@ fn restore_imported_secrets(
                         // Read before it is replaced: the singleton is this
                         // profile's own when it holds this same chain.
                         let own = vault_value(&store, &key);
-                        if let Err(e) = user_partitions::store_active_credential_typed_dual(
-                            &store,
-                            &key,
-                            "jottacloud_refresh",
-                            jotta_json,
-                        ) {
+                        if let Err(e) = write_typed_secret(&key, "jottacloud_refresh", jotta_json) {
                             cred_errors.push(format!("{} jotta: {}", profile_id, e));
                         }
                         // Legacy singleton: connect paths that do not thread
@@ -18632,7 +18661,7 @@ fn restore_imported_secrets(
                 // agnostic and shared by both overlay kinds (AeroCrypt + rclone).
                 if let Some(ref pw) = secrets.aerocrypt_overlay_pw {
                     let key = format!("aerocrypt_overlay_pw_{}", profile_id);
-                    match user_partitions::store_active_credential_dual(&store, &key, pw) {
+                    match write_secret(&key, pw) {
                         Ok(()) => {
                             restored_aerocrypt_pw.insert(profile_id.clone());
                         }
@@ -18641,7 +18670,7 @@ fn restore_imported_secrets(
                 }
                 if let Some(ref salt) = secrets.aerocrypt_overlay_salt {
                     let key = format!("aerocrypt_overlay_salt_{}", profile_id);
-                    match user_partitions::store_active_credential_dual(&store, &key, salt) {
+                    match write_secret(&key, salt) {
                         Ok(()) => {
                             restored_aerocrypt_salt.insert(profile_id.clone());
                         }
@@ -18654,7 +18683,7 @@ fn restore_imported_secrets(
                 // keyfile is missing, so restoring a stale path is never unsafe.
                 if let Some(ref kf_path) = secrets.aerocrypt_overlay_keyfile_path {
                     let key = format!("aerocrypt_overlay_keyfile_path_{}", profile_id);
-                    match user_partitions::store_active_credential_dual(&store, &key, kf_path) {
+                    match write_secret(&key, kf_path) {
                         Ok(()) => {
                             restored_aerocrypt_keyfile_path.insert(profile_id.clone());
                         }
@@ -18664,7 +18693,7 @@ fn restore_imported_secrets(
                 }
                 if let Some(ref config) = secrets.aerocrypt_overlay_config {
                     let key = format!("aerocrypt_overlay_config_{}", profile_id);
-                    match user_partitions::store_active_credential_dual(&store, &key, config) {
+                    match write_secret(&key, config) {
                         Ok(()) => {
                             restored_aerocrypt_config.insert(profile_id.clone());
                         }
@@ -18680,9 +18709,7 @@ fn restore_imported_secrets(
                 // how the snapshots were originally saved.
                 if let Some(ref modes) = secrets.mode_credentials {
                     let key = format!("server_modes_{}", profile_id);
-                    if let Err(e) =
-                        user_partitions::store_active_credential_dual(&store, &key, modes)
-                    {
+                    if let Err(e) = write_secret(&key, modes) {
                         cred_errors.push(format!("{} mode creds: {}", profile_id, e));
                     }
                 }
@@ -18691,7 +18718,7 @@ fn restore_imported_secrets(
                 // imported Filen profile skips the /v3/login + TOTP window again.
                 if let Some(ref api_key) = secrets.filen_api_key {
                     let key = format!("filen_api_key_{}", profile_id);
-                    match user_partitions::store_active_credential_dual(&store, &key, api_key) {
+                    match write_secret(&key, api_key) {
                         Ok(()) => {
                             restored_filen_api_key.insert(profile_id.clone());
                         }
@@ -18702,13 +18729,13 @@ fn restore_imported_secrets(
                 // under the same keys the connect path reads/writes.
                 if let Some(ref v) = secrets.onedrive_drive_id {
                     let key = format!("onedrive_drive_id_{}", profile_id);
-                    if let Err(e) = user_partitions::store_active_credential_dual(&store, &key, v) {
+                    if let Err(e) = write_secret(&key, v) {
                         cred_errors.push(format!("{} onedrive drive_id: {}", profile_id, e));
                     }
                 }
                 if let Some(ref v) = secrets.onedrive_drive_type {
                     let key = format!("onedrive_drive_type_{}", profile_id);
-                    if let Err(e) = user_partitions::store_active_credential_dual(&store, &key, v) {
+                    if let Err(e) = write_secret(&key, v) {
                         cred_errors.push(format!("{} onedrive drive_type: {}", profile_id, e));
                     }
                 }
@@ -18726,12 +18753,7 @@ fn restore_imported_secrets(
                     #[cfg(not(feature = "proton-native"))]
                     let result = {
                         let key = format!("proton_native_session_{}", profile_id);
-                        user_partitions::store_active_credential_typed_dual(
-                            &store,
-                            &key,
-                            "proton_native_session",
-                            v,
-                        )
+                        write_typed_secret(&key, "proton_native_session", v)
                     };
                     if let Err(e) = result {
                         cred_errors.push(format!("{} proton session: {}", profile_id, e));
@@ -18740,8 +18762,7 @@ fn restore_imported_secrets(
                 if let Some(auth) = &secrets.profile_auth {
                     for (prefix, value) in auth.entries() {
                         if let Some(value) = value {
-                            if let Err(error) = user_partitions::store_active_credential_typed_dual(
-                                &store,
+                            if let Err(error) = write_typed_secret(
                                 &format!("{prefix}_{profile_id}"),
                                 "oauth",
                                 value,

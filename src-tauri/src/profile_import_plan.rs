@@ -157,11 +157,6 @@ pub fn plan_import(
         .collect()
 }
 
-/// What the import refuses with when the active user is no longer the one whose
-/// profiles it compared the file with: the secrets would land in another
-/// account's partition.
-pub const NOT_THE_ACTIVE_USER: &str = "the active account is not the one whose profiles this import read, so nothing was restored or written; make that account the active one (in the CLI, --user must name the active account) and run the import again";
-
 /// A stored profile named in a report: its id and the name the file gave it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ImportedProfileRef {
@@ -185,17 +180,20 @@ pub fn may_write_shared(stored: Option<&str>, own: Option<&str>) -> bool {
 
 /// Whether an import may write a provider's custom OAuth app (client id, secret
 /// and region, one unit) when the vault holds `stored_id` and `stored_secret`
-/// and the file carries `file_id`. With an id: when no app is stored or it is
-/// this same app, whose secret or region the file then refreshes. Without one
-/// the file cannot say which app its secret belongs to, so only into empty slots.
+/// and the file carries `file_id`: when the slots are empty, or the stored app
+/// is this same one, whose secret or region the file then refreshes.
 pub fn may_write_oauth_app(
     stored_id: Option<&str>,
     stored_secret: Option<&str>,
     file_id: Option<&str>,
 ) -> bool {
-    match file_id {
-        Some(_) => may_write_shared(stored_id, file_id),
-        None => stored_id.is_none() && stored_secret.is_none(),
+    match (file_id, stored_id) {
+        // The same app: the file refreshes its secret or region.
+        (Some(file), Some(stored)) => file == stored,
+        // No app stored: a secret left without an id would pair up with the
+        // file's id, so the slots must really be empty.
+        (Some(_), None) | (None, None) => stored_secret.is_none(),
+        (None, Some(_)) => false,
     }
 }
 
@@ -240,6 +238,10 @@ pub struct ProfileImportReport {
     /// other profiles refresh their tokens with it, so these may need a new
     /// sign-in.
     pub oauth_apps_kept: Vec<String>,
+    /// Names of the profiles an Overwrite refused because the file points them at
+    /// another server ([`same_target`]): they keep their configuration and
+    /// secrets, and are also listed in `skipped`. Duplicate adds the file's copy.
+    pub target_changed: Vec<String>,
     /// How many profiles the file holds, whatever their outcome.
     pub total_in_file: usize,
     /// The file's public envelope metadata.
@@ -281,13 +283,57 @@ pub const OMITTED_WHEN_EMPTY: [&str; 6] = [
     "persistModeCredentials",
 ];
 
+/// The options that choose which server a connection reaches. A bucket or a
+/// container is not here: it is a place on the same server, for the same account.
+const OPTIONS_THAT_CHOOSE_THE_SERVER: [&str; 6] = [
+    "endpoint",
+    "region",
+    "accountId",
+    "accountName",
+    "jurisdiction",
+    "pcloudRegion",
+];
+
+/// Whether a stored secret may go where `b` connects, having been saved for
+/// where `a` connects: the same protocol, provider, host, port and account, and
+/// the same value for the options that choose the server. This answers a
+/// narrower question than the frontend's `isSameConnection`, which also tells
+/// two buckets apart: a backup that only changes a bucket, or any other setting,
+/// stays an overwrite. Absent, null and empty values are the same absence.
+pub fn same_target(a: &serde_json::Value, b: &serde_json::Value) -> bool {
+    let present = |value: Option<&serde_json::Value>| -> serde_json::Value {
+        match value {
+            None | Some(serde_json::Value::Null) => serde_json::Value::Null,
+            Some(serde_json::Value::String(s)) if s.is_empty() => serde_json::Value::Null,
+            Some(value) => value.clone(),
+        }
+    };
+    // `host:2222` with port 2222 reads as `host`, as in `isSameConnection`.
+    let host = |p: &serde_json::Value| -> String {
+        let host = p.get("host").and_then(|v| v.as_str()).unwrap_or("");
+        let port = p.get("port").and_then(|v| v.as_u64()).unwrap_or(0);
+        host.strip_suffix(&format!(":{port}"))
+            .unwrap_or(host)
+            .to_string()
+    };
+    host(a) == host(b)
+        && ["port", "username", "protocol", "providerId"]
+            .iter()
+            .all(|key| present(a.get(key)) == present(b.get(key)))
+        && OPTIONS_THAT_CHOOSE_THE_SERVER.iter().all(|key| {
+            present(a.get("options").and_then(|o| o.get(key)))
+                == present(b.get("options").and_then(|o| o.get(key)))
+        })
+}
+
 /// The profile an overwrite stores: `existing` with the fields of `imported`
 /// laid over it. A field the format always writes follows the file, null
 /// included, and so does `options` as a whole, except that an options-borne
 /// secret the file does not carry (it was exported without credentials) stays.
 /// A field of [`OMITTED_WHEN_EMPTY`] left null keeps the stored value, as does
 /// a field outside the format, one only this device knows. Each
-/// [`STORED_SECRET_FLAGS`] flag is set when either side has it.
+/// [`STORED_SECRET_FLAGS`] flag is set when either side has it. An import that
+/// would point the profile at another server never gets here ([`same_target`]).
 pub fn overwrite_profile(
     existing: &serde_json::Value,
     imported: &serde_json::Value,
@@ -586,11 +632,45 @@ mod tests {
     #[test]
     fn an_oauth_app_is_written_only_when_free_or_the_same() {
         assert!(may_write_oauth_app(None, None, Some("a")));
+        assert!(!may_write_oauth_app(None, Some("orphan"), Some("a")));
         assert!(may_write_oauth_app(Some("a"), Some("s"), Some("a")));
         assert!(!may_write_oauth_app(Some("a"), Some("s"), Some("b")));
         assert!(may_write_oauth_app(None, None, None));
         assert!(!may_write_oauth_app(None, Some("s"), None));
         assert!(!may_write_oauth_app(Some("a"), None, None));
+    }
+
+    /// What decides a move to another server, and what does not.
+    #[test]
+    fn same_target_tells_another_server_from_another_setting() {
+        let stored = json!({
+            "host": "old.example", "port": 21, "username": "u", "protocol": "s3",
+            "options": {"endpoint": "https://a.example", "bucket": "one", "timeout": 30}
+        });
+        // A bucket, a path or any other setting stays on the same server.
+        let same = [
+            json!({"host": "old.example", "port": 21, "username": "u", "protocol": "s3",
+                "initialPath": "/x", "options": {"endpoint": "https://a.example", "bucket": "two"}}),
+            json!({"host": "old.example:21", "port": 21, "username": "u", "protocol": "s3",
+                "providerId": "", "options": {"endpoint": "https://a.example"}}),
+        ];
+        for target in same {
+            assert!(same_target(&stored, &target), "{target}");
+        }
+        for key in ["host", "port", "username", "protocol", "providerId"] {
+            let mut moved = stored.clone();
+            moved[key] = json!(if key == "port" {
+                json!(22)
+            } else {
+                json!("other")
+            });
+            assert!(!same_target(&stored, &moved), "{key}");
+        }
+        for key in OPTIONS_THAT_CHOOSE_THE_SERVER {
+            let mut moved = stored.clone();
+            moved["options"][key] = json!("other");
+            assert!(!same_target(&stored, &moved), "{key}");
+        }
     }
 
     /// The GUI sends the mode as a lowercase string.

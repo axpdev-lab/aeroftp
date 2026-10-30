@@ -72,7 +72,7 @@ describe('the import callback and the commit helper together', () => {
         // file does not carry, and a stored credential the file did not bring.
         const editedSince: ServerProfile = { ...base, color: '#ff0000', hasStoredCredential: true };
         const vault = fakeVault([editedSince, second]);
-        const overwritten: ServerProfile = { ...base, name: 'Koofr restored', host: 'restored.example', hasStoredCredential: false };
+        const overwritten: ServerProfile = { ...base, name: 'Koofr restored', initialPath: '/restored', hasStoredCredential: false };
         const added: ServerProfile = { ...base, id: 'added', name: 'Added' };
         const merged = await appendImportedProfiles([added, overwritten], new Set([base.id]));
         expect(merged.map(s => s.id)).toEqual([base.id, 'second', 'added']);
@@ -130,10 +130,10 @@ describe('the import callback and the commit helper together', () => {
         const stored = { ...base, color: '#ff0000', initialPath: '/old', localOnly: 'kept',
             aeroCryptOverlay: { enabled: true, kind: 'rclone-crypt' },
             options: { verifyCert: false, timeout: 30, totp_secret: 'stored-seed', sasToken: 'stored-sas' } } as unknown as ServerProfile;
-        const imported = { ...base, host: 'new.example', color: null, initialPath: undefined, aeroCryptOverlay: null,
+        const imported = { ...base, name: 'New', color: null, initialPath: undefined, aeroCryptOverlay: null,
             options: { timeout: 60, sasToken: 'file-sas' } } as unknown as ServerProfile;
         const merged = overwriteProfile(stored, imported) as unknown as Record<string, unknown>;
-        expect(merged.host).toBe('new.example');
+        expect(merged.name).toBe('New');
         expect(merged.color).toBeNull();
         expect(merged.initialPath).toBe('/old');
         expect(merged.localOnly).toBe('kept');

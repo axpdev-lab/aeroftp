@@ -1370,7 +1370,8 @@
             "duplicatedCount": "{count} dubleeritud",
             "importJottaChainWarning": "Jottacloud uuendab oma sisselogimist igal ühendumisel ja {names} jagab nüüd ühte teise koopiaga: koopia, mis ühendub esimesena, logib teise välja (seade, kust fail pärineb, või profiil, millest see dubleeriti). Logige teine uuesti sisse uue Personal Login Tokeniga.",
             "importNotSavedSecretsKept": "Profiile ei salvestatud, kuid paroolid ja sisselogimistokenid, mida fail sisaldab {count} profiili jaoks, on juba salvestatud. Lõpetamiseks impordi sama fail uuesti sama valikuga.",
-            "importOauthAppKept": "{names} tulid teistsuguse kohandatud OAuth-rakendusega kui see, mis on sellel seadmel selle pakkuja jaoks. Salvestatud rakendus jäeti alles, sest seda kasutavad teised profiilid, nii et logi uuesti sisse, kui need profiilid enam ühendust ei loo."
+            "importOauthAppKept": "{names} tulid teistsuguse kohandatud OAuth-rakendusega kui see, mis sellel seadmel selle pakkuja jaoks on. Salvestatud rakendus jäeti alles, nii et logi uuesti sisse, kui need profiilid enam ühendust ei loo.",
+            "importTargetChanged": "{names} ei kirjutatud üle: fail suunab need teisele serverile ja nende salvestatud paroole ja tokeneid ei tohi sinna saata. Impordi valikuga Dubleeri, et lisada faili koopia, või kustuta esmalt profiil."
         },
         "devtools": {
             "title": "AeroTools",

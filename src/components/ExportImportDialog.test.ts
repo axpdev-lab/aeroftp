@@ -86,6 +86,7 @@ describe('ExportImportDialog .aeroftp import', () => {
             similar: 0,
             jottaChains: [{ id: 'srv_copy', name: 'Jotta' }],
             oauthAppsKept: ['Drive copy'],
+            targetChanged: ['Moved'],
             userId: 7,
             totalInFile: 2,
             metadata: { exportDate: '', aeroftpVersion: '', serverCount: 2, hasCredentials: true },
@@ -114,6 +115,8 @@ describe('ExportImportDialog .aeroftp import', () => {
             .toContain('settings.importJottaChainWarning {"names":"Jotta"}');
         expect(host.querySelector('[data-testid="import-warning"]')?.textContent)
             .toContain('settings.importOauthAppKept {"names":"Drive copy"}');
+        expect(host.querySelector('[data-testid="import-warning"]')?.textContent)
+            .toContain('settings.importTargetChanged {"names":"Moved"}');
         // Enter in the password field cannot import (and duplicate) again.
         const field = host.querySelector<HTMLInputElement>('input[type="password"]')!;
         await act(async () => {
@@ -138,6 +141,7 @@ describe('ExportImportDialog .aeroftp import', () => {
             secretsStored: 2,
             jottaChains: [],
             oauthAppsKept: [],
+            targetChanged: [],
             totalInFile: 1,
             metadata: { exportDate: '', aeroftpVersion: '', serverCount: 1, hasCredentials: true },
         });
@@ -153,6 +157,26 @@ describe('ExportImportDialog .aeroftp import', () => {
         expect(onClose).not.toHaveBeenCalled();
     });
 
+    // A second Enter while the first import is still running starts nothing.
+    it('runs one import when submitted again while it is in flight', async () => {
+        let finish: (value: unknown) => void = () => undefined;
+        vi.mocked(invoke).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+        await openImport(vi.fn(), vi.fn());
+        const field = host.querySelector<HTMLInputElement>('input[type="password"]')!;
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, 'backup-password');
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await click(button(b => b.textContent === 'settings.importServers'));
+        await act(async () => {
+            field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        });
+        expect(invoke).toHaveBeenCalledTimes(1);
+        await act(async () => {
+            finish({ servers: [], skipped: [], similar: 0, jottaChains: [], oauthAppsKept: [], targetChanged: [], secretsStored: 0, userId: null });
+        });
+    });
+
     it('defaults to skip, reports the skipped profiles and closes', async () => {
         vi.mocked(invoke).mockResolvedValue({
             servers: [{ id: 'srv_new', name: 'New', host: 'n.example', port: 22, username: 'u', importOutcome: 'added' }],
@@ -160,6 +184,7 @@ describe('ExportImportDialog .aeroftp import', () => {
             similar: 0,
             jottaChains: [],
             oauthAppsKept: [],
+            targetChanged: [],
             totalInFile: 2,
             metadata: { exportDate: '', aeroftpVersion: '', serverCount: 2, hasCredentials: false },
         });

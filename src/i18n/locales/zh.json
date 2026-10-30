@@ -1370,7 +1370,8 @@
             "duplicatedCount": "已复制 {count} 个",
             "importJottaChainWarning": "Jottacloud 每次连接都会更新登录，而 {names} 现在与另一个副本共用同一个登录：先连接的副本会让另一个退出登录（文件来源的设备，或其复制来源的配置文件）。请用新的 Personal Login Token 重新登录另一个。",
             "importNotSavedSecretsKept": "配置文件未保存，但文件中包含的其中 {count} 个配置文件的密码和登录令牌已存储。请使用相同选项再次导入同一文件以完成。",
-            "importOauthAppKept": "{names} 附带的自定义 OAuth 应用与此设备为该提供商保存的应用不同。由于其他配置文件在使用已存储的应用，因此予以保留。如果这些配置文件无法再连接，请重新登录。"
+            "importOauthAppKept": "{names} 导入时带有与此设备上该提供商已有的不同的自定义 OAuth 应用。已保留设备上存储的应用，如果这些配置文件无法连接，请重新登录。",
+            "importTargetChanged": "{names} 未被覆盖：该文件会让它们指向另一台服务器，而它们已保存的密码和令牌不能发送到那里。请使用“复制”导入以添加文件中的副本，或先删除该配置文件。"
         },
         "devtools": {
             "title": "AeroTools",

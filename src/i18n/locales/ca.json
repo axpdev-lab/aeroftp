@@ -1370,7 +1370,8 @@
             "duplicatedCount": "{count} duplicats",
             "importJottaChainWarning": "Jottacloud renova l'inici de sessió a cada connexió, i {names} ara en comparteix un amb una altra còpia: la còpia que es connecta primer tanca la sessió de l'altra (el dispositiu d'on ve el fitxer, o el perfil del qual es va duplicar). Torneu a iniciar sessió a l'altra amb un Personal Login Token nou.",
             "importNotSavedSecretsKept": "Els perfils no s'han desat, però les contrasenyes i els tokens d'inici de sessió que el fitxer conté per a {count} d'ells ja s'han emmagatzemat. Torna a importar el mateix fitxer amb la mateixa opció per acabar.",
-            "importOauthAppKept": "{names} han arribat amb una aplicació OAuth personalitzada diferent de la que aquest dispositiu té per a aquest proveïdor. S'ha mantingut l'aplicació desada perquè la fan servir altres perfils, així que torna a iniciar la sessió si aquests perfils deixen de connectar-se."
+            "importOauthAppKept": "{names} han arribat amb una aplicació OAuth personalitzada diferent de la que aquest dispositiu té per a aquest proveïdor. S'ha mantingut l'aplicació emmagatzemada: torna a iniciar la sessió si aquests perfils deixen de connectar-se.",
+            "importTargetChanged": "{names} no s'han sobreescrit: el fitxer els fa apuntar a un altre servidor, i les contrasenyes i els tokens desats no hi han d'anar. Importa amb Duplica per afegir la còpia del fitxer, o elimina primer el perfil."
         },
         "devtools": {
             "title": "AeroTools",

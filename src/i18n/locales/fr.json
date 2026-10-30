@@ -1370,7 +1370,8 @@
             "duplicatedCount": "{count} dupliqués",
             "importJottaChainWarning": "Jottacloud renouvelle sa connexion à chaque session, et {names} en partage désormais une avec une autre copie : la copie qui se connecte en premier déconnecte l'autre (l'appareil d'où vient le fichier, ou le profil dont elle a été dupliquée). Reconnectez l'autre avec un nouveau Personal Login Token.",
             "importNotSavedSecretsKept": "Les profils n'ont pas été enregistrés, mais les mots de passe et les jetons de connexion que le fichier contient pour {count} d'entre eux ont déjà été stockés. Importez à nouveau le même fichier avec la même option pour terminer.",
-            "importOauthAppKept": "{names} sont arrivés avec une application OAuth personnalisée différente de celle que cet appareil possède pour ce fournisseur. L'application enregistrée a été conservée car d'autres profils l'utilisent, donc reconnectez-vous si ces profils ne se connectent plus."
+            "importOauthAppKept": "{names} sont arrivés avec une app OAuth personnalisée différente de celle que cet appareil possède pour ce fournisseur. L'app enregistrée a été conservée, reconnectez-vous donc si ces profils n'arrivent plus à se connecter.",
+            "importTargetChanged": "{names} n'ont pas été écrasés : le fichier les fait pointer vers un autre serveur, et leurs mots de passe et jetons enregistrés ne doivent pas y aller. Importez avec Dupliquer pour ajouter la copie du fichier, ou supprimez d'abord le profil."
         },
         "devtools": {
             "title": "AeroTools",
