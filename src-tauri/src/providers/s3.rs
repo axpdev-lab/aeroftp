@@ -4145,10 +4145,11 @@ impl S3Provider {
                         // an answer without one is not "nothing to compare",
                         // it is an endpoint that stopped pinning the bytes.
                         None => {
-                            return Some(format!(
+                            last_error = Some(format!(
                                 "entity tag {} is no longer reported, so nothing pins the bytes",
                                 etag
                             ));
+                            continue;
                         }
                         Some(_) => {}
                     }
@@ -4165,10 +4166,11 @@ impl S3Provider {
                         }
                         Some(_) => {}
                         None => {
-                            return Some(format!(
+                            last_error = Some(format!(
                                 "size {} is no longer reported, so the windows are not checked",
                                 size
                             ));
+                            continue;
                         }
                     }
                     return None;
@@ -5269,7 +5271,10 @@ impl StorageProvider for S3Provider {
                                 };
                                 match outcome {
                                     Ok(()) => return Ok(()),
-                                    Err(e @ ProviderError::ParallelRefused(_)) => {
+                                    Err(
+                                        e @ (ProviderError::ParallelRefused(_)
+                                        | ProviderError::PinRefused(_)),
+                                    ) => {
                                         // Refused, not failed: the object moved
                                         // while the windows were reading it, and a
                                         // single stream reads one consistent view,
@@ -6699,7 +6704,7 @@ impl StorageProvider for S3Provider {
                 ))
             }
             StatusCode::PRECONDITION_FAILED if pinned => {
-                Err(super::multi_thread::pin_refused("S3 range read", key))
+                Err(super::multi_thread::pin_refused("S3 range read", path))
             }
             StatusCode::PRECONDITION_FAILED => Err(ProviderError::ParallelRefused(
                 super::multi_thread::unpinned_412("S3 range read", path),

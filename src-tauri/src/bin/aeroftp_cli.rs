@@ -36354,7 +36354,8 @@ async fn pget_segmented_download(
         Err(ProviderError::PinRefused(_)) => {
             // A 412 to the pin: the object moved, or the server refuses
             // If-Match on the version it still serves. One more reading,
-            // once for the file, names which; one stream follows either way.
+            // once for the file, names which: a changed object takes one stream,
+            // an unchanged one is read again without the pin.
             let Some(changed) = run_until_interrupted(
                 &cancelled,
                 pget_read_again(url, remote_path, cli, format, &before),
@@ -66642,8 +66643,7 @@ async fn digest_in_order(
     digest: &mut LocalDigest,
 ) -> Result<Option<u64>, ProviderError> {
     use ftp_client_gui_lib::providers::multi_thread::{
-        range_source_changed_through, read_range_source_through, report_download_fallback,
-        PinRefusal,
+        read_range_source_through, report_download_fallback,
     };
     let Ok(before) = read_range_source_through(provider, path).await else {
         return Ok(None);
@@ -66658,13 +66658,18 @@ async fn digest_in_order(
     let mut outcome = digest_in_order_attempt(provider, path, digest, &before, true).await;
     if matches!(outcome, Err(ProviderError::PinRefused(_))) {
         // A 412 to the pin: one more reading, once for the file, names a
-        // replacement apart from a server that refuses If-Match.
-        let verdict = PinRefusal::from_second_reading(
-            range_source_changed_through(provider, path, &before).await,
-        );
+        // replacement apart from a server that refuses If-Match. A reading
+        // that fails proves neither, so one whole download decides.
+        let Ok(after) = read_range_source_through(provider, path).await else {
+            report_download_fallback("the server refused ranged hashing");
+            digest.restart();
+            return digest_downloaded(provider, path, digest, Some(&before))
+                .await
+                .map(Some);
+        };
         // A changed object fails here: a whole download would be refused by
         // the same comparison, after reading every byte of it.
-        if let PinRefusal::SourceChanged(why) = verdict {
+        if let Some(why) = before.differs_from(&after) {
             return Err(ProviderError::TransferFailed(format!(
                 "{path} changed while it was hashed: {why}"
             )));
@@ -66676,7 +66681,11 @@ async fn digest_in_order(
         outcome = digest_in_order_attempt(provider, path, digest, &before, false).await;
     }
     match outcome {
-        Err(ProviderError::ParallelRefused(_) | ProviderError::NotSupported(_)) => {
+        Err(
+            ProviderError::ParallelRefused(_)
+            | ProviderError::PinRefused(_)
+            | ProviderError::NotSupported(_),
+        ) => {
             report_download_fallback("the server refused ranged hashing");
             digest.restart();
             digest_downloaded(provider, path, digest, Some(&before))
@@ -67110,7 +67119,8 @@ mod hashsum_digest_tests {
     /// pinned with If-Match and the others served, 5 as 4 with the object
     /// replaced after one refusal, 6 as 4 with the unpinned ranges coming from
     /// a replacement, under its own tag, while the HEAD and a whole GET stay
-    /// at the first version.
+    /// at the first version, 7 as 4 with the first HEAD after a refusal
+    /// answered `404`.
     pub(super) async fn range_hash_fixture(
         size: usize,
         body_delta: isize,
@@ -67133,6 +67143,7 @@ mod hashsum_digest_tests {
         let ranged_gets = Arc::new(AtomicUsize::new(0));
         let heads = Arc::new(AtomicUsize::new(0));
         let refused = Arc::new(AtomicUsize::new(0));
+        let lost_heads = Arc::new(AtomicUsize::new(0));
         let app = axum::Router::new().fallback(axum::routing::any({
             let whole_gets = whole_gets.clone();
             let ranged_gets = ranged_gets.clone();
@@ -67144,6 +67155,7 @@ mod hashsum_digest_tests {
                 let ranged_gets = ranged_gets.clone();
                 let heads = heads.clone();
                 let refused = refused.clone();
+                let lost_heads = lost_heads.clone();
                 async move {
                     let current = if range_mode == 5 && refused.load(Ordering::SeqCst) > 0 {
                         replaced.clone()
@@ -67152,6 +67164,15 @@ mod hashsum_digest_tests {
                     };
                     if request.method() == Method::HEAD {
                         heads.fetch_add(1, Ordering::SeqCst);
+                        if range_mode == 7
+                            && refused.load(Ordering::SeqCst) > 0
+                            && lost_heads.fetch_add(1, Ordering::SeqCst) == 0
+                        {
+                            return Response::builder()
+                                .status(StatusCode::NOT_FOUND)
+                                .body(Body::empty())
+                                .unwrap();
+                        }
                         return Response::builder()
                             .header("content-length", size.to_string())
                             .header(
@@ -67173,7 +67194,7 @@ mod hashsum_digest_tests {
                         ranged_gets.fetch_add(1, Ordering::SeqCst);
                         // Modes 4, 5 and 6 refuse every range pinned with
                         // If-Match and serve the others.
-                        if matches!(range_mode, 4..=6) && request.headers().contains_key("if-match")
+                        if matches!(range_mode, 4..=7) && request.headers().contains_key("if-match")
                         {
                             refused.fetch_add(1, Ordering::SeqCst);
                             return Response::builder()
@@ -67462,6 +67483,43 @@ mod hashsum_digest_tests {
             ))
             .await
             .expect("the whole download hashes the first version");
+        assert_eq!(
+            hash,
+            format!(
+                "{:x}",
+                <sha2::Sha256 as sha2::Digest>::digest(&fixture.body)
+            )
+        );
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+        let messages = warnings.take();
+        assert_eq!(messages.len(), 1, "{messages:?}");
+        assert!(
+            messages[0].contains("refused ranged hashing"),
+            "{messages:?}"
+        );
+    }
+
+    /// A reading after the 412 that fails proves neither a replacement nor an
+    /// unchanged object: the hash is not refused on it and no unpinned pass
+    /// runs, one whole download decides.
+    #[tokio::test]
+    async fn ranged_hashsum_downloads_whole_when_the_diagnosis_fails() {
+        let mut fixture = range_hash_fixture(
+            (ftp_client_gui_lib::providers::multi_thread::IN_ORDER_WINDOW * 2 + 31) as usize,
+            0,
+            7,
+        )
+        .await;
+        let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+        let (hash, _size) = warnings
+            .scope(hashsum_digest(
+                &mut fixture.provider,
+                PATH,
+                HashAlgorithm::Sha256,
+                true,
+            ))
+            .await
+            .expect("the whole download hashes the unchanged object");
         assert_eq!(
             hash,
             format!(
@@ -89704,7 +89762,14 @@ mod tests {
         )
         .await;
         assert_eq!(code, 0, "{warnings:?}");
-        assert!(!warnings.is_empty(), "the fallback is announced");
+        // This notice means the unpinned segments ran and were refused: a run
+        // that never retried would name the refused pin instead.
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("a ranged response or its version check was refused")),
+            "{warnings:?}"
+        );
         assert_eq!(std::fs::read(&out).unwrap(), fixture.body);
         assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
     }

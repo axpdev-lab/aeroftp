@@ -5982,7 +5982,7 @@ mod tests {
     }
 
     /// A 412 says the server refused the pin, not why: the message must not
-    /// claim a replacement, and the marker survives a window's wrapping.
+    /// claim a replacement, and the variant survives a window's wrapping.
     #[test]
     fn a_pin_refusal_names_the_refusal_until_a_second_reading_names_its_cause() {
         let refused = pin_refused("S3 range read", "big.bin");
