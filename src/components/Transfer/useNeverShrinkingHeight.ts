@@ -3,6 +3,13 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 
+/**
+ * The height held, as a variable: the element's class turns it into a minimum no
+ * taller than the window, so a card held tall keeps its top bar on screen when
+ * the window is made shorter.
+ */
+export const HELD_HEIGHT = '--held-height';
+
 /** Long enough for the speed graph's 0.3 s transition (`.tpb-graph-wrapper`). */
 const SETTLE_MS = 350;
 
@@ -40,7 +47,7 @@ export function useNeverShrinkingHeight<T extends HTMLElement>(scope: unknown) {
         const height = element.getBoundingClientRect().height;
         if (height > tallest.current) {
             tallest.current = height;
-            element.style.minHeight = `${height}px`;
+            element.style.setProperty(HELD_HEIGHT, `${height}px`);
         }
     }, []);
 
@@ -49,7 +56,7 @@ export function useNeverShrinkingHeight<T extends HTMLElement>(scope: unknown) {
         if (element && currentScope.current !== scope) {
             currentScope.current = scope;
             tallest.current = 0;
-            element.style.minHeight = '';
+            element.style.removeProperty(HELD_HEIGHT);
         }
         measure();
     });
@@ -64,7 +71,7 @@ export function useNeverShrinkingHeight<T extends HTMLElement>(scope: unknown) {
     const release = useCallback(() => {
         tallest.current = 0;
         settlesAt.current = performance.now() + SETTLE_MS;
-        if (ref.current) ref.current.style.minHeight = '';
+        ref.current?.style.removeProperty(HELD_HEIGHT);
         measureAfterAnimation();
     }, [measureAfterAnimation]);
 

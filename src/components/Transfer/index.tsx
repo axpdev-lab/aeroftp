@@ -244,11 +244,12 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
     // Each file of a sync starts with an empty profile: the last one with data
     // stays on screen until the new file has its own, or the graph and its
     // toggle would disappear and return once per file. A file in the other
-    // direction, or a folder, is another transfer and starts without it.
+    // direction is another transfer and starts without it, and so does a folder,
+    // whose profile runs across the whole batch.
     const cardScope = `${summary.direction}:${isFolderTransfer}`;
     const lastProfile = useRef<{ scope: string; profile: SpeedProfile } | null>(null);
     const ownProfile = transfer.speedProfile && hasSpeedData(transfer.speedProfile) ? transfer.speedProfile : undefined;
-    const shownProfile = ownProfile ?? (lastProfile.current?.scope === cardScope ? lastProfile.current.profile : undefined);
+    const shownProfile = ownProfile ?? (!isFolderTransfer && lastProfile.current?.scope === cardScope ? lastProfile.current.profile : undefined);
     useLayoutEffect(() => {
         if (ownProfile) lastProfile.current = { scope: cardScope, profile: ownProfile };
         else if (lastProfile.current?.scope !== cardScope) lastProfile.current = null;
@@ -270,7 +271,7 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
         // the bottom-right Transfer Queue panel (fixed bottom-12 right-6 w-[33rem]).
         <div
             ref={cardRef}
-            className={`fixed bottom-12 left-6 z-40 overflow-hidden rounded-lg border w-[30rem] max-w-[calc(100vw-2rem)] text-xs ${styles.container}`}
+            className={`fixed bottom-12 left-6 z-40 overflow-hidden rounded-lg border w-[30rem] max-w-[calc(100vw-2rem)] min-h-[min(var(--held-height,0px),calc(100vh-4rem))] text-xs ${styles.container}`}
             style={{ isolation: 'isolate', contain: 'layout paint' }}
         >
             <div

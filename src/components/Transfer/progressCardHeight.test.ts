@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptySpeedProfile, recordProgress } from '../../utils/speedProfile';
 import { ProgressCard, type TransferToastState } from './index';
+import { HELD_HEIGHT } from './useNeverShrinkingHeight';
 
 vi.mock('../../i18n', () => ({ useTranslation: () => (key: string) => key }));
 vi.mock('../../hooks/useTheme', () => ({
@@ -44,6 +45,7 @@ const render = async (transfer: TransferToastState, measured: number) => {
     await act(async () => root.render(createElement(ProgressCard, { transfer, onCancel: () => {}, onMinimize: () => {} })));
 };
 const card = () => host.firstElementChild as HTMLElement;
+const held = () => card().style.getPropertyValue(HELD_HEIGHT);
 
 beforeEach(() => {
     (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -69,9 +71,9 @@ describe('ProgressCard during a transfer', () => {
 
     it('does not shrink from one file to the next', async () => {
         await render(toast('a.bin'), 300);
-        expect(card().style.minHeight).toBe('300px');
+        expect(held()).toBe('300px');
         await render(starting('b.bin'), 240);
-        expect(card().style.minHeight).toBe('300px');
+        expect(held()).toBe('300px');
     });
 
     it('keeps the speed graph and its toggle while the next file has no data yet', async () => {
@@ -101,6 +103,14 @@ describe('ProgressCard during a transfer', () => {
         expect(toggle()).toBeNull();
     });
 
+    it('drops the graph of the last batch when another folder batch starts', async () => {
+        const batch = (name: string) => ({ ...summary(name), total_files: 40 });
+        await render({ summary: batch('one'), speedProfile: profile }, 300);
+        expect(toggle()).not.toBeNull();
+        await render({ summary: batch('two'), speedProfile: emptySpeedProfile() }, 300);
+        expect(toggle()).toBeNull();
+    });
+
     it('keeps the height of the open graph, measured when its animation ends', async () => {
         vi.useFakeTimers();
         localStorage.clear();
@@ -109,7 +119,7 @@ describe('ProgressCard during a transfer', () => {
         await setGraphOpen(true);
         height = 420;
         await act(async () => vi.advanceTimersByTime(350));
-        expect(card().style.minHeight).toBe('420px');
+        expect(held()).toBe('420px');
         vi.useRealTimers();
     });
 
@@ -118,17 +128,22 @@ describe('ProgressCard during a transfer', () => {
         await render(toast('a.bin'), 420);
         await setGraphOpen(true);
         await setGraphOpen(false);
-        expect(card().style.minHeight).toBe('');
+        expect(held()).toBe('');
         height = 300;
         await act(async () => vi.advanceTimersByTime(350));
-        expect(card().style.minHeight).toBe('300px');
+        expect(held()).toBe('300px');
         vi.useRealTimers();
+    });
+
+    it('caps the held height to the window in the class that reads it', async () => {
+        await render(toast('a.bin'), 300);
+        expect(card().className).toContain('min-h-[min(var(--held-height,0px),calc(100vh-4rem))]');
     });
 
     it('grows when its content needs more room', async () => {
         await render(toast('a.bin'), 300);
         await render(toast('b.bin'), 360);
-        expect(card().style.minHeight).toBe('360px');
+        expect(held()).toBe('360px');
     });
 
     it('starts over for a card opened later', async () => {
@@ -136,14 +151,14 @@ describe('ProgressCard during a transfer', () => {
         await act(async () => root.unmount());
         root = createRoot(host);
         await render(toast('b.bin'), 200);
-        expect(card().style.minHeight).toBe('200px');
+        expect(held()).toBe('200px');
     });
 
     it('starts over when a single file follows a folder at once, in the same card', async () => {
         await render({ ...toast('folder'), summary: { ...summary('folder'), total_files: 40 } }, 420);
-        expect(card().style.minHeight).toBe('420px');
+        expect(held()).toBe('420px');
         await render(toast('a.bin'), 240);
-        expect(card().style.minHeight).toBe('240px');
+        expect(held()).toBe('240px');
     });
 
     it('holds its height when the user opens the graph', async () => {
@@ -151,25 +166,25 @@ describe('ProgressCard during a transfer', () => {
         await setGraphOpen(false);
         await render(toast('a.bin'), 300);
         await setGraphOpen(true);
-        expect(card().style.minHeight).toBe('300px');
+        expect(held()).toBe('300px');
     });
 
     it('gives the height back when the user closes the graph, once its animation has ended', async () => {
         const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
         await render(toast('a.bin'), 420);
         await setGraphOpen(true);
-        expect(card().style.minHeight).toBe('420px');
+        expect(held()).toBe('420px');
 
         await setGraphOpen(false);
-        expect(card().style.minHeight).toBe('');
+        expect(held()).toBe('');
 
         // Mid-transition the card still measures tall: that must not be kept.
         now.mockReturnValue(1200);
         await render(toast('a.bin'), 420);
-        expect(card().style.minHeight).toBe('');
+        expect(held()).toBe('');
 
         now.mockReturnValue(1400);
         await render(toast('a.bin'), 300);
-        expect(card().style.minHeight).toBe('300px');
+        expect(held()).toBe('300px');
     });
 });
