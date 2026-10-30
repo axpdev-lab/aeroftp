@@ -143,9 +143,10 @@ fn site_whose_reply_never_comes_ends_at_the_global_timeout() {
     let url = format!("ftp://test:test@127.0.0.1:{port}/");
     let (out, elapsed) = run_bounded(&["--timeout", "2", "site", &url, "WHO"]);
     assert_eq!(out.status.code(), Some(8), "{}", describe(&out, elapsed));
-    // Without the flag the reply wait is 60 s.
+    // Two seconds of reply wait plus start-up and login; without the flag the
+    // wait is 60 s.
     assert!(
-        elapsed < Duration::from_secs(30),
+        elapsed < Duration::from_secs(10),
         "{}",
         describe(&out, elapsed)
     );

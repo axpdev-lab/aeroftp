@@ -6435,6 +6435,34 @@ mod tests {
         assert!(matches!(list, Err(ProviderError::Timeout)), "{list:?}");
     }
 
+    /// The Nextcloud trashbin listing, which builds its PROPFIND outside the
+    /// files path: against a server that never answers it is a timeout at
+    /// the metadata limit.
+    #[tokio::test]
+    async fn a_trash_listing_the_server_never_answers_ends_at_its_limit() {
+        let url = format!(
+            "{}remote.php/dav/files/u/",
+            crate::providers::mute_http_endpoint()
+        );
+        let mut provider = WebDavProvider::new(test_config(&url)).expect("provider");
+        provider.connected = true;
+        provider.metadata_timeout = std::time::Duration::from_millis(300);
+        let started = std::time::Instant::now();
+        let listing = tokio::time::timeout(
+            std::time::Duration::from_secs(20),
+            provider.nextcloud_list_trash(),
+        )
+        .await
+        .expect("the trash listing is still waiting");
+        assert!(
+            matches!(listing, Err(ProviderError::Timeout)),
+            "{listing:?}"
+        );
+        let elapsed = started.elapsed();
+        assert!(elapsed >= provider.metadata_timeout, "{elapsed:?}");
+        assert!(elapsed < std::time::Duration::from_secs(5), "{elapsed:?}");
+    }
+
     /// The connect-time probe of a URL that names a file: against a server
     /// that never answers it gives up at the metadata limit, not at the
     /// client's 1800 s read timeout.
@@ -6451,6 +6479,12 @@ mod tests {
         .await
         .expect("the probe is still waiting");
         assert!(probe.is_none());
+        // It sent the request and waited for its limit, not returned early.
+        assert!(
+            started.elapsed() >= provider.metadata_timeout,
+            "{:?}",
+            started.elapsed()
+        );
         assert!(
             started.elapsed() < std::time::Duration::from_secs(5),
             "{:?}",
