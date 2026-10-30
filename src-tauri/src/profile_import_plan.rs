@@ -288,13 +288,14 @@ pub const OMITTED_WHEN_EMPTY: [&str; 6] = [
 /// turns TLS or certificate checks off must not take a saved password with it).
 /// A bucket or a container is not here: it is a place on the same server, for
 /// the same account, over the same connection.
-const OPTIONS_THAT_GUARD_THE_SECRET: [&str; 12] = [
+const OPTIONS_THAT_GUARD_THE_SECRET: [&str; 13] = [
     "endpoint",
     "region",
     "accountId",
     "accountName",
     "jurisdiction",
     "pcloudRegion",
+    "infinicloudNode",
     "tlsMode",
     "ftpsMode",
     "webdavScheme",
