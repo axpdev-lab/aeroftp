@@ -267,10 +267,7 @@ pub async fn request_token(
 
     let body = format!("oauth_callback={}", percent_encode(callback_url));
 
-    let client = reqwest::Client::builder()
-        .user_agent(crate::providers::AEROFTP_USER_AGENT)
-        .build()
-        .map_err(|e| format!("HTTP client error: {}", e))?;
+    let client = sign_in_client()?;
     let resp = client
         .post(request_token_url)
         .header("Authorization", &auth)
@@ -278,7 +275,7 @@ pub async fn request_token(
         .body(body)
         .send()
         .await
-        .map_err(|e| format!("Request token HTTP error: {}", e))?;
+        .map_err(|e| sign_in_error("Request token", e))?;
 
     if !resp.status().is_success() {
         let status = resp.status();
@@ -289,8 +286,37 @@ pub async fn request_token(
     let body = resp
         .text()
         .await
-        .map_err(|e| format!("Read body error: {}", e))?;
+        .map_err(|e| sign_in_error("Read body", e))?;
     parse_token_response(&body)
+}
+
+/// A sign-in step waits for the server as long as the GitHub sign-in: without
+/// a limit, a server that accepts the connection and never answers holds the
+/// sign-in dialog, or a CLI `profile-auth`, for ever.
+fn sign_in_limit() -> std::time::Duration {
+    super::http_limits::limit(super::http_limits::SIGN_IN_TIMEOUT)
+}
+
+fn sign_in_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .user_agent(crate::providers::AEROFTP_USER_AGENT)
+        .connect_timeout(sign_in_limit())
+        .timeout(sign_in_limit())
+        .build()
+        .map_err(|e| format!("HTTP client error: {}", e))
+}
+
+/// reqwest's `Display` for a timeout is the generic "error sending request",
+/// so a step that ran out of time says so.
+fn sign_in_error(step: &str, e: reqwest::Error) -> String {
+    if e.is_timeout() {
+        format!(
+            "{step}: the server did not answer within {} s",
+            sign_in_limit().as_secs()
+        )
+    } else {
+        format!("{step} HTTP error: {e}")
+    }
 }
 
 /// Step 2: Build the authorization URL for the user to visit
@@ -330,16 +356,13 @@ pub async fn access_token(
     } else {
         format!("{auth}, oauth_verifier=\"{}\"", percent_encode(verifier))
     };
-    let client = reqwest::Client::builder()
-        .user_agent(crate::providers::AEROFTP_USER_AGENT)
-        .build()
-        .map_err(|e| format!("HTTP client error: {}", e))?;
+    let client = sign_in_client()?;
     let resp = client
         .post(access_token_url)
         .header("Authorization", &auth)
         .send()
         .await
-        .map_err(|e| format!("Access token HTTP error: {}", e))?;
+        .map_err(|e| sign_in_error("Access token", e))?;
 
     if !resp.status().is_success() {
         let status = resp.status();
@@ -350,7 +373,7 @@ pub async fn access_token(
     let body = resp
         .text()
         .await
-        .map_err(|e| format!("Read body error: {}", e))?;
+        .map_err(|e| sign_in_error("Read body", e))?;
     parse_token_response(&body)
 }
 
@@ -398,5 +421,41 @@ mod tests {
     fn test_timestamp_is_numeric() {
         let ts = generate_timestamp();
         assert!(ts.parse::<u64>().is_ok());
+    }
+
+    /// Each sign-in step against a server that accepts the connection and
+    /// never answers. The clock is paused, so a limit elapses at once and the
+    /// outer bound only fires when the step has none.
+    async fn wait_for_a_mute_server<F>(step: F) -> Result<(String, String), String>
+    where
+        F: std::future::Future<Output = Result<(String, String), String>>,
+    {
+        tokio::time::timeout(std::time::Duration::from_secs(3600), step)
+            .await
+            .expect("the sign-in step is still waiting for the server after an hour")
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_request_token_the_server_never_answers_ends_the_sign_in() {
+        let url = crate::providers::mute_http_endpoint();
+        let outcome = wait_for_a_mute_server(request_token("key", "secret", &url, "oob")).await;
+        let error = outcome.expect_err("no answer");
+        assert!(error.contains("did not answer"), "{error}");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_access_token_the_server_never_answers_ends_the_sign_in() {
+        let url = crate::providers::mute_http_endpoint();
+        let outcome = wait_for_a_mute_server(access_token(
+            "key",
+            "secret",
+            &url,
+            "token",
+            "token-secret",
+            "",
+        ))
+        .await;
+        let error = outcome.expect_err("no answer");
+        assert!(error.contains("did not answer"), "{error}");
     }
 }
