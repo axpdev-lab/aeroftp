@@ -1508,6 +1508,10 @@ impl StorageProvider for DrimeCloudProvider {
         super::response_bytes_with_limit(resp, super::MAX_DOWNLOAD_TO_BYTES).await
     }
 
+    /// Upload `local_path` to `remote_path`. Drime has no streaming upload, so
+    /// the whole file is read into memory first, and refused if it changed
+    /// while it was being read; from 5 MB it goes as a multipart upload,
+    /// below that in one request.
     async fn upload(
         &mut self,
         local_path: &str,

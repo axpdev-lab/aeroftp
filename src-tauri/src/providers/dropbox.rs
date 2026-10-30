@@ -1211,6 +1211,12 @@ impl StorageProvider for DropboxProvider {
         super::response_bytes_with_limit(response, super::MAX_DOWNLOAD_TO_BYTES).await
     }
 
+    /// Upload `local_path` to `remote_path`. Up to 150 MB the file goes in one
+    /// `files/upload` request; above it, an upload session appends 128 MB chunks
+    /// read in order and `upload_session/finish` publishes the file. The
+    /// session path checks that the local file kept its size and modification
+    /// time before it finishes, so a file rewritten during the read is refused
+    /// instead of published as a mixture.
     async fn upload(
         &mut self,
         local_path: &str,
