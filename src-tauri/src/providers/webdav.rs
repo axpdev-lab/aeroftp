@@ -6401,6 +6401,17 @@ mod tests {
         ] {
             assert_eq!(limit_of(method.clone()), None, "{method} is cut short");
         }
+        // The same through `request_url`, which the trashbin listing uses.
+        let trash = provider
+            .request_url(
+                webdav_methods::propfind(),
+                "https://dav.example.test/remote.php/dav/trashbin/u/trash/",
+            )
+            .build()
+            .expect("request")
+            .timeout()
+            .copied();
+        assert_eq!(trash, Some(std::time::Duration::from_secs(120)));
     }
 
     /// End to end, with the provider's own client and its 1800 s read
@@ -6422,6 +6433,29 @@ mod tests {
             .await
             .expect("the listing is still waiting");
         assert!(matches!(list, Err(ProviderError::Timeout)), "{list:?}");
+    }
+
+    /// The connect-time probe of a URL that names a file: against a server
+    /// that never answers it gives up at the metadata limit, not at the
+    /// client's 1800 s read timeout.
+    #[tokio::test]
+    async fn a_single_file_probe_the_server_never_answers_ends_at_its_limit() {
+        let url = format!("{}file.txt", crate::providers::mute_http_endpoint());
+        let mut provider = WebDavProvider::new(test_config(&url)).expect("provider");
+        provider.metadata_timeout = std::time::Duration::from_millis(300);
+        let started = std::time::Instant::now();
+        let probe = tokio::time::timeout(
+            std::time::Duration::from_secs(20),
+            provider.probe_single_file(),
+        )
+        .await
+        .expect("the probe is still waiting");
+        assert!(probe.is_none());
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "{:?}",
+            started.elapsed()
+        );
     }
 
     /// The provider's client with its read timeout cut from 1800 s to a
