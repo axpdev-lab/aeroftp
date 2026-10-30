@@ -655,6 +655,13 @@ async fn durable_profile_auth_lifecycle(
             // A restored secret shows in the profile to store, so a Crypt
             // profile added by an import reports its stored overlay password.
             assert_eq!(jotta_report.servers[0]["hasStoredAeroCryptPassword"], true);
+            // And in the list as stored, not only in the report.
+            let stored_copy = jotta_report
+                .stored
+                .iter()
+                .find(|p| p["id"].as_str() == Some(copy))
+                .unwrap();
+            assert_eq!(stored_copy["hasStoredAeroCryptPassword"], true);
             assert_eq!(
                 store.get("jottacloud_refresh").unwrap(),
                 "other-profile-chain"
@@ -735,6 +742,7 @@ async fn durable_profile_auth_lifecycle(
             .0
     };
     let other_list = list_of(other_id);
+    let shared_before = store.get(&stale_key).ok();
     let for_other = crate::import_server_profiles_with_mode(
         file.to_string_lossy().into_owned(),
         "fixture-export-password".into(),
@@ -745,6 +753,7 @@ async fn durable_profile_auth_lifecycle(
     .unwrap_err();
     assert!(for_other.starts_with("ACCOUNT_CHANGED"), "{for_other}");
     assert_eq!(list_of(other_id), other_list);
+    assert_eq!(store.get(&stale_key).ok(), shared_before);
 
     // The real vault and partition: a rollback puts the old value back in both,
     // removes a key that did not exist, and leaves one changed since.
