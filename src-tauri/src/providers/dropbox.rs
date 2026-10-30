@@ -1217,6 +1217,12 @@ impl StorageProvider for DropboxProvider {
         super::response_bytes_with_limit(response, super::MAX_DOWNLOAD_TO_BYTES).await
     }
 
+    /// Upload `local_path` to `remote_path`. Up to 150 MB the file goes in one
+    /// `files/upload` request; above it, an upload session appends 128 MB chunks
+    /// read in order and `upload_session/finish` publishes the file. The
+    /// session path checks that the local file kept its size and modification
+    /// time before it finishes, so a file rewritten during the read is refused
+    /// instead of published as a mixture.
     async fn upload(
         &mut self,
         local_path: &str,
@@ -1226,10 +1232,12 @@ impl StorageProvider for DropboxProvider {
         use tokio::io::AsyncReadExt;
 
         let path = self.normalize_path(remote_path);
-        let file_size = tokio::fs::metadata(local_path)
+        // The size the session is cut to and the size the check before
+        // `finish` compares against come from one observation of the file.
+        let source = super::upload_source::UploadSource::observe(local_path)
             .await
-            .map_err(|e| ProviderError::Other(format!("Metadata error: {}", e)))?
-            .len();
+            .map_err(|e| ProviderError::Other(format!("Metadata error: {}", e)))?;
+        let file_size = source.size();
 
         const UPLOAD_SESSION_THRESHOLD: u64 = 150 * 1024 * 1024; // 150MB
 
@@ -1328,6 +1336,10 @@ impl StorageProvider for DropboxProvider {
 
                 progress.report(offset);
             }
+
+            // The chunks were read from one version of the file, or the finish
+            // would publish a mixture; an unfinished session expires on its own.
+            source.ensure_unchanged("Dropbox upload session").await?;
 
             // Step 3: Finish session
             let finish_url = format!("{}/files/upload_session/finish", self.content_api_base());

@@ -85,6 +85,12 @@ struct MultipartFileRuntime {
     /// Owns a second handle until complete or an awaited abort returns. The
     /// state's take_for_abort consumes its handle before doing any wire I/O.
     abort_guard: std::sync::Mutex<Option<MultipartAbortGuard>>,
+    /// The local file as it was before any part was read from it. The parts
+    /// are read at their own offsets, concurrently, so a file rewritten
+    /// meanwhile would be completed as a mixture of two versions; the complete
+    /// is refused unless the file still matches this observation and the size
+    /// the parts were cut for.
+    source: crate::providers::upload_source::UploadSource,
 }
 
 impl MultipartFileRuntime {
@@ -839,6 +845,59 @@ fn batch_streaming_config(
     StreamingConfig::for_file_slots(file_slots, config.max_backlog).with_admission(config.schedule)
 }
 
+/// Observe the local file of a multipart upload at admission, before any part
+/// is read. The parts are cut from the scan's `entry.size`, so a file that no
+/// longer has that size (grown or shrunk since the scan) is refused rather than
+/// uploaded truncated or padded; the next scan plans it again.
+async fn observe_multipart_source(
+    entry: &TransferEntry,
+) -> Result<crate::providers::upload_source::UploadSource, TransferFailure> {
+    let refused = |message: String| TransferFailure {
+        kind: TransferFailureKind::LocalIo,
+        message,
+        retryable: false,
+        retry_after_secs: None,
+    };
+    let source = crate::providers::upload_source::UploadSource::observe(&entry.local_path)
+        .await
+        .map_err(|e| {
+            refused(format!(
+                "multipart upload: {} cannot be read before its parts are: {e}",
+                entry.local_path
+            ))
+        })?;
+    if source.size() != entry.size {
+        return Err(refused(format!(
+            "multipart upload: {} has {} bytes but its parts were planned for {} bytes; nothing was sent",
+            entry.local_path,
+            source.size(),
+            entry.size
+        )));
+    }
+    Ok(source)
+}
+
+/// Account `entry` as failed with `failure` before its subgraph runs: the
+/// executor reports the file error and the batch progress counts one failure.
+async fn fail_before_graph<E>(
+    ctx: &BatchStreamContext<E>,
+    entry: &TransferEntry,
+    failure: TransferFailure,
+) where
+    E: TransferExecutor + Send + Sync + 'static,
+{
+    ctx.executor.multipart_emit_file_error(entry, &failure);
+    let snapshot_clone = {
+        let mut snapshot = ctx.progress.lock().await;
+        snapshot.failed += 1;
+        snapshot.clone()
+    };
+    ctx.sink.emit_batch_progress(&snapshot_clone);
+    if let Some(observer) = ctx.progress_observer.as_ref() {
+        observer(snapshot_clone);
+    }
+}
+
 /// Execute one admitted batch file: expand its shaped subgraph template, bind
 /// the shared node runners to this single entry, and run it through
 /// [`execute_dag`] with the batch-wide resource manager, AIMD controller, and
@@ -878,19 +937,26 @@ where
     // exactly once (same contract as the former pre-graph preflight); no
     // transfer nodes run for it.
     if is_multipart && !ctx.executor.supports_multipart_wire() {
-        let failure = unsupported_multipart_failure();
-        ctx.executor.multipart_emit_file_error(&entry, &failure);
-        let snapshot_clone = {
-            let mut snapshot = ctx.progress.lock().await;
-            snapshot.failed += 1;
-            snapshot.clone()
-        };
-        ctx.sink.emit_batch_progress(&snapshot_clone);
-        if let Some(observer) = ctx.progress_observer.as_ref() {
-            observer(snapshot_clone);
-        }
+        fail_before_graph(&ctx, &entry, unsupported_multipart_failure()).await;
         return TransferDagMetrics::default();
     }
+
+    // A multipart file reads its parts at their offsets concurrently, so the
+    // complete is checked against the file as it is now, before any part is
+    // read. A file that cannot be observed, or no longer has the size its
+    // parts are cut for, fails here, before a session or a part is spent on
+    // it.
+    let multipart_source = if is_multipart {
+        match observe_multipart_source(&entry).await {
+            Ok(source) => Some(source),
+            Err(failure) => {
+                fail_before_graph(&ctx, &entry, failure).await;
+                return TransferDagMetrics::default();
+            }
+        }
+    } else {
+        None
+    };
 
     // Bind this subgraph's local node ids to the single admitted entry (index 0
     // of a one-element slice), so the shared node runners are reused verbatim
@@ -900,32 +966,35 @@ where
     for &node_id in &shaped.transfer {
         node_to_entry.insert(node_id, 0);
     }
-    let multipart_runtime: Option<Arc<MultipartFileRuntime>> = if is_multipart {
-        let profile = TransferGraphProfile::resolve(ctx.dag_direction, &ctx.caps, entry.size);
-        let layout = MultipartLayout::from_profile(
-            entry.size,
-            profile.upload_parts,
-            profile.preferred_chunk_size,
-            &entry.local_path,
-        );
-        let node_to_part: HashMap<usize, u32> = shaped
-            .transfer
-            .iter()
-            .enumerate()
-            .map(|(idx, node_id)| (*node_id, (idx + 1) as u32))
-            .collect();
-        let state = MultipartFileState::new(layout, node_to_part);
-        node_to_entry.insert(shaped.acquire, 0);
-        node_to_entry.insert(shaped.commit, 0);
-        Some(Arc::new(MultipartFileRuntime {
-            state,
-            session_lease: Mutex::new(SessionLeaseSlot::Vacant),
-            governor_lease: Mutex::new(None),
-            abort_guard: std::sync::Mutex::new(None),
-        }))
-    } else {
-        None
-    };
+    let multipart_runtime: Option<Arc<MultipartFileRuntime>> =
+        if let Some(source) = multipart_source {
+            let profile = TransferGraphProfile::resolve(ctx.dag_direction, &ctx.caps, entry.size);
+            let layout = MultipartLayout::from_profile(
+                entry.size,
+                profile.upload_parts,
+                profile.preferred_chunk_size,
+                &entry.local_path,
+            );
+            let node_to_part: HashMap<usize, u32> = shaped
+                .transfer
+                .iter()
+                .enumerate()
+                .map(|(idx, node_id)| (*node_id, (idx + 1) as u32))
+                .collect();
+            debug_assert_eq!(layout.total_size, source.size());
+            let state = MultipartFileState::new(layout, node_to_part);
+            node_to_entry.insert(shaped.acquire, 0);
+            node_to_entry.insert(shaped.commit, 0);
+            Some(Arc::new(MultipartFileRuntime {
+                state,
+                session_lease: Mutex::new(SessionLeaseSlot::Vacant),
+                governor_lease: Mutex::new(None),
+                abort_guard: std::sync::Mutex::new(None),
+                source,
+            }))
+        } else {
+            None
+        };
 
     let node_to_entry = Arc::new(node_to_entry);
     let multipart_runtimes: Arc<Vec<Option<Arc<MultipartFileRuntime>>>> =
@@ -1803,6 +1872,21 @@ where
         return TransferOutcome::Failed(failure);
     }
 
+    // The parts were read at their offsets concurrently: refuse the complete
+    // if the file no longer matches its admission observation.
+    if let Err(changed) = runtime.source.ensure_unchanged("multipart upload").await {
+        let message = changed.to_string();
+        let failure = TransferFailure {
+            kind: TransferFailureKind::LocalIo,
+            message,
+            retryable: false,
+            retry_after_secs: None,
+        };
+        abort_multipart_file(executor, entry, runtime).await;
+        executor.multipart_emit_file_error(entry, &failure);
+        return TransferOutcome::Failed(failure);
+    }
+
     let Some(handle) = state.clone_handle().await else {
         let failure = TransferFailure {
             kind: TransferFailureKind::Unknown,
@@ -1988,6 +2072,8 @@ mod tests {
         /// (the concurrency tests rendezvous here; a serialized scheduler
         /// deadlocks the barrier and the test's timeout fails).
         rendezvous: Option<Arc<Barrier>>,
+        /// Every file error the batch reported, in order.
+        file_errors: StdMutex<Vec<TransferFailure>>,
     }
 
     impl MockExecutor {
@@ -2004,6 +2090,7 @@ mod tests {
                 capabilities: TransferCapabilities::default(),
                 transfer_calls: AtomicUsize::new(0),
                 multipart_wire: false,
+                file_errors: StdMutex::new(Vec::new()),
                 begin_calls: AtomicUsize::new(0),
                 part_calls: AtomicUsize::new(0),
                 complete_calls: AtomicUsize::new(0),
@@ -2167,6 +2254,10 @@ mod tests {
                 "mock",
                 self.session_capacity.min(max_concurrent).max(1),
             )
+        }
+
+        fn multipart_emit_file_error(&self, _entry: &TransferEntry, failure: &TransferFailure) {
+            self.file_errors.lock().unwrap().push(failure.clone());
         }
 
         fn supports_multipart_wire(&self) -> bool {
@@ -3599,6 +3690,140 @@ mod tests {
         (result, executor)
     }
 
+    /// A local file rewritten while its parts are in flight is not completed:
+    /// the parts are read at their own offsets, so the object would be a
+    /// mixture of two versions. The session is aborted instead (before the
+    /// check the complete was sent).
+    #[tokio::test]
+    async fn multipart_upload_of_a_file_rewritten_during_its_parts_is_not_completed() {
+        let chunk = 8u64;
+        let file_size = 24u64; // 3 parts
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("source.bin");
+        std::fs::write(&path, vec![b'A'; file_size as usize]).expect("write");
+        let entries = vec![entry_with_local("m", file_size, path.to_str().unwrap())];
+        let mut mock = MockExecutor::new(4)
+            .with_capabilities(multipart_caps(1, chunk))
+            .with_multipart_wire();
+        mock.part_delay = Duration::from_millis(40);
+        let executor = Arc::new(mock);
+        let rewriter = {
+            let executor = Arc::clone(&executor);
+            let path = path.clone();
+            tokio::spawn(async move {
+                while executor.part_calls.load(AtomicOrdering::SeqCst) == 0 {
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
+                let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+                std::fs::write(&path, vec![b'B'; file_size as usize]).unwrap();
+                std::fs::File::options()
+                    .write(true)
+                    .open(&path)
+                    .unwrap()
+                    .set_modified(modified + Duration::from_secs(5))
+                    .unwrap();
+            })
+        };
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            upload_batch(entries, 4),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        rewriter.await.expect("rewriter");
+        assert_eq!(result.failed, 1, "{result:?}");
+        assert_eq!(result.completed, 0);
+        assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 1);
+    }
+
+    /// Parts cut for a size the file no longer has when the upload starts are
+    /// never sent, whether the file grew (they would upload it truncated) or
+    /// shrank (they would read past its end): the file fails at admission,
+    /// before its multipart session is begun.
+    #[tokio::test]
+    async fn multipart_upload_planned_for_another_size_fails_before_its_session() {
+        for actual in [30usize, 16] {
+            let chunk = 8u64;
+            let dir = tempfile::tempdir().expect("tempdir");
+            let path = dir.path().join("source.bin");
+            std::fs::write(&path, vec![b'A'; actual]).expect("write");
+            // The scan saw 24 bytes; the file has `actual` by the time the upload runs.
+            let entries = vec![entry_with_local("m", 24, path.to_str().unwrap())];
+            let executor = Arc::new(
+                MockExecutor::new(4)
+                    .with_capabilities(multipart_caps(1, chunk))
+                    .with_multipart_wire(),
+            );
+            let result = execute_batch_dag(
+                Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+                upload_batch(entries, 4),
+                Arc::clone(&executor),
+                Arc::new(AtomicBool::new(false)),
+                None,
+            )
+            .await;
+            assert_eq!(result.failed, 1, "{result:?}");
+            assert_eq!(executor.begin_calls.load(AtomicOrdering::SeqCst), 0);
+            assert_eq!(executor.part_calls.load(AtomicOrdering::SeqCst), 0);
+            assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 0);
+            assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 0);
+            let errors = executor.file_errors.lock().unwrap();
+            assert_eq!(errors.len(), 1, "{errors:?}");
+            assert_eq!(errors[0].kind, TransferFailureKind::LocalIo);
+            assert!(!errors[0].retryable, "a refused plan is not retried as is");
+            assert!(
+                errors[0].message.contains(&format!(
+                    "has {actual} bytes but its parts were planned for 24 bytes"
+                )),
+                "{}",
+                errors[0].message
+            );
+        }
+    }
+
+    /// A multipart file that cannot be observed fails before its multipart
+    /// session is begun or any part is read: the complete could never be
+    /// checked.
+    #[tokio::test]
+    async fn multipart_upload_of_a_file_that_cannot_be_observed_fails_before_its_parts() {
+        let entries = vec![entry("missing", 24)];
+        let executor = Arc::new(
+            MockExecutor::new(4)
+                .with_capabilities(multipart_caps(1, 8))
+                .with_multipart_wire(),
+        );
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            upload_batch(entries, 4),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        )
+        .await;
+        assert_eq!(result.failed, 1, "{result:?}");
+        assert_eq!(executor.begin_calls.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(executor.part_calls.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 0);
+        let errors = executor.file_errors.lock().unwrap();
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].kind, TransferFailureKind::LocalIo);
+        assert!(
+            !errors[0].retryable,
+            "an unreadable source is not retried as is"
+        );
+        assert!(
+            errors[0]
+                .message
+                .contains("cannot be read before its parts are"),
+            "{}",
+            errors[0].message
+        );
+    }
+
     #[tokio::test]
     async fn multipart_soft_stop_after_begin_lets_the_file_finish() {
         let (result, executor) = run_multipart_with_stop_on_first_part(1, 4, false).await;
@@ -3783,6 +4008,9 @@ mod tests {
             session_lease: Mutex::new(SessionLeaseSlot::Vacant),
             governor_lease: Mutex::new(None),
             abort_guard: std::sync::Mutex::new(None),
+            source: crate::providers::upload_source::UploadSource::observe(&path_str)
+                .await
+                .expect("observe the temp file"),
         });
 
         let whole_outcome = run_whole_file_node(
