@@ -92,11 +92,22 @@ pub enum IncrementalPrep {
 
 /// The paths of one incremental pass that need the remote.
 pub struct IncrementalPlan {
+    config_identity: serde_json::Value,
+    root_identity: Option<super::LocalRootIdentity>,
     renames: Vec<PlannedRename>,
     /// Relative key -> the local copy, `None` when it is gone.
     work: BTreeMap<String, Option<FileInfo>>,
     /// The baseline, with the planned renames applied.
     index: SyncIndex,
+}
+
+/// Invalidate prepared work on rule, profile or root changes; scan time is only bookkeeping.
+fn config_identity(config: &CloudConfig) -> Result<serde_json::Value, String> {
+    let mut value = serde_json::to_value(config).map_err(|error| error.to_string())?;
+    if let Some(fields) = value.as_object_mut() {
+        fields.remove("last_sync");
+    }
+    Ok(value)
 }
 
 impl IncrementalPlan {
@@ -359,6 +370,7 @@ fn plan(
             root.display()
         ));
     }
+    let root_identity = super::LocalRootIdentity::read(root);
     let Some(mut index) = index else {
         return Ok(IncrementalPrep::FullScanOnly(
             "the pair has no baseline yet".to_string(),
@@ -497,8 +509,13 @@ fn plan(
     if work.is_empty() && renames.is_empty() {
         return Ok(IncrementalPrep::Settled { full_scan_wanted });
     }
+    if root_identity != super::LocalRootIdentity::read(root) {
+        return Err("AeroCloud local root changed during watcher preparation; discard plan".into());
+    }
     Ok(IncrementalPrep::Work {
         plan: Box::new(IncrementalPlan {
+            config_identity: config_identity(config)?,
+            root_identity,
             renames,
             work,
             index,
@@ -621,7 +638,7 @@ fn plan_renames(
 /// for another reason than absence is settled by `exists`, the way the full
 /// sync settles a failed `cd` of its folder; one that cannot answer either
 /// is an error, never an absence.
-async fn remote_state<P: StorageProvider + ?Sized>(
+pub(super) async fn remote_state<P: StorageProvider + ?Sized>(
     provider: &mut P,
     path: &str,
 ) -> Result<Option<RemoteEntry>, String> {
@@ -656,6 +673,15 @@ fn remote_info(key: &str, path: &str, entry: &RemoteEntry) -> FileInfo {
 /// propagate deletes from such a folder trips the safety gate.
 pub(super) fn local_root_is_empty(root: &Path) -> bool {
     std::fs::read_dir(root).map_or(true, |mut entries| entries.next().is_none())
+}
+
+/// Distinguish confirmed absence from an unreadable path or a parent link.
+pub(super) fn local_source_is_absent(root: &Path, key: &str) -> Result<bool, String> {
+    match Disk::new(root).entry(key) {
+        Local::Absent => Ok(true),
+        Local::File(_) | Local::Dir(_) => Ok(false),
+        Local::Skipped => Err("source path cannot be safely inspected; deletion refused".into()),
+    }
 }
 
 /// How an executed pass ended.
@@ -698,17 +724,27 @@ impl CloudService {
         if !config.enabled {
             return Err("AeroCloud is not enabled".to_string());
         }
+        if config_identity(&config)? != plan.config_identity {
+            return Err("AeroCloud configuration changed after watcher preparation; discard plan and run a full scan".into());
+        }
         // A watcher plan can outlive the mounted/renamed local root. Refuse
         // before any remote rename or write, rather than interpreting its
         // disappearance as a batch of user deletes.
         if !config.local_folder.is_dir() {
             return Err("AeroCloud local folder is unavailable; incremental sync refused".into());
         }
+        if plan.root_identity != super::LocalRootIdentity::read(&config.local_folder) {
+            return Err(
+                "AeroCloud local root changed after watcher preparation; discard plan".into(),
+            );
+        }
         let start = std::time::Instant::now();
         let IncrementalPlan {
             renames,
             mut work,
             mut index,
+            root_identity,
+            ..
         } = *plan;
         let local_str = config.local_folder.to_string_lossy().to_string();
         let remote_root = config.remote_folder.trim_end_matches('/').to_string();
@@ -879,13 +915,18 @@ impl CloudService {
 
         let mut update_policy = UpdatePolicy {
             window: options.modify_window,
+            root_identity,
             // This bounded pass stats only changed paths, not the entire
             // destination. Missing remote copies are deferred to a full scan
             // below. Unknown remove events are inspected only to report a
             // never-synced destination file; deletion still needs a baseline.
             // A failed stat stays out of the comparisons altogether.
             allow_orphan_deletes: config.sync_direction == CompareDirection::LocalToRemote
-                && !local_root_is_empty(&config.local_folder),
+                && if config.update_only {
+                    CloudService::local_source_has_syncable_file(&config)?
+                } else {
+                    !local_root_is_empty(&config.local_folder)
+                },
         };
 
         // A local file whose remote copy is gone reads as deleted on the
@@ -908,6 +949,19 @@ impl CloudService {
         // local folder, and the deletes it would propagate.
         let prior_count = index.files.len();
         let pending_deletes = self.count_pending_deletes(&config, &comparisons, update_policy);
+        // A bounded watcher pass has no complete destination count. A batch
+        // that could trip the destination-relative gate needs the full scan;
+        // when that scan is rate-limited, keep its deletes until it is allowed.
+        if config.update_only
+            && config.sync_direction != CompareDirection::Bidirectional
+            && Self::update_delete_safety_trips(pending_deletes, pending_deletes)
+        {
+            if work_limit.is_some() {
+                return Ok((IncrementalRun::TooLarge(result), index));
+            }
+            update_policy.allow_orphan_deletes = false;
+            result.errors.push("Update deletes deferred: a full destination scan is required to evaluate the mass-delete limit".into());
+        }
         let local_empty = local_root_is_empty(&config.local_folder);
         if Self::delete_safety_trips(prior_count, local_empty, false, pending_deletes, false) {
             update_policy.allow_orphan_deletes = false;
@@ -947,7 +1001,7 @@ impl CloudService {
                     done.push(comparison.clone());
                 }
                 Ok(action) => {
-                    Self::record_sync_action(&mut result, &config, comparison, &action);
+                    self.record_sync_action(&mut result, &config, comparison, &action);
                     done.push(comparison.clone());
                 }
                 Err(e) => {
@@ -987,9 +1041,7 @@ impl CloudService {
 
         result.duration_secs = start.elapsed().as_secs();
         for path in self.take_unsettled() {
-            result.errors.push(format!(
-                "{path}: it kept changing while it uploaded; the next cycle reads it as a conflict, asked about under PreferNewer or PreferRemote until one cycle runs under PreferLocal (sends the local copy) or KeepBoth"
-            ));
+            result.errors.push(Self::unsettled_message(&config, &path));
         }
         if result.conflicts > 0 {
             self.set_status(CloudSyncStatus::HasConflicts {
@@ -1012,7 +1064,10 @@ impl CloudService {
             .await;
         }
         if let Some(app) = &self.app_handle {
-            let _ = app.emit("cloud_sync_complete", &result);
+            let _ = app.emit(
+                "cloud_sync_complete",
+                Self::completion_payload(&config, &result, false),
+            );
         }
         Ok((IncrementalRun::Done(result, failed), saved))
     }

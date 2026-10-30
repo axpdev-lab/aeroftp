@@ -12,16 +12,22 @@ export interface CloudSkippedEntry {
 }
 
 /** Keep the names and manual decision visible without treating a safe skip as a failed sync. */
-export function CloudReviewNotice({ entries }: { entries: CloudSkippedEntry[] }) {
+export function CloudReviewNotice({ entries, errors = [] }: { entries: CloudSkippedEntry[]; errors?: string[] }) {
     const t = useTranslation();
     const files = entries.filter(entry => entry.needs_review);
-    if (files.length === 0) return null;
+    if (files.length === 0 && errors.length === 0) return null;
     return (
+        <>
+        {errors.length > 0 && <div role="alert" className="mb-4 max-h-32 overflow-y-auto rounded border border-red-400 bg-red-50 p-3 text-sm text-red-900 dark:bg-red-900/20 dark:text-red-200">
+            <ul>{errors.map((error, index) => <li key={index}>{error}</li>)}</ul>
+        </div>}
+        {files.length > 0 &&
         <div role="alert" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
             <p>{t('cloud.untrackedDestinationFiles', { count: files.length })}</p>
             <ul className="mt-2 max-h-24 overflow-y-auto break-all font-mono text-xs">
                 {files.map((entry, index) => <li key={`${index}:${entry.path}`}>{entry.path}</li>)}
             </ul>
-        </div>
+        </div>}
+        </>
     );
 }

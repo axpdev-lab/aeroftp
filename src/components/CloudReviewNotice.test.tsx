@@ -27,6 +27,12 @@ describe('preserved AeroCloud destination files', () => {
         expect(html).toContain('confirm any intended deletions');
     });
 
+    it('displays safety errors even without preserved files or a changed sync status', () => {
+        const html = renderToStaticMarkup(<CloudReviewNotice entries={[]} errors={['Blocked 20 deletes while conflicts remain']} />);
+        expect(html).toContain('role="alert"');
+        expect(html).toContain('Blocked 20 deletes while conflicts remain');
+    });
+
     it('leaves old and ordinary results without a warning', () => {
         expect(renderToStaticMarkup(<CloudReviewNotice entries={[]} />)).toBe('');
         expect(renderToStaticMarkup(<CloudReviewNotice entries={[

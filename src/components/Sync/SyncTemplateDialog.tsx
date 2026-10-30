@@ -97,6 +97,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
     // adds them itself.
     const liveScriptExcludes = () => readScriptExcludePatterns(tabState, excludePatterns);
 
+    /** Keep an unset Update choice distinct from an explicit false so saved Mirror defaults survive. */
     const livePlanFromStore = (): LivePlanExport => {
         const canaryOn = tabState?.get<boolean>('plan.canaryMode', false) === true;
         const verify = tabState?.get<AeroSyncVerifyPolicy | undefined>('plan.verifyPolicy', undefined);
@@ -251,7 +252,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                     remote_path: remotePath,
                     connect_profile: serverProfileName || null,
                     exclude_patterns_override: liveScriptExcludes(),
-                    update_only: live.preset ? live.preset === 'mirror' && live.updateOnly === true : undefined,
+                    update_only: live.preset ? (live.preset === 'mirror' ? live.updateOnly : false) : undefined,
                     direction: live.direction,
                     delete_orphans: live.preset ? live.preset === 'mirror' : undefined,
                     backup_dir: readScriptBackupDir(tabState),
@@ -278,6 +279,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
         return true;
     };
 
+    /** Export the live direction and optional Mirror override through the shared script contract. */
     const exportScript = async (format: SyncScriptFormat) => {
         const live = livePlanFromStore();
         const ext = format === 'pwsh' ? 'ps1' : 'sh';
@@ -297,7 +299,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                 local_path: localPath,
                 remote_path: remotePath,
                 exclude_patterns: liveScriptExcludes(),
-                update_only: live.preset ? live.preset === 'mirror' && live.updateOnly === true : undefined,
+                update_only: live.preset ? (live.preset === 'mirror' ? live.updateOnly : false) : undefined,
                 direction: live.direction,
                 delete_orphans: live.preset ? live.preset === 'mirror' : undefined,
                 backup_dir: readScriptBackupDir(tabState),

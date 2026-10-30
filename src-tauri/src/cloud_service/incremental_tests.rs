@@ -23,6 +23,7 @@ const SYNCED_AT: i64 = 1_700_000_000;
 struct RemoteState {
     /// Path -> (bytes, mtime in Unix seconds).
     files: BTreeMap<String, (Vec<u8>, i64)>,
+    cwd: String,
     dirs: BTreeSet<String>,
     /// The server's clock: each upload is stamped with the next tick.
     clock: i64,
@@ -34,6 +35,7 @@ struct RemoteState {
     unreadable: BTreeSet<String>,
     floor: Option<Duration>,
     stats: Vec<String>,
+    on_stat: Option<Box<dyn FnOnce() + Send>>,
     lists: usize,
     uploads: Vec<String>,
     downloads: Vec<String>,
@@ -41,6 +43,7 @@ struct RemoteState {
     renames: Vec<(String, String)>,
     /// A native bulk, as Proton Drive's in CLI mode, and its calls.
     bulk: bool,
+    non_authoritative: bool,
     bulks: Vec<Vec<String>>,
 }
 
@@ -54,6 +57,7 @@ impl MemRemote {
         let state = RemoteState {
             dirs: BTreeSet::from(["/remote".to_string()]),
             clock: SYNCED_AT + 1_000,
+            cwd: "/remote".into(),
             ..RemoteState::default()
         };
         Self(Arc::new(Mutex::new(state)))
@@ -93,6 +97,10 @@ impl StorageProvider for MemRemote {
     fn display_name(&self) -> String {
         "memory".to_string()
     }
+    fn listing_is_authoritative(&self) -> bool {
+        !self.state().non_authoritative
+    }
+
     fn min_full_scan_interval(&self) -> Option<Duration> {
         self.state().floor
     }
@@ -108,25 +116,35 @@ impl StorageProvider for MemRemote {
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         let mut state = self.state();
         state.lists += 1;
+        let path = if path == "." {
+            state.cwd.as_str()
+        } else {
+            path
+        };
         let entries = state
             .files
             .iter()
             .filter(|(p, _)| parent_of(p) == path)
-            .map(|(p, (bytes, _))| {
-                RemoteEntry::file(
+            .map(|(p, (bytes, mtime))| {
+                let mut entry = RemoteEntry::file(
                     p.rsplit('/').next().unwrap().to_string(),
                     p.clone(),
                     bytes.len() as u64,
-                )
+                );
+                entry.modified = DateTime::<Utc>::from_timestamp(*mtime, 0)
+                    .map(|time| time.format("%Y-%m-%d %H:%M:%S").to_string());
+                entry
             })
             .collect();
         Ok(entries)
     }
     async fn pwd(&mut self) -> Result<String, ProviderError> {
-        Ok("/".to_string())
+        Ok(self.state().cwd.clone())
     }
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
-        if self.state().dirs.contains(path) {
+        let mut state = self.state();
+        if state.dirs.contains(path) {
+            state.cwd = path.to_string();
             Ok(())
         } else {
             Err(not_found(path))
@@ -245,6 +263,9 @@ impl StorageProvider for MemRemote {
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let mut state = self.state();
         state.stats.push(path.to_string());
+        if let Some(hook) = state.on_stat.take() {
+            hook();
+        }
         if state.unpublished.contains(path) {
             return Err(not_found(path));
         }
@@ -801,7 +822,7 @@ async fn one_way_update_incremental_bulk_keeps_newer_files_and_propagates_delete
         let mut remote = MemRemote::new();
         remote.state().bulk = bulk;
         let mut index = empty_index(&config);
-        for name in ["keep", "older", "gone"] {
+        for name in ["keep", "older", "older2", "gone"] {
             synced(&mut index, &remote, root.path(), name, b"original");
         }
         std::fs::write(root.path().join("keep"), b"local edit").unwrap();
@@ -809,10 +830,12 @@ async fn one_way_update_incremental_bulk_keeps_newer_files_and_propagates_delete
         remote.put("/remote/keep", b"newer remote edit", SYNCED_AT + 100);
         std::fs::write(root.path().join("older"), b"source update").unwrap();
         set_mtime(&root.path().join("older"), SYNCED_AT + 100);
+        std::fs::write(root.path().join("older2"), b"second source update").unwrap();
+        set_mtime(&root.path().join("older2"), SYNCED_AT + 100);
         std::fs::remove_file(root.path().join("gone")).unwrap();
         let (run, _) = execute(
             &config,
-            work(prep(&config, &index, &["keep", "older", "gone"])),
+            work(prep(&config, &index, &["keep", "older", "older2", "gone"])),
             &mut remote,
             None,
         )
@@ -821,7 +844,7 @@ async fn one_way_update_incremental_bulk_keeps_newer_files_and_propagates_delete
         assert!(result.errors.is_empty(), "{:?}", result.errors);
         assert_eq!(
             (result.uploaded, result.downloaded, result.deleted),
-            (1, 0, 1)
+            (2, 0, 1)
         );
         assert_eq!(remote.state().files["/remote/keep"].0, b"newer remote edit");
         assert_eq!(
@@ -830,6 +853,14 @@ async fn one_way_update_incremental_bulk_keeps_newer_files_and_propagates_delete
         );
         assert_eq!(remote.state().files["/remote/older"].0, b"source update");
         assert!(!remote.state().files.contains_key("/remote/gone"));
+        assert_eq!(
+            remote.state().files["/remote/older2"].0,
+            b"second source update"
+        );
+        assert_eq!(!remote.state().bulks.is_empty(), bulk);
+        if bulk {
+            assert!(remote.state().bulks.iter().any(|group| group.len() == 2));
+        }
     }
 }
 
@@ -967,6 +998,445 @@ async fn one_way_update_watcher_keeps_and_reports_untracked_destinations_every_p
             }
         }
     }
+}
+
+/// A scan-time comparison, deliberately retained while the next test changes the destination.
+fn update_row(
+    config: &CloudConfig,
+    remote: &MemRemote,
+    key: &str,
+    synced_before: bool,
+) -> FileComparison {
+    let local = Disk::new(&config.local_folder).entry(key).info().cloned();
+    let path = format!("/remote/{key}");
+    let remote_info = remote
+        .state()
+        .files
+        .get(&path)
+        .map(|(bytes, time)| FileInfo {
+            name: key.into(),
+            path: path.clone(),
+            size: bytes.len() as u64,
+            modified: DateTime::<Utc>::from_timestamp(*time, 0),
+            is_dir: false,
+            checksum: None,
+            checksum_alg: None,
+        });
+    FileComparison {
+        relative_path: key.into(),
+        local_relative_path: None,
+        remote_relative_path: None,
+        status: match (local.is_some(), remote_info.is_some()) {
+            (true, true) => SyncStatus::Conflict,
+            (true, false) => SyncStatus::LocalOnly,
+            _ => SyncStatus::RemoteOnly,
+        },
+        local_info: local,
+        remote_info,
+        is_dir: false,
+        sync_reason: String::new(),
+        previously_synced: synced_before,
+        baseline_key: None,
+        name_match_blocked: false,
+    }
+}
+
+#[tokio::test]
+async fn update_freshness_guard_covers_single_and_real_bulk_and_preserves_prior_baseline() {
+    for upload in [true, false] {
+        for bulk in [true, false] {
+            let root = tempfile::tempdir().unwrap();
+            let config = CloudConfig {
+                update_only: true,
+                sync_direction: if upload {
+                    CompareDirection::LocalToRemote
+                } else {
+                    CompareDirection::RemoteToLocal
+                },
+                ..pair(root.path())
+            };
+            let mut remote = MemRemote::new();
+            remote.state().bulk = bulk;
+            let mut prior = empty_index(&config);
+            for name in ["a", "b", "c"] {
+                synced(&mut prior, &remote, root.path(), name, b"original");
+                if upload {
+                    std::fs::write(root.path().join(name), b"source edit").unwrap();
+                    set_mtime(&root.path().join(name), SYNCED_AT + 100);
+                } else {
+                    remote.put(&format!("/remote/{name}"), b"source edit", SYNCED_AT + 100);
+                }
+            }
+            let rows: Vec<_> = ["a", "b", "c"]
+                .iter()
+                .map(|name| update_row(&config, &remote, name, true))
+                .collect();
+            if upload {
+                remote.put("/remote/a", b"concurrent newer", SYNCED_AT + 500);
+            } else {
+                std::fs::write(root.path().join("a"), b"concurrent newer").unwrap();
+                set_mtime(&root.path().join("a"), SYNCED_AT + 500);
+            }
+            let svc = CloudService::new();
+            svc.init(config.clone()).await;
+            let policy = UpdatePolicy {
+                root_identity: super::super::LocalRootIdentity::read(root.path()),
+                allow_orphan_deletes: true,
+                ..Default::default()
+            };
+            let mut ahead = super::super::bulk::BulkAhead::new(policy);
+            for i in 0..rows.len() {
+                let action = svc
+                    .next_outcome(&mut remote, &config, &rows, i, &mut ahead)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    action,
+                    if i == 0 {
+                        SyncAction::Skip
+                    } else if upload {
+                        SyncAction::Upload
+                    } else {
+                        SyncAction::Download
+                    }
+                );
+            }
+            let kept = if upload {
+                remote.state().files["/remote/a"].0.clone()
+            } else {
+                std::fs::read(root.path().join("a")).unwrap()
+            };
+            assert_eq!(kept, b"concurrent newer");
+            let saved = svc.post_sync_baseline(&rows, &config, Some(&prior), policy);
+            assert_eq!(saved["a"].modified, prior.files["a"].modified);
+            assert_eq!(saved["a"].size, prior.files["a"].size);
+            if bulk && upload {
+                assert_eq!(remote.state().bulks[0].len(), 2);
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn update_source_only_upload_refuses_a_non_authoritative_destination() {
+    let root = tempfile::tempdir().unwrap();
+    let config = CloudConfig {
+        update_only: true,
+        sync_direction: CompareDirection::LocalToRemote,
+        ..pair(root.path())
+    };
+    let mut remote = MemRemote::new();
+    remote.state().non_authoritative = true;
+    std::fs::write(root.path().join("new"), b"source").unwrap();
+    let row = update_row(&config, &remote, "new", false);
+    let svc = CloudService::new();
+    svc.init(config.clone()).await;
+    let policy = UpdatePolicy {
+        root_identity: super::super::LocalRootIdentity::read(root.path()),
+        ..Default::default()
+    };
+    let error = svc
+        .process_comparison_with_provider(&mut remote, &config, &row, policy)
+        .await
+        .unwrap_err();
+    assert!(error.contains("not authoritative"));
+    assert!(remote.state().uploads.is_empty());
+}
+
+#[tokio::test]
+async fn update_recreated_source_is_not_propagated_as_a_delete_in_either_direction() {
+    for upload in [true, false] {
+        let root = tempfile::tempdir().unwrap();
+        let config = CloudConfig {
+            update_only: true,
+            preserve_remote_deletes: false,
+            sync_direction: if upload {
+                CompareDirection::LocalToRemote
+            } else {
+                CompareDirection::RemoteToLocal
+            },
+            ..pair(root.path())
+        };
+        let mut remote = MemRemote::new();
+        let mut prior = empty_index(&config);
+        for name in ["keep", "gone"] {
+            synced(&mut prior, &remote, root.path(), name, b"original");
+        }
+        if upload {
+            std::fs::remove_file(root.path().join("gone")).unwrap();
+        } else {
+            remote.state().files.remove("/remote/gone");
+        }
+        let row = update_row(&config, &remote, "gone", true);
+        if upload {
+            std::fs::write(root.path().join("gone"), b"recreated").unwrap();
+        } else {
+            remote.put("/remote/gone", b"recreated", SYNCED_AT + 100);
+        }
+        let svc = CloudService::new();
+        svc.init(config.clone()).await;
+        let policy = UpdatePolicy {
+            allow_orphan_deletes: true,
+            root_identity: super::super::LocalRootIdentity::read(root.path()),
+            ..Default::default()
+        };
+        assert_eq!(
+            svc.process_comparison_with_provider(&mut remote, &config, &row, policy)
+                .await
+                .unwrap(),
+            SyncAction::Skip
+        );
+        assert!(remote.state().deletes.is_empty());
+        assert!(root.path().join("gone").exists());
+        let saved = svc.post_sync_baseline(&[row], &config, Some(&prior), policy);
+        assert!(saved.contains_key("gone"));
+    }
+}
+
+/// Replace a local parent or root while the provider stat yields control.
+/// Neither downloads nor propagated deletes may touch the replacement tree.
+#[cfg(unix)]
+#[tokio::test]
+async fn update_rechecks_local_parent_and_root_after_async_stat() {
+    for replace_root in [false, true] {
+        for delete in [false, true] {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path().join("local");
+            let outside = temp.path().join("outside");
+            std::fs::create_dir_all(root.join("sub")).unwrap();
+            std::fs::create_dir_all(&outside).unwrap();
+            std::fs::write(outside.join("f"), b"outside sole copy").unwrap();
+            std::fs::write(root.join("sub/f"), b"old").unwrap();
+            set_mtime(&root.join("sub/f"), SYNCED_AT);
+            let config = CloudConfig {
+                update_only: true,
+                preserve_remote_deletes: false,
+                sync_direction: CompareDirection::RemoteToLocal,
+                ..pair(&root)
+            };
+            let mut remote = MemRemote::new();
+            if !delete {
+                remote.put("/remote/sub/f", b"new source", SYNCED_AT + 100);
+            }
+            let row = update_row(&config, &remote, "sub/f", true);
+            let policy = UpdatePolicy {
+                root_identity: super::super::LocalRootIdentity::read(&root),
+                allow_orphan_deletes: true,
+                ..Default::default()
+            };
+            let moved = temp.path().join("original");
+            let replaced = if replace_root {
+                root.clone()
+            } else {
+                root.join("sub")
+            };
+            let target = outside.clone();
+            remote.state().on_stat = Some(Box::new(move || {
+                std::fs::rename(&replaced, &moved).unwrap();
+                if replace_root {
+                    std::fs::create_dir_all(replaced.join("sub")).unwrap();
+                    std::fs::write(replaced.join("sub/f"), b"replacement tree").unwrap();
+                } else {
+                    std::os::unix::fs::symlink(target, replaced).unwrap();
+                }
+            }));
+            let svc = CloudService::new();
+            svc.init(config.clone()).await;
+            let error = svc
+                .process_comparison_with_provider(&mut remote, &config, &row, policy)
+                .await
+                .unwrap_err();
+            assert!(!error.is_empty());
+            assert_eq!(
+                std::fs::read(outside.join("f")).unwrap(),
+                b"outside sole copy"
+            );
+            assert!(remote.state().downloads.is_empty());
+            assert!(remote.state().deletes.is_empty());
+            if replace_root {
+                assert_eq!(
+                    std::fs::read(root.join("sub/f")).unwrap(),
+                    b"replacement tree"
+                );
+            }
+        }
+    }
+}
+
+/// A successful but non-authoritative listing cannot retire a saved warning.
+#[tokio::test]
+async fn update_incomplete_inventory_cannot_retire_review_notices() {
+    let root = tempfile::tempdir().unwrap();
+    let config = CloudConfig {
+        update_only: true,
+        sync_direction: CompareDirection::LocalToRemote,
+        ..pair(root.path())
+    };
+    let mut remote = MemRemote::new();
+    remote.state().non_authoritative = true;
+    let svc = CloudService::new();
+    svc.init(config.clone()).await;
+    let plan = svc
+        .build_sync_plan_with_provider(&mut remote, &config, true)
+        .await
+        .unwrap();
+    assert!(!plan.inventory_complete);
+    let result = SyncOperationResult {
+        uploaded: 0,
+        downloaded: 0,
+        deleted: 0,
+        skipped: 0,
+        skipped_details: Vec::new(),
+        conflicts: 0,
+        errors: Vec::new(),
+        duration_secs: 0,
+        file_details: Vec::new(),
+    };
+    let partial = CloudService::completion_payload(&config, &result, plan.inventory_complete);
+    assert_eq!(partial["review_inventory_complete"], false);
+    remote.state().non_authoritative = false;
+    let complete = svc
+        .build_sync_plan_with_provider(&mut remote, &config, true)
+        .await
+        .unwrap();
+    assert!(complete.inventory_complete);
+    assert_eq!(
+        CloudService::completion_payload(&config, &result, true)["review_scope"],
+        partial["review_scope"]
+    );
+}
+
+#[tokio::test]
+async fn update_receive_initializes_a_missing_destination_only_for_execution() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("missing");
+    let config = CloudConfig {
+        update_only: true,
+        sync_direction: CompareDirection::RemoteToLocal,
+        ..pair(&root)
+    };
+    let mut remote = MemRemote::new();
+    remote.put("/remote/photo", b"sole remote copy", SYNCED_AT);
+    let svc = CloudService::new();
+    svc.init(config.clone()).await;
+    let preview = svc
+        .build_sync_plan_with_provider(&mut remote, &config, false)
+        .await
+        .unwrap();
+    assert!(!root.exists());
+    assert_eq!(preview.comparisons.len(), 1);
+    let plan = svc
+        .build_sync_plan_with_provider(&mut remote, &config, true)
+        .await
+        .unwrap();
+    assert!(root.is_dir());
+    for row in &plan.comparisons {
+        svc.process_comparison_with_provider(&mut remote, &config, row, plan.update_policy)
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        std::fs::read(root.join("photo")).unwrap(),
+        b"sole remote copy"
+    );
+}
+
+#[tokio::test]
+async fn update_watcher_with_only_excluded_entries_cannot_delete() {
+    let root = tempfile::tempdir().unwrap();
+    let config = CloudConfig {
+        update_only: true,
+        preserve_remote_deletes: false,
+        sync_direction: CompareDirection::LocalToRemote,
+        exclude_patterns: vec!["*.tmp".into()],
+        ..pair(root.path())
+    };
+    let mut remote = MemRemote::new();
+    let mut index = empty_index(&config);
+    synced(&mut index, &remote, root.path(), "gone", b"original");
+    std::fs::remove_file(root.path().join("gone")).unwrap();
+    std::fs::write(root.path().join("ignored.tmp"), b"excluded").unwrap();
+    let (run, _) = execute(
+        &config,
+        work(prep(&config, &index, &["gone"])),
+        &mut remote,
+        None,
+    )
+    .await;
+    assert_eq!(done(run).0.deleted, 0);
+    assert!(remote.state().deletes.is_empty());
+}
+
+#[tokio::test]
+async fn watcher_discards_a_prepared_rename_after_retention_or_direction_changes() {
+    for change in ["direction", "update", "retention", "remote", "profile"] {
+        let root = tempfile::tempdir().unwrap();
+        let mut config = CloudConfig {
+            sync_direction: CompareDirection::LocalToRemote,
+            preserve_remote_deletes: false,
+            ..pair(root.path())
+        };
+        let mut remote = MemRemote::new();
+        let mut index = empty_index(&config);
+        synced(&mut index, &remote, root.path(), "old", b"original");
+        std::fs::rename(root.path().join("old"), root.path().join("new")).unwrap();
+        let prepared = work(
+            plan(
+                &config,
+                Some(index),
+                &changes(root.path(), &["old", "new"], &[("old", "new")]),
+                EXACT,
+            )
+            .unwrap(),
+        );
+        match change {
+            "direction" => config.sync_direction = CompareDirection::RemoteToLocal,
+            "update" => config.update_only = true,
+            "retention" => config.preserve_remote_deletes = true,
+            "remote" => config.remote_folder = "/other".into(),
+            _ => config.server_profile_id = Some("different".into()),
+        };
+        let svc = CloudService::new();
+        svc.init(config).await;
+        assert!(svc
+            .execute_incremental(&mut remote, prepared, None)
+            .await
+            .is_err());
+        assert!(remote.state().renames.is_empty());
+        assert!(remote.state().deletes.is_empty());
+    }
+}
+
+#[tokio::test]
+async fn update_watcher_large_delete_batch_waits_for_destination_full_scan() {
+    let root = tempfile::tempdir().unwrap();
+    let config = CloudConfig {
+        update_only: true,
+        preserve_remote_deletes: false,
+        sync_direction: CompareDirection::LocalToRemote,
+        ..pair(root.path())
+    };
+    let mut remote = MemRemote::new();
+    let mut index = empty_index(&config);
+    synced(&mut index, &remote, root.path(), "keep", b"kept");
+    let names: Vec<_> = (0..10).map(|i| format!("gone{i}")).collect();
+    for name in &names {
+        synced(&mut index, &remote, root.path(), name, b"original");
+        std::fs::remove_file(root.path().join(name)).unwrap();
+    }
+    for i in 0..100 {
+        index
+            .files
+            .insert(format!("unrelated{i}"), index.files["keep"].clone());
+    }
+    let prepared = work(prep(
+        &config,
+        &index,
+        &names.iter().map(String::as_str).collect::<Vec<_>>(),
+    ));
+    let (run, _) = execute(&config, prepared, &mut remote, Some(REMOTE_WORK_LIMIT)).await;
+    assert!(matches!(run, IncrementalRun::TooLarge(_)));
+    assert!(remote.state().deletes.is_empty());
 }
 
 #[tokio::test]

@@ -29,6 +29,7 @@ struct Remote {
     uncertain: HashSet<String>,
     /// A local file rewritten while the bulk sends it.
     edited_while_sent: Option<PathBuf>,
+    edited_mtime: Option<i64>,
     /// Names whose listed size is this instead of the length stored.
     listed_size: HashMap<String, u64>,
     /// Names listed with this size claimed by their uploader.
@@ -108,7 +109,11 @@ impl BulkMemory {
             })
             .collect();
         if let Some(path) = remote.edited_while_sent.take() {
-            std::fs::write(path, b"edited while it went up").unwrap();
+            std::fs::write(&path, b"edited while it went up").unwrap();
+            if let Some(time) = remote.edited_mtime {
+                filetime::set_file_mtime(&path, filetime::FileTime::from_unix_time(time, 0))
+                    .unwrap();
+            }
         }
         outcomes
     }
@@ -300,7 +305,10 @@ async fn cycle(
     comparisons: &[FileComparison],
 ) -> (CloudService, Vec<Result<SyncAction, String>>) {
     let svc = CloudService::new();
-    let mut ahead = BulkAhead::default();
+    let mut ahead = BulkAhead::new(UpdatePolicy {
+        root_identity: super::super::LocalRootIdentity::read(&config.local_folder),
+        ..Default::default()
+    });
     let mut outcomes = Vec::new();
     for index in 0..comparisons.len() {
         outcomes.push(
@@ -341,6 +349,38 @@ async fn two_hundred_uploads_take_one_call_and_one_listing() {
 
 /// A file rewritten while the bulk sent it goes again on its own, through
 /// the single-file path, which settles it as its own sends.
+#[tokio::test]
+async fn update_bulk_edited_source_keeps_an_unsettled_baseline_without_retrying_own_stamp() {
+    let local = tempfile::tempdir().unwrap();
+    let rows = new_local_files(local.path(), 3);
+    let mut provider = BulkMemory::new(true);
+    provider.remote().edited_while_sent = Some(local.path().join("docs/f1.txt"));
+    provider.remote().edited_mtime = Some(1_750_000_001);
+    let config = CloudConfig {
+        update_only: true,
+        sync_direction: CompareDirection::LocalToRemote,
+        ..config(local.path())
+    };
+    let (svc, outcomes) = cycle(&mut provider, &config, &rows).await;
+    assert!(
+        outcomes
+            .iter()
+            .all(|outcome| matches!(outcome, Ok(SyncAction::Upload))),
+        "{outcomes:?}"
+    );
+    assert!(provider.remote().singles.is_empty());
+    let policy = UpdatePolicy {
+        root_identity: super::super::LocalRootIdentity::read(local.path()),
+        ..Default::default()
+    };
+    let files = svc.post_sync_baseline(&rows, &config, None, policy);
+    assert_eq!(
+        files["docs/f1.txt"].modified,
+        Some(crate::sync::UNSETTLED_BASELINE)
+    );
+    assert_eq!(svc.take_unsettled(), vec!["docs/f1.txt"]);
+}
+
 #[tokio::test]
 async fn a_file_edited_while_the_bulk_sent_it_goes_again_alone() {
     let local = tempfile::tempdir().unwrap();

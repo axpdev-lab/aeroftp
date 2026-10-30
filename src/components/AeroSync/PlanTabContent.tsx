@@ -370,8 +370,9 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
         && (bisyncMode || (direction === 'left-to-right') === localIsLeft);
     const writtenAncestor = backupCheck?.status === 'valid'
         ? backupCheck.ancestors.find((folder) => plan.bucketPlans.some((bp) =>
-            bp.action !== 'skip' && bp.action !== 'conflict-skip'
-            && bp.entries.some((entry) => {
+            bp.entries.some((entry, index) => {
+                const action = bp.entryActions[index];
+                if (action === 'skip' || action === 'conflict-skip') return false;
                 const path = entry.relativePath ?? entry.name;
                 return path === folder || path.startsWith(`${folder}/`);
             })))

@@ -186,7 +186,7 @@ impl CloudService {
             let members: Vec<(usize, &TransferEntry)> =
                 group.iter().map(|&k| (run[k], &entries[k])).collect();
             if upload {
-                self.bulk_upload(provider, comparisons, &members, ahead)
+                self.bulk_upload(provider, config, comparisons, &members, ahead)
                     .await;
             } else {
                 self.bulk_download(provider, config, comparisons, &members, ahead)
@@ -196,9 +196,11 @@ impl CloudService {
         ahead.passed.insert(start);
     }
 
+    /// Recheck eligible destinations, send one native batch, and retain uncertainty per file.
     async fn bulk_upload<P: StorageProvider + ?Sized>(
         &self,
         provider: &mut P,
+        config: &CloudConfig,
         comparisons: &[FileComparison],
         members: &[(usize, &TransferEntry)],
         ahead: &mut BulkAhead,
@@ -219,12 +221,32 @@ impl CloudService {
         for &(index, entry) in members {
             let local_path = PathBuf::from(&entry.local_path);
             Self::wait_until_quiet(&local_path, self.send_quiet_window, quiet_deadline).await;
+            match self
+                .recheck_update_transfer(provider, config, &comparisons[index], ahead.update_policy)
+                .await
+            {
+                Ok(true) => {}
+                Ok(false) => {
+                    ahead.settled.insert(index, Ok(SyncAction::Skip));
+                    continue;
+                }
+                Err(error) => {
+                    ahead.settled.insert(index, Err(error));
+                    continue;
+                }
+            }
             uploads.push(Upload {
                 index,
                 sent: Self::local_file_state(&local_path),
                 local_path,
                 remote_path: entry.remote_path.clone(),
             });
+        }
+        if uploads.len() < 2 {
+            ahead
+                .passed
+                .extend(uploads.iter().map(|upload| upload.index));
+            return;
         }
         let items: Vec<_> = uploads
             .iter()
@@ -292,6 +314,27 @@ impl CloudService {
                 .sent
                 .filter(|sent| Self::local_file_state(&upload.local_path).as_ref() == Some(sent))
             else {
+                if config.update_only
+                    && config.sync_direction != crate::sync::CompareDirection::Bidirectional
+                {
+                    // Our own server-stamped send cannot be mistaken for an
+                    // unrelated newer destination on a retry. Keep uncertainty
+                    // explicit until a comparison resolves the edited source.
+                    self.note_landed_as(
+                        &comparison.relative_path,
+                        super::Landed {
+                            size: None,
+                            modified: crate::sync::UNSETTLED_BASELINE,
+                        },
+                    );
+                    if let Ok(mut unsettled) = self.unsettled.lock() {
+                        unsettled.push(comparison.relative_path.clone());
+                    }
+                    // The transfer completed; its UNSETTLED baseline, not a
+                    // successful convergence, is recorded before the warning.
+                    ahead.settled.insert(upload.index, Ok(SyncAction::Upload));
+                    continue;
+                }
                 tracing::info!(
                     "AeroCloud: '{}' changed while it uploaded; sending it again",
                     comparison.relative_path
@@ -311,6 +354,7 @@ impl CloudService {
         }
     }
 
+    /// Guard each destination before archive extraction or individual fallback writes.
     async fn bulk_download<P: StorageProvider + ?Sized>(
         &self,
         provider: &mut P,
@@ -319,6 +363,28 @@ impl CloudService {
         members: &[(usize, &TransferEntry)],
         ahead: &mut BulkAhead,
     ) {
+        let mut eligible = Vec::new();
+        for &(index, entry) in members {
+            match self
+                .recheck_update_transfer(provider, config, &comparisons[index], ahead.update_policy)
+                .await
+            {
+                Ok(true) => eligible.push((index, entry)),
+                Ok(false) => {
+                    ahead.settled.insert(index, Ok(SyncAction::Skip));
+                }
+                Err(error) => {
+                    ahead.settled.insert(index, Err(error));
+                }
+            }
+        }
+        if eligible.len() < 2 {
+            ahead
+                .passed
+                .extend(eligible.iter().map(|(index, _)| *index));
+            return;
+        }
+        let members = eligible.as_slice();
         let versioning = crate::sync_versioning::SyncVersioning::new(
             &config.local_folder,
             config.versioning_strategy.clone(),
@@ -352,6 +418,22 @@ impl CloudService {
         };
         for ((index, entry), outcome) in members.iter().zip(outcomes) {
             let comparison = &comparisons[*index];
+            if goes_back_to_single_file(&outcome) {
+                match self
+                    .recheck_update_transfer(provider, config, comparison, ahead.update_policy)
+                    .await
+                {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        ahead.settled.insert(*index, Ok(SyncAction::Skip));
+                        continue;
+                    }
+                    Err(error) => {
+                        ahead.settled.insert(*index, Err(error));
+                        continue;
+                    }
+                }
+            }
             let result = match outcome {
                 BulkTransferOutcome::Completed => Ok(()),
                 // Nothing of it was written: one download on its own, the

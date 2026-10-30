@@ -1027,7 +1027,15 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
                     );
             }
             "--delete" => delete_orphans = true,
-            "--update" => update_only = true,
+            "--update" => {
+                if inline.is_some() {
+                    return Err(ParseError::MalformedSync {
+                        line,
+                        message: "--update takes no value".into(),
+                    });
+                }
+                update_only = true;
+            }
             "--dry-run" => dry_run = true,
             "--track-renames" => track_renames = true,
             "--skip-matching" => skip_matching = true,
@@ -1173,6 +1181,21 @@ pub fn tokenize_script_line(body: &str) -> Result<Vec<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn update_rejects_an_attached_value() {
+        for value in ["false", "true", ""] {
+            assert!(matches!(
+                parse_sync(&format!("/local /remote --direction upload --update={value}"), 1),
+                Err(ParseError::MalformedSync { message, .. }) if message == "--update takes no value"
+            ));
+        }
+        assert!(
+            parse_sync("/local /remote --direction upload --update", 1)
+                .unwrap()
+                .update_only
+        );
+    }
 
     #[test]
     fn mirror_update_round_trips_as_executable_delete_and_update_flags() {

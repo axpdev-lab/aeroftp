@@ -14,10 +14,10 @@ import { deleteSavedSyncProfile } from '../../utils/syncProfiles';
 import { retryPolicyForSpeed } from '../../utils/remoteSyncRunner';
 import type { SyncProfile } from '../../types';
 
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(), pickFile: vi.fn() }));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), pickFile: vi.fn(), pickSave: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
 vi.mock('../../i18n', () => ({ useTranslation: () => (key: string, args?: Record<string, unknown>) => args ? `${key} ${Object.values(args).join(' ')}` : key }));
-vi.mock('../../utils/pickPath', () => ({ pickFile: mocks.pickFile, pickSave: vi.fn() }));
+vi.mock('../../utils/pickPath', () => ({ pickFile: mocks.pickFile, pickSave: mocks.pickSave }));
 vi.mock('@tauri-apps/plugin-fs', () => ({ readTextFile: vi.fn(), writeTextFile: vi.fn() }));
 vi.mock('../../hooks/useDraggableModal', () => ({ useDraggableModal: () => ({ modalRef: { current: null }, style: {}, onMouseDown: vi.fn() }) }));
 
@@ -38,10 +38,10 @@ let profiles: SyncProfile[];
 let onExecute: ReturnType<typeof vi.fn<(plan: PresetPlan, runtime: AeroSyncRuntime) => void>>;
 let onRescan: ReturnType<typeof vi.fn<(args: { userExcludes: string[]; backupDir: string }) => void>>;
 const flush = async () => { await React.act(async () => { await Promise.resolve(); }); };
-const mount = async (pairKind = 'local-remote', withStore = true) => {
+const mount = async (pairKind = 'local-remote', withStore = true, compareResult = result) => {
     const root = createRoot(host); roots.push(root);
     await React.act(async () => root.render(React.createElement(TabStateStoreContext.Provider, { value: withStore ? store : null },
-        React.createElement(PlanTabContent, { result, pairKind, canExecute: true, onExecute, onRescan,
+        React.createElement(PlanTabContent, { result: compareResult, pairKind, canExecute: true, onExecute, onRescan,
             compareBackupDir: '.aeroftp-backup', cli: { localPath: '/local', remotePath: '/remote', profileName: 'Server' } }))));
     return root;
 };
@@ -193,6 +193,46 @@ describe('saved profiles in the real Plan tab', () => {
         await React.act(async () => { resolve(profiles); window.dispatchEvent(new Event('aeroftp-sync-profiles-changed')); });
         expect(host.textContent).toBe(''); expect(mocks.invoke.mock.calls.length).toBe(count);
         expect(store.has('plan.selectedSavedProfileId')).toBe(false);
+    });
+});
+
+describe('Update export and backup execution guards', () => {
+    it.each([undefined, false, true])('keeps an unset live Update override distinct from false (%s)', async value => {
+        profiles = [profile({ update_only: true, delete_orphans: true })];
+        store.set('plan.preset', 'mirror');
+        if (value !== undefined) store.set('plan.updateOnly', value);
+        mocks.pickSave.mockResolvedValue('/tmp/export.aeroftp-script');
+        mocks.invoke.mockImplementation(async (cmd: string) => {
+            if (cmd === 'load_sync_profiles_cmd') return profiles;
+            if (cmd === 'aerosync_export_script_cmd') return { wrapper_path: null };
+            if (cmd === 'export_sync_script_cmd') return '# script';
+            throw new Error(cmd);
+        });
+        const root = createRoot(host); roots.push(root);
+        await React.act(async () => root.render(React.createElement(TabStateStoreContext.Provider, { value: store }, React.createElement(SyncTemplateDialog, {
+            isOpen: true, onClose: vi.fn(), localPath: '/local', remotePath: '/remote', serverProfileName: 'Server', excludePatterns: [], pairKind: 'local-remote', onApplyImport: vi.fn(),
+        }))));
+        await click('syncPanel.aerosyncScriptExportButton');
+        expect(mocks.invoke).toHaveBeenCalledWith('aerosync_export_script_cmd', { args: expect.objectContaining({ update_only: value }) });
+        await click('syncPanel.templateFormatBash');
+        await click('syncPanel.aerosyncScriptExportButton');
+        expect(mocks.invoke).toHaveBeenCalledWith('export_sync_script_cmd', { args: expect.objectContaining({ update_only: value }) });
+    });
+
+    it('blocks a nested backup when most conflicts skip but one entry overwrites its ancestor', async () => {
+        store.set('plan.preset', 'mirror'); store.set('plan.updateOnly', true);
+        store.set('plan.versionedBackup', { enabled: true, backupDir: '.aeroftp-backup' });
+        const compared = compareEntries(
+            [{ name: 'folder/file', isDir: false, size: 10, mtimeMs: 100000 }, { name: 'skip-a', isDir: false, size: 10, mtimeMs: 1000 }, { name: 'skip-b', isDir: false, size: 10, mtimeMs: 1000 }],
+            [{ name: 'folder/file', isDir: false, size: 20, mtimeMs: 1000 }, { name: 'skip-a', isDir: false, size: 20, mtimeMs: 100000 }, { name: 'skip-b', isDir: false, size: 20, mtimeMs: 100000 }],
+        );
+        // Index-aware backend comparisons can classify all three as conflicts.
+        const entries = compared.entries.map(entry => ({ ...entry, bucket: 'conflict' as const }));
+        const mixed = { ...compared, entries, buckets: { ...compared.buckets, 'newer-left': [], 'newer-right': [], conflict: entries } };
+        mocks.invoke.mockImplementation(async (cmd: string) => cmd === 'load_sync_profiles_cmd' ? [] : { status: 'valid', dir: '.aeroftp-backup', ancestors: ['folder'] });
+        await mount('local-local', true, mixed);
+        expect(host.textContent).toContain('aerosync.backup.nested');
+        expect(button('aerosync.execute').disabled).toBe(true);
     });
 });
 
