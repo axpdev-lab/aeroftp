@@ -23,8 +23,8 @@ describe('preserved AeroCloud destination files', () => {
         expect(html).toContain('phone/notes.txt');
         expect(html).not.toContain('ordinary-skip');
         expect(html).toContain('AeroSync');
-        expect(html).toContain('Mirror with One-way Update');
-        expect(html).toContain('confirm any intended deletions');
+        expect(html).toContain('kept for review');
+        expect(html).toContain('before deciding on deletion');
     });
 
     it('displays safety errors even without preserved files or a changed sync status', () => {

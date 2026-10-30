@@ -1578,7 +1578,7 @@
             "secondsAgo": "prieš {count}s",
             "conflictsCount": "Konfliktai, kuriems reikia dėmesio: {count}",
             "updateOnlyHint": "Vienkryptis atnaujinimas išsaugo naujesnius paskirties failus. Kai papildomasis atsarginis kopijavimas išjungtas, pašalinami tik anksčiau sinchronizuoti failai, esantys vien paskirties vietoje. Niekada nesinchronizuoti failai išsaugomi peržiūrai programoje AeroSync. Konfliktų politika nepaisoma; nežinomos datos lieka neišspręstos.",
-            "untrackedDestinationFiles": "{count} paskirties failų niekada nebuvo sinchronizuoti ir buvo išsaugoti. Atverkite tą patį šaltinį ir paskirties vietą programoje AeroSync, pasirinkite Veidrodį su vienkrypčiu atnaujinimu, peržiūrėkite planą ir patvirtinkite norimus pašalinimus."
+            "untrackedDestinationFiles": "{count} paskirties failų išsaugota peržiūrai: jų perdavimo istorija nepatvirtinta arba jie pakeisti po paskutinio AeroCloud perdavimo. Prieš nuspręsdami dėl pašalinimo, peržiūrėkite juos programoje AeroSync."
         },
         "statusBar": {
             "connected": "Prisijungta",

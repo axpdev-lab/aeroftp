@@ -1578,7 +1578,7 @@
             "secondsAgo": "{count}s tagasi",
             "conflictsCount": "Tähelepanu vajavad konfliktid: {count}",
             "updateOnlyHint": "Ühesuunaline uuendamine säilitab uuemad sihtfailid. Kui lisav varundamine on välja lülitatud, kustutatakse ainult varem sünkroonitud failid, mis asuvad üksnes sihtkohas. Failid, mida pole kunagi sünkroonitud, säilitatakse AeroSyncis ülevaatamiseks. Konfliktireeglit eiratakse; tundmatud kuupäevad jäävad lahendamata.",
-            "untrackedDestinationFiles": "{count} sihtfaili pole kunagi sünkroonitud ja need säilitati. Ava AeroSyncis sama lähte- ja sihtkoht, vali Peegeldamine koos ühesuunalise uuendamisega, vaata plaan üle ning kinnita soovitud kustutamised."
+            "untrackedDestinationFiles": "{count} sihtfaili säilitati ülevaatamiseks: nende edastusajalugu on kinnitamata või on neid pärast viimast AeroCloudi edastust muudetud. Vaata need AeroSyncis üle, enne kui otsustad kustutamise üle."
         },
         "statusBar": {
             "connected": "Ühendatud",

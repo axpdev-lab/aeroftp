@@ -970,6 +970,12 @@ pub trait StorageProvider: Send + Sync {
         None
     }
 
+    /// Non-secret authenticated namespace for persistent sync authority, when an
+    /// account label alone omits the actual device, mount or client namespace.
+    fn sync_namespace_identity(&self) -> Option<String> {
+        None
+    }
+
     /// Stable identity for the process-global transfer governor. Direct
     /// providers normally expose a `user@host` display name; cloud providers
     /// expose their account or tenant label. Implementations with richer

@@ -1578,7 +1578,7 @@
             "secondsAgo": "{count} giây trước",
             "conflictsCount": "{count} xung đột cần xử lý",
             "updateOnlyHint": "Cập nhật một chiều giữ lại các tệp đích mới hơn. Khi tắt sao lưu bổ sung, chỉ những tệp đã từng đồng bộ và chỉ có ở đích mới bị xóa. Các tệp chưa từng đồng bộ được giữ lại để xem xét trong AeroSync. Chính sách xung đột bị bỏ qua; các ngày không xác định vẫn chưa được giải quyết.",
-            "untrackedDestinationFiles": "{count} tệp đích chưa từng được đồng bộ và đã được giữ lại. Mở cùng nguồn và đích trong AeroSync, chọn Phản chiếu với cập nhật một chiều, xem lại kế hoạch rồi xác nhận các thao tác xóa mong muốn."
+            "untrackedDestinationFiles": "{count} tệp đích đã được giữ lại để xem xét: lịch sử truyền của chúng chưa được xác minh hoặc chúng đã thay đổi sau lần truyền AeroCloud gần nhất. Hãy xem xét chúng trong AeroSync trước khi quyết định xóa."
         },
         "statusBar": {
             "connected": "Đã kết nối",

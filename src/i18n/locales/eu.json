@@ -1578,7 +1578,7 @@
             "secondsAgo": "{count}s duela",
             "conflictsCount": "Arreta behar duten gatazkak: {count}",
             "updateOnlyHint": "Noranzko bakarreko eguneratzeak helmugako fitxategi berriagoak mantentzen ditu. Babeskopia gehigarria desaktibatuta dagoenean, aurretik sinkronizatutako eta helmugan soilik dauden fitxategiak bakarrik ezabatzen dira. Inoiz sinkronizatu gabeko fitxategiak AeroSync-en berrikusteko mantentzen dira. Gatazka-politika ez da kontuan hartzen; data ezezagunak ebatzi gabe geratzen dira.",
-            "untrackedDestinationFiles": "Helmugako {count} fitxategi ez dira inoiz sinkronizatu eta mantendu egin dira. Ireki jatorri eta helmuga berak AeroSync-en, hautatu Ispilua noranzko bakarreko eguneratzearekin, berrikusi plana eta berretsi nahi dituzun ezabaketak."
+            "untrackedDestinationFiles": "Helmugako {count} fitxategi berrikusteko mantendu dira: haien transferentzia-historia ez dago egiaztatuta edo azken AeroCloud transferentziaren ondoren aldatu dira. Berrikusi AeroSync-en, ezabatzea erabaki aurretik."
         },
         "statusBar": {
             "connected": "Konektatuta",

@@ -3221,6 +3221,16 @@ fn migrate_sync_index(index: &mut SyncIndex) {
     index.version = SYNC_INDEX_VERSION;
 }
 
+/// Proof of a stabilized AeroCloud transfer, separate from comparison bookkeeping.
+/// The exact local key is the map key; remote identity and destination side cannot be borrowed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudTransferReceipt {
+    pub scope: String,
+    pub remote_key: String,
+    pub destination_side: CompareDirection,
+    pub destination: SyncIndexEntry,
+}
+
 /// Persistent index storing the state of files after a successful sync.
 /// Used to detect true conflicts (both sides changed since last sync)
 /// and to skip unchanged files for faster re-scans.
@@ -3243,6 +3253,10 @@ pub struct SyncIndex {
     /// path used one spelling, and on indexes written before pairing.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub remote_spellings: HashMap<String, String>,
+    /// Only AeroCloud transfers mint these proofs. Old indices and foreground
+    /// saves default to none; Skip/Identical bookkeeping is never evidence.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub cloud_receipts: HashMap<String, CloudTransferReceipt>,
     /// Keys the version 2 migration rewrote from the native separator, whose
     /// presence does not prove the file was synced **at that path**. Never
     /// persisted: it is rebuilt on every load that migrates, and a save writes
@@ -3263,6 +3277,7 @@ impl SyncIndex {
             profile_id: None,
             files: HashMap::new(),
             remote_spellings: Default::default(),
+            cloud_receipts: Default::default(),
             unverified_keys: Default::default(),
         }
     }
@@ -8149,6 +8164,7 @@ mod tests {
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
             remote_spellings: Default::default(),
+            cloud_receipts: Default::default(),
             unverified_keys: Default::default(),
         };
         index.files.insert(
@@ -8185,6 +8201,7 @@ mod tests {
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
             remote_spellings: Default::default(),
+            cloud_receipts: Default::default(),
             unverified_keys: Default::default(),
         };
         // Sizes differ so "which one survived" is observable.
@@ -8294,6 +8311,7 @@ mod tests {
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
             remote_spellings: Default::default(),
+            cloud_receipts: Default::default(),
             unverified_keys: Default::default(),
         };
         index.files.insert(
@@ -8370,6 +8388,7 @@ mod tests {
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
             remote_spellings: Default::default(),
+            cloud_receipts: Default::default(),
             unverified_keys: Default::default(),
         };
         index.files.insert(
@@ -8406,6 +8425,7 @@ mod tests {
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
             remote_spellings: Default::default(),
+            cloud_receipts: Default::default(),
             unverified_keys: Default::default(),
         };
         // A key that a rewrite would change, so "untouched" is observable.
@@ -8436,6 +8456,7 @@ mod tests {
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
             remote_spellings: Default::default(),
+            cloud_receipts: Default::default(),
             unverified_keys: Default::default(),
         };
         index.files.insert(

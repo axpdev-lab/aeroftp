@@ -1578,7 +1578,7 @@
             "secondsAgo": "{count}s sedan",
             "conflictsCount": "Konflikter som kräver åtgärd: {count}",
             "updateOnlyHint": "Envägsuppdatering behåller nyare målfiler. När additiv säkerhetskopiering är avstängd tas bara tidigare synkroniserade filer som enbart finns på målet bort. Filer som aldrig har synkroniserats behålls för granskning i AeroSync. Konfliktpolicyn ignoreras; okända datum förblir olösta.",
-            "untrackedDestinationFiles": "{count} målfiler har aldrig synkroniserats och behölls. Öppna samma källa och mål i AeroSync, välj Spegling med envägsuppdatering, granska planen och bekräfta önskade borttagningar."
+            "untrackedDestinationFiles": "{count} målfiler behölls för granskning: deras överföringshistorik är inte verifierad eller så har de ändrats sedan den senaste AeroCloud-överföringen. Granska dem i AeroSync innan du beslutar om borttagning."
         },
         "statusBar": {
             "connected": "Ansluten",

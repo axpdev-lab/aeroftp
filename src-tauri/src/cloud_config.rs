@@ -61,7 +61,8 @@ pub struct CloudConfig {
     /// the folder acts as a mirror and will delete on the target side.
     #[serde(default = "default_preserve_remote_deletes")]
     pub preserve_remote_deletes: bool,
-    /// Explicit one-way Update; with deletes enabled, removes destination-only files too.
+    /// One-way Update keeps newer destinations; deletion requires a proven Cloud
+    /// transfer to this side and unchanged destination metadata. Old indices grant no proof.
     #[serde(default)]
     pub update_only: bool,
     /// Enable the AeroCompress overlay for this AeroCloud target.

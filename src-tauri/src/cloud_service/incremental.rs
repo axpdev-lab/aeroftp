@@ -17,9 +17,11 @@
 //! the full scan decides it behind its safety gate, which knows a remote
 //! folder that vanished as a whole from a few files deleted on purpose.
 
+#[cfg(test)]
+use super::open_aerocloud_provider;
 use super::{
-    open_aerocloud_provider, CloudService, FailedPath, PairCycleError, PairCycleReport,
-    ProviderScanTraits, ScanScope, SkippedEntry, SyncOperationResult, UpdatePolicy,
+    CloudService, FailedPath, PairCycleError, PairCycleReport, ProviderScanTraits, ScanScope,
+    SkippedEntry, SyncOperationResult, UpdatePolicy,
 };
 use crate::cloud_config::{CloudConfig, CloudSyncStatus};
 use crate::credential_store;
@@ -903,6 +905,8 @@ impl CloudService {
                 comparison.remote_relative_path = Some(remote.clone());
             }
         }
+        self.remember_cloud_receipts(Some(&index));
+        self.apply_cloud_authority(&config, &mut comparisons);
         if !provider.listing_is_authoritative()
             && !(config.update_only && config.sync_direction != CompareDirection::Bidirectional)
         {
@@ -1028,6 +1032,13 @@ impl CloudService {
         }
         let remote_spellings =
             crate::sync::spellings_after_baseline(&done, Some(&index.remote_spellings), &files);
+        let cloud_receipts = self.receipts_after(
+            &done,
+            &config,
+            Some(&index),
+            &files,
+            update_policy.root_identity,
+        );
         let saved = SyncIndex {
             profile_id: config.server_profile_id.clone(),
             version: SYNC_INDEX_VERSION,
@@ -1036,6 +1047,7 @@ impl CloudService {
             remote_path: config.remote_folder.clone(),
             files,
             remote_spellings,
+            cloud_receipts,
             unverified_keys: Default::default(),
         };
 
@@ -1121,11 +1133,13 @@ pub async fn run_pair_incremental_cycle(
     plan: Box<IncrementalPlan>,
     full_scan_allowed: bool,
 ) -> Result<PairCycleReport, PairCycleError> {
-    let mut provider = open_aerocloud_provider(&config, store)
+    let opened = super::open_aerocloud_connection(&config, store)
         .await
         .map_err(PairCycleError::before_connecting)?;
+    let mut provider = opened.provider;
     let traits = ProviderScanTraits::of(&*provider);
     let mut svc = CloudService::new();
+    svc.connection_identity = Some(opened.identity);
     if let Some(handle) = app {
         svc.set_app_handle(handle);
     }

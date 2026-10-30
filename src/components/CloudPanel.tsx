@@ -361,7 +361,9 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     const [reauthRequired, setReauthRequired] = useState<{ provider: string; message: string } | null>(null);
     const [reviewByScope, setReviewByScope] = useState<Record<string, CloudSkippedEntry[]>>({});
     const reviewFiles = Object.values(reviewByScope).flat();
-    const [cycleErrors, setCycleErrors] = useState<string[]>([]);
+    const [errorsByScope, setErrorsByScope] = useState<Record<string, string[]>>({});
+    const [workerErrors, setWorkerErrors] = useState<string[]>([]);
+    const cycleErrors = [...new Set([...Object.values(errorsByScope).flat(), ...workerErrors])];
     const [hasCloudPairs, setHasCloudPairs] = useState<boolean | null>(null);
 
     // Use modular tray sync hook. Pause/Resume/Disable now go through the
@@ -396,7 +398,13 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                 return { ...previous, [scope]: [...byPath.values()] };
             });
         }
-        setCycleErrors(result.errors);
+        if (result.review_scope !== undefined) {
+            const scope = result.review_scope;
+            setErrorsByScope(previous => ({ ...previous, [scope]: result.review_inventory_complete
+                ? result.errors : [...new Set([...(previous[scope] ?? []), ...result.errors])] }));
+        } else {
+            setWorkerErrors(result.errors);
+        }
         if (result.errors.length > 0) {
             logger.debug(`Sync completed with ${result.errors.length} errors`);
         } else {

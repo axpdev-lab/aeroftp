@@ -1578,7 +1578,7 @@
             "secondsAgo": "{count}s sitten",
             "conflictsCount": "Huomiota vaativat ristiriidat: {count}",
             "updateOnlyHint": "Yksisuuntainen päivitys säilyttää uudemmat kohdetiedostot. Kun lisäävä varmuuskopiointi on pois käytöstä, vain aiemmin synkronoidut, pelkästään kohteessa olevat tiedostot poistetaan. Tiedostot, joita ei ole koskaan synkronoitu, säilytetään tarkistettaviksi AeroSyncissä. Ristiriitakäytäntö ohitetaan; tuntemattomat päivämäärät jäävät ratkaisematta.",
-            "untrackedDestinationFiles": "{count} kohdetiedostoa ei ole koskaan synkronoitu, joten ne säilytettiin. Avaa sama lähde ja kohde AeroSyncissä, valitse Peilaus ja yksisuuntainen päivitys, tarkista suunnitelma ja vahvista haluamasi poistot."
+            "untrackedDestinationFiles": "{count} kohdetiedostoa säilytettiin tarkistettaviksi: niiden siirtohistoriaa ei ole vahvistettu tai niitä on muutettu viimeisimmän AeroCloud-siirron jälkeen. Tarkista ne AeroSyncissä ennen kuin päätät poistamisesta."
         },
         "statusBar": {
             "connected": "Yhdistetty",

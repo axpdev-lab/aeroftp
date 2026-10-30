@@ -1578,7 +1578,7 @@
             "secondsAgo": "{count}s siden",
             "conflictsCount": "Konflikter som krever oppmerksomhet: {count}",
             "updateOnlyHint": "Enveisoppdatering beholder nyere målfiler. Når additiv sikkerhetskopiering er slått av, slettes bare tidligere synkroniserte filer som kun finnes på målet. Filer som aldri er synkronisert, beholdes for gjennomgang i AeroSync. Konfliktregelen ignoreres; ukjente datoer forblir uavklarte.",
-            "untrackedDestinationFiles": "{count} målfiler er aldri synkronisert og ble beholdt. Åpne samme kilde og mål i AeroSync, velg Speiling med enveisoppdatering, gå gjennom planen og bekreft ønskede slettinger."
+            "untrackedDestinationFiles": "{count} målfiler ble beholdt for gjennomgang: Overføringshistorikken er ikke bekreftet, eller de er endret etter den siste AeroCloud-overføringen. Gå gjennom dem i AeroSync før du avgjør om de skal slettes."
         },
         "statusBar": {
             "connected": "Tilkoblet",

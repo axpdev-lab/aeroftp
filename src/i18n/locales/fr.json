@@ -1578,7 +1578,7 @@
             "secondsAgo": "Il y a {count}s",
             "conflictsCount": "Conflits à traiter : {count}",
             "updateOnlyHint": "La mise à jour unidirectionnelle conserve les fichiers de destination plus récents. Lorsque la sauvegarde additive est désactivée, seuls les fichiers présents uniquement à destination et déjà synchronisés sont supprimés. Les fichiers jamais synchronisés sont conservés pour examen dans AeroSync. La politique de conflit est ignorée ; les dates inconnues restent non résolues.",
-            "untrackedDestinationFiles": "{count} fichiers de destination n’ont jamais été synchronisés et ont été conservés. Ouvrez les mêmes source et destination dans AeroSync, sélectionnez Miroir avec la mise à jour unidirectionnelle, examinez le plan et confirmez les suppressions souhaitées."
+            "untrackedDestinationFiles": "{count} fichiers de destination ont été conservés pour examen : leur historique de transfert n’est pas vérifié ou ils ont été modifiés depuis le dernier transfert AeroCloud. Examinez-les dans AeroSync avant de décider de leur suppression."
         },
         "statusBar": {
             "connected": "Connecté",

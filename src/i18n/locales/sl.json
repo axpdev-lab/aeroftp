@@ -1578,7 +1578,7 @@
             "secondsAgo": "pred {count}s",
             "conflictsCount": "Spori, ki zahtevajo pozornost: {count}",
             "updateOnlyHint": "Enosmerno posodabljanje ohrani novejše ciljne datoteke. Ko je dodajalno varnostno kopiranje izklopljeno, se izbrišejo le prej sinhronizirane datoteke, ki obstajajo izključno na cilju. Datoteke, ki še nikoli niso bile sinhronizirane, se ohranijo za pregled v AeroSync. Pravilnik o sporih se prezre; neznani datumi ostanejo nerazrešeni.",
-            "untrackedDestinationFiles": "{count} ciljnih datotek še nikoli ni bilo sinhroniziranih in so bile ohranjene. Odprite isti izvor in cilj v AeroSync, izberite Zrcaljenje z enosmernim posodabljanjem, preglejte načrt in potrdite želene izbrise."
+            "untrackedDestinationFiles": "{count} ciljnih datotek je bilo ohranjenih za pregled: njihova zgodovina prenosov ni preverjena ali pa so bile spremenjene po zadnjem prenosu prek AeroCloud. Pred odločitvijo o izbrisu jih preglejte v AeroSync."
         },
         "statusBar": {
             "connected": "Povezano",

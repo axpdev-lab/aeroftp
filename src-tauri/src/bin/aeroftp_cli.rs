@@ -15293,7 +15293,7 @@ fn aerocloud_print_sync_result(
             .filter(|entry| entry.needs_review)
             .count();
         if review_required > 0 {
-            println!("  review required: {review_required} never-synced destination files kept");
+            println!("  review required: {review_required} destination files kept for review");
         }
         if !r.skipped_details.is_empty() && !quiet {
             const SHOWN: usize = 10;

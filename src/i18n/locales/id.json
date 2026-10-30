@@ -1578,7 +1578,7 @@
             "secondsAgo": "{count}d lalu",
             "conflictsCount": "{count} konflik perlu perhatian",
             "updateOnlyHint": "Pembaruan Satu Arah mempertahankan file tujuan yang lebih baru. Saat pencadangan aditif dimatikan, hanya file yang ada di tujuan saja dan pernah disinkronkan yang dihapus. File yang belum pernah disinkronkan dipertahankan untuk ditinjau di AeroSync. Kebijakan konflik diabaikan; tanggal yang tidak diketahui tetap belum terselesaikan.",
-            "untrackedDestinationFiles": "{count} file tujuan belum pernah disinkronkan dan telah dipertahankan. Buka sumber dan tujuan yang sama di AeroSync, pilih Cermin dengan Pembaruan Satu Arah, tinjau rencana, lalu konfirmasikan penghapusan yang diinginkan."
+            "untrackedDestinationFiles": "{count} file tujuan dipertahankan untuk ditinjau: riwayat transfernya belum terverifikasi atau file telah berubah sejak transfer AeroCloud terakhir. Tinjau file tersebut di AeroSync sebelum memutuskan untuk menghapusnya."
         },
         "statusBar": {
             "connected": "Terhubung",

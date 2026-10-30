@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "9dbf5756813a4ba3b09e7af70a1ac5cb44f2a1c1f4b6523d9e2561af285e453a",
+    "enHash": "52e8ed65f47669a1e4fd8b7a5799ea4fcff5dacb704ca9d39df1f618890dfe06",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -264,6 +264,9 @@
         ],
         "cloud.syncing": [
             "Syncing..."
+        ],
+        "cloud.untrackedDestinationFiles": [
+            "{count} destination files have never been synced and were kept. Open the same source and destination in AeroSync, select Mirror with One-way Update, review the plan and confirm any intended deletions."
         ],
         "cloud.updateOnlyHint": [
             "One-way Update copies only from the source and keeps newer destination files. Turn off additive backup to also delete destination-only files, including files with no sync history. The conflict policy is ignored; unknown dates stay unresolved."

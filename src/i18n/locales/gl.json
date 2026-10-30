@@ -1578,7 +1578,7 @@
             "secondsAgo": "hai {count}s",
             "conflictsCount": "Conflitos por revisar: {count}",
             "updateOnlyHint": "A actualización unidireccional conserva os ficheiros de destino máis recentes. Coa copia de seguranza aditiva desactivada, só se eliminan os ficheiros exclusivos do destino que xa se sincronizaran. Os ficheiros nunca sincronizados consérvanse para revisalos en AeroSync. Ignórase a política de conflitos; as datas descoñecidas quedan sen resolver.",
-            "untrackedDestinationFiles": "{count} ficheiros de destino nunca se sincronizaron e conserváronse. Abre a mesma orixe e destino en AeroSync, selecciona Espello con actualización unidireccional, revisa o plan e confirma as eliminacións que queiras realizar."
+            "untrackedDestinationFiles": "Conserváronse {count} ficheiros de destino para revisalos: o seu historial de transferencias non está verificado ou cambiaron desde a última transferencia de AeroCloud. Revísanos en AeroSync antes de decidir se os queres eliminar."
         },
         "statusBar": {
             "connected": "Conectado",

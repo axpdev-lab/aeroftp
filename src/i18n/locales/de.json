@@ -1578,7 +1578,7 @@
             "secondsAgo": "vor {count}s",
             "conflictsCount": "Zu prüfende Konflikte: {count}",
             "updateOnlyHint": "Die Einweg-Aktualisierung behält neuere Zieldateien bei. Bei deaktivierter additiver Sicherung werden nur zuvor synchronisierte Dateien gelöscht, die ausschließlich im Ziel vorhanden sind. Nie synchronisierte Dateien bleiben zur Prüfung in AeroSync erhalten. Die Konfliktrichtlinie wird ignoriert; unbekannte Datumsangaben bleiben ungeklärt.",
-            "untrackedDestinationFiles": "{count} Zieldateien wurden noch nie synchronisiert und daher beibehalten. Öffnen Sie dieselbe Quelle und dasselbe Ziel in AeroSync, wählen Sie Spiegeln mit Einweg-Aktualisierung, prüfen Sie den Plan und bestätigen Sie die gewünschten Löschungen."
+            "untrackedDestinationFiles": "{count} Zieldateien wurden zur Prüfung beibehalten: Ihr Übertragungsverlauf ist unbestätigt oder sie wurden seit der letzten AeroCloud-Übertragung geändert. Prüfen Sie sie in AeroSync, bevor Sie über eine Löschung entscheiden."
         },
         "statusBar": {
             "connected": "Verbunden",

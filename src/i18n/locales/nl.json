@@ -1578,7 +1578,7 @@
             "secondsAgo": "{count}s geleden",
             "conflictsCount": "Conflicten die aandacht vereisen: {count}",
             "updateOnlyHint": "Eenrichtingsupdate behoudt nieuwere doelbestanden. Als additieve back-up uitstaat, worden alleen eerder gesynchroniseerde bestanden verwijderd die uitsluitend op de bestemming bestaan. Bestanden die nooit zijn gesynchroniseerd, blijven bewaard voor beoordeling in AeroSync. Het conflictbeleid wordt genegeerd; onbekende datums blijven onopgelost.",
-            "untrackedDestinationFiles": "{count} doelbestanden zijn nooit gesynchroniseerd en zijn behouden. Open dezelfde bron en bestemming in AeroSync, selecteer Spiegelen met eenrichtingsupdate, bekijk het plan en bevestig de gewenste verwijderingen."
+            "untrackedDestinationFiles": "{count} doelbestanden zijn bewaard voor beoordeling: hun overdrachtsgeschiedenis is niet geverifieerd of ze zijn gewijzigd sinds de laatste AeroCloud-overdracht. Bekijk ze in AeroSync voordat je besluit over verwijdering."
         },
         "statusBar": {
             "connected": "Verbonden",

@@ -1578,7 +1578,7 @@
             "secondsAgo": "{count}s prije",
             "conflictsCount": "Sukobi koji traže pozornost: {count}",
             "updateOnlyHint": "Jednosmjerno ažuriranje zadržava novije odredišne datoteke. Kada je aditivna sigurnosna kopija isključena, brišu se samo prethodno sinkronizirane datoteke koje postoje samo na odredištu. Datoteke koje nikada nisu sinkronizirane zadržavaju se za pregled u AeroSyncu. Pravilo sukoba se zanemaruje; nepoznati datumi ostaju neriješeni.",
-            "untrackedDestinationFiles": "{count} odredišnih datoteka nikada nije sinkronizirano i zadržano je. Otvorite isti izvor i odredište u AeroSyncu, odaberite Zrcaljenje s jednosmjernim ažuriranjem, pregledajte plan i potvrdite željena brisanja."
+            "untrackedDestinationFiles": "{count} odredišnih datoteka zadržano je za pregled: njihova povijest prijenosa nije potvrđena ili su promijenjene nakon posljednjeg prijenosa putem AeroCloud. Pregledajte ih u AeroSync prije odluke o brisanju."
         },
         "statusBar": {
             "connected": "Povezano",

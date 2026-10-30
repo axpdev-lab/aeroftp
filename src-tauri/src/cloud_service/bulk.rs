@@ -5,7 +5,8 @@
 //! CLI mode a cycle uploaded and stat'ed each file through its own run of the
 //! official program. The uploads (and the downloads) of a cycle that come in
 //! a row now travel in one native call per folder, and one listing per folder
-//! replaces the `stat` of each uploaded file. Each file then ends as it does
+//! replaces the `stat` of each uploaded file, except Update uses fresh STAT
+//! metadata for its transfer receipts. Each file then ends as it does
 //! on the single-file path ([`CloudService::settle_upload`], the remote time
 //! of a download); a file the bulk did not take, or one edited while it went
 //! up, goes through that path itself.
@@ -263,6 +264,9 @@ impl CloudService {
             items.len(),
             parent
         );
+        for upload in &uploads {
+            self.revoke_cloud_receipt(&comparisons[upload.index]);
+        }
         let outcomes = match provider.upload_bulk(&items, None).await {
             Ok(outcomes) if outcomes.len() == items.len() => outcomes,
             // Refused before any file went: each takes the single-file path.
@@ -323,6 +327,9 @@ impl CloudService {
                     self.note_landed_as(
                         &comparison.relative_path,
                         super::Landed {
+                            destination_side: crate::sync::CompareDirection::LocalToRemote,
+                            remote_size: None,
+                            remote_modified: None,
                             size: None,
                             modified: crate::sync::UNSETTLED_BASELINE,
                         },
@@ -343,11 +350,28 @@ impl CloudService {
                 continue;
             };
             let name = upload.remote_path.rsplit('/').next().unwrap_or_default();
+            // A later Update cycle compares receipts through STAT. S3's
+            // LastModified/source-mtime and Swift's LIST/HEAD precision differ
+            // even for ordinary uploads, so capture those receipts through STAT too.
+            let stat_receipt = config.update_only
+                || matches!(
+                    provider.provider_type(),
+                    crate::providers::ProviderType::S3 | crate::providers::ProviderType::Swift
+                );
+            let fresh = if stat_receipt {
+                provider.stat(&upload.remote_path).await.ok()
+            } else {
+                None
+            };
             self.settle_upload(
                 &comparison.relative_path,
                 &upload.local_path,
                 sent,
-                listed.get(name),
+                if stat_receipt {
+                    fresh.as_ref()
+                } else {
+                    listed.get(name)
+                },
                 exact_sizes,
             );
             ahead.settled.insert(upload.index, Ok(SyncAction::Upload));
@@ -409,6 +433,9 @@ impl CloudService {
             .iter()
             .map(|(_, entry)| bulk_item(&entry.local_path, &entry.remote_path, entry.size))
             .collect();
+        for (index, _) in members {
+            self.revoke_cloud_receipt(&comparisons[*index]);
+        }
         let outcomes = match provider.download_bulk(&items, None).await {
             Ok(outcomes) if outcomes.len() == items.len() => outcomes,
             _ => items

@@ -378,6 +378,16 @@ fn synced(index: &mut SyncIndex, remote: &MemRemote, root: &Path, key: &str, byt
             is_dir: false,
         },
     );
+    // This fixture models a real prior Cloud send, not arbitrary comparator bookkeeping.
+    index.cloud_receipts.insert(
+        key.to_string(),
+        crate::sync::CloudTransferReceipt {
+            scope: CloudService::receipt_scope(&pair(root)),
+            remote_key: key.to_string(),
+            destination_side: CompareDirection::LocalToRemote,
+            destination: index.files[key].clone(),
+        },
+    );
 }
 
 fn changes(root: &Path, paths: &[&str], renames: &[(&str, &str)]) -> LocalChanges {
@@ -1041,6 +1051,32 @@ fn update_row(
     }
 }
 
+/// Explicit receipt for tests whose premise is a previous completed transfer.
+fn remember_transferred_fixture(svc: &CloudService, config: &CloudConfig, row: &FileComparison) {
+    let destination = match config.sync_direction {
+        CompareDirection::LocalToRemote => row.remote_info.as_ref(),
+        _ => row.local_info.as_ref(),
+    }
+    .unwrap();
+    svc.cloud_receipts.lock().unwrap().insert(
+        row.relative_path.clone(),
+        crate::sync::CloudTransferReceipt {
+            scope: CloudService::receipt_scope(config),
+            remote_key: row
+                .remote_relative_path
+                .as_deref()
+                .unwrap_or(&row.relative_path)
+                .to_string(),
+            destination_side: config.sync_direction,
+            destination: SyncIndexEntry {
+                size: destination.size,
+                modified: destination.modified,
+                is_dir: false,
+            },
+        },
+    );
+}
+
 #[tokio::test]
 async fn update_freshness_guard_covers_single_and_real_bulk_and_preserves_prior_baseline() {
     for upload in [true, false] {
@@ -1175,6 +1211,7 @@ async fn update_recreated_source_is_not_propagated_as_a_delete_in_either_directi
         }
         let svc = CloudService::new();
         svc.init(config.clone()).await;
+        remember_transferred_fixture(&svc, &config, &row);
         let policy = UpdatePolicy {
             allow_orphan_deletes: true,
             root_identity: super::super::LocalRootIdentity::read(root.path()),
@@ -1242,6 +1279,9 @@ async fn update_rechecks_local_parent_and_root_after_async_stat() {
             }));
             let svc = CloudService::new();
             svc.init(config.clone()).await;
+            if delete {
+                remember_transferred_fixture(&svc, &config, &row);
+            }
             let error = svc
                 .process_comparison_with_provider(&mut remote, &config, &row, policy)
                 .await
@@ -1339,6 +1379,226 @@ async fn update_receive_initializes_a_missing_destination_only_for_execution() {
         std::fs::read(root.join("photo")).unwrap(),
         b"sole remote copy"
     );
+}
+
+/// The fresh delete check must catch a modification made after the full plan was built.
+#[tokio::test]
+async fn update_fresh_delete_keeps_a_destination_changed_after_scan() {
+    for upload in [true, false] {
+        let root = tempfile::tempdir().unwrap();
+        let config = CloudConfig {
+            update_only: true,
+            preserve_remote_deletes: false,
+            sync_direction: if upload {
+                CompareDirection::LocalToRemote
+            } else {
+                CompareDirection::RemoteToLocal
+            },
+            ..pair(root.path())
+        };
+        let mut remote = MemRemote::new();
+        let mut index = empty_index(&config);
+        synced(&mut index, &remote, root.path(), "keep", b"keep");
+        std::fs::write(root.path().join("photo"), b"old").unwrap();
+        set_mtime(&root.path().join("photo"), SYNCED_AT);
+        if upload {
+            set_mtime(&root.path().join("photo"), SYNCED_AT + 100);
+        } else {
+            remote.put("/remote/photo", b"remote source", SYNCED_AT + 100);
+        }
+        let (run, saved) = execute(
+            &config,
+            work(prep(&config, &index, &["photo"])),
+            &mut remote,
+            None,
+        )
+        .await;
+        assert!(done(run).0.errors.is_empty());
+        assert!(saved.cloud_receipts.contains_key("photo"));
+        if upload {
+            std::fs::remove_file(root.path().join("photo")).unwrap();
+        } else {
+            remote.state().files.remove("/remote/photo");
+        }
+        let row = update_row(&config, &remote, "photo", true);
+        let svc = CloudService::new();
+        svc.init(config.clone()).await;
+        svc.remember_cloud_receipts(Some(&saved));
+        let policy = UpdatePolicy {
+            root_identity: super::super::LocalRootIdentity::read(root.path()),
+            allow_orphan_deletes: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            svc.resolve_action(&config, &row, policy),
+            if upload {
+                SyncAction::DeleteRemote
+            } else {
+                SyncAction::DeleteLocal
+            }
+        );
+        if upload {
+            remote.put("/remote/photo", b"new phone copy", SYNCED_AT + 900);
+        } else {
+            std::fs::write(root.path().join("photo"), b"new local copy").unwrap();
+        }
+        let outcome = svc
+            .process_comparison_with_provider(&mut remote, &config, &row, policy)
+            .await
+            .unwrap();
+        assert_eq!(outcome, SyncAction::Skip);
+        assert!(remote.state().deletes.is_empty());
+        let bytes = if upload {
+            remote.state().files["/remote/photo"].0.clone()
+        } else {
+            std::fs::read(root.path().join("photo")).unwrap()
+        };
+        assert_eq!(
+            bytes,
+            if upload {
+                b"new phone copy"
+            } else {
+                b"new local copy"
+            }
+        );
+        let mut result = SyncOperationResult {
+            uploaded: 0,
+            downloaded: 0,
+            deleted: 0,
+            skipped: 0,
+            skipped_details: vec![],
+            conflicts: 0,
+            errors: vec![],
+            duration_secs: 0,
+            file_details: vec![],
+        };
+        svc.record_sync_action(&mut result, &config, &row, &outcome);
+        assert!(result.skipped_details[0].needs_review);
+    }
+}
+
+/// A proof for another server, root, alias or direction is not authority at this destination.
+#[tokio::test]
+async fn update_receipt_cannot_be_borrowed_across_profile_root_side_or_alias() {
+    let root = tempfile::tempdir().unwrap();
+    let config = CloudConfig {
+        update_only: true,
+        preserve_remote_deletes: false,
+        sync_direction: CompareDirection::LocalToRemote,
+        ..pair(root.path())
+    };
+    let remote = MemRemote::new();
+    let mut index = empty_index(&config);
+    synced(&mut index, &remote, root.path(), "photo", b"sent bytes");
+    std::fs::remove_file(root.path().join("photo")).unwrap();
+    let row = update_row(&config, &remote, "photo", true);
+    let svc = CloudService::new();
+    svc.remember_cloud_receipts(Some(&index));
+    let policy = UpdatePolicy {
+        allow_orphan_deletes: true,
+        ..Default::default()
+    };
+    assert_eq!(
+        svc.resolve_action(&config, &row, policy),
+        SyncAction::DeleteRemote
+    );
+    for change in ["profile", "root", "side", "alias"] {
+        let mut cfg = config.clone();
+        let mut changed = row.clone();
+        match change {
+            "profile" => cfg.server_profile = "different server".into(),
+            "root" => cfg.local_folder = root.path().join("different"),
+            "side" => cfg.sync_direction = CompareDirection::RemoteToLocal,
+            _ => changed.remote_relative_path = Some("different-photo".into()),
+        }
+        assert!(svc.cloud_receipt_for(&cfg, &changed).is_none(), "{change}");
+    }
+}
+
+/// Two-sided skips must remain untrusted even after watcher baseline save/reload.
+#[tokio::test]
+async fn update_watcher_skip_does_not_create_future_delete_authority() {
+    for upload in [true, false] {
+        for identical in [true, false] {
+            let root = tempfile::tempdir().unwrap();
+            let config = CloudConfig {
+                update_only: true,
+                preserve_remote_deletes: false,
+                sync_direction: if upload {
+                    CompareDirection::LocalToRemote
+                } else {
+                    CompareDirection::RemoteToLocal
+                },
+                ..pair(root.path())
+            };
+            let mut remote = MemRemote::new();
+            let mut index = empty_index(&config);
+            synced(&mut index, &remote, root.path(), "keep", b"keep");
+            std::fs::write(root.path().join("photo"), b"local").unwrap();
+            set_mtime(
+                &root.path().join("photo"),
+                if !upload && !identical {
+                    SYNCED_AT + 500
+                } else {
+                    SYNCED_AT
+                },
+            );
+            remote.put(
+                "/remote/photo",
+                if identical { b"local" } else { b"cloud" },
+                if upload && !identical {
+                    SYNCED_AT + 500
+                } else {
+                    SYNCED_AT
+                },
+            );
+            let (run, saved) = execute(
+                &config,
+                work(prep(&config, &index, &["photo"])),
+                &mut remote,
+                None,
+            )
+            .await;
+            assert_eq!(done(run).0.deleted, 0);
+            assert!(!saved.cloud_receipts.contains_key("photo"));
+            index = serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+            if upload {
+                std::fs::remove_file(root.path().join("photo")).unwrap();
+            } else {
+                remote.state().files.remove("/remote/photo");
+            }
+            for _ in 0..3 {
+                let (run, saved) = execute(
+                    &config,
+                    work(prep(&config, &index, &["photo"])),
+                    &mut remote,
+                    None,
+                )
+                .await;
+                let result = done(run).0;
+                assert_eq!(result.deleted, 0);
+                assert!(result
+                    .skipped_details
+                    .iter()
+                    .any(|row| row.path == "photo" && row.needs_review));
+                assert!(!saved.cloud_receipts.contains_key("photo"));
+                let bytes = if upload {
+                    remote.state().files["/remote/photo"].0.clone()
+                } else {
+                    std::fs::read(root.path().join("photo")).unwrap()
+                };
+                assert_eq!(
+                    bytes,
+                    if upload && !identical {
+                        b"cloud"
+                    } else {
+                        b"local"
+                    }
+                );
+                index = saved;
+            }
+        }
+    }
 }
 
 #[tokio::test]

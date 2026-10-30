@@ -1578,7 +1578,7 @@
             "secondsAgo": "fa {count}s",
             "conflictsCount": "Conflictes per revisar: {count}",
             "updateOnlyHint": "L’actualització unidireccional conserva els fitxers de destinació més nous. Amb la còpia de seguretat additiva desactivada, només se suprimeixen els fitxers exclusius de la destinació sincronitzats anteriorment. Els fitxers mai sincronitzats es conserven per revisar-los a AeroSync. S’ignora la política de conflictes; les dates desconegudes queden sense resoldre.",
-            "untrackedDestinationFiles": "{count} fitxers de destinació no s’han sincronitzat mai i s’han conservat. Obre el mateix origen i la mateixa destinació a AeroSync, selecciona Mirall amb actualització unidireccional, revisa el pla i confirma les supressions que vulguis fer."
+            "untrackedDestinationFiles": "S’han conservat {count} fitxers de destinació per revisar-los: el seu historial de transferències no està verificat o han canviat després de l’última transferència d’AeroCloud. Revisa’ls a AeroSync abans de decidir si els vols suprimir."
         },
         "statusBar": {
             "connected": "Connectat",

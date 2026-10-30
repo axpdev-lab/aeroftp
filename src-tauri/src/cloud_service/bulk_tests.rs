@@ -24,6 +24,7 @@ struct Remote {
     /// `up <path>` and `down <path>` of the single-file calls.
     singles: Vec<String>,
     stats: usize,
+    stat_time: Option<String>,
     lists: Vec<String>,
     /// Names the bulk answers as uncertain (and does not store).
     uncertain: HashSet<String>,
@@ -207,7 +208,12 @@ impl StorageProvider for BulkMemory {
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let mut remote = self.remote();
         remote.stats += 1;
-        Self::entry(&remote, path).ok_or_else(|| ProviderError::NotFound(path.into()))
+        let mut entry =
+            Self::entry(&remote, path).ok_or_else(|| ProviderError::NotFound(path.into()))?;
+        if let Some(time) = &remote.stat_time {
+            entry.modified = Some(time.clone());
+        }
+        Ok(entry)
     }
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
         Ok(self.remote().files.get(path).map_or(0, |b| b.len() as u64))
@@ -347,6 +353,59 @@ async fn two_hundred_uploads_take_one_call_and_one_listing() {
     assert_eq!(svc.landed.lock().unwrap().len(), 200);
 }
 
+/// Enabling Update after a normal real bulk must keep the same metadata channel.
+#[tokio::test]
+async fn ordinary_bulk_receipts_use_stat_before_update_is_enabled() {
+    for kind in [ProviderType::S3, ProviderType::Swift] {
+        let local = tempfile::tempdir().unwrap();
+        let rows = new_local_files(local.path(), 2);
+        let mut provider = BulkMemory::new(true);
+        provider.kind = kind;
+        provider.remote().stat_time = Some("2023-01-01T00:00:00Z".into());
+        let mut cfg = config(local.path());
+        cfg.sync_direction = CompareDirection::LocalToRemote;
+        let (svc, outcomes) = cycle(&mut provider, &cfg, &rows).await;
+        assert!(outcomes.iter().all(|o| matches!(o, Ok(SyncAction::Upload))));
+        assert_eq!(provider.remote().bulk_uploads.len(), 1);
+        let policy = UpdatePolicy {
+            root_identity: super::super::LocalRootIdentity::read(local.path()),
+            allow_orphan_deletes: true,
+            ..Default::default()
+        };
+        let files = svc.post_sync_baseline(&rows, &cfg, None, policy);
+        let mut index = crate::sync::SyncIndex::new(
+            local.path().to_string_lossy().into_owned(),
+            cfg.remote_folder.clone(),
+        );
+        index.cloud_receipts = svc.receipts_after(&rows, &cfg, None, &files, policy.root_identity);
+        index.files = files;
+        svc.remember_cloud_receipts(Some(&index));
+        cfg.update_only = true;
+        cfg.preserve_remote_deletes = false;
+        std::fs::remove_file(local.path().join("docs/f0.txt")).unwrap();
+        let mut orphan = comparison("docs/f0.txt", SyncStatus::RemoteOnly);
+        let entry = provider.stat("/remote/docs/f0.txt").await.unwrap();
+        let mut remote = info(entry.path, entry.size);
+        remote.modified = entry
+            .modified
+            .as_deref()
+            .and_then(crate::parse_remote_datetime);
+        orphan.remote_info = Some(remote);
+        svc.apply_cloud_authority(&cfg, std::slice::from_mut(&mut orphan));
+        assert_eq!(
+            svc.resolve_action(&cfg, &orphan, policy),
+            SyncAction::DeleteRemote
+        );
+        assert_eq!(
+            svc.process_comparison_with_provider(&mut provider, &cfg, &orphan, policy)
+                .await
+                .unwrap(),
+            SyncAction::DeleteRemote
+        );
+        assert!(!provider.remote().files.contains_key("/remote/docs/f0.txt"));
+    }
+}
+
 /// A file rewritten while the bulk sent it goes again on its own, through
 /// the single-file path, which settles it as its own sends.
 #[tokio::test]
@@ -378,6 +437,10 @@ async fn update_bulk_edited_source_keeps_an_unsettled_baseline_without_retrying_
         files["docs/f1.txt"].modified,
         Some(crate::sync::UNSETTLED_BASELINE)
     );
+    let receipts = svc.receipts_after(&rows, &config, None, &files, policy.root_identity);
+    assert!(!receipts.contains_key("docs/f1.txt"));
+    assert!(receipts.contains_key("docs/f0.txt"));
+    assert!(receipts.contains_key("docs/f2.txt"));
     assert_eq!(svc.take_unsettled(), vec!["docs/f1.txt"]);
 }
 
@@ -411,6 +474,17 @@ async fn a_file_that_may_have_reached_the_server_is_left_to_the_next_cycle() {
     assert!(provider.remote().singles.is_empty());
     assert!(!svc.landed.lock().unwrap().contains_key("docs/f2.txt"));
     assert_eq!(mtime(&local.path().join("docs/f2.txt")), before);
+    let cfg = config(local.path());
+    let files = svc.post_sync_baseline(&comparisons, &cfg, None, UpdatePolicy::default());
+    let receipts = svc.receipts_after(
+        &comparisons,
+        &cfg,
+        None,
+        &files,
+        super::super::LocalRootIdentity::read(local.path()),
+    );
+    assert!(!receipts.contains_key("docs/f2.txt"));
+    assert!(receipts.contains_key("docs/f0.txt"));
 }
 
 #[tokio::test]

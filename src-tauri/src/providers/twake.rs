@@ -1013,6 +1013,16 @@ fn local_mtime_rfc3339(local_path: &str) -> Option<String> {
 
 #[async_trait]
 impl StorageProvider for TwakeProvider {
+    fn sync_namespace_identity(&self) -> Option<String> {
+        self.connected.then(|| {
+            serde_json::json!([
+                self.config.credentials.instance,
+                self.config.credentials.client_id
+            ])
+            .to_string()
+        })
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
@@ -1598,6 +1608,30 @@ impl StorageProvider for TwakeProvider {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sync_namespace_identity_tracks_authenticated_instance_and_client() {
+        let mut provider = TwakeProvider::new(TwakeConfig {
+            credentials: TwakeCredentials {
+                instance: "https://one.twake.app".into(),
+                client_id: "first".into(),
+                client_secret: "secret".into(),
+                registration_access_token: "registration".into(),
+                refresh_token: "refresh".into(),
+            },
+            initial_path: None,
+        });
+        assert!(provider.sync_namespace_identity().is_none());
+        provider.connected = true;
+        let initial = provider.sync_namespace_identity().unwrap();
+        assert!(!initial.contains("secret"));
+        assert!(!initial.contains("refresh"));
+        provider.config.credentials.instance = "https://other.twake.app".into();
+        assert_ne!(provider.sync_namespace_identity().unwrap(), initial);
+        provider.config.credentials.instance = "https://one.twake.app".into();
+        provider.config.credentials.client_id = "other-client".into();
+        assert_ne!(provider.sync_namespace_identity().unwrap(), initial);
+    }
+
     use super::*;
 
     #[test]

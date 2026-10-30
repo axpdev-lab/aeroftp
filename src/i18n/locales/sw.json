@@ -1578,7 +1578,7 @@
             "secondsAgo": "sekunde {count} zilizopita",
             "conflictsCount": "Migogoro inayohitaji umakini: {count}",
             "updateOnlyHint": "Usasishaji wa upande mmoja huhifadhi faili mpya zaidi za lengwa. Hifadhi rudufu ya kuongeza ikiwa imezimwa, ni faili zilizosawazishwa awali na zilizopo kwenye lengwa pekee zinazofutwa. Faili ambazo hazijawahi kusawazishwa huhifadhiwa kwa ukaguzi katika AeroSync. Sera ya migongano hupuuzwa; tarehe zisizojulikana hubaki bila kutatuliwa.",
-            "untrackedDestinationFiles": "Faili {count} za lengwa hazijawahi kusawazishwa na zimehifadhiwa. Fungua chanzo na lengwa lilelile katika AeroSync, chagua Kioo pamoja na usasishaji wa upande mmoja, kagua mpango na uthibitishe ufutaji unaotaka."
+            "untrackedDestinationFiles": "Faili {count} za lengwa zimehifadhiwa kwa ukaguzi: historia yake ya uhamishaji haijathibitishwa au zimebadilika baada ya uhamishaji wa mwisho wa AeroCloud. Zikague katika AeroSync kabla ya kuamua kuzifuta."
         },
         "statusBar": {
             "connected": "Imeunganishwa",

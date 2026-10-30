@@ -1578,7 +1578,7 @@
             "secondsAgo": "{count}sn önce",
             "conflictsCount": "{count} çakışma müdahale gerektiriyor",
             "updateOnlyHint": "Tek Yönlü Güncelleme daha yeni hedef dosyaları korur. Eklemeli yedekleme kapalıyken, yalnızca hedefte bulunan dosyalardan sadece daha önce eşitlenmiş olanlar silinir. Hiç eşitlenmemiş dosyalar AeroSync içinde incelenmek üzere korunur. Çakışma ilkesi yok sayılır; bilinmeyen tarihler çözümsüz kalır.",
-            "untrackedDestinationFiles": "{count} hedef dosya hiç eşitlenmediği için korundu. AeroSync içinde aynı kaynağı ve hedefi açın, Tek Yönlü Güncelleme ile Yansıt seçeneğini belirleyin, planı inceleyin ve istediğiniz silme işlemlerini onaylayın."
+            "untrackedDestinationFiles": "{count} hedef dosya inceleme için korundu: aktarım geçmişleri doğrulanmamış veya son AeroCloud aktarımından sonra değişmişler. Silmeye karar vermeden önce bunları AeroSync içinde inceleyin."
         },
         "statusBar": {
             "connected": "Bağlı",

@@ -69,4 +69,23 @@ describe('AeroCloud Update settings and cycle reporting', () => {
         expect(host.textContent).toContain('notes.txt');
     });
 
+    it('does not clear a full-scan refusal on an unrelated clean watcher completion', async () => {
+        await mount([]);
+        const completed = async (errors: string[], complete: boolean) => {
+            await React.act(async () => mocks.listeners.get('cloud_sync_complete')!({ payload: {
+                errors, uploaded: 1, downloaded: 0, skipped: 0, deleted: 0, conflicts: 0,
+                review_scope: 'pair', review_inventory_complete: complete, skipped_details: [],
+            } }));
+        };
+        await completed(['Mass-delete refused: blocked 20 deletes'], false);
+        await completed([], false);
+        expect(host.textContent).toContain('blocked 20 deletes');
+        await React.act(async () => mocks.listeners.get('cloud_sync_complete')!({ payload: {
+            errors: [], uploaded: 1, downloaded: 0, skipped: 0, deleted: 0, conflicts: 0,
+        } }));
+        expect(host.textContent).toContain('blocked 20 deletes');
+        await completed([], true);
+        expect(host.textContent).not.toContain('blocked 20 deletes');
+    });
+
 });
