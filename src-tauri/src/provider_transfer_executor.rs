@@ -1385,15 +1385,9 @@ impl ProviderDownloadExecutor {
         file_transfer_id: &str,
         attempt: u32,
     ) -> Result<(), String> {
-        let sink = Arc::clone(&self.sink);
-        let transfer_id = file_transfer_id.to_string();
-        let display_name = entry.display_name.clone();
         let remote_path = entry.remote_path.clone();
-        let remote_path_for_progress = entry.remote_path.clone();
         let local_path = entry.local_path.clone();
         let file_size = entry.size;
-        let cancel_token = self.cancel_token.clone();
-        let speed_meter = crate::transfer_speed::SpeedMeter::new();
 
         // Only a part that recorded the version it was started from counts;
         // the provider then checks that version against the file as it is now.
@@ -1408,52 +1402,6 @@ impl ProviderDownloadExecutor {
             0
         };
 
-        let progress_cb: crate::providers::multi_thread::ProgressCallback =
-            Box::new(move |transferred, total| {
-                if cancel_token.is_cancelled() {
-                    return;
-                }
-                let total = total.max(file_size);
-                let percentage = if total > 0 {
-                    ((transferred as f64 / total as f64) * 100.0) as u8
-                } else {
-                    0
-                };
-                let speed = speed_meter.bps(transferred);
-                let remaining = total.saturating_sub(transferred);
-                let eta = if speed > 0 {
-                    (remaining as f64 / speed as f64) as u64
-                } else {
-                    0
-                };
-                sink.emit_transfer_event(crate::TransferEvent {
-                    event_type: "progress".to_string(),
-                    transfer_id: transfer_id.clone(),
-                    filename: display_name.clone(),
-                    direction: "download".to_string(),
-                    message: None,
-                    progress: Some(crate::TransferProgress {
-                        transfer_id: transfer_id.clone(),
-                        filename: display_name.clone(),
-                        transferred,
-                        total,
-                        percentage,
-                        speed_bps: speed,
-                        eta_seconds: eta as u32,
-                        direction: "download".to_string(),
-                        total_files: None,
-                        path: None,
-                    }),
-                    path: Some(remote_path_for_progress.clone()),
-                    delta_stats: None,
-                    fallback_reason: None,
-                });
-            });
-        // One stream taking over from refused windows on this attempt counts
-        // from zero: the mark they share keeps the bar where the windows left it.
-        let (segmented_progress, progress_cb) =
-            crate::providers::multi_thread::share_progress(Some(progress_cb));
-
         // GTC-1: opportunistic intra-file range parallelism.
         //
         // Gated on (attempt == 0 && no .aerotmp resume) so a hard
@@ -1462,6 +1410,9 @@ impl ProviderDownloadExecutor {
         // retry envelope. The capability check inside
         // `try_segmented_download_attempt` re-locks the session model,
         // provider capability flag, and file-size floor honestly.
+        // One stream taking over from refused windows on this attempt counts
+        // from zero: the mark keeps the bar where the windows left it.
+        let mark = crate::providers::multi_thread::ProgressMark::default();
         let (requested_segments, _) = segmented_runtime_request(
             provider.provider_type(),
             &self.runtime_settings,
@@ -1469,12 +1420,31 @@ impl ProviderDownloadExecutor {
         );
         if attempt == 0 && partial_offset == 0 && requested_segments > 1 {
             if let Some(segmented_result) = self
-                .try_segmented_download_attempt(provider, entry, file_size, segmented_progress)
+                .try_segmented_download_attempt(
+                    provider,
+                    entry,
+                    file_size,
+                    Some(download_progress_callback(
+                        Arc::clone(&self.sink),
+                        self.cancel_token.clone(),
+                        file_transfer_id,
+                        entry,
+                        mark.clone(),
+                    )),
+                )
                 .await
             {
                 return segmented_result;
             }
         }
+
+        let progress_cb = Some(download_progress_callback(
+            Arc::clone(&self.sink),
+            self.cancel_token.clone(),
+            file_transfer_id,
+            entry,
+            mark,
+        ));
 
         let size_based_secs = file_size / 50_000;
         let effective_timeout = self
@@ -1520,8 +1490,9 @@ impl ProviderDownloadExecutor {
     }
 
     /// Try the segmented (intra-file range) download path. Returns
-    /// `None` when the path is not applicable — the caller falls
-    /// through to the legacy single-stream branch. Returns
+    /// `None` when the path is not applicable, or the object refused the
+    /// windows: the caller falls through to the legacy single-stream
+    /// branch on this same attempt. Returns
     /// `Some(Ok(()))` on success (the legacy branch is then skipped)
     /// and `Some(Err(_))` on hard failure (the caller's retry envelope
     /// is responsible for the next attempt, which will be
@@ -2445,6 +2416,63 @@ fn attempt_is_over(locally_cancelled: bool, last_error: &str) -> bool {
     locally_cancelled || crate::transfer_dag::error::message_names_a_cancellation(last_error)
 }
 
+/// The progress callback of one download attempt, reporting to the executor's
+/// sink. The bar shows `mark`; speed and time left follow the bytes this path is
+/// really moving, so a path catching up on the mark does not read as stalled.
+fn download_progress_callback(
+    sink: Arc<dyn crate::transfer_event_sink::TransferEventSink>,
+    cancel_token: CancellationToken,
+    transfer_id: &str,
+    entry: &TransferEntry,
+    mark: crate::providers::multi_thread::ProgressMark,
+) -> crate::providers::multi_thread::ProgressCallback {
+    let transfer_id = transfer_id.to_string();
+    let display_name = entry.display_name.clone();
+    let remote_path = entry.remote_path.clone();
+    let file_size = entry.size;
+    let speed_meter = crate::transfer_speed::SpeedMeter::new();
+    Box::new(move |moved, total| {
+        if cancel_token.is_cancelled() {
+            return;
+        }
+        let transferred = mark.shown(moved, total);
+        let percentage = if total > 0 {
+            ((transferred as f64 / total as f64) * 100.0) as u8
+        } else {
+            0
+        };
+        let speed = speed_meter.bps(moved);
+        let remaining = total.max(file_size).saturating_sub(moved);
+        let eta = if speed > 0 {
+            (remaining as f64 / speed as f64) as u64
+        } else {
+            0
+        };
+        sink.emit_transfer_event(crate::TransferEvent {
+            event_type: "progress".to_string(),
+            transfer_id: transfer_id.clone(),
+            filename: display_name.clone(),
+            direction: "download".to_string(),
+            message: None,
+            progress: Some(crate::TransferProgress {
+                transfer_id: transfer_id.clone(),
+                filename: display_name.clone(),
+                transferred,
+                total: total.max(file_size),
+                percentage,
+                speed_bps: speed,
+                eta_seconds: eta as u32,
+                direction: "download".to_string(),
+                total_files: None,
+                path: None,
+            }),
+            path: Some(remote_path.clone()),
+            delta_stats: None,
+            fallback_reason: None,
+        });
+    })
+}
+
 /// Whether a download retry goes on from the `.aerotmp` an earlier attempt
 /// left. Not in place: an in-place download writes the destination itself and
 /// leaves no `.aerotmp`, so one found there was left by an earlier download
@@ -2457,6 +2485,50 @@ fn resumes_from_the_temporary(attempt: u32, supports_resume: bool, inplace: bool
 
 #[cfg(test)]
 mod tests {
+    /// One stream taking over from refused windows: the bar holds where they
+    /// left it, while speed and time left follow the bytes really moving.
+    #[test]
+    fn a_fallback_holds_the_bar_and_keeps_measuring_its_speed() {
+        #[derive(Default)]
+        struct Recorder(std::sync::Mutex<Vec<crate::TransferProgress>>);
+        impl crate::transfer_event_sink::TransferEventSink for Recorder {
+            fn emit_transfer_event(&self, event: crate::TransferEvent) {
+                self.0.lock().unwrap().extend(event.progress);
+            }
+        }
+        let recorder = Arc::new(Recorder::default());
+        let entry = TransferEntry {
+            id: "big".to_string(),
+            display_name: "big".to_string(),
+            remote_path: "/big".to_string(),
+            local_path: "/tmp/big".to_string(),
+            size: 1000,
+            modified: None,
+        };
+        let mark = crate::providers::multi_thread::ProgressMark::default();
+        let callback = || {
+            download_progress_callback(
+                recorder.clone(),
+                CancellationToken::new(),
+                "id",
+                &entry,
+                mark.clone(),
+            )
+        };
+        callback()(800, 1000);
+        let fallback = callback();
+        fallback(10, 1000);
+        std::thread::sleep(Duration::from_millis(150));
+        fallback(110, 1000);
+        fallback(900, 1000);
+        let seen = recorder.0.lock().unwrap();
+        let bar: Vec<u64> = seen.iter().map(|p| p.transferred).collect();
+        assert_eq!(bar, [800, 800, 800, 900]);
+        assert_eq!(seen[2].percentage, 80);
+        assert!(seen[2].speed_bps > 0, "the stream is moving bytes");
+        assert!(seen[2].eta_seconds > 0, "890 bytes are left to read");
+    }
+
     /// Only a refusal by the object or the server goes straight to one stream;
     /// a failure of the transport keeps the attempt it has.
     #[test]

@@ -1165,33 +1165,44 @@ fn hash_file_md5(path: &Path, stop: &std::sync::atomic::AtomicBool) -> std::io::
 /// A transfer progress callback, as every provider download takes it.
 pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send>;
 
+/// The byte count a transfer has shown, across a parallel run and the
+/// single-stream path that takes over from it. A fallback counts from zero what
+/// the run had already reported, and a bar that shrinks makes the time left grow.
+#[derive(Clone, Default)]
+pub struct ProgressMark(Arc<std::sync::atomic::AtomicU64>);
+
+impl ProgressMark {
+    /// What to show for `done`: the highest count so far. Only a total below
+    /// it lowers the value, when a replaced object is shorter than what was
+    /// reported, so the share of the total stays complete.
+    pub fn shown(&self, done: u64, total: u64) -> u64 {
+        let reached = self.0.fetch_max(done, Ordering::Relaxed).max(done);
+        if total > 0 {
+            reached.min(total)
+        } else {
+            reached
+        }
+    }
+}
+
 /// Two callbacks that both report to `progress`: one goes with the parallel
 /// attempt, the other stays behind for the single-stream path a refusal falls
 /// back to. The callback is `Send` and not `Sync`, so it is shared behind a
-/// lock rather than cloned; the two halves never run at the same time.
-///
-/// The value never goes back: a fallback counts from zero what the attempt had
-/// already reported, and a bar that shrinks makes the time left grow. The
-/// later half holds the last value until it passes it, never above the total.
+/// lock rather than cloned; the two halves never run at the same time. The
+/// later half holds the last value until it passes it, see [`ProgressMark`].
 pub fn share_progress(
     progress: Option<ProgressCallback>,
 ) -> (Option<ProgressCallback>, Option<ProgressCallback>) {
     let Some(progress) = progress else {
         return (None, None);
     };
-    let shared = Arc::new(std::sync::Mutex::new((progress, 0u64)));
-    let half = |shared: Arc<std::sync::Mutex<(ProgressCallback, u64)>>| -> ProgressCallback {
+    let shared = Arc::new(std::sync::Mutex::new(progress));
+    let mark = ProgressMark::default();
+    let half = |shared: Arc<std::sync::Mutex<ProgressCallback>>| -> ProgressCallback {
+        let mark = mark.clone();
         Box::new(move |done, total| {
-            let mut guard = shared.lock().unwrap_or_else(|e| e.into_inner());
-            let (progress, reached) = &mut *guard;
-            *reached = (*reached).max(done);
-            // A replaced object can be shorter than what was reported.
-            let shown = if total > 0 {
-                (*reached).min(total)
-            } else {
-                *reached
-            };
-            progress(shown, total)
+            let progress = shared.lock().unwrap_or_else(|e| e.into_inner());
+            progress(mark.shown(done, total), total)
         })
     };
     (Some(half(Arc::clone(&shared))), Some(half(shared)))

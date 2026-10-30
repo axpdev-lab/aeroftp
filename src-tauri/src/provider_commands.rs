@@ -3545,6 +3545,9 @@ pub async fn provider_download_file(
     } else {
         crate::provider_transfer_executor::SegmentCutoff::Default
     };
+    // One stream taking over from a segmented run counts from zero: the mark
+    // keeps the bar where the run left it.
+    let progress_mark = crate::providers::multi_thread::ProgressMark::default();
     if partial_offset == 0
         && (download_segments.is_some() || file_size >= DEFAULT_MULTI_THREAD_CUTOFF_BYTES)
     {
@@ -3573,7 +3576,12 @@ pub async fn provider_download_file(
                 &local_path,
                 file_size,
                 segments,
-                progress_cb.take(),
+                progress_cb.take().map(
+                    |progress| -> crate::providers::multi_thread::ProgressCallback {
+                        let mark = progress_mark.clone();
+                        Box::new(move |done, total| progress(mark.shown(done, total), total))
+                    },
+                ),
                 cancel,
             )
             .await;
@@ -3614,15 +3622,17 @@ pub async fn provider_download_file(
         let tid_fb = transfer_id.clone();
         let fname_fb = filename.clone();
         let speed_meter = crate::transfer_speed::SpeedMeter::new();
-        progress_cb = Some(Box::new(move |transferred: u64, total: u64| {
+        progress_cb = Some(Box::new(move |moved: u64, total: u64| {
+            let transferred = progress_mark.shown(moved, total);
             let pct = if total > 0 {
                 ((transferred as f64 / total as f64) * 100.0) as u8
             } else {
                 0
             };
-            let speed = speed_meter.bps(transferred);
-            let eta = if speed > 0 && transferred < total {
-                ((total - transferred) as f64 / speed as f64) as u64
+            // Speed and time left follow the bytes this stream is moving.
+            let speed = speed_meter.bps(moved);
+            let eta = if speed > 0 && moved < total {
+                ((total - moved) as f64 / speed as f64) as u64
             } else {
                 0
             };
