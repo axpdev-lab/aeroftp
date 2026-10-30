@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { useCallback, useLayoutEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 
 /** Long enough for the speed graph's 0.3 s transition (`.tpb-graph-wrapper`). */
 const SETTLE_MS = 350;
@@ -22,34 +22,51 @@ const SETTLE_MS = 350;
  * waits for its animation to end before reading again: a height read halfway
  * through closing the graph would hold the card open. A new `scope` starts over,
  * for content of another kind that should not inherit the old height.
+ *
+ * The graph's toggle lives below the card and renders nothing here, so both
+ * ends of its animation are measured on a timer (`measureAfterAnimation`): the
+ * next file could otherwise shrink the card before its new height was read.
  */
 export function useNeverShrinkingHeight<T extends HTMLElement>(scope: unknown) {
     const ref = useRef<T>(null);
     const tallest = useRef(0);
     const settlesAt = useRef(0);
     const currentScope = useRef(scope);
+    const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-    useLayoutEffect(() => {
+    const measure = useCallback(() => {
         const element = ref.current;
-        if (!element) return;
-        if (currentScope.current !== scope) {
-            currentScope.current = scope;
-            tallest.current = 0;
-            element.style.minHeight = '';
-        }
-        if (performance.now() < settlesAt.current) return;
+        if (!element || performance.now() < settlesAt.current) return;
         const height = element.getBoundingClientRect().height;
         if (height > tallest.current) {
             tallest.current = height;
             element.style.minHeight = `${height}px`;
         }
+    }, []);
+
+    useLayoutEffect(() => {
+        const element = ref.current;
+        if (element && currentScope.current !== scope) {
+            currentScope.current = scope;
+            tallest.current = 0;
+            element.style.minHeight = '';
+        }
+        measure();
     });
+
+    useEffect(() => () => clearTimeout(timer.current), []);
+
+    const measureAfterAnimation = useCallback(() => {
+        clearTimeout(timer.current);
+        timer.current = setTimeout(measure, SETTLE_MS);
+    }, [measure]);
 
     const release = useCallback(() => {
         tallest.current = 0;
         settlesAt.current = performance.now() + SETTLE_MS;
         if (ref.current) ref.current.style.minHeight = '';
-    }, []);
+        measureAfterAnimation();
+    }, [measureAfterAnimation]);
 
-    return { ref, release };
+    return { ref, release, measureAfterAnimation };
 }

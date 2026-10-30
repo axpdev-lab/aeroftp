@@ -5,7 +5,7 @@
  * Transfer progress components
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Download, Upload, Folder, X, Minus, ArrowUpDown } from 'lucide-react';
 import { formatBytes, formatSpeed, formatETA } from '../../utils/formatters';
 import { useTheme, getEffectiveTheme } from '../../hooks/useTheme';
@@ -243,10 +243,16 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
     const transferStateLabel = isFolderTransfer ? t('transfer.badgeBatch') : (isIndeterminate ? t('transfer.badgeStream') : t('transfer.badgeLive'));
     // Each file of a sync starts with an empty profile: the last one with data
     // stays on screen until the new file has its own, or the graph and its
-    // toggle would disappear and return once per file.
-    const shownProfile = useRef<SpeedProfile | undefined>(undefined);
-    if (transfer.speedProfile && hasSpeedData(transfer.speedProfile)) shownProfile.current = transfer.speedProfile;
-    const { ref: cardRef, release: releaseCardHeight } = useNeverShrinkingHeight<HTMLDivElement>(isFolderTransfer);
+    // toggle would disappear and return once per file. A file in the other
+    // direction, or a folder, is another transfer and starts without it.
+    const cardScope = `${summary.direction}:${isFolderTransfer}`;
+    const lastProfile = useRef<{ scope: string; profile: SpeedProfile } | null>(null);
+    const ownProfile = transfer.speedProfile && hasSpeedData(transfer.speedProfile) ? transfer.speedProfile : undefined;
+    const shownProfile = ownProfile ?? (lastProfile.current?.scope === cardScope ? lastProfile.current.profile : undefined);
+    useLayoutEffect(() => {
+        if (ownProfile) lastProfile.current = { scope: cardScope, profile: ownProfile };
+    }, [ownProfile, cardScope]);
+    const { ref: cardRef, release: releaseCardHeight, measureAfterAnimation } = useNeverShrinkingHeight<HTMLDivElement>(cardScope);
 
     // Auto-dismiss safety: once the summary is complete AND no lane is still
     // active, collapse after 3s (mirrors the legacy toast's behaviour). Same
@@ -344,9 +350,9 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
                             variant={isIndeterminate ? 'indeterminate' : 'gradient'}
                             animated={!isIndeterminate}
                             effectiveTheme={barTheme}
-                            showGraph={!!shownProfile.current}
-                            speedProfile={shownProfile.current}
-                            onGraphClose={releaseCardHeight}
+                            showGraph={!!shownProfile}
+                            speedProfile={shownProfile}
+                            onGraphToggle={(open) => (open ? measureAfterAnimation() : releaseCardHeight())}
                         />
                     </div>
 

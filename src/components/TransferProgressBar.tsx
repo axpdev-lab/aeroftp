@@ -93,8 +93,8 @@ export interface TransferProgressBarProps {
     showGraph?: boolean;
     /** Speed over the whole transfer for the graph (`utils/speedProfile.ts`) */
     speedProfile?: SpeedProfile;
-    /** The user closed the graph, which animates the bar's height down. */
-    onGraphClose?: () => void;
+    /** The user opened or closed the graph, which animates the bar's height. */
+    onGraphToggle?: (open: boolean) => void;
 
     /** Additional CSS class */
     className?: string;
@@ -149,7 +149,7 @@ export const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
     slideAnimation = false,
     showGraph = false,
     speedProfile,
-    onGraphClose,
+    onGraphToggle,
     className = '',
     effectiveTheme,
     tone = 'default',
@@ -190,7 +190,7 @@ export const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
         const open = !graphExpanded;
         setGraphExpanded(open);
         writeGraphOpen(open);
-        if (!open) onGraphClose?.();
+        onGraphToggle?.(open);
     };
 
     // Determine theme class for CSS animations (use resolved theme, not raw 'auto')

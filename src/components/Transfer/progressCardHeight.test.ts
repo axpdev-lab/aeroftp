@@ -10,7 +10,13 @@ vi.mock('../../hooks/useTheme', () => ({
     useTheme: () => ({ theme: 'light', isDark: false }),
     getEffectiveTheme: () => 'light',
 }));
-vi.mock('../SpeedGraph', () => ({ SpeedGraph: () => null }));
+const graphProfile = vi.hoisted(() => ({ last: undefined as unknown }));
+vi.mock('../SpeedGraph', () => ({
+    SpeedGraph: ({ profile }: { profile: unknown }) => {
+        graphProfile.last = profile;
+        return null;
+    },
+}));
 
 const summary = (filename: string, total = 100) => ({
     transfer_id: filename,
@@ -72,11 +78,43 @@ describe('ProgressCard during a transfer', () => {
         await render(toast('a.bin'), 300);
         await render(starting('b.bin'), 300);
         expect(toggle()).not.toBeNull();
+        expect(graphProfile.last).toBe(profile);
     });
 
     it('has no graph before the first data', async () => {
         await render(starting('a.bin'), 300);
         expect(toggle()).toBeNull();
+    });
+
+    it('drops the graph of a transfer in the other direction', async () => {
+        await render(toast('a.bin'), 300);
+        const download = { ...summary('b.bin'), direction: 'download' } as TransferToastState['summary'];
+        await render({ summary: download, speedProfile: emptySpeedProfile() }, 300);
+        expect(toggle()).toBeNull();
+    });
+
+    it('keeps the height of the open graph, measured when its animation ends', async () => {
+        vi.useFakeTimers();
+        localStorage.clear();
+        await render(toast('a.bin'), 300);
+        await setGraphOpen(false);
+        await setGraphOpen(true);
+        height = 420;
+        await act(async () => vi.advanceTimersByTime(350));
+        expect(card().style.minHeight).toBe('420px');
+        vi.useRealTimers();
+    });
+
+    it('holds the height again when the animation of a closed graph ends, with no render', async () => {
+        vi.useFakeTimers();
+        await render(toast('a.bin'), 420);
+        await setGraphOpen(true);
+        await setGraphOpen(false);
+        expect(card().style.minHeight).toBe('');
+        height = 300;
+        await act(async () => vi.advanceTimersByTime(350));
+        expect(card().style.minHeight).toBe('300px');
+        vi.useRealTimers();
     });
 
     it('grows when its content needs more room', async () => {
