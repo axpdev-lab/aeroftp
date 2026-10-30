@@ -185,9 +185,17 @@ impl Clone for UploadcareProvider {
 }
 
 impl UploadcareProvider {
+    /// Build the provider and its HTTP client, with the limits of [`crate::providers::http_limits`].
+    /// Nothing is sent until the first request.
     pub fn new(config: UploadcareConfig) -> Self {
         let client = reqwest::Client::builder()
             .user_agent(AEROFTP_USER_AGENT)
+            .connect_timeout(crate::providers::http_limits::limit(
+                std::time::Duration::from_secs(30),
+            ))
+            .read_timeout(crate::providers::http_limits::limit(
+                crate::providers::http_limits::READ_TIMEOUT,
+            ))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
         Self {
