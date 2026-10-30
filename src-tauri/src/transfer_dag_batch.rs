@@ -911,20 +911,31 @@ where
 
     // A multipart file reads its parts at their offsets concurrently, so the
     // complete is checked against the file as it is now, before any part is
-    // read. A file that cannot be observed fails here, before a session or a
-    // part is spent on it.
+    // read. A file that cannot be observed, or no longer has the size its
+    // parts are cut for, fails here, before a session or a part is spent on
+    // it.
     let multipart_source = if is_multipart {
+        let refused = |message: String| TransferFailure {
+            kind: TransferFailureKind::LocalIo,
+            message,
+            retryable: false,
+            retry_after_secs: None,
+        };
         match crate::providers::upload_source::UploadSource::observe(&entry.local_path).await {
-            Ok(source) => Some(source),
+            Ok(source) if source.size() == entry.size => Some(source),
+            Ok(source) => {
+                let failure = refused(format!(
+                    "multipart upload: the parts were planned for {} bytes but the local file has {}; nothing was sent",
+                    entry.size,
+                    source.size()
+                ));
+                fail_before_graph(&ctx, &entry, failure).await;
+                return TransferDagMetrics::default();
+            }
             Err(e) => {
-                let failure = TransferFailure {
-                    kind: TransferFailureKind::LocalIo,
-                    message: format!(
-                        "multipart upload: the local file cannot be read before its parts are: {e}"
-                    ),
-                    retryable: false,
-                    retry_after_secs: None,
-                };
+                let failure = refused(format!(
+                    "multipart upload: the local file cannot be read before its parts are: {e}"
+                ));
                 fail_before_graph(&ctx, &entry, failure).await;
                 return TransferDagMetrics::default();
             }
@@ -1796,19 +1807,12 @@ where
 }
 
 /// Refuse to complete a multipart upload whose parts may not come from one
-/// version of the local file: its size when it was observed, before the parts
-/// were read, was not the one the parts were cut for, or it no longer matches
-/// that observation.
+/// version of the local file: it no longer matches the observation taken at
+/// admission, before the parts were read (which also checked that its size is
+/// the one the parts were cut for).
 async fn check_multipart_source(
     source: &crate::providers::upload_source::UploadSource,
-    planned_size: u64,
 ) -> Result<(), String> {
-    if source.size() != planned_size {
-        return Err(format!(
-            "multipart upload: the parts were planned for {planned_size} bytes but the local file had {} when the upload started; nothing was committed",
-            source.size()
-        ));
-    }
     source
         .ensure_unchanged("multipart upload")
         .await
@@ -1866,7 +1870,7 @@ where
         return TransferOutcome::Failed(failure);
     }
 
-    if let Err(message) = check_multipart_source(&runtime.source, state.layout().total_size).await {
+    if let Err(message) = check_multipart_source(&runtime.source).await {
         let failure = TransferFailure {
             kind: TransferFailureKind::LocalIo,
             message,
@@ -3724,9 +3728,10 @@ mod tests {
     }
 
     /// Parts cut for a size the file no longer has when the upload starts are
-    /// not completed either: they would cover a truncated or padded file.
+    /// never sent: they would cover a truncated or padded file, so the file
+    /// fails at admission, before a session is opened.
     #[tokio::test]
-    async fn multipart_upload_planned_for_another_size_is_not_completed() {
+    async fn multipart_upload_planned_for_another_size_fails_before_its_session() {
         let chunk = 8u64;
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("source.bin");
@@ -3747,8 +3752,10 @@ mod tests {
         )
         .await;
         assert_eq!(result.failed, 1, "{result:?}");
+        assert_eq!(executor.begin_calls.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(executor.part_calls.load(AtomicOrdering::SeqCst), 0);
         assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 0);
-        assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 1);
+        assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 0);
     }
 
     /// A multipart file that cannot be observed fails before its session or
@@ -3770,6 +3777,7 @@ mod tests {
         )
         .await;
         assert_eq!(result.failed, 1, "{result:?}");
+        assert_eq!(executor.begin_calls.load(AtomicOrdering::SeqCst), 0);
         assert_eq!(executor.part_calls.load(AtomicOrdering::SeqCst), 0);
         assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 0);
         assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 0);
