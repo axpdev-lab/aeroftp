@@ -134,6 +134,8 @@ interface ServerProfilesImportResult {
   secretsStored: number;
   // The account the file was compared with and the secrets restored into.
   userId: number | null;
+  // Stored Jottacloud profiles that brought their rotating refresh chain.
+  jottaChains: { id: string; name: string }[];
 }
 
 type MountManagerOpenOptions = {
@@ -15099,6 +15101,14 @@ const App: React.FC = () => {
           (t('settings.importSuccess') || 'Imported {count} servers').replace('{count}', String(result.servers.length)),
           result.skipped.length > 0 ? t('settings.duplicatesSkippedCount', { count: result.skipped.length }) : undefined,
         );
+        // Same warning as the import dialog: the chain rotates on every
+        // connection, so only one holder of it stays signed in.
+        if (result.jottaChains.length > 0) {
+          notify.warning(
+            t('settings.importServers') || 'Import Servers',
+            t('settings.importJottaChainWarning', { names: result.jottaChains.map(c => c.name).join(', ') }),
+          );
+        }
       },
     });
   }, [notify, t]);

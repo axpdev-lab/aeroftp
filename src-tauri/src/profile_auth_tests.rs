@@ -555,6 +555,8 @@ async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value)
         .await
         .unwrap();
     assert_eq!(overwrite.secrets_stored, 1);
+    // The report names the account the secrets went to: the GUI writes there.
+    assert_eq!(overwrite.user_id, active);
     assert_eq!(overwrite.servers[0]["importOutcome"], "overwritten");
     assert_eq!(overwrite.servers[0]["id"], source);
     assert_eq!(read(&stale_key).unwrap().as_str(), expected);
@@ -602,6 +604,11 @@ async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value)
     )
     .await
     .unwrap();
+    // Another profile's chain already sits in the legacy singleton: an import
+    // or a duplicate must not replace it.
+    store
+        .store("jottacloud_refresh", "other-profile-chain")
+        .unwrap();
     for dry_run in [true, false] {
         let jotta_report = crate::import_server_profiles_with_mode(
             jotta_file.to_string_lossy().into_owned(),
@@ -624,6 +631,10 @@ async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value)
         } else {
             // A real import wrote the chain to the copy: the warning is due.
             assert_eq!(chain.unwrap().as_str(), "synthetic-refresh-chain");
+            assert_eq!(
+                store.get("jottacloud_refresh").unwrap(),
+                "other-profile-chain"
+            );
             crate::purge_profile_secrets(copy.into(), Some("jottacloud".into()))
                 .await
                 .unwrap();

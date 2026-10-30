@@ -75544,7 +75544,6 @@ fn is_closed_output_panic(message: &str) -> bool {
 
 /// Parse the command line, apply the process-wide settings (`--tpslimit`,
 /// `--timeout`, ...) and run the command.
-/// Entry point: parse the command line, then run the one subcommand it names.
 #[tokio::main]
 async fn main() {
     // Serve multipart part buffers from mmap, so a freed part goes back to the

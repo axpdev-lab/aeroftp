@@ -18421,6 +18421,11 @@ struct RestoredImportSecrets {
     filen_api_key: std::collections::HashSet<String>,
 }
 
+/// True when the vault holds a non-empty value under `key`.
+fn vault_has(store: &credential_store::CredentialStore, key: &str) -> bool {
+    store.get(key).map(|v| !v.is_empty()).unwrap_or(false)
+}
+
 /// Write the secrets of `servers`, the profiles the import stores, into the
 /// active user's vault: each one's credential and the `provider_secrets` kept
 /// under its id. Audit v4.1.0: a profile of the file left out of `servers`
@@ -18518,7 +18523,11 @@ fn restore_imported_secrets(
                         // when two Jotta profiles share a device (same pre-#214
                         // singleton behaviour). Only the legacy owner owns that
                         // shared singleton; another user's chain stays private.
-                        if jotta_private_user.is_none() {
+                        // Written only while empty: another profile reconnecting
+                        // through the singleton keeps its own chain, and a
+                        // duplicate never replaces it.
+                        if jotta_private_user.is_none() && !vault_has(&store, "jottacloud_refresh")
+                        {
                             if let Err(e) = store.store("jottacloud_refresh", jotta_json) {
                                 cred_errors.push(format!("{} jotta singleton: {}", profile_id, e));
                             }
@@ -18532,28 +18541,24 @@ fn restore_imported_secrets(
                 // `collect_provider_secrets_for_server`). Written under the raw
                 // client-cred slug, which aliases Google Photos onto Google Drive
                 // and matches the key the GUI/edit form reads.
+                // These are global singletons every profile of the provider
+                // reads, so they are written only while empty (as the rclone
+                // import does): an imported or duplicated profile never swaps
+                // the app credentials another profile refreshes its tokens with.
                 if secrets.oauth_client_id.is_some() || secrets.oauth_client_secret.is_some() {
                     if let Some(cred_slug) = bridge_commands::oauth_client_cred_key(protocol) {
-                        if let Some(ref id) = secrets.oauth_client_id {
-                            if let Err(e) =
-                                store.store(&format!("oauth_{}_client_id", cred_slug), id)
-                            {
-                                cred_errors.push(format!("{} oauth client_id: {}", profile_id, e));
+                        for (name, value) in [
+                            ("client_id", &secrets.oauth_client_id),
+                            ("client_secret", &secrets.oauth_client_secret),
+                            ("region", &secrets.oauth_region),
+                        ] {
+                            let Some(value) = value else { continue };
+                            let key = format!("oauth_{cred_slug}_{name}");
+                            if vault_has(&store, &key) {
+                                continue;
                             }
-                        }
-                        if let Some(ref secret) = secrets.oauth_client_secret {
-                            if let Err(e) =
-                                store.store(&format!("oauth_{}_client_secret", cred_slug), secret)
-                            {
-                                cred_errors
-                                    .push(format!("{} oauth client_secret: {}", profile_id, e));
-                            }
-                        }
-                        if let Some(ref region) = secrets.oauth_region {
-                            if let Err(e) =
-                                store.store(&format!("oauth_{}_region", cred_slug), region)
-                            {
-                                cred_errors.push(format!("{} oauth region: {}", profile_id, e));
+                            if let Err(e) = store.store(&key, value) {
+                                cred_errors.push(format!("{profile_id} oauth {name}: {e}"));
                             }
                         }
                     }
@@ -18686,24 +18691,17 @@ fn restore_imported_secrets(
             }
         }
         None => {
-            // Vault not ready: credentials cannot be stored
-            let cred_count = servers.iter().filter(|s| s.credential.is_some()).count();
-            if cred_count > 0 {
-                cred_errors.push(format!(
-                    "Vault not ready, {} credentials not stored",
-                    cred_count
-                ));
-            }
-            let token_count = provider_secrets
-                .values()
-                .filter(|s| {
-                    s.oauth.is_some() || s.jotta_refresh.is_some() || s.profile_auth.is_some()
-                })
+            // Vault not ready (it locked after the profiles were read): the
+            // secrets of the profiles to store cannot be written, so the import
+            // stops here instead of storing profiles without them and counting
+            // secrets that are not in the vault.
+            let pending = servers
+                .iter()
+                .filter(|s| s.credential.is_some() || provider_secrets.contains_key(&s.id))
                 .count();
-            if token_count > 0 {
-                cred_errors.push(format!(
-                    "Vault not ready, {} provider tokens not stored",
-                    token_count
+            if pending > 0 {
+                return Err(format!(
+                    "Vault not ready: the secrets of {pending} profile(s) could not be restored, so nothing was imported; unlock the vault and import the file again"
                 ));
             }
         }

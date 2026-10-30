@@ -21,7 +21,9 @@ describe('Crypt bridge import', () => {
         expect(bridgeProfileKey(base)).not.toBe(bridgeProfileKey(crypt));
         const outcome = await commitImportedServers([crypt], new Set([bridgeProfileKey(base)]), onImport);
         expect(outcome).toEqual({ added: 1, updated: 0 });
-        expect(onImport).toHaveBeenCalledWith([crypt]);
+        // Bound to the account the list was read from (3), so a switch in
+        // between refuses the write instead of landing in another account.
+        expect(onImport).toHaveBeenCalledWith([crypt], new Set(), 3);
     });
 
     it('waits for a failed async import before restoring the profile list', async () => {
@@ -109,14 +111,16 @@ describe('the import callback and the commit helper together', () => {
         expect(merged.map(s => s.id)).toEqual([base.id, 'imported']);
     });
 
-    // `undefined` is no value: a field only this device has survives it,
-    // while an explicit null from the file still clears the stored value.
-    it('an overwrite keeps a stored field the import leaves undefined, and takes an explicit null', () => {
-        const stored: ServerProfile = { ...base, color: '#ff0000', providerId: 'koofr' };
-        const imported = { ...base, color: undefined, providerId: null } as unknown as ServerProfile;
-        const merged = overwriteProfile(stored, imported);
+    // null and undefined are no value (a field the file does not carry), so a
+    // stored field survives them; options merge key by key.
+    it('an overwrite keeps a stored field the import leaves null or undefined, and merges options', () => {
+        const stored = { ...base, color: '#ff0000', providerId: 'koofr', options: { verifyCert: false, timeout: 30 } } as unknown as ServerProfile;
+        const imported = { ...base, host: 'new.example', color: undefined, providerId: null, options: { timeout: 60, passive: null } } as unknown as ServerProfile;
+        const merged = overwriteProfile(stored, imported) as unknown as Record<string, unknown>;
+        expect(merged.host).toBe('new.example');
         expect(merged.color).toBe('#ff0000');
-        expect(merged.providerId).toBeNull();
+        expect(merged.providerId).toBe('koofr');
+        expect(merged.options).toEqual({ verifyCert: false, timeout: 60 });
     });
 
     // The twin must list the same flags as the Rust planner, or an overwrite

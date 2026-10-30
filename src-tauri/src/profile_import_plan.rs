@@ -160,7 +160,7 @@ pub fn plan_import(
 /// What the import refuses with when the active user is no longer the one whose
 /// profiles it compared the file with: the secrets would land in another
 /// account's partition.
-pub const NOT_THE_ACTIVE_USER: &str = "the active user is not the user whose profiles this import read (another window switched account, or --user names another account than the active one), so nothing was restored or written; switch to that account and run the import again";
+pub const NOT_THE_ACTIVE_USER: &str = "the active account is not the one whose profiles this import read, so nothing was restored or written; make that account the active one and run the import again";
 
 /// A stored profile named in a report: its id and the name the file gave it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -234,8 +234,23 @@ pub const STORED_SECRET_FLAGS: [&str; 6] = [
     "hasStoredAeroCryptConfig",
 ];
 
-/// The profile an overwrite stores: `existing` with every field of `imported`
-/// laid over it, so a field only this device knows survives, and each
+/// Lay the non-null fields of `source` over `target`. A null is no value: the
+/// redacted import writes every field, and one an older or a slimmer file does
+/// not carry arrives as null, which must not clear what this device stores.
+fn lay_values_over(
+    target: &mut serde_json::Map<String, serde_json::Value>,
+    source: &serde_json::Map<String, serde_json::Value>,
+) {
+    for (key, value) in source {
+        if !value.is_null() {
+            target.insert(key.clone(), value.clone());
+        }
+    }
+}
+
+/// The profile an overwrite stores: `existing` with every non-null field of
+/// `imported` laid over it, `options` merged key by key the same way, so a
+/// field or an option only this device has survives, and each
 /// [`STORED_SECRET_FLAGS`] flag set when either side has it.
 pub fn overwrite_profile(
     existing: &serde_json::Value,
@@ -243,8 +258,15 @@ pub fn overwrite_profile(
 ) -> serde_json::Value {
     let mut merged = existing.clone();
     if let (Some(target), Some(source)) = (merged.as_object_mut(), imported.as_object()) {
-        for (key, value) in source {
-            target.insert(key.clone(), value.clone());
+        let mut options = target
+            .get("options")
+            .and_then(|v| v.as_object())
+            .cloned()
+            .unwrap_or_default();
+        lay_values_over(target, source);
+        if let Some(imported_options) = source.get("options").and_then(|v| v.as_object()) {
+            lay_values_over(&mut options, imported_options);
+            target.insert("options".to_string(), serde_json::Value::Object(options));
         }
         for flag in STORED_SECRET_FLAGS {
             let set = |p: &serde_json::Value| p.get(flag).and_then(|v| v.as_bool()) == Some(true);
@@ -441,24 +463,34 @@ mod tests {
         assert_ne!(new_profile_id(), id);
     }
 
-    /// The file's fields win, a field only the device has stays, and a stored
-    /// secret flag stays set.
+    /// The file's fields win, a field only the device has (or one the file
+    /// leaves null) stays, options merge key by key, and a stored secret flag
+    /// stays set.
     #[test]
     fn overwrite_lays_the_file_over_the_profile_and_keeps_its_stored_flags() {
         let existing = json!({
-            "id": "srv_a", "name": "Old", "host": "old.example",
-            "localOnly": "kept", "hasStoredCredential": true,
-            "hasStoredAeroCryptPassword": false
+            "id": "srv_a", "name": "Old", "host": "old.example", "color": "#f00",
+            "providerId": "koofr", "localOnly": "kept", "hasStoredCredential": true,
+            "hasStoredAeroCryptPassword": false,
+            "options": {"verifyCert": false, "timeout": 30}
         });
         let imported = json!({
-            "id": "srv_a", "name": "New", "host": "new.example",
+            "id": "srv_a", "name": "New", "host": "new.example", "color": null,
             "providerId": null, "hasStoredCredential": false,
-            "hasStoredAeroCryptPassword": true
+            "hasStoredAeroCryptPassword": true,
+            "options": {"timeout": 60, "passive": null}
         });
         let merged = overwrite_profile(&existing, &imported);
         assert_eq!(merged["name"], "New");
         assert_eq!(merged["host"], "new.example");
-        assert_eq!(merged["providerId"], serde_json::Value::Null);
+        // A field the file does not carry (null) keeps the stored value.
+        assert_eq!(merged["color"], "#f00");
+        assert_eq!(merged["providerId"], "koofr");
+        // Options merge key by key: the file's value wins, a local one stays.
+        assert_eq!(
+            merged["options"],
+            json!({"verifyCert": false, "timeout": 60})
+        );
         assert_eq!(merged["localOnly"], "kept");
         assert_eq!(merged["hasStoredCredential"], true);
         assert_eq!(merged["hasStoredAeroCryptPassword"], true);

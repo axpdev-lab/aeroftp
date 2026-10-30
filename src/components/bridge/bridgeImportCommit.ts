@@ -30,19 +30,25 @@ export const STORED_SECRET_FLAGS = [
     'hasStoredAeroCryptConfig',
 ] as const;
 
+/** The entries of `source` that carry a value: neither null nor undefined. */
+const withValues = (source: object): Record<string, unknown> =>
+    Object.fromEntries(Object.entries(source).filter(([, value]) => value !== null && value !== undefined));
+
 /**
  * The profile an overwrite stores: `stored`, the record read in the same write,
- * with every field of `imported` laid over it, so a field only this device has
- * survives, and each secret-presence flag set when either side has it. Twin of
- * `overwrite_profile` in `src-tauri/src/profile_import_plan.rs`. A key whose
- * value is `undefined` is not a value (JSON has none), so it never clears the
- * stored one; an explicit `null` from the file does.
+ * with every field of `imported` that has a value laid over it, `options`
+ * merged key by key the same way, so a field or an option only this device has
+ * survives, and each secret-presence flag set when either side has it. A null
+ * or undefined field is no value: the redacted import writes every field, and
+ * one the file does not carry arrives as null. Twin of `overwrite_profile` in
+ * `src-tauri/src/profile_import_plan.rs`.
  */
 export function overwriteProfile(stored: ServerProfile, imported: ServerProfile): ServerProfile {
-    const merged: Record<string, unknown> = {
-        ...stored,
-        ...Object.fromEntries(Object.entries(imported).filter(([, value]) => value !== undefined)),
-    };
+    const merged: Record<string, unknown> = { ...stored, ...withValues(imported) };
+    const importedOptions = (imported as unknown as Record<string, unknown>).options;
+    if (importedOptions && typeof importedOptions === 'object') {
+        merged.options = { ...(stored.options ?? {}), ...withValues(importedOptions) };
+    }
     const has = (p: ServerProfile, flag: string) => (p as unknown as Record<string, unknown>)[flag] === true;
     for (const flag of STORED_SECRET_FLAGS) {
         if (has(stored, flag) || has(imported, flag)) merged[flag] = true;
@@ -76,15 +82,16 @@ export function overwriteProfile(stored: ServerProfile, imported: ServerProfile)
  *   imported profile is appended, as before; the bridge imports name none. A
  *   named profile whose id the vault no longer holds when this writes (deleted
  *   from another window in the meantime) is appended too, never dropped.
- * @param expectedUserId the account the import compared the file with and
- *   restored the secrets into (`userId` of a `.aeroftp` import report); the
- *   bridge imports pass none.
+ * @param expectedUserId the account the import was made for: the one a
+ *   `.aeroftp` import compared the file with and restored the secrets into
+ *   (`userId` of its report), or the one a bridge import removed the profiles
+ *   it updates from. Not checked when the vault has no accounts (the legacy
+ *   store reads no `userId`).
  * @throws when the vault's active account is not `expectedUserId` (switched
- *   from another window after the import restored its secrets), or when a
- *   profile to append has an id the vault already holds, or another profile of
- *   this same batch has: another window or process saved it after the import
- *   was planned, and appending would store two profiles of one id. Nothing is
- *   written then.
+ *   from another window during the import), or when a profile to append has an
+ *   id the vault already holds, or two profiles of this batch share one id:
+ *   another window or process saved it after the import was planned, and
+ *   storing it would leave two profiles of one id. Nothing is written then.
  */
 export async function appendImportedProfiles(
     newServers: ServerProfile[],
@@ -92,17 +99,17 @@ export async function appendImportedProfiles(
     expectedUserId?: number | null,
 ): Promise<ServerProfile[]> {
     const { profiles: current, userId } = await readSavedServerProfilesForWrite();
-    if (expectedUserId != null && userId !== expectedUserId) {
-        throw new Error('The active account changed after the import restored its passwords and tokens, so the profiles were not saved to the other account. Switch back and import the same file again.');
+    if (expectedUserId != null && userId !== undefined && userId !== expectedUserId) {
+        throw new Error('The active account changed during the import, so the profiles were not saved. Make the account you imported into the active one again and import the same file again.');
     }
     const currentIds = new Set(current.map(s => s.id));
-    const appendIds = new Set(currentIds);
+    const seen = new Set<string>();
     for (const server of newServers) {
-        if (replaceIds.has(server.id) && currentIds.has(server.id)) continue;
-        if (appendIds.has(server.id)) {
+        const replaces = replaceIds.has(server.id) && currentIds.has(server.id);
+        if (seen.has(server.id) || (!replaces && currentIds.has(server.id))) {
             throw new Error(`Profile ${server.id} was saved by another window during the import, so nothing was written.`);
         }
-        appendIds.add(server.id);
+        seen.add(server.id);
     }
     const replacing = new Map(newServers.filter(s => replaceIds.has(s.id)).map(s => [s.id, s]));
     const merged = [
@@ -124,7 +131,7 @@ export async function appendImportedProfiles(
 export async function commitImportedServers(
     selected: ServerProfile[],
     existingServerKeys: Set<string>,
-    onImport: (servers: ServerProfile[]) => void | Promise<void>,
+    onImport: (servers: ServerProfile[], replaceIds?: ReadonlySet<string>, expectedUserId?: number | null) => void | Promise<void>,
 ): Promise<CommitOutcome> {
     const key = bridgeProfileKey;
     const added = selected.filter(s => !existingServerKeys.has(key(s)));
@@ -155,7 +162,9 @@ export async function commitImportedServers(
             const filtered = backup.filter(s => !updatedKeys.has(key(s)));
             await storeSavedServerProfiles(filtered, false, backupUserId);
         }
-        await onImport([...updated, ...added]);
+        // Written for the account the removal above was made in: a switch in
+        // between refuses the write, and the rollback below restores that account.
+        await onImport([...updated, ...added], new Set(), backupUserId ?? null);
     } catch {
         // "No changes were made" is a claim about the vault, so it may only be
         // made when the rollback actually succeeded. A failed restore leaves the

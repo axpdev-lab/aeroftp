@@ -53,7 +53,7 @@ interface Props {
     direction: 'import' | 'export';
     servers: ServerProfile[];
     existingServerKeys: Set<string>;
-    onImport: (servers: ServerProfile[]) => void | Promise<void>;
+    onImport: (servers: ServerProfile[], replaceIds?: ReadonlySet<string>, expectedUserId?: number | null) => void | Promise<void>;
     onClose: () => void;
     onBack: () => void;
     /** A profile file dragged onto the import dialog and identified as
