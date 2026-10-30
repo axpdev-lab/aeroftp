@@ -835,7 +835,8 @@ pub struct RangeSourceFingerprint {
     size: u64,
     modified: Option<String>,
     validator: Option<String>,
-    /// The content's MD5, when the provider publishes one. For this run only:
+    /// The content's MD5 as hex, when the provider publishes one in that form.
+    /// For this run only:
     /// `differs_from` compares the entity tag it comes from, and a resume reads
     /// nothing from it, so it is not written next to a part.
     #[serde(skip)]
@@ -847,7 +848,11 @@ impl RangeSourceFingerprint {
         Self {
             size: entry.size,
             modified: entry.modified.clone(),
-            content_md5: entry.metadata.get("md5").cloned(),
+            content_md5: entry
+                .metadata
+                .get("md5")
+                .filter(|md5| md5.len() == 32 && md5.bytes().all(|b| b.is_ascii_hexdigit()))
+                .cloned(),
             validator: entry
                 .metadata
                 .get("etag")
@@ -1027,10 +1032,10 @@ pub fn unpinned_412(scope: &str, remote_path: &str) -> String {
     )
 }
 
-/// The refusal for a range read without `If-Match` the server answered `416`:
-/// the object is shorter than the windows were planned on, so it moved or the
-/// reading that gave its size was stale. One stream reads what is there.
-pub fn unpinned_416(scope: &str, remote_path: &str) -> String {
+/// The refusal for a window the server answered `416`: the object is shorter
+/// than the windows were planned on, so it moved or the reading that gave its
+/// size was stale. One stream reads what is there.
+pub fn range_past_the_end(scope: &str, remote_path: &str) -> String {
     parallel_refused(
         scope,
         remote_path,
@@ -2478,8 +2483,8 @@ pub(crate) async fn try_http_concurrent_range_download(
                         ProviderError::ParallelRefused(unpinned_412("http range", url.as_ref()))
                     });
                 }
-                if !send_pin && response.status() == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
-                    return Err(ProviderError::ParallelRefused(unpinned_416(
+                if response.status() == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+                    return Err(ProviderError::ParallelRefused(range_past_the_end(
                         "http range",
                         url.as_ref(),
                     )));

@@ -2182,7 +2182,10 @@ pub trait StorageProvider: Send + Sync {
     /// `If-Match`, and compare it and `size` with what each answer says about
     /// its object instead. A server that refuses `If-Match` on an object that
     /// did not change is read this way, so a window from another object is
-    /// still refused. Providers without a validator ignore this.
+    /// still refused. Providers without a validator ignore this; one that
+    /// overrides [`Self::set_range_validator`] to send it must override this.
+    /// Called on the workers of one file, which are clones of the session and
+    /// end with it, so the session itself stays pinned for the next file.
     fn read_ranges_unpinned(&mut self, _size: u64) {}
 
     /// Whether this provider supports delta sync (rsync-style block transfer)

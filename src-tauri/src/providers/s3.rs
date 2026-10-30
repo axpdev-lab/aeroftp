@@ -6730,9 +6730,12 @@ impl StorageProvider for S3Provider {
                 super::multi_thread::unpinned_412("S3 range read", path),
             )),
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(path.to_string())),
-            StatusCode::RANGE_NOT_SATISFIABLE if self.range_unpinned_size.is_some() => {
+            // A window of an object read in parallel: it is shorter than the
+            // plan, and one stream reads what is there. A lone range with no
+            // version behind it is a range this server cannot do.
+            StatusCode::RANGE_NOT_SATISFIABLE if validator.is_some() => {
                 Err(ProviderError::ParallelRefused(
-                    super::multi_thread::unpinned_416("S3 range read", path),
+                    super::multi_thread::range_past_the_end("S3 range read", path),
                 ))
             }
             StatusCode::RANGE_NOT_SATISFIABLE => Err(ProviderError::NotSupported(
@@ -7995,14 +7998,12 @@ async fn download_range_to_offset(
                 super::multi_thread::unpinned_412("S3 multi-thread", &key),
             ));
         }
-        StatusCode::RANGE_NOT_SATISFIABLE if !send_pin => {
-            return Err(ProviderError::ParallelRefused(
-                super::multi_thread::unpinned_416("S3 multi-thread", &key),
-            ));
-        }
+        // The object is shorter than the plan, with or without a pin: its
+        // caller takes one stream. This was a hard error for a download a
+        // single stream could finish.
         StatusCode::RANGE_NOT_SATISFIABLE => {
-            return Err(ProviderError::NotSupported(
-                "Server rejected Range request mid-flight (file may have changed)".to_string(),
+            return Err(ProviderError::ParallelRefused(
+                super::multi_thread::range_past_the_end("S3 multi-thread", &key),
             ));
         }
         other => {
@@ -12570,51 +12571,99 @@ mod tests {
         };
         use crate::transfer_domain::{TransferEntry, TransferOutcome};
         use crate::transfer_orchestrator::TransferExecutor;
-        let server = pin_server::start(PinMode::RefusedRestored).await;
-        let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
-        provider.connected = true;
-        let dir = tempfile::tempdir().expect("tempdir");
-        let out = dir.path().join("big.bin");
-        let capabilities = crate::transfer_dag::TransferCapabilities::default();
-        let executor = ProviderDownloadExecutor::new(
-            std::sync::Arc::new(crate::transfer_event_sink::NoopTransferSink),
-            std::sync::Arc::new(tokio::sync::Mutex::new(Some(
-                Box::new(provider) as Box<dyn StorageProvider>
-            ))),
-            crate::transfer_settings::ResolvedTransferSettings {
-                requested_max_concurrent: 1,
-                max_concurrent: 1,
-                retry_count: 0,
-                timeout_seconds: 30,
-                download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(4),
-                sftp_download_preset: None,
-            },
-            tokio_util::sync::CancellationToken::new(),
-            ProviderExecutorSessionModel::HttpClonePool {
-                provider_type: ProviderType::S3,
-                max_leases: 4,
-            },
-            capabilities,
-        );
-        let outcome = executor
-            .execute(TransferEntry {
-                id: "big".to_string(),
-                display_name: "big".to_string(),
-                remote_path: "/big.bin".to_string(),
-                local_path: out.to_string_lossy().to_string(),
-                size: OBJECT_SIZE as u64,
-                modified: None,
-            })
-            .await;
-        assert!(matches!(outcome, TransferOutcome::Success), "{outcome:?}");
-        assert!(server.refused() >= 2, "the segmented path ran first");
-        assert_eq!(executor.take_transfer_attempts("big"), Some(1));
-        assert_eq!(std::fs::read(&out).unwrap(), vec![9u8; OBJECT_SIZE]);
+        for mode in [
+            PinMode::RefusedRestored,
+            PinMode::RefusedWithStaleReadings,
+            PinMode::RefusedThenShrunk,
+        ] {
+            let server = pin_server::start(mode).await;
+            let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+            provider.connected = true;
+            let dir = tempfile::tempdir().expect("tempdir");
+            let out = dir.path().join("big.bin");
+            let capabilities = crate::transfer_dag::TransferCapabilities::default();
+            let executor = ProviderDownloadExecutor::new(
+                std::sync::Arc::new(crate::transfer_event_sink::NoopTransferSink),
+                std::sync::Arc::new(tokio::sync::Mutex::new(Some(
+                    Box::new(provider) as Box<dyn StorageProvider>
+                ))),
+                crate::transfer_settings::ResolvedTransferSettings {
+                    requested_max_concurrent: 1,
+                    max_concurrent: 1,
+                    retry_count: 0,
+                    timeout_seconds: 30,
+                    download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(
+                        4,
+                    ),
+                    sftp_download_preset: None,
+                },
+                tokio_util::sync::CancellationToken::new(),
+                ProviderExecutorSessionModel::HttpClonePool {
+                    provider_type: ProviderType::S3,
+                    max_leases: 4,
+                },
+                capabilities,
+            );
+            let outcome = executor
+                .execute(TransferEntry {
+                    id: "big".to_string(),
+                    display_name: "big".to_string(),
+                    remote_path: "/big.bin".to_string(),
+                    local_path: out.to_string_lossy().to_string(),
+                    size: OBJECT_SIZE as u64,
+                    modified: None,
+                })
+                .await;
+            assert!(
+                matches!(outcome, TransferOutcome::Success),
+                "{mode:?}: {outcome:?}"
+            );
+            assert!(
+                server.refused() >= 2,
+                "{mode:?}: the segmented path ran first"
+            );
+            assert_eq!(executor.take_transfer_attempts("big"), Some(1), "{mode:?}");
+            let whole = if mode == PinMode::RefusedThenShrunk {
+                OBJECT_SIZE - 1
+            } else {
+                OBJECT_SIZE
+            };
+            assert_eq!(std::fs::read(&out).unwrap(), vec![9u8; whole], "{mode:?}");
+        }
     }
 
-    /// A read without If-Match past the end of a shorter object is a refusal,
-    /// not a range the server cannot do: the caller takes one stream, whichever
-    /// path it came by.
+    /// The worker that replaces a failed one on the unpinned pass stays
+    /// unpinned. `replace_failed_range_worker` clones the worker and sets the
+    /// version on the clone, so `set_range_validator` must not clear the
+    /// unpinned state: a replacement would send `If-Match` again and the pass
+    /// would be refused by the same server.
+    #[tokio::test]
+    async fn a_replacement_worker_stays_unpinned() {
+        use super::super::multi_thread::pin_server::{self, PinMode, OBJECT_SIZE};
+        use super::super::multi_thread::replace_failed_range_worker;
+        let server = pin_server::start(PinMode::RefusedUnchanged).await;
+        let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+        provider.connected = true;
+        provider.set_range_validator(Some("v1".to_string()));
+        provider.read_ranges_unpinned(OBJECT_SIZE as u64);
+        let (mut next, _failure) = replace_failed_range_worker(
+            Box::new(provider),
+            Some("v1".to_string()),
+            ProviderError::Timeout,
+        )
+        .await;
+        let bytes = next
+            .read_range("/big.bin", 0, 1024)
+            .await
+            .expect("no If-Match goes out, so the server serves the range");
+        assert_eq!(bytes.len(), 1024);
+        assert_eq!(server.refused(), 0);
+        assert_eq!(server.unpinned(), 1);
+    }
+
+    /// A window past the end of a shorter object is a refusal, pinned or not:
+    /// the caller takes one stream, whichever path it came by. It is not a
+    /// refused pin, and a lone range with no version keeps its old meaning.
     #[tokio::test]
     async fn an_unpinned_range_past_the_end_is_a_refusal() {
         use super::super::multi_thread::pin_server::{self, PinMode, OBJECT_SIZE};
@@ -12629,8 +12678,7 @@ mod tests {
             .expect_err("the range lies past the end");
         assert!(matches!(err, ProviderError::ParallelRefused(_)), "{err}");
 
-        // The same answer to a pinned read stays what it was, and is not taken
-        // for a refused pin or for an object that shrank.
+        // Pinned: a refusal too, never read as a refused pin.
         let (addr, _gets) = spawn_range_server(OBJECT_SIZE, Some("\"v1\""), 416).await;
         let mut pinned = make_provider(Some(&format!("http://{addr}")));
         pinned.connected = true;
@@ -12639,6 +12687,15 @@ mod tests {
             .read_range("/big.bin", 0, 1024)
             .await
             .expect_err("a 416 fails the pinned read");
+        assert!(matches!(err, ProviderError::ParallelRefused(_)), "{err}");
+
+        let (addr, _gets) = spawn_range_server(OBJECT_SIZE, Some("\"v1\""), 416).await;
+        let mut lone = make_provider(Some(&format!("http://{addr}")));
+        lone.connected = true;
+        let err = lone
+            .read_range("/big.bin", 0, 1024)
+            .await
+            .expect_err("a 416 fails the lone read");
         assert!(matches!(err, ProviderError::NotSupported(_)), "{err}");
     }
 

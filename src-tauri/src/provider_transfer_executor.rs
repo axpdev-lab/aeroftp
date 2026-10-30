@@ -343,6 +343,9 @@ pub enum SegmentedDownloadError {
 const SOURCE_NOT_VERIFIED: &str =
     "the source changed or could not be verified after the segmented transfer";
 
+/// Why a run stopped on a window that was answered but not usable.
+const WINDOW_REFUSED: &str = "a ranged response or its version check was refused";
+
 impl SegmentedDownloadError {
     fn unavailable(message: String, reason: &'static str) -> Self {
         Self::Unavailable { message, reason }
@@ -367,16 +370,19 @@ impl SegmentedDownloadError {
         }
     }
 
-    /// Whether the object itself turned the windows down: it changed, or could
-    /// not be shown to be the one they read. Nothing else is wrong with the
-    /// provider, so one stream can read it on this same attempt, with or
-    /// without retries left.
+    /// Whether the object or the server turned the windows down: the object
+    /// changed or could not be shown to be the one they read, a window was
+    /// refused, or a pin was refused twice. No transport failed, so one stream
+    /// can read it on this same attempt, with or without retries left.
     fn refused_by_the_source(&self) -> bool {
+        use crate::providers::multi_thread::PinRefusal;
         matches!(
             self,
             Self::Unavailable { reason, .. }
                 if *reason == SOURCE_NOT_VERIFIED
-                    || *reason == crate::providers::multi_thread::PinRefusal::SourceChanged(String::new()).notice()
+                    || *reason == WINDOW_REFUSED
+                    || *reason == PinRefusal::SourceChanged(String::new()).notice()
+                    || *reason == PinRefusal::PinUnsupported.notice()
         )
     }
 
@@ -790,7 +796,7 @@ async fn run_provider_segmented_windows(
         )),
         Err(e) => {
             let reason = if matches!(e, ProviderError::ParallelRefused(_)) {
-                "a ranged response or its version check was refused"
+                WINDOW_REFUSED
             } else {
                 "a segmented range transfer failed"
             };
@@ -2493,15 +2499,16 @@ fn resumes_from_the_temporary(attempt: u32, supports_resume: bool, inplace: bool
 
 #[cfg(test)]
 mod tests {
-    /// Only a refusal by the object itself goes straight to one stream; a
-    /// failure of the transport keeps the attempt it has.
+    /// Only a refusal by the object or the server goes straight to one stream;
+    /// a failure of the transport keeps the attempt it has.
     #[test]
     fn only_the_object_refusing_the_windows_takes_one_stream_at_once() {
         use crate::providers::multi_thread::PinRefusal;
         let refused = |reason| SegmentedDownloadError::unavailable(String::new(), reason);
         assert!(refused(SOURCE_NOT_VERIFIED).refused_by_the_source());
         assert!(refused(PinRefusal::SourceChanged(String::new()).notice()).refused_by_the_source());
-        assert!(!refused(PinRefusal::PinUnsupported.notice()).refused_by_the_source());
+        assert!(refused(PinRefusal::PinUnsupported.notice()).refused_by_the_source());
+        assert!(refused(WINDOW_REFUSED).refused_by_the_source());
         assert!(!refused("a segmented range transfer failed").refused_by_the_source());
         assert!(!SegmentedDownloadError::Cancelled.refused_by_the_source());
     }
