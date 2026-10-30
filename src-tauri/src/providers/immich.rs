@@ -227,6 +227,8 @@ pub struct ImmichProvider {
 }
 
 impl ImmichProvider {
+    /// Build the provider and its HTTP client, with the limits of [`crate::providers::http_limits`].
+    /// Nothing is sent until the first request.
     pub fn new(config: ImmichConfig) -> Self {
         let mut headers = HeaderMap::new();
         if let Ok(val) = HeaderValue::from_str(&config.api_key) {

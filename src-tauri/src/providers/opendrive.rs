@@ -524,6 +524,8 @@ pub struct OpenDriveProvider {
 }
 
 impl OpenDriveProvider {
+    /// Build the provider and its HTTP client, with the limits of [`crate::providers::http_limits`].
+    /// Nothing is sent until the first request.
     pub fn new(config: OpenDriveConfig) -> Self {
         let host = if config.host.starts_with("http://") || config.host.starts_with("https://") {
             config.host.trim_end_matches('/').to_string()

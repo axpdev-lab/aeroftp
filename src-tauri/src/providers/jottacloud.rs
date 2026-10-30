@@ -170,6 +170,8 @@ pub struct JottacloudProvider {
 }
 
 impl JottacloudProvider {
+    /// Build the provider and its HTTP client, with the limits of [`crate::providers::http_limits`].
+    /// Nothing is sent until the first request.
     pub fn new(config: JottacloudConfig) -> Self {
         let client = reqwest::Client::builder()
             .user_agent(crate::providers::AEROFTP_USER_AGENT)

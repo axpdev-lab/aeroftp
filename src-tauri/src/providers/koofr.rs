@@ -303,6 +303,8 @@ pub struct KoofrProvider {
 const KOOFR_MULTI_THREAD_MAX_STREAMS: usize = 16;
 
 impl KoofrProvider {
+    /// Build the provider and its HTTP client, with the limits of [`crate::providers::http_limits`].
+    /// Nothing is sent until the first request.
     pub fn new(config: KoofrConfig) -> Self {
         let client = reqwest::Client::builder()
             .user_agent(crate::providers::AEROFTP_USER_AGENT)

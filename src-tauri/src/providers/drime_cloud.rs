@@ -319,6 +319,8 @@ impl Clone for DrimeCloudProvider {
 }
 
 impl DrimeCloudProvider {
+    /// Build the provider and its HTTP client, with the limits of [`crate::providers::http_limits`].
+    /// Nothing is sent until the first request.
     pub fn new(config: DrimeCloudConfig) -> Self {
         let mut default_headers = reqwest::header::HeaderMap::new();
         default_headers.insert(ACCEPT, HeaderValue::from_static("application/json"));

@@ -477,6 +477,8 @@ const DIR_CACHE_MAX_ENTRIES: usize = 10_000;
 const FILE_KEY_CACHE_MAX_ENTRIES: usize = 10_000;
 
 impl FilenProvider {
+    /// Build the provider and its HTTP client, with the limits of [`crate::providers::http_limits`].
+    /// Nothing is sent until the first request.
     pub fn new(config: FilenConfig) -> Self {
         let client = reqwest::Client::builder()
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
@@ -657,7 +659,7 @@ impl FilenProvider {
         let request = self
             .client
             .get(format!("{}/v3/user/settings", self.gateway_base()))
-            .timeout(SETTINGS_TIMEOUT)
+            .timeout(crate::providers::http_limits::limit(SETTINGS_TIMEOUT))
             .header(
                 "Authorization",
                 HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))

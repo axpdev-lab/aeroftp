@@ -279,7 +279,10 @@ pub async fn request_token(
 
     if !resp.status().is_success() {
         let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
+        let body = resp
+            .text()
+            .await
+            .unwrap_or_else(|e| sign_in_error("Read body", e));
         return Err(format!("Request token failed ({}): {}", status, body));
     }
 
@@ -297,6 +300,7 @@ fn sign_in_limit() -> std::time::Duration {
     super::http_limits::limit(super::http_limits::SIGN_IN_TIMEOUT)
 }
 
+/// The client of one sign-in step, bounded by [`sign_in_limit`].
 fn sign_in_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .user_agent(crate::providers::AEROFTP_USER_AGENT)
@@ -366,7 +370,10 @@ pub async fn access_token(
 
     if !resp.status().is_success() {
         let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
+        let body = resp
+            .text()
+            .await
+            .unwrap_or_else(|e| sign_in_error("Read body", e));
         return Err(format!("Access token failed ({}): {}", status, body));
     }
 
@@ -440,7 +447,7 @@ mod tests {
         let url = crate::providers::mute_http_endpoint();
         let outcome = wait_for_a_mute_server(request_token("key", "secret", &url, "oob")).await;
         let error = outcome.expect_err("no answer");
-        assert!(error.contains("did not answer"), "{error}");
+        assert!(error.contains("did not answer within 30 s"), "{error}");
     }
 
     #[tokio::test(start_paused = true)]
@@ -456,6 +463,6 @@ mod tests {
         ))
         .await;
         let error = outcome.expect_err("no answer");
-        assert!(error.contains("did not answer"), "{error}");
+        assert!(error.contains("did not answer within 30 s"), "{error}");
     }
 }

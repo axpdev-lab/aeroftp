@@ -616,6 +616,8 @@ fn rclone_root_folder_id_from_discovery(
 }
 
 impl ZohoWorkdriveProvider {
+    /// Build the provider and its HTTP client, with the limits of [`crate::providers::http_limits`].
+    /// Nothing is sent until the first request.
     pub fn new(config: ZohoWorkdriveConfig) -> Self {
         // Build HTTP client with default Accept header required by Zoho JSON:API
         let mut default_headers = reqwest::header::HeaderMap::new();

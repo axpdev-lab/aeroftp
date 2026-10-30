@@ -241,6 +241,7 @@ pub struct TwakePendingSignIn {
     pub auth_url: String,
 }
 
+/// The client of the Twake sign-in: 30 s to connect, 60 s for the whole reply.
 fn auth_http_client() -> reqwest::Client {
     reqwest::Client::builder()
         .user_agent(AEROFTP_USER_AGENT)
@@ -655,6 +656,8 @@ pub struct TwakeProvider {
 }
 
 impl TwakeProvider {
+    /// Build the provider and its HTTP client, with the limits of [`crate::providers::http_limits`].
+    /// Nothing is sent until the first request.
     pub fn new(config: TwakeConfig) -> Self {
         // Bearer is stripped by reqwest on a cross-origin redirect; keep every
         // redirect on the instance anyway, like the other self-hosted backends.

@@ -356,10 +356,12 @@ struct Cli {
     /// Seconds to wait for a server that does not answer
     ///
     /// HTTP providers: replaces the connect limit (30 s on most), the silence
-    /// allowed while a request is under way (30 minutes), the whole of a
-    /// WebDAV listing, stat, date change or new folder (2 minutes) and of an
-    /// OAuth sign-in or token step (30 s). Backblaze B2, Proton Drive and the
-    /// GitHub and Twake sign-ins keep their own limits. `site`: the whole
+    /// allowed while a request is under way (30 minutes), the whole of each
+    /// WebDAV listing, stat, date change or new folder request (2 minutes;
+    /// not the recursive `Depth: infinity` listing of `size` and `df --scan`,
+    /// which streams under the silence limit) and of an OAuth sign-in or token
+    /// step (30 s). Backblaze B2, Proton Drive and the GitHub and Twake
+    /// sign-ins keep their own limits. `site`: the whole
     /// reply to a command (default 60, up to 900). `audit`: each server
     /// (default 30). FTP and SFTP keep their own limits.
     #[arg(
@@ -7171,6 +7173,7 @@ fn first_command_index(args: &[String]) -> Option<usize> {
                 | "--user-passphrase"
                 | "--passphrase-file"
                 | "--master-password"
+                | "--timeout"
                 | "--limit-rate"
                 | "--bwlimit"
                 | "--include"
@@ -7217,6 +7220,7 @@ fn first_command_index(args: &[String]) -> Option<usize> {
                 | "--aimd-config"
                 | "--files-from"
                 | "--files-from-raw"
+                | "--max-depth"
         );
 
         idx += 1;
@@ -47037,6 +47041,16 @@ const SITE_REPLY_TIMEOUT_SECS: u64 = 60;
 /// How long an audit waits for each server when `--timeout` is not given.
 const AUDIT_SERVER_TIMEOUT_SECS: u64 = 30;
 
+/// The whole-reply wait of `site`: `--timeout`, or [`SITE_REPLY_TIMEOUT_SECS`].
+fn site_reply_timeout(cli: &Cli) -> u64 {
+    cli.timeout.unwrap_or(SITE_REPLY_TIMEOUT_SECS)
+}
+
+/// The per-server wait of `audit`: `--timeout`, or [`AUDIT_SERVER_TIMEOUT_SECS`].
+fn audit_server_timeout(cli: &Cli) -> u64 {
+    cli.timeout.unwrap_or(AUDIT_SERVER_TIMEOUT_SECS)
+}
+
 /// The options of `aeroftp-cli site` besides the command itself.
 struct SiteCliOptions<'a> {
     timeout_secs: u64,
@@ -69895,8 +69909,10 @@ fn unix_to_rfc3339(ts: i64) -> Option<String> {
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Run one `audit` command over the selected servers, each bounded by
+/// [`audit_server_timeout`].
 async fn cmd_audit(command: &AuditCommands, cli: &Cli, format: OutputFormat) -> i32 {
-    let timeout = cli.timeout.unwrap_or(AUDIT_SERVER_TIMEOUT_SECS);
+    let timeout = audit_server_timeout(cli);
     match command {
         AuditCommands::StorageQuota {
             servers,
@@ -75400,6 +75416,8 @@ fn is_closed_output_panic(message: &str) -> bool {
         && message.ends_with(&format!("(os error {})", libc::EPIPE))
 }
 
+/// Parse the command line, apply the process-wide settings (`--tpslimit`,
+/// `--timeout`, ...) and run the command.
 #[tokio::main]
 async fn main() {
     // Serve multipart part buffers from mmap, so a freed part goes back to the
@@ -76518,7 +76536,7 @@ async fn main() {
                     u,
                     &words,
                     SiteCliOptions {
-                        timeout_secs: cli.timeout.unwrap_or(SITE_REPLY_TIMEOUT_SECS),
+                        timeout_secs: site_reply_timeout(&cli),
                         secrets,
                         file: file.as_deref(),
                         strip_codes: *strip_codes,
@@ -81825,6 +81843,34 @@ mod tests {
         .is_empty());
     }
 
+    /// The list in `first_command_index` is written by hand: a global option
+    /// that takes a value and is missing from it makes the value read as the
+    /// command, so aliases and config defaults are looked up on it.
+    #[test]
+    fn first_command_index_knows_every_global_option_with_a_value() {
+        let options: Vec<String> = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                Cli::command()
+                    .get_arguments()
+                    .filter(|arg| arg.is_global_set() && arg.get_action().takes_values())
+                    .filter_map(|arg| arg.get_long().map(|long| format!("--{long}")))
+                    .collect()
+            })
+            .expect("spawn wide-stack thread")
+            .join()
+            .expect("read the global options");
+        assert!(options.iter().any(|option| option == "--timeout"));
+        for option in &options {
+            let args = argv(&[option.as_str(), "value", "ls"]);
+            assert_eq!(
+                first_command_index(&args),
+                Some(3),
+                "{option} takes a value"
+            );
+        }
+    }
+
     #[test]
     fn first_command_index_skips_global_options_with_values() {
         let args = argv(&[
@@ -83941,6 +83987,32 @@ mod tests {
                     None
                 );
                 assert!(Cli::try_parse_from(["aeroftp-cli", "--timeout", "0", "ls", "/"]).is_err());
+                // Each command's own default stands until the flag is given.
+                let site =
+                    Cli::try_parse_from(["aeroftp-cli", "site", "ftp://h", "WHO"]).expect("parses");
+                assert_eq!(site_reply_timeout(&site), 60);
+                let site = Cli::try_parse_from([
+                    "aeroftp-cli",
+                    "--timeout",
+                    "5",
+                    "site",
+                    "ftp://h",
+                    "WHO",
+                ])
+                .expect("parses");
+                assert_eq!(site_reply_timeout(&site), 5);
+                let audit =
+                    Cli::try_parse_from(["aeroftp-cli", "audit", "storage-quota"]).expect("parses");
+                assert_eq!(audit_server_timeout(&audit), 30);
+                let audit = Cli::try_parse_from([
+                    "aeroftp-cli",
+                    "audit",
+                    "storage-quota",
+                    "--timeout",
+                    "45",
+                ])
+                .expect("parses");
+                assert_eq!(audit_server_timeout(&audit), 45);
             })
             .expect("spawn wide-stack thread")
             .join()

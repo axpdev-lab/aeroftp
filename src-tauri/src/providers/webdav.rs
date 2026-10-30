@@ -1264,8 +1264,11 @@ impl WebDavProvider {
             </d:propfind>"#;
 
         let mut builder = self
-            .client
-            .request(webdav_methods::propfind(), &self.config.url)
+            .bounded(
+                self.client
+                    .request(webdav_methods::propfind(), &self.config.url),
+                &webdav_methods::propfind(),
+            )
             .header("Depth", "0")
             .header("Content-Type", "application/xml")
             .body(propfind_body);
@@ -1455,6 +1458,8 @@ impl WebDavProvider {
             .join("/")
     }
 
+    /// `builder` with the whole-request limit when `method` is a metadata
+    /// request, unchanged otherwise.
     fn bounded(
         &self,
         builder: reqwest::RequestBuilder,
@@ -1846,7 +1851,13 @@ impl WebDavProvider {
             }
         }
 
-        self.request(webdav_methods::propfind(), path)
+        // The replay keeps the first attempt's limit: none on `Depth: infinity`.
+        let replay = if depth == "infinity" {
+            self.request_any_length(webdav_methods::propfind(), path)
+        } else {
+            self.request(webdav_methods::propfind(), path)
+        };
+        replay
             .header("Depth", depth)
             .header("Content-Type", "application/xml")
             .body(body)
@@ -6374,7 +6385,11 @@ mod tests {
             Method::HEAD,
             Method::OPTIONS,
         ] {
-            assert!(limit_of(method.clone()).is_some(), "{method} has no limit");
+            assert_eq!(
+                limit_of(method.clone()),
+                Some(std::time::Duration::from_secs(120)),
+                "{method} has no limit, or another one"
+            );
         }
         for method in [
             Method::GET,

@@ -187,6 +187,8 @@ pub struct GooglePhotosProvider {
 }
 
 impl GooglePhotosProvider {
+    /// Build the provider and its HTTP client, with the limits of [`crate::providers::http_limits`].
+    /// Nothing is sent until the first request.
     pub fn new(config: GooglePhotosConfig) -> Self {
         Self {
             config,

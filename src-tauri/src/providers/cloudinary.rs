@@ -299,6 +299,8 @@ pub struct CloudinaryProvider {
 }
 
 impl CloudinaryProvider {
+    /// Build the provider and its HTTP client, with the limits of [`crate::providers::http_limits`].
+    /// Nothing is sent until the first request.
     pub fn new(config: CloudinaryConfig) -> Self {
         let current_path = normalize_path(config.initial_path.as_deref().unwrap_or(""));
         let client = reqwest::Client::builder()

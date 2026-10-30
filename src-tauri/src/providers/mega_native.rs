@@ -271,6 +271,8 @@ struct MegaApiClient {
 }
 
 impl MegaApiClient {
+    /// Build the API client, its HTTP limits taken from [`crate::providers::http_limits`].
+    /// Nothing is sent until the first request.
     fn new(session_id: Option<String>) -> Self {
         let client = reqwest::Client::builder()
             .user_agent(crate::providers::AEROFTP_USER_AGENT)

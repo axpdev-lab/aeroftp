@@ -33,6 +33,7 @@ pub fn limit(default: Duration) -> Duration {
     resolve(OVERRIDE.get().copied(), default)
 }
 
+/// [`limit`] without the process-wide state, so it can be tested.
 fn resolve(override_limit: Option<Duration>, default: Duration) -> Duration {
     override_limit.unwrap_or(default)
 }

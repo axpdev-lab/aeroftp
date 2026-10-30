@@ -70,6 +70,8 @@ impl<'c> oauth2::AsyncHttpClient<'c> for OAuth2HttpClient {
         >,
     >;
 
+    /// Send one token request, connect and whole reply bounded by the
+    /// sign-in limit.
     fn call(&'c self, request: oauth2::HttpRequest) -> Self::Future {
         Box::pin(async move {
             let limit = super::http_limits::limit(super::http_limits::SIGN_IN_TIMEOUT);
@@ -1670,7 +1672,7 @@ mod tests {
         .await
         .expect("the token request is still waiting for the server after an hour");
         let error = outcome.expect_err("no answer").to_string();
-        assert!(error.contains("did not answer"), "{error}");
+        assert!(error.contains("did not answer within 30 s"), "{error}");
     }
 
     #[test]
