@@ -979,6 +979,17 @@ pub fn unpinned_412(scope: &str, remote_path: &str) -> String {
     )
 }
 
+/// The refusal for a range read without `If-Match` the server answered `416`:
+/// the object is shorter than the windows were planned on, so it moved or the
+/// reading that gave its size was stale. One stream reads what is there.
+pub fn unpinned_416(scope: &str, remote_path: &str) -> String {
+    parallel_refused(
+        scope,
+        remote_path,
+        "the range lies past the end of the object, which is shorter than planned",
+    )
+}
+
 /// Whether two entity tags name the same version. The comparison is strong;
 /// only the quotes, which a header carries and a listing may drop, are not
 /// part of the tag.
@@ -2387,6 +2398,12 @@ pub(crate) async fn try_http_concurrent_range_download(
                         ProviderError::ParallelRefused(unpinned_412("http range", url.as_ref()))
                     });
                 }
+                if !send_pin && response.status() == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+                    return Err(ProviderError::ParallelRefused(unpinned_416(
+                        "http range",
+                        url.as_ref(),
+                    )));
+                }
                 if !send_pin && response.status() == reqwest::StatusCode::PARTIAL_CONTENT {
                     if let Some(refused) = unpinned_window_refusal(
                         "http range",
@@ -2791,6 +2808,9 @@ pub(crate) mod pin_server {
         /// Refused, with readings that stay put while the unpinned windows,
         /// which carry no entity tag, say they belong to a larger object.
         RefusedWithLargerWindows,
+        /// Refused, with readings that stay put while every unpinned window
+        /// is answered `416`: an object shorter than the plan.
+        RefusedThenShrunk,
         /// Refused, and every reading after a refusal fails (`404`, which no
         /// HTTP retry repeats, so the count is the readings' own).
         RefusedThenUnreadable,
@@ -2904,6 +2924,12 @@ pub(crate) mod pin_server {
                         // per window would show in the count.
                         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                         return respond(StatusCode::PRECONDITION_FAILED, None)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    if mode == PinMode::RefusedThenShrunk && range.is_some() && !probe {
+                        unpinned.fetch_add(1, Ordering::SeqCst);
+                        return respond(StatusCode::RANGE_NOT_SATISFIABLE, None)
                             .body(axum::body::Body::empty())
                             .unwrap();
                     }
@@ -6121,6 +6147,7 @@ mod tests {
         for mode in [
             pin_server::PinMode::RefusedWithStaleReadings,
             pin_server::PinMode::RefusedWithLargerWindows,
+            pin_server::PinMode::RefusedThenShrunk,
         ] {
             let (attempt, warnings, published, server) = http_range_against(mode).await;
             assert!(

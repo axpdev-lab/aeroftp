@@ -67101,6 +67101,8 @@ mod hashsum_digest_tests {
         pub(super) replacement: Vec<u8>,
         pub(super) whole_gets: Arc<std::sync::atomic::AtomicUsize>,
         ranged_gets: Arc<std::sync::atomic::AtomicUsize>,
+        /// Ranged GETs that carried no `If-Match`.
+        unpinned_gets: Arc<std::sync::atomic::AtomicUsize>,
         pub(super) heads: Arc<std::sync::atomic::AtomicUsize>,
         server: tokio::task::JoinHandle<()>,
     }
@@ -67141,18 +67143,21 @@ mod hashsum_digest_tests {
         let replaced = Arc::new(replacement.clone());
         let whole_gets = Arc::new(AtomicUsize::new(0));
         let ranged_gets = Arc::new(AtomicUsize::new(0));
+        let unpinned_gets = Arc::new(AtomicUsize::new(0));
         let heads = Arc::new(AtomicUsize::new(0));
         let refused = Arc::new(AtomicUsize::new(0));
         let lost_heads = Arc::new(AtomicUsize::new(0));
         let app = axum::Router::new().fallback(axum::routing::any({
             let whole_gets = whole_gets.clone();
             let ranged_gets = ranged_gets.clone();
+            let unpinned_gets = unpinned_gets.clone();
             let heads = heads.clone();
             move |request: axum::extract::Request| {
                 let served = served.clone();
                 let replaced = replaced.clone();
                 let whole_gets = whole_gets.clone();
                 let ranged_gets = ranged_gets.clone();
+                let unpinned_gets = unpinned_gets.clone();
                 let heads = heads.clone();
                 let refused = refused.clone();
                 let lost_heads = lost_heads.clone();
@@ -67192,6 +67197,9 @@ mod hashsum_digest_tests {
                     assert_eq!(request.method(), Method::GET);
                     if let Some(range) = request.headers().get("range") {
                         ranged_gets.fetch_add(1, Ordering::SeqCst);
+                        if !request.headers().contains_key("if-match") {
+                            unpinned_gets.fetch_add(1, Ordering::SeqCst);
+                        }
                         // Modes 4, 5 and 6 refuse every range pinned with
                         // If-Match and serve the others.
                         if matches!(range_mode, 4..=7) && request.headers().contains_key("if-match")
@@ -67291,6 +67299,7 @@ mod hashsum_digest_tests {
             replacement,
             whole_gets,
             ranged_gets,
+            unpinned_gets,
             heads,
             server,
         }
@@ -67457,6 +67466,7 @@ mod hashsum_digest_tests {
         );
         assert_eq!(size, fixture.body.len() as u64);
         assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 0);
+        assert!(fixture.unpinned_gets.load(Ordering::SeqCst) > 0);
         assert!(warnings.take().is_empty());
         // The reading before the windows, the diagnosis, the reading after.
         assert_eq!(fixture.heads.load(Ordering::SeqCst), 3);
@@ -67520,6 +67530,7 @@ mod hashsum_digest_tests {
             ))
             .await
             .expect("the whole download hashes the unchanged object");
+        assert_eq!(fixture.unpinned_gets.load(Ordering::SeqCst), 0);
         assert_eq!(
             hash,
             format!(

@@ -6710,6 +6710,11 @@ impl StorageProvider for S3Provider {
                 super::multi_thread::unpinned_412("S3 range read", path),
             )),
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(path.to_string())),
+            StatusCode::RANGE_NOT_SATISFIABLE if self.range_unpinned_size.is_some() => {
+                Err(ProviderError::ParallelRefused(
+                    super::multi_thread::unpinned_416("S3 range read", path),
+                ))
+            }
             StatusCode::RANGE_NOT_SATISFIABLE => Err(ProviderError::NotSupported(
                 "Server does not support range requests".to_string(),
             )),
@@ -7968,6 +7973,11 @@ async fn download_range_to_offset(
         StatusCode::PRECONDITION_FAILED => {
             return Err(ProviderError::ParallelRefused(
                 super::multi_thread::unpinned_412("S3 multi-thread", &key),
+            ));
+        }
+        StatusCode::RANGE_NOT_SATISFIABLE if !send_pin => {
+            return Err(ProviderError::ParallelRefused(
+                super::multi_thread::unpinned_416("S3 multi-thread", &key),
             ));
         }
         StatusCode::RANGE_NOT_SATISFIABLE => {
@@ -12424,6 +12434,7 @@ mod tests {
         for mode in [
             PinMode::RefusedWithStaleReadings,
             PinMode::RefusedWithLargerWindows,
+            PinMode::RefusedThenShrunk,
         ] {
             let (messages, bytes, _progress, server) = download_against_pin_server(mode).await;
             assert_eq!(messages.len(), 1, "{mode:?}: {messages:?}");
@@ -12431,6 +12442,36 @@ mod tests {
             assert_eq!(bytes, vec![9u8; OBJECT_SIZE], "{mode:?}: one whole version");
             assert!(server.unpinned() >= 1, "{mode:?}");
         }
+    }
+
+    /// A read without If-Match past the end of a shorter object is a refusal,
+    /// not a range the server cannot do: the caller takes one stream, whichever
+    /// path it came by.
+    #[tokio::test]
+    async fn an_unpinned_range_past_the_end_is_a_refusal() {
+        use super::super::multi_thread::pin_server::{self, PinMode, OBJECT_SIZE};
+        let server = pin_server::start(PinMode::RefusedThenShrunk).await;
+        let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+        provider.connected = true;
+        provider.set_range_validator(Some("v1".to_string()));
+        provider.read_ranges_unpinned(OBJECT_SIZE as u64);
+        let err = provider
+            .read_range("/big.bin", 0, 1024)
+            .await
+            .expect_err("the range lies past the end");
+        assert!(matches!(err, ProviderError::ParallelRefused(_)), "{err}");
+
+        // The same answer to a pinned read stays what it was, and is not taken
+        // for a refused pin or for an object that shrank.
+        let (addr, _gets) = spawn_range_server(OBJECT_SIZE, Some("\"v1\""), 416).await;
+        let mut pinned = make_provider(Some(&format!("http://{addr}")));
+        pinned.connected = true;
+        pinned.set_range_validator(Some("v1".to_string()));
+        let err = pinned
+            .read_range("/big.bin", 0, 1024)
+            .await
+            .expect_err("a 416 fails the pinned read");
+        assert!(matches!(err, ProviderError::NotSupported(_)), "{err}");
     }
 
     /// The windows were cut for the size the first HEAD gave. A HEAD after
