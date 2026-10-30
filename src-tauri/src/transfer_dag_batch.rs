@@ -845,19 +845,38 @@ fn batch_streaming_config(
     StreamingConfig::for_file_slots(file_slots, config.max_backlog).with_admission(config.schedule)
 }
 
-/// Execute one admitted batch file: expand its shaped subgraph template, bind
-/// the shared node runners to this single entry, and run it through
-/// [`execute_dag`] with the batch-wide resource manager, AIMD controller, and
-/// session pool. The subgraph is dropped when this returns, so peak resident
-/// nodes stay `O(active_file_cap * nodes_per_file)`.
-///
-/// Behavioral parity with the former single-graph path is preserved because the
-/// per-node work is the same `run_whole_file_node` / `run_multipart_part_node` /
-/// `run_multipart_commit_node`, bound here to a one-element entry slice.
-///
-/// Returns this file's metrics (executor timing plus runner-attested bytes and
-/// retries) so the streaming frontier can fold them into the job-level total;
-/// a file that never reaches the graph contributes zero.
+/// Observe the local file of a multipart upload at admission, before any part
+/// is read. The parts are cut from the scan's `entry.size`, so a file that no
+/// longer has that size (grown or shrunk since the scan) is refused rather than
+/// uploaded truncated or padded; the next scan plans it again.
+async fn observe_multipart_source(
+    entry: &TransferEntry,
+) -> Result<crate::providers::upload_source::UploadSource, TransferFailure> {
+    let refused = |message: String| TransferFailure {
+        kind: TransferFailureKind::LocalIo,
+        message,
+        retryable: false,
+        retry_after_secs: None,
+    };
+    let source = crate::providers::upload_source::UploadSource::observe(&entry.local_path)
+        .await
+        .map_err(|e| {
+            refused(format!(
+                "multipart upload: {} cannot be read before its parts are: {e}",
+                entry.local_path
+            ))
+        })?;
+    if source.size() != entry.size {
+        return Err(refused(format!(
+            "multipart upload: {} has {} bytes but its parts were planned for {} bytes; nothing was sent",
+            entry.local_path,
+            source.size(),
+            entry.size
+        )));
+    }
+    Ok(source)
+}
+
 /// Account `entry` as failed with `failure` before its subgraph runs: the
 /// executor reports the file error and the batch progress counts one failure.
 async fn fail_before_graph<E>(
@@ -879,6 +898,19 @@ async fn fail_before_graph<E>(
     }
 }
 
+/// Execute one admitted batch file: expand its shaped subgraph template, bind
+/// the shared node runners to this single entry, and run it through
+/// [`execute_dag`] with the batch-wide resource manager, AIMD controller, and
+/// session pool. The subgraph is dropped when this returns, so peak resident
+/// nodes stay `O(active_file_cap * nodes_per_file)`.
+///
+/// Behavioral parity with the former single-graph path is preserved because the
+/// per-node work is the same `run_whole_file_node` / `run_multipart_part_node` /
+/// `run_multipart_commit_node`, bound here to a one-element entry slice.
+///
+/// Returns this file's metrics (executor timing plus runner-attested bytes and
+/// retries) so the streaming frontier can fold them into the job-level total;
+/// a file that never reaches the graph contributes zero.
 async fn run_one_batch_file<E>(
     item: TransferWorkItem,
     mut admission: FileAdmission,
@@ -915,27 +947,9 @@ where
     // parts are cut for, fails here, before a session or a part is spent on
     // it.
     let multipart_source = if is_multipart {
-        let refused = |message: String| TransferFailure {
-            kind: TransferFailureKind::LocalIo,
-            message,
-            retryable: false,
-            retry_after_secs: None,
-        };
-        match crate::providers::upload_source::UploadSource::observe(&entry.local_path).await {
-            Ok(source) if source.size() == entry.size => Some(source),
-            Ok(source) => {
-                let failure = refused(format!(
-                    "multipart upload: the parts were planned for {} bytes but the local file has {}; nothing was sent",
-                    entry.size,
-                    source.size()
-                ));
-                fail_before_graph(&ctx, &entry, failure).await;
-                return TransferDagMetrics::default();
-            }
-            Err(e) => {
-                let failure = refused(format!(
-                    "multipart upload: the local file cannot be read before its parts are: {e}"
-                ));
+        match observe_multipart_source(&entry).await {
+            Ok(source) => Some(source),
+            Err(failure) => {
                 fail_before_graph(&ctx, &entry, failure).await;
                 return TransferDagMetrics::default();
             }
@@ -967,6 +981,7 @@ where
                 .enumerate()
                 .map(|(idx, node_id)| (*node_id, (idx + 1) as u32))
                 .collect();
+            debug_assert_eq!(layout.total_size, source.size());
             let state = MultipartFileState::new(layout, node_to_part);
             node_to_entry.insert(shaped.acquire, 0);
             node_to_entry.insert(shaped.commit, 0);
@@ -1806,19 +1821,6 @@ where
     node_outcome
 }
 
-/// Refuse to complete a multipart upload whose parts may not come from one
-/// version of the local file: it no longer matches the observation taken at
-/// admission, before the parts were read (which also checked that its size is
-/// the one the parts were cut for).
-async fn check_multipart_source(
-    source: &crate::providers::upload_source::UploadSource,
-) -> Result<(), String> {
-    source
-        .ensure_unchanged("multipart upload")
-        .await
-        .map_err(|e| e.to_string())
-}
-
 /// Map a batch file terminal into the DAG node outcome (DAG-P1-04).
 ///
 /// Success and skip remain honest healthy completions. Failures — including
@@ -1870,7 +1872,10 @@ where
         return TransferOutcome::Failed(failure);
     }
 
-    if let Err(message) = check_multipart_source(&runtime.source).await {
+    // The parts were read at their offsets concurrently: refuse the complete
+    // if the file no longer matches its admission observation.
+    if let Err(changed) = runtime.source.ensure_unchanged("multipart upload").await {
+        let message = changed.to_string();
         let failure = TransferFailure {
             kind: TransferFailureKind::LocalIo,
             message,
@@ -2067,6 +2072,8 @@ mod tests {
         /// (the concurrency tests rendezvous here; a serialized scheduler
         /// deadlocks the barrier and the test's timeout fails).
         rendezvous: Option<Arc<Barrier>>,
+        /// Every file error the batch reported, in order.
+        file_errors: StdMutex<Vec<TransferFailure>>,
     }
 
     impl MockExecutor {
@@ -2083,6 +2090,7 @@ mod tests {
                 capabilities: TransferCapabilities::default(),
                 transfer_calls: AtomicUsize::new(0),
                 multipart_wire: false,
+                file_errors: StdMutex::new(Vec::new()),
                 begin_calls: AtomicUsize::new(0),
                 part_calls: AtomicUsize::new(0),
                 complete_calls: AtomicUsize::new(0),
@@ -2246,6 +2254,10 @@ mod tests {
                 "mock",
                 self.session_capacity.min(max_concurrent).max(1),
             )
+        }
+
+        fn multipart_emit_file_error(&self, _entry: &TransferEntry, failure: &TransferFailure) {
+            self.file_errors.lock().unwrap().push(failure.clone());
         }
 
         fn supports_multipart_wire(&self) -> bool {
@@ -3728,38 +3740,52 @@ mod tests {
     }
 
     /// Parts cut for a size the file no longer has when the upload starts are
-    /// never sent: they would cover a truncated or padded file, so the file
-    /// fails at admission, before a session is opened.
+    /// never sent, whether the file grew (they would upload it truncated) or
+    /// shrank (they would read past its end): the file fails at admission,
+    /// before its multipart session is begun.
     #[tokio::test]
     async fn multipart_upload_planned_for_another_size_fails_before_its_session() {
-        let chunk = 8u64;
-        let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("source.bin");
-        std::fs::write(&path, vec![b'A'; 30]).expect("write");
-        // The scan saw 24 bytes; the file has 30 by the time the upload runs.
-        let entries = vec![entry_with_local("m", 24, path.to_str().unwrap())];
-        let executor = Arc::new(
-            MockExecutor::new(4)
-                .with_capabilities(multipart_caps(1, chunk))
-                .with_multipart_wire(),
-        );
-        let result = execute_batch_dag(
-            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
-            upload_batch(entries, 4),
-            Arc::clone(&executor),
-            Arc::new(AtomicBool::new(false)),
-            None,
-        )
-        .await;
-        assert_eq!(result.failed, 1, "{result:?}");
-        assert_eq!(executor.begin_calls.load(AtomicOrdering::SeqCst), 0);
-        assert_eq!(executor.part_calls.load(AtomicOrdering::SeqCst), 0);
-        assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 0);
-        assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 0);
+        for actual in [30usize, 16] {
+            let chunk = 8u64;
+            let dir = tempfile::tempdir().expect("tempdir");
+            let path = dir.path().join("source.bin");
+            std::fs::write(&path, vec![b'A'; actual]).expect("write");
+            // The scan saw 24 bytes; the file has `actual` by the time the upload runs.
+            let entries = vec![entry_with_local("m", 24, path.to_str().unwrap())];
+            let executor = Arc::new(
+                MockExecutor::new(4)
+                    .with_capabilities(multipart_caps(1, chunk))
+                    .with_multipart_wire(),
+            );
+            let result = execute_batch_dag(
+                Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+                upload_batch(entries, 4),
+                Arc::clone(&executor),
+                Arc::new(AtomicBool::new(false)),
+                None,
+            )
+            .await;
+            assert_eq!(result.failed, 1, "{result:?}");
+            assert_eq!(executor.begin_calls.load(AtomicOrdering::SeqCst), 0);
+            assert_eq!(executor.part_calls.load(AtomicOrdering::SeqCst), 0);
+            assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 0);
+            assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 0);
+            let errors = executor.file_errors.lock().unwrap();
+            assert_eq!(errors.len(), 1, "{errors:?}");
+            assert_eq!(errors[0].kind, TransferFailureKind::LocalIo);
+            assert!(
+                errors[0].message.contains(&format!(
+                    "has {actual} bytes but its parts were planned for 24 bytes"
+                )),
+                "{}",
+                errors[0].message
+            );
+        }
     }
 
-    /// A multipart file that cannot be observed fails before its session or
-    /// any part is spent on it: the complete could never be checked.
+    /// A multipart file that cannot be observed fails before its multipart
+    /// session is begun or any part is read: the complete could never be
+    /// checked.
     #[tokio::test]
     async fn multipart_upload_of_a_file_that_cannot_be_observed_fails_before_its_parts() {
         let entries = vec![entry("missing", 24)];
@@ -3781,6 +3807,16 @@ mod tests {
         assert_eq!(executor.part_calls.load(AtomicOrdering::SeqCst), 0);
         assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 0);
         assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 0);
+        let errors = executor.file_errors.lock().unwrap();
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].kind, TransferFailureKind::LocalIo);
+        assert!(
+            errors[0]
+                .message
+                .contains("cannot be read before its parts are"),
+            "{}",
+            errors[0].message
+        );
     }
 
     #[tokio::test]

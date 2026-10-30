@@ -54,8 +54,9 @@ impl UploadSource {
         })
     }
 
-    /// The size the file had when it was observed: the size an upload must be
-    /// planned for, since a size read earlier may describe another version.
+    /// The size the file had when it was observed. An upload either plans
+    /// from it or refuses a plan made from a size read earlier, which may
+    /// describe another version of the file.
     pub fn size(&self) -> u64 {
         self.size
     }
