@@ -30,25 +30,21 @@ export const STORED_SECRET_FLAGS = [
     'hasStoredAeroCryptConfig',
 ] as const;
 
-/** The entries of `source` that carry a value: neither null nor undefined. */
-const withValues = (source: object): Record<string, unknown> =>
-    Object.fromEntries(Object.entries(source).filter(([, value]) => value !== null && value !== undefined));
-
 /**
  * The profile an overwrite stores: `stored`, the record read in the same write,
- * with every field of `imported` that has a value laid over it, `options`
- * merged key by key the same way, so a field or an option only this device has
- * survives, and each secret-presence flag set when either side has it. A null
- * or undefined field is no value: the redacted import writes every field, and
- * one the file does not carry arrives as null. Twin of `overwrite_profile` in
- * `src-tauri/src/profile_import_plan.rs`.
+ * with every field of `imported` laid over it, and each secret-presence flag
+ * set when either side has it. The file is a whole snapshot of the profile's
+ * configuration: a null field and the `options` object are the backup's values
+ * (a Crypt overlay turned off on the source device stays off), so they replace
+ * the stored ones; a field the file does not carry, one only this device has,
+ * survives. `undefined` is not a value (JSON has none) and never clears one.
+ * Twin of `overwrite_profile` in `src-tauri/src/profile_import_plan.rs`.
  */
 export function overwriteProfile(stored: ServerProfile, imported: ServerProfile): ServerProfile {
-    const merged: Record<string, unknown> = { ...stored, ...withValues(imported) };
-    const importedOptions = (imported as unknown as Record<string, unknown>).options;
-    if (importedOptions && typeof importedOptions === 'object') {
-        merged.options = { ...(stored.options ?? {}), ...withValues(importedOptions) };
-    }
+    const merged: Record<string, unknown> = {
+        ...stored,
+        ...Object.fromEntries(Object.entries(imported).filter(([, value]) => value !== undefined)),
+    };
     const has = (p: ServerProfile, flag: string) => (p as unknown as Record<string, unknown>)[flag] === true;
     for (const flag of STORED_SECRET_FLAGS) {
         if (has(stored, flag) || has(imported, flag)) merged[flag] = true;
@@ -85,8 +81,8 @@ export function overwriteProfile(stored: ServerProfile, imported: ServerProfile)
  * @param expectedUserId the account the import was made for: the one a
  *   `.aeroftp` import compared the file with and restored the secrets into
  *   (`userId` of its report), or the one a bridge import removed the profiles
- *   it updates from. Not checked when the vault has no accounts (the legacy
- *   store reads no `userId`).
+ *   it updates from. A vault that reads no account (the legacy store) is not
+ *   that account either, and is refused too.
  * @throws when the vault's active account is not `expectedUserId` (switched
  *   from another window during the import), or when a profile to append has an
  *   id the vault already holds, or two profiles of this batch share one id:
@@ -99,14 +95,16 @@ export async function appendImportedProfiles(
     expectedUserId?: number | null,
 ): Promise<ServerProfile[]> {
     const { profiles: current, userId } = await readSavedServerProfilesForWrite();
-    if (expectedUserId != null && userId !== undefined && userId !== expectedUserId) {
+    if (expectedUserId != null && userId !== expectedUserId) {
         throw new Error('The active account changed during the import, so the profiles were not saved. Make the account you imported into the active one again and import the same file again.');
     }
     const currentIds = new Set(current.map(s => s.id));
     const seen = new Set<string>();
     for (const server of newServers) {
-        const replaces = replaceIds.has(server.id) && currentIds.has(server.id);
-        if (seen.has(server.id) || (!replaces && currentIds.has(server.id))) {
+        if (seen.has(server.id)) {
+            throw new Error(`Two profiles of this import share the id ${server.id}, so nothing was written.`);
+        }
+        if (!replaceIds.has(server.id) && currentIds.has(server.id)) {
             throw new Error(`Profile ${server.id} was saved by another window during the import, so nothing was written.`);
         }
         seen.add(server.id);

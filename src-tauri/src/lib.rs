@@ -18421,15 +18421,29 @@ struct RestoredImportSecrets {
     filen_api_key: std::collections::HashSet<String>,
 }
 
-/// True when the vault holds a non-empty value under `key`.
-fn vault_has(store: &credential_store::CredentialStore, key: &str) -> bool {
-    store.get(key).map(|v| !v.is_empty()).unwrap_or(false)
+/// The non-empty value the vault holds under `key`, `None` when it holds none.
+/// An error means it could not be read: a caller then leaves a shared key alone
+/// rather than guess that it is free.
+fn vault_value(
+    store: &credential_store::CredentialStore,
+    key: &str,
+) -> Result<Option<String>, String> {
+    match store.get(key) {
+        Ok(value) if !value.is_empty() => Ok(Some(value)),
+        Ok(_) | Err(credential_store::CredentialError::NotFound(_)) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 /// Write the secrets of `servers`, the profiles the import stores, into the
 /// active user's vault: each one's credential and the `provider_secrets` kept
 /// under its id. Audit v4.1.0: a profile of the file left out of `servers`
 /// (skipped) writes nothing, so a stored profile it matches keeps its secrets.
+/// The provider-wide singletons (an OAuth app's credentials, the legacy
+/// Jottacloud chain) are written only when empty or already this profile's or
+/// app's own ([`profile_import_plan::may_write_shared`]), never over another
+/// profile's. Fails, writing nothing, when the vault is not open and a profile
+/// to store carries secrets.
 fn restore_imported_secrets(
     servers: &[profile_export::ServerProfileExport],
     provider_secrets: &std::collections::HashMap<String, profile_export::ProviderSecrets>,
@@ -18507,6 +18521,9 @@ fn restore_imported_secrets(
                 if let Some(ref jotta_json) = secrets.jotta_refresh {
                     if protocol == "jottacloud" {
                         let key = format!("jottacloud_refresh_{}", profile_id);
+                        // Read before it is replaced: the singleton is this
+                        // profile's own when it holds this same chain.
+                        let own = vault_value(&store, &key);
                         if let Err(e) = user_partitions::store_active_credential_typed_dual(
                             &store,
                             &key,
@@ -18523,13 +18540,28 @@ fn restore_imported_secrets(
                         // when two Jotta profiles share a device (same pre-#214
                         // singleton behaviour). Only the legacy owner owns that
                         // shared singleton; another user's chain stays private.
-                        // Written only while empty: another profile reconnecting
-                        // through the singleton keeps its own chain, and a
-                        // duplicate never replaces it.
-                        if jotta_private_user.is_none() && !vault_has(&store, "jottacloud_refresh")
-                        {
-                            if let Err(e) = store.store("jottacloud_refresh", jotta_json) {
-                                cred_errors.push(format!("{} jotta singleton: {}", profile_id, e));
+                        // Written only while empty or still this profile's own
+                        // chain: another profile reconnecting through the
+                        // singleton keeps its chain, and a duplicate never takes it.
+                        if jotta_private_user.is_none() {
+                            match (vault_value(&store, "jottacloud_refresh"), own) {
+                                (Ok(stored), Ok(own))
+                                    if profile_import_plan::may_write_shared(
+                                        stored.as_deref(),
+                                        own.as_deref(),
+                                    ) =>
+                                {
+                                    if let Err(e) = store.store("jottacloud_refresh", jotta_json) {
+                                        cred_errors
+                                            .push(format!("{profile_id} jotta singleton: {e}"));
+                                    }
+                                }
+                                (Ok(_), Ok(_)) => cred_errors.push(format!(
+                                    "{profile_id} jotta singleton: kept another profile's chain"
+                                )),
+                                (Err(e), _) | (_, Err(e)) => {
+                                    cred_errors.push(format!("{profile_id} jotta singleton: {e}"))
+                                }
                             }
                         }
                     }
@@ -18542,24 +18574,36 @@ fn restore_imported_secrets(
                 // client-cred slug, which aliases Google Photos onto Google Drive
                 // and matches the key the GUI/edit form reads.
                 // These are global singletons every profile of the provider
-                // reads, so they are written only while empty (as the rclone
-                // import does): an imported or duplicated profile never swaps
-                // the app credentials another profile refreshes its tokens with.
+                // reads, written as one unit: only when no app is stored yet or
+                // the stored app is this same one (same client id, whose secret
+                // or region the file then refreshes). An imported or duplicated
+                // profile never swaps the app another profile refreshes with.
                 if secrets.oauth_client_id.is_some() || secrets.oauth_client_secret.is_some() {
                     if let Some(cred_slug) = bridge_commands::oauth_client_cred_key(protocol) {
-                        for (name, value) in [
-                            ("client_id", &secrets.oauth_client_id),
-                            ("client_secret", &secrets.oauth_client_secret),
-                            ("region", &secrets.oauth_region),
-                        ] {
-                            let Some(value) = value else { continue };
-                            let key = format!("oauth_{cred_slug}_{name}");
-                            if vault_has(&store, &key) {
-                                continue;
+                        match vault_value(&store, &format!("oauth_{cred_slug}_client_id")) {
+                            Ok(stored)
+                                if profile_import_plan::may_write_shared(
+                                    stored.as_deref(),
+                                    secrets.oauth_client_id.as_deref(),
+                                ) =>
+                            {
+                                for (name, value) in [
+                                    ("client_id", &secrets.oauth_client_id),
+                                    ("client_secret", &secrets.oauth_client_secret),
+                                    ("region", &secrets.oauth_region),
+                                ] {
+                                    let Some(value) = value else { continue };
+                                    if let Err(e) =
+                                        store.store(&format!("oauth_{cred_slug}_{name}"), value)
+                                    {
+                                        cred_errors.push(format!("{profile_id} oauth {name}: {e}"));
+                                    }
+                                }
                             }
-                            if let Err(e) = store.store(&key, value) {
-                                cred_errors.push(format!("{profile_id} oauth {name}: {e}"));
-                            }
+                            Ok(_) => cred_errors.push(format!(
+                                "{profile_id} oauth app: kept the other app already stored for {cred_slug}"
+                            )),
+                            Err(e) => cred_errors.push(format!("{profile_id} oauth app: {e}")),
                         }
                     }
                 }

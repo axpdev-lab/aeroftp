@@ -160,7 +160,7 @@ pub fn plan_import(
 /// What the import refuses with when the active user is no longer the one whose
 /// profiles it compared the file with: the secrets would land in another
 /// account's partition.
-pub const NOT_THE_ACTIVE_USER: &str = "the active account is not the one whose profiles this import read, so nothing was restored or written; make that account the active one and run the import again";
+pub const NOT_THE_ACTIVE_USER: &str = "the active account is not the one whose profiles this import read, so nothing was restored or written; make that account the active one (in the CLI, --user must name the active account) and run the import again";
 
 /// A stored profile named in a report: its id and the name the file gave it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -169,6 +169,18 @@ pub struct ImportedProfileRef {
     pub id: String,
     /// Its name in the file (see [`display_name`]).
     pub name: String,
+}
+
+/// Whether an import may write a provider-wide singleton (an OAuth app's
+/// credentials, the legacy Jottacloud chain) that the vault holds as `stored`:
+/// when it holds none, or when it holds `own`, the value this import's own
+/// profile or app already had there, which the import then refreshes. Another
+/// profile's value is never swapped for the file's.
+pub fn may_write_shared(stored: Option<&str>, own: Option<&str>) -> bool {
+    match stored {
+        None => true,
+        Some(value) => own == Some(value),
+    }
 }
 
 /// How a report names a profile: its name, or `(host)` when it has none.
@@ -234,39 +246,21 @@ pub const STORED_SECRET_FLAGS: [&str; 6] = [
     "hasStoredAeroCryptConfig",
 ];
 
-/// Lay the non-null fields of `source` over `target`. A null is no value: the
-/// redacted import writes every field, and one an older or a slimmer file does
-/// not carry arrives as null, which must not clear what this device stores.
-fn lay_values_over(
-    target: &mut serde_json::Map<String, serde_json::Value>,
-    source: &serde_json::Map<String, serde_json::Value>,
-) {
-    for (key, value) in source {
-        if !value.is_null() {
-            target.insert(key.clone(), value.clone());
-        }
-    }
-}
-
-/// The profile an overwrite stores: `existing` with every non-null field of
-/// `imported` laid over it, `options` merged key by key the same way, so a
-/// field or an option only this device has survives, and each
-/// [`STORED_SECRET_FLAGS`] flag set when either side has it.
+/// The profile an overwrite stores: `existing` with every field of `imported`
+/// laid over it, and each [`STORED_SECRET_FLAGS`] flag set when either side has
+/// it. The file is a whole snapshot of the profile's configuration: a field it
+/// carries as null and its `options` object are the backup's values (a Crypt
+/// overlay turned off on the source device must stay off), so they replace the
+/// stored ones; only a field the export format does not carry, one only this
+/// device knows, survives.
 pub fn overwrite_profile(
     existing: &serde_json::Value,
     imported: &serde_json::Value,
 ) -> serde_json::Value {
     let mut merged = existing.clone();
     if let (Some(target), Some(source)) = (merged.as_object_mut(), imported.as_object()) {
-        let mut options = target
-            .get("options")
-            .and_then(|v| v.as_object())
-            .cloned()
-            .unwrap_or_default();
-        lay_values_over(target, source);
-        if let Some(imported_options) = source.get("options").and_then(|v| v.as_object()) {
-            lay_values_over(&mut options, imported_options);
-            target.insert("options".to_string(), serde_json::Value::Object(options));
+        for (key, value) in source {
+            target.insert(key.clone(), value.clone());
         }
         for flag in STORED_SECRET_FLAGS {
             let set = |p: &serde_json::Value| p.get(flag).and_then(|v| v.as_bool()) == Some(true);
@@ -463,37 +457,42 @@ mod tests {
         assert_ne!(new_profile_id(), id);
     }
 
-    /// The file's fields win, a field only the device has (or one the file
-    /// leaves null) stays, options merge key by key, and a stored secret flag
-    /// stays set.
+    /// The file's fields win, nulls and options included, a field only the
+    /// device has stays, and a stored secret flag stays set.
     #[test]
     fn overwrite_lays_the_file_over_the_profile_and_keeps_its_stored_flags() {
         let existing = json!({
-            "id": "srv_a", "name": "Old", "host": "old.example", "color": "#f00",
-            "providerId": "koofr", "localOnly": "kept", "hasStoredCredential": true,
-            "hasStoredAeroCryptPassword": false,
+            "id": "srv_a", "name": "Old", "host": "old.example", "localOnly": "kept",
+            "aeroCryptOverlay": {"enabled": true, "kind": "rclone-crypt"},
+            "hasStoredCredential": true, "hasStoredAeroCryptPassword": false,
             "options": {"verifyCert": false, "timeout": 30}
         });
         let imported = json!({
-            "id": "srv_a", "name": "New", "host": "new.example", "color": null,
-            "providerId": null, "hasStoredCredential": false,
-            "hasStoredAeroCryptPassword": true,
-            "options": {"timeout": 60, "passive": null}
+            "id": "srv_a", "name": "New", "host": "new.example",
+            "aeroCryptOverlay": null, "hasStoredCredential": false,
+            "hasStoredAeroCryptPassword": true, "options": {"timeout": 60}
         });
         let merged = overwrite_profile(&existing, &imported);
         assert_eq!(merged["name"], "New");
         assert_eq!(merged["host"], "new.example");
-        // A field the file does not carry (null) keeps the stored value.
-        assert_eq!(merged["color"], "#f00");
-        assert_eq!(merged["providerId"], "koofr");
-        // Options merge key by key: the file's value wins, a local one stays.
-        assert_eq!(
-            merged["options"],
-            json!({"verifyCert": false, "timeout": 60})
-        );
+        // The backup turned the Crypt overlay off: it stays off.
+        assert_eq!(merged["aeroCryptOverlay"], serde_json::Value::Null);
+        // The backup's options are the profile's options.
+        assert_eq!(merged["options"], json!({"timeout": 60}));
         assert_eq!(merged["localOnly"], "kept");
         assert_eq!(merged["hasStoredCredential"], true);
         assert_eq!(merged["hasStoredAeroCryptPassword"], true);
+    }
+
+    /// A shared singleton is written when empty or when it is this import's
+    /// own value, never over another profile's.
+    #[test]
+    fn shared_singletons_are_written_only_when_empty_or_own() {
+        assert!(may_write_shared(None, None));
+        assert!(may_write_shared(None, Some("app-a")));
+        assert!(may_write_shared(Some("app-a"), Some("app-a")));
+        assert!(!may_write_shared(Some("app-a"), Some("app-b")));
+        assert!(!may_write_shared(Some("app-a"), None));
     }
 
     /// The GUI sends the mode as a lowercase string.

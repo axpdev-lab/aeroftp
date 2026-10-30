@@ -92,11 +92,23 @@ describe('the import callback and the commit helper together', () => {
     });
 
     // Two profiles of one batch with one id would both be stored.
-    it('refuses a batch that holds two profiles of one id', async () => {
-        const vault = fakeVault([]);
+    it('refuses a batch that holds two profiles of one id, appended or replacing', async () => {
+        const vault = fakeVault([base]);
         const one: ServerProfile = { ...base, id: 'twin', name: 'One' };
         const two: ServerProfile = { ...base, id: 'twin', name: 'Two' };
-        await expect(appendImportedProfiles([one, two])).rejects.toThrow('saved by another window');
+        await expect(appendImportedProfiles([one, two])).rejects.toThrow('share the id twin');
+        const again: ServerProfile = { ...base, name: 'Again' };
+        await expect(appendImportedProfiles([base, again], new Set([base.id]))).rejects.toThrow(`share the id ${base.id}`);
+        expect(vault.writes).toBe(0);
+    });
+
+    // A vault that reads no account (the legacy store) is not the account the
+    // import restored into either.
+    it('refuses to write to a vault that reads no account when an account is expected', async () => {
+        const vault = fakeVault([]);
+        vi.mocked(readSavedServerProfilesForWrite).mockImplementation(async () => ({ profiles: [], userId: undefined }));
+        const imported: ServerProfile = { ...base, id: 'imported' };
+        await expect(appendImportedProfiles([imported], new Set(), 3)).rejects.toThrow('active account changed');
         expect(vault.writes).toBe(0);
     });
 
@@ -111,16 +123,19 @@ describe('the import callback and the commit helper together', () => {
         expect(merged.map(s => s.id)).toEqual([base.id, 'imported']);
     });
 
-    // null and undefined are no value (a field the file does not carry), so a
-    // stored field survives them; options merge key by key.
-    it('an overwrite keeps a stored field the import leaves null or undefined, and merges options', () => {
-        const stored = { ...base, color: '#ff0000', providerId: 'koofr', options: { verifyCert: false, timeout: 30 } } as unknown as ServerProfile;
-        const imported = { ...base, host: 'new.example', color: undefined, providerId: null, options: { timeout: 60, passive: null } } as unknown as ServerProfile;
+    // The backup is the profile: its null (a Crypt overlay turned off) and its
+    // options win; undefined is no value; a field it does not carry stays.
+    it('an overwrite takes the nulls and options of the file, ignores undefined and keeps local-only fields', () => {
+        const stored = { ...base, color: '#ff0000', localOnly: 'kept', aeroCryptOverlay: { enabled: true, kind: 'rclone-crypt' },
+            options: { verifyCert: false, timeout: 30 } } as unknown as ServerProfile;
+        const imported = { ...base, host: 'new.example', color: undefined, aeroCryptOverlay: null,
+            options: { timeout: 60 } } as unknown as ServerProfile;
         const merged = overwriteProfile(stored, imported) as unknown as Record<string, unknown>;
         expect(merged.host).toBe('new.example');
         expect(merged.color).toBe('#ff0000');
-        expect(merged.providerId).toBe('koofr');
-        expect(merged.options).toEqual({ verifyCert: false, timeout: 60 });
+        expect(merged.localOnly).toBe('kept');
+        expect(merged.aeroCryptOverlay).toBeNull();
+        expect(merged.options).toEqual({ timeout: 60 });
     });
 
     // The twin must list the same flags as the Rust planner, or an overwrite
