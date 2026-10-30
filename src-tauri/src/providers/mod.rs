@@ -2178,6 +2178,14 @@ pub trait StorageProvider: Send + Sync {
     /// the transfer.
     fn set_range_validator(&mut self, _validator: Option<String>) {}
 
+    /// Whether the version set with [`Self::set_range_validator`] goes with
+    /// each range as `If-Match` (`true`, the default) or is only compared
+    /// with the entity tag each answer carries (`false`). A server that
+    /// refuses `If-Match` on an object that did not change is read the second
+    /// way, so a window that comes from another version is still refused.
+    /// Providers without a validator ignore this.
+    fn send_range_pin(&mut self, _send: bool) {}
+
     /// Whether this provider supports delta sync (rsync-style block transfer)
     fn supports_delta_sync(&self) -> bool {
         false

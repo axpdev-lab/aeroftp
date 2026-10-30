@@ -410,6 +410,12 @@ pub async fn run_provider_segmented_download(
 }
 
 /// [`run_provider_segmented_download`] charging an explicit governor.
+///
+/// The windows are pinned to the first reading of the object. A server that
+/// refuses that pin on an object one more reading finds unchanged is read
+/// once more for this file without `If-Match`, each answer compared with the
+/// first reading's entity tag and the reading after the windows deciding the
+/// publish; a replacement is refused either way.
 #[allow(clippy::too_many_arguments)]
 async fn run_provider_segmented_download_with(
     governor: Arc<crate::transfer_dag::governor::GlobalTransferGovernor>,
@@ -422,7 +428,7 @@ async fn run_provider_segmented_download_with(
     cancel_token: CancellationToken,
 ) -> Result<(), SegmentedDownloadError> {
     use crate::providers::multi_thread::{
-        parallel_refused, read_range_source_through, share_progress, PIN_UNSUPPORTED_MARKER,
+        parallel_refused, read_range_source_through, share_progress, PinRefusal,
     };
 
     if segments < 2 {
@@ -479,13 +485,16 @@ async fn run_provider_segmented_download_with(
         pinned_progress,
         cancel_token.clone(),
         &before,
-        before.validator(),
+        true,
     )
     .await;
     match pinned {
-        Err(SegmentedDownloadError::Unavailable { ref message, .. })
-            if before.validator().is_some() && message.contains(PIN_UNSUPPORTED_MARKER) =>
-        {
+        // The reason is a fixed phrase, never a path, so a file name cannot
+        // pass for this verdict.
+        Err(SegmentedDownloadError::Unavailable {
+            ref message,
+            reason,
+        }) if reason == PinRefusal::PinUnsupported.notice() => {
             tracing::warn!(
                 "{message}; reading the windows again without If-Match, checked by the reading after them"
             );
@@ -499,7 +508,7 @@ async fn run_provider_segmented_download_with(
                 unpinned_progress,
                 cancel_token,
                 &before,
-                None,
+                false,
             )
             .await
         }
@@ -507,9 +516,11 @@ async fn run_provider_segmented_download_with(
     }
 }
 
-/// One attempt of [`run_provider_segmented_download_with`]: the windows, each
-/// range pinned to `pin` where it is `Some`, then the reading compared with
-/// `before` that decides whether the file is published.
+/// One attempt of [`run_provider_segmented_download_with`]: the windows, then
+/// the reading compared with `before` that decides whether the file is
+/// published. Every worker knows the version `before` names; with `send_pin`
+/// each range carries it as `If-Match`, without it each answer is compared
+/// with it ([`StorageProvider::send_range_pin`]).
 #[allow(clippy::too_many_arguments)]
 async fn run_provider_segmented_windows(
     governor: Arc<crate::transfer_dag::governor::GlobalTransferGovernor>,
@@ -521,7 +532,7 @@ async fn run_provider_segmented_windows(
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     cancel_token: CancellationToken,
     before: &crate::providers::multi_thread::RangeSourceFingerprint,
-    pin: Option<String>,
+    send_pin: bool,
 ) -> Result<(), SegmentedDownloadError> {
     use crate::providers::multi_thread::{
         range_read_failed, range_source_changed_through, read_range_paced_with,
@@ -541,7 +552,8 @@ async fn run_provider_segmented_windows(
         }
         match primary.clone_for_transfer() {
             Ok(mut w) => {
-                w.set_range_validator(pin.clone());
+                w.set_range_validator(before.validator());
+                w.send_range_pin(send_pin);
                 workers.push(w);
             }
             Err(e) => {
@@ -565,7 +577,7 @@ async fn run_provider_segmented_windows(
     // its mark (`write_range_resuming`) on the worker its failure left here.
     let pool = Arc::new(tokio::sync::Mutex::new(VecDeque::from(workers)));
     let remote_owned = remote_path.to_string();
-    let validator = pin;
+    let validator = before.validator();
 
     let cfg = ConcurrentRangeConfig {
         final_path: PathBuf::from(local_path),

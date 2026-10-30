@@ -35956,6 +35956,11 @@ fn pget_planned_segments(file_size: u64, segments: usize, cutoff: u64) -> usize 
 /// historical N-real-connections parallelism (clone-pool / PD-SFTP-1
 /// coherent): the engine orchestrates and bounds, the parallel transfers
 /// live on those connections.
+///
+/// `unpinned_from` is `None` on a first run. A server that refuses the
+/// segments' `If-Match` on an object one more reading finds unchanged gets
+/// one more run with that reading as `Some`: no new first reading, segments
+/// read without `If-Match` and each answer compared with its entity tag.
 #[allow(clippy::too_many_arguments)]
 async fn pget_segmented_download(
     url: &str,
@@ -36058,7 +36063,8 @@ async fn pget_segmented_download(
                     // Pin every window to the version the first reading saw, as
                     // the shared executor does: on S3 this is the `If-Match` that
                     // refuses a window the moment the object is replaced.
-                    p.set_range_validator(before.validator().filter(|_| pinned));
+                    p.set_range_validator(before.validator());
+                    p.send_range_pin(pinned);
                     conns.push(p)
                 }
                 Err(_) => {
@@ -36124,7 +36130,7 @@ async fn pget_segmented_download(
     // connection: N real parallel transfers, never silently serialized. A
     // window that fails with a recoverable error is attempted again from its
     // mark on the connection its failure left here.
-    let validator = before.validator().filter(|_| pinned);
+    let validator = before.validator();
     let pool = Arc::new(tokio::sync::Mutex::new(std::collections::VecDeque::from(
         conns,
     )));
@@ -66622,9 +66628,11 @@ async fn digest_downloaded(
 /// from where it stopped. A file that fits in one window, or a backend that
 /// cannot open connections of its own (Koofr, Cloudinary, ImageKit), is read
 /// in order on the session already open, with no resume: what a download
-/// through that session offered. A refusal discards every consumed window
-/// and hashes one complete download on disk, checked against the pinned size
-/// and source fingerprint.
+/// through that session offered. A window the server refuses under its pin
+/// is diagnosed by one more reading: a changed object fails the hash, an
+/// unchanged one is hashed once more from windows read without `If-Match`.
+/// Any other refusal discards every consumed window and hashes one complete
+/// download on disk, checked against the pinned size and source fingerprint.
 async fn digest_in_order(
     provider: &mut dyn StorageProvider,
     path: &str,
@@ -66644,26 +66652,25 @@ async fn digest_in_order(
             .await
             .map(Some);
     }
-    let mut outcome =
-        digest_in_order_attempt(provider, path, digest, &before, before.validator()).await;
+    let mut outcome = digest_in_order_attempt(provider, path, digest, &before, true).await;
     if matches!(&outcome, Err(e) if is_pin_refusal(e)) {
         // A 412 to the pin: one more reading, once for the file, names a
         // replacement apart from a server that refuses If-Match.
         let verdict = PinRefusal::from_second_reading(
             range_source_changed_through(provider, path, &before).await,
         );
-        if verdict != PinRefusal::PinUnsupported {
-            report_download_fallback(verdict.notice());
-            digest.restart();
-            return digest_downloaded(provider, path, digest, Some(&before))
-                .await
-                .map(Some);
+        // A changed object fails here: a whole download would be refused by
+        // the same comparison, after reading every byte of it.
+        if let PinRefusal::SourceChanged(why) = verdict {
+            return Err(ProviderError::TransferFailed(format!(
+                "{path} changed while it was hashed: {why}"
+            )));
         }
         // The windows are read once more, for this file only and with no
         // pin; the reading after them compares entity tag, size and time
         // with `before`, as for a server that ignores the header.
         digest.restart();
-        outcome = digest_in_order_attempt(provider, path, digest, &before, None).await;
+        outcome = digest_in_order_attempt(provider, path, digest, &before, false).await;
     }
     match outcome {
         Err(ProviderError::ParallelRefused(_) | ProviderError::NotSupported(_)) => {
@@ -66677,12 +66684,16 @@ async fn digest_in_order(
     }
 }
 
+/// One pass of [`digest_in_order`] over the object `before` describes. The
+/// workers know its version; with `send_pin` each window carries it as
+/// `If-Match`, without it each answer is compared with it. The object is read
+/// once more after the windows before the digest is trusted.
 async fn digest_in_order_attempt(
     provider: &mut dyn StorageProvider,
     path: &str,
     digest: &mut LocalDigest,
     before: &ftp_client_gui_lib::providers::multi_thread::RangeSourceFingerprint,
-    pin: Option<String>,
+    send_pin: bool,
 ) -> Result<Option<u64>, ProviderError> {
     use ftp_client_gui_lib::providers::multi_thread::{
         range_source_changed_through, read_in_order, read_range_paced, IN_ORDER_WINDOW,
@@ -66696,7 +66707,8 @@ async fn digest_in_order_attempt(
             let Ok(mut worker) = provider.clone_for_transfer() else {
                 break;
             };
-            worker.set_range_validator(pin.clone());
+            worker.set_range_validator(before.validator());
+            worker.send_range_pin(send_pin);
             workers.push(worker);
         }
     }
@@ -66735,7 +66747,7 @@ async fn digest_in_order_attempt(
         workers,
         path,
         size,
-        pin,
+        before.validator(),
         IN_ORDER_WINDOW,
         &cancel,
         |bytes| digest.update(bytes),
@@ -67396,8 +67408,8 @@ mod hashsum_digest_tests {
     }
 
     /// A 412 on an object that did change is a replacement: no unpinned
-    /// retry, the fallback says so, and the replaced object is not hashed as
-    /// the one the command was asked about.
+    /// retry and no whole download, which the same comparison would refuse
+    /// after reading every byte; the hash fails and says why.
     #[tokio::test]
     async fn ranged_hashsum_names_a_refused_pin_on_a_replaced_object() {
         let mut fixture = range_hash_fixture(
@@ -67415,18 +67427,19 @@ mod hashsum_digest_tests {
                 true,
             ))
             .await;
-        assert!(outcome.is_err(), "{outcome:?}");
-        let messages = warnings.take();
-        assert_eq!(messages.len(), 1, "{messages:?}");
+        let error = outcome.expect_err("a replaced object is not hashed");
         assert!(
-            messages[0].contains(
-                ftp_client_gui_lib::providers::multi_thread::PinRefusal::SourceChanged(
-                    String::new()
-                )
-                .notice()
+            matches!(
+                &error,
+                HashsumDigestError::Provider(ProviderError::TransferFailed(why))
+                    if why.contains("changed while it was hashed")
             ),
-            "{messages:?}"
+            "{error:?}"
         );
+        assert!(warnings.take().is_empty(), "no fallback is announced");
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 0);
+        // The reading before the windows and the diagnosis.
+        assert_eq!(fixture.heads.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]
@@ -89542,7 +89555,6 @@ mod tests {
         assert_eq!(kept, None, "the partial file stayed");
     }
 
-    /// A quiet CLI for these tests.
     /// Runs `pget` on four segments against `provider` in a thread of its
     /// own, as the CLI does, and returns its exit code and warnings.
     async fn pget_against(
@@ -89634,6 +89646,7 @@ mod tests {
         assert_eq!(std::fs::read(&out).unwrap(), fixture.body);
     }
 
+    /// A quiet CLI for these tests.
     fn quiet_cli() -> Cli {
         Cli {
             quiet: true,
