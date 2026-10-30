@@ -353,6 +353,24 @@ struct Cli {
     )]
     master_password: Option<String>,
 
+    /// Seconds to wait for a server that does not answer
+    ///
+    /// HTTP providers: replaces the connect limit (30 s on most), the silence
+    /// allowed while a request is under way (30 minutes), the whole of a
+    /// WebDAV listing, stat, date change or new folder (2 minutes) and of an
+    /// OAuth sign-in or token step (30 s). Backblaze B2, Proton Drive and the
+    /// GitHub and Twake sign-ins keep their own limits. `site`: the whole
+    /// reply to a command (default 60, up to 900). `audit`: each server
+    /// (default 30). FTP and SFTP keep their own limits.
+    #[arg(
+        long,
+        global = true,
+        value_name = "SECS",
+        value_parser = clap::value_parser!(u64).range(1..),
+        help_heading = "Connection options"
+    )]
+    timeout: Option<u64>,
+
     /// Verbose output (-v debug, -vv trace)
     #[arg(short, long, global = true, action = clap::ArgAction::Count, help_heading = "Output options")]
     verbose: u8,
@@ -2403,9 +2421,6 @@ enum Commands {
         /// The SITE command and its arguments, with or without the word SITE (e.g. USER alice)
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         command: Vec<String>,
-        /// Seconds to wait for the complete reply (1-900)
-        #[arg(long, default_value_t = 60, value_name = "SECS")]
-        timeout: u64,
         /// Ask for a value without echo and put it where {NAME} appears (repeatable); AEROFTP_SITE_SECRET_<NAME> supplies it without asking
         #[arg(long = "secret", value_name = "NAME")]
         secrets: Vec<String>,
@@ -5078,9 +5093,6 @@ enum AuditCommands {
         /// Warning threshold as a percentage (0-100)
         #[arg(long, default_value_t = 80.0)]
         threshold: f64,
-        /// Per-server timeout in seconds
-        #[arg(long, default_value_t = 30)]
-        timeout: u64,
         /// Concurrent audits
         #[arg(long, default_value_t = 4)]
         parallel: usize,
@@ -5106,9 +5118,6 @@ enum AuditCommands {
         /// Optional filename glob filter (e.g. "*.sql.gz")
         #[arg(long)]
         pattern: Option<String>,
-        /// Per-server timeout in seconds
-        #[arg(long, default_value_t = 30)]
-        timeout: u64,
         /// Concurrent audits
         #[arg(long, default_value_t = 4)]
         parallel: usize,
@@ -5131,9 +5140,6 @@ enum AuditCommands {
         /// Optional minimum size (e.g. 1K, 2M, 1G)
         #[arg(long)]
         min_size: Option<String>,
-        /// Per-server timeout in seconds
-        #[arg(long, default_value_t = 30)]
-        timeout: u64,
         /// Concurrent audits
         #[arg(long, default_value_t = 4)]
         parallel: usize,
@@ -7585,10 +7591,7 @@ fn strict_mode_violations(cli: &Cli) -> Vec<&'static str> {
 /// own text follows the prefix once instead of repeating it.
 ///
 /// The hint is printed for every command that connects, so a flag it names
-/// must be one every command accepts: a global flag. A timeout used to say
-/// "increase --timeout", which `ls`, `get` and `stat` refuse as an unknown
-/// argument; the limits it hits (the providers' connect and read timeouts)
-/// have no flag.
+/// must be one every command accepts: a global flag, like `--timeout`.
 fn connect_failure_message(e: &ProviderError) -> String {
     let hint = match e {
         ProviderError::ConnectionFailed(_) => {
@@ -7596,7 +7599,7 @@ fn connect_failure_message(e: &ProviderError) -> String {
         }
         ProviderError::AuthenticationFailed(_) => " (check credentials in --profile or URL)",
         ProviderError::Timeout => {
-            " (the server did not answer in time: check that it is up and responding, and any firewall, VPN or proxy on the way)"
+            " (the server did not answer in time: check that it is up and responding, and any firewall, VPN or proxy on the way; --timeout SECS waits longer)"
         }
         ProviderError::NetworkError(_) => " (check network connectivity and DNS resolution)",
         ProviderError::InvalidConfig(_) => " (verify profile settings or URL format)",
@@ -47008,7 +47011,8 @@ network unencrypted.
 
 A command is sent once. If the connection fails or the reply does not arrive in
 time, the outcome is unknown: the server may or may not have applied it, and it is
-not sent again (exit 8 or 1).
+not sent again (exit 8 or 1). --timeout SECS sets how long to wait for the whole
+reply: 60 s by default, up to 900 (a longer value waits 900).
 
 Exit codes:
   0  the server replied with a 1xx, 2xx or 3xx code
@@ -47026,6 +47030,12 @@ when this is a terminal. A {name:secret} placeholder is refused by --set:
 it is asked for without echo, or read from AEROFTP_SITE_SECRET_<NAME>.
 The filled command is printed to stderr with secrets masked, then sent once.
 ";
+
+/// How long `site` waits for the whole reply when `--timeout` is not given.
+const SITE_REPLY_TIMEOUT_SECS: u64 = 60;
+
+/// How long an audit waits for each server when `--timeout` is not given.
+const AUDIT_SERVER_TIMEOUT_SECS: u64 = 30;
 
 /// The options of `aeroftp-cli site` besides the command itself.
 struct SiteCliOptions<'a> {
@@ -69886,17 +69896,17 @@ fn unix_to_rfc3339(ts: i64) -> Option<String> {
 
 #[allow(clippy::too_many_arguments)]
 async fn cmd_audit(command: &AuditCommands, cli: &Cli, format: OutputFormat) -> i32 {
+    let timeout = cli.timeout.unwrap_or(AUDIT_SERVER_TIMEOUT_SECS);
     match command {
         AuditCommands::StorageQuota {
             servers,
             threshold,
-            timeout,
             parallel,
             markdown,
             exit_code,
         } => {
             run_audit_storage_quota(
-                cli, format, servers, *threshold, *timeout, *parallel, *markdown, *exit_code,
+                cli, format, servers, *threshold, timeout, *parallel, *markdown, *exit_code,
             )
             .await
         }
@@ -69905,7 +69915,6 @@ async fn cmd_audit(command: &AuditCommands, cli: &Cli, format: OutputFormat) -> 
             path,
             max_age_hours,
             pattern,
-            timeout,
             parallel,
             markdown,
             exit_code,
@@ -69917,7 +69926,7 @@ async fn cmd_audit(command: &AuditCommands, cli: &Cli, format: OutputFormat) -> 
                 path,
                 *max_age_hours,
                 pattern.as_deref(),
-                *timeout,
+                timeout,
                 *parallel,
                 *markdown,
                 *exit_code,
@@ -69928,7 +69937,6 @@ async fn cmd_audit(command: &AuditCommands, cli: &Cli, format: OutputFormat) -> 
             servers,
             path,
             min_size,
-            timeout,
             parallel,
             markdown,
             exit_code,
@@ -69939,7 +69947,7 @@ async fn cmd_audit(command: &AuditCommands, cli: &Cli, format: OutputFormat) -> 
                 servers,
                 path,
                 min_size.as_deref(),
-                *timeout,
+                timeout,
                 *parallel,
                 *markdown,
                 *exit_code,
@@ -75567,6 +75575,14 @@ async fn main() {
         ftp_client_gui_lib::providers::tpslimit::init(cli.tpslimit, burst);
     }
 
+    // `--timeout` replaces every HTTP provider's limits, before any provider
+    // is built.
+    if let Some(secs) = cli.timeout {
+        ftp_client_gui_lib::providers::http_limits::set_override(std::time::Duration::from_secs(
+            secs,
+        ));
+    }
+
     // DAG-P2-01: construct the process-global hierarchical transfer governor
     // once, at CLI startup (the CLI has no long-lived AppState). Every transfer
     // path reaches the same singleton via `governor::global()`; env
@@ -76472,7 +76488,6 @@ async fn main() {
         Commands::Site {
             url,
             command,
-            timeout,
             secrets,
             file,
             strip_codes,
@@ -76503,7 +76518,7 @@ async fn main() {
                     u,
                     &words,
                     SiteCliOptions {
-                        timeout_secs: *timeout,
+                        timeout_secs: cli.timeout.unwrap_or(SITE_REPLY_TIMEOUT_SECS),
                         secrets,
                         file: file.as_deref(),
                         strip_codes: *strip_codes,
@@ -81989,16 +82004,11 @@ mod tests {
                     "-3",
                 ])
                 .expect("site parses");
+                assert_eq!(cli.timeout, None);
                 match cli.command {
-                    Commands::Site {
-                        url,
-                        command,
-                        timeout,
-                        ..
-                    } => {
+                    Commands::Site { url, command, .. } => {
                         assert_eq!(url, "CHANGE");
                         assert_eq!(command, vec!["alice", "flags", "-3"]);
-                        assert_eq!(timeout, 60);
                     }
                     _ => panic!("expected the site subcommand"),
                 }
@@ -82019,14 +82029,24 @@ mod tests {
                     "5",
                 ])
                 .expect("site parses");
+                assert_eq!(cli.timeout, None, "the server's --timeout is not ours");
                 match cli.command {
-                    Commands::Site {
-                        command, timeout, ..
-                    } => {
+                    Commands::Site { command, .. } => {
                         assert_eq!(command, vec!["NUKE", "dir", "--timeout", "5"]);
-                        assert_eq!(timeout, 60);
                     }
                     _ => panic!("expected the site subcommand"),
+                }
+                // The global flag, before the command, is still the reply wait.
+                for args in [
+                    &["aeroftp-cli", "site", "--timeout", "5", "ftp://h", "WHO"][..],
+                    &["aeroftp-cli", "--timeout", "5", "site", "ftp://h", "WHO"][..],
+                ] {
+                    let cli = Cli::try_parse_from(args).expect("site parses");
+                    assert_eq!(cli.timeout, Some(5), "{args:?}");
+                    match cli.command {
+                        Commands::Site { command, .. } => assert_eq!(command, vec!["WHO"]),
+                        _ => panic!("expected the site subcommand"),
+                    }
                 }
             })
             .unwrap()
@@ -82735,6 +82755,7 @@ mod tests {
             user_passphrase: None,
             passphrase_file: None,
             master_password: None,
+            timeout: None,
             verbose: 0,
             quiet: false,
             limit_rate: None,
@@ -83898,9 +83919,37 @@ mod tests {
         assert_eq!(format_speed(1048576), "1.0 MB/s");
     }
 
+    /// `--timeout` is accepted by every command, before or after it, and a
+    /// limit of zero seconds is refused rather than read as "no limit".
+    #[test]
+    fn timeout_is_a_positive_global_flag() {
+        std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                for args in [
+                    &["aeroftp-cli", "--timeout", "45", "ls", "/"][..],
+                    &["aeroftp-cli", "ls", "/", "--timeout", "45"][..],
+                    &["aeroftp-cli", "audit", "storage-quota", "--timeout", "45"][..],
+                ] {
+                    let cli = Cli::try_parse_from(args).expect("parses");
+                    assert_eq!(cli.timeout, Some(45), "{args:?}");
+                }
+                assert_eq!(
+                    Cli::try_parse_from(["aeroftp-cli", "ls", "/"])
+                        .expect("parses")
+                        .timeout,
+                    None
+                );
+                assert!(Cli::try_parse_from(["aeroftp-cli", "--timeout", "0", "ls", "/"]).is_err());
+            })
+            .expect("spawn wide-stack thread")
+            .join()
+            .expect("parse on a wide stack");
+    }
+
     /// D7: the connect hint is printed for every command that connects, so
     /// every flag it names must be one that every command accepts. The
-    /// timeout hint named `--timeout`, which `ls`, `get` and `stat` refuse.
+    /// timeout hint named `--timeout` while only `site` and `audit` had it.
     #[test]
     fn a_connect_hint_names_only_flags_every_command_accepts() {
         // clap builds the whole command tree, which overflows the default
