@@ -67178,8 +67178,7 @@ mod hashsum_digest_tests {
     /// at the first version, 7 as 4 with the first HEAD after a refusal
     /// answered `404`, 8 as 4 with the entity tag the MD5 of the content, 9 as
     /// 8 with the unpinned ranges, untagged, coming from a replacement, 10 as 4
-    /// with the pinned range at byte 0 served and the later ones refused after
-    /// it has had time to reach the digest.
+    /// with the pinned range at byte 0 served and the later ones refused.
     pub(super) async fn range_hash_fixture(
         size: usize,
         body_delta: isize,
@@ -67267,9 +67266,6 @@ mod hashsum_digest_tests {
                         // serves the pinned first window.
                         let pinned = request.headers().contains_key("if-match");
                         let first_window = range.to_str().unwrap().starts_with("bytes=0-");
-                        if range_mode == 10 && pinned && !first_window {
-                            tokio::time::sleep(Duration::from_millis(200)).await;
-                        }
                         if pinned
                             && (matches!(range_mode, 4..=9) || (range_mode == 10 && !first_window))
                         {
@@ -67558,7 +67554,9 @@ mod hashsum_digest_tests {
     }
 
     /// A pinned window hashed before a later one is refused does not count
-    /// twice: the digest starts over for the unpinned pass.
+    /// twice: the digest starts over for the unpinned pass. `read_in_order`
+    /// hands the windows over in order, so the first always reaches the digest
+    /// before the refusal of the second is seen, with no timing involved.
     #[tokio::test]
     async fn ranged_hashsum_starts_over_when_a_later_window_refuses_the_pin() {
         let mut fixture = range_hash_fixture(
@@ -67567,6 +67565,7 @@ mod hashsum_digest_tests {
             10,
         )
         .await;
+        let window = ftp_client_gui_lib::providers::multi_thread::IN_ORDER_WINDOW as usize;
         let (hash, _) = hashsum_digest(&mut fixture.provider, PATH, HashAlgorithm::Sha256, true)
             .await
             .expect("the unpinned windows hash the unchanged object");
@@ -67578,7 +67577,11 @@ mod hashsum_digest_tests {
             )
         );
         assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 0);
-        assert!(fixture.unpinned_gets.load(Ordering::SeqCst) > 0);
+        // All the windows read again, whatever the pinned pass reached.
+        assert_eq!(
+            fixture.unpinned_gets.load(Ordering::SeqCst),
+            fixture.body.len().div_ceil(window)
+        );
     }
 
     /// The entity tag is the content's MD5: unpinned windows that hash to it

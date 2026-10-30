@@ -12586,17 +12586,14 @@ mod tests {
         };
         use crate::transfer_domain::{TransferEntry, TransferOutcome};
         use crate::transfer_orchestrator::TransferExecutor;
-        // A size that moved since the listing stops the run before any window.
-        for (mode, planned, refusals, whole) in [
-            (PinMode::RefusedRestored, OBJECT_SIZE, 2, OBJECT_SIZE),
-            (
-                PinMode::RefusedWithStaleReadings,
-                OBJECT_SIZE,
-                2,
-                OBJECT_SIZE,
-            ),
-            (PinMode::RefusedThenShrunk, OBJECT_SIZE, 2, OBJECT_SIZE - 1),
-            (PinMode::Honoured, OBJECT_SIZE + 1, 0, OBJECT_SIZE),
+        // A size that moved since the listing stops the run before any window:
+        // nothing is refused there, and the whole read's bytes (9, the windows
+        // serve 7) show who read the file.
+        for (mode, planned, whole) in [
+            (PinMode::RefusedRestored, OBJECT_SIZE, OBJECT_SIZE),
+            (PinMode::RefusedWithStaleReadings, OBJECT_SIZE, OBJECT_SIZE),
+            (PinMode::RefusedThenShrunk, OBJECT_SIZE, OBJECT_SIZE - 1),
+            (PinMode::Honoured, OBJECT_SIZE + 1, OBJECT_SIZE),
         ] {
             let server = pin_server::start(mode).await;
             let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
@@ -12641,10 +12638,12 @@ mod tests {
                 matches!(outcome, TransferOutcome::Success),
                 "{mode:?}: {outcome:?}"
             );
-            assert!(
-                server.refused() >= refusals,
-                "{mode:?}: the segmented path ran first"
-            );
+            if mode != PinMode::Honoured {
+                assert!(
+                    server.refused() >= 2,
+                    "{mode:?}: the segmented path ran first"
+                );
+            }
             assert_eq!(executor.take_transfer_attempts("big"), Some(1), "{mode:?}");
             assert_eq!(std::fs::read(&out).unwrap(), vec![9u8; whole], "{mode:?}");
             let seen = recorder.0.lock().unwrap().clone();
