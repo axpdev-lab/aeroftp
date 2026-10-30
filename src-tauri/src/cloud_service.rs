@@ -41,6 +41,9 @@ pub use incremental::{
     IncrementalPrep, LocalChanges, REMOTE_WORK_LIMIT,
 };
 
+/// Minimum file count for the count-based mass-deletion safeguards.
+const MASS_DELETE_FLOOR: usize = 10;
+
 /// Sync task to be executed
 #[derive(Debug, Clone)]
 pub enum SyncTask {
@@ -750,7 +753,6 @@ impl CloudService {
         pending_deletes: usize,
         scan_incomplete: bool,
     ) -> bool {
-        const MASS_DELETE_FLOOR: usize = 10;
         if prior_count == 0 {
             return false;
         }
@@ -767,7 +769,7 @@ impl CloudService {
     /// authority against the destination on every full scan, including the
     /// first: later baseline updates must not bypass a refused first cycle.
     fn update_delete_safety_trips(pending_deletes: usize, destination_files: usize) -> bool {
-        pending_deletes >= 10 && pending_deletes > destination_files / 2
+        pending_deletes >= MASS_DELETE_FLOOR && pending_deletes > destination_files / 2
     }
 
     /// Persist the post-sync baseline so the NEXT cycle can tell a deleted file
@@ -1239,7 +1241,7 @@ impl CloudService {
             && Self::update_delete_safety_trips(pending_deletes, destination_files))
         .then(|| {
             format!(
-                "AeroCloud safety gate: blocked {pending_deletes} deletes out of {destination_files} destination files (at least 10 and more than half). Verify the folder pair before a manually reviewed sync."
+                "AeroCloud safety gate: blocked {pending_deletes} deletes out of {destination_files} destination files (at least {MASS_DELETE_FLOOR} and more than half). To proceed with intentional deletes, open the same source and destination in AeroSync, select Mirror with One-way Update, review the plan and confirm the deletions."
             )
         });
         if let Some(reason) = &delete_refusal {
@@ -5036,6 +5038,7 @@ mod baseline_tests {
         assert!(CloudService::update_delete_safety_trips(20, 20));
     }
 
+    // The scratch-index fixture isolates the application data root through XDG only on Linux.
     #[test]
     #[cfg(target_os = "linux")]
     fn one_way_update_first_cycle_mass_delete_is_refused_in_preview_and_execution() {
