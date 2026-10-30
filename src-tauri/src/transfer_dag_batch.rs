@@ -3773,6 +3773,7 @@ mod tests {
             let errors = executor.file_errors.lock().unwrap();
             assert_eq!(errors.len(), 1, "{errors:?}");
             assert_eq!(errors[0].kind, TransferFailureKind::LocalIo);
+            assert!(!errors[0].retryable, "a refused plan is not retried as is");
             assert!(
                 errors[0].message.contains(&format!(
                     "has {actual} bytes but its parts were planned for 24 bytes"
@@ -3810,6 +3811,10 @@ mod tests {
         let errors = executor.file_errors.lock().unwrap();
         assert_eq!(errors.len(), 1, "{errors:?}");
         assert_eq!(errors[0].kind, TransferFailureKind::LocalIo);
+        assert!(
+            !errors[0].retryable,
+            "an unreadable source is not retried as is"
+        );
         assert!(
             errors[0]
                 .message
