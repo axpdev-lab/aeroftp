@@ -42524,9 +42524,9 @@ async fn cmd_profile_import(
         }
     };
 
-    // The import reads and writes this user's profiles. Another window or
-    // process may switch the active user meanwhile: the restore and the
-    // write below check it is still this one.
+    // The import reads and writes this user's profiles, and restores secrets for
+    // this user. Another window or process may switch the active user meanwhile:
+    // the list write below refuses if it is no longer this one.
     let user_id = match import_user_id(cli, &store) {
         Ok(Some(id)) => id,
         Ok(None) => {

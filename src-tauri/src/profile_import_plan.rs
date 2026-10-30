@@ -283,23 +283,33 @@ pub const OMITTED_WHEN_EMPTY: [&str; 6] = [
     "persistModeCredentials",
 ];
 
-/// The options that choose which server a connection reaches. A bucket or a
-/// container is not here: it is a place on the same server, for the same account.
-const OPTIONS_THAT_CHOOSE_THE_SERVER: [&str; 6] = [
+/// The options that decide where a stored secret travels and how: which server
+/// a connection reaches, and whether it is protected on the way (a backup that
+/// turns TLS or certificate checks off must not take a saved password with it).
+/// A bucket or a container is not here: it is a place on the same server, for
+/// the same account, over the same connection.
+const OPTIONS_THAT_GUARD_THE_SECRET: [&str; 12] = [
     "endpoint",
     "region",
     "accountId",
     "accountName",
     "jurisdiction",
     "pcloudRegion",
+    "tlsMode",
+    "ftpsMode",
+    "webdavScheme",
+    "verifyCert",
+    "allowCleartextEndpoint",
+    "allowCleartextStorage",
 ];
 
 /// Whether a stored secret may go where `b` connects, having been saved for
 /// where `a` connects: the same protocol, provider, host, port and account, and
-/// the same value for the options that choose the server. This answers a
-/// narrower question than the frontend's `isSameConnection`, which also tells
-/// two buckets apart: a backup that only changes a bucket, or any other setting,
-/// stays an overwrite. Absent, null and empty values are the same absence.
+/// the same value for [`OPTIONS_THAT_GUARD_THE_SECRET`]. This answers a narrower
+/// question than the frontend's `isSameConnection`, which also tells two buckets
+/// apart: a backup that only changes a bucket, or any other setting, stays an
+/// overwrite. Absent, null and empty values are the same absence, an absent
+/// `protocol` is FTP and an absent `verifyCert` is true, as when connecting.
 pub fn same_target(a: &serde_json::Value, b: &serde_json::Value) -> bool {
     let present = |value: Option<&serde_json::Value>| -> serde_json::Value {
         match value {
@@ -316,14 +326,25 @@ pub fn same_target(a: &serde_json::Value, b: &serde_json::Value) -> bool {
             .unwrap_or(host)
             .to_string()
     };
+    // The value a connection would use when a field is left out.
+    let protocol = |p: &serde_json::Value| match present(p.get("protocol")) {
+        serde_json::Value::Null => serde_json::json!("ftp"),
+        value => value,
+    };
+    let option =
+        |p: &serde_json::Value, key: &str| match present(p.get("options").and_then(|o| o.get(key)))
+        {
+            serde_json::Value::Bool(true) if key == "verifyCert" => serde_json::Value::Null,
+            value => value,
+        };
     host(a) == host(b)
-        && ["port", "username", "protocol", "providerId"]
+        && protocol(a) == protocol(b)
+        && ["port", "username", "providerId"]
             .iter()
             .all(|key| present(a.get(key)) == present(b.get(key)))
-        && OPTIONS_THAT_CHOOSE_THE_SERVER.iter().all(|key| {
-            present(a.get("options").and_then(|o| o.get(key)))
-                == present(b.get("options").and_then(|o| o.get(key)))
-        })
+        && OPTIONS_THAT_GUARD_THE_SECRET
+            .iter()
+            .all(|key| option(a, key) == option(b, key))
 }
 
 /// The profile an overwrite stores: `existing` with the fields of `imported`
@@ -640,7 +661,8 @@ mod tests {
         assert!(!may_write_oauth_app(Some("a"), None, None));
     }
 
-    /// What decides a move to another server, and what does not.
+    /// What decides a move to another server or a weaker connection, and what
+    /// does not.
     #[test]
     fn same_target_tells_another_server_from_another_setting() {
         let stored = json!({
@@ -666,11 +688,28 @@ mod tests {
             });
             assert!(!same_target(&stored, &moved), "{key}");
         }
-        for key in OPTIONS_THAT_CHOOSE_THE_SERVER {
+        for key in OPTIONS_THAT_GUARD_THE_SECRET {
             let mut moved = stored.clone();
             moved["options"][key] = json!("other");
             assert!(!same_target(&stored, &moved), "{key}");
         }
+        // A backup that weakens the connection takes no saved password with it.
+        for (key, value) in [
+            ("tlsMode", json!("none")),
+            ("webdavScheme", json!("http")),
+            ("verifyCert", json!(false)),
+        ] {
+            let mut weaker = stored.clone();
+            weaker["options"][key] = value;
+            assert!(!same_target(&stored, &weaker), "{key}");
+        }
+        // The defaults a connection would use read as the same target.
+        let mut explicit = stored.clone();
+        explicit["options"]["verifyCert"] = json!(true);
+        assert!(same_target(&stored, &explicit));
+        let no_protocol = json!({"host": "h", "port": 21, "username": "u"});
+        let ftp = json!({"host": "h", "port": 21, "username": "u", "protocol": "ftp"});
+        assert!(same_target(&no_protocol, &ftp));
     }
 
     /// The GUI sends the mode as a lowercase string.

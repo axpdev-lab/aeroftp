@@ -18294,9 +18294,10 @@ fn active_server_profiles_for_import() -> Result<(i64, Vec<serde_json::Value>), 
 /// `--user` naming another account than the active one, cannot misplace them.
 ///
 /// An overwrite the file would point at another server ([`profile_import_plan::same_target`])
-/// is refused and reported: the stored secrets were saved for the old one, so
-/// keeping them could send a password to the new one, and removing them could
-/// lose them if the import then failed. Nothing is written for such a profile.
+/// or over a weaker connection, is refused and reported: the stored secrets were
+/// saved for the old one, so keeping them could send a password to the new one,
+/// and removing them could lose them if the import then failed. Nothing is
+/// written for such a profile.
 pub async fn import_server_profiles_with_mode(
     file_path: String,
     password: String,
@@ -18461,9 +18462,10 @@ fn vault_value(
     }
 }
 
-/// Write the secrets of `servers`, the profiles the import stores, into the
-/// active user's vault: each one's credential and the `provider_secrets` kept
-/// under its id. Audit v4.1.0: a profile of the file left out of `servers`
+/// Write the secrets of `servers`, the profiles the import stores, for `user`
+/// (the active user when `None`): each one's credential and the
+/// `provider_secrets` kept under its id. A locked `user` fails before anything is
+/// written, rather than storing part of them. Audit v4.1.0: a profile of the file left out of `servers`
 /// (skipped) writes nothing, so a stored profile it matches keeps its secrets.
 /// The provider-wide singletons (an OAuth app's credentials, the legacy
 /// Jottacloud chain) are written only when empty or already this profile's or
@@ -18498,6 +18500,9 @@ fn restore_imported_secrets(
     let mut kept_oauth_apps: std::collections::HashSet<String> = std::collections::HashSet::new();
     match credential_store::CredentialStore::from_cache() {
         Some(store) => {
+            if let (Some(user), false) = (user, servers.is_empty()) {
+                user_partitions::ensure_credential_user_unlocked(user)?;
+            }
             #[cfg(feature = "proton-native")]
             let native_owner =
                 providers::proton_native::vault::SessionOwner::for_user(match user {

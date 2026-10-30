@@ -270,7 +270,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
      * Step 2 of the import: decrypt the already-chosen file with the password,
      * let the backend decide each profile with `existingMode`, store the
      * result, and report it. The dialog then closes itself, or stays open on a
-     * Jottacloud warning, or on an error that says what a failed write left.
+     * warning, or on an error that says what a failed write left.
      */
     const handleImport = async () => {
         const filePath = importFilePath;

@@ -406,7 +406,7 @@ async fn round_trip() {
     if scope.config("corrupt").is_ok() {
         gaps.push("Corrupt non-object auth configuration is accepted");
     }
-    durable_profile_auth_lifecycle(&store, &github).await;
+    durable_profile_auth_lifecycle(&store, &github, active.id, owner.id).await;
     #[cfg(feature = "proton-native")]
     native_session_ownership(&store, active.id, owner.id).await;
     crate::crypt_overlay_provider::tests::captured_overlay_owner_survives_account_switch(
@@ -419,7 +419,12 @@ async fn round_trip() {
 
 /// Durable profile-auth secrets through copy, export, purge and every import
 /// mode, against the real vault of the forked fixture.
-async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value) {
+async fn durable_profile_auth_lifecycle(
+    store: &CredentialStore,
+    github: &Value,
+    active_id: i64,
+    other_id: i64,
+) {
     let source = field(github, "id");
     let target = "fixture-github-copy";
     // A pending sign-in and an installation token's cache deadline are local
@@ -662,6 +667,32 @@ async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value)
         read(&format!("server_{source}")).unwrap().as_str(),
         "stored-password"
     );
+
+    // An import for another account than the active one writes the secrets for
+    // that account: none reaches the active one's partition.
+    let for_other = crate::import_server_profiles_with_mode(
+        file.to_string_lossy().into_owned(),
+        "fixture-export-password".into(),
+        ExistingProfileMode::Duplicate,
+        &current,
+        Some(other_id),
+        false,
+    )
+    .await
+    .unwrap();
+    let copy = field(&for_other.servers[0], "id");
+    let mirrored = |user: i64| {
+        users::open_or_init_cli()
+            .unwrap()
+            .query_row(
+                "SELECT COUNT(*) FROM user_credentials WHERE user_id=?1 AND credential_id=?2",
+                rusqlite::params![user, format!("{stale_prefix}_{copy}")],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap()
+    };
+    assert_eq!(mirrored(other_id), 1);
+    assert_eq!(mirrored(active_id), 0);
 
     // The profile whose own chain is the singleton refreshes it on an overwrite.
     users::store_active_credential_typed_dual(
