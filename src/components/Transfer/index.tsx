@@ -251,6 +251,7 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
     const shownProfile = ownProfile ?? (lastProfile.current?.scope === cardScope ? lastProfile.current.profile : undefined);
     useLayoutEffect(() => {
         if (ownProfile) lastProfile.current = { scope: cardScope, profile: ownProfile };
+        else if (lastProfile.current?.scope !== cardScope) lastProfile.current = null;
     }, [ownProfile, cardScope]);
     const { ref: cardRef, release: releaseCardHeight, measureAfterAnimation } = useNeverShrinkingHeight<HTMLDivElement>(cardScope);
 

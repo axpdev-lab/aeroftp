@@ -93,6 +93,14 @@ describe('ProgressCard during a transfer', () => {
         expect(toggle()).toBeNull();
     });
 
+    it('does not bring back an earlier graph after a transfer of another kind', async () => {
+        await render(toast('a.bin'), 300);
+        const download = { ...summary('b.bin'), direction: 'download' } as TransferToastState['summary'];
+        await render({ summary: download, speedProfile: emptySpeedProfile() }, 300);
+        await render(starting('c.bin'), 300);
+        expect(toggle()).toBeNull();
+    });
+
     it('keeps the height of the open graph, measured when its animation ends', async () => {
         vi.useFakeTimers();
         localStorage.clear();
