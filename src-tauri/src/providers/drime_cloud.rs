@@ -1514,6 +1514,10 @@ impl StorageProvider for DrimeCloudProvider {
         super::response_bytes_with_limit(resp, super::MAX_DOWNLOAD_TO_BYTES).await
     }
 
+    /// Upload `local_path` to `remote_path`. Drime has no streaming upload, so
+    /// the whole file is read into memory first, and refused if it changed
+    /// while it was being read; from 5 MB it goes as a multipart upload,
+    /// below that in one request.
     async fn upload(
         &mut self,
         local_path: &str,
@@ -1529,9 +1533,8 @@ impl StorageProvider for DrimeCloudProvider {
         // M9: Full file read into memory: no streaming upload API available for Drime Cloud.
         // This limits practical upload size to available RAM. For files >500MB, users should
         // consider alternative providers with chunked upload support (S3, OneDrive, Dropbox).
-        let data = tokio::fs::read(local_path)
-            .await
-            .map_err(ProviderError::IoError)?;
+        let data =
+            super::upload_source::UploadSource::read_whole(local_path, "Drime upload").await?;
 
         let file_size = data.len() as u64;
         drime_log(&format!(
