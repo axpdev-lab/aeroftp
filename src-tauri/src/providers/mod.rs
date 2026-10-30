@@ -86,6 +86,7 @@ pub mod tpslimit;
 pub mod twake;
 pub mod types;
 pub mod upload_progress;
+pub mod upload_source;
 pub mod uploadcare;
 pub mod webdav;
 pub mod xml_text;

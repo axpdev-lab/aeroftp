@@ -1531,6 +1531,7 @@ impl BoxProvider {
             });
 
         // Stream from file handle instead of buffered &[u8]
+        let source = super::upload_source::UploadSource::observe(local_path).await?;
         let mut file = tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
@@ -1591,6 +1592,10 @@ impl BoxProvider {
         }
 
         // Commit
+        // The whole-file SHA-1 is computed from the bytes read, so Box cannot
+        // tell a file rewritten during the read from the one on disk.
+        source.ensure_unchanged("Box chunked upload").await?;
+
         let file_sha1 = BASE64.encode(whole_sha1.finalize());
         let commit_body = serde_json::json!({"parts": parts});
         self.commit_upload_session(&commit_url, &commit_body, &file_sha1)
@@ -4525,6 +4530,110 @@ mod tests {
 
         server.abort();
         let _ = std::fs::remove_file(&tmp);
+    }
+
+    /// A file rewritten while its parts are read is not committed: Box checks
+    /// the parts against a whole-file SHA-1 computed from the same bytes, so
+    /// only the local check can refuse the mixture before the commit.
+    #[tokio::test]
+    async fn a_file_rewritten_during_a_chunked_upload_is_not_committed() {
+        use std::sync::{Arc, Mutex};
+
+        use axum::{extract::Request, routing::post, routing::put, Router};
+
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("big.bin");
+        std::fs::write(&local, b"AAAAAAAAAAAA").unwrap();
+        let parts: Arc<Mutex<u32>> = Arc::default();
+        let commits: Arc<Mutex<u32>> = Arc::default();
+        let (parts_h, commits_h, rewrite) =
+            (Arc::clone(&parts), Arc::clone(&commits), local.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        let base = format!("http://{addr}");
+        let session_base = base.clone();
+        let app = Router::new()
+            .route(
+                "/files/upload_sessions",
+                post(move || {
+                    let base = session_base.clone();
+                    async move {
+                        axum::Json(serde_json::json!({
+                            "id": "sess-rewrite",
+                            "part_size": 4,
+                            "session_endpoints": {
+                                "upload_part": format!("{base}/part"),
+                                "commit": format!("{base}/commit")
+                            }
+                        }))
+                    }
+                }),
+            )
+            .route(
+                "/part",
+                put(move |req: Request| {
+                    let parts = Arc::clone(&parts_h);
+                    let rewrite = rewrite.clone();
+                    async move {
+                        let _ = axum::body::to_bytes(req.into_body(), usize::MAX).await;
+                        let first = {
+                            let mut parts = parts.lock().unwrap();
+                            *parts += 1;
+                            *parts == 1
+                        };
+                        if first {
+                            let modified = std::fs::metadata(&rewrite).unwrap().modified().unwrap();
+                            std::fs::write(&rewrite, b"BBBBBBBBBBBB").unwrap();
+                            std::fs::File::options()
+                                .write(true)
+                                .open(&rewrite)
+                                .unwrap()
+                                .set_modified(modified + std::time::Duration::from_secs(5))
+                                .unwrap();
+                        }
+                        axum::Json(serde_json::json!({"part": {"part_id": "p"}}))
+                    }
+                }),
+            )
+            .route(
+                "/commit",
+                post(move || {
+                    let commits = Arc::clone(&commits_h);
+                    async move {
+                        *commits.lock().unwrap() += 1;
+                        axum::Json(serde_json::json!({"entries": []}))
+                    }
+                }),
+            );
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let provider = fixture_connected();
+        let session = reqwest::Client::new()
+            .post(format!("{base}/files/upload_sessions"))
+            .send()
+            .await
+            .unwrap();
+        let progress = super::super::upload_progress::UploadProgress::new(None, 12);
+        let err = provider
+            .chunked_upload_session(session, local.to_str().unwrap(), 12, &progress)
+            .await
+            .expect_err("a rewritten source must not be committed");
+        assert!(
+            err.to_string()
+                .contains(super::super::upload_source::UPLOAD_SOURCE_CHANGED_MARKER),
+            "{err}"
+        );
+        assert_eq!(*parts.lock().unwrap(), 3, "every part is sent");
+        assert_eq!(
+            *commits.lock().unwrap(),
+            0,
+            "the session must not be committed"
+        );
+        server.abort();
     }
 
     #[tokio::test]

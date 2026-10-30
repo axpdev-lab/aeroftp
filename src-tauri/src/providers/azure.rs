@@ -2481,6 +2481,7 @@ impl AzureProvider {
         // Block List (see `UploadProgress`).
         let progress = super::upload_progress::UploadProgress::new(progress, file_len);
         let concurrency = self.effective_upload_concurrency().max(1);
+        let source = super::upload_source::UploadSource::observe(local_path).await?;
         let mut file = tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
@@ -2579,6 +2580,10 @@ impl AzureProvider {
                 "No data read from file".to_string(),
             ));
         }
+
+        // The blocks were read from one version of the file, or the commit
+        // would publish a mixture; uncommitted blocks expire on their own.
+        source.ensure_unchanged("Azure block upload").await?;
 
         // Commit all blocks
         self.put_block_list(blob_url, &block_ids).await?;
@@ -2935,6 +2940,74 @@ fn lists_a_blob(xml: &str) -> bool {
 mod tests {
     use super::*;
     use reqwest::header::{HeaderMap, HeaderValue};
+
+    /// A file rewritten while its blocks are read is not committed: the first
+    /// block reaches the server, the file is rewritten at the same size, and
+    /// `Put Block List` must never arrive (before the check it did, and the
+    /// blob was a mixture of the two versions).
+    #[tokio::test]
+    async fn a_file_rewritten_during_a_block_upload_is_not_committed() {
+        use std::sync::{Arc, Mutex};
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("big.bin");
+        let size = BLOCK_SIZE + 10;
+        std::fs::write(&local, vec![b'A'; size]).unwrap();
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let log = Arc::clone(&seen);
+        let rewrite = local.clone();
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let log = Arc::clone(&log);
+                let rewrite = rewrite.clone();
+                async move {
+                    let query = req.uri().query().unwrap_or("").to_string();
+                    let _ = axum::body::to_bytes(req.into_body(), usize::MAX).await;
+                    let first = {
+                        let mut log = log.lock().unwrap();
+                        log.push(query);
+                        log.len() == 1
+                    };
+                    if first {
+                        let modified = std::fs::metadata(&rewrite).unwrap().modified().unwrap();
+                        std::fs::write(&rewrite, vec![b'B'; size]).unwrap();
+                        std::fs::File::options()
+                            .write(true)
+                            .open(&rewrite)
+                            .unwrap()
+                            .set_modified(modified + std::time::Duration::from_secs(5))
+                            .unwrap();
+                    }
+                    axum::response::Response::builder()
+                        .status(201)
+                        .body(axum::body::Body::empty())
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut config = test_config();
+        config.endpoint = Some(format!("http://{addr}"));
+        let mut provider = AzureProvider::new(config);
+        provider.connected = true;
+        let url = provider.blob_url("big.bin");
+
+        let err = provider
+            .upload_blocks(local.to_str().unwrap(), &url, size as u64, None)
+            .await
+            .expect_err("a rewritten source must not be committed");
+        assert!(
+            err.to_string()
+                .contains(super::super::upload_source::UPLOAD_SOURCE_CHANGED_MARKER),
+            "{err}"
+        );
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), 2, "both blocks are sent: {seen:?}");
+        assert!(
+            seen.iter().all(|q| q.starts_with("comp=block&")),
+            "Put Block List must not be sent: {seen:?}"
+        );
+    }
 
     fn test_config() -> AzureConfig {
         AzureConfig {

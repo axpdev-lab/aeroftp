@@ -1233,6 +1233,7 @@ impl StorageProvider for DropboxProvider {
             let progress = super::upload_progress::UploadProgress::new(on_progress, file_size);
             // Upload session for large files: read chunks from file, not all in memory
             const CHUNK_SIZE: u64 = 128 * 1024 * 1024; // 128MB
+            let source = super::upload_source::UploadSource::observe(local_path).await?;
             let mut file = tokio::fs::File::open(local_path)
                 .await
                 .map_err(|e| ProviderError::Other(format!("Open error: {}", e)))?;
@@ -1322,6 +1323,10 @@ impl StorageProvider for DropboxProvider {
 
                 progress.report(offset);
             }
+
+            // The chunks were read from one version of the file, or the finish
+            // would publish a mixture; an unfinished session expires on its own.
+            source.ensure_unchanged("Dropbox upload session").await?;
 
             // Step 3: Finish session
             let finish_url = format!("{}/files/upload_session/finish", self.content_api_base());
