@@ -149,6 +149,10 @@ pub struct Limits {
 pub(crate) enum Fault {
     Cancel,
     Panic,
+    /// Holds the thread in the named folder until the walk is ended: the walk
+    /// cannot complete on its own, and ends only when something calls
+    /// `finish`, as the guard does on a panic.
+    HoldUntilEnded,
     /// Puts a link to the folder `outside`, next to the walk's root, in the
     /// place of the named folder after the walk admitted it.
     #[cfg(unix)]
@@ -590,6 +594,11 @@ impl<'a> Walk<'a> {
                 match fault {
                     Fault::Cancel => self.cancel.store(true, Ordering::Relaxed),
                     Fault::Panic => panic!("fault injected at {}", path.display()),
+                    Fault::HoldUntilEnded => {
+                        while !self.ended.load(Ordering::Relaxed) {
+                            std::thread::sleep(Duration::from_millis(1));
+                        }
+                    }
                     #[cfg(unix)]
                     Fault::SwapForLink => {
                         let root = path
@@ -1123,18 +1132,25 @@ mod tests {
         }
     }
 
-    /// A panic in the progress report reaches the caller too.
+    /// A panic in the progress report reaches the caller too, and ends the
+    /// walk instead of waiting for it. A folder held until the walk is ended
+    /// keeps the walk from completing on its own, so the report is called
+    /// however fast the threads are, and only its panic can end the walk.
     #[test]
     fn a_panicking_progress_report_reaches_the_caller() {
         let dir = tempfile::tempdir().expect("tempdir");
         tree(dir.path(), 4, 3, 1);
-        let walk = Limits {
-            progress_every: Duration::ZERO,
-            ..limits(4)
-        };
-        assert!(panics_within_a_minute(dir.path(), walk, |_| panic!(
-            "report"
-        )));
+        for threads in [1, 4] {
+            let walk = Limits {
+                progress_every: Duration::ZERO,
+                fault: Some(("d2", Fault::HoldUntilEnded)),
+                ..limits(threads)
+            };
+            assert!(
+                panics_within_a_minute(dir.path(), walk, |_| panic!("report")),
+                "{threads} threads"
+            );
+        }
     }
 
     #[test]
