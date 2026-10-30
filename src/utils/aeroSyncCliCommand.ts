@@ -56,6 +56,10 @@ export type CliShell = 'posix' | 'powershell';
 export interface CliCommandInput {
     pairKind: AeroSyncPairKind | null;
     preset: SyncPreset;
+    updateOnly?: boolean;
+    /** Effective compare window; the CLI raises it to backend precision too. */
+    modifyWindowMs?: number;
+    timestampsComparable?: boolean;
     direction: PresetDirection;
     /** Saved server name, when the connection came from a saved server. */
     profileName?: string | null;
@@ -95,6 +99,7 @@ export function buildCliSyncCommand(input: CliCommandInput): CliCommandResult {
 
     if (input.pairKind !== 'local-remote' && input.pairKind !== 'remote-local') return none('local-pair');
     if (!input.profileName) return none('unsaved-server');
+    if (input.updateOnly && input.timestampsComparable === false) return none('overwrites-newer');
     if (input.preset === 'backup' || input.preset === 'update') return none('overwrites-newer');
     if (input.preset === 'bisync') return none('two-way');
     if (input.canary) return none('canary');
@@ -113,6 +118,10 @@ export function buildCliSyncCommand(input: CliCommandInput): CliCommandResult {
         '--direction', towardsRemote ? 'upload' : 'download',
         '--delete',
     ];
+    if (input.updateOnly) argv.push('--update');
+    if (input.modifyWindowMs != null && Number.isFinite(input.modifyWindowMs)) {
+        argv.push('--modify-window', String(Math.ceil(Math.max(0, input.modifyWindowMs) / 1000)));
+    }
     for (const pattern of input.excludes) argv.push('--exclude', pattern);
     // The CLI writes sidecars after uploads only; on a download the Plan's
     // error correction verifies and repairs, which the CLI does not do. That

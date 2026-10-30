@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "AeroCloud activat",
             "selectPairLocalFolder": "Selectați folderul local pentru pereche",
             "secondsAgo": "acum {count}s",
-            "conflictsCount": "Conflicte care necesită atenție: {count}"
+            "conflictsCount": "Conflicte care necesită atenție: {count}",
+            "updateOnlyHint": "Actualizarea unidirecțională copiază doar din sursă și păstrează fișierele mai noi de la destinație. Dezactivați backupul aditiv pentru a șterge și fișierele existente doar la destinație, inclusiv pe cele fără istoric de sincronizare. Politica de conflicte este ignorată; datele necunoscute rămân nerezolvate."
         },
         "statusBar": {
             "connected": "Conectat",
@@ -6324,7 +6325,9 @@
             "progressCopy": "[copie]",
             "deleteCount": "De șters: {count}",
             "overwriteCount": "De suprascris: {count}",
-            "conflictCount": "Conflicte: {count}"
+            "conflictCount": "Conflicte: {count}",
+            "updateOnly": "Omite fișierele mai noi de la destinație (actualizare unidirecțională)",
+            "updateOnlyHint": "Copiați fișierele sursă lipsă sau modificate, păstrați fișierele mai noi de la destinație și ștergeți intrările existente doar la destinație. Fișierele fără date comparabile rămân pentru verificare."
         },
         "accountLock": {
             "title": "Alegeți un cont",

@@ -289,6 +289,9 @@ pub fn generate_script(profile: &AerosyncScriptProfile, app_version: &str) -> St
     if profile.track_renames {
         out.push_str(" \\\n  --track-renames");
     }
+    if profile.profile.update_only && profile.profile.direction != CompareDirection::Bidirectional {
+        out.push_str(" \\\n  --update");
+    }
     if profile.skip_matching {
         out.push_str(" \\\n  --skip-matching");
     }
@@ -552,6 +555,7 @@ pub fn parse_script(content: &str) -> Result<ParsedScript, ParseError> {
             .and_then(|v| serde_json::from_value::<VerifyPolicy>(v.clone()).ok())
             .unwrap_or_default(),
         delete_orphans: parsed_sync.delete_orphans,
+        update_only: parsed_sync.update_only,
         parallel_streams: metadata_json
             .get("parallel_streams")
             .and_then(|v| v.as_u64())
@@ -946,6 +950,7 @@ struct ParsedSyncLine {
     path_pair: (String, String),
     direction: CompareDirection,
     delete_orphans: bool,
+    update_only: bool,
     dry_run: bool,
     track_renames: bool,
     skip_matching: bool,
@@ -991,6 +996,7 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
     let mut positional: Vec<String> = Vec::new();
     let mut direction: Option<CompareDirection> = None;
     let mut delete_orphans = false;
+    let mut update_only = false;
     let mut dry_run = false;
     let mut track_renames = false;
     let mut skip_matching = false;
@@ -1021,6 +1027,7 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
                     );
             }
             "--delete" => delete_orphans = true,
+            "--update" => update_only = true,
             "--dry-run" => dry_run = true,
             "--track-renames" => track_renames = true,
             "--skip-matching" => skip_matching = true,
@@ -1079,6 +1086,12 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
         line,
         message: "missing --direction".to_string(),
     })?;
+    if update_only && direction == CompareDirection::Bidirectional {
+        return Err(ParseError::MalformedSync {
+            line,
+            message: "--update needs --direction upload or download".to_string(),
+        });
+    }
     if direction == CompareDirection::Bidirectional && conflict_mode.as_deref() == Some("source") {
         return Err(ParseError::MalformedSync {
             line,
@@ -1091,6 +1104,7 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
         path_pair: (local, remote),
         direction,
         delete_orphans,
+        update_only,
         dry_run,
         track_renames,
         skip_matching,
@@ -1159,6 +1173,19 @@ pub fn tokenize_script_line(body: &str) -> Result<Vec<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mirror_update_round_trips_as_executable_delete_and_update_flags() {
+        let mut profile = sample(SyncProfile::mirror());
+        profile.profile.update_only = true;
+        let script = generate_script(&profile, "test");
+        assert!(script.contains("--delete"));
+        assert!(script.contains("--update"));
+        let imported = parse_script(&script).unwrap();
+        assert!(imported.profile.profile.update_only);
+        assert!(imported.profile.profile.delete_orphans);
+        assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    }
 
     /// An exclusion that starts with a dash could not be exported and read
     /// back: the import took `--exclude -tmp`, which the CLI refuses, and

@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "AeroCloud povoleno",
             "selectPairLocalFolder": "Vyberte místní složku pro pár",
             "secondsAgo": "před {count}s",
-            "conflictsCount": "Konflikty vyžadující pozornost: {count}"
+            "conflictsCount": "Konflikty vyžadující pozornost: {count}",
+            "updateOnlyHint": "Jednosměrná aktualizace kopíruje pouze ze zdroje a zachovává novější soubory v cíli. Vypnutím přírůstkového zálohování odstraníte i soubory existující pouze v cíli, včetně souborů bez historie synchronizace. Zásady řešení konfliktů se ignorují; neznámá data zůstávají nevyřešena."
         },
         "statusBar": {
             "connected": "Připojeno",
@@ -6324,7 +6325,9 @@
             "progressCopy": "[kopie]",
             "deleteCount": "Ke smazání: {count}",
             "overwriteCount": "K přepsání: {count}",
-            "conflictCount": "Konflikty: {count}"
+            "conflictCount": "Konflikty: {count}",
+            "updateOnly": "Přeskočit novější soubory v cíli (jednosměrná aktualizace)",
+            "updateOnlyHint": "Zkopírujte chybějící nebo změněné zdrojové soubory, zachovejte novější soubory v cíli a odstraňte položky existující pouze v cíli. Soubory bez porovnatelných dat zůstanou ke kontrole."
         },
         "accountLock": {
             "title": "Vyberte účet",

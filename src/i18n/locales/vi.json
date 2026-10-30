@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "Đã bật AeroCloud",
             "selectPairLocalFolder": "Chọn thư mục cục bộ cho cặp",
             "secondsAgo": "{count} giây trước",
-            "conflictsCount": "{count} xung đột cần xử lý"
+            "conflictsCount": "{count} xung đột cần xử lý",
+            "updateOnlyHint": "Cập nhật một chiều chỉ sao chép từ nguồn và giữ lại các tệp đích mới hơn. Tắt sao lưu bổ sung để xóa cả các tệp chỉ có ở đích, kể cả tệp không có lịch sử đồng bộ. Chính sách xung đột bị bỏ qua; các ngày không xác định vẫn chưa được giải quyết."
         },
         "statusBar": {
             "connected": "Đã kết nối",
@@ -6324,7 +6325,9 @@
             "progressCopy": "[bản sao]",
             "deleteCount": "Sẽ bị xóa: {count}",
             "overwriteCount": "Sẽ bị ghi đè: {count}",
-            "conflictCount": "{count} xung đột"
+            "conflictCount": "{count} xung đột",
+            "updateOnly": "Bỏ qua tệp đích mới hơn (cập nhật một chiều)",
+            "updateOnlyHint": "Sao chép các tệp nguồn bị thiếu hoặc đã thay đổi, giữ lại các tệp đích mới hơn và xóa các mục chỉ có ở đích. Các tệp không có ngày có thể so sánh được sẽ được giữ lại để xem xét."
         },
         "accountLock": {
             "title": "Chọn tài khoản",

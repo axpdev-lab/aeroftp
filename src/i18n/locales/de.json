@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "AeroCloud aktiviert",
             "selectPairLocalFolder": "Lokalen Ordner für Paar auswählen",
             "secondsAgo": "vor {count}s",
-            "conflictsCount": "Zu prüfende Konflikte: {count}"
+            "conflictsCount": "Zu prüfende Konflikte: {count}",
+            "updateOnlyHint": "Die Einweg-Aktualisierung kopiert nur aus der Quelle und behält neuere Zieldateien bei. Deaktivieren Sie die additive Sicherung, um auch Dateien zu löschen, die nur im Ziel vorhanden sind, einschließlich Dateien ohne Synchronisierungsverlauf. Die Konfliktrichtlinie wird ignoriert; unbekannte Datumsangaben bleiben ungeklärt."
         },
         "statusBar": {
             "connected": "Verbunden",
@@ -6324,7 +6325,9 @@
             "progressCopy": "[Kopie]",
             "deleteCount": "{count} zu löschen",
             "overwriteCount": "{count} zu überschreiben",
-            "conflictCount": "Konflikte: {count}"
+            "conflictCount": "Konflikte: {count}",
+            "updateOnly": "Neuere Zieldateien überspringen (Einweg-Aktualisierung)",
+            "updateOnlyHint": "Fehlende oder geänderte Quelldateien kopieren, neuere Zieldateien beibehalten und Einträge löschen, die nur im Ziel vorhanden sind. Dateien ohne vergleichbare Datumsangaben bleiben zur Prüfung offen."
         },
         "accountLock": {
             "title": "Konto auswählen",

@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "AeroCloud aktivert",
             "selectPairLocalFolder": "Velg lokal mappe for paret",
             "secondsAgo": "{count}s siden",
-            "conflictsCount": "Konflikter som krever oppmerksomhet: {count}"
+            "conflictsCount": "Konflikter som krever oppmerksomhet: {count}",
+            "updateOnlyHint": "Enveisoppdatering kopierer bare fra kilden og beholder nyere målfiler. Slå av additiv sikkerhetskopiering for også å slette filer som bare finnes på målet, inkludert filer uten synkroniseringshistorikk. Konfliktregelen ignoreres; ukjente datoer forblir uavklarte."
         },
         "statusBar": {
             "connected": "Tilkoblet",
@@ -6343,7 +6344,9 @@
             "progressCopy": "[kopi]",
             "deleteCount": "Til sletting: {count}",
             "overwriteCount": "Til overskriving: {count}",
-            "conflictCount": "Konflikter: {count}"
+            "conflictCount": "Konflikter: {count}",
+            "updateOnly": "Hopp over nyere målfiler (enveisoppdatering)",
+            "updateOnlyHint": "Kopier manglende eller endrede kildefiler, behold nyere målfiler og slett oppføringer som bare finnes på målet. Filer uten sammenlignbare datoer blir liggende til gjennomgang."
         },
         "accountLock": {
             "title": "Velg en konto",

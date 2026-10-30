@@ -19,15 +19,15 @@
 
 use super::{
     open_aerocloud_provider, CloudService, FailedPath, PairCycleError, PairCycleReport,
-    ProviderScanTraits, ScanScope, SkippedEntry, SyncOperationResult,
+    ProviderScanTraits, ScanScope, SkippedEntry, SyncOperationResult, UpdatePolicy,
 };
 use crate::cloud_config::{CloudConfig, CloudSyncStatus};
 use crate::credential_store;
 use crate::providers::{ProviderError, RemoteEntry, StorageProvider};
 use crate::sync::{
     build_comparison_results_with_index, decide_sync_action, local_changed_since,
-    normalize_relative_key, save_sync_index, CompareOptions, FileComparison, FileInfo, SyncAction,
-    SyncIndex, SyncIndexEntry, SyncStatus, SYNC_INDEX_VERSION,
+    normalize_relative_key, save_sync_index, CompareDirection, CompareOptions, FileComparison,
+    FileInfo, SyncAction, SyncIndex, SyncIndexEntry, SyncStatus, SYNC_INDEX_VERSION,
 };
 use crate::sync_ignore::AeroIgnore;
 use chrono::{DateTime, Utc};
@@ -399,7 +399,14 @@ fn plan(
         full_scan_wanted = Some("the .aeroignore rules changed".to_string());
     }
 
-    let mut renames = plan_renames(&candidates, &mut index, &mut disk, &scope, config);
+    // A remote rename could replace a newer destination without consulting
+    // its timestamp. One-way Update compares both paths before any write.
+    let mut renames =
+        if config.update_only && config.sync_direction != CompareDirection::Bidirectional {
+            Vec::new()
+        } else {
+            plan_renames(&candidates, &mut index, &mut disk, &scope, config)
+        };
 
     // Every path the changes reach: the changed ones, what a folder that
     // changed holds on disk, and what the baseline holds under it (a folder
@@ -852,11 +859,18 @@ impl CloudService {
             }
         }
 
+        let mut update_policy = UpdatePolicy {
+            window: options.modify_window,
+            allow_orphan_deletes: config.sync_direction != CompareDirection::RemoteToLocal
+                || provider.listing_is_authoritative(),
+        };
+
         // A local file whose remote copy is gone reads as deleted on the
         // remote: a remote change, left to the full scan and its gate.
-        let (deferred, mut comparisons): (Vec<FileComparison>, Vec<FileComparison>) = comparisons
-            .into_iter()
-            .partition(|c| self.resolve_action(&config, c) == SyncAction::DeleteLocal);
+        let (deferred, mut comparisons): (Vec<FileComparison>, Vec<FileComparison>) =
+            comparisons.into_iter().partition(|c| {
+                self.resolve_action(&config, c, update_policy) == SyncAction::DeleteLocal
+            });
         for c in &deferred {
             result.skipped += 1;
             result.skipped_details.push(SkippedEntry {
@@ -869,9 +883,10 @@ impl CloudService {
         // The full sync's gate, on what this pass can see: the baseline, the
         // local folder, and the deletes it would propagate.
         let prior_count = index.files.len();
-        let pending_deletes = self.count_pending_deletes(&config, &comparisons);
+        let pending_deletes = self.count_pending_deletes(&config, &comparisons, update_policy);
         let local_empty = local_root_is_empty(&config.local_folder);
         if Self::delete_safety_trips(prior_count, local_empty, false, pending_deletes, false) {
+            update_policy.allow_orphan_deletes = false;
             tracing::warn!(
                 "AeroCloud safety gate (incremental): {} pending deletes vs {} baselined (local folder empty: {}). Disabling delete propagation this pass to prevent accidental wipe.",
                 pending_deletes,
@@ -887,7 +902,7 @@ impl CloudService {
 
         let total = comparisons.len();
         let mut done = Vec::with_capacity(total);
-        let mut ahead = super::bulk::BulkAhead::default();
+        let mut ahead = super::bulk::BulkAhead::new(update_policy);
         for (i, comparison) in comparisons.iter().enumerate() {
             self.set_status(CloudSyncStatus::Syncing {
                 current_file: comparison.relative_path.clone(),
@@ -927,7 +942,7 @@ impl CloudService {
             }
         }
 
-        let mut files = self.post_sync_baseline(&done, &config, Some(&index));
+        let mut files = self.post_sync_baseline(&done, &config, Some(&index), update_policy);
         for key in gone_on_both {
             files.remove(&key);
         }

@@ -942,6 +942,11 @@ aeroftp-cli sync --profile "Backup" ./photos/ /backup/photos/ --direction upload
 # GUI Backup / Update preset: never overwrite a destination copy that is newer
 aeroftp-cli sync --profile "server" ./local/ /remote/ --direction upload --update --conflict-mode skip
 
+# Mirror with One-way Update: keep newer destination files and delete destination-only files
+# Preview first; choose the deletion ceiling deliberately for an unattended real run
+aeroftp-cli sync --profile "server" ./local/ /remote/ --direction upload --update --delete --dry-run
+aeroftp-cli sync --profile "server" ./local/ /remote/ --direction upload --update --delete --max-delete 10%
+
 # Compare same-size files by checksum instead of modification time
 aeroftp-cli sync --profile "server" ./local/ /remote/ --direction upload --checksum --dry-run
 
@@ -962,6 +967,10 @@ In `--direction both`, `newer` and `older` need dates that order the pair. When 
 With `--delete`, a one-way sync also removes the destination directories its deletes left empty, deepest first, on every backend: local directories (`--direction download`) and remote ones, through the backend's own `rmdir`, which since 4.2.1 refuses a directory that holds anything (FTP `RMD` and SFTP `rmdir` by protocol, Box and pCloud with their non-recursive calls, the object stores by removing only the directory marker, every other cloud API by listing first). A directory is removed only when the source has no directory of that name and the exclude list does not name it; a file the run's listing did not show (an excluded one, one written since, a dot file an FTP `LIST` hides) makes the removal fail, and the directory is kept with a note that says how many entries it holds, or the server's refusal. The dry run lists them as `RMDIR (..., if empty after the deletes)`; the JSON result counts the removed ones in `dirs_deleted` and lists every one kept after a failed removal, with the reason, under `dirs_kept`.
 
 `sync --local` (local-to-local) copies every file from the source to the destination without planning, so it refuses `--direction download` and the planning flags (`--delete`, `--max-delete`, `--conflict-mode`, `--update`, `--checksum`, `--modify-window`, `--skip-matching`, `--track-renames`, `--backup-dir`, `--compare-dest`, `--copy-dest`, `--from-reconcile`, `--resync`, `--watch`, `--files-from`, `--files-from-raw`) with exit 5 instead of ignoring them.
+
+In the AeroSync GUI, choose **Mirror** and enable **Skip newer destination files (One-way Update)** for the `--update --delete` combination. It keeps the one-way direction: the conflict policy cannot copy a newer destination back to the source. Different contents with equal dates within the comparison window still follow the source; files without comparable dates remain unresolved. The destructive confirmation still applies to deletes and is reset when the option changes. Saved presets, `.aerosync` templates and exported scripts retain the option; older files keep ordinary Mirror behavior.
+
+In AeroCloud, enable the same option under **Send Only** or **Receive Only**. Leave additive backup on to retain destination-only files, or turn it off to delete destination-only files even when they have never been synced. Full scans and watcher events use the same timestamp rule, including native bulk transfers. AeroCloud keeps its deletion safety gates: an empty or incomplete source, an incomplete destination scan, a non-authoritative remote source listing, or a mass disappearance cannot authorize orphan deletes. AeroCloud retains destination directories. Two-way sync and existing configurations keep their previous behavior.
 
 Sync options: `--direction` (upload/download/both), `--dry-run`, `--delete` (in a non-interactive shell, a pipeline or an agent run, `--delete` is refused unless `--max-delete N` or `N%` caps it or `--dry-run` previews it: rclone deletes by default, AeroFTP asks for the ceiling first), `--exclude`, `--error-correction[=LEVEL]` / `--ec[=LEVEL]`, `--max-delete`, `--backup-dir`, `--backup-suffix`, `--track-renames`, `--bwlimit`, `--conflict-mode`, `--update`, `--checksum`, `--modify-window`, `--skip-matching` / `--size-only`, `--resync`.
 

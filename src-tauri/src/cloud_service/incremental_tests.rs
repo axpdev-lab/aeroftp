@@ -787,6 +787,100 @@ async fn a_file_changed_on_both_sides_is_a_conflict_not_an_upload() {
     assert_eq!(saved.files["doc.txt"].size, 2, "the baseline stays");
 }
 
+#[tokio::test]
+async fn one_way_update_incremental_bulk_keeps_newer_files_and_propagates_deletes() {
+    for bulk in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let config = CloudConfig {
+            sync_direction: CompareDirection::LocalToRemote,
+            update_only: true,
+            preserve_remote_deletes: false,
+            conflict_strategy: ConflictStrategy::PreferRemote,
+            ..pair(root.path())
+        };
+        let mut remote = MemRemote::new();
+        remote.state().bulk = bulk;
+        let mut index = empty_index(&config);
+        for name in ["keep", "older", "gone"] {
+            synced(&mut index, &remote, root.path(), name, b"original");
+        }
+        std::fs::write(root.path().join("keep"), b"local edit").unwrap();
+        set_mtime(&root.path().join("keep"), SYNCED_AT + 10);
+        remote.put("/remote/keep", b"newer remote edit", SYNCED_AT + 100);
+        std::fs::write(root.path().join("older"), b"source update").unwrap();
+        set_mtime(&root.path().join("older"), SYNCED_AT + 100);
+        std::fs::remove_file(root.path().join("gone")).unwrap();
+        let (run, _) = execute(
+            &config,
+            work(prep(&config, &index, &["keep", "older", "gone"])),
+            &mut remote,
+            None,
+        )
+        .await;
+        let (result, _) = done(run);
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+        assert_eq!(
+            (result.uploaded, result.downloaded, result.deleted),
+            (1, 0, 1)
+        );
+        assert_eq!(remote.state().files["/remote/keep"].0, b"newer remote edit");
+        assert_eq!(
+            std::fs::read(root.path().join("keep")).unwrap(),
+            b"local edit"
+        );
+        assert_eq!(remote.state().files["/remote/older"].0, b"source update");
+        assert!(!remote.state().files.contains_key("/remote/gone"));
+    }
+}
+
+#[tokio::test]
+async fn one_way_update_rename_does_not_replace_a_newer_destination() {
+    let root = tempfile::tempdir().unwrap();
+    let config = CloudConfig {
+        sync_direction: CompareDirection::LocalToRemote,
+        update_only: true,
+        preserve_remote_deletes: false,
+        ..pair(root.path())
+    };
+    let mut remote = MemRemote::new();
+    let mut index = empty_index(&config);
+    synced(&mut index, &remote, root.path(), "report.pdf", b"original");
+    std::fs::rename(
+        root.path().join("report.pdf"),
+        root.path().join("final.pdf"),
+    )
+    .unwrap();
+    remote.put(
+        "/remote/final.pdf",
+        b"newer from another device",
+        SYNCED_AT + 1000,
+    );
+    let prepared = plan(
+        &config,
+        Some(index),
+        &changes(
+            root.path(),
+            &["report.pdf", "final.pdf"],
+            &[("report.pdf", "final.pdf")],
+        ),
+        EXACT,
+    )
+    .unwrap();
+    let (run, _) = execute(&config, work(prepared), &mut remote, None).await;
+    let (result, _) = done(run);
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    assert_eq!(result.uploaded, 0);
+    assert!(remote.state().renames.is_empty());
+    assert_eq!(
+        remote.state().files["/remote/final.pdf"].0,
+        b"newer from another device"
+    );
+    assert_eq!(
+        std::fs::read(root.path().join("final.pdf")).unwrap(),
+        b"original"
+    );
+}
+
 /// A local delete reaches the remote only when the pair propagates deletes
 /// that way, as the full sync decides it.
 #[tokio::test]

@@ -10,7 +10,7 @@
 //! of a download); a file the bulk did not take, or one edited while it went
 //! up, goes through that path itself.
 
-use super::{CloudService, LocalFileState};
+use super::{CloudService, LocalFileState, UpdatePolicy};
 use crate::cloud_config::CloudConfig;
 use crate::providers::bulk::{goes_back_to_single_file, BulkTransferOutcome, MAX_BULK_FILES};
 use crate::providers::{RemoteEntry, StorageProvider};
@@ -25,8 +25,18 @@ use std::path::{Path, PathBuf};
 /// path.
 #[derive(Default)]
 pub(super) struct BulkAhead {
+    update_policy: UpdatePolicy,
     settled: HashMap<usize, Result<SyncAction, String>>,
     passed: HashSet<usize>,
+}
+
+impl BulkAhead {
+    pub(super) fn new(update_policy: UpdatePolicy) -> Self {
+        Self {
+            update_policy,
+            ..Self::default()
+        }
+    }
 }
 
 /// A file of an upload group, as read right before it went.
@@ -53,7 +63,9 @@ impl CloudService {
             return outcome;
         }
         if !ahead.passed.contains(&index) {
-            if let Some(upload) = self.bulk_way(provider, config, &comparisons[index]) {
+            if let Some(upload) =
+                self.bulk_way(provider, config, &comparisons[index], ahead.update_policy)
+            {
                 self.run_bulk(provider, config, comparisons, index, upload, ahead)
                     .await;
                 if let Some(outcome) = ahead.settled.remove(&index) {
@@ -61,8 +73,13 @@ impl CloudService {
                 }
             }
         }
-        self.process_comparison_with_provider(provider, config, &comparisons[index])
-            .await
+        self.process_comparison_with_provider(
+            provider,
+            config,
+            &comparisons[index],
+            ahead.update_policy,
+        )
+        .await
     }
 
     /// `Some(true)` for a file upload the provider's bulk can carry,
@@ -74,6 +91,7 @@ impl CloudService {
         provider: &P,
         config: &CloudConfig,
         comparison: &FileComparison,
+        policy: UpdatePolicy,
     ) -> Option<bool> {
         if comparison.is_dir
             || crate::sync::validate_relative_path(&comparison.relative_path).is_err()
@@ -90,7 +108,7 @@ impl CloudService {
         }
         let (upload, download) =
             crate::transfer_bulk::bulk_directions(&provider.transfer_capabilities());
-        match self.resolve_action(config, comparison) {
+        match self.resolve_action(config, comparison, policy) {
             SyncAction::Upload if upload && comparison.local_info.is_some() => Some(true),
             SyncAction::Download if download && comparison.remote_info.is_some() => Some(false),
             _ => None,
@@ -118,7 +136,10 @@ impl CloudService {
     ) {
         let run: Vec<usize> = (start..comparisons.len())
             .take(MAX_BULK_FILES)
-            .take_while(|&i| self.bulk_way(provider, config, &comparisons[i]) == Some(upload))
+            .take_while(|&i| {
+                self.bulk_way(provider, config, &comparisons[i], ahead.update_policy)
+                    == Some(upload)
+            })
             .collect();
         let entries: Vec<TransferEntry> = run
             .iter()

@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "AeroCloud įjungta",
             "selectPairLocalFolder": "Pasirinkite vietinį aplanką porai",
             "secondsAgo": "prieš {count}s",
-            "conflictsCount": "Konfliktai, kuriems reikia dėmesio: {count}"
+            "conflictsCount": "Konfliktai, kuriems reikia dėmesio: {count}",
+            "updateOnlyHint": "Vienkryptis atnaujinimas kopijuoja tik iš šaltinio ir išsaugo naujesnius paskirties failus. Išjunkite papildomąjį atsarginį kopijavimą, kad būtų pašalinti ir tik paskirties vietoje esantys failai, įskaitant failus be sinchronizavimo istorijos. Konfliktų politika nepaisoma; nežinomos datos lieka neišspręstos."
         },
         "statusBar": {
             "connected": "Prisijungta",
@@ -6324,7 +6325,9 @@
             "progressCopy": "[kopija]",
             "deleteCount": "Bus ištrinta: {count}",
             "overwriteCount": "Bus perrašyta: {count}",
-            "conflictCount": "Konfliktai: {count}"
+            "conflictCount": "Konfliktai: {count}",
+            "updateOnly": "Praleisti naujesnius paskirties failus (vienkryptis atnaujinimas)",
+            "updateOnlyHint": "Kopijuokite trūkstamus ar pakeistus šaltinio failus, išsaugokite naujesnius paskirties failus ir pašalinkite tik paskirties vietoje esančius įrašus. Failai be palyginamų datų paliekami peržiūrai."
         },
         "accountLock": {
             "title": "Pasirinkite paskyrą",

@@ -14085,8 +14085,32 @@ fn import_sync_template_cmd_blocking(json_content: String) -> Result<sync::SyncT
     Ok(template)
 }
 
+/// Live one-way Plan controls override the saved preset at export time.
+#[derive(Default, serde::Deserialize)]
+struct SyncExportPlanOverrides {
+    update_only: Option<bool>,
+    direction: Option<sync::CompareDirection>,
+    delete_orphans: Option<bool>,
+}
+
+impl SyncExportPlanOverrides {
+    fn apply(&self, profile: &mut sync::SyncProfile) {
+        if let Some(direction) = self.direction {
+            profile.direction = direction;
+        }
+        if let Some(delete) = self.delete_orphans {
+            profile.delete_orphans = delete;
+        }
+        if let Some(update) = self.update_only {
+            profile.update_only = update;
+        }
+    }
+}
+
 #[derive(serde::Deserialize)]
 struct SyncScriptExportArgs {
+    #[serde(flatten)]
+    plan: SyncExportPlanOverrides,
     profile_id: String,
     profile_display_name: String,
     template_name: String,
@@ -14113,13 +14137,15 @@ fn export_sync_script_cmd_blocking(args: SyncScriptExportArgs) -> Result<String,
     let format = sync::SyncScriptFormat::parse(&args.format)
         .ok_or_else(|| format!("Unsupported script format: {}", args.format))?;
     let profiles = sync::load_sync_profiles()?;
-    let profile = profiles
+    let mut profile = profiles
         .iter()
         .find(|p| p.id == args.profile_id)
+        .cloned()
         .ok_or_else(|| format!("Profile '{}' not found", args.profile_id))?;
+    args.plan.apply(&mut profile);
     let excludes = sync::resolve_exclude_patterns(args.exclude_patterns, &profile.exclude_patterns);
     sync::export_sync_script(sync::SyncScriptExportOptions {
-        profile,
+        profile: &profile,
         profile_display_name: &args.profile_display_name,
         template_name: &args.template_name,
         template_description: &args.template_description,
@@ -14147,6 +14173,8 @@ fn import_sync_script_cmd_blocking(script_content: String) -> Result<sync::SyncS
 // ======================
 #[derive(serde::Deserialize)]
 struct AerosyncExportScriptArgs {
+    #[serde(flatten)]
+    plan: SyncExportPlanOverrides,
     profile_id: String,
     profile_display_name: Option<String>,
     local_path: String,
@@ -14198,6 +14226,7 @@ fn aerosync_export_script_cmd_blocking(
         .ok_or_else(|| format!("Profile '{}' not found", args.profile_id))?;
 
     let mut profile = base_profile;
+    args.plan.apply(&mut profile);
     if let Some(name) = args.profile_display_name.as_deref() {
         if !name.is_empty() {
             profile.name = name.to_string();

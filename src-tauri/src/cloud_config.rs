@@ -61,6 +61,9 @@ pub struct CloudConfig {
     /// the folder acts as a mirror and will delete on the target side.
     #[serde(default = "default_preserve_remote_deletes")]
     pub preserve_remote_deletes: bool,
+    /// Explicit one-way Update; with deletes enabled, removes destination-only files too.
+    #[serde(default)]
+    pub update_only: bool,
     /// Enable the AeroCompress overlay for this AeroCloud target.
     /// When combined with an AeroCrypt-bound profile, compression is applied
     /// before encryption. Without crypt, this is the transparent A2 overlay.
@@ -188,6 +191,7 @@ impl Default for CloudConfig {
             connection_params: serde_json::Value::Null,
             sync_direction: crate::sync::CompareDirection::Bidirectional,
             preserve_remote_deletes: default_preserve_remote_deletes(),
+            update_only: false,
             compress_enabled: false,
             compress_level: default_compress_level(),
             watcher_debounce_ms: default_watcher_debounce_ms(),

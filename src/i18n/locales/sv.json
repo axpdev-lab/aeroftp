@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "AeroCloud aktiverat",
             "selectPairLocalFolder": "Välj lokal mapp för paret",
             "secondsAgo": "{count}s sedan",
-            "conflictsCount": "Konflikter som kräver åtgärd: {count}"
+            "conflictsCount": "Konflikter som kräver åtgärd: {count}",
+            "updateOnlyHint": "Envägsuppdatering kopierar bara från källan och behåller nyare målfiler. Stäng av additiv säkerhetskopiering för att även ta bort filer som bara finns på målet, inklusive filer utan synkroniseringshistorik. Konfliktpolicyn ignoreras; okända datum förblir olösta."
         },
         "statusBar": {
             "connected": "Ansluten",
@@ -6324,7 +6325,9 @@
             "progressCopy": "[kopia]",
             "deleteCount": "{count} att radera",
             "overwriteCount": "{count} att skriva över",
-            "conflictCount": "Konflikter: {count}"
+            "conflictCount": "Konflikter: {count}",
+            "updateOnly": "Hoppa över nyare målfiler (envägsuppdatering)",
+            "updateOnlyHint": "Kopiera saknade eller ändrade källfiler, behåll nyare målfiler och ta bort poster som bara finns på målet. Filer utan jämförbara datum lämnas för granskning."
         },
         "accountLock": {
             "title": "Välj ett konto",

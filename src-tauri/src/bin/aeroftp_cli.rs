@@ -72257,6 +72257,16 @@ DISCONNECT\n";
                 backup_dir: None,
             });
         }
+        let updates: Vec<_> = out
+            .iter()
+            .filter(|script| script.profile.direction != CompareDirection::Bidirectional)
+            .cloned()
+            .map(|mut script| {
+                script.profile.update_only = true;
+                script
+            })
+            .collect();
+        out.extend(updates);
         out
     }
 
@@ -72296,6 +72306,7 @@ DISCONNECT\n";
                     verify_policy: _,
                     exclude_patterns: want_exclude,
                     delete_orphans: want_delete,
+                    update_only: want_update,
                     // Not preset settings: the runner never applied them and the
                     // GUI is dropping the controls, so the script does not name them.
                     parallel_streams: _,
@@ -72322,6 +72333,7 @@ DISCONNECT\n";
                     direction,
                     dry_run,
                     delete,
+                    update,
                     exclude,
                     track_renames,
                     conflict_mode,
@@ -72343,6 +72355,7 @@ DISCONNECT\n";
                 };
                 assert_eq!(direction, want_direction, "{}", profile.id);
                 assert_eq!(delete, want_delete, "{}", profile.id);
+                assert_eq!(update, want_update, "{}", profile.id);
                 // An unattended --delete needs a cap or sync refuses it.
                 assert_eq!(
                     max_delete.as_deref(),
@@ -97877,6 +97890,53 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             "--update leaves the newer remote copy"
         );
         assert_ne!(run(None), 0, "without --update the upload is attempted");
+    }
+
+    #[test]
+    fn mirror_update_delete_preserves_newer_destination_through_dispatch() {
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("keep.txt", 3);
+        let local = fixture.local();
+        let mut remote = MemTreeProvider::root_files(&[("keep.txt", 9), ("orphan.txt", 7)]);
+        remote.mutable = true;
+        for entry in remote.dirs.get_mut("/root").unwrap() {
+            entry.modified = Some("2030-01-01T00:00:00".to_string());
+        }
+        let deletes = Arc::clone(&remote.delete_attempts);
+        let code = run_against_remote(remote, move || async move {
+            let parsed = Cli::try_parse_from([
+                "aeroftp-cli",
+                "sync",
+                "memory://",
+                &local,
+                "/root",
+                "--direction",
+                "upload",
+                "--update",
+                "--delete",
+                "--max-delete",
+                "100%",
+            ])
+            .unwrap();
+            dispatch_sync(
+                &parsed.command,
+                &Cli {
+                    quiet: true,
+                    ..test_cli()
+                },
+                OutputFormat::Json,
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await
+        });
+        assert_eq!(
+            code, 0,
+            "no upload of the newer destination should be attempted"
+        );
+        assert_eq!(
+            *deletes.lock().unwrap(),
+            vec!["/root/orphan.txt".to_string()]
+        );
     }
 
     /// M1 (review of #949): with no comparable time (FTP without MLSD,

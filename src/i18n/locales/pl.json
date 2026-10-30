@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "AeroCloud włączony",
             "selectPairLocalFolder": "Wybierz folder lokalny dla pary",
             "secondsAgo": "{count}s temu",
-            "conflictsCount": "Konflikty wymagające uwagi: {count}"
+            "conflictsCount": "Konflikty wymagające uwagi: {count}",
+            "updateOnlyHint": "Aktualizacja jednokierunkowa kopiuje tylko ze źródła i zachowuje nowsze pliki docelowe. Wyłącz kopię zapasową z dodawaniem, aby usuwać także pliki istniejące tylko w miejscu docelowym, w tym pliki bez historii synchronizacji. Zasady konfliktów są ignorowane; nieznane daty pozostają nierozstrzygnięte."
         },
         "statusBar": {
             "connected": "Połączono",
@@ -6324,7 +6325,9 @@
             "progressCopy": "[kopia]",
             "deleteCount": "Do usunięcia: {count}",
             "overwriteCount": "Do nadpisania: {count}",
-            "conflictCount": "Konflikty: {count}"
+            "conflictCount": "Konflikty: {count}",
+            "updateOnly": "Pomiń nowsze pliki docelowe (aktualizacja jednokierunkowa)",
+            "updateOnlyHint": "Kopiuj brakujące lub zmienione pliki źródłowe, zachowuj nowsze pliki docelowe i usuwaj wpisy istniejące tylko w miejscu docelowym. Pliki bez porównywalnych dat pozostają do sprawdzenia."
         },
         "accountLock": {
             "title": "Wybierz konto",

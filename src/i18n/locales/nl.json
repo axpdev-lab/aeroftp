@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "AeroCloud ingeschakeld",
             "selectPairLocalFolder": "Lokale map voor paar selecteren",
             "secondsAgo": "{count}s geleden",
-            "conflictsCount": "Conflicten die aandacht vereisen: {count}"
+            "conflictsCount": "Conflicten die aandacht vereisen: {count}",
+            "updateOnlyHint": "Eenrichtingsupdate kopieert alleen vanuit de bron en behoudt nieuwere doelbestanden. Schakel additieve back-up uit om ook bestanden te verwijderen die alleen op de bestemming bestaan, inclusief bestanden zonder synchronisatiegeschiedenis. Het conflictbeleid wordt genegeerd; onbekende datums blijven onopgelost."
         },
         "statusBar": {
             "connected": "Verbonden",
@@ -6324,7 +6325,9 @@
             "progressCopy": "[kopie]",
             "deleteCount": "{count} te verwijderen",
             "overwriteCount": "{count} te overschrijven",
-            "conflictCount": "Conflicten: {count}"
+            "conflictCount": "Conflicten: {count}",
+            "updateOnly": "Nieuwere doelbestanden overslaan (eenrichtingsupdate)",
+            "updateOnlyHint": "Kopieer ontbrekende of gewijzigde bronbestanden, behoud nieuwere doelbestanden en verwijder items die alleen op de bestemming bestaan. Bestanden zonder vergelijkbare datums blijven ter beoordeling staan."
         },
         "accountLock": {
             "title": "Kies een account",

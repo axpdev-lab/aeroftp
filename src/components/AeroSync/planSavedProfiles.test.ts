@@ -71,6 +71,25 @@ afterEach(async () => {
 });
 
 describe('saved profiles in the real Plan tab', () => {
+    it('restores Mirror Update from a saved preset and re-arms delete confirmation when changed', async () => {
+        profiles = [profile({ direction: 'local_to_remote', delete_orphans: true, update_only: true })];
+        await mount(); await choose();
+        const update = Array.from(host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))
+            .find(input => input.parentElement?.textContent?.includes('aerosync.updateOnly'));
+        const confirmation = Array.from(host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'))
+            .find(input => input.parentElement?.textContent?.includes('aerosync.confirmDestructive'));
+        expect(update?.checked).toBe(true);
+        await React.act(async () => confirmation!.click());
+        expect(button('aerosync.execute').disabled).toBe(false);
+        await React.act(async () => update!.click());
+        expect(button('aerosync.execute').disabled).toBe(true);
+        expect(store.get('plan.updateOnly', true)).toBe(false);
+        await React.act(async () => update!.click());
+        await React.act(async () => confirmation!.click());
+        await click('aerosync.execute');
+        expect(onExecute.mock.calls[0][0].appliedOptions.updateOnly).toBe(true);
+        expect(onExecute.mock.calls[0][0].hasDeletes).toBe(true);
+    });
     it('loads custom profiles after the four chips without duplicating backend built-ins', async () => {
         await mount();
         expect(mocks.invoke).toHaveBeenCalledWith('load_sync_profiles_cmd');

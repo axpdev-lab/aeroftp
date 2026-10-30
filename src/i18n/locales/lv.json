@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "AeroCloud iespējots",
             "selectPairLocalFolder": "Atlasiet lokālo mapi pārim",
             "secondsAgo": "pirms {count}s",
-            "conflictsCount": "Konflikti, kam nepieciešama uzmanība: {count}"
+            "conflictsCount": "Konflikti, kam nepieciešama uzmanība: {count}",
+            "updateOnlyHint": "Vienvirziena atjaunināšana kopē tikai no avota un saglabā jaunākus mērķa failus. Izslēdziet papildinošo dublēšanu, lai dzēstu arī tikai mērķī esošos failus, tostarp failus bez sinhronizācijas vēstures. Konfliktu politika tiek ignorēta; nezināmi datumi paliek neatrisināti."
         },
         "statusBar": {
             "connected": "Savienots",
@@ -6324,7 +6325,9 @@
             "progressCopy": "[kopija]",
             "deleteCount": "Dzēšamie: {count}",
             "overwriteCount": "Pārrakstāmie: {count}",
-            "conflictCount": "Konflikti: {count}"
+            "conflictCount": "Konflikti: {count}",
+            "updateOnly": "Izlaist jaunākus mērķa failus (vienvirziena atjaunināšana)",
+            "updateOnlyHint": "Kopējiet trūkstošos vai mainītos avota failus, saglabājiet jaunākus mērķa failus un dzēsiet ierakstus, kas ir tikai mērķī. Faili bez salīdzināmiem datumiem tiek atstāti pārskatīšanai."
         },
         "accountLock": {
             "title": "Izvēlieties kontu",

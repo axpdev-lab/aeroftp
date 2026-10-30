@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "AeroCloud 已启用",
             "selectPairLocalFolder": "为配对选择本地文件夹",
             "secondsAgo": "{count}秒前",
-            "conflictsCount": "{count} 个冲突需要处理"
+            "conflictsCount": "{count} 个冲突需要处理",
+            "updateOnlyHint": "单向更新仅从源端复制，并保留目标端较新的文件。关闭追加备份后，还会删除仅存在于目标端的文件，包括没有同步历史的文件。冲突策略将被忽略；日期未知的项目将保持未解决状态。"
         },
         "statusBar": {
             "connected": "已连接",
@@ -6324,7 +6325,9 @@
             "progressCopy": "[复制]",
             "deleteCount": "{count} 个待删除",
             "overwriteCount": "{count} 个待覆盖",
-            "conflictCount": "{count} 个冲突"
+            "conflictCount": "{count} 个冲突",
+            "updateOnly": "跳过目标中较新的文件（单向更新）",
+            "updateOnlyHint": "复制源端缺失或已更改的文件，保留目标端较新的文件，并删除仅存在于目标端的条目。日期无法比较的文件将留待审核。"
         },
         "accountLock": {
             "title": "选择一个账户",

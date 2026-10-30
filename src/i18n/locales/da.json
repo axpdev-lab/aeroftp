@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "AeroCloud aktiveret",
             "selectPairLocalFolder": "Vælg lokal mappe til parret",
             "secondsAgo": "{count}s siden",
-            "conflictsCount": "Konflikter, der kræver opmærksomhed: {count}"
+            "conflictsCount": "Konflikter, der kræver opmærksomhed: {count}",
+            "updateOnlyHint": "Envejsopdatering kopierer kun fra kilden og beholder nyere destinationsfiler. Slå additiv sikkerhedskopiering fra for også at slette filer, der kun findes på destinationen, herunder filer uden synkroniseringshistorik. Konfliktpolitikken ignoreres; ukendte datoer forbliver uafklarede."
         },
         "statusBar": {
             "connected": "Forbundet",
@@ -6324,7 +6325,9 @@
             "progressCopy": "[kopi]",
             "deleteCount": "Til sletning: {count}",
             "overwriteCount": "Til overskrivning: {count}",
-            "conflictCount": "Konflikter: {count}"
+            "conflictCount": "Konflikter: {count}",
+            "updateOnly": "Spring nyere destinationsfiler over (envejsopdatering)",
+            "updateOnlyHint": "Kopiér manglende eller ændrede kildefiler, behold nyere destinationsfiler, og slet poster, der kun findes på destinationen. Filer uden sammenlignelige datoer afventer gennemgang."
         },
         "accountLock": {
             "title": "Vælg en konto",

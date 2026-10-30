@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "AeroCloud povolené",
             "selectPairLocalFolder": "Vyberte miestny priečinok pre pár",
             "secondsAgo": "pred {count}s",
-            "conflictsCount": "Konflikty vyžadujúce pozornosť: {count}"
+            "conflictsCount": "Konflikty vyžadujúce pozornosť: {count}",
+            "updateOnlyHint": "Jednosmerná aktualizácia kopíruje iba zo zdroja a zachováva novšie cieľové súbory. Vypnite prídavné zálohovanie, aby sa odstránili aj súbory existujúce iba v cieli vrátane súborov bez histórie synchronizácie. Zásady konfliktov sa ignorujú; neznáme dátumy zostávajú nevyriešené."
         },
         "statusBar": {
             "connected": "Pripojený",
@@ -6324,7 +6325,9 @@
             "progressCopy": "[kópia]",
             "deleteCount": "Na odstránenie: {count}",
             "overwriteCount": "Na prepísanie: {count}",
-            "conflictCount": "Konflikty: {count}"
+            "conflictCount": "Konflikty: {count}",
+            "updateOnly": "Preskočiť novšie cieľové súbory (jednosmerná aktualizácia)",
+            "updateOnlyHint": "Kopírujte chýbajúce alebo zmenené zdrojové súbory, zachovajte novšie cieľové súbory a odstráňte položky existujúce iba v cieli. Súbory bez porovnateľných dátumov zostanú na kontrolu."
         },
         "accountLock": {
             "title": "Vyberte účet",

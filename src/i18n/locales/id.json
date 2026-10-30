@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "AeroCloud diaktifkan",
             "selectPairLocalFolder": "Pilih folder lokal untuk pasangan",
             "secondsAgo": "{count}d lalu",
-            "conflictsCount": "{count} konflik perlu perhatian"
+            "conflictsCount": "{count} konflik perlu perhatian",
+            "updateOnlyHint": "Pembaruan Satu Arah hanya menyalin dari sumber dan mempertahankan file tujuan yang lebih baru. Matikan pencadangan aditif untuk juga menghapus file yang hanya ada di tujuan, termasuk file tanpa riwayat sinkronisasi. Kebijakan konflik diabaikan; tanggal yang tidak diketahui tetap belum terselesaikan."
         },
         "statusBar": {
             "connected": "Terhubung",
@@ -6324,7 +6325,9 @@
             "progressCopy": "[salinan]",
             "deleteCount": "Akan dihapus: {count}",
             "overwriteCount": "Akan ditimpa: {count}",
-            "conflictCount": "{count} konflik"
+            "conflictCount": "{count} konflik",
+            "updateOnly": "Lewati file tujuan yang lebih baru (Pembaruan Satu Arah)",
+            "updateOnlyHint": "Salin file sumber yang belum ada atau telah berubah, pertahankan file tujuan yang lebih baru, dan hapus entri yang hanya ada di tujuan. File tanpa tanggal yang dapat dibandingkan dibiarkan untuk ditinjau."
         },
         "accountLock": {
             "title": "Pilih akun",

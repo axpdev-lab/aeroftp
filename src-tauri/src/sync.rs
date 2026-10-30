@@ -5218,6 +5218,9 @@ pub struct SyncProfile {
     pub retry_policy: RetryPolicy,
     pub verify_policy: VerifyPolicy,
     pub delete_orphans: bool,
+    /// One-way transfers preserve a newer destination; orphan deletion stays independent.
+    #[serde(default)]
+    pub update_only: bool,
     /// Number of parallel transfer streams (1-8, default: 1 = sequential)
     #[serde(default = "default_parallel_streams")]
     pub parallel_streams: u8,
@@ -5252,6 +5255,7 @@ impl SyncProfile {
             retry_policy: RetryPolicy::default(),
             verify_policy: VerifyPolicy::SizeOnly,
             delete_orphans: true,
+            update_only: false,
             parallel_streams: 3,
             compression_mode: crate::transfer_pool::CompressionMode::Off,
         }
@@ -5278,6 +5282,7 @@ impl SyncProfile {
             retry_policy: RetryPolicy::default(),
             verify_policy: VerifyPolicy::SizeOnly,
             delete_orphans: false,
+            update_only: false,
             parallel_streams: 3,
             compression_mode: crate::transfer_pool::CompressionMode::Off,
         }
@@ -5307,6 +5312,7 @@ impl SyncProfile {
             },
             verify_policy: VerifyPolicy::Full,
             delete_orphans: false,
+            update_only: false,
             parallel_streams: 1,
             compression_mode: crate::transfer_pool::CompressionMode::Off,
         }
@@ -5333,6 +5339,7 @@ impl SyncProfile {
             retry_policy: RetryPolicy::default(),
             verify_policy: VerifyPolicy::SizeOnly,
             delete_orphans: true,
+            update_only: false,
             parallel_streams: 3,
             compression_mode: crate::transfer_pool::CompressionMode::Off,
         }
@@ -5362,6 +5369,7 @@ impl SyncProfile {
             },
             verify_policy: VerifyPolicy::Full,
             delete_orphans: false,
+            update_only: false,
             parallel_streams: 1,
             compression_mode: crate::transfer_pool::CompressionMode::Off,
         }
@@ -5610,6 +5618,9 @@ pub struct SyncTemplateProfile {
     pub compare_size: bool,
     pub compare_checksum: bool,
     pub delete_orphans: bool,
+    /// Mirror can preserve newer destination files (absent on older templates).
+    #[serde(default)]
+    pub update_only: bool,
     #[serde(default = "default_parallel_streams")]
     pub parallel_streams: u8,
     #[serde(default)]
@@ -5681,6 +5692,7 @@ pub fn export_sync_template(
             compare_size: profile.compare_size,
             compare_checksum: profile.compare_checksum,
             delete_orphans: profile.delete_orphans,
+            update_only: profile.update_only,
             // Written neutral: an AeroSync run transfers one file at a time
             // and does not compress, so a template must not promise either.
             // The fields stay for the versions that read them; an import
@@ -5766,6 +5778,8 @@ pub struct SyncScriptMeta {
     pub remote_path: String,
     pub direction: CompareDirection,
     pub delete_orphans: bool,
+    #[serde(default)]
+    pub update_only: bool,
     pub exclude_patterns: Vec<String>,
     #[serde(default)]
     pub retries: Option<u32>,
@@ -5859,6 +5873,7 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
         remote_path: remote_path.to_string(),
         direction: profile.direction,
         delete_orphans: profile.delete_orphans,
+        update_only: profile.update_only,
         exclude_patterns: exclude_patterns.to_vec(),
         retries: max_retries,
         retries_sleep: retries_sleep.clone(),
@@ -5907,6 +5922,9 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
             out.push_str(&format!("  --direction {} \\\n", direction));
             if profile.delete_orphans {
                 out.push_str("  --delete \\\n");
+            }
+            if profile.update_only && profile.direction != CompareDirection::Bidirectional {
+                out.push_str("  --update \\\n");
             }
             for pattern in exclude_patterns {
                 out.push_str(&format!("  --exclude {} \\\n", shell_quote_bash(pattern)));
@@ -5962,6 +5980,9 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
             out.push_str(&format!("  --direction {} `\n", direction));
             if profile.delete_orphans {
                 out.push_str("  --delete `\n");
+            }
+            if profile.update_only && profile.direction != CompareDirection::Bidirectional {
+                out.push_str("  --update `\n");
             }
             for pattern in exclude_patterns {
                 out.push_str(&format!("  --exclude {} `\n", shell_quote_pwsh(pattern)));

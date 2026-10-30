@@ -1622,7 +1622,8 @@
             "aerocloudEnabled": "AeroCloud enabled",
             "selectPairLocalFolder": "Select local folder for pair",
             "secondsAgo": "{count}s ago",
-            "conflictsCount": "Conflicts needing attention: {count}"
+            "conflictsCount": "Conflicts needing attention: {count}",
+            "updateOnlyHint": "One-way Update copies only from the source and keeps newer destination files. Turn off additive backup to also delete destination-only files, including files with no sync history. The conflict policy is ignored; unknown dates stay unresolved."
         },
         "common": {
             "about": "About",
@@ -6612,7 +6613,9 @@
             "progressCopy": "[copy]",
             "deleteCount": "{count} to delete",
             "overwriteCount": "{count} to overwrite",
-            "conflictCount": "Conflicts: {count}"
+            "conflictCount": "Conflicts: {count}",
+            "updateOnly": "Skip newer destination files (One-way Update)",
+            "updateOnlyHint": "Copy missing or changed source files, keep newer destination files, and delete destination-only entries. Files without comparable dates are left for review."
         },
         "aerocryptProfile": {
             "overlaysSection": "Wrappers / Overlays",

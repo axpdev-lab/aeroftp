@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "AeroCloud omogućen",
             "selectPairLocalFolder": "Odaberite lokalnu mapu za par",
             "secondsAgo": "{count}s prije",
-            "conflictsCount": "Sukobi koji traže pozornost: {count}"
+            "conflictsCount": "Sukobi koji traže pozornost: {count}",
+            "updateOnlyHint": "Jednosmjerno ažuriranje kopira samo iz izvora i zadržava novije odredišne datoteke. Isključite aditivnu sigurnosnu kopiju kako biste izbrisali i datoteke koje postoje samo na odredištu, uključujući one bez povijesti sinkronizacije. Pravilo sukoba se zanemaruje; nepoznati datumi ostaju neriješeni."
         },
         "statusBar": {
             "connected": "Povezano",
@@ -6324,7 +6325,9 @@
             "progressCopy": "[kopija]",
             "deleteCount": "Za brisanje: {count}",
             "overwriteCount": "Za prepisivanje: {count}",
-            "conflictCount": "Sukobi: {count}"
+            "conflictCount": "Sukobi: {count}",
+            "updateOnly": "Preskoči novije datoteke na odredištu (jednosmjerno ažuriranje)",
+            "updateOnlyHint": "Kopirajte izvorne datoteke koje nedostaju ili su promijenjene, zadržite novije odredišne datoteke i izbrišite stavke koje postoje samo na odredištu. Datoteke bez usporedivih datuma ostaju za pregled."
         },
         "accountLock": {
             "title": "Odaberite račun",

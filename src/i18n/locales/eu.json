@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "AeroCloud gaituta",
             "selectPairLocalFolder": "Hautatu bikoterako karpeta lokala",
             "secondsAgo": "{count}s duela",
-            "conflictsCount": "Arreta behar duten gatazkak: {count}"
+            "conflictsCount": "Arreta behar duten gatazkak: {count}",
+            "updateOnlyHint": "Noranzko bakarreko eguneratzeak jatorritik soilik kopiatzen du eta helmugako fitxategi berriagoak mantentzen ditu. Desaktibatu babeskopia gehigarria helmugan soilik dauden fitxategiak ere ezabatzeko, sinkronizazio-historiarik gabekoak barne. Gatazka-politika ez da kontuan hartzen; data ezezagunak ebatzi gabe geratzen dira."
         },
         "statusBar": {
             "connected": "Konektatuta",
@@ -6343,7 +6344,9 @@
             "progressCopy": "[kopia]",
             "deleteCount": "Ezabatzeko: {count}",
             "overwriteCount": "Gainidazteko: {count}",
-            "conflictCount": "{count} gatazka"
+            "conflictCount": "{count} gatazka",
+            "updateOnly": "Saltatu helmugako fitxategi berriagoak (noranzko bakarreko eguneratzea)",
+            "updateOnlyHint": "Kopiatu falta diren edo aldatu diren jatorriko fitxategiak, mantendu helmugako fitxategi berriagoak eta ezabatu helmugan soilik dauden sarrerak. Data konparagarririk gabeko fitxategiak berrikusteko geratzen dira."
         },
         "accountLock": {
             "title": "Aukeratu kontu bat",

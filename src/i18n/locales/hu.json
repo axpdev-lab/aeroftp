@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "AeroCloud engedélyezve",
             "selectPairLocalFolder": "Helyi mappa kiválasztása a párhoz",
             "secondsAgo": "{count} mp-e",
-            "conflictsCount": "{count} ütközés figyelmet igényel"
+            "conflictsCount": "{count} ütközés figyelmet igényel",
+            "updateOnlyHint": "Az egyirányú frissítés csak a forrásból másol, és megtartja az újabb célfájlokat. Kapcsolja ki a hozzáadó biztonsági mentést a csak a célhelyen lévő fájlok törléséhez is, beleértve a szinkronizálási előzmény nélküli fájlokat. Az ütközési szabály figyelmen kívül marad; az ismeretlen dátumok megoldatlanok maradnak."
         },
         "statusBar": {
             "connected": "Csatlakozva",
@@ -6324,7 +6325,9 @@
             "progressCopy": "[másolat]",
             "deleteCount": "Törlendő: {count}",
             "overwriteCount": "Felülírandó: {count}",
-            "conflictCount": "{count} ütközés"
+            "conflictCount": "{count} ütközés",
+            "updateOnly": "Újabb célfájlok kihagyása (egyirányú frissítés)",
+            "updateOnlyHint": "Másolja át a hiányzó vagy módosult forrásfájlokat, tartsa meg az újabb célfájlokat, és törölje a csak a célhelyen lévő bejegyzéseket. Az összehasonlítható dátum nélküli fájlok ellenőrzésre várnak."
         },
         "accountLock": {
             "title": "Válasszon fiókot",

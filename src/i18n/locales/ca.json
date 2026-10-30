@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "AeroCloud activat",
             "selectPairLocalFolder": "Selecciona la carpeta local per a la parella",
             "secondsAgo": "fa {count}s",
-            "conflictsCount": "Conflictes per revisar: {count}"
+            "conflictsCount": "Conflictes per revisar: {count}",
+            "updateOnlyHint": "L’actualització unidireccional només copia des de l’origen i conserva els fitxers de destinació més nous. Desactiva la còpia de seguretat additiva per suprimir també els fitxers que només són a la destinació, inclosos els que no tenen historial de sincronització. S’ignora la política de conflictes; les dates desconegudes queden sense resoldre."
         },
         "statusBar": {
             "connected": "Connectat",
@@ -6343,7 +6344,9 @@
             "progressCopy": "[còpia]",
             "deleteCount": "{count} per eliminar",
             "overwriteCount": "{count} per sobreescriure",
-            "conflictCount": "Conflictes: {count}"
+            "conflictCount": "Conflictes: {count}",
+            "updateOnly": "Omet els fitxers de destinació més nous (actualització unidireccional)",
+            "updateOnlyHint": "Copia els fitxers d’origen que falten o han canviat, conserva els fitxers de destinació més nous i suprimeix les entrades que només són a la destinació. Els fitxers sense dates comparables queden pendents de revisió."
         },
         "accountLock": {
             "title": "Trieu un compte",

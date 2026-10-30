@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "AeroCloud activé",
             "selectPairLocalFolder": "Sélectionner le dossier local de la paire",
             "secondsAgo": "Il y a {count}s",
-            "conflictsCount": "Conflits à traiter : {count}"
+            "conflictsCount": "Conflits à traiter : {count}",
+            "updateOnlyHint": "La mise à jour unidirectionnelle copie uniquement depuis la source et conserve les fichiers de destination plus récents. Désactivez la sauvegarde additive pour supprimer aussi les fichiers présents uniquement à destination, y compris ceux sans historique de synchronisation. La politique de conflit est ignorée ; les dates inconnues restent non résolues."
         },
         "statusBar": {
             "connected": "Connecté",
@@ -6324,7 +6325,9 @@
             "progressCopy": "[copie]",
             "deleteCount": "{count} à supprimer",
             "overwriteCount": "{count} à écraser",
-            "conflictCount": "Conflits : {count}"
+            "conflictCount": "Conflits : {count}",
+            "updateOnly": "Ignorer les fichiers de destination plus récents (mise à jour unidirectionnelle)",
+            "updateOnlyHint": "Copiez les fichiers source manquants ou modifiés, conservez les fichiers de destination plus récents et supprimez les entrées présentes uniquement à destination. Les fichiers sans dates comparables restent à examiner."
         },
         "accountLock": {
             "title": "Choisissez un compte",

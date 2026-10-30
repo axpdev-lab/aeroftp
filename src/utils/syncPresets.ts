@@ -146,6 +146,8 @@ export interface PresetPlan {
     appliedOptions: {
         conflictPolicy: ConflictPolicy;
         versionedBackup: VersionedBackupConfig;
+        /** Mirror preserves a newer destination when enabled. */
+        updateOnly?: boolean;
     };
 }
 
@@ -306,6 +308,8 @@ const resolveMapping = (
 
 export interface DerivePresetPlanOptions {
     preset: SyncPreset;
+    /** Mirror keeps newer destinations, while still deleting destination-only entries. */
+    updateOnly?: boolean;
     /** Ignored when preset === 'bisync'. Defaults to 'left-to-right'. */
     direction?: PresetDirection;
     /**
@@ -421,6 +425,7 @@ export const derivePresetPlan = (
 ): PresetPlan => {
     const direction = options.direction ?? 'left-to-right';
     const mapping = resolveMapping(options.preset, direction);
+    const updateOnly = options.preset === 'mirror' && options.updateOnly === true;
     const conflictPolicy: ConflictPolicy = options.conflictPolicy
         // Mirror always force-overwrites with the source side; the
         // user-facing conflict policy is ignored for it.
@@ -505,6 +510,21 @@ export const derivePresetPlan = (
             && (fallback === 'conflict-skip' || fallback === 'skip');
 
         const entryActions: BucketAction[] = entries.map((entry) => {
+            if (updateOnly && (fallback === 'overwrite-left' || fallback === 'overwrite-right')) {
+                const source = direction === 'left-to-right' ? entry.leftMtimeMs : entry.rightMtimeMs;
+                const destination = direction === 'left-to-right' ? entry.rightMtimeMs : entry.leftMtimeMs;
+                // A missing/unusable date cannot prove the destination is safe
+                // to overwrite. Equal dates still copy differing contents,
+                // matching CLI --update. The selected conflict policy never
+                // turns this one-way operation into a write to the source.
+                if (result.appliedOptions.policy === 'size-only'
+                    || source == null || destination == null
+                    || !Number.isFinite(source) || !Number.isFinite(destination)
+                    || entry.leftIsDir !== entry.rightIsDir) return 'conflict-skip';
+                // Native comparisons and CLI flags use whole Unix seconds.
+                const deltaSeconds = Math.trunc(destination / 1000) - Math.trunc(source / 1000);
+                if (deltaSeconds > Math.ceil(result.appliedOptions.mtimeToleranceMs / 1000)) return 'skip';
+            }
             if (honourConflictPolicy) {
                 return resolveConflictAction(entry, conflictPolicy, direction);
             }
@@ -529,7 +549,7 @@ export const derivePresetPlan = (
             if (isDestructive(bucket, action)) destructive = true;
         }
 
-        const action = honourConflictPolicy
+        const action = honourConflictPolicy || updateOnly
             ? dominantAction(entryActions, fallback)
             : fallback;
 
@@ -567,6 +587,7 @@ export const derivePresetPlan = (
         appliedOptions: {
             conflictPolicy,
             versionedBackup,
+            updateOnly,
         },
     };
 };

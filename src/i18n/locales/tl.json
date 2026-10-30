@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "Pinagana ang AeroCloud",
             "selectPairLocalFolder": "Pumili ng lokal na folder para sa pares",
             "secondsAgo": "{count}s nakalipas",
-            "conflictsCount": "{count} salungatan ang nangangailangan ng pansin"
+            "conflictsCount": "{count} salungatan ang nangangailangan ng pansin",
+            "updateOnlyHint": "Ang isang direksiyong pag-update ay kumokopya lang mula sa pinagmulan at nagpapanatili ng mas bagong mga file sa destinasyon. I-off ang backup na nagdaragdag lang para burahin din ang mga file na nasa destinasyon lang, pati ang mga walang kasaysayan ng pag-sync. Hindi sinusunod ang patakaran sa salungatan; nananatiling hindi nalulutas ang mga hindi kilalang petsa."
         },
         "statusBar": {
             "connected": "Nakakonekta",
@@ -6343,7 +6344,9 @@
             "progressCopy": "[kopya]",
             "deleteCount": "Buburahin: {count}",
             "overwriteCount": "Papatungan: {count}",
-            "conflictCount": "{count} salungatan"
+            "conflictCount": "{count} salungatan",
+            "updateOnly": "Laktawan ang mas bagong mga file sa destinasyon (isang direksiyong pag-update)",
+            "updateOnlyHint": "Kopyahin ang nawawala o nabagong mga file mula sa pinagmulan, panatilihin ang mas bagong mga file sa destinasyon, at burahin ang mga entry na nasa destinasyon lang. Ang mga file na walang maihahambing na petsa ay iiwan para sa pagsusuri."
         },
         "accountLock": {
             "title": "Pumili ng account",

@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "AeroCloud didayakan",
             "selectPairLocalFolder": "Pilih folder setempat untuk pasangan",
             "secondsAgo": "{count}s lalu",
-            "conflictsCount": "{count} konflik memerlukan perhatian"
+            "conflictsCount": "{count} konflik memerlukan perhatian",
+            "updateOnlyHint": "Kemas Kini Sehala hanya menyalin daripada sumber dan mengekalkan fail destinasi yang lebih baharu. Matikan sandaran aditif untuk turut memadam fail yang hanya ada di destinasi, termasuk fail tanpa sejarah penyegerakan. Dasar konflik diabaikan; tarikh yang tidak diketahui kekal belum diselesaikan."
         },
         "statusBar": {
             "connected": "Disambung",
@@ -6324,7 +6325,9 @@
             "progressCopy": "[salinan]",
             "deleteCount": "Untuk dipadam: {count}",
             "overwriteCount": "Untuk ditulis ganti: {count}",
-            "conflictCount": "{count} konflik"
+            "conflictCount": "{count} konflik",
+            "updateOnly": "Langkau fail destinasi yang lebih baharu (Kemas Kini Sehala)",
+            "updateOnlyHint": "Salin fail sumber yang tiada atau telah berubah, kekalkan fail destinasi yang lebih baharu dan padam entri yang hanya ada di destinasi. Fail tanpa tarikh yang boleh dibandingkan dibiarkan untuk semakan."
         },
         "accountLock": {
             "title": "Pilih akaun",

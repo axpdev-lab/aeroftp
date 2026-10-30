@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "AeroCloud imewashwa",
             "selectPairLocalFolder": "Chagua folda ya ndani kwa jozi",
             "secondsAgo": "sekunde {count} zilizopita",
-            "conflictsCount": "Migogoro inayohitaji umakini: {count}"
+            "conflictsCount": "Migogoro inayohitaji umakini: {count}",
+            "updateOnlyHint": "Usasishaji wa upande mmoja hunakili kutoka chanzo pekee na huhifadhi faili mpya zaidi za lengwa. Zima hifadhi rudufu ya kuongeza ili pia kufuta faili zilizo kwenye lengwa pekee, zikiwemo zisizo na historia ya usawazishaji. Sera ya migongano hupuuzwa; tarehe zisizojulikana hubaki bila kutatuliwa."
         },
         "statusBar": {
             "connected": "Imeunganishwa",
@@ -6324,7 +6325,9 @@
             "progressCopy": "[nakala]",
             "deleteCount": "Za kufutwa: {count}",
             "overwriteCount": "Za kuandikwa upya: {count}",
-            "conflictCount": "Migogoro: {count}"
+            "conflictCount": "Migogoro: {count}",
+            "updateOnly": "Ruka faili mpya zaidi za lengwa (usasishaji wa upande mmoja)",
+            "updateOnlyHint": "Nakili faili za chanzo zinazokosekana au zilizobadilika, hifadhi faili mpya zaidi za lengwa, na ufute vipengee vilivyo kwenye lengwa pekee. Faili zisizo na tarehe zinazoweza kulinganishwa huachwa kwa ukaguzi."
         },
         "accountLock": {
             "title": "Chagua akaunti",

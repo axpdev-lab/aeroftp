@@ -106,6 +106,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
         const hasLiveDirection = preset != null || tabState?.has('plan.direction') === true;
         return {
             preset,
+            updateOnly: tabState?.get<boolean | undefined>('plan.updateOnly', undefined),
             direction: hasLiveDirection
                 ? preset === 'bisync' ? 'bidirectional' : localIsSource ? 'local_to_remote' : 'remote_to_local'
                 : undefined,
@@ -227,6 +228,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
      * double-clicked or hooked into Task Scheduler / cron.
      */
     const exportAerosyncScript = async () => {
+        const live = livePlanFromStore();
         const defaultName = (templateName || 'aerosync-config')
             .replace(/[^A-Za-z0-9._-]/g, '-')
             .replace(/-+/g, '-')
@@ -249,6 +251,9 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                     remote_path: remotePath,
                     connect_profile: serverProfileName || null,
                     exclude_patterns_override: liveScriptExcludes(),
+                    update_only: live.preset ? live.preset === 'mirror' && live.updateOnly === true : undefined,
+                    direction: live.direction,
+                    delete_orphans: live.preset ? live.preset === 'mirror' : undefined,
                     backup_dir: readScriptBackupDir(tabState),
                     dry_run: false,
                     conflict_mode: 'newer',
@@ -274,6 +279,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
     };
 
     const exportScript = async (format: SyncScriptFormat) => {
+        const live = livePlanFromStore();
         const ext = format === 'pwsh' ? 'ps1' : 'sh';
         const defaultName = `sync-config.${ext}`;
         const filterName = format === 'pwsh' ? 'PowerShell script' : 'Shell script';
@@ -291,6 +297,9 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                 local_path: localPath,
                 remote_path: remotePath,
                 exclude_patterns: liveScriptExcludes(),
+                update_only: live.preset ? live.preset === 'mirror' && live.updateOnly === true : undefined,
+                direction: live.direction,
+                delete_orphans: live.preset ? live.preset === 'mirror' : undefined,
                 backup_dir: readScriptBackupDir(tabState),
                 format,
             },

@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "AeroCloud wedi'i alluogi",
             "selectPairLocalFolder": "Dewiswch ffolder lleol ar gyfer y pâr",
             "secondsAgo": "{count}e yn ôl",
-            "conflictsCount": "{count} gwrthdaro angen sylw"
+            "conflictsCount": "{count} gwrthdaro angen sylw",
+            "updateOnlyHint": "Mae diweddaru unffordd yn copïo o’r ffynhonnell yn unig ac yn cadw ffeiliau mwy newydd yn y gyrchfan. Diffoddwch gopïo wrth gefn ychwanegol i ddileu hefyd ffeiliau sydd yn y gyrchfan yn unig, gan gynnwys ffeiliau heb hanes cysoni. Anwybyddir y polisi gwrthdaro; mae dyddiadau anhysbys yn aros heb eu datrys."
         },
         "statusBar": {
             "connected": "Wedi cysylltu",
@@ -6343,7 +6344,9 @@
             "progressCopy": "[copi]",
             "deleteCount": "I'w dileu: {count}",
             "overwriteCount": "I'w trosysgrifo: {count}",
-            "conflictCount": "{count} gwrthdaro"
+            "conflictCount": "{count} gwrthdaro",
+            "updateOnly": "Hepgor ffeiliau mwy newydd yn y gyrchfan (diweddaru unffordd)",
+            "updateOnlyHint": "Copïwch ffeiliau ffynhonnell sydd ar goll neu wedi newid, cadwch ffeiliau mwy newydd yn y gyrchfan, a dilëwch gofnodion sydd yn y gyrchfan yn unig. Mae ffeiliau heb ddyddiadau cymaradwy yn aros i gael eu hadolygu."
         },
         "accountLock": {
             "title": "Dewiswch gyfrif",

@@ -2065,7 +2065,8 @@
             "aerocloudEnabled": "AeroCloud attivato",
             "selectPairLocalFolder": "Seleziona cartella locale per la coppia",
             "secondsAgo": "{count}s fa",
-            "conflictsCount": "Conflitti da risolvere: {count}"
+            "conflictsCount": "Conflitti da risolvere: {count}",
+            "updateOnlyHint": "L’aggiornamento unidirezionale copia solo dall’origine e conserva i file di destinazione più recenti. Disattiva il backup additivo per eliminare anche i file presenti solo nella destinazione, inclusi quelli senza cronologia di sincronizzazione. La politica dei conflitti viene ignorata; le date sconosciute restano irrisolte."
         },
         "statusBar": {
             "connected": "Connesso",
@@ -6577,7 +6578,9 @@
             "progressCopy": "[copia]",
             "deleteCount": "Da eliminare: {count}",
             "overwriteCount": "Da sovrascrivere: {count}",
-            "conflictCount": "Conflitti: {count}"
+            "conflictCount": "Conflitti: {count}",
+            "updateOnly": "Salta i file di destinazione più recenti (aggiornamento unidirezionale)",
+            "updateOnlyHint": "Copia i file di origine mancanti o modificati, conserva i file di destinazione più recenti ed elimina le voci presenti solo nella destinazione. I file senza date confrontabili restano da esaminare."
         },
         "aerocryptProfile": {
             "overlaysSection": "Wrapper / Overlay",

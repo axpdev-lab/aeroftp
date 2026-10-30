@@ -1576,7 +1576,8 @@
             "aerocloudEnabled": "AeroCloud 활성화됨",
             "selectPairLocalFolder": "페어의 로컬 폴더 선택",
             "secondsAgo": "{count}초 전",
-            "conflictsCount": "주의가 필요한 충돌 {count}개"
+            "conflictsCount": "주의가 필요한 충돌 {count}개",
+            "updateOnlyHint": "단방향 업데이트는 원본에서만 복사하고 대상의 더 최신 파일을 유지합니다. 대상에만 있는 파일도 삭제하려면 추가 백업을 끄세요. 동기화 기록이 없는 파일도 포함됩니다. 충돌 정책은 무시되며 알 수 없는 날짜는 미해결 상태로 남습니다."
         },
         "statusBar": {
             "connected": "연결됨",
@@ -6324,7 +6325,9 @@
             "progressCopy": "[복사]",
             "deleteCount": "{count}개 삭제 예정",
             "overwriteCount": "{count}개 덮어쓰기 예정",
-            "conflictCount": "충돌 {count}개"
+            "conflictCount": "충돌 {count}개",
+            "updateOnly": "대상의 더 최신 파일 건너뛰기 (단방향 업데이트)",
+            "updateOnlyHint": "누락되거나 변경된 원본 파일을 복사하고, 대상의 더 최신 파일을 유지하며, 대상에만 있는 항목을 삭제합니다. 날짜를 비교할 수 없는 파일은 검토 대상으로 남습니다."
         },
         "accountLock": {
             "title": "계정 선택",

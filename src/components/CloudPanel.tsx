@@ -54,6 +54,7 @@ export interface CloudConfig {
     // Send-only / receive-only additive backup: when true (default) deletes on
     // the read side are not mirrored to the write side.
     preserve_remote_deletes?: boolean;
+    update_only?: boolean;
     // Real-time watcher tuning (item 1). Debounce quiet period in ms (default
     // 1500) and cooldown between watcher-triggered syncs in seconds (default 30).
     watcher_debounce_ms?: number;
@@ -700,6 +701,12 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                                             {t('cloud.preserveRemoteDeletes')}
                                         </label>
                                         <p className="text-xs text-gray-400 mt-1">{t('cloud.preserveRemoteDeletesDesc')}</p>
+                                        <label className="flex items-center gap-2 mt-2 text-sm">
+                                            <input type="checkbox" checked={config.update_only === true}
+                                                onChange={event => setConfig(prev => prev ? { ...prev, update_only: event.target.checked } : null)} />
+                                            {t('aerosync.updateOnly')}
+                                        </label>
+                                        <p className="text-xs text-gray-400 mt-1">{t('cloud.updateOnlyHint')}</p>
                                     </>
                                 )}
                             </div>
