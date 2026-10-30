@@ -67177,7 +67177,9 @@ mod hashsum_digest_tests {
     /// a replacement, under its own tag, while the HEAD and a whole GET stay
     /// at the first version, 7 as 4 with the first HEAD after a refusal
     /// answered `404`, 8 as 4 with the entity tag the MD5 of the content, 9 as
-    /// 8 with the unpinned ranges, untagged, coming from a replacement.
+    /// 8 with the unpinned ranges, untagged, coming from a replacement, 10 as 4
+    /// with the pinned range at byte 0 served and the later ones refused after
+    /// it has had time to reach the digest.
     pub(super) async fn range_hash_fixture(
         size: usize,
         body_delta: isize,
@@ -67261,8 +67263,15 @@ mod hashsum_digest_tests {
                             unpinned_gets.fetch_add(1, Ordering::SeqCst);
                         }
                         // Modes 4 to 9 refuse every range pinned with If-Match
-                        // and answer the others as their mode says.
-                        if matches!(range_mode, 4..=9) && request.headers().contains_key("if-match")
+                        // and answer the others as their mode says. Mode 10
+                        // serves the pinned first window.
+                        let pinned = request.headers().contains_key("if-match");
+                        let first_window = range.to_str().unwrap().starts_with("bytes=0-");
+                        if range_mode == 10 && pinned && !first_window {
+                            tokio::time::sleep(Duration::from_millis(200)).await;
+                        }
+                        if pinned
+                            && (matches!(range_mode, 4..=9) || (range_mode == 10 && !first_window))
                         {
                             refused.fetch_add(1, Ordering::SeqCst);
                             return Response::builder()
@@ -67303,7 +67312,7 @@ mod hashsum_digest_tests {
                                 .body(Body::from(replaced[start..=end].to_vec()))
                                 .unwrap();
                         }
-                        if matches!(range_mode, 1 | 2 | 4 | 5 | 8) {
+                        if matches!(range_mode, 1 | 2 | 4 | 5 | 8 | 10) {
                             let (start, end) = range
                                 .to_str()
                                 .unwrap()
@@ -67546,6 +67555,30 @@ mod hashsum_digest_tests {
         assert!(warnings.take().is_empty());
         // The reading before the windows, the diagnosis, the reading after.
         assert_eq!(fixture.heads.load(Ordering::SeqCst), 3);
+    }
+
+    /// A pinned window hashed before a later one is refused does not count
+    /// twice: the digest starts over for the unpinned pass.
+    #[tokio::test]
+    async fn ranged_hashsum_starts_over_when_a_later_window_refuses_the_pin() {
+        let mut fixture = range_hash_fixture(
+            (ftp_client_gui_lib::providers::multi_thread::IN_ORDER_WINDOW * 2 + 31) as usize,
+            0,
+            10,
+        )
+        .await;
+        let (hash, _) = hashsum_digest(&mut fixture.provider, PATH, HashAlgorithm::Sha256, true)
+            .await
+            .expect("the unpinned windows hash the unchanged object");
+        assert_eq!(
+            hash,
+            format!(
+                "{:x}",
+                <sha2::Sha256 as sha2::Digest>::digest(&fixture.body)
+            )
+        );
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 0);
+        assert!(fixture.unpinned_gets.load(Ordering::SeqCst) > 0);
     }
 
     /// The entity tag is the content's MD5: unpinned windows that hash to it

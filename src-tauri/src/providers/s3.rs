@@ -12561,8 +12561,23 @@ mod tests {
         assert!(!temp.exists());
     }
 
+    /// Every progress value a transfer reports, in order.
+    #[derive(Default)]
+    struct ProgressRecorder(std::sync::Mutex<Vec<u64>>);
+
+    impl crate::transfer_event_sink::TransferEventSink for ProgressRecorder {
+        fn emit_transfer_event(&self, event: crate::TransferEvent) {
+            if event.event_type == "progress" {
+                if let Some(progress) = event.progress {
+                    self.0.lock().unwrap().push(progress.transferred);
+                }
+            }
+        }
+    }
+
     /// A batch with no retries: the object refuses the windows, and the same
-    /// attempt reads it on one stream instead of failing the file.
+    /// attempt reads it on one stream instead of failing the file, with the
+    /// progress of the windows held until the stream passes it.
     #[tokio::test]
     async fn a_batch_with_no_retries_takes_one_stream_when_the_object_refuses_the_windows() {
         use super::super::multi_thread::pin_server::{self, PinMode, OBJECT_SIZE};
@@ -12571,10 +12586,17 @@ mod tests {
         };
         use crate::transfer_domain::{TransferEntry, TransferOutcome};
         use crate::transfer_orchestrator::TransferExecutor;
-        for mode in [
-            PinMode::RefusedRestored,
-            PinMode::RefusedWithStaleReadings,
-            PinMode::RefusedThenShrunk,
+        // A size that moved since the listing stops the run before any window.
+        for (mode, planned, refusals, whole) in [
+            (PinMode::RefusedRestored, OBJECT_SIZE, 2, OBJECT_SIZE),
+            (
+                PinMode::RefusedWithStaleReadings,
+                OBJECT_SIZE,
+                2,
+                OBJECT_SIZE,
+            ),
+            (PinMode::RefusedThenShrunk, OBJECT_SIZE, 2, OBJECT_SIZE - 1),
+            (PinMode::Honoured, OBJECT_SIZE + 1, 0, OBJECT_SIZE),
         ] {
             let server = pin_server::start(mode).await;
             let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
@@ -12582,8 +12604,9 @@ mod tests {
             let dir = tempfile::tempdir().expect("tempdir");
             let out = dir.path().join("big.bin");
             let capabilities = crate::transfer_dag::TransferCapabilities::default();
+            let recorder = std::sync::Arc::new(ProgressRecorder::default());
             let executor = ProviderDownloadExecutor::new(
-                std::sync::Arc::new(crate::transfer_event_sink::NoopTransferSink),
+                recorder.clone(),
                 std::sync::Arc::new(tokio::sync::Mutex::new(Some(
                     Box::new(provider) as Box<dyn StorageProvider>
                 ))),
@@ -12610,7 +12633,7 @@ mod tests {
                     display_name: "big".to_string(),
                     remote_path: "/big.bin".to_string(),
                     local_path: out.to_string_lossy().to_string(),
-                    size: OBJECT_SIZE as u64,
+                    size: planned as u64,
                     modified: None,
                 })
                 .await;
@@ -12619,16 +12642,17 @@ mod tests {
                 "{mode:?}: {outcome:?}"
             );
             assert!(
-                server.refused() >= 2,
+                server.refused() >= refusals,
                 "{mode:?}: the segmented path ran first"
             );
             assert_eq!(executor.take_transfer_attempts("big"), Some(1), "{mode:?}");
-            let whole = if mode == PinMode::RefusedThenShrunk {
-                OBJECT_SIZE - 1
-            } else {
-                OBJECT_SIZE
-            };
             assert_eq!(std::fs::read(&out).unwrap(), vec![9u8; whole], "{mode:?}");
+            let seen = recorder.0.lock().unwrap().clone();
+            assert!(
+                seen.windows(2).all(|pair| pair[0] <= pair[1]),
+                "{mode:?}: progress went back: {seen:?}"
+            );
+            assert_eq!(seen.last().copied(), Some(whole as u64), "{mode:?}");
         }
     }
 

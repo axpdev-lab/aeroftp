@@ -339,6 +339,9 @@ pub enum SegmentedDownloadError {
     },
 }
 
+/// Why a run stopped before its windows: the object no longer has the planned size.
+const SOURCE_SIZE_CHANGED: &str = "the source size no longer matches the segmented plan";
+
 /// Why a finished segmented download is not published, as the notice says it.
 const SOURCE_NOT_VERIFIED: &str =
     "the source changed or could not be verified after the segmented transfer";
@@ -379,7 +382,8 @@ impl SegmentedDownloadError {
         matches!(
             self,
             Self::Unavailable { reason, .. }
-                if *reason == SOURCE_NOT_VERIFIED
+                if *reason == SOURCE_SIZE_CHANGED
+                    || *reason == SOURCE_NOT_VERIFIED
                     || *reason == WINDOW_REFUSED
                     || *reason == PinRefusal::SourceChanged(String::new()).notice()
                     || *reason == PinRefusal::PinUnsupported.notice()
@@ -480,7 +484,7 @@ async fn run_provider_segmented_download_with(
             Err(why) => {
                 return Err(SegmentedDownloadError::unavailable(
                     parallel_refused("segmented download", remote_path, &why),
-                    "the source size no longer matches the segmented plan",
+                    SOURCE_SIZE_CHANGED,
                 ))
             }
         },
@@ -1404,40 +1408,19 @@ impl ProviderDownloadExecutor {
             0
         };
 
-        // GTC-1: opportunistic intra-file range parallelism.
-        //
-        // Gated on (attempt == 0 && no .aerotmp resume) so a hard
-        // failure in the segmented path cleanly degrades to the legacy
-        // single-stream path on the next retry, preserving the existing
-        // retry envelope. The capability check inside
-        // `try_segmented_download_attempt` re-locks the session model,
-        // provider capability flag, and file-size floor honestly.
-        let (requested_segments, _) = segmented_runtime_request(
-            provider.provider_type(),
-            &self.runtime_settings,
-            self.session_model.max_leases(),
-        );
-        if attempt == 0 && partial_offset == 0 && requested_segments > 1 {
-            if let Some(segmented_result) = self
-                .try_segmented_download_attempt(provider, entry, file_transfer_id, file_size)
-                .await
-            {
-                return segmented_result;
-            }
-        }
-
-        let progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> =
-            Some(Box::new(move |transferred, total| {
+        let progress_cb: crate::providers::multi_thread::ProgressCallback =
+            Box::new(move |transferred, total| {
                 if cancel_token.is_cancelled() {
                     return;
                 }
+                let total = total.max(file_size);
                 let percentage = if total > 0 {
                     ((transferred as f64 / total as f64) * 100.0) as u8
                 } else {
                     0
                 };
                 let speed = speed_meter.bps(transferred);
-                let remaining = total.max(file_size).saturating_sub(transferred);
+                let remaining = total.saturating_sub(transferred);
                 let eta = if speed > 0 {
                     (remaining as f64 / speed as f64) as u64
                 } else {
@@ -1453,7 +1436,7 @@ impl ProviderDownloadExecutor {
                         transfer_id: transfer_id.clone(),
                         filename: display_name.clone(),
                         transferred,
-                        total: total.max(file_size),
+                        total,
                         percentage,
                         speed_bps: speed,
                         eta_seconds: eta as u32,
@@ -1465,7 +1448,33 @@ impl ProviderDownloadExecutor {
                     delta_stats: None,
                     fallback_reason: None,
                 });
-            }));
+            });
+        // One stream taking over from refused windows on this attempt counts
+        // from zero: the mark they share keeps the bar where the windows left it.
+        let (segmented_progress, progress_cb) =
+            crate::providers::multi_thread::share_progress(Some(progress_cb));
+
+        // GTC-1: opportunistic intra-file range parallelism.
+        //
+        // Gated on (attempt == 0 && no .aerotmp resume) so a hard
+        // failure in the segmented path cleanly degrades to the legacy
+        // single-stream path on the next retry, preserving the existing
+        // retry envelope. The capability check inside
+        // `try_segmented_download_attempt` re-locks the session model,
+        // provider capability flag, and file-size floor honestly.
+        let (requested_segments, _) = segmented_runtime_request(
+            provider.provider_type(),
+            &self.runtime_settings,
+            self.session_model.max_leases(),
+        );
+        if attempt == 0 && partial_offset == 0 && requested_segments > 1 {
+            if let Some(segmented_result) = self
+                .try_segmented_download_attempt(provider, entry, file_size, segmented_progress)
+                .await
+            {
+                return segmented_result;
+            }
+        }
 
         let size_based_secs = file_size / 50_000;
         let effective_timeout = self
@@ -1522,8 +1531,8 @@ impl ProviderDownloadExecutor {
         &self,
         primary: &mut dyn StorageProvider,
         entry: &TransferEntry,
-        file_transfer_id: &str,
         file_size: u64,
+        on_progress: Option<crate::providers::multi_thread::ProgressCallback>,
     ) -> Option<Result<(), String>> {
         // R21: the threshold folds the caller's cutoff (explicit, or the
         // measured 8 MiB default) with the provider's own floor, so the batch
@@ -1551,57 +1560,6 @@ impl ProviderDownloadExecutor {
             max_segments,
             self.download_cutoff,
         )?;
-
-        // Progress bridge to the executor's TransferEventSink, same
-        // shape as the legacy progress callback.
-        let sink = Arc::clone(&self.sink);
-        let transfer_id = file_transfer_id.to_string();
-        let display_name = entry.display_name.clone();
-        let remote_path_for_progress = entry.remote_path.clone();
-        let cancel_for_progress = self.cancel_token.clone();
-        let total_for_progress = file_size;
-        let speed_meter = crate::transfer_speed::SpeedMeter::new();
-        let on_progress: Option<Box<dyn Fn(u64, u64) + Send>> =
-            Some(Box::new(move |transferred, total| {
-                if cancel_for_progress.is_cancelled() {
-                    return;
-                }
-                let total = total.max(total_for_progress);
-                let percentage = if total > 0 {
-                    ((transferred as f64 / total as f64) * 100.0) as u8
-                } else {
-                    0
-                };
-                let speed = speed_meter.bps(transferred);
-                let remaining = total.saturating_sub(transferred);
-                let eta = if speed > 0 {
-                    (remaining as f64 / speed as f64) as u64
-                } else {
-                    0
-                };
-                sink.emit_transfer_event(crate::TransferEvent {
-                    event_type: "progress".to_string(),
-                    transfer_id: transfer_id.clone(),
-                    filename: display_name.clone(),
-                    direction: "download".to_string(),
-                    message: None,
-                    progress: Some(crate::TransferProgress {
-                        transfer_id: transfer_id.clone(),
-                        filename: display_name.clone(),
-                        transferred,
-                        total,
-                        percentage,
-                        speed_bps: speed,
-                        eta_seconds: eta as u32,
-                        direction: "download".to_string(),
-                        total_files: None,
-                        path: None,
-                    }),
-                    path: Some(remote_path_for_progress.clone()),
-                    delta_stats: None,
-                    fallback_reason: None,
-                });
-            }));
 
         let outcome = run_provider_segmented_download(
             primary,
@@ -2505,6 +2463,7 @@ mod tests {
     fn only_the_object_refusing_the_windows_takes_one_stream_at_once() {
         use crate::providers::multi_thread::PinRefusal;
         let refused = |reason| SegmentedDownloadError::unavailable(String::new(), reason);
+        assert!(refused(SOURCE_SIZE_CHANGED).refused_by_the_source());
         assert!(refused(SOURCE_NOT_VERIFIED).refused_by_the_source());
         assert!(refused(PinRefusal::SourceChanged(String::new()).notice()).refused_by_the_source());
         assert!(refused(PinRefusal::PinUnsupported.notice()).refused_by_the_source());
