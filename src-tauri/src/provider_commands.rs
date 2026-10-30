@@ -534,8 +534,17 @@ pub const LISTING_CANCELLED: &str = "LISTING_CANCELLED";
 /// it reaches that request and no later one ([`Self::cancel_owned`]).
 #[derive(Default)]
 pub struct ListingCancelState {
-    slot: std::sync::Mutex<Option<Armed>>,
+    slot: std::sync::Mutex<Slot>,
     next_id: AtomicU64,
+}
+
+/// What a [`ListingCancelState`] guards: the armed request, and the named
+/// cancels that came before their request armed, kept as the local folder
+/// size walks keep theirs ([`crate::folder_size::EarlyCancels`]).
+#[derive(Default)]
+struct Slot {
+    armed: Option<Armed>,
+    cancelled_early: crate::folder_size::EarlyCancels,
 }
 
 /// The request a [`ListingCancelState`] slot holds.
@@ -556,7 +565,7 @@ impl ListingCancelState {
     fn arm(&self) -> (u64, CancellationToken) {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let token = CancellationToken::new();
-        *self.lock() = Some(Armed {
+        self.lock().armed = Some(Armed {
             id,
             owner: None,
             token: token.clone(),
@@ -571,15 +580,22 @@ impl ListingCancelState {
         self.replace_and_cancel_owned(None)
     }
 
-    /// [`Self::replace_and_cancel`] for a request its caller named `owner`.
+    /// [`Self::replace_and_cancel`] for a request its caller named `owner`,
+    /// which starts cancelled when a cancel named it before it got here.
     fn replace_and_cancel_owned(&self, owner: Option<String>) -> (u64, CancellationToken) {
         let mut slot = self.lock();
-        if let Some(previous) = slot.take() {
+        if let Some(previous) = slot.armed.take() {
             previous.token.cancel();
         }
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let token = CancellationToken::new();
-        *slot = Some(Armed {
+        if owner
+            .as_deref()
+            .is_some_and(|owner| slot.cancelled_early.take(owner))
+        {
+            token.cancel();
+        }
+        slot.armed = Some(Armed {
             id,
             owner,
             token: token.clone(),
@@ -591,12 +607,12 @@ impl ListingCancelState {
     /// rather than cancelling the one the user is watching.
     fn try_arm(&self) -> Result<(u64, CancellationToken), String> {
         let mut slot = self.lock();
-        if slot.is_some() {
+        if slot.armed.is_some() {
             return Err("A storage scan is already running".into());
         }
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let token = CancellationToken::new();
-        *slot = Some(Armed {
+        slot.armed = Some(Armed {
             id,
             owner: None,
             token: token.clone(),
@@ -609,8 +625,8 @@ impl ListingCancelState {
     /// cancel of the one that replaced it.
     fn disarm(&self, id: u64) {
         let mut slot = self.lock();
-        if slot.as_ref().is_some_and(|armed| armed.id == id) {
-            *slot = None;
+        if slot.armed.as_ref().is_some_and(|armed| armed.id == id) {
+            slot.armed = None;
         }
     }
 
@@ -618,7 +634,7 @@ impl ListingCancelState {
     /// was nothing to cancel (it resolved before the click landed), which the UI
     /// treats as success, since the outcome the user asked for already holds.
     pub fn cancel(&self) -> bool {
-        match self.lock().as_ref() {
+        match self.lock().armed.as_ref() {
             Some(armed) => {
                 armed.token.cancel();
                 true
@@ -629,18 +645,22 @@ impl ListingCancelState {
 
     /// Signal the request its caller named `owner`, and nothing else: a cancel
     /// sent without waiting can arrive after a newer request took the slot,
-    /// and must not stop that one. `false` when `owner` no longer holds it.
+    /// and must not stop that one. When `owner` does not hold the slot, its
+    /// request may not have armed yet: the id is kept, and that request starts
+    /// cancelled. True when a running request was found.
     pub fn cancel_owned(&self, owner: &str) -> bool {
-        match self.lock().as_ref() {
-            Some(armed) if armed.owner.as_deref() == Some(owner) => {
+        let mut slot = self.lock();
+        if let Some(armed) = &slot.armed {
+            if armed.owner.as_deref() == Some(owner) {
                 armed.token.cancel();
-                true
+                return true;
             }
-            _ => false,
         }
+        slot.cancelled_early.remember(owner);
+        false
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, Option<Armed>> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, Slot> {
         self.slot
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -648,7 +668,7 @@ impl ListingCancelState {
 
     #[cfg(test)]
     pub fn is_armed(&self) -> bool {
-        self.lock().is_some()
+        self.lock().armed.is_some()
     }
 }
 
@@ -10958,7 +10978,7 @@ async fn provider_calculate_folder_size_with_limits(
 }
 
 /// Cancel an in-progress folder size calculation: the scan `scan_id` names,
-/// or with no id whichever runs.
+/// running or about to start, or with no id whichever runs.
 #[tauri::command]
 pub async fn provider_cancel_folder_size(
     state: State<'_, ProviderState>,
@@ -10969,8 +10989,9 @@ pub async fn provider_cancel_folder_size(
 }
 
 /// A dialog closed sends its cancel without waiting, so the cancel can land
-/// after a reopened dialog's scan has replaced the closed one: given the
-/// closed scan's id it leaves the new scan running.
+/// after a reopened dialog's scan has replaced the closed one, or before the
+/// closed scan's own command ran: given the closed scan's id it leaves the new
+/// scan running, and the closed one starts cancelled.
 fn cancel_folder_size_scan(state: &ProviderState, scan_id: Option<&str>) -> bool {
     match scan_id {
         Some(scan_id) => state.folder_size_cancel.cancel_owned(scan_id),
@@ -17675,6 +17696,75 @@ mod tests {
             .expect("a cancelled scan reports what it counted");
         assert!(reopened.partial);
         assert!(!state.folder_size_cancel.is_armed());
+    }
+
+    /// The cancel of a closed dialog ran before the command of the scan it
+    /// names: that scan starts cancelled instead of walking to its limits.
+    #[tokio::test]
+    async fn a_folder_size_cancel_before_its_scan_starts_stops_it() {
+        let state = stall_state(StallProvider::default());
+        assert!(!super::cancel_folder_size_scan(&state, Some("early")));
+        let early = tokio::time::timeout(
+            Duration::from_secs(2),
+            super::provider_calculate_folder_size_inner(
+                &state,
+                "/stuck".into(),
+                Some("early".into()),
+                |_| {},
+            ),
+        )
+        .await
+        .expect("a scan cancelled before it started must not walk")
+        .expect("a cancelled scan reports what it counted");
+        assert!(early.partial);
+        assert_eq!(early.file_count, 0);
+        // Taken once: a later scan under the same id runs.
+        let again = super::provider_calculate_folder_size_inner(
+            &state,
+            "/stuck".into(),
+            Some("early".into()),
+            |_| {},
+        );
+        tokio::pin!(again);
+        assert!(futures_util::poll!(&mut again).is_pending());
+        assert!(super::cancel_folder_size_scan(&state, Some("early")));
+        assert!(again.await.unwrap().partial);
+    }
+
+    /// Cancels of scans that never start are not kept without end: past
+    /// `EARLY_CANCELS` newer ones, the oldest is forgotten.
+    #[tokio::test]
+    async fn early_folder_size_cancels_are_forgotten_oldest_first() {
+        use crate::folder_size::EARLY_CANCELS;
+        let state = stall_state(StallProvider::default());
+        super::cancel_folder_size_scan(&state, Some("oldest"));
+        for n in 0..EARLY_CANCELS {
+            super::cancel_folder_size_scan(&state, Some(&format!("never-{n}")));
+        }
+        let oldest = super::provider_calculate_folder_size_inner(
+            &state,
+            "/stuck".into(),
+            Some("oldest".into()),
+            |_| {},
+        );
+        tokio::pin!(oldest);
+        assert!(
+            futures_util::poll!(&mut oldest).is_pending(),
+            "a forgotten cancel stopped its scan"
+        );
+        assert!(super::cancel_folder_size_scan(&state, Some("oldest")));
+        assert!(oldest.await.unwrap().partial);
+        // The newest kept is still taken.
+        let newest = super::provider_calculate_folder_size_inner(
+            &state,
+            "/stuck".into(),
+            Some(format!("never-{}", EARLY_CANCELS - 1)),
+            |_| {},
+        );
+        let newest = tokio::time::timeout(Duration::from_secs(2), newest)
+            .await
+            .expect("the newest early cancel is kept");
+        assert!(newest.unwrap().partial);
     }
 
     /// #958's state: a used-storage scan stalled inside a listing (holding the

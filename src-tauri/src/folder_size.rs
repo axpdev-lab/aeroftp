@@ -801,19 +801,46 @@ fn is_kernel_filesystem(_path: &Path) -> bool {
 type Running = (u64, Arc<AtomicBool>);
 
 /// Ids remembered as cancelled before their walk registered.
-const EARLY_CANCELS: usize = 64;
+pub(crate) const EARLY_CANCELS: usize = 64;
+
+/// Ids cancelled before their walk registered, oldest first. A walk and its
+/// cancel are two commands, and the runtime may run the cancel first: the walk
+/// then starts stopped instead of running on unseen. An id whose walk never
+/// comes (its path was refused, or it ended as the cancel was sent) is
+/// forgotten after [`EARLY_CANCELS`] newer ones. The local walks keep theirs
+/// in [`Registry`], a remote folder size beside its slot
+/// (`provider_commands::ListingCancelState`).
+#[derive(Default)]
+pub(crate) struct EarlyCancels(VecDeque<String>);
+
+impl EarlyCancels {
+    /// Keeps `id` as cancelled, forgetting the oldest past [`EARLY_CANCELS`].
+    pub(crate) fn remember(&mut self, id: &str) {
+        if self.0.len() == EARLY_CANCELS {
+            self.0.pop_front();
+        }
+        self.0.push_back(id.to_string());
+    }
+
+    /// Whether `id` was cancelled before its walk came, forgetting it: a walk
+    /// takes its cancel once.
+    pub(crate) fn take(&mut self, id: &str) -> bool {
+        match self.0.iter().position(|c| c == id) {
+            Some(at) => {
+                self.0.remove(at);
+                true
+            }
+            None => false,
+        }
+    }
+}
 
 /// The walks the frontend can stop, by the id it chose, so closing a dialog
 /// can stop the walk the dialog started.
 #[derive(Default)]
 struct Registry {
     running: HashMap<String, Running>,
-    /// Ids cancelled before their walk registered, oldest first. The walk and
-    /// its cancel are two commands, and the runtime may run the cancel first:
-    /// the walk then starts stopped instead of running on unseen. An id whose
-    /// walk never comes (its path was refused, or it ended as the cancel was
-    /// sent) is forgotten after [`EARLY_CANCELS`] newer ones.
-    cancelled_early: VecDeque<String>,
+    cancelled_early: EarlyCancels,
 }
 
 static REGISTRY: LazyLock<Mutex<Registry>> = LazyLock::new(Mutex::default);
@@ -841,8 +868,7 @@ impl Registration {
         let flag = Arc::new(AtomicBool::new(false));
         if let Some(id) = &id {
             let mut registry = registry();
-            if let Some(at) = registry.cancelled_early.iter().position(|c| c == id) {
-                registry.cancelled_early.remove(at);
+            if registry.cancelled_early.take(id) {
                 flag.store(true, Ordering::Relaxed);
             }
             registry.running.insert(id.clone(), (serial, flag.clone()));
@@ -885,10 +911,7 @@ pub fn cancel(id: &str) -> bool {
         flag.store(true, Ordering::Relaxed);
         return true;
     }
-    if registry.cancelled_early.len() == EARLY_CANCELS {
-        registry.cancelled_early.pop_front();
-    }
-    registry.cancelled_early.push_back(id.to_string());
+    registry.cancelled_early.remember(id);
     false
 }
 
