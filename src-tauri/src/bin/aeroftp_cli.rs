@@ -46188,10 +46188,21 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
     // A folder of this machine is measured by the engine the app's Calculate
     // Size uses, so the terminal and the Properties dialog give one answer for
     // one folder, at the speed of a parallel walk. `--max-depth` asks for a
-    // figure to that depth, which the provider walk below answers.
-    if cli.max_depth.is_none() {
-        if let Some(folder) = local_size_folder(url, path) {
-            return cmd_size_local(&folder, cli, format).await;
+    // figure to that depth, which the provider walk below answers, and a
+    // `--profile` given with a URL is refused there, as by every command.
+    if cli.max_depth.is_none() && cli.profile.is_none() {
+        // Named as the provider walk names it, from the folder given rather
+        // than from this machine's root, so a script can pass it on.
+        if let (Some(folder), Ok(resolved)) = (
+            local_size_folder(url, path),
+            try_resolve_cli_remote_path("/", path),
+        ) {
+            let shown = if resolved.trim().is_empty() {
+                "/".to_string()
+            } else {
+                resolved
+            };
+            return cmd_size_local(&folder, &shown, cli, format).await;
         }
     }
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
@@ -46368,7 +46379,12 @@ fn local_size_folder(url: &str, path: &str) -> Option<std::path::PathBuf> {
 /// `size` of a local folder, through [`ftp_client_gui_lib::folder_size`]. The
 /// output is the provider walk's, line for line and key for key, so a script
 /// reading it does not need to know which of the two answered.
-async fn cmd_size_local(folder: &std::path::Path, cli: &Cli, format: OutputFormat) -> i32 {
+async fn cmd_size_local(
+    folder: &std::path::Path,
+    shown: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
     use ftp_client_gui_lib::folder_size::{scan, Limits, MAX_DEPTH, MAX_ENTRIES};
 
     let cancel = Arc::new(AtomicBool::new(false));
@@ -46379,8 +46395,7 @@ async fn cmd_size_local(folder: &std::path::Path, cli: &Cli, format: OutputForma
         cancel_sig.store(true, Ordering::Relaxed);
     });
 
-    let shown = folder.display().to_string();
-    let spinner = create_spinner(&format!("Scanning {} ...", sanitize_filename(&shown)));
+    let spinner = create_spinner(&format!("Scanning {} ...", sanitize_filename(shown)));
     let progress = spinner.clone();
     let walk_cancel = cancel.clone();
     let walk_folder = folder.to_path_buf();
@@ -46421,7 +46436,7 @@ async fn cmd_size_local(folder: &std::path::Path, cli: &Cli, format: OutputForma
             if !cli.quiet {
                 eprintln!(
                     "Path: {} (scan method: parallel local walk)",
-                    sanitize_filename(&shown)
+                    sanitize_filename(shown)
                 );
                 if s.unreadable_dirs > 0 {
                     eprintln!(
@@ -46448,7 +46463,7 @@ async fn cmd_size_local(folder: &std::path::Path, cli: &Cli, format: OutputForma
                 }
             }
         }
-        OutputFormat::Json => print_json(&local_size_json(&s, &shown)),
+        OutputFormat::Json => print_json(&local_size_json(&s, shown)),
     }
     size_exit_code(s.cancelled)
 }
