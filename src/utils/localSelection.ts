@@ -135,6 +135,32 @@ export const selectedLocalTrees = (
 ): LocalFile[] => outermostLocalRows(selectedLocalRows(shown, listing, selection));
 
 /**
+ * Whether a local panel shows the entries of `dir`: it is the panel's folder,
+ * or the panel's flattened search lists what is below its folder and `dir` is
+ * one of those folders. A panel that shows it reloads after an action writes
+ * there.
+ */
+export const localPanelShows = (dir: string, panelDir: string, flattened: boolean): boolean => {
+    const d = pathKey(dir) || '/';
+    const p = pathKey(panelDir) || '/';
+    return d === p || (flattened && d.startsWith(p === '/' ? '/' : `${p}/`));
+};
+
+/**
+ * Whether a drop on the folder `target` puts a dragged entry into itself:
+ * `target` is one of the dragged entries or below one of them. A move there
+ * fails halfway through the batch, and a copy copies a folder into what it is
+ * copying. Whole components only: `Photos 2026` is not below `Photos`.
+ */
+export const dropsIntoItself = (target: string, sources: readonly string[]): boolean => {
+    const t = pathKey(target) || '/';
+    return sources.some(source => {
+        const s = pathKey(source) || '/';
+        return t === s || t.startsWith(s === '/' ? '/' : `${s}/`);
+    });
+};
+
+/**
  * The rows deepest first: renaming a folder changes the path of everything
  * below it, so an entry below a renamed folder is renamed before it.
  */

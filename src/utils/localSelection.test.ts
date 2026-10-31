@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { LocalFile } from '../types';
-import { asLocalFileEntry, deepestLocalRowsFirst, focusedLocalPanel, localClipboardEntries, localRowFolder, localRowFolderKey, localRowName, localRowNameClashes, outermostLocalRows, selectedLocalRows, selectedLocalTrees } from './localSelection';
+import { asLocalFileEntry, deepestLocalRowsFirst, dropsIntoItself, focusedLocalPanel, localClipboardEntries, localRowFolder, localRowFolderKey, localRowName, localRowNameClashes, localPanelShows, outermostLocalRows, selectedLocalRows, selectedLocalTrees } from './localSelection';
 
 const row = (name: string, is_dir = true): LocalFile => ({
     name, path: `/home/u/${name}`, size: is_dir ? null : 1, is_dir, modified: null,
@@ -157,5 +157,48 @@ describe('the local panel an action acts on', () => {
         // A server connected with the remote panel shown, or dual mode off.
         expect(focusedLocalPanel(state({ isConnected: true, showRemotePanel: true }))).toBe('local');
         expect(focusedLocalPanel(state({ showDualLocalPanel: false }))).toBe('local');
+    });
+});
+
+describe('the panels that show a folder written to', () => {
+    it('is the panel whose folder it is, with or without a trailing slash', () => {
+        expect(localPanelShows('/home/u/Photos', '/home/u/Photos', false)).toBe(true);
+        expect(localPanelShows('/home/u/Photos/', '/home/u/Photos', false)).toBe(true);
+        expect(localPanelShows('/home/u/Other', '/home/u/Photos', false)).toBe(false);
+    });
+
+    it('is also a flattened panel above it, whose rows list the folder', () => {
+        expect(localPanelShows('/home/u/Photos/Summer', '/home/u', true)).toBe(true);
+        expect(localPanelShows('/home/u/Photos/Summer', '/home/u', false)).toBe(false);
+        expect(localPanelShows('/etc', '/', true)).toBe(true);
+    });
+
+    it('is not a panel on a sibling that shares the name\'s start', () => {
+        expect(localPanelShows('/home/u/Photos 2026/x', '/home/u/Photos', true)).toBe(false);
+        expect(localPanelShows('/home/u', '/home/u/Photos', true)).toBe(false);
+    });
+
+    it('reads Windows paths with either separator', () => {
+        expect(localPanelShows('C:\\Users\\u\\Photos', 'C:/Users/u', true)).toBe(true);
+        expect(localPanelShows('C:\\Users\\u', 'C:/Users/u/', false)).toBe(true);
+    });
+});
+
+describe('a drop that would put a dragged folder into itself', () => {
+    it('is a drop on a dragged folder or on a folder below one', () => {
+        expect(dropsIntoItself('/home/u/Photos', ['/home/u/Photos'])).toBe(true);
+        expect(dropsIntoItself('/home/u/Photos/Summer', ['/home/u/notes.txt', '/home/u/Photos'])).toBe(true);
+        expect(dropsIntoItself('/home/u/Photos/Summer/', ['/home/u/Photos/'])).toBe(true);
+    });
+
+    it('is not a drop beside it, above it, or on a folder that only shares its name\'s start', () => {
+        expect(dropsIntoItself('/home/u/Other', ['/home/u/Photos'])).toBe(false);
+        expect(dropsIntoItself('/home/u', ['/home/u/Photos'])).toBe(false);
+        expect(dropsIntoItself('/home/u/Photos 2026', ['/home/u/Photos'])).toBe(false);
+    });
+
+    it('reads Windows paths with either separator', () => {
+        expect(dropsIntoItself('C:\\Users\\u\\Photos\\Summer', ['C:/Users/u/Photos'])).toBe(true);
+        expect(dropsIntoItself('C:/Users/u/Photos 2026', ['C:\\Users\\u\\Photos'])).toBe(false);
     });
 });

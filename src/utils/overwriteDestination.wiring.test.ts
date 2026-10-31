@@ -35,7 +35,7 @@ const { code: overwriteCode } = await transformWithOxc(
 type Direction = 'upload' | 'download';
 type Policy = 'skip' | 'overwrite' | 'resume' | 'rename';
 const file = (name: string, size = 40): RemoteFile => ({ name, path: `/actual/${name}`, size, modified: null, is_dir: false, permissions: null });
-function fixture(options: { direction: Direction; policy?: Policy; destination?: RemoteFile[]; panel?: RemoteFile[]; failListing?: boolean; protocol?: 'webdav' | 'sftp' | 'imagekit' }) {
+function fixture(options: { direction: Direction; policy?: Policy; destination?: RemoteFile[]; panel?: RemoteFile[]; nested?: RemoteFile[]; failListing?: boolean; protocol?: 'webdav' | 'sftp' | 'imagekit' }) {
   const direction = options.direction;
   const protocol = options.protocol || 'webdav';
   const destination = options.destination ?? [file('a.bin')];
@@ -78,7 +78,7 @@ function fixture(options: { direction: Direction; policy?: Policy; destination?:
     usesProviderApi, aeroVaultOverlaySession: null, currentRemotePath: '/panel',
     localFiles: direction === 'upload' ? [file('a.bin', 100)] : panel,
     // The rows shown, which a nested row of a flattened search is found in.
-    sortedLocalFiles: [],
+    sortedLocalFiles: options.nested ?? [],
     remoteFiles: direction === 'download' ? [file('a.bin', 100)] : panel,
     humanLog: { logStart: () => 'log', logRaw: vi.fn(), log: vi.fn(), logError: vi.fn(), updateEntry: vi.fn() },
     pendingFileLogIds: { current: new Map() }, batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
@@ -102,6 +102,16 @@ const items = ['a.bin', 'b.bin'].map(name => ({ name, sourcePath: `/source/${nam
 const single = (f: ReturnType<typeof fixture>, direction: Direction) => direction === 'download'
   ? f.runtime.downloadFile('/source/a.bin', 'a.bin', '/actual', false, 100)
   : f.runtime.uploadFile('/source/a.bin', 'a.bin', false, 100, false, undefined, '/actual');
+
+it('forwards a nested row\'s own size and modified date to checkOverwrite', async () => {
+  // A nested row of a flattened search, found by its path: the panel's own
+  // `a.bin` has another size and no date, so a lookup by name would show.
+  const nested = { ...file('a.bin', 250), path: '/source/a.bin', modified: '2026-01-01T00:00:00Z' };
+  const f = fixture({ direction: 'upload', destination: [], nested: [nested] });
+  await f.runtime.uploadFile('/source/a.bin', 'a.bin', false, 0, false, undefined, '/actual');
+  expect(f.checkOverwrite.mock.calls[0][1]).toBe(250);
+  expect(f.checkOverwrite.mock.calls[0][2]).toEqual(new Date('2026-01-01T00:00:00Z'));
+});
 
 describe.each(['download', 'upload'] as const)('App actual %s destination', direction => {
   it('skips a single file that exists only in the destination', async () => {

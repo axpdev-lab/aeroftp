@@ -87,6 +87,8 @@ describe('local actions on the rows of a flattened search', () => {
 
     it('deletes exactly the rows selected, by their paths', () => {
         const del = body('deleteMultipleLocalFiles');
+        // The panel passed, never the focused one: its paths reach the trash.
+        expect(del).toMatch(/const panel = getActiveLocalState\(localPanelId\);/);
         expect(count(del, /selectedLocalTrees\(panel\.sortedFiles, panel\.files, new Set\(names\)\)/g)).toBe(2);
         expect(del).toMatch(/trashLocalPaths\(\s*selected\.map\(file => file\.path\)/);
     });
@@ -119,7 +121,7 @@ describe('local actions on the rows of a flattened search', () => {
         expect(menu).toMatch(/let extractOutputDir = rowFolder;/);
         expect(menu).toMatch(/resolveUniqueExtractDir\(rowFolder, rowName\)/);
         expect(menu).toMatch(/destPath: rowFolder \}/);
-        expect(menu).toMatch(/destDir: rowFolder \}/);
+        expect(menu).toMatch(/destDir: rowFolder, password/);
         expect(menu).not.toMatch(/resolveUniqueExtractDir\(currentLocalPath/);
     });
 
@@ -155,6 +157,8 @@ describe('local actions on the rows of a flattened search', () => {
         // Clipboard (Ctrl+C, Ctrl+X, menu bar and row menu Cut and Copy),
         // upload, compress; F5/F6 in the plan and in the transfer; the drag.
         expect(count(appRaw, /refuseLocalNameClashes\(/g)).toBe(8);
+        // Each clipboard call is gated on the refusal, not only made.
+        expect(count(appRaw, /!refuseLocalNameClashes\((files|selectedFiles)\)\) clipboard(Copy|Cut)\(/g)).toBe(6);
         expect(body('planLocalSelectionAcrossPanels')).toMatch(/localRowNameClashes\(selectedFiles\)/);
         expect(body('transferLocalSelectionAcrossPanels')).toMatch(/localRowNameClashes\(rows\)/);
         expect(body('showLocalContextMenu')).toMatch(/if \(refuseLocalNameClashes\(compressRows\)\) return;/);
@@ -196,11 +200,58 @@ describe('local actions on the rows of a flattened search', () => {
         expect(menu).not.toMatch(/outputDir: currentLocalPath/);
     });
 
+    it('drops on the other panel by the rows dragged, not by their names', () => {
+        // Upload takes row keys: the drag's own names resolved a nested row to
+        // the entry of the panel's folder with that name, or to nothing.
+        expect(appRaw).not.toMatch(/uploadMultipleFiles\(files\.map\(f => f\.name\)\)/);
+        expect(appRaw).toMatch(/const keys = getActiveLocalState\(panelId\)\.sortedFiles\.filter\(r => dragged\.has\(r\.path\)\)\.map\(r => r\.name\);\s*if \(keys\.length > 0\) await uploadMultipleFiles\(keys, panelId\);/);
+        expect(count(dragRaw, /onCrossPanelDrop\?\.\(fileData, sourceIsRemote, target(Path|Dir), sourceKey\)/g)).toBe(2);
+    });
+
+    it('never drops a folder into itself or below itself', () => {
+        // A flattened search shows a folder and the folders below it, and the
+        // other panel can show one of them.
+        expect(dragRaw).not.toMatch(/sourcePaths\.includes\(targetPath\)/);
+        // Row drag-over in the same panel and across local panels, the panel's
+        // own drag-over, the local-to-local transfer and the same-panel move.
+        expect(count(dragRaw, /dropsIntoItself\((targetPath|targetDir), (dragData\.)?sourcePaths\)/g)).toBe(5);
+    });
+
+    it('reloads every panel that shows a folder an action wrote to', () => {
+        // Panel 1 also when its flattened search lists a folder below its own.
+        const refresh = body('refreshLocalPanelForPath');
+        expect(refresh).toMatch(/localPanelShows\(dir, currentLocalPath, flattenSearchParse\.active\)/);
+        expect(refresh).toMatch(/localPanelShows\(dir, currentLocalPath2, false\)/);
+        // Extract (four aero lanes and two general ones) reloaded the panel
+        // right-clicked only; compress, a Cryptomator vault, Batch Rename and
+        // Rename reloaded panel 1 whichever panel they came from; the editor
+        // and the duplicate finder reloaded panel 1 whatever folder they wrote.
+        expect(count(body('showLocalContextMenu'), /await refreshLocalPanelForPath\(rowFolder\);/g)).toBe(6);
+        expect(appRaw).toMatch(/await refreshLocalPanelForPath\(compressDialogState\.outputDir\);/);
+        expect(appRaw).toMatch(/onCreated=\{\(\) => refreshLocalPanelForPath\(cryptomatorCreateDialog\.outputDir\)\}/);
+        expect(body('handleBatchRename')).toMatch(/\[\.\.\.renames\.keys\(\)\]\.map\(p => parentDir\(p\)\)/);
+        expect(body('renameFile')).toMatch(/await refreshLocalPanelForPath\(parentDir\);/);
+        expect(body('renameFile')).not.toMatch(/loadLocalFiles\(currentLocalPath\)/);
+        expect(body('commitInlineRename')).toMatch(/await refreshLocalPanelForPath\(parentDir\);/);
+        expect(appRaw).toMatch(/await refreshLocalPanelForPath\(parentDir\(file\.path\)\);/);
+        expect(appRaw).toMatch(/paths\.map\(p => parentDir\(p\)\)\)\]\.map\(dir => refreshLocalPanelForPath\(dir\)\)/);
+        expect(appRaw).toMatch(/onVaultCreated=\{\(dir\) => \{[^}]*void refreshLocalPanelForPath\(dir\);\s*\}\}/);
+    });
+
+    it('drops the rows of the last folder as soon as the folder changes', () => {
+        // They stayed on screen, under the new folder, until the scan before
+        // ended and the new one began.
+        expect(appRaw).toMatch(/if \(flattenScanRef\.current\.path !== currentLocalPath\) \{\s*setLocalFlattenedFiles\(null\);\s*setLocalFlattenTruncated\(false\);\s*setLocalFlattenScanning\(true\);\s*\}\s*const timer = window\.setTimeout/);
+    });
+
     it('rescans the flattened rows when the listing reloads', () => {
         // After a delete, rename or move the listing reloads; the flattened rows
         // used to keep the old entry on screen.
         expect(appRaw).toMatch(/\}, \[flattenSearchParse\.active, currentLocalPath, localFiles\]\);/);
         // One walk at a time: a rescan waits for the scan before it.
         expect(appRaw).toMatch(/await scan\.running\?\.catch\(\(\) => undefined\);\s*if \(cancelled\) return;/);
+        // A listing change starts a new walk, and its result replaces the rows.
+        expect(appRaw).toMatch(/invoke<[^>]*>\(\s*'flatten_local_descendants'/);
+        expect(appRaw).toMatch(/setLocalFlattenedFiles\(result\.entries\);/);
     });
 });

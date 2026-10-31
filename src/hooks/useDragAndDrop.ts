@@ -15,7 +15,7 @@ import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { isNonFtpProvider, ProviderType } from '../types';
 import type { HumanizedOperationType, HumanizedLogParams } from './useHumanizedLog';
-import { localRowName, outermostLocalRows } from '../utils/localSelection';
+import { dropsIntoItself, localRowName, outermostLocalRows } from '../utils/localSelection';
 
 export type PanelKey = 'remote' | 'local' | 'local2';
 
@@ -55,7 +55,7 @@ interface UseDragAndDropParams {
     activeSessionId?: string | null;
     sessions?: Array<{ id: string; connectionParams?: { protocol?: string } }>;
     connectionParams?: { protocol?: string };
-    onCrossPanelDrop?: (files: { name: string; path: string }[], fromRemote: boolean, targetDir: string) => Promise<void>;
+    onCrossPanelDrop?: (files: { name: string; path: string }[], fromRemote: boolean, targetDir: string, sourceKey: PanelKey) => Promise<void>;
 }
 
 export function useDragAndDrop({
@@ -195,7 +195,8 @@ export function useDragAndDrop({
                 setDropTargetPath(null);
                 return;
             }
-            if (dragData.sourcePaths.includes(targetPath)) {
+            // A dragged folder, or a folder below one: never into itself.
+            if (dropsIntoItself(targetPath, dragData.sourcePaths)) {
                 e.dataTransfer.dropEffect = 'none';
                 setDropTargetPath(null);
                 return;
@@ -212,6 +213,13 @@ export function useDragAndDrop({
 
         // local-to-local: Ctrl = copy, default = move
         if (localToLocal) {
+            // The other panel can show a dragged folder, or a folder below it.
+            if (isFolder && dropsIntoItself(targetPath, dragData.sourcePaths)) {
+                e.dataTransfer.dropEffect = 'none';
+                setDropTargetPath(null);
+                setCrossPanelTarget(null);
+                return;
+            }
             if (isFolder && targetPath.split('/').pop() !== '..') {
                 e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
                 setDropTargetPath(targetPath);
@@ -249,6 +257,9 @@ export function useDragAndDrop({
         sourceKey: PanelKey,
         targetKey: PanelKey
     ) => {
+        // Refused while dragging (no drop effect); a drop that gets here anyway
+        // does nothing rather than move or copy a folder into itself.
+        if (dropsIntoItself(targetDir, sourcePaths)) return;
         for (let i = 0; i < files.length; i++) {
             const fileName = files[i];
             const sourcePath = sourcePaths[i];
@@ -306,7 +317,7 @@ export function useDragAndDrop({
         // local↔remote cross-panel: upload/download via callback
         if (sourceIsRemote !== targetIsRemote) {
             const fileData = files.map((name, i) => ({ name, path: sourcePaths[i] }));
-            await onCrossPanelDrop?.(fileData, sourceIsRemote, targetPath);
+            await onCrossPanelDrop?.(fileData, sourceIsRemote, targetPath, sourceKey);
             return;
         }
 
@@ -316,7 +327,8 @@ export function useDragAndDrop({
             return;
         }
 
-        // Same-panel move (rename into another folder)
+        // Same-panel move (rename into another folder), never into itself.
+        if (dropsIntoItself(targetPath, sourcePaths)) return;
         const useProviderCmd = isProvider();
 
         for (let i = 0; i < files.length; i++) {
@@ -365,13 +377,20 @@ export function useDragAndDrop({
         const sourceIsRemote = dragData.panelKey === 'remote';
         const targetIsRemote = targetPanelKey === 'remote';
         if (sourceIsRemote === targetIsRemote) {
-            // local-to-local cross panel
+            // local-to-local cross panel, into the other panel's folder: not
+            // when that folder is a dragged one or below one.
+            const targetDir = targetPanelKey === 'local2' ? (currentLocalPath2 || currentLocalPath) : currentLocalPath;
+            if (dropsIntoItself(targetDir, dragData.sourcePaths)) {
+                e.dataTransfer.dropEffect = 'none';
+                setCrossPanelTarget(null);
+                return;
+            }
             e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
         } else {
             e.dataTransfer.dropEffect = 'copy';
         }
         setCrossPanelTarget(targetPanelKey);
-    }, [dragData]);
+    }, [dragData, currentLocalPath, currentLocalPath2]);
 
     /**
      * Panel-level drop (cross-panel drop on empty space → use current directory)
@@ -405,7 +424,7 @@ export function useDragAndDrop({
 
         if (sourceIsRemote !== targetIsRemote) {
             const fileData = files.map((name, i) => ({ name, path: sourcePaths[i] }));
-            await onCrossPanelDrop?.(fileData, sourceIsRemote, targetDir);
+            await onCrossPanelDrop?.(fileData, sourceIsRemote, targetDir, sourceKey);
             return;
         }
 
