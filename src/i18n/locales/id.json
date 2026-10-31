@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "Tanya AeroAgent...",
             "browseArchive": "Jelajahi Arsip",
-            "calculateSize": "Hitung Ukuran",
             "compress": "Kompres",
             "compress7zMultiple": "Kompres 7z ({count})",
             "compressSubmenu": "Kompres",
