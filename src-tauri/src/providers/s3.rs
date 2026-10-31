@@ -2273,28 +2273,44 @@ impl S3Provider {
 
     fn parse_bucket_names(xml: &str) -> Result<Vec<String>, ProviderError> {
         let mut reader = Reader::from_str(xml);
-        reader.config_mut().trim_text(true);
+        // A name with an entity in it arrives in pieces: `KDE&apos;s Kate
+        // Settings` is Text("KDE") + GeneralRef("apos") + Text("s Kate
+        // Settings"). Each piece used to become a bucket of its own (#1461),
+        // so the pieces are joined until `</Name>`. No trim_text either: it
+        // trims every piece, and `a &amp; b` would lose its spaces.
+        reader.config_mut().trim_text(false);
         let mut buf = Vec::new();
         let mut in_bucket = false;
-        let mut in_name = false;
+        let mut name: Option<String> = None;
         let mut buckets = Vec::new();
 
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(event)) => match event.name().as_ref() {
                     "Bucket" => in_bucket = true,
-                    "Name" if in_bucket => in_name = true,
+                    "Name" if in_bucket => name = Some(String::new()),
                     _ => {}
                 },
                 Ok(Event::End(event)) => match event.name().as_ref() {
-                    "Name" => in_name = false,
+                    "Name" => {
+                        if let Some(value) = name.take().filter(|value| !value.is_empty()) {
+                            buckets.push(value);
+                        }
+                    }
                     "Bucket" => in_bucket = false,
                     _ => {}
                 },
-                Ok(Event::Text(text)) if in_bucket && in_name => {
-                    let value = text.as_ref().trim().to_string();
-                    if !value.is_empty() {
-                        buckets.push(value);
+                Ok(Event::Text(text)) => {
+                    if let Some(value) = name.as_mut() {
+                        value.push_str(text.as_ref());
+                    }
+                }
+                Ok(Event::GeneralRef(reference)) => {
+                    if let (Some(value), Some(expanded)) = (
+                        name.as_mut(),
+                        super::xml_text::xml_entity_to_str(reference.as_ref()),
+                    ) {
+                        value.push_str(&expanded);
                     }
                 }
                 Ok(Event::Eof) => break,
@@ -8725,6 +8741,85 @@ mod tests {
         assert_eq!(
             S3Provider::parse_bucket_names(xml).unwrap(),
             vec!["alpha", "zeta"]
+        );
+    }
+
+    /// #1461: quick-xml hands a name with an entity in it over in pieces, so
+    /// `KDE&apos;s Kate Settings` arrives as Text("KDE"), GeneralRef("apos")
+    /// and Text("s Kate Settings"). Each piece used to become a bucket of its
+    /// own, and the apostrophe was lost: the picker showed "KDE" and
+    /// "s Kate Settings", neither of which exists.
+    #[test]
+    fn list_buckets_parser_keeps_a_name_split_by_an_entity_whole() {
+        for (escaped, expected) in [
+            ("KDE&apos;s Kate Settings", "KDE's Kate Settings"),
+            // Storj's gateway writes the apostrophe as a numeric reference.
+            ("KDE&#39;s Kate Settings", "KDE's Kate Settings"),
+            ("KDE&#x27;s Kate Settings", "KDE's Kate Settings"),
+            // The spaces next to an entity belong to the name.
+            ("a &amp; b", "a & b"),
+            ("&lt;x&gt; &quot;y&quot;", "<x> \"y\""),
+            ("&amp;&amp;", "&&"),
+        ] {
+            let xml = format!(
+                "<ListAllMyBucketsResult><Buckets>\
+                 <Bucket><Name>{escaped}</Name><CreationDate>2026-01-01T00:00:00Z</CreationDate></Bucket>\
+                 </Buckets></ListAllMyBucketsResult>"
+            );
+            assert_eq!(
+                S3Provider::parse_bucket_names(&xml).unwrap(),
+                vec![expected.to_string()],
+                "{escaped}"
+            );
+        }
+    }
+
+    #[test]
+    fn list_buckets_parser_lists_entity_names_beside_plain_ones() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+            <ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+              <Owner><ID>abc</ID><DisplayName>O&apos;Brien</DisplayName></Owner>
+              <Buckets>
+                <Bucket><Name>photos</Name><CreationDate>2026-01-01T00:00:00Z</CreationDate></Bucket>
+                <Bucket><Name>KDE&#39;s Kate Settings</Name><CreationDate>2026-01-02T00:00:00Z</CreationDate></Bucket>
+                <Bucket><Name>KDE</Name><CreationDate>2026-01-03T00:00:00Z</CreationDate></Bucket>
+              </Buckets>
+            </ListAllMyBucketsResult>"#;
+        assert_eq!(
+            S3Provider::parse_bucket_names(xml).unwrap(),
+            vec!["KDE", "KDE's Kate Settings", "photos"]
+        );
+    }
+
+    /// The ListBuckets body `rclone serve s3` (GoFakeS3) sent for three
+    /// folders, captured on the wire: Go's encoder writes the apostrophe as
+    /// `&#39;`, like the Storj gateway, and indents every element.
+    #[test]
+    fn list_buckets_parser_reads_a_captured_gateway_response() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Owner>
+    <ID>fe7272ea58be830e56fe1663b10fafef</ID>
+    <DisplayName>GoFakeS3</DisplayName>
+  </Owner>
+  <Buckets>
+    <Bucket>
+      <Name>KDE&#39;s Kate Settings</Name>
+      <CreationDate>2026-10-31T21:46:03.56Z</CreationDate>
+    </Bucket>
+    <Bucket>
+      <Name>a &amp; b</Name>
+      <CreationDate>2026-10-31T21:46:03.56Z</CreationDate>
+    </Bucket>
+    <Bucket>
+      <Name>photos</Name>
+      <CreationDate>2026-10-31T21:46:03.56Z</CreationDate>
+    </Bucket>
+  </Buckets>
+</ListAllMyBucketsResult>"#;
+        assert_eq!(
+            S3Provider::parse_bucket_names(xml).unwrap(),
+            vec!["KDE's Kate Settings", "a & b", "photos"]
         );
     }
 

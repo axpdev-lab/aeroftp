@@ -89,11 +89,11 @@ const PATTERNS: &[&str] = &[
     "DateTime::parse_from_str(",
 ];
 
-fn src_dir() -> PathBuf {
+pub(crate) fn src_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
 }
 
-fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
+pub(crate) fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in std::fs::read_dir(dir).expect("read src") {
         let path = entry.expect("dir entry").path();
         if path.is_dir() {
@@ -106,7 +106,7 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
 
 /// `source` with every `#[cfg(test)] mod name { ... }` block removed. Braces
 /// inside strings, raw strings, char literals and comments do not count.
-fn strip_test_modules(source: &str) -> String {
+pub(crate) fn strip_test_modules(source: &str) -> String {
     let bytes = source.as_bytes();
     let mut out = String::with_capacity(source.len());
     let mut i = 0;
@@ -169,7 +169,7 @@ fn strip_test_modules(source: &str) -> String {
 }
 
 /// The number of `#` of a raw string opening at `at` (`r"`, `r#"`, ...).
-fn raw_string_open(source: &str, at: usize) -> Option<usize> {
+pub(crate) fn raw_string_open(source: &str, at: usize) -> Option<usize> {
     let bytes = source.as_bytes();
     if bytes[at] != b'r'
         || (at > 0 && (bytes[at - 1].is_ascii_alphanumeric() || bytes[at - 1] == b'_'))
@@ -182,7 +182,7 @@ fn raw_string_open(source: &str, at: usize) -> Option<usize> {
 
 /// Length of a char literal at the start of `rest` (`'x'`, `'\n'`, `'{'`),
 /// never a lifetime (`'a`).
-fn char_literal_len(rest: &str) -> Option<usize> {
+pub(crate) fn char_literal_len(rest: &str) -> Option<usize> {
     let mut chars = rest.char_indices();
     if chars.next()?.1 != '\'' {
         return None;

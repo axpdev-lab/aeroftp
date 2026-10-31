@@ -340,6 +340,9 @@ mod tray_badge;
 mod vault_remote;
 mod windows_acl;
 pub mod winscp_import;
+/// Class-level pin: every quick-xml text reader also reads entity references.
+#[cfg(test)]
+mod xml_entity_audit;
 // Stub used when the `local-stt` feature is off OR when targeting macOS
 // (where the frontend uses the WKWebView Web Speech API). Both paths
 // converge on the same minimal surface so `lib.rs` can register the
