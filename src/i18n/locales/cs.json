@@ -1588,7 +1588,9 @@
             "aerocloudEnabled": "AeroCloud povoleno",
             "selectPairLocalFolder": "Vyberte místní složku pro pár",
             "secondsAgo": "před {count}s",
-            "conflictsCount": "Konflikty vyžadující pozornost: {count}"
+            "conflictsCount": "Konflikty vyžadující pozornost: {count}",
+            "updateOnlyHint": "Jednosměrná aktualizace zachovává novější soubory v cíli. Při vypnutém přírůstkovém zálohování se odstraní pouze nezměněné soubory existující jen v cíli s ověřeným dokladem o přenosu přes AeroCloud. Ostatní soubory zůstanou ke kontrole v AeroSync. Zásady řešení konfliktů se ignorují; neznámá data zůstávají nevyřešena.",
+            "untrackedDestinationFiles": "{count} cílových souborů bylo zachováno ke kontrole: jejich historie přenosů není ověřena nebo se změnily od posledního přenosu přes AeroCloud. Než rozhodnete o odstranění, zkontrolujte je v AeroSync."
         },
         "statusBar": {
             "connected": "Připojeno",
@@ -6336,7 +6338,9 @@
             "progressCopy": "[kopie]",
             "deleteCount": "Ke smazání: {count}",
             "overwriteCount": "K přepsání: {count}",
-            "conflictCount": "Konflikty: {count}"
+            "conflictCount": "Konflikty: {count}",
+            "updateOnly": "Přeskočit novější soubory v cíli (jednosměrná aktualizace)",
+            "updateOnlyHint": "Zkopíruje chybějící nebo změněné zdrojové soubory, zachová novější soubory v cíli a odstraní položky, které jsou pouze v cíli. Soubory bez porovnatelných dat se porovnají podle velikosti; rozdíly ve velikosti zůstanou k posouzení."
         },
         "accountLock": {
             "title": "Vyberte účet",

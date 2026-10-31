@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { SyncTemplateDialog } from './SyncTemplateDialog';
 import { createTabStateStore, TabStateStoreContext } from '../AeroSync/tabStateStore';
 import type { SyncProfile } from '../../types';
+import { compareEntries } from '../../utils/compareEndpoints';
 
 const mocks = vi.hoisted(() => ({
     invoke: vi.fn(),
@@ -130,4 +131,88 @@ it('exports every live Plan option in an Update .aerosync template', async () =>
         error_correction: { enabled: true, pct: 25 },
     });
     expect(template.exclude_patterns).toEqual(['cache/**']);
+});
+
+it.each(['local-remote', 'remote-local'] as const)('refuses both script exporters when CLI timestamps could overwrite a GUI-preserved destination: %s', async pairKind => {
+    const store = createTabStateStore();
+    store.set('plan.preset', 'mirror');
+    store.set('plan.updateOnly', true);
+    store.set('plan.direction', pairKind === 'local-remote' ? 'left-to-right' : 'right-to-left');
+    const source = { name: 'file', size: 1, isDir: false, mtimeMs: 100100 };
+    const destination = { name: 'file', size: 2, isDir: false, mtimeMs: 102900 };
+    const [left, right] = pairKind === 'local-remote' ? [source, destination] : [destination, source];
+    const compareResult = compareEntries([left], [right]);
+    await React.act(async () => root.render(React.createElement(
+        TabStateStoreContext.Provider,
+        { value: store },
+        React.createElement(SyncTemplateDialog, {
+            isOpen: true,
+            onClose: () => undefined,
+            localPath: '/local',
+            remotePath: '/remote',
+            serverProfileName: 'Cloud',
+            excludePatterns: [],
+            pairKind,
+            compareResult,
+            onApplyImport: () => undefined,
+        }),
+    )));
+    await React.act(async () => {
+        Array.from(host.querySelectorAll('button'))
+            .filter(button => button.textContent === 'syncPanel.aerosyncScriptExportButton')
+            .slice(-1)[0]!
+            .click();
+    });
+    expect(mocks.pickSave).not.toHaveBeenCalled();
+    expect(mocks.invoke.mock.calls.some(([command]) => command === 'aerosync_export_script_cmd')).toBe(false);
+
+    const bash = Array.from(host.querySelectorAll('button'))
+        .find(button => button.textContent?.includes('syncPanel.templateFormatBash'));
+    expect(bash).toBeTruthy();
+    await React.act(async () => bash!.click());
+    await React.act(async () => {
+        Array.from(host.querySelectorAll('button'))
+            .filter(button => button.textContent === 'syncPanel.aerosyncScriptExportButton')
+            .slice(-1)[0]!
+            .click();
+    });
+    expect(mocks.pickSave).not.toHaveBeenCalled();
+    expect(mocks.invoke.mock.calls.some(([command]) => command === 'export_sync_script_cmd')).toBe(false);
+    expect(host.textContent).toContain('aerosync.cli.reason.overwritesNewer');
+});
+
+it('refuses an Update export when the current options no longer match the compare', async () => {
+    const store = createTabStateStore();
+    store.set('plan.preset', 'mirror');
+    store.set('plan.updateOnly', true);
+    store.set('sync.exclude', 'current');
+    const compareResult = compareEntries(
+        [{ name: 'file', size: 1, isDir: false, mtimeMs: 100000 }],
+        [{ name: 'file', size: 2, isDir: false, mtimeMs: 160000 }],
+    );
+    await React.act(async () => root.render(React.createElement(
+        TabStateStoreContext.Provider,
+        { value: store },
+        React.createElement(SyncTemplateDialog, {
+            isOpen: true,
+            onClose: () => undefined,
+            localPath: '/local',
+            remotePath: '/remote',
+            serverProfileName: 'Cloud',
+            excludePatterns: [],
+            pairKind: 'local-remote',
+            compareResult,
+            compareExcludes: ['other'],
+            onApplyImport: () => undefined,
+        }),
+    )));
+    await React.act(async () => {
+        Array.from(host.querySelectorAll('button'))
+            .filter(button => button.textContent === 'syncPanel.aerosyncScriptExportButton')
+            .slice(-1)[0]!
+            .click();
+    });
+    expect(mocks.pickSave).not.toHaveBeenCalled();
+    expect(mocks.invoke.mock.calls.some(([command]) => command === 'aerosync_export_script_cmd')).toBe(false);
+    expect(host.textContent).toContain('aerosync.rescanNeeded');
 });

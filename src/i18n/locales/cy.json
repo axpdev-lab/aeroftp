@@ -1588,7 +1588,9 @@
             "aerocloudEnabled": "AeroCloud wedi'i alluogi",
             "selectPairLocalFolder": "Dewiswch ffolder lleol ar gyfer y pâr",
             "secondsAgo": "{count}e yn ôl",
-            "conflictsCount": "{count} gwrthdaro angen sylw"
+            "conflictsCount": "{count} gwrthdaro angen sylw",
+            "updateOnlyHint": "Mae diweddaru unffordd yn cadw ffeiliau mwy newydd yn y gyrchfan. Pan fydd copïo wrth gefn ychwanegol wedi’i ddiffodd, dim ond ffeiliau sydd yn y gyrchfan yn unig, sydd heb newid ac sydd â derbynneb trosglwyddo AeroCloud wedi’i dilysu sy’n cael eu dileu. Mae ffeiliau eraill yn aros i’w hadolygu yn AeroSync. Anwybyddir y polisi gwrthdaro; mae dyddiadau anhysbys yn aros heb eu datrys.",
+            "untrackedDestinationFiles": "Cadwyd {count} o ffeiliau yn y gyrchfan i’w hadolygu: nid yw eu hanes trosglwyddo wedi’i ddilysu neu maent wedi newid ers y trosglwyddiad AeroCloud diwethaf. Adolygwch nhw yn AeroSync cyn penderfynu a ddylid eu dileu."
         },
         "statusBar": {
             "connected": "Wedi cysylltu",
@@ -6355,7 +6357,9 @@
             "progressCopy": "[copi]",
             "deleteCount": "I'w dileu: {count}",
             "overwriteCount": "I'w trosysgrifo: {count}",
-            "conflictCount": "{count} gwrthdaro"
+            "conflictCount": "{count} gwrthdaro",
+            "updateOnly": "Hepgor ffeiliau mwy newydd yn y gyrchfan (diweddaru unffordd)",
+            "updateOnlyHint": "Copïwch ffeiliau ffynhonnell sydd ar goll neu wedi newid, cadwch ffeiliau diweddarach yn y cyrchfan, a dilëwch gofnodion sydd yn y cyrchfan yn unig. Cymharir ffeiliau heb ddyddiadau cymaradwy yn ôl maint; gadewir gwahaniaethau maint i’w hadolygu."
         },
         "accountLock": {
             "title": "Dewiswch gyfrif",

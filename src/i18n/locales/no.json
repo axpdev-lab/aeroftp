@@ -1588,7 +1588,9 @@
             "aerocloudEnabled": "AeroCloud aktivert",
             "selectPairLocalFolder": "Velg lokal mappe for paret",
             "secondsAgo": "{count}s siden",
-            "conflictsCount": "Konflikter som krever oppmerksomhet: {count}"
+            "conflictsCount": "Konflikter som krever oppmerksomhet: {count}",
+            "updateOnlyHint": "Enveisoppdatering beholder nyere målfiler. Når additiv sikkerhetskopiering er slått av, slettes bare uendrede filer som kun finnes på målet og har en bekreftet kvittering for en AeroCloud-overføring. Andre filer blir liggende til gjennomgang i AeroSync. Konfliktregelen ignoreres; ukjente datoer forblir uavklarte.",
+            "untrackedDestinationFiles": "{count} målfiler ble beholdt for gjennomgang: Overføringshistorikken er ikke bekreftet, eller de er endret etter den siste AeroCloud-overføringen. Gå gjennom dem i AeroSync før du avgjør om de skal slettes."
         },
         "statusBar": {
             "connected": "Tilkoblet",
@@ -6355,7 +6357,9 @@
             "progressCopy": "[kopi]",
             "deleteCount": "Til sletting: {count}",
             "overwriteCount": "Til overskriving: {count}",
-            "conflictCount": "Konflikter: {count}"
+            "conflictCount": "Konflikter: {count}",
+            "updateOnly": "Hopp over nyere målfiler (enveisoppdatering)",
+            "updateOnlyHint": "Kopierer manglende eller endrede kildefiler, beholder nyere målfiler og sletter oppføringer som bare finnes på målet. Filer uten sammenlignbare datoer sammenlignes etter størrelse; størrelsesforskjeller blir liggende til gjennomgang."
         },
         "accountLock": {
             "title": "Velg en konto",

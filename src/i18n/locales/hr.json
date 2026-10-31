@@ -1588,7 +1588,9 @@
             "aerocloudEnabled": "AeroCloud omogućen",
             "selectPairLocalFolder": "Odaberite lokalnu mapu za par",
             "secondsAgo": "{count}s prije",
-            "conflictsCount": "Sukobi koji traže pozornost: {count}"
+            "conflictsCount": "Sukobi koji traže pozornost: {count}",
+            "updateOnlyHint": "Jednosmjerno ažuriranje zadržava novije odredišne datoteke. Kada je aditivna sigurnosna kopija isključena, brišu se samo neizmijenjene datoteke koje postoje samo na odredištu i imaju provjerenu potvrdu prijenosa putem AeroCloud. Ostale datoteke ostaju za pregled u AeroSync. Pravilo sukoba se zanemaruje; nepoznati datumi ostaju neriješeni.",
+            "untrackedDestinationFiles": "{count} odredišnih datoteka zadržano je za pregled: njihova povijest prijenosa nije potvrđena ili su promijenjene nakon posljednjeg prijenosa putem AeroCloud. Pregledajte ih u AeroSync prije odluke o brisanju."
         },
         "statusBar": {
             "connected": "Povezano",
@@ -6336,7 +6338,9 @@
             "progressCopy": "[kopija]",
             "deleteCount": "Za brisanje: {count}",
             "overwriteCount": "Za prepisivanje: {count}",
-            "conflictCount": "Sukobi: {count}"
+            "conflictCount": "Sukobi: {count}",
+            "updateOnly": "Preskoči novije datoteke na odredištu (jednosmjerno ažuriranje)",
+            "updateOnlyHint": "Kopira nedostajuće ili izmijenjene izvorne datoteke, zadržava novije odredišne datoteke i briše stavke koje postoje samo na odredištu. Datoteke bez usporedivih datuma uspoređuju se prema veličini; razlike u veličini ostavljaju se za pregled."
         },
         "accountLock": {
             "title": "Odaberite račun",

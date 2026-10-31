@@ -1588,7 +1588,9 @@
             "aerocloudEnabled": "Đã bật AeroCloud",
             "selectPairLocalFolder": "Chọn thư mục cục bộ cho cặp",
             "secondsAgo": "{count} giây trước",
-            "conflictsCount": "{count} xung đột cần xử lý"
+            "conflictsCount": "{count} xung đột cần xử lý",
+            "updateOnlyHint": "Cập nhật một chiều giữ lại các tệp đích mới hơn. Khi tắt sao lưu bổ sung, chỉ những tệp không thay đổi, chỉ có ở đích và có biên nhận truyền AeroCloud đã được xác minh mới bị xóa. Các tệp khác được giữ lại để xem xét trong AeroSync. Chính sách xung đột bị bỏ qua; các ngày không xác định vẫn chưa được giải quyết.",
+            "untrackedDestinationFiles": "{count} tệp đích đã được giữ lại để xem xét: lịch sử truyền của chúng chưa được xác minh hoặc chúng đã thay đổi sau lần truyền AeroCloud gần nhất. Hãy xem xét chúng trong AeroSync trước khi quyết định xóa."
         },
         "statusBar": {
             "connected": "Đã kết nối",
@@ -6336,7 +6338,9 @@
             "progressCopy": "[bản sao]",
             "deleteCount": "Sẽ bị xóa: {count}",
             "overwriteCount": "Sẽ bị ghi đè: {count}",
-            "conflictCount": "{count} xung đột"
+            "conflictCount": "{count} xung đột",
+            "updateOnly": "Bỏ qua tệp đích mới hơn (cập nhật một chiều)",
+            "updateOnlyHint": "Sao chép các tệp nguồn bị thiếu hoặc đã thay đổi, giữ lại các tệp mới hơn ở đích và xóa các mục chỉ có ở đích. Các tệp không có ngày so sánh được sẽ được so sánh theo kích thước; những chênh lệch kích thước sẽ được giữ lại để xem xét."
         },
         "accountLock": {
             "title": "Chọn tài khoản",

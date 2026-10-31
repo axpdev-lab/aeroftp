@@ -1588,7 +1588,9 @@
             "aerocloudEnabled": "AeroCloud activado",
             "selectPairLocalFolder": "Seleccionar cartafol local para o par",
             "secondsAgo": "hai {count}s",
-            "conflictsCount": "Conflitos por revisar: {count}"
+            "conflictsCount": "Conflitos por revisar: {count}",
+            "updateOnlyHint": "A actualización unidireccional conserva os ficheiros de destino máis recentes. Coa copia de seguranza aditiva desactivada, só se eliminan os ficheiros exclusivos do destino que non cambiaron e teñen un comprobante de transferencia de AeroCloud verificado. Os demais ficheiros quedan para revisalos en AeroSync. Ignórase a política de conflitos; as datas descoñecidas quedan sen resolver.",
+            "untrackedDestinationFiles": "Conserváronse {count} ficheiros de destino para revisalos: o seu historial de transferencias non está verificado ou cambiaron desde a última transferencia de AeroCloud. Revísanos en AeroSync antes de decidir se os queres eliminar."
         },
         "statusBar": {
             "connected": "Conectado",
@@ -6355,7 +6357,9 @@
             "progressCopy": "[copia]",
             "deleteCount": "{count} para eliminar",
             "overwriteCount": "{count} para sobrescribir",
-            "conflictCount": "Conflitos: {count}"
+            "conflictCount": "Conflitos: {count}",
+            "updateOnly": "Omitir ficheiros de destino máis recentes (actualización unidireccional)",
+            "updateOnlyHint": "Copia os ficheiros de orixe ausentes ou modificados, conserva os ficheiros máis recentes do destino e elimina as entradas que só existen no destino. Os ficheiros sen datas comparables compáranse por tamaño; as diferenzas de tamaño quedan pendentes de revisión."
         },
         "accountLock": {
             "title": "Escolla unha conta",

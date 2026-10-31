@@ -1588,7 +1588,9 @@
             "aerocloudEnabled": "AeroCloud įjungta",
             "selectPairLocalFolder": "Pasirinkite vietinį aplanką porai",
             "secondsAgo": "prieš {count}s",
-            "conflictsCount": "Konfliktai, kuriems reikia dėmesio: {count}"
+            "conflictsCount": "Konfliktai, kuriems reikia dėmesio: {count}",
+            "updateOnlyHint": "Vienkryptis atnaujinimas išsaugo naujesnius paskirties failus. Kai papildomasis atsarginis kopijavimas išjungtas, pašalinami tik nepakeisti failai, esantys vien paskirties vietoje ir turintys patikrintą AeroCloud perdavimo patvirtinimą. Kiti failai lieka peržiūrai programoje AeroSync. Konfliktų politika nepaisoma; nežinomos datos lieka neišspręstos.",
+            "untrackedDestinationFiles": "{count} paskirties failų išsaugota peržiūrai: jų perdavimo istorija nepatvirtinta arba jie pakeisti po paskutinio AeroCloud perdavimo. Prieš nuspręsdami dėl pašalinimo, peržiūrėkite juos programoje AeroSync."
         },
         "statusBar": {
             "connected": "Prisijungta",
@@ -6336,7 +6338,9 @@
             "progressCopy": "[kopija]",
             "deleteCount": "Bus ištrinta: {count}",
             "overwriteCount": "Bus perrašyta: {count}",
-            "conflictCount": "Konfliktai: {count}"
+            "conflictCount": "Konfliktai: {count}",
+            "updateOnly": "Praleisti naujesnius paskirties failus (vienkryptis atnaujinimas)",
+            "updateOnlyHint": "Nukopijuoja trūkstamus arba pakeistus šaltinio failus, išsaugo naujesnius paskirties failus ir ištrina įrašus, esančius tik paskirtyje. Failai, neturintys palyginamų datų, lyginami pagal dydį; dydžio skirtumai paliekami peržiūrai."
         },
         "accountLock": {
             "title": "Pasirinkite paskyrą",

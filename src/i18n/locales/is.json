@@ -1588,7 +1588,9 @@
             "aerocloudEnabled": "AeroCloud virkt",
             "selectPairLocalFolder": "Veldu staðbundna möppu fyrir parið",
             "secondsAgo": "fyrir {count}sek",
-            "conflictsCount": "Árekstrar sem þarfnast athygli: {count}"
+            "conflictsCount": "Árekstrar sem þarfnast athygli: {count}",
+            "updateOnlyHint": "Einstefnuuppfærsla heldur nýrri skrám á áfangastað. Þegar slökkt er á viðbótarafritun er aðeins eytt óbreyttum skrám sem eru eingöngu á áfangastað og hafa staðfesta AeroCloud-flutningskvittun. Aðrar skrár bíða yfirferðar í AeroSync. Árekstrareglan er hunsuð; óþekktar dagsetningar eru áfram óleystar.",
+            "untrackedDestinationFiles": "{count} skrár á áfangastað voru varðveittar til yfirferðar: flutningssaga þeirra er óstaðfest eða þær hafa breyst frá síðasta AeroCloud-flutningi. Farðu yfir þær í AeroSync áður en þú ákveður hvort eyða eigi þeim."
         },
         "statusBar": {
             "connected": "Tengt",
@@ -6355,7 +6357,9 @@
             "progressCopy": "[afrit]",
             "deleteCount": "Til eyðingar: {count}",
             "overwriteCount": "Til yfirskriftar: {count}",
-            "conflictCount": "Árekstrar: {count}"
+            "conflictCount": "Árekstrar: {count}",
+            "updateOnly": "Sleppa nýrri skrám á áfangastað (einstefnuuppfærsla)",
+            "updateOnlyHint": "Afritar upprunaskrár sem vantar eða hafa breyst, heldur nýrri skrám á áfangastað og eyðir færslum sem eru aðeins á áfangastað. Skrár án samanburðarhæfra dagsetninga eru bornar saman eftir stærð; stærðarmismunur er skilinn eftir til yfirferðar."
         },
         "accountLock": {
             "title": "Veldu reikning",

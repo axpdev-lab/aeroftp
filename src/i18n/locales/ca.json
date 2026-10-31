@@ -1588,7 +1588,9 @@
             "aerocloudEnabled": "AeroCloud activat",
             "selectPairLocalFolder": "Selecciona la carpeta local per a la parella",
             "secondsAgo": "fa {count}s",
-            "conflictsCount": "Conflictes per revisar: {count}"
+            "conflictsCount": "Conflictes per revisar: {count}",
+            "updateOnlyHint": "L’actualització unidireccional conserva els fitxers de destinació més nous. Amb la còpia de seguretat additiva desactivada, només se suprimeixen els fitxers exclusius de la destinació que no han canviat i tenen un comprovant de transferència d’AeroCloud verificat. Els altres fitxers queden per revisar a AeroSync. S’ignora la política de conflictes; les dates desconegudes queden sense resoldre.",
+            "untrackedDestinationFiles": "S’han conservat {count} fitxers de destinació per revisar-los: el seu historial de transferències no està verificat o han canviat després de l’última transferència d’AeroCloud. Revisa’ls a AeroSync abans de decidir si els vols suprimir."
         },
         "statusBar": {
             "connected": "Connectat",
@@ -6355,7 +6357,9 @@
             "progressCopy": "[còpia]",
             "deleteCount": "{count} per eliminar",
             "overwriteCount": "{count} per sobreescriure",
-            "conflictCount": "Conflictes: {count}"
+            "conflictCount": "Conflictes: {count}",
+            "updateOnly": "Omet els fitxers de destinació més nous (actualització unidireccional)",
+            "updateOnlyHint": "Copia els fitxers d’origen que falten o han canviat, conserva els fitxers més nous de la destinació i suprimeix les entrades que només hi ha a la destinació. Els fitxers sense dates comparables es comparen per mida; les diferències de mida queden pendents de revisió."
         },
         "accountLock": {
             "title": "Trieu un compte",
