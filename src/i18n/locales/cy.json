@@ -6331,7 +6331,12 @@
                 }
             },
             "rescan": "Ailsganio",
-            "rescanNeeded": "Gwnaed y gymhariaeth gydag eithriadau eraill neu ffolder wrth gefn arall. Ailsganiwch cyn rhedeg.",
+            "rescanBringsBack": "Mae'r gosodiadau hyn yn dod â ffeiliau yn ôl a adawodd y sgan allan, felly ni wnaeth eu darllen erioed. Ailsganiwch cyn rhedeg.",
+            "rescanFlat": "Daeth y gymhariaeth hon o restrau'r ddau banel, nid o sgan llawn, felly ni all gymhwyso eithriadau. Ailsganiwch cyn rhedeg.",
+            "narrowAvailable": "Mae'r gosodiadau hyn yn culhau'r gymhariaeth yn unig, felly gellir ei hidlo heb ailsganio.",
+            "narrowApply": "Cymhwyso i'r gymhariaeth hon",
+            "narrowedNote": "Wedi'i hidlo gydag eithriadau newydd heb ailsganio. Y cyfrif union yr un fath yw'r un o'r sgan o hyd.",
+            "narrowAfterRestore": "Mae adfer ar y gweill. Gellir cymhwyso'r gosodiadau hyn i'r gymhariaeth pan fydd wedi gorffen.",
             "backup": {
                 "checking": "Yn gwirio sut mae'r gweinydd hwn yn symud ffeiliau...",
                 "serverCopy": "Ni all y gweinydd hwn symud: mae pob copi a gedwir yn cael ei gopïo ar y gweinydd ac yna'i ddileu. Mae hynny'n costio copi llawn o bob ffeil a gedwir, mewn dau gam ar wahân.",

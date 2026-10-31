@@ -6331,7 +6331,12 @@
                 }
             },
             "rescan": "I-scan muli",
-            "rescanNeeded": "Ginawa ang paghahambing gamit ang ibang pagbubukod o ibang backup na folder. I-scan muli bago patakbuhin.",
+            "rescanBringsBack": "Ibinabalik ng mga setting na ito ang mga file na hindi isinama ng pag-scan, kaya hindi nito kailanman nabasa ang mga iyon. I-scan muli bago patakbuhin.",
+            "rescanFlat": "Ang paghahambing na ito ay mula sa mga listahan ng dalawang panel, hindi sa buong pag-scan, kaya hindi ito makapaglalapat ng pagbubukod. I-scan muli bago patakbuhin.",
+            "narrowAvailable": "Ang mga setting na ito ay nagpapaliit lang ng paghahambing, kaya maaari itong i-filter nang hindi muling nag-i-scan.",
+            "narrowApply": "Ilapat sa paghahambing na ito",
+            "narrowedNote": "Na-filter gamit ang bagong pagbubukod nang hindi muling nag-i-scan. Ang bilang ng magkapareho ay mula pa rin sa pag-scan.",
+            "narrowAfterRestore": "Isinasagawa ang isang pagbabalik. Maaaring ilapat ang mga setting na ito sa paghahambing kapag natapos na ang pagbabalik.",
             "backup": {
                 "checking": "Sinusuri kung paano naglilipat ng mga file ang server na ito...",
                 "serverCopy": "Hindi sinusuportahan ng server na ito ang paglipat: bawat itinatagong kopya ay kinokopya sa server at saka binubura. Katumbas iyon ng buong kopya ng bawat file na itinatago, sa dalawang magkahiwalay na hakbang.",
