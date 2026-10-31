@@ -248,7 +248,7 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
     // toggle would disappear and return once per file. Any other transfer starts
     // without it: another run, even one that opens while this card is closing,
     // and a folder, whose profile runs across the whole batch.
-    const cardScope = `${transfer.run ?? ''}:${summary.direction}:${isFolderTransfer}`;
+    const cardScope = `${transfer.run ?? summary.transfer_id}:${summary.direction}:${isFolderTransfer}`;
     const lastProfile = useRef<{ scope: string; profile: SpeedProfile } | null>(null);
     const ownProfile = transfer.speedProfile && hasSpeedData(transfer.speedProfile) ? transfer.speedProfile : undefined;
     const shownProfile = ownProfile ?? (!isFolderTransfer && lastProfile.current?.scope === cardScope ? lastProfile.current.profile : undefined);

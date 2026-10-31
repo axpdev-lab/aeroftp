@@ -9,16 +9,20 @@
  * transfer that starts while the card is still closing, which does not.
  */
 let current: string | null = null;
+let open = 0;
 let counter = 0;
 
-/** Run `work` as one transfer run; one already under way takes it in. */
+/**
+ * Run `work` as one transfer run. Work that overlaps a run under way joins it,
+ * because the app has one progress card and both show on it; the run lasts
+ * until the last of them ends, or the files still running would lose it.
+ */
 export async function withTransferRun<R>(work: () => R | Promise<R>): Promise<R> {
-    if (current !== null) return await work();
-    current = `run-${++counter}`;
+    if (open++ === 0) current = `run-${++counter}`;
     try {
         return await work();
     } finally {
-        current = null;
+        if (--open === 0) current = null;
     }
 }
 

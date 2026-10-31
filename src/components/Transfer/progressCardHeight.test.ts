@@ -33,9 +33,9 @@ const profile = [
     { transferred: 10, total: 100, speedBps: 10, at: 1000 },
     { transferred: 50, total: 100, speedBps: 10, at: 2000 },
 ].reduce(recordProgress, emptySpeedProfile());
-const toast = (filename: string): TransferToastState => ({ summary: summary(filename), speedProfile: profile });
+const toast = (filename: string): TransferToastState => ({ summary: summary(filename), run: 'run-1', speedProfile: profile });
 // What the card receives when a file starts: no speed data yet.
-const starting = (filename: string): TransferToastState => ({ summary: summary(filename), speedProfile: emptySpeedProfile() });
+const starting = (filename: string): TransferToastState => ({ summary: summary(filename), run: 'run-1', speedProfile: emptySpeedProfile() });
 
 let root: Root;
 let host: HTMLDivElement;
@@ -103,6 +103,14 @@ describe('ProgressCard during a transfer', () => {
         expect(held()).toBe('300px');
         graphProfile.last = undefined;
         await render(inRun(starting('c.bin'), 'run-2'), 200);
+        expect(graphProfile.last).toBeUndefined();
+        expect(held()).toBe('200px');
+    });
+
+    it('treats a transfer with no run as a transfer of its own', async () => {
+        await render({ summary: summary('a.bin'), speedProfile: profile }, 300);
+        graphProfile.last = undefined;
+        await render({ summary: summary('b.bin'), speedProfile: emptySpeedProfile() }, 200);
         expect(graphProfile.last).toBeUndefined();
         expect(held()).toBe('200px');
     });

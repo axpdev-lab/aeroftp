@@ -20,6 +20,21 @@ describe('withTransferRun', () => {
         });
     });
 
+    it('keeps the run until the last of two overlapping pieces of work ends', async () => {
+        let endFirst = () => {};
+        let endSecond = () => {};
+        const first = withTransferRun(() => new Promise<void>((resolve) => { endFirst = resolve; }));
+        const run = currentTransferRun();
+        const second = withTransferRun(() => new Promise<void>((resolve) => { endSecond = resolve; }));
+        expect(currentTransferRun()).toBe(run);
+        endFirst();
+        await first;
+        expect(currentTransferRun()).toBe(run);
+        endSecond();
+        await second;
+        expect(currentTransferRun()).toBeNull();
+    });
+
     it('ends the run when the work fails', async () => {
         await expect(withTransferRun(async () => { throw new Error('stopped'); })).rejects.toThrow('stopped');
         expect(currentTransferRun()).toBeNull();
