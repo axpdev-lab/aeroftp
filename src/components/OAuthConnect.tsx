@@ -172,13 +172,13 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
 
   const handleSignIn = async () => {
     if (!clientId || !clientSecret) return;
-    await Promise.all([
-      invoke('store_credential', { account: `oauth_${credentialProvider}_client_id`, password: clientId }),
-      invoke('store_credential', { account: `oauth_${credentialProvider}_client_secret`, password: clientSecret }),
-      ...(isZoho
-        ? [invoke('store_credential', { account: `oauth_${provider}_region`, password: zohoRegion })]
-        : []),
-    ]);
+    // One call: an import or another window must not see half of the pair.
+    await invoke('store_oauth_app', {
+      provider: credentialProvider,
+      clientId,
+      clientSecret,
+      ...(isZoho ? { region: zohoRegion } : {}),
+    });
     localStorage.removeItem(`oauth_${provider}_client_id`);
     localStorage.removeItem(`oauth_${provider}_client_secret`);
 

@@ -499,12 +499,16 @@ impl JottacloudProvider {
                 }
                 // MUV-4: mirror into the active user's partition (per-profile only).
                 if account != "jottacloud_refresh" {
-                    crate::user_partitions::mirror_active_credential(
+                    if crate::user_partitions::mirror_active_credential(
                         store,
                         account,
                         "jottacloud_refresh",
                         &json,
-                    );
+                    )
+                    .is_err()
+                    {
+                        ok = false;
+                    }
                 }
             }
             ok

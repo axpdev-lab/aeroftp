@@ -1370,7 +1370,8 @@
             "importJottaChainWarning": "Mae Jottacloud yn adnewyddu ei fewngofnodi ar bob cysylltiad, ac mae {names} bellach yn rhannu un gyda chopi arall: mae'r copi sy'n cysylltu gyntaf yn allgofnodi'r llall (y ddyfais y daeth y ffeil ohoni, neu'r proffil y cafodd ei ddyblygu ohono). Mewngofnodwch y llall eto gyda Personal Login Token newydd.",
             "importOauthAppKept": "Daeth {names} gydag ap OAuth personol gwahanol i'r un sydd gan y ddyfais hon ar gyfer y darparwr hwnnw. Cadwyd yr ap sydd wedi'i storio, felly mewngofnodwch eto os bydd y proffiliau hyn yn rhoi'r gorau i gysylltu.",
             "importTargetChanged": "Ni chafodd {names} eu trosysgrifo: mae'r ffeil yn eu pwyntio at weinydd arall, ac ni ddylai eu cyfrineiriau a'u tocynnau storiedig fynd yno. Mewnforiwch gyda Dyblygu i ychwanegu'r copi o'r ffeil, neu dilëwch y proffil yn gyntaf.",
-            "importSharedSecretsFailed": "Mewnforiwyd {names}, ond ni ellid storio cyfrinach a rennir neu sesiwn o'r ffeil. Mewngofnodwch i'r proffiliau hyn eto os nad ydynt yn cysylltu."
+            "importSharedSecretsFailed": "Mewnforiwyd {names}, ond ni ellid storio cyfrinach a rennir neu sesiwn o'r ffeil. Mewngofnodwch i'r proffiliau hyn eto os nad ydynt yn cysylltu.",
+            "keystoreDatabasesFailed": "Mae'r mewnforio wedi gorffen, ond nid oedd modd adfer y cronfeydd data hyn ac maent yn cadw'r hyn oedd ynddynt: {names}."
         },
         "devtools": {
             "title": "AeroTools",

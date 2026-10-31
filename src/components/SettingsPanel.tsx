@@ -864,17 +864,17 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'] as const;
             for (const p of providers) {
                 const creds = oauthSettings[p];
-                if (creds.clientId) {
-                    await invoke('store_credential', {
-                        account: `oauth_${p}_client_id`,
-                        password: creds.clientId,
-                    }).catch(console.error);
-                }
-                if (creds.clientSecret) {
-                    await invoke('store_credential', {
-                        account: `oauth_${p}_client_secret`,
-                        password: creds.clientSecret,
-                    }).catch(console.error);
+                if (creds.clientId || creds.clientSecret) {
+                    await invoke('store_oauth_app', {
+                        provider: p,
+                        clientId: creds.clientId || null,
+                        clientSecret: creds.clientSecret || null,
+                    }).catch((err) => {
+                        logger.warn(`OAuth app for ${p} not saved`, err);
+                        window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+                            detail: { type: 'error', title: t('toast.saveFailed'), message: String(err), important: true },
+                        }));
+                    });
                 }
             }
             // Remove legacy OAuth settings from localStorage
@@ -3745,6 +3745,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             profilesAfterDecisions?: number;
                                                                             // #347: the import succeeded, the decisions did not.
                                                                             profileDecisionsError?: string;
+                                                                            sqliteDbsFailed?: string[];
                                                                         }>('import_keystore', {
                                                                             password: keystoreImportPassword,
                                                                             filePath: keystoreImportFilePath,

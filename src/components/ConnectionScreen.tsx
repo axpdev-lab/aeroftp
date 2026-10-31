@@ -193,10 +193,8 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
         setIsAuthenticating(true);
         setError(null);
         try {
-            await Promise.all([
-                invoke('store_credential', { account: 'oauth_fourshared_client_id', password: consumerKey }),
-                invoke('store_credential', { account: 'oauth_fourshared_client_secret', password: consumerSecret }),
-            ]);
+            // One call: an import or another window must not see half of the pair.
+            await invoke('store_oauth_app', { provider: 'fourshared', clientId: consumerKey, clientSecret: consumerSecret });
             await invoke<string>('fourshared_full_auth', { params: { consumer_key: consumerKey, consumer_secret: consumerSecret } });
             setHasExistingTokens(true);
             setWantsNewAccount(false);
@@ -972,11 +970,19 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         return map;
     };
 
+    // The connection or the profile stands, but its secret will be asked for again.
+    const reportSecretNotSaved = (err: unknown) => {
+        logger.warn('A secret could not be saved', err);
+        window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+            detail: { type: 'error', title: t('toast.saveFailed'), message: String(err), important: true },
+        }));
+    };
+
     // Write or clear the persisted per-mode snapshots for a profile depending on
     // the opt-in. Called from saveToServers for both the edit and new branches.
     const syncPersistedModeCredentials = async (profileId: string): Promise<void> => {
         if (persistModeCredentials && inModeGroup) {
-            await storeModeCredentials(profileId, buildModeCredentialMap());
+            await storeModeCredentials(profileId, buildModeCredentialMap()).catch(reportSecretNotSaved);
         } else {
             await deleteModeCredentials(profileId);
         }
@@ -1657,7 +1663,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         if (bridgeSaveBlocked) return;
         // Store PAT in vault for future connections (if GitHub PAT mode)
         if (connectionParams.options?.githubAuthMode === 'pat' && connectionParams.password) {
-            invoke('github_store_pat', { pat: connectionParams.password }).catch(() => {});
+            invoke('github_store_pat', { pat: connectionParams.password }).catch(reportSecretNotSaved);
         }
 
         if (editingProfileId) {

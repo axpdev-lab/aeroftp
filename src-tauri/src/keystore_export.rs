@@ -591,6 +591,9 @@ pub struct KeystoreImportResult {
     /// applied afterwards; the profile list is then what the import left.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile_decisions_error: Option<String>,
+    /// Databases of the backup that could not be written: each keeps what it held.
+    #[serde(default)]
+    pub sqlite_dbs_failed: Vec<String>,
 }
 
 /// User-facing selectivity for import. All flags default to `true` so
@@ -2074,6 +2077,7 @@ fn import_keystore_with_store(
     // failed to write is strictly more useful than a "nothing happened
     // because one file was locked" outcome.
     let mut sqlite_dbs_restored = 0u32;
+    let mut sqlite_dbs_failed: Vec<String> = Vec::new();
     let mut files_restored = 0u32;
     // F-012 W3: path of the pre-import snapshot of user_partitions.db, set
     // when an existing local partition DB is preserved before the overwrite.
@@ -2156,7 +2160,10 @@ fn import_keystore_with_store(
                                 cb("sqlite", idx as u32 + 1, total_dbs);
                             }
                         }
-                        Err(e) => tracing::warn!("SQLite restore failed for {}: {}", name, e),
+                        Err(e) => {
+                            tracing::warn!("SQLite restore failed for {}: {}", name, e);
+                            sqlite_dbs_failed.push(name.clone());
+                        }
                     }
                 }
             }
@@ -2361,6 +2368,7 @@ fn import_keystore_with_store(
         user_partitions_backup_path,
         profiles_after_decisions,
         profile_decisions_error,
+        sqlite_dbs_failed,
     })
 }
 
@@ -4122,6 +4130,41 @@ mod tests {
             )
             .unwrap();
         assert_eq!(left, 1, "the partition's row was replaced");
+    }
+
+    /// A database that cannot be written reaches the report, not only the log, and
+    /// the others are restored.
+    #[test]
+    fn a_database_that_cannot_be_restored_is_reported() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, cfg) = machine_with_a_frozen_blob(dir.path());
+        let good = dir.path().join("source.db");
+        rusqlite::Connection::open(&good)
+            .unwrap()
+            .execute_batch("CREATE TABLE t (a);")
+            .unwrap();
+        let dump = snapshot_sqlite_db(&good).unwrap().unwrap();
+        std::fs::create_dir(cfg.join("ai_chat.db")).unwrap();
+        let mut payload = ExportPayload::default();
+        payload
+            .sqlite_dumps
+            .insert("ai_chat.db".to_string(), dump.clone());
+        let backup = dir.path().join("blocked.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(result.sqlite_dbs_failed, ["ai_chat.db"]);
+        assert_eq!(result.sqlite_dbs_restored, 0);
     }
 
     /// An empty list in the blob is an answer only when a restore's decisions left it.

@@ -524,7 +524,8 @@ pub fn store_session(
             &key,
             PARTITION_TYPE,
             &json,
-        );
+        )
+        .map_err(ProviderError::Other)?;
     }
     Ok(())
 }
@@ -995,7 +996,8 @@ impl SessionKeys for VaultKeys {
                 key,
                 PARTITION_TYPE,
                 &raw,
-            );
+            )
+            .map_err(ProviderError::Other)?;
         }
         Ok(())
     }

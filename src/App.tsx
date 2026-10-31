@@ -4417,16 +4417,7 @@ const App: React.FC = () => {
                         let saltB64 = '';
                         const saltLine = configJson.split('\n').find((l) => l.startsWith('salt\t'));
                         if (saltLine) saltB64 = saltLine.split('\t')[1]?.trim() || '';
-                        await invoke('store_credential', {
-                          account: `aerocrypt_overlay_config_${profileId}`,
-                          password: configJson,
-                        });
-                        if (saltB64) {
-                          await invoke('store_credential', {
-                            account: `aerocrypt_overlay_salt_${profileId}`,
-                            password: saltB64,
-                          });
-                        }
+                        await invoke('store_overlay_metadata', { profileId, configJson, salt: saltB64 || null });
                       }
                     } catch {
                       /* kit warms on next connect */

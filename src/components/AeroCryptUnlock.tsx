@@ -394,16 +394,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                                 /* ignore */
                             }
                         }
-                        await invoke('store_credential', {
-                            account: `aerocrypt_overlay_config_${profileId}`,
-                            password: configJson,
-                        });
-                        if (saltB64) {
-                            await invoke('store_credential', {
-                                account: `aerocrypt_overlay_salt_${profileId}`,
-                                password: saltB64,
-                            });
-                        }
+                        await invoke('store_overlay_metadata', { profileId, configJson, salt: saltB64 || null });
                         const kit = await invoke<AerocryptEmergencyKit>('aerocrypt_profile_recovery_kit', {
                             profileId,
                         });

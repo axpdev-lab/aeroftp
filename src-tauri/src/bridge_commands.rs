@@ -242,10 +242,24 @@ fn dispatch_import(source: &str, path: &Path) -> Result<Value, String> {
 /// (`oauth_<slug>_<id>`, `jottacloud_refresh_<id>`). No-op when the vault is
 /// locked; the server-credential loop in `import_bridge_config` already
 /// surfaces that case to the caller.
-fn store_rclone_provider_secrets(result: &rclone_import::RcloneImportResult) {
+fn store_rclone_provider_secrets(
+    result: &rclone_import::RcloneImportResult,
+) -> Vec<(String, String)> {
+    let mut failures = Vec::new();
     let store = match CredentialStore::from_cache() {
         Some(s) => s,
-        None => return,
+        None => {
+            return result
+                .provider_secrets
+                .keys()
+                .map(|id| {
+                    (
+                        id.clone(),
+                        "the vault is locked, so its sign-in was not stored".to_string(),
+                    )
+                })
+                .collect();
+        }
     };
     let protocol_by_id: HashMap<&str, String> = result
         .servers
@@ -272,6 +286,10 @@ fn store_rclone_provider_secrets(result: &rclone_import::RcloneImportResult) {
                     oauth_json,
                 ) {
                     log::warn!("rclone bridge: oauth token store failed for {profile_id}: {e}");
+                    failures.push((
+                        profile_id.clone(),
+                        format!("its OAuth token was not stored: {e}"),
+                    ));
                 }
             }
         }
@@ -284,6 +302,10 @@ fn store_rclone_provider_secrets(result: &rclone_import::RcloneImportResult) {
                     jotta_json,
                 ) {
                     log::warn!("rclone bridge: jotta token store failed for {profile_id}: {e}");
+                    failures.push((
+                        profile_id.clone(),
+                        format!("its Jottacloud token was not stored: {e}"),
+                    ));
                 }
             }
         }
@@ -298,6 +320,10 @@ fn store_rclone_provider_secrets(result: &rclone_import::RcloneImportResult) {
                     session_json,
                 ) {
                     log::warn!("rclone bridge: proton session store failed for {profile_id}: {e}");
+                    failures.push((
+                        profile_id.clone(),
+                        format!("its Proton session was not stored: {e}"),
+                    ));
                 }
             }
         }
@@ -306,21 +332,29 @@ fn store_rclone_provider_secrets(result: &rclone_import::RcloneImportResult) {
         // imported token. Store only when the singleton is not already set, so
         // importing a config never clobbers an app the user already configured.
         if let Some(cred_key) = rclone_oauth_client_cred_key(protocol) {
-            let put_if_absent = |suffix: &str, value: &Option<String>| {
-                if let Some(v) = value.as_ref().filter(|s| !s.is_empty()) {
-                    let key = format!("oauth_{}_{}", cred_key, suffix);
-                    let already = store.get(&key).map(|s| !s.is_empty()).unwrap_or(false);
-                    if !already {
-                        if let Err(e) = store.store(&key, v) {
-                            log::warn!("rclone bridge: {key} store failed: {e}");
-                        }
-                    }
+            match crate::fill_oauth_app(
+                &store,
+                cred_key,
+                secrets.oauth_client_id.as_deref(),
+                secrets.oauth_client_secret.as_deref(),
+            ) {
+                Ok(false) => {}
+                Ok(true) => failures.push((
+                    profile_id.clone(),
+                    "another OAuth app of this provider stays stored, so it may need a new sign-in"
+                        .to_string(),
+                )),
+                Err(e) => {
+                    log::warn!("rclone bridge: OAuth app for {cred_key} not stored: {e}");
+                    failures.push((
+                        profile_id.clone(),
+                        format!("its OAuth app was not stored: {e}"),
+                    ));
                 }
-            };
-            put_if_absent("client_id", &secrets.oauth_client_id);
-            put_if_absent("client_secret", &secrets.oauth_client_secret);
+            }
         }
     }
+    failures
 }
 
 /// Moves the rclone-crypt secrets an older import left in a profile's
@@ -573,9 +607,10 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
     // `#[serde(skip)]` field that a generic `Value` cannot transport, so we
     // import it natively here and persist those tokens before serialising the
     // server list back into the shared post-processing below.
+    let mut secret_failures: Vec<(String, String)> = Vec::new();
     let value = if source == "rclone" {
         let result = rclone_import::import_rclone(&canonical).map_err(|e| e.to_string())?;
-        store_rclone_provider_secrets(&result);
+        secret_failures = store_rclone_provider_secrets(&result);
         serde_json::to_value(&result).map_err(|e| e.to_string())?
     } else {
         dispatch_import(&source, &canonical)?
@@ -610,7 +645,10 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
     const MAX_IMPORTED_CREDENTIALS: usize = 10_000;
 
     let mut cred_errors: Vec<String> = Vec::new();
+    let mut unsaved_credentials: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
     let mut stored = 0usize;
+    let mut stored_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
     match CredentialStore::from_cache() {
         Some(store) => {
             for s in &servers {
@@ -618,12 +656,28 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
                     cred_errors.push(format!(
                         "stopped after {MAX_IMPORTED_CREDENTIALS} credentials (import too large)"
                     ));
+                    // What the cap left out has no secret stored either.
+                    for rest in &servers {
+                        let id = rest.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                        let has = rest
+                            .get("credential")
+                            .and_then(|v| v.as_str())
+                            .is_some_and(|c| !c.is_empty());
+                        if has && !id.is_empty() && !stored_ids.contains(id) {
+                            unsaved_credentials.insert(id.to_string());
+                            secret_failures.push((
+                                id.to_string(),
+                                "its password was not stored: the import is too large".to_string(),
+                            ));
+                        }
+                    }
                     break;
                 }
                 let id = s.get("id").and_then(|v| v.as_str()).unwrap_or("");
                 let cred = s.get("credential").and_then(|v| v.as_str()).unwrap_or("");
                 if !id.is_empty() && !cred.is_empty() {
                     stored += 1;
+                    stored_ids.insert(id.to_string());
                     // MUV-3: dual-write into vault + active user's partition.
                     if let Err(e) = crate::user_partitions::store_active_credential_dual(
                         &store,
@@ -631,6 +685,9 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
                         cred,
                     ) {
                         cred_errors.push(format!("{id}: {e}"));
+                        unsaved_credentials.insert(id.to_string());
+                        secret_failures
+                            .push((id.to_string(), format!("its password was not stored: {e}")));
                     }
                 }
             }
@@ -648,6 +705,20 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
             if n > 0 {
                 cred_errors.push(format!("Vault not ready, {n} credentials not stored"));
             }
+            for s in &servers {
+                let id = s.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                let has = s
+                    .get("credential")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|c| !c.is_empty());
+                if has && !id.is_empty() {
+                    unsaved_credentials.insert(id.to_string());
+                    secret_failures.push((
+                        id.to_string(),
+                        "the vault is locked, so its password was not stored".to_string(),
+                    ));
+                }
+            }
         }
     }
     if !cred_errors.is_empty() {
@@ -658,10 +729,11 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
     let redacted: Vec<Value> = servers
         .iter()
         .map(|s| {
-            let has_cred = s
-                .get("credential")
-                .map(|c| !c.is_null() && c.as_str().map(|x| !x.is_empty()).unwrap_or(true))
-                .unwrap_or(false);
+            let id = s.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let has_cred = !unsaved_credentials.contains(id)
+                && s.get("credential")
+                    .map(|c| !c.is_null() && c.as_str().map(|x| !x.is_empty()).unwrap_or(true))
+                    .unwrap_or(false);
             json!({
                 "id": s.get("id").cloned().unwrap_or(Value::Null),
                 "name": s.get("name").cloned().unwrap_or(Value::Null),
@@ -680,20 +752,49 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
         })
         .collect();
 
-    Ok(bridge_import_response(&value, redacted, servers.len()))
+    let secret_warnings: Vec<Value> = secret_failures
+        .into_iter()
+        .map(|(id, reason)| {
+            let name = servers
+                .iter()
+                .find(|s| s.get("id").and_then(|v| v.as_str()) == Some(id.as_str()))
+                .and_then(|s| s.get("name"))
+                .and_then(|v| v.as_str())
+                .unwrap_or(&id);
+            json!({ "name": name, "reason": reason })
+        })
+        .collect();
+    Ok(bridge_import_response(
+        &value,
+        redacted,
+        servers.len(),
+        secret_warnings,
+    ))
 }
 
 /// What an import hands back to the renderer: the redacted profiles, what the
 /// parser skipped, and what it imported without a credential, each with the
 /// reason. A profile in `warnings` arrives with no stored secret, and without
 /// the reason the operator could not tell why it will not sign in.
-fn bridge_import_response(parsed: &Value, redacted: Vec<Value>, imported: usize) -> Value {
+fn bridge_import_response(
+    parsed: &Value,
+    redacted: Vec<Value>,
+    imported: usize,
+    secret_warnings: Vec<Value>,
+) -> Value {
+    let mut warnings = parsed
+        .get("warnings")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    warnings.extend(secret_warnings);
     json!({
         "servers": redacted,
         "skipped": parsed.get("skipped").cloned().unwrap_or_else(|| json!([])),
         // Remotes that imported without everything they carried (rclone: a
-        // password that does not reveal); only the rclone importer fills it.
-        "warnings": parsed.get("warnings").cloned().unwrap_or_else(|| json!([])),
+        // password that does not reveal), and any profile whose secret could not be
+        // stored here: it is listed as imported, and will not sign in.
+        "warnings": warnings,
         "sourcePath": parsed.get("sourcePath").cloned().unwrap_or(Value::Null),
         "totalRemotes": parsed
             .get("totalRemotes")
@@ -1709,7 +1810,8 @@ mod tests {
         let result = crate::rclone_import::import_rclone(&config).unwrap();
         let parsed = serde_json::to_value(&result).unwrap();
 
-        let response = bridge_import_response(&parsed, Vec::new(), result.servers.len());
+        let response =
+            bridge_import_response(&parsed, Vec::new(), result.servers.len(), Vec::new());
 
         let warnings = response["warnings"].as_array().expect("warnings list");
         assert_eq!(warnings.len(), 1, "{response}");

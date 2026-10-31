@@ -179,6 +179,8 @@ mod only_main_window_tests {
     fn secrets_and_shell_answer_the_main_window_only() {
         for command in [
             "get_credential",
+            "store_oauth_app",
+            "store_overlay_metadata",
             "import_server_profiles",
             "ai_delegate_local",
             "ai_cancel_delegation",
@@ -17533,6 +17535,193 @@ pub(crate) fn only_main_window(label: &str, what: &str) -> Result<(), String> {
     }
 }
 
+/// Save an overlay's config and its salt as one unit: a recovery kit made from the
+/// config of one and the salt of the other opens nothing.
+#[tauri::command]
+async fn store_overlay_metadata(
+    webview: tauri::Webview,
+    profile_id: String,
+    config_json: String,
+    salt: Option<String>,
+) -> Result<(), String> {
+    only_main_window(webview.label(), "store_overlay_metadata")?;
+    let store = credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    tokio::task::spawn_blocking(move || {
+        let mut writes = vec![profile_import_plan::SecretWrite::new(
+            format!("aerocrypt_overlay_config_{profile_id}"),
+            None,
+            &config_json,
+        )];
+        if let Some(salt) = salt.as_deref().filter(|salt| !salt.is_empty()) {
+            writes.push(profile_import_plan::SecretWrite::new(
+                format!("aerocrypt_overlay_salt_{profile_id}"),
+                None,
+                salt,
+            ));
+        }
+        match user_partitions::cli_get_active_user(&store)? {
+            Some(user) => profile_import_plan::apply_secret_writes(
+                &VaultSecretSlots {
+                    store: &store,
+                    user: user.id,
+                },
+                writes,
+            )
+            .map(|_| ()),
+            None => {
+                profile_import_plan::apply_secret_writes(&VaultOnlySlots { store: &store }, writes)
+                    .map(|_| ())
+            }
+        }
+    })
+    .await
+    .map_err(|e| format!("Overlay metadata task failed: {e}"))?
+}
+
+/// Save a provider's OAuth app as one unit (fields left out stay as they are),
+/// under the lock of an import that writes the same keys: a sign-in and an import
+/// together cannot leave the client id of one with the secret of the other.
+#[tauri::command]
+async fn store_oauth_app(
+    webview: tauri::Webview,
+    provider: String,
+    client_id: Option<String>,
+    client_secret: Option<String>,
+    region: Option<String>,
+) -> Result<(), String> {
+    only_main_window(webview.label(), "store_oauth_app")?;
+    let store = credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    tokio::task::spawn_blocking(move || {
+        let conn = user_partitions::open_or_init_cli()?;
+        let _lock = user_partitions::ProfileListLock::acquire(&conn)?;
+        write_oauth_app(
+            &VaultOnlySlots { store: &store },
+            &provider,
+            [
+                ("client_id", client_id.as_deref()),
+                ("client_secret", client_secret.as_deref()),
+                ("region", region.as_deref()),
+            ],
+        )
+    })
+    .await
+    .map_err(|e| format!("OAuth app task failed: {e}"))?
+}
+
+/// Fill what is missing of `provider`'s app from a config that carries one, under
+/// the same lock: never a secret next to another app's id, and never over a value
+/// the user configured. Returns whether another app stays stored: a token this
+/// config issued with its own app may then need a new sign-in.
+pub fn fill_oauth_app(
+    store: &credential_store::CredentialStore,
+    provider: &str,
+    client_id: Option<&str>,
+    client_secret: Option<&str>,
+) -> Result<bool, String> {
+    let conn = user_partitions::open_or_init_cli()?;
+    let _lock = user_partitions::ProfileListLock::acquire(&conn)?;
+    let stored_id = vault_value(store, &format!("oauth_{provider}_client_id"))?;
+    let stored_secret = vault_value(store, &format!("oauth_{provider}_client_secret"))?;
+    let other_app = client_id
+        .filter(|id| !id.is_empty())
+        .is_some_and(|id| stored_id.as_deref().is_some_and(|stored| stored != id));
+    let [client_id, client_secret] = oauth_app_gaps(
+        stored_id.as_deref(),
+        stored_secret.as_deref(),
+        client_id,
+        client_secret,
+    );
+    write_oauth_app(
+        &VaultOnlySlots { store },
+        provider,
+        [
+            ("client_id", client_id),
+            ("client_secret", client_secret),
+            ("region", None),
+        ],
+    )?;
+    Ok(other_app)
+}
+
+/// The client id and secret of a config that fill a gap in the stored app. An empty
+/// value is no value, and a stored app of another id takes nothing.
+fn oauth_app_gaps<'a>(
+    stored_id: Option<&str>,
+    stored_secret: Option<&str>,
+    client_id: Option<&'a str>,
+    client_secret: Option<&'a str>,
+) -> [Option<&'a str>; 2] {
+    let client_id = client_id.filter(|value| !value.is_empty());
+    let client_secret = client_secret.filter(|value| !value.is_empty());
+    if !profile_import_plan::may_write_oauth_app(stored_id, stored_secret, client_id) {
+        return [None, None];
+    }
+    [
+        client_id.filter(|_| stored_id.is_none()),
+        client_secret.filter(|_| stored_secret.is_none()),
+    ]
+}
+
+#[cfg(test)]
+mod oauth_app_gap_tests {
+    use super::oauth_app_gaps;
+
+    #[test]
+    fn a_config_fills_gaps_and_never_mixes_two_apps() {
+        let gaps = oauth_app_gaps;
+        assert_eq!(
+            gaps(None, None, Some("a"), Some("s")),
+            [Some("a"), Some("s")]
+        );
+        assert_eq!(
+            gaps(Some("a"), None, Some("a"), Some("s")),
+            [None, Some("s")]
+        );
+        assert_eq!(
+            gaps(Some("a"), Some("kept"), Some("a"), Some("s")),
+            [None, None]
+        );
+        // Another app stored: its id must not gain this secret.
+        assert_eq!(gaps(Some("b"), None, Some("a"), Some("s")), [None, None]);
+        // A secret left without an id would pair up with the config's id.
+        assert_eq!(
+            gaps(None, Some("orphan"), Some("a"), Some("s")),
+            [None, None]
+        );
+        assert_eq!(gaps(None, None, Some(""), Some("")), [None, None]);
+    }
+}
+
+/// Write the given fields of `provider`'s app, all or none.
+fn write_oauth_app<S: profile_import_plan::SecretSlots>(
+    slots: &S,
+    provider: &str,
+    fields: [(&str, Option<&str>); 3],
+) -> Result<(), String> {
+    if provider.is_empty()
+        || !provider
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
+    {
+        return Err(format!("Invalid OAuth provider name: {provider}"));
+    }
+    let writes = fields
+        .into_iter()
+        .filter_map(|(name, value)| {
+            value.map(|value| {
+                profile_import_plan::SecretWrite::new(
+                    format!("oauth_{provider}_{name}"),
+                    None,
+                    value,
+                )
+            })
+        })
+        .collect();
+    profile_import_plan::apply_secret_writes(slots, writes).map(|_| ())
+}
+
 #[tauri::command]
 async fn store_credential(
     webview: tauri::Webview,
@@ -18735,13 +18924,13 @@ impl profile_import_plan::SecretSlots for VaultSecretSlots<'_> {
     }
 }
 
-/// The global vault singletons of an OAuth app, which every profile of the
-/// provider reads and no partition holds.
-struct OAuthAppSlots<'a> {
+/// Keys that live in the vault alone, such as the global singletons of an OAuth
+/// app, which every profile of the provider reads and no partition holds.
+struct VaultOnlySlots<'a> {
     store: &'a credential_store::CredentialStore,
 }
 
-impl profile_import_plan::SecretSlots for OAuthAppSlots<'_> {
+impl profile_import_plan::SecretSlots for VaultOnlySlots<'_> {
     type Snapshot = Option<zeroize::Zeroizing<String>>;
 
     fn snapshot(&self, write: &profile_import_plan::SecretWrite) -> Result<Self::Snapshot, String> {
@@ -19032,26 +19221,15 @@ fn restore_shared_import_secrets(
                             secrets.oauth_client_id.as_deref(),
                         ) =>
                     {
-                        let writes = [
-                            ("client_id", &secrets.oauth_client_id),
-                            ("client_secret", &secrets.oauth_client_secret),
-                            ("region", &secrets.oauth_region),
-                        ]
-                        .into_iter()
-                        .filter_map(|(name, value)| {
-                            value.as_deref().map(|value| {
-                                profile_import_plan::SecretWrite::new(
-                                    format!("oauth_{cred_slug}_{name}"),
-                                    None,
-                                    value,
-                                )
-                            })
-                        })
-                        .collect();
                         // All or none: a client id without its secret cannot sign in.
-                        if let Err(e) = profile_import_plan::apply_secret_writes(
-                            &OAuthAppSlots { store },
-                            writes,
+                        if let Err(e) = write_oauth_app(
+                            &VaultOnlySlots { store },
+                            cred_slug,
+                            [
+                                ("client_id", secrets.oauth_client_id.as_deref()),
+                                ("client_secret", secrets.oauth_client_secret.as_deref()),
+                                ("region", secrets.oauth_region.as_deref()),
+                            ],
                         ) {
                             log::warn!("Import: {profile_id} oauth app: {e}");
                             shared.failed.insert(profile_id.clone());
@@ -21263,6 +21441,8 @@ pub fn run() {
             flatpak_config_import_status,
             flatpak_config_import_apply,
             store_credential,
+            store_oauth_app,
+            store_overlay_metadata,
             get_credential,
             delete_credential,
             purge_profile_secrets,

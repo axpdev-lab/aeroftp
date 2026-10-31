@@ -4430,7 +4430,8 @@
             "serverProfilesCount": "{count} server profiles",
             "aiKeysCount": "{count} AI keys",
             "oauthTokensCount": "{count} OAuth tokens",
-            "configEntriesCount": "{count} config entries"
+            "configEntriesCount": "{count} config entries",
+            "keystoreDatabasesFailed": "The import finished, but these databases could not be restored and keep what they held: {names}."
         },
         "sharing": {
             "add": "Add",

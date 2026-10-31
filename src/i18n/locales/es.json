@@ -1370,7 +1370,8 @@
             "importJottaChainWarning": "Jottacloud renueva su inicio de sesión en cada conexión, y {names} ahora comparte uno con otra copia: la copia que se conecta primero cierra la sesión de la otra (el dispositivo del que viene el archivo, o el perfil del que se duplicó). Vuelve a iniciar sesión en la otra con un nuevo Personal Login Token.",
             "importOauthAppKept": "{names} llegaron con una app OAuth personalizada distinta de la que este dispositivo tiene para ese proveedor. Se conservó la app almacenada, así que inicia sesión de nuevo si estos perfiles dejan de conectarse.",
             "importTargetChanged": "{names} no se sobrescribieron: el archivo los apunta a otro servidor, y sus contraseñas y tokens guardados no deben ir allí. Importa con Duplicar para añadir la copia del archivo, o elimina primero el perfil.",
-            "importSharedSecretsFailed": "Se importó {names}, pero no se pudo guardar un secreto compartido o una sesión del archivo. Vuelve a iniciar sesión en estos perfiles si no se conectan."
+            "importSharedSecretsFailed": "Se importó {names}, pero no se pudo guardar un secreto compartido o una sesión del archivo. Vuelve a iniciar sesión en estos perfiles si no se conectan.",
+            "keystoreDatabasesFailed": "La importación terminó, pero no se pudieron restaurar estas bases de datos y conservan lo que contenían: {names}."
         },
         "devtools": {
             "title": "AeroTools",

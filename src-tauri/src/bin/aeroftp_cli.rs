@@ -41525,6 +41525,27 @@ async fn apply_rclone_import_to_vault(
             })
         })
         .map_err(|e| format!("vault write failed: {e}"))?;
+    // The app a token refreshes with, as the GUI import keeps it: a fresh device
+    // has nothing else to refresh with. After the write, which holds the lock.
+    for (profile_id, secrets) in &result.provider_secrets {
+        let slug = protocol_of(profile_id).and_then(|protocol| {
+            ftp_client_gui_lib::bridge_commands::rclone_oauth_client_cred_key(&protocol)
+        });
+        if let Some(slug) = slug {
+            match ftp_client_gui_lib::fill_oauth_app(
+                &store,
+                slug,
+                secrets.oauth_client_id.as_deref(),
+                secrets.oauth_client_secret.as_deref(),
+            ) {
+                Ok(false) => {}
+                Ok(true) => eprintln!(
+                    "Warning: another OAuth app of this provider stays stored, so '{profile_id}' may need a new sign-in"
+                ),
+                Err(e) => eprintln!("Warning: the OAuth app of '{profile_id}' was not stored: {e}"),
+            }
+        }
+    }
     // Read from the list stored: only the write knows which profile had a
     // name first (an older list may hold two of one name).
     Ok(RcloneApplySummary {
@@ -43389,6 +43410,7 @@ async fn cmd_keystore_import(
             "user_partitions_unreadable": outcome.user_partitions_unreadable,
             "profile_partition_skipped": outcome.profile_partition_skipped,
             "profile_list_error": outcome.profile_decisions_error,
+            "sqlite_dbs_failed": outcome.sqlite_dbs_failed,
         });
         println!("{}", summary);
     } else {
@@ -43423,6 +43445,12 @@ async fn cmd_keystore_import(
         }
         if let Some(e) = &outcome.profile_decisions_error {
             eprintln!("Warning: the server list could not be merged: {e}");
+        }
+        if !outcome.sqlite_dbs_failed.is_empty() {
+            eprintln!(
+                "Warning: these databases could not be restored and keep what they held: {}",
+                outcome.sqlite_dbs_failed.join(", ")
+            );
         }
         if outcome.requires_restart {
             eprintln!(

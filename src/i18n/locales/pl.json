@@ -1370,7 +1370,8 @@
             "importJottaChainWarning": "Jottacloud odnawia logowanie przy każdym połączeniu, a {names} współdzieli teraz jedno z inną kopią: kopia, która połączy się pierwsza, wylogowuje drugą (urządzenie, z którego pochodzi plik, lub profil, z którego go zduplikowano). Zaloguj drugą ponownie za pomocą nowego Personal Login Token.",
             "importOauthAppKept": "{names} przyszły z inną niestandardową aplikacją OAuth niż ta, którą to urządzenie ma dla tego dostawcy. Zapisana aplikacja została zachowana, więc zaloguj się ponownie, jeśli te profile przestaną się łączyć.",
             "importTargetChanged": "{names} nie zostały nadpisane: plik kieruje je na inny serwer, a ich zapisane hasła i tokeny nie mogą tam trafić. Zaimportuj z opcją Duplikuj, aby dodać kopię z pliku, lub najpierw usuń profil.",
-            "importSharedSecretsFailed": "Zaimportowano {names}, ale nie udało się zapisać współdzielonego sekretu ani sesji z pliku. Zaloguj się ponownie do tych profili, jeśli się nie łączą."
+            "importSharedSecretsFailed": "Zaimportowano {names}, ale nie udało się zapisać współdzielonego sekretu ani sesji z pliku. Zaloguj się ponownie do tych profili, jeśli się nie łączą.",
+            "keystoreDatabasesFailed": "Import zakończył się, ale nie udało się przywrócić tych baz danych i zachowują one dotychczasową zawartość: {names}."
         },
         "devtools": {
             "title": "AeroTools",
