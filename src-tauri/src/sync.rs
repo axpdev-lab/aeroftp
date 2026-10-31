@@ -4054,7 +4054,12 @@ pub fn classify_with_summary(
                 let remote_changed = (options.compare_size && r.size != cached.size)
                     || (r.modified.is_some()
                         && cached.modified.is_some()
-                        && !timestamps_equal(r.modified, cached.modified, options.modify_window));
+                        && !timestamps_equal(r.modified, cached.modified, options.modify_window)
+                        && !stamped_by_last_sync(
+                            r.modified,
+                            cached.modified,
+                            index.map(|index| index.last_sync),
+                        ));
 
                 if local_changed && remote_changed {
                     // Both sides changed since last sync → true conflict
@@ -4147,6 +4152,29 @@ pub fn local_changed_since(local: &FileInfo, cached: &SyncIndexEntry, compare_si
         || (local.modified.is_some()
             && cached.modified.is_some()
             && !timestamps_equal(local.modified, cached.modified, ModifyWindow::LOCAL))
+}
+
+/// Clock difference allowed between this machine and a server.
+const LAST_SYNC_CLOCK_SKEW_SECS: i64 = 60;
+
+/// Whether a remote date that differs from the baseline is the one the server
+/// stamped on our own upload (Requested 125). A provider that cannot keep a
+/// file's date dates it at the upload, after the baseline's local date and no
+/// later than the end of that sync, and the file would then read as changed
+/// remotely forever. A date after that sync is an edit, and so is one older
+/// than the baseline: a replacement that kept an older date.
+fn stamped_by_last_sync(
+    remote: Option<DateTime<Utc>>,
+    baseline: Option<DateTime<Utc>>,
+    last_sync: Option<DateTime<Utc>>,
+) -> bool {
+    match (remote, baseline, last_sync) {
+        (Some(remote), Some(baseline), Some(last_sync)) => {
+            remote > baseline
+                && remote <= last_sync + chrono::Duration::seconds(LAST_SYNC_CLOCK_SKEW_SECS)
+        }
+        _ => false,
+    }
 }
 
 /// Enhanced comparison that uses the sync index to detect true conflicts.
@@ -6547,6 +6575,27 @@ pub(crate) fn verify_journal_signature_in(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_date_stamped_by_our_upload_is_not_a_remote_edit() {
+        let at = |text: &str| Some(text.parse::<DateTime<Utc>>().unwrap());
+        let baseline = at("2021-03-04T05:06:07Z");
+        let last_sync = at("2026-10-31T10:00:00Z");
+        let stamped = |remote| stamped_by_last_sync(at(remote), baseline, last_sync);
+        // Dated by the upload, during that sync.
+        assert!(stamped("2026-10-31T09:59:58Z"));
+        // Within the clock difference allowed.
+        assert!(stamped("2026-10-31T10:00:30Z"));
+        // Edited after the sync.
+        assert!(!stamped("2026-10-31T10:05:00Z"));
+        // Replaced by a copy that kept an older date.
+        assert!(!stamped("2020-01-01T00:00:00Z"));
+        assert!(!stamped_by_last_sync(
+            at("2026-10-31T09:59:58Z"),
+            None,
+            last_sync
+        ));
+    }
+
     use super::*;
 
     /// Nothing signed a sync journal after the legacy SyncPanel went (its

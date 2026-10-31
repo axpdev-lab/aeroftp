@@ -45,12 +45,30 @@ const DROPBOX_TRANSFER_MAX_SESSIONS: u16 = 4;
 /// `total_size` / `part_size` (so `upload_part` rebuilds the byte offset
 /// from `part_number` alone) and the normalised destination path needed by
 /// the `upload_session/finish` commit body.
+/// The `CommitInfo` of an upload, with the file's date when it is known:
+/// otherwise Dropbox dates it when it stored it.
+fn commit_arg(path: &str, client_modified: Option<&str>) -> serde_json::Value {
+    let mut commit = serde_json::json!({
+        "path": path,
+        "mode": "overwrite",
+        "autorename": false,
+        "mute": false
+    });
+    if let Some(date) = client_modified {
+        commit["client_modified"] = serde_json::json!(date);
+    }
+    commit
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
 struct DropboxMultipartMeta {
     session_id: String,
     total: u64,
     part: u64,
     path: String,
+    /// The local file's date, kept at the commit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    client_modified: Option<String>,
 }
 
 impl DropboxMultipartMeta {
@@ -497,7 +515,12 @@ impl DropboxProvider {
             path,
             is_dir,
             size: meta.size,
-            modified: meta.server_modified.clone(),
+            // The file's own date, which an upload sets; the server's is when
+            // Dropbox stored it.
+            modified: meta
+                .client_modified
+                .clone()
+                .or_else(|| meta.server_modified.clone()),
             permissions: None,
             owner: None,
             group: None,
@@ -1348,12 +1371,7 @@ impl StorageProvider for DropboxProvider {
                     "session_id": session.session_id,
                     "offset": file_size
                 },
-                "commit": {
-                    "path": path,
-                    "mode": "overwrite",
-                    "autorename": false,
-                    "mute": false
-                }
+                "commit": commit_arg(&path, super::local_modified_rfc3339(local_path).as_deref())
             });
 
             let finish_resp = self
@@ -1385,12 +1403,7 @@ impl StorageProvider for DropboxProvider {
                 .map_err(|e| ProviderError::Other(format!("Open error: {}", e)))?;
             let body = progress.file_body(file);
 
-            let arg = serde_json::json!({
-                "path": path,
-                "mode": "overwrite",
-                "autorename": false,
-                "mute": false
-            });
+            let arg = commit_arg(&path, super::local_modified_rfc3339(local_path).as_deref());
 
             let url = format!("{}/files/upload", self.content_api_base());
 
@@ -2416,7 +2429,7 @@ impl StorageProvider for DropboxProvider {
         remote_path: &str,
         total_size: u64,
         _content_type: Option<&str>,
-        _local_source_path: Option<&str>,
+        local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -2483,6 +2496,7 @@ impl StorageProvider for DropboxProvider {
             total: total_size,
             part: dropbox_runner_part_size(total_size),
             path: normalised,
+            client_modified: local_source_path.and_then(super::local_modified_rfc3339),
         };
         Ok(MultipartHandle {
             upload_id: meta.encode(),
@@ -2664,12 +2678,7 @@ impl StorageProvider for DropboxProvider {
                 "session_id": meta.session_id,
                 "offset": meta.total
             },
-            "commit": {
-                "path": meta.path,
-                "mode": "overwrite",
-                "autorename": false,
-                "mute": false
-            }
+            "commit": commit_arg(&meta.path, meta.client_modified.as_deref())
         });
 
         let auth = self.auth_header().await?;
@@ -2721,6 +2730,14 @@ impl StorageProvider for DropboxProvider {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_commit_carries_the_file_date_when_it_is_known() {
+        let commit = commit_arg("/a.txt", Some("2021-03-04T05:06:07Z"));
+        assert_eq!(commit["client_modified"], "2021-03-04T05:06:07Z");
+        assert_eq!(commit["mode"], "overwrite");
+        assert!(commit_arg("/a.txt", None).get("client_modified").is_none());
+    }
+
     #[tokio::test]
     async fn probe_contract_dropbox_root_uses_a_supported_probe() {
         use axum::response::IntoResponse;
@@ -2931,6 +2948,7 @@ mod tests {
             total: 524_288_000,
             part: 8_323_073,
             path: "/aeroftp-test/sample.bin".to_string(),
+            client_modified: None,
         };
         let encoded = meta.encode();
         let decoded = DropboxMultipartMeta::decode(&encoded).expect("decode");
@@ -4008,6 +4026,7 @@ mod tests {
             total: 4 * 1024,
             part: 1024,
             path: "/f.bin".to_string(),
+            client_modified: None,
         };
         let handle = MultipartHandle {
             upload_id: meta.encode(),
@@ -4094,6 +4113,7 @@ mod tests {
             total: 4096,
             part: 1024,
             path: "/f.bin".to_string(),
+            client_modified: None,
         };
         let handle = MultipartHandle {
             upload_id: meta.encode(),
@@ -4395,6 +4415,7 @@ mod tests {
             total: 2048,
             part: 1024,
             path: "/f.bin".to_string(),
+            client_modified: None,
         };
         let handle = MultipartHandle {
             upload_id: meta.encode(),
