@@ -598,7 +598,8 @@
             "setAsPublic": "공개로 설정",
             "makeAllPrivate": "모두 비공개로 설정",
             "dropboxRestoreLimit": "AeroFTP는 복구 가능한 파일 버전을 복원할 수 있습니다. 폴더는 dropbox.com의 삭제된 파일에서 복원하세요. 물음표는 Dropbox가 항목 유형을 식별하지 못했음을 의미합니다.",
-            "openWithDefaultApp": "기본 앱으로 열기"
+            "openWithDefaultApp": "기본 앱으로 열기",
+            "extractHereUncheckedConfirm": "{name} 안의 이름은 압축을 풀기 전에는 읽을 수 없으므로, AeroFTP는 “여기에 압축 해제”가 이 폴더에서 무엇을 덮어쓸지 확인할 수 없습니다. “폴더에 압축 해제”는 아무것도 덮어쓰지 않습니다."
         },
         "transfer": {
             "transferring": "전송 중...",
@@ -2469,7 +2470,9 @@
             "flattenScanning": "하위 트리 스캔 중...",
             "flattenTruncated": "잘림",
             "flattenTruncatedHint": "5,000개 항목 한도에 도달했습니다. 필터를 세분화하거나 하위 폴더로 이동하세요.",
-            "local_placeholder_flatten": "로컬 파일 필터링... (재귀의 경우 *)"
+            "local_placeholder_flatten": "로컬 파일 필터링... (재귀의 경우 *)",
+            "flattenNameClash": "{names}: 둘 이상의 폴더에서 선택되었습니다. 한 곳에 두면 서로 덮어쓰게 됩니다. 같은 이름은 한 번에 하나씩 작업하세요.",
+            "flattenNameClashTitle": "여러 폴더에 같은 이름이 있습니다"
         },
         "versions": {
             "title": "파일 버전",

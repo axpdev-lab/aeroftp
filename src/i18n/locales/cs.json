@@ -598,7 +598,8 @@
             "setAsPublic": "Nastavit jako veřejný",
             "makeAllPrivate": "Nastavit vše jako soukromé",
             "dropboxRestoreLimit": "AeroFTP může obnovit obnovitelné verze souborů. Složky obnovte v části Smazané soubory na dropbox.com. Otazník znamená, že Dropbox nerozpoznal typ položky.",
-            "openWithDefaultApp": "Otevřít ve výchozí aplikaci"
+            "openWithDefaultApp": "Otevřít ve výchozí aplikaci",
+            "extractHereUncheckedConfirm": "Názvy souborů uvnitř {name} nelze před rozbalením přečíst, takže AeroFTP nemůže zkontrolovat, co by „Rozbalit zde“ v této složce přepsalo. „Rozbalit do složky“ nikdy nic nepřepisuje."
         },
         "transfer": {
             "transferring": "Přenášení...",
@@ -2469,7 +2470,9 @@
             "flattenScanning": "Skenování podstromu...",
             "flattenTruncated": "zkráceno",
             "flattenTruncatedHint": "Dosažen limit 5 000 položek; upřesněte filtr nebo přejděte do podsložky.",
-            "local_placeholder_flatten": "Filtrovat místní soubory... (* pro rekurzi)"
+            "local_placeholder_flatten": "Filtrovat místní soubory... (* pro rekurzi)",
+            "flattenNameClash": "{names}: vybráno ve více složkách. Po vložení na jedno místo by se navzájem přepsaly; pracujte vždy s jedním z každého.",
+            "flattenNameClashTitle": "Stejný název ve více složkách"
         },
         "versions": {
             "title": "Verze souborů",
