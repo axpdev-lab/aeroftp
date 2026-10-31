@@ -148,7 +148,7 @@ function renderTimeRefWrites(file: string, source: string): string[] {
  * the first render, and no write during render is left to report.
  */
 const LATEST_VALUE_REFS: Record<string, string[]> = {
-    '/src/App.tsx': ['sortedLocalFilesRef', 'sortedRemoteFilesRef', 'handleToggleAeroFileRef', 'transferFnsRef', 'crossPanelDropRef', 'lockControllerInterrupt'],
+    '/src/App.tsx': ['sortedLocalFilesRef', 'sortedRemoteFilesRef', 'handleToggleAeroFileRef', 'crossPanelDropRef', 'lockControllerInterrupt'],
     '/src/components/AISettings/AISettingsPanel.tsx': ['settingsRef'],
     '/src/components/AeroSync/DeltaEligibilityDialog.tsx': ['skipFutureRef'],
     '/src/components/ConnectionScreen.tsx': ['onTabLabelChangeRef'],

@@ -41,7 +41,7 @@ if (dropStart < 0 || dropEnd < 0) throw new Error('Missing App closure: crossPan
 const { code } = await transformWithOxc(
   closure('getOverwriteDestination', '\n  // Helper: check folder overwrite')
   + closure('downloadFile', '\n  const uploadFile =')
-  + closure('uploadFile', '\n  // Keep restore-retry')
+  + closure('uploadFile', '\n  const retryRestoredEntry =')
   + closure('withBatchLatch', '\n  const uploadMultipleFiles =')
   + closure('uploadMultipleFiles', '\n  // === Bulk Operations ===')
   + closure('downloadMultipleFiles', '\n  // Wire cross-panel drag & drop callback')
@@ -195,6 +195,8 @@ export function fixture(options: Options = {}) {
   const protocol = options.protocol ?? 'webdav';
   const requestGitHubBatchCommitMessage = vi.fn(async (..._args: unknown[]) => 'Add files');
   const context = {
+    // Outside a render a latest-value callback is the function itself.
+    useLatestCallback: <T,>(fn: T) => fn,
     invoke, checkOverwrite, loadOverwriteDestination, usesProviderApi,
     resetOverwriteSettings: vi.fn(), checkFolderOverwrite,
     isSafeRemoteDownloadName, remoteDownloadTarget, splitForFileBatch, selectedLocalTrees, asLocalFileEntry,
