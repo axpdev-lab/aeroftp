@@ -1002,6 +1002,18 @@ async fn durable_profile_auth_lifecycle(
     assert_eq!(list_of(active_id), list_before);
     assert!(saved_anyway.is_ok());
 
+    // A copy for a list of another account than the active one writes nothing.
+    let refused_copy = crate::copy_profile_secrets(
+        source.into(),
+        "copy-for-other".into(),
+        Some("github".into()),
+        Some(other_id),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(refused_copy, users::ACCOUNT_CHANGED);
+    assert!(read(&format!("{stale_prefix}_copy-for-other")).is_none());
+
     // A file repeating an id holds one set of provider secrets: the first profile
     // brings the chain, the later one stored under a new id does not.
     let repeated_file = directory.path().join("repeated.aeroftp");

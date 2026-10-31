@@ -110,7 +110,7 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
         },
         McpToolDef {
             name: "aeroftp_check_tree",
-            description: "Compare a local directory against a remote directory and report differences. The result also says how much of each tree the comparison actually covers: `local_scan_incomplete` and `remote_scan_incomplete`, with `{side}_scan_errors` (directory listings that failed), `{side}_scan_truncated` (the walk stopped at its depth or entry cap), and `{side}_policy_denied_total` (named prefixes excluded by the local-path policy). A side is reported incomplete when its counters are non-zero OR when the walk left out a path it can name, because a symbolic link is a gap without being a failure: no walk follows one, so the subtree behind it was never compared. Those paths are listed in `{side}_skipped_links` and `{side}_unseen_paths`, each capped at 1000 entries with `_total` and `_truncated` alongside, and OMITTED entirely when empty. The eight counter keys are always present, zero included, so an agent can branch on them without first checking whether they exist. An unnameable `policy_denied` boundary on either side returns an error instead of a partial comparison. Under summary_only=true only the counters and flags are returned, not the path lists. A file reported as missing on one side by an incomplete scan may simply be unread rather than absent: do not turn it into a delete.",
+            description: "Compare a local directory against a remote directory and report differences. The result also says how much of each tree the comparison actually covers: `local_scan_incomplete` and `remote_scan_incomplete`, with `{side}_scan_errors` (directory listings that failed), `{side}_scan_truncated` (the walk stopped at its depth or entry cap), and `{side}_policy_denied_total` (named prefixes excluded by the local-path policy). A side is reported incomplete when its counters are non-zero OR when the walk left out a path it can name, because a symbolic link is a gap without being a failure: no walk follows one, so the subtree behind it was never compared. Those paths are listed in `{side}_skipped_links` and `{side}_unseen_paths`, each capped at 1000 entries with `_total` and `_truncated` alongside, and OMITTED entirely when empty. The six counter keys and two incomplete flags are always present, zero or false included, so an agent can branch on them without first checking whether they exist. An unnameable `policy_denied` boundary on either side returns an error instead of a partial comparison. Under summary_only=true only the counters and flags are returned, not the path lists. A file reported as missing on one side by an incomplete scan may simply be unread rather than absent: do not turn it into a delete.",
             input_schema: json!({ "type": "object", "properties": {
                 "server": { "type": "string", "description": "Server name or ID" },
                 "local_dir": { "type": "string", "description": "Local directory to compare" },
@@ -2630,7 +2630,7 @@ mod tests {
         for needle in [
             "remote_scan_incomplete",
             "_policy_denied_total",
-            "eight counter keys",
+            "six counter keys and two incomplete flags",
             "returns an error",
             "_skipped_links",
             "_unseen_paths",

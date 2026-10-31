@@ -17674,12 +17674,12 @@ async fn copy_profile_secrets(
 ) -> Result<std::collections::HashMap<String, bool>, String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    // The account whose list the copy will join, when the caller read one: not one
-    // switched to since.
-    let user_id = match expected_user_id {
-        Some(user) => Some(user),
-        None => user_partitions::cli_get_active_user(&store)?.map(|user| user.id),
-    };
+    let user_id = user_partitions::cli_get_active_user(&store)?.map(|user| user.id);
+    // The copy joins the list of the account the caller read. Secrets also reach the
+    // shared vault key, so they are never written for another than the active one.
+    if expected_user_id.is_some() && expected_user_id != user_id {
+        return Err(user_partitions::ACCOUNT_CHANGED.to_string());
+    }
     let mut copied = std::collections::HashMap::new();
     let source_suffix = format!("_{}", source_id);
     for source_key in per_profile_vault_keys(&source_id, protocol.as_deref()) {

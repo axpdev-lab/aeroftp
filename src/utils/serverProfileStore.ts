@@ -313,11 +313,15 @@ export const mergeSavedServerProfile = async (
 };
 
 /**
- * Replace the active account's list with one that is meant to replace it whole (a
- * migration), bound to the account and the revision read just before.
+ * Add the profiles a migration found to the active account's list, bound to the
+ * account and the revision read just before. A profile the list already holds stays
+ * as it is: a migration that runs late must not undo what was saved since.
  */
-export const replaceSavedServerProfiles = (profiles: ServerProfile[]): Promise<ServerProfile[]> =>
-    withFreshSavedProfiles(({ userId, revision }) => storeSavedServerProfiles(profiles, false, userId, revision));
+export const addMigratedServerProfiles = (migrated: ServerProfile[]): Promise<ServerProfile[]> =>
+    withFreshSavedProfiles(({ profiles, userId, revision }) => {
+        const held = new Set(profiles.map(s => s.id));
+        return storeSavedServerProfiles([...profiles, ...migrated.filter(s => !held.has(s.id))], false, userId, revision);
+    });
 
 /**
  * After a keystore restore, which stored the list itself: read it and tell this

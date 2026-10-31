@@ -22,7 +22,7 @@ import {
     mergeSavedServerProfile,
     readSavedServerProfilesForWrite,
     reloadRestoredServerProfiles,
-    replaceSavedServerProfiles,
+    addMigratedServerProfiles,
     revertConvertedProfile,
     withFreshSavedProfiles,
     savedProfilesGeneration,
@@ -311,17 +311,19 @@ describe('loadSavedServerProfilesStrict', () => {
     });
 });
 
-describe('replaceSavedServerProfiles', () => {
-    it('binds the replacement to the account and revision read just before, and redoes it once', async () => {
-        const list = [sampleProfile()];
+describe('addMigratedServerProfiles', () => {
+    it('keeps the list, adds what it lacks, bound to the read just before, and redoes it once', async () => {
+        const held = sampleProfile({ id: 'srv_held', name: 'Saved here' });
+        const sameId = sampleProfile({ id: 'srv_held', name: 'From the migration' });
+        const added = sampleProfile({ id: 'srv_new', name: 'New' });
         mockInvoke
             .mockResolvedValueOnce({ userId: 4, profiles: [], revision: 'r1' })
             .mockRejectedValueOnce(new Error('PROFILES_CHANGED: nothing was saved'))
-            .mockResolvedValueOnce({ userId: 4, profiles: [], revision: 'r2' })
+            .mockResolvedValueOnce({ userId: 4, profiles: [held], revision: 'r2' })
             .mockResolvedValueOnce(undefined);
-        await replaceSavedServerProfiles(list);
+        await addMigratedServerProfiles([sameId, added]);
         expect(mockInvoke).toHaveBeenLastCalledWith('user_partitions_save_active_server_profiles', {
-            profiles: list, expectedUserId: 4, expectedRevision: 'r2',
+            profiles: [held, added], expectedUserId: 4, expectedRevision: 'r2',
         });
     });
 
@@ -332,7 +334,7 @@ describe('replaceSavedServerProfiles', () => {
             if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
             return undefined;
         });
-        await expect(replaceSavedServerProfiles([sampleProfile()])).rejects.toThrow('STORE_NOT_READY');
+        await expect(addMigratedServerProfiles([sampleProfile()])).rejects.toThrow('STORE_NOT_READY');
         expect(mockInvoke.mock.calls.some(call => call[0] === 'user_partitions_save_active_server_profiles')).toBe(false);
         mockInvoke.mockReset();
     });
