@@ -271,7 +271,7 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
         // the bottom-right Transfer Queue panel (fixed bottom-12 right-6 w-[33rem]).
         <div
             ref={cardRef}
-            className={`fixed bottom-12 left-6 z-40 overflow-hidden rounded-lg border w-[30rem] max-w-[calc(100vw-2rem)] min-h-[min(var(--held-height,0px),calc(100vh-4rem))] text-xs ${styles.container}`}
+            className={`fixed bottom-12 left-6 z-40 overflow-hidden rounded-lg border w-[30rem] max-w-[calc(100vw-2rem)] [--held-height:0px] min-h-[min(var(--held-height),calc(100vh-4rem))] text-xs ${styles.container}`}
             style={{ isolation: 'isolate', contain: 'layout paint' }}
         >
             <div

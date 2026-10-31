@@ -137,7 +137,7 @@ describe('ProgressCard during a transfer', () => {
 
     it('caps the held height to the window in the class that reads it', async () => {
         await render(toast('a.bin'), 300);
-        expect(card().className).toContain('min-h-[min(var(--held-height,0px),calc(100vh-4rem))]');
+        expect(card().className).toContain(`[${HELD_HEIGHT}:0px] min-h-[min(var(${HELD_HEIGHT}),calc(100vh-4rem))]`);
     });
 
     it('grows when its content needs more room', async () => {
