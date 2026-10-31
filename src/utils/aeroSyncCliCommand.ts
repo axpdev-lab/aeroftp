@@ -85,7 +85,7 @@ export type CliCommandResult =
  * different folder from the one the Plan compared.
  */
 function cliReachesSameRemoteFolder(remotePath: string, initialPath: string | null | undefined): boolean {
-    const base = (initialPath ?? '').trim();
+    const base = initialPath ?? '';
     if (base === '' || base === '/') return remotePath.replace(/^\/+/, '') !== '';
     return remotePath.startsWith(base.replace(/\/+$/, ''));
 }
