@@ -6359,7 +6359,7 @@
             "overwriteCount": "Papatungan: {count}",
             "conflictCount": "{count} salungatan",
             "updateOnly": "Laktawan ang mas bagong mga file sa destinasyon (isang direksiyong pag-update)",
-            "updateOnlyHint": "Kopyahin ang nawawala o nabagong mga file mula sa pinagmulan, panatilihin ang mas bagong mga file sa destinasyon, at burahin ang mga entry na nasa destinasyon lang. Ang mga file na walang maihahambing na petsa ay iiwan para sa pagsusuri."
+            "updateOnlyHint": "Kinokopya ang mga source file na nawawala o nagbago, pinapanatili ang mas bagong mga file sa destination, at tinatanggal ang mga entry na nasa destination lang. Ang mga file na walang maihahambing na petsa ay inihahambing ayon sa laki; iniiwan ang mga pagkakaiba sa laki para sa pagsusuri."
         },
         "accountLock": {
             "title": "Pumili ng account",

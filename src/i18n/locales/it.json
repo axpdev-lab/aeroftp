@@ -6593,7 +6593,7 @@
             "overwriteCount": "Da sovrascrivere: {count}",
             "conflictCount": "Conflitti: {count}",
             "updateOnly": "Salta i file di destinazione più recenti (aggiornamento unidirezionale)",
-            "updateOnlyHint": "Copia i file di origine mancanti o modificati, conserva i file di destinazione più recenti ed elimina le voci presenti solo nella destinazione. I file senza date confrontabili restano da esaminare."
+            "updateOnlyHint": "Copia i file di origine mancanti o modificati, conserva i file di destinazione più recenti ed elimina le voci presenti solo nella destinazione. I file senza date confrontabili vengono confrontati in base alla dimensione; le differenze di dimensione restano in attesa di revisione."
         },
         "aerocryptProfile": {
             "overlaysSection": "Wrapper / Overlay",

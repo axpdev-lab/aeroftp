@@ -34,6 +34,7 @@ const KNOWN_META_FIELDS: &[&str] = &[
     "compare_size",
     "compare_checksum",
     "conflict_mode",
+    "modify_window",
     "backup_dir",
 ];
 
@@ -153,6 +154,8 @@ pub struct AerosyncScriptProfile {
     pub resync: bool,
     #[serde(default)]
     pub watch: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modify_window: Option<u64>,
     /// The Plan's versioned-backup folder at export time, kept in the
     /// metadata block. The SYNC line excludes it too; an import restores it
     /// to the Plan and leaves it out of the user's patterns.
@@ -291,6 +294,9 @@ pub fn generate_script(profile: &AerosyncScriptProfile, app_version: &str) -> St
     }
     if profile.profile.update_only && profile.profile.direction != CompareDirection::Bidirectional {
         out.push_str(" \\\n  --update");
+        if let Some(secs) = profile.modify_window {
+            out.push_str(&format!(" \\\n  --modify-window {secs}"));
+        }
     }
     if profile.skip_matching {
         out.push_str(" \\\n  --skip-matching");
@@ -595,6 +601,7 @@ pub fn parse_script(content: &str) -> Result<ParsedScript, ParseError> {
         skip_matching: parsed_sync.skip_matching,
         resync: parsed_sync.resync,
         watch: parsed_sync.watch,
+        modify_window: parsed_sync.modify_window,
         backup_dir: metadata_json
             .get("backup_dir")
             .and_then(|v| v.as_str())
@@ -961,6 +968,7 @@ struct ParsedSyncLine {
     /// `--max-delete` as written, so an edited cap is reported on import
     /// instead of being replaced in silence by the next export.
     max_delete: Option<String>,
+    modify_window: Option<u64>,
     /// Flags the template has no field for, dropped on import and named in
     /// a warning.
     not_kept: Vec<String>,
@@ -1005,6 +1013,7 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
     let mut conflict_mode: Option<String> = None;
     let mut exclude_patterns: Vec<String> = Vec::new();
     let mut max_delete: Option<String> = None;
+    let mut modify_window: Option<u64> = None;
     let mut not_kept: Vec<String> = Vec::new();
     let mut it = tokens.into_iter().peekable();
     while let Some(tok) = it.next() {
@@ -1035,6 +1044,18 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
                     });
                 }
                 update_only = true;
+            }
+            "--modify-window" => {
+                let value = flag_value(inline, &mut it, "--modify-window", "seconds", line)?;
+                modify_window =
+                    Some(
+                        value
+                            .parse::<u64>()
+                            .map_err(|_| ParseError::MalformedSync {
+                                line,
+                                message: format!("invalid --modify-window value '{value}'"),
+                            })?,
+                    );
             }
             "--dry-run" => dry_run = true,
             "--track-renames" => track_renames = true,
@@ -1121,6 +1142,7 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
         conflict_mode,
         exclude_patterns,
         max_delete,
+        modify_window,
         not_kept,
     })
 }
@@ -1307,7 +1329,33 @@ mod tests {
             skip_matching: false,
             resync: false,
             watch: false,
+            modify_window: None,
             backup_dir: None,
+        }
+    }
+
+    #[test]
+    fn update_scripts_round_trip_the_modify_window() {
+        let mut original = sample(SyncProfile::mirror());
+        original.profile.update_only = true;
+        for window in [Some(60), Some(0), None] {
+            original.modify_window = window;
+            let text = generate_script(&original, "4.2.5-test");
+            if let Some(secs) = window {
+                assert!(
+                    text.contains(&format!("  --update \\\n  --modify-window {secs}")),
+                    "{text}"
+                );
+            } else {
+                assert!(!text.contains("--modify-window"), "{text}");
+            }
+            let parsed = parse_script(&text).expect("must parse");
+            assert_eq!(parsed.profile.modify_window, window);
+            assert!(parsed.unmapped_fields.is_empty());
+            assert!(!parsed
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("--modify-window")));
         }
     }
 

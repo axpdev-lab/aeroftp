@@ -6628,7 +6628,7 @@
             "overwriteCount": "{count} to overwrite",
             "conflictCount": "Conflicts: {count}",
             "updateOnly": "Skip newer destination files (One-way Update)",
-            "updateOnlyHint": "Copy missing or changed source files, keep newer destination files, and delete destination-only entries. Files without comparable dates are left for review."
+            "updateOnlyHint": "Copy missing or changed source files, keep newer destination files, and delete destination-only entries. Files without comparable dates are compared by size; size differences are left for review."
         },
         "aerocryptProfile": {
             "overlaysSection": "Wrappers / Overlays",

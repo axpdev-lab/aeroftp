@@ -6359,7 +6359,7 @@
             "overwriteCount": "Til yfirskriftar: {count}",
             "conflictCount": "Árekstrar: {count}",
             "updateOnly": "Sleppa nýrri skrám á áfangastað (einstefnuuppfærsla)",
-            "updateOnlyHint": "Afritaðu upprunaskrár sem vantar eða hafa breyst, haltu nýrri skrám á áfangastað og eyddu færslum sem eru aðeins á áfangastað. Skrár án samanburðarhæfra dagsetninga bíða yfirferðar."
+            "updateOnlyHint": "Afritar upprunaskrár sem vantar eða hafa breyst, heldur nýrri skrám á áfangastað og eyðir færslum sem eru aðeins á áfangastað. Skrár án samanburðarhæfra dagsetninga eru bornar saman eftir stærð; stærðarmismunur er skilinn eftir til yfirferðar."
         },
         "accountLock": {
             "title": "Veldu reikning",

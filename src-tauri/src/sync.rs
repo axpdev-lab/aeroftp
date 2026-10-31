@@ -5811,6 +5811,8 @@ pub struct SyncScriptMeta {
     pub delete_orphans: bool,
     #[serde(default)]
     pub update_only: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modify_window: Option<u64>,
     pub exclude_patterns: Vec<String>,
     #[serde(default)]
     pub retries: Option<u32>,
@@ -5836,6 +5838,7 @@ pub struct SyncScriptExportOptions<'a> {
     pub remote_path: &'a str,
     pub exclude_patterns: &'a [String],
     pub backup_dir: Option<&'a str>,
+    pub modify_window: Option<u64>,
     pub format: SyncScriptFormat,
 }
 
@@ -5892,6 +5895,7 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
         remote_path,
         exclude_patterns,
         backup_dir,
+        modify_window,
         format,
     } = opts;
     let (max_retries, retries_sleep) = retry_overrides(&profile.retry_policy);
@@ -5905,6 +5909,7 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
         direction: profile.direction,
         delete_orphans: profile.delete_orphans,
         update_only: profile.update_only,
+        modify_window,
         exclude_patterns: exclude_patterns.to_vec(),
         retries: max_retries,
         retries_sleep: retries_sleep.clone(),
@@ -5957,6 +5962,9 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
             }
             if profile.update_only && profile.direction != CompareDirection::Bidirectional {
                 out.push_str("  --update \\\n");
+                if let Some(secs) = modify_window {
+                    out.push_str(&format!("  --modify-window {} \\\n", secs));
+                }
             }
             for pattern in exclude_patterns {
                 out.push_str(&format!("  --exclude {} \\\n", shell_quote_bash(pattern)));
@@ -6016,6 +6024,9 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
             }
             if profile.update_only && profile.direction != CompareDirection::Bidirectional {
                 out.push_str("  --update `\n");
+                if let Some(secs) = modify_window {
+                    out.push_str(&format!("  --modify-window {} `\n", secs));
+                }
             }
             for pattern in exclude_patterns {
                 out.push_str(&format!("  --exclude {} `\n", shell_quote_pwsh(pattern)));
@@ -6122,11 +6133,49 @@ mod sync_script_tests {
                 remote_path: "/backups/proj",
                 exclude_patterns: &profile.exclude_patterns,
                 backup_dir: Some("history/versions"),
+                modify_window: None,
                 format,
             })
             .unwrap();
             let meta = import_sync_script(&script).unwrap();
             assert_eq!(meta.backup_dir.as_deref(), Some("history/versions"));
+        }
+    }
+
+    #[test]
+    fn shell_exports_include_update_modify_window() {
+        let mut profile = sample_profile();
+        profile.update_only = true;
+        for window in [Some(60), Some(0), None] {
+            for format in [SyncScriptFormat::Bash, SyncScriptFormat::PowerShell] {
+                let script = export_sync_script(SyncScriptExportOptions {
+                    profile: &profile,
+                    profile_display_name: "My Server",
+                    template_name: "Daily Backup",
+                    template_description: "Nightly mirror",
+                    local_path: "/home/me/proj",
+                    remote_path: "/backups/proj",
+                    exclude_patterns: &profile.exclude_patterns,
+                    backup_dir: None,
+                    modify_window: window,
+                    format,
+                })
+                .unwrap();
+                if let Some(secs) = window {
+                    let expected = match format {
+                        SyncScriptFormat::Bash => {
+                            format!("  --update \\\n  --modify-window {secs} \\\n")
+                        }
+                        SyncScriptFormat::PowerShell => {
+                            format!("  --update `\n  --modify-window {secs} `\n")
+                        }
+                    };
+                    assert!(script.contains(&expected), "{script}");
+                } else {
+                    assert!(!script.contains("--modify-window"), "{script}");
+                }
+                assert_eq!(import_sync_script(&script).unwrap().modify_window, window);
+            }
         }
     }
 
@@ -6143,6 +6192,7 @@ mod sync_script_tests {
                 remote_path: "/backups/proj",
                 exclude_patterns: &profile.exclude_patterns,
                 backup_dir: None,
+                modify_window: None,
                 format,
             })
             .unwrap();
@@ -6171,6 +6221,7 @@ mod sync_script_tests {
             remote_path: "/backups/proj",
             exclude_patterns: &profile.exclude_patterns,
             backup_dir: None,
+            modify_window: None,
             format: SyncScriptFormat::Bash,
         })
         .unwrap();
@@ -6202,6 +6253,7 @@ mod sync_script_tests {
             remote_path: "/backups/proj",
             exclude_patterns: &profile.exclude_patterns,
             backup_dir: None,
+            modify_window: None,
             format: SyncScriptFormat::PowerShell,
         })
         .unwrap();

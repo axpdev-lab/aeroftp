@@ -1109,6 +1109,7 @@ export interface AerosyncScriptProfile {
   skip_matching: boolean;
   resync: boolean;
   watch: boolean;
+  modify_window?: number;
   /** The Plan's versioned-backup folder at export time (#979). */
   backup_dir?: string | null;
 }
@@ -1318,6 +1319,7 @@ export interface SyncScriptMeta {
   direction: SyncDirection;
   delete_orphans: boolean;
   update_only?: boolean;
+  modify_window?: number;
   exclude_patterns: string[];
   retries: number | null;
   retries_sleep: string | null;

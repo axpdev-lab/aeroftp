@@ -6340,7 +6340,7 @@
             "overwriteCount": "Za kuandikwa upya: {count}",
             "conflictCount": "Migogoro: {count}",
             "updateOnly": "Ruka faili mpya zaidi za lengwa (usasishaji wa upande mmoja)",
-            "updateOnlyHint": "Nakili faili za chanzo zinazokosekana au zilizobadilika, hifadhi faili mpya zaidi za lengwa, na ufute vipengee vilivyo kwenye lengwa pekee. Faili zisizo na tarehe zinazoweza kulinganishwa huachwa kwa ukaguzi."
+            "updateOnlyHint": "Hunakili faili chanzo zilizokosekana au zilizobadilishwa, huhifadhi faili mpya zaidi za lengo na hufuta vipengee vilivyo kwenye lengo pekee. Faili zisizo na tarehe zinazolinganishwa hulinganishwa kwa ukubwa; tofauti za ukubwa huachwa kwa ajili ya uhakiki."
         },
         "accountLock": {
             "title": "Chagua akaunti",

@@ -6340,7 +6340,7 @@
             "overwriteCount": "Za prepis: {count}",
             "conflictCount": "Spori: {count}",
             "updateOnly": "Preskoči novejše ciljne datoteke (enosmerno posodabljanje)",
-            "updateOnlyHint": "Kopirajte manjkajoče ali spremenjene izvorne datoteke, ohranite novejše ciljne datoteke in izbrišite vnose, ki obstajajo samo na cilju. Datoteke brez primerljivih datumov ostanejo za pregled."
+            "updateOnlyHint": "Kopira manjkajoče ali spremenjene izvorne datoteke, ohrani novejše ciljne datoteke in izbriše vnose, ki so samo na cilju. Datoteke brez primerljivih datumov se primerjajo po velikosti; razlike v velikosti ostanejo za pregled."
         },
         "accountLock": {
             "title": "Izberite račun",

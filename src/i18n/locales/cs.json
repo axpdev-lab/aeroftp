@@ -6340,7 +6340,7 @@
             "overwriteCount": "K přepsání: {count}",
             "conflictCount": "Konflikty: {count}",
             "updateOnly": "Přeskočit novější soubory v cíli (jednosměrná aktualizace)",
-            "updateOnlyHint": "Zkopírujte chybějící nebo změněné zdrojové soubory, zachovejte novější soubory v cíli a odstraňte položky existující pouze v cíli. Soubory bez porovnatelných dat zůstanou ke kontrole."
+            "updateOnlyHint": "Zkopíruje chybějící nebo změněné zdrojové soubory, zachová novější soubory v cíli a odstraní položky, které jsou pouze v cíli. Soubory bez porovnatelných dat se porovnají podle velikosti; rozdíly ve velikosti zůstanou k posouzení."
         },
         "accountLock": {
             "title": "Vyberte účet",

@@ -14125,6 +14125,8 @@ struct SyncScriptExportArgs {
     exclude_patterns: Option<Vec<String>>,
     #[serde(default)]
     backup_dir: Option<String>,
+    #[serde(default)]
+    modify_window: Option<u64>,
     format: String,
 }
 
@@ -14156,6 +14158,7 @@ fn export_sync_script_cmd_blocking(args: SyncScriptExportArgs) -> Result<String,
         remote_path: &args.remote_path,
         exclude_patterns: &excludes,
         backup_dir: args.backup_dir.as_deref(),
+        modify_window: args.modify_window,
         format,
     })
 }
@@ -14197,6 +14200,8 @@ struct AerosyncExportScriptArgs {
     watch: bool,
     #[serde(default)]
     backup_dir: Option<String>,
+    #[serde(default)]
+    modify_window: Option<u64>,
     output_path: String,
     #[serde(default)]
     also_generate_wrapper: bool,
@@ -14270,6 +14275,7 @@ fn aerosync_export_script_cmd_blocking(
         skip_matching: args.skip_matching,
         resync: args.resync,
         watch: args.watch,
+        modify_window: args.modify_window,
         backup_dir: args.backup_dir.clone().filter(|dir| !dir.is_empty()),
     };
 

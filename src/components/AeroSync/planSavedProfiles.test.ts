@@ -208,15 +208,19 @@ describe('Update export and backup execution guards', () => {
             if (cmd === 'export_sync_script_cmd') return '# script';
             throw new Error(cmd);
         });
+        const compared = compareEntries(
+            [{ name: 'file', size: 1, isDir: false, mtimeMs: 100000 }],
+            [{ name: 'file', size: 2, isDir: false, mtimeMs: 160000 }],
+        );
         const root = createRoot(host); roots.push(root);
         await React.act(async () => root.render(React.createElement(TabStateStoreContext.Provider, { value: store }, React.createElement(SyncTemplateDialog, {
-            isOpen: true, onClose: vi.fn(), localPath: '/local', remotePath: '/remote', serverProfileName: 'Server', excludePatterns: [], pairKind: 'local-remote', onApplyImport: vi.fn(),
+            isOpen: true, onClose: vi.fn(), localPath: '/local', remotePath: '/remote', serverProfileName: 'Server', excludePatterns: [], pairKind: 'local-remote', compareResult: compared, onApplyImport: vi.fn(),
         }))));
         await click('syncPanel.aerosyncScriptExportButton');
-        expect(mocks.invoke).toHaveBeenCalledWith('aerosync_export_script_cmd', { args: expect.objectContaining({ update_only: value }) });
+        expect(mocks.invoke).toHaveBeenCalledWith('aerosync_export_script_cmd', { args: expect.objectContaining({ update_only: value, modify_window: value === false ? undefined : 2 }) });
         await click('syncPanel.templateFormatBash');
         await click('syncPanel.aerosyncScriptExportButton');
-        expect(mocks.invoke).toHaveBeenCalledWith('export_sync_script_cmd', { args: expect.objectContaining({ update_only: value }) });
+        expect(mocks.invoke).toHaveBeenCalledWith('export_sync_script_cmd', { args: expect.objectContaining({ update_only: value, modify_window: value === false ? undefined : 2 }) });
     });
 
     it('blocks a nested backup when most conflicts skip but one entry overwrites its ancestor', async () => {

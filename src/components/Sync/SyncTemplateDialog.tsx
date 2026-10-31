@@ -42,6 +42,9 @@ import { TabStateStoreContext } from '../AeroSync/tabStateStore';
 import type { AeroSyncCanarySelection, AeroSyncPairKind, AeroSyncSpeedMode, AeroSyncVerifyPolicy } from '../AeroSync/types';
 import type { ConflictPolicy, PresetDirection, SyncPreset, VersionedBackupConfig } from '../../utils/syncPresets';
 import { presetForTemplate, presetNameLabel, resolveLabel, templateDirectionLabel } from '../../utils/syncDirectionLabels';
+import { cliPreservesUpdateDestinations } from '../../utils/aeroSyncCliCommand';
+import { sameExcludePatterns } from '../../utils/aeroSyncExcludes';
+import type { CompareResult } from '../../utils/compareEndpoints';
 
 interface SyncTemplateDialogProps {
     isOpen: boolean;
@@ -59,6 +62,10 @@ interface SyncTemplateDialogProps {
     serverProfileName: string;
     excludePatterns: string[];
     pairKind: AeroSyncPairKind | null;
+    compareResult?: CompareResult | null;
+    compareLoading?: boolean;
+    compareExcludes?: string[];
+    compareBackupDir?: string;
     /** Apply imported values to the live AeroSync Plan + Sync tab controls. */
     onApplyImport: (settings: ImportedSyncSettings) => void;
 }
@@ -82,6 +89,10 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
     serverProfileName,
     excludePatterns,
     pairKind,
+    compareResult,
+    compareLoading,
+    compareExcludes,
+    compareBackupDir,
     onApplyImport,
 }) => {
     const t = useTranslation();
@@ -129,6 +140,29 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                 }
                 : undefined,
         };
+    };
+    const updateScriptModifyWindow = (live: LivePlanExport): number | undefined => {
+        const profile = syncProfiles.find(candidate => candidate.id === presetId);
+        const updateOnly = live.preset
+            ? live.preset === 'mirror' && (live.updateOnly ?? profile?.update_only ?? false)
+            : profile?.update_only === true;
+        if (!updateOnly) return undefined;
+        const backupStale = live.versionedBackup?.enabled === true
+            && live.versionedBackup.backupDir !== compareBackupDir;
+        if (compareLoading || backupStale || !sameExcludePatterns(liveExcludes(), compareExcludes ?? [])) {
+            throw new Error(t('aerosync.rescanNeeded'));
+        }
+        const storedDirection = tabState?.get<PresetDirection>('plan.direction', 'left-to-right') ?? 'left-to-right';
+        const exportDirection = live.direction ?? profile?.direction;
+        const direction = exportDirection
+            ? (exportDirection === 'local_to_remote') === (pairKind !== 'remote-local')
+                ? 'left-to-right'
+                : 'right-to-left'
+            : storedDirection;
+        if (!compareResult || !cliPreservesUpdateDestinations(compareResult, direction)) {
+            throw new Error(t('aerosync.cli.reason.overwritesNewer'));
+        }
+        return Math.ceil(Math.max(0, compareResult.appliedOptions.mtimeToleranceMs) / 1000);
     };
     const [mode, setMode] = useState<'export' | 'import'>('export');
     const [exporting, setExporting] = useState(false);
@@ -230,6 +264,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
      */
     const exportAerosyncScript = async () => {
         const live = livePlanFromStore();
+        const modifyWindow = updateScriptModifyWindow(live);
         const defaultName = (templateName || 'aerosync-config')
             .replace(/[^A-Za-z0-9._-]/g, '-')
             .replace(/-+/g, '-')
@@ -256,6 +291,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                     direction: live.direction,
                     delete_orphans: live.preset ? live.preset === 'mirror' : undefined,
                     backup_dir: readScriptBackupDir(tabState),
+                    modify_window: modifyWindow,
                     dry_run: false,
                     conflict_mode: 'newer',
                     track_renames: false,
@@ -282,6 +318,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
     /** Export the live direction and optional Mirror override through the shared script contract. */
     const exportScript = async (format: SyncScriptFormat) => {
         const live = livePlanFromStore();
+        const modifyWindow = updateScriptModifyWindow(live);
         const ext = format === 'pwsh' ? 'ps1' : 'sh';
         const defaultName = `sync-config.${ext}`;
         const filterName = format === 'pwsh' ? 'PowerShell script' : 'Shell script';
@@ -303,6 +340,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                 direction: live.direction,
                 delete_orphans: live.preset ? live.preset === 'mirror' : undefined,
                 backup_dir: readScriptBackupDir(tabState),
+                modify_window: modifyWindow,
                 format,
             },
         });

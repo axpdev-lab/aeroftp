@@ -6340,7 +6340,7 @@
             "overwriteCount": "De suprascris: {count}",
             "conflictCount": "Conflicte: {count}",
             "updateOnly": "Omite fișierele mai noi de la destinație (actualizare unidirecțională)",
-            "updateOnlyHint": "Copiați fișierele sursă lipsă sau modificate, păstrați fișierele mai noi de la destinație și ștergeți intrările existente doar la destinație. Fișierele fără date comparabile rămân pentru verificare."
+            "updateOnlyHint": "Copiază fișierele sursă lipsă sau modificate, păstrează fișierele mai noi din destinație și șterge intrările care există doar în destinație. Fișierele fără date calendaristice comparabile sunt comparate după dimensiune; diferențele de dimensiune rămân pentru verificare."
         },
         "accountLock": {
             "title": "Alegeți un cont",

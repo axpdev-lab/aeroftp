@@ -6340,7 +6340,7 @@
             "overwriteCount": "Korvattavat: {count}",
             "conflictCount": "Ristiriidat: {count}",
             "updateOnly": "Ohita uudemmat kohdetiedostot (yksisuuntainen päivitys)",
-            "updateOnlyHint": "Kopioi puuttuvat tai muuttuneet lähdetiedostot, säilytä uudemmat kohdetiedostot ja poista vain kohteessa olevat merkinnät. Tiedostot, joiden päivämääriä ei voi verrata, jäävät tarkistettaviksi."
+            "updateOnlyHint": "Kopioi puuttuvat tai muuttuneet lähdetiedostot, säilyttää kohteen uudemmat tiedostot ja poistaa vain kohteessa olevat merkinnät. Tiedostoja, joilla ei ole vertailukelpoisia päivämääriä, verrataan koon perusteella; kokoerot jätetään tarkistettavaksi."
         },
         "accountLock": {
             "title": "Valitse tili",

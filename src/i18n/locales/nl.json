@@ -6340,7 +6340,7 @@
             "overwriteCount": "{count} te overschrijven",
             "conflictCount": "Conflicten: {count}",
             "updateOnly": "Nieuwere doelbestanden overslaan (eenrichtingsupdate)",
-            "updateOnlyHint": "Kopieer ontbrekende of gewijzigde bronbestanden, behoud nieuwere doelbestanden en verwijder items die alleen op de bestemming bestaan. Bestanden zonder vergelijkbare datums blijven ter beoordeling staan."
+            "updateOnlyHint": "Kopieert ontbrekende of gewijzigde bronbestanden, behoudt nieuwere bestemmingsbestanden en verwijdert items die alleen op de bestemming aanwezig zijn. Bestanden zonder vergelijkbare datums worden op grootte vergeleken; grootteverschillen blijven ter controle staan."
         },
         "accountLock": {
             "title": "Kies een account",

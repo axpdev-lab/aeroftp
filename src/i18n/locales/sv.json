@@ -6340,7 +6340,7 @@
             "overwriteCount": "{count} att skriva över",
             "conflictCount": "Konflikter: {count}",
             "updateOnly": "Hoppa över nyare målfiler (envägsuppdatering)",
-            "updateOnlyHint": "Kopiera saknade eller ändrade källfiler, behåll nyare målfiler och ta bort poster som bara finns på målet. Filer utan jämförbara datum lämnas för granskning."
+            "updateOnlyHint": "Kopierar saknade eller ändrade källfiler, behåller nyare målfiler och tar bort poster som endast finns på målet. Filer utan jämförbara datum jämförs efter storlek; storleksskillnader lämnas för granskning."
         },
         "accountLock": {
             "title": "Välj ett konto",

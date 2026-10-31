@@ -6359,7 +6359,7 @@
             "overwriteCount": "I'w trosysgrifo: {count}",
             "conflictCount": "{count} gwrthdaro",
             "updateOnly": "Hepgor ffeiliau mwy newydd yn y gyrchfan (diweddaru unffordd)",
-            "updateOnlyHint": "Copïwch ffeiliau ffynhonnell sydd ar goll neu wedi newid, cadwch ffeiliau mwy newydd yn y gyrchfan, a dilëwch gofnodion sydd yn y gyrchfan yn unig. Mae ffeiliau heb ddyddiadau cymaradwy yn aros i gael eu hadolygu."
+            "updateOnlyHint": "Copïwch ffeiliau ffynhonnell sydd ar goll neu wedi newid, cadwch ffeiliau diweddarach yn y cyrchfan, a dilëwch gofnodion sydd yn y cyrchfan yn unig. Cymharir ffeiliau heb ddyddiadau cymaradwy yn ôl maint; gadewir gwahaniaethau maint i’w hadolygu."
         },
         "accountLock": {
             "title": "Dewiswch gyfrif",

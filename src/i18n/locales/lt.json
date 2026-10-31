@@ -6340,7 +6340,7 @@
             "overwriteCount": "Bus perrašyta: {count}",
             "conflictCount": "Konfliktai: {count}",
             "updateOnly": "Praleisti naujesnius paskirties failus (vienkryptis atnaujinimas)",
-            "updateOnlyHint": "Kopijuokite trūkstamus ar pakeistus šaltinio failus, išsaugokite naujesnius paskirties failus ir pašalinkite tik paskirties vietoje esančius įrašus. Failai be palyginamų datų paliekami peržiūrai."
+            "updateOnlyHint": "Nukopijuoja trūkstamus arba pakeistus šaltinio failus, išsaugo naujesnius paskirties failus ir ištrina įrašus, esančius tik paskirtyje. Failai, neturintys palyginamų datų, lyginami pagal dydį; dydžio skirtumai paliekami peržiūrai."
         },
         "accountLock": {
             "title": "Pasirinkite paskyrą",

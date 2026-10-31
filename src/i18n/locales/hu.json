@@ -6340,7 +6340,7 @@
             "overwriteCount": "Felülírandó: {count}",
             "conflictCount": "{count} ütközés",
             "updateOnly": "Újabb célfájlok kihagyása (egyirányú frissítés)",
-            "updateOnlyHint": "Másolja át a hiányzó vagy módosult forrásfájlokat, tartsa meg az újabb célfájlokat, és törölje a csak a célhelyen lévő bejegyzéseket. Az összehasonlítható dátum nélküli fájlok ellenőrzésre várnak."
+            "updateOnlyHint": "Átmásolja a hiányzó vagy módosult forrásfájlokat, megtartja a célhely újabb fájljait, és törli a csak a célhelyen található bejegyzéseket. Az összehasonlítható dátummal nem rendelkező fájlokat méret alapján hasonlítja össze; a méretkülönbségeket felülvizsgálatra hagyja."
         },
         "accountLock": {
             "title": "Válasszon fiókot",

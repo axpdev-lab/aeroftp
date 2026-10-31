@@ -72989,6 +72989,7 @@ DISCONNECT\n";
                 skip_matching: false,
                 resync: false,
                 watch: false,
+                modify_window: None,
                 backup_dir: None,
             };
             let script = generate_script(&profile, "test");
@@ -73262,6 +73263,7 @@ DISCONNECT\n";
                 skip_matching: false,
                 resync: false,
                 watch: false,
+                modify_window: None,
                 backup_dir: None,
             });
             out.push(AerosyncScriptProfile {
@@ -73278,6 +73280,7 @@ DISCONNECT\n";
                 skip_matching: true,
                 resync: true,
                 watch: true,
+                modify_window: None,
                 backup_dir: None,
             });
         }
@@ -73315,6 +73318,7 @@ DISCONNECT\n";
                     skip_matching: want_skip,
                     resync: want_resync,
                     watch: want_watch,
+                    modify_window: _,
                     backup_dir: _,
                 } = exported.clone();
                 let SyncProfile {
@@ -96333,6 +96337,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 skip_matching: false,
                 resync: false,
                 watch: false,
+                modify_window: None,
                 backup_dir: None,
             },
             "test",

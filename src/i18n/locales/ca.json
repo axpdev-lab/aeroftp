@@ -6359,7 +6359,7 @@
             "overwriteCount": "{count} per sobreescriure",
             "conflictCount": "Conflictes: {count}",
             "updateOnly": "Omet els fitxers de destinació més nous (actualització unidireccional)",
-            "updateOnlyHint": "Copia els fitxers d’origen que falten o han canviat, conserva els fitxers de destinació més nous i suprimeix les entrades que només són a la destinació. Els fitxers sense dates comparables queden pendents de revisió."
+            "updateOnlyHint": "Copia els fitxers d’origen que falten o han canviat, conserva els fitxers més nous de la destinació i suprimeix les entrades que només hi ha a la destinació. Els fitxers sense dates comparables es comparen per mida; les diferències de mida queden pendents de revisió."
         },
         "accountLock": {
             "title": "Trieu un compte",

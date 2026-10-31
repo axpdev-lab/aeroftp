@@ -6340,7 +6340,7 @@
             "overwriteCount": "{count} zu überschreiben",
             "conflictCount": "Konflikte: {count}",
             "updateOnly": "Neuere Zieldateien überspringen (Einweg-Aktualisierung)",
-            "updateOnlyHint": "Fehlende oder geänderte Quelldateien kopieren, neuere Zieldateien beibehalten und Einträge löschen, die nur im Ziel vorhanden sind. Dateien ohne vergleichbare Datumsangaben bleiben zur Prüfung offen."
+            "updateOnlyHint": "Kopiert fehlende oder geänderte Quelldateien, behält neuere Dateien am Ziel und löscht Einträge, die nur am Ziel vorhanden sind. Dateien ohne vergleichbare Datumsangaben werden nach Größe verglichen; Größenunterschiede bleiben zur Überprüfung bestehen."
         },
         "accountLock": {
             "title": "Konto auswählen",

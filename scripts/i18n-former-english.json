@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "f79dd2c0bd5f819b09a5e49595b72f7e61ab570592677f11eea90c6d3cdbab0a",
+    "enHash": "61b3920217b65f9be76726a564660a1c607e699c9f2a3577594cc476e1c7eb34",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -141,6 +141,9 @@
         ],
         "aerosync.tabSync": [
             "Sync"
+        ],
+        "aerosync.updateOnlyHint": [
+            "Copy missing or changed source files, keep newer destination files, and delete destination-only entries. Files without comparable dates are left for review."
         ],
         "aerosync.versionedBackupHint": [
             "Capture the destination copy under this directory before each overwrite or delete."
