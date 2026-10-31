@@ -13,6 +13,7 @@
 // (Tauri `invoke`, the clock, the sleep, id generation) is injected so the
 // loop can be exercised under Vitest's `node` environment.
 
+import { withTransferRun } from './transferRun';
 import type {
     RetryPolicy,
     VerifyPolicy,
@@ -405,7 +406,15 @@ const BULK_CHUNK_FILES = 256;
  * orphan deletes and a resumable checkpoint journal, then returns the rich
  * `SyncRunReport`.
  */
-export const runRemoteSync = async (
+export const runRemoteSync = (
+    files: SyncRunFile[],
+    dirs: SyncRunDirs,
+    config: RemoteSyncConfig,
+    callbacks: RemoteSyncCallbacks,
+    deps: RemoteSyncDeps,
+): Promise<SyncRunReport> => withTransferRun(() => runSync(files, dirs, config, callbacks, deps));
+
+const runSync = async (
     files: SyncRunFile[],
     dirs: SyncRunDirs,
     config: RemoteSyncConfig,
