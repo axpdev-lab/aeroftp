@@ -1357,7 +1357,20 @@
             "serverProfilesCount": "Profile serwerów: {count}",
             "aiKeysCount": "Klucze AI: {count}",
             "oauthTokensCount": "Tokeny OAuth: {count}",
-            "configEntriesCount": "Wpisy konfiguracji: {count}"
+            "configEntriesCount": "Wpisy konfiguracji: {count}",
+            "importExistingLabel": "Jeśli profil już istnieje",
+            "importExistingSkip": "Pomiń",
+            "importExistingOverwrite": "Nadpisz",
+            "importExistingDuplicate": "Duplikuj",
+            "importExistingSkipHint": "Profil, który już masz, pozostaje bez zmian, razem z hasłami i tokenami.",
+            "importExistingOverwriteHint": "Profil, który już masz, jest zastępowany w miejscu hasłami i tokenami z pliku. Pozostaje w ulubionych i grupach.",
+            "importExistingDuplicateHint": "Profil, który już masz, pozostaje, a kopia z pliku jest dodawana obok z numerowaną nazwą.",
+            "overwrittenCount": "Nadpisano: {count}",
+            "duplicatedCount": "Zduplikowano: {count}",
+            "importJottaChainWarning": "Jottacloud odnawia logowanie przy każdym połączeniu, a {names} współdzieli teraz jedno z inną kopią: kopia, która połączy się pierwsza, wylogowuje drugą (urządzenie, z którego pochodzi plik, lub profil, z którego go zduplikowano). Zaloguj drugą ponownie za pomocą nowego Personal Login Token.",
+            "importOauthAppKept": "{names} przyszły z inną niestandardową aplikacją OAuth niż ta, którą to urządzenie ma dla tego dostawcy. Zapisana aplikacja została zachowana, więc zaloguj się ponownie, jeśli te profile przestaną się łączyć.",
+            "importTargetChanged": "{names} nie zostały nadpisane: plik kieruje je na inny serwer, a ich zapisane hasła i tokeny nie mogą tam trafić. Zaimportuj z opcją Duplikuj, aby dodać kopię z pliku, lub najpierw usuń profil.",
+            "importSharedSecretsFailed": "Zaimportowano {names}, ale nie udało się zapisać współdzielonego sekretu ani sesji z pliku. Zaloguj się ponownie do tych profili, jeśli się nie łączą."
         },
         "devtools": {
             "title": "AeroTools",

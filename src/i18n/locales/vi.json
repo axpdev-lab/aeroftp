@@ -1357,7 +1357,20 @@
             "serverProfilesCount": "{count} hồ sơ máy chủ",
             "aiKeysCount": "{count} khóa AI",
             "oauthTokensCount": "{count} token OAuth",
-            "configEntriesCount": "{count} mục cấu hình"
+            "configEntriesCount": "{count} mục cấu hình",
+            "importExistingLabel": "Nếu hồ sơ đã tồn tại",
+            "importExistingSkip": "Bỏ qua",
+            "importExistingOverwrite": "Ghi đè",
+            "importExistingDuplicate": "Nhân bản",
+            "importExistingSkipHint": "Hồ sơ bạn đã có được giữ nguyên, cùng mật khẩu và token của nó.",
+            "importExistingOverwriteHint": "Hồ sơ bạn đã có được thay thế tại chỗ bằng mật khẩu và token trong tệp. Hồ sơ vẫn nằm trong mục yêu thích và nhóm của bạn.",
+            "importExistingDuplicateHint": "Hồ sơ bạn đã có vẫn được giữ, và bản sao từ tệp được thêm bên cạnh với tên có đánh số.",
+            "overwrittenCount": "Đã ghi đè {count}",
+            "duplicatedCount": "Đã nhân bản {count}",
+            "importJottaChainWarning": "Jottacloud gia hạn đăng nhập ở mỗi lần kết nối, và {names} hiện dùng chung một phiên với bản sao khác: bản sao kết nối trước sẽ đăng xuất bản còn lại (thiết bị chứa tệp gốc, hoặc hồ sơ mà nó được nhân bản từ đó). Hãy đăng nhập lại bản còn lại bằng Personal Login Token mới.",
+            "importOauthAppKept": "{names} đi kèm một ứng dụng OAuth tùy chỉnh khác với ứng dụng mà thiết bị này có cho nhà cung cấp đó. Ứng dụng đã lưu được giữ lại, vì vậy hãy đăng nhập lại nếu các hồ sơ này không còn kết nối được.",
+            "importTargetChanged": "{names} không bị ghi đè: tệp trỏ chúng tới một máy chủ khác, và mật khẩu cùng token đã lưu của chúng không được gửi tới đó. Hãy nhập bằng Nhân bản để thêm bản sao từ tệp, hoặc xóa hồ sơ trước.",
+            "importSharedSecretsFailed": "{names} đã được nhập, nhưng không thể lưu một bí mật dùng chung hoặc phiên từ tệp. Hãy đăng nhập lại các hồ sơ này nếu chúng không kết nối được."
         },
         "devtools": {
             "title": "AeroTools",

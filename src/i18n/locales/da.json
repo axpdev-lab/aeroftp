@@ -1357,7 +1357,20 @@
             "serverProfilesCount": "Serverprofiler: {count}",
             "aiKeysCount": "AI-nøgler: {count}",
             "oauthTokensCount": "OAuth-tokens: {count}",
-            "configEntriesCount": "Konfigurationsposter: {count}"
+            "configEntriesCount": "Konfigurationsposter: {count}",
+            "importExistingLabel": "Hvis en profil allerede findes",
+            "importExistingSkip": "Spring over",
+            "importExistingOverwrite": "Overskriv",
+            "importExistingDuplicate": "Dupliker",
+            "importExistingSkipHint": "En profil, du allerede har, bliver som den er, med sine adgangskoder og tokens.",
+            "importExistingOverwriteHint": "En profil, du allerede har, erstattes på stedet med de adgangskoder og tokens, filen indeholder. Den forbliver i dine favoritter og grupper.",
+            "importExistingDuplicateHint": "En profil, du allerede har, bliver, og kopien fra filen tilføjes ved siden af med et nummereret navn.",
+            "overwrittenCount": "{count} overskrevet",
+            "duplicatedCount": "{count} duplikeret",
+            "importJottaChainWarning": "Jottacloud fornyer sin login ved hver forbindelse, og {names} deler nu en med en anden kopi: den kopi, der forbinder først, logger den anden ud (enheden, filen kom fra, eller den profil, den blev duplikeret fra). Log den anden ind igen med et nyt Personal Login Token.",
+            "importOauthAppKept": "{names} kom med en anden brugerdefineret OAuth-app end den, som denne enhed har til den udbyder. Den gemte app blev beholdt, så log ind igen, hvis disse profiler holder op med at oprette forbindelse.",
+            "importTargetChanged": "{names} blev ikke overskrevet: filen peger dem på en anden server, og deres gemte adgangskoder og tokens må ikke sendes dertil. Importér med Dupliker for at tilføje kopien fra filen, eller slet profilen først.",
+            "importSharedSecretsFailed": "{names} blev importeret, men en delt hemmelighed eller session fra filen kunne ikke gemmes. Log ind på disse profiler igen, hvis de ikke forbinder."
         },
         "devtools": {
             "title": "AeroTools",

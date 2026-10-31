@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "7380337b272b0d8e92886841356007cb409d6d5b58ae81d3efff032201950632",
+    "enHash": "9e67e94c36ca581348a765bd924fc549def99c906f1c4bfaf25d890cc189a0ab",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -704,6 +704,9 @@
         ],
         "settings.githubOauthDesc": [
             "Device Flow OAuth — no Client ID needed"
+        ],
+        "settings.importOauthAppKept": [
+            "{names} came with a different custom OAuth app than the one this device has for that provider. The stored app was kept because other profiles use it, so sign in again if these profiles stop connecting."
         ],
         "settings.includeCredentialsHint": [
             "Passwords and API keys will be encrypted in the file"

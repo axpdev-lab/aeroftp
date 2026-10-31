@@ -1357,7 +1357,20 @@
             "serverProfilesCount": "{count} 个服务器配置文件",
             "aiKeysCount": "{count} 个 AI 密钥",
             "oauthTokensCount": "{count} 个 OAuth 令牌",
-            "configEntriesCount": "{count} 个配置条目"
+            "configEntriesCount": "{count} 个配置条目",
+            "importExistingLabel": "如果配置文件已存在",
+            "importExistingSkip": "跳过",
+            "importExistingOverwrite": "覆盖",
+            "importExistingDuplicate": "复制",
+            "importExistingSkipHint": "您已有的配置文件保持原样，包括其密码和令牌。",
+            "importExistingOverwriteHint": "您已有的配置文件会被原地替换，使用文件中的密码和令牌。它仍保留在您的收藏夹和分组中。",
+            "importExistingDuplicateHint": "您已有的配置文件保持不变，文件中的副本会以带编号的名称添加在它旁边。",
+            "overwrittenCount": "已覆盖 {count} 个",
+            "duplicatedCount": "已复制 {count} 个",
+            "importJottaChainWarning": "Jottacloud 每次连接都会更新登录，而 {names} 现在与另一个副本共用同一个登录：先连接的副本会让另一个退出登录（文件来源的设备，或其复制来源的配置文件）。请用新的 Personal Login Token 重新登录另一个。",
+            "importOauthAppKept": "{names} 导入时带有与此设备上该提供商已有的不同的自定义 OAuth 应用。已保留设备上存储的应用，如果这些配置文件无法连接，请重新登录。",
+            "importTargetChanged": "{names} 未被覆盖：该文件会让它们指向另一台服务器，而它们已保存的密码和令牌不能发送到那里。请使用“复制”导入以添加文件中的副本，或先删除该配置文件。",
+            "importSharedSecretsFailed": "{names} 已导入，但文件中的共享密钥或会话无法保存。如果这些配置文件无法连接，请重新登录。"
         },
         "devtools": {
             "title": "AeroTools",

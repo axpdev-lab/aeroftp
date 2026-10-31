@@ -21,6 +21,7 @@ import { ServerProfile } from '../types';
 import { LanguageSelector } from './LanguageSelector';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { ExportImportDialog } from './ExportImportDialog';
+import { accountChangeGeneration } from '../utils/userPartitions';
 import { KeystoreImportResultModal, KeystoreImportResult } from './KeystoreImportResultModal';
 import { RepairMultiUserPanel } from './RepairMultiUserPanel';
 import { GENERIC_BRIDGE_SOURCES, BRIDGE_FORMAT_EXTENSIONS } from './bridge/bridgeSources';
@@ -44,7 +45,7 @@ import { secureGetWithFallback } from '../utils/secureStorage';
 import { loadOAuthClientCredentials } from '../utils/oauthClientCredentials';
 import { keyReadFailure, notifyOAuthKeysUnavailable } from '../utils/oauthKeysMissing';
 import { dispatchMasterPasswordChanged } from '../utils/masterPasswordEvents';
-import { loadSavedServerProfiles, readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../utils/serverProfileStore';
+import { loadSavedServerProfiles, readSavedServerProfilesForWrite, reloadRestoredServerProfiles } from '../utils/serverProfileStore';
 import { appendImportedProfiles } from './bridge/bridgeImportCommit';
 import {
     DEFAULT_APP_FONT_FAMILY,
@@ -851,14 +852,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             fontFamily: normalizeAppFontFamily(settings.fontFamily), introHubIconSize: clampIntroHubIconSize(settings.introHubIconSize) };
         try {
             const scope = await bindSettingsScope(new ConnectScope(() => { if (!panelOpen.current) throw new GuiError('lease_interrupted'); }));
-            // General settings must not replace a newer/unavailable partition
-            // with the list captured when this dialog was opened.
-            const { profiles: currentServers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
+            // A partition that cannot be read refuses the save. The list itself is
+            // not written back: General settings do not change it, and a write
+            // would fail on, or invalidate, another window's save.
+            await readSavedServerProfilesForWrite();
             const committed = await updateAppSettings(existing => mergeAppSettingsDraft(base, captured,
                 { ...base, ...(existing || {}) }) as unknown as Record<string, unknown>, scope, true) as unknown as AppSettings;
             settingsBase.current = committed;
             setSettings(current => mergeAppSettingsDraft(captured, current, committed));
-            await storeSavedServerProfiles(currentServers, false, profilesUserId);
             // Save OAuth secrets to secure credential store sequentially (avoid vault write races)
             const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'] as const;
             for (const p of providers) {
@@ -1111,6 +1112,26 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     }, [appearanceSubTab, appearanceTabs, focusAppearanceSubTab]);
 
     if (!isOpen) return null;
+
+    // An import can fill a provider's stored OAuth app. Without this, a later Save of
+    // this panel would write the old value back over it. A field being edited stays.
+    const refreshStoredOAuthApps = async () => {
+        const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'] as const;
+        for (const p of providers) {
+            try {
+                const loaded = await loadOAuthClientCredentials(p);
+                setOauthSettings(previous => ({
+                    ...previous,
+                    [p]: {
+                        clientId: oauthEdits.current[p]?.clientId ? previous[p].clientId : loaded.clientId,
+                        clientSecret: oauthEdits.current[p]?.clientSecret ? previous[p].clientSecret : loaded.clientSecret,
+                    },
+                }));
+            } catch (error) {
+                logger.warn('OAuth app could not be read after the import', p, error);
+            }
+        }
+    };
 
     const updateOAuthSetting = (provider: keyof OAuthSettings, field: 'clientId' | 'clientSecret', value: string) => {
         oauthEdits.current[provider] = { ...oauthEdits.current[provider], [field]: true };
@@ -3819,29 +3840,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             /* non-critical */
                                                                         }
 
-                                                                        // Reload server profiles from the imported keystore into the
-                                                                        // active user's vault partition + state. The keystore import
-                                                                        // leaves the legacy `config_server_profiles` blob equal to the
-                                                                        // restored partition when that partition is readable here, and
-                                                                        // to the backup's own list when it is not (a vault-only backup,
-                                                                        // another machine without a transport key); #736.
-                                                                        // storeSavedServerProfiles routes that list through the
-                                                                        // partition layer so it lands under the active user id.
+                                                                        // The restore stored the list in the active account's partition itself, under
+                                                                        // the list lock: a load before that would have lost what it left in the blob.
                                                                         try {
-                                                                            const profilesJson = await invoke<string>('get_credential', { account: 'config_server_profiles' });
-                                                                            if (profilesJson) {
-                                                                                const importedProfiles = JSON.parse(profilesJson) as ServerProfile[];
-                                                                                // With decisions the list is what the user chose, and
-                                                                                // an empty one is a real answer, not a missing list.
-                                                                                const decided = result.profilesAfterDecisions !== undefined && result.profilesAfterDecisions !== null;
-                                                                                if (Array.isArray(importedProfiles) && (importedProfiles.length > 0 || decided)) {
-                                                                                    // As stored: a name another profile holds comes back as " (1)".
-                                                                                    setServers(await storeSavedServerProfiles(importedProfiles));
-                                                                                    onServersChanged?.();
-                                                                                }
-                                                                            }
+                                                                            const accountBefore = accountChangeGeneration();
+                                                                            const restored = await reloadRestoredServerProfiles();
+                                                                            // A switch meanwhile brings its own re-read: this list is the previous account's.
+                                                                            if (accountChangeGeneration() === accountBefore) setServers(restored);
+                                                                            onServersChanged?.();
                                                                         } catch (err) {
-                                                                            logger.warn('Imported server profiles could not be persisted', err);
+                                                                            logger.warn('Imported server profiles could not be read', err);
                                                                             setKeystoreImportResult(null);
                                                                             setKeystoreMessage({ type: 'error', text: String(err) });
                                                                             return;
@@ -4025,11 +4033,17 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 <ExportImportDialog
                     servers={servers}
                     initialMode={exportImportInitialMode}
-                    onImport={async (newServers) => {
-                        const updated = await appendImportedProfiles(newServers);
-                        setServers(updated);
-                        setShowExportImport(false);
-                        setExportImportInitialMode(undefined);
+                    onImport={async (newServers, expectedUserId) => {
+                        // The dialog closes itself (onClose) after its result.
+                        const accountBefore = accountChangeGeneration();
+                        const updated = await appendImportedProfiles(newServers, expectedUserId);
+                        // A switch meanwhile brings its own re-read: this list is the previous account's.
+                        if (accountChangeGeneration() === accountBefore) setServers(updated);
+                        onServersChanged?.();
+                    }}
+                    onProfilesStored={(stored) => {
+                        setServers(stored);
+                        void refreshStoredOAuthApps();
                         onServersChanged?.();
                     }}
                     onClose={() => { setShowExportImport(false); setExportImportInitialMode(undefined); }}

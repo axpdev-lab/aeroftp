@@ -54,12 +54,14 @@ export const copyProfileVaultSecrets = async (
   sourceProfileId: string,
   targetProfileId: string,
   protocol?: string,
+  expectedUserId?: number,
 ): Promise<ProfileVaultSecretCopyResult> => {
   try {
     return await invoke<ProfileVaultSecretCopyResult>('copy_profile_secrets', {
       sourceId: sourceProfileId,
       targetId: targetProfileId,
       protocol: protocol ?? null,
+      expectedUserId: expectedUserId ?? null,
     });
   } catch {
     // Best-effort: a copy failure leaves the duplicate credential-free, exactly
