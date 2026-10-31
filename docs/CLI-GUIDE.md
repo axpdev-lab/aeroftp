@@ -1868,9 +1868,29 @@ aeroftp-cli profile-export --output ./my-servers.aeroftp --include-credentials
 aeroftp-cli profile-export --output ./subset.aeroftp --ids "Backup,3"
 aeroftp-cli profile-export --output ./subset.aeroftp --name "axpbuntu-remote (admin)"
 
-# Re-import (profiles already present by id or host:port:username are skipped)
+# Re-import: a profile you already have (same id) is skipped by default
 aeroftp-cli profile-import --input ./my-servers.aeroftp
+
+# Refresh existing profiles and their secrets from the backup, in place
+aeroftp-cli profile-import --input ./my-servers.aeroftp --on-existing overwrite
+
+# Preview what a duplicate import would do, touching nothing
+aeroftp-cli profile-import --input ./my-servers.aeroftp --on-existing duplicate --dry-run
 ```
+
+`--on-existing` decides what happens to a profile of the file that the active user already has, recognised by its profile id (the GUI import offers the same three choices):
+
+| Mode | Existing profile | Its secrets |
+|------|------------------|-------------|
+| `skip` (default) | kept as it is | kept as they are |
+| `overwrite` | replaced in place under the same id, so it stays in favorites and groups | every secret the file carries replaces the stored one; a secret the file does not carry is kept; a file that points the profile at another server is refused |
+| `duplicate` | kept; the file's copy is added under a new id with the first free " (1)", " (2)" name | the copy gets the file's secrets, the original keeps its own |
+
+A profile that only shares host, port and username with an existing one is never a conflict: it is added in every mode and reported as resembling an existing profile. Secrets are restored only for the profiles that are added, overwritten or duplicated, never for a skipped one, and `--dry-run` restores none. An overwrite follows the file for the settings a backup always carries, including an empty one and the whole of its options. Three things stay as stored, because the file cannot speak to them: a setting the format omits when empty (the Crypt overlay, the share-link base, the icons, the per-protocol credential opt-in), so a backup never turns an overlay off; a secret kept in the options that the file does not carry; and a setting outside the format. Secrets shared by every profile of a provider (a custom OAuth app's client id, secret and region, the legacy Jottacloud chain) are written only when none is stored or they already belong to that same app or profile, so an import never swaps the ones another profile uses; when a profile came with another OAuth app, the import says so, and that profile may need a new sign-in. If the file would point a profile at another server (a different host, port, username, protocol or provider, or a different endpoint, region or account option) or over a weaker connection (TLS mode, WebDAV scheme, certificate verification), an overwrite refuses that profile and says so: it keeps its configuration and secrets, so a password is never sent to the new server; use `duplicate` to add the file's copy, or delete the profile first. A different bucket or container stays an overwrite. Secrets are written for the account the import read; `--user` must name the active account, except with `--dry-run`, because restored secrets also reach the shared vault.
+
+The import is one operation, whether it starts from the CLI or the GUI: the profile list and each profile's own secrets end up from the same file, or neither changes. A failure before the list is saved (a secret or the list that cannot be written) saves no profile and puts the secrets it wrote back, so stored credentials stay as they were, except any key the error names, without its value, as keeping the file's one; run the same import again with the same `--on-existing`. Two imports at once run one after the other. If the list changes while an import runs, the import plans again once, and if it changes again it stops without changes and asks you to import again. A secret shared across profiles (a custom OAuth app, the legacy Jottacloud chain) or a native Proton session is written after the list: if that write fails, the import stands with the file's other credentials in place, and the warning names the profile to sign in again; no new import is needed.
+
+A Jottacloud refresh chain changes on every connection, so only one holder of it stays signed in. When an imported, overwritten or duplicated Jottacloud profile brings its chain, the import warns: the first copy that connects signs the other out (the device the file came from, or the profile it was duplicated from), which then needs a new Personal Login Token.
 
 Secrets are **opt-in**: without `--include-credentials` the file carries only the profile configuration and never any secret. The password resolution order (first match wins) is the `AEROFTP_PROFILE_PASSWORD` environment variable, then `--password-stdin`, then `--password <pw>` (visible in `ps`), then an interactive prompt. Use `--json` for a machine-readable summary.
 

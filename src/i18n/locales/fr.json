@@ -1357,7 +1357,20 @@
             "serverProfilesCount": "Profils de serveur : {count}",
             "aiKeysCount": "Clés AI : {count}",
             "oauthTokensCount": "Jetons OAuth : {count}",
-            "configEntriesCount": "Entrées de configuration : {count}"
+            "configEntriesCount": "Entrées de configuration : {count}",
+            "importExistingLabel": "Si un profil existe déjà",
+            "importExistingSkip": "Ignorer",
+            "importExistingOverwrite": "Écraser",
+            "importExistingDuplicate": "Dupliquer",
+            "importExistingSkipHint": "Un profil que vous avez déjà reste tel quel, avec ses mots de passe et ses jetons.",
+            "importExistingOverwriteHint": "Un profil que vous avez déjà est remplacé sur place, avec les mots de passe et les jetons du fichier. Il reste dans vos favoris et groupes.",
+            "importExistingDuplicateHint": "Un profil que vous avez déjà est conservé, et la copie du fichier est ajoutée à côté avec un nom numéroté.",
+            "overwrittenCount": "{count} écrasés",
+            "duplicatedCount": "{count} dupliqués",
+            "importJottaChainWarning": "Jottacloud renouvelle sa connexion à chaque session, et {names} en partage désormais une avec une autre copie : la copie qui se connecte en premier déconnecte l'autre (l'appareil d'où vient le fichier, ou le profil dont elle a été dupliquée). Reconnectez l'autre avec un nouveau Personal Login Token.",
+            "importOauthAppKept": "{names} sont arrivés avec une app OAuth personnalisée différente de celle que cet appareil possède pour ce fournisseur. L'app enregistrée a été conservée, reconnectez-vous donc si ces profils n'arrivent plus à se connecter.",
+            "importTargetChanged": "{names} n'ont pas été écrasés : le fichier les fait pointer vers un autre serveur, et leurs mots de passe et jetons enregistrés ne doivent pas y aller. Importez avec Dupliquer pour ajouter la copie du fichier, ou supprimez d'abord le profil.",
+            "importSharedSecretsFailed": "{names} ont été importés, mais un secret partagé ou une session du fichier n'a pas pu être enregistré. Reconnectez-vous à ces profils s'ils ne se connectent pas."
         },
         "devtools": {
             "title": "AeroTools",

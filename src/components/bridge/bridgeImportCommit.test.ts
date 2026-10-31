@@ -19,7 +19,9 @@ describe('Crypt bridge import', () => {
         expect(bridgeProfileKey(base)).not.toBe(bridgeProfileKey(crypt));
         const outcome = await commitImportedServers([crypt], new Set([bridgeProfileKey(base)]), onImport);
         expect(outcome).toEqual({ added: 1, updated: 0 });
-        expect(onImport).toHaveBeenCalledWith([crypt]);
+        // Bound to the account the list was read from (3), so a switch in
+        // between refuses the write instead of landing in another account.
+        expect(onImport).toHaveBeenCalledWith([crypt], 3);
     });
 
     it('waits for a failed async import before restoring the profile list', async () => {
@@ -28,7 +30,7 @@ describe('Crypt bridge import', () => {
             async () => { throw new Error('vault write failed'); });
         expect(outcome.error).toBeDefined();
         // The rollback goes back to the account the backup was read from.
-        expect(storeSavedServerProfiles).toHaveBeenLastCalledWith([base, crypt], false, 3);
+        expect(storeSavedServerProfiles).toHaveBeenLastCalledWith([base, crypt], false, 3, undefined);
     });
 });
 
@@ -37,7 +39,7 @@ describe('the import callback and the commit helper together', () => {
     // against each other's mocks: the callback reads back what the commit wrote.
     const fakeVault = (initial: ServerProfile[]) => {
         const state = { profiles: [...initial], writes: 0 };
-        vi.mocked(readSavedServerProfilesForWrite).mockImplementation(async () => ({ profiles: [...state.profiles], userId: 3 }));
+        vi.mocked(readSavedServerProfilesForWrite).mockImplementation(async () => ({ profiles: [...state.profiles], userId: 3, revision: `r${state.writes}` }));
         vi.mocked(storeSavedServerProfiles).mockImplementation(async (profiles: ServerProfile[]) => {
             state.writes += 1;
             state.profiles = [...profiles];
@@ -58,6 +60,63 @@ describe('the import callback and the commit helper together', () => {
         const merged = await appendImportedProfiles([imported]);
         expect(merged.map(s => s.name)).toEqual([base.name, `${base.name} (1)`]);
         expect(merged).toEqual(vault.profiles);
+    });
+
+    // Two profiles of one batch with one id would both be stored.
+    it('refuses a batch that holds two profiles of one id', async () => {
+        const vault = fakeVault([base]);
+        const one: ServerProfile = { ...base, id: 'twin', name: 'One' };
+        const two: ServerProfile = { ...base, id: 'twin', name: 'Two' };
+        await expect(appendImportedProfiles([one, two])).rejects.toThrow('share the id twin');
+        expect(vault.writes).toBe(0);
+    });
+
+    // Every profile skipped: nothing to store, so the list is not rewritten.
+    it('does not rewrite the list when there is nothing to store', async () => {
+        const vault = fakeVault([base]);
+        expect(await appendImportedProfiles([])).toEqual([base]);
+        expect(vault.writes).toBe(0);
+    });
+
+    // A bridge that read the legacy store expects no account (null): one that
+    // became active since must not receive the profiles.
+    it('refuses to write to an account that became active after a legacy read', async () => {
+        const vault = fakeVault([]);
+        const imported: ServerProfile = { ...base, id: 'imported' };
+        await expect(appendImportedProfiles([imported], null)).rejects.toThrow('active account changed');
+        expect(vault.writes).toBe(0);
+    });
+
+    // A vault that reads no account (the legacy store) is not the account the
+    // import restored into either.
+    it('refuses to write to a vault that reads no account when an account is expected', async () => {
+        const vault = fakeVault([]);
+        vi.mocked(readSavedServerProfilesForWrite).mockImplementation(async () => ({ profiles: [], userId: undefined }));
+        const imported: ServerProfile = { ...base, id: 'imported' };
+        await expect(appendImportedProfiles([imported], 3)).rejects.toThrow('active account changed');
+        expect(vault.writes).toBe(0);
+    });
+
+    // The import restored its secrets into account 4; the vault now writes for
+    // account 3 (switched from another window): nothing reaches account 3.
+    it('refuses to write when the active account is not the one the import restored into', async () => {
+        const vault = fakeVault([base]);
+        const imported: ServerProfile = { ...base, id: 'imported', name: 'Imported' };
+        await expect(appendImportedProfiles([imported], 4)).rejects.toThrow('active account changed');
+        expect(vault.writes).toBe(0);
+        const merged = await appendImportedProfiles([imported], 3);
+        expect(merged.map(s => s.id)).toEqual([base.id, 'imported']);
+    });
+
+    // A profile to append whose id the vault already holds was saved by
+    // another window after the import was planned: refuse, rather than store
+    // two profiles of one id or replace one nobody asked to replace.
+    it('refuses to append a profile whose id the vault already holds, and writes nothing', async () => {
+        const vault = fakeVault([base]);
+        const sameId: ServerProfile = { ...base, name: 'From a bridge' };
+        await expect(appendImportedProfiles([sameId])).rejects.toThrow('saved by another window');
+        expect(vault.writes).toBe(0);
+        expect(vault.profiles).toEqual([base]);
     });
 
     it('does not resurrect the profile it just replaced when that leaves the vault empty', async () => {
@@ -109,6 +168,49 @@ describe('the import callback and the commit helper together', () => {
             async servers => { await appendImportedProfiles(servers); });
         expect(vault.profiles).toEqual([]);
         expect(outcome.error).toContain('could not be restored');
+    });
+
+    // The write carries the revision of its own read, so a save from another
+    // window in between is refused and not overwritten.
+    it('binds the append to the revision of the list it read', async () => {
+        fakeVault([base]);
+        const imported: ServerProfile = { ...base, id: 'imported' };
+        await appendImportedProfiles([imported]);
+        expect(storeSavedServerProfiles).toHaveBeenLastCalledWith([base, imported], false, 3, 'r0');
+    });
+
+    // The rollback restores only what this call removed, into the list as it
+    // stands: what another window saved during the import stays.
+    it('a rollback puts back only the removed profile, into a list read again', async () => {
+        const vault = fakeVault([base]);
+        const other: ServerProfile = { ...base, id: 'other', name: 'Saved elsewhere' };
+        const replacement: ServerProfile = { ...base, id: 'replacement', name: 'Koofr renamed' };
+        const outcome = await commitImportedServers([replacement], new Set([bridgeProfileKey(base)]),
+            async () => {
+                vault.profiles = [other];
+                throw new Error('vault write failed');
+            });
+        expect(outcome.error).toContain('No changes were made');
+        expect(vault.profiles).toEqual([other, base]);
+    });
+
+    // Another profile took the removed profile's name meanwhile: the rollback keeps
+    // it and says so, rather than claim nothing changed.
+    it('a rollback reports a profile put back under another name', async () => {
+        const vault = fakeVault([base]);
+        const other: ServerProfile = { ...base, id: 'other' };
+        vi.mocked(storeSavedServerProfiles).mockImplementation(async (profiles: ServerProfile[]) => {
+            vault.profiles = profiles.map(p => (p.id === base.id && profiles.some(q => q.id === 'other') ? { ...p, name: `${p.name} (1)` } : p));
+            return vault.profiles;
+        });
+        const replacement: ServerProfile = { ...base, id: 'replacement' };
+        const outcome = await commitImportedServers([replacement], new Set([bridgeProfileKey(base)]),
+            async () => {
+                vault.profiles = [other];
+                throw new Error('vault write failed');
+            });
+        expect(outcome.error).toContain('stored with a number');
+        expect(outcome.error).not.toContain('No changes were made');
     });
 
     it('refuses the import when the saved profiles cannot be read, without writing or calling back', async () => {

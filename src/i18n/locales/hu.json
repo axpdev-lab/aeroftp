@@ -1357,7 +1357,20 @@
             "serverProfilesCount": "{count} kiszolgálóprofil",
             "aiKeysCount": "{count} AI-kulcs",
             "oauthTokensCount": "{count} OAuth-token",
-            "configEntriesCount": "{count} konfigurációs bejegyzés"
+            "configEntriesCount": "{count} konfigurációs bejegyzés",
+            "importExistingLabel": "Ha a profil már létezik",
+            "importExistingSkip": "Kihagyás",
+            "importExistingOverwrite": "Felülírás",
+            "importExistingDuplicate": "Duplikálás",
+            "importExistingSkipHint": "A már meglévő profil változatlan marad, jelszavaival és tokenjeivel együtt.",
+            "importExistingOverwriteHint": "A már meglévő profil a helyén lecserélődik a fájlban található jelszavakkal és tokenekkel. A kedvencek és csoportok között marad.",
+            "importExistingDuplicateHint": "A már meglévő profil megmarad, a fájlból származó másolat pedig mellé kerül sorszámozott névvel.",
+            "overwrittenCount": "{count} felülírva",
+            "duplicatedCount": "{count} duplikálva",
+            "importJottaChainWarning": "A Jottacloud minden csatlakozáskor megújítja a bejelentkezését, és a(z) {names} most egyet megoszt egy másik másolattal: amelyik másolat előbb csatlakozik, kijelentkezteti a másikat (az eszközt, ahonnan a fájl származik, vagy a profilt, amelyből duplikálták). Jelentkeztesse be újra a másikat egy új Personal Login Tokennel.",
+            "importOauthAppKept": "{names} a szolgáltatóhoz ezen az eszközön megadottól eltérő egyéni OAuth-alkalmazással érkezett. A tárolt alkalmazás megmaradt, ezért jelentkezzen be újra, ha ezek a profilok nem tudnak csatlakozni.",
+            "importTargetChanged": "{names} nem lettek felülírva: a fájl egy másik szerverre irányítja őket, és a mentett jelszavaik és tokenjeik nem kerülhetnek oda. Importáljon a Duplikálás opcióval a fájlból származó másolat hozzáadásához, vagy előbb törölje a profilt.",
+            "importSharedSecretsFailed": "A(z) {names} importálva lett, de a fájlból egy megosztott titkot vagy munkamenetet nem sikerült tárolni. Jelentkezzen be újra ezekbe a profilokba, ha nem csatlakoznak."
         },
         "devtools": {
             "title": "AeroTools",

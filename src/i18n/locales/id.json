@@ -1357,7 +1357,20 @@
             "serverProfilesCount": "{count} profil server",
             "aiKeysCount": "{count} kunci AI",
             "oauthTokensCount": "{count} token OAuth",
-            "configEntriesCount": "{count} entri konfigurasi"
+            "configEntriesCount": "{count} entri konfigurasi",
+            "importExistingLabel": "Jika profil sudah ada",
+            "importExistingSkip": "Lewati",
+            "importExistingOverwrite": "Timpa",
+            "importExistingDuplicate": "Duplikat",
+            "importExistingSkipHint": "Profil yang sudah Anda miliki tetap apa adanya, beserta kata sandi dan token-nya.",
+            "importExistingOverwriteHint": "Profil yang sudah Anda miliki diganti di tempat, dengan kata sandi dan token dari file. Profil tetap ada di favorit dan grup Anda.",
+            "importExistingDuplicateHint": "Profil yang sudah Anda miliki tetap ada, dan salinan dari file ditambahkan di sampingnya dengan nama bernomor.",
+            "overwrittenCount": "{count} ditimpa",
+            "duplicatedCount": "{count} diduplikasi",
+            "importJottaChainWarning": "Jottacloud memperbarui login-nya pada setiap koneksi, dan {names} kini berbagi satu dengan salinan lain: salinan yang terhubung lebih dulu akan mengeluarkan yang lain (perangkat asal file, atau profil tempat salinan ini diduplikasi). Masuk lagi ke yang lain dengan Personal Login Token baru.",
+            "importOauthAppKept": "{names} datang dengan aplikasi OAuth kustom yang berbeda dari yang dimiliki perangkat ini untuk penyedia tersebut. Aplikasi yang tersimpan dipertahankan, jadi masuk lagi jika profil ini berhenti terhubung.",
+            "importTargetChanged": "{names} tidak ditimpa: berkas mengarahkannya ke server lain, dan kata sandi serta token tersimpannya tidak boleh dikirim ke sana. Impor dengan Duplikat untuk menambahkan salinan dari berkas, atau hapus profil terlebih dahulu.",
+            "importSharedSecretsFailed": "{names} berhasil diimpor, tetapi rahasia bersama atau sesi dari file tidak dapat disimpan. Masuk lagi ke profil ini jika tidak terhubung."
         },
         "devtools": {
             "title": "AeroTools",

@@ -7415,7 +7415,7 @@ mod tests {
                 | PE::Unknown(_) => true,
                 // Renders the payload with no label; the leading-status check
                 // in `mentions_ftp_status` is what recognises this one.
-                PE::Other(_) | PE::ParallelRefused(_) => true,
+                PE::Other(_) | PE::ParallelRefused(_) | PE::PinRefused(_) => true,
                 PE::NotConnected | PE::Cancelled | PE::Timeout => false,
                 PE::RestrictedChar { .. } => false,
                 // Our own sentence about the server's key, built before any
@@ -7441,6 +7441,7 @@ mod tests {
             PE::Cancelled,
             PE::TransferFailed(reply.clone()),
             PE::ParallelRefused(reply.clone()),
+            PE::PinRefused(reply.clone()),
             PE::Timeout,
             PE::NetworkError(reply.clone()),
             PE::ParseError(reply.clone()),
@@ -7457,7 +7458,7 @@ mod tests {
         ];
         assert_eq!(
             every_variant.len(),
-            25,
+            26,
             "the list stopped covering every variant; the match above is what fails the build, this only says how many were meant"
         );
 

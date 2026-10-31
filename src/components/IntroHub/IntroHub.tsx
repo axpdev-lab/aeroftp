@@ -16,6 +16,7 @@ import { getProviderById } from '../../providers';
 import { newFormTabOptions } from './newFormTabOptions';
 import { useTranslation } from '../../i18n';
 import { loadSavedServerProfiles } from '../../utils/serverProfileStore';
+import { accountChangeGeneration } from '../../utils/userPartitions';
 import { appendImportedProfiles } from '../bridge/bridgeImportCommit';
 import type { ProviderType } from '../../types';
 import type { CatalogCategoryId } from '../../types/catalog';
@@ -521,10 +522,16 @@ export function IntroHub(props: IntroHubProps) {
                     servers={paletteServers}
                     initialMode={exportPreselect ? 'export' : undefined}
                     initialSelectedServerIds={exportPreselect ?? undefined}
-                    onImport={async (newServers) => {
-                        const updated = await appendImportedProfiles(newServers);
-                        setPaletteServers(updated);
-                        closeExportImport();
+                    onImport={async (newServers, expectedUserId) => {
+                        // The dialog closes itself (onClose) after its result.
+                        const accountBefore = accountChangeGeneration();
+                        const updated = await appendImportedProfiles(newServers, expectedUserId);
+                        // A switch meanwhile brings its own re-read: this list is the previous account's.
+                        if (accountChangeGeneration() === accountBefore) setPaletteServers(updated);
+                        onServersChanged?.();
+                    }}
+                    onProfilesStored={(stored) => {
+                        setPaletteServers(stored);
                         onServersChanged?.();
                     }}
                     onClose={closeExportImport}
