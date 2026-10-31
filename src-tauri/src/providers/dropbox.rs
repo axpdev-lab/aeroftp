@@ -45,16 +45,21 @@ const DROPBOX_TRANSFER_MAX_SESSIONS: u16 = 4;
 /// `total_size` / `part_size` (so `upload_part` rebuilds the byte offset
 /// from `part_number` alone) and the normalised destination path needed by
 /// the `upload_session/finish` commit body.
-/// What a failed upload session says: Dropbox's summary of the error, without
-/// the rest of the body, which can carry the session id.
+/// What a failed upload session says: Dropbox's summary of the error, or the
+/// body without any session id, which must not reach a message or a log.
 fn session_error_text(body: &str) -> String {
-    serde_json::from_str::<serde_json::Value>(body)
+    let summary = serde_json::from_str::<serde_json::Value>(body)
         .ok()
-        .and_then(|json| json.get("error_summary")?.as_str().map(str::to_string))
-        .map_or_else(
-            || sanitize_api_error(body),
-            |summary| sanitize_api_error(&summary),
-        )
+        .and_then(|json| json.get("error_summary")?.as_str().map(str::to_string));
+    let text = summary.unwrap_or_else(|| {
+        static SESSION_ID: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+            regex::Regex::new(r#""[a-z_]*session_id"\s*:\s*"[^"]*""#).expect("a valid pattern")
+        });
+        SESSION_ID
+            .replace_all(body, r#""session_id":"***""#)
+            .into_owned()
+    });
+    sanitize_api_error(&text)
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -1290,7 +1295,7 @@ impl StorageProvider for DropboxProvider {
                 let text = start_resp.text().await.unwrap_or_default();
                 return Err(ProviderError::Other(format!(
                     "Upload session start failed: {}",
-                    sanitize_api_error(&text)
+                    session_error_text(&text)
                 )));
             }
 
@@ -1340,7 +1345,7 @@ impl StorageProvider for DropboxProvider {
                     let text = append_resp.text().await.unwrap_or_default();
                     return Err(ProviderError::Other(format!(
                         "Upload session append failed: {}",
-                        sanitize_api_error(&text)
+                        session_error_text(&text)
                     )));
                 }
 
@@ -1382,7 +1387,7 @@ impl StorageProvider for DropboxProvider {
                 let text = finish_resp.text().await.unwrap_or_default();
                 return Err(ProviderError::Other(format!(
                     "Upload session finish failed: {}",
-                    sanitize_api_error(&text)
+                    session_error_text(&text)
                 )));
             }
             progress.complete();
@@ -2525,7 +2530,7 @@ impl StorageProvider for DropboxProvider {
                 "Dropbox upload_part {} failed (HTTP {}): {}",
                 part_number,
                 status,
-                sanitize_api_error(&text)
+                session_error_text(&text)
             );
             if let Some(tail) =
                 dropbox_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref())
@@ -2672,6 +2677,8 @@ mod tests {
         let body = r#"{"error_summary":"path/disallowed_name/.","error":{".tag":"path"},"upload_session_id":"AAAAsecret"}"#;
         assert_eq!(session_error_text(body), "path/disallowed_name/.");
         assert_eq!(session_error_text("gateway down"), "gateway down");
+        let no_summary = session_error_text(r#"{"error":"x","upload_session_id":"AAAAsecret"}"#);
+        assert!(!no_summary.contains("AAAAsecret"), "{no_summary}");
     }
 
     #[tokio::test]

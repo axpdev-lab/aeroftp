@@ -19047,6 +19047,8 @@ mod folder_download_live_tests {
         held: Option<String>,
         served_at_held: Option<usize>,
         failing: std::collections::HashSet<String>,
+        /// A listing moves the current folder, as on kDrive.
+        list_moves_cwd: bool,
         /// Raised when a download starts, as the first Stop raises it.
         stop_on_download: Option<Arc<AtomicBool>>,
     }
@@ -19145,6 +19147,9 @@ mod folder_download_live_tests {
                 }
                 let mut st = self.state.lock().unwrap();
                 st.served_at_held = Some(st.served.len());
+            }
+            if self.state.lock().unwrap().list_moves_cwd {
+                self.cwd = path.clone();
             }
             let mut st = self.state.lock().unwrap();
             st.listed.push(path.clone());
@@ -19369,6 +19374,19 @@ mod folder_download_live_tests {
             .collect();
         found.sort();
         assert_eq!(found, ["/r/sub/deep/a.txt"]);
+    }
+
+    /// A provider that moves its current folder as it lists is back where it
+    /// was after a search, so a later relative upload lands where it should.
+    #[tokio::test]
+    async fn a_walked_search_leaves_the_current_folder_alone() {
+        let (mut tree, state) = FolderTree::new(&["a.txt", "sub/a.txt"]);
+        state.lock().unwrap().list_moves_cwd = true;
+        tree.cwd = "/r".to_string();
+        crate::providers::find_by_walk(&mut tree, "/r/sub", "a.txt")
+            .await
+            .unwrap();
+        assert_eq!(tree.cwd, "/r");
     }
 
     /// The folder searched that cannot be read is an error, not an empty

@@ -497,7 +497,7 @@ impl YandexDiskProvider {
     /// Resolve a relative path against current_path with traversal validation.
     fn resolve_path_safe(&self, path: &str) -> Result<String, ProviderError> {
         validate_yd_path(path)?;
-        let resolved = if path.is_empty() || path == "." || path == "/" {
+        let resolved = if path.is_empty() || path == "." {
             self.current_path.clone()
         } else if path.starts_with('/') || path.starts_with("disk:") {
             path.to_string()
@@ -2048,6 +2048,15 @@ impl StorageProvider for YandexDiskProvider {
 
 #[cfg(test)]
 mod tests {
+    /// `/` is the disk's root, also after a `cd`: a search or a listing of the
+    /// root used to read the current folder instead.
+    #[test]
+    fn the_root_is_the_root_after_a_cd() {
+        let mut p = YandexDiskProvider::new("fixture".to_string(), None);
+        p.current_path = "/docs".to_string();
+        assert_eq!(p.resolve_path_safe("/").unwrap(), "/");
+        assert_eq!(p.resolve_path_safe(".").unwrap(), "/docs");
+    }
 
     /// A Yandex Disk double holding the files `/a.txt` and `/b.txt` and the
     /// folder `/d`. A move onto a taken path without `overwrite=true`

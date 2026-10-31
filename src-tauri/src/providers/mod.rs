@@ -202,8 +202,29 @@ pub(crate) async fn find_by_walk<P>(
 where
     P: StorageProvider + ?Sized,
 {
+    // Some providers move their current folder as they list: a search must not
+    // leave a later relative upload in the last folder it walked.
+    let start = provider.pwd().await?;
+    let found = walk_for_find(provider, path, pattern, &start).await;
+    if provider.pwd().await.ok().as_deref() != Some(start.as_str()) {
+        if let Err(error) = provider.cd(&start).await {
+            tracing::warn!("find: could not return to {start:?}: {error}");
+        }
+    }
+    found
+}
+
+async fn walk_for_find<P>(
+    provider: &mut P,
+    path: &str,
+    pattern: &str,
+    start: &str,
+) -> Result<Vec<RemoteEntry>, ProviderError>
+where
+    P: StorageProvider + ?Sized,
+{
     let root = match path {
-        "" | "." => provider.pwd().await?,
+        "" | "." => start.to_string(),
         path => path.to_string(),
     };
     let mut walk = crate::sync_core::FindWalk::new(&root);

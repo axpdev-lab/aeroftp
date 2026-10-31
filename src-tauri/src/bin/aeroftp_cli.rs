@@ -39167,9 +39167,10 @@ fn publish_extracted(
         }
     }
     if !overwrite {
+        // A dangling link is a file there too, which `exists` does not see.
         let existing: Vec<_> = files
             .iter()
-            .filter(|file| dest.join(file).exists())
+            .filter(|file| dest.join(file).symlink_metadata().is_ok())
             .collect();
         if let Some(first) = existing.first() {
             return Err(format!(
@@ -39184,10 +39185,33 @@ fn publish_extracted(
         std::fs::create_dir_all(dest.join(folder)).map_err(|e| e.to_string())?;
     }
     for file in &files {
-        std::fs::rename(staging.join(file), dest.join(file))
-            .map_err(|e| format!("Failed to write {}: {e}", file.display()))?;
+        let (from, to) = (staging.join(file), dest.join(file));
+        if overwrite {
+            std::fs::rename(&from, &to)
+        } else {
+            move_without_replacing(&from, &to)
+        }
+        .map_err(|e| format!("Failed to write {}: {e}", file.display()))?;
     }
     Ok(())
+}
+
+/// Move a file only if nothing is at `to`, also if something appears there
+/// after a check. A rename would replace it; a hard link cannot. A filesystem
+/// without hard links gets an exclusive create.
+fn move_without_replacing(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    match std::fs::hard_link(from, to) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => return Err(e),
+        Err(_) => {
+            let mut target = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(to)?;
+            std::io::copy(&mut std::fs::File::open(from)?, &mut target)?;
+        }
+    }
+    std::fs::remove_file(from)
 }
 
 fn is_not_found_error(e: &ProviderError) -> bool {
@@ -97638,6 +97662,24 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             !dest.join("new.txt").exists(),
             "nothing moves when it refuses"
         );
+
+        // A file that appears after the check is not replaced either.
+        std::fs::write(root.path().join("late"), "late").unwrap();
+        let moved = root.path().join("moved");
+        std::fs::write(&moved, "vault").unwrap();
+        let late = root.path().join("late");
+        assert!(move_without_replacing(&moved, &late).is_err());
+        assert_eq!(std::fs::read_to_string(&late).unwrap(), "late");
+
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(root.path().join("gone"), dest.join("new.txt")).unwrap();
+            assert!(
+                publish_extracted(&staging, &dest, false).is_err(),
+                "a dangling link is a file"
+            );
+            std::fs::remove_file(dest.join("new.txt")).unwrap();
+        }
 
         publish_extracted(&staging, &dest, true).unwrap();
         assert_eq!(
