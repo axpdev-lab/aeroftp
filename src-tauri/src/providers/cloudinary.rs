@@ -342,7 +342,8 @@ impl CloudinaryProvider {
     }
 
     fn resolve_path(&self, path: &str) -> String {
-        if path.trim().is_empty() {
+        // A name of spaces is a name, not the current folder.
+        if path.is_empty() {
             return self.current_path.clone();
         }
         if path.starts_with('/') {
@@ -2133,6 +2134,25 @@ fn validate_download_url(url: &str) -> Result<(), ProviderError> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_name_keeps_its_leading_and_trailing_spaces() {
+        // A name with a leading or trailing space is a name of its own, and a
+        // name of spaces only is not the current folder. Paths here carry
+        // no leading slash.
+        assert_eq!(super::normalize_path("/ a"), " a");
+        assert_eq!(super::normalize_path("/a /b "), "a /b ");
+        let mut p = super::CloudinaryProvider::new(super::CloudinaryConfig {
+            cloud_name: "test".to_string(),
+            api_key: "test".to_string(),
+            api_secret: secrecy::SecretString::from("test".to_string()),
+            initial_path: None,
+        });
+        p.current_path = "Cloud".to_string();
+        assert_eq!(p.resolve_path("   "), "Cloud/   ");
+        assert_eq!(p.resolve_path(" a"), "Cloud/ a");
+        assert_eq!(p.resolve_path("/a "), "a ");
+    }
+
     use super::*;
 
     /// The dedupe took an `upload` and a `private` asset with one public id

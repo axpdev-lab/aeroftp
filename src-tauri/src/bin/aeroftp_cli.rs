@@ -35538,7 +35538,7 @@ async fn cmd_get(
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
 ) -> i32 {
-    if remote.trim().is_empty() {
+    if remote.is_empty() {
         print_error(format, "Missing remote path for get", 5);
         return 5;
     }
@@ -37688,7 +37688,7 @@ async fn cmd_put(
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
 ) -> i32 {
-    if local.trim().is_empty() {
+    if local.is_empty() {
         print_error(format, "Missing local path for put", 5);
         return 5;
     }
@@ -40145,7 +40145,7 @@ fn print_versions(versions: &[FileVersion], path: &str, format: OutputFormat) {
 
 /// `versions list`: list previous versions of a remote file.
 async fn cmd_versions_list(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32 {
-    if path.trim().is_empty() {
+    if path.is_empty() {
         print_error(format, "Missing remote file path for 'versions list'", 5);
         return 5;
     }
@@ -40185,7 +40185,7 @@ async fn cmd_versions_get(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
-    if path.trim().is_empty() {
+    if path.is_empty() {
         print_error(format, "Missing remote file path for 'versions get'", 5);
         return 5;
     }
@@ -40197,7 +40197,7 @@ async fn cmd_versions_get(
         );
         return 5;
     }
-    if local.trim().is_empty() {
+    if local.is_empty() {
         print_error(
             format,
             "Missing local destination path for 'versions get'",
@@ -40269,7 +40269,7 @@ async fn cmd_versions_restore(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
-    if path.trim().is_empty() {
+    if path.is_empty() {
         print_error(format, "Missing remote file path for 'versions restore'", 5);
         return 5;
     }
@@ -40325,7 +40325,7 @@ async fn cmd_versions_purge(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
-    if path.trim().is_empty() {
+    if path.is_empty() {
         print_error(format, "Missing remote file path for 'versions purge'", 5);
         return 5;
     }
@@ -40703,7 +40703,7 @@ fn rcat_staging_file() -> Result<tempfile::NamedTempFile, String> {
 }
 
 async fn cmd_rcat(url: &str, remote: &str, cli: &Cli, format: OutputFormat) -> i32 {
-    if remote.trim().is_empty() {
+    if remote.is_empty() {
         print_error(format, "Missing remote path for rcat", 5);
         return 5;
     }
@@ -89617,6 +89617,38 @@ mod tests {
             .await
         });
         assert_eq!(code, 130, "-1 means the put was still running");
+    }
+
+    /// A remote name of spaces only is a name: `versions list` and `get`
+    /// refused it as a missing argument (exit 5) before connecting.
+    #[test]
+    fn a_remote_name_of_spaces_is_not_a_missing_path() {
+        let code = against_stalling(StallingProvider::default(), |_| async {
+            cmd_versions_list("memory://", "   ", &quiet_cli(), OutputFormat::Json).await
+        });
+        assert_eq!(code, 7, "it reached the provider, which keeps no versions");
+
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin").to_string_lossy().into_owned();
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let code = interrupted_after_a_moment(|cancelled| async move {
+            cmd_get(
+                "memory://",
+                "   ",
+                Some(local.as_str()),
+                false,
+                1,
+                false,
+                &cli,
+                OutputFormat::Json,
+                cancelled,
+            )
+            .await
+        });
+        assert_eq!(code, 130, "the get of `   ` started and was stopped");
     }
 
     /// `get` of `/f.bin` into a local file that already holds "keep me", with

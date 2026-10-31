@@ -816,7 +816,8 @@ impl TwakeProvider {
     // ─── Paths ───
 
     fn normalize_path(path: &str) -> String {
-        let replaced = path.trim().replace('\\', "/");
+        // Spaces are part of a name: ` a` and `a ` are not `a`.
+        let replaced = path.replace('\\', "/");
         let mut parts: Vec<&str> = Vec::new();
         for seg in replaced.split('/') {
             match seg {
@@ -835,14 +836,13 @@ impl TwakeProvider {
     }
 
     fn resolve_path(&self, path: &str) -> String {
-        let trimmed = path.trim();
-        if trimmed.is_empty() || trimmed == "." {
+        if path.is_empty() || path == "." {
             return self.current_path.clone();
         }
-        if trimmed.starts_with('/') {
-            Self::normalize_path(trimmed)
+        if path.starts_with('/') {
+            Self::normalize_path(path)
         } else {
-            Self::normalize_path(&format!("{}/{}", self.current_path, trimmed))
+            Self::normalize_path(&format!("{}/{}", self.current_path, path))
         }
     }
 
@@ -1607,6 +1607,28 @@ impl StorageProvider for TwakeProvider {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_name_keeps_its_leading_and_trailing_spaces() {
+        // A name with a leading or trailing space is a name of its own, and a
+        // name of spaces only is not the current folder.
+        assert_eq!(super::TwakeProvider::normalize_path("/ a"), "/ a");
+        assert_eq!(super::TwakeProvider::normalize_path("/a /b "), "/a /b ");
+        let mut p = super::TwakeProvider::new(super::TwakeConfig {
+            credentials: super::TwakeCredentials {
+                instance: "https://example.test".into(),
+                client_id: "cid".into(),
+                client_secret: "s".into(),
+                registration_access_token: "r".into(),
+                refresh_token: "t".into(),
+            },
+            initial_path: None,
+        });
+        p.current_path = "/Cloud".to_string();
+        assert_eq!(p.resolve_path("   "), "/Cloud/   ");
+        assert_eq!(p.resolve_path(" a"), "/Cloud/ a");
+        assert_eq!(p.resolve_path("/a "), "/a ");
+    }
+
     use super::*;
 
     #[test]

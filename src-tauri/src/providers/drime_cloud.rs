@@ -393,31 +393,31 @@ impl DrimeCloudProvider {
     }
 
     fn normalize_path(path: &str) -> String {
-        let trimmed = path.trim().replace('\\', "/");
-        if trimmed.is_empty() || trimmed == "/" {
+        // Spaces are part of a name: ` a` and `a ` are not `a`.
+        let path = path.replace('\\', "/");
+        if path.is_empty() || path == "/" {
             return "/".to_string();
         }
-        let p = if trimmed.starts_with('/') {
-            trimmed
+        let p = if path.starts_with('/') {
+            path
         } else {
-            format!("/{}", trimmed)
+            format!("/{}", path)
         };
         p.trim_end_matches('/').to_string()
     }
 
     fn resolve_path(&self, path: &str) -> String {
-        let trimmed = path.trim();
-        if trimmed.is_empty() || trimmed == "." {
+        if path.is_empty() || path == "." {
             return self.current_path.clone();
         }
         // Check leading slash on the raw input before normalizing -
         // normalize_path unconditionally prepends "/", which would otherwise
         // make every relative input appear absolute and skip the current_path join.
-        if trimmed.starts_with('/') {
-            return Self::normalize_path(trimmed);
+        if path.starts_with('/') {
+            return Self::normalize_path(path);
         }
         let base = self.current_path.trim_end_matches('/');
-        Self::normalize_path(&format!("{}/{}", base, trimmed))
+        Self::normalize_path(&format!("{}/{}", base, path))
     }
 
     fn split_path(path: &str) -> (&str, &str) {
@@ -2963,6 +2963,19 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn a_name_keeps_its_leading_and_trailing_spaces() {
+        // A name with a leading or trailing space is a name of its own, and a
+        // name of spaces only is not the current folder.
+        assert_eq!(DrimeCloudProvider::normalize_path("/ a"), "/ a");
+        assert_eq!(DrimeCloudProvider::normalize_path("/a /b "), "/a /b ");
+        let mut p = test_provider();
+        p.current_path = "/Cloud".to_string();
+        assert_eq!(p.resolve_path("   "), "/Cloud/   ");
+        assert_eq!(p.resolve_path(" a"), "/Cloud/ a");
+        assert_eq!(p.resolve_path("/a "), "/a ");
+    }
+
     fn test_provider() -> DrimeCloudProvider {
         let config = DrimeCloudConfig {
             api_token: secrecy::SecretString::from("test-token".to_string()),
@@ -3723,7 +3736,7 @@ mod tests {
     fn normalize_path_preserves_root_and_trims_trailing_slash() {
         assert_eq!(DrimeCloudProvider::normalize_path(""), "/");
         assert_eq!(DrimeCloudProvider::normalize_path("/"), "/");
-        assert_eq!(DrimeCloudProvider::normalize_path("   "), "/");
+        assert_eq!(DrimeCloudProvider::normalize_path("   "), "/   ");
         assert_eq!(DrimeCloudProvider::normalize_path("foo"), "/foo");
         assert_eq!(DrimeCloudProvider::normalize_path("/foo"), "/foo");
         assert_eq!(DrimeCloudProvider::normalize_path("/foo/"), "/foo");

@@ -524,30 +524,31 @@ impl KoofrProvider {
     }
 
     fn normalize_path(path: &str) -> String {
-        let trimmed = path.trim().replace('\\', "/");
-        if trimmed.is_empty() || trimmed == "/" {
+        // Spaces are part of a name: ` a` and `a ` are not `a`.
+        let path = path.replace('\\', "/");
+        if path.is_empty() || path == "/" {
             return "/".into();
         }
-        let p = if trimmed.starts_with('/') {
-            trimmed
+        let p = if path.starts_with('/') {
+            path
         } else {
-            format!("/{}", trimmed)
+            format!("/{}", path)
         };
         p.trim_end_matches('/').to_string()
     }
 
     fn resolve_path(&self, path: &str) -> String {
-        let trimmed = path.trim();
-        if trimmed.is_empty() || trimmed == "." {
+        if path.is_empty() || path == "." {
             return self.current_path.clone();
         }
-        let normalized = Self::normalize_path(trimmed);
-        if normalized.starts_with('/') {
-            normalized
-        } else {
-            let base = self.current_path.trim_end_matches('/');
-            format!("{}/{}", base, normalized)
+        // The input's leading slash decides: normalize_path always prepends
+        // one, so its result made every relative path absolute and skipped
+        // the current_path join.
+        if path.starts_with('/') {
+            return Self::normalize_path(path);
         }
+        let base = self.current_path.trim_end_matches('/');
+        Self::normalize_path(&format!("{}/{}", base, path))
     }
 
     /// Split "/a/b/file.txt" → ("/a/b", "file.txt")
@@ -2078,6 +2079,25 @@ pub async fn koofr_empty_trash(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_name_keeps_its_leading_and_trailing_spaces() {
+        // A name with a leading or trailing space is a name of its own, and a
+        // name of spaces only is not the current folder.
+        assert_eq!(super::KoofrProvider::normalize_path("/ a"), "/ a");
+        assert_eq!(super::KoofrProvider::normalize_path("/a /b "), "/a /b ");
+        let mut p = super::KoofrProvider::new(super::KoofrConfig {
+            email: "user@example.com".to_string(),
+            password: secrecy::SecretString::from("pass".to_string()),
+            initial_path: None,
+        });
+        p.current_path = "/Cloud".to_string();
+        assert_eq!(p.resolve_path("   "), "/Cloud/   ");
+        assert_eq!(p.resolve_path(" a"), "/Cloud/ a");
+        assert_eq!(p.resolve_path("/a "), "/a ");
+        // A relative path joins the current folder.
+        assert_eq!(p.resolve_path("child"), "/Cloud/child");
+    }
+
     #[test]
     fn probe_contract_koofr_does_not_erase_http_failures() {
         let body = r#"{"error":{"code":"NotFound","message":"missing"}}"#;

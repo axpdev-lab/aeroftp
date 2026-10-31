@@ -881,20 +881,20 @@ impl JottacloudProvider {
     }
 
     fn normalize_path(path: &str) -> String {
-        let trimmed = path.trim().replace('\\', "/");
-        if trimmed.is_empty() || trimmed == "/" {
+        // Spaces are part of a name: ` a` and `a ` are not `a`.
+        let path = path.replace('\\', "/");
+        if path.is_empty() || path == "/" {
             return "/".to_string();
         }
-        let p = if trimmed.starts_with('/') {
-            trimmed
+        let p = if path.starts_with('/') {
+            path
         } else {
-            format!("/{}", trimmed)
+            format!("/{}", path)
         };
         p.trim_end_matches('/').to_string()
     }
 
     fn resolve_path(&self, path: &str) -> String {
-        let path = path.trim();
         if path.is_empty() || path == "." {
             return self.current_path.clone();
         }
@@ -3743,6 +3743,19 @@ mod tests {
         assert_real_progress(&updates, 300 * 1024, false);
     }
 
+    #[test]
+    fn a_name_keeps_its_leading_and_trailing_spaces() {
+        // A name with a leading or trailing space is a name of its own, and a
+        // name of spaces only is not the current folder.
+        assert_eq!(JottacloudProvider::normalize_path("/ a"), "/ a");
+        assert_eq!(JottacloudProvider::normalize_path("/a /b "), "/a /b ");
+        let mut p = test_provider();
+        p.current_path = "/Cloud".to_string();
+        assert_eq!(p.resolve_path("   "), "/Cloud/   ");
+        assert_eq!(p.resolve_path(" a"), "/Cloud/ a");
+        assert_eq!(p.resolve_path("/a "), "/a ");
+    }
+
     fn test_provider() -> JottacloudProvider {
         let config = JottacloudConfig {
             login_token: SecretString::from("test-token".to_string()),
@@ -3769,7 +3782,7 @@ mod tests {
     fn normalize_path_trims_and_normalizes_separators() {
         assert_eq!(JottacloudProvider::normalize_path(""), "/");
         assert_eq!(JottacloudProvider::normalize_path("/"), "/");
-        assert_eq!(JottacloudProvider::normalize_path("   "), "/");
+        assert_eq!(JottacloudProvider::normalize_path("   "), "/   ");
         assert_eq!(JottacloudProvider::normalize_path("foo"), "/foo");
         assert_eq!(JottacloudProvider::normalize_path("/foo/bar/"), "/foo/bar");
         assert_eq!(JottacloudProvider::normalize_path(r"\foo\bar"), "/foo/bar");
