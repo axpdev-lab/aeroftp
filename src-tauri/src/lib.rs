@@ -1463,8 +1463,8 @@ async fn rclone_crypt_provider_create_remote(
     // Same rule as the AeroCrypt create: the folder is absolute, taken from
     // the dialog, never from the provider's pwd, which the overlay is then
     // applied at by the caller. rclone crypt has no marker to write.
-    let root = aerocrypt_provider::overlay_create_root(&base_path, target_subpath.as_deref());
-    if root != base_path.trim() {
+    let root = aerocrypt_provider::overlay_create_root(&base_path, target_subpath.as_deref())?;
+    if root != base_path {
         let mut provider_lock = provider_state.provider.lock().await;
         let provider = provider_lock
             .as_mut()
