@@ -3440,6 +3440,10 @@ pub(crate) fn store_profile_credential(
     credential_type: Option<&str>,
     secret: &str,
 ) -> Result<(), String> {
+    // Under the list lock: a relocation between the lookup and the writes would leave
+    // the new owner's row on the old value.
+    let conn = open_or_init_cli()?;
+    let _lock = ProfileListLock::acquire(&conn)?;
     let owners = if profile_id.is_empty() {
         Vec::new()
     } else {
@@ -3473,18 +3477,26 @@ pub(crate) fn delete_profile_credential(
     profile_id: &str,
     credential_id: &str,
 ) -> Result<(), String> {
-    match store.delete(credential_id) {
-        Ok(_) | Err(crate::credential_store::CredentialError::NotFound(_)) => {}
-        Err(e) => return Err(format!("Delete credential from vault: {e}")),
-    }
+    let conn = open_or_init_cli()?;
+    let _lock = ProfileListLock::acquire(&conn)?;
     let owners = if profile_id.is_empty() {
         Vec::new()
     } else {
         profile_credential_owner_ids(store, profile_id, credential_id)?
     };
-    let conn = open_or_init_cli()?;
+    let active = active_user_id(&conn)?;
+    // Only the account holding the profile may sign it out.
+    if !owners.is_empty() && !active.is_some_and(|user| owners.contains(&user)) {
+        return Err(format!(
+            "{ACCOUNT_CHANGED}: this profile belongs to another account, so it was not signed out"
+        ));
+    }
+    match store.delete(credential_id) {
+        Ok(_) | Err(crate::credential_store::CredentialError::NotFound(_)) => {}
+        Err(e) => return Err(format!("Delete credential from vault: {e}")),
+    }
     let mut users = owners;
-    if let Some(active) = active_user_id(&conn)? {
+    if let Some(active) = active {
         if !users.contains(&active) {
             users.push(active);
         }

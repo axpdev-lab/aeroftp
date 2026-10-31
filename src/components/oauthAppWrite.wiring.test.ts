@@ -50,7 +50,8 @@ describe('an OAuth app is saved as one unit', () => {
         for (const source of [app, unlock]) {
             expect(source.indexOf('readSavedServerProfilesForWrite().catch(() => null)'))
                 .toBeLessThan(source.indexOf("'aerocrypt_provider_migrate_legacy"));
-            expect(source).toContain('expectedUserId: accountRead?.userId ?? null');
+            expect(source).toContain('if (accountRead) await invoke(\'store_overlay_metadata\'');
+            expect(source).toContain('expectedUserId: accountRead.userId ?? null');
         }
     });
 

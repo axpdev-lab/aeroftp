@@ -2084,17 +2084,17 @@ fn import_keystore_with_store(
     let mut user_partitions_backup_path: Option<String> = None;
 
     if sections.sqlite_dbs && !payload.sqlite_dumps.is_empty() {
+        // The databases this restore should have written: a known name, and not the
+        // partition it deliberately left out.
+        let wanted = |name: &&String| {
+            SQLITE_DBS.contains(&name.as_str())
+                && !(name.as_str() == "user_partitions.db" && profile_partition_skipped)
+        };
         if let Some(cfg) = config_dir {
             if let Err(e) = std::fs::create_dir_all(cfg) {
                 tracing::warn!("Cannot create config_dir for SQLite restore: {}", e);
                 // Reachable only if the folder goes after the list lock created it.
-                sqlite_dbs_failed.extend(
-                    payload
-                        .sqlite_dumps
-                        .keys()
-                        .filter(|name| SQLITE_DBS.contains(&name.as_str()))
-                        .cloned(),
-                );
+                sqlite_dbs_failed.extend(payload.sqlite_dumps.keys().filter(wanted).cloned());
                 sqlite_dbs_failed.sort();
             } else {
                 let total_dbs = payload.sqlite_dumps.len() as u32;
@@ -2116,6 +2116,9 @@ fn import_keystore_with_store(
                                 name,
                                 e
                             );
+                            if wanted(&name) {
+                                sqlite_dbs_failed.push(name.clone());
+                            }
                             continue;
                         }
                     };
@@ -2181,6 +2184,8 @@ fn import_keystore_with_store(
                 "Import has {} SQLite dumps but config_dir is None; skipping",
                 payload.sqlite_dumps.len()
             );
+            sqlite_dbs_failed.extend(payload.sqlite_dumps.keys().filter(wanted).cloned());
+            sqlite_dbs_failed.sort();
         }
     }
 

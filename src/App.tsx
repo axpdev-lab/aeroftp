@@ -4419,10 +4419,12 @@ const App: React.FC = () => {
                         let saltB64 = '';
                         const saltLine = configJson.split('\n').find((l) => l.startsWith('salt\t'));
                         if (saltLine) saltB64 = saltLine.split('\t')[1]?.trim() || '';
-                        await invoke('store_overlay_metadata', { profileId, configJson, salt: saltB64 || null, expectedUserId: accountRead?.userId ?? null });
+                        // A failed read gives no account to bind this to, so it is not saved here.
+                        if (accountRead) await invoke('store_overlay_metadata', { profileId, configJson, salt: saltB64 || null, expectedUserId: accountRead.userId ?? null });
                       }
-                    } catch {
-                      /* kit warms on next connect */
+                    } catch (err) {
+                      // The remote marker did migrate: this only leaves the recovery kit behind.
+                      notify.warning(t('toast.saveFailed'), String(err));
                     }
                     humanLog.updateEntry(logId, {
                       status: 'success',

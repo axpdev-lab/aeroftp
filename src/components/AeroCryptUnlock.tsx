@@ -397,7 +397,8 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                                 /* ignore */
                             }
                         }
-                        await invoke('store_overlay_metadata', { profileId, configJson, salt: saltB64 || null, expectedUserId: accountRead?.userId ?? null });
+                        // A failed read gives no account to bind this to, so it is not saved here.
+                        if (accountRead) await invoke('store_overlay_metadata', { profileId, configJson, salt: saltB64 || null, expectedUserId: accountRead.userId ?? null });
                         const kit = await invoke<AerocryptEmergencyKit>('aerocrypt_profile_recovery_kit', {
                             profileId,
                         });

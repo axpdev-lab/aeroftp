@@ -912,7 +912,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         } catch (e) {
             logger.warn('Settings save failed:', e);
             window.dispatchEvent(new CustomEvent('aeroftp-toast', {
-                detail: { type: 'error', title: t('toast.saveFailed'), message: String(e) },
+                detail: { type: 'error', title: t('toast.saveFailed'), message: String(e), important: true },
             }));
             setSaveState('idle');
         }
@@ -3809,9 +3809,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             !!result.requiresRestart ||
                                                                             (result.userPartitionsUnreadable ?? 0) > 0 ||
                                                                             (result.userPartitionsRekeyed ?? 0) > 0 ||
-                                                                            !!result.userPartitionsBackupPath
+                                                                            !!result.userPartitionsBackupPath ||
+                                                                            !!result.sqliteDbsFailed?.length
                                                                         ) {
                                                                             setKeystoreImportResult({
+                                                                                sqliteDbsFailed: result.sqliteDbsFailed,
                                                                                 imported: result.imported,
                                                                                 skipped: result.skipped,
                                                                                 requiresRestart: result.requiresRestart,

@@ -1490,7 +1490,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     `dedupKey=${dedupKey}`,
                 );
             }
-            await syncPersistedModeCredentials(editingProfileId);
+            // The caller keeps the editor open: a retry updates this same profile.
+            if (!(await syncPersistedModeCredentials(editingProfileId))) return false;
             setSavedServersUpdate(Date.now());
             const savedServer = storedServers.find((s) => s.id === editingProfileId);
             if (savedServer) {
@@ -2142,6 +2143,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // the converted profile restores without asking. Before the profile changes: if
         // it fails, the convert stops and the original still reaches its snapshots.
         if (!(await syncPersistedModeCredentials(newId))) {
+            await deleteModeCredentials(newId);
             await credentials.rollback().catch((e: unknown) => logger.warn('Saved profile credential restoration failed', e));
             return;
         }

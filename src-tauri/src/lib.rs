@@ -18985,7 +18985,11 @@ impl profile_import_plan::SecretSlots for VaultOnlySlots<'_> {
         before: Self::Snapshot,
     ) -> Result<(), String> {
         // The raw value: an emptied field was written as an empty string.
-        let current = self.store.get(&write.key).ok();
+        let current = match self.store.get(&write.key) {
+            Ok(value) => Some(value),
+            Err(credential_store::CredentialError::NotFound(_)) => None,
+            Err(e) => return Err(e.to_string()),
+        };
         match profile_import_plan::rollback_action(
             current.as_deref(),
             &write.value,
@@ -19273,9 +19277,10 @@ fn restore_shared_import_secrets(
                     Ok(_) => {
                         shared.kept_oauth_apps.insert(profile_id.clone());
                     }
-                    // Unreadable: left alone, and reported like a kept app.
+                    // Unreadable: left alone. No stored app is known to be kept, so this
+                    // is reported as a failed restore.
                     Err(e) => {
-                        shared.kept_oauth_apps.insert(profile_id.clone());
+                        shared.failed.insert(profile_id.clone());
                         log::warn!("Import: {profile_id} oauth app: {e}");
                     }
                 }

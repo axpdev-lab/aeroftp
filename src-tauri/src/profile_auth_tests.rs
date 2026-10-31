@@ -931,6 +931,7 @@ async fn durable_profile_auth_lifecycle(
             ],
         )
         .unwrap();
+        assert_eq!(store.get("oauth_rollback_app_client_id").unwrap(), "");
         assert!(crate::vault_value(store, "oauth_rollback_app_client_id")
             .unwrap()
             .is_none());
@@ -1011,8 +1012,16 @@ async fn durable_profile_auth_lifecycle(
         };
         assert_eq!(row(other_id).as_deref(), Some("new"));
         assert_eq!(row(active_id), None);
+        // Another account's profile is not signed out from here; its own account can.
+        let refused =
+            users::delete_profile_credential(store, "owned", "oauth_box_owned").unwrap_err();
+        assert!(refused.starts_with(users::ACCOUNT_CHANGED), "{refused}");
+        assert_eq!(row(other_id).as_deref(), Some("new"));
+        users::set_user_credential_for(&conn, &root, active_id, "oauth_box_owned", "oauth", "own")
+            .unwrap();
         users::delete_profile_credential(store, "owned", "oauth_box_owned").unwrap();
         assert_eq!(row(other_id), None);
+        assert_eq!(row(active_id), None);
         assert!(store.get("oauth_box_owned").is_err());
 
         // A key outside the typed set follows its row, as a relocation leaves one.
