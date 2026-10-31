@@ -167,12 +167,8 @@ where
 {
     let date = Option::<String>::deserialize(deserializer)?;
     Ok(date.map(|date| {
-        chrono::DateTime::parse_from_rfc2822(&date)
-            .map(|parsed| {
-                parsed
-                    .with_timezone(&chrono::Utc)
-                    .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
-            })
+        crate::parse_remote_datetime(&date)
+            .map(|parsed| parsed.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
             .unwrap_or(date)
     }))
 }
