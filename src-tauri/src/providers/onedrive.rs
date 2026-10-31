@@ -143,6 +143,10 @@ fn recycle_bin_not_exposed(
     )))
 }
 
+/// Shortcuts asked at once while a folder is listed: a folder of many empty
+/// shortcuts must not wait for them one by one.
+const SHORTCUT_PROBES: usize = 8;
+
 /// The answer Graph gives for the children of a Personal Vault. Recognised on
 /// the code and the message: another 400 is a failure, and a walk must not skip
 /// a folder for it.
@@ -1550,14 +1554,23 @@ impl StorageProvider for OneDriveProvider {
             (id, full_path)
         };
 
+        use futures_util::StreamExt;
         let items = self.list_children(&item_id, &parent_path).await?;
-        let mut entries = Vec::with_capacity(items.len());
-        for item in &items {
-            let mut entry = self.to_remote_entry(item, &parent_path);
-            entry.is_symlink = self.is_unreachable_shortcut(item, &entry.path).await;
-            entries.push(entry);
-        }
-        Ok(entries)
+        let this = &*self;
+        let parent = parent_path.as_str();
+        // Built first: a closure in the stream cannot be sent across this await.
+        let probes: Vec<_> = items
+            .iter()
+            .map(|item| async move {
+                let mut entry = this.to_remote_entry(item, parent);
+                entry.is_symlink = this.is_unreachable_shortcut(item, &entry.path).await;
+                entry
+            })
+            .collect();
+        Ok(futures_util::stream::iter(probes)
+            .buffered(SHORTCUT_PROBES)
+            .collect()
+            .await)
     }
 
     async fn pwd(&mut self) -> Result<String, ProviderError> {
@@ -3589,6 +3602,62 @@ mod tests {
         assert!(!link("Full"));
         let asked = requests.lock().unwrap();
         assert!(!asked.iter().any(|p| p.contains("/FULL/")), "{asked:?}");
+        server.abort();
+    }
+
+    /// A folder of many empty shortcuts asks them side by side, within the
+    /// limit, and the listing keeps its order.
+    #[tokio::test]
+    async fn empty_shortcuts_are_asked_side_by_side_and_keep_their_order() {
+        use axum::{http::StatusCode, routing::any, Json, Router};
+        use serde_json::json;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        let running = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let (seen_running, seen_peak) = (running.clone(), peak.clone());
+        let names: Vec<String> = (0..20).map(|i| format!("S{i:02}")).collect();
+        let listing = json!({"value": names.iter().map(|name| json!({
+            "id": name, "name": name, "size": 0,
+            "remoteItem": {"id": name, "folder": {"childCount": 0}, "parentReference": {"driveId": "drv2"}},
+        })).collect::<Vec<_>>()});
+        let app = Router::new().fallback(any(move |request: axum::extract::Request| {
+            let listing = listing.clone();
+            let running = seen_running.clone();
+            let peak = seen_peak.clone();
+            async move {
+                if request.uri().path() == "/v1.0/me/drive/root/children" {
+                    return (StatusCode::OK, Json(listing));
+                }
+                let now = running.fetch_add(1, Ordering::SeqCst) + 1;
+                peak.fetch_max(now, Ordering::SeqCst);
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                running.fetch_sub(1, Ordering::SeqCst);
+                (StatusCode::OK, Json(json!({"value": []})))
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut p = OneDriveProvider::new(OneDriveConfig {
+            client_id: "fixture".into(),
+            client_secret: "fixture".into(),
+        });
+        p.api_origin_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("fixture".into());
+        p.current_item_id = "root".into();
+        p.current_path = "/".into();
+
+        let listed = p.list(".").await.unwrap();
+        assert_eq!(
+            listed.iter().map(|e| e.name.clone()).collect::<Vec<_>>(),
+            names
+        );
+        assert!(listed.iter().all(|e| e.is_dir && !e.is_symlink));
+        let peak = peak.load(Ordering::SeqCst);
+        assert!((2..=SHORTCUT_PROBES).contains(&peak), "{peak}");
         server.abort();
     }
 
