@@ -2390,7 +2390,8 @@
             "keyslotsRecoveryAutoOffered": "A recovery slot was auto-added because this vault would have been keyfile-only. Save the recovery code below.",
             "keyslotsRecoverySaveOnce": "Save this recovery code now (shown once):",
             "keyslotsRecoveryCopy": "Copy code",
-            "keyslotsUnlockWithRecovery": "You can also unlock with a recovery code (paste it as the password)."
+            "keyslotsUnlockWithRecovery": "You can also unlock with a recovery code (paste it as the password).",
+            "overlayMetadataNotSaved": "The migration succeeded, but the offline recovery kit is not cached yet. It will be at the next unlock."
         },
         "cryptomator": {
             "confirmPassword": "Confirm Password",

@@ -6587,7 +6587,8 @@
             "keyslotsSetAsideRevocation": "Tệp đánh dấu trước đó vẫn mở được kho an toàn bằng yếu tố mà bạn đang gỡ bỏ hoặc thay thế. Mọi bản sao còn lại trong thư mục kho an toàn đều bị xóa sau thay đổi, và bản sao không xóa được sẽ được báo là lỗi. Bản sao trong thùng rác hoặc phiên bản tệp của bộ nhớ không được xử lý: làm trống chúng sẽ xóa các bản sao đó, nhưng không xóa bản sao do người khác giữ, nên không hoàn tất việc thu hồi.",
             "keyslotsSetAsideConsent": "Tôi hiểu: thay tệp đánh dấu trên máy chủ này bằng cách đổi tên tệp cũ và để sang một bên",
             "keyslotsSetAsideConsentRequired": "Máy chủ này chỉ có thể thay tệp đánh dấu của kho an toàn bằng cách đổi tên tệp cũ và để sang một bên: hãy xác nhận ở ô phía trên để tiếp tục.",
-            "keyslotsMarkerReplaceUnsupported": "Máy chủ này không thể thay tệp đánh dấu của kho an toàn, nên các thay đổi khe ở đây bị từ chối. Hãy mở cùng bộ nhớ đó qua một máy chủ thay thế tệp trong một bước (ví dụ SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Máy chủ này không thể thay tệp đánh dấu của kho an toàn, nên các thay đổi khe ở đây bị từ chối. Hãy mở cùng bộ nhớ đó qua một máy chủ thay thế tệp trong một bước (ví dụ SFTP).",
+            "overlayMetadataNotSaved": "Di chuyển thành công, nhưng bộ khôi phục ngoại tuyến chưa được lưu vào bộ nhớ đệm. Bộ này sẽ được lưu ở lần mở khóa tiếp theo."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Mã hóa)",

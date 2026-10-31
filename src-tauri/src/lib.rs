@@ -17573,9 +17573,9 @@ async fn store_overlay_metadata(
             ));
         }
         let active = user_partitions::cli_get_active_user(&store)?;
-        // The account the caller read the overlay under: a switch since must not put
-        // its metadata in another account.
-        if expected_user_id.is_some() && active.as_ref().map(|user| user.id) != expected_user_id {
+        // The account the caller read the overlay under, or none: a change since must
+        // not put its metadata in another account.
+        if active.as_ref().map(|user| user.id) != expected_user_id {
             return Err(format!(
                 "{}: the active account changed, so the overlay metadata was not saved",
                 user_partitions::ACCOUNT_CHANGED
@@ -17643,9 +17643,27 @@ fn stored_oauth_app(
     if id.is_some() || secret.is_some() {
         return Ok((id, secret));
     }
-    let (legacy_id, legacy_secret) = bridge_commands::resolve_oauth_client_config(store, provider);
-    let present = |value: String| Some(value).filter(|value| !value.is_empty());
-    Ok((present(legacy_id), present(legacy_secret)))
+    // A blob that cannot be read or parsed may hold the app in use, so it stops the
+    // write instead of counting as empty.
+    for key in ["config_oauth_clients", "config_aeroftp_oauth_settings"] {
+        let Some(raw) = vault_value(store, key)? else {
+            continue;
+        };
+        let settings: serde_json::Value =
+            serde_json::from_str(&raw).map_err(|_| format!("{key} is not valid"))?;
+        let field = |name: &str| {
+            settings
+                .get(provider)
+                .and_then(|entry| entry.get(name))
+                .and_then(|value| value.as_str())
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+        };
+        if let Some(id) = field("clientId") {
+            return Ok((Some(id), field("clientSecret")));
+        }
+    }
+    Ok((None, None))
 }
 
 /// Fill what is missing of `provider`'s app from a config that carries one, under
@@ -17751,6 +17769,12 @@ fn write_oauth_app<S: profile_import_plan::SecretSlots>(
     {
         return Err(format!("Invalid OAuth provider name: {provider}"));
     }
+    // Whole in this process too: on a filesystem without file locks the list lock
+    // does not exclude a second save, which could mix two apps.
+    static OAUTH_APP_WRITE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _write = OAUTH_APP_WRITE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let writes = fields
         .into_iter()
         .filter_map(|(name, value)| {

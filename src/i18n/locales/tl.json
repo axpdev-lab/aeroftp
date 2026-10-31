@@ -6606,7 +6606,8 @@
             "keyslotsSetAsideRevocation": "Nabubuksan pa rin ng dating marker ang vault gamit ang factor na inaalis o pinapalitan mo. Binubura pagkatapos ng pagbabago ang bawat kopyang naiwan sa folder ng vault, at iniuulat bilang error ang kopyang hindi mabura. Hindi naaabot ang kopya sa trash ng storage o sa mga bersyon ng file: inaalis ng pag-alis ng laman sa mga iyon ang mga kopyang iyon, pero hindi ang kopyang iningatan ng iba, kaya hindi nito nakukumpleto ang pagbawi.",
             "keyslotsSetAsideConsent": "Naiintindihan ko: palitan ang marker sa server na ito sa pamamagitan ng pagpapalit ng pangalan ng luma at pagtatabi nito",
             "keyslotsSetAsideConsentRequired": "Mapapalitan lang ng server na ito ang marker ng vault sa pamamagitan ng pagpapalit ng pangalan ng luma at pagtatabi nito: kumpirmahin sa kahon sa itaas para magpatuloy.",
-            "keyslotsMarkerReplaceUnsupported": "Hindi mapapalitan ng server na ito ang marker ng vault, kaya tinatanggihan dito ang mga pagbabago sa slot. Buksan ang parehong storage sa pamamagitan ng server na nagpapalit ng file sa isang hakbang (halimbawa, SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Hindi mapapalitan ng server na ito ang marker ng vault, kaya tinatanggihan dito ang mga pagbabago sa slot. Buksan ang parehong storage sa pamamagitan ng server na nagpapalit ng file sa isang hakbang (halimbawa, SFTP).",
+            "overlayMetadataNotSaved": "Matagumpay ang migration, ngunit hindi pa naka-cache ang offline na recovery kit. Magaganap ito sa susunod na pag-unlock."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Pag-encrypt)",

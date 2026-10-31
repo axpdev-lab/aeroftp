@@ -6606,7 +6606,8 @@
             "keyslotsSetAsideRevocation": "El marcador anterior encara obre el cofre amb el factor que elimineu o substituïu. Totes les còpies que quedin a la carpeta del cofre se suprimeixen després del canvi, i una còpia que no es pugui suprimir s'informa com a error. No s'arriba a una còpia a la paperera o a les versions de fitxers de l'emmagatzematge: buidar-les elimina aquestes còpies, però no una que algú altre hagi conservat, de manera que no completa la revocació.",
             "keyslotsSetAsideConsent": "Ho entenc: substitueix el marcador en aquest servidor reanomenant l'anterior a part",
             "keyslotsSetAsideConsentRequired": "Aquest servidor només pot substituir el marcador del cofre reanomenant l'anterior a part: confirmeu-ho a la casella de dalt per continuar.",
-            "keyslotsMarkerReplaceUnsupported": "Aquest servidor no pot substituir el marcador del cofre, per això aquí es rebutgen els canvis de ranures. Obriu el mateix emmagatzematge mitjançant un servidor que substitueixi un fitxer en un sol pas (SFTP, per exemple)."
+            "keyslotsMarkerReplaceUnsupported": "Aquest servidor no pot substituir el marcador del cofre, per això aquí es rebutgen els canvis de ranures. Obriu el mateix emmagatzematge mitjançant un servidor que substitueixi un fitxer en un sol pas (SFTP, per exemple).",
+            "overlayMetadataNotSaved": "La migració s'ha completat, però el kit de recuperació fora de línia encara no s'ha desat a la memòria cau. Es farà en el pròxim desbloqueig."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Xifratge)",

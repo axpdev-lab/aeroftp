@@ -3851,7 +3851,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             onServersChanged?.();
                                                                         } catch (err) {
                                                                             logger.warn('Imported server profiles could not be read', err);
-                                                                            setKeystoreImportResult(null);
+                                                                            // The databases that failed stay listed: this error is about something else.
+                                                                            if (!result.sqliteDbsFailed?.length) setKeystoreImportResult(null);
                                                                             setKeystoreMessage({ type: 'error', text: String(err) });
                                                                             return;
                                                                         }

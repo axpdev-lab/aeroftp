@@ -6587,7 +6587,8 @@
             "keyslotsSetAsideRevocation": "Den tidigare markören öppnar fortfarande valvet med den faktor du tar bort eller ersätter. Varje kopia som blir kvar i valvets mapp raderas efter ändringen, och en kopia som inte kan raderas rapporteras som ett fel. En kopia i lagringens papperskorg eller filversioner nås inte: att tömma dem tar bort dessa kopior, men inte en kopia som någon annan har behållit, så det slutför inte återkallelsen.",
             "keyslotsSetAsideConsent": "Jag förstår: ersätt markören på den här servern genom att lägga den gamla åt sidan",
             "keyslotsSetAsideConsentRequired": "Den här servern kan bara ersätta valvets markör genom att lägga den gamla åt sidan: bekräfta i rutan ovan för att fortsätta.",
-            "keyslotsMarkerReplaceUnsupported": "Den här servern kan inte ersätta valvets markör, så ändringar av platser avvisas här. Öppna samma lagring via en server som ersätter en fil i ett enda steg (till exempel SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Den här servern kan inte ersätta valvets markör, så ändringar av platser avvisas här. Öppna samma lagring via en server som ersätter en fil i ett enda steg (till exempel SFTP).",
+            "overlayMetadataNotSaved": "Migreringen lyckades, men återställningskitet för offline-bruk är inte cachat ännu. Det sker vid nästa upplåsning."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",

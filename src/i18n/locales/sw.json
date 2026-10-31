@@ -6587,7 +6587,8 @@
             "keyslotsSetAsideRevocation": "Alama ya awali bado inafungua chumba salama kwa kipengele unachokiondoa au kukibadilisha. Kila nakala iliyobaki kwenye folda ya chumba salama inafutwa baada ya mabadiliko, na nakala isiyoweza kufutwa inaripotiwa kama hitilafu. Nakala iliyo kwenye tupio la hifadhi au matoleo ya faili haifikiwi: kuyasafisha huondoa nakala hizo, lakini si nakala aliyoihifadhi mtu mwingine, kwa hivyo hakukamilishi ubatilishaji.",
             "keyslotsSetAsideConsent": "Naelewa: badilisha alama kwenye seva hii kwa kubadilisha jina la ya zamani na kuiweka kando",
             "keyslotsSetAsideConsentRequired": "Seva hii inaweza kubadilisha alama ya chumba salama kwa kubadilisha jina la ya zamani na kuiweka kando tu: thibitisha kwenye kisanduku hapo juu ili kuendelea.",
-            "keyslotsMarkerReplaceUnsupported": "Seva hii haiwezi kubadilisha alama ya chumba salama, kwa hiyo mabadiliko ya nafasi yanakataliwa hapa. Fungua hifadhi hiyo hiyo kupitia seva inayobadilisha faili kwa hatua moja (kwa mfano SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Seva hii haiwezi kubadilisha alama ya chumba salama, kwa hiyo mabadiliko ya nafasi yanakataliwa hapa. Fungua hifadhi hiyo hiyo kupitia seva inayobadilisha faili kwa hatua moja (kwa mfano SFTP).",
+            "overlayMetadataNotSaved": "Uhamishaji umefaulu, lakini kifurushi cha kurejesha cha nje ya mtandao bado hakijahifadhiwa kwenye kache. Kitahifadhiwa wakati wa kufungua kinachofuata."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Usimbaji fiche)",

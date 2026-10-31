@@ -6587,7 +6587,8 @@
             "keyslotsSetAsideRevocation": "L'ancien marqueur ouvre encore le coffre avec le facteur que vous retirez ou remplacez. Chaque copie restée dans le dossier du coffre est supprimée après la modification, et une copie qui ne peut pas être supprimée est signalée comme une erreur. Une copie dans la corbeille ou les versions de fichiers du stockage n'est pas atteinte : les vider supprime ces copies, mais pas celle qu'une autre personne a conservée, donc cela n'achève pas la révocation.",
             "keyslotsSetAsideConsent": "J'ai compris : remplacer le marqueur sur ce serveur en renommant l'ancien à part",
             "keyslotsSetAsideConsentRequired": "Ce serveur ne peut remplacer le marqueur du coffre qu'en renommant l'ancien à part : confirmez dans la case ci-dessus pour continuer.",
-            "keyslotsMarkerReplaceUnsupported": "Ce serveur ne peut pas remplacer le marqueur du coffre, les modifications d'emplacements sont donc refusées ici. Ouvrez le même stockage via un serveur qui remplace un fichier en une seule étape (SFTP, par exemple)."
+            "keyslotsMarkerReplaceUnsupported": "Ce serveur ne peut pas remplacer le marqueur du coffre, les modifications d'emplacements sont donc refusées ici. Ouvrez le même stockage via un serveur qui remplace un fichier en une seule étape (SFTP, par exemple).",
+            "overlayMetadataNotSaved": "La migration a réussi, mais le kit de récupération hors ligne n'est pas encore mis en cache. Il le sera au prochain déverrouillage."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Chiffrement)",

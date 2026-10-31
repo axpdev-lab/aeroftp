@@ -6587,7 +6587,8 @@
             "keyslotsSetAsideRevocation": "Iepriekšējais marķieris joprojām atver seifu ar faktoru, ko noņemat vai aizstājat. Katra seifa mapē palikusī kopija pēc izmaiņām tiek dzēsta, un kopija, ko nevar izdzēst, tiek ziņota kā kļūda. Kopija krātuves atkritnē vai failu versijās netiek aizsniegta: to iztukšošana noņem šīs kopijas, bet ne to, ko paturējis kāds cits, tāpēc atsaukšana netiek pabeigta.",
             "keyslotsSetAsideConsent": "Es saprotu: aizstāt marķieri šajā serverī, pārdēvējot veco un noliekot to malā",
             "keyslotsSetAsideConsentRequired": "Šis serveris var aizstāt seifa marķieri tikai, pārdēvējot veco un noliekot to malā: apstipriniet to lodziņā iepriekš, lai turpinātu.",
-            "keyslotsMarkerReplaceUnsupported": "Šis serveris nevar aizstāt seifa marķieri, tāpēc slotu izmaiņas šeit tiek noraidītas. Atveriet to pašu krātuvi caur serveri, kas aizstāj failu vienā solī (piemēram, SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Šis serveris nevar aizstāt seifa marķieri, tāpēc slotu izmaiņas šeit tiek noraidītas. Atveriet to pašu krātuvi caur serveri, kas aizstāj failu vienā solī (piemēram, SFTP).",
+            "overlayMetadataNotSaved": "Migrācija izdevās, bet bezsaistes atkopšanas komplekts vēl nav saglabāts kešatmiņā. Tas tiks saglabāts nākamajā atslēgšanas reizē."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifrēšana)",

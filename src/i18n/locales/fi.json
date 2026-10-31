@@ -6587,7 +6587,8 @@
             "keyslotsSetAsideRevocation": "Edellinen merkkitiedosto avaa holvin edelleen tekijällä, jonka poistat tai korvaat. Jokainen holvin kansioon jäänyt kopio poistetaan muutoksen jälkeen, ja kopio, jota ei voi poistaa, ilmoitetaan virheenä. Tallennustilan roskakorissa tai tiedostoversioissa olevaa kopiota ei tavoiteta: niiden tyhjentäminen poistaa nämä kopiot mutta ei kopiota, jonka joku muu on säilyttänyt, joten se ei viimeistele peruutusta.",
             "keyslotsSetAsideConsent": "Ymmärrän: korvaa merkkitiedosto tällä palvelimella nimeämällä vanha sivuun",
             "keyslotsSetAsideConsentRequired": "Tämä palvelin voi korvata holvin merkkitiedoston vain nimeämällä vanhan sivuun: vahvista se yllä olevasta ruudusta jatkaaksesi.",
-            "keyslotsMarkerReplaceUnsupported": "Tämä palvelin ei voi korvata holvin merkkitiedostoa, joten paikkamuutokset hylätään tässä. Avaa sama tallennustila palvelimen kautta, joka korvaa tiedoston yhdellä askeleella (esimerkiksi SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Tämä palvelin ei voi korvata holvin merkkitiedostoa, joten paikkamuutokset hylätään tässä. Avaa sama tallennustila palvelimen kautta, joka korvaa tiedoston yhdellä askeleella (esimerkiksi SFTP).",
+            "overlayMetadataNotSaved": "Siirto onnistui, mutta offline-palautuspakettia ei ole vielä tallennettu välimuistiin. Se tallennetaan seuraavan avauksen yhteydessä."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Salaus)",

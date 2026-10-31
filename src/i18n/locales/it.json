@@ -4472,7 +4472,8 @@
             "keyslotsSetAsideRevocation": "Il marker precedente apre ancora il vault con il fattore che stai rimuovendo o sostituendo. Dopo la modifica ogni copia rimasta nella cartella del vault viene eliminata, e una copia che non si riesce a eliminare viene segnalata come errore. Le copie nel cestino o nelle versioni dei file dello storage restano: svuotarli elimina quelle copie, non una che qualcun altro ha conservato, quindi non completa la revoca.",
             "keyslotsSetAsideConsent": "Ho capito: su questo server sostituisci il marker mettendo da parte quello attuale",
             "keyslotsSetAsideConsentRequired": "Su questo server il marker del vault si può sostituire solo mettendo da parte quello attuale: conferma nella casella qui sopra per continuare.",
-            "keyslotsMarkerReplaceUnsupported": "Questo server non può sostituire il marker del vault, quindi qui le modifiche agli slot vengono rifiutate. Apri lo stesso storage tramite un server che sostituisce un file in un solo passaggio (per esempio SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Questo server non può sostituire il marker del vault, quindi qui le modifiche agli slot vengono rifiutate. Apri lo stesso storage tramite un server che sostituisce un file in un solo passaggio (per esempio SFTP).",
+            "overlayMetadataNotSaved": "La migrazione è riuscita, ma il kit di ripristino offline non è ancora in cache. Lo sarà al prossimo sblocco."
         },
         "cryptomator": {
             "confirmPassword": "Conferma Password",

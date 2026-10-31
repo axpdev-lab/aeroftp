@@ -6587,7 +6587,8 @@
             "keyslotsSetAsideRevocation": "A korábbi jelölőfájl még mindig megnyitja a széfet azzal a tényezővel, amelyet eltávolít vagy lecserél. A széf mappájában maradt minden másolat törlődik a módosítás után, és a nem törölhető másolatot hibaként jelzi a program. A tárhely kukájában vagy fájlverzióiban lévő másolatot nem éri el: kiürítésük eltávolítja ezeket a másolatokat, de nem azt, amelyet valaki más megőrzött, ezért nem fejezi be a visszavonást.",
             "keyslotsSetAsideConsent": "Megértettem: a jelölőfájl cseréje ezen a szerveren a régi átnevezéssel történő félretételével",
             "keyslotsSetAsideConsentRequired": "Ez a szerver a széf jelölőfájlját csak a régi átnevezéssel történő félretételével tudja lecserélni: a folytatáshoz erősítse meg a fenti jelölőnégyzetben.",
-            "keyslotsMarkerReplaceUnsupported": "Ez a szerver nem tudja lecserélni a széf jelölőfájlját, ezért a slotmódosításokat itt elutasítja. Nyissa meg ugyanazt a tárhelyet olyan szerveren keresztül, amely egy lépésben cserél fájlt (például SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Ez a szerver nem tudja lecserélni a széf jelölőfájlját, ezért a slotmódosításokat itt elutasítja. Nyissa meg ugyanazt a tárhelyet olyan szerveren keresztül, amely egy lépésben cserél fájlt (például SFTP).",
+            "overlayMetadataNotSaved": "Az áttelepítés sikerült, de az offline helyreállítási készlet még nincs gyorsítótárazva. A következő feloldáskor meg fog történni."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Titkosítás)",

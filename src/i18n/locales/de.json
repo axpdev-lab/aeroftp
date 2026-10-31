@@ -6587,7 +6587,8 @@
             "keyslotsSetAsideRevocation": "Die vorherige Markierungsdatei öffnet den Tresor weiterhin mit dem Faktor, den Sie entfernen oder ersetzen. Jede im Tresorordner verbliebene Kopie wird nach der Änderung gelöscht, und eine Kopie, die sich nicht löschen lässt, wird als Fehler gemeldet. Eine Kopie im Papierkorb oder in den Dateiversionen des Speichers wird nicht erreicht: Das Leeren entfernt diese Kopien, nicht aber eine, die jemand anderes aufbewahrt hat, und schließt den Widerruf daher nicht ab.",
             "keyslotsSetAsideConsent": "Ich habe verstanden: Markierungsdatei auf diesem Server ersetzen, indem die alte zur Seite umbenannt wird",
             "keyslotsSetAsideConsentRequired": "Dieser Server kann die Markierungsdatei des Tresors nur ersetzen, indem die alte zur Seite umbenannt wird: Bestätigen Sie dies im Feld oben, um fortzufahren.",
-            "keyslotsMarkerReplaceUnsupported": "Dieser Server kann die Markierungsdatei des Tresors nicht ersetzen, daher werden Slot-Änderungen hier abgelehnt. Öffnen Sie denselben Speicher über einen Server, der eine Datei in einem Schritt ersetzt (z. B. SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Dieser Server kann die Markierungsdatei des Tresors nicht ersetzen, daher werden Slot-Änderungen hier abgelehnt. Öffnen Sie denselben Speicher über einen Server, der eine Datei in einem Schritt ersetzt (z. B. SFTP).",
+            "overlayMetadataNotSaved": "Die Migration war erfolgreich, aber das Offline-Wiederherstellungskit ist noch nicht zwischengespeichert. Das geschieht beim nächsten Entsperren."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Verschlüsselung)",

@@ -160,6 +160,7 @@ describe('saved profile write rejection in production handlers', () => {
         await fn.handleConvertMode();
         expect(f.store).not.toHaveBeenCalled();
         // The new map goes, the original stays.
+        expect(f.context.deleteModeCredentials).toHaveBeenCalledTimes(1);
         expect(f.context.deleteModeCredentials).not.toHaveBeenCalledWith('old');
         expect(f.events.filter(e => e.detail?.type === 'success')).toEqual([]);
     });

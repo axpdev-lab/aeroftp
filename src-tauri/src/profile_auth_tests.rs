@@ -920,6 +920,21 @@ async fn durable_profile_auth_lifecycle(
         .unwrap();
         assert_eq!(store.get("oauth_rollback_app_client_id").unwrap(), "id");
         assert!(store.get("oauth_rollback_app_client_secret").is_err());
+        crate::write_oauth_app(
+            &crate::VaultOnlySlots { store },
+            "rollback_app",
+            [
+                ("client_id", None),
+                ("client_secret", Some("kept-secret")),
+                ("region", None),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            store.get("oauth_rollback_app_client_secret").unwrap(),
+            "kept-secret"
+        );
+        store.delete("oauth_rollback_app_client_secret").unwrap();
         // An emptied field is stored empty, and goes back whole if a later key fails.
         crate::write_oauth_app(
             &crate::VaultOnlySlots { store },
@@ -996,6 +1011,10 @@ async fn durable_profile_auth_lifecycle(
         );
         assert!(store.get("oauth_legacyapp_client_id").is_err());
         assert!(store.get("oauth_legacyapp_client_secret").is_err());
+        // A blob that cannot be parsed stops the write: it may hold the app in use.
+        store.store("config_oauth_clients", "not json").unwrap();
+        assert!(crate::fill_oauth_app(store, "legacyapp", Some("other-id"), None).is_err());
+        assert!(store.get("oauth_legacyapp_client_id").is_err());
         store.delete("config_oauth_clients").unwrap();
 
         // A profile's token goes to the account holding it, not the active one, and a

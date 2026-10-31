@@ -6587,7 +6587,8 @@
             "keyslotsSetAsideRevocation": "Predchádzajúca značka stále otvára trezor faktorom, ktorý odstraňujete alebo nahrádzate. Každá kópia ponechaná v priečinku trezora sa po zmene odstráni a kópia, ktorú nemožno odstrániť, sa nahlási ako chyba. Kópia v koši úložiska alebo vo verziách súborov sa nezasiahne: ich vyprázdnenie odstráni tieto kópie, ale nie kópiu, ktorú si ponechal niekto iný, takže odvolanie nedokončí.",
             "keyslotsSetAsideConsent": "Rozumiem: nahradiť značku na tomto serveri premenovaním starej nabok",
             "keyslotsSetAsideConsentRequired": "Tento server môže nahradiť značku trezora iba premenovaním starej nabok: na pokračovanie to potvrďte v poli vyššie.",
-            "keyslotsMarkerReplaceUnsupported": "Tento server nemôže nahradiť značku trezora, preto sa zmeny slotov tu odmietajú. Otvorte rovnaké úložisko cez server, ktorý nahrádza súbor jedným krokom (napríklad SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Tento server nemôže nahradiť značku trezora, preto sa zmeny slotov tu odmietajú. Otvorte rovnaké úložisko cez server, ktorý nahrádza súbor jedným krokom (napríklad SFTP).",
+            "overlayMetadataNotSaved": "Migrácia prebehla úspešne, ale súprava na obnovenie offline ešte nie je uložená vo vyrovnávacej pamäti. Stane sa tak pri ďalšom odomknutí."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifrovanie)",

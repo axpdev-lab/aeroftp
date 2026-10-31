@@ -6587,7 +6587,8 @@
             "keyslotsSetAsideRevocation": "Eelmine marker avab hoidla endiselt teguriga, mille eemaldate või asendate. Iga hoidla kausta jäänud koopia kustutatakse pärast muudatust ja koopia, mida ei saa kustutada, esitatakse veana. Salvestusruumi prügikasti või failiversioonide koopiani ei jõuta: nende tühjendamine eemaldab need koopiad, kuid mitte koopiat, mille keegi teine on alles hoidnud, seega ei vii see tühistamist lõpule.",
             "keyslotsSetAsideConsent": "Saan aru: asenda marker sellel serveril, nimetades vana kõrvale ümber",
             "keyslotsSetAsideConsentRequired": "See server saab hoidla markeri asendada ainult vana kõrvale ümber nimetades: jätkamiseks kinnitage see ülalolevas ruudus.",
-            "keyslotsMarkerReplaceUnsupported": "See server ei saa hoidla markerit asendada, seega lükatakse pesamuudatused siin tagasi. Avage sama salvestusruum serveri kaudu, mis asendab faili ühe sammuga (näiteks SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "See server ei saa hoidla markerit asendada, seega lükatakse pesamuudatused siin tagasi. Avage sama salvestusruum serveri kaudu, mis asendab faili ühe sammuga (näiteks SFTP).",
+            "overlayMetadataNotSaved": "Migreerimine õnnestus, kuid võrguühenduseta taastekomplekt pole veel vahemällu salvestatud. See tehakse järgmisel avamisel."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Krüptimine)",

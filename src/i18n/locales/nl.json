@@ -6587,7 +6587,8 @@
             "keyslotsSetAsideRevocation": "De vorige markering opent de kluis nog steeds met de factor die je verwijdert of vervangt. Elke kopie die in de kluismap achterblijft, wordt na de wijziging verwijderd, en een kopie die niet kan worden verwijderd, wordt als fout gemeld. Een kopie in de prullenbak of de bestandsversies van de opslag wordt niet bereikt: als je die leegt, verdwijnen die kopieën, maar niet een kopie die iemand anders heeft bewaard, dus de intrekking is daarmee niet voltooid.",
             "keyslotsSetAsideConsent": "Ik begrijp het: vervang de markering op deze server door de oude opzij te hernoemen",
             "keyslotsSetAsideConsentRequired": "Deze server kan de markering van de kluis alleen vervangen door de oude opzij te hernoemen: bevestig dit in het vakje hierboven om door te gaan.",
-            "keyslotsMarkerReplaceUnsupported": "Deze server kan de markering van de kluis niet vervangen, dus slotwijzigingen worden hier geweigerd. Open dezelfde opslag via een server die een bestand in één stap vervangt (bijvoorbeeld SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Deze server kan de markering van de kluis niet vervangen, dus slotwijzigingen worden hier geweigerd. Open dezelfde opslag via een server die een bestand in één stap vervangt (bijvoorbeeld SFTP).",
+            "overlayMetadataNotSaved": "De migratie is gelukt, maar de offline herstelkit staat nog niet in de cache. Dat gebeurt bij de volgende ontgrendeling."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Versleuteling)",

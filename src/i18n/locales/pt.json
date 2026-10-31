@@ -6587,7 +6587,8 @@
             "keyslotsSetAsideRevocation": "O marcador anterior ainda abre o cofre com o fator que você está removendo ou substituindo. Toda cópia que sobrar na pasta do cofre é excluída após a alteração, e uma cópia que não puder ser excluída é informada como erro. Uma cópia na lixeira ou nas versões de arquivos do armazenamento não é alcançada: esvaziá-las remove essas cópias, mas não uma que outra pessoa tenha guardado, portanto não conclui a revogação.",
             "keyslotsSetAsideConsent": "Entendi: substituir o marcador neste servidor renomeando o antigo e pondo-o de lado",
             "keyslotsSetAsideConsentRequired": "Este servidor só pode substituir o marcador do cofre renomeando o antigo e pondo-o de lado: confirme na caixa acima para continuar.",
-            "keyslotsMarkerReplaceUnsupported": "Este servidor não pode substituir o marcador do cofre, por isso as alterações de slots são recusadas aqui. Abra o mesmo armazenamento por um servidor que substitua um arquivo em uma única etapa (SFTP, por exemplo)."
+            "keyslotsMarkerReplaceUnsupported": "Este servidor não pode substituir o marcador do cofre, por isso as alterações de slots são recusadas aqui. Abra o mesmo armazenamento por um servidor que substitua um arquivo em uma única etapa (SFTP, por exemplo).",
+            "overlayMetadataNotSaved": "A migração foi concluída, mas o kit de recuperação offline ainda não está em cache. Ficará no próximo desbloqueio."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Encriptação)",

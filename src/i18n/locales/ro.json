@@ -6587,7 +6587,8 @@
             "keyslotsSetAsideRevocation": "Markerul anterior încă deschide seiful cu factorul pe care îl eliminați sau îl înlocuiți. Fiecare copie rămasă în folderul seifului este ștearsă după modificare, iar o copie care nu poate fi ștearsă este raportată ca eroare. O copie din coșul de gunoi sau din versiunile de fișiere ale spațiului de stocare nu este atinsă: golirea lor elimină acele copii, dar nu una păstrată de altcineva, deci nu finalizează revocarea.",
             "keyslotsSetAsideConsent": "Am înțeles: înlocuiește markerul pe acest server redenumind cel vechi și punându-l deoparte",
             "keyslotsSetAsideConsentRequired": "Acest server poate înlocui markerul seifului doar redenumind cel vechi și punându-l deoparte: confirmați în caseta de mai sus pentru a continua.",
-            "keyslotsMarkerReplaceUnsupported": "Acest server nu poate înlocui markerul seifului, deci modificările de sloturi sunt refuzate aici. Deschideți același spațiu de stocare printr-un server care înlocuiește un fișier într-un singur pas (de exemplu SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Acest server nu poate înlocui markerul seifului, deci modificările de sloturi sunt refuzate aici. Deschideți același spațiu de stocare printr-un server care înlocuiește un fișier într-un singur pas (de exemplu SFTP).",
+            "overlayMetadataNotSaved": "Migrarea a reușit, dar kitul de recuperare offline nu este încă salvat în cache. Va fi salvat la următoarea deblocare."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Criptare)",

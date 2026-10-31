@@ -3491,20 +3491,21 @@ pub(crate) fn delete_profile_credential(
             "{ACCOUNT_CHANGED}: this profile belongs to another account, so it was not signed out"
         ));
     }
-    match store.delete(credential_id) {
-        Ok(_) | Err(crate::credential_store::CredentialError::NotFound(_)) => {}
-        Err(e) => return Err(format!("Delete credential from vault: {e}")),
-    }
     let mut users = owners;
     if let Some(active) = active {
         if !users.contains(&active) {
             users.push(active);
         }
     }
+    // The rows first, as readers prefer them: a failure here leaves the vault for a
+    // retry, and a retry after a vault failure finds the rows already gone.
     for user in users {
         delete_user_credential_for(&conn, user, credential_id)?;
     }
-    Ok(())
+    match store.delete(credential_id) {
+        Ok(_) | Err(crate::credential_store::CredentialError::NotFound(_)) => Ok(()),
+        Err(e) => Err(format!("Delete credential from vault: {e}")),
+    }
 }
 
 /// Mirror one secret, just written to the vault, into `user_id`'s partition: the
@@ -3548,9 +3549,9 @@ pub(crate) fn mirror_credential_for_user_typed(
 
 /// A failure here is an error, because readers prefer the partition row: it would
 /// go on answering with the old secret after a save reported as done. The vault
-/// keeps the new value, since a rotated token cannot go back. A locked account with
-/// no row is the one exception: readers fall back to the vault, and the MUV-2 lazy
-/// pass mirrors it at the next unlock.
+/// keeps the new value, since a rotated token cannot go back. A locked legacy owner
+/// with no row is the one exception: its readers fall back to the vault, and the MUV-2
+/// lazy pass mirrors it at the next unlock. Any other account reads only its partition.
 fn mirror_into_partition(
     conn: &Connection,
     store: &CredentialStore,
@@ -3571,7 +3572,10 @@ fn mirror_into_partition(
         Ok(()) => return Ok(()),
         Err(e) => e,
     };
-    if refused == "USER_LOCKED" && !partition_row_exists(conn, user_id, credential_id)? {
+    if refused == "USER_LOCKED"
+        && !partition_row_exists(conn, user_id, credential_id)?
+        && nonprofile_secret_owner(conn)? == Some(user_id)
+    {
         return Ok(());
     }
     Err(format!(
@@ -7254,11 +7258,10 @@ mod tests {
         assert_eq!(read(source, "server_old"), None);
     }
 
-    /// A locked account keeps a new secret in the vault while it has no row, where
-    /// readers fall back to the vault. With a row, readers would keep the old value,
-    /// so the save is refused.
+    /// A locked account that is not the legacy owner cannot take a save: its readers
+    /// use only its partition, with or without a row there.
     #[test]
-    fn a_locked_account_refuses_a_save_only_when_a_row_would_keep_the_old_value() {
+    fn a_locked_account_that_reads_only_its_partition_refuses_a_save() {
         let _guard = test_lock();
         let dir = tempfile::tempdir().unwrap();
         let store = throwaway_vault(dir.path());
@@ -7271,7 +7274,11 @@ mod tests {
             .unwrap();
         clear_user_session();
 
-        mirror_into_partition(&conn, &store, locked.id, "server_no_row", "server", "new").unwrap();
+        // Not the legacy owner: it reads only its partition, so a vault copy would be lost.
+        assert!(
+            mirror_into_partition(&conn, &store, locked.id, "server_no_row", "server", "new")
+                .is_err()
+        );
         let refused = mirror_into_partition(
             &conn,
             &store,

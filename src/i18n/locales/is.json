@@ -6606,7 +6606,8 @@
             "keyslotsSetAsideRevocation": "Fyrri merkisskráin opnar enn hvelfinguna með þættinum sem þú ert að fjarlægja eða skipta út. Öllum afritum sem eru eftir í möppu hvelfingarinnar er eytt eftir breytinguna og afrit sem ekki er hægt að eyða er tilkynnt sem villa. Afrit í rusli geymslunnar eða skráarútgáfum næst ekki: að tæma þau fjarlægir þessi afrit en ekki afrit sem einhver annar geymdi, svo það lýkur ekki afturkölluninni.",
             "keyslotsSetAsideConsent": "Ég skil: skipta um merkisskrá á þessum þjóni með því að leggja þá gömlu til hliðar",
             "keyslotsSetAsideConsentRequired": "Þessi þjónn getur aðeins skipt um merkisskrá hvelfingarinnar með því að leggja þá gömlu til hliðar: staðfestu í reitnum hér að ofan til að halda áfram.",
-            "keyslotsMarkerReplaceUnsupported": "Þessi þjónn getur ekki skipt um merkisskrá hvelfingarinnar, svo breytingum á raufum er hafnað hér. Opnaðu sömu geymslu í gegnum þjón sem skiptir um skrá í einu skrefi (til dæmis SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Þessi þjónn getur ekki skipt um merkisskrá hvelfingarinnar, svo breytingum á raufum er hafnað hér. Opnaðu sömu geymslu í gegnum þjón sem skiptir um skrá í einu skrefi (til dæmis SFTP).",
+            "overlayMetadataNotSaved": "Flutningurinn tókst, en endurheimtarsettið án nettengingar er ekki enn í skyndiminni. Það verður vistað við næstu opnun."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Dulkóðun)",

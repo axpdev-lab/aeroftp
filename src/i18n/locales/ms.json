@@ -6587,7 +6587,8 @@
             "keyslotsSetAsideRevocation": "Penanda sebelumnya masih membuka peti besi dengan faktor yang anda alih keluar atau gantikan. Setiap salinan yang tertinggal dalam folder peti besi dipadam selepas perubahan, dan salinan yang tidak dapat dipadam dilaporkan sebagai ralat. Salinan dalam tong sampah atau versi fail storan tidak dicapai: mengosongkan kedua-duanya membuang salinan tersebut, tetapi bukan salinan yang disimpan orang lain, jadi ia tidak melengkapkan pembatalan.",
             "keyslotsSetAsideConsent": "Saya faham: gantikan penanda pada pelayan ini dengan mengetepikan yang lama melalui penamaan semula",
             "keyslotsSetAsideConsentRequired": "Pelayan ini hanya boleh menggantikan penanda peti besi dengan mengetepikan yang lama melalui penamaan semula: sahkan dalam kotak di atas untuk meneruskan.",
-            "keyslotsMarkerReplaceUnsupported": "Pelayan ini tidak dapat menggantikan penanda peti besi, jadi perubahan slot ditolak di sini. Buka storan yang sama melalui pelayan yang menggantikan fail dalam satu langkah (contohnya SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Pelayan ini tidak dapat menggantikan penanda peti besi, jadi perubahan slot ditolak di sini. Buka storan yang sama melalui pelayan yang menggantikan fail dalam satu langkah (contohnya SFTP).",
+            "overlayMetadataNotSaved": "Migrasi berjaya, tetapi kit pemulihan luar talian belum disimpan dalam cache. Ia akan disimpan pada pembukaan kunci seterusnya."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Penyulitan)",

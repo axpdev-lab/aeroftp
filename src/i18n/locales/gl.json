@@ -6606,7 +6606,8 @@
             "keyslotsSetAsideRevocation": "O marcador anterior segue abrindo o cofre co factor que estás a quitar ou substituír. Cada copia que quede no cartafol do cofre elimínase despois do cambio, e unha copia que non se poida eliminar notifícase como erro. Non se chega a unha copia na papeleira ou nas versións de ficheiros do almacenamento: baleirar esas áreas elimina esas copias, pero non unha que conservase outra persoa, polo que non completa a revogación.",
             "keyslotsSetAsideConsent": "Entendo: substituír o marcador neste servidor renomeando o anterior á parte",
             "keyslotsSetAsideConsentRequired": "Este servidor só pode substituír o marcador do cofre renomeando o anterior á parte: confírmao na caixa de arriba para continuar.",
-            "keyslotsMarkerReplaceUnsupported": "Este servidor non pode substituír o marcador do cofre, polo que aquí se rexeitan os cambios de ranuras. Abre o mesmo almacenamento a través dun servidor que substitúa un ficheiro nun só paso (SFTP, por exemplo)."
+            "keyslotsMarkerReplaceUnsupported": "Este servidor non pode substituír o marcador do cofre, polo que aquí se rexeitan os cambios de ranuras. Abre o mesmo almacenamento a través dun servidor que substitúa un ficheiro nun só paso (SFTP, por exemplo).",
+            "overlayMetadataNotSaved": "A migración realizouse correctamente, pero o kit de recuperación sen conexión aínda non está na caché. Gardarase no seguinte desbloqueo."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Cifrado)",

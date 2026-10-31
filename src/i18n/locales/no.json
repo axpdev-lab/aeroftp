@@ -6606,7 +6606,8 @@
             "keyslotsSetAsideRevocation": "Den forrige markøren åpner fortsatt hvelvet med faktoren du fjerner eller erstatter. Hver kopi som er igjen i hvelvmappen slettes etter endringen, og en kopi som ikke kan slettes, rapporteres som en feil. En kopi i lagringens papirkurv eller filversjoner nås ikke: å tømme dem fjerner disse kopiene, men ikke en kopi en annen har beholdt, så det fullfører ikke tilbakekallingen.",
             "keyslotsSetAsideConsent": "Jeg forstår: erstatt markøren på denne serveren ved å sette den gamle til side",
             "keyslotsSetAsideConsentRequired": "Denne serveren kan bare erstatte hvelvmarkøren ved å sette den gamle til side: bekreft i boksen ovenfor for å fortsette.",
-            "keyslotsMarkerReplaceUnsupported": "Denne serveren kan ikke erstatte hvelvmarkøren, så endringer i spor avvises her. Åpne den samme lagringen via en server som erstatter en fil i ett trinn (for eksempel SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Denne serveren kan ikke erstatte hvelvmarkøren, så endringer i spor avvises her. Åpne den samme lagringen via en server som erstatter en fil i ett trinn (for eksempel SFTP).",
+            "overlayMetadataNotSaved": "Migreringen lyktes, men gjenopprettingssettet for frakoblet bruk er ikke bufret ennå. Det skjer ved neste opplåsing."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",

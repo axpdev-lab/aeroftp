@@ -6587,7 +6587,8 @@
             "keyslotsSetAsideRevocation": "Den tidligere markør åbner stadig boksen med den faktor, du fjerner eller erstatter. Hver kopi, der ligger tilbage i boksens mappe, slettes efter ændringen, og en kopi, der ikke kan slettes, rapporteres som en fejl. En kopi i lagerets papirkurv eller filversioner nås ikke: at tømme dem fjerner disse kopier, men ikke en kopi, som en anden har gemt, så det fuldfører ikke tilbagekaldelsen.",
             "keyslotsSetAsideConsent": "Jeg forstår: erstat markøren på denne server ved at sætte den gamle til side",
             "keyslotsSetAsideConsentRequired": "Denne server kan kun erstatte boksens markør ved at sætte den gamle til side: bekræft det i feltet ovenfor for at fortsætte.",
-            "keyslotsMarkerReplaceUnsupported": "Denne server kan ikke erstatte boksens markør, så ændringer af slots afvises her. Åbn det samme lager via en server, der erstatter en fil i ét trin (f.eks. SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Denne server kan ikke erstatte boksens markør, så ændringer af slots afvises her. Åbn det samme lager via en server, der erstatter en fil i ét trin (f.eks. SFTP).",
+            "overlayMetadataNotSaved": "Migreringen lykkedes, men gendannelsessættet til offline brug er endnu ikke cachet. Det sker ved næste oplåsning."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",

@@ -21,7 +21,7 @@ describe('an OAuth app is saved as one unit', () => {
         expect(librs).toMatch(/^\s+store_oauth_app,$/m);
         const command = librs.slice(librs.indexOf('async fn store_oauth_app('), librs.indexOf('pub fn fill_oauth_app('));
         expect(command).toContain('only_main_window(webview.label(), "store_oauth_app")');
-        expect(command).toContain('ProfileListLock::acquire');
+        expect(command).toContain('let _lock = user_partitions::ProfileListLock::acquire');
         expect(command).toContain('write_oauth_app(');
         const overlay = librs.slice(librs.indexOf('async fn store_overlay_metadata('), librs.indexOf('async fn store_oauth_app('));
         expect(overlay).toContain('ProfileListLock::acquire');
@@ -50,7 +50,8 @@ describe('an OAuth app is saved as one unit', () => {
         for (const source of [app, unlock]) {
             expect(source.indexOf('readSavedServerProfilesForWrite().catch(() => null)'))
                 .toBeLessThan(source.indexOf("'aerocrypt_provider_migrate_legacy"));
-            expect(source).toContain('if (accountRead) await invoke(\'store_overlay_metadata\'');
+            expect(source).toContain('if (accountRead) {');
+            expect(source).toContain("t('aerocryptNative.overlayMetadataNotSaved')");
             expect(source).toContain('expectedUserId: accountRead.userId ?? null');
         }
     });

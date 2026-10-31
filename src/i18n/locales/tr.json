@@ -6587,7 +6587,8 @@
             "keyslotsSetAsideRevocation": "Önceki işaretçi, kaldırdığınız veya değiştirdiğiniz faktörle kasayı hâlâ açar. Kasa klasöründe kalan her kopya değişiklikten sonra silinir ve silinemeyen kopya hata olarak bildirilir. Depolamanın çöp kutusundaki veya dosya sürümlerindeki bir kopyaya ulaşılamaz: bunları boşaltmak bu kopyaları kaldırır, ancak başka birinin sakladığı kopyayı kaldırmaz; bu nedenle iptali tamamlamaz.",
             "keyslotsSetAsideConsent": "Anladım: işaretçiyi bu sunucuda eskisini yeniden adlandırıp kenara alarak değiştir",
             "keyslotsSetAsideConsentRequired": "Bu sunucu kasa işaretçisini yalnızca eskisini yeniden adlandırıp kenara alarak değiştirebilir: devam etmek için yukarıdaki kutuda onaylayın.",
-            "keyslotsMarkerReplaceUnsupported": "Bu sunucu kasa işaretçisini değiştiremez, bu yüzden slot değişiklikleri burada reddedilir. Aynı depolamayı bir dosyayı tek adımda değiştiren bir sunucu üzerinden açın (örneğin SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Bu sunucu kasa işaretçisini değiştiremez, bu yüzden slot değişiklikleri burada reddedilir. Aynı depolamayı bir dosyayı tek adımda değiştiren bir sunucu üzerinden açın (örneğin SFTP).",
+            "overlayMetadataNotSaved": "Taşıma başarılı oldu, ancak çevrimdışı kurtarma kiti henüz önbelleğe alınmadı. Bir sonraki kilit açmada alınacak."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Şifreleme)",

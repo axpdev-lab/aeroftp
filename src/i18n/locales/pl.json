@@ -6587,7 +6587,8 @@
             "keyslotsSetAsideRevocation": "Poprzedni znacznik nadal otwiera sejf za pomocą czynnika, który usuwasz lub zastępujesz. Każda kopia pozostawiona w folderze sejfu jest usuwana po zmianie, a kopia, której nie można usunąć, jest zgłaszana jako błąd. Kopia w koszu magazynu lub w wersjach plików nie jest osiągana: opróżnienie ich usuwa te kopie, ale nie kopię zachowaną przez kogoś innego, więc nie kończy unieważnienia.",
             "keyslotsSetAsideConsent": "Rozumiem: zastąp znacznik na tym serwerze, odkładając stary na bok przez zmianę nazwy",
             "keyslotsSetAsideConsentRequired": "Ten serwer może zastąpić znacznik sejfu tylko przez odłożenie starego na bok zmianą nazwy: potwierdź w polu powyżej, aby kontynuować.",
-            "keyslotsMarkerReplaceUnsupported": "Ten serwer nie może zastąpić znacznika sejfu, dlatego zmiany slotów są tu odrzucane. Otwórz ten sam magazyn przez serwer, który zastępuje plik w jednym kroku (na przykład SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Ten serwer nie może zastąpić znacznika sejfu, dlatego zmiany slotów są tu odrzucane. Otwórz ten sam magazyn przez serwer, który zastępuje plik w jednym kroku (na przykład SFTP).",
+            "overlayMetadataNotSaved": "Migracja się powiodła, ale zestaw odzyskiwania offline nie jest jeszcze zapisany w pamięci podręcznej. Nastąpi to przy następnym odblokowaniu."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Szyfrowanie)",

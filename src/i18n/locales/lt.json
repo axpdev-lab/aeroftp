@@ -6587,7 +6587,8 @@
             "keyslotsSetAsideRevocation": "Ankstesnis žymeklis vis dar atidaro seifą su veiksniu, kurį šalinate ar keičiate. Kiekviena seifo aplanke likusi kopija po pakeitimo ištrinama, o kopija, kurios ištrinti nepavyksta, pranešama kaip klaida. Kopija atminties šiukšlinėje ar failų versijose nepasiekiama: jų ištuštinimas pašalina tas kopijas, bet ne tą, kurią pasilaikė kas nors kitas, todėl atšaukimo nebaigia.",
             "keyslotsSetAsideConsent": "Suprantu: pakeisti žymeklį šiame serveryje pervadinant seną į šalį",
             "keyslotsSetAsideConsentRequired": "Šis serveris gali pakeisti seifo žymeklį tik pervadindamas seną į šalį: patvirtinkite aukščiau esančiame langelyje, kad tęstumėte.",
-            "keyslotsMarkerReplaceUnsupported": "Šis serveris negali pakeisti seifo žymeklio, todėl lizdų pakeitimai čia atmetami. Atidarykite tą pačią atmintį per serverį, kuris pakeičia failą vienu žingsniu (pavyzdžiui, SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Šis serveris negali pakeisti seifo žymeklio, todėl lizdų pakeitimai čia atmetami. Atidarykite tą pačią atmintį per serverį, kuris pakeičia failą vienu žingsniu (pavyzdžiui, SFTP).",
+            "overlayMetadataNotSaved": "Perkėlimas pavyko, bet neprisijungus naudojamas atkūrimo rinkinys dar neįrašytas į talpyklą. Tai bus padaryta kitą kartą atrakinus."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifravimas)",

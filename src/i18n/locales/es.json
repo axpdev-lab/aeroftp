@@ -6587,7 +6587,8 @@
             "keyslotsSetAsideRevocation": "El marcador anterior sigue abriendo la bóveda con el factor que está quitando o reemplazando. Cada copia que quede en la carpeta de la bóveda se elimina tras el cambio, y una copia que no se pueda eliminar se notifica como error. No se llega a una copia en la papelera o en las versiones de archivos del almacenamiento: vaciarlas elimina esas copias, pero no una que haya conservado otra persona, así que no completa la revocación.",
             "keyslotsSetAsideConsent": "Lo entiendo: reemplazar el marcador en este servidor renombrando el anterior aparte",
             "keyslotsSetAsideConsentRequired": "Este servidor solo puede reemplazar el marcador de la bóveda renombrando el anterior aparte: confírmelo en la casilla de arriba para continuar.",
-            "keyslotsMarkerReplaceUnsupported": "Este servidor no puede reemplazar el marcador de la bóveda, por lo que aquí se rechazan los cambios de ranuras. Abra el mismo almacenamiento a través de un servidor que reemplace un archivo en un solo paso (SFTP, por ejemplo)."
+            "keyslotsMarkerReplaceUnsupported": "Este servidor no puede reemplazar el marcador de la bóveda, por lo que aquí se rechazan los cambios de ranuras. Abra el mismo almacenamiento a través de un servidor que reemplace un archivo en un solo paso (SFTP, por ejemplo).",
+            "overlayMetadataNotSaved": "La migración se completó, pero el kit de recuperación sin conexión aún no está en caché. Se guardará en el próximo desbloqueo."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Cifrado)",
