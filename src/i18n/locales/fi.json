@@ -598,7 +598,8 @@
             "setAsPublic": "Aseta julkiseksi",
             "makeAllPrivate": "Aseta kaikki yksityisiksi",
             "dropboxRestoreLimit": "AeroFTP voi palauttaa palautettavissa olevia tiedostoversioita. Palauta kansiot dropbox.com-sivuston Poistetut tiedostot -osiosta. Kysymysmerkki tarkoittaa, ettei Dropbox tunnistanut kohteen tyyppiä.",
-            "openWithDefaultApp": "Avaa oletussovelluksella"
+            "openWithDefaultApp": "Avaa oletussovelluksella",
+            "extractHereUncheckedConfirm": "Tiedoston {name} sisällä olevia nimiä ei voi lukea ennen purkamista, joten AeroFTP ei voi tarkistaa, mitä ”Pura tähän” ylikirjoittaisi tässä kansiossa. ”Pura kansioon” ei koskaan ylikirjoita mitään."
         },
         "transfer": {
             "transferring": "Siirretään...",
@@ -2469,7 +2470,9 @@
             "flattenScanning": "Skannataan alipuuta...",
             "flattenTruncated": "katkaistu",
             "flattenTruncatedHint": "Saavutettu 5 000 merkinnän raja; tarkenna suodatinta tai siirry alikansioon.",
-            "local_placeholder_flatten": "Suodata paikallisia tiedostoja... (* rekursiiviseen)"
+            "local_placeholder_flatten": "Suodata paikallisia tiedostoja... (* rekursiiviseen)",
+            "flattenNameClash": "{names}: valittu useammassa kuin yhdessä kansiossa. Samaan paikkaan laitettuina ne korvaisivat toisensa; käsittele kerrallaan yksi kustakin.",
+            "flattenNameClashTitle": "Sama nimi useammassa kansiossa"
         },
         "versions": {
             "title": "Tiedostoversiot",

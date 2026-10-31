@@ -598,7 +598,8 @@
             "setAsPublic": "Weka kama Umma",
             "makeAllPrivate": "Fanya zote za faragha",
             "dropboxRestoreLimit": "AeroFTP inaweza kurejesha matoleo ya faili yanayoweza kurejeshwa. Rejesha folda kutoka sehemu ya Faili zilizofutwa kwenye dropbox.com. Alama ya kuuliza inamaanisha kuwa Dropbox haikutambua aina ya kipengee.",
-            "openWithDefaultApp": "Fungua kwa programu chaguomsingi"
+            "openWithDefaultApp": "Fungua kwa programu chaguomsingi",
+            "extractHereUncheckedConfirm": "Majina ndani ya {name} hayawezi kusomwa kabla ya kufungua, kwa hivyo AeroFTP haiwezi kukagua kama “Fungua Hapa” itaandika juu ya faili zilizopo katika folda hii. “Fungua kwenye Folda” haiandiki juu ya faili zilizopo kamwe."
         },
         "transfer": {
             "transferring": "Inahamisha...",
@@ -2469,7 +2470,9 @@
             "flattenScanning": "Kuchanganua mti mdogo...",
             "flattenTruncated": "kupunguzwa",
             "flattenTruncatedHint": "Imefikia kikomo cha maingizo 5,000; boresha kichujio chako au shuka kwenye folda ndogo.",
-            "local_placeholder_flatten": "Chuja faili za ndani... (* kwa rekursivu)"
+            "local_placeholder_flatten": "Chuja faili za ndani... (* kwa rekursivu)",
+            "flattenNameClash": "{names}: vimechaguliwa katika folda zaidi ya moja. Vikiwekwa mahali pamoja, kimoja kitachukua nafasi ya kingine; shughulikia kimoja kwa kila jina kwa wakati mmoja.",
+            "flattenNameClashTitle": "Jina lile lile katika folda zaidi ya moja"
         },
         "versions": {
             "title": "Matoleo ya Faili",

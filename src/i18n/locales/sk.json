@@ -598,7 +598,8 @@
             "setAsPublic": "Nastaviť ako verejný",
             "makeAllPrivate": "Nastaviť všetko ako súkromné",
             "dropboxRestoreLimit": "AeroFTP môže obnoviť obnoviteľné verzie súborov. Priečinky obnovte v časti Odstránené súbory na dropbox.com. Otáznik znamená, že Dropbox nerozpoznal typ položky.",
-            "openWithDefaultApp": "Otvoriť predvolenou aplikáciou"
+            "openWithDefaultApp": "Otvoriť predvolenou aplikáciou",
+            "extractHereUncheckedConfirm": "Názvy v archíve {name} nie je možné pred rozbalením prečítať, takže AeroFTP nemôže skontrolovať, čo by „Rozbaliť tu“ v tomto priečinku prepísalo. „Rozbaliť do priečinka“ nikdy nič neprepisuje."
         },
         "transfer": {
             "transferring": "Prenáša sa...",
@@ -2469,7 +2470,9 @@
             "flattenScanning": "Skenovanie podstromu...",
             "flattenTruncated": "skrátené",
             "flattenTruncatedHint": "Dosiahnutý limit 5 000 položiek; spresnite filter alebo prejdite do podpriečinka.",
-            "local_placeholder_flatten": "Filtrovať lokálne súbory... (* pre rekurziu)"
+            "local_placeholder_flatten": "Filtrovať lokálne súbory... (* pre rekurziu)",
+            "flattenNameClash": "{names}: vybrané vo viac ako jednom priečinku. Po vložení na jedno miesto by sa navzájom prepísali; pracujte vždy len s jedným z každého.",
+            "flattenNameClashTitle": "Rovnaký názov vo viacerých priečinkoch"
         },
         "versions": {
             "title": "Verzie súboru",

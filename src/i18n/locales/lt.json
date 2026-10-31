@@ -598,7 +598,8 @@
             "setAsPublic": "Nustatyti kaip viešą",
             "makeAllPrivate": "Padaryti visus privačius",
             "dropboxRestoreLimit": "AeroFTP gali atkurti atkuriamas failų versijas. Aplankus atkurkite dropbox.com skiltyje „Ištrinti failai“. Klaustukas reiškia, kad Dropbox neatpažino elemento tipo.",
-            "openWithDefaultApp": "Atidaryti numatytąja programa"
+            "openWithDefaultApp": "Atidaryti numatytąja programa",
+            "extractHereUncheckedConfirm": "Pavadinimų archyve {name} negalima perskaityti prieš išskleidžiant, todėl AeroFTP negali patikrinti, ką „Išskleisti čia“ perrašytų šiame aplanke. „Išskleisti į aplanką“ niekada nieko neperrašo."
         },
         "transfer": {
             "transferring": "Perduodama...",
@@ -2469,7 +2470,9 @@
             "flattenScanning": "Skenuojamas pomedis...",
             "flattenTruncated": "sutrumpinta",
             "flattenTruncatedHint": "Pasiekta 5 000 įrašų riba; patikslinkite filtrą arba įeikite į poaplankį.",
-            "local_placeholder_flatten": "Filtruoti vietinius failus... (* rekursiniam)"
+            "local_placeholder_flatten": "Filtruoti vietinius failus... (* rekursiniam)",
+            "flattenNameClash": "{names}: pasirinkta keliuose aplankuose. Padėti į vieną vietą, jie pakeistų vienas kitą; veikite su vienu iš kiekvieno vienu metu.",
+            "flattenNameClashTitle": "Tas pats pavadinimas keliuose aplankuose"
         },
         "versions": {
             "title": "Failų versijos",

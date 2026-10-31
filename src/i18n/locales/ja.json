@@ -598,7 +598,8 @@
             "setAsPublic": "公開に設定",
             "makeAllPrivate": "すべて非公開にする",
             "dropboxRestoreLimit": "AeroFTP は復元可能なファイルのバージョンを復元できます。フォルダーは dropbox.com の「削除したファイル」から復元してください。疑問符は、Dropbox が項目の種類を識別できなかったことを示します。",
-            "openWithDefaultApp": "既定のアプリで開く"
+            "openWithDefaultApp": "既定のアプリで開く",
+            "extractHereUncheckedConfirm": "{name} 内のファイル名は展開前に読み取れないため、AeroFTP は「ここに展開」がこのフォルダ内の何を上書きするか確認できません。「フォルダに展開」は何も上書きしません。"
         },
         "transfer": {
             "transferring": "転送中...",
@@ -2433,7 +2434,9 @@
             "flattenScanning": "サブツリーをスキャン中...",
             "flattenTruncated": "切り捨て",
             "flattenTruncatedHint": "5,000エントリの上限に達しました。フィルターを絞り込むか、サブフォルダに移動してください。",
-            "local_placeholder_flatten": "ローカルファイルをフィルター... (再帰の場合は *)"
+            "local_placeholder_flatten": "ローカルファイルをフィルター... (再帰の場合は *)",
+            "flattenNameClash": "{names}: 複数のフォルダで選択されています。1か所にまとめると互いに上書きされます。同じ名前のものは一度に1つずつ操作してください。",
+            "flattenNameClashTitle": "複数のフォルダに同じ名前があります"
         },
         "versions": {
             "title": "ファイルのバージョン",

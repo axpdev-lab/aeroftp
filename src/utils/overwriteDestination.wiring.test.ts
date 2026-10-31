@@ -7,7 +7,7 @@ import overwriteHook from '../hooks/useOverwriteCheck.ts?raw';
 import { describe, expect, it, vi } from 'vitest';
 import { usesProviderApi, type RemoteFile } from '../types';
 import { loadOverwriteDestination } from './overwriteDestination';
-import { fileBatchCommand, folderTransferIsComplete, keepsSingleFilePath } from './fileBatchRouting';
+import { fileBatchCommand, folderTransferIsComplete, keepsSingleFilePath, splitForFileBatch } from './fileBatchRouting';
 import { createFileBatchDispatcher, rearmedOnUserAction } from '../components/transferQueueActions';
 import { isSafeRemoteDownloadName, remoteDownloadTarget } from './localPath';
 
@@ -27,6 +27,11 @@ const { code } = await transformWithOxc(
   + closure('runFileBatch', '\n  const uploadMultipleFiles ='),
   'overwrite-wiring.ts',
 );
+// The paste: what it hands the batch of a copy to the other side.
+const { code: pasteCode } = await transformWithOxc(
+  closure('clipboardPaste', '\n  // openDevToolsPreview, openUniversalPreview'),
+  'paste-wiring.ts',
+);
 const { code: overwriteCode } = await transformWithOxc(
   overwriteHook.slice(overwriteHook.indexOf('  const checkOverwrite ='), overwriteHook.indexOf('  const resetOverwriteSettings =')),
   'overwrite-check.ts',
@@ -35,7 +40,7 @@ const { code: overwriteCode } = await transformWithOxc(
 type Direction = 'upload' | 'download';
 type Policy = 'skip' | 'overwrite' | 'resume' | 'rename';
 const file = (name: string, size = 40): RemoteFile => ({ name, path: `/actual/${name}`, size, modified: null, is_dir: false, permissions: null });
-function fixture(options: { direction: Direction; policy?: Policy; destination?: RemoteFile[]; panel?: RemoteFile[]; failListing?: boolean; protocol?: 'webdav' | 'sftp' | 'imagekit' }) {
+function fixture(options: { direction: Direction; policy?: Policy; destination?: RemoteFile[]; panel?: RemoteFile[]; nested?: RemoteFile[]; panel2?: RemoteFile[]; failListing?: boolean; protocol?: 'webdav' | 'sftp' | 'imagekit' }) {
   const direction = options.direction;
   const protocol = options.protocol || 'webdav';
   const destination = options.destination ?? [file('a.bin')];
@@ -77,6 +82,9 @@ function fixture(options: { direction: Direction; policy?: Policy; destination?:
     liveConnectionParams: { protocol },
     usesProviderApi, aeroVaultOverlaySession: null, currentRemotePath: '/panel',
     localFiles: direction === 'upload' ? [file('a.bin', 100)] : panel,
+    // The rows shown, which a nested row of a flattened search is found in.
+    sortedLocalFiles: options.nested ?? [],
+    localFiles2: options.panel2 ?? [], sortedLocalFiles2: options.panel2 ?? [],
     remoteFiles: direction === 'download' ? [file('a.bin', 100)] : panel,
     humanLog: { logStart: () => 'log', logRaw: vi.fn(), log: vi.fn(), logError: vi.fn(), updateEntry: vi.fn() },
     pendingFileLogIds: { current: new Map() }, batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
@@ -100,6 +108,44 @@ const items = ['a.bin', 'b.bin'].map(name => ({ name, sourcePath: `/source/${nam
 const single = (f: ReturnType<typeof fixture>, direction: Direction) => direction === 'download'
   ? f.runtime.downloadFile('/source/a.bin', 'a.bin', '/actual', false, 100)
   : f.runtime.uploadFile('/source/a.bin', 'a.bin', false, 100, false, undefined, '/actual');
+
+it('forwards a nested row\'s own size and modified date to checkOverwrite', async () => {
+  // A nested row of a flattened search, found by its path: the panel's own
+  // `a.bin` has another size and no date, so a lookup by name would show.
+  const nested = { ...file('a.bin', 250), path: '/source/a.bin', modified: '2026-01-01T00:00:00Z' };
+  const f = fixture({ direction: 'upload', destination: [], nested: [nested] });
+  await f.runtime.uploadFile('/source/a.bin', 'a.bin', false, 0, false, undefined, '/actual');
+  expect(f.checkOverwrite.mock.calls[0][1]).toBe(250);
+  expect(f.checkOverwrite.mock.calls[0][2]).toEqual(new Date('2026-01-01T00:00:00Z'));
+});
+
+describe('a file of panel 2 brings its own size and modified date to the overwrite check', () => {
+  // Panel 1 does not list it, and panel 1's `a.bin` is another file.
+  const panel2 = ['a.bin', 'b.bin'].map((name, i) => ({ ...file(name, 300 + i), path: `/panel2/${name}`, modified: '2026-02-01T00:00:00Z' }));
+
+  it('uploaded on its own', async () => {
+    const f = fixture({ direction: 'upload', destination: [], panel2 });
+    await f.runtime.uploadFile('/panel2/a.bin', 'a.bin', false, 0, false, undefined, '/actual');
+    expect(f.checkOverwrite.mock.calls[0][1]).toBe(300);
+    expect(f.checkOverwrite.mock.calls[0][2]).toEqual(new Date('2026-02-01T00:00:00Z'));
+  });
+
+  it('copied and pasted on the server, as one batch', async () => {
+    const runFileBatch = vi.fn(async (_direction: string, entries: { sourcePath: string }[]) => (
+      { succeededSources: entries.map(e => e.sourcePath), aborted: false }));
+    const context = {
+      fileClipboardRef: { current: { files: panel2.map(({ name, path, is_dir }) => ({ name, path, is_dir })), sourceDir: '/panel2', isRemote: false, operation: 'copy' } },
+      splitForFileBatch, fileBatchSessionFlags: () => ({ aeroVaultOverlay: false, gitHostUpload: false }),
+      resetOverwriteSettings: vi.fn(), runFileBatch, batchCancelledRef: { current: false },
+      remoteFiles: [], localFiles: [file('a.bin', 1)], sortedLocalFiles: [], localFiles2: panel2, sortedLocalFiles2: panel2,
+      loadRemoteFiles: vi.fn(), notify: { error: vi.fn(), warning: vi.fn(), info: vi.fn() }, t: (key: string) => key,
+    };
+    const { clipboardPaste } = new Function(...Object.keys(context), `${pasteCode}; return { clipboardPaste };`)(...Object.values(context));
+    await clipboardPaste(true, '/remote');
+    expect(runFileBatch).toHaveBeenCalledTimes(1);
+    expect(runFileBatch.mock.calls[0][1]).toEqual(panel2.map(r => ({ name: r.name, sourcePath: r.path, size: r.size, modified: r.modified })));
+  });
+});
 
 describe.each(['download', 'upload'] as const)('App actual %s destination', direction => {
   it('skips a single file that exists only in the destination', async () => {

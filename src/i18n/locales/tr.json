@@ -598,7 +598,8 @@
             "setAsPublic": "Herkese Açık Olarak Ayarla",
             "makeAllPrivate": "Tümünü özel yap",
             "dropboxRestoreLimit": "AeroFTP, kurtarılabilir dosya sürümlerini geri yükleyebilir. Klasörleri dropbox.com üzerindeki Silinen dosyalar bölümünden geri yükleyin. Soru işareti, Dropbox'ın öğe türünü belirleyemediği anlamına gelir.",
-            "openWithDefaultApp": "Varsayılan uygulamayla aç"
+            "openWithDefaultApp": "Varsayılan uygulamayla aç",
+            "extractHereUncheckedConfirm": "{name} içindeki adlar çıkarmadan önce okunamaz, bu yüzden AeroFTP “Buraya Çıkar” seçeneğinin bu klasörde neyin üzerine yazacağını denetleyemez. “Klasöre Çıkar” hiçbir zaman üzerine yazmaz."
         },
         "transfer": {
             "transferring": "Aktarılıyor...",
@@ -2469,7 +2470,9 @@
             "flattenScanning": "Alt ağaç taranıyor...",
             "flattenTruncated": "kısaltıldı",
             "flattenTruncatedHint": "5.000 giriş sınırına ulaşıldı; filtrenizi daraltın veya bir alt klasöre inin.",
-            "local_placeholder_flatten": "Yerel dosyaları filtrele... (özyinelemeli için *)"
+            "local_placeholder_flatten": "Yerel dosyaları filtrele... (özyinelemeli için *)",
+            "flattenNameClash": "{names}: birden fazla klasörde seçildi. Tek bir yere konursa birbirinin üzerine yazılır; her addan yalnızca birini seçip işlem yapın.",
+            "flattenNameClashTitle": "Birden fazla klasörde aynı ad"
         },
         "versions": {
             "title": "Dosya Sürümleri",
