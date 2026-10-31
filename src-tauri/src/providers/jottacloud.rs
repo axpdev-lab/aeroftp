@@ -2387,12 +2387,16 @@ impl JottacloudProvider {
         use quick_xml::Reader;
 
         let mut reader = Reader::from_str(xml);
-        reader.config_mut().trim_text(true);
+        // Any character of a scalar can arrive as a reference (`1&#50;3` is
+        // 123), in pieces around it: they are joined in `text` and applied,
+        // trimmed once, at the element's end tag.
+        reader.config_mut().trim_text(false);
         let mut buf = Vec::new();
         let mut depth: u32 = 0;
         let mut root_is_file = false;
         let mut in_revision = false;
         let mut tag = String::new();
+        let mut text = String::new();
         let mut size: u64 = 0;
         let mut md5 = String::new();
         let mut created = String::new();
@@ -2409,22 +2413,30 @@ impl JottacloudProvider {
                         in_revision = true;
                     }
                     tag = name;
+                    text.clear();
                 }
                 Ok(Event::End(ref e)) => {
+                    if in_revision && e.name().as_ref() == tag {
+                        let value = text.trim();
+                        match tag.as_str() {
+                            "size" => size = value.parse().unwrap_or(0),
+                            "md5" => md5 = value.to_string(),
+                            "created" if created.is_empty() => created = value.to_string(),
+                            "modified" if modified.is_empty() => modified = value.to_string(),
+                            _ => {}
+                        }
+                    }
                     if e.name().as_ref() == "currentRevision" {
                         in_revision = false;
                     }
                     depth = depth.saturating_sub(1);
                     tag.clear();
+                    text.clear();
                 }
-                Ok(Event::Text(ref e)) if in_revision => {
-                    let text = e.as_ref().trim().to_string();
-                    match tag.as_str() {
-                        "size" => size = text.parse().unwrap_or(0),
-                        "md5" => md5 = text,
-                        "created" if created.is_empty() => created = text,
-                        "modified" if modified.is_empty() => modified = text,
-                        _ => {}
+                Ok(Event::Text(ref e)) if in_revision => text.push_str(e.as_ref()),
+                Ok(Event::GeneralRef(ref e)) if in_revision => {
+                    if let Some(expanded) = super::xml_text::xml_entity_to_str(e.as_ref()) {
+                        text.push_str(&expanded);
                     }
                 }
                 Ok(Event::Eof) => break,
@@ -2456,13 +2468,18 @@ impl JottacloudProvider {
 
         let mut children = Vec::new();
         let mut reader = Reader::from_str(xml);
-        reader.config_mut().trim_text(true);
+        // Names arrive as attributes; the revision scalars are element text,
+        // where any character can arrive as a reference (`1&#50;3` is 123, and
+        // the size goes into the restore request). Their pieces are joined in
+        // `text` and applied, trimmed once, at the element's end tag.
+        reader.config_mut().trim_text(false);
         let mut buf = Vec::new();
 
         let mut depth: u32 = 0;
         let mut in_file = false;
         let mut in_revision = false;
         let mut tag = String::new();
+        let mut text = String::new();
         let mut cur_name = String::new();
         let mut cur_deleted = false;
         let mut cur_size: u64 = 0;
@@ -2523,6 +2540,7 @@ impl JottacloudProvider {
                         in_revision = true;
                     }
                     tag = name;
+                    text.clear();
                 }
                 Ok(Event::Empty(ref e)) => {
                     // Live folders arrive as `<folder name="x"/>`.
@@ -2551,6 +2569,18 @@ impl JottacloudProvider {
                     }
                 }
                 Ok(Event::End(ref e)) => {
+                    if in_revision && e.name().as_ref() == tag {
+                        let value = text.trim();
+                        match tag.as_str() {
+                            "size" => cur_size = value.parse().unwrap_or(0),
+                            "md5" => cur_md5 = value.to_string(),
+                            "created" if cur_created.is_empty() => cur_created = value.to_string(),
+                            "modified" if cur_modified.is_empty() => {
+                                cur_modified = value.to_string()
+                            }
+                            _ => {}
+                        }
+                    }
                     match e.name().as_ref() {
                         "currentRevision" => in_revision = false,
                         "file" if in_file => {
@@ -2583,15 +2613,12 @@ impl JottacloudProvider {
                     }
                     depth = depth.saturating_sub(1);
                     tag.clear();
+                    text.clear();
                 }
-                Ok(Event::Text(ref e)) if in_revision => {
-                    let text = e.as_ref().trim().to_string();
-                    match tag.as_str() {
-                        "size" => cur_size = text.parse().unwrap_or(0),
-                        "md5" => cur_md5 = text,
-                        "created" if cur_created.is_empty() => cur_created = text,
-                        "modified" if cur_modified.is_empty() => cur_modified = text,
-                        _ => {}
+                Ok(Event::Text(ref e)) if in_revision => text.push_str(e.as_ref()),
+                Ok(Event::GeneralRef(ref e)) if in_revision => {
+                    if let Some(expanded) = super::xml_text::xml_entity_to_str(e.as_ref()) {
+                        text.push_str(&expanded);
                     }
                 }
                 Ok(Event::Eof) => break,
@@ -4557,6 +4584,46 @@ mod tests {
         // Garbage yields no children, never a panic.
         assert!(JottacloudProvider::parse_folder_tombstone_children("junk").is_empty());
         assert!(JottacloudProvider::parse_folder_tombstone_children("").is_empty());
+    }
+
+    /// Any character of a revision scalar can arrive as a reference, and
+    /// quick-xml hands the value over in pieces around it: `1&#50;3` was read
+    /// as 3, and that size goes into the cphash restore request.
+    #[test]
+    fn revision_scalars_keep_their_entity_references() {
+        let revision = r#"<currentRevision>
+                <created>2026-09-01-T10:40:48Z</created>
+                <modified>2026-09-01-T10:40:48&#x5A;</modified>
+                <size>1&#50;3</size>
+                <md5> d84d3caf340bd500&#49;93971c9eecb7255 </md5>
+            </currentRevision>"#;
+        let expected = (
+            123,
+            "d84d3caf340bd500193971c9eecb7255".to_string(),
+            "2026-09-01-T10:40:48Z".to_string(),
+            "2026-09-01-T10:40:48Z".to_string(),
+        );
+
+        let file =
+            format!(r#"<file name="a.txt" deleted="2026-09-01-T10:41:34Z">{revision}</file>"#);
+        assert_eq!(
+            JottacloudProvider::parse_jfs_file_revision(&file),
+            Some(expected.clone())
+        );
+
+        let folder = format!(
+            r#"<folder name="f" deleted="2026-09-01-T10:41:34Z"><files>
+                <file name="a.txt" deleted="2026-09-01-T10:41:34Z">{revision}</file>
+            </files></folder>"#
+        );
+        assert_eq!(
+            JottacloudProvider::parse_folder_tombstone_children(&folder),
+            vec![TombstoneChild::File {
+                name: "a.txt".to_string(),
+                deleted: true,
+                revision: Some(expected),
+            }]
+        );
     }
 
     #[test]

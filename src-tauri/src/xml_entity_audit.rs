@@ -14,32 +14,23 @@
 //! parser in the object listings (`a&b.txt` listed as `b.txt` on Storj). It
 //! kept coming back one parser at a time, so this test reads the sources and
 //! asserts that the functions matching `Event::Text` without an
-//! `Event::GeneralRef` arm are exactly [`ALLOWED`], each with the reason its
-//! text can hold no entity. Set equality in both directions, so the list
-//! cannot rot.
+//! `Event::GeneralRef` arm are exactly [`ALLOWED`]. Set equality in both
+//! directions, so the list cannot rot.
+//!
+//! [`ALLOWED`] is empty, and "this text holds no entity" is no reason to fill
+//! it: XML lets any character arrive as a numeric reference, so a size can be
+//! `1&#50;3` and a base64 secret `a&#43;b`. Four functions were first listed
+//! on that reasoning (sizes, hashes, dates, credentials) and all four turned
+//! out to read such values wrong.
 
 use crate::mtime_parse_audit::{
     char_literal_len, raw_string_open, rust_files, src_dir, strip_test_modules,
 };
 
-/// (file relative to `src/`, function, why its element text holds no entity).
-const ALLOWED: &[(&str, &str, &str)] = &[
-    (
-        "providers/jottacloud.rs",
-        "parse_folder_tombstone_children",
-        "names arrive as attributes (`xml_text::attr_value`); element text is only a revision's size, md5 and dates",
-    ),
-    (
-        "providers/jottacloud.rs",
-        "parse_jfs_file_revision",
-        "element text is only a revision's size, md5 and dates",
-    ),
-    (
-        "providers/sts.rs",
-        "parse_assume_role_response",
-        "credential values are base64 or JWT and the expiry is RFC 3339: no character that needs an entity",
-    ),
-];
+/// (file relative to `src/`, function, why it may ignore entity references):
+/// only for text the function never uses, never for text it believes cannot
+/// hold one.
+const ALLOWED: &[(&str, &str, &str)] = &[];
 
 /// `source` with comments, string and char literals blanked to spaces, so a
 /// comment or a string naming `Event::GeneralRef` neither hides nor fakes an
@@ -200,10 +191,10 @@ fn every_xml_text_reader_also_reads_entity_references() {
         allowed,
         "\nA function matching quick-xml `Event::Text` without an `Event::GeneralRef` \
          arm appeared or disappeared outside the tests.\n\
-         Text that can hold an entity (names, paths, keys, ETags, MIME types) must \
-         accumulate the pieces and expand each reference with \
-         providers::xml_text::xml_entity_to_str; text that cannot goes into ALLOWED \
-         with its reason.\n"
+         Element text must accumulate its pieces and expand each reference with \
+         providers::xml_text::xml_entity_to_str. Any character can arrive as a \
+         reference, so no text is exempt; only text the function never uses goes \
+         into ALLOWED, with its reason.\n"
     );
 }
 
