@@ -4166,7 +4166,10 @@
             "drivesLeftPanel": "Laufwerke linkes Fenster",
             "drivesRightPanel": "Laufwerke rechtes Fenster",
             "modeGroupLabel": "Seitenleistenmodus",
-            "placesSidebarLabel": "Seitenleiste Orte"
+            "placesSidebarLabel": "Seitenleiste Orte",
+            "mountFailed": "Einhängen fehlgeschlagen",
+            "partitions_need_udisks2": "Im Snap erscheinen nicht eingehängte Partitionen, die sich einhängen und auswerfen lassen, sobald die Berechtigung udisks2 verbunden ist. Führen Sie dies in einem Terminal aus und kehren Sie dann zu AeroFTP zurück:",
+            "volume_action_needs_udisks2": "Im Snap benötigen Einhängen und Auswerfen die Berechtigung udisks2. Führen Sie dies in einem Terminal aus und versuchen Sie es dann erneut: {command}"
         },
         "viewMode": {
             "list": "Liste",

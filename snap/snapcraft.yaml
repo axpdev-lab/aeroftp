@@ -131,6 +131,11 @@ apps:
       # `snap connect aeroftp:mount-observe` the sidebar says how to connect
       # it instead of listing volumes (MOUNT_OBSERVE_NOT_CONNECTED).
       - mount-observe
+      # Unmounted partitions, mount and eject go to the UDisks2 service over
+      # D-Bus. snapd never connects this on its own either, so without
+      # `snap connect aeroftp:udisks2` the sidebar says how to connect it
+      # (UDISKS2_NOT_CONNECTED).
+      - udisks2
       - network
       - network-bind
       # The UI loads from http://127.0.0.1, and inside a snap GLib asks the

@@ -4166,7 +4166,10 @@
             "drivesLeftPanel": "Gyriannau'r panel chwith",
             "drivesRightPanel": "Gyriannau'r panel de",
             "modeGroupLabel": "Modd y bar ochr",
-            "placesSidebarLabel": "Bar ochr lleoedd"
+            "placesSidebarLabel": "Bar ochr lleoedd",
+            "mountFailed": "Methodd y mowntio",
+            "partitions_need_udisks2": "Yn y snap, mae rhaniadau heb eu mowntio'n ymddangos, a gellir eu mowntio a'u diarddel, unwaith y bydd y caniatâd udisks2 wedi'i gysylltu. Rhedwch hyn mewn terfynell, yna dychwelwch i AeroFTP:",
+            "volume_action_needs_udisks2": "Yn y snap, mae mowntio a diarddel angen y caniatâd udisks2. Rhedwch hyn mewn terfynell, yna rhowch gynnig arall arni: {command}"
         },
         "viewMode": {
             "list": "Rhestr",

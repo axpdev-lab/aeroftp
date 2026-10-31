@@ -4166,7 +4166,10 @@
             "drivesLeftPanel": "Unidades do painel esquerdo",
             "drivesRightPanel": "Unidades do painel direito",
             "modeGroupLabel": "Modo da barra lateral",
-            "placesSidebarLabel": "Barra lateral de locais"
+            "placesSidebarLabel": "Barra lateral de locais",
+            "mountFailed": "Falha ao montar",
+            "partitions_need_udisks2": "No snap, as partições não montadas aparecem, e podem ser montadas e ejetadas, depois de a permissão udisks2 ser ligada. Execute isto num terminal e volte ao AeroFTP:",
+            "volume_action_needs_udisks2": "No snap, montar e ejetar precisam da permissão udisks2. Execute isto num terminal e tente novamente: {command}"
         },
         "viewMode": {
             "list": "Lista",

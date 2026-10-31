@@ -4166,7 +4166,10 @@
             "drivesLeftPanel": "Stations linkerpaneel",
             "drivesRightPanel": "Stations rechterpaneel",
             "modeGroupLabel": "Zijbalkmodus",
-            "placesSidebarLabel": "Zijbalk met locaties"
+            "placesSidebarLabel": "Zijbalk met locaties",
+            "mountFailed": "Aankoppelen mislukt",
+            "partitions_need_udisks2": "In de snap verschijnen niet-aangekoppelde partities, en die kunnen worden aangekoppeld en uitgeworpen, zodra de udisks2-machtiging is gekoppeld. Voer dit uit in een terminal en keer dan terug naar AeroFTP:",
+            "volume_action_needs_udisks2": "In de snap hebben aankoppelen en uitwerpen de udisks2-machtiging nodig. Voer dit uit in een terminal en probeer het dan opnieuw: {command}"
         },
         "viewMode": {
             "list": "Lijst",

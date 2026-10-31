@@ -4614,7 +4614,10 @@
             "drivesLeftPanel": "Unità pannello sinistro",
             "drivesRightPanel": "Unità pannello destro",
             "modeGroupLabel": "Modalità barra laterale",
-            "placesSidebarLabel": "Barra laterale dei luoghi"
+            "placesSidebarLabel": "Barra laterale dei luoghi",
+            "mountFailed": "Montaggio non riuscito",
+            "partitions_need_udisks2": "Nello snap le partizioni non montate compaiono, e si possono montare ed espellere, dopo aver collegato il permesso udisks2. Esegui questo comando in un terminale, poi torna su AeroFTP:",
+            "volume_action_needs_udisks2": "Nello snap, montare ed espellere richiedono il permesso udisks2. Esegui questo comando in un terminale, poi riprova: {command}"
         },
         "viewMode": {
             "list": "Lista",

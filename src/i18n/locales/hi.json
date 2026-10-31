@@ -4166,7 +4166,10 @@
             "drivesLeftPanel": "ड्राइव, बायाँ पैनल",
             "drivesRightPanel": "ड्राइव, दायाँ पैनल",
             "modeGroupLabel": "साइडबार मोड",
-            "placesSidebarLabel": "स्थान साइडबार"
+            "placesSidebarLabel": "स्थान साइडबार",
+            "mountFailed": "माउंट विफल",
+            "partitions_need_udisks2": "snap में अनमाउंट पार्टिशन तब दिखते हैं, और उन्हें माउंट व इजेक्ट किया जा सकता है, जब udisks2 अनुमति जुड़ जाती है। इसे टर्मिनल में चलाएँ, फिर AeroFTP पर लौटें:",
+            "volume_action_needs_udisks2": "snap में माउंट और इजेक्ट करने के लिए udisks2 अनुमति चाहिए। इसे टर्मिनल में चलाएँ, फिर दोबारा कोशिश करें: {command}"
         },
         "viewMode": {
             "list": "सूची",

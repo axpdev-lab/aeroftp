@@ -9,8 +9,12 @@ import snapcraftYaml from '../../snap/snapcraft.yaml?raw';
 import sidebarSource from './PlacesSidebar.tsx?raw';
 import {
     MOUNT_OBSERVE_NOT_CONNECTED,
+    PartitionsNeedUdisks2,
     SNAP_CONNECT_MOUNT_OBSERVE,
+    SNAP_CONNECT_UDISKS2,
+    UDISKS2_NOT_CONNECTED,
     VolumesUnavailable,
+    needsUdisks2Plug,
     readVolumes,
     volumesUnavailableReason,
 } from './volumesUnavailable';
@@ -51,6 +55,26 @@ describe('volumes the snap may not read', () => {
         expect(snapcraftYaml).toMatch(new RegExp(`^name: ${snapName}$`, 'm'));
         const plugs = snapcraftYaml.slice(snapcraftYaml.indexOf('    plugs:'), snapcraftYaml.indexOf('\nparts:'));
         expect(plugs).toMatch(new RegExp(`^      - ${plug}$`, 'm'));
+    });
+
+    it('tells the snap udisks2 refusal from any other failure, with the marker and a plug the snap declares', () => {
+        expect(needsUdisks2Plug(`${UDISKS2_NOT_CONNECTED}: refused; connect the plug`)).toBe(true);
+        expect(needsUdisks2Plug('Failed to mount /dev/sda1: device busy')).toBe(false);
+        expect(needsUdisks2Plug(undefined)).toBe(false);
+        expect(filesystemRs).toContain(`pub const UDISKS2_NOT_CONNECTED: &str = "${UDISKS2_NOT_CONNECTED}";`);
+        expect(filesystemRs).toContain(SNAP_CONNECT_UDISKS2);
+        const [, plug] = SNAP_CONNECT_UDISKS2.match(/snap connect aeroftp:([a-z0-9-]+)$/) ?? [];
+        const plugs = snapcraftYaml.slice(snapcraftYaml.indexOf('    plugs:'), snapcraftYaml.indexOf('\nparts:'));
+        expect(plugs).toMatch(new RegExp(`^      - ${plug}$`, 'm'));
+        const hint = renderToStaticMarkup(createElement(PartitionsNeedUdisks2, { t }));
+        expect(hint).toContain('sidebar.partitions_need_udisks2');
+        expect(hint).toContain(SNAP_CONNECT_UDISKS2);
+    });
+
+    it('shows the partition hint, and a failed mount or eject, in the sidebar', () => {
+        expect(sidebarSource).toContain('<PartitionsNeedUdisks2 t={t} />');
+        expect(sidebarSource).toContain("title: t('sidebar.mountFailed')");
+        expect(sidebarSource.match(/sidebar\.volume_action_needs_udisks2/g)).toHaveLength(2);
     });
 
     it('drops the rows of an earlier read when a read fails, and says why', async () => {
