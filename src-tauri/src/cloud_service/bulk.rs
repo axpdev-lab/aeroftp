@@ -351,8 +351,9 @@ impl CloudService {
             };
             let name = upload.remote_path.rsplit('/').next().unwrap_or_default();
             // A later Update cycle compares receipts through STAT. S3's
-            // LastModified/source-mtime and Swift's LIST/HEAD precision differ
-            // even for ordinary uploads, so capture those receipts through STAT too.
+            // LastModified/source-mtime and Swift's LIST/HEAD precision differ.
+            // Their production providers currently have no native bulk override;
+            // retain this contract for future implementations and capability fixtures.
             let stat_receipt = config.update_only
                 || matches!(
                     provider.provider_type(),

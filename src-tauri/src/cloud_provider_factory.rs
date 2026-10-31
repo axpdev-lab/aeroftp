@@ -604,7 +604,8 @@ async fn open_yandex_oauth(
     enter_profile_root(&mut provider, profile.map(profile_root).as_deref()).await?;
     let binding = overlay_binding(profile);
     let identity = provider
-        .account_email()
+        .sync_namespace_identity()
+        .or_else(|| provider.account_email())
         .filter(|account| !account.trim().is_empty())
         .map(|account| {
             identity_digest(serde_json::json!([
@@ -699,7 +700,8 @@ fn oauth_app(config: &CloudConfig, id_key: &str, secret_key: &str) -> Result<OAu
 /// OAuth receipts require a stable authenticated account, not merely a reusable token slot.
 fn opened_oauth(provider: Box<dyn StorageProvider>, app: &OAuthApp) -> OpenedCloudProvider {
     let account = provider
-        .account_email()
+        .sync_namespace_identity()
+        .or_else(|| provider.account_email())
         .filter(|value| !value.trim().is_empty());
     let endpoint = provider.endpoint_identity();
     let identity = account.map(|account| {
@@ -992,6 +994,11 @@ mod tests {
             .await
             .unwrap();
         assert!(first.identity.is_some());
+        assert_eq!(first.provider.account_email().as_deref(), Some("display"));
+        assert_eq!(
+            first.provider.sync_namespace_identity().as_deref(),
+            Some("uid-one")
+        );
         let generic = opened_oauth(first.provider, &oauth);
         assert!(generic.identity.is_some());
         *user.lock().unwrap() = serde_json::json!({"uid":"uid-two","login":"display"});

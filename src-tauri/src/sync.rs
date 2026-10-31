@@ -132,7 +132,7 @@ pub struct CompareReport {
     pub summary: CompareSummary,
     /// How modification times were compared: within a window, or not at all
     /// (size only, with the reason), for a frontend to state the size-only
-    /// case. The Compare and Plan views do not show it yet.
+    /// case and preserve the effective policy in Plan and CLI export.
     pub modify_window: ModifyWindow,
     /// Identical files whose two sides spell the name differently. They are
     /// not difference rows. The baseline still has to remember them, or the
@@ -3231,6 +3231,17 @@ pub struct CloudTransferReceipt {
     pub destination: SyncIndexEntry,
 }
 
+/// Verified LIST-to-STAT clock conversion, never evidence of a transfer.
+/// Reusable only for the same connection scope and exact listed file snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudRemoteObservation {
+    pub scope: String,
+    pub listed: FileInfo,
+    pub logical: FileInfo,
+    pub local_key: String,
+    pub local: SyncIndexEntry,
+}
+
 /// Persistent index storing the state of files after a successful sync.
 /// Used to detect true conflicts (both sides changed since last sync)
 /// and to skip unchanged files for faster re-scans.
@@ -3257,6 +3268,9 @@ pub struct SyncIndex {
     /// saves default to none; Skip/Identical bookkeeping is never evidence.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub cloud_receipts: HashMap<String, CloudTransferReceipt>,
+    /// Background metadata cache; legacy/foreground saves default to empty.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub cloud_remote_metadata: HashMap<String, CloudRemoteObservation>,
     /// Keys the version 2 migration rewrote from the native separator, whose
     /// presence does not prove the file was synced **at that path**. Never
     /// persisted: it is rebuilt on every load that migrates, and a save writes
@@ -3278,6 +3292,7 @@ impl SyncIndex {
             files: HashMap::new(),
             remote_spellings: Default::default(),
             cloud_receipts: Default::default(),
+            cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
         }
     }
@@ -8165,6 +8180,7 @@ mod tests {
             files: HashMap::new(),
             remote_spellings: Default::default(),
             cloud_receipts: Default::default(),
+            cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
         };
         index.files.insert(
@@ -8202,6 +8218,7 @@ mod tests {
             files: HashMap::new(),
             remote_spellings: Default::default(),
             cloud_receipts: Default::default(),
+            cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
         };
         // Sizes differ so "which one survived" is observable.
@@ -8312,6 +8329,7 @@ mod tests {
             files: HashMap::new(),
             remote_spellings: Default::default(),
             cloud_receipts: Default::default(),
+            cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
         };
         index.files.insert(
@@ -8389,6 +8407,7 @@ mod tests {
             files: HashMap::new(),
             remote_spellings: Default::default(),
             cloud_receipts: Default::default(),
+            cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
         };
         index.files.insert(
@@ -8426,6 +8445,7 @@ mod tests {
             files: HashMap::new(),
             remote_spellings: Default::default(),
             cloud_receipts: Default::default(),
+            cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
         };
         // A key that a rewrite would change, so "untouched" is observable.
@@ -8457,6 +8477,7 @@ mod tests {
             files: HashMap::new(),
             remote_spellings: Default::default(),
             cloud_receipts: Default::default(),
+            cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
         };
         index.files.insert(

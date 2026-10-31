@@ -984,9 +984,14 @@ export interface CompareSummary {
 }
 
 /** A recursive compare answer: difference rows plus the summary above. */
+export type ModifyWindow =
+  | { kind: 'seconds'; secs: number }
+  | { kind: 'size_only'; reason: 'ftp_list_dates' | 'no_comparable_time' };
+
 export interface CompareReport {
   differences: FileComparison[];
   summary: CompareSummary;
+  modify_window: ModifyWindow;
 }
 
 export type ConflictStrategy =

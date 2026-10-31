@@ -30,6 +30,7 @@
  */
 import type { AeroSyncPairKind } from '../components/AeroSync/types';
 import type { PresetDirection, SyncPreset } from './syncPresets';
+import type { CompareResult } from './compareEndpoints';
 
 /**
  * Whether `aeroftp-cli sync --exclude P` excludes at least what the compare
@@ -60,6 +61,8 @@ export interface CliCommandInput {
     /** Effective compare window; the CLI raises it to backend precision too. */
     modifyWindowMs?: number;
     timestampsComparable?: boolean;
+    /** False when native whole-second ordering would overwrite a GUI-preserved file. */
+    updateTimestampPrecisionSafe?: boolean;
     direction: PresetDirection;
     /** Saved server name, when the connection came from a saved server. */
     profileName?: string | null;
@@ -100,6 +103,7 @@ export function buildCliSyncCommand(input: CliCommandInput): CliCommandResult {
     if (input.pairKind !== 'local-remote' && input.pairKind !== 'remote-local') return none('local-pair');
     if (!input.profileName) return none('unsaved-server');
     if (input.updateOnly && input.timestampsComparable === false) return none('overwrites-newer');
+    if (input.updateOnly && input.updateTimestampPrecisionSafe === false) return none('overwrites-newer');
     if (input.preset === 'backup' || input.preset === 'update') return none('overwrites-newer');
     if (input.preset === 'bisync') return none('two-way');
     if (input.canary) return none('canary');
@@ -133,6 +137,25 @@ export function buildCliSyncCommand(input: CliCommandInput): CliCommandResult {
         argv.push(`--error-correction=${input.errorCorrectionPct}`);
     }
     return { kind: 'command', argv, text: argv.map((arg) => quoteArg(arg, input.shell)).join(' ') };
+}
+
+/** Native CLI quantizes dates to Unix seconds; never offer a less protective command. */
+export function cliPreservesUpdateDestinations(result: CompareResult, direction: PresetDirection): boolean {
+    const tolerance = result.appliedOptions.mtimeToleranceMs;
+    if (result.appliedOptions.policy === 'size-only' || !Number.isFinite(tolerance)) return false;
+    const seconds = Math.ceil(Math.max(0, tolerance) / 1000);
+    return result.entries.every((entry) => {
+        // Source-only/destination-only rows have no paired timestamp decision.
+        if (entry.nameMatchBlocked) return false;
+        if (entry.bucket === 'only-left' || entry.bucket === 'only-right') return true;
+        if (entry.leftIsDir && entry.rightIsDir) return true;
+        const source = direction === 'left-to-right' ? entry.leftMtimeMs : entry.rightMtimeMs;
+        const destination = direction === 'left-to-right' ? entry.rightMtimeMs : entry.leftMtimeMs;
+        if (source == null || destination == null || !Number.isFinite(source) || !Number.isFinite(destination)
+            || entry.leftIsDir !== entry.rightIsDir) return false;
+        return destination - source <= tolerance
+            || Math.floor(destination / 1000) - Math.floor(source / 1000) > seconds;
+    });
 }
 
 const SAFE_BARE = /^[A-Za-z0-9_\/.:=+-]+$/;

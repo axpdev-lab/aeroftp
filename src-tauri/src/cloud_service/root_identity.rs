@@ -1,14 +1,94 @@
 //! Native, remount-stable directory identities where the filesystem exposes them.
 //! No marker is written into the user's tree. Unsupported filesystems retain
-//! the caller's conservative identity for the current mount only.
+//! a guaranteed nonreused mount-instance identity, or no deletion authority.
 
 use serde_json::{json, Value};
 use std::fs::File;
 
+pub(super) fn open_directory(path: &std::path::Path) -> Option<File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.custom_flags(0x02000000); // FILE_FLAG_BACKUP_SEMANTICS.
+    }
+    let file = options.open(path).ok()?;
+    file.metadata().ok()?.is_dir().then_some(file)
+}
+
+/// The UNIQUE token, unlike mountinfo's ID or st_dev, is not recycled this boot.
 #[cfg(target_os = "linux")]
-pub(super) fn native(file: &File) -> Option<Value> {
+pub(super) fn unique_mount_id(file: &File) -> Option<u64> {
     use std::os::fd::AsRawFd;
-    use std::os::unix::fs::{FileTypeExt, MetadataExt};
+    // SAFETY: statx is an integer-only C output structure, fully zero initialized.
+    let mut state: libc::statx = unsafe { std::mem::zeroed() };
+    // SAFETY: the live directory fd and empty C string identify that same object.
+    if unsafe {
+        libc::statx(
+            file.as_raw_fd(),
+            c"".as_ptr(),
+            libc::AT_EMPTY_PATH,
+            libc::STATX_MNT_ID_UNIQUE,
+            &mut state,
+        )
+    } != 0
+        || state.stx_mask & libc::STATX_MNT_ID_UNIQUE == 0
+        || state.stx_mnt_id == 0
+    {
+        return None;
+    }
+    Some(state.stx_mnt_id)
+}
+
+/// Ephemeral scan/cache guard; prefer the cheap Linux token, otherwise native ID.
+pub(super) fn guard(file: &File) -> Option<[u8; 32]> {
+    use sha2::Digest;
+    #[cfg(target_os = "linux")]
+    if let Some(id) = unique_mount_id(file) {
+        let mut hash = sha2::Sha256::new();
+        hash.update(id.to_le_bytes());
+        // Native handles include inode generation. Reusing an inode on the
+        // same mount must not hit an old native identity in the cycle cache.
+        if let Some(handle) = file_handle(file) {
+            hash.update(handle.kind.to_le_bytes());
+            hash.update(&handle.bytes);
+        }
+        if let Ok(created) = file.metadata().and_then(|meta| meta.created()) {
+            hash.update(serde_json::to_vec(&created).ok()?);
+        }
+        return Some(hash.finalize().into());
+    }
+    native(file).map(|value| sha2::Sha256::digest(value.to_string().as_bytes()).into())
+}
+
+#[cfg(target_os = "linux")]
+pub(super) fn mount_bound(file: &File) -> Option<Value> {
+    use std::os::unix::fs::MetadataExt;
+    let mount = unique_mount_id(file)?;
+    let boot = std::fs::read_to_string("/proc/sys/kernel/random/boot_id").ok()?;
+    let boot = uuid::Uuid::parse_str(boot.trim()).ok()?;
+    Some(
+        json!({"kind":"linux-unique-mount-v1", "boot":boot.to_string(),
+        "mount":mount, "inode":file.metadata().ok()?.ino(), "generation":hex::encode(guard(file)?)}),
+    )
+}
+
+#[cfg(not(target_os = "linux"))]
+pub(super) fn mount_bound(_file: &File) -> Option<Value> {
+    None
+}
+
+#[cfg(target_os = "linux")]
+struct LinuxHandle {
+    kind: i32,
+    bytes: Vec<u8>,
+    mount_id: i32,
+}
+
+#[cfg(target_os = "linux")]
+fn file_handle(file: &File) -> Option<LinuxHandle> {
+    use std::os::fd::AsRawFd;
     #[repr(C)]
     struct Handle {
         bytes: u32,
@@ -38,6 +118,18 @@ pub(super) fn native(file: &File) -> Option<Value> {
     {
         return None;
     }
+    Some(LinuxHandle {
+        kind: handle.kind,
+        bytes: handle.data[..handle.bytes as usize].to_vec(),
+        mount_id,
+    })
+}
+
+#[cfg(target_os = "linux")]
+pub(super) fn native(file: &File) -> Option<Value> {
+    use std::os::unix::fs::{FileTypeExt, MetadataExt};
+    let handle = file_handle(file)?;
+    let mount_id = handle.mount_id;
     let mounts = std::fs::read_to_string("/proc/self/mountinfo").ok()?;
     let line = mounts.lines().find(|line| {
         line.split_whitespace()
@@ -78,7 +170,7 @@ pub(super) fn native(file: &File) -> Option<Value> {
         json!({"uuid": ids[0], "root": root})
     };
     Some(
-        json!({"kind":"linux-file-handle-v1", "volume":volume, "handle_type":handle.kind, "handle":hex::encode(&handle.data[..handle.bytes as usize])}),
+        json!({"kind":"linux-file-handle-v1", "volume":volume, "handle_type":handle.kind, "handle":hex::encode(&handle.bytes)}),
     )
 }
 

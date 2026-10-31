@@ -28,6 +28,8 @@ struct RemoteState {
     /// The server's clock: each upload is stamped with the next tick.
     clock: i64,
     refuse_rename: bool,
+    refuse_upload: bool,
+    refuse_download: bool,
     unpublished: BTreeSet<String>,
     readiness_calls: Vec<String>,
     readiness_fails: bool,
@@ -161,6 +163,9 @@ impl StorageProvider for MemRemote {
     ) -> Result<(), ProviderError> {
         let mut state = self.state();
         state.downloads.push(remote_path.to_string());
+        if state.refuse_download {
+            return Err(ProviderError::Other("fixture download refused".into()));
+        }
         let (bytes, _) = state
             .files
             .get(remote_path)
@@ -182,6 +187,9 @@ impl StorageProvider for MemRemote {
     ) -> Result<(), ProviderError> {
         let bytes = std::fs::read(local_path).map_err(ProviderError::IoError)?;
         let mut state = self.state();
+        if state.refuse_upload {
+            return Err(ProviderError::Other("fixture upload refused".into()));
+        }
         if !state.dirs.contains(parent_of(remote_path)) {
             return Err(not_found(parent_of(remote_path)));
         }
@@ -447,6 +455,112 @@ fn done(run: IncrementalRun) -> (SyncOperationResult, Vec<FailedPath>) {
         IncrementalRun::Done(result, failed) => (result, failed),
         IncrementalRun::TooLarge(_) => panic!("expected the pass to finish"),
     }
+}
+
+/// Failed watcher writes are excluded from `done`, but must retire cached clocks.
+#[tokio::test]
+async fn failed_watcher_mutations_retire_only_the_touched_metadata_observation() {
+    for upload in [true, false] {
+        let root = tempfile::tempdir().unwrap();
+        let mut config = pair(root.path());
+        config.update_only = true;
+        config.sync_direction = if upload {
+            CompareDirection::LocalToRemote
+        } else {
+            CompareDirection::RemoteToLocal
+        };
+        let mut remote = MemRemote::new();
+        let mut index = empty_index(&config);
+        for key in ["changed", "untouched"] {
+            std::fs::write(root.path().join(key), b"old").unwrap();
+            set_mtime(&root.path().join(key), SYNCED_AT);
+            remote.put(&format!("/remote/{key}"), b"old", SYNCED_AT);
+            index.files.insert(
+                key.into(),
+                SyncIndexEntry {
+                    size: 3,
+                    modified: DateTime::<Utc>::from_timestamp(SYNCED_AT, 0),
+                    is_dir: false,
+                },
+            );
+            let file = FileInfo {
+                name: key.into(),
+                path: format!("/remote/{key}"),
+                size: 3,
+                modified: DateTime::<Utc>::from_timestamp(SYNCED_AT, 0),
+                is_dir: false,
+                checksum: None,
+                checksum_alg: None,
+            };
+            index.cloud_remote_metadata.insert(
+                key.into(),
+                crate::sync::CloudRemoteObservation {
+                    scope: "fixture-scope".into(),
+                    listed: file.clone(),
+                    logical: file,
+                    local_key: key.into(),
+                    local: index.files[key].clone(),
+                },
+            );
+        }
+        std::fs::write(root.path().join("changed"), b"new local").unwrap();
+        set_mtime(&root.path().join("changed"), SYNCED_AT + 10);
+        if upload {
+            remote.state().refuse_upload = true;
+        } else {
+            remote.put("/remote/changed", b"new remote", SYNCED_AT + 100);
+            remote.state().refuse_download = true;
+        }
+        let (run, saved) = execute(
+            &config,
+            work(prep(&config, &index, &["changed"])),
+            &mut remote,
+            None,
+        )
+        .await;
+        let (result, failed) = done(run);
+        assert!(!result.errors.is_empty());
+        assert_eq!(failed.len(), 1);
+        assert!(!saved.cloud_remote_metadata.contains_key("changed"));
+        assert!(saved.cloud_remote_metadata.contains_key("untouched"));
+    }
+}
+
+/// A probe failure after stat must finish the pass and report its normal error state.
+#[tokio::test]
+async fn a_failed_update_source_probe_disables_deletes_and_completes_the_pass() {
+    let fixture = tempfile::tempdir().unwrap();
+    let root = fixture.path().join("source");
+    std::fs::create_dir(&root).unwrap();
+    std::fs::write(root.join("new"), b"source").unwrap();
+    let mut config = pair(&root);
+    config.update_only = true;
+    config.sync_direction = CompareDirection::LocalToRemote;
+    let prepared = work(prep(&config, &empty_index(&config), &["new"]));
+    let mut remote = MemRemote::new();
+    let source = root.clone();
+    let retired = fixture.path().join("retired");
+    remote.state().on_stat = Some(Box::new(move || {
+        std::fs::rename(&source, retired).unwrap();
+        std::fs::write(source, b"not a directory").unwrap();
+    }));
+    let svc = CloudService::new();
+    svc.init(config.clone()).await;
+    let (run, _) = svc
+        .execute_incremental(&mut remote, prepared, None)
+        .await
+        .expect("probe error is an operation result, not an aborted pass");
+    let (result, _) = done(run);
+    assert!(result
+        .errors
+        .iter()
+        .any(|error| error.contains("cannot inspect local source")));
+    assert_eq!(result.deleted, 0);
+    assert!(remote.state().deletes.is_empty());
+    assert!(matches!(
+        *svc.status.read().await,
+        CloudSyncStatus::Error { .. }
+    ));
 }
 
 /// The class defect: a watcher event used to run a full sync that listed the
@@ -1697,6 +1811,29 @@ async fn update_watcher_large_delete_batch_waits_for_destination_full_scan() {
     let (run, _) = execute(&config, prepared, &mut remote, Some(REMOTE_WORK_LIMIT)).await;
     assert!(matches!(run, IncrementalRun::TooLarge(_)));
     assert!(remote.state().deletes.is_empty());
+    // The provider can defer the full scan while its work is rate-limited.
+    let prepared = work(prep(
+        &config,
+        &index,
+        &names.iter().map(String::as_str).collect::<Vec<_>>(),
+    ));
+    let (run, saved) = execute(&config, prepared, &mut remote, None).await;
+    let (result, failed) = done(run);
+    assert_eq!(result.deleted, 0);
+    assert!(failed.is_empty());
+    assert!(remote.state().deletes.is_empty());
+    assert!(result
+        .errors
+        .iter()
+        .any(|error| error.contains("full destination scan")));
+    assert_eq!(
+        serde_json::to_value(&saved.files).unwrap(),
+        serde_json::to_value(&index.files).unwrap()
+    );
+    assert_eq!(
+        serde_json::to_value(&saved.cloud_receipts).unwrap(),
+        serde_json::to_value(&index.cloud_receipts).unwrap()
+    );
 }
 
 #[tokio::test]

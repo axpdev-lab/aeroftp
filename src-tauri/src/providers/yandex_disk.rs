@@ -404,6 +404,7 @@ pub struct YandexDiskProvider {
     client: reqwest::Client,
     resume_account: String,
     authenticated_account: Option<String>,
+    authenticated_login: Option<String>,
     access_token: SecretString,
     connected: bool,
     current_path: String,
@@ -430,6 +431,7 @@ impl YandexDiskProvider {
             client,
             resume_account: uuid::Uuid::new_v4().to_string(),
             authenticated_account: None,
+            authenticated_login: None,
             access_token: SecretString::from(access_token),
             connected: false,
             current_path: initial_path.unwrap_or_else(|| "/".to_string()),
@@ -1077,6 +1079,12 @@ impl YandexDiskProvider {
 impl StorageProvider for YandexDiskProvider {
     fn account_email(&self) -> Option<String> {
         self.connected
+            .then(|| self.authenticated_login.clone())
+            .flatten()
+    }
+
+    fn sync_namespace_identity(&self) -> Option<String> {
+        self.connected
             .then(|| self.authenticated_account.clone())
             .flatten()
     }
@@ -1097,6 +1105,7 @@ impl StorageProvider for YandexDiskProvider {
         yd_log("Connecting: verifying token via GET /v1/disk/");
 
         self.authenticated_account = None;
+        self.authenticated_login = None;
         let resp = self
             .client
             .get(format!("{}/", self.api_base()))
@@ -1114,6 +1123,7 @@ impl StorageProvider for YandexDiskProvider {
             ProviderError::ConnectionFailed(format!("Failed to parse disk info: {}", e))
         })?;
         if let Some(user) = info.user {
+            self.authenticated_login = (!user.login.is_empty()).then(|| user.login.clone());
             let account = if user.uid.is_empty() {
                 user.login
             } else {
@@ -2132,9 +2142,11 @@ mod tests {
         let mut provider =
             YandexDiskProvider::new("token".into(), None).with_test_api_base(&endpoint);
         provider.authenticated_account = Some("old-uid".into());
+        provider.authenticated_login = Some("old-login".into());
         provider.connected = true;
         provider.connect().await.unwrap();
         assert!(provider.account_email().is_none());
+        assert!(provider.sync_namespace_identity().is_none());
         server.abort();
     }
 

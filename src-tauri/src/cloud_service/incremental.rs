@@ -927,7 +927,13 @@ impl CloudService {
             // A failed stat stays out of the comparisons altogether.
             allow_orphan_deletes: config.sync_direction == CompareDirection::LocalToRemote
                 && if config.update_only {
-                    CloudService::local_source_has_syncable_file(&config)?
+                    match CloudService::local_source_has_syncable_file(&config) {
+                        Ok(found) => found,
+                        Err(error) => {
+                            result.errors.push(format!("Update orphan deletes disabled: cannot inspect local source: {error}"));
+                            false
+                        }
+                    }
                 } else {
                     !local_root_is_empty(&config.local_folder)
                 },
@@ -1048,6 +1054,8 @@ impl CloudService {
             files,
             remote_spellings,
             cloud_receipts,
+            cloud_remote_metadata: self
+                .retain_remote_observations(index.cloud_remote_metadata.clone(), &comparisons),
             unverified_keys: Default::default(),
         };
 

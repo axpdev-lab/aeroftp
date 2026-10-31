@@ -521,9 +521,7 @@ export const derivePresetPlan = (
                     || source == null || destination == null
                     || !Number.isFinite(source) || !Number.isFinite(destination)
                     || entry.leftIsDir !== entry.rightIsDir) return 'conflict-skip';
-                // Native comparisons and CLI flags use whole Unix seconds.
-                const deltaSeconds = Math.trunc(destination / 1000) - Math.trunc(source / 1000);
-                if (deltaSeconds > Math.ceil(result.appliedOptions.mtimeToleranceMs / 1000)) return 'skip';
+                if (destination - source > result.appliedOptions.mtimeToleranceMs) return 'skip';
             }
             if (honourConflictPolicy) {
                 return resolveConflictAction(entry, conflictPolicy, direction);

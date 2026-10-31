@@ -50,7 +50,7 @@ import {
     cliExcludePatterns,
     sameExcludePatterns,
 } from '../../utils/aeroSyncExcludes';
-import { buildCliSyncCommand, type CliNoEquivalentReason } from '../../utils/aeroSyncCliCommand';
+import { buildCliSyncCommand, cliPreservesUpdateDestinations, type CliNoEquivalentReason } from '../../utils/aeroSyncCliCommand';
 import { SavedPresetPicker, useSavedSyncProfiles } from './SavedPresetPicker';
 import type { SyncProfile } from '../../types';
 import { buildAeroSyncTabStatePatch, parseSyncExcludePatterns } from '../../utils/syncTemplateApply';
@@ -402,6 +402,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
         updateOnly: preset === 'mirror' && updateOnly,
         modifyWindowMs: result.appliedOptions.mtimeToleranceMs,
         timestampsComparable: result.appliedOptions.policy !== 'size-only',
+        updateTimestampPrecisionSafe: cliPreservesUpdateDestinations(result, direction),
         profileName: cli?.profileName,
         profileInitialPath: cli?.profileInitialPath,
         localPath: cli?.localPath ?? '',

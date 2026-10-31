@@ -387,3 +387,25 @@ describe('preset descriptors', () => {
     });
 
 });
+
+
+describe('One-way Update retains millisecond boundary precision', () => {
+    for (const direction of ['left-to-right','right-to-left'] as const) {
+        it.each([
+            [100000,102500,2000,'skip'],
+            [100000,102000,2000,'overwrite'],
+            [100000,102001,2000,'skip'],
+            [100500,102500,2000,'overwrite'],
+            [100000,160000,60000,'overwrite'],
+            [100000,160001,60000,'skip'],
+        ] as const)(`${direction} source%s destination%s window%s`, (source,destination,tolerance,wanted) => {
+            const left=direction==='left-to-right'?source:destination;
+            const right=direction==='left-to-right'?destination:source;
+            const result=compareEntries([{name:'file',size:3,isDir:false,mtimeMs:left}],
+                [{name:'file',size:7,isDir:false,mtimeMs:right}],{mtimeToleranceMs:tolerance});
+            const plan=derivePresetPlan(result,{preset:'mirror',direction,updateOnly:true});
+            const actions=plan.bucketPlans.flatMap(bucket=>bucket.entryActions);
+            expect(actions).toEqual([wanted==='skip'?'skip':direction==='left-to-right'?'overwrite-right':'overwrite-left']);
+        });
+    }
+});
