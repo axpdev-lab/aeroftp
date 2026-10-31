@@ -4411,6 +4411,9 @@ enum VaultCommands {
         password: Option<String>,
         /// Destination directory (created if needed)
         dest: String,
+        /// Replace files that already exist in the destination
+        #[arg(long)]
+        overwrite: bool,
         /// Vault format: auto (detect from file) | v2 | v3
         #[arg(long = "vault-version", short = 'V', default_value = "auto")]
         vault_version: String,
@@ -39138,6 +39141,55 @@ enum DryRunOutcome {
 /// Only the provider's typed absence permits force-delete to ignore a failure
 /// or a caller-named speed test to write. Error details can mention a missing
 /// service, credentials or metadata without saying this path is absent.
+/// Move what a vault extracted into `staging` to `dest`. Nothing moves when a
+/// file would replace one already there, unless `overwrite` says so.
+fn publish_extracted(
+    staging: &std::path::Path,
+    dest: &std::path::Path,
+    overwrite: bool,
+) -> Result<(), String> {
+    let mut files = Vec::new();
+    let mut folders = Vec::new();
+    for entry in walkdir::WalkDir::new(staging)
+        .min_depth(1)
+        .follow_links(false)
+    {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let relative = entry
+            .path()
+            .strip_prefix(staging)
+            .map_err(|e| e.to_string())?
+            .to_path_buf();
+        if entry.file_type().is_dir() {
+            folders.push(relative);
+        } else {
+            files.push(relative);
+        }
+    }
+    if !overwrite {
+        let existing: Vec<_> = files
+            .iter()
+            .filter(|file| dest.join(file).exists())
+            .collect();
+        if let Some(first) = existing.first() {
+            return Err(format!(
+                "{} file(s) already exist in {}, such as {}. Nothing was replaced: use --overwrite to replace them",
+                existing.len(),
+                dest.display(),
+                first.display()
+            ));
+        }
+    }
+    for folder in &folders {
+        std::fs::create_dir_all(dest.join(folder)).map_err(|e| e.to_string())?;
+    }
+    for file in &files {
+        std::fs::rename(staging.join(file), dest.join(file))
+            .map_err(|e| format!("Failed to write {}: {e}", file.display()))?;
+    }
+    Ok(())
+}
+
 fn is_not_found_error(e: &ProviderError) -> bool {
     matches!(e, ProviderError::NotFound(_))
 }
@@ -39499,7 +39551,10 @@ async fn run_rm_dry_run(
             // `--force` makes the real delete idempotent over a missing path;
             // the dry-run reports the same non-failure.
             if force && is_not_found_error(&e) {
-                let message = format!("Would delete: {} (not found, ignored with --force)", path);
+                let message = format!(
+                    "Nothing to delete: {} (not found, ignored with --force)",
+                    path
+                );
                 match format {
                     OutputFormat::Text => {
                         if !cli.quiet {
@@ -39616,7 +39671,10 @@ async fn run_filtered_rm(
         Err(e) => {
             // `--force` keeps the delete idempotent over a missing path.
             if force && is_not_found_error(&e) {
-                let message = format!("Deleted: {} (not found, ignored with --force)", path);
+                let message = format!(
+                    "Nothing to delete: {} (not found, ignored with --force)",
+                    path
+                );
                 match format {
                     OutputFormat::Text => {
                         if !cli.quiet {
@@ -39813,12 +39871,18 @@ async fn cmd_rm(
                 match format {
                     OutputFormat::Text => {
                         if !cli.quiet {
-                            eprintln!("Deleted: {} (not found, ignored with --force)", path);
+                            eprintln!(
+                                "Nothing to delete: {} (not found, ignored with --force)",
+                                path
+                            );
                         }
                     }
                     OutputFormat::Json => print_json(&CliOk {
                         status: "ok",
-                        message: format!("Deleted: {} (not found, ignored with --force)", path),
+                        message: format!(
+                            "Nothing to delete: {} (not found, ignored with --force)",
+                            path
+                        ),
                     }),
                 }
                 let _ = provider.disconnect().await;
@@ -78668,6 +78732,7 @@ async fn main() {
                     path,
                     password,
                     dest,
+                    overwrite,
                     vault_version,
                 } => {
                     let pw = resolve_pw(password);
@@ -78676,20 +78741,43 @@ async fn main() {
                     } else {
                         resolve_ver(vault_version)
                     };
-                    let res: Result<u64, String> = if ver == "v3" {
-                        aerovault_v3::vault_v3_extract_all_impl(
-                            path.clone(),
-                            pw,
-                            dest.clone(),
-                            None,
-                        )
-                        .await
-                    } else if ver == "v2" {
-                        aerovault_v2::vault_v2_extract_all(path.clone(), pw, dest.clone())
-                            .await
-                            .map(|v| v["extracted"].as_u64().unwrap_or(0))
-                    } else {
-                        Err("extract-all is only supported for v2/v3 vaults".to_string())
+                    // Every format extracts into a staging folder first: v2 refused
+                    // an existing file halfway through, and v3 replaced it.
+                    let staging = std::fs::create_dir_all(dest.as_str())
+                        .and_then(|()| {
+                            tempfile::Builder::new()
+                                .prefix(".aerovault_extract_")
+                                .tempdir_in(dest.as_str())
+                        })
+                        .map_err(|e| format!("Failed to prepare {dest}: {e}"));
+                    let res: Result<u64, String> = match staging {
+                        Err(e) => Err(e),
+                        Ok(staging) => {
+                            let target = staging.path().to_string_lossy().into_owned();
+                            let extracted = if ver == "v3" {
+                                aerovault_v3::vault_v3_extract_all_impl(
+                                    path.clone(),
+                                    pw,
+                                    target,
+                                    None,
+                                )
+                                .await
+                            } else if ver == "v2" {
+                                aerovault_v2::vault_v2_extract_all(path.clone(), pw, target)
+                                    .await
+                                    .map(|v| v["extracted"].as_u64().unwrap_or(0))
+                            } else {
+                                Err("extract-all is only supported for v2/v3 vaults".to_string())
+                            };
+                            extracted.and_then(|n| {
+                                publish_extracted(
+                                    staging.path(),
+                                    std::path::Path::new(dest.as_str()),
+                                    *overwrite,
+                                )?;
+                                Ok(n)
+                            })
+                        }
                     };
                     match res {
                         Ok(n) => {
@@ -97528,6 +97616,40 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
     /// looping listing, and searched the account root through a folder
     /// listed as `/`. It reports each path under the root once, and names
     /// each folder it did not search.
+    #[test]
+    fn extracted_files_replace_nothing_without_overwrite() {
+        let root = tempfile::tempdir().unwrap();
+        let staging = root.path().join("staging");
+        let dest = root.path().join("dest");
+        std::fs::create_dir_all(staging.join("sub")).unwrap();
+        std::fs::create_dir_all(&dest).unwrap();
+        std::fs::write(staging.join("new.txt"), "new").unwrap();
+        std::fs::write(staging.join("sub/kept.txt"), "vault").unwrap();
+        std::fs::create_dir_all(dest.join("sub")).unwrap();
+        std::fs::write(dest.join("sub/kept.txt"), "mine").unwrap();
+
+        let refused = publish_extracted(&staging, &dest, false).unwrap_err();
+        assert!(refused.contains("--overwrite"), "{refused}");
+        assert_eq!(
+            std::fs::read_to_string(dest.join("sub/kept.txt")).unwrap(),
+            "mine"
+        );
+        assert!(
+            !dest.join("new.txt").exists(),
+            "nothing moves when it refuses"
+        );
+
+        publish_extracted(&staging, &dest, true).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dest.join("sub/kept.txt")).unwrap(),
+            "vault"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dest.join("new.txt")).unwrap(),
+            "new"
+        );
+    }
+
     #[tokio::test]
     async fn find_by_listing_reports_each_path_under_the_root_once() {
         let everything = globset::Glob::new("*").unwrap().compile_matcher();

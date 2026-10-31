@@ -45,6 +45,18 @@ const DROPBOX_TRANSFER_MAX_SESSIONS: u16 = 4;
 /// `total_size` / `part_size` (so `upload_part` rebuilds the byte offset
 /// from `part_number` alone) and the normalised destination path needed by
 /// the `upload_session/finish` commit body.
+/// What a failed upload session says: Dropbox's summary of the error, without
+/// the rest of the body, which can carry the session id.
+fn session_error_text(body: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|json| json.get("error_summary")?.as_str().map(str::to_string))
+        .map_or_else(
+            || sanitize_api_error(body),
+            |summary| sanitize_api_error(&summary),
+        )
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
 struct DropboxMultipartMeta {
     session_id: String,
@@ -2393,7 +2405,7 @@ impl StorageProvider for DropboxProvider {
             let mut msg = format!(
                 "Dropbox upload_session/start failed (HTTP {}): {}",
                 status,
-                sanitize_api_error(&text)
+                session_error_text(&text)
             );
             if let Some(tail) =
                 dropbox_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref())
@@ -2582,7 +2594,7 @@ impl StorageProvider for DropboxProvider {
             let mut msg = format!(
                 "Dropbox upload_session/append_v2 close=true failed (HTTP {}): {}",
                 status,
-                sanitize_api_error(&text)
+                session_error_text(&text)
             );
             if let Some(tail) =
                 dropbox_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref())
@@ -2629,7 +2641,7 @@ impl StorageProvider for DropboxProvider {
             let mut msg = format!(
                 "Dropbox upload_session/finish failed (HTTP {}): {}",
                 status,
-                sanitize_api_error(&text)
+                session_error_text(&text)
             );
             if let Some(tail) =
                 dropbox_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref())
@@ -2655,6 +2667,13 @@ impl StorageProvider for DropboxProvider {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_failed_session_keeps_its_id_out_of_the_message() {
+        let body = r#"{"error_summary":"path/disallowed_name/.","error":{".tag":"path"},"upload_session_id":"AAAAsecret"}"#;
+        assert_eq!(session_error_text(body), "path/disallowed_name/.");
+        assert_eq!(session_error_text("gateway down"), "gateway down");
+    }
+
     #[tokio::test]
     async fn probe_contract_dropbox_root_uses_a_supported_probe() {
         use axum::response::IntoResponse;

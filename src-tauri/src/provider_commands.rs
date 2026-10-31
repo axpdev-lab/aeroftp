@@ -8753,7 +8753,12 @@ pub async fn provider_compare_directories(
     let report = classify_with_summary(local_files, remote_files, &options, index.as_ref());
     info!(
         "Provider compare complete: {} differences out of {} examined (index: {})",
-        report.differences.len(),
+        // A row for a folder on both sides is not a difference to the window.
+        report
+            .differences
+            .iter()
+            .filter(|row| row.status != crate::sync::SyncStatus::Identical)
+            .count(),
         report.summary.examined_count,
         if index.is_some() { "used" } else { "none" }
     );

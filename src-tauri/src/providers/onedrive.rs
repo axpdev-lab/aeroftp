@@ -345,6 +345,9 @@ pub struct OneDriveProvider {
     test_access_token: Option<String>,
 }
 
+/// Characters a OneDrive name cannot hold.
+const RESERVED_NAME_CHARS: &[char] = &['"', '*', ':', '<', '>', '?', '\\', '|'];
+
 impl OneDriveProvider {
     /// Build the provider and its HTTP client, with the limits of [`crate::providers::http_limits`].
     /// Nothing is sent until the first request.
@@ -773,6 +776,14 @@ impl OneDriveProvider {
 
     /// Get item by path
     async fn get_item(&self, path: &str) -> Result<DriveItem, ProviderError> {
+        // Such a name cannot exist on OneDrive, and Graph answers it with a 400:
+        // to a caller it is a path that is not there.
+        if path
+            .split('/')
+            .any(|name| name.contains(RESERVED_NAME_CHARS))
+        {
+            return Err(ProviderError::NotFound(path.to_string()));
+        }
         match self.fetch_item(path).await {
             // Graph does not follow a path through a shortcut: find the
             // shortcuts among its parents, then address it through them. A
@@ -3348,6 +3359,22 @@ mod tests {
         assert!(!paths.iter().any(|p| p.contains("deleted-parent-id")));
         assert!(paths.last().unwrap().contains("/root/children"));
         server.abort();
+    }
+
+    /// A name OneDrive cannot hold is a path that is not there, with no request:
+    /// Graph would answer it with a 400, and `rm -f` would fail on it.
+    #[tokio::test]
+    async fn a_name_onedrive_cannot_hold_is_not_found() {
+        let mut p = OneDriveProvider::new(OneDriveConfig {
+            client_id: "fixture".into(),
+            client_secret: "fixture".into(),
+        });
+        p.api_origin_override = Some("http://127.0.0.1:9".into());
+        p.test_access_token = Some("fixture".into());
+        assert!(matches!(
+            p.stat("/folder/a:b.txt").await,
+            Err(ProviderError::NotFound(_))
+        ));
     }
 
     /// #368 (Ehud): a folder reached through a shortcut ("Add shortcut to My
