@@ -171,9 +171,9 @@ describe('local actions on the rows of a flattened search', () => {
         expect(appRaw).toMatch(/useDragAndDrop\(\{\s*refuseLocalNameClashes,/);
     });
 
-    it('never drops over an existing entry, nor onto the folder a row is in', () => {
+    it('never drops over an existing entry', () => {
+        // A drop where the entry already is: useDragAndDrop.samePlace.test.ts.
         expect(count(dragRaw, /overwrite: false/g)).toBe(2);
-        expect(count(dragRaw, /if \(destPath === sourcePath\) continue;/g)).toBe(2);
     });
 
     it('takes a selected folder with what is below it, and renames the deepest first', () => {

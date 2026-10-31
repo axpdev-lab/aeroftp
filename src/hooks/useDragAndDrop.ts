@@ -16,6 +16,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { isNonFtpProvider, ProviderType } from '../types';
 import type { HumanizedOperationType, HumanizedLogParams } from './useHumanizedLog';
 import { dropsIntoItself, localRowName, outermostLocalRows } from '../utils/localSelection';
+import { normalizeLocalPath } from '../utils/localPath';
 
 export type PanelKey = 'remote' | 'local' | 'local2';
 
@@ -265,8 +266,9 @@ export function useDragAndDrop({
             const sourcePath = sourcePaths[i];
             const sep = targetDir.includes('\\') && !targetDir.includes('/') ? '\\' : '/';
             const destPath = `${targetDir}${targetDir.endsWith(sep) ? '' : sep}${fileName}`;
-
-            if (destPath === sourcePath) continue;
+            // Already there. The two panels can write one Windows folder with
+            // `\` and with `/`.
+            if (normalizeLocalPath(destPath) === normalizeLocalPath(sourcePath)) continue;
 
             const logId = humanLog.logStart(isCopy ? 'COPY' : 'MOVE', { isRemote: false, filename: fileName });
             try {
@@ -335,8 +337,12 @@ export function useDragAndDrop({
             const fileName = files[i];
             const sourcePath = sourcePaths[i];
             const destPath = `${targetPath}/${fileName}`;
-            // A nested row dropped on the folder it is already in.
-            if (destPath === sourcePath) continue;
+            // A nested row dropped on the folder it is already in. `destPath`
+            // joins with `/`, and a Windows row path has `\`.
+            const alreadyThere = sourceIsRemote
+                ? destPath === sourcePath
+                : normalizeLocalPath(destPath) === normalizeLocalPath(sourcePath);
+            if (alreadyThere) continue;
 
             const logId = humanLog.logStart('MOVE', { isRemote: sourceIsRemote, filename: fileName });
             try {
