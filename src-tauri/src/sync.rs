@@ -284,6 +284,14 @@ pub struct CompareOptions {
     pub modify_window: ModifyWindow,
 }
 
+/// A row of a finished compare, as [`CompareOptions::paths_left_out`] reads it.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ComparedPath {
+    pub local_path: String,
+    pub remote_path: String,
+    pub is_dir: bool,
+}
+
 impl CompareOptions {
     /// The backup folder, validated. The compare commands call this first,
     /// so an invalid folder is an error to the caller, not a folder that is
@@ -309,6 +317,51 @@ impl CompareOptions {
             Some(rules) => rules.should_exclude(path, is_dir, excludes),
             None => excludes.is_excluded(path),
         }
+    }
+
+    /// Whether a compare leaves this pair out: excluded, or inside the backup
+    /// folder, under either side's spelling.
+    fn leaves_out(
+        &self,
+        excludes: &crate::sync_exclude::ExcludeMatcher,
+        backup_dir: Option<&crate::sync_backup::BackupDir>,
+        local_path: &str,
+        remote_path: &str,
+        is_dir: bool,
+    ) -> bool {
+        if self.excludes_path(excludes, local_path, is_dir)
+            || self.excludes_path(excludes, remote_path, is_dir)
+        {
+            return true;
+        }
+        backup_dir.is_some_and(|dir| {
+            [local_path, remote_path].iter().any(|p| {
+                crate::sync_backup::is_backup_path(p, dir)
+                    || (is_dir && crate::sync_backup::is_backup_ancestor(p, dir))
+            })
+        })
+    }
+
+    /// For each path of a finished compare, whether these options would have
+    /// left it out, so a compare can be narrowed by the rule that built it. An
+    /// invalid pattern or backup folder is an error, never a narrower answer.
+    pub fn paths_left_out(&self, paths: &[ComparedPath]) -> Result<Vec<bool>, String> {
+        let mut options = self.clone();
+        apply_error_correction_excludes(&mut options);
+        let excludes = compile_excludes(&options.exclude_patterns)?;
+        let backup_dir = options.parsed_backup_dir().map_err(|e| e.to_string())?;
+        Ok(paths
+            .iter()
+            .map(|p| {
+                options.leaves_out(
+                    &excludes,
+                    backup_dir.as_ref(),
+                    &p.local_path,
+                    &p.remote_path,
+                    p.is_dir,
+                )
+            })
+            .collect())
     }
 
     /// The compiled exclude list for a comparison builder, which cannot return
@@ -3980,17 +4033,13 @@ pub fn classify_with_summary(
         let remote = pair.remote.as_ref().and_then(|p| remote_files.get(p));
 
         let is_dir = local.or(remote).is_some_and(|f| f.is_dir);
-        if options.excludes_path(&excludes, &path, is_dir)
-            || options.excludes_path(&excludes, &pair.remote_path, is_dir)
-        {
-            continue;
-        }
-        if backup_dir.as_ref().is_some_and(|dir| {
-            [&path, &pair.remote_path].iter().any(|p| {
-                crate::sync_backup::is_backup_path(p, dir)
-                    || (is_dir && crate::sync_backup::is_backup_ancestor(p, dir))
-            })
-        }) {
+        if options.leaves_out(
+            &excludes,
+            backup_dir.as_ref(),
+            &path,
+            &pair.remote_path,
+            is_dir,
+        ) {
             continue;
         }
 
@@ -6678,6 +6727,83 @@ pub(crate) fn verify_journal_signature_in(
             .zip(b.iter())
             .fold(0u8, |acc, (x, y)| acc | (x ^ y))
             == 0)
+}
+
+#[cfg(test)]
+mod narrow_tests {
+    use super::*;
+
+    fn row(path: &str, is_dir: bool) -> ComparedPath {
+        ComparedPath {
+            local_path: path.into(),
+            remote_path: path.into(),
+            is_dir,
+        }
+    }
+
+    fn file(path: &str) -> FileInfo {
+        FileInfo {
+            name: path.rsplit('/').next().unwrap().into(),
+            path: path.into(),
+            size: 1,
+            modified: None,
+            is_dir: false,
+            checksum: None,
+            checksum_alg: None,
+        }
+    }
+
+    /// Requested 116: filtering a finished compare must give what a scan with
+    /// the wider list gives, or the plan would differ from the rescan's.
+    #[test]
+    fn narrowing_leaves_out_what_a_compare_leaves_out() {
+        let paths = [
+            "keep.txt",
+            ".stfolder/marker",
+            "sub/.stfolder/marker",
+            "sub/keep.txt",
+            "backup/old.txt",
+            "a.LOG",
+        ];
+        let options = CompareOptions {
+            exclude_patterns: vec![".stfolder".into(), "*.log".into()],
+            backup_dir: Some("backup".into()),
+            ..CompareOptions::default()
+        };
+        let local: HashMap<String, FileInfo> =
+            paths.iter().map(|p| (p.to_string(), file(p))).collect();
+        let report = classify_with_summary(local, HashMap::new(), &options, None);
+        let compared: std::collections::HashSet<String> = report
+            .differences
+            .iter()
+            .map(|d| d.relative_path.clone())
+            .collect();
+        let rows: Vec<ComparedPath> = paths.iter().map(|p| row(p, false)).collect();
+        let left_out = options.paths_left_out(&rows).unwrap();
+        for (path, out) in paths.iter().zip(left_out) {
+            assert_eq!(out, !compared.contains(*path), "{path}");
+        }
+        assert_eq!(compared.len(), 2);
+    }
+
+    #[test]
+    fn narrowing_reads_both_spellings_and_refuses_a_bad_pattern() {
+        let options = CompareOptions {
+            exclude_patterns: vec!["secret".into()],
+            ..CompareOptions::default()
+        };
+        let rows = [ComparedPath {
+            local_path: "open".into(),
+            remote_path: "secret".into(),
+            is_dir: false,
+        }];
+        assert_eq!(options.paths_left_out(&rows).unwrap(), vec![true]);
+        let bad = CompareOptions {
+            exclude_patterns: vec!["[".into()],
+            ..CompareOptions::default()
+        };
+        assert!(bad.paths_left_out(&rows).is_err());
+    }
 }
 
 #[cfg(test)]

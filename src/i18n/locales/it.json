@@ -6564,7 +6564,12 @@
                 }
             },
             "rescan": "Riscansiona",
-            "rescanNeeded": "Il confronto è stato fatto con altre esclusioni o con un'altra cartella di backup. Riscansiona prima di eseguire.",
+            "rescanBringsBack": "Queste impostazioni riportano file che la scansione aveva escluso, quindi non li ha mai letti. Riscansiona prima di eseguire.",
+            "rescanFlat": "Questo confronto viene dagli elenchi dei due pannelli, non da una scansione completa, quindi non può applicare esclusioni. Riscansiona prima di eseguire.",
+            "narrowAvailable": "Queste impostazioni restringono solo il confronto, quindi si può filtrare senza riscansionare.",
+            "narrowApply": "Applica a questo confronto",
+            "narrowedNote": "Filtrato con nuove esclusioni senza riscansionare. Il conteggio degli identici è ancora quello della scansione.",
+            "narrowAfterRestore": "È in corso un ripristino. Queste impostazioni possono essere applicate al confronto quando termina.",
             "backup": {
                 "checking": "Verifica di come questo server sposta i file...",
                 "serverCopy": "Questo server non ha lo spostamento: ogni copia conservata viene copiata sul server e poi eliminata. Costa una copia intera di ogni file conservato, in due passaggi separati.",

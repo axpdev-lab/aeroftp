@@ -106,7 +106,7 @@ describe('saved profiles in the real Plan tab', () => {
         expect(store.get('plan.verifyPolicy', '')).toBe('full_checksum');
         expect(store.get('sync.source', '')).toBe('/local'); expect(store.get('sync.destination', '')).toBe('/remote');
         expect(host.textContent).toContain('aerosync.savedPresetLimits');
-        expect(host.textContent).not.toContain('aerosync.rescanNeeded');
+        expect(host.textContent).not.toContain('aerosync.rescanBringsBack');
         expect(onRescan).not.toHaveBeenCalled();
         expect(onExecute).not.toHaveBeenCalled();
         await click('aerosync.execute');

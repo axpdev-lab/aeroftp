@@ -360,6 +360,40 @@ export const compareEntries = (
 };
 
 /**
+ * The result without the rows at the given positions of `entries`. The scan
+ * sends no row for an identical file, so `same` and the identical share of the
+ * totals stay as the scan counted them.
+ */
+export const withoutEntries = (result: CompareResult, leftOut: readonly boolean[]): CompareResult => {
+    const removed = new Set(result.entries.filter((_, index) => leftOut[index]));
+    if (removed.size === 0) return result;
+    const buckets = { ...result.buckets };
+    const stats = { ...result.stats };
+    let { count, bytes } = result.totals;
+    for (const bucket of BUCKETS) {
+        buckets[bucket] = result.buckets[bucket].filter((entry) => !removed.has(entry));
+        const gone = result.buckets[bucket].filter((entry) => removed.has(entry));
+        const goneBytes = gone.reduce(
+            (sum, entry) => sum + Math.max(entry.leftIsDir ? 0 : entry.leftSize ?? 0, entry.rightIsDir ? 0 : entry.rightSize ?? 0),
+            0,
+        );
+        stats[bucket] = {
+            count: Math.max(0, stats[bucket].count - gone.length),
+            bytes: Math.max(0, stats[bucket].bytes - goneBytes),
+        };
+        count -= gone.length;
+        bytes -= goneBytes;
+    }
+    return {
+        ...result,
+        entries: BUCKETS.flatMap((bucket) => buckets[bucket]),
+        buckets,
+        stats,
+        totals: { count: Math.max(0, count), bytes: Math.max(0, bytes) },
+    };
+};
+
+/**
  * Convenience selector: pick the names of every entry that falls in the
  * "interesting" buckets for a mirror-left→right transfer (i.e. things the
  * right panel does NOT have yet, or that left holds a newer copy of).

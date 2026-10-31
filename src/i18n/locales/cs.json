@@ -6311,7 +6311,12 @@
                 }
             },
             "rescan": "Znovu prohledat",
-            "rescanNeeded": "Porovnání bylo provedeno s jinými vyloučeními nebo jinou složkou záloh. Před spuštěním znovu prohledejte.",
+            "rescanBringsBack": "Tato nastavení vracejí soubory, které prohledání vynechalo, takže je nikdy nečetlo. Před spuštěním znovu prohledejte.",
+            "rescanFlat": "Toto porovnání vzniklo ze seznamů obou panelů, ne z úplného prohledání, takže nemůže použít vyloučení. Před spuštěním znovu prohledejte.",
+            "narrowAvailable": "Tato nastavení jen zužují porovnání, takže ho lze filtrovat bez nového prohledání.",
+            "narrowApply": "Použít na toto porovnání",
+            "narrowedNote": "Filtrováno s novými vyloučeními bez nového prohledání. Počet shodných je stále ten z prohledání.",
+            "narrowAfterRestore": "Probíhá obnovení. Tato nastavení lze použít na porovnání po skončení obnovení.",
             "backup": {
                 "checking": "Zjišťuji, jak tento server přesouvá soubory...",
                 "serverCopy": "Tento server neumí přesun: každá uchovaná kopie se zkopíruje na serveru a pak smaže. To stojí úplnou kopii každého uchovaného souboru, ve dvou samostatných krocích.",

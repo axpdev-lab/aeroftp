@@ -6311,7 +6311,12 @@
                 }
             },
             "rescan": "Opnieuw scannen",
-            "rescanNeeded": "De vergelijking is gemaakt met andere uitsluitingen of een andere back-upmap. Scan opnieuw voordat u uitvoert.",
+            "rescanBringsBack": "Deze instellingen brengen bestanden terug die de scan heeft overgeslagen, dus die zijn nooit gelezen. Scan opnieuw voordat u uitvoert.",
+            "rescanFlat": "Deze vergelijking komt uit de lijsten van de twee panelen, niet uit een volledige scan, dus er kunnen geen uitsluitingen worden toegepast. Scan opnieuw voordat u uitvoert.",
+            "narrowAvailable": "Deze instellingen beperken de vergelijking alleen, dus die kan worden gefilterd zonder opnieuw te scannen.",
+            "narrowApply": "Toepassen op deze vergelijking",
+            "narrowedNote": "Gefilterd met nieuwe uitsluitingen zonder opnieuw te scannen. Het aantal identieke bestanden is nog steeds dat van de scan.",
+            "narrowAfterRestore": "Er is een herstel bezig. Deze instellingen kunnen op de vergelijking worden toegepast zodra het klaar is.",
             "backup": {
                 "checking": "Controleren hoe deze server bestanden verplaatst...",
                 "serverCopy": "Deze server kan niet verplaatsen: elke bewaarde kopie wordt op de server gekopieerd en daarna verwijderd. Dat kost een volledige kopie van elk bewaard bestand, in twee aparte stappen.",

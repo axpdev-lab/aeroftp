@@ -233,6 +233,7 @@ import type { AeroSyncTab, AeroSyncContext, AeroSyncRuntime } from './components
 import { RemoteSyncResultDialog } from './components/AeroSync/RemoteSyncResultDialog';
 import { CanaryResultDialog, type CanaryResult } from './components/Sync/CanaryResultDialog';
 import { SPEED_PRESETS } from './components/Sync/syncConstants';
+import { withTransferRun } from './utils/transferRun';
 import { AEROSYNC_DEFAULT_BACKUP_DIR, aeroSyncCompareOptions, appliedCompareFilters } from './utils/aeroSyncExcludes';
 import { VaultPanel } from './components/VaultPanel';
 import { CryptomatorBrowser } from './components/CryptomatorBrowser';
@@ -12199,7 +12200,7 @@ const App: React.FC = () => {
     });
   }, [aeroSync, runConnectedRemoteSync, runLocalLocalSync]);
 
-  const { dismissJournal: handleDismissJournal, invalidateComparison: invalidateAeroSyncComparison } =
+  const { dismissJournal: handleDismissJournal, invalidateComparison: invalidateAeroSyncComparison, narrowComparison: narrowAeroSyncComparison } =
     useAeroSyncContextActions(aeroSync, setAeroSync, aeroSyncCompareSeqRef);
 
 
@@ -12583,7 +12584,7 @@ const App: React.FC = () => {
       if (batchOpInFlightRef.current) return undefined;
       batchOpInFlightRef.current = true;
       try {
-        return await fn(...args);
+        return await withTransferRun(() => fn(...args));
       } finally {
         batchOpInFlightRef.current = false;
       }
@@ -17159,6 +17160,7 @@ const App: React.FC = () => {
             onDismissJournal={handleDismissJournal}
             onInvalidateComparison={invalidateAeroSyncComparison}
             onRescan={({ userExcludes, backupDir }) => openAeroSync('plan', userExcludes, backupDir, true)}
+            onNarrowComparison={({ userExcludes, backupDir }) => narrowAeroSyncComparison(userExcludes, backupDir)}
             onStartCompare={() => openAeroSync(
               aeroSync.initialTab,
               aeroSync.context.compareExcludes ?? [],
