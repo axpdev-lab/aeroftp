@@ -716,12 +716,15 @@ impl ImageKitProvider {
         }
         // The same folder move queued earlier and not seen to finish: wait for
         // that job. Its source may already be gone, and a second job would
-        // run after the first.
-        if let Some(outcome) = self
-            .resume_folder_job("moveFolder", &source, &parent_path(&target))
-            .await
-        {
-            return outcome;
+        // run after the first. A moveFolder job keeps the folder's name, so a
+        // move to another name in that folder is another move, not this one.
+        if basename(&source) == basename(&target) {
+            if let Some(outcome) = self
+                .resume_folder_job("moveFolder", &source, &parent_path(&target))
+                .await
+            {
+                return outcome;
+            }
         }
         let entry = self.stat(&source).await?;
         // A new name ImageKit would store as another one is refused before
@@ -1635,28 +1638,37 @@ fn folder_copy_destination(source: &str, target: &str) -> Result<String, Provide
     Ok(parent_path(target))
 }
 
-/// What ImageKit does with a name it is given: it keeps letters, marks and
-/// digits of any script, `-`, `_` and, in a file name, `.`, and stores every
-/// other character as `_`. Measured on the API on 2026-10-31: space, no-break
-/// space, `(`, `&`, `'`, `’`, `·` and an emoji became `_`; `é` (composed or
-/// with a combining accent), `ß`, `日`, `١` and `²` stayed; a folder named
-/// `a.b` was created as `a_b`. The upload documentation lists only a-z, A-Z,
-/// 0-9, `.` and `-`, fewer than it keeps.
+/// What ImageKit does with a name it is given: it keeps the letters, marks
+/// and digits of the Basic Multilingual Plane, `-`, `_` and, in a file name,
+/// `.`, and stores every other character as `_`, one for each. Measured on the
+/// API on 2026-10-31, 68 characters one by one:
+///
+/// - kept: `é` (composed or with a combining accent), `ß`, `日`, `한`, `Ա`,
+///   `कि`, `ｱ`, `Ａ`, `ﬁ`, `ǅ`, `ʰ`, `ª`, `Ω` (U+2126), `١`, `²`, `½`, `①`,
+///   `Ⅷ`, `〇`, and the marks U+0345, U+20DD and U+0E31;
+/// - `_`: space, no-break space, `(`, `&`, `'`, `’`, `·`, the circled letters
+///   `Ⓐ` and `ⓐ` (symbols that Unicode counts as alphabetic), and every
+///   character above U+FFFF, letters and digits included (`𝔸`, `𐐀`, `𠀀`,
+///   `𝟎`, `𑁦`, an emoji): `a𝔸𝔸b` became `a__b`;
+/// - a folder named `a.b` was created as `a_b`.
+///
+/// The upload documentation lists only a-z, A-Z, 0-9, `.` and `-`, fewer than
+/// it keeps.
 fn imagekit_stored_name(name: &str, folder: bool) -> String {
     name.chars()
-        .map(|c| {
-            if c.is_alphanumeric()
-                || unicode_normalization::char::is_combining_mark(c)
-                || c == '-'
-                || c == '_'
-                || (c == '.' && !folder)
-            {
-                c
-            } else {
-                '_'
-            }
-        })
+        .map(|c| if imagekit_keeps(c, folder) { c } else { '_' })
         .collect()
+}
+
+/// Whether ImageKit keeps `c` in a name (see `imagekit_stored_name`). Of the
+/// characters of the Basic Multilingual Plane that Rust's `is_alphanumeric`
+/// accepts, the circled Latin letters U+24B6 to U+24E9 are the only ones that
+/// are not a letter, a mark or a digit.
+fn imagekit_keeps(c: char, folder: bool) -> bool {
+    let letter_mark_or_digit = u32::from(c) <= 0xFFFF
+        && !('\u{24B6}'..='\u{24E9}').contains(&c)
+        && (c.is_alphanumeric() || unicode_normalization::char::is_combining_mark(c));
+    letter_mark_or_digit || c == '-' || c == '_' || (c == '.' && !folder)
 }
 
 /// What a name is given to ImageKit for.
@@ -1685,9 +1697,9 @@ fn refuse_rewritten_name(name: &str, use_: NameUse) -> Result<(), ProviderError>
         NameUse::RenameFolder => ("rename the folder to", "Nothing was changed"),
     };
     let keeps = if folder {
-        "a folder name there keeps only letters, digits, '-' and '_'"
+        "a folder name there keeps only letters, marks and digits up to U+FFFF, '-' and '_'"
     } else {
-        "a file name there keeps only letters, digits, '.', '-' and '_'"
+        "a file name there keeps only letters, marks and digits up to U+FFFF, '.', '-' and '_'"
     };
     Err(ProviderError::NotSupported(format!(
         "ImageKit would {would} \"{stored}\", not \"{name}\": {keeps}, and every other \
@@ -2439,7 +2451,9 @@ mod tests {
     }
 
     /// What ImageKit keeps of a name, as measured on its API: letters, marks
-    /// and digits of any script, `-`, `_`, and `.` in a file name only.
+    /// and digits of the Basic Multilingual Plane, `-`, `_`, and `.` in a file
+    /// name only. Every character measured is here, so a rule that keeps one
+    /// ImageKit rewrote (every Unicode alphanumeric did: `Ⓐ`, `𝔸`) fails.
     #[test]
     fn imagekit_keeps_letters_marks_digits_and_three_signs() {
         for kept in [
@@ -2450,6 +2464,13 @@ mod tests {
             "a日b.txt",
             "a\u{661}b.txt",
             "a²b.txt",
+            // Each letter case, modifier letters, compatibility forms, other
+            // scripts, the three kinds of number and the three kinds of mark.
+            "a\u{2167}\u{3007}\u{bd}\u{2460}\u{663}b.txt",
+            "a\u{2b0}\u{1c5}\u{1fbc}\u{aa}\u{fb01}\u{640}b.txt",
+            "a\u{531}\u{915}\u{93f}\u{ff71}\u{ff21}\u{d55c}\u{130}b.txt",
+            "a\u{2126}\u{212b}b.txt",
+            "a\u{345}\u{20dd}\u{e31}b.txt",
         ] {
             assert_eq!(imagekit_stored_name(kept, false), kept);
         }
@@ -2461,9 +2482,21 @@ mod tests {
             ("a&b'c.txt", "a_b_c.txt"),
             ("a\u{a0}b\u{2019}c\u{b7}d.txt", "a_b_c_d.txt"),
             ("a\u{1F600}.txt", "a_.txt"),
+            // Symbols Unicode counts as alphabetic: the circled letters.
+            ("a\u{24b6}\u{24d0}\u{24e9}b.txt", "a___b.txt"),
+            ("a\u{1F130}b.txt", "a_b.txt"),
+            // Above U+FFFF, letters, digits and marks too, one `_` each.
+            ("a\u{1d538}\u{1d538}b.txt", "a__b.txt"),
+            ("\u{915}\u{1d538}.txt", "\u{915}_.txt"),
+            (
+                "a\u{20000}\u{1d7ce}\u{10400}\u{10330}\u{11066}\u{1d165}b.txt",
+                "a______b.txt",
+            ),
         ] {
             assert_eq!(imagekit_stored_name(sent, false), stored, "{sent:?}");
         }
+        // The circled digit after the circled letters is a digit, as `①` is.
+        assert_eq!(imagekit_stored_name("\u{24ea}", true), "\u{24ea}");
         assert_eq!(imagekit_stored_name("a.b", true), "a_b");
         assert_eq!(imagekit_stored_name("a-b_c\u{e9}", true), "a-b_c\u{e9}");
     }
@@ -2860,6 +2893,37 @@ mod tests {
             .unwrap()
             .iter()
             .filter(|c| c.starts_with("POST /bulkJobs/moveFolder"))
+            .count();
+        assert_eq!(posts, 1, "{:?}", calls.lock().unwrap());
+    }
+
+    /// A moveFolder job keeps the folder's name. A move to another name in
+    /// the same folder found the job queued for the first move and answered
+    /// with its outcome: `/dst/other` was reported moved while the folder
+    /// went to `/dst/photos`.
+    #[tokio::test]
+    async fn a_queued_folder_move_answers_only_a_move_that_keeps_its_name() {
+        let (mut provider, calls) = provider_on_tree(&["/src", "/src/photos"], &[500, 200]).await;
+        let first = provider
+            .start_folder_job("moveFolder", "/src/photos", "/dst", false)
+            .await;
+        assert!(first.is_err(), "{first:?}");
+        let other = provider.rename("/src/photos", "/dst/other").await;
+        assert!(other.is_err(), "another name is another move: {other:?}");
+        assert_eq!(
+            provider.unfinished_folder_jobs.lock().unwrap().len(),
+            1,
+            "the first move is still waited for"
+        );
+        provider
+            .rename("/src/photos", "/dst/photos")
+            .await
+            .expect("the same move waits for its job");
+        let posts = calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.starts_with("POST /bulkJobs/"))
             .count();
         assert_eq!(posts, 1, "{:?}", calls.lock().unwrap());
     }

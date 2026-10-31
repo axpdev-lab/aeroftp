@@ -389,8 +389,8 @@ pub async fn run(
 
     let report_id = uuid::Uuid::new_v4().to_string();
     // A relative prefix on Proton Drive lands where the session starts (see
-    // `benchmark_effective_prefix`); without a prefix the roots are relative
-    // and the provider resolves them there already.
+    // `benchmark_effective_prefix`); without a prefix the roots are under the
+    // start path.
     let prefix = match opts.test_root_prefix.as_deref() {
         Some(prefix) => {
             let kind = provider.provider_type();
@@ -405,7 +405,12 @@ pub async fn run(
     };
     let (bench_base, test_root) = match prefix.as_deref() {
         Some(prefix) => benchmark_remote_roots_from_prefix(prefix, &report_id),
-        None => benchmark_remote_roots(initial_path, &report_id),
+        // A relative start path is the folder the session entered: joined to
+        // it again, `team` put the scratch folder in `team/team`.
+        None => benchmark_remote_roots(
+            &crate::util::start_folder::as_entered(initial_path, &mut *provider).await,
+            &report_id,
+        ),
     };
     // Create the scratch directory tree before any upload. `bench_base` may
     // already exist from a prior run (`AlreadyExists` is fine), but `test_root`

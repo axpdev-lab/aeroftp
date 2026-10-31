@@ -2127,11 +2127,14 @@ fn sanitize_export_server(server: &RcloneExportServer) -> RcloneExportServer {
 /// it lies outside it, the crypt wraps the clear remote. Written as it was,
 /// `vault:/enc` exported over the alias `vault-path = vault:/enc` became
 /// `vault-path:/enc`, which is `vault:/enc/enc`. The overlay scope is already
-/// relative to the start folder.
+/// relative to the start folder; when that folder has no alias in the file
+/// (`folder`: its name ends in a space, or no name was free), the crypt wraps
+/// the clear remote at that folder, written as its alias would hold it.
 fn crypt_export_remote_target(
     base_name: &str,
     clear_name: &str,
     base_root: Option<&str>,
+    folder: Option<&str>,
     options: &serde_json::Value,
 ) -> String {
     let trim = |p: &str| {
@@ -2167,11 +2170,17 @@ fn crypt_export_remote_target(
             },
         };
     }
-    let scope = options
-        .get("rcloneCryptOverlayScope")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    target(base_name, &trim(scope))
+    let scope = trim(
+        options
+            .get("rcloneCryptOverlayScope")
+            .and_then(|v| v.as_str())
+            .unwrap_or(""),
+    );
+    match folder.map(|folder| folder.trim_end_matches('/')) {
+        Some(folder) if scope.is_empty() => format!("{clear_name}:{folder}"),
+        Some(folder) => format!("{clear_name}:{folder}/{scope}"),
+        None => target(base_name, &scope),
+    }
 }
 
 /// Cloudinary's account name. The app's form keeps it in `options.bucket`;
@@ -2367,6 +2376,7 @@ fn append_crypt_remote_section(
     base_name: &str,
     profile_section: &str,
     base_root: Option<&str>,
+    folder: Option<&str>,
     options: Option<&serde_json::Value>,
     names: &mut RcloneNamespace,
 ) -> CryptSection {
@@ -2382,6 +2392,13 @@ fn append_crypt_remote_section(
         .and_then(|v| v.as_str())
     {
         return CryptSection::Refused(problem.to_string());
+    }
+    let remote = crypt_export_remote_target(base_name, profile_section, base_root, folder, opts);
+    // rclone reads `remote = nas:/data ` as `nas:/data`, another folder.
+    if remote.ends_with(char::is_whitespace) {
+        return CryptSection::Refused(format!(
+            "it would wrap '{remote}', whose name ends in a space, which rclone's config cannot hold"
+        ));
     }
     let requested = sanitize_rclone_remote_name(
         opts.get("rcloneCryptOverlayName")
@@ -2424,15 +2441,7 @@ fn append_crypt_remote_section(
     }
     output.push_str(&format!("[{}]\n", section));
     output.push_str("type = crypt\n");
-    output.push_str(&format!(
-        "remote = {}\n",
-        ini_value(&crypt_export_remote_target(
-            base_name,
-            profile_section,
-            base_root,
-            opts
-        ))
-    ));
+    output.push_str(&format!("remote = {}\n", ini_value(&remote)));
     if let Some(pw) = password {
         output.push_str(&format!(
             "password = {}\n",
@@ -2743,6 +2752,9 @@ pub fn export_rclone(
         // The folder of the clear remote that `crypt_base` points at when it
         // is an alias (a pinned bucket, the start folder).
         let mut crypt_base_root: Option<String> = None;
+        // That folder when its alias could not be written: an overlay scope is
+        // relative to it, so the crypt wraps the clear remote there.
+        let mut crypt_folder: Option<String> = None;
 
         match proto {
             "ftp" => {
@@ -2989,6 +3001,7 @@ pub fn export_rclone(
                                     "# bucket alias for '{}' omitted: no free remote name near '{}'\n",
                                     remote_name, desired
                                 ));
+                                crypt_folder = Some(bucket.to_string());
                             }
                         }
                     }
@@ -3494,6 +3507,13 @@ pub fn export_rclone(
                 .and_then(|v| v.as_str())
                 .filter(|p| !p.is_empty() && *p != "/")
             {
+                // sftp addresses an absolute folder as `remote:/abs`; ftp and
+                // webdav paths are relative to the account/URL root.
+                let alias_path = if proto == "sftp" {
+                    path.to_string()
+                } else {
+                    path.trim_start_matches('/').to_string()
+                };
                 // rclone reads a config value without the spaces at its ends
                 // (and a quoted one with its quotes), so `remote = nas:/data `
                 // would open `/data`: a folder whose name ends in a space
@@ -3504,14 +3524,8 @@ pub fn export_rclone(
                         server.name.replace(['\n', '\r'], " "),
                         path.replace(['\n', '\r'], " ")
                     ));
+                    crypt_folder = Some(alias_path);
                 } else {
-                    // sftp addresses an absolute folder as `remote:/abs`; ftp and
-                    // webdav paths are relative to the account/URL root.
-                    let alias_path = if proto == "sftp" {
-                        path.to_string()
-                    } else {
-                        path.trim_start_matches('/').to_string()
-                    };
                     let desired = sanitize_rclone_remote_name(&format!("{remote_name}-path"));
                     match names.claim_generated(&desired) {
                         Some(alias_name) if !alias_name.is_empty() && alias_name != remote_name => {
@@ -3545,6 +3559,7 @@ pub fn export_rclone(
                             server.name.replace(['\n', '\r'], " "),
                             desired
                         ));
+                            crypt_folder = Some(alias_path);
                         }
                     }
                 }
@@ -3563,6 +3578,7 @@ pub fn export_rclone(
             &crypt_base,
             &remote_name,
             crypt_base_root.as_deref(),
+            crypt_folder.as_deref(),
             options,
             &mut names,
         );
@@ -5324,6 +5340,84 @@ user = t
             );
             assert!(!body.iter().any(|l| l.starts_with('#')), "[{name}] body");
         }
+    }
+
+    /// The `remote =` of every crypt section, in order.
+    fn crypt_remotes(conf: &str) -> Vec<&str> {
+        let lines: Vec<&str> = conf.lines().collect();
+        lines
+            .windows(2)
+            .filter(|pair| pair[0] == "type = crypt")
+            .filter_map(|pair| pair[1].strip_prefix("remote = "))
+            .collect()
+    }
+
+    /// A crypt overlay's scope is relative to the folder its alias points at
+    /// (the start folder, a pinned bucket). With that alias left out, the
+    /// crypt wrapped the clear remote's root: `/vault` of the account, outside
+    /// the folder. It wraps the clear remote at that folder, and is refused
+    /// when rclone's config cannot hold the folder.
+    #[test]
+    fn test_export_rclone_crypt_wraps_the_folder_whose_alias_is_left_out() {
+        let crypt = |initial: Option<&str>, scope: &str| {
+            let mut options = serde_json::json!({
+                "rcloneCryptEnabled": true,
+                "rcloneCryptPassword": "pw",
+                "rcloneCryptOverlayScope": scope,
+            });
+            if let Some(initial) = initial {
+                options["initial_path"] = initial.into();
+            }
+            options
+        };
+        // A start folder that ends in a space: no alias can hold it.
+        let servers = vec![
+            export_server("nas", "sftp", Some(crypt(Some("/mnt/data "), "/vault"))),
+            export_server("pub", "ftp", Some(crypt(Some("/pub "), "vault"))),
+            export_server("bare", "sftp", Some(crypt(Some("/mnt/data "), ""))),
+        ];
+        let (outcome, conf) = export_to_string(&servers, "crypt-unaliased-space");
+        assert_eq!(
+            crypt_remotes(&conf),
+            ["nas:/mnt/data /vault", "pub:pub /vault"],
+            "{conf}"
+        );
+        // The whole folder: `remote = bare:/mnt/data ` would open `/mnt/data`.
+        let refused: Vec<(&str, &str)> = outcome
+            .skipped
+            .iter()
+            .map(|skip| (skip.name.as_str(), skip.reason.as_str()))
+            .collect();
+        assert_eq!(
+            refused,
+            [(
+                "bare",
+                "it would wrap 'bare:/mnt/data ', whose name ends in a space, which rclone's config cannot hold"
+            )]
+        );
+        let (notes, _) = notes_and_body(&conf, "bare");
+        assert!(
+            notes
+                .join("\n")
+                .contains("# crypt overlay for 'bare' not written"),
+            "{conf}"
+        );
+
+        // No free name for the alias: the folder is written as it is.
+        let mut servers = vec![
+            export_server("box", "sftp", Some(crypt(Some("/data"), "/vault"))),
+            export_server("store", "s3", Some(crypt(None, "/vault"))),
+        ];
+        servers[1].options.as_mut().unwrap()["bucket"] = "b".into();
+        for base in ["box-path", "store-b"] {
+            servers.push(export_server(base, "ftp", None));
+            for suffix in 2..=MAX_NAME_SUFFIX {
+                servers.push(export_server(&format!("{base}-{suffix}"), "ftp", None));
+            }
+        }
+        let (outcome, conf) = export_to_string(&servers, "crypt-unaliased-taken");
+        assert_eq!(crypt_remotes(&conf), ["box:/data/vault", "store:b/vault"]);
+        assert!(outcome.skipped.is_empty(), "{:?}", outcome.skipped);
     }
 
     #[test]
@@ -7450,7 +7544,7 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
     fn crypt_export_remote_target_is_relative_to_the_alias_folder() {
         let imported = |target: &str| serde_json::json!({ "rcloneCryptRemote": target });
         let at = |target: &str| {
-            crypt_export_remote_target("nas-path", "nas", Some("/team"), &imported(target))
+            crypt_export_remote_target("nas-path", "nas", Some("/team"), None, &imported(target))
         };
         assert_eq!(at("x:/team"), "nas-path:");
         assert_eq!(at("x:team/vault"), "nas-path:/vault");
@@ -7461,7 +7555,7 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
             "a prefix is not a folder"
         );
         assert_eq!(
-            crypt_export_remote_target("nas", "nas", None, &imported("x:/enc")),
+            crypt_export_remote_target("nas", "nas", None, None, &imported("x:/enc")),
             "nas:/enc"
         );
         assert_eq!(
@@ -7469,11 +7563,23 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
                 "nas-path",
                 "nas",
                 Some("/team"),
+                None,
                 &serde_json::json!({ "rcloneCryptOverlayScope": "/vault" })
             ),
             "nas-path:/vault",
             "the overlay scope is already relative to the start folder"
         );
+        // No alias points at the folder: the crypt wraps the clear remote
+        // there, as the alias would have held it. An imported path is from
+        // the clear remote's root and does not need it.
+        let scoped = |scope: &str| serde_json::json!({ "rcloneCryptOverlayScope": scope });
+        let unaliased = |folder: &str, options: &serde_json::Value| {
+            crypt_export_remote_target("nas", "nas", None, Some(folder), options)
+        };
+        assert_eq!(unaliased("/data ", &scoped("/vault")), "nas:/data /vault");
+        assert_eq!(unaliased("data/", &scoped("vault/")), "nas:data/vault");
+        assert_eq!(unaliased("/data ", &scoped("")), "nas:/data ");
+        assert_eq!(unaliased("/data ", &imported("x:/enc")), "nas:/enc");
     }
 
     /// A crypt over an alias imports onto what the alias points at; a chain

@@ -11,7 +11,7 @@
 import { transformWithOxc } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 import app from '../App.tsx?raw';
-import { connectLandsOutsideOverlay, isWithinCryptScope, normCryptScope, resolveUsernameTemplate } from './cryptScope';
+import { connectLandsOutsideOverlay, isWithinCryptScope, normCryptScope, normLandingPath, resolveUsernameTemplate } from './cryptScope';
 import { refusalFor } from './overlayRefusal';
 import { assertOverlayActivationCurrent } from './profileOverlayUnlock';
 
@@ -56,14 +56,13 @@ async function reanchorWith(opts: { initialLandingPath?: string | null } | undef
     const end = app.indexOf(REANCHOR_END, start);
     if (start < 0 || end < 0) throw new Error('smartReanchorOverlay initial-landing branch not found in App.tsx');
     const invoke = vi.fn().mockResolvedValue(undefined);
-    const positionWrappedProviderAtScope = vi.fn().mockResolvedValue(undefined);
     await execute(app.slice(start, end), {
         opts,
         invoke,
-        normCryptScope,
-        positionWrappedProviderAtScope,
+        normLandingPath,
+        assertOverlayActivationCurrent,
     }, '');
-    return { invoke, positionWrappedProviderAtScope };
+    return { invoke };
 }
 
 describe('crypt overlay connect landing (#1211)', () => {
@@ -92,15 +91,24 @@ describe('crypt overlay connect landing (#1211)', () => {
     });
 
     it('smartReanchorOverlay maps an empty landing to provider_change_dir("/")', async () => {
-        const { invoke, positionWrappedProviderAtScope } = await reanchorWith({ initialLandingPath: '' });
-        expect(invoke).toHaveBeenCalledWith('provider_change_dir', { path: '/' });
-        expect(positionWrappedProviderAtScope).not.toHaveBeenCalled();
+        for (const initialLandingPath of ['', '/', null]) {
+            const { invoke } = await reanchorWith({ initialLandingPath });
+            expect(invoke.mock.calls).toEqual([['provider_change_dir', { path: '/' }]]);
+        }
     });
 
     it('smartReanchorOverlay moves to a non-empty landing path', async () => {
-        const { invoke, positionWrappedProviderAtScope } = await reanchorWith({ initialLandingPath: '/docs' });
-        expect(positionWrappedProviderAtScope).toHaveBeenCalledWith('/docs', undefined);
-        expect(invoke).not.toHaveBeenCalled();
+        const { invoke } = await reanchorWith({ initialLandingPath: '/docs' });
+        expect(invoke.mock.calls).toEqual([['provider_change_dir', { path: '/docs' }]]);
+    });
+
+    it('smartReanchorOverlay lands on the Remote Path as given, spaces included', async () => {
+        // The anchor's normCryptScope trims: `/docs ` would land on `/docs`,
+        // and a name of spaces on the root.
+        for (const [given, path] of [['/docs ', '/docs '], [' docs/', '/ docs'], ['   ', '/   ']]) {
+            const { invoke } = await reanchorWith({ initialLandingPath: given });
+            expect(invoke.mock.calls).toEqual([['provider_change_dir', { path }]]);
+        }
     });
 });
 

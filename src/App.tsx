@@ -225,7 +225,7 @@ import { usedScanBoundKey } from './utils/usedScanBound';
 import type { UpdateVerificationInfo } from './utils/updateVerification';
 import { UpdateVerificationPanel } from './components/UpdateVerificationPanel';
 import { safePickerStartDir } from './utils/safePickerDir';
-import { normCryptScope, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
+import { normCryptScope, normLandingPath, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
@@ -5970,13 +5970,16 @@ const App: React.FC = () => {
     // leaves it at "/"). Callers only pass a landing path for non-empty scopes;
     // empty scope (whole-remote overlay) never reaches here and lands as today.
     if (opts && opts.initialLandingPath !== undefined) {
-      const landing = opts.initialLandingPath;
-      if (normCryptScope(landing) === '') {
+      // The Remote Path as given: not through the anchor's normCryptScope,
+      // whose trim would land `/docs ` on `/docs`.
+      const landing = normLandingPath(opts.initialLandingPath);
+      if (landing === '') {
         // Remote Path is the on-wire root.
         await invoke('provider_change_dir', { path: '/', ...(ownership ? { expectedGeneration: ownership.generation } : {}) }).catch((error) => { if (ownership && String(error).startsWith('CONNECTION_CHANGED')) throw error; });
         assertOverlayActivationCurrent(ownership);
       } else {
-        await positionWrappedProviderAtScope(landing, ownership);
+        await invoke('provider_change_dir', { path: landing, ...(ownership ? { expectedGeneration: ownership.generation } : {}) });
+        assertOverlayActivationCurrent(ownership);
       }
       return;
     }

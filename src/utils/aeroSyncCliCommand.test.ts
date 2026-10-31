@@ -132,6 +132,9 @@ describe('aeroftp-cli sync line for the Plan tab', () => {
     it('offers the line for a start folder whose name ends in a space', () => {
         const built = buildCliSyncCommand({ ...mirrorUpload, profileInitialPath: '/www ', remotePath: '/www /r' });
         expect(built.kind).toBe('command');
+        if (built.kind !== 'command') return;
+        expect(built.argv.slice(0, 6)).toEqual(['aeroftp-cli', '--profile', 'Srv', 'sync', '/l', '/www /r']);
+        expect(splitPosix(built.text).slice(0, 6)).toEqual(built.argv.slice(0, 6));
     });
 
     it.each(["it's", 'it\u2018s', 'it\u2019s', 'it\u201As', 'it\u201Bs', "a\u2019'\u2018b"])(

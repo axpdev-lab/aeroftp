@@ -1,7 +1,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, it, expect } from 'vitest';
-import { normCryptScope, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './cryptScope';
+import { normCryptScope, normLandingPath, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './cryptScope';
 
 describe('normCryptScope', () => {
   it('collapses the empty scope and the root onto "whole remote"', () => {
@@ -16,6 +16,16 @@ describe('normCryptScope', () => {
     expect(normCryptScope('vault')).toBe('/vault');
     expect(normCryptScope('/vault/')).toBe('/vault');
     expect(normCryptScope('//vault//sub//')).toBe('/vault//sub');
+  });
+});
+
+describe('normLandingPath', () => {
+  it('keeps the spaces of the Remote Path and normalizes only its slashes', () => {
+    for (const root of [undefined, null, '', '/', '//']) expect(normLandingPath(root)).toBe('');
+    expect(normLandingPath('/docs ')).toBe('/docs ');
+    expect(normLandingPath(' docs/')).toBe('/ docs');
+    expect(normLandingPath('   ')).toBe('/   ');
+    expect(normLandingPath('docs//')).toBe('/docs');
   });
 });
 

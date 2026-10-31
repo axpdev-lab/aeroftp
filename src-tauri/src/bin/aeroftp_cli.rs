@@ -9639,24 +9639,12 @@ impl CliBase {
     }
 
     /// The base of a connected provider: Proton Drive's start folder is where
-    /// its session stands right after connecting.
-    ///
-    /// A relative initial folder (`docs`) is entered by connect from where the
-    /// session starts: the root of a cloud drive, the login home on FTP and
-    /// SFTP. Those providers resolve a relative path against the folder they
-    /// stand in, so a base left relative was applied twice and `a.txt` reached
-    /// `docs/docs/a.txt`. When the session stands in that folder, the base is
-    /// where it stands. A provider that keeps the folder as a prefix of its
-    /// own (S3's `bucket/backups/`) stays at its root and keeps the base.
+    /// its session stands right after connecting, and a relative initial
+    /// folder is the folder the session entered (`util::start_folder`): a
+    /// base left relative was applied twice and `a.txt` reached
+    /// `docs/docs/a.txt`.
     async fn for_provider(path: impl Into<String>, provider: &mut dyn StorageProvider) -> Self {
-        let mut path = path.into();
-        if !path.is_empty() && !path.starts_with('/') {
-            if let Ok(cwd) = provider.pwd().await {
-                if stands_in(&cwd, &path) {
-                    path = cwd;
-                }
-            }
-        }
+        let path = ftp_client_gui_lib::util::start_folder::as_entered(&path.into(), provider).await;
         let start_folder = if provider.provider_type() == ProviderType::Proton {
             Some(provider.pwd().await.unwrap_or_else(|_| "/".to_string()))
         } else {
@@ -9664,14 +9652,6 @@ impl CliBase {
         };
         Self::with_start_folder(path, start_folder)
     }
-}
-
-/// Whether a session in `cwd` stands in the relative folder `base`: `cwd` is
-/// `/docs`, or ends with `/docs` (the login home's `docs`).
-fn stands_in(cwd: &str, base: &str) -> bool {
-    let base = base.trim_end_matches('/');
-    let cwd = cwd.trim_end_matches('/');
-    !base.is_empty() && cwd.ends_with(base) && cwd[..cwd.len() - base.len()].ends_with('/')
 }
 
 impl std::ops::Deref for CliBase {

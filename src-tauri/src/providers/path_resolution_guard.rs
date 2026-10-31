@@ -574,10 +574,14 @@ fn trims_whitespace(text: &str) -> bool {
 
 /// The statements of a source, each with the line it starts on. A chain
 /// written over several lines (`.initial_path` / `.as_deref()` /
-/// `.map(str::trim)`) is one statement, which a check line by line misses.
+/// `.map(str::trim)`) is one statement, which a check line by line misses,
+/// and so is a call whose arguments run over several lines (`pick(initial,` /
+/// `other).trim()`): a comma ends a statement only outside brackets, where it
+/// ends a field or an argument of its own.
 fn statements(source: &str) -> Vec<(usize, String)> {
     let mut found = Vec::new();
     let mut open: Option<(usize, String)> = None;
+    let mut depth = 0usize;
     for (index, line) in source.lines().enumerate() {
         let code = line.trim_start();
         if code.starts_with("//") {
@@ -586,12 +590,42 @@ fn statements(source: &str) -> Vec<(usize, String)> {
         let (_, text) = open.get_or_insert_with(|| (index + 1, String::new()));
         text.push_str(code);
         text.push(' ');
-        if code.ends_with([';', '{', '}', ',']) {
+        for c in code.chars() {
+            match c {
+                '(' | '[' => depth += 1,
+                ')' | ']' => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+        }
+        if code.ends_with([';', '{', '}']) || (code.ends_with(',') && depth == 0) {
             found.extend(open.take());
+            depth = 0;
         }
     }
     found.extend(open);
     found
+}
+
+#[test]
+fn a_call_over_several_lines_is_one_statement() {
+    let source = "let a = pick(initial_path,\n    other)\n    .trim();\n\
+                  let b = Form {\n    x: one(a,\n        b),\n    y: 2,\n};\n";
+    let found: Vec<(usize, String)> = statements(source);
+    let texts: Vec<&str> = found.iter().map(|(_, text)| text.as_str()).collect();
+    assert_eq!(
+        texts,
+        [
+            "let a = pick(initial_path, other) .trim(); ",
+            "let b = Form { ",
+            "x: one(a, b), ",
+            "y: 2, ",
+            "}; ",
+        ]
+    );
+    assert_eq!(
+        found.iter().map(|(line, _)| *line).collect::<Vec<_>>(),
+        [1, 4, 5, 7, 8]
+    );
 }
 
 /// A path is the name as typed, spaces included, and so is the initial

@@ -3394,11 +3394,14 @@ impl WebDavProvider {
 
                 Ok(Event::CData(ref e)) => {
                     if let Some(ref tag) = current_tag {
-                        let text = e.as_ref().trim().to_string();
-                        if !text.is_empty() {
+                        // As in the text arm, the name is read as given:
+                        // `<![CDATA[ a.txt ]]>` names ` a.txt `.
+                        let raw = e.as_ref().to_string();
+                        let text = raw.trim().to_string();
+                        if !text.is_empty() || (tag == "displayname" && !raw.is_empty()) {
                             match tag.as_str() {
                                 "href" => href = text,
-                                "displayname" => displayname = text,
+                                "displayname" => displayname.push_str(&raw),
                                 "getcontentlength" => getcontentlength = text,
                                 "getlastmodified" => getlastmodified = text,
                                 "getcontenttype" => getcontenttype = text,
@@ -7173,9 +7176,10 @@ mod tests {
         assert_eq!(entries[1].name, "a & b.txt");
     }
 
-    /// A displayname that begins or ends with a space names that file: it
-    /// was trimmed, so ` a.txt ` was listed as `a.txt` at `/dav/a.txt`, and
-    /// every operation on it reached another file or none.
+    /// A displayname that begins or ends with a space names that file, in a
+    /// text node or in a CDATA section: it was trimmed, so ` a.txt ` was
+    /// listed as `a.txt` at `/dav/a.txt`, and every operation on it reached
+    /// another file or none.
     #[test]
     fn parse_propfind_keeps_the_spaces_around_a_displayname() {
         let provider = WebDavProvider::new(test_config("https://example.com/dav"))
@@ -7202,6 +7206,24 @@ mod tests {
                     </d:prop>
                 </d:propstat>
             </d:response>
+            <d:response>
+                <d:href>/dav/%20c.txt%20</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname><![CDATA[ c.txt ]]></d:displayname>
+                        <d:resourcetype/>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/%20%20%20/</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname><![CDATA[   ]]></d:displayname>
+                        <d:resourcetype><d:collection/></d:resourcetype>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
         </d:multistatus>"#;
 
         let entries = provider.parse_propfind_response(xml, "/dav").unwrap();
@@ -7209,7 +7231,15 @@ mod tests {
             .iter()
             .map(|e| (e.name.as_str(), e.path.as_str()))
             .collect();
-        assert_eq!(named, [(" a.txt ", "/dav/ a.txt "), ("  ", "/dav/  ")]);
+        assert_eq!(
+            named,
+            [
+                (" a.txt ", "/dav/ a.txt "),
+                ("  ", "/dav/  "),
+                (" c.txt ", "/dav/ c.txt "),
+                ("   ", "/dav/   "),
+            ]
+        );
     }
 
     /// CR-536 regression: a whitespace-ONLY Text fragment between two entity

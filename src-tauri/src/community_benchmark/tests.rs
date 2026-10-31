@@ -631,6 +631,10 @@ mod engine_runs {
         /// A folder three levels deep is refused, as FileLu refused the run
         /// folder under a prefix folder it had just created.
         refuse_deep_mkdir: bool,
+        /// The folder `pwd` reports, `/` when unset.
+        cwd: Option<String>,
+        /// Every folder asked for, in order.
+        mkdirs: Vec<String>,
     }
 
     struct MemRemote(Arc<Mutex<Remote>>);
@@ -677,7 +681,13 @@ mod engine_runs {
             Ok(out)
         }
         async fn pwd(&mut self) -> Result<String, ProviderError> {
-            Ok("/".into())
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .cwd
+                .clone()
+                .unwrap_or_else(|| "/".into()))
         }
         async fn cd(&mut self, _p: &str) -> Result<(), ProviderError> {
             Ok(())
@@ -729,6 +739,7 @@ mod engine_runs {
             Ok(())
         }
         async fn mkdir(&mut self, p: &str) -> Result<(), ProviderError> {
+            self.0.lock().unwrap().mkdirs.push(p.into());
             if self.0.lock().unwrap().refuse_deep_mkdir && p.matches('/').count() >= 3 {
                 return Err(ProviderError::ServerError("Folder not found".into()));
             }
@@ -892,6 +903,46 @@ mod engine_runs {
         remote.dirs.insert("/data".into());
         let state = Arc::new(Mutex::new(remote));
         (state.clone(), Box::new(MemRemote(state)))
+    }
+
+    /// A relative start path is the folder connect entered, which the
+    /// session stands in: the scratch folder joined to it again was created
+    /// in `team /team /aeroftp-bench`, or not at all.
+    #[tokio::test]
+    async fn a_relative_start_path_is_applied_once() {
+        let (state, provider) = remote();
+        let home = ["/data", "/home", "/home/u", "/home/u/team "].map(String::from);
+        {
+            let mut r = state.lock().unwrap();
+            r.cwd = Some("/home/u/team ".into());
+            r.dirs.extend(home.clone());
+        }
+        let opts = options(BenchmarkLevel::Quick, "1K", None);
+        let outcome = run(provider, "team ", opts, &Silent).await.unwrap();
+        assert!(
+            outcome.report.summary.errors.is_empty(),
+            "{:?}",
+            outcome.report.summary.errors
+        );
+        let r = state.lock().unwrap();
+        // Every folder asked for is where the session stands, none relative.
+        assert_eq!(r.mkdirs[0], "/home/u/team /aeroftp-bench");
+        assert!(
+            r.mkdirs
+                .iter()
+                .all(|dir| dir.starts_with('/') && !dir.contains("team /team ")),
+            "{:?}",
+            r.mkdirs
+        );
+        assert!(
+            r.mkdirs
+                .iter()
+                .any(|dir| dir.starts_with("/home/u/team /aeroftp-bench/")),
+            "{:?}",
+            r.mkdirs
+        );
+        assert!(r.files.is_empty(), "{:?}", r.files.keys());
+        assert_eq!(r.dirs, BTreeSet::from(home));
     }
 
     #[tokio::test]
