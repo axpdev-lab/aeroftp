@@ -43,6 +43,8 @@ pub fn shell_quote_bytes(path: &[u8]) -> Result<Vec<u8>, ProviderError> {
 mod tests {
     use super::*;
 
+    /// Names for the real-shell test below, which needs a POSIX `sh`.
+    #[cfg(unix)]
     const HOSTILE: &[&str] = &[
         "plain",
         "a b",
