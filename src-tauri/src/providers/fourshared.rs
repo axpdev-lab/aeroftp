@@ -227,6 +227,16 @@ pub struct FourSharedProvider {
     api_base_override: Option<String>,
 }
 
+/// A listing the server refused, as an error a caller can read.
+fn listing_refused(what: &str, status: reqwest::StatusCode) -> ProviderError {
+    match status.as_u16() {
+        401 => ProviderError::AuthenticationFailed(format!("4shared refused the {what} listing")),
+        403 => ProviderError::PermissionDenied(format!("4shared refused the {what} listing")),
+        404 => ProviderError::NotFound(format!("4shared has no such folder ({what} listing)")),
+        _ => ProviderError::ServerError(format!("4shared {what} listing failed: HTTP {status}")),
+    }
+}
+
 impl FourSharedProvider {
     /// Build the provider and its HTTP client, with the limits of [`crate::providers::http_limits`].
     /// Nothing is sent until the first request.
@@ -1152,7 +1162,9 @@ impl StorageProvider for FourSharedProvider {
                     status,
                     &body[..body.floor_char_boundary(300)]
                 );
-                break;
+                // A failed listing is not an empty folder: a search or a sync
+                // would read everything in it as gone.
+                return Err(listing_refused("folders", status));
             }
 
             let body = resp
@@ -1240,7 +1252,7 @@ impl StorageProvider for FourSharedProvider {
                     fstatus,
                     &body[..body.floor_char_boundary(300)]
                 );
-                break;
+                return Err(listing_refused("files", fstatus));
             }
 
             let body = resp

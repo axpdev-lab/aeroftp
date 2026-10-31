@@ -434,7 +434,7 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
 
             <div className="flex flex-col gap-2 border-t border-gray-200 px-4 py-3 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                    {t('aerosync.mirrorHint') || 'Mirror buttons start the transfers of the matching entries right away.'}
+                    {t('aerosync.mirrorHint') || 'Mirror buttons transfer the matching entries. They do not stage them for review.'}
                     {exportError && (
                         <span role="alert" className="mt-1 block text-red-600 dark:text-red-400">
                             {t('aerosync.exportFailed', { error: exportError }) || `Could not write the export: ${exportError}`}

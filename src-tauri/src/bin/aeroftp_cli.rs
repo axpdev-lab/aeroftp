@@ -39166,6 +39166,29 @@ fn publish_extracted(
             files.push(relative);
         }
     }
+    // A link in the way would carry the extract outside the destination.
+    for relative in folders.iter().chain(&files) {
+        let mut under = dest.to_path_buf();
+        let parents: Vec<_> = relative
+            .parent()
+            .into_iter()
+            .flat_map(|p| p.components())
+            .collect();
+        for part in parents {
+            under.push(part);
+            if under
+                .symlink_metadata()
+                .is_ok_and(|meta| meta.file_type().is_symlink())
+            {
+                return Err(format!(
+                    "{} is a link, so {} would be written outside {}. Nothing was written",
+                    under.display(),
+                    relative.display(),
+                    dest.display()
+                ));
+            }
+        }
+    }
     if !overwrite {
         // A dangling link is a file there too, which `exists` does not see.
         let existing: Vec<_> = files
@@ -39184,14 +39207,21 @@ fn publish_extracted(
     for folder in &folders {
         std::fs::create_dir_all(dest.join(folder)).map_err(|e| e.to_string())?;
     }
-    for file in &files {
+    for (moved, file) in files.iter().enumerate() {
         let (from, to) = (staging.join(file), dest.join(file));
         if overwrite {
             std::fs::rename(&from, &to)
         } else {
             move_without_replacing(&from, &to)
         }
-        .map_err(|e| format!("Failed to write {}: {e}", file.display()))?;
+        .map_err(|e| {
+            format!(
+                "Failed to write {}: {e}. {moved} of {} files are already in {}",
+                file.display(),
+                files.len(),
+                dest.display()
+            )
+        })?;
     }
     Ok(())
 }
@@ -78775,13 +78805,17 @@ async fn main() {
                     };
                     // Every format extracts into a staging folder first: v2 refused
                     // an existing file halfway through, and v3 replaced it.
-                    let staging = std::fs::create_dir_all(dest.as_str())
-                        .and_then(|()| {
-                            tempfile::Builder::new()
-                                .prefix(".aerovault_extract_")
-                                .tempdir_in(dest.as_str())
-                        })
-                        .map_err(|e| format!("Failed to prepare {dest}: {e}"));
+                    let staging = if ver == "v3" || ver == "v2" {
+                        std::fs::create_dir_all(dest.as_str())
+                            .and_then(|()| {
+                                tempfile::Builder::new()
+                                    .prefix(".aerovault_extract_")
+                                    .tempdir_in(dest.as_str())
+                            })
+                            .map_err(|e| format!("Failed to prepare {dest}: {e}"))
+                    } else {
+                        Err("extract-all is only supported for v2/v3 vaults".to_string())
+                    };
                     let res: Result<u64, String> = match staging {
                         Err(e) => Err(e),
                         Ok(staging) => {
@@ -78794,12 +78828,10 @@ async fn main() {
                                     None,
                                 )
                                 .await
-                            } else if ver == "v2" {
+                            } else {
                                 aerovault_v2::vault_v2_extract_all(path.clone(), pw, target)
                                     .await
                                     .map(|v| v["extracted"].as_u64().unwrap_or(0))
-                            } else {
-                                Err("extract-all is only supported for v2/v3 vaults".to_string())
                             };
                             extracted.and_then(|n| {
                                 publish_extracted(
@@ -97681,6 +97713,16 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
 
         #[cfg(unix)]
         {
+            // A link among the parents would carry the extract outside.
+            let outside = root.path().join("outside");
+            std::fs::create_dir_all(&outside).unwrap();
+            let linked = root.path().join("linked");
+            std::fs::create_dir_all(&linked).unwrap();
+            std::os::unix::fs::symlink(&outside, linked.join("sub")).unwrap();
+            let refused = publish_extracted(&staging, &linked, true).unwrap_err();
+            assert!(refused.contains("is a link"), "{refused}");
+            assert!(!outside.join("kept.txt").exists());
+
             std::os::unix::fs::symlink(root.path().join("gone"), dest.join("new.txt")).unwrap();
             assert!(
                 publish_extracted(&staging, &dest, false).is_err(),

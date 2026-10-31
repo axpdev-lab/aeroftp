@@ -662,6 +662,8 @@ async fn list_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError>
         "offset": opts.offset,
         "limit": opts.limit,
         "truncated": opts.offset + returned < total_matched,
+        // The search stops at this many: there may be more than `total` says.
+        "search_limit_reached": total_unfiltered >= crate::providers::FIND_RESULT_LIMIT,
     }))
 }
 

@@ -187,13 +187,54 @@ pub fn matches_find_pattern(name: &str, pattern: &str) -> bool {
     }
 }
 
-/// Results a search returns, as the providers that walk their own tree do.
-const FIND_RESULT_LIMIT: usize = 500;
+/// Results a search returns, as the providers that walk their own tree do. A
+/// caller that gets this many cannot tell whether there are more, and says so.
+pub const FIND_RESULT_LIMIT: usize = 500;
+
+/// Folders a search lists before it gives up. The provider is held while it
+/// walks, and a search with few matches would otherwise read a whole account.
+const FIND_FOLDER_LIMIT: usize = 20_000;
+
+/// One absolute root for the walk and the listing, with `.` and `..` resolved.
+fn search_root(start: &str, path: &str) -> String {
+    let joined = if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("{start}/{path}")
+    };
+    let mut segments: Vec<&str> = Vec::new();
+    for segment in joined.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                segments.pop();
+            }
+            segment => segments.push(segment),
+        }
+    }
+    format!("/{}", segments.join("/"))
+}
+
+/// Whether a failed listing speaks about that folder alone. Anything else, a
+/// lost connection or expired sign-in above all, would fail the folders after
+/// it too, and a partial result would read as a complete one.
+fn listing_failure_is_the_folders(error: &ProviderError) -> bool {
+    matches!(
+        error,
+        ProviderError::NotFound(_)
+            | ProviderError::PermissionDenied(_)
+            | ProviderError::InvalidPath(_)
+            | ProviderError::ParseError(_)
+            | ProviderError::ServerError(_)
+            | ProviderError::Other(_)
+    )
+}
 
 /// Search under `path` by walking its listings, so every hit is under `path`
 /// and carries the path `list` gives it, which a caller may go on to delete.
-/// A root that cannot be listed is an error, not an empty result. A subfolder
-/// that cannot be listed is skipped with a warning, and a link is not followed.
+/// The folder searched failing, or a failure that is not about one folder, is
+/// an error, not an empty or partial result. A subfolder that cannot be listed
+/// is skipped with a warning, and a link is not followed.
 pub(crate) async fn find_by_walk<P>(
     provider: &mut P,
     path: &str,
@@ -203,13 +244,11 @@ where
     P: StorageProvider + ?Sized,
 {
     // Some providers move their current folder as they list: a search must not
-    // leave a later relative upload in the last folder it walked.
+    // leave a later relative upload or delete in the last folder it walked.
     let start = provider.pwd().await?;
     let found = walk_for_find(provider, path, pattern, &start).await;
     if provider.pwd().await.ok().as_deref() != Some(start.as_str()) {
-        if let Err(error) = provider.cd(&start).await {
-            tracing::warn!("find: could not return to {start:?}: {error}");
-        }
+        provider.cd(&start).await?;
     }
     found
 }
@@ -223,20 +262,23 @@ async fn walk_for_find<P>(
 where
     P: StorageProvider + ?Sized,
 {
-    // One absolute root, for the walk and for the listing, which answers with
-    // absolute paths.
-    let root = match path {
-        "" | "." => start.to_string(),
-        path if path.starts_with('/') => path.to_string(),
-        path => format!("{}/{}", start.trim_end_matches('/'), path),
-    };
+    let root = search_root(start, path);
     let mut walk = crate::sync_core::FindWalk::new(&root);
     let mut folders = vec![root.clone()];
+    let mut listed = 0;
     let mut results = Vec::new();
     while let Some(folder) = folders.pop() {
+        listed += 1;
+        if listed > FIND_FOLDER_LIMIT {
+            return Err(ProviderError::Other(format!(
+                "Search stopped after {FIND_FOLDER_LIMIT} folders under {root}: search a smaller folder"
+            )));
+        }
         let entries = match provider.list(&folder).await {
             Ok(entries) => entries,
-            Err(error) if folder == root => return Err(error),
+            Err(error) if folder == root || !listing_failure_is_the_folders(&error) => {
+                return Err(error)
+            }
             Err(error) => {
                 tracing::warn!("find: skipping {folder:?}: {error}");
                 continue;
@@ -254,7 +296,6 @@ where
             if matches_find_pattern(&entry.name, pattern) {
                 results.push(entry);
                 if results.len() >= FIND_RESULT_LIMIT {
-                    tracing::warn!("find: stopped at {FIND_RESULT_LIMIT} results under {root}");
                     return Ok(results);
                 }
             }

@@ -19049,6 +19049,8 @@ mod folder_download_live_tests {
         failing: std::collections::HashSet<String>,
         /// A listing moves the current folder, as on kDrive.
         list_moves_cwd: bool,
+        /// `cd` fails.
+        cd_fails: bool,
         /// Raised when a download starts, as the first Stop raises it.
         stop_on_download: Option<Arc<AtomicBool>>,
     }
@@ -19173,6 +19175,9 @@ mod folder_download_live_tests {
             Ok(self.cwd.clone())
         }
         async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
+            if self.state.lock().unwrap().cd_fails {
+                return Err(ProviderError::Other("cd refused".to_string()));
+            }
             self.cwd = path.to_string();
             Ok(())
         }
@@ -19396,6 +19401,24 @@ mod folder_download_live_tests {
             ["/r/sub/a.txt"]
         );
         assert_eq!(tree.cwd, "/r");
+    }
+
+    /// A search that cannot return to its folder fails, or a later relative
+    /// upload would land in the last folder it walked. A `..` in the folder is
+    /// resolved before it is listed.
+    #[tokio::test]
+    async fn a_walked_search_resolves_its_root_and_reports_a_lost_position() {
+        let (mut tree, state) = FolderTree::new(&["a.txt", "sub/a.txt"]);
+        tree.cwd = "/r".to_string();
+        let found = crate::providers::find_by_walk(&mut tree, "/r/sub/../sub", "a.txt")
+            .await
+            .unwrap();
+        assert_eq!(found.len(), 1);
+        state.lock().unwrap().list_moves_cwd = true;
+        state.lock().unwrap().cd_fails = true;
+        assert!(crate::providers::find_by_walk(&mut tree, "/r/sub", "a.txt")
+            .await
+            .is_err());
     }
 
     /// The folder searched that cannot be read is an error, not an empty
