@@ -1417,6 +1417,7 @@ export const runRemoteSync = async (
                         size,
                         modified,
                         is_dir: false,
+                        ...(f.action === 'upload' ? { uploaded_at: new Date().toISOString() } : {}),
                     };
                     // Upload: relativePath is the remote spelling. Download:
                     // sourcePath is. Keep-both fails the NFC test above, so

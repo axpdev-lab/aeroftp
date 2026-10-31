@@ -256,6 +256,7 @@ mod tests {
                 size: 8,
                 modified: None,
                 is_dir: false,
+                uploaded_at: None,
             },
         );
         for on_local in [true, false] {
@@ -302,6 +303,7 @@ mod tests {
                 size: 8,
                 modified: None,
                 is_dir: false,
+                uploaded_at: None,
             },
         );
         index.remote_spellings.insert(nfd.into(), nfc.into());
@@ -335,6 +337,7 @@ mod tests {
                 size: 8,
                 modified: None,
                 is_dir: false,
+                uploaded_at: None,
             },
         );
         let report = classify_with_summary(
