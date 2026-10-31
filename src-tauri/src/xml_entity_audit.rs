@@ -209,6 +209,7 @@ fn listing() {
     // Event::GeneralRef( in a comment is no arm
     let _ = "Event::GeneralRef(";
     let _ = r#"Event::GeneralRef("#;
+    let _ = br#"a" Event::GeneralRef( "#;
     let _ = '{';
 }
 fn complete() {

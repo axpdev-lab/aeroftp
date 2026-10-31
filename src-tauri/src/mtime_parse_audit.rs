@@ -169,11 +169,15 @@ pub(crate) fn strip_test_modules(source: &str) -> String {
 }
 
 /// The number of `#` of a raw string opening at `at` (`r"`, `r#"`, ...).
+/// A byte or C raw string (`br#"`, `cr#"`) opens at its `r` too: the scanners
+/// read the prefix letter as code and the literal from there.
 pub(crate) fn raw_string_open(source: &str, at: usize) -> Option<usize> {
     let bytes = source.as_bytes();
-    if bytes[at] != b'r'
-        || (at > 0 && (bytes[at - 1].is_ascii_alphanumeric() || bytes[at - 1] == b'_'))
-    {
+    let ident = |k: usize| bytes[k].is_ascii_alphanumeric() || bytes[k] == b'_';
+    let opens_here = at == 0
+        || !ident(at - 1)
+        || (matches!(bytes[at - 1], b'b' | b'c') && (at == 1 || !ident(at - 2)));
+    if bytes[at] != b'r' || !opens_here {
         return None;
     }
     let hashes = bytes[at + 1..].iter().take_while(|b| **b == b'#').count();
@@ -257,4 +261,18 @@ fn b<'a>(s: &'a str) { let _ = chrono::DateTime::parse_from_rfc2822(s); }
     assert!(body.contains("fn a()"));
     assert!(body.contains("fn b<'a>"));
     assert!(!body.contains("\"y\""));
+
+    // A byte or C raw string is one literal too: read from its first `"`, the
+    // `}}` would close the module and leak the parser below it into the code.
+    for prefix in ["br", "cr"] {
+        let source = r##"
+#[cfg(test)]
+mod tests {
+    fn t() { let _ = PREFIX#"x"}}"#;
+        let _ = chrono::DateTime::parse_from_rfc3339("y"); }
+}
+"##
+        .replace("PREFIX", prefix);
+        assert!(!strip_test_modules(&source).contains("\"y\""), "{prefix}");
+    }
 }
