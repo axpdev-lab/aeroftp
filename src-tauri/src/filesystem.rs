@@ -1735,7 +1735,7 @@ mod udisks {
             let options = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
             let seen = options.clone();
             let service = std::thread::spawn(move || {
-                Builder::socket(theirs)
+                Builder::async_io_unix_stream(theirs)
                     .server(zbus::Guid::generate())
                     .unwrap()
                     .p2p()
@@ -1760,7 +1760,7 @@ mod udisks {
                     .build()
                     .unwrap()
             });
-            let bus = Builder::socket(ours).p2p().build().unwrap();
+            let bus = Builder::async_io_unix_stream(ours).p2p().build().unwrap();
             let _service = service.join().unwrap();
 
             assert_eq!(mount_on(&bus, "/dev/sda1").unwrap(), "/media/u/Data");
