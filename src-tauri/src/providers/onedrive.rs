@@ -143,6 +143,19 @@ fn recycle_bin_not_exposed(
     )))
 }
 
+/// The answer Graph gives for the children of a Personal Vault. Recognised on
+/// the code and the message: another 400 is a failure, and a walk must not skip
+/// a folder for it.
+fn object_handle_is_invalid(body: &str) -> bool {
+    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(body) else {
+        return false;
+    };
+    parsed["error"]["code"].as_str() == Some("invalidRequest")
+        && parsed["error"]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("ObjectHandle is Invalid"))
+}
+
 async fn onedrive_error_from_response(
     response: reqwest::Response,
     context_prefix: &str,
@@ -974,16 +987,12 @@ impl OneDriveProvider {
     /// Vault arrives as a folder shortcut that reads as empty and answers its
     /// children with `400 ObjectHandle is Invalid`. Nothing else tells it from
     /// a shortcut, and its name changes with the account's language. It is
-    /// reported like a link, which a walk does not enter and a compare leaves
-    /// alone on both sides, so one folder cannot fail a whole tree, and a mirror
-    /// cannot read it as deleted. Only a shortcut that reads as empty is asked.
-    async fn is_unreachable_shortcut(
-        &self,
-        item: &DriveItem,
-        path: &str,
-    ) -> Result<bool, ProviderError> {
+    /// reported like a link, which a compare or a sync leaves alone on both
+    /// sides, so one folder cannot fail a whole tree and a mirror cannot read it
+    /// as deleted. Only a shortcut that reads as empty is asked.
+    async fn is_unreachable_shortcut(&self, item: &DriveItem, path: &str) -> bool {
         if item.folder.as_ref().and_then(|f| f.child_count) != Some(0) {
-            return Ok(false);
+            return false;
         }
         let target = self
             .remote_roots
@@ -992,18 +1001,26 @@ impl OneDriveProvider {
             .get(path.trim_matches('/'))
             .map(|(drive, id)| format!("{drive}/{id}"));
         let Some(target) = target else {
-            return Ok(false);
+            return false;
         };
-        let status = self
+        // Any other failure says nothing about the folder: it stays a folder, and
+        // a walk that lists it fails as it would have.
+        let Ok(header) = self.auth_header().await else {
+            return false;
+        };
+        let Ok(response) = self
             .client
             .get(format!("{}/children?$top=1", self.api_item(&target)))
-            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(AUTHORIZATION, header)
             .send()
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
-            .status();
-        Ok(status == reqwest::StatusCode::BAD_REQUEST
-            || status == reqwest::StatusCode::UNPROCESSABLE_ENTITY)
+        else {
+            return false;
+        };
+        if response.status() != reqwest::StatusCode::BAD_REQUEST {
+            return false;
+        }
+        object_handle_is_invalid(&response.text().await.unwrap_or_default())
     }
 
     /// Evict oldest half of cache when it exceeds the maximum size
@@ -1531,7 +1548,7 @@ impl StorageProvider for OneDriveProvider {
         let mut entries = Vec::with_capacity(items.len());
         for item in &items {
             let mut entry = self.to_remote_entry(item, &parent_path);
-            entry.is_symlink = self.is_unreachable_shortcut(item, &entry.path).await?;
+            entry.is_symlink = self.is_unreachable_shortcut(item, &entry.path).await;
             entries.push(entry);
         }
         Ok(entries)
@@ -3450,11 +3467,57 @@ mod tests {
         server.abort();
     }
 
-    /// #368 (Ehud): a folder reached through a shortcut ("Add shortcut to My
-    /// files", or a shared folder) lives in another drive. Graph answers
-    /// `itemNotFound` to a create or a listing addressed to the shortcut's own
-    /// id, so every operation under it must go to the target drive, while an
-    /// operation on the shortcut itself stays on the shortcut.
+    /// Only the vault's own answer makes a link: any other failure leaves a folder,
+    /// and a walk that lists it fails as it would have.
+    #[tokio::test]
+    async fn another_failure_of_a_shortcut_leaves_it_a_folder() {
+        use axum::{http::StatusCode, routing::any, Json, Router};
+        use serde_json::json;
+        for (status, body) in [
+            (
+                StatusCode::BAD_REQUEST,
+                json!({"error": {"code": "invalidRequest", "message": "Bad filter"}}),
+            ),
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                json!({"error": {"code": "activityLimitReached", "message": "Slow down"}}),
+            ),
+        ] {
+            let listing = json!({"value": [{"id": "S", "name": "Shared", "size": 0, "remoteItem": {"id": "T",
+                "folder": {"childCount": 0}, "parentReference": {"driveId": "drv2"}}}]});
+            let app = Router::new().fallback(any(move |request: axum::extract::Request| {
+                let listing = listing.clone();
+                let body = body.clone();
+                async move {
+                    if request.uri().path() == "/v1.0/me/drive/root/children" {
+                        (StatusCode::OK, Json(listing))
+                    } else {
+                        (status, Json(body))
+                    }
+                }
+            }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move {
+                axum::serve(listener, app).await.unwrap();
+            });
+            let mut p = OneDriveProvider::new(OneDriveConfig {
+                client_id: "fixture".into(),
+                client_secret: "fixture".into(),
+            });
+            p.api_origin_override = Some(format!("http://{addr}"));
+            p.test_access_token = Some("fixture".into());
+            p.current_item_id = "root".into();
+            p.current_path = "/".into();
+            let listed = p
+                .list(".")
+                .await
+                .expect("the listing does not fail on the probe");
+            assert!(listed[0].is_dir && !listed[0].is_symlink, "{status}");
+            server.abort();
+        }
+    }
+
     /// A Personal Vault is a folder shortcut that cannot be listed: it reads as
     /// a link, so a walk leaves it alone. An empty shortcut that lists stays a
     /// folder, and one that reads as non-empty is not asked.
@@ -3520,6 +3583,11 @@ mod tests {
         server.abort();
     }
 
+    /// #368 (Ehud): a folder reached through a shortcut ("Add shortcut to My
+    /// files", or a shared folder) lives in another drive. Graph answers
+    /// `itemNotFound` to a create or a listing addressed to the shortcut's own
+    /// id, so every operation under it must go to the target drive, while an
+    /// operation on the shortcut itself stays on the shortcut.
     #[tokio::test]
     async fn ehud_368_mkdir_and_list_inside_a_shortcut_address_the_target_drive() {
         use axum::{

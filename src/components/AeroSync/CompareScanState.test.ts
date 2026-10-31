@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -60,6 +62,15 @@ it('leaves no result behind a refused compare, and clears the reason on one that
     const result = { entries: [] };
     expect(compareOutcome(result, 'unreadable')).toEqual({ compareResult: null, compareRefused: 'unreadable', compareIdle: true });
     expect(compareOutcome(result, undefined)).toEqual({ compareResult: result, compareRefused: undefined, compareIdle: false });
+});
+
+it('reaches the window from every compare path of the app', () => {
+    const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+    expect(app.match(/\.\.\.compareOutcome\(resolved, refused\)/g)).toHaveLength(2);
+    expect(app.match(/refused = describeScanIncompleteError\(err\)/g)).toHaveLength(3);
+    const dialog = readFileSync(resolve(process.cwd(), 'src/components/AeroSync/AeroSyncDialog.tsx'), 'utf8');
+    expect(dialog).toContain('refused={context.compareRefused}');
+    expect(dialog).toContain('compareRefused={context.compareRefused}');
 });
 
 it('recognizes only the exact cancelled error, never another failure', () => {

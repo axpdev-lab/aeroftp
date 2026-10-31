@@ -11579,7 +11579,7 @@ const App: React.FC = () => {
             // re-uploads everything. Fail closed end-to-end: surface a blocking
             // error and leave Compare with no executable result.
             resolved = compareEntries([], []);
-            refused = String(err);
+            refused = describeScanIncompleteError(err);
             notify.error(t('aerosync.title') || 'AeroSync', refused);
           } else if (isScanIncompleteError(err)) {
             // CLAUDE-AV-B3-13: the backend refused because the local walk did
