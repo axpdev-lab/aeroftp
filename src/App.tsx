@@ -10526,8 +10526,10 @@ const App: React.FC = () => {
           // Check file conflict before uploading (single file transfers only)
           const destinationFiles = await getOverwriteDestination('upload', remoteBase);
           // By path: a nested row of a flattened search goes by its own name,
-          // which an entry of the panel's directory may share.
-          const localFileInfo = [...localFiles, ...sortedLocalFiles].find(f => f.path === localFilePath && !f.is_dir);
+          // which an entry of the panel's directory may share. In either
+          // panel: the file can come from panel 2.
+          const localFileInfo = [...localFiles, ...sortedLocalFiles, ...localFiles2, ...sortedLocalFiles2]
+            .find(f => f.path === localFilePath && !f.is_dir);
           const overwriteResult = await checkOverwrite(
             fileName,
             fileSize || localFileInfo?.size || 0,
@@ -12477,10 +12479,11 @@ const App: React.FC = () => {
             // The clipboard keeps name and path only; size and date come from
             // the listing, as the per-file path looks them up.
             // By path only: a same-named file of another folder would hand
-            // checkOverwrite the wrong size and date.
+            // checkOverwrite the wrong size and date. In either panel: the
+            // clipboard can hold files of panel 2.
             const listed = sourceIsRemote
               ? remoteFiles.find(f => f.path === file.path)
-              : [...localFiles, ...sortedLocalFiles].find(f => f.path === file.path);
+              : [...localFiles, ...sortedLocalFiles, ...localFiles2, ...sortedLocalFiles2].find(f => f.path === file.path);
             return {
               name: file.name,
               sourcePath: file.path,
