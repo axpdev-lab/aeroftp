@@ -1716,7 +1716,10 @@ impl StorageProvider for GoogleDriveProvider {
         const RESUMABLE_THRESHOLD: u64 = 5 * 1024 * 1024; // 5MB
 
         if total_size > RESUMABLE_THRESHOLD {
-            // Resumable upload for large files: stream from file handle
+            // Resumable upload for large files: stream from file handle.
+            // Checked before the session opens, so a refusal leaves none behind.
+            let source = super::upload_source::UploadSource::observe(local_path).await?;
+            source.ensure_size(total_size, "Google Drive upload")?;
             let metadata = if existing_file_id.is_some() {
                 // Update: only send name, no parents (already in correct folder)
                 serde_json::json!({ "name": file_name })
@@ -1766,8 +1769,6 @@ impl StorageProvider for GoogleDriveProvider {
 
             // Step 2: Upload in 10MB chunks from file handle
             const CHUNK_SIZE: usize = 10 * 1024 * 1024;
-            let source = super::upload_source::UploadSource::observe(local_path).await?;
-            source.ensure_size(total_size, "Google Drive upload")?;
             let mut file = tokio::fs::File::open(local_path)
                 .await
                 .map_err(|e| ProviderError::Other(format!("Open file error: {}", e)))?;
@@ -1785,7 +1786,10 @@ impl StorageProvider for GoogleDriveProvider {
                 let end = offset + this_chunk as u64;
                 // The last chunk publishes the file: refuse a mixture of two versions.
                 if end == total_size {
-                    source.ensure_unchanged("Google Drive upload").await?;
+                    if let Err(error) = source.ensure_unchanged("Google Drive upload").await {
+                        let _ = self.client.delete(&session_uri).send().await;
+                        return Err(error);
+                    }
                 }
                 let range = format!("bytes {}-{}/{}", offset, end - 1, total_size);
 
@@ -3332,24 +3336,37 @@ mod tests {
         let local = dir.path().join("big.bin");
         std::fs::write(&local, vec![b'a'; 11 * 1024 * 1024]).unwrap();
         let chunks: Arc<Mutex<Vec<String>>> = Arc::default();
-        let (seen, path) = (chunks.clone(), local.clone());
+        let cancels: Arc<Mutex<u32>> = Arc::default();
+        let (seen, path, cancelled) = (chunks.clone(), local.clone(), cancels.clone());
         let origin: Arc<Mutex<String>> = Arc::default();
         let session_origin = origin.clone();
         let app =
             axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
-                let (seen, path, origin) = (seen.clone(), path.clone(), session_origin.clone());
+                let (seen, path, origin, cancelled) = (
+                    seen.clone(),
+                    path.clone(),
+                    session_origin.clone(),
+                    cancelled.clone(),
+                );
                 async move {
                     use axum::response::IntoResponse;
+                    if req.method() == axum::http::Method::DELETE && req.uri().path() == "/session"
+                    {
+                        *cancelled.lock().unwrap() += 1;
+                        return axum::http::StatusCode::NO_CONTENT.into_response();
+                    }
                     let range = req
                         .headers()
                         .get("content-range")
                         .map(|v| v.to_str().unwrap().to_string());
-                    let is_chunk = range.is_some();
                     if let Some(range) = range {
+                        // An answer before the body is read resets the
+                        // connection on Windows.
+                        axum::body::to_bytes(req.into_body(), usize::MAX)
+                            .await
+                            .unwrap();
                         seen.lock().unwrap().push(range);
                         std::fs::write(&path, vec![b'b'; 11 * 1024 * 1024 + 1]).unwrap();
-                    }
-                    if is_chunk {
                         return axum::http::StatusCode::PERMANENT_REDIRECT.into_response();
                     }
                     if req
@@ -3391,6 +3408,7 @@ mod tests {
             1,
             "the committing chunk must not leave"
         );
+        assert_eq!(*cancels.lock().unwrap(), 1, "the session is cancelled");
     }
 
     /// Exercise the actual purge path with Drive search pages that may omit

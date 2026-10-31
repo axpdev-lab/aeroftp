@@ -3449,6 +3449,11 @@ mod tests {
                     return Json(serde_json::json!({"uploadUrl": url})).into_response();
                 }
                 if path == "/session" && req.method() == axum::http::Method::PUT {
+                    // An answer before the body is read resets the connection
+                    // on Windows.
+                    axum::body::to_bytes(req.into_body(), usize::MAX)
+                        .await
+                        .unwrap();
                     std::fs::write(&rewrite, vec![b'b'; 11 * 1024 * 1024 + 1]).unwrap();
                     return (
                         axum::http::StatusCode::ACCEPTED,
