@@ -1396,7 +1396,7 @@ export function MyServersPanel({
                 hasStoredAeroCryptPassword: false,
                 hasStoredAeroCryptSalt: false,
             };
-            const copiedSecrets = await copyProfileVaultSecrets(server.id, newId, server.protocol);
+            const copiedSecrets = await copyProfileVaultSecrets(server.id, newId, server.protocol, profilesUserId);
             dup.hasStoredCredential = copiedSecrets.server;
             dup.hasStoredFilenApiKey = copiedSecrets.filen_api_key;
             dup.hasStoredAeroCryptPassword = copiedSecrets.aerocrypt_overlay_pw;
@@ -1417,6 +1417,8 @@ export function MyServersPanel({
                 }
                 throw err;
             }
+            // A switch meanwhile brings its own re-read: this list is the previous account's.
+            if (accountChangeGeneration() !== accountBefore) return;
             setServers(stored);
             // The name the copy was stored with: " (1)" when another holds it.
             const copy = stored.find(s => s.id === dup.id) ?? dup;

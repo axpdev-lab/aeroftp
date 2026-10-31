@@ -463,9 +463,10 @@ async fn durable_profile_auth_lifecycle(
         )
         .unwrap();
     }
-    let copied = crate::copy_profile_secrets(source.into(), target.into(), Some("github".into()))
-        .await
-        .unwrap();
+    let copied =
+        crate::copy_profile_secrets(source.into(), target.into(), Some("github".into()), None)
+            .await
+            .unwrap();
     for prefix in DURABLE_KEY_PREFIXES {
         assert_eq!(copied.get(prefix), Some(&true), "{prefix}");
         let source_value = users::resolve_active_credential(store, &format!("{prefix}_{source}"))
@@ -1183,6 +1184,7 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
         "native-selected".into(),
         "native-gui-copy".into(),
         Some("proton".into()),
+        None,
     )
     .await
     .unwrap();

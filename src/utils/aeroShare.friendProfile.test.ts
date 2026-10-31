@@ -42,6 +42,7 @@ describe('upsertFriendProfile after another writer saved', () => {
         const last = saves()[1][1] as { profiles: { id: string }[]; expectedUserId: number; expectedRevision: string };
         expect(last.profiles[0]).toEqual(other);
         expect(last.profiles).toHaveLength(2);
+        expect(last.profiles[1].id).toBe('peer_friend-afid');
         expect(last.expectedUserId).toBe(4);
         expect(last.expectedRevision).toBe('r2');
     });

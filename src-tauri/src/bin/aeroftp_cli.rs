@@ -43086,10 +43086,16 @@ async fn cmd_keystore_import(
     }
 
     // Unlock vault so import can write entries via CredentialStore.
-    if let Err(e) = open_vault(cli) {
-        print_error(format, &format!("vault unavailable: {e}"), 6);
-        return 6;
-    }
+    let store = match open_vault(cli) {
+        Ok(store) => store,
+        Err(e) => {
+            print_error(format, &format!("vault unavailable: {e}"), 6);
+            return 6;
+        }
+    };
+    // Unlocks a passphrase account the usual way. One left locked is refused by the
+    // import only when the backup's list could not reach its partition otherwise.
+    let _ = ensure_active_user_unlocked(cli, &store);
 
     let mut password = match resolve_keystore_password(cli_password, password_stdin) {
         Ok(p) => p,
@@ -44439,6 +44445,7 @@ fn classify_keystore_error(err: &ftp_client_gui_lib::keystore_export::KeystoreEx
     match err {
         E::InvalidPassword => 6,          // auth failure
         E::VaultNotReady => 5,            // configuration / vault-locked
+        E::ActiveAccountLocked => 5,      // same family: unlock, then try again
         E::ProfileListBusy(_) => 5,       // same family: not available right now, try again
         E::UnsupportedVersion(_) => 7,    // not-supported / unsupported version
         E::UnsupportedCodec(_) => 7,      // same family: this build cannot read it

@@ -314,18 +314,21 @@ export const mergeSavedServerProfile = async (
 
 /**
  * Replace the active account's list with one that is meant to replace it whole (a
- * keystore restore, a migration), bound to the account and the revision read just
- * before. `list` is asked for after that read: a save landing in between is
- * refused, and redone once on what `list` answers then. A list that cannot be read
- * is an error: without its account and revision the write could not be bound.
+ * migration), bound to the account and the revision read just before.
  */
-export const replaceSavedServerProfiles = async (
-    list: () => ServerProfile[] | null | Promise<ServerProfile[] | null>,
-): Promise<ServerProfile[] | null> =>
-    withFreshSavedProfiles(async ({ userId, revision }) => {
-        const profiles = await list();
-        return profiles === null ? null : storeSavedServerProfiles(profiles, false, userId, revision);
-    });
+export const replaceSavedServerProfiles = (profiles: ServerProfile[]): Promise<ServerProfile[]> =>
+    withFreshSavedProfiles(({ userId, revision }) => storeSavedServerProfiles(profiles, false, userId, revision));
+
+/**
+ * After a keystore restore, which stored the list itself: read it and tell this
+ * window. Resolves to the list.
+ */
+export const reloadRestoredServerProfiles = async (): Promise<ServerProfile[]> => {
+    const accountBefore = accountChangeGeneration();
+    const profiles = await loadSavedServerProfiles();
+    announceStoredServerProfiles(profiles, accountBefore);
+    return profiles;
+};
 
 /**
  * The list `profiles` with a convert undone: the converted profile (`convertedId`)

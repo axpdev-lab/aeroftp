@@ -421,12 +421,12 @@ describe('saved profile write rejection in production handlers', () => {
 
     it('failed import persistence retains import input and reports the failure', async () => {
         const f = fixture();
-        const start = settingsSource.indexOf('                                                                        try {', settingsSource.indexOf('// Reload server profiles from the imported keystore'));
+        const start = settingsSource.indexOf('                                                                        try {', settingsSource.indexOf('// The restore stored the list in the active account'));
         const end = settingsSource.indexOf("setKeystoreImportPassword('');", start) + "setKeystoreImportPassword('');".length;
         Object.assign(f.context, {
             result: { profilesAfterDecisions: f.servers }, setKeystoreMessage: vi.fn(), onServersChanged: vi.fn(),
             setKeystoreMetadata: vi.fn(), setKeystoreImportFilePath: vi.fn(), setKeystoreImportPassword: vi.fn(), setKeystoreImportResult: vi.fn(),
-            invoke: vi.fn(async () => JSON.stringify(f.servers)),
+            reloadRestoredServerProfiles: vi.fn(async () => { throw new Error('the partition could not be read'); }),
         });
         await snippet(settingsSource.slice(start, end), f.context);
         expect(f.context.setKeystoreMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
@@ -551,7 +551,6 @@ describe('the saved-profile list shown after a write', () => {
     it('Settings never shows the list it sent once the write has stored it', () => {
         // Its one list write is the keystore restore, which shows what that stored.
         expect(settingsSource).not.toMatch(/await storeSavedServerProfiles\(\w+/);
-        expect(settingsSource).toContain('const stored = await replaceSavedServerProfiles(');
-        expect(settingsSource).toContain('setServers(stored);');
+        expect(settingsSource).toContain('setServers(await reloadRestoredServerProfiles());');
     });
 });

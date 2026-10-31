@@ -445,7 +445,7 @@ fn default_kdf_params() -> user_crypto::Argon2Params {
     }
 }
 
-fn clear_user_session() {
+pub(crate) fn clear_user_session() {
     #[cfg(test)]
     assert_test_lock_held();
     if let Ok(mut session) = USER_SESSION.lock() {
@@ -1731,6 +1731,11 @@ fn file_locks_unavailable(error: &std::io::Error) -> bool {
     error.kind() == std::io::ErrorKind::Unsupported
 }
 
+/// Refusal of a write that reads and compares before it stores, on a filesystem
+/// without file locks.
+pub const NO_FILE_LOCKS: &str =
+    "The AeroFTP data folder is on a filesystem without file locks, so this cannot be kept safe from another writer, and nothing was changed. Move the data folder to a local disk, then try again";
+
 /// Refusal of a writer that waited for [`ProfileListLock`] in vain.
 pub const PROFILE_LIST_BUSY: &str =
     "PROFILE_LIST_BUSY: another import or restore is still writing the saved profiles; nothing was saved, try again when it finishes";
@@ -2040,7 +2045,7 @@ fn insert_profile_rows(
 /// that list's next write would store. Covers every account this machine's
 /// key opens; a passphrase account is put right by its first write after
 /// unlock. Returns the profiles renamed and the passphrase accounts left to
-/// that write.
+/// that write. The caller, a keystore restore, holds [`ProfileListLock`].
 pub fn put_right_profile_names_in_db(
     store: &CredentialStore,
     db_path: &std::path::Path,
@@ -3564,17 +3569,38 @@ pub fn ensure_credential_user_unlocked(user_id: i64) -> Result<(), String> {
     if !read_user_key_row(&conn, user_id)?.has_passphrase {
         return Ok(());
     }
-    let _session = hold_session()?;
-    let unlocked = HELD_SESSION.with_borrow(|held| {
-        held.as_ref()
-            .and_then(Option::as_ref)
-            .is_some_and(|(session_user, _)| *session_user == user_id)
-    });
-    if unlocked {
+    if session_unlocks(user_id)? {
         Ok(())
     } else {
         Err("USER_LOCKED".to_string())
     }
+}
+
+/// Whether the session holds `user_id`'s key.
+fn session_unlocks(user_id: i64) -> Result<bool, String> {
+    let _session = hold_session()?;
+    Ok(HELD_SESSION.with_borrow(|held| {
+        held.as_ref()
+            .and_then(Option::as_ref)
+            .is_some_and(|(session_user, _)| *session_user == user_id)
+    }))
+}
+
+/// Whether the active account of the database at `db_path` is protected by a
+/// passphrase and locked now, so its list cannot be written.
+pub fn active_user_locked_in_db(db_path: &std::path::Path) -> Result<bool, String> {
+    let conn = Connection::open_with_flags(
+        db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| format!("Open user partitions DB: {e}"))?;
+    let Some(user_id) = active_user_id(&conn)? else {
+        return Ok(false);
+    };
+    if !read_user_key_row(&conn, user_id)?.has_passphrase {
+        return Ok(false);
+    }
+    Ok(!session_unlocks(user_id)?)
 }
 
 /// Strict write of one secret into `user_id`'s partition only, never the
@@ -3776,11 +3802,15 @@ pub fn restore_credential_for_user(
     use crate::profile_import_plan::{rollback_action, RollbackAction};
     let mut conn = open_or_init_cli()?;
     let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
-    // The session before anything changes and through both places: an account
-    // locked between them would leave the vault restored and the partition not.
-    // The session before the reservation ([`SessionHold`]).
+    // The session and the partition's transaction first, through both places: if
+    // either cannot be had, nothing is restored, so the two cannot end up apart. The
+    // session before the reservation ([`SessionHold`]). Check and restore share the
+    // transaction: a token refreshed in between stays.
     let _session = hold_user_session(&conn, user_id);
-    get_user_credential_for(&conn, &root_key, user_id, credential_id)?;
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| format!("Start credential restore: {e}"))?;
+    let partition = get_user_credential_for(&tx, &root_key, user_id, credential_id)?;
     let vault = get_optional_secret(store, credential_id)?;
     match rollback_action(
         vault.as_ref().map(|v| v.as_str()),
@@ -3795,11 +3825,6 @@ pub fn restore_credential_for_user(
             .delete(credential_id)
             .map_err(|e| format!("Delete credential from vault: {e}"))?,
     }
-    // Check and restore in one transaction: a token refreshed in between stays.
-    let tx = conn
-        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
-        .map_err(|e| format!("Start credential restore: {e}"))?;
-    let partition = get_user_credential_for(&tx, &root_key, user_id, credential_id)?;
     match rollback_action(
         partition.as_ref().map(|v| v.as_str()),
         written,
@@ -6088,10 +6113,43 @@ pub async fn user_partitions_save_active_server_profiles(
     // The blob mirrors the account now active, in the latest list, not this one:
     // another writer may have saved since. The write succeeded, so a mirror
     // failure is a warning (#736).
-    if let Some(user) = active_user_id(&conn)? {
-        mirror_latest_profiles_to_legacy_blob(&store, user);
+    match active_user_id(&conn) {
+        Ok(Some(user)) => mirror_latest_profiles_to_legacy_blob(&store, user),
+        Ok(None) => {}
+        Err(e) => tracing::warn!("Could not read the active account to mirror the list: {e}"),
     }
     Ok(stored)
+}
+
+/// Replace the active account's list with the legacy blob, for a keystore restore
+/// that holds [`ProfileListLock`]: what it left there is the list to keep. A load must
+/// not come first, since it mirrors the partition over the blob. `None` when the blob
+/// holds no list (a backup may carry none) or there is no active account, or for an
+/// empty one unless `allow_empty`: a restore's decisions can leave a real empty list.
+/// Returns the list stored.
+pub(crate) fn adopt_legacy_blob_under_lock(
+    conn: &mut Connection,
+    store: &CredentialStore,
+    root_key: &[u8; 32],
+    allow_empty: bool,
+) -> Result<Option<Vec<Value>>, String> {
+    let Some(raw) = get_optional_store_entry(store, LEGACY_PROFILES_BLOB)? else {
+        return Ok(None);
+    };
+    let Ok(list) = serde_json::from_str::<Vec<Value>>(&raw) else {
+        return Ok(None);
+    };
+    if list.is_empty() && !allow_empty {
+        return Ok(None);
+    }
+    let Some(user_id) = active_user_id(conn)? else {
+        return Ok(None);
+    };
+    let stored = replace_server_profiles_under_lock(conn, root_key, user_id, &list)?;
+    if let Err(e) = mirror_active_profiles_to_legacy_blob(store, &stored) {
+        tracing::warn!("Could not mirror server profiles to the legacy blob: {e}");
+    }
+    Ok(Some(stored))
 }
 
 /// Keep `profiles` in the legacy store, for a frontend whose partition could not
@@ -6107,13 +6165,16 @@ pub async fn user_partitions_store_legacy_server_profiles(
     expected_list: Option<Vec<Value>>,
 ) -> Result<Vec<Value>, String> {
     let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    let _lock = ProfileListLock::acquire_for_path(&db_path(&app)?)?;
-    let partition_ready = init_or_migrate(&app).and_then(|_| {
-        let conn = open_or_init(&app)?;
-        let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
-        list_active_server_profiles(&conn, &root_key)
-    });
-    if partition_ready.is_ok() {
+    let lock = ProfileListLock::acquire_for_path(&db_path(&app)?)?;
+    if !lock.is_exclusive() {
+        return Err(NO_FILE_LOCKS.to_string());
+    }
+    // A store that opens holds the list, even with its account locked: the next load
+    // would replace the blob with its list.
+    if init_or_migrate(&app)
+        .and_then(|_| open_or_init(&app))
+        .is_ok()
+    {
         return Err(PROFILES_CHANGED.to_string());
     }
     let held = get_optional_store_entry(&store, LEGACY_PROFILES_BLOB)?

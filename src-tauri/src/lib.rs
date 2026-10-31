@@ -17670,10 +17670,16 @@ async fn copy_profile_secrets(
     source_id: String,
     target_id: String,
     protocol: Option<String>,
+    expected_user_id: Option<i64>,
 ) -> Result<std::collections::HashMap<String, bool>, String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    let user_id = user_partitions::cli_get_active_user(&store)?.map(|user| user.id);
+    // The account whose list the copy will join, when the caller read one: not one
+    // switched to since.
+    let user_id = match expected_user_id {
+        Some(user) => Some(user),
+        None => user_partitions::cli_get_active_user(&store)?.map(|user| user.id),
+    };
     let mut copied = std::collections::HashMap::new();
     let source_suffix = format!("_{}", source_id);
     for source_key in per_profile_vault_keys(&source_id, protocol.as_deref()) {
@@ -18665,10 +18671,7 @@ fn refuse_import_without_file_locks(
     lock: Option<&user_partitions::ProfileListLock>,
 ) -> Result<(), String> {
     if lock.is_some_and(|lock| !lock.is_exclusive()) {
-        return Err(
-            "The AeroFTP data folder is on a filesystem without file locks, so an import cannot be kept safe from another one, and nothing was imported. Move the data folder to a local disk, then import the file again"
-                .to_string(),
-        );
+        return Err(user_partitions::NO_FILE_LOCKS.to_string());
     }
     Ok(())
 }

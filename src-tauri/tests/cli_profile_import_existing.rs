@@ -551,4 +551,10 @@ fn an_rclone_crypt_import_stores_its_secrets_in_the_partition() {
             .any(|s| s.aerocrypt_overlay_pw.as_deref() == Some("crypt-pass-954")),
         "the crypt password was not stored"
     );
+    assert!(
+        secrets
+            .values()
+            .any(|s| s.aerocrypt_overlay_salt.as_deref() == Some("hD1lB5uyIChoDFqhaHOsUg")),
+        "the crypt salt was not stored"
+    );
 }

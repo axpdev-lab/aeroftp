@@ -140,7 +140,7 @@ export const KeystoreMigrationWizard: React.FC<KeystoreMigrationWizardProps> = (
                     // Route into the active user's vault partition so the
                     // migrated profiles land under the default-user id and
                     // not in the legacy shared blob.
-                    await replaceSavedServerProfiles(() => task.data as ServerProfile[]);
+                    await replaceSavedServerProfiles(task.data as ServerProfile[]);
                 } else {
                     await secureStore(task.key, task.data);
                 }

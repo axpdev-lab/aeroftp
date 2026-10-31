@@ -321,6 +321,9 @@ pub enum KeystoreExportError {
     UnsupportedCodec(String),
     #[error("Vault not ready")]
     VaultNotReady,
+    /// The backup's server list could only reach a partition that is locked.
+    #[error("The active account is locked, so the server list in this backup could not be stored, and nothing was imported. Unlock the account, then import the file again")]
+    ActiveAccountLocked,
     /// Another writer held the saved profile list for the whole wait.
     #[error("{0}")]
     ProfileListBusy(String),
@@ -1607,6 +1610,26 @@ fn save_partition_list(
     saved
 }
 
+/// Make the legacy blob the active account's list
+/// ([`crate::user_partitions::adopt_legacy_blob_under_lock`]).
+fn adopt_restored_list(
+    store: &crate::credential_store::CredentialStore,
+    db: &Path,
+    allow_empty: bool,
+) -> Result<(), String> {
+    let mut conn =
+        rusqlite::Connection::open(db).map_err(|e| format!("open {}: {e}", db.display()))?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let adopted = crate::user_partitions::adopt_legacy_blob_under_lock(
+        &mut conn,
+        store,
+        &root_key,
+        allow_empty,
+    );
+    root_key.zeroize();
+    adopted.map(|_| ())
+}
+
 fn restore_profile_step(
     store: &crate::credential_store::CredentialStore,
     db: Option<&Path>,
@@ -1821,7 +1844,7 @@ fn import_keystore_with_store(
     // From the first read of this device's list to the last write: the plan below
     // reads it, the partition file may be replaced with its journals removed, and
     // the decisions are written from that read. No other writer may land between.
-    let _list_lock = config_dir
+    let list_lock = config_dir
         .map(|cfg| {
             crate::user_partitions::ProfileListLock::acquire_for_path(
                 &cfg.join("user_partitions.db"),
@@ -1829,6 +1852,11 @@ fn import_keystore_with_store(
         })
         .transpose()
         .map_err(KeystoreExportError::ProfileListBusy)?;
+    if list_lock.as_ref().is_some_and(|lock| !lock.is_exclusive()) {
+        return Err(KeystoreExportError::ProfileListBusy(
+            crate::user_partitions::NO_FILE_LOCKS.to_string(),
+        ));
+    }
     // #347: read both profile lists and their secrets before anything is
     // written, so "keep this device's version" can put back what was here,
     // and refuse decisions that do not match this plan while nothing has
@@ -1891,6 +1919,24 @@ fn import_keystore_with_store(
     // as asked.
     let profile_partition_skipped = merge_strategy == "skip_existing"
         && matches!(&profile_plan, Some((inputs, _)) if inputs.backup_unreadable);
+    // A list that reaches the partition only through the blob cannot get there while
+    // the active account is locked, and the first load after the unlock would mirror
+    // the partition over the blob, losing it. Refused here, while nothing has changed.
+    // A restored partition brings its own list.
+    let restores_partition = sections.sqlite_dbs
+        && payload.sqlite_dumps.contains_key("user_partitions.db")
+        && !profile_partition_skipped;
+    let list_in_vault =
+        sections.vault && payload.vault_entries.contains_key("config_server_profiles");
+    if list_in_vault && !restores_partition {
+        if let Some(db) = partition_db(config_dir) {
+            match crate::user_partitions::active_user_locked_in_db(&db) {
+                Ok(true) => return Err(KeystoreExportError::ActiveAccountLocked),
+                Ok(false) => {}
+                Err(e) => tracing::warn!("Keystore import: account state not read: {e}"),
+            }
+        }
+    }
     let mut entries = if sections.vault {
         std::mem::take(&mut payload.vault_entries)
     } else {
@@ -2161,9 +2207,9 @@ fn import_keystore_with_store(
 
     // #736: a restored and readable user_partitions.db is the authoritative
     // profile list, and it wins over the vault blob the same backup carries.
-    // Both GUI import flows copy the blob into the active partition after the
-    // import returns; before this, a backup made by a build that never
-    // mirrored the blob overwrote the restored list with a months-old one.
+    // The blob is copied into the active partition at the end of this import;
+    // before this, a backup made by a build that never mirrored the blob
+    // overwrote the restored list with a months-old one.
     // When the partition cannot be read here (another machine without a
     // transport key, a locked passphrase partition) the blob is left as the
     // backup carried it, which is the only list available. A partition left
@@ -2248,6 +2294,20 @@ fn import_keystore_with_store(
             Ok(count) => profiles_after_decisions = Some(count),
             Err(e) => {
                 tracing::error!("Keystore import: profile decisions not applied: {e}");
+                profile_decisions_error = Some(e);
+            }
+        }
+    }
+
+    // Still under the lock: the blob now holds the list to keep, and the first load
+    // after this import would mirror the partition over it. Without a partition the
+    // next load migrates the blob. A failure is reported like the decisions' own, and
+    // the rest stays imported. After a failed decision step list and blob are back
+    // as they were, and there is nothing to copy.
+    if profile_decisions_error.is_none() {
+        if let Some(db) = partition_db(config_dir) {
+            if let Err(e) = adopt_restored_list(store, &db, profiles_after_decisions.is_some()) {
+                tracing::error!("Keystore import: restored server list not stored: {e}");
                 profile_decisions_error = Some(e);
             }
         }
@@ -3870,6 +3930,114 @@ mod tests {
         assert_eq!(blob_of(&store), my_servers(&store, &cfg));
     }
 
+    /// A vault-only backup leaves its list in the blob alone. It must reach the
+    /// partition within the import: the first load after it mirrors the partition
+    /// over the blob, and the restored list would be gone with no error.
+    #[test]
+    fn a_vault_only_restore_keeps_its_list_through_the_first_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, cfg) = machine_with_a_frozen_blob(dir.path());
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&vec![profile("srv_restored", "Restored")]).unwrap(),
+        );
+        let backup = dir.path().join("vault-only.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(result.profile_decisions_error, None);
+
+        // What every load does before it answers.
+        crate::user_partitions::refresh_legacy_profiles_blob_from_db(
+            &store,
+            &cfg.join("user_partitions.db"),
+        )
+        .unwrap();
+        let ids = |list: Vec<serde_json::Value>| -> Vec<String> {
+            list.iter()
+                .map(|p| p["id"].as_str().unwrap().to_string())
+                .collect()
+        };
+        assert_eq!(ids(my_servers(&store, &cfg)), ["srv_restored"]);
+        assert_eq!(ids(blob_of(&store)), ["srv_restored"]);
+    }
+
+    /// With the active account locked the list could not reach its partition and
+    /// would be lost after the unlock, so the restore refuses with nothing changed.
+    #[test]
+    fn a_vault_only_restore_refuses_a_locked_active_account_and_changes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, cfg) = machine_with_a_frozen_blob(dir.path());
+        let db = cfg.join("user_partitions.db");
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&vec![profile("srv_restored", "Restored")]).unwrap(),
+        );
+        let backup = dir.path().join("vault-only.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let _guard = crate::user_partitions::test_lock();
+        let mut conn = rusqlite::Connection::open(&db).unwrap();
+        let root = store.derive_user_partition_wrapping_key();
+        let locked = crate::user_partitions::create_user(
+            &mut conn,
+            &root,
+            "Locked",
+            None,
+            None,
+            Some("pass"),
+        )
+        .unwrap();
+        crate::user_partitions::set_active_user(&conn, locked.id).unwrap();
+        crate::user_partitions::clear_user_session();
+        drop(conn);
+        let blob = store.get("config_server_profiles").unwrap();
+        let refused = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        );
+        assert!(matches!(
+            refused,
+            Err(KeystoreExportError::ActiveAccountLocked)
+        ));
+        let message = refused.err().unwrap().to_string();
+        assert!(message.contains("Unlock the account"), "{message}");
+        assert_eq!(store.get("config_server_profiles").unwrap(), blob);
+    }
+
+    /// An empty list in the blob is an answer only when a restore's decisions left it.
+    #[test]
+    fn an_empty_blob_replaces_the_list_only_when_it_was_decided() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, cfg) = machine_with_a_frozen_blob(dir.path());
+        let db = cfg.join("user_partitions.db");
+        let held = my_servers(&store, &cfg);
+        assert!(!held.is_empty());
+        store.store("config_server_profiles", "[]").unwrap();
+        adopt_restored_list(&store, &db, false).unwrap();
+        assert_eq!(my_servers(&store, &cfg), held);
+        adopt_restored_list(&store, &db, true).unwrap();
+        assert!(my_servers(&store, &cfg).is_empty());
+    }
+
     /// A restore holds the list lock from its first read of this device's list:
     /// another writer holding it stops the import before anything changes.
     #[test]
@@ -3903,6 +4071,25 @@ mod tests {
         assert_eq!(store.get("server_srv_photos").ok(), photos_before);
         assert_eq!(my_servers(&store, &cfg), profiles_before);
         drop(held);
+
+        // No file locks here: the restore could not keep another writer out either.
+        crate::user_partitions::NO_FILE_LOCKS_IN_TEST.set(true);
+        let refused = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        );
+        crate::user_partitions::NO_FILE_LOCKS_IN_TEST.set(false);
+        assert!(matches!(
+            refused,
+            Err(KeystoreExportError::ProfileListBusy(_))
+        ));
+        assert_eq!(store.get("config_server_profiles").unwrap(), blob);
     }
 
     /// Review of #980: with no review, "Skip existing" leaves out a backup

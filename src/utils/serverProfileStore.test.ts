@@ -21,6 +21,7 @@ import {
     loadSavedServerProfilesStrict,
     mergeSavedServerProfile,
     readSavedServerProfilesForWrite,
+    reloadRestoredServerProfiles,
     replaceSavedServerProfiles,
     revertConvertedProfile,
     withFreshSavedProfiles,
@@ -311,57 +312,43 @@ describe('loadSavedServerProfilesStrict', () => {
 });
 
 describe('replaceSavedServerProfiles', () => {
-    it('binds the replacement to the account and revision read before the list was asked for', async () => {
-        const order: string[] = [];
-        mockInvoke.mockImplementationOnce(async () => {
-            order.push('read');
-            return { userId: 4, profiles: [], revision: 'r1' };
-        }).mockResolvedValueOnce(undefined);
+    it('binds the replacement to the account and revision read just before, and redoes it once', async () => {
         const list = [sampleProfile()];
-        await replaceSavedServerProfiles(() => {
-            order.push('list');
-            return list;
-        });
-        expect(order).toEqual(['read', 'list']);
-        expect(mockInvoke).toHaveBeenLastCalledWith('user_partitions_save_active_server_profiles', {
-            profiles: list, expectedUserId: 4, expectedRevision: 'r1',
-        });
-    });
-
-    it('redoes a replacement once with the list as it answers then, and writes nothing for no list', async () => {
         mockInvoke
             .mockResolvedValueOnce({ userId: 4, profiles: [], revision: 'r1' })
             .mockRejectedValueOnce(new Error('PROFILES_CHANGED: nothing was saved'))
             .mockResolvedValueOnce({ userId: 4, profiles: [], revision: 'r2' })
             .mockResolvedValueOnce(undefined);
-        let asked = 0;
-        await replaceSavedServerProfiles(() => {
-            asked += 1;
-            return [sampleProfile({ name: `answer ${asked}` })];
-        });
+        await replaceSavedServerProfiles(list);
         expect(mockInvoke).toHaveBeenLastCalledWith('user_partitions_save_active_server_profiles', {
-            profiles: [sampleProfile({ name: 'answer 2' })], expectedUserId: 4, expectedRevision: 'r2',
+            profiles: list, expectedUserId: 4, expectedRevision: 'r2',
         });
-
-        mockInvoke.mockClear();
-        mockInvoke.mockResolvedValueOnce({ userId: 4, profiles: [], revision: 'r3' });
-        await expect(replaceSavedServerProfiles(() => null)).resolves.toBeNull();
-        expect(mockInvoke).toHaveBeenCalledTimes(1);
     });
-});
 
-describe('a replacement that cannot read the list', () => {
-    it('fails without asking for the list or writing', async () => {
+    it('fails without writing when the list cannot be read', async () => {
         mockInvoke.mockReset();
         mockInvoke.mockImplementation(async (command: string) => {
             if (command === 'get_credential') return null;
             if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
             return undefined;
         });
-        const list = vi.fn(() => [sampleProfile()]);
-        await expect(replaceSavedServerProfiles(list)).rejects.toThrow('STORE_NOT_READY');
-        expect(list).not.toHaveBeenCalled();
+        await expect(replaceSavedServerProfiles([sampleProfile()])).rejects.toThrow('STORE_NOT_READY');
         expect(mockInvoke.mock.calls.some(call => call[0] === 'user_partitions_save_active_server_profiles')).toBe(false);
+        mockInvoke.mockReset();
+    });
+});
+
+describe('reloadRestoredServerProfiles', () => {
+    it('reads the list the restore stored, writes nothing and tells this window', async () => {
+        const stored = [sampleProfile()];
+        const handler = vi.fn();
+        eventTarget.addEventListener(PROFILES_CHANGED_EVENT, handler);
+        mockInvoke.mockReset();
+        mockInvoke.mockImplementation(async (command: string) =>
+            (command === 'user_partitions_load_active_server_profiles' ? stored : null));
+        await expect(reloadRestoredServerProfiles()).resolves.toEqual(stored);
+        expect(mockInvoke.mock.calls.some(call => String(call[0]).includes('save_active'))).toBe(false);
+        expect(handler).toHaveBeenCalledTimes(1);
         mockInvoke.mockReset();
     });
 });

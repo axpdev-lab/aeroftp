@@ -45,7 +45,7 @@ import { secureGetWithFallback } from '../utils/secureStorage';
 import { loadOAuthClientCredentials } from '../utils/oauthClientCredentials';
 import { keyReadFailure, notifyOAuthKeysUnavailable } from '../utils/oauthKeysMissing';
 import { dispatchMasterPasswordChanged } from '../utils/masterPasswordEvents';
-import { loadSavedServerProfiles, readSavedServerProfilesForWrite, replaceSavedServerProfiles } from '../utils/serverProfileStore';
+import { loadSavedServerProfiles, readSavedServerProfilesForWrite, reloadRestoredServerProfiles } from '../utils/serverProfileStore';
 import { appendImportedProfiles } from './bridge/bridgeImportCommit';
 import {
     DEFAULT_APP_FONT_FAMILY,
@@ -3840,31 +3840,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             /* non-critical */
                                                                         }
 
-                                                                        // Reload server profiles from the imported keystore into the
-                                                                        // active user's vault partition + state. The keystore import
-                                                                        // leaves the legacy `config_server_profiles` blob equal to the
-                                                                        // restored partition when that partition is readable here, and
-                                                                        // to the backup's own list when it is not (a vault-only backup,
-                                                                        // another machine without a transport key); #736.
-                                                                        // replaceSavedServerProfiles routes that list through the
-                                                                        // partition layer so it lands under the active user id.
+                                                                        // The restore stored the list in the active account's partition itself, under
+                                                                        // the list lock: a load before that would have lost what it left in the blob.
                                                                         try {
-                                                                            // With decisions the list is what the user chose, and
-                                                                            // an empty one is a real answer, not a missing list.
-                                                                            const decided = result.profilesAfterDecisions !== undefined && result.profilesAfterDecisions !== null;
-                                                                            const stored = await replaceSavedServerProfiles(async () => {
-                                                                                const profilesJson = await invoke<string>('get_credential', { account: 'config_server_profiles' });
-                                                                                if (!profilesJson) return null;
-                                                                                const importedProfiles = JSON.parse(profilesJson) as ServerProfile[];
-                                                                                return Array.isArray(importedProfiles) && (importedProfiles.length > 0 || decided) ? importedProfiles : null;
-                                                                            });
-                                                                            // As stored: a name another profile holds comes back as " (1)".
-                                                                            if (stored) {
-                                                                                setServers(stored);
-                                                                                onServersChanged?.();
-                                                                            }
+                                                                            setServers(await reloadRestoredServerProfiles());
+                                                                            onServersChanged?.();
                                                                         } catch (err) {
-                                                                            logger.warn('Imported server profiles could not be persisted', err);
+                                                                            logger.warn('Imported server profiles could not be read', err);
                                                                             setKeystoreImportResult(null);
                                                                             setKeystoreMessage({ type: 'error', text: String(err) });
                                                                             return;

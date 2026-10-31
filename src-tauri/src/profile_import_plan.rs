@@ -524,7 +524,11 @@ pub fn same_target(a: &serde_json::Value, b: &serde_json::Value) -> bool {
             .rfind('@')
             .map_or(scheme_end, |at| scheme_end + at + 1);
         let name = &host[name_start..end];
-        let name = name.strip_suffix(&format!(":{port}")).unwrap_or(name);
+        // An unbracketed IPv6 address ends in what only looks like a port.
+        let name = match name.strip_suffix(&format!(":{port}")) {
+            Some(bare) if !bare.contains(':') || bare.starts_with('[') => bare,
+            _ => name,
+        };
         format!(
             "{}{}{}{}",
             host[..scheme_end].to_ascii_lowercase(),
@@ -872,6 +876,24 @@ mod tests {
 
     /// What decides a move to another server or a weaker connection, and what
     /// does not.
+    #[test]
+    fn same_target_tells_ipv6_addresses_apart_from_a_port() {
+        // Another address that only ends like a port: a password must not follow.
+        let moved = json!({"host": "2001:db8::1:443", "port": 443, "username": "u"});
+        let stored = json!({"host": "2001:db8::1", "port": 443, "username": "u"});
+        assert!(!same_target(&moved, &stored));
+        assert!(!same_target(&stored, &moved));
+        // The same address in its two spellings.
+        let bracketed = json!({"host": "[2001:db8::1]:443", "port": 443, "username": "u"});
+        let bare = json!({"host": "[2001:db8::1]", "port": 443, "username": "u"});
+        assert!(same_target(&bracketed, &bare));
+        assert!(same_target(&bracketed, &bracketed));
+        // A name and a port are still one host.
+        let named = json!({"host": "ftp.example:443", "port": 443, "username": "u"});
+        let plain = json!({"host": "ftp.example", "port": 443, "username": "u"});
+        assert!(same_target(&named, &plain));
+    }
+
     #[test]
     fn same_target_strips_the_port_before_a_path() {
         let with_port =
