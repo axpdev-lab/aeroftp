@@ -18521,6 +18521,41 @@ mod walk_scope_tests {
         }
     }
 
+    /// A dialog closed once the last folder is listed stops no walk: the scan
+    /// already has the folder's size, and returns it complete rather than as a
+    /// cancelled count to be thrown away.
+    #[tokio::test]
+    async fn a_cancel_after_the_last_listing_leaves_the_complete_size() {
+        use crate::sync_core::scan::tests::WalkTreeProvider;
+        let state = ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(WalkTreeProvider::new(
+            std::collections::HashMap::from([(
+                "/root".into(),
+                vec![RemoteEntry::file("a".into(), "/root/a".into(), 7)],
+            )]),
+            false,
+        )));
+        let result = provider_calculate_folder_size_with_limits(
+            &state,
+            "/root".into(),
+            Some("closed".into()),
+            |progress| {
+                if progress.scanning {
+                    assert!(cancel_folder_size_scan(&state, Some("closed")));
+                }
+            },
+            10,
+            10,
+        )
+        .await
+        .unwrap();
+        let value = serde_json::to_value(result).unwrap();
+        assert_eq!(value["partial"], false, "{value}");
+        assert_eq!(value["cancelled"], false, "{value}");
+        assert_eq!(value["file_count"], 1, "{value}");
+        assert_eq!(value["total_bytes"], 7, "{value}");
+    }
+
     /// The Properties size of a folder builds each subfolder's path from the
     /// name its listing gives: through `../d1` it sized the same folder again
     /// down to its depth cap, and through `d1/../..` or `up/../../elsewhere`
