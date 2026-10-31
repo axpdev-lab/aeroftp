@@ -15,7 +15,7 @@ import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { isNonFtpProvider, ProviderType } from '../types';
 import type { HumanizedOperationType, HumanizedLogParams } from './useHumanizedLog';
-import { localRowName } from '../utils/localSelection';
+import { localRowName, outermostLocalRows } from '../utils/localSelection';
 
 export type PanelKey = 'remote' | 'local' | 'local2';
 
@@ -116,16 +116,20 @@ export function useDragAndDrop({
         file: { name: string; path: string; is_dir: boolean },
         panelKey: PanelKey,
         allSelected: Set<string>,
-        allFiles: { name: string; path: string }[]
+        allFiles: { name: string; path: string; is_dir: boolean }[]
     ) => {
         if (file.name === '..') {
             e.preventDefault();
             return;
         }
 
-        const filesToDrag = allSelected.has(file.name)
+        const selectedRows = allSelected.has(file.name)
             ? allFiles.filter(f => allSelected.has(f.name))
             : [file];
+        // A selected folder takes what is below it: a flattened search can
+        // select both, and the entry would land twice, or be refused as a
+        // clash with the folder that holds it.
+        const filesToDrag = isLocalPanel(panelKey) ? outermostLocalRows(selectedRows) : selectedRows;
 
         // Dropped into one folder, two files of one name would replace each other.
         if (isLocalPanel(panelKey) && refuseLocalNameClashes?.(filesToDrag)) {

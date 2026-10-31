@@ -525,7 +525,7 @@ import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 import { isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
 import { connectionNumberOf, connectionTargetKey, isSameConnection, resolveLiveConnectionParams, savedProfileIdOf } from './utils/liveConnection';
 import { remoteFolderSizes, type RemoteFolderSizes, type RemoteSizeProgress } from './utils/remoteFolderSizes';
-import { asLocalFileEntry, deepestLocalRowsFirst, focusedLocalPanel, localClipboardEntries, localRowFolder, localRowFolderKey, localRowName, localRowNameClashes, outermostLocalRows, selectedLocalRows } from './utils/localSelection';
+import { asLocalFileEntry, deepestLocalRowsFirst, focusedLocalPanel, localClipboardEntries, localRowFolder, localRowFolderKey, localRowName, localRowNameClashes, selectedLocalRows, selectedLocalTrees } from './utils/localSelection';
 
 // W3.1 (#270.5): marker the backend connect commands return when the user
 // aborts an in-progress connection (Esc / "still connecting" Cancel). The
@@ -2979,7 +2979,7 @@ const App: React.FC = () => {
       } else if (activePanel === 'local') {
         const panel = getActiveLocalState();
         if (panel.selection.size > 0 && panel.currentPath) {
-          const files = outermostLocalRows(localClipboardEntries(panel.sortedFiles, panel.files, panel.selection));
+          const files = localClipboardEntries(panel.sortedFiles, panel.files, panel.selection);
           if (!refuseLocalNameClashes(files)) clipboardCut(files, false, panel.currentPath);
         }
       }
@@ -3029,7 +3029,7 @@ const App: React.FC = () => {
     'Alt+Enter': () => {
       if (activePanel !== 'local') return;
       const panel = getActiveLocalState();
-      const entries = selectedLocalRows(panel.sortedFiles, panel.files, panel.selection)
+      const entries = selectedLocalTrees(panel.sortedFiles, panel.files, panel.selection)
         .map(f => localEntryProperties(f, panel.currentPath));
       if (entries.length > 0) void openLocalProperties(entries);
     },
@@ -11172,17 +11172,16 @@ const App: React.FC = () => {
     if (!targetDir || sourceSelection.size === 0) return;
     // The rows selected, nested rows of a flattened search included, each as
     // a file of its own folder: the copy takes the file's name, not the path
-    // the search shows it under.
+    // the search shows it under. A selected folder takes what is below it.
     const sourceRows = sourceId === 'local2' ? sortedLocalFiles2 : sortedLocalFiles;
-    const rows = selectedLocalRows(sourceRows, sourceFiles, sourceSelection)
+    const rows = selectedLocalTrees(sourceRows, sourceFiles, sourceSelection)
       .filter(f => f.name !== '..');
     const clashes = localRowNameClashes(rows);
     if (clashes.length > 0) {
       notify.error(t('search.flattenNameClashTitle'), t('search.flattenNameClash', { names: clashes.join(', ') }));
       return;
     }
-    // A move takes a selected folder with what is below it.
-    const selected = (mode === 'move' ? outermostLocalRows(rows) : rows).map(asLocalFileEntry);
+    const selected = rows.map(asLocalFileEntry);
     if (selected.length === 0) return;
 
     // Data-loss guard: the backend copy/rename overwrites a same-named file in the
@@ -11279,8 +11278,9 @@ const App: React.FC = () => {
       : { files: localFiles, rows: sortedLocalFiles, selected: selectedLocalFiles };
 
     if (!sourcePanel || !targetPanel) return;
-    // The rows selected, nested rows of a flattened search included.
-    const selectedFiles = selectedLocalRows(sourceState.rows, sourceState.files, sourceState.selected)
+    // The rows selected, nested rows of a flattened search included, a
+    // selected folder with what is below it.
+    const selectedFiles = selectedLocalTrees(sourceState.rows, sourceState.files, sourceState.selected)
       .filter(file => file.name !== '..');
     if (selectedFiles.length === 0) return;
     // Each lands under its own name in one folder: two of one name would
@@ -13002,8 +13002,9 @@ const App: React.FC = () => {
     // Priority 1: Upload specific target files
     if (targetNames.length > 0) {
       // The rows selected, nested rows of a flattened search included, each
-      // uploaded under its own name. The path is the backend's, verified.
-      const rows = selectedLocalRows(panel.sortedFiles, panel.files, new Set(targetNames));
+      // uploaded under its own name, a selected folder with what is below it.
+      // The path is the backend's, verified.
+      const rows = selectedLocalTrees(panel.sortedFiles, panel.files, new Set(targetNames));
       if (refuseLocalNameClashes(rows)) return;
       let filesToUpload = rows.map(file => ({ path: file.path, file: asLocalFileEntry(file) }));
 
@@ -13967,7 +13968,7 @@ const App: React.FC = () => {
 
       // A selected folder takes what is below it: a flattened search can
       // select both, and the entry would already be gone when its turn came.
-      const selected = outermostLocalRows(selectedLocalRows(panel.sortedFiles, panel.files, new Set(names)));
+      const selected = selectedLocalTrees(panel.sortedFiles, panel.files, new Set(names));
       const outcome = await trashLocalPaths(
         selected.map(file => file.path),
         localTrashDeps(() => batchCancelledRef.current),
@@ -14009,9 +14010,9 @@ const App: React.FC = () => {
 
     // Check if confirmation is enabled
     if (confirmBeforeDelete) {
-      // Named as the panel shows them: a nested row by its relative path, which
-      // says which of two same-named folders goes.
-      const entries = selectedLocalRows(panel.sortedFiles, panel.files, new Set(names))
+      // The rows the delete takes, named as the panel shows them: a nested row
+      // by its relative path, which says which of two same-named folders goes.
+      const entries = selectedLocalTrees(panel.sortedFiles, panel.files, new Set(names))
         .map(f => ({ name: f.name, isDir: f.is_dir }));
       setConfirmDialog({
         message: entries.length > 0
@@ -15586,7 +15587,7 @@ const App: React.FC = () => {
     const filesToUpload = Array.from(selection);
     // From the rows shown: a nested row of a flattened search is not in the
     // listing.
-    const selectedEntries = () => selectedLocalRows(ctxPanel.sortedFiles, localFiles, selection)
+    const selectedEntries = () => selectedLocalTrees(ctxPanel.sortedFiles, localFiles, selection)
       .map(f => localEntryProperties(f, currentLocalPath));
 
     // Detect AeroFTP container files early for context menu ordering.
@@ -15600,7 +15601,7 @@ const App: React.FC = () => {
     // Where a new archive or vault of the selection goes: the folder its rows
     // are in when they share one (a nested row's own folder), else the panel's.
     const selectionFolder = () => {
-      const folders = new Set(selectedLocalRows(ctxPanel.sortedFiles, localFiles, selection).map(f => localRowFolder(f, currentLocalPath)));
+      const folders = new Set(selectedLocalTrees(ctxPanel.sortedFiles, localFiles, selection).map(f => localRowFolder(f, currentLocalPath)));
       return folders.size === 1 ? [...folders][0] : currentLocalPath;
     };
     // AeroFile: is this single file a recognized third-party client config?
@@ -15836,7 +15837,7 @@ const App: React.FC = () => {
       { actionId: 'delete', label: t('contextMenu.delete'), icon: <Trash2 size={14} />, action: () => deleteMultipleLocalFiles(filesToUpload, localPanelId), danger: true, divider: true },
       {
         label: t('contextMenu.cut') || 'Cut', icon: <Scissors size={14} />, action: () => {
-          const selectedFiles = outermostLocalRows(localClipboardEntries(ctxPanel.sortedFiles, localFiles, selection));
+          const selectedFiles = localClipboardEntries(ctxPanel.sortedFiles, localFiles, selection);
           if (!refuseLocalNameClashes(selectedFiles)) clipboardCut(selectedFiles, false, currentLocalPath);
         }
       },
@@ -15871,7 +15872,7 @@ const App: React.FC = () => {
       action: () => {
         // One archive holds each file under its own name: two of one name
         // would be two entries the extract writes over each other.
-        const compressRows = selectedLocalRows(ctxPanel.sortedFiles, localFiles, selection);
+        const compressRows = selectedLocalTrees(ctxPanel.sortedFiles, localFiles, selection);
         if (refuseLocalNameClashes(compressRows)) return;
         const compressFiles = compressRows
           .map(f => ({ name: localRowName(f), path: f.path, size: f.size ?? 0, isDir: f.is_dir }));
@@ -16133,7 +16134,7 @@ const App: React.FC = () => {
             setShowVaultPanel({ mode: 'create', folderPath: file.path, outputDir: rowFolder });
             return;
           }
-          const paths = selectedLocalRows(ctxPanel.sortedFiles, localFiles, selection).map(f => f.path);
+          const paths = selectedLocalTrees(ctxPanel.sortedFiles, localFiles, selection).map(f => f.path);
           setShowVaultPanel({ mode: 'create', files: paths, outputDir: selectionFolder() });
         },
       });
@@ -16148,7 +16149,7 @@ const App: React.FC = () => {
             label: t('contextMenu.createCryptomator') || 'Create Cryptomator Vault...',
             icon: <Lock size={14} />,
             action: () => {
-              const paths = selectedLocalRows(ctxPanel.sortedFiles, localFiles, selection).map(f => f.path);
+              const paths = selectedLocalTrees(ctxPanel.sortedFiles, localFiles, selection).map(f => f.path);
               setCryptomatorCreateDialog({ outputDir: selectionFolder(), files: paths });
             },
           },
@@ -16958,7 +16959,7 @@ const App: React.FC = () => {
               clipboardCut(files, true, currentRemotePath);
             } else if (activePanel === 'local') {
               const panel = getActiveLocalState();
-              const files = outermostLocalRows(localClipboardEntries(panel.sortedFiles, panel.files, panel.selection));
+              const files = localClipboardEntries(panel.sortedFiles, panel.files, panel.selection);
               if (files.length > 0 && !refuseLocalNameClashes(files)) clipboardCut(files, false, panel.currentPath);
             }
           }}

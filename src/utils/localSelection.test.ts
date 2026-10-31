@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { LocalFile } from '../types';
-import { asLocalFileEntry, deepestLocalRowsFirst, focusedLocalPanel, localClipboardEntries, localRowFolder, localRowFolderKey, localRowName, localRowNameClashes, outermostLocalRows, selectedLocalRows } from './localSelection';
+import { asLocalFileEntry, deepestLocalRowsFirst, focusedLocalPanel, localClipboardEntries, localRowFolder, localRowFolderKey, localRowName, localRowNameClashes, outermostLocalRows, selectedLocalRows, selectedLocalTrees } from './localSelection';
 
 const row = (name: string, is_dir = true): LocalFile => ({
     name, path: `/home/u/${name}`, size: is_dir ? null : 1, is_dir, modified: null,
@@ -86,6 +86,15 @@ describe('clipboard entries of a local selection', () => {
             { name: 'a.jpg', path: '/home/u/Photos/a.jpg', is_dir: false },
         ]);
     });
+
+    it('takes a selected folder with what is below it, and that entry not again', () => {
+        // Select All in a flattened search: a copy is the folder, once.
+        const listing = [row('Photos')];
+        const shown = [row('Photos'), row('Photos/Photos'), row('Photos/a.jpg', false)];
+        expect(localClipboardEntries(shown, listing, new Set(shown.map(f => f.name)))).toEqual([
+            { name: 'Photos', path: '/home/u/Photos', is_dir: true },
+        ]);
+    });
 });
 
 describe('selected rows that one destination cannot hold together', () => {
@@ -113,6 +122,18 @@ describe('rows inside another selected row', () => {
         const inner = { name: 'Photos/a.jpg', path: 'C:/Users/u/Photos/a.jpg', is_dir: false };
         const beside = { name: 'Photos2.jpg', path: 'C:\\Users\\u\\Photos2.jpg', is_dir: false };
         expect(outermostLocalRows([dir, inner, beside])).toEqual([dir, beside]);
+    });
+
+    it('gives an action on the whole selection each selected tree once', () => {
+        const listing = [row('Photos'), row('notes.txt', false)];
+        const shown = [row('Photos'), row('Photos/Summer'), row('Photos/Summer/a.jpg', false), row('Other/b.jpg', false), row('notes.txt', false)];
+        const all = new Set(shown.map(f => f.name));
+        expect(selectedLocalTrees(shown, listing, all).map(f => f.name)).toEqual(['Photos', 'Other/b.jpg', 'notes.txt']);
+        // What a rename or a tag takes: every row.
+        expect(selectedLocalRows(shown, listing, all)).toHaveLength(5);
+        // A nested row on its own is its own tree.
+        expect(selectedLocalTrees(shown, listing, new Set(['Photos/Summer/a.jpg'])).map(f => f.path))
+            .toEqual(['/home/u/Photos/Summer/a.jpg']);
     });
 
     it('renames the deepest first, so a folder is renamed after what it holds', () => {

@@ -73,14 +73,15 @@ export const asLocalFileEntry = <T extends Pick<LocalFile, 'name'>>(row: T): T =
 
 /**
  * Clipboard entries for a local selection: each file by its own name, which is
- * the name a paste gives it in the folder it lands in.
+ * the name a paste gives it in the folder it lands in, and a selected folder
+ * with what is below it ({@link selectedLocalTrees}).
  */
 export const localClipboardEntries = (
     shown: readonly LocalFile[],
     listing: readonly LocalFile[],
     selection: ReadonlySet<string>,
 ): { name: string; path: string; is_dir: boolean }[] =>
-    selectedLocalRows(shown, listing, selection)
+    selectedLocalTrees(shown, listing, selection)
         .map(f => ({ name: localRowName(f), path: f.path, is_dir: f.is_dir }));
 
 /** A local path compared as a key: `/` separators, no trailing one. */
@@ -110,13 +111,28 @@ export const localRowNameClashes = (rows: readonly Pick<LocalFile, 'name' | 'pat
 
 /**
  * The rows without those inside a selected folder: a flattened search can
- * select a folder and entries below it, and deleting or moving the folder
- * already takes them.
+ * select a folder and entries below it, and the folder already takes them.
  */
 export const outermostLocalRows = <T extends Pick<LocalFile, 'path' | 'is_dir'>>(rows: readonly T[]): T[] => {
     const folders = rows.filter(r => r.is_dir).map(r => `${pathKey(r.path)}/`);
     return rows.filter(r => !folders.some(folder => pathKey(r.path).startsWith(folder)));
 };
+
+/**
+ * The rows an action on the whole selection takes: a selected folder with
+ * what is below it, and an entry below it not a second time. A flattened
+ * search shows a folder and its entries side by side, and Select All takes
+ * them all: a copy, an upload or a drop would put such an entry twice (in its
+ * folder and next to it) or refuse its name as a clash with itself, an archive
+ * or a vault would hold it twice, a size would count it twice, and a move or a
+ * delete would find it gone when its turn came. An action on each row (a
+ * rename, a tag) takes {@link selectedLocalRows}.
+ */
+export const selectedLocalTrees = (
+    shown: readonly LocalFile[],
+    listing: readonly LocalFile[],
+    selection: ReadonlySet<string>,
+): LocalFile[] => outermostLocalRows(selectedLocalRows(shown, listing, selection));
 
 /**
  * The rows deepest first: renaming a folder changes the path of everything

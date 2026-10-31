@@ -64,7 +64,7 @@ describe('local actions on the rows of a flattened search', () => {
         // Ctrl+C, Ctrl+X, the menu bar's Copy and Cut, the row menu's Copy and Cut.
         expect(count(appRaw, /localClipboardEntries\(/g)).toBe(6);
         expect(shortcut('Ctrl+C')).toMatch(/clipboardCopy\(localClipboardEntries|const files = localClipboardEntries\(panel\.sortedFiles, panel\.files, panel\.selection\)/);
-        expect(shortcut('Ctrl+X')).toMatch(/const files = outermostLocalRows\(localClipboardEntries\(panel\.sortedFiles, panel\.files, panel\.selection\)\)/);
+        expect(shortcut('Ctrl+X')).toMatch(/const files = localClipboardEntries\(panel\.sortedFiles, panel\.files, panel\.selection\)/);
     });
 
     it('renames a nested row in place, starting from its own name', () => {
@@ -87,14 +87,14 @@ describe('local actions on the rows of a flattened search', () => {
 
     it('deletes exactly the rows selected, by their paths', () => {
         const del = body('deleteMultipleLocalFiles');
-        expect(count(del, /selectedLocalRows\(panel\.sortedFiles, panel\.files, new Set\(names\)\)/g)).toBe(2);
+        expect(count(del, /selectedLocalTrees\(panel\.sortedFiles, panel\.files, new Set\(names\)\)/g)).toBe(2);
         expect(del).toMatch(/trashLocalPaths\(\s*selected\.map\(file => file\.path\)/);
     });
 
     it('uploads each file under its own name', () => {
         const upload = body('uploadMultipleFiles');
         expect(upload).toMatch(/const panel = getActiveLocalState\(localPanelId\);/);
-        expect(upload).toMatch(/const rows = selectedLocalRows\(panel\.sortedFiles, panel\.files, new Set\(targetNames\)\);\s*if \(refuseLocalNameClashes\(rows\)\) return;\s*let filesToUpload = rows\.map\(file => \(\{ path: file\.path, file: asLocalFileEntry\(file\) \}\)\);/);
+        expect(upload).toMatch(/const rows = selectedLocalTrees\(panel\.sortedFiles, panel\.files, new Set\(targetNames\)\);\s*if \(refuseLocalNameClashes\(rows\)\) return;\s*let filesToUpload = rows\.map\(file => \(\{ path: file\.path, file: asLocalFileEntry\(file\) \}\)\);/);
         expect(upload).not.toMatch(/localPath: currentLocalPath|setSelectedLocalFiles\(|Array\.from\(selectedLocalFiles\)/);
         expect(body('handleLocalFileAction')).toMatch(/uploadFile\(file\.path, localRowName\(file\), false\)/);
         expect(body('uploadFile')).toMatch(/\.find\(f => f\.path === localFilePath && !f\.is_dir\)/);
@@ -102,7 +102,7 @@ describe('local actions on the rows of a flattened search', () => {
 
     it('copies and moves to the other panel under each file\'s own name', () => {
         const transfer = body('transferLocalSelectionAcrossPanels');
-        expect(transfer).toMatch(/selectedLocalRows\(sourceRows, sourceFiles, sourceSelection\)[\s\S]*?\.map\(asLocalFileEntry\)/);
+        expect(transfer).toMatch(/selectedLocalTrees\(sourceRows, sourceFiles, sourceSelection\)[\s\S]*?\.map\(asLocalFileEntry\)/);
     });
 
     it('renames a batch file by file, each in its own folder', () => {
@@ -168,9 +168,24 @@ describe('local actions on the rows of a flattened search', () => {
     });
 
     it('takes a selected folder with what is below it, and renames the deepest first', () => {
-        expect(body('deleteMultipleLocalFiles')).toMatch(/outermostLocalRows\(selectedLocalRows\(panel\.sortedFiles, panel\.files, new Set\(names\)\)\)/);
-        expect(count(appRaw, /outermostLocalRows\(localClipboardEntries\(/g)).toBe(3);
-        expect(body('transferLocalSelectionAcrossPanels')).toMatch(/mode === 'move' \? outermostLocalRows\(rows\) : rows/);
+        // Every action on the whole selection: delete and its confirmation,
+        // F5/F6 in the plan and in the transfer, upload, Properties (row menu
+        // and Alt+Enter), compress, AeroVault and Cryptomator creation and the
+        // folder they go in. The clipboard takes them through
+        // localClipboardEntries, the drag through outermostLocalRows.
+        expect(count(appRaw, /selectedLocalTrees\(/g)).toBe(11);
+        expect(body('transferLocalSelectionAcrossPanels')).toMatch(/const rows = selectedLocalTrees\(/);
+        expect(body('transferLocalSelectionAcrossPanels')).not.toMatch(/mode === 'move' \?/);
+        expect(body('planLocalSelectionAcrossPanels')).toMatch(/const selectedFiles = selectedLocalTrees\(/);
+        expect(shortcut('Alt+Enter')).toMatch(/const entries = selectedLocalTrees\(/);
+        const menu = body('showLocalContextMenu');
+        expect(menu).toMatch(/const selectedEntries = \(\) => selectedLocalTrees\(/);
+        expect(menu).toMatch(/const compressRows = selectedLocalTrees\(/);
+        expect(count(menu, /const paths = selectedLocalTrees\(/g)).toBe(2);
+        expect(menu).toMatch(/const folders = new Set\(selectedLocalTrees\(/);
+        // Each row on its own: Enter, F2 (key and menu bar), Batch Rename, Tags.
+        expect(count(appRaw, /selectedLocalRows\(/g)).toBe(5);
+        expect(dragRaw).toMatch(/const filesToDrag = isLocalPanel\(panelKey\) \? outermostLocalRows\(selectedRows\) : selectedRows;/);
         expect(body('handleBatchRename')).toMatch(/deepestLocalRowsFirst\(\[\.\.\.renames\]/);
     });
 
