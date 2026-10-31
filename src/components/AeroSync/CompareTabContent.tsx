@@ -40,6 +40,8 @@ import {
 
 interface CompareTabContentProps {
     result: CompareResult | null;
+    /** The result was filtered after its scan: the identical count is the scan's. */
+    narrowed?: boolean;
     /** GAP-5: true while the recursive connected-remote scan is running. */
     loading?: boolean;
     scanProgressId?: string;
@@ -244,6 +246,7 @@ const BucketSection: React.FC<BucketSectionProps> = ({ bucket, entries, count, b
 
 export const CompareTabContent: React.FC<CompareTabContentProps> = ({
     result,
+    narrowed,
     loading,
     scanProgressId,
     stopped,
@@ -347,6 +350,11 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
 
     return (
         <div className="flex flex-col">
+            {narrowed && (
+                <p className="border-b border-gray-200 px-4 py-2 text-[11px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                    {t('aerosync.narrowedNote') || 'Filtered with new exclusions without a rescan. The identical count is still the one from the scan.'}
+                </p>
+            )}
             <div className="grid gap-3 px-4 py-3 sm:grid-cols-3">
                 <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-900/40">
                     <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">

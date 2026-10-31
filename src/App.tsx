@@ -12200,7 +12200,7 @@ const App: React.FC = () => {
     });
   }, [aeroSync, runConnectedRemoteSync, runLocalLocalSync]);
 
-  const { dismissJournal: handleDismissJournal, invalidateComparison: invalidateAeroSyncComparison } =
+  const { dismissJournal: handleDismissJournal, invalidateComparison: invalidateAeroSyncComparison, narrowComparison: narrowAeroSyncComparison } =
     useAeroSyncContextActions(aeroSync, setAeroSync, aeroSyncCompareSeqRef);
 
 
@@ -17168,6 +17168,7 @@ const App: React.FC = () => {
             onDismissJournal={handleDismissJournal}
             onInvalidateComparison={invalidateAeroSyncComparison}
             onRescan={({ userExcludes, backupDir }) => openAeroSync('plan', userExcludes, backupDir, true)}
+            onNarrowComparison={({ userExcludes, backupDir }) => narrowAeroSyncComparison(userExcludes, backupDir)}
             onStartCompare={() => openAeroSync(
               aeroSync.initialTab,
               aeroSync.context.compareExcludes ?? [],
