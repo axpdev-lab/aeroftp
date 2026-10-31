@@ -95,6 +95,18 @@ describe('ProgressCard during a transfer', () => {
         expect(toggle()).toBeNull();
     });
 
+    it('keeps the graph for the next file of a run and drops it for another run', async () => {
+        const inRun = (transfer: TransferToastState, run: string) => ({ ...transfer, run });
+        await render(inRun(toast('a.bin'), 'run-1'), 300);
+        await render(inRun(starting('b.bin'), 'run-1'), 200);
+        expect(graphProfile.last).toBeDefined();
+        expect(held()).toBe('300px');
+        graphProfile.last = undefined;
+        await render(inRun(starting('c.bin'), 'run-2'), 200);
+        expect(graphProfile.last).toBeUndefined();
+        expect(held()).toBe('200px');
+    });
+
     it('does not bring back an earlier graph after a transfer of another kind', async () => {
         await render(toast('a.bin'), 300);
         const download = { ...summary('b.bin'), direction: 'download' } as TransferToastState['summary'];

@@ -58,6 +58,8 @@ export interface TransferToastLane {
 
 export interface TransferToastState {
     summary: TransferProgress;
+    /** The run this transfer belongs to (`utils/transferRun.ts`), or its own id. */
+    run?: string;
     lanes?: TransferToastLane[];
     reservedLaneSlots?: number;
     maxChannels?: number;
@@ -243,10 +245,10 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
     const transferStateLabel = isFolderTransfer ? t('transfer.badgeBatch') : (isIndeterminate ? t('transfer.badgeStream') : t('transfer.badgeLive'));
     // Each file of a sync starts with an empty profile: the last one with data
     // stays on screen until the new file has its own, or the graph and its
-    // toggle would disappear and return once per file. A file in the other
-    // direction is another transfer and starts without it, and so does a folder,
-    // whose profile runs across the whole batch.
-    const cardScope = `${summary.direction}:${isFolderTransfer}`;
+    // toggle would disappear and return once per file. Any other transfer starts
+    // without it: another run, even one that opens while this card is closing,
+    // and a folder, whose profile runs across the whole batch.
+    const cardScope = `${transfer.run ?? ''}:${summary.direction}:${isFolderTransfer}`;
     const lastProfile = useRef<{ scope: string; profile: SpeedProfile } | null>(null);
     const ownProfile = transfer.speedProfile && hasSpeedData(transfer.speedProfile) ? transfer.speedProfile : undefined;
     const shownProfile = ownProfile ?? (!isFolderTransfer && lastProfile.current?.scope === cardScope ? lastProfile.current.profile : undefined);
