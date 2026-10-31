@@ -12631,7 +12631,7 @@ mod tests {
                     remote_path: "/big.bin".to_string(),
                     local_path: out.to_string_lossy().to_string(),
                     size: planned as u64,
-                    modified: None,
+                    modified: Some("2000-01-01T00:00:00Z".to_string()),
                 })
                 .await;
             assert!(
@@ -12652,6 +12652,14 @@ mod tests {
                 "{mode:?}: progress went back: {seen:?}"
             );
             assert_eq!(seen.last().copied(), Some(whole as u64), "{mode:?}");
+            // The time of the object the stream read, not the listing's.
+            let time =
+                filetime::FileTime::from_last_modification_time(&std::fs::metadata(&out).unwrap());
+            assert_eq!(
+                Some(time.unix_seconds()),
+                crate::parse_remote_mtime("Wed, 21 Oct 2026 07:28:00 GMT"),
+                "{mode:?}"
+            );
         }
     }
 

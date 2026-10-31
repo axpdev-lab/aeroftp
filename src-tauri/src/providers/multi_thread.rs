@@ -1188,8 +1188,9 @@ impl ProgressMark {
 /// Two callbacks that both report to `progress`: one goes with the parallel
 /// attempt, the other stays behind for the single-stream path a refusal falls
 /// back to. The callback is `Send` and not `Sync`, so it is shared behind a
-/// lock rather than cloned; the two halves never run at the same time. The
-/// later half holds the last value until it passes it, see [`ProgressMark`].
+/// lock rather than cloned; the two halves never run at the same time. Both
+/// pass the bytes really moved, so a later half counts from zero: whoever draws
+/// a bar holds it with a [`ProgressMark`], and measures speed on the real count.
 pub fn share_progress(
     progress: Option<ProgressCallback>,
 ) -> (Option<ProgressCallback>, Option<ProgressCallback>) {
@@ -1197,12 +1198,10 @@ pub fn share_progress(
         return (None, None);
     };
     let shared = Arc::new(std::sync::Mutex::new(progress));
-    let mark = ProgressMark::default();
     let half = |shared: Arc<std::sync::Mutex<ProgressCallback>>| -> ProgressCallback {
-        let mark = mark.clone();
         Box::new(move |done, total| {
             let progress = shared.lock().unwrap_or_else(|e| e.into_inner());
-            progress(mark.shown(done, total), total)
+            progress(done, total)
         })
     };
     (Some(half(Arc::clone(&shared))), Some(half(shared)))
@@ -6359,24 +6358,15 @@ mod tests {
         assert_eq!(server.readings(), 1, "the planning probe only");
     }
 
-    /// A fallback counts from zero what the attempt already reported. The bar
-    /// holds until it passes that, and still reaches the end.
+    /// A fallback counts from zero what the attempt already reported. The mark
+    /// holds until the count passes it, and a shorter object still ends complete.
     #[test]
-    fn shared_progress_never_goes_back() {
-        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
-        let sink = Arc::clone(&seen);
-        let (attempt, fallback) = share_progress(Some(Box::new(move |done, total| {
-            sink.lock().unwrap().push((done, total));
-        })));
-        let (attempt, fallback) = (attempt.unwrap(), fallback.unwrap());
-        attempt(40, 100);
-        fallback(10, 100);
-        fallback(100, 100);
-        fallback(50, 30);
-        assert_eq!(
-            *seen.lock().unwrap(),
-            vec![(40, 100), (40, 100), (100, 100), (30, 30)]
-        );
+    fn a_progress_mark_never_goes_back() {
+        let mark = ProgressMark::default();
+        assert_eq!(mark.shown(40, 100), 40);
+        assert_eq!(mark.shown(10, 100), 40);
+        assert_eq!(mark.shown(100, 100), 100);
+        assert_eq!(mark.shown(50, 30), 30);
     }
 
     /// The comparison is case-insensitive, a file that cannot be read differs,

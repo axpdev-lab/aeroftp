@@ -3300,7 +3300,7 @@ pub async fn provider_download_file(
     state: State<'_, ProviderState>,
     remote_path: String,
     local_path: String,
-    modified: Option<String>,
+    mut modified: Option<String>,
     use_delta: Option<bool>,
     download_segments: Option<u32>,
     sftp_download_preset: Option<SftpDownloadPreset>,
@@ -3354,17 +3354,23 @@ pub async fn provider_download_file(
     let tid_progress = transfer_id.clone();
     let fname_progress = filename.clone();
 
+    // One stream taking over from a segmented run counts from zero: the mark
+    // keeps the bar where the run left it, while speed and time left follow the
+    // bytes really moving.
+    let progress_mark = crate::providers::multi_thread::ProgressMark::default();
+    let first_mark = progress_mark.clone();
     let speed_meter = crate::transfer_speed::SpeedMeter::new();
     let mut progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> = if file_size > 0 {
-        Some(Box::new(move |transferred: u64, total: u64| {
+        Some(Box::new(move |moved: u64, total: u64| {
+            let transferred = first_mark.shown(moved, total);
             let pct = if total > 0 {
                 ((transferred as f64 / total as f64) * 100.0) as u8
             } else {
                 0
             };
-            let speed = speed_meter.bps(transferred);
-            let eta = if speed > 0 && transferred < total {
-                ((total - transferred) as f64 / speed as f64) as u64
+            let speed = speed_meter.bps(moved);
+            let eta = if speed > 0 && moved < total {
+                ((total - moved) as f64 / speed as f64) as u64
             } else {
                 0
             };
@@ -3545,9 +3551,6 @@ pub async fn provider_download_file(
     } else {
         crate::provider_transfer_executor::SegmentCutoff::Default
     };
-    // One stream taking over from a segmented run counts from zero: the mark
-    // keeps the bar where the run left it.
-    let progress_mark = crate::providers::multi_thread::ProgressMark::default();
     if partial_offset == 0
         && (download_segments.is_some() || file_size >= DEFAULT_MULTI_THREAD_CUTOFF_BYTES)
     {
@@ -3576,12 +3579,7 @@ pub async fn provider_download_file(
                 &local_path,
                 file_size,
                 segments,
-                progress_cb.take().map(
-                    |progress| -> crate::providers::multi_thread::ProgressCallback {
-                        let mark = progress_mark.clone();
-                        Box::new(move |done, total| progress(mark.shown(done, total), total))
-                    },
-                ),
+                progress_cb.take(),
                 cancel,
             )
             .await;
@@ -3609,6 +3607,22 @@ pub async fn provider_download_file(
                     "Segmented download failed, falling back to provider download: {}",
                     e
                 );
+                // The stream may read another object than the listing saw, and
+                // its time goes on the local file. If this fails the listing
+                // stands: an old time only makes the next sync download again.
+                if e.refused_by_the_source() {
+                    let reading = tokio::select! {
+                        biased;
+                        _ = session_cancel.cancelled() => None,
+                        reading = tokio::time::timeout(
+                            Duration::from_secs(30),
+                            provider.stat(&remote_path),
+                        ) => reading.ok().and_then(Result::ok),
+                    };
+                    if let Some(fresh) = reading.and_then(|entry| entry.modified) {
+                        modified = Some(fresh);
+                    }
+                }
             }
             segmented_result = Some(outcome.map_err(|e| e.to_string()));
         }

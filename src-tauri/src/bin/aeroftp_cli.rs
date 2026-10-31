@@ -10635,7 +10635,8 @@ fn make_aggregate_progress_cb(
     };
     let added = attempt.added.clone();
     let callback = Box::new(move |transferred, _total| {
-        let previous = last_seen.swap(transferred, Ordering::Relaxed);
+        // A fallback counts from zero what this attempt already added.
+        let previous = last_seen.fetch_max(transferred, Ordering::Relaxed);
         let delta = transferred.saturating_sub(previous);
         if delta == 0 {
             return;
@@ -35631,7 +35632,7 @@ async fn cmd_get(
         let planned = pget_planned_segments(total_size, segments, pget_cutoff);
         if hints.supports_range_download && planned >= 2 {
             let _ = provider.disconnect().await;
-            let code = pget_segmented_download(
+            return pget_segmented_download(
                 url,
                 remote,
                 local_path,
@@ -35641,12 +35642,9 @@ async fn cmd_get(
                 format,
                 cancelled.clone(),
                 None,
+                remote_modified.as_deref(),
             )
             .await;
-            if code == 0 {
-                ftp_client_gui_lib::preserve_remote_mtime(local_path, remote_modified.as_deref());
-            }
-            return code;
         } else if !quiet {
             let reason = if !hints.supports_range_download {
                 "provider does not support range downloads".to_string()
@@ -35669,12 +35667,13 @@ async fn cmd_get(
 
     let pb_clone = pb.clone();
     let progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> = if pb_clone.is_some() {
+        let mark = ftp_client_gui_lib::providers::multi_thread::ProgressMark::default();
         Some(Box::new(move |transferred, total| {
             if let Some(ref pb) = pb_clone {
                 if total > 0 {
                     pb.set_length(total);
                 }
-                pb.set_position(transferred);
+                pb.set_position(mark.shown(transferred, total));
             }
         }))
     } else {
@@ -35973,6 +35972,7 @@ async fn pget_segmented_download(
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
     unpinned_from: Option<ftp_client_gui_lib::providers::multi_thread::RangeSourceFingerprint>,
+    listed_time: Option<&str>,
 ) -> i32 {
     use ftp_client_gui_lib::providers::multi_thread::{
         range_read_failed, read_range_paced, read_range_source_through,
@@ -35987,7 +35987,16 @@ async fn pget_segmented_download(
         // Degenerate: a single effective segment is just a single-stream
         // download. The initial probe provider was already disconnected by
         // the caller, so reconnect and stream once (honest, no overclaim).
-        return pget_fallback_single(url, remote_path, local_path, cli, format, &cancelled).await;
+        return pget_fallback_single(
+            url,
+            remote_path,
+            local_path,
+            cli,
+            format,
+            &cancelled,
+            listed_time,
+        )
+        .await;
     }
 
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
@@ -36087,8 +36096,16 @@ async fn pget_segmented_download(
     let (before, conns) = match setup {
         Some(Some(ready)) => ready,
         Some(None) => {
-            return pget_fallback_single(url, remote_path, local_path, cli, format, &cancelled)
-                .await
+            return pget_fallback_single(
+                url,
+                remote_path,
+                local_path,
+                cli,
+                format,
+                &cancelled,
+                listed_time,
+            )
+            .await
         }
         None => return interrupted_exit(None, format, "the download did not finish").await,
     };
@@ -36106,11 +36123,13 @@ async fn pget_segmented_download(
     };
     let pb_for_cb = pb.clone();
     let on_progress: Option<Box<dyn Fn(u64, u64) + Send>> = pb_for_cb.map(|pb| {
+        // The unpinned pass counts from zero: the bar holds until it passes.
+        let mark = ftp_client_gui_lib::providers::multi_thread::ProgressMark::default();
         Box::new(move |transferred: u64, total: u64| {
             if total > 0 {
                 pb.set_length(total);
             }
-            pb.set_position(transferred);
+            pb.set_position(mark.shown(transferred, total));
         }) as Box<dyn Fn(u64, u64) + Send>
     });
 
@@ -36317,13 +36336,22 @@ async fn pget_segmented_download(
                 report_download_fallback(
                     "pget: the source changed or could not be verified after the parallel transfer",
                 );
-                return pget_fallback_single(url, remote_path, local_path, cli, format, &cancelled)
-                    .await;
+                return pget_fallback_single(
+                    url,
+                    remote_path,
+                    local_path,
+                    cli,
+                    format,
+                    &cancelled,
+                    listed_time,
+                )
+                .await;
             }
             if let Err(e) = temp.publish(Path::new(local_path)).await {
                 print_error(format, &format!("pget: finalize failed: {}", e), 4);
                 return 4;
             }
+            ftp_client_gui_lib::preserve_remote_mtime(local_path, listed_time);
 
             let elapsed = start.elapsed();
             let speed = if elapsed.as_secs_f64() > 0.0 {
@@ -36363,7 +36391,16 @@ async fn pget_segmented_download(
             // `read_range` cannot produce this (no HTTP-200 semantics); the
             // engine already dropped the temp. Defensive honest fallback.
             report_download_fallback("pget: the server ignored Range");
-            pget_fallback_single(url, remote_path, local_path, cli, format, &cancelled).await
+            pget_fallback_single(
+                url,
+                remote_path,
+                local_path,
+                cli,
+                format,
+                &cancelled,
+                listed_time,
+            )
+            .await
         }
         Err(_) if cancelled.load(Ordering::Relaxed) => {
             // Ctrl-C stopped the windows (the engine's guard removed the
@@ -36402,11 +36439,21 @@ async fn pget_segmented_download(
                     format,
                     cancelled,
                     Some(before),
+                    listed_time,
                 ))
                 .await;
             }
             report_download_fallback(&format!("pget: {}", verdict.notice()));
-            pget_fallback_single(url, remote_path, local_path, cli, format, &cancelled).await
+            pget_fallback_single(
+                url,
+                remote_path,
+                local_path,
+                cli,
+                format,
+                &cancelled,
+                listed_time,
+            )
+            .await
         }
         Err(e) => {
             // The engine's RAII guard already removed the temp. Honest
@@ -36416,7 +36463,16 @@ async fn pget_segmented_download(
             } else {
                 "pget: a segmented range transfer failed"
             });
-            pget_fallback_single(url, remote_path, local_path, cli, format, &cancelled).await
+            pget_fallback_single(
+                url,
+                remote_path,
+                local_path,
+                cli,
+                format,
+                &cancelled,
+                listed_time,
+            )
+            .await
         }
     }
 }
@@ -36456,6 +36512,7 @@ async fn pget_fallback_single(
     cli: &Cli,
     format: OutputFormat,
     cancelled: &AtomicBool,
+    listed_time: Option<&str>,
 ) -> i32 {
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
     if !quiet {
@@ -36471,11 +36528,18 @@ async fn pget_fallback_single(
         };
 
     let filename = remote_path.rsplit('/').next().unwrap_or("download");
-    let Some(total_size) = run_until_interrupted(cancelled, provider.size(remote_path)).await
-    else {
+    // The stream may read another object than the listing saw: this reading is
+    // the one its size and its time come from. If it fails the listing stands.
+    let probed = run_until_interrupted(cancelled, async {
+        match provider.stat(remote_path).await {
+            Ok(entry) => (entry.size, entry.modified),
+            Err(_) => (provider.size(remote_path).await.unwrap_or(0), None),
+        }
+    })
+    .await;
+    let Some((total_size, read_time)) = probed else {
         return interrupted_exit(Some(&mut *provider), format, NOT_FINISHED).await;
     };
-    let total_size = total_size.unwrap_or(0);
     let start = Instant::now();
 
     let pb = if !quiet && total_size > 0 {
@@ -36486,11 +36550,12 @@ async fn pget_fallback_single(
 
     let pb_clone = pb.clone();
     let progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> = pb_clone.map(|pb| {
+        let mark = ftp_client_gui_lib::providers::multi_thread::ProgressMark::default();
         Box::new(move |transferred: u64, total: u64| {
             if total > 0 {
                 pb.set_length(total);
             }
-            pb.set_position(transferred);
+            pb.set_position(mark.shown(transferred, total));
         }) as Box<dyn Fn(u64, u64) + Send>
     });
 
@@ -36526,6 +36591,10 @@ async fn pget_fallback_single(
     }
     match result {
         Ok(()) => {
+            ftp_client_gui_lib::preserve_remote_mtime(
+                local_path,
+                read_time.as_deref().or(listed_time),
+            );
             let elapsed = start.elapsed();
             let file_size = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
             let speed = if elapsed.as_secs_f64() > 0.0 {
@@ -67236,6 +67305,7 @@ mod hashsum_digest_tests {
                         }
                         return Response::builder()
                             .header("content-length", size.to_string())
+                            .header("last-modified", "Wed, 21 Oct 2026 07:28:00 GMT")
                             .header(
                                 "etag",
                                 if (range_mode == 3 && whole_gets.load(Ordering::SeqCst) > 0)
@@ -89657,6 +89727,7 @@ mod tests {
                         format,
                         cancelled,
                         None,
+                        None,
                     ))
                     .await
             });
@@ -89851,6 +89922,15 @@ mod tests {
 
     /// Runs `pget` on four segments against `provider` in a thread of its
     /// own, as the CLI does, and returns its exit code and warnings.
+    /// The time `pget_against` was listed with, older than any the fixture reports.
+    const LISTED_TIME: &str = "2000-01-01T00:00:00Z";
+
+    /// The modification time of a downloaded file, in Unix seconds.
+    fn local_time(path: &Path) -> i64 {
+        filetime::FileTime::from_last_modification_time(&std::fs::metadata(path).unwrap())
+            .unix_seconds()
+    }
+
     async fn pget_against(
         provider: ftp_client_gui_lib::providers::s3::S3Provider,
         size: u64,
@@ -89880,6 +89960,7 @@ mod tests {
                         OutputFormat::Text,
                         Arc::new(AtomicBool::new(false)),
                         None,
+                        Some(LISTED_TIME),
                     )));
                 (code, warnings.take())
             })
@@ -89910,6 +89991,11 @@ mod tests {
         assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 0);
         // The reading before the segments, the diagnosis, the reading after.
         assert_eq!(fixture.heads.load(Ordering::SeqCst), 3);
+        // The windows published the object the listing saw.
+        assert_eq!(
+            local_time(&out),
+            ftp_client_gui_lib::parse_remote_mtime(LISTED_TIME).unwrap()
+        );
     }
 
     /// A stale HEAD and unpinned segments from a replacement under its own
@@ -89992,6 +90078,11 @@ mod tests {
         );
         // The new version whole: a stale copy of the first one must not pass.
         assert_eq!(std::fs::read(&out).unwrap(), fixture.replacement);
+        // And the time of the object read, not the listing's.
+        assert_eq!(
+            local_time(&out),
+            ftp_client_gui_lib::parse_remote_mtime("Wed, 21 Oct 2026 07:28:00 GMT").unwrap()
+        );
     }
 
     /// A quiet CLI for these tests.
@@ -90403,6 +90494,7 @@ mod tests {
                 &cli,
                 OutputFormat::Json,
                 &cancelled,
+                None,
             )
             .await
         });
@@ -90543,6 +90635,7 @@ mod tests {
                     &cli,
                     OutputFormat::Json,
                     &never,
+                    None,
                 )
                 .await
             });
@@ -93137,6 +93230,17 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             !put_screens_targets_by_listing(&provider(true), &flat[..1], &cli),
             "one file saves no launch"
         );
+    }
+
+    /// One stream taking over counts from zero what the attempt already added.
+    #[test]
+    fn the_aggregate_does_not_count_a_fallback_twice() {
+        let aggregate = Arc::new(AtomicU64::new(0));
+        let (progress, _attempt) = make_aggregate_progress_cb(aggregate.clone(), None);
+        progress(800, 1000);
+        progress(10, 1000);
+        progress(900, 1000);
+        assert_eq!(aggregate.load(Ordering::Relaxed), 900);
     }
 
     /// A failed attempt takes back the bytes it added to the batch's

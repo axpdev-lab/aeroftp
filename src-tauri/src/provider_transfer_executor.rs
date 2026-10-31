@@ -377,7 +377,7 @@ impl SegmentedDownloadError {
     /// changed or could not be shown to be the one they read, a window was
     /// refused, or a pin was refused twice. No transport failed, so one stream
     /// can read it on this same attempt, with or without retries left.
-    fn refused_by_the_source(&self) -> bool {
+    pub(crate) fn refused_by_the_source(&self) -> bool {
         use crate::providers::multi_thread::PinRefusal;
         matches!(
             self,
@@ -1315,7 +1315,7 @@ impl ProviderDownloadExecutor {
 
     async fn execute_with_provider(
         &self,
-        entry: TransferEntry,
+        mut entry: TransferEntry,
         provider: &mut dyn StorageProvider,
     ) -> TransferOutcome {
         let file_transfer_id = entry.id.clone();
@@ -1346,7 +1346,7 @@ impl ProviderDownloadExecutor {
             // leaves an honest count behind.
             note_transfer_attempt(&self.attempt_counts, &entry.id, attempt + 1);
             match self
-                .download_attempt(provider, &entry, &file_transfer_id, attempt)
+                .download_attempt(provider, &mut entry, &file_transfer_id, attempt)
                 .await
             {
                 Ok(()) => {
@@ -1381,13 +1381,12 @@ impl ProviderDownloadExecutor {
     async fn download_attempt(
         &self,
         provider: &mut dyn StorageProvider,
-        entry: &TransferEntry,
+        entry: &mut TransferEntry,
         file_transfer_id: &str,
         attempt: u32,
     ) -> Result<(), String> {
         let remote_path = entry.remote_path.clone();
         let local_path = entry.local_path.clone();
-        let file_size = entry.size;
 
         // Only a part that recorded the version it was started from counts;
         // the provider then checks that version against the file as it is now.
@@ -1419,11 +1418,10 @@ impl ProviderDownloadExecutor {
             self.session_model.max_leases(),
         );
         if attempt == 0 && partial_offset == 0 && requested_segments > 1 {
-            if let Some(segmented_result) = self
+            match self
                 .try_segmented_download_attempt(
                     provider,
                     entry,
-                    file_size,
                     Some(download_progress_callback(
                         Arc::clone(&self.sink),
                         self.cancel_token.clone(),
@@ -1434,9 +1432,12 @@ impl ProviderDownloadExecutor {
                 )
                 .await
             {
-                return segmented_result;
+                SegmentedAttempt::NotTaken => {}
+                SegmentedAttempt::Finished(result) => return result,
+                SegmentedAttempt::Refused => self.read_entry_again(provider, entry).await,
             }
         }
+        let file_size = entry.size;
 
         let progress_cb = Some(download_progress_callback(
             Arc::clone(&self.sink),
@@ -1489,22 +1490,42 @@ impl ProviderDownloadExecutor {
         }
     }
 
-    /// Try the segmented (intra-file range) download path. Returns
-    /// `None` when the path is not applicable, or the object refused the
-    /// windows: the caller falls through to the legacy single-stream
-    /// branch on this same attempt. Returns
-    /// `Some(Ok(()))` on success (the legacy branch is then skipped)
-    /// and `Some(Err(_))` on hard failure (the caller's retry envelope
-    /// is responsible for the next attempt, which will be
-    /// single-stream because the segmented branch is gated on
-    /// `attempt == 0`).
+    /// What one stream is about to read may not be what the listing saw: its
+    /// size sets the time limit and its time goes on the local file. One reading,
+    /// only after a refusal. If it fails the listing stands: an old time makes the
+    /// next sync see the remote as newer and download again, which loses nothing.
+    async fn read_entry_again(
+        &self,
+        provider: &mut dyn StorageProvider,
+        entry: &mut TransferEntry,
+    ) {
+        let limit = Duration::from_secs(self.runtime_settings.timeout_seconds);
+        let reading = tokio::select! {
+            biased;
+            _ = self.cancel_token.cancelled() => return,
+            reading = tokio::time::timeout(limit, provider.stat(&entry.remote_path)) => reading,
+        };
+        if let Ok(Ok(fresh)) = reading {
+            if fresh.size > 0 {
+                entry.size = fresh.size;
+            }
+            if fresh.modified.is_some() {
+                entry.modified = fresh.modified;
+            }
+        }
+    }
+
+    /// Try the segmented (intra-file range) download path. A hard failure
+    /// finishes the attempt: the caller's retry envelope is responsible for the
+    /// next one, which is single-stream because the segmented branch is gated
+    /// on `attempt == 0`.
     async fn try_segmented_download_attempt(
         &self,
         primary: &mut dyn StorageProvider,
         entry: &TransferEntry,
-        file_size: u64,
         on_progress: Option<crate::providers::multi_thread::ProgressCallback>,
-    ) -> Option<Result<(), String>> {
+    ) -> SegmentedAttempt {
+        let file_size = entry.size;
         // R21: the threshold folds the caller's cutoff (explicit, or the
         // measured 8 MiB default) with the provider's own floor, so the batch
         // path applies the same bound as the single-file
@@ -1514,7 +1535,7 @@ impl ProviderDownloadExecutor {
                 .download_cutoff
                 .threshold(primary.multi_thread_cutoff_floor())
         {
-            return None;
+            return SegmentedAttempt::NotTaken;
         }
 
         // Single-source-of-truth gate: capability + session-pool kind +
@@ -1524,13 +1545,15 @@ impl ProviderDownloadExecutor {
             &self.runtime_settings,
             self.session_model.max_leases(),
         );
-        let segments = provider_segmented_download_eligible(
+        let Some(segments) = provider_segmented_download_eligible(
             primary,
             file_size,
             requested_segments,
             max_segments,
             self.download_cutoff,
-        )?;
+        ) else {
+            return SegmentedAttempt::NotTaken;
+        };
 
         let outcome = run_provider_segmented_download(
             primary,
@@ -1543,12 +1566,12 @@ impl ProviderDownloadExecutor {
         )
         .await;
         match outcome {
-            Ok(()) => Some(Ok(())),
+            Ok(()) => SegmentedAttempt::Finished(Ok(())),
             // The object turned the windows down: one stream reads it on this
             // attempt, so a run with no retries left does not fail the file.
             Err(e) if !self.cancel_token.is_cancelled() && e.refused_by_the_source() => {
                 e.report_fallback();
-                None
+                SegmentedAttempt::Refused
             }
             Err(e) => {
                 if !self.cancel_token.is_cancelled() {
@@ -1558,7 +1581,7 @@ impl ProviderDownloadExecutor {
                         ));
                     }
                 }
-                Some(Err(e.to_string()))
+                SegmentedAttempt::Finished(Err(e.to_string()))
             }
         }
     }
@@ -2416,6 +2439,17 @@ fn attempt_is_over(locally_cancelled: bool, last_error: &str) -> bool {
     locally_cancelled || crate::transfer_dag::error::message_names_a_cancellation(last_error)
 }
 
+/// How the segmented path left one download attempt.
+enum SegmentedAttempt {
+    /// Not applicable: one stream reads the file, as listed.
+    NotTaken,
+    /// Done, or failed in a way the retry envelope answers.
+    Finished(Result<(), String>),
+    /// The object or the server turned the windows down: one stream reads it on
+    /// this same attempt.
+    Refused,
+}
+
 /// The progress callback of one download attempt, reporting to the executor's
 /// sink. The bar shows `mark`; speed and time left follow the bytes this path is
 /// really moving, so a path catching up on the mark does not read as stalled.
@@ -2431,10 +2465,13 @@ fn download_progress_callback(
     let remote_path = entry.remote_path.clone();
     let file_size = entry.size;
     let speed_meter = crate::transfer_speed::SpeedMeter::new();
-    Box::new(move |moved, total| {
+    Box::new(move |moved, reported| {
         if cancel_token.is_cancelled() {
             return;
         }
+        // The count, the total and the percentage all answer to one total: what
+        // the path reading the file reports, or the listing when it reports none.
+        let total = if reported > 0 { reported } else { file_size };
         let transferred = mark.shown(moved, total);
         let percentage = if total > 0 {
             ((transferred as f64 / total as f64) * 100.0) as u8
@@ -2442,7 +2479,7 @@ fn download_progress_callback(
             0
         };
         let speed = speed_meter.bps(moved);
-        let remaining = total.max(file_size).saturating_sub(moved);
+        let remaining = total.saturating_sub(moved);
         let eta = if speed > 0 {
             (remaining as f64 / speed as f64) as u64
         } else {
@@ -2458,7 +2495,7 @@ fn download_progress_callback(
                 transfer_id: transfer_id.clone(),
                 filename: display_name.clone(),
                 transferred,
-                total: total.max(file_size),
+                total,
                 percentage,
                 speed_bps: speed,
                 eta_seconds: eta as u32,
@@ -2521,12 +2558,47 @@ mod tests {
         std::thread::sleep(Duration::from_millis(150));
         fallback(110, 1000);
         fallback(900, 1000);
+        {
+            let seen = recorder.0.lock().unwrap();
+            let bar: Vec<u64> = seen.iter().map(|p| p.transferred).collect();
+            assert_eq!(bar, [800, 800, 800, 900]);
+            assert_eq!(seen[2].percentage, 80);
+            assert!(seen[2].speed_bps > 0, "the stream is moving bytes");
+            assert!(seen[2].eta_seconds > 0, "890 bytes are left to read");
+        }
+
+        // The unpinned pass and the provider fallbacks share one callback, so
+        // their real count has to reach it through `share_progress`.
+        recorder.0.lock().unwrap().clear();
+        let (pinned, unpinned) =
+            crate::providers::multi_thread::share_progress(Some(download_progress_callback(
+                recorder.clone(),
+                CancellationToken::new(),
+                "id",
+                &entry,
+                crate::providers::multi_thread::ProgressMark::default(),
+            )));
+        let (pinned, unpinned) = (pinned.unwrap(), unpinned.unwrap());
+        pinned(800, 1000);
+        unpinned(10, 1000);
+        std::thread::sleep(Duration::from_millis(150));
+        unpinned(110, 1000);
+        {
+            let seen = recorder.0.lock().unwrap();
+            assert_eq!(seen[2].transferred, 800, "the bar holds");
+            assert!(seen[2].speed_bps > 0, "the unpinned pass is moving bytes");
+            assert!(seen[2].eta_seconds > 0, "890 bytes are left to read");
+        }
+
+        // A replacement shorter than the listing: all three answer to one total.
+        recorder.0.lock().unwrap().clear();
+        let shorter = callback();
+        shorter(500, 500);
         let seen = recorder.0.lock().unwrap();
-        let bar: Vec<u64> = seen.iter().map(|p| p.transferred).collect();
-        assert_eq!(bar, [800, 800, 800, 900]);
-        assert_eq!(seen[2].percentage, 80);
-        assert!(seen[2].speed_bps > 0, "the stream is moving bytes");
-        assert!(seen[2].eta_seconds > 0, "890 bytes are left to read");
+        assert_eq!(
+            (seen[0].transferred, seen[0].total, seen[0].percentage),
+            (500, 500, 100)
+        );
     }
 
     /// Only a refusal by the object or the server goes straight to one stream;
