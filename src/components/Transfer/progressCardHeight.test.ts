@@ -168,6 +168,27 @@ describe('ProgressCard during a transfer', () => {
         expect(value).toBe('[' + 'min(var(HELD),calc(100vh-4rem))' + ']');
     });
 
+    it('measures a growth that comes with no render, and stops watching when it closes', async () => {
+        const disconnect = vi.fn();
+        let resized = () => {};
+        vi.stubGlobal('ResizeObserver', class {
+            constructor(callback: () => void) { resized = callback; }
+            observe() {}
+            disconnect = disconnect;
+        });
+        const other = document.createElement('div');
+        const otherRoot = createRoot(other);
+        height = 200;
+        await act(async () => otherRoot.render(createElement(ProgressCard, { transfer: toast('a.bin'), onCancel: () => {}, onMinimize: () => {} })));
+        height = 320;
+        act(() => resized());
+        const element = other.firstElementChild as HTMLElement;
+        expect(element.style.getPropertyValue(HELD_HEIGHT)).toBe('320px');
+        await act(async () => otherRoot.unmount());
+        expect(disconnect).toHaveBeenCalled();
+        vi.unstubAllGlobals();
+    });
+
     it('grows when its content needs more room', async () => {
         await render(toast('a.bin'), 300);
         await render(toast('b.bin'), 360);

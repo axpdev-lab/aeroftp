@@ -61,6 +61,15 @@ export function useNeverShrinkingHeight<T extends HTMLElement>(scope: unknown) {
         measure();
     });
 
+    // Text can wrap when the window narrows, with no render to measure it.
+    useEffect(() => {
+        const element = ref.current;
+        if (!element || typeof ResizeObserver === 'undefined') return undefined;
+        const observer = new ResizeObserver(measure);
+        observer.observe(element);
+        return () => observer.disconnect();
+    }, [measure]);
+
     useEffect(() => () => clearTimeout(timer.current), []);
 
     const measureAfterAnimation = useCallback(() => {
