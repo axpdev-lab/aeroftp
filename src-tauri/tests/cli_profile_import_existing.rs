@@ -545,18 +545,27 @@ fn an_rclone_import_keeps_one_whole_oauth_app() {
     let (servers, secrets, _) =
         ftp_client_gui_lib::profile_export::import_profiles(&check, PASSWORD).unwrap();
     assert_eq!(servers.len(), 2);
+    let mut apps = std::collections::HashSet::new();
     for server in &servers {
         let app = secrets.get(&server.id).expect("the exported secrets");
         let pair = (
             app.oauth_client_id.as_deref(),
             app.oauth_client_secret.as_deref(),
         );
+        // The first remote the import met holds the provider's one app.
         assert!(
             pair == (Some("app-one"), Some("secret-one"))
                 || pair == (Some("app-two"), Some("secret-two")),
-            "a mixed or missing app: {pair:?}"
+            "a mixed or missing app for {}: {pair:?}",
+            server.name
         );
+        apps.insert(pair);
     }
+    assert_eq!(
+        apps.len(),
+        1,
+        "two apps for one provider singleton: {apps:?}"
+    );
 }
 
 #[test]

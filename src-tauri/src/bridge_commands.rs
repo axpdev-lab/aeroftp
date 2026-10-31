@@ -1803,6 +1803,22 @@ mod tests {
     /// only the servers, the skipped remotes, the path and the count: the
     /// profile reached the panel with no secret and no reason.
     #[test]
+    fn a_secret_that_could_not_be_stored_reaches_the_warnings() {
+        let parsed = json!({ "warnings": [{ "name": "parsed", "reason": "from the parser" }] });
+        let response = bridge_import_response(
+            &parsed,
+            Vec::new(),
+            1,
+            vec![json!({ "name": "box1", "reason": "its password was not stored: test" })],
+        );
+        let warnings = response["warnings"].as_array().expect("warnings list");
+        assert_eq!(warnings.len(), 2, "{response}");
+        assert_eq!(warnings[0]["name"], "parsed");
+        assert_eq!(warnings[1]["name"], "box1");
+        assert_eq!(warnings[1]["reason"], "its password was not stored: test");
+    }
+
+    #[test]
     fn bridge_import_response_carries_the_rclone_import_warnings() {
         let root = tempfile::tempdir().unwrap();
         let config = root.path().join("rclone.conf");

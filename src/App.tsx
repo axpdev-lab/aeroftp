@@ -4410,6 +4410,8 @@ const App: React.FC = () => {
                     notify.warning(t('aerocryptNative.legacyMarkerConnectBanner'), String(result.warning));
                   } else if (result.changed || result.legacyDeleted) {
                     try {
+                      // Bound to the account this ran under: a switch while it reads must not put the metadata elsewhere.
+                      const accountRead = await readSavedServerProfilesForWrite();
                       const configJson = await invoke<string | null>('aerocrypt_provider_read_config', {
                         basePath: scope,
                       });
@@ -4417,7 +4419,7 @@ const App: React.FC = () => {
                         let saltB64 = '';
                         const saltLine = configJson.split('\n').find((l) => l.startsWith('salt\t'));
                         if (saltLine) saltB64 = saltLine.split('\t')[1]?.trim() || '';
-                        await invoke('store_overlay_metadata', { profileId, configJson, salt: saltB64 || null });
+                        await invoke('store_overlay_metadata', { profileId, configJson, salt: saltB64 || null, expectedUserId: accountRead.userId ?? null });
                       }
                     } catch {
                       /* kit warms on next connect */
@@ -15296,6 +15298,7 @@ const App: React.FC = () => {
             userPartitionsRekeyed?: number;
             userPartitionsUnreadable?: number;
             userPartitionsBackupPath?: string;
+            sqliteDbsFailed?: string[];
           }>('import_keystore', {
             password,
             filePath,
@@ -15322,6 +15325,12 @@ const App: React.FC = () => {
             }
           }
           await refreshProfilesFromImportedKeystore();
+          if (result.sqliteDbsFailed?.length) {
+            notify.warning(
+              t('settings.importKeystore') || 'Import Keystore',
+              t('settings.keystoreDatabasesFailed', { names: result.sqliteDbsFailed.join(', ') }),
+            );
+          }
           // F-012 W1/W2: when the import needs a restart or carried cross-machine
           // partitions (re-keyed or unreadable) or snapshotted the local DB,
           // surface a modal that cannot be missed instead of a transient toast.

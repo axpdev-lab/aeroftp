@@ -2088,7 +2088,13 @@ fn import_keystore_with_store(
             if let Err(e) = std::fs::create_dir_all(cfg) {
                 tracing::warn!("Cannot create config_dir for SQLite restore: {}", e);
                 // Reachable only if the folder goes after the list lock created it.
-                sqlite_dbs_failed.extend(payload.sqlite_dumps.keys().cloned());
+                sqlite_dbs_failed.extend(
+                    payload
+                        .sqlite_dumps
+                        .keys()
+                        .filter(|name| SQLITE_DBS.contains(&name.as_str()))
+                        .cloned(),
+                );
                 sqlite_dbs_failed.sort();
             } else {
                 let total_dbs = payload.sqlite_dumps.len() as u32;
@@ -4152,6 +4158,9 @@ mod tests {
         payload
             .sqlite_dumps
             .insert("ai_chat.db".to_string(), dump.clone());
+        payload
+            .sqlite_dumps
+            .insert("file_tags.db".to_string(), dump.clone());
         let backup = dir.path().join("blocked.aeroftp-keystore");
         seal_backup(&backup, PASSWORD_736, &payload);
 
@@ -4167,7 +4176,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(result.sqlite_dbs_failed, ["ai_chat.db"]);
-        assert_eq!(result.sqlite_dbs_restored, 0);
+        assert_eq!(result.sqlite_dbs_restored, 1);
+        assert!(cfg.join("file_tags.db").is_file());
     }
 
     /// A folder that cannot be created stops the import at the list lock, which needs

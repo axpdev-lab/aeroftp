@@ -2989,8 +2989,9 @@ fn rmdir_condition(item: &serde_json::Value) -> Option<&str> {
     })
 }
 
-/// Save a drive hint where it is read: an imported or moved profile has a partition
-/// row, and readers prefer it. The next connection captures the hint again.
+/// Save a drive hint where it is read, for the accounts that hold the profile: an
+/// imported or moved profile has a partition row, and readers prefer it. The next
+/// connection captures the hint again.
 fn keep_drive_hint(
     store: &crate::credential_store::CredentialStore,
     prefix: &str,
@@ -2998,7 +2999,9 @@ fn keep_drive_hint(
     value: &str,
 ) {
     let key = format!("{prefix}_{profile_id}");
-    if let Err(e) = crate::user_partitions::store_active_credential_dual(store, &key, value) {
+    if let Err(e) =
+        crate::user_partitions::store_profile_credential(store, profile_id, &key, None, value)
+    {
         tracing::warn!("OneDrive drive hint not saved: {e}");
     }
 }

@@ -41230,6 +41230,7 @@ fn rclone_import_json(
             "jottaRefreshStored": summary.jotta_refresh_stored,
             "profilesAppended": summary.profiles_appended,
             "profilesRenamed": summary.profiles_renamed,
+            "oauthAppWarnings": summary.oauth_app_warnings,
         });
     }
     redacted
@@ -41361,6 +41362,8 @@ struct RcloneApplySummary {
     /// Profiles the write stored under another name, each with the name it
     /// got (`renamed_by_write`).
     profiles_renamed: Vec<ftp_client_gui_lib::util::profile_name::RenamedProfile>,
+    /// One line per profile whose OAuth app was not kept.
+    oauth_app_warnings: Vec<String>,
 }
 
 /// Map a saved-server protocol identifier to the `OAuthProvider` slug used
@@ -41450,6 +41453,7 @@ async fn apply_rclone_import_to_vault(
                 jotta_refresh_stored: 0,
                 profiles_appended: 0,
                 profiles_renamed: Vec::new(),
+                oauth_app_warnings: Vec::new(),
             };
             // Ids are minted per parse, so one is held only if the list took it since.
             // It then keeps its secrets, as a skipped `.aeroftp` profile does.
@@ -41527,6 +41531,7 @@ async fn apply_rclone_import_to_vault(
         .map_err(|e| format!("vault write failed: {e}"))?;
     // The app a token refreshes with, as the GUI import keeps it: a fresh device
     // has nothing else to refresh with. After the write, which holds the lock.
+    let mut oauth_app_warnings = Vec::new();
     for (profile_id, secrets) in &result.provider_secrets {
         let slug = protocol_of(profile_id).and_then(|protocol| {
             ftp_client_gui_lib::bridge_commands::rclone_oauth_client_cred_key(&protocol)
@@ -41539,17 +41544,22 @@ async fn apply_rclone_import_to_vault(
                 secrets.oauth_client_secret.as_deref(),
             ) {
                 Ok(false) => {}
-                Ok(true) => eprintln!(
-                    "Warning: another OAuth app of this provider stays stored, so '{profile_id}' may need a new sign-in"
-                ),
-                Err(e) => eprintln!("Warning: the OAuth app of '{profile_id}' was not stored: {e}"),
+                Ok(true) => oauth_app_warnings.push(format!(
+                    "another OAuth app of this provider stays stored, so '{profile_id}' may need a new sign-in"
+                )),
+                Err(e) => oauth_app_warnings
+                    .push(format!("the OAuth app of '{profile_id}' was not stored: {e}")),
             }
         }
     }
     // Read from the list stored: only the write knows which profile had a
     // name first (an older list may hold two of one name).
+    for warning in &oauth_app_warnings {
+        eprintln!("Warning: {warning}");
+    }
     Ok(RcloneApplySummary {
         profiles_renamed: renamed_by_write(&profiles, &stored),
+        oauth_app_warnings,
         ..summary
     })
 }
@@ -43449,7 +43459,12 @@ async fn cmd_keystore_import(
         if !outcome.sqlite_dbs_failed.is_empty() {
             eprintln!(
                 "Warning: these databases could not be restored and keep what they held: {}",
-                outcome.sqlite_dbs_failed.join(", ")
+                outcome
+                    .sqlite_dbs_failed
+                    .iter()
+                    .map(|name| sanitize_filename(name))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             );
         }
         if outcome.requires_restart {

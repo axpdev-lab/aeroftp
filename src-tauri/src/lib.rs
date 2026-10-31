@@ -17543,6 +17543,7 @@ async fn store_overlay_metadata(
     profile_id: String,
     config_json: String,
     salt: Option<String>,
+    expected_user_id: Option<i64>,
 ) -> Result<(), String> {
     only_main_window(webview.label(), "store_overlay_metadata")?;
     let store = credential_store::CredentialStore::from_cache()
@@ -17563,7 +17564,16 @@ async fn store_overlay_metadata(
                 salt,
             ));
         }
-        match user_partitions::cli_get_active_user(&store)? {
+        let active = user_partitions::cli_get_active_user(&store)?;
+        // The account the caller read the overlay under: a switch since must not put
+        // its metadata in another account.
+        if expected_user_id.is_some() && active.as_ref().map(|user| user.id) != expected_user_id {
+            return Err(format!(
+                "{}: the active account changed, so the overlay metadata was not saved",
+                user_partitions::ACCOUNT_CHANGED
+            ));
+        }
+        match active {
             Some(user) => profile_import_plan::apply_secret_writes(
                 &VaultSecretSlots {
                     store: &store,
@@ -17613,6 +17623,23 @@ async fn store_oauth_app(
     .map_err(|e| format!("OAuth app task failed: {e}"))?
 }
 
+/// The app stored for `provider`: the singleton keys, or the legacy settings blob
+/// their readers fall back to. A write that saw only the empty keys would put another
+/// app in front of the one existing profiles use.
+fn stored_oauth_app(
+    store: &credential_store::CredentialStore,
+    provider: &str,
+) -> Result<(Option<String>, Option<String>), String> {
+    let id = vault_value(store, &format!("oauth_{provider}_client_id"))?;
+    let secret = vault_value(store, &format!("oauth_{provider}_client_secret"))?;
+    if id.is_some() || secret.is_some() {
+        return Ok((id, secret));
+    }
+    let (legacy_id, legacy_secret) = bridge_commands::resolve_oauth_client_config(store, provider);
+    let present = |value: String| Some(value).filter(|value| !value.is_empty());
+    Ok((present(legacy_id), present(legacy_secret)))
+}
+
 /// Fill what is missing of `provider`'s app from a config that carries one, under
 /// the same lock: never a secret next to another app's id, and never over a value
 /// the user configured. Returns whether another app stays stored: a token this
@@ -17625,11 +17652,17 @@ pub fn fill_oauth_app(
 ) -> Result<bool, String> {
     let conn = user_partitions::open_or_init_cli()?;
     let _lock = user_partitions::ProfileListLock::acquire(&conn)?;
-    let stored_id = vault_value(store, &format!("oauth_{provider}_client_id"))?;
-    let stored_secret = vault_value(store, &format!("oauth_{provider}_client_secret"))?;
-    let other_app = client_id
-        .filter(|id| !id.is_empty())
-        .is_some_and(|id| stored_id.as_deref().is_some_and(|stored| stored != id));
+    let (stored_id, stored_secret) = stored_oauth_app(store, provider)?;
+    let carries = [client_id, client_secret]
+        .iter()
+        .flatten()
+        .any(|value| !value.is_empty());
+    let other_app = carries
+        && !profile_import_plan::may_write_oauth_app(
+            stored_id.as_deref(),
+            stored_secret.as_deref(),
+            client_id.filter(|id| !id.is_empty()),
+        );
     let [client_id, client_secret] = oauth_app_gaps(
         stored_id.as_deref(),
         stored_secret.as_deref(),
@@ -19214,10 +19247,8 @@ fn restore_shared_import_secrets(
         // issued by the other app and may need a new sign-in.
         if secrets.oauth_client_id.is_some() || secrets.oauth_client_secret.is_some() {
             if let Some(cred_slug) = bridge_commands::oauth_client_cred_key(&protocol) {
-                let stored_id = vault_value(store, &format!("oauth_{cred_slug}_client_id"));
-                let stored_secret = vault_value(store, &format!("oauth_{cred_slug}_client_secret"));
-                match (stored_id, stored_secret) {
-                    (Ok(stored_id), Ok(stored_secret))
+                match stored_oauth_app(store, cred_slug) {
+                    Ok((stored_id, stored_secret))
                         if profile_import_plan::may_write_oauth_app(
                             stored_id.as_deref(),
                             stored_secret.as_deref(),
@@ -19238,11 +19269,11 @@ fn restore_shared_import_secrets(
                             shared.failed.insert(profile_id.clone());
                         }
                     }
-                    (Ok(_), Ok(_)) => {
+                    Ok(_) => {
                         shared.kept_oauth_apps.insert(profile_id.clone());
                     }
                     // Unreadable: left alone, and reported like a kept app.
-                    (Err(e), _) | (_, Err(e)) => {
+                    Err(e) => {
                         shared.kept_oauth_apps.insert(profile_id.clone());
                         log::warn!("Import: {profile_id} oauth app: {e}");
                     }

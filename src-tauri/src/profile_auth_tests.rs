@@ -940,9 +940,51 @@ async fn durable_profile_auth_lifecycle(
         )
         .unwrap_err();
         conn.execute_batch("DROP TRIGGER refuse_save;").unwrap();
+        // What a reader gets is the row, not the vault: the reason for the error.
+        assert_eq!(
+            users::resolve_credential_for_user(store, active_id, "server_dual-save")
+                .unwrap()
+                .unwrap()
+                .as_str(),
+            "old"
+        );
         assert!(refused.contains("server_dual-save"), "{refused}");
         assert!(!refused.contains("new-value"), "{refused}");
         assert_eq!(store.get("server_dual-save").unwrap(), "new-value");
+
+        // An app kept in the legacy settings blob counts as stored: a config with
+        // another app must not put it in front of the one existing profiles use.
+        store
+            .store(
+                "config_oauth_clients",
+                r#"{"legacyapp":{"clientId":"legacy-id","clientSecret":"legacy-secret"}}"#,
+            )
+            .unwrap();
+        assert!(
+            crate::fill_oauth_app(store, "legacyapp", Some("other-id"), Some("other-secret"))
+                .unwrap()
+        );
+        assert!(store.get("oauth_legacyapp_client_id").is_err());
+        assert!(store.get("oauth_legacyapp_client_secret").is_err());
+        store.delete("config_oauth_clients").unwrap();
+
+        // A profile's token goes to the account holding it, not the active one, and a
+        // sign-out removes that row too.
+        let root = store.derive_user_partition_wrapping_key();
+        users::set_user_credential_for(&conn, &root, other_id, "oauth_box_owned", "oauth", "old")
+            .unwrap();
+        users::store_profile_credential(store, "owned", "oauth_box_owned", Some("oauth"), "new")
+            .unwrap();
+        let row = |user: i64| {
+            users::get_user_credential_for(&conn, &root, user, "oauth_box_owned")
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        assert_eq!(row(other_id).as_deref(), Some("new"));
+        assert_eq!(row(active_id), None);
+        users::delete_profile_credential(store, "owned", "oauth_box_owned").unwrap();
+        assert_eq!(row(other_id), None);
+        assert!(store.get("oauth_box_owned").is_err());
 
         // A key outside the typed set follows its row, as a relocation leaves one.
         let root = store.derive_user_partition_wrapping_key();

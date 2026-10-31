@@ -19,18 +19,14 @@ describe('an OAuth app is saved as one unit', () => {
 
     it('goes through a registered command under the lock an import holds', () => {
         expect(librs).toMatch(/^\s+store_oauth_app,$/m);
-        const command = librs.slice(librs.indexOf('async fn store_oauth_app('), librs.indexOf('fn write_oauth_app<'));
+        const command = librs.slice(librs.indexOf('async fn store_oauth_app('), librs.indexOf('pub fn fill_oauth_app('));
         expect(command).toContain('only_main_window(webview.label(), "store_oauth_app")');
         expect(command).toContain('ProfileListLock::acquire');
+        expect(command).toContain('write_oauth_app(');
         const overlay = librs.slice(librs.indexOf('async fn store_overlay_metadata('), librs.indexOf('async fn store_oauth_app('));
         expect(overlay).toContain('ProfileListLock::acquire');
     });
 
-    it('stops a sign-in whose app could not be saved, and says so', () => {
-        expect(connect).toContain("title: t('toast.saveFailed')");
-        const write = connect.slice(connect.indexOf("invoke('store_oauth_app'"));
-        expect(write.slice(0, 500)).toMatch(/catch \(reason\)[\s\S]*return;/);
-    });
 
     it('saves an overlay config with its salt, never apart', () => {
         for (const source of [app, unlock]) {

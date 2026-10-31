@@ -989,17 +989,21 @@ impl SessionKeys for VaultKeys {
         self.store
             .store(key, &raw)
             .map_err(|error| ProviderError::Other(error.to_string()))?;
+        // Every owner: one that fails, such as a locked account, must not leave the
+        // others on the old session.
+        let mut first_failure = None;
         for user in owners {
-            crate::user_partitions::mirror_credential_for_user_typed(
+            if let Err(e) = crate::user_partitions::mirror_credential_for_user_typed(
                 &self.store,
                 user,
                 key,
                 PARTITION_TYPE,
                 &raw,
-            )
-            .map_err(ProviderError::Other)?;
+            ) {
+                first_failure.get_or_insert(ProviderError::Other(e));
+            }
         }
-        Ok(())
+        first_failure.map_or(Ok(()), Err)
     }
 }
 

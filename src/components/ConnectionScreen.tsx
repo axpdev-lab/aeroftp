@@ -980,12 +980,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     // Write or clear the persisted per-mode snapshots for a profile depending on
     // the opt-in. Called from saveToServers for both the edit and new branches.
-    const syncPersistedModeCredentials = async (profileId: string): Promise<void> => {
+    const syncPersistedModeCredentials = async (profileId: string): Promise<boolean> => {
         if (persistModeCredentials && inModeGroup) {
-            await storeModeCredentials(profileId, buildModeCredentialMap()).catch(reportSecretNotSaved);
+            try {
+                await storeModeCredentials(profileId, buildModeCredentialMap());
+            } catch (err) {
+                reportSecretNotSaved(err);
+                return false;
+            }
         } else {
             await deleteModeCredentials(profileId);
         }
+        return true;
     };
 
     // P3: the AeroCrypt overlay binding is offered only on backends where a
@@ -2136,9 +2142,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // Migrate the persisted per-mode credential snapshots from the old id
         // to the converted one (or clear them when the opt-in is off), so a
         // later mode switch on the converted profile restores without asking.
-        await syncPersistedModeCredentials(newId);
+        // The original map goes only once the converted one is stored: it may be the
+        // only copy of the other modes' credentials.
+        const modesStored = await syncPersistedModeCredentials(newId);
         if (newId !== originalServer.id) {
-            await deleteModeCredentials(originalServer.id);
+        if (modesStored) await deleteModeCredentials(originalServer.id);
         }
         // Move the ⭐ favourite flag from the deleted original to the new
         // profile (issue #215): convert replaces in place, so remove the old id.

@@ -2645,7 +2645,11 @@ fn relocate_secret_key_dual(
                     )
                 })
                 .is_ok();
-                copied = in_vault || in_partition;
+                // A target that is not the secret's legacy owner reads only its
+                // partition, so a vault copy alone would not reach it.
+                let target_reads_vault = nonprofile_secret_owner(conn)
+                    .is_ok_and(|owner| owner == Some(relocation.target_user_id));
+                copied = in_partition || (in_vault && target_reads_vault);
             }
         }
     }
@@ -3407,6 +3411,78 @@ fn active_user_id_quiet() -> Option<i64> {
     active_user_id(&conn).ok().flatten()
 }
 
+/// The active account for a write that readers must see: a lookup that fails is an
+/// error, since a partition row may be holding the old value. `None` means no account.
+fn active_user_id_for_write() -> Result<Option<i64>, String> {
+    active_user_id(&open_or_init_cli()?)
+}
+
+/// Save a secret of `profile_id` for the accounts that hold that profile, whichever
+/// is active: another account's token must not land in the active one's partition.
+/// Every owner is tried, and the first failure is returned. A profile no account
+/// holds yet goes to the active account.
+pub(crate) fn store_profile_credential(
+    store: &CredentialStore,
+    profile_id: &str,
+    credential_id: &str,
+    credential_type: Option<&str>,
+    secret: &str,
+) -> Result<(), String> {
+    let owners = if profile_id.is_empty() {
+        Vec::new()
+    } else {
+        profile_credential_owner_ids(store, profile_id, credential_id)?
+    };
+    if owners.is_empty() {
+        return match credential_type {
+            Some(kind) => store_active_credential_typed_dual(store, credential_id, kind, secret),
+            None => store_active_credential_dual(store, credential_id, secret),
+        };
+    }
+    let mut first_failure = None;
+    for owner in owners {
+        let written = match credential_type {
+            Some(kind) => {
+                store_credential_for_user_typed_dual(store, owner, credential_id, kind, secret)
+            }
+            None => store_credential_for_user_dual(store, owner, credential_id, secret),
+        };
+        if let Err(e) = written {
+            first_failure.get_or_insert(e);
+        }
+    }
+    first_failure.map_or(Ok(()), Err)
+}
+
+/// Remove a secret of `profile_id` from the vault and from the accounts that hold it.
+/// A failure is an error: a row left behind would keep answering readers.
+pub(crate) fn delete_profile_credential(
+    store: &CredentialStore,
+    profile_id: &str,
+    credential_id: &str,
+) -> Result<(), String> {
+    match store.delete(credential_id) {
+        Ok(_) | Err(crate::credential_store::CredentialError::NotFound(_)) => {}
+        Err(e) => return Err(format!("Delete credential from vault: {e}")),
+    }
+    let owners = if profile_id.is_empty() {
+        Vec::new()
+    } else {
+        profile_credential_owner_ids(store, profile_id, credential_id)?
+    };
+    let conn = open_or_init_cli()?;
+    let mut users = owners;
+    if let Some(active) = active_user_id(&conn)? {
+        if !users.contains(&active) {
+            users.push(active);
+        }
+    }
+    for user in users {
+        delete_user_credential_for(&conn, user, credential_id)?;
+    }
+    Ok(())
+}
+
 /// Mirror one secret, just written to the vault, into `user_id`'s partition: the
 /// keys the prefix classifier knows, and any key whose row already exists (a
 /// relocation leaves one), since readers prefer that row. Zero-password safe (a
@@ -3737,7 +3813,7 @@ pub fn store_active_credential_dual(
     store
         .store(credential_id, secret)
         .map_err(|e| format!("Store credential in vault: {e}"))?;
-    match active_user_id_quiet() {
+    match active_user_id_for_write()? {
         Some(user_id) => mirror_credential_for_user(store, user_id, credential_id, secret),
         None => Ok(()),
     }
@@ -3966,7 +4042,7 @@ pub fn mirror_active_credential(
     credential_type: &str,
     secret: &str,
 ) -> Result<(), String> {
-    match active_user_id_quiet() {
+    match active_user_id_for_write()? {
         Some(user_id) => {
             mirror_credential_for_user_typed(store, user_id, credential_id, credential_type, secret)
         }

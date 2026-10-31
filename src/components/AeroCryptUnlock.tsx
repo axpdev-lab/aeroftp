@@ -17,6 +17,7 @@
 import * as React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { readSavedServerProfilesForWrite } from '../utils/serverProfileStore';
 import { pickFile, pickSave } from '../utils/pickPath';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { Lock, Unlock, Loader2, X, FileKey } from 'lucide-react';
@@ -377,6 +378,8 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                 // Publish the new TSV into the keystore so Recovery kit works
                 // offline immediately (pre-Tier-1 vaults lacked vault_id).
                 try {
+                    // Bound to the account this ran under: a switch while it reads must not put the metadata elsewhere.
+                    const accountRead = await readSavedServerProfilesForWrite();
                     const configJson =
                         (await invoke<string | null>('aerocrypt_provider_read_config', {
                             basePath: vaultRoot,
@@ -394,7 +397,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                                 /* ignore */
                             }
                         }
-                        await invoke('store_overlay_metadata', { profileId, configJson, salt: saltB64 || null });
+                        await invoke('store_overlay_metadata', { profileId, configJson, salt: saltB64 || null, expectedUserId: accountRead.userId ?? null });
                         const kit = await invoke<AerocryptEmergencyKit>('aerocrypt_profile_recovery_kit', {
                             profileId,
                         });

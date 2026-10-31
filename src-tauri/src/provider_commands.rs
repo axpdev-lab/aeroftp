@@ -8819,10 +8819,11 @@ fn store_fourshared_tokens(
     // Try vault first
     if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
         // Through the row a reader prefers: an imported or moved profile has one.
-        crate::user_partitions::store_active_credential_typed_dual(
+        crate::user_partitions::store_profile_credential(
             &store,
+            profile_id,
             &key,
-            "oauth",
+            Some("oauth"),
             &token_data,
         )
         .map_err(|e| format!("Failed to store tokens: {}", e))?;
@@ -8832,10 +8833,11 @@ fn store_fourshared_tokens(
     // Try auto-init vault
     if crate::credential_store::CredentialStore::init().is_ok() {
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            crate::user_partitions::store_active_credential_typed_dual(
+            crate::user_partitions::store_profile_credential(
                 &store,
+                profile_id,
                 &key,
-                "oauth",
+                Some("oauth"),
                 &token_data,
             )
             .map_err(|e| format!("Failed to store tokens: {}", e))?;
@@ -10411,10 +10413,11 @@ pub async fn fourshared_has_tokens(profile_id: Option<String>) -> Result<bool, S
 #[tauri::command]
 pub async fn fourshared_logout(profile_id: Option<String>) -> Result<(), String> {
     if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-        let key = fourshared_token_key(profile_id.as_deref().unwrap_or_default());
-        let _ = store.delete(&key);
-        // Readers prefer the partition: a row left there would keep the account signed in.
-        crate::user_partitions::unmirror_active_credential(&key);
+        let profile_id = profile_id.as_deref().unwrap_or_default();
+        let key = fourshared_token_key(profile_id);
+        // Readers prefer the partition: a row left there would keep the account
+        // signed in, so a failure here is one the user must see.
+        crate::user_partitions::delete_profile_credential(&store, profile_id, &key)?;
     }
     info!("Logged out from 4shared");
     Ok(())
