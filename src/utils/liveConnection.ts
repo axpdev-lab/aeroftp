@@ -84,6 +84,47 @@ function hostOf(params: ConnectionParams): string {
 }
 
 /**
+ * The target of a connection as one string: equal for two connections exactly
+ * when {@link isSameConnection} holds, so a cache of what a server holds can
+ * key on it (a folder's size, say) and never serve one bucket, branch, drive
+ * or port the figure of another. Credentials and session settings are left
+ * out, as there.
+ */
+export function connectionTargetKey(params: ConnectionParams): string {
+    const options = (params.options ?? {}) as Record<string, unknown>;
+    const target = Object.keys(options)
+        .filter(key => !OPTIONS_OUTSIDE_THE_TARGET.has(key) && !isAbsent(options[key]))
+        .sort()
+        .map(key => [key, options[key]]);
+    return JSON.stringify([params.protocol || '', hostOf(params), params.port ?? null, params.username || '', target]);
+}
+
+const connectionNumbers = new WeakMap<ConnectionParams, number>();
+let lastConnectionNumber = 0;
+
+/**
+ * A number for one connection as opened, to key what that connection read (a
+ * folder's size) where the target alone is not enough. Two accounts on one
+ * server can differ only in a credential, which {@link connectionTargetKey}
+ * leaves out: FileLu's API key is the password, and an OAuth token is not in
+ * the params at all. A session tab keeps the params object copied at its
+ * connect for as long as the tab lasts: updates of the tab spread it
+ * unchanged, and switching back to the tab, which logs in again, restores the
+ * same object. A connect copies a new one, as does a change of what the tab
+ * reaches (a GitHub branch). So one number per object is one number per
+ * tab's connection: a new connect, of the same profile too, starts afresh,
+ * and a tab switched back to keeps what it read, as it keeps its listing.
+ */
+export function connectionNumberOf(params: ConnectionParams): number {
+    let number = connectionNumbers.get(params);
+    if (number === undefined) {
+        number = ++lastConnectionNumber;
+        connectionNumbers.set(params, number);
+    }
+    return number;
+}
+
+/**
  * Whether the live connection reaches what `target` describes: the same
  * protocol, host, port and account, and the same value for every option that
  * chooses the storage (bucket, region, endpoint, container, branch, ...).

@@ -2096,7 +2096,6 @@
         "contextMenu": {
             "askAeroAgent": "Ask AeroAgent...",
             "browseArchive": "Browse Archive",
-            "calculateSize": "Calculate Size",
             "compress": "Compress",
             "compress7zMultiple": "Compress 7z ({count})",
             "compressing": "Compressing...",

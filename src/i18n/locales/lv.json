@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "Jautāt AeroAgent...",
             "browseArchive": "Pārlūkot arhīvu",
-            "calculateSize": "Aprēķināt lielumu",
             "compress": "Saspiests",
             "compress7zMultiple": "Saspiest 7z ({count})",
             "compressSubmenu": "Saspiest",

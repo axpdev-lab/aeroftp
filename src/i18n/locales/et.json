@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "Küsi AeroAgent-ilt...",
             "browseArchive": "Sirvi arhiivi",
-            "calculateSize": "Arvuta suurus",
             "compress": "Paki kokku",
             "compress7zMultiple": "Paki 7z ({count})",
             "compressSubmenu": "Paki",
