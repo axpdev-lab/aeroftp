@@ -3332,7 +3332,7 @@
                 "extremeDesc": "Totes les eines s'executen automàticament. Sense confirmacions. Màx. 50 passos. Només Cyber."
             },
             "welcomeSubtitle": "44 eines per a la gestió de fitxers, edició de codi i operacions del sistema",
-            "welcomeSubtitleSetup": "Configuri un proveidorda d'IA per comenar",
+            "welcomeSubtitleSetup": "Configuri un proveïdor d'IA per començar",
             "welcomeConfigureProvider": "Afegir API Key",
             "welcomeCapabilities": "Què puc fer",
             "welcomeTryAsking": "Provi de preguntar",

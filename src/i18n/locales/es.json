@@ -5693,7 +5693,7 @@
             "densityComfortable": "Filas cómodas",
             "table": {
                 "columnSettings": "Columns",
-                "manualOrderActive": "Manual order active",
+                "manualOrderActive": "Orden manual activo",
                 "clickToReturnManual": "Ordenando por {column}, haz clic en # para activar la reordenación manual",
                 "clickToSortBy": "Ordenar por {column}",
                 "footerSummary": "{count} perfiles · {unique} unidades en la nube únicas · {usage}",
