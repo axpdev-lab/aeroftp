@@ -784,17 +784,17 @@ pub fn benchmark_remote_roots(initial_path: &str, report_id: &str) -> (String, S
 /// instead of between the account's sections (Requested 79). An absolute
 /// prefix, and any prefix on another provider, is taken as given: resolving it
 /// against the profile's initial folder, as the CLI resolver does for other
-/// commands, would move a relative prefix of a profile that has one.
+/// commands, would move a relative prefix of a profile that has one. Its
+/// spaces are part of it: ` x ` is its own folder.
 pub fn benchmark_effective_prefix(
     prefix: &str,
     provider: ProviderType,
     start_folder: &str,
 ) -> String {
-    let trimmed = prefix.trim();
-    if provider != ProviderType::Proton || trimmed.starts_with('/') {
+    if provider != ProviderType::Proton || prefix.starts_with('/') {
         return prefix.to_string();
     }
-    let relative = trimmed.trim_matches('/');
+    let relative = prefix.trim_matches('/');
     let start = start_folder.trim_end_matches('/');
     match (start.is_empty(), relative.is_empty()) {
         (true, true) => "/".to_string(),
@@ -807,9 +807,9 @@ pub fn benchmark_remote_roots_from_prefix(prefix: &str, report_id: &str) -> (Str
     // Honor `--test-root-prefix` verbatim: the user has chosen a writable
     // sub-path (typically required for kDrive and SeaFile WebDAV which refuse
     // operations on `/`). We still nest a unique scratch dir under it so the
-    // base prefix can be reused across runs without colliding.
-    let trimmed = prefix.trim();
-    let normalized = trimmed.trim_end_matches('/');
+    // base prefix can be reused across runs without colliding. Verbatim
+    // includes its spaces: `/data ` and `/data` are two folders.
+    let normalized = prefix.trim_end_matches('/');
     let bench_base = if normalized.is_empty() {
         "/".to_string()
     } else if normalized.starts_with('/') {
@@ -1102,7 +1102,10 @@ pub fn sanitized_reports_json<T: Serialize + ?Sized>(
 /// first so a run folder is not half-replaced by the base folder that
 /// prefixes it. A path is matched in its JSON-escaped form, the form it has
 /// in `serialized`. The root and one-character paths are left alone: they
-/// would match everywhere and identify nothing.
+/// would match everywhere and identify nothing. A path is trimmed here on
+/// purpose, unlike everywhere else: a folder named with spaces only would
+/// match the report's indentation, and the trimmed form still covers the
+/// spaced one.
 pub fn scrub_private_paths(serialized: String, paths: &[(String, &'static str)]) -> String {
     let mut ordered: Vec<(String, &'static str)> = paths
         .iter()

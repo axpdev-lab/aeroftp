@@ -124,6 +124,15 @@ fn ehud_368_a_refused_scratch_folder_names_where_it_was_made() {
             .starts_with("benchmark cannot create its scratch folder '/Docs/aeroftp-bench/run': "),
         "{absolute}"
     );
+    // The start folder is named as given: `team ` and a name of spaces are
+    // folders of their own, not `team` and the root.
+    for start in ["team ", "   "] {
+        let named = scratch_dir_error("aeroftp-bench/run", start, &error);
+        assert!(
+            named.contains(&format!("in the profile's start folder '{start}':")),
+            "{named}"
+        );
+    }
 }
 
 /// #368 (Ehud): a client that cannot purge its provider's trash by design
@@ -441,6 +450,40 @@ fn benchmark_remote_roots_from_prefix_prepends_leading_slash() {
     let (base, root) = benchmark_remote_roots_from_prefix("home/aeroftp", "rid");
     assert_eq!(base, "/home/aeroftp");
     assert_eq!(root, "/home/aeroftp/rid");
+}
+
+/// `--test-root-prefix` is taken as given, spaces included: it was trimmed,
+/// so a run asked for ` /data ` scratched in `/data`, another folder, and a
+/// prefix of spaces in the root.
+#[test]
+fn a_test_root_prefix_keeps_its_spaces() {
+    use crate::providers::ProviderType::{Proton, Sftp};
+    for (prefix, base) in [
+        ("/data ", "/data "),
+        ("/data /", "/data "),
+        (" data", "/ data"),
+        (" /data", "/ /data"),
+        ("   ", "/   "),
+    ] {
+        assert_eq!(
+            benchmark_remote_roots_from_prefix(prefix, "rid"),
+            (base.to_string(), format!("{base}/rid")),
+            "{prefix:?}"
+        );
+    }
+    assert_eq!(
+        benchmark_effective_prefix(" x ", Proton, "/my-files"),
+        "/my-files/ x "
+    );
+    assert_eq!(
+        benchmark_effective_prefix(" /x", Proton, "/my-files"),
+        "/my-files/ /x"
+    );
+    assert_eq!(
+        benchmark_effective_prefix("   ", Proton, "/my-files"),
+        "/my-files/   "
+    );
+    assert_eq!(benchmark_effective_prefix(" /x ", Sftp, ""), " /x ");
 }
 
 #[test]
