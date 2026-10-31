@@ -1290,6 +1290,8 @@ impl B2Provider {
             run_concurrent_part_upload, ConcurrentPartUploadConfig,
         };
 
+        let source = super::upload_source::UploadSource::observe(local_path).await?;
+        source.ensure_size(size, "B2 large file upload")?;
         let start = match self.start_large_file(key).await {
             Err(e) if is_b2_token_failure(&e) => {
                 if !self.maybe_reauth(&e).await {
@@ -1333,6 +1335,8 @@ impl B2Provider {
             )
             .await?;
             let part_sha1s: Vec<String> = parts.into_iter().map(|(_, sha1)| sha1).collect();
+            // The finish publishes the file: refuse a mixture of two versions.
+            source.ensure_unchanged("B2 large file upload").await?;
             match self.finish_large_file(&file_id, part_sha1s.clone()).await {
                 Err(e) if is_b2_token_failure(&e) => {
                     if !self.maybe_reauth(&e).await {

@@ -1766,6 +1766,8 @@ impl StorageProvider for GoogleDriveProvider {
 
             // Step 2: Upload in 10MB chunks from file handle
             const CHUNK_SIZE: usize = 10 * 1024 * 1024;
+            let source = super::upload_source::UploadSource::observe(local_path).await?;
+            source.ensure_size(total_size, "Google Drive upload")?;
             let mut file = tokio::fs::File::open(local_path)
                 .await
                 .map_err(|e| ProviderError::Other(format!("Open file error: {}", e)))?;
@@ -1781,6 +1783,10 @@ impl StorageProvider for GoogleDriveProvider {
                     .map_err(|e| ProviderError::Other(format!("Read chunk error: {}", e)))?;
 
                 let end = offset + this_chunk as u64;
+                // The last chunk publishes the file: refuse a mixture of two versions.
+                if end == total_size {
+                    source.ensure_unchanged("Google Drive upload").await?;
+                }
                 let range = format!("bytes {}-{}/{}", offset, end - 1, total_size);
 
                 let chunk_response = self
@@ -3315,6 +3321,76 @@ mod tests {
                 "{response}"
             );
         }
+    }
+
+    /// Requested 114: a file rewritten while its chunks go up is not published
+    /// as a mixture of two versions: the last chunk, which commits, never leaves.
+    #[tokio::test]
+    async fn a_file_rewritten_during_a_resumable_upload_is_not_published() {
+        use std::sync::{Arc, Mutex};
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("big.bin");
+        std::fs::write(&local, vec![b'a'; 11 * 1024 * 1024]).unwrap();
+        let chunks: Arc<Mutex<Vec<String>>> = Arc::default();
+        let (seen, path) = (chunks.clone(), local.clone());
+        let origin: Arc<Mutex<String>> = Arc::default();
+        let session_origin = origin.clone();
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (seen, path, origin) = (seen.clone(), path.clone(), session_origin.clone());
+                async move {
+                    use axum::response::IntoResponse;
+                    let range = req
+                        .headers()
+                        .get("content-range")
+                        .map(|v| v.to_str().unwrap().to_string());
+                    let is_chunk = range.is_some();
+                    if let Some(range) = range {
+                        seen.lock().unwrap().push(range);
+                        std::fs::write(&path, vec![b'b'; 11 * 1024 * 1024 + 1]).unwrap();
+                    }
+                    if is_chunk {
+                        return axum::http::StatusCode::PERMANENT_REDIRECT.into_response();
+                    }
+                    if req
+                        .uri()
+                        .query()
+                        .unwrap_or("")
+                        .contains("uploadType=resumable")
+                    {
+                        let location = format!("{}/session", origin.lock().unwrap());
+                        return (axum::http::StatusCode::OK, [("location", location)])
+                            .into_response();
+                    }
+                    axum::Json(serde_json::json!({"files": [], "incompleteSearch": false}))
+                        .into_response()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        *origin.lock().unwrap() = format!("http://{addr}");
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("t".into());
+
+        let outcome = provider
+            .upload(local.to_str().unwrap(), "/big.bin", None)
+            .await;
+        server.abort();
+        let error = outcome
+            .expect_err("a file that changed is not published")
+            .to_string();
+        assert!(
+            error.contains("changed") || error.contains("became"),
+            "{error}"
+        );
+        assert_eq!(
+            chunks.lock().unwrap().len(),
+            1,
+            "the committing chunk must not leave"
+        );
     }
 
     /// Exercise the actual purge path with Drive search pages that may omit
