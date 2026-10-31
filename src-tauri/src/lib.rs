@@ -18553,11 +18553,7 @@ pub async fn import_server_profiles_with_mode(
         let committed =
             profile_import_plan::write_secrets_and_commit(&slots, writes, !replanned, || {
                 #[cfg(test)]
-                IMPORT_BEFORE_COMMIT.with_borrow_mut(|hook| {
-                    if let Some(hook) = hook {
-                        hook();
-                    }
-                });
+                run_import_before_commit();
                 user_partitions::cli_update_profiles_at_revision(&store, user, &revision, |list| {
                     profile_import_plan::lay_import_over(list, &report_servers)
                 })
@@ -18594,6 +18590,15 @@ thread_local! {
     /// play another writer there.
     pub(crate) static IMPORT_BEFORE_COMMIT: std::cell::RefCell<Option<Box<dyn FnMut()>>> =
         const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn run_import_before_commit() {
+    IMPORT_BEFORE_COMMIT.with_borrow_mut(|hook| {
+        if let Some(hook) = hook {
+            hook();
+        }
+    });
 }
 
 /// What one attempt of [`store_imported_profiles`] will do with the list it was
@@ -18633,6 +18638,8 @@ pub fn store_imported_profiles<T>(
         } = plan(&current)?;
         let committed =
             profile_import_plan::write_secrets_and_commit(&slots, writes, !replanned, || {
+                #[cfg(test)]
+                run_import_before_commit();
                 user_partitions::cli_update_profiles_at_revision(store, user, &revision, |list| {
                     list.extend(additions.iter().cloned())
                 })

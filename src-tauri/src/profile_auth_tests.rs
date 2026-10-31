@@ -923,6 +923,53 @@ async fn durable_profile_auth_lifecycle(
     assert_eq!(refused_twice, users::PROFILES_CHANGED);
     assert_eq!(read(&stale_key).unwrap().as_str(), "stale-local");
 
+    // The operation of the rclone import, the same way: a save in between costs one
+    // more plan and is kept, a second one refuses with no secret and no profile left.
+    let bridge_plan = |id: &'static str| {
+        move |_: &[serde_json::Value]| {
+            Ok(crate::ImportedProfilesPlan {
+                writes: vec![crate::profile_import_plan::SecretWrite::new(
+                    format!("server_{id}"),
+                    None,
+                    "bridge-secret",
+                )],
+                additions: vec![
+                    json!({"id": id, "name": id, "host": "b", "port": 2, "username": "u"}),
+                ],
+                result: (),
+            })
+        }
+    };
+    let mut left = 1;
+    crate::IMPORT_BEFORE_COMMIT.with_borrow_mut(|hook| {
+        *hook = Some(Box::new(move || {
+            if left > 0 {
+                left -= 1;
+                raced_write();
+            }
+        }))
+    });
+    let (_, _, bridged) =
+        crate::store_imported_profiles(store, active_id, bridge_plan("bridge-kept")).unwrap();
+    assert!(bridged.iter().any(|p| p["id"] == "bridge-kept"));
+    assert!(bridged.iter().any(|p| p["id"] == "raced"));
+    assert_eq!(
+        read("server_bridge-kept").unwrap().as_str(),
+        "bridge-secret"
+    );
+    crate::IMPORT_BEFORE_COMMIT.with_borrow_mut(|hook| *hook = Some(Box::new(raced_write)));
+    let bridge_refused =
+        crate::store_imported_profiles(store, active_id, bridge_plan("bridge-gone"))
+            .map(|_| ())
+            .unwrap_err();
+    crate::IMPORT_BEFORE_COMMIT.with_borrow_mut(|hook| *hook = None);
+    assert_eq!(bridge_refused, users::PROFILES_CHANGED);
+    assert!(read("server_bridge-gone").is_none());
+    assert!(store.get("server_bridge-gone").is_err());
+    let (kept, _) =
+        users::cli_update_server_profiles_for_user(store, active_id, |_| false).unwrap();
+    assert!(!kept.iter().any(|p| p["id"] == "bridge-gone"));
+
     // A file repeating an id holds one set of provider secrets: the first profile
     // brings the chain, the later one stored under a new id does not.
     let repeated_file = directory.path().join("repeated.aeroftp");
