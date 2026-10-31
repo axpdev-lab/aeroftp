@@ -6301,6 +6301,7 @@
             "narrowAvailable": "Šie iestatījumi tikai sašaurina salīdzinājumu, tāpēc to var filtrēt bez atkārtotas skenēšanas.",
             "narrowApply": "Lietot šim salīdzinājumam",
             "narrowedNote": "Filtrēts ar jauniem izslēgumiem bez atkārtotas skenēšanas. Identisko skaits joprojām ir no skenēšanas.",
+            "narrowAfterRestore": "Notiek atjaunošana. Šos iestatījumus var lietot salīdzinājumam, kad atjaunošana beigsies.",
             "backup": {
                 "checking": "Pārbauda, kā šis serveris pārvieto failus...",
                 "serverCopy": "Šis serveris nevar pārvietot: katra saglabājamā kopija tiek nokopēta serverī un pēc tam izdzēsta. Tas maksā pilnu katra saglabātā faila kopiju, divos atsevišķos soļos.",

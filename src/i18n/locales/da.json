@@ -6301,6 +6301,7 @@
             "narrowAvailable": "Disse indstillinger indsnævrer kun sammenligningen, så den kan filtreres uden en ny scanning.",
             "narrowApply": "Anvend på denne sammenligning",
             "narrowedNote": "Filtreret med nye udelukkelser uden en ny scanning. Antallet af identiske er stadig det fra scanningen.",
+            "narrowAfterRestore": "En gendannelse kører. Disse indstillinger kan anvendes på sammenligningen, når gendannelsen er færdig.",
             "backup": {
                 "checking": "Tjekker hvordan denne server flytter filer...",
                 "serverCopy": "Denne server kan ikke flytte: hver bevaret kopi kopieres på serveren og slettes derefter. Det koster en fuld kopi af hver bevaret fil, i to separate trin.",

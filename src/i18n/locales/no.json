@@ -6320,6 +6320,7 @@
             "narrowAvailable": "Disse innstillingene begrenser bare sammenligningen, så den kan filtreres uten ny skanning.",
             "narrowApply": "Bruk på denne sammenligningen",
             "narrowedNote": "Filtrert med nye ekskluderinger uten ny skanning. Antallet identiske er fortsatt det fra skanningen.",
+            "narrowAfterRestore": "En gjenoppretting pågår. Disse innstillingene kan brukes på sammenligningen når gjenopprettingen er ferdig.",
             "backup": {
                 "checking": "Sjekker hvordan denne serveren flytter filer...",
                 "serverCopy": "Denne serveren kan ikke flytte: hver bevarte kopi kopieres på serveren og slettes deretter. Det koster en full kopi av hver bevarte fil, i to separate trinn.",

@@ -6301,6 +6301,7 @@
             "narrowAvailable": "Ces réglages ne font que restreindre la comparaison, elle peut donc être filtrée sans nouvelle analyse.",
             "narrowApply": "Appliquer à cette comparaison",
             "narrowedNote": "Filtrée avec de nouvelles exclusions sans nouvelle analyse. Le nombre d'identiques reste celui de l'analyse.",
+            "narrowAfterRestore": "Une restauration est en cours. Ces réglages pourront être appliqués à la comparaison une fois la restauration terminée.",
             "backup": {
                 "checking": "Vérification de la façon dont ce serveur déplace les fichiers...",
                 "serverCopy": "Ce serveur ne sait pas déplacer : chaque copie conservée est copiée sur le serveur puis supprimée. Cela coûte une copie complète de chaque fichier conservé, en deux étapes distinctes.",

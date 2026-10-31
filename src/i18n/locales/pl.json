@@ -6301,6 +6301,7 @@
             "narrowAvailable": "Te ustawienia tylko zawężają porównanie, więc można je przefiltrować bez ponownego skanowania.",
             "narrowApply": "Zastosuj do tego porównania",
             "narrowedNote": "Przefiltrowano z nowymi wykluczeniami bez ponownego skanowania. Liczba identycznych nadal pochodzi ze skanowania.",
+            "narrowAfterRestore": "Trwa przywracanie. Te ustawienia można zastosować do porównania po zakończeniu przywracania.",
             "backup": {
                 "checking": "Sprawdzanie, jak ten serwer przenosi pliki...",
                 "serverCopy": "Ten serwer nie obsługuje przenoszenia: każda zachowywana kopia jest kopiowana na serwerze, a następnie usuwana. Kosztuje to pełną kopię każdego zachowanego pliku, w dwóch osobnych krokach.",

@@ -6301,6 +6301,7 @@
             "narrowAvailable": "Estos ajustes solo reducen la comparación, así que se puede filtrar sin volver a escanear.",
             "narrowApply": "Aplicar a esta comparación",
             "narrowedNote": "Filtrada con nuevas exclusiones sin volver a escanear. El recuento de idénticos sigue siendo el del escaneo.",
+            "narrowAfterRestore": "Hay una restauración en curso. Estos ajustes se pueden aplicar a la comparación cuando termine.",
             "backup": {
                 "checking": "Comprobando cómo mueve los archivos este servidor...",
                 "serverCopy": "Este servidor no puede mover: cada copia conservada se copia en el servidor y después se elimina. Eso cuesta una copia completa de cada archivo conservado, en dos pasos separados.",

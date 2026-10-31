@@ -6301,6 +6301,7 @@
             "narrowAvailable": "Aceste setări doar restrâng compararea, deci poate fi filtrată fără o nouă scanare.",
             "narrowApply": "Aplică la această comparare",
             "narrowedNote": "Filtrată cu excluderi noi fără o nouă scanare. Numărul de identice este în continuare cel din scanare.",
+            "narrowAfterRestore": "O restaurare este în curs. Aceste setări pot fi aplicate comparării când se termină restaurarea.",
             "backup": {
                 "checking": "Se verifică modul în care acest server mută fișierele...",
                 "serverCopy": "Acest server nu poate muta: fiecare copie păstrată este copiată pe server și apoi ștearsă. Asta costă o copie completă a fiecărui fișier păstrat, în doi pași separați.",

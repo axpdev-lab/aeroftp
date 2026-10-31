@@ -90,6 +90,8 @@ interface PlanTabContentProps {
     onRescan?: (args: { userExcludes: string[]; backupDir: string }) => void;
     /** Filter the current compare with wider settings, without a scan. */
     onNarrowComparison?: (args: { userExcludes: string[]; backupDir: string }) => Promise<void>;
+    /** Why the settings named here could not filter the current compare. */
+    narrowRefusal?: { userExcludes: string[]; backupDir: string; message: string };
     /** True when the remote goes through the provider API rather than the FTP session. */
     isProvider?: boolean;
     /** What the command line under the plan needs to name the same run. */
@@ -211,6 +213,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     compareBackupDir,
     onRescan,
     onNarrowComparison,
+    narrowRefusal,
     isProvider,
     cli,
 }) => {
@@ -218,9 +221,6 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     // One exclude list per pair, shared with the Local mirror tab and the
     // template import and export (the same store key).
     const [excludeText, setExcludeText] = useStickyState('sync.exclude', '');
-    // A refusal speaks for the patterns it refused, not for the next ones.
-    const [narrowError, setNarrowError] = React.useState<string | null>(null);
-    React.useEffect(() => setNarrowError(null), [excludeText]);
     // Which command text the last copy was for, so a changed plan never
     // shows "Copied" for a command that was not.
     const [copyResult, setCopyResult] = React.useState<{ text: string; ok: boolean } | null>(null);
@@ -339,8 +339,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
             ?? AEROSYNC_DEFAULT_BACKUP_DIR;
         if (result && !sameExcludePatterns(nextExcludes, compareExcludes)
             && narrowsComparison(compareExcludes, compareBackupDir, nextExcludes, backupDir)) {
-            onNarrowComparison?.({ userExcludes: nextExcludes, backupDir })
-                .catch((error: unknown) => setNarrowError(String(error)));
+            void onNarrowComparison?.({ userExcludes: nextExcludes, backupDir });
         }
         setConfirmedDestructive(false);
     };
@@ -379,15 +378,20 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     const backupStale = validBackupDir !== null && validBackupDir !== compareBackupDir;
     const compareStale = excludesStale || backupStale;
     const nextBackupDir = validBackupDir ?? compareBackupDir ?? AEROSYNC_DEFAULT_BACKUP_DIR;
-    const canNarrow = compareStale && !!onNarrowComparison
+    const narrows = compareStale
         && narrowsComparison(compareExcludes, compareBackupDir, userExcludes, nextBackupDir);
-    const staleReason = compareBackupDir === undefined
+    // A refusal speaks for the settings it refused, not for the next ones.
+    const narrowError = narrowRefusal && narrowRefusal.backupDir === nextBackupDir
+        && sameExcludePatterns(narrowRefusal.userExcludes, userExcludes) ? narrowRefusal.message : null;
+    // Narrowing is withheld while a restore runs, and so is the Rescan button.
+    const canNarrow = narrows && !!onNarrowComparison;
+    const staleReason = narrows
+        ? (t('aerosync.narrowAfterRestore') || 'A restore is running. These settings can be applied to the comparison when it ends.')
+        : compareBackupDir === undefined
         ? (t('aerosync.rescanFlat') || 'This comparison came from the two panel listings, not a full scan, so it cannot apply exclusions. Rescan before running.')
         : (t('aerosync.rescanBringsBack') || 'These settings bring back files the scan left out, so it never read them. Rescan before running.');
     const narrowComparison = () => {
-        setNarrowError(null);
-        onNarrowComparison?.({ userExcludes, backupDir: nextBackupDir })
-            .catch((error: unknown) => setNarrowError(String(error)));
+        void onNarrowComparison?.({ userExcludes, backupDir: nextBackupDir });
     };
     const localIsLeft = pairKind !== 'remote-local';
     const writesRemote = isConnectedRemote

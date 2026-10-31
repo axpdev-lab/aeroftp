@@ -6301,6 +6301,7 @@
             "narrowAvailable": "Tetapan ini hanya mengecilkan perbandingan, jadi ia boleh ditapis tanpa imbasan semula.",
             "narrowApply": "Gunakan pada perbandingan ini",
             "narrowedNote": "Ditapis dengan pengecualian baharu tanpa imbasan semula. Bilangan yang serupa masih daripada imbasan.",
+            "narrowAfterRestore": "Pemulihan sedang berjalan. Tetapan ini boleh digunakan pada perbandingan selepas pemulihan selesai.",
             "backup": {
                 "checking": "Menyemak cara pelayan ini memindahkan fail...",
                 "serverCopy": "Pelayan ini tidak dapat memindahkan: setiap salinan yang disimpan disalin pada pelayan dan kemudian dipadam. Ini memerlukan satu salinan penuh bagi setiap fail yang disimpan, dalam dua langkah berasingan.",

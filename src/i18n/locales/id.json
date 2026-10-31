@@ -6301,6 +6301,7 @@
             "narrowAvailable": "Pengaturan ini hanya mempersempit perbandingan, sehingga dapat difilter tanpa pemindaian ulang.",
             "narrowApply": "Terapkan ke perbandingan ini",
             "narrowedNote": "Difilter dengan pengecualian baru tanpa pemindaian ulang. Jumlah yang identik masih berasal dari pemindaian.",
+            "narrowAfterRestore": "Pemulihan sedang berjalan. Pengaturan ini dapat diterapkan pada perbandingan setelah pemulihan selesai.",
             "backup": {
                 "checking": "Memeriksa cara server ini memindahkan file...",
                 "serverCopy": "Server ini tidak bisa memindahkan: setiap salinan yang disimpan disalin di server lalu dihapus. Itu memakan satu salinan penuh dari setiap file yang disimpan, dalam dua langkah terpisah.",

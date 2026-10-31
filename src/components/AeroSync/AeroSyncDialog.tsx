@@ -100,8 +100,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
         );
         Object.entries(patch).forEach(([key, value]) => tabState.set(key, value));
         // Requested 116: settings that only narrow the comparison filter it, so
-        // choosing a template does not cost a scan of the same two paths. A
-        // refusal leaves the Plan's notice to say what is wrong.
+        // choosing a template does not cost a scan of the same two paths.
         const userExcludes = parseSyncExcludePatterns(patch['sync.exclude'] as string);
         const backupDir = tabState.get<VersionedBackupConfig | undefined>('plan.versionedBackup', undefined)?.backupDir
             ?? AEROSYNC_DEFAULT_BACKUP_DIR;
@@ -109,7 +108,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
         const unchanged = sameExcludePatterns(userExcludes, compareExcludes) && backupDir === context.compareBackupDir;
         if (context.compareResult && !context.compareLoading && !unchanged
             && narrowsComparison(compareExcludes, context.compareBackupDir, userExcludes, backupDir)) {
-            onNarrowComparison?.({ userExcludes, backupDir }).catch(() => undefined);
+            void onNarrowComparison?.({ userExcludes, backupDir });
         }
         // Plan summarizes the imported direction/preset. Sync is populated in
         // the same store and shows the imported paths when the user opens it.
@@ -351,6 +350,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                             compareBackupDir={context.compareBackupDir}
                             onRescan={restoreRunning ? undefined : onRescan}
                             onNarrowComparison={restoreRunning ? undefined : onNarrowComparison}
+                            narrowRefusal={context.compareNarrowRefusal}
                             isProvider={context.isProvider}
                             cli={{
                                 profileName: context.activeProfileSaved ? context.activeProfileName : null,

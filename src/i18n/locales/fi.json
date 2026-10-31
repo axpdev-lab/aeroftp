@@ -6301,6 +6301,7 @@
             "narrowAvailable": "Nämä asetukset vain rajaavat vertailua, joten se voidaan suodattaa ilman uutta skannausta.",
             "narrowApply": "Käytä tähän vertailuun",
             "narrowedNote": "Suodatettu uusilla poissulkemisilla ilman uutta skannausta. Identtisten määrä on edelleen skannauksesta.",
+            "narrowAfterRestore": "Palautus on käynnissä. Nämä asetukset voi ottaa käyttöön vertailussa, kun palautus päättyy.",
             "backup": {
                 "checking": "Tarkistetaan, miten tämä palvelin siirtää tiedostoja...",
                 "serverCopy": "Tämä palvelin ei osaa siirtää: jokainen säilytettävä kopio kopioidaan palvelimella ja poistetaan sitten. Se maksaa täyden kopion jokaisesta säilytettävästä tiedostosta, kahdessa erillisessä vaiheessa.",

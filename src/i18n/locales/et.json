@@ -6301,6 +6301,7 @@
             "narrowAvailable": "Need sätted ainult kitsendavad võrdlust, nii et seda saab filtreerida ilma uuesti skannimata.",
             "narrowApply": "Rakenda sellele võrdlusele",
             "narrowedNote": "Filtreeritud uute välistustega ilma uuesti skannimata. Identsete arv on endiselt skannimisest.",
+            "narrowAfterRestore": "Käimas on taastamine. Neid sätteid saab võrdlusele rakendada, kui taastamine lõpeb.",
             "backup": {
                 "checking": "Kontrollin, kuidas see server faile teisaldab...",
                 "serverCopy": "See server ei oska teisaldada: iga säilitatav koopia kopeeritakse serveris ja seejärel kustutatakse. See maksab iga säilitatava faili täieliku koopia, kahes eraldi etapis.",

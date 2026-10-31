@@ -6320,6 +6320,7 @@
             "narrowAvailable": "Þessar stillingar þrengja aðeins samanburðinn, svo hægt er að sía hann án nýrrar skönnunar.",
             "narrowApply": "Nota á þennan samanburð",
             "narrowedNote": "Síað með nýjum útilokunum án nýrrar skönnunar. Fjöldi eins skráa er enn sá úr skönnuninni.",
+            "narrowAfterRestore": "Endurheimt er í gangi. Hægt er að beita þessum stillingum á samanburðinn þegar henni lýkur.",
             "backup": {
                 "checking": "Athuga hvernig þessi þjónn færir skrár...",
                 "serverCopy": "Þessi þjónn getur ekki fært: hvert varðveitt afrit er afritað á þjóninum og síðan eytt. Það kostar fullt afrit af hverri varðveittri skrá, í tveimur aðskildum skrefum.",

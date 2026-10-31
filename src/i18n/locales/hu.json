@@ -6301,6 +6301,7 @@
             "narrowAvailable": "Ezek a beállítások csak szűkítik az összehasonlítást, így újraszkennelés nélkül szűrhető.",
             "narrowApply": "Alkalmazás erre az összehasonlításra",
             "narrowedNote": "Új kizárásokkal szűrve, újraszkennelés nélkül. Az azonosak száma még mindig a szkennelésből származik.",
+            "narrowAfterRestore": "Egy visszaállítás fut. Ezeket a beállításokat az összehasonlításra a visszaállítás befejezése után lehet alkalmazni.",
             "backup": {
                 "checking": "Annak ellenőrzése, hogyan helyez át fájlokat ez a szerver...",
                 "serverCopy": "Ez a szerver nem tud áthelyezni: minden megőrzött példányt a szerveren lemásol, majd töröl. Ez minden megőrzött fájl teljes másolatába kerül, két külön lépésben.",

@@ -6301,6 +6301,7 @@
             "narrowAvailable": "Diese Einstellungen schränken den Vergleich nur ein, daher kann er ohne neuen Scan gefiltert werden.",
             "narrowApply": "Auf diesen Vergleich anwenden",
             "narrowedNote": "Mit neuen Ausschlüssen gefiltert, ohne neu zu scannen. Die Anzahl identischer Dateien stammt weiterhin aus dem Scan.",
+            "narrowAfterRestore": "Eine Wiederherstellung läuft. Diese Einstellungen können auf den Vergleich angewendet werden, sobald sie beendet ist.",
             "backup": {
                 "checking": "Prüfe, wie dieser Server Dateien verschiebt...",
                 "serverCopy": "Dieser Server kann nicht verschieben: Jede aufbewahrte Kopie wird auf dem Server kopiert und dann gelöscht. Das kostet eine vollständige Kopie jeder aufbewahrten Datei, in zwei getrennten Schritten.",

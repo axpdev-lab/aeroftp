@@ -42,13 +42,17 @@ afterEach(async () => {
 });
 
 describe('the Plan notice for a compare made with other settings', () => {
-    const plan = async (field: string, compareExcludes: string[], compareBackupDir: string | undefined, onNarrowComparison = vi.fn(async () => undefined)) => {
+    const plan = async (
+        field: string, compareExcludes: string[], compareBackupDir: string | undefined,
+        onNarrowComparison: (() => Promise<void>) | undefined = vi.fn(async () => undefined),
+        narrowRefusal?: { userExcludes: string[]; backupDir: string; message: string },
+    ) => {
         const store = createTabStateStore();
         store.set('sync.exclude', field);
         await render(React.createElement(TabStateStoreContext.Provider, { value: store },
             React.createElement(PlanTabContent, {
                 result, pairKind: 'local-local', canExecute: true, onExecute: vi.fn(), onRescan: vi.fn(),
-                compareExcludes, compareBackupDir, onNarrowComparison,
+                compareExcludes, compareBackupDir, onNarrowComparison, narrowRefusal,
             })));
         return onNarrowComparison;
     };
@@ -72,10 +76,26 @@ describe('the Plan notice for a compare made with other settings', () => {
         expect(button('aerosync.narrowApply')).toBeUndefined();
     });
 
-    it('shows a refused pattern instead of the offer', async () => {
-        await plan('[', [], backup, vi.fn(async () => { throw new Error('invalid exclude pattern'); }));
-        await React.act(async () => button('aerosync.narrowApply')!.click());
+    it('shows a refusal for the settings it refused, and not for the next ones', async () => {
+        const refusal = { userExcludes: ['['], backupDir: backup, message: 'invalid exclude pattern' };
+        await plan('[', [], backup, undefined, refusal);
         expect(host.textContent).toContain('invalid exclude pattern');
+        await React.act(async () => roots.splice(0).forEach(root => root.unmount()));
+        await plan('.stfolder', [], backup, undefined, refusal);
+        expect(host.textContent).not.toContain('invalid exclude pattern');
+    });
+
+    it('does not ask for a rescan it withholds while a restore runs', async () => {
+        const store = createTabStateStore();
+        store.set('sync.exclude', '.stfolder');
+        await render(React.createElement(TabStateStoreContext.Provider, { value: store },
+            React.createElement(PlanTabContent, {
+                result, pairKind: 'local-local', canExecute: true, onExecute: vi.fn(),
+                compareExcludes: [], compareBackupDir: backup,
+            })));
+        expect(host.textContent).toContain('aerosync.narrowAfterRestore');
+        expect(host.textContent).not.toContain('aerosync.rescanBringsBack');
+        expect(button('aerosync.narrowApply')).toBeUndefined();
     });
 });
 
@@ -120,13 +140,37 @@ describe('narrowComparison', () => {
         expect(state!.context.compareNarrowed).toBeUndefined();
     });
 
-    it('leaves the compare alone when a pattern is refused', async () => {
+    it('records a refused pattern with its settings and leaves the compare alone', async () => {
         state = context();
         await render(React.createElement(Harness));
         mocks.invoke.mockImplementation(async () => { throw new Error('invalid exclude pattern'); });
-        await React.act(async () => {
-            await expect(actions.narrowComparison(['['], backup)).rejects.toThrow('invalid exclude pattern');
-        });
+        await React.act(async () => actions.narrowComparison(['['], backup));
         expect(state!.context.compareResult).toBe(result);
+        expect(state!.context.compareNarrowRefusal).toEqual({
+            userExcludes: ['['], backupDir: backup, message: 'Error: invalid exclude pattern',
+        });
+    });
+
+    it('counts only the latest of two requests, whichever answers first', async () => {
+        state = context();
+        await render(React.createElement(Harness));
+        const answers: Array<{ resolve: (value: boolean[]) => void; reject: (error: Error) => void }> = [];
+        mocks.invoke.mockImplementation(() => new Promise((resolve, reject) => answers.push({ resolve, reject })));
+        let first: Promise<void> = Promise.resolve();
+        let second: Promise<void> = Promise.resolve();
+        await React.act(async () => {
+            first = actions.narrowComparison(['old'], backup);
+            second = actions.narrowComparison(['.stfolder'], backup);
+        });
+        await React.act(async () => {
+            answers[0].reject(new Error('late refusal'));
+            await first;
+        });
+        expect(state!.context.compareNarrowRefusal).toBeUndefined();
+        await React.act(async () => {
+            answers[1].resolve(result.entries.map((entry) => entry.name === '.stfolder'));
+            await second;
+        });
+        expect(state!.context.compareExcludes).toEqual(['.stfolder']);
     });
 });

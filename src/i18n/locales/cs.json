@@ -6301,6 +6301,7 @@
             "narrowAvailable": "Tato nastavení jen zužují porovnání, takže ho lze filtrovat bez nového prohledání.",
             "narrowApply": "Použít na toto porovnání",
             "narrowedNote": "Filtrováno s novými vyloučeními bez nového prohledání. Počet shodných je stále ten z prohledání.",
+            "narrowAfterRestore": "Probíhá obnovení. Tato nastavení lze použít na porovnání po skončení obnovení.",
             "backup": {
                 "checking": "Zjišťuji, jak tento server přesouvá soubory...",
                 "serverCopy": "Tento server neumí přesun: každá uchovaná kopie se zkopíruje na serveru a pak smaže. To stojí úplnou kopii každého uchovaného souboru, ve dvou samostatných krocích.",

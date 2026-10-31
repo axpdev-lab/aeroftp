@@ -6301,6 +6301,7 @@
             "narrowAvailable": "Các cài đặt này chỉ thu hẹp phép so sánh, nên có thể lọc mà không cần quét lại.",
             "narrowApply": "Áp dụng cho phép so sánh này",
             "narrowedNote": "Đã lọc với các loại trừ mới mà không quét lại. Số lượng giống hệt vẫn là số từ lần quét.",
+            "narrowAfterRestore": "Một quá trình khôi phục đang chạy. Các cài đặt này có thể áp dụng cho phép so sánh khi quá trình đó kết thúc.",
             "backup": {
                 "checking": "Đang kiểm tra cách máy chủ này di chuyển tệp...",
                 "serverCopy": "Máy chủ này không thể di chuyển: mỗi bản sao được giữ lại sẽ được sao chép trên máy chủ rồi xóa. Việc đó tốn một bản sao đầy đủ của mỗi tệp được giữ lại, qua hai bước riêng biệt.",

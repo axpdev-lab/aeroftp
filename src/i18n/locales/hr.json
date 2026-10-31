@@ -6301,6 +6301,7 @@
             "narrowAvailable": "Ove postavke samo sužavaju usporedbu, pa se može filtrirati bez ponovnog skeniranja.",
             "narrowApply": "Primijeni na ovu usporedbu",
             "narrowedNote": "Filtrirano s novim isključenjima bez ponovnog skeniranja. Broj identičnih i dalje je onaj iz skeniranja.",
+            "narrowAfterRestore": "Vraćanje je u tijeku. Ove se postavke mogu primijeniti na usporedbu kad završi.",
             "backup": {
                 "checking": "Provjera kako ovaj poslužitelj premješta datoteke...",
                 "serverCopy": "Ovaj poslužitelj ne može premještati: svaka sačuvana kopija kopira se na poslužitelju, a zatim briše. To stoji punu kopiju svake sačuvane datoteke, u dva odvojena koraka.",

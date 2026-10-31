@@ -149,6 +149,8 @@ export interface AeroSyncContext {
     compareBackupDir?: string;
     /** `compareResult` was filtered after its scan, so its identical count is the scan's. */
     compareNarrowed?: boolean;
+    /** Why the settings named here could not filter `compareResult`. */
+    compareNarrowRefusal?: { userExcludes: string[]; backupDir: string; message: string };
     /**
      * Start folder of the saved server. The CLI resolves a remote path that
      * does not begin with it under it, so the Plan's command line needs it.

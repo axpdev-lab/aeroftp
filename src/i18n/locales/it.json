@@ -6554,6 +6554,7 @@
             "narrowAvailable": "Queste impostazioni restringono solo il confronto, quindi si può filtrare senza riscansionare.",
             "narrowApply": "Applica a questo confronto",
             "narrowedNote": "Filtrato con nuove esclusioni senza riscansionare. Il conteggio degli identici è ancora quello della scansione.",
+            "narrowAfterRestore": "È in corso un ripristino. Queste impostazioni possono essere applicate al confronto quando termina.",
             "backup": {
                 "checking": "Verifica di come questo server sposta i file...",
                 "serverCopy": "Questo server non ha lo spostamento: ogni copia conservata viene copiata sul server e poi eliminata. Costa una copia intera di ogni file conservato, in due passaggi separati.",
