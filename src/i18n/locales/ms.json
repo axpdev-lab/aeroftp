@@ -6296,7 +6296,11 @@
                 }
             },
             "rescan": "Imbas semula",
-            "rescanNeeded": "Perbandingan dibuat dengan pengecualian lain atau folder sandaran lain. Imbas semula sebelum menjalankan.",
+            "rescanBringsBack": "Tetapan ini membawa kembali fail yang ditinggalkan oleh imbasan, jadi ia tidak pernah membacanya. Imbas semula sebelum menjalankan.",
+            "rescanFlat": "Perbandingan ini datang daripada senarai kedua-dua panel, bukan imbasan penuh, jadi ia tidak boleh menggunakan pengecualian. Imbas semula sebelum menjalankan.",
+            "narrowAvailable": "Tetapan ini hanya mengecilkan perbandingan, jadi ia boleh ditapis tanpa imbasan semula.",
+            "narrowApply": "Gunakan pada perbandingan ini",
+            "narrowedNote": "Ditapis dengan pengecualian baharu tanpa imbasan semula. Bilangan yang serupa masih daripada imbasan.",
             "backup": {
                 "checking": "Menyemak cara pelayan ini memindahkan fail...",
                 "serverCopy": "Pelayan ini tidak dapat memindahkan: setiap salinan yang disimpan disalin pada pelayan dan kemudian dipadam. Ini memerlukan satu salinan penuh bagi setiap fail yang disimpan, dalam dua langkah berasingan.",

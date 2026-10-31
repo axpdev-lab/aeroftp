@@ -6584,7 +6584,11 @@
                 }
             },
             "rescan": "Rescan",
-            "rescanNeeded": "The comparison was made with other exclusions or another backup folder. Rescan before running.",
+            "rescanBringsBack": "These settings bring back files the scan left out, so it never read them. Rescan before running.",
+            "rescanFlat": "This comparison came from the two panel listings, not a full scan, so it cannot apply exclusions. Rescan before running.",
+            "narrowAvailable": "These settings only narrow the comparison, so it can be filtered without a rescan.",
+            "narrowApply": "Apply to this comparison",
+            "narrowedNote": "Filtered with new exclusions without a rescan. The identical count is still the one from the scan.",
             "backup": {
                 "checking": "Checking how this server moves files...",
                 "serverCopy": "This server has no move: each kept copy is copied on the server and then deleted. That costs a full copy of every file kept, in two separate steps.",

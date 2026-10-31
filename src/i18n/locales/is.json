@@ -6315,7 +6315,11 @@
                 }
             },
             "rescan": "Skanna aftur",
-            "rescanNeeded": "Samanburðurinn var gerður með öðrum útilokunum eða annarri afritunarmöppu. Skannaðu aftur áður en þú keyrir.",
+            "rescanBringsBack": "Þessar stillingar koma með skrár til baka sem skönnunin sleppti, svo hún las þær aldrei. Skannaðu aftur áður en þú keyrir.",
+            "rescanFlat": "Þessi samanburður kom úr listum beggja spjaldanna, ekki úr fullri skönnun, svo hann getur ekki beitt útilokunum. Skannaðu aftur áður en þú keyrir.",
+            "narrowAvailable": "Þessar stillingar þrengja aðeins samanburðinn, svo hægt er að sía hann án nýrrar skönnunar.",
+            "narrowApply": "Nota á þennan samanburð",
+            "narrowedNote": "Síað með nýjum útilokunum án nýrrar skönnunar. Fjöldi eins skráa er enn sá úr skönnuninni.",
             "backup": {
                 "checking": "Athuga hvernig þessi þjónn færir skrár...",
                 "serverCopy": "Þessi þjónn getur ekki fært: hvert varðveitt afrit er afritað á þjóninum og síðan eytt. Það kostar fullt afrit af hverri varðveittri skrá, í tveimur aðskildum skrefum.",

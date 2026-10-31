@@ -6315,7 +6315,11 @@
                 }
             },
             "rescan": "Volver analizar",
-            "rescanNeeded": "A comparación fíxose con outras exclusións ou outro cartafol de copia de seguridade. Volve analizar antes de executar.",
+            "rescanBringsBack": "Estes axustes recuperan ficheiros que a análise deixou fóra, así que nunca os leu. Volve analizar antes de executar.",
+            "rescanFlat": "Esta comparación vén dos listados dos dous paneis, non dunha análise completa, así que non pode aplicar exclusións. Volve analizar antes de executar.",
+            "narrowAvailable": "Estes axustes só reducen a comparación, así que se pode filtrar sen volver analizar.",
+            "narrowApply": "Aplicar a esta comparación",
+            "narrowedNote": "Filtrada con novas exclusións sen volver analizar. O reconto de idénticos segue sendo o da análise.",
             "backup": {
                 "checking": "Comprobando como move os ficheiros este servidor...",
                 "serverCopy": "Este servidor non pode mover: cada copia conservada cópiase no servidor e despois elimínase. Iso custa unha copia completa de cada ficheiro conservado, en dous pasos separados.",

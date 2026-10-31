@@ -147,6 +147,8 @@ export interface AeroSyncContext {
     compareExcludes?: string[];
     /** The backup folder `compareResult` left out on both sides. */
     compareBackupDir?: string;
+    /** `compareResult` was filtered after its scan, so its identical count is the scan's. */
+    compareNarrowed?: boolean;
     /**
      * Start folder of the saved server. The CLI resolves a remote path that
      * does not begin with it under it, so the Plan's command line needs it.
@@ -179,6 +181,7 @@ export interface AeroSyncDialogProps {
     onInvalidateComparison: () => void;
     /** Re-run the compare with the Plan tab's exclude patterns and backup folder. */
     onRescan?: (args: { userExcludes: string[]; backupDir: string }) => void;
+    onNarrowComparison?: (args: { userExcludes: string[]; backupDir: string }) => Promise<void>;
     /** Start the recursive compare of the pair (context.compareIdle). */
     onStartCompare?: () => void;
     /** Stop the recursive compare that is running (context.compareLoading). */

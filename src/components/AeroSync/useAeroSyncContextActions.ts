@@ -4,6 +4,8 @@
 import { useCallback, type Dispatch, type SetStateAction, type MutableRefObject } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { AeroSyncContext, AeroSyncTab } from './types';
+import { aeroSyncCompareOptions } from '../../utils/aeroSyncExcludes';
+import { withoutEntries } from '../../utils/compareEndpoints';
 
 export interface AeroSyncState {
     initialTab: AeroSyncTab;
@@ -44,5 +46,37 @@ export function useAeroSyncContextActions(
         });
     }, [context, setState, compareSequence]);
 
-    return { dismissJournal, invalidateComparison };
+    /**
+     * Filter the finished compare with wider settings instead of scanning
+     * again (Requested 116). The backend answers with the rule the scan used.
+     * A scan started meanwhile wins, and a refused pattern throws to the
+     * caller with the compare left as it was.
+     */
+    const narrowComparison = useCallback(async (userExcludes: string[], backupDir: string) => {
+        const result = context?.compareResult;
+        if (!result) return;
+        const sequence = compareSequence.current;
+        const leftOut = await invoke<boolean[]>('compare_paths_left_out', {
+            options: aeroSyncCompareOptions(userExcludes, backupDir),
+            paths: result.entries.map((entry) => {
+                const path = entry.relativePath ?? entry.name;
+                return {
+                    local_path: entry.leftRelativePath ?? path,
+                    remote_path: entry.rightRelativePath ?? path,
+                    is_dir: !!(entry.leftIsDir || entry.rightIsDir),
+                };
+            }),
+        });
+        if (compareSequence.current !== sequence) return;
+        setState(previous => previous?.context.compareResult === result
+            ? { ...previous, context: { ...previous.context,
+                compareResult: withoutEntries(result, leftOut),
+                compareExcludes: userExcludes,
+                compareBackupDir: backupDir,
+                compareNarrowed: true,
+            } }
+            : previous);
+    }, [context, setState, compareSequence]);
+
+    return { dismissJournal, invalidateComparison, narrowComparison };
 }

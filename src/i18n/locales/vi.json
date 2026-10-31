@@ -6296,7 +6296,11 @@
                 }
             },
             "rescan": "Quét lại",
-            "rescanNeeded": "Việc so sánh được thực hiện với các loại trừ khác hoặc thư mục sao lưu khác. Hãy quét lại trước khi chạy.",
+            "rescanBringsBack": "Các cài đặt này đưa trở lại những tệp mà lần quét đã bỏ qua, nên chưa từng đọc chúng. Hãy quét lại trước khi chạy.",
+            "rescanFlat": "Phép so sánh này đến từ danh sách của hai bảng, không phải từ lần quét đầy đủ, nên không thể áp dụng loại trừ. Hãy quét lại trước khi chạy.",
+            "narrowAvailable": "Các cài đặt này chỉ thu hẹp phép so sánh, nên có thể lọc mà không cần quét lại.",
+            "narrowApply": "Áp dụng cho phép so sánh này",
+            "narrowedNote": "Đã lọc với các loại trừ mới mà không quét lại. Số lượng giống hệt vẫn là số từ lần quét.",
             "backup": {
                 "checking": "Đang kiểm tra cách máy chủ này di chuyển tệp...",
                 "serverCopy": "Máy chủ này không thể di chuyển: mỗi bản sao được giữ lại sẽ được sao chép trên máy chủ rồi xóa. Việc đó tốn một bản sao đầy đủ của mỗi tệp được giữ lại, qua hai bước riêng biệt.",

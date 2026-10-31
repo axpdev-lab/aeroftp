@@ -6296,7 +6296,11 @@
                 }
             },
             "rescan": "Ponovno skeniraj",
-            "rescanNeeded": "Usporedba je napravljena s drugim isključenjima ili drugom mapom sigurnosnih kopija. Ponovno skenirajte prije pokretanja.",
+            "rescanBringsBack": "Ove postavke vraćaju datoteke koje je skeniranje izostavilo, pa ih nikada nije pročitalo. Ponovno skenirajte prije pokretanja.",
+            "rescanFlat": "Ova usporedba potječe iz popisa dvaju panela, a ne iz potpunog skeniranja, pa ne može primijeniti isključenja. Ponovno skenirajte prije pokretanja.",
+            "narrowAvailable": "Ove postavke samo sužavaju usporedbu, pa se može filtrirati bez ponovnog skeniranja.",
+            "narrowApply": "Primijeni na ovu usporedbu",
+            "narrowedNote": "Filtrirano s novim isključenjima bez ponovnog skeniranja. Broj identičnih i dalje je onaj iz skeniranja.",
             "backup": {
                 "checking": "Provjera kako ovaj poslužitelj premješta datoteke...",
                 "serverCopy": "Ovaj poslužitelj ne može premještati: svaka sačuvana kopija kopira se na poslužitelju, a zatim briše. To stoji punu kopiju svake sačuvane datoteke, u dva odvojena koraka.",

@@ -6296,7 +6296,11 @@
                 }
             },
             "rescan": "Skenēt vēlreiz",
-            "rescanNeeded": "Salīdzināšana veikta ar citiem izslēgumiem vai citu dublējumu mapi. Pirms palaišanas skenējiet vēlreiz.",
+            "rescanBringsBack": "Šie iestatījumi atgriež failus, ko skenēšana izlaida, tāpēc tā tos nekad nav lasījusi. Pirms palaišanas skenējiet vēlreiz.",
+            "rescanFlat": "Šis salīdzinājums radies no abu paneļu sarakstiem, nevis no pilnas skenēšanas, tāpēc tas nevar lietot izslēgumus. Pirms palaišanas skenējiet vēlreiz.",
+            "narrowAvailable": "Šie iestatījumi tikai sašaurina salīdzinājumu, tāpēc to var filtrēt bez atkārtotas skenēšanas.",
+            "narrowApply": "Lietot šim salīdzinājumam",
+            "narrowedNote": "Filtrēts ar jauniem izslēgumiem bez atkārtotas skenēšanas. Identisko skaits joprojām ir no skenēšanas.",
             "backup": {
                 "checking": "Pārbauda, kā šis serveris pārvieto failus...",
                 "serverCopy": "Šis serveris nevar pārvietot: katra saglabājamā kopija tiek nokopēta serverī un pēc tam izdzēsta. Tas maksā pilnu katra saglabātā faila kopiju, divos atsevišķos soļos.",
