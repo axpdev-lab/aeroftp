@@ -73,6 +73,10 @@ describe('redactSensitive matrix', () => {
 });
 
 describe('redactSensitive on a long line', () => {
+    // Far above a linear scan even on a loaded machine, and far below the minutes
+    // a quadratic one takes: a tighter bound failed under a parallel build.
+    const LINEAR_BOUND_MS = 15_000;
+
     // A run of address characters with no "@" (a hex or base64url dump) once
     // cost a scan from every start position: quadratic, minutes for 200 KB.
     it('reads a long run of address characters in linear time', () => {
@@ -80,7 +84,7 @@ describe('redactSensitive on a long line', () => {
         for (const run of ['ab-cd_'.repeat(35000), 'a.'.repeat(100000), '0123456789abcdef'.repeat(12000)]) {
             redactSensitive(`dump ${run} end`);
         }
-        expect(performance.now() - started).toBeLessThan(2000);
+        expect(performance.now() - started).toBeLessThan(LINEAR_BOUND_MS);
     });
 
     // `-` is not a word character, so a name prefix that could repeat without
@@ -90,7 +94,7 @@ describe('redactSensitive on a long line', () => {
         for (const run of ['ab-'.repeat(100000), 'ab_'.repeat(100000), 'api-'.repeat(60000), 'token-'.repeat(50000), '1-'.repeat(150000)]) {
             redactSensitive(`line ${run} end`);
         }
-        expect(performance.now() - started).toBeLessThan(2000);
+        expect(performance.now() - started).toBeLessThan(LINEAR_BOUND_MS);
     });
 
     it('still redacts an address and keeps the words around it', () => {

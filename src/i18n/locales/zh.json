@@ -1370,7 +1370,8 @@
             "importJottaChainWarning": "Jottacloud 每次连接都会更新登录，而 {names} 现在与另一个副本共用同一个登录：先连接的副本会让另一个退出登录（文件来源的设备，或其复制来源的配置文件）。请用新的 Personal Login Token 重新登录另一个。",
             "importOauthAppKept": "{names} 导入时带有与此设备上该提供商已有的不同的自定义 OAuth 应用。已保留设备上存储的应用，如果这些配置文件无法连接，请重新登录。",
             "importTargetChanged": "{names} 未被覆盖：该文件会让它们指向另一台服务器，而它们已保存的密码和令牌不能发送到那里。请使用“复制”导入以添加文件中的副本，或先删除该配置文件。",
-            "importSharedSecretsFailed": "{names} 已导入，但文件中的共享密钥或会话无法保存。如果这些配置文件无法连接，请重新登录。"
+            "importSharedSecretsFailed": "{names} 已导入，但文件中的共享密钥或会话无法保存。如果这些配置文件无法连接，请重新登录。",
+            "keystoreDatabasesFailed": "导入已完成，但未能恢复以下数据库，它们保留原有内容：{names}。"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4853,7 +4854,8 @@
             "relocateSuccessMove": "已将“{name}”移动到 {user}",
             "relocateAlreadyPresent": "“{name}”已保存在 {user} 中",
             "relocateError": "无法转移服务器：{error}",
-            "relocateWrongPassword": "{user} 的密码错误。"
+            "relocateWrongPassword": "{user} 的密码错误。",
+            "relocateSecretsNotCopied": "“{name}”已到达 {user}，但已保存的密码或令牌未一同转移，因此将在那里重新询问。"
         },
         "cyberTools": {
             "title": "安全工具",

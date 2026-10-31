@@ -1370,7 +1370,8 @@
             "importJottaChainWarning": "Jottacloud memperbarui login-nya pada setiap koneksi, dan {names} kini berbagi satu dengan salinan lain: salinan yang terhubung lebih dulu akan mengeluarkan yang lain (perangkat asal file, atau profil tempat salinan ini diduplikasi). Masuk lagi ke yang lain dengan Personal Login Token baru.",
             "importOauthAppKept": "{names} datang dengan aplikasi OAuth kustom yang berbeda dari yang dimiliki perangkat ini untuk penyedia tersebut. Aplikasi yang tersimpan dipertahankan, jadi masuk lagi jika profil ini berhenti terhubung.",
             "importTargetChanged": "{names} tidak ditimpa: berkas mengarahkannya ke server lain, dan kata sandi serta token tersimpannya tidak boleh dikirim ke sana. Impor dengan Duplikat untuk menambahkan salinan dari berkas, atau hapus profil terlebih dahulu.",
-            "importSharedSecretsFailed": "{names} berhasil diimpor, tetapi rahasia bersama atau sesi dari file tidak dapat disimpan. Masuk lagi ke profil ini jika tidak terhubung."
+            "importSharedSecretsFailed": "{names} berhasil diimpor, tetapi rahasia bersama atau sesi dari file tidak dapat disimpan. Masuk lagi ke profil ini jika tidak terhubung.",
+            "keystoreDatabasesFailed": "Impor selesai, tetapi basis data ini tidak dapat dipulihkan dan tetap berisi data sebelumnya: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4853,7 +4854,8 @@
             "relocateSuccessMove": "\"{name}\" dipindahkan ke {user}",
             "relocateAlreadyPresent": "\"{name}\" sudah tersimpan di {user}",
             "relocateError": "Server tidak dapat ditransfer: {error}",
-            "relocateWrongPassword": "Kata sandi salah untuk {user}."
+            "relocateWrongPassword": "Kata sandi salah untuk {user}.",
+            "relocateSecretsNotCopied": "\"{name}\" sudah sampai ke {user}, tetapi kata sandi atau token yang tersimpan tidak ikut sampai, sehingga akan diminta lagi di sana."
         },
         "cyberTools": {
             "title": "Alat Keamanan",

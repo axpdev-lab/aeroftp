@@ -1845,7 +1845,8 @@
             "importJottaChainWarning": "Jottacloud rinnova l'accesso a ogni connessione, e {names} ora ne condivide uno con un'altra copia: la copia che si connette per prima disconnette l'altra (il dispositivo da cui proviene il file, o il profilo da cui è stata duplicata). Accedi di nuovo all'altra con un nuovo Personal Login Token.",
             "importOauthAppKept": "{names} sono arrivati con un'app OAuth personalizzata diversa da quella che questo dispositivo ha per quel provider. L'app memorizzata è stata mantenuta: accedi di nuovo se questi profili smettono di connettersi.",
             "importTargetChanged": "{names} non sono stati sovrascritti: il file li fa puntare a un altro server, e le password e i token memorizzati non devono arrivarci. Importa con Duplica per aggiungere la copia dal file, oppure elimina prima il profilo.",
-            "importSharedSecretsFailed": "{names} sono stati importati, ma non è stato possibile salvare un segreto condiviso o una sessione del file. Accedi di nuovo a questi profili se non si connettono."
+            "importSharedSecretsFailed": "{names} sono stati importati, ma non è stato possibile salvare un segreto condiviso o una sessione del file. Accedi di nuovo a questi profili se non si connettono.",
+            "keystoreDatabasesFailed": "L'importazione è terminata, ma questi database non sono stati ripristinati e mantengono il loro contenuto: {names}."
         },
         "appearance": {
             "patternCross": "Croce",
@@ -5355,7 +5356,8 @@
             "relocateSuccessMove": "\"{name}\" spostato in {user}",
             "relocateAlreadyPresent": "\"{name}\" è già salvato in {user}",
             "relocateError": "Impossibile trasferire il server: {error}",
-            "relocateWrongPassword": "Password errata per {user}."
+            "relocateWrongPassword": "Password errata per {user}.",
+            "relocateSecretsNotCopied": "\"{name}\" è arrivato in {user}, ma la password o il token salvati no, quindi li chiederà di nuovo lì."
         },
         "dialog": {
             "deleteFile": "Eliminare \"{name}\"?",

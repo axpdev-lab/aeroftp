@@ -1435,16 +1435,17 @@ impl StorageProvider for OneDriveProvider {
                     if let Some(drive_id) =
                         body["id"].as_str().map(str::trim).filter(|s| !s.is_empty())
                     {
-                        let _ = store
-                            .store(&format!("onedrive_drive_id_{}", self.profile_id), drive_id);
+                        keep_drive_hint(&store, "onedrive_drive_id", &self.profile_id, drive_id);
                     }
                     if let Some(drive_type) = body["driveType"]
                         .as_str()
                         .map(str::trim)
                         .filter(|s| !s.is_empty())
                     {
-                        let _ = store.store(
-                            &format!("onedrive_drive_type_{}", self.profile_id),
+                        keep_drive_hint(
+                            &store,
+                            "onedrive_drive_type",
+                            &self.profile_id,
                             drive_type,
                         );
                     }
@@ -2986,6 +2987,23 @@ fn rmdir_condition(item: &serde_json::Value) -> Option<&str> {
             .and_then(|v| v.as_str())
             .filter(|v| !v.is_empty())
     })
+}
+
+/// Save a drive hint where it is read, for the accounts that hold the profile: an
+/// imported or moved profile has a partition row, and readers prefer it. The next
+/// connection captures the hint again.
+fn keep_drive_hint(
+    store: &crate::credential_store::CredentialStore,
+    prefix: &str,
+    profile_id: &str,
+    value: &str,
+) {
+    let key = format!("{prefix}_{profile_id}");
+    if let Err(e) =
+        crate::user_partitions::store_profile_credential(store, profile_id, &key, None, value)
+    {
+        tracing::warn!("OneDrive drive hint not saved: {e}");
+    }
 }
 
 #[cfg(test)]

@@ -1370,7 +1370,8 @@
             "importJottaChainWarning": "Jottacloud fornyer sin login ved hver forbindelse, og {names} deler nu en med en anden kopi: den kopi, der forbinder først, logger den anden ud (enheden, filen kom fra, eller den profil, den blev duplikeret fra). Log den anden ind igen med et nyt Personal Login Token.",
             "importOauthAppKept": "{names} kom med en anden brugerdefineret OAuth-app end den, som denne enhed har til den udbyder. Den gemte app blev beholdt, så log ind igen, hvis disse profiler holder op med at oprette forbindelse.",
             "importTargetChanged": "{names} blev ikke overskrevet: filen peger dem på en anden server, og deres gemte adgangskoder og tokens må ikke sendes dertil. Importér med Dupliker for at tilføje kopien fra filen, eller slet profilen først.",
-            "importSharedSecretsFailed": "{names} blev importeret, men en delt hemmelighed eller session fra filen kunne ikke gemmes. Log ind på disse profiler igen, hvis de ikke forbinder."
+            "importSharedSecretsFailed": "{names} blev importeret, men en delt hemmelighed eller session fra filen kunne ikke gemmes. Log ind på disse profiler igen, hvis de ikke forbinder.",
+            "keystoreDatabasesFailed": "Importen er færdig, men disse databaser kunne ikke gendannes og beholder det, de indeholdt: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4853,7 +4854,8 @@
             "relocateSuccessMove": "\"{name}\" flyttet til {user}",
             "relocateAlreadyPresent": "\"{name}\" er allerede gemt i {user}",
             "relocateError": "Serveren kunne ikke overføres: {error}",
-            "relocateWrongPassword": "Forkert adgangskode til {user}."
+            "relocateWrongPassword": "Forkert adgangskode til {user}.",
+            "relocateSecretsNotCopied": "\"{name}\" nåede frem til {user}, men den gemte adgangskode eller det gemte token kom ikke med, så der bliver spurgt efter dem igen dér."
         },
         "cyberTools": {
             "title": "Sikkerhedsværktøjer",

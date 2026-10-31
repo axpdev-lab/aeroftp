@@ -7616,7 +7616,10 @@ async fn pcloud_exchange_code(
             "us"
         };
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            let _ = store.store("oauth_pcloud_region", region);
+            // The wrong region sends every later request to the wrong API.
+            store
+                .store("oauth_pcloud_region", region)
+                .map_err(|e| ProviderError::Other(format!("Failed to store pCloud region: {e}")))?;
         }
 
         info!(
@@ -8815,18 +8818,29 @@ fn store_fourshared_tokens(
 
     // Try vault first
     if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-        store
-            .store(&key, &token_data)
-            .map_err(|e| format!("Failed to store tokens: {}", e))?;
+        // Through the row a reader prefers: an imported or moved profile has one.
+        crate::user_partitions::store_profile_credential(
+            &store,
+            profile_id,
+            &key,
+            Some("oauth"),
+            &token_data,
+        )
+        .map_err(|e| format!("Failed to store tokens: {}", e))?;
         return Ok(());
     }
 
     // Try auto-init vault
     if crate::credential_store::CredentialStore::init().is_ok() {
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            store
-                .store(&key, &token_data)
-                .map_err(|e| format!("Failed to store tokens: {}", e))?;
+            crate::user_partitions::store_profile_credential(
+                &store,
+                profile_id,
+                &key,
+                Some("oauth"),
+                &token_data,
+            )
+            .map_err(|e| format!("Failed to store tokens: {}", e))?;
             return Ok(());
         }
     }
@@ -10399,9 +10413,11 @@ pub async fn fourshared_has_tokens(profile_id: Option<String>) -> Result<bool, S
 #[tauri::command]
 pub async fn fourshared_logout(profile_id: Option<String>) -> Result<(), String> {
     if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-        let _ = store.delete(&fourshared_token_key(
-            profile_id.as_deref().unwrap_or_default(),
-        ));
+        let profile_id = profile_id.as_deref().unwrap_or_default();
+        let key = fourshared_token_key(profile_id);
+        // Readers prefer the partition: a row left there would keep the account
+        // signed in, so a failure here is one the user must see.
+        crate::user_partitions::delete_profile_credential(&store, profile_id, &key)?;
     }
     info!("Logged out from 4shared");
     Ok(())
