@@ -403,10 +403,18 @@ where
             .map(drop)
     }
 
-    /// Rename `from` to `to`; an existing `to` is replaced, as `mv` does.
+    /// Rename `from` to `to`, refusing a `to` that exists, as SFTP's rename
+    /// does. `mv` alone would replace a file, and would move `from` inside
+    /// `to` when that is a folder, both without a word. The check and the
+    /// `mv` are two steps, so a `to` created in between is not caught; a
+    /// caller that must not lose a concurrent write cannot rely on it.
     pub async fn rename(&self, from: &str, to: &str) -> Result<(), ProviderError> {
-        let cmd = format!("mv -- {} {}", shell_quote(from)?, shell_quote(to)?);
-        self.run_ok("rename", from, cmd.as_bytes()).await.map(drop)
+        let (f, t) = (shell_quote(from)?, shell_quote(to)?);
+        let cmd = format!(
+            "if [ -e {t} ] || [ -L {t} ]; then echo 'mv: target: File exists' >&2; exit 1; fi; \
+             mv -- {f} {t}"
+        );
+        self.run_ok("rename", to, cmd.as_bytes()).await.map(drop)
     }
 
     pub async fn chmod(&self, path: &str, mode: u32) -> Result<(), ProviderError> {

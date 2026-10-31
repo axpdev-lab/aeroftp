@@ -91,7 +91,11 @@ pub fn parse_control(line: &[u8]) -> Result<Control, ProviderError> {
     }
     let line =
         std::str::from_utf8(line).map_err(|_| protocol_error("control line is not UTF-8"))?;
-    let (kind, rest) = line.split_at(line.len().min(1));
+    // `get` and not `split_at`: a server may start the line with a multi-byte
+    // character, and byte 1 is then no boundary. Such a line, like an empty
+    // one, has no kind and is refused below.
+    let kind = line.get(..1).unwrap_or("");
+    let rest = &line[kind.len()..];
     match kind {
         "C" | "D" => {
             let (mode, rest) = rest
@@ -220,6 +224,7 @@ mod tests {
             b"T1 0 2",
             b"X0644 1 f",
             b"",
+            "é0644 1 f".as_bytes(),
         ] {
             assert!(
                 parse_control(bad).is_err(),

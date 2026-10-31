@@ -257,6 +257,34 @@ async fn probe_list_and_folder_operations_run_on_the_real_tools() {
     ));
     let g = format!("{d}/renamed");
     scp.rename(&f, &g).await.expect("rename");
+    // An existing file or folder as the target is refused, never replaced
+    // or entered.
+    let other = format!("{d}/other");
+    std::fs::write(&other, b"keep").unwrap();
+    assert!(matches!(
+        scp.rename(&g, &other).await,
+        Err(ProviderError::AlreadyExists(_))
+    ));
+    assert_eq!(std::fs::read(&other).unwrap(), b"keep");
+    // The target is quoted in the existence check too: a name that would
+    // run a command runs nothing.
+    let hostile = format!("{d}/$(touch pwned)");
+    std::fs::write(&hostile, b"").unwrap();
+    assert!(matches!(
+        scp.rename(&g, &hostile).await,
+        Err(ProviderError::AlreadyExists(_))
+    ));
+    assert!(!root.join("pwned").exists() && !std::path::Path::new(&format!("{d}/pwned")).exists());
+    std::fs::remove_file(&hostile).unwrap();
+    let inner = format!("{d}/inner");
+    std::fs::create_dir(&inner).unwrap();
+    assert!(matches!(
+        scp.rename(&g, &inner).await,
+        Err(ProviderError::AlreadyExists(_))
+    ));
+    assert!(std::path::Path::new(&g).exists());
+    std::fs::remove_file(&other).unwrap();
+    std::fs::remove_dir(&inner).unwrap();
     assert_eq!(scp.stat(&g).await.unwrap().size, 4);
     scp.chmod(&g, 0o600).await.expect("chmod");
     assert_eq!(scp.stat(&g).await.unwrap().mode, 0o600);
