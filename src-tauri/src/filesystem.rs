@@ -239,9 +239,14 @@ fn mount_table_error(err: &std::io::Error, in_snap: bool) -> String {
 /// connects on its own, so a mounted partition can be refused after a good mount.
 pub(crate) fn local_path_refused(path: &Path, err: &std::io::Error) -> String {
     #[cfg(target_os = "linux")]
-    return refused_message(path, err, in_snap());
+    {
+        refused_message(path, err, in_snap())
+    }
     #[cfg(not(target_os = "linux"))]
-    format!("Failed to read directory: {err}")
+    {
+        let _ = path;
+        format!("Failed to read directory: {err}")
+    }
 }
 
 #[cfg(target_os = "linux")]
