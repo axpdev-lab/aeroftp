@@ -41228,8 +41228,8 @@ async fn apply_rclone_import_to_vault(
             .map(|s| s.protocol.clone().unwrap_or_default().to_lowercase())
     };
     // Secrets and list as one operation: a failure leaves neither, and a save made
-    // meanwhile is kept. Existing entries are preserved; new ids that already exist
-    // in the list are skipped to keep the operation idempotent on retry.
+    // meanwhile is kept. Existing entries are preserved; ids that already exist in
+    // the list are skipped, with their secrets, to keep the operation idempotent.
     let (summary, profiles, stored) =
         ftp_client_gui_lib::store_imported_profiles(&store, target.id, |current| {
             let mut summary = RcloneApplySummary {
@@ -41239,8 +41239,15 @@ async fn apply_rclone_import_to_vault(
                 profiles_appended: 0,
                 profiles_renamed: Vec::new(),
             };
+            // Ids are minted per parse, so one is held only if the list took it since.
+            // It then keeps its secrets, as a skipped `.aeroftp` profile does.
+            let held = |id: &str| {
+                current
+                    .iter()
+                    .any(|p| p.get("id").and_then(|v| v.as_str()) == Some(id))
+            };
             let mut writes = Vec::new();
-            for server in &result.servers {
+            for server in result.servers.iter().filter(|s| !held(&s.id)) {
                 if let Some(ref cred) = server.credential {
                     writes.push(SecretWrite::new(
                         format!("server_{}", server.id),
@@ -41251,7 +41258,7 @@ async fn apply_rclone_import_to_vault(
                 }
             }
             for (profile_id, secrets) in &result.provider_secrets {
-                let Some(protocol) = protocol_of(profile_id) else {
+                let Some(protocol) = protocol_of(profile_id).filter(|_| !held(profile_id)) else {
                     continue;
                 };
                 if let Some(ref oauth_json) = secrets.oauth {
@@ -41286,11 +41293,6 @@ async fn apply_rclone_import_to_vault(
                     }
                 }
             }
-            let held = |id: &str| {
-                current
-                    .iter()
-                    .any(|p| p.get("id").and_then(|v| v.as_str()) == Some(id))
-            };
             let mut additions = Vec::new();
             for server in &result.servers {
                 if held(&server.id) {
