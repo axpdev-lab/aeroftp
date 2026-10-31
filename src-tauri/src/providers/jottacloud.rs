@@ -898,7 +898,8 @@ impl JottacloudProvider {
         if path.is_empty() || path == "." {
             return self.current_path.clone();
         }
-        if path.starts_with('/') {
+        // `normalize_path` takes `\` for a separator: a leading one is the root too.
+        if path.starts_with(['/', '\\']) {
             return Self::normalize_path(path);
         }
         let base = self.current_path.trim_end_matches('/');
@@ -3762,6 +3763,9 @@ mod tests {
         assert_eq!(p.resolve_path("   "), "/Cloud/   ");
         assert_eq!(p.resolve_path(" a"), "/Cloud/ a");
         assert_eq!(p.resolve_path("/a "), "/a ");
+        // A leading backslash is the root, as normalize_path reads it.
+        assert_eq!(p.resolve_path("\\docs\\a "), "/docs/a ");
+        assert_eq!(p.resolve_path("sub\\a"), "/Cloud/sub/a");
     }
 
     fn test_provider() -> JottacloudProvider {

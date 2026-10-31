@@ -465,6 +465,46 @@ fn provider_sources() -> Vec<(String, String)> {
     sources
 }
 
+/// Every Rust source of the backend, the CLI and the TUI, by its path under
+/// `src`, this guard excepted.
+fn backend_sources() -> Vec<(String, String)> {
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut pending = vec![src.clone()];
+    let mut sources = Vec::new();
+    while let Some(dir) = pending.pop() {
+        for path in std::fs::read_dir(&dir)
+            .expect("a source folder")
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+        {
+            if path.is_dir() {
+                pending.push(path);
+            } else if path.extension().is_some_and(|ext| ext == "rs")
+                && !path.ends_with("path_resolution_guard.rs")
+            {
+                let name = path
+                    .strip_prefix(&src)
+                    .expect("under src")
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                sources.push((name, std::fs::read_to_string(&path).expect("a source")));
+            }
+        }
+    }
+    sources.sort();
+    assert!(
+        sources.iter().any(|(name, _)| name == "bin/aeroftp_cli.rs")
+            && sources.iter().any(|(name, _)| name == "cli_tui/app.rs")
+            && sources
+                .iter()
+                .any(|(name, _)| name == "providers/webdav.rs")
+            && sources.len() > 300,
+        "{} sources",
+        sources.len()
+    );
+    sources
+}
+
 /// [`production`] for a source that may have no test module.
 fn production_part(source: &str) -> &str {
     [
@@ -512,26 +552,125 @@ fn no_provider_listing_moves_the_current_folder() {
     );
 }
 
+/// A whitespace trim: `.trim()`, `.trim_start()`, `.trim_end()`, or the
+/// function itself handed to a `map` (`str::trim`). `trim_matches` and the
+/// other trims that take a pattern are not one: `trim_end_matches('/')` keeps
+/// the spaces.
+fn trims_whitespace(text: &str) -> bool {
+    ["trim", "trim_start", "trim_end"].iter().any(|name| {
+        text.match_indices(name).any(|(at, _)| {
+            let rest = &text[at + name.len()..];
+            match text[..at].chars().next_back() {
+                Some('.') => rest.starts_with("()"),
+                Some(':') => !rest
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_alphanumeric() || c == '_'),
+                _ => false,
+            }
+        })
+    })
+}
+
+/// The statements of a source, each with the line it starts on. A chain
+/// written over several lines (`.initial_path` / `.as_deref()` /
+/// `.map(str::trim)`) is one statement, which a check line by line misses.
+fn statements(source: &str) -> Vec<(usize, String)> {
+    let mut found = Vec::new();
+    let mut open: Option<(usize, String)> = None;
+    for (index, line) in source.lines().enumerate() {
+        let code = line.trim_start();
+        if code.starts_with("//") {
+            continue;
+        }
+        let (_, text) = open.get_or_insert_with(|| (index + 1, String::new()));
+        text.push_str(code);
+        text.push(' ');
+        if code.ends_with([';', '{', '}', ',']) {
+            found.extend(open.take());
+        }
+    }
+    found.extend(open);
+    found
+}
+
 /// A path is the name as typed, spaces included, and so is the initial
 /// folder of a profile: `/reports ` and `/reports` are two folders. kDrive,
 /// Drime, Internxt, Jottacloud and Twake trimmed it on connect, and the
-/// session started in the other one.
+/// session started in the other one; WebDAV did on the root it found under
+/// Nextcloud, in a chain over several lines; the CLI did on the profile
+/// base, and the TUI on its folder and on the profile it saves. The rclone
+/// export, the Zoho folder id, the benchmark's scratch folder and the AI
+/// worker's S3 root read it trimmed too.
+///
+/// Three statements read a trimmed value on purpose, each named here with the
+/// text that finds it: an import reads another application's file by that
+/// file's rules, and the AeroCrypt anchor trims on both sides (`norm_anchor`
+/// here, `normCryptScope` in the app), so it changes on both sides together.
+const TRIMS_ON_PURPOSE: [(&str, &str); 3] = [
+    // Dreamweaver's `remoteroot` attribute, read from its site file.
+    ("dreamweaver_import.rs", "remoteroot"),
+    // rclone's own `remote = base:subpath`, read from its config: the name
+    // of the remote, beside the folder it returns.
+    (
+        "rclone_import.rs",
+        "(base.trim().to_string(), initial_path)",
+    ),
+    // The AeroCrypt anchor a binding without a folder takes from the profile.
+    (
+        "crypt_overlay_provider.rs",
+        ".replace(\"{username}\", &username)",
+    ),
+];
+
 #[test]
-fn no_provider_trims_the_initial_folder() {
-    let trims = |line: &str| line.contains("initial") && line.contains(".trim");
-    assert!(trims(
-        "            let initial = initial.trim().to_string();"
-    ));
-    assert!(trims(
-        r#"            if !initial.trim().is_empty() && initial.trim() != "/" {"#
-    ));
-    let found: Vec<String> = provider_sources()
-        .iter()
-        .flat_map(|(file, source)| {
-            sites_where(production_part(source), trims)
-                .into_iter()
-                .map(move |(line, _)| format!("{file}:{line}"))
-        })
-        .collect();
+fn nothing_trims_the_initial_folder() {
+    let trims = |statement: &str| statement.contains("initial") && trims_whitespace(statement);
+    for statement in [
+        "let initial = initial.trim().to_string();",
+        r#"if !initial.trim().is_empty() && initial.trim() != "/" {"#,
+        "let user_initial = self .config .initial_path .as_deref() .map(str::trim) .filter(|p| !p.is_empty());",
+        "initial_path: form.initial_path.trim_start().to_string(),",
+    ] {
+        assert!(trims(statement), "{statement}");
+    }
+    for statement in [
+        "let base = initial_path.trim_end_matches('/');",
+        "let shown = label.trim();",
+        "let initial = initial.to_string();",
+    ] {
+        assert!(!trims(statement), "{statement}");
+    }
+    let on_purpose = |file: &str, statement: &str| {
+        TRIMS_ON_PURPOSE
+            .iter()
+            .any(|(name, text)| file.ends_with(name) && statement.contains(text))
+    };
+    let mut excused = Vec::new();
+    let mut found = Vec::new();
+    for (file, source) in backend_sources() {
+        // A test module of its own: what it trims is a fixture.
+        if file.ends_with("tests.rs") {
+            continue;
+        }
+        for (line, statement) in statements(production_part(&source)) {
+            if !trims(&statement) {
+                continue;
+            }
+            if on_purpose(&file, &statement) {
+                excused.push(file.clone());
+            } else {
+                found.push(format!("{file}:{line}"));
+            }
+        }
+    }
     assert!(found.is_empty(), "the initial folder is trimmed: {found:?}");
+    // Each exception still finds its statement, and only that one.
+    excused.sort();
+    let mut expected: Vec<String> = TRIMS_ON_PURPOSE
+        .iter()
+        .map(|(name, _)| name.to_string())
+        .collect();
+    expected.sort();
+    assert_eq!(excused, expected);
 }

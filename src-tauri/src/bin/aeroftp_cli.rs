@@ -9640,7 +9640,23 @@ impl CliBase {
 
     /// The base of a connected provider: Proton Drive's start folder is where
     /// its session stands right after connecting.
+    ///
+    /// A relative initial folder (`docs`) is entered by connect from where the
+    /// session starts: the root of a cloud drive, the login home on FTP and
+    /// SFTP. Those providers resolve a relative path against the folder they
+    /// stand in, so a base left relative was applied twice and `a.txt` reached
+    /// `docs/docs/a.txt`. When the session stands in that folder, the base is
+    /// where it stands. A provider that keeps the folder as a prefix of its
+    /// own (S3's `bucket/backups/`) stays at its root and keeps the base.
     async fn for_provider(path: impl Into<String>, provider: &mut dyn StorageProvider) -> Self {
+        let mut path = path.into();
+        if !path.is_empty() && !path.starts_with('/') {
+            if let Ok(cwd) = provider.pwd().await {
+                if stands_in(&cwd, &path) {
+                    path = cwd;
+                }
+            }
+        }
         let start_folder = if provider.provider_type() == ProviderType::Proton {
             Some(provider.pwd().await.unwrap_or_else(|_| "/".to_string()))
         } else {
@@ -9648,6 +9664,14 @@ impl CliBase {
         };
         Self::with_start_folder(path, start_folder)
     }
+}
+
+/// Whether a session in `cwd` stands in the relative folder `base`: `cwd` is
+/// `/docs`, or ends with `/docs` (the login home's `docs`).
+fn stands_in(cwd: &str, base: &str) -> bool {
+    let base = base.trim_end_matches('/');
+    let cwd = cwd.trim_end_matches('/');
+    !base.is_empty() && cwd.ends_with(base) && cwd[..cwd.len() - base.len()].ends_with('/')
 }
 
 impl std::ops::Deref for CliBase {
@@ -86175,31 +86199,6 @@ mod tests {
         assert_eq!(resolve_cli_remote_path("/ reports", ""), "/ reports");
     }
 
-    /// The profile's initial folder is taken as given, spaces included, in
-    /// every place the CLI reads it (the resolver, the MTP open).
-    #[test]
-    fn test_no_initial_path_is_trimmed() {
-        let source = include_str!("aeroftp_cli.rs");
-        // Cut at the test module, LF or CRLF (Git for Windows' default).
-        let at = [
-            "\n#[cfg(test)]\nmod tests {",
-            "\r\n#[cfg(test)]\r\nmod tests {",
-        ]
-        .iter()
-        .find_map(|marker| source.find(marker))
-        .expect("the CLI has a test module to cut at");
-        // Built, so this test does not name it.
-        let needle = ["initial_path", ".trim()"].concat();
-        let found: Vec<usize> = source[..at]
-            .lines()
-            .enumerate()
-            .filter(|(_, line)| !line.trim_start().starts_with("//"))
-            .filter(|(_, line)| line.contains(&needle))
-            .map(|(index, _)| index + 1)
-            .collect();
-        assert!(found.is_empty(), "initial_path trimmed at lines {found:?}");
-    }
-
     #[test]
     fn test_resolve_cli_remote_path_user_already_includes_base() {
         assert_eq!(
@@ -88997,6 +88996,10 @@ mod tests {
         /// Opt-in: `stat` answers for a listed directory, and for a file as a
         /// listing names it, instead of not found.
         stat_listed: bool,
+        /// Opt-in: the folder the session stands in, which `pwd` answers. A
+        /// relative path is listed under it, as FTP, SFTP and the cloud
+        /// providers that keep a current folder resolve one.
+        cwd: Option<String>,
     }
 
     impl MemTreeProvider {
@@ -89064,16 +89067,22 @@ mod tests {
             true
         }
         async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            let path = match &self.cwd {
+                Some(cwd) if !path.starts_with('/') => {
+                    format!("{}/{}", cwd.trim_end_matches('/'), path)
+                }
+                _ => path.to_string(),
+            };
             let mut listing = self
                 .dirs
-                .get(path)
+                .get(&path)
                 .cloned()
-                .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+                .ok_or_else(|| ProviderError::NotFound(path.clone()))?;
             listing.retain(|entry| !self.hidden.contains(&entry.path));
             Ok(listing)
         }
         async fn pwd(&mut self) -> Result<String, ProviderError> {
-            Ok("/".to_string())
+            Ok(self.cwd.clone().unwrap_or_else(|| "/".to_string()))
         }
         async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
             Ok(())
@@ -96706,6 +96715,89 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         let root = listed(collect_cli_list_entries(&mut other, &base, &options("/"), &cli).await);
         assert_eq!(omitted, root);
         assert_eq!(omitted.1, vec!["home.txt".to_string()]);
+    }
+
+    /// A relative initial folder is where connect put the session, and the
+    /// provider resolves a relative path against it. The base was left
+    /// relative, so `ls` with the profile's `root` asked for `root`, which the
+    /// provider standing in `/root` listed as `/root/root`: the folder once,
+    /// not twice.
+    #[tokio::test]
+    async fn a_relative_initial_folder_is_applied_once() {
+        let cli = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| Cli::try_parse_from(["aeroftp-cli", "ls", "_"]).expect("ls parses"))
+            .expect("parse thread")
+            .join()
+            .expect("parse thread finished");
+        let options = |path| CliListOptions {
+            path,
+            sort: "name",
+            reverse: false,
+            all: true,
+            limit: None,
+            files_only: false,
+            dirs_only: false,
+            emit_resolution_note: false,
+        };
+        let names = |list: Result<CliListEntries, CliListError>| match list {
+            Ok(list) => list.entries.into_iter().map(|e| e.name).collect::<Vec<_>>(),
+            Err(_) => panic!("listing failed"),
+        };
+        let mut provider = MemTreeProvider {
+            cwd: Some("/root".to_string()),
+            ..MemTreeProvider::tree(&[("a.txt", 1), ("sub/b.txt", 1)])
+        };
+        let base = CliBase::for_provider("root", &mut provider).await;
+        assert_eq!(base.path, "/root");
+        assert_eq!(
+            names(collect_cli_list_entries(&mut provider, &base, &options(""), &cli).await),
+            ["sub", "a.txt"]
+        );
+        assert_eq!(
+            names(collect_cli_list_entries(&mut provider, &base, &options("sub"), &cli).await),
+            ["b.txt"]
+        );
+        // The login home's folder on FTP and SFTP, and a base written with a
+        // trailing slash or a trailing space.
+        for (cwd, initial) in [
+            ("/home/u/root", "root/"),
+            ("/home/u/re ports ", "re ports "),
+        ] {
+            let mut home = MemTreeProvider {
+                cwd: Some(cwd.to_string()),
+                ..Default::default()
+            };
+            assert_eq!(CliBase::for_provider(initial, &mut home).await.path, cwd);
+        }
+    }
+
+    /// A provider that keeps the folder as a prefix of its own (S3's
+    /// `bucket/backups/`) stands at its root: the base stays as given. So does
+    /// a relative base the session does not stand in, and an absolute one.
+    #[tokio::test]
+    async fn a_base_the_session_does_not_stand_in_is_kept() {
+        let mut root = MemTreeProvider::default();
+        assert_eq!(
+            CliBase::for_provider("bucket/backups/", &mut root)
+                .await
+                .path,
+            "bucket/backups/"
+        );
+        let mut elsewhere = MemTreeProvider {
+            cwd: Some("/mydocs".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            CliBase::for_provider("docs", &mut elsewhere).await.path,
+            "docs"
+        );
+        assert_eq!(
+            CliBase::for_provider("/reports ", &mut elsewhere)
+                .await
+                .path,
+            "/reports "
+        );
     }
 
     /// The TUI size of a folder counted what a looping listing sent it

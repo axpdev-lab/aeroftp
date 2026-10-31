@@ -4145,12 +4145,12 @@ impl StorageProvider for WebDavProvider {
                             self.connected = true;
                             // Issue #175: server_root is the auto-detected path.
                             // current_path defaults to it; if the user supplied
-                            // a relative initial_path, append it under the root.
+                            // a relative initial_path, append it under the root,
+                            // as given: `reports ` is its own folder.
                             let user_initial = self
                                 .config
                                 .initial_path
                                 .as_deref()
-                                .map(str::trim)
                                 .filter(|p| !p.is_empty() && *p != "/");
                             let starting_path = match user_initial {
                                 Some(rel) => {
@@ -6560,6 +6560,33 @@ mod tests {
             "{outcome:?}"
         );
         assert!(!local.exists(), "a stalled download leaves no file behind");
+    }
+
+    /// Nextcloud and ownCloud refuse a PROPFIND on `/`; the root found under
+    /// `/remote.php/dav/files/<user>/` takes the initial folder as given.
+    #[tokio::test]
+    async fn a_discovered_nextcloud_root_keeps_the_spaces_of_the_initial_folder() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |req: axum::extract::Request| async move {
+                if req.method().as_str() == "PROPFIND"
+                    && req.uri().path() == "/remote.php/dav/files/user/"
+                {
+                    axum::http::StatusCode::MULTI_STATUS
+                } else {
+                    axum::http::StatusCode::METHOD_NOT_ALLOWED
+                }
+            },
+        ));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut config = test_config(&base);
+        config.initial_path = Some("reports ".to_string());
+        let mut provider = WebDavProvider::new(config).expect("provider");
+        let outcome = provider.connect().await;
+        server.abort();
+        outcome.expect("connect");
+        assert_eq!(provider.current_path, "/remote.php/dav/files/user/reports ");
     }
 
     fn test_config(url: &str) -> WebDavConfig {

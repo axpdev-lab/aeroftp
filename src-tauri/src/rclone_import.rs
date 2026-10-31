@@ -3492,48 +3492,60 @@ pub fn export_rclone(
             if let Some(path) = options
                 .and_then(|o| o.get("initial_path"))
                 .and_then(|v| v.as_str())
-                .map(str::trim)
                 .filter(|p| !p.is_empty() && *p != "/")
             {
-                // sftp addresses an absolute folder as `remote:/abs`; ftp and
-                // webdav paths are relative to the account/URL root.
-                let alias_path = if proto == "sftp" {
-                    path.to_string()
+                // rclone reads a config value without the spaces at its ends
+                // (and a quoted one with its quotes), so `remote = nas:/data `
+                // would open `/data`: a folder whose name ends in a space
+                // cannot be written there, and the alias is left out.
+                if path.ends_with(char::is_whitespace) {
+                    notes.push_str(&format!(
+                        "# start-folder alias for '{}' omitted: rclone's config cannot hold '{}', whose name ends in a space\n",
+                        server.name.replace(['\n', '\r'], " "),
+                        path.replace(['\n', '\r'], " ")
+                    ));
                 } else {
-                    path.trim_start_matches('/').to_string()
-                };
-                let desired = sanitize_rclone_remote_name(&format!("{remote_name}-path"));
-                match names.claim_generated(&desired) {
-                    Some(alias_name) if !alias_name.is_empty() && alias_name != remote_name => {
-                        if alias_name != desired {
+                    // sftp addresses an absolute folder as `remote:/abs`; ftp and
+                    // webdav paths are relative to the account/URL root.
+                    let alias_path = if proto == "sftp" {
+                        path.to_string()
+                    } else {
+                        path.trim_start_matches('/').to_string()
+                    };
+                    let desired = sanitize_rclone_remote_name(&format!("{remote_name}-path"));
+                    match names.claim_generated(&desired) {
+                        Some(alias_name) if !alias_name.is_empty() && alias_name != remote_name => {
+                            if alias_name != desired {
+                                trailing.push_str(&format!(
+                                    "\n# renamed from '{}': that name is taken by another remote\n",
+                                    desired
+                                ));
+                            }
                             trailing.push_str(&format!(
-                                "\n# renamed from '{}': that name is taken by another remote\n",
-                                desired
-                            ));
-                        }
-                        trailing.push_str(&format!(
                             "\n# '{}' opens in '{}' in AeroFTP; address that folder as `{}:`.\n",
                             server.name.replace(['\n', '\r'], " "),
                             alias_path,
                             alias_name
                         ));
-                        trailing.push_str(&format!("[{}]\n", alias_name));
-                        trailing.push_str("type = alias\n");
-                        trailing.push_str(&format!("remote = {}:{}\n", remote_name, alias_path));
-                        // A crypt overlay scoped by path must wrap the alias,
-                        // so `rcloneCryptOverlayScope = /vault` resolves under
-                        // the start folder, not under the account root. An
-                        // imported `rcloneCryptRemote` is taken relative to
-                        // this folder (`crypt_export_remote_target`).
-                        crypt_base = alias_name;
-                        crypt_base_root = Some(alias_path.to_string());
-                    }
-                    _ => {
-                        notes.push_str(&format!(
+                            trailing.push_str(&format!("[{}]\n", alias_name));
+                            trailing.push_str("type = alias\n");
+                            trailing
+                                .push_str(&format!("remote = {}:{}\n", remote_name, alias_path));
+                            // A crypt overlay scoped by path must wrap the alias,
+                            // so `rcloneCryptOverlayScope = /vault` resolves under
+                            // the start folder, not under the account root. An
+                            // imported `rcloneCryptRemote` is taken relative to
+                            // this folder (`crypt_export_remote_target`).
+                            crypt_base = alias_name;
+                            crypt_base_root = Some(alias_path.to_string());
+                        }
+                        _ => {
+                            notes.push_str(&format!(
                             "# start-folder alias for '{}' omitted: no free remote name near '{}'\n",
                             server.name.replace(['\n', '\r'], " "),
                             desired
                         ));
+                        }
                     }
                 }
             }
@@ -4749,6 +4761,43 @@ user = t
         let sftp_at = conf.find("[nas]").expect("sftp section");
         let alias_at = conf.find("[nas-path]").expect("alias section");
         assert!(alias_at > sftp_at);
+    }
+
+    /// rclone reads `remote = nas:/mnt/data ` as `nas:/mnt/data` (measured with
+    /// rclone 1.75.2; a quoted value keeps its quotes): the alias would open
+    /// another folder, so it is left out and the config says why.
+    #[test]
+    fn test_export_rclone_leaves_out_a_start_folder_that_ends_in_a_space() {
+        let servers = vec![RcloneExportServer {
+            id: "nas".to_string(),
+            name: "nas".to_string(),
+            host: "nas.example.test".to_string(),
+            port: 22,
+            username: "nasuser".to_string(),
+            protocol: Some("sftp".to_string()),
+            options: Some(serde_json::json!({ "initial_path": "/mnt/data " })),
+            provider_id: None,
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("nas".to_string(), "secret".to_string());
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-sftp-path-trailing-space.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(
+            conf.contains("[nas]"),
+            "the remote itself is written:\n{conf}"
+        );
+        assert!(
+            !conf.contains("[nas-path]"),
+            "no alias to another folder:\n{conf}"
+        );
+        assert!(!conf.contains("remote = nas:/mnt/data"), "{conf}");
+        assert!(
+            conf.contains("# start-folder alias for 'nas' omitted: rclone's config cannot hold '/mnt/data ', whose name ends in a space"),
+            "the config says why:\n{conf}"
+        );
     }
 
     #[test]

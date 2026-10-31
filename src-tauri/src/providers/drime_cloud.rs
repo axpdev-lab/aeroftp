@@ -413,7 +413,8 @@ impl DrimeCloudProvider {
         // Check leading slash on the raw input before normalizing -
         // normalize_path unconditionally prepends "/", which would otherwise
         // make every relative input appear absolute and skip the current_path join.
-        if path.starts_with('/') {
+        // `normalize_path` takes `\` for a separator: a leading one is the root too.
+        if path.starts_with(['/', '\\']) {
             return Self::normalize_path(path);
         }
         let base = self.current_path.trim_end_matches('/');
@@ -2975,6 +2976,9 @@ mod tests {
         assert_eq!(p.resolve_path("   "), "/Cloud/   ");
         assert_eq!(p.resolve_path(" a"), "/Cloud/ a");
         assert_eq!(p.resolve_path("/a "), "/a ");
+        // A leading backslash is the root, as normalize_path reads it.
+        assert_eq!(p.resolve_path("\\docs\\a "), "/docs/a ");
+        assert_eq!(p.resolve_path("sub\\a"), "/Cloud/sub/a");
     }
 
     fn test_provider() -> DrimeCloudProvider {

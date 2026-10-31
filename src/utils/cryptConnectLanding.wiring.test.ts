@@ -72,9 +72,13 @@ describe('crypt overlay connect landing (#1211)', () => {
         expect(opts).toEqual({ initialLandingPath: '' });
     });
 
-    it('blank Remote Path behaves like an empty one', async () => {
+    it('the landing is the Remote Path the connect opened, spaces included', async () => {
+        // The connect enters the Remote Path as given (FTP sends `CWD    `), so
+        // a name of spaces is a folder of that name, not the on-wire root.
         const opts = await landingFor({ id: 's1', cryptOverlay: { remoteScope: '/Vault' }, serverInitialPath: '   ' });
-        expect(opts).toEqual({ initialLandingPath: '' });
+        expect(opts).toEqual({ initialLandingPath: '   ' });
+        const named = await landingFor({ id: 's1', cryptOverlay: { remoteScope: '/Vault' }, serverInitialPath: '/docs ' });
+        expect(named).toEqual({ initialLandingPath: '/docs ' });
     });
 
     it('a configured Remote Path remains the landing', async () => {

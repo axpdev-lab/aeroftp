@@ -122,8 +122,16 @@ describe('aeroftp-cli sync line for the Plan tab', () => {
         // No start folder and a bare root: the CLI reads it as the server's
         // default folder, which may be a home directory.
         [{ profileInitialPath: '', remotePath: '/' }, 'remote-path'],
+        // The CLI takes the start folder as given: `/www ` is not `/www`, so
+        // `/www/r` would be joined under `/www `.
+        [{ profileInitialPath: '/www ', remotePath: '/www/r' }, 'remote-path'],
     ])('names the difference instead of a command: %o', (patch, reason) => {
         expect(buildCliSyncCommand({ ...mirrorUpload, ...patch })).toEqual({ kind: 'none', reason });
+    });
+
+    it('offers the line for a start folder whose name ends in a space', () => {
+        const built = buildCliSyncCommand({ ...mirrorUpload, profileInitialPath: '/www ', remotePath: '/www /r' });
+        expect(built.kind).toBe('command');
     });
 
     it.each(["it's", 'it\u2018s', 'it\u2019s', 'it\u201As', 'it\u201Bs', "a\u2019'\u2018b"])(

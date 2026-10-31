@@ -537,8 +537,9 @@ fn the_scratch_base_joins_the_start_path_on_a_folder_boundary() {
     // and dropped it.
     let (base, _) = benchmark_remote_roots("aero", "rid");
     assert_eq!(base, "aero/aeroftp-bench");
-    let (base, _) = benchmark_remote_roots(" /srv/data/ ", "rid");
-    assert_eq!(base, "/srv/data/aeroftp-bench");
+    // A start path whose name ends in a space is that folder, not another.
+    let (base, _) = benchmark_remote_roots("/srv/data ", "rid");
+    assert_eq!(base, "/srv/data /aeroftp-bench");
 }
 
 #[test]
