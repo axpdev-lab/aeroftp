@@ -1357,7 +1357,20 @@
             "serverProfilesCount": "Profily serverov: {count}",
             "aiKeysCount": "Kľúče AI: {count}",
             "oauthTokensCount": "Tokeny OAuth: {count}",
-            "configEntriesCount": "Položky konfigurácie: {count}"
+            "configEntriesCount": "Položky konfigurácie: {count}",
+            "importExistingLabel": "Ak profil už existuje",
+            "importExistingSkip": "Preskočiť",
+            "importExistingOverwrite": "Prepísať",
+            "importExistingDuplicate": "Duplikovať",
+            "importExistingSkipHint": "Profil, ktorý už máte, zostane nezmenený, aj s heslami a tokenmi.",
+            "importExistingOverwriteHint": "Profil, ktorý už máte, sa nahradí na mieste heslami a tokenmi zo súboru. Zostane v obľúbených a skupinách.",
+            "importExistingDuplicateHint": "Profil, ktorý už máte, zostane a kópia zo súboru sa pridá vedľa neho s číslovaným názvom.",
+            "overwrittenCount": "Prepísané: {count}",
+            "duplicatedCount": "Duplikované: {count}",
+            "importJottaChainWarning": "Jottacloud obnovuje prihlásenie pri každom pripojení a {names} teraz zdieľa jedno s inou kópiou: kópia, ktorá sa pripojí prvá, odhlási druhú (zariadenie, z ktorého súbor pochádza, alebo profil, z ktorého bola duplikovaná). Druhú prihláste znova pomocou nového Personal Login Token.",
+            "importOauthAppKept": "{names} prišli s inou vlastnou aplikáciou OAuth, než akú má toto zariadenie pre daného poskytovateľa. Uložená aplikácia sa zachovala, takže sa prihláste znova, ak sa tieto profily prestanú pripájať.",
+            "importTargetChanged": "{names} neboli prepísané: súbor ich smeruje na iný server a ich uložené heslá a tokeny tam nesmú ísť. Importujte s možnosťou Duplikovať, aby ste pridali kópiu zo súboru, alebo najprv odstráňte profil.",
+            "importSharedSecretsFailed": "{names} boli importované, ale zdieľané tajomstvo alebo reláciu zo súboru sa nepodarilo uložiť. Ak sa tieto profily nepripoja, prihláste sa do nich znova."
         },
         "devtools": {
             "title": "AeroTools",

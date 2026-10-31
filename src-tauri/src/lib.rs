@@ -179,6 +179,7 @@ mod only_main_window_tests {
     fn secrets_and_shell_answer_the_main_window_only() {
         for command in [
             "get_credential",
+            "import_server_profiles",
             "ai_delegate_local",
             "ai_cancel_delegation",
             "provider_site_command",
@@ -268,7 +269,8 @@ mod plugin_registry;
 mod plugins;
 pub mod proc_stats;
 pub mod profile_auth_state;
-mod profile_export;
+pub mod profile_export;
+pub mod profile_import_plan;
 mod trash_guard;
 // The CLI's import listings mark a profile whose endpoint would need cleartext
 // consent, and they share the predicate with the S3 provider rather than
@@ -17670,10 +17672,16 @@ async fn copy_profile_secrets(
     source_id: String,
     target_id: String,
     protocol: Option<String>,
+    expected_user_id: Option<i64>,
 ) -> Result<std::collections::HashMap<String, bool>, String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
     let user_id = user_partitions::cli_get_active_user(&store)?.map(|user| user.id);
+    // The copy joins the list of the account the caller read. Secrets also reach the
+    // shared vault key, so they are never written for another than the active one.
+    if expected_user_id.is_some() && expected_user_id != user_id {
+        return Err(user_partitions::ACCOUNT_CHANGED.to_string());
+    }
     let mut copied = std::collections::HashMap::new();
     let source_suffix = format!("_{}", source_id);
     for source_key in per_profile_vault_keys(&source_id, protocol.as_deref()) {
@@ -18242,471 +18250,902 @@ pub async fn export_server_profiles_core(
     .map_err(|e| e.to_string())
 }
 
+/// GUI My Servers > Import: import a `.aeroftp` file into the active user's
+/// vault, with `existing` (Skip when absent) deciding what happens to a profile
+/// the user already has. The report carries the list stored.
 #[tauri::command]
 async fn import_server_profiles(
+    webview: tauri::Webview,
     file_path: String,
     password: String,
-) -> Result<serde_json::Value, String> {
-    import_server_profiles_core_skip_existing(file_path, password).await
+    existing: Option<profile_import_plan::ExistingProfileMode>,
+) -> Result<profile_import_plan::ProfileImportReport, String> {
+    only_main_window(webview.label(), "import_server_profiles")?;
+    // Argon2id and blocking vault, lock and database work, off the async workers
+    // like the keystore commands (AUDIT 2026-05-11 M1).
+    tokio::task::spawn_blocking(move || {
+        let store =
+            credential_store::CredentialStore::from_cache().ok_or(IMPORT_VAULT_NOT_READY)?;
+        let user = user_partitions::cli_get_active_user(&store)
+            .map_err(|e| format!("{IMPORT_NEEDS_PARTITION}: {e}"))?
+            .ok_or_else(|| format!("{IMPORT_NEEDS_PARTITION}: NO_ACTIVE_USER"))?;
+        import_server_profiles_blocking(file_path, password, existing.unwrap_or_default(), user.id)
+    })
+    .await
+    .map_err(|e| format!("Import task failed: {e}"))?
 }
 
-/// Core of [`import_server_profiles`], callable outside the Tauri command
-/// surface. Reused verbatim by `aeroftp-cli profile-import` so the
-/// decrypt + per-secret vault restore (including the #215 per-protocol
-/// snapshots) lives in one place. Restores credentials for every profile in
-/// the file (the GUI computes the profile-list merge separately).
-pub async fn import_server_profiles_core(
-    file_path: String,
-    password: String,
-) -> Result<serde_json::Value, String> {
-    import_server_profiles_core_filtered(file_path, password, None).await
+/// Without an unlocked vault neither the list nor the secrets can be reached,
+/// and reading the list as empty would make every profile look new.
+const IMPORT_VAULT_NOT_READY: &str =
+    "Vault not ready: the saved profiles cannot be read to compare the import with, so nothing was imported; unlock the vault and import the file again";
+
+/// An import stores into an account's partition or not at all. It never falls
+/// back to the legacy blob, which has no accounts and no revision to check.
+pub const IMPORT_NEEDS_PARTITION: &str =
+    "The account store that holds the saved profiles could not be opened, so nothing was imported. Check that the AeroFTP data folder is writable and has free space, and that this AeroFTP is not older than the one that last used it, then import the file again";
+
+/// What the file holds, planned against one list: the profiles to store under
+/// their final ids and the secrets kept under those ids.
+struct PreparedImport {
+    servers: Vec<profile_export::ServerProfileExport>,
+    provider_secrets: std::collections::HashMap<String, profile_export::ProviderSecrets>,
+    plan: Vec<profile_import_plan::PlannedProfile>,
+    target_changed: Vec<String>,
 }
 
-/// Like [`import_server_profiles_core`] but, when `restore_only` is `Some`, only
-/// the profile ids in the set have their credentials restored into the vault.
-///
-/// Audit v4.1.0 (CLI profile-import): the importer restored every secret in the
-/// file BEFORE the caller decided which profiles to skip as duplicates, so a
-/// profile reported as "skipped (already present)" silently had its existing
-/// vault credential overwritten by the one from the file. Callers that dedup the
-/// profile list (the CLI) pass the set of ids they actually add so the skip
-/// decision and the credential restore stay consistent. `None` preserves the
-/// original "restore all" behaviour for callers that do not deduplicate.
-pub async fn import_server_profiles_core_filtered(
-    file_path: String,
-    password: String,
-    restore_only: Option<std::collections::HashSet<String>>,
-) -> Result<serde_json::Value, String> {
-    import_server_profiles_core_impl(file_path, password, restore_only, false).await
-}
-
-fn import_restore_ids_after_skip<'a>(
-    imported: impl IntoIterator<Item = &'a str>,
-    existing: &std::collections::HashSet<String>,
-) -> std::collections::HashSet<String> {
-    imported
-        .into_iter()
-        .filter(|id| !existing.contains(*id))
-        .map(ToOwned::to_owned)
-        .collect()
-}
-
-#[cfg(test)]
-mod import_restore_ids_tests {
-    use super::*;
-
-    #[test]
-    fn skip_preserves_existing_ids_and_accepts_only_new_profiles() {
-        let existing = std::collections::HashSet::from(["srv_existing".to_string()]);
-        let accepted =
-            import_restore_ids_after_skip(["srv_existing", "srv_new", "srv_new"], &existing);
-        assert_eq!(accepted.len(), 1);
-        assert!(accepted.contains("srv_new"));
-        assert!(!accepted.contains("srv_existing"));
+impl PreparedImport {
+    /// The profiles the import stores, picked by their place in the file: a
+    /// skipped repeat of a stored id must not write its credential over that
+    /// profile's.
+    fn stored(&self) -> Vec<profile_export::ServerProfileExport> {
+        self.plan
+            .iter()
+            .filter(|p| p.outcome != profile_import_plan::ImportOutcome::Skipped)
+            .map(|p| self.servers[p.index].clone())
+            .collect()
     }
 }
 
-/// GUI import: preserve every existing profile's secrets when that profile is
-/// skipped by the frontend merge, and restore only newly accepted profile ids.
-pub async fn import_server_profiles_core_skip_existing(
-    file_path: String,
-    password: String,
-) -> Result<serde_json::Value, String> {
-    import_server_profiles_core_impl(file_path, password, None, true).await
+/// Plan the file's profiles against `current`. An overwrite the file would point
+/// at another server ([`profile_import_plan::same_target`]) or over a weaker
+/// connection, is refused and reported: the stored secrets were saved for the old
+/// one, so keeping them could send a password to the new one. Such a profile
+/// keeps its configuration and its secrets.
+fn prepare_import(
+    servers: &[profile_export::ServerProfileExport],
+    provider_secrets: &std::collections::HashMap<String, profile_export::ProviderSecrets>,
+    mode: profile_import_plan::ExistingProfileMode,
+    current: &[serde_json::Value],
+) -> PreparedImport {
+    use profile_import_plan::{ImportCandidate, ImportOutcome};
+
+    let mut servers = servers.to_vec();
+    let mut provider_secrets = provider_secrets.clone();
+    let candidates: Vec<ImportCandidate<'_>> = servers
+        .iter()
+        .map(|s| ImportCandidate {
+            id: &s.id,
+            host: &s.host,
+            port: u64::from(s.port),
+            username: &s.username,
+        })
+        .collect();
+    let mut plan = profile_import_plan::plan_import(
+        &candidates,
+        current,
+        mode,
+        profile_import_plan::new_profile_id,
+    );
+    drop(candidates);
+
+    let mut target_changed = Vec::new();
+    for planned in plan
+        .iter_mut()
+        .filter(|p| p.outcome == ImportOutcome::Overwritten)
+    {
+        let server = &servers[planned.index];
+        let target = serde_json::json!({
+            "host": server.host, "port": server.port, "username": server.username,
+            "protocol": server.protocol, "providerId": server.provider_id, "options": server.options,
+        });
+        let moves = current
+            .iter()
+            .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(planned.id.as_str()))
+            .is_some_and(|existing| !profile_import_plan::same_target(existing, &target));
+        if moves {
+            planned.outcome = ImportOutcome::Skipped;
+            target_changed.push(profile_import_plan::display_name(
+                &server.name,
+                &server.host,
+            ));
+        }
+    }
+
+    // A profile given a new id (a duplicate, or one the file gave no id)
+    // travels under it from here on, with a copy of the secrets the file
+    // carries for its old id (an earlier profile of the file may still be
+    // stored under that id), so the restore writes them to the new id and never
+    // to the original.
+    let mut seen_in_file = std::collections::HashSet::new();
+    for planned in &plan {
+        // The file holds one set of provider secrets per id: a later profile
+        // repeating that id cannot claim them, they may be another account's.
+        let first = seen_in_file.insert(servers[planned.index].id.clone());
+        if servers[planned.index].id != planned.id {
+            let old = std::mem::replace(&mut servers[planned.index].id, planned.id.clone());
+            if first {
+                if let Some(secrets) = provider_secrets.get(&old).cloned() {
+                    provider_secrets.insert(planned.id.clone(), secrets);
+                }
+            }
+        }
+    }
+    PreparedImport {
+        servers,
+        provider_secrets,
+        plan,
+        target_changed,
+    }
 }
 
-async fn import_server_profiles_core_impl(
+/// Build the report of `prepared`. `stored` holds the profiles whose secrets
+/// reached the vault (none on a preview), `shared` what the shared secrets did,
+/// and `list` the list as stored with `renamed` the names the write changed.
+fn import_report(
+    prepared: &PreparedImport,
+    stored: &[profile_export::ServerProfileExport],
+    shared: SharedImportSecrets,
+    list: Vec<serde_json::Value>,
+    renamed: Vec<util::profile_name::RenamedProfile>,
+    metadata: serde_json::Value,
+) -> profile_import_plan::ProfileImportReport {
+    use profile_import_plan::ImportOutcome;
+
+    let restored = restored_import_secrets(stored, &prepared.provider_secrets);
+    let mut report = profile_import_plan::ProfileImportReport {
+        servers: Vec::new(),
+        skipped: Vec::new(),
+        similar: 0,
+        jotta_chains: Vec::new(),
+        stored: list,
+        renamed,
+        oauth_apps_kept: Vec::new(),
+        shared_secrets_failed: Vec::new(),
+        target_changed: prepared.target_changed.clone(),
+        total_in_file: prepared.servers.len(),
+        metadata,
+    };
+    for planned in &prepared.plan {
+        let server = &prepared.servers[planned.index];
+        let name = profile_import_plan::display_name(&server.name, &server.host);
+        if planned.outcome == ImportOutcome::Skipped {
+            report.skipped.push(name);
+            continue;
+        }
+        if shared.kept_oauth_apps.contains(&planned.id) {
+            report.oauth_apps_kept.push(name.clone());
+        }
+        if shared.failed.contains(&planned.id) {
+            report.shared_secrets_failed.push(name.clone());
+        }
+        if planned.similar {
+            report.similar += 1;
+        }
+        let jottacloud = server
+            .protocol
+            .as_deref()
+            .is_some_and(|p| p.eq_ignore_ascii_case("jottacloud"));
+        if jottacloud
+            && prepared
+                .provider_secrets
+                .get(&planned.id)
+                .is_some_and(|s| s.jotta_refresh.is_some())
+        {
+            report
+                .jotta_chains
+                .push(profile_import_plan::ImportedProfileRef {
+                    id: planned.id.clone(),
+                    name,
+                });
+        }
+        let mut profile = redact_imported_server(server, &restored);
+        profile["importOutcome"] = serde_json::json!(planned.outcome);
+        report.servers.push(profile);
+    }
+    report
+}
+
+/// What an import of `file_path` would do to `current`, without touching the
+/// vault or the list. The report's `stored` is `current`.
+pub fn preview_server_profiles(
+    file_path: &str,
+    password: &str,
+    mode: profile_import_plan::ExistingProfileMode,
+    current: &[serde_json::Value],
+) -> Result<profile_import_plan::ProfileImportReport, String> {
+    let (servers, provider_secrets, metadata) =
+        profile_export::import_profiles(std::path::Path::new(file_path), password)
+            .map_err(|e| e.to_string())?;
+    let prepared = prepare_import(&servers, &provider_secrets, mode, current);
+    Ok(import_report(
+        &prepared,
+        &[],
+        SharedImportSecrets::default(),
+        current.to_vec(),
+        Vec::new(),
+        serde_json::to_value(&metadata).unwrap_or(serde_json::Value::Null),
+    ))
+}
+
+/// Import a `.aeroftp` file into `user`, who must be the active account, as one
+/// operation for the GUI and the CLI: profile list and per-profile secrets end up
+/// from the same file, or neither changes. `mode` decides what happens to a
+/// profile the list already holds ([`profile_import_plan`]). The audit v4.1.0 rule
+/// holds in every mode: secrets are written only for the profiles the import adds,
+/// overwrites or duplicates, never for one it skips.
+///
+/// The file is decrypted first, without any lock. Then, under
+/// [`user_partitions::ProfileListLock`]: read the list and its revision, plan on
+/// that list, keep what each key to write holds now, write the per-profile
+/// secrets, and store the list only if it is still that revision. On any failure
+/// the secrets are put back ([`profile_import_plan::roll_back_secret_writes`]). A
+/// list changed by another writer costs one more plan, without decrypting again;
+/// changed twice, the import gives up and says so.
+///
+/// The secrets provider-wide or kept by another module (an OAuth app, the legacy
+/// Jottacloud chain, a native Proton session) are written only after the list is
+/// stored, since they cannot be rolled back without touching other profiles. If
+/// one fails the import stands and the report names the profile, which asks for a
+/// new sign-in.
+///
+/// A crash between the secrets and the list leaves no lock (the system drops it)
+/// and writes no journal: an added or duplicated profile's secrets sit unused under
+/// an id nothing refers to, an overwritten profile holds the file's secret on the
+/// same server, and importing the same file again converges.
+pub async fn import_server_profiles_with_mode(
     file_path: String,
     password: String,
-    restore_only: Option<std::collections::HashSet<String>>,
-    skip_existing: bool,
-) -> Result<serde_json::Value, String> {
+    mode: profile_import_plan::ExistingProfileMode,
+    user: i64,
+) -> Result<profile_import_plan::ProfileImportReport, String> {
+    import_server_profiles_blocking(file_path, password, mode, user)
+}
+
+fn import_server_profiles_blocking(
+    file_path: String,
+    password: String,
+    mode: profile_import_plan::ExistingProfileMode,
+    user: i64,
+) -> Result<profile_import_plan::ProfileImportReport, String> {
     let (servers, provider_secrets, metadata) =
         profile_export::import_profiles(std::path::Path::new(&file_path), &password)
             .map_err(|e| e.to_string())?;
-    // Without a cached store the import below is metadata-only and restores no
-    // secret, so there is nothing to protect; a failed lookup stays fatal.
-    let restore_only = if let (true, Some(store)) = (
-        skip_existing,
-        credential_store::CredentialStore::from_cache(),
-    ) {
-        let mut root_key = store.derive_user_partition_wrapping_key();
-        let listed = user_partitions::open_or_init_cli()
-            .and_then(|conn| user_partitions::list_active_server_profiles_scoped(&conn, &root_key));
-        root_key.zeroize();
-        let (_, current) = listed?;
-        let existing: std::collections::HashSet<String> = current
-            .iter()
-            .filter_map(|profile| {
-                profile
-                    .get("id")
-                    .and_then(|value| value.as_str())
-                    .map(ToOwned::to_owned)
-            })
-            .collect();
-        Some(import_restore_ids_after_skip(
-            servers.iter().map(|server| server.id.as_str()),
-            &existing,
-        ))
-    } else {
-        restore_only
+    let metadata = serde_json::to_value(&metadata).unwrap_or(serde_json::Value::Null);
+    let store = credential_store::CredentialStore::from_cache().ok_or(IMPORT_VAULT_NOT_READY)?;
+    user_partitions::init_or_migrate_cli(&store)
+        .map_err(|e| format!("{IMPORT_NEEDS_PARTITION}: {e}"))?;
+    let lock_conn = user_partitions::open_or_init_cli()
+        .map_err(|e| format!("{IMPORT_NEEDS_PARTITION}: {e}"))?;
+    let lock = user_partitions::ProfileListLock::acquire(&lock_conn)?;
+    refuse_import_without_file_locks(lock.as_ref())?;
+    user_partitions::ensure_credential_user_unlocked(user)?;
+    let slots = VaultSecretSlots {
+        store: &store,
+        user,
     };
 
-    // Store credentials in secure store
-    let mut cred_errors: Vec<String> = Vec::new();
-    // CWP-20B: track which profiles actually had their crypt-overlay secret
-    // restored, so the redacted `hasStoredAeroCrypt*` flags returned to the UI
-    // reflect reality (a binding can round-trip without its secret when the
-    // export excluded credentials or the vault is unavailable).
-    let mut restored_aerocrypt_pw: std::collections::HashSet<String> =
-        std::collections::HashSet::new();
-    let mut restored_aerocrypt_salt: std::collections::HashSet<String> =
-        std::collections::HashSet::new();
-    let mut restored_aerocrypt_keyfile_path: std::collections::HashSet<String> =
-        std::collections::HashSet::new();
-    let mut restored_aerocrypt_config: std::collections::HashSet<String> =
-        std::collections::HashSet::new();
-    // Issue #230: track which profiles had their Filen CLI API key restored so
-    // the `hasStoredFilenApiKey` flag returned to the UI reflects reality.
-    let mut restored_filen_api_key: std::collections::HashSet<String> =
-        std::collections::HashSet::new();
-    match credential_store::CredentialStore::from_cache() {
-        Some(store) => {
-            #[cfg(feature = "proton-native")]
-            let native_owner = providers::proton_native::vault::SessionOwner::for_user(
-                user_partitions::cli_get_active_user(&store)?.map(|user| user.id),
-            );
-            let jotta_private_user =
-                user_partitions::private_token_user(None, "jottacloud_refresh")?;
-            for server in &servers {
-                // Audit v4.1.0: when the caller deduped the profile list, only
-                // restore credentials for the ids it actually added, so a
-                // "skipped" profile never has its existing credential clobbered.
-                if restore_only
-                    .as_ref()
-                    .is_some_and(|allow| !allow.contains(&server.id))
-                {
-                    continue;
+    let mut replanned = false;
+    loop {
+        let (current, revision) =
+            user_partitions::cli_read_active_profiles_at_revision(&store, user).map_err(|e| {
+                if e.starts_with(user_partitions::ACCOUNT_CHANGED) {
+                    e
+                } else {
+                    format!("{IMPORT_NEEDS_PARTITION}: {e}")
                 }
-                if let Some(ref cred) = server.credential {
-                    // MUV-3: dual-write the imported credential (vault + active
-                    // user's partition).
-                    if let Err(e) = user_partitions::store_active_credential_dual(
-                        &store,
-                        &format!("server_{}", server.id),
-                        cred,
-                    ) {
-                        cred_errors.push(format!("{}: {}", server.id, e));
-                    }
-                }
-            }
-            // Issue #214: restore provider tokens under the per-profile vault
-            // key. The protocol identifier comes from the matching server
-            // entry: when the same id is missing from `servers` (corrupted
-            // export) we silently skip, which preserves the rule that
-            // tokens have no meaning without the profile they belong to.
-            let protocol_by_id: std::collections::HashMap<&str, String> = servers
+            })?;
+        let prepared = prepare_import(&servers, &provider_secrets, mode, &current);
+        let stored = prepared.stored();
+        if stored.is_empty() {
+            return Ok(import_report(
+                &prepared,
+                &[],
+                SharedImportSecrets::default(),
+                current,
+                Vec::new(),
+                metadata,
+            ));
+        }
+        // Read before the writes replace it: the legacy singleton is this
+        // profile's own when it holds the chain this profile held.
+        let own_jotta_chains = own_jotta_chains(&store, &stored, &prepared.provider_secrets);
+        let writes = import_secret_writes(&stored, &prepared.provider_secrets);
+        let report_servers: Vec<serde_json::Value> = {
+            let restored = restored_import_secrets(&stored, &prepared.provider_secrets);
+            prepared
+                .plan
                 .iter()
-                .map(|s| {
-                    (
-                        s.id.as_str(),
-                        s.protocol.clone().unwrap_or_default().to_lowercase(),
-                    )
+                .filter(|p| p.outcome != profile_import_plan::ImportOutcome::Skipped)
+                .map(|planned| {
+                    let mut profile =
+                        redact_imported_server(&prepared.servers[planned.index], &restored);
+                    profile["importOutcome"] = serde_json::json!(planned.outcome);
+                    profile
                 })
-                .collect();
-            for (profile_id, secrets) in &provider_secrets {
-                // Same dedup-consistency gate as the server_<id> loop above.
-                if restore_only
-                    .as_ref()
-                    .is_some_and(|allow| !allow.contains(profile_id))
-                {
-                    continue;
-                }
-                let protocol = match protocol_by_id.get(profile_id.as_str()) {
-                    Some(p) => p,
-                    None => continue,
-                };
-                if let Some(ref oauth_json) = secrets.oauth {
-                    if let Some(slug) = oauth_vault_slug_for_protocol(protocol) {
-                        let key = format!("oauth_{}_{}", slug, profile_id);
-                        // MUV-4: dual-write into vault + active user's partition.
-                        if let Err(e) = user_partitions::store_active_credential_typed_dual(
-                            &store, &key, "oauth", oauth_json,
-                        ) {
-                            cred_errors.push(format!("{} oauth: {}", profile_id, e));
-                        }
-                    }
-                }
-                if let Some(ref jotta_json) = secrets.jotta_refresh {
-                    if protocol == "jottacloud" {
-                        let key = format!("jottacloud_refresh_{}", profile_id);
-                        if let Err(e) = user_partitions::store_active_credential_typed_dual(
-                            &store,
-                            &key,
-                            "jottacloud_refresh",
-                            jotta_json,
-                        ) {
-                            cred_errors.push(format!("{} jotta: {}", profile_id, e));
-                        }
-                        // Legacy singleton: connect paths that do not thread
-                        // extra.profile_id still call load_persisted_refresh_token
-                        // with an empty id and only read `jottacloud_refresh`.
-                        // Dual-write so an imported profile reconnects without
-                        // burning a new Personal Login Token. Last writer wins
-                        // when two Jotta profiles share a device (same pre-#214
-                        // singleton behaviour). Only the legacy owner owns that
-                        // shared singleton; another user's chain stays private.
-                        if jotta_private_user.is_none() {
-                            if let Err(e) = store.store("jottacloud_refresh", jotta_json) {
-                                cred_errors.push(format!("{} jotta singleton: {}", profile_id, e));
-                            }
-                        }
-                    }
-                }
-                // Restore the BYO OAuth app client_id/client_secret into their
-                // global vault singletons (`oauth_<slug>_client_id/secret`) so an
-                // imported OAuth profile reconnects without re-entering the app
-                // credentials (the export side gathers them in
-                // `collect_provider_secrets_for_server`). Written under the raw
-                // client-cred slug, which aliases Google Photos onto Google Drive
-                // and matches the key the GUI/edit form reads.
-                if secrets.oauth_client_id.is_some() || secrets.oauth_client_secret.is_some() {
-                    if let Some(cred_slug) = bridge_commands::oauth_client_cred_key(protocol) {
-                        if let Some(ref id) = secrets.oauth_client_id {
-                            if let Err(e) =
-                                store.store(&format!("oauth_{}_client_id", cred_slug), id)
-                            {
-                                cred_errors.push(format!("{} oauth client_id: {}", profile_id, e));
-                            }
-                        }
-                        if let Some(ref secret) = secrets.oauth_client_secret {
-                            if let Err(e) =
-                                store.store(&format!("oauth_{}_client_secret", cred_slug), secret)
-                            {
-                                cred_errors
-                                    .push(format!("{} oauth client_secret: {}", profile_id, e));
-                            }
-                        }
-                        if let Some(ref region) = secrets.oauth_region {
-                            if let Err(e) =
-                                store.store(&format!("oauth_{}_region", cred_slug), region)
-                            {
-                                cred_errors.push(format!("{} oauth region: {}", profile_id, e));
-                            }
-                        }
-                    }
-                }
-                // CWP-20B: restore the crypt-overlay secrets under the same
-                // generic vault keys the connect path reads (App.tsx
-                // get_credential aerocrypt_overlay_pw_/salt_<id>). Protocol-
-                // agnostic and shared by both overlay kinds (AeroCrypt + rclone).
-                if let Some(ref pw) = secrets.aerocrypt_overlay_pw {
-                    let key = format!("aerocrypt_overlay_pw_{}", profile_id);
-                    match user_partitions::store_active_credential_dual(&store, &key, pw) {
-                        Ok(()) => {
-                            restored_aerocrypt_pw.insert(profile_id.clone());
-                        }
-                        Err(e) => cred_errors.push(format!("{} aerocrypt pw: {}", profile_id, e)),
-                    }
-                }
-                if let Some(ref salt) = secrets.aerocrypt_overlay_salt {
-                    let key = format!("aerocrypt_overlay_salt_{}", profile_id);
-                    match user_partitions::store_active_credential_dual(&store, &key, salt) {
-                        Ok(()) => {
-                            restored_aerocrypt_salt.insert(profile_id.clone());
-                        }
-                        Err(e) => cred_errors.push(format!("{} aerocrypt salt: {}", profile_id, e)),
-                    }
-                }
-                // Restore the AeroCrypt keyfile PATH (not the keyfile itself). On a
-                // different device this path may be stale; the UI validates it and
-                // re-points before unlock. A keyfile vault still fails closed if the
-                // keyfile is missing, so restoring a stale path is never unsafe.
-                if let Some(ref kf_path) = secrets.aerocrypt_overlay_keyfile_path {
-                    let key = format!("aerocrypt_overlay_keyfile_path_{}", profile_id);
-                    match user_partitions::store_active_credential_dual(&store, &key, kf_path) {
-                        Ok(()) => {
-                            restored_aerocrypt_keyfile_path.insert(profile_id.clone());
-                        }
-                        Err(e) => cred_errors
-                            .push(format!("{} aerocrypt keyfile path: {}", profile_id, e)),
-                    }
-                }
-                if let Some(ref config) = secrets.aerocrypt_overlay_config {
-                    let key = format!("aerocrypt_overlay_config_{}", profile_id);
-                    match user_partitions::store_active_credential_dual(&store, &key, config) {
-                        Ok(()) => {
-                            restored_aerocrypt_config.insert(profile_id.clone());
-                        }
-                        Err(e) => {
-                            cred_errors.push(format!("{} aerocrypt config: {}", profile_id, e))
-                        }
-                    }
-                }
-                // Issue #215 Caveat A: restore the per-protocol snapshots under
-                // the same `server_modes_<id>` key the connect/edit path reads
-                // (modeCredentialStore get/store_credential). The `server_`
-                // prefix dual-writes into the active user's partition, matching
-                // how the snapshots were originally saved.
-                if let Some(ref modes) = secrets.mode_credentials {
-                    let key = format!("server_modes_{}", profile_id);
-                    if let Err(e) =
-                        user_partitions::store_active_credential_dual(&store, &key, modes)
-                    {
-                        cred_errors.push(format!("{} mode creds: {}", profile_id, e));
-                    }
-                }
-                // Issue #230: restore the Filen CLI API key under the same
-                // `filen_api_key_<id>` vault key the connect path reads, so an
-                // imported Filen profile skips the /v3/login + TOTP window again.
-                if let Some(ref api_key) = secrets.filen_api_key {
-                    let key = format!("filen_api_key_{}", profile_id);
-                    match user_partitions::store_active_credential_dual(&store, &key, api_key) {
-                        Ok(()) => {
-                            restored_filen_api_key.insert(profile_id.clone());
-                        }
-                        Err(e) => cred_errors.push(format!("{} filen api key: {}", profile_id, e)),
-                    }
-                }
-                // OneDrive drive id/type: vault-only reconnect hints, restored
-                // under the same keys the connect path reads/writes.
-                if let Some(ref v) = secrets.onedrive_drive_id {
-                    let key = format!("onedrive_drive_id_{}", profile_id);
-                    if let Err(e) = user_partitions::store_active_credential_dual(&store, &key, v) {
-                        cred_errors.push(format!("{} onedrive drive_id: {}", profile_id, e));
-                    }
-                }
-                if let Some(ref v) = secrets.onedrive_drive_type {
-                    let key = format!("onedrive_drive_type_{}", profile_id);
-                    if let Err(e) = user_partitions::store_active_credential_dual(&store, &key, v) {
-                        cred_errors.push(format!("{} onedrive drive_type: {}", profile_id, e));
-                    }
-                }
-                // Native Proton Drive session, under the key the native
-                // provider reads, mirrored into the active user's partition
-                // with the type the provider writes it with.
-                if let Some(ref v) = secrets.proton_native_session {
-                    #[cfg(feature = "proton-native")]
-                    let result = providers::proton_native::vault::restore_session_blocking(
-                        native_owner,
-                        profile_id,
-                        v,
-                    )
-                    .map_err(|error| error.to_string());
-                    #[cfg(not(feature = "proton-native"))]
-                    let result = {
-                        let key = format!("proton_native_session_{}", profile_id);
-                        user_partitions::store_active_credential_typed_dual(
-                            &store,
-                            &key,
-                            "proton_native_session",
-                            v,
-                        )
-                    };
-                    if let Err(e) = result {
-                        cred_errors.push(format!("{} proton session: {}", profile_id, e));
-                    }
-                }
-                if let Some(auth) = &secrets.profile_auth {
-                    for (prefix, value) in auth.entries() {
-                        if let Some(value) = value {
-                            if let Err(error) = user_partitions::store_active_credential_typed_dual(
-                                &store,
-                                &format!("{prefix}_{profile_id}"),
-                                "oauth",
-                                value,
-                            ) {
-                                cred_errors.push(format!("{profile_id} profile auth: {error}"));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        None => {
-            // Vault not ready: credentials cannot be stored
-            let cred_count = servers.iter().filter(|s| s.credential.is_some()).count();
-            if cred_count > 0 {
-                cred_errors.push(format!(
-                    "Vault not ready, {} credentials not stored",
-                    cred_count
-                ));
-            }
-            let token_count = provider_secrets
-                .values()
-                .filter(|s| {
-                    s.oauth.is_some() || s.jotta_refresh.is_some() || s.profile_auth.is_some()
+                .collect()
+        };
+        let committed =
+            profile_import_plan::write_secrets_and_commit(&slots, writes, !replanned, || {
+                #[cfg(test)]
+                run_import_before_commit();
+                user_partitions::cli_update_profiles_at_revision(&store, user, &revision, |list| {
+                    profile_import_plan::lay_import_over(list, &report_servers)
                 })
-                .count();
-            if token_count > 0 {
-                cred_errors.push(format!(
-                    "Vault not ready, {} provider tokens not stored",
-                    token_count
-                ));
+            })?;
+        let (sent, list) = match committed {
+            profile_import_plan::SecretCommit::Done(written) => written,
+            profile_import_plan::SecretCommit::Replan => {
+                replanned = true;
+                continue;
             }
+        };
+        // The blob mirrors the active account. The partition write succeeded, so
+        // a mirror failure is a warning.
+        if let Err(e) = user_partitions::mirror_active_profiles_to_legacy_blob(&store, &list) {
+            tracing::warn!("Could not mirror server profiles to the legacy blob: {e}");
         }
+        let shared = restore_shared_import_secrets(
+            &store,
+            user,
+            &stored,
+            &prepared.provider_secrets,
+            &own_jotta_chains,
+        );
+        let renamed = util::profile_name::renamed_by_write(&sent, &list);
+        return Ok(import_report(
+            &prepared, &stored, shared, list, renamed, metadata,
+        ));
     }
-    if !cred_errors.is_empty() {
-        log::warn!("Import credential issues: {:?}", cred_errors);
-    }
+}
 
-    // H16 fix: Redact credentials before returning to renderer.
-    // Only return non-sensitive fields + a boolean flag indicating stored credentials.
-    let redacted_servers: Vec<serde_json::Value> = servers
-        .iter()
-        .map(|s| {
-            serde_json::json!({
-                "id": s.id,
-                "name": s.name,
-                "host": s.host,
-                "port": s.port,
-                "username": s.username,
-                "protocol": s.protocol,
-                "initialPath": s.initial_path,
-                "localInitialPath": s.local_initial_path,
-                "color": s.color,
-                "lastConnected": s.last_connected,
-                "options": s.options,
-                "providerId": s.provider_id,
-                // Top-level ServerProfile fields that live OUTSIDE `options` and
-                // so must be re-emitted explicitly or the import drops them:
-                // the share-link base (GAP 2), the custom/detected icons (GAP 3)
-                // and the silenced classic-fallback modal preference (GAP 4).
-                "publicUrlBase": s.public_url_base,
-                "customIconUrl": s.custom_icon_url,
-                "faviconUrl": s.favicon_url,
-                "skipDeltaEligibilityPrompt": s.skip_delta_eligibility_prompt,
-                "hasStoredCredential": s.credential.is_some(),
-                // Issue #230: reflect whether the Filen CLI API key was actually
-                // restored so the profile reconnects via the key (skipping the
-                // TOTP window) instead of falling back to password + 2FA.
-                "hasStoredFilenApiKey": restored_filen_api_key.contains(&s.id),
-                // CWP-20B: re-import a Crypt profile AS a Crypt profile (both
-                // kinds). The flags reflect what was actually restored, not the
-                // source state, so the UI prompts for the overlay password only
-                // when the secret did not travel with the export.
-                "aeroCryptOverlay": s.aero_crypt_overlay,
-                "hasStoredAeroCryptPassword": restored_aerocrypt_pw.contains(&s.id),
-                "hasStoredAeroCryptSalt": restored_aerocrypt_salt.contains(&s.id),
-                // A keyfile PATH may have been restored; the UI validates it exists
-                // (it can be stale on a different device) and re-points before unlock.
-                "hasStoredAeroCryptKeyfilePath": restored_aerocrypt_keyfile_path.contains(&s.id),
-                "hasStoredAeroCryptConfig": restored_aerocrypt_config.contains(&s.id),
-                // Issue #215 Caveat A: surface the opt-in so the imported profile
-                // re-hydrates per-mode snapshots. It is a user preference, not a
-                // secret-presence flag, so it round-trips verbatim: ConnectionScreen
-                // only reads `server_modes_<id>` when this is true, and finds the
-                // creds restored above (or prompts normally if the export omitted them).
-                "persistModeCredentials": s.persist_mode_credentials,
-            })
-        })
-        .collect();
+#[cfg(test)]
+thread_local! {
+    /// Runs between an import's secret writes and its list write, for a test to
+    /// play another writer there.
+    pub(crate) static IMPORT_BEFORE_COMMIT: std::cell::RefCell<Option<Box<dyn FnMut()>>> =
+        const { std::cell::RefCell::new(None) };
+}
 
-    let result = serde_json::json!({
-        "servers": redacted_servers,
-        "metadata": metadata,
+#[cfg(test)]
+fn run_import_before_commit() {
+    IMPORT_BEFORE_COMMIT.with_borrow_mut(|hook| {
+        if let Some(hook) = hook {
+            hook();
+        }
     });
-    Ok(result)
+}
+
+/// What one attempt of [`store_imported_profiles`] will do with the list it was
+/// shown: the secrets to write, the profiles to append, and the caller's result.
+pub struct ImportedProfilesPlan<T> {
+    pub writes: Vec<profile_import_plan::SecretWrite>,
+    pub additions: Vec<serde_json::Value>,
+    pub result: T,
+}
+
+/// Store profiles imported from another client's config with their secrets, as
+/// one operation like [`import_server_profiles_with_mode`]: under the list lock,
+/// `plan` sees the list, its secrets are written, and the additions are stored only
+/// if the list is still that revision. On a failure the secrets go back. A changed
+/// list asks for one more plan. `user` must be the active account, since the
+/// secrets also reach the shared vault key. Returns the plan's result, the list
+/// sent and the list stored.
+pub fn store_imported_profiles<T>(
+    store: &credential_store::CredentialStore,
+    user: i64,
+    mut plan: impl FnMut(&[serde_json::Value]) -> Result<ImportedProfilesPlan<T>, String>,
+) -> Result<(T, Vec<serde_json::Value>, Vec<serde_json::Value>), String> {
+    let lock_conn = user_partitions::open_or_init_cli()
+        .map_err(|e| format!("{IMPORT_NEEDS_PARTITION}: {e}"))?;
+    let lock = user_partitions::ProfileListLock::acquire(&lock_conn)?;
+    refuse_import_without_file_locks(lock.as_ref())?;
+    user_partitions::ensure_credential_user_unlocked(user)?;
+    let slots = VaultSecretSlots { store, user };
+    let mut replanned = false;
+    loop {
+        let (current, revision) =
+            user_partitions::cli_read_active_profiles_at_revision(store, user)?;
+        let ImportedProfilesPlan {
+            writes,
+            additions,
+            result,
+        } = plan(&current)?;
+        let committed =
+            profile_import_plan::write_secrets_and_commit(&slots, writes, !replanned, || {
+                #[cfg(test)]
+                run_import_before_commit();
+                user_partitions::cli_update_profiles_at_revision(store, user, &revision, |list| {
+                    list.extend(additions.iter().cloned())
+                })
+            })?;
+        let (sent, stored) = match committed {
+            profile_import_plan::SecretCommit::Done(written) => written,
+            profile_import_plan::SecretCommit::Replan => {
+                replanned = true;
+                continue;
+            }
+        };
+        if let Err(e) = user_partitions::mirror_active_profiles_to_legacy_blob(store, &stored) {
+            tracing::warn!("Could not mirror server profiles to the legacy blob: {e}");
+        }
+        return Ok((result, sent, stored));
+    }
+}
+
+/// An import writes secrets and list as one: on a filesystem without file locks,
+/// another import's rollback could put back a secret under the list this one
+/// stored, so it stops here and says what to do. Other saves go on.
+fn refuse_import_without_file_locks(
+    lock: Option<&user_partitions::ProfileListLock>,
+) -> Result<(), String> {
+    if lock.is_some_and(|lock| !lock.is_exclusive()) {
+        return Err(user_partitions::NO_FILE_LOCKS.to_string());
+    }
+    Ok(())
+}
+
+/// The per-profile keys an import writes for `user`, in the vault and its
+/// partition, as the connect paths read them.
+struct VaultSecretSlots<'a> {
+    store: &'a credential_store::CredentialStore,
+    user: i64,
+}
+
+impl profile_import_plan::SecretSlots for VaultSecretSlots<'_> {
+    type Snapshot = user_partitions::CredentialSnapshot;
+
+    fn snapshot(&self, write: &profile_import_plan::SecretWrite) -> Result<Self::Snapshot, String> {
+        user_partitions::snapshot_credential_for_user(self.store, self.user, &write.key)
+    }
+
+    fn write(&self, write: &profile_import_plan::SecretWrite) -> Result<(), String> {
+        user_partitions::store_imported_credential_for_user(
+            self.store,
+            self.user,
+            &write.key,
+            write.kind,
+            &write.value,
+        )
+    }
+
+    fn restore(
+        &self,
+        write: &profile_import_plan::SecretWrite,
+        before: Self::Snapshot,
+    ) -> Result<(), String> {
+        user_partitions::restore_credential_for_user(
+            self.store,
+            self.user,
+            &write.key,
+            write.kind,
+            &write.value,
+            &before,
+        )
+    }
+}
+
+/// The global vault singletons of an OAuth app, which every profile of the
+/// provider reads and no partition holds.
+struct OAuthAppSlots<'a> {
+    store: &'a credential_store::CredentialStore,
+}
+
+impl profile_import_plan::SecretSlots for OAuthAppSlots<'_> {
+    type Snapshot = Option<zeroize::Zeroizing<String>>;
+
+    fn snapshot(&self, write: &profile_import_plan::SecretWrite) -> Result<Self::Snapshot, String> {
+        Ok(vault_value(self.store, &write.key)?.map(zeroize::Zeroizing::new))
+    }
+
+    fn write(&self, write: &profile_import_plan::SecretWrite) -> Result<(), String> {
+        self.store
+            .store(&write.key, &write.value)
+            .map_err(|e| e.to_string())
+    }
+
+    fn restore(
+        &self,
+        write: &profile_import_plan::SecretWrite,
+        before: Self::Snapshot,
+    ) -> Result<(), String> {
+        let current = vault_value(self.store, &write.key)?;
+        match profile_import_plan::rollback_action(
+            current.as_deref(),
+            &write.value,
+            before.as_ref().map(|value| value.as_str()),
+        ) {
+            profile_import_plan::RollbackAction::Leave => Ok(()),
+            profile_import_plan::RollbackAction::Restore(value) => self
+                .store
+                .store(&write.key, value)
+                .map_err(|e| e.to_string()),
+            profile_import_plan::RollbackAction::Delete => {
+                self.store.delete(&write.key).map_err(|e| e.to_string())
+            }
+        }
+    }
+}
+
+/// Which profiles had a secret restored whose presence the redaction reports:
+/// a binding or a key can round-trip without its secret when the export left
+/// credentials out or the vault was not ready.
+struct RestoredImportSecrets {
+    aerocrypt_pw: std::collections::HashSet<String>,
+    aerocrypt_salt: std::collections::HashSet<String>,
+    aerocrypt_keyfile_path: std::collections::HashSet<String>,
+    aerocrypt_config: std::collections::HashSet<String>,
+    filen_api_key: std::collections::HashSet<String>,
+}
+
+/// The secrets [`import_secret_writes`] writes for `servers`, by kind.
+fn restored_import_secrets(
+    servers: &[profile_export::ServerProfileExport],
+    provider_secrets: &std::collections::HashMap<String, profile_export::ProviderSecrets>,
+) -> RestoredImportSecrets {
+    let with = |has: fn(&profile_export::ProviderSecrets) -> bool| {
+        servers
+            .iter()
+            .filter(|s| provider_secrets.get(&s.id).is_some_and(has))
+            .map(|s| s.id.clone())
+            .collect()
+    };
+    RestoredImportSecrets {
+        aerocrypt_pw: with(|s| s.aerocrypt_overlay_pw.is_some()),
+        aerocrypt_salt: with(|s| s.aerocrypt_overlay_salt.is_some()),
+        aerocrypt_keyfile_path: with(|s| s.aerocrypt_overlay_keyfile_path.is_some()),
+        aerocrypt_config: with(|s| s.aerocrypt_overlay_config.is_some()),
+        filen_api_key: with(|s| s.filen_api_key.is_some()),
+    }
+}
+
+/// The non-empty value the vault holds under `key`, `None` when it holds none.
+/// An error means it could not be read: a caller then leaves a shared key alone
+/// rather than guess that it is free.
+fn vault_value(
+    store: &credential_store::CredentialStore,
+    key: &str,
+) -> Result<Option<String>, String> {
+    match store.get(key) {
+        Ok(value) if !value.is_empty() => Ok(Some(value)),
+        Ok(_) | Err(credential_store::CredentialError::NotFound(_)) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// The per-profile secrets of `servers`, the profiles the import stores: each
+/// one's credential and the `provider_secrets` kept under its id, under the same
+/// vault keys the connect paths read. A secret whose protocol gives it no key, or
+/// an id missing from `servers` (a profile the import does not store, or a
+/// corrupted export), writes nothing: tokens have no meaning without the profile
+/// they belong to. Audit v4.1.0: a skipped profile is not in `servers`, so a stored
+/// profile it matches keeps its secrets.
+fn import_secret_writes(
+    servers: &[profile_export::ServerProfileExport],
+    provider_secrets: &std::collections::HashMap<String, profile_export::ProviderSecrets>,
+) -> Vec<profile_import_plan::SecretWrite> {
+    use profile_import_plan::SecretWrite;
+    let mut writes = Vec::new();
+    for server in servers {
+        if let Some(cred) = &server.credential {
+            writes.push(SecretWrite::new(
+                format!("server_{}", server.id),
+                None,
+                cred,
+            ));
+        }
+    }
+    // In file order, like the shared secrets written after them.
+    for server in servers {
+        let id = &server.id;
+        let Some(secrets) = provider_secrets.get(id) else {
+            continue;
+        };
+        let protocol = server.protocol.clone().unwrap_or_default().to_lowercase();
+        if let Some(oauth_json) = &secrets.oauth {
+            if let Some(slug) = oauth_vault_slug_for_protocol(&protocol) {
+                writes.push(SecretWrite::new(
+                    format!("oauth_{slug}_{id}"),
+                    Some("oauth"),
+                    oauth_json,
+                ));
+            }
+        }
+        if let Some(jotta_json) = &secrets.jotta_refresh {
+            if protocol == "jottacloud" {
+                writes.push(SecretWrite::new(
+                    format!("jottacloud_refresh_{id}"),
+                    Some("jottacloud_refresh"),
+                    jotta_json,
+                ));
+            }
+        }
+        // CWP-20B: the crypt-overlay secrets, shared by both overlay kinds
+        // (AeroCrypt + rclone) and protocol-agnostic. The keyfile PATH, not the
+        // keyfile: on another device the path may be stale, the UI validates it
+        // and a keyfile vault still fails closed. Issue #215 Caveat A: the
+        // per-protocol snapshots. Issue #230: the Filen CLI API key, so an
+        // imported Filen profile skips the /v3/login + TOTP window again. OneDrive
+        // drive id/type: vault-only reconnect hints.
+        for (prefix, value) in [
+            ("aerocrypt_overlay_pw", &secrets.aerocrypt_overlay_pw),
+            ("aerocrypt_overlay_salt", &secrets.aerocrypt_overlay_salt),
+            (
+                "aerocrypt_overlay_keyfile_path",
+                &secrets.aerocrypt_overlay_keyfile_path,
+            ),
+            (
+                "aerocrypt_overlay_config",
+                &secrets.aerocrypt_overlay_config,
+            ),
+            ("server_modes", &secrets.mode_credentials),
+            ("filen_api_key", &secrets.filen_api_key),
+            ("onedrive_drive_id", &secrets.onedrive_drive_id),
+            ("onedrive_drive_type", &secrets.onedrive_drive_type),
+        ] {
+            if let Some(value) = value {
+                writes.push(SecretWrite::new(format!("{prefix}_{id}"), None, value));
+            }
+        }
+        if let Some(auth) = &secrets.profile_auth {
+            for (prefix, value) in auth.entries() {
+                if let Some(value) = value {
+                    writes.push(SecretWrite::new(
+                        format!("{prefix}_{id}"),
+                        Some("oauth"),
+                        value,
+                    ));
+                }
+            }
+        }
+    }
+    writes
+}
+
+/// What each stored Jottacloud profile's own key holds before the import writes
+/// it, or why it could not be read.
+fn own_jotta_chains(
+    store: &credential_store::CredentialStore,
+    servers: &[profile_export::ServerProfileExport],
+    provider_secrets: &std::collections::HashMap<String, profile_export::ProviderSecrets>,
+) -> std::collections::HashMap<String, Result<Option<String>, String>> {
+    servers
+        .iter()
+        .filter(|s| {
+            provider_secrets
+                .get(&s.id)
+                .is_some_and(|secrets| secrets.jotta_refresh.is_some())
+        })
+        .map(|s| {
+            (
+                s.id.clone(),
+                vault_value(store, &format!("jottacloud_refresh_{}", s.id)),
+            )
+        })
+        .collect()
+}
+
+/// What writing the shared secrets did, by profile id.
+#[derive(Default)]
+struct SharedImportSecrets {
+    /// Profiles whose custom OAuth app was not written, the provider's stored
+    /// app being another one.
+    kept_oauth_apps: std::collections::HashSet<String>,
+    /// Profiles whose shared secret or native session could not be written.
+    failed: std::collections::HashSet<String>,
+}
+
+/// Write what the list commit must come before, in file order: the provider-wide
+/// singletons, each only when empty or already this profile's or app's own
+/// ([`profile_import_plan::may_write_shared`]), never over another profile's, and
+/// the native Proton session. A failure stops nothing, since the list is stored:
+/// its profile is reported and asks for a new sign-in. The error text stays in the
+/// log, as it could quote a value.
+fn restore_shared_import_secrets(
+    store: &credential_store::CredentialStore,
+    user: i64,
+    servers: &[profile_export::ServerProfileExport],
+    provider_secrets: &std::collections::HashMap<String, profile_export::ProviderSecrets>,
+    own_jotta_chains: &std::collections::HashMap<String, Result<Option<String>, String>>,
+) -> SharedImportSecrets {
+    let mut shared = SharedImportSecrets::default();
+    let jotta_private_user =
+        match user_partitions::private_token_user(Some(user), "jottacloud_refresh") {
+            Ok(private) => private,
+            Err(e) => {
+                log::warn!("Import: jotta singleton owner: {e}");
+                Some(user)
+            }
+        };
+    #[cfg(feature = "proton-native")]
+    let native_owner = providers::proton_native::vault::SessionOwner::for_user(Some(user));
+    for server in servers {
+        let profile_id = &server.id;
+        let Some(secrets) = provider_secrets.get(profile_id) else {
+            continue;
+        };
+        let protocol = server.protocol.clone().unwrap_or_default().to_lowercase();
+        // Legacy singleton: connect paths that do not thread extra.profile_id
+        // still call load_persisted_refresh_token with an empty id and only read
+        // `jottacloud_refresh`. Dual-write so an imported profile reconnects
+        // without burning a new Personal Login Token. Only the legacy owner owns
+        // that shared singleton; another user's chain stays private. Written only
+        // while empty or still this profile's own chain: another profile
+        // reconnecting through the singleton keeps its chain, and a duplicate
+        // never replaces it.
+        if let (Some(jotta_json), "jottacloud", None) = (
+            &secrets.jotta_refresh,
+            protocol.as_str(),
+            jotta_private_user,
+        ) {
+            let own = own_jotta_chains
+                .get(profile_id)
+                .cloned()
+                .unwrap_or(Ok(None));
+            match (vault_value(store, "jottacloud_refresh"), own) {
+                (Ok(stored), Ok(own))
+                    if profile_import_plan::may_write_shared(stored.as_deref(), own.as_deref()) =>
+                {
+                    if let Err(e) = store.store("jottacloud_refresh", jotta_json) {
+                        log::warn!("Import: {profile_id} jotta singleton: {e}");
+                        shared.failed.insert(profile_id.clone());
+                    }
+                }
+                (Ok(_), Ok(_)) => {}
+                // Unreadable: left alone, the per-profile chain is stored.
+                (Err(e), _) | (_, Err(e)) => {
+                    log::warn!("Import: {profile_id} jotta singleton: {e}");
+                }
+            }
+        }
+        // Restore the BYO OAuth app client_id/client_secret into their global
+        // vault singletons (`oauth_<slug>_client_id/secret`) so an imported OAuth
+        // profile reconnects without re-entering the app credentials (the export
+        // side gathers them in `collect_provider_secrets_for_server`). Written
+        // under the raw client-cred slug, which aliases Google Photos onto Google
+        // Drive and matches the key the GUI/edit form reads. These are global
+        // singletons every profile of the provider reads, written as one unit:
+        // only when no app is stored yet or the stored app is this same one (same
+        // client id, whose secret or region the file then refreshes). An imported
+        // or duplicated profile never swaps the app another profile refreshes
+        // with; one that keeps the stored app is reported, since its token was
+        // issued by the other app and may need a new sign-in.
+        if secrets.oauth_client_id.is_some() || secrets.oauth_client_secret.is_some() {
+            if let Some(cred_slug) = bridge_commands::oauth_client_cred_key(&protocol) {
+                let stored_id = vault_value(store, &format!("oauth_{cred_slug}_client_id"));
+                let stored_secret = vault_value(store, &format!("oauth_{cred_slug}_client_secret"));
+                match (stored_id, stored_secret) {
+                    (Ok(stored_id), Ok(stored_secret))
+                        if profile_import_plan::may_write_oauth_app(
+                            stored_id.as_deref(),
+                            stored_secret.as_deref(),
+                            secrets.oauth_client_id.as_deref(),
+                        ) =>
+                    {
+                        let writes = [
+                            ("client_id", &secrets.oauth_client_id),
+                            ("client_secret", &secrets.oauth_client_secret),
+                            ("region", &secrets.oauth_region),
+                        ]
+                        .into_iter()
+                        .filter_map(|(name, value)| {
+                            value.as_deref().map(|value| {
+                                profile_import_plan::SecretWrite::new(
+                                    format!("oauth_{cred_slug}_{name}"),
+                                    None,
+                                    value,
+                                )
+                            })
+                        })
+                        .collect();
+                        // All or none: a client id without its secret cannot sign in.
+                        if let Err(e) = profile_import_plan::apply_secret_writes(
+                            &OAuthAppSlots { store },
+                            writes,
+                        ) {
+                            log::warn!("Import: {profile_id} oauth app: {e}");
+                            shared.failed.insert(profile_id.clone());
+                        }
+                    }
+                    (Ok(_), Ok(_)) => {
+                        shared.kept_oauth_apps.insert(profile_id.clone());
+                    }
+                    // Unreadable: left alone, and reported like a kept app.
+                    (Err(e), _) | (_, Err(e)) => {
+                        shared.kept_oauth_apps.insert(profile_id.clone());
+                        log::warn!("Import: {profile_id} oauth app: {e}");
+                    }
+                }
+            }
+        }
+        // Native Proton Drive session, under the key the native provider reads,
+        // mirrored into the user's partition with the type the provider writes
+        // it with. The fault can be in the file, where a retry could never fix it.
+        if let Some(v) = &secrets.proton_native_session {
+            #[cfg(feature = "proton-native")]
+            let result = providers::proton_native::vault::restore_session_blocking(
+                native_owner,
+                profile_id,
+                v,
+            )
+            .map_err(|error| error.to_string());
+            #[cfg(not(feature = "proton-native"))]
+            let result = user_partitions::store_credential_for_user_typed_dual(
+                store,
+                user,
+                &format!("proton_native_session_{profile_id}"),
+                "proton_native_session",
+                v,
+            );
+            if let Err(e) = result {
+                log::warn!("Import: {profile_id} proton session not restored: {e}");
+                shared.failed.insert(profile_id.clone());
+            }
+        }
+    }
+    shared
+}
+
+/// H16 fix: the profile as returned to the renderer, without its secrets: only
+/// non-sensitive fields and flags saying which secrets are stored.
+fn redact_imported_server(
+    s: &profile_export::ServerProfileExport,
+    restored: &RestoredImportSecrets,
+) -> serde_json::Value {
+    serde_json::json!({
+        "id": s.id,
+        "name": s.name,
+        "host": s.host,
+        "port": s.port,
+        "username": s.username,
+        "protocol": s.protocol,
+        "initialPath": s.initial_path,
+        "localInitialPath": s.local_initial_path,
+        "color": s.color,
+        "lastConnected": s.last_connected,
+        "options": s.options,
+        "providerId": s.provider_id,
+        // Top-level ServerProfile fields that live OUTSIDE `options` and
+        // so must be re-emitted explicitly or the import drops them:
+        // the share-link base (GAP 2), the custom/detected icons (GAP 3)
+        // and the silenced classic-fallback modal preference (GAP 4).
+        "publicUrlBase": s.public_url_base,
+        "customIconUrl": s.custom_icon_url,
+        "faviconUrl": s.favicon_url,
+        "skipDeltaEligibilityPrompt": s.skip_delta_eligibility_prompt,
+        "hasStoredCredential": s.credential.is_some(),
+        // Issue #230: reflect whether the Filen CLI API key was actually
+        // restored so the profile reconnects via the key (skipping the
+        // TOTP window) instead of falling back to password + 2FA.
+        "hasStoredFilenApiKey": restored.filen_api_key.contains(&s.id),
+        // CWP-20B: re-import a Crypt profile AS a Crypt profile (both
+        // kinds). The flags reflect what was actually restored, not the
+        // source state, so the UI prompts for the overlay password only
+        // when the secret did not travel with the export.
+        "aeroCryptOverlay": s.aero_crypt_overlay,
+        "hasStoredAeroCryptPassword": restored.aerocrypt_pw.contains(&s.id),
+        "hasStoredAeroCryptSalt": restored.aerocrypt_salt.contains(&s.id),
+        // A keyfile PATH may have been restored; the UI validates it exists
+        // (it can be stale on a different device) and re-points before unlock.
+        "hasStoredAeroCryptKeyfilePath": restored.aerocrypt_keyfile_path.contains(&s.id),
+        "hasStoredAeroCryptConfig": restored.aerocrypt_config.contains(&s.id),
+        // Issue #215 Caveat A: surface the opt-in so the imported profile
+        // re-hydrates per-mode snapshots. It is a user preference, not a
+        // secret-presence flag, so it round-trips verbatim: ConnectionScreen
+        // only reads `server_modes_<id>` when this is true, and finds the
+        // creds restored above (or prompts normally if the export omitted them).
+        "persistModeCredentials": s.persist_mode_credentials,
+    })
 }
 
 // ============ Full Keystore Export/Import =====
@@ -20845,6 +21284,7 @@ pub fn run() {
             user_partitions::user_partitions_load_active_server_profiles,
             user_partitions::user_partitions_load_active_server_profiles_scoped,
             user_partitions::user_partitions_save_active_server_profiles,
+            user_partitions::user_partitions_store_legacy_server_profiles,
             user_partitions::user_partitions_relocate_server_profile,
             user_partitions::user_partitions_add_user,
             user_partitions::user_partitions_copy_user,

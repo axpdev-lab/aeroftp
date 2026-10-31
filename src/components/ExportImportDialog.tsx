@@ -10,7 +10,6 @@ import { Upload, Download, Shield, AlertCircle, CheckCircle2, X, Eye, EyeOff, Lo
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
 import { ServerProfile } from '../types';
-import { loadSavedServerProfiles, storeSavedServerProfiles } from '../utils/serverProfileStore';
 import { useTranslation } from '../i18n';
 import { SearchBox } from './SearchBox';
 import { Checkbox } from './ui/Checkbox';
@@ -19,11 +18,22 @@ import { bridgeProfileKey } from './bridge/bridgeImportCommit';
 import { BridgeSourceDescriptor, GENERIC_BRIDGE_SOURCES } from './bridge/bridgeSources';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useDetectedBridgeConfigs, shortenConfigPath, orderBridgeSourcesByDetection } from '../hooks/useDetectedBridgeConfigs';
+import { announceStoredServerProfiles } from '../utils/serverProfileStore';
+import { accountChangeGeneration } from '../utils/userPartitions';
 import { ServerChecklistNoMatch, ServerChecklistSearch, ServerChecklistSummary, SelectShownButton, useServerChecklistFilter } from './ServerChecklistFilter';
 
 interface ExportImportDialogProps {
     servers: ServerProfile[];
-    onImport: (servers: ServerProfile[]) => void | Promise<void>;
+    /**
+     * Store the profiles a bridge import read from another client's config; the
+     * write is refused unless the active account is still `expectedUserId`.
+     */
+    onImport: (servers: ServerProfile[], expectedUserId?: number | null) => void | Promise<void>;
+    /**
+     * A `.aeroftp` import stored this list in the backend, secrets and list in one
+     * operation: the host only shows it.
+     */
+    onProfilesStored: (stored: ServerProfile[]) => void;
     onClose: () => void;
     // Optional starting mode so callers (e.g. the Settings Backup table) can
     // open the dialog straight into a specific action. Undefined preserves the
@@ -43,35 +53,35 @@ interface ExportImportDialogProps {
 const defaultExportSelection = (servers: ServerProfile[], preselected?: string[]): Set<string> =>
     new Set(preselected ?? servers.map(s => s.id));
 
-interface ImportedServer {
-    id: string;
-    name: string;
-    host: string;
-    port: number;
-    username: string;
-    protocol?: string;
-    initialPath?: string;
-    localInitialPath?: string;
-    color?: string;
-    lastConnected?: string;
-    options?: Record<string, unknown>;
-    providerId?: string;
-    credential?: string;
-    hasStoredCredential?: boolean;
-    // CWP-20B: crypt-overlay binding (both kinds) + secret-presence flags.
-    aeroCryptOverlay?: ServerProfile['aeroCryptOverlay'];
-    hasStoredAeroCryptPassword?: boolean;
-    hasStoredAeroCryptSalt?: boolean;
-    // Tier 1: keyfile PATH presence flag (the path travels in the encrypted
-    // export like the other secrets; the keyfile itself never leaves the disk).
-    hasStoredAeroCryptKeyfilePath?: boolean;
-    // #215 Caveat A: the per-protocol "remember credentials" opt-in, round-tripped
-    // so an imported profile re-hydrates its server_modes_<id> snapshots.
-    persistModeCredentials?: boolean;
-}
+// A profile the backend stored, redacted (secret-presence flags, never a
+// secret), with what the import did with it (`profile_import_plan`).
+type ImportedServer = ServerProfile & { importOutcome: 'added' | 'overwritten' | 'duplicated' };
+
+/** What a `.aeroftp` import does with a profile whose id already exists. */
+type ExistingProfileMode = 'skip' | 'overwrite' | 'duplicate';
+// Each mode's label and the line that says what it does, as i18n keys.
+const EXISTING_PROFILE_MODES: { mode: ExistingProfileMode; label: string; hint: string }[] = [
+    { mode: 'skip', label: 'settings.importExistingSkip', hint: 'settings.importExistingSkipHint' },
+    { mode: 'overwrite', label: 'settings.importExistingOverwrite', hint: 'settings.importExistingOverwriteHint' },
+    { mode: 'duplicate', label: 'settings.importExistingDuplicate', hint: 'settings.importExistingDuplicateHint' },
+];
 
 interface ImportResult {
+    // The profiles the import stored; the ones it skipped are only named.
     servers: ImportedServer[];
+    // The account's whole list as stored.
+    stored: ServerProfile[];
+    skipped: string[];
+    similar: number;
+    // Stored Jottacloud profiles that brought their rotating refresh chain,
+    // named as in the file.
+    jottaChains: { id: string; name: string }[];
+    // Stored profiles whose custom OAuth app differs from the one kept here.
+    oauthAppsKept: string[];
+    // Stored profiles a shared secret or session of the file could not reach.
+    sharedSecretsFailed: string[];
+    // Profiles an Overwrite refused: the file points them at another server.
+    targetChanged: string[];
     metadata: {
         exportDate: string;
         aeroftpVersion: string;
@@ -80,7 +90,12 @@ interface ImportResult {
     };
 }
 
-export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers, onImport, onClose, initialMode, initialBridgeFilePath, initialSelectedServerIds }) => {
+/**
+ * My Servers export and import: the encrypted `.aeroftp` backup (export with
+ * or without credentials; import with Skip, Overwrite or Duplicate for a
+ * profile that already exists) and the bridges to other clients' configs.
+ */
+export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers, onImport, onProfilesStored, onClose, initialMode, initialBridgeFilePath, initialSelectedServerIds }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
     const [mode, setMode] = useState<'export' | 'import' | 'bridge-import' | 'bridge-export' | 'bridge-src' | null>(initialMode ?? null);
@@ -100,6 +115,11 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     const [confirmPassword, setConfirmPassword] = useState('');
     const [includeCredentials, setIncludeCredentials] = useState(true);
     const [showPassword, setShowPassword] = useState(false);
+    const [existingMode, setExistingMode] = useState<ExistingProfileMode>('skip');
+    // Shown after an import that copied a Jottacloud refresh chain, kept the
+    // stored OAuth app over the file's, or refused an overwrite pointing a
+    // profile at another server; it keeps the dialog open to be read.
+    const [importWarning, setImportWarning] = useState<string | null>(null);
     // KeePassXC-style import flow: the .aeroftp file is chosen first and its
     // path is held here, then the decryption password is requested. Null
     // until a file has been selected.
@@ -107,6 +127,17 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
+    // The close scheduled after a successful import; a new import or leaving
+    // the dialog cancels it, so it never hides a later attempt's result.
+    const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    /** Cancel the close scheduled after a successful import, if any. */
+    const cancelScheduledClose = () => {
+        if (closeTimerRef.current !== null) {
+            clearTimeout(closeTimerRef.current);
+            closeTimerRef.current = null;
+        }
+    };
+    useEffect(() => cancelScheduledClose, []);
     const [selectedServerIds, setSelectedServerIds] = useState<Set<string>>(
         () => defaultExportSelection(servers, initialSelectedServerIds),
     );
@@ -169,6 +200,11 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         });
     };
 
+    /**
+     * Validate the password and the profile selection, choose where to save,
+     * write the encrypted backup (with or without credentials), and close the
+     * dialog shortly after success.
+     */
     const handleExport = async () => {
         if (password !== confirmPassword) {
             setError(t('settings.passwordMismatch'));
@@ -199,7 +235,8 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                 filePath,
             });
             setSuccess(t('settings.exportSuccess').replace('{count}', String(selectedServers.length)));
-            setTimeout(() => onClose(), 2000);
+            cancelScheduledClose();
+            closeTimerRef.current = setTimeout(() => onClose(), 2000);
         } catch (err) {
             setError(String(err));
         } finally {
@@ -207,10 +244,16 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         }
     };
 
-    // Step 1 of the import: choose the .aeroftp file. The decryption
-    // password is only requested once a file is loaded (KeePassXC pattern),
-    // so the user sees what they are unlocking before typing a secret.
+    /**
+     * Step 1 of the import: choose the .aeroftp file. The decryption password
+     * is only requested once a file is loaded (KeePassXC pattern), so the user
+     * sees what they are unlocking before typing a secret. Choosing another
+     * file clears the last result, so Import is available for it.
+     */
     const handleChooseImportFile = async () => {
+        // Before the picker opens: the user may stay in it longer than the
+        // close scheduled by a previous success.
+        cancelScheduledClose();
         const filePath = await pickFile({
             title: t('settings.importServers'),
             filters: [
@@ -222,14 +265,22 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         if (!filePath || typeof filePath !== 'string') return;
         setError(null);
         setSuccess(null);
+        setImportWarning(null);
         setPassword('');
         setImportFilePath(filePath);
     };
 
-    // Step 2 of the import: decrypt the already-chosen file with the password.
+    /**
+     * Step 2 of the import: decrypt the already-chosen file with the password,
+     * let the backend decide each profile with `existingMode`, store the
+     * result, and report it. The dialog then closes itself, or stays open on a
+     * warning, or on an error that says what a failed write left.
+     */
     const handleImport = async () => {
         const filePath = importFilePath;
-        if (!filePath) {
+        // Done once it succeeded (Enter in the password field as well as the
+        // button): importing the same file again needs choosing it again.
+        if (!filePath || loading || success !== null || importWarning !== null) {
             return;
         }
         if (password.length < 1) {
@@ -237,73 +288,59 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             return;
         }
 
+        cancelScheduledClose();
         setLoading(true);
         setError(null);
+        setImportWarning(null);
         try {
+            const accountBefore = accountChangeGeneration();
             const result = await invoke<ImportResult>('import_server_profiles', {
                 filePath,
                 password,
+                existing: existingMode,
             });
 
-            const importedServers = result.servers;
-
-            // Read current servers directly from the active user's vault
-            // partition (ground truth). The `servers` prop may be stale or
-            // incomplete during an in-flight import.
-            let currentServers = await loadSavedServerProfiles();
-            if (currentServers.length === 0) currentServers = servers;
-
-            // Merge: skip ONLY a true re-import (same stable id). Profiles that
-            // merely share an account (host:port:username) are legitimately
-            // distinct (different protocol, crypt overlay, bound folder, or auth
-            // mode) and must NOT be dropped: keep them and flag them as
-            // resembling an existing profile. Same rule as the CLI profile-import.
-            const existingAccounts = new Set(
-                currentServers.map(s => `${s.host}:${s.port}:${s.username}`)
-            );
-            const existingIds = new Set(currentServers.map(s => s.id));
-
-            const newServers: ServerProfile[] = importedServers
-                .filter(s => !existingIds.has(s.id))
-                .map(s => ({
-                    id: s.id,
-                    name: s.name,
-                    host: s.host,
-                    port: s.port,
-                    username: s.username,
-                    protocol: s.protocol as ServerProfile['protocol'],
-                    initialPath: s.initialPath,
-                    localInitialPath: s.localInitialPath,
-                    color: s.color,
-                    lastConnected: s.lastConnected,
-                    options: s.options,
-                    providerId: s.providerId,
-                    hasStoredCredential: s.credential ? true : (s.hasStoredCredential || false),
-                    // CWP-20B: carry crypt-overlay binding + secret flags so the
-                    // imported profile reconnects as Crypt (both kinds).
-                    aeroCryptOverlay: s.aeroCryptOverlay,
-                    hasStoredAeroCryptPassword: s.hasStoredAeroCryptPassword || false,
-                    hasStoredAeroCryptSalt: s.hasStoredAeroCryptSalt || false,
-                    hasStoredAeroCryptKeyfilePath: s.hasStoredAeroCryptKeyfilePath || false,
-                    // #215 Caveat A: preserve the per-protocol "remember credentials"
-                    // opt-in so the imported profile loads its restored snapshots.
-                    persistModeCredentials: s.persistModeCredentials,
-                }));
-
-            const skipped = importedServers.length - newServers.length; // same-id re-imports
-            // Added profiles that share an account (host:port:username) with one
-            // already present: kept (distinct by protocol/overlay/folder/auth),
-            // just flagged so the user can prune if they were unintended.
-            const similar = newServers.filter(
-                s => existingAccounts.has(`${s.host}:${s.port}:${s.username}`)
-            ).length;
-            await onImport(newServers);
+            // The backend compared the file with the active user's profiles,
+            // decided each one with `existingMode` and stored secrets and list as
+            // one operation (the CLI's profile-import is the same one). A failure
+            // arrives as the error below, with nothing changed. A profile that
+            // only shares host:port:username with an existing one is added and
+            // counted as similar.
+            announceStoredServerProfiles(result.stored, accountBefore);
+            // A switch during the import brings its own re-read: this list is the
+            // previous account's.
+            if (accountChangeGeneration() === accountBefore) onProfilesStored(result.stored);
+            const count = (outcome: ImportedServer['importOutcome']) =>
+                result.servers.filter(s => s.importOutcome === outcome).length;
+            const overwritten = count('overwritten');
+            const duplicated = count('duplicated');
+            const warnings = [
+                ...(result.jottaChains.length > 0
+                    ? [t('settings.importJottaChainWarning', { names: result.jottaChains.map(c => c.name).join(', ') })]
+                    : []),
+                ...(result.oauthAppsKept.length > 0
+                    ? [t('settings.importOauthAppKept', { names: result.oauthAppsKept.join(', ') })]
+                    : []),
+                ...(result.sharedSecretsFailed.length > 0
+                    ? [t('settings.importSharedSecretsFailed', { names: result.sharedSecretsFailed.join(', ') })]
+                    : []),
+                ...(result.targetChanged.length > 0
+                    ? [t('settings.importTargetChanged', { names: result.targetChanged.join(', ') })]
+                    : []),
+            ];
             setSuccess(
-                t('settings.importSuccess').replace('{count}', String(newServers.length)) +
-                (skipped > 0 ? ` (${t('settings.duplicatesSkippedCount', { count: skipped })})` : '') +
-                (similar > 0 ? ` (${t('settings.similarToExistingCount', { count: similar })})` : '')
+                // "new servers": the overwritten ones replaced servers already there.
+                t('settings.importSuccess').replace('{count}', String(result.servers.length - overwritten)) +
+                (overwritten > 0 ? ` (${t('settings.overwrittenCount', { count: overwritten })})` : '') +
+                (duplicated > 0 ? ` (${t('settings.duplicatedCount', { count: duplicated })})` : '') +
+                (result.skipped.length > 0 ? ` (${t('settings.duplicatesSkippedCount', { count: result.skipped.length })})` : '') +
+                (result.similar > 0 ? ` (${t('settings.similarToExistingCount', { count: result.similar })})` : '')
             );
-            setTimeout(() => onClose(), 2500);
+            if (warnings.length > 0) {
+                setImportWarning(warnings.join(' '));
+            } else {
+                closeTimerRef.current = setTimeout(() => onClose(), 2500);
+            }
         } catch (err) {
             const errStr = String(err);
             if (errStr.includes('Invalid password')) {
@@ -316,13 +353,17 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         }
     };
 
+    /** Back to the start screen: clear every field and result, cancel a pending close. */
     const resetMode = () => {
+        cancelScheduledClose();
         setMode(null);
         setError(null);
         setSuccess(null);
         setPassword('');
         setConfirmPassword('');
         setImportFilePath(null);
+        setExistingMode('skip');
+        setImportWarning(null);
         setBridgeSrc(null);
         setBridgePresetPath(null);
         exportFilter.setQuery('');
@@ -751,7 +792,8 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                         <button
                                             type="button"
                                             onClick={handleChooseImportFile}
-                                            className="text-xs text-blue-500 hover:text-blue-600 font-medium flex-shrink-0"
+                                            disabled={loading}
+                                            className="text-xs text-blue-500 hover:text-blue-600 disabled:opacity-50 font-medium flex-shrink-0"
                                         >
                                             {t('settings.importChangeFile') || 'Change'}
                                         </button>
@@ -779,12 +821,36 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                             {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                         </button>
                                     </div>
+
+                                    {/* What happens to a profile that already exists */}
+                                    <div role="radiogroup" aria-label={t('settings.importExistingLabel')} className="space-y-1.5">
+                                        <div className="text-xs font-medium text-gray-600 dark:text-gray-400">{t('settings.importExistingLabel')}</div>
+                                        <div className="flex gap-1 p-1 rounded-lg bg-gray-100 dark:bg-gray-900/40">
+                                            {EXISTING_PROFILE_MODES.map(({ mode: m, label }) => (
+                                                <button
+                                                    key={m}
+                                                    type="button"
+                                                    role="radio"
+                                                    aria-checked={existingMode === m}
+                                                    data-testid={`import-existing-${m}`}
+                                                    onClick={() => setExistingMode(m)}
+                                                    className={`flex-1 px-2 py-1 text-xs rounded-md transition-colors ${existingMode === m
+                                                        ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm font-medium'
+                                                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'}`}
+                                                >
+                                                    {t(label)}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">{t(EXISTING_PROFILE_MODES.find(o => o.mode === existingMode)!.hint)}</p>
+                                    </div>
                                 </>
                             )}
 
                             {/* Error/Success */}
                             {error && <div className="text-red-500 text-sm flex items-center gap-2"><AlertCircle size={14} />{error}</div>}
                             {success && <div className="text-green-500 text-sm flex items-center gap-2"><CheckCircle2 size={14} />{success}</div>}
+                            {importWarning && <div data-testid="import-warning" className="text-amber-600 dark:text-amber-400 text-sm flex items-start gap-2"><AlertCircle size={14} className="mt-0.5 flex-shrink-0" />{importWarning}</div>}
 
                             {/* Actions */}
                             <div className="flex gap-2">
@@ -797,7 +863,10 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                 {importFilePath && (
                                     <button
                                         onClick={handleImport}
-                                        disabled={loading || password.length < 1}
+                                        // Done once it succeeded: a second click would import the
+                                        // file again (in Duplicate mode, another copy and
+                                        // another holder of a Jottacloud chain).
+                                        disabled={loading || password.length < 1 || success !== null || importWarning !== null}
                                         className="flex-1 px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 flex items-center justify-center gap-2"
                                     >
                                         {loading ? (

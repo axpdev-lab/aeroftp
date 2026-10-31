@@ -32,10 +32,52 @@ export const bridgeProfileKey = (s: Pick<ServerProfile, 'host' | 'port' | 'usern
  * them. The list handed back is the one stored: an imported profile whose
  * name another profile holds is stored with the first free " (1)", " (2)",
  * ... (`storeSavedServerProfiles`).
+ *
+ * @param newServers the imported profiles.
+ * @param expectedUserId the account a bridge import read before removing the
+ *   profiles it updates (`null`: it read the legacy store, which has no account).
+ *   Undefined skips the check. An account that is not this one is refused,
+ *   including one that became active after a legacy read.
+ * @throws when the vault's active account is not `expectedUserId` (switched
+ *   from another window during the import); when a profile to append has an id
+ *   the vault already holds, or two profiles of this batch share one id; or when
+ *   another window or process saved between the read and the write
+ *   (`PROFILES_CHANGED`). Nothing is written then.
  */
-export async function appendImportedProfiles(newServers: ServerProfile[]): Promise<ServerProfile[]> {
-    const { profiles: current, userId } = await readSavedServerProfilesForWrite();
-    return storeSavedServerProfiles([...current, ...newServers], false, userId);
+export async function appendImportedProfiles(
+    newServers: ServerProfile[],
+    expectedUserId?: number | null,
+): Promise<ServerProfile[]> {
+    const { profiles: current, userId, revision } = await readSavedServerProfilesForWrite();
+    if (expectedUserId !== undefined && (userId ?? null) !== expectedUserId) {
+        throw new Error('The active account changed during the import, so the profiles were not saved. Make the account you imported into the active one again and import the same file again.');
+    }
+    // Nothing to store (every profile skipped): the list is not rewritten, so a
+    // write that could only fail cannot report a failed import.
+    if (newServers.length === 0) return current;
+    const currentIds = new Set(current.map(s => s.id));
+    const seen = new Set<string>();
+    for (const server of newServers) {
+        if (seen.has(server.id)) {
+            throw new Error(`Two profiles of this import share the id ${server.id}, so nothing was written.`);
+        }
+        if (currentIds.has(server.id)) {
+            throw new Error(`Profile ${server.id} was saved by another window during the import, so nothing was written.`);
+        }
+        seen.add(server.id);
+    }
+    return storeSavedServerProfiles([...current, ...newServers], false, userId, revision);
+}
+
+/** Put `removed` back into the list as it stands now, in `userId`'s account. Returns those put back under another name. */
+async function restoreRemovedProfiles(removed: ServerProfile[], userId: number | undefined): Promise<ServerProfile[]> {
+    if (removed.length === 0) return [];
+    const { profiles, userId: readUserId, revision } = await readSavedServerProfilesForWrite();
+    if (readUserId !== userId) throw new Error('The active account changed during the import.');
+    const held = new Set(profiles.map(s => s.id));
+    const stored = await storeSavedServerProfiles([...profiles, ...removed.filter(s => !held.has(s.id))], false, userId, revision);
+    // A name another profile took meanwhile stays with it: the one put back got " (1)".
+    return removed.filter(s => stored.some(p => p.id === s.id && p.name !== s.name));
 }
 
 /**
@@ -47,7 +89,7 @@ export async function appendImportedProfiles(newServers: ServerProfile[]): Promi
 export async function commitImportedServers(
     selected: ServerProfile[],
     existingServerKeys: Set<string>,
-    onImport: (servers: ServerProfile[]) => void | Promise<void>,
+    onImport: (servers: ServerProfile[], expectedUserId?: number | null) => void | Promise<void>,
 ): Promise<CommitOutcome> {
     const key = bridgeProfileKey;
     const added = selected.filter(s => !existingServerKeys.has(key(s)));
@@ -62,8 +104,9 @@ export async function commitImportedServers(
     // costs a first import nothing.
     let backup: ServerProfile[];
     let backupUserId: number | undefined;
+    let backupRevision: string | undefined;
     try {
-        ({ profiles: backup, userId: backupUserId } = await readSavedServerProfilesForWrite());
+        ({ profiles: backup, userId: backupUserId, revision: backupRevision } = await readSavedServerProfilesForWrite());
     } catch {
         return {
             added: 0,
@@ -72,25 +115,34 @@ export async function commitImportedServers(
         };
     }
 
+    let removed: ServerProfile[] = [];
     try {
         if (updated.length > 0 && backup.length > 0) {
             const updatedKeys = new Set(updated.map(key));
             const filtered = backup.filter(s => !updatedKeys.has(key(s)));
-            await storeSavedServerProfiles(filtered, false, backupUserId);
+            await storeSavedServerProfiles(filtered, false, backupUserId, backupRevision);
+            removed = backup.filter(s => updatedKeys.has(key(s)));
         }
-        await onImport([...updated, ...added]);
+        // Written for the account the removal above was made in: a switch in
+        // between refuses the write, and the rollback below restores that account.
+        await onImport([...updated, ...added], backupUserId ?? null);
     } catch {
         // "No changes were made" is a claim about the vault, so it may only be
         // made when the rollback actually succeeded. A failed restore leaves the
         // profiles this call removed gone, and saying nothing happened would
         // send the user away from the one screen they need to look at.
-        const restored = await storeSavedServerProfiles(backup, false, backupUserId).then(() => true, () => false);
+        // Only what this call removed goes back, into a list read now: the backup
+        // is old by this point, and writing it whole would undo what another
+        // window saved since.
+        const renamed = await restoreRemovedProfiles(removed, backupUserId).catch(() => null);
         return {
             added: 0,
             updated: 0,
-            error: restored
-                ? 'Import failed. No changes were made.'
-                : 'Import failed, and the previous profiles could not be restored. Check My Servers before importing again.',
+            error: renamed === null
+                ? 'Import failed, and the previous profiles could not be restored. Check My Servers before importing again.'
+                : renamed.length > 0
+                    ? `Import failed. The previous profiles were restored, but another profile took the name of ${renamed.map(s => s.name).join(', ')} meanwhile, so it was stored with a number. Check My Servers.`
+                    : 'Import failed. No changes were made.',
         };
     }
 
