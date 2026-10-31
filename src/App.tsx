@@ -125,42 +125,20 @@ interface ProviderApplyCryptOverlayResult {
   hasCurrentMarker?: boolean;
 }
 
-interface ImportedServerProfile {
-  id: string;
-  name: string;
-  host: string;
-  port: number;
-  username: string;
-  protocol?: string;
-  initialPath?: string;
-  localInitialPath?: string;
-  color?: string;
-  lastConnected?: string;
-  options?: Record<string, unknown>;
-  providerId?: string;
-  credential?: string;
-  hasStoredCredential?: boolean;
-  // CWP-20B: crypt-overlay binding (both kinds) + secret-presence flags, so an
-  // imported Crypt profile re-imports AS a Crypt profile instead of plaintext.
-  aeroCryptOverlay?: ServerProfile['aeroCryptOverlay'];
-  hasStoredAeroCryptPassword?: boolean;
-  hasStoredAeroCryptSalt?: boolean;
-  hasStoredAeroCryptKeyfilePath?: boolean;
-  // Issue #230: true when the Filen CLI API key was restored into the vault on
-  // import (skips the TOTP window on reconnect).
-  hasStoredFilenApiKey?: boolean;
-  // Top-level ServerProfile fields carried outside `options` (GAP 2/3/4 of the
-  // v4.1.4 export audit): share-link base, custom/detected icons, the silenced
-  // classic-fallback modal preference, and the #215 per-mode credential opt-in.
-  publicUrlBase?: string;
-  customIconUrl?: string;
-  faviconUrl?: string;
-  skipDeltaEligibilityPrompt?: boolean;
-  persistModeCredentials?: boolean;
-}
-
 interface ServerProfilesImportResult {
-  servers: ImportedServerProfile[];
+  // The profiles stored (redacted), each with what the import did with it.
+  servers: (ServerProfile & { importOutcome: string })[];
+  // The account's whole list as stored.
+  stored: ServerProfile[];
+  // Profiles the backend left alone because the active user already has them
+  // (this path imports with the default mode, skip).
+  skipped: string[];
+  // Stored Jottacloud profiles that brought their rotating refresh chain.
+  jottaChains: { id: string; name: string }[];
+  // Stored profiles whose custom OAuth app differs from the one kept here.
+  oauthAppsKept: string[];
+  // Stored profiles a shared secret or session of the file could not reach.
+  sharedSecretsFailed: string[];
 }
 
 type MountManagerOpenOptions = {
@@ -328,6 +306,7 @@ import {
     unlockUser,
     writeDefaultAccountId,
     writeUsersListCache,
+  accountChangeGeneration,
 } from './utils/userPartitions';
 import KeystoreMigrationWizard from './components/KeystoreMigrationWizard';
 import { Checkbox } from './components/ui/Checkbox';
@@ -447,7 +426,7 @@ import {
   PROFILES_CHANGED_EVENT,
 } from './utils/serverProfileStore';
 import { appendImportedProfiles } from './components/bridge/bridgeImportCommit';
-import { readSavedServerProfilesForWrite } from './utils/serverProfileStore';
+import { announceStoredServerProfiles, reloadRestoredServerProfiles, readSavedServerProfilesForWrite, withFreshSavedProfiles } from './utils/serverProfileStore';
 import { maskCredential } from './utils/maskCredential';
 import { getOpenWithDefaultRoute } from './utils/openWithDefault';
 import { createRemoteEndpoint } from './utils/panelEndpoints';
@@ -2158,20 +2137,23 @@ const App: React.FC = () => {
     let cancelled = false;
     (async () => {
       try {
-        const { profiles: profiles, userId: profilesUserId } = await readSavedServerProfilesForWrite();
-        const { migrated, changed } = await migrateFilenApiKeysToVault(
-          profiles,
-          (account, key) => invoke('store_credential', { account, password: key }) as Promise<void>,
-          (id, e) => logger.warn('[#230] Filen API key vault migration failed for profile', id, e),
-        );
-        if (cancelled) return;
-        if (changed) {
-          await storeSavedServerProfiles(migrated, false, profilesUserId);
-          setServersRefreshKey(k => k + 1);
-        }
-        if (migrated.every((p) => !p.options?.filen_api_key)) {
-          localStorage.setItem('aeroftp_filen_apikey_vault_migrated', 'true');
-        }
+        // Once more if another writer saved meanwhile: the key would otherwise stay
+        // in the stored profile until the next launch.
+        await withFreshSavedProfiles(async ({ profiles, userId, revision }) => {
+          const { migrated, changed } = await migrateFilenApiKeysToVault(
+            profiles,
+            (account, key) => invoke('store_credential', { account, password: key }) as Promise<void>,
+            (id, e) => logger.warn('[#230] Filen API key vault migration failed for profile', id, e),
+          );
+          if (cancelled) return;
+          if (changed) {
+            await storeSavedServerProfiles(migrated, false, userId, revision);
+            setServersRefreshKey(k => k + 1);
+          }
+          if (migrated.every((p) => !p.options?.filen_api_key)) {
+            localStorage.setItem('aeroftp_filen_apikey_vault_migrated', 'true');
+          }
+        });
       } catch (e) {
         logger.warn('[#230] Filen API key vault migration error', e);
       }
@@ -8562,12 +8544,12 @@ const App: React.FC = () => {
     ));
     // Update saved servers in vault (localStorage may be empty after vault migration)
     try {
-      const { profiles: servers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
+      const { profiles: servers, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
       if (servers) {
         const idx = servers.findIndex(s => s.id === serverId || s.name === serverId || s.host === serverId);
         if (idx !== -1) {
           servers[idx].faviconUrl = faviconUrl;
-          await storeSavedServerProfiles(servers, false, profilesUserId);
+          await storeSavedServerProfiles(servers, false, profilesUserId, profilesRevision);
           setServersRefreshKey(k => k + 1);
         }
       }
@@ -15223,72 +15205,20 @@ const App: React.FC = () => {
     contextMenu.show(e, items);
   };
 
-  const mergeImportedServerProfiles = useCallback(async (importedServers: ImportedServerProfile[]) => {
-    // Strict: this merge writes the whole list back, so a partition it could
-    // not read must not arrive here as an empty one.
-    const { profiles: currentServers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
-    const existingIds = new Set(currentServers.map(s => s.id));
-
-    // A name already taken is stored with the first free " (1)", " (2)", ...
-    // (`storeSavedServerProfiles`), as every profile write is.
-    const newServers: ServerProfile[] = importedServers
-      .filter(s => !existingIds.has(s.id))
-      .map(s => ({
-        id: s.id,
-        name: s.name,
-        host: s.host,
-        port: s.port,
-        username: s.username,
-        protocol: s.protocol as ServerProfile['protocol'],
-        initialPath: s.initialPath,
-        localInitialPath: s.localInitialPath,
-        color: s.color,
-        lastConnected: s.lastConnected,
-        options: s.options,
-        providerId: s.providerId,
-        hasStoredCredential: s.credential ? true : (s.hasStoredCredential || false),
-        // CWP-20B: carry the crypt-overlay binding + secret flags so the
-        // imported profile reconnects as Crypt (both kinds).
-        aeroCryptOverlay: s.aeroCryptOverlay,
-        hasStoredAeroCryptPassword: s.hasStoredAeroCryptPassword || false,
-        hasStoredAeroCryptSalt: s.hasStoredAeroCryptSalt || false,
-        hasStoredAeroCryptKeyfilePath: s.hasStoredAeroCryptKeyfilePath || false,
-        hasStoredFilenApiKey: s.hasStoredFilenApiKey || false,
-        // v4.1.4 export audit: carry the top-level ServerProfile fields that live
-        // outside `options` (share-link base, custom/detected icons, the silenced
-        // classic-fallback modal, and the #215 per-mode credential opt-in) so an
-        // imported profile is not silently degraded on this merge.
-        publicUrlBase: s.publicUrlBase,
-        customIconUrl: s.customIconUrl,
-        faviconUrl: s.faviconUrl,
-        skipDeltaEligibilityPrompt: s.skipDeltaEligibilityPrompt,
-        persistModeCredentials: s.persistModeCredentials,
-      }));
-
-    if (newServers.length > 0) {
-      await storeSavedServerProfiles([...currentServers, ...newServers], false, profilesUserId);
-      setServersRefreshKey(k => k + 1);
-    }
-
-    return {
-      imported: newServers.length,
-      skipped: importedServers.length - newServers.length,
-    };
-  }, []);
-
   const refreshProfilesFromImportedKeystore = useCallback(async () => {
     try {
-      const profilesJson = await invoke<string>('get_credential', { account: 'config_server_profiles' });
-      if (!profilesJson) return;
-      const importedProfiles = JSON.parse(profilesJson) as ServerProfile[];
-      if (!Array.isArray(importedProfiles) || importedProfiles.length === 0) return;
-      await storeSavedServerProfiles(importedProfiles);
+      await reloadRestoredServerProfiles();
       setServersRefreshKey(k => k + 1);
-    } catch {
-      // Keystore may not include a profile list. Credentials are still imported.
+    } catch (err) {
+      // The restore stored the list; only this view of it failed.
+      toast.warning(t('settings.importServers') || 'Import Servers', String(err));
     }
-  }, []);
+  }, [t, toast]);
 
+  /**
+   * Import a `.aeroftp` file opened from the file panel: ask its password,
+   * import with Skip (profiles already present stay) and show what it did.
+   */
   const importAeroFtpProfileFile = useCallback((filePath: string) => {
     setInputDialog({
       title: t('settings.importServers') || 'Import Servers',
@@ -15302,26 +15232,52 @@ const App: React.FC = () => {
           return;
         }
 
+        let result: ServerProfilesImportResult;
+        const accountBefore = accountChangeGeneration();
         try {
-          const result = await invoke<ServerProfilesImportResult>('import_server_profiles', {
+          result = await invoke<ServerProfilesImportResult>('import_server_profiles', {
             filePath,
             password,
           });
-          const merged = await mergeImportedServerProfiles(result.servers);
-          notify.success(
-            (t('settings.importSuccess') || 'Imported {count} servers').replace('{count}', String(merged.imported)),
-            merged.skipped > 0 ? t('settings.duplicatesSkippedCount', { count: merged.skipped }) : undefined,
-          );
         } catch (err) {
           const message = String(err);
           notify.error(
             'Import failed',
             message.includes('Invalid password') ? (t('settings.invalidPassword') || 'Invalid password') : message,
           );
+          return;
+        }
+        // The backend stored secrets and list as one operation.
+        announceStoredServerProfiles(result.stored, accountBefore);
+        setServersRefreshKey(k => k + 1);
+        notify.success(
+          (t('settings.importSuccess') || 'Imported {count} servers').replace('{count}', String(result.servers.length)),
+          result.skipped.length > 0 ? t('settings.duplicatesSkippedCount', { count: result.skipped.length }) : undefined,
+        );
+        // Same warnings as the import dialog, on a toast regardless of the
+        // notification setting (`notify` alone can reach only the hidden
+        // Activity Log).
+        if (result.jottaChains.length > 0) {
+          toast.warning(
+            t('settings.importServers') || 'Import Servers',
+            t('settings.importJottaChainWarning', { names: result.jottaChains.map(c => c.name).join(', ') }),
+          );
+        }
+        if (result.oauthAppsKept.length > 0) {
+          toast.warning(
+            t('settings.importServers') || 'Import Servers',
+            t('settings.importOauthAppKept', { names: result.oauthAppsKept.join(', ') }),
+          );
+        }
+        if (result.sharedSecretsFailed.length > 0) {
+          toast.warning(
+            t('settings.importServers') || 'Import Servers',
+            t('settings.importSharedSecretsFailed', { names: result.sharedSecretsFailed.join(', ') }),
+          );
         }
       },
     });
-  }, [mergeImportedServerProfiles, notify, t]);
+  }, [notify, t, toast]);
 
   const importAeroFtpKeystoreFile = useCallback((filePath: string) => {
     setInputDialog({
@@ -17673,15 +17629,20 @@ const App: React.FC = () => {
             servers={exportImportServers}
             initialMode={exportImportInitialMode}
             initialBridgeFilePath={exportImportBridgeFile ?? undefined}
-            onImport={async (newServers) => {
+            onImport={async (newServers, expectedUserId) => {
               // Bridge imports may have replaced a profile in the persisted
               // list; the dialog's opening snapshot is no longer authoritative.
-              const merged = await appendImportedProfiles(newServers);
-              setExportImportServers(merged);
+              // The dialog closes itself (onClose) once its result has been
+              // read, or stays open on a warning that must be seen.
+              const accountBefore = accountChangeGeneration();
+              const merged = await appendImportedProfiles(newServers, expectedUserId);
+              // A switch meanwhile brings its own re-read: this list is the previous account's.
+              if (accountChangeGeneration() === accountBefore) setExportImportServers(merged);
               setServersRefreshKey(k => k + 1);
-              setShowExportImport(false);
-              setExportImportInitialMode(undefined);
-              setExportImportBridgeFile(null);
+            }}
+            onProfilesStored={(stored) => {
+              setExportImportServers(stored);
+              setServersRefreshKey(k => k + 1);
             }}
             onClose={() => {
               setShowExportImport(false);

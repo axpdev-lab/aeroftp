@@ -1357,7 +1357,20 @@
             "serverProfilesCount": "{count} proffil gweinydd",
             "aiKeysCount": "{count} allwedd AI",
             "oauthTokensCount": "{count} tocyn OAuth",
-            "configEntriesCount": "{count} cofnod ffurfweddu"
+            "configEntriesCount": "{count} cofnod ffurfweddu",
+            "importExistingLabel": "Os yw proffil eisoes yn bodoli",
+            "importExistingSkip": "Hepgor",
+            "importExistingOverwrite": "Trosysgrifo",
+            "importExistingDuplicate": "Dyblygu",
+            "importExistingSkipHint": "Mae proffil sydd gennych eisoes yn aros fel y mae, gyda'i gyfrineiriau a'i docynnau.",
+            "importExistingOverwriteHint": "Mae proffil sydd gennych eisoes yn cael ei ddisodli yn ei le, gyda'r cyfrineiriau a'r tocynnau sydd yn y ffeil. Mae'n aros yn eich ffefrynnau a'ch grwpiau.",
+            "importExistingDuplicateHint": "Mae proffil sydd gennych eisoes yn aros, ac mae'r copi o'r ffeil yn cael ei ychwanegu wrth ei ochr gydag enw wedi'i rifo.",
+            "overwrittenCount": "{count} wedi'u trosysgrifo",
+            "duplicatedCount": "{count} wedi'u dyblygu",
+            "importJottaChainWarning": "Mae Jottacloud yn adnewyddu ei fewngofnodi ar bob cysylltiad, ac mae {names} bellach yn rhannu un gyda chopi arall: mae'r copi sy'n cysylltu gyntaf yn allgofnodi'r llall (y ddyfais y daeth y ffeil ohoni, neu'r proffil y cafodd ei ddyblygu ohono). Mewngofnodwch y llall eto gyda Personal Login Token newydd.",
+            "importOauthAppKept": "Daeth {names} gydag ap OAuth personol gwahanol i'r un sydd gan y ddyfais hon ar gyfer y darparwr hwnnw. Cadwyd yr ap sydd wedi'i storio, felly mewngofnodwch eto os bydd y proffiliau hyn yn rhoi'r gorau i gysylltu.",
+            "importTargetChanged": "Ni chafodd {names} eu trosysgrifo: mae'r ffeil yn eu pwyntio at weinydd arall, ac ni ddylai eu cyfrineiriau a'u tocynnau storiedig fynd yno. Mewnforiwch gyda Dyblygu i ychwanegu'r copi o'r ffeil, neu dilëwch y proffil yn gyntaf.",
+            "importSharedSecretsFailed": "Mewnforiwyd {names}, ond ni ellid storio cyfrinach a rennir neu sesiwn o'r ffeil. Mewngofnodwch i'r proffiliau hyn eto os nad ydynt yn cysylltu."
         },
         "devtools": {
             "title": "AeroTools",

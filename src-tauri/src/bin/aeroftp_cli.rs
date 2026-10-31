@@ -3752,14 +3752,16 @@ enum Commands {
         )]
         ids: Option<String>,
     },
-    /// Import server profiles from a `.aeroftp` file (existing profiles are
-    /// SKIPPED, never overwritten)
+    /// Import server profiles from a `.aeroftp` file (`--on-existing` picks
+    /// what happens to a profile that already exists; it is skipped by default)
     ///
     /// Restores profiles and, when the file was exported with credentials,
     /// every saved secret back into the active user's vault, including the
     /// #215 per-protocol snapshots so a one-account-many-protocols profile
-    /// keeps each mode's credentials. Profiles already present (same id or
-    /// host:port:username) are skipped. Byte-compatible with My Servers > Import.
+    /// keeps each mode's credentials. A profile already exists when the active
+    /// user has one of the same id; one that only shares host:port:username is
+    /// added and reported as resembling an existing profile. Byte-compatible
+    /// with My Servers > Import.
     ProfileImport {
         /// Input `.aeroftp` path
         #[arg(long, short = 'i', value_name = "PATH")]
@@ -3771,11 +3773,19 @@ enum Commands {
         #[arg(long = "password-stdin")]
         password_stdin: bool,
         /// Preview only: decrypt the file and print which profiles would be
-        /// added, skipped as duplicates, or resemble an existing profile, then
-        /// exit 0 without touching the vault or the keyring. A duplicate (same
-        /// profile id) is skipped, never overwritten.
+        /// added, overwritten, duplicated or skipped, and which resemble an
+        /// existing profile, then exit 0 without touching the vault or the
+        /// keyring.
         #[arg(long)]
         dry_run: bool,
+        #[arg(
+            long = "on-existing",
+            value_enum,
+            default_value_t = ExistingProfileArg::Skip,
+            value_name = "MODE",
+            help = ON_EXISTING_HELP
+        )]
+        on_existing: ExistingProfileArg,
     },
     /// List configured AI providers and models from the encrypted vault
     AiModels,
@@ -4893,6 +4903,29 @@ impl KeystoreMergeArg {
     }
 }
 
+const ON_EXISTING_HELP: &str = "What to do with a profile of the file that already exists (the active user has a profile of the same id). skip (default): keep it and its secrets. overwrite: replace its configuration in place, so it stays in favourites and groups, and write every secret the file carries over the existing one; a secret the file does not carry is kept. duplicate: import a copy under a new id beside it, named with the first free \" (1)\", \" (2)\" suffix.";
+
+/// Conflict resolution for `profile-import` and `import aeroftp`; see
+/// `ftp_client_gui_lib::profile_import_plan`.
+#[derive(Copy, Clone, Debug, ValueEnum)]
+enum ExistingProfileArg {
+    Skip,
+    Overwrite,
+    Duplicate,
+}
+
+impl ExistingProfileArg {
+    /// The library's mode for this flag value.
+    fn into_inner(self) -> ftp_client_gui_lib::profile_import_plan::ExistingProfileMode {
+        use ftp_client_gui_lib::profile_import_plan::ExistingProfileMode;
+        match self {
+            Self::Skip => ExistingProfileMode::Skip,
+            Self::Overwrite => ExistingProfileMode::Overwrite,
+            Self::Duplicate => ExistingProfileMode::Duplicate,
+        }
+    }
+}
+
 #[derive(Subcommand, Clone)]
 enum KeystoreCommands {
     /// Export an encrypted `.aeroftp-keystore` backup file.
@@ -5264,9 +5297,18 @@ enum ImportCommands {
         /// Read one password line from stdin
         #[arg(long = "password-stdin")]
         password_stdin: bool,
-        /// Preview only: print what would be added or skipped, touch nothing
+        /// Preview only: print what would be added, overwritten, duplicated or
+        /// skipped, touch nothing
         #[arg(long)]
         dry_run: bool,
+        #[arg(
+            long = "on-existing",
+            value_enum,
+            default_value_t = ExistingProfileArg::Skip,
+            value_name = "MODE",
+            help = ON_EXISTING_HELP
+        )]
+        on_existing: ExistingProfileArg,
     },
 }
 
@@ -13898,60 +13940,116 @@ fn reorder_saved_profiles(
     Ok(Some(stored))
 }
 
-/// Write the active user's profile list. Returns the list stored: a profile
-/// saved onto a name another one holds is stored with the first free " (1)",
-/// " (2)", ... (`util::profile_name`), so a command that names a profile it
-/// saved takes the name from this list, never from the one it sent.
-fn save_active_user_profiles(
+/// Let `change` change the active user's (or `--user`'s) profile list and store
+/// the result. The list is read and written under one lock and one transaction,
+/// so a save another window or process made since this command started is kept:
+/// any change to a saved list goes through here, never a read followed by a
+/// whole-list save. `change` runs inside that lock and transaction, so it only
+/// edits the JSON: a list save would wait on the lock, and a secret write on the
+/// transaction. Nothing is written when it fails. Returns its result, the list
+/// sent and the list stored (names made unique by the write). With the partition
+/// unavailable the change goes to the legacy blob
+/// ([`change_profiles_in_legacy_blob`]).
+fn update_active_user_profiles<R, E>(
     cli: &Cli,
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
-    profiles: &[serde_json::Value],
-) -> Result<Vec<serde_json::Value>, String> {
+    store_error: impl Fn(String) -> E,
+    mut change: impl FnMut(&mut Vec<serde_json::Value>) -> Result<R, E>,
+) -> Result<(R, Vec<serde_json::Value>, Vec<serde_json::Value>), E> {
     use ftp_client_gui_lib::user_partitions;
-    let target = match ensure_active_user_unlocked(cli, store)? {
-        Some(t) => t,
-        None => return Err("NO_ACTIVE_USER".to_string()),
-    };
-    let writing_to_active = is_active_user(store, target.id);
-
-    match user_partitions::cli_replace_server_profiles_for_user(store, target.id, profiles) {
-        // The list stored, whose names the write made unique, is the one the
-        // blob mirrors.
-        Ok(stored) => {
-            mirror_profiles_to_legacy_blob_if_active(store, target.id, &stored);
-            Ok(stored)
+    // The read also moves what an older import left in a profile's options. A list
+    // that cannot be read is an error, never an empty list: saved, that would keep
+    // only the profiles of this change.
+    load_active_user_profiles(cli, store).map_err(|e| {
+        store_error(format!(
+            "Failed to read profiles: {e}. Nothing was changed; unlock the account if it is locked, check that the AeroFTP data folder is readable, then run the command again"
+        ))
+    })?;
+    let target = ensure_active_user_unlocked(cli, store)
+        .map_err(|e| store_error(format!("Failed to read profiles: {e}")))?
+        .ok_or_else(|| store_error("Failed to read profiles: NO_ACTIVE_USER".to_string()))?;
+    let mut outcome = None;
+    let mut sent = Vec::new();
+    let written =
+        user_partitions::cli_update_server_profiles_for_user(
+            store,
+            target.id,
+            |list| match change(list) {
+                Ok(result) => {
+                    sent = list.clone();
+                    outcome = Some(Ok(result));
+                    true
+                }
+                Err(e) => {
+                    outcome = Some(Err(e));
+                    false
+                }
+            },
+        );
+    match (written, outcome) {
+        (_, Some(Err(e))) => Err(e),
+        (Ok((stored, _)), Some(Ok(result))) => {
+            user_partitions::mirror_latest_profiles_to_legacy_blob(store, target.id);
+            Ok((result, sent, stored))
         }
-        // A write refused on an open partition (a lock, another process's
-        // save in between) did not happen: the blob alone would report the
-        // list saved while the partition, which the GUI reads first, lacks it.
-        Err(e) if !e.starts_with(user_partitions::PARTITION_UNAVAILABLE) => Err(e),
-        Err(_) => {
-            // Partition unavailable (downgrade, unreachable file): write the
-            // legacy blob only when this would have been the active user
-            // anyway. Same R3-safety reasoning as the success path.
-            if !writing_to_active {
-                return Err(
-                    "User partition unavailable; --user override cannot fall back to legacy blob"
-                        .to_string(),
-                );
-            }
-            // No two profiles of one name in the blob either: the list it
-            // holds now decides who had a name first, as the partition does.
-            let previous: Vec<serde_json::Value> = store
-                .get("config_server_profiles")
-                .ok()
-                .and_then(|raw| serde_json::from_str(&raw).ok())
-                .unwrap_or_default();
-            let (profiles, _) =
-                ftp_client_gui_lib::util::profile_name::unique_profile_names(&previous, profiles);
-            let serialized = serde_json::to_string(&profiles)
-                .map_err(|e| format!("Failed to serialize profiles: {}", e))?;
-            store
-                .store("config_server_profiles", &serialized)
-                .map_err(|e| format!("Failed to save server profiles: {}", e))?;
-            Ok(profiles)
+        (Err(e), _) if !e.starts_with(user_partitions::PARTITION_UNAVAILABLE) => {
+            Err(store_error(format!("Failed to write profiles: {e}")))
         }
+        (Err(_), _) => change_profiles_in_legacy_blob(store, target.id, &store_error, change),
+        (Ok(_), None) => Err(store_error(
+            "Failed to write profiles: the list write did not run".to_string(),
+        )),
     }
+}
+
+/// Change the list in the legacy blob alone, the partition being unavailable
+/// (downgrade, unreachable file), and only when this would have been the active
+/// user anyway: the blob has no accounts. Same R3-safety reasoning as the mirror.
+/// The partition is checked and the blob read and written under the lock, so a save
+/// made since the command started is kept. A blob that holds no list yet is an empty list, and one that
+/// cannot be read is an error, so its profiles are never written over.
+fn change_profiles_in_legacy_blob<R, E>(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    user_id: i64,
+    store_error: &impl Fn(String) -> E,
+    mut change: impl FnMut(&mut Vec<serde_json::Value>) -> Result<R, E>,
+) -> Result<(R, Vec<serde_json::Value>, Vec<serde_json::Value>), E> {
+    use ftp_client_gui_lib::credential_store::CredentialError;
+    use ftp_client_gui_lib::user_partitions;
+    let failed = |e: String| store_error(format!("Failed to write profiles: {e}"));
+    if !is_active_user(store, user_id) {
+        return Err(failed(
+            "User partition unavailable; --user override cannot fall back to legacy blob"
+                .to_string(),
+        ));
+    }
+    let db = user_partitions::cli_db_path().map_err(&failed)?;
+    let _lock = user_partitions::ProfileListLock::acquire_for_path(&db).map_err(&failed)?;
+    // The partition answers again: this was a passing fault, and the blob would hold
+    // a change the next load replaces with the partition's list.
+    if user_partitions::cli_list_server_profiles_for_user(store, user_id).is_ok() {
+        return Err(failed(
+            "the account store answers again. Nothing was changed; run the command again"
+                .to_string(),
+        ));
+    }
+    let held: Vec<serde_json::Value> = match store.get("config_server_profiles") {
+        Ok(raw) => serde_json::from_str(&raw)
+            .map_err(|e| failed(format!("Failed to parse server profiles: {e}")))?,
+        Err(CredentialError::NotFound(_)) => Vec::new(),
+        Err(e) => return Err(failed(format!("Failed to read server profiles: {e}"))),
+    };
+    let mut sent = held.clone();
+    let result = change(&mut sent)?;
+    // No two profiles of one name in the blob either: the list it holds decides
+    // who had a name first, as the partition does.
+    let (stored, _) = ftp_client_gui_lib::util::profile_name::unique_profile_names(&held, &sent);
+    let serialized = serde_json::to_string(&stored)
+        .map_err(|e| failed(format!("Failed to serialize profiles: {e}")))?;
+    store
+        .store("config_server_profiles", &serialized)
+        .map_err(|e| failed(format!("Failed to save server profiles: {e}")))?;
+    Ok((result, sent, stored))
 }
 
 fn user_env_suffix(name: &str) -> String {
@@ -18071,14 +18169,16 @@ fn tui_delete_profile(
 ) -> Option<Vec<serde_json::Value>> {
     use ftp_client_gui_lib::user_partitions;
     let user = user_partitions::cli_find_user_by_name(store, user_name).ok()?;
-    let mut profiles = user_partitions::cli_list_server_profiles_for_user(store, user.id).ok()?;
-    let before = profiles.len();
-    profiles.retain(|p| p.get("id").and_then(|v| v.as_str()) != Some(profile_id));
-    if profiles.len() == before {
+    let (stored, deleted) =
+        user_partitions::cli_update_server_profiles_for_user(store, user.id, |profiles| {
+            let before = profiles.len();
+            profiles.retain(|p| p.get("id").and_then(|v| v.as_str()) != Some(profile_id));
+            profiles.len() != before
+        })
+        .ok()?;
+    if !deleted {
         return None; // nothing to delete
     }
-    let stored =
-        user_partitions::cli_replace_server_profiles_for_user(store, user.id, &profiles).ok()?;
     prune_profile_from_groups_and_favorites(store, profile_id);
     dual_delete_server_cred(store, Some(user.id), &format!("server_{}", profile_id));
     Some(stored)
@@ -18125,8 +18225,6 @@ fn tui_save_profile(
         return None;
     }
     let user = user_partitions::cli_find_user_by_name(store, user_name).ok()?;
-    let mut profiles = user_partitions::cli_list_server_profiles_for_user(store, user.id).ok()?;
-
     let apply_fields = |entry: &mut serde_json::Map<String, serde_json::Value>| {
         entry.insert("id".into(), serde_json::Value::String(draft.id.clone()));
         entry.insert("name".into(), serde_json::Value::String(draft.name.clone()));
@@ -18158,23 +18256,25 @@ fn tui_save_profile(
         }
     };
 
-    let existing = profiles
-        .iter_mut()
-        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(draft.id.as_str()));
-    if let Some(value) = existing {
-        // Edit: preserve unmanaged keys, overwrite the form-owned ones.
-        if let Some(map) = value.as_object_mut() {
-            apply_fields(map);
-        }
-    } else {
-        // Create: prepend like `cmd_profile_create` so it surfaces on top.
-        let mut entry = serde_json::Map::new();
-        apply_fields(&mut entry);
-        profiles.insert(0, serde_json::Value::Object(entry));
-    }
-
-    let stored =
-        user_partitions::cli_replace_server_profiles_for_user(store, user.id, &profiles).ok()?;
+    let (stored, _) =
+        user_partitions::cli_update_server_profiles_for_user(store, user.id, |profiles| {
+            let existing = profiles
+                .iter_mut()
+                .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(draft.id.as_str()));
+            if let Some(value) = existing {
+                // Edit: preserve unmanaged keys, overwrite the form-owned ones.
+                if let Some(map) = value.as_object_mut() {
+                    apply_fields(map);
+                }
+            } else {
+                // Create: prepend like `cmd_profile_create` so it surfaces on top.
+                let mut entry = serde_json::Map::new();
+                apply_fields(&mut entry);
+                profiles.insert(0, serde_json::Value::Object(entry));
+            }
+            true
+        })
+        .ok()?;
 
     if let Some(secret) = secret {
         if !secret.is_empty() {
@@ -24913,6 +25013,25 @@ fn users_tui_pick(fav_marker: &str) -> std::io::Result<SectionTuiOutcome> {
 /// (lowercase) name, then exact id, then disambiguated substring. Mirrors
 /// the same precedence used by `--profile` so the interactive flow stays
 /// consistent with scripted invocations.
+/// Where `source`, read earlier, stands in a list read again: by id, and by name
+/// for a profile saved without one.
+fn position_of_profile(
+    profiles: &[serde_json::Value],
+    source: &serde_json::Value,
+) -> Option<usize> {
+    let field = |p: &serde_json::Value, key: &str| -> String {
+        p.get(key)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
+    let id = field(source, "id");
+    let name = field(source, "name");
+    profiles
+        .iter()
+        .position(|p| field(p, "id") == id && (!id.is_empty() || field(p, "name") == name))
+}
+
 fn resolve_profile_selector(
     profiles: &[serde_json::Value],
     selector: &str,
@@ -26548,14 +26667,6 @@ fn persist_new_profile_entry(
     has_filen_api_key: bool,
     profile_options: Option<&serde_json::Value>,
 ) -> Result<(String, String), String> {
-    let mut profiles: Vec<serde_json::Value> = match load_active_user_profiles(cli, store) {
-        Ok(p) => p,
-        Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => {
-            return Err(format!("Failed to read profiles: {}", e));
-        }
-        Err(_) => Vec::new(),
-    };
-
     let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
     let rand_suffix: String = {
         use rand::Rng;
@@ -26653,10 +26764,16 @@ fn persist_new_profile_entry(
         entry.insert("hasStoredFilenApiKey".into(), serde_json::json!(true));
     }
 
-    profiles.insert(0, serde_json::Value::Object(entry));
-
-    let stored = save_active_user_profiles(cli, store, &profiles)
-        .map_err(|e| format!("Failed to write profiles: {}", e))?;
+    let entry = serde_json::Value::Object(entry);
+    let (_, _, stored) = update_active_user_profiles(
+        cli,
+        store,
+        |e| e,
+        |profiles| {
+            profiles.insert(0, entry.clone());
+            Ok(())
+        },
+    )?;
     let stored_name = name_of(&stored, &new_id).unwrap_or(name).to_string();
     Ok((new_id, stored_name))
 }
@@ -27235,92 +27352,88 @@ fn cmd_profile_duplicate(
         }
     };
 
-    let mut profiles: Vec<serde_json::Value> = match load_active_user_profiles(cli, &store) {
-        Ok(p) => p,
-        Err(e) => {
-            print_error(format, &format!("Failed to read profiles: {}", e), 5);
-            return 5;
-        }
-    };
+    let updated = update_active_user_profiles(
+        cli,
+        &store,
+        |e| (e, 5),
+        |profiles| {
+            let source_idx = resolve_profile_selector(profiles, selector)
+                .map_err(|e| (format!("Profile lookup failed: {}", e), 2))?;
 
-    let source_idx = match resolve_profile_selector(&profiles, selector) {
-        Ok(i) => i,
-        Err(e) => {
-            print_error(format, &format!("Profile lookup failed: {}", e), 2);
-            return 2;
-        }
-    };
+            let source = profiles[source_idx].clone();
+            let source_id = source
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let source_name = source
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unnamed")
+                .to_string();
 
-    let source = profiles[source_idx].clone();
-    let source_id = source
-        .get("id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let source_name = source
-        .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unnamed")
-        .to_string();
+            // Match the GUI id scheme: `srv_<ms>_<rand>` keeps the entry sortable
+            // and unique across machines without collisions in the vault.
+            let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
+            let rand_suffix: String = {
+                use rand::Rng;
+                let mut rng = rand::thread_rng();
+                (0..9)
+                    .map(|_| {
+                        let idx: u8 = rng.gen_range(0..36);
+                        if idx < 10 {
+                            (b'0' + idx) as char
+                        } else {
+                            (b'a' + (idx - 10)) as char
+                        }
+                    })
+                    .collect()
+            };
+            let new_id = format!("srv_{}_{}", now_ms, rand_suffix);
+            let resolved_name = new_name
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("{} (copy)", source_name));
 
-    // Match the GUI id scheme: `srv_<ms>_<rand>` keeps the entry sortable
-    // and unique across machines without collisions in the vault.
-    let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
-    let rand_suffix: String = {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-        (0..9)
-            .map(|_| {
-                let idx: u8 = rng.gen_range(0..36);
-                if idx < 10 {
-                    (b'0' + idx) as char
-                } else {
-                    (b'a' + (idx - 10)) as char
+            let mut copy = source.clone();
+            if let serde_json::Value::Object(ref mut map) = copy {
+                map.insert("id".into(), serde_json::Value::String(new_id.clone()));
+                map.insert(
+                    "name".into(),
+                    serde_json::Value::String(resolved_name.clone()),
+                );
+                map.remove("lastConnected");
+                if let Some(mtb) = manual_total_bytes {
+                    // The source's cached quota no longer matches the new (manual)
+                    // cap: drop it so the copy re-resolves cleanly under item 4a.
+                    map.remove("lastQuota");
+                    let options = map
+                        .entry("options")
+                        .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+                    if let serde_json::Value::Object(opt_map) = options {
+                        opt_map.insert("manualTotalBytes".into(), serde_json::json!(mtb));
+                    }
                 }
-            })
-            .collect()
-    };
-    let new_id = format!("srv_{}_{}", now_ms, rand_suffix);
-    let resolved_name = new_name
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| format!("{} (copy)", source_name));
-
-    let mut copy = source.clone();
-    if let serde_json::Value::Object(ref mut map) = copy {
-        map.insert("id".into(), serde_json::Value::String(new_id.clone()));
-        map.insert(
-            "name".into(),
-            serde_json::Value::String(resolved_name.clone()),
-        );
-        map.remove("lastConnected");
-        if let Some(mtb) = manual_total_bytes {
-            // The source's cached quota no longer matches the new (manual)
-            // cap: drop it so the copy re-resolves cleanly under item 4a.
-            map.remove("lastQuota");
-            let options = map
-                .entry("options")
-                .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
-            if let serde_json::Value::Object(opt_map) = options {
-                opt_map.insert("manualTotalBytes".into(), serde_json::json!(mtb));
             }
-        }
-    }
 
-    // Insert at the top so the copy is visible without scrolling, just
-    // like the GUI's `handleDuplicate` (`[dup, ...servers]`).
-    profiles.insert(0, copy);
+            // Insert at the top so the copy is visible without scrolling, just
+            // like the GUI's `handleDuplicate` (`[dup, ...servers]`).
+            profiles.insert(0, copy);
+            Ok((source, source_id, source_name, new_id, resolved_name))
+        },
+    );
+    let ((source, source_id, source_name, new_id, resolved_name), _, stored) = match updated {
+        Ok(updated) => updated,
+        Err((e, code)) => {
+            print_error(format, &e, code);
+            return code;
+        }
+    };
 
     // A copy saved onto a taken name ("X (copy)" twice) is stored as " (1)",
     // ...: report the name that selects it.
-    let resolved_name = match save_active_user_profiles(cli, &store, &profiles) {
-        Ok(stored) => name_of(&stored, &new_id)
-            .map(str::to_string)
-            .unwrap_or(resolved_name),
-        Err(e) => {
-            print_error(format, &format!("Failed to write profiles: {}", e), 5);
-            return 5;
-        }
-    };
+    let resolved_name = name_of(&stored, &new_id)
+        .map(str::to_string)
+        .unwrap_or(resolved_name);
 
     // Best-effort clone of EVERY vault secret scoped to the source profile so a
     // duplicate is a complete working copy, not just the password (crypt overlay,
@@ -27956,32 +28069,35 @@ fn duplicate_or_convert_mode_in_vault(
     password: Option<&str>,
     replace_in_slot: bool,
 ) -> Result<(String, String, String, String), (String, i32)> {
-    let mut profiles: Vec<serde_json::Value> = load_active_user_profiles(cli, store)
-        .map_err(|e| (format!("Failed to read profiles: {}", e), 5))?;
-    let source_idx = resolve_profile_selector(&profiles, selector)
-        .map_err(|e| (format!("Profile lookup failed: {}", e), 2))?;
-    let source = profiles[source_idx].clone();
-    let source_id = source
-        .get("id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let source_name = source
-        .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unnamed")
-        .to_string();
-    let source_protocol = source
-        .get("protocol")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let source_provider_id = source
-        .get("providerId")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
+    let ((source_id, new_id, source_name), _, _) = update_active_user_profiles(
+        cli,
+        store,
+        |e| (e, 5),
+        |profiles| {
+            let source_idx = resolve_profile_selector(profiles, selector)
+                .map_err(|e| (format!("Profile lookup failed: {}", e), 2))?;
+            let source = profiles[source_idx].clone();
+            let source_id = source
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let source_name = source
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unnamed")
+                .to_string();
+            let source_protocol = source
+                .get("protocol")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let source_provider_id = source
+                .get("providerId")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
-    let group = find_mode_group_of(&source_protocol, source_provider_id.as_deref())
+            let group = find_mode_group_of(&source_protocol, source_provider_id.as_deref())
         .ok_or_else(|| (
             format!(
                 "Profile '{}' (protocol={}) is not part of a multi-mode provider group. Supported groups: koofr, opendrive, filen, filelu, proton (modes native, cli).",
@@ -27989,10 +28105,10 @@ fn duplicate_or_convert_mode_in_vault(
             ),
             7,
         ))?;
-    let (target_protocol, target_provider_id) = resolve_target_mode_in_group(group, mode_label)
-        .ok_or_else(|| {
-            (
-                format!(
+            let (target_protocol, target_provider_id) =
+                resolve_target_mode_in_group(group, mode_label).ok_or_else(|| {
+                    (
+                        format!(
                     "Mode '{}' is not available in the '{}' group. Valid modes for this group: {}",
                     mode_label,
                     group,
@@ -28003,106 +28119,106 @@ fn duplicate_or_convert_mode_in_vault(
                         .collect::<Vec<_>>()
                         .join(", "),
                 ),
-                5,
-            )
-        })?;
-    // Same mode: refuse so we don't silently create a confusing duplicate.
-    if target_protocol == source_protocol
-        && target_provider_id.map(|s| s.to_string()) == source_provider_id
-    {
-        return Err((
+                        5,
+                    )
+                })?;
+            // Same mode: refuse so we don't silently create a confusing duplicate.
+            if target_protocol == source_protocol
+                && target_provider_id.map(|s| s.to_string()) == source_provider_id
+            {
+                return Err((
             format!(
                 "Source profile is already in mode '{}'. Use `profile-duplicate` for a same-mode copy.",
                 mode_label
             ),
             5,
         ));
-    }
+            }
 
-    let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
-    let rand_suffix: String = {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-        (0..9)
-            .map(|_| {
-                let idx: u8 = rng.gen_range(0..36);
-                if idx < 10 {
-                    (b'0' + idx) as char
+            let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
+            let rand_suffix: String = {
+                use rand::Rng;
+                let mut rng = rand::thread_rng();
+                (0..9)
+                    .map(|_| {
+                        let idx: u8 = rng.gen_range(0..36);
+                        if idx < 10 {
+                            (b'0' + idx) as char
+                        } else {
+                            (b'a' + (idx - 10)) as char
+                        }
+                    })
+                    .collect()
+            };
+            let new_id = format!("srv_{}_{}", now_ms, rand_suffix);
+
+            let resolved_name = new_name.map(|s| s.to_string()).unwrap_or_else(|| {
+                if replace_in_slot {
+                    source_name.clone()
                 } else {
-                    (b'a' + (idx - 10)) as char
+                    format!("{} ({})", source_name, mode_label)
                 }
-            })
-            .collect()
-    };
-    let new_id = format!("srv_{}_{}", now_ms, rand_suffix);
+            });
 
-    let resolved_name = new_name.map(|s| s.to_string()).unwrap_or_else(|| {
-        if replace_in_slot {
-            source_name.clone()
-        } else {
-            format!("{} ({})", source_name, mode_label)
-        }
-    });
-
-    let mut copy = source.clone();
-    if let serde_json::Value::Object(ref mut map) = copy {
-        map.insert("id".into(), serde_json::Value::String(new_id.clone()));
-        map.insert("name".into(), serde_json::Value::String(resolved_name));
-        map.insert(
-            "protocol".into(),
-            serde_json::Value::String(target_protocol.to_string()),
-        );
-        match target_provider_id {
-            Some(pid) => {
+            let mut copy = source.clone();
+            if let serde_json::Value::Object(ref mut map) = copy {
+                map.insert("id".into(), serde_json::Value::String(new_id.clone()));
+                map.insert("name".into(), serde_json::Value::String(resolved_name));
                 map.insert(
-                    "providerId".into(),
-                    serde_json::Value::String(pid.to_string()),
+                    "protocol".into(),
+                    serde_json::Value::String(target_protocol.to_string()),
                 );
-            }
-            None => {
-                map.remove("providerId");
-            }
-        }
-        // Point the copy at the TARGET mode's endpoint. Without this the new
-        // profile keeps the source's host: a Koofr native profile duplicated
-        // into WebDAV mode stayed on `app.koofr.net` and every request 404'd,
-        // because the Koofr DAV surface only answers under `/dav/Koofr`. The
-        // GUI got this right through its preset registry; the CLI had no
-        // endpoint table at all (issue #277 B4 triage).
-        if !apply_mode_endpoint_preset(map, group, target_protocol, target_provider_id)
-            && !cli.quiet
-        {
-            eprintln!(
+                match target_provider_id {
+                    Some(pid) => {
+                        map.insert(
+                            "providerId".into(),
+                            serde_json::Value::String(pid.to_string()),
+                        );
+                    }
+                    None => {
+                        map.remove("providerId");
+                    }
+                }
+                // Point the copy at the TARGET mode's endpoint. Without this the new
+                // profile keeps the source's host: a Koofr native profile duplicated
+                // into WebDAV mode stayed on `app.koofr.net` and every request 404'd,
+                // because the Koofr DAV surface only answers under `/dav/Koofr`. The
+                // GUI got this right through its preset registry; the CLI had no
+                // endpoint table at all (issue #277 B4 triage).
+                if !apply_mode_endpoint_preset(map, group, target_protocol, target_provider_id)
+                    && !cli.quiet
+                {
+                    eprintln!(
                 "warning: mode '{}' has no preset endpoint; set the endpoint, bucket and keys on the new profile before connecting",
                 mode_label
             );
-        }
-        if let Some(u) = username {
-            map.insert("username".into(), serde_json::Value::String(u.to_string()));
-        }
-        map.remove("lastConnected");
-        // Keep `lastQuota`: every mode of a provider group points at the same
-        // account/storage, so the cached usage + capacity stay valid until the
-        // next refresh (issue #215).
-        // Scrub mode-specific options so the new profile starts clean.
-        let opts_entry = map
-            .entry("options")
-            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
-        if let serde_json::Value::Object(opt_map) = opts_entry {
-            scrub_options_for_mode(opt_map);
-        }
-    }
+                }
+                if let Some(u) = username {
+                    map.insert("username".into(), serde_json::Value::String(u.to_string()));
+                }
+                map.remove("lastConnected");
+                // Keep `lastQuota`: every mode of a provider group points at the same
+                // account/storage, so the cached usage + capacity stay valid until the
+                // next refresh (issue #215).
+                // Scrub mode-specific options so the new profile starts clean.
+                let opts_entry = map
+                    .entry("options")
+                    .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+                if let serde_json::Value::Object(opt_map) = opts_entry {
+                    scrub_options_for_mode(opt_map);
+                }
+            }
 
-    if replace_in_slot {
-        // Take the source's slot; remove the original.
-        profiles[source_idx] = copy;
-    } else {
-        // Insert immediately after the source for visual grouping.
-        profiles.insert(source_idx + 1, copy);
-    }
-
-    save_active_user_profiles(cli, store, &profiles)
-        .map_err(|e| (format!("Failed to write profiles: {}", e), 5))?;
+            if replace_in_slot {
+                // Take the source's slot; remove the original.
+                profiles[source_idx] = copy;
+            } else {
+                // Insert immediately after the source for visual grouping.
+                profiles.insert(source_idx + 1, copy);
+            }
+            Ok((source_id, new_id, source_name))
+        },
+    )?;
 
     // Credential handling: explicit override wins; otherwise clone the
     // source's credential best-effort (works for same-credentials groups
@@ -28262,7 +28378,7 @@ fn cmd_proton_mode_switch(
             return 5;
         }
     };
-    let mut profiles = match load_active_user_profiles(cli, &store) {
+    let profiles = match load_active_user_profiles(cli, &store) {
         Ok(p) => p,
         Err(e) => {
             print_error(format, &format!("Failed to read profiles: {e}"), 5);
@@ -28307,8 +28423,6 @@ fn cmd_proton_mode_switch(
     }
 
     if duplicate {
-        let initial = text("initialPath");
-        let translated = switch::translate_path(&initial, from, to);
         let new_id = format!(
             "srv_{}_{}",
             chrono::Utc::now().timestamp_millis().max(0),
@@ -28321,22 +28435,43 @@ fn cmd_proton_mode_switch(
         let name = new_name
             .map(str::to_string)
             .unwrap_or_else(|| format!("{} ({})", text("name"), to.label()));
-        let mut copy = source.clone();
-        copy["id"] = serde_json::Value::from(new_id.clone());
-        copy["name"] = serde_json::Value::from(name.clone());
-        if let Some(map) = copy.as_object_mut() {
-            map.remove("lastConnected");
-        }
-        switch::set_mode(
-            &mut copy,
-            to,
-            translated.as_deref().filter(|_| !initial.is_empty()),
+        let updated = update_active_user_profiles(
+            cli,
+            &store,
+            |e| e,
+            |profiles| {
+                let idx = position_of_profile(profiles, &source)
+                    .ok_or_else(|| format!("Profile lookup failed: '{}' is gone", text("name")))?;
+                let mut copy = profiles[idx].clone();
+                // From the source as it stands now, not as first read.
+                let initial = copy
+                    .get("initialPath")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let translated =
+                    switch::translate_path(&initial, ProtonMode::of_profile(&copy), to);
+                copy["id"] = serde_json::Value::from(new_id.clone());
+                copy["name"] = serde_json::Value::from(name.clone());
+                if let Some(map) = copy.as_object_mut() {
+                    map.remove("lastConnected");
+                }
+                switch::set_mode(
+                    &mut copy,
+                    to,
+                    translated.as_deref().filter(|_| !initial.is_empty()),
+                );
+                profiles.insert(idx + 1, copy);
+                Ok((initial, translated))
+            },
         );
-        profiles.insert(idx + 1, copy);
-        if let Err(e) = save_active_user_profiles(cli, &store, &profiles) {
-            print_error(format, &format!("Failed to write profiles: {e}"), 5);
-            return 5;
-        }
+        let (initial, translated) = match updated {
+            Ok((copied, _, _)) => copied,
+            Err(e) => {
+                print_error(format, &e, 5);
+                return 5;
+            }
+        };
         let source_id = text("id");
         if !source_id.is_empty() {
             let fav_raw = favs_blob_get(&store);
@@ -28602,20 +28737,19 @@ fn delete_profile_in_vault(
     store: &CredentialStore,
     profile_id: &str,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let mut profiles: Vec<serde_json::Value> = load_active_user_profiles(cli, store)
+    let profiles: Vec<serde_json::Value> = load_active_user_profiles(cli, store)
         .map_err(|e| format!("Failed to read profiles: {}", e))?;
-    let before = profiles.len();
     // Capture the protocol before removing the entry, so the OAuth-token key can
     // be derived for the orphan cleanup below.
     let protocol = profiles
         .iter()
         .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id))
-        .and_then(|p| p.get("protocol").and_then(|v| v.as_str()))
-        .map(|s| s.to_string());
-    profiles.retain(|p| p.get("id").and_then(|v| v.as_str()) != Some(profile_id));
-    if profiles.len() == before {
-        return Err(format!("Profile id '{}' not found in vault", profile_id));
-    }
+        .map(|p| {
+            p.get("protocol")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })
+        .ok_or_else(|| format!("Profile id '{}' not found in vault", profile_id))?;
     // Orphan credential cleanup: remove EVERY vault secret scoped to this profile
     // so a delete leaves nothing behind. Same single source of truth
     // (`per_profile_vault_keys`) the GUI `purge_profile_secrets` command and the
@@ -28631,8 +28765,21 @@ fn delete_profile_in_vault(
         Some(profile_id),
     )
     .map_err(|error| error.to_string())?;
-    save_active_user_profiles(cli, store, &profiles)
-        .map_err(|e| format!("Failed to write profiles: {}", e))?;
+    // The protocol as it stands now decides which token keys go below.
+    let (protocol, _, stored) = update_active_user_profiles(
+        cli,
+        store,
+        |e| e,
+        |profiles| {
+            let current = profiles
+                .iter()
+                .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id))
+                .and_then(|p| p.get("protocol").and_then(|v| v.as_str()))
+                .map(str::to_string);
+            profiles.retain(|p| p.get("id").and_then(|v| v.as_str()) != Some(profile_id));
+            Ok(current.or_else(|| protocol.clone()))
+        },
+    )?;
     for key in
         ftp_client_gui_lib::per_profile_vault_keys_for_delete(profile_id, protocol.as_deref())
     {
@@ -28658,7 +28805,7 @@ fn delete_profile_in_vault(
         }
     }
 
-    Ok(profiles)
+    Ok(stored)
 }
 
 /// `aeroftp profile-delete <SELECTOR> [--yes]` — public CLI surface for
@@ -29076,49 +29223,53 @@ fn duplicate_profile_in_vault(
     source_id: &str,
     new_name: Option<&str>,
 ) -> Result<(String, String, Vec<serde_json::Value>), String> {
-    let mut profiles: Vec<serde_json::Value> = load_active_user_profiles(cli, store)
-        .map_err(|e| format!("Failed to read profiles: {}", e))?;
-    let source = profiles
-        .iter()
-        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(source_id))
-        .cloned()
-        .ok_or_else(|| format!("Profile id '{}' not found in vault", source_id))?;
-    let original_name = source
-        .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unnamed")
-        .to_string();
-    let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
-    let rand_suffix: String = {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-        (0..9)
-            .map(|_| {
-                let idx: u8 = rng.gen_range(0..36);
-                if idx < 10 {
-                    (b'0' + idx) as char
-                } else {
-                    (b'a' + (idx - 10)) as char
-                }
-            })
-            .collect()
-    };
-    let new_id = format!("srv_{}_{}", now_ms, rand_suffix);
-    let resolved_name = new_name
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| format!("{} (copy)", original_name));
-    let mut copy = source.clone();
-    if let serde_json::Value::Object(ref mut map) = copy {
-        map.insert("id".into(), serde_json::Value::String(new_id.clone()));
-        map.insert(
-            "name".into(),
-            serde_json::Value::String(resolved_name.clone()),
-        );
-        map.remove("lastConnected");
-    }
-    profiles.insert(0, copy);
-    let stored = save_active_user_profiles(cli, store, &profiles)
-        .map_err(|e| format!("Failed to write profiles: {}", e))?;
+    let ((new_id, resolved_name), _, stored) = update_active_user_profiles(
+        cli,
+        store,
+        |e| e,
+        |profiles| {
+            let source = profiles
+                .iter()
+                .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(source_id))
+                .cloned()
+                .ok_or_else(|| format!("Profile id '{}' not found in vault", source_id))?;
+            let original_name = source
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unnamed")
+                .to_string();
+            let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
+            let rand_suffix: String = {
+                use rand::Rng;
+                let mut rng = rand::thread_rng();
+                (0..9)
+                    .map(|_| {
+                        let idx: u8 = rng.gen_range(0..36);
+                        if idx < 10 {
+                            (b'0' + idx) as char
+                        } else {
+                            (b'a' + (idx - 10)) as char
+                        }
+                    })
+                    .collect()
+            };
+            let new_id = format!("srv_{}_{}", now_ms, rand_suffix);
+            let resolved_name = new_name
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("{} (copy)", original_name));
+            let mut copy = source.clone();
+            if let serde_json::Value::Object(ref mut map) = copy {
+                map.insert("id".into(), serde_json::Value::String(new_id.clone()));
+                map.insert(
+                    "name".into(),
+                    serde_json::Value::String(resolved_name.clone()),
+                );
+                map.remove("lastConnected");
+            }
+            profiles.insert(0, copy);
+            Ok((new_id, resolved_name))
+        },
+    )?;
     // MUV-3: clone the credential into vault + the scoped user's partition.
     let scoped_uid = scoped_credential_user_id(cli, store);
     if let Some(cred) = read_server_cred(store, scoped_uid, &format!("server_{}", source_id)) {
@@ -29154,34 +29305,39 @@ fn apply_profile_updates_in_vault(
     profile_id: &str,
     updates: &[(&str, serde_json::Value)],
 ) -> Result<Vec<serde_json::Value>, String> {
-    let mut profiles: Vec<serde_json::Value> = load_active_user_profiles(cli, store)
-        .map_err(|e| format!("Failed to read profiles: {}", e))?;
-    let target = profiles
-        .iter_mut()
-        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id))
-        .ok_or_else(|| format!("Profile id '{}' not found in vault", profile_id))?;
-    let map = target
-        .as_object_mut()
-        .ok_or_else(|| "Profile entry is not a JSON object".to_string())?;
-    for (key, value) in updates {
-        if *key == "name" {
-            if let serde_json::Value::String(s) = value {
-                if s.trim().is_empty() {
-                    return Err("Profile name cannot be empty".to_string());
+    let (_, _, stored) = update_active_user_profiles(
+        cli,
+        store,
+        |e| e,
+        |profiles| {
+            let target = profiles
+                .iter_mut()
+                .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id))
+                .ok_or_else(|| format!("Profile id '{}' not found in vault", profile_id))?;
+            let map = target
+                .as_object_mut()
+                .ok_or_else(|| "Profile entry is not a JSON object".to_string())?;
+            for (key, value) in updates {
+                if *key == "name" {
+                    if let serde_json::Value::String(s) = value {
+                        if s.trim().is_empty() {
+                            return Err("Profile name cannot be empty".to_string());
+                        }
+                    } else if matches!(value, serde_json::Value::Null) {
+                        return Err("Profile name cannot be cleared".to_string());
+                    }
                 }
-            } else if matches!(value, serde_json::Value::Null) {
-                return Err("Profile name cannot be cleared".to_string());
+                if matches!(value, serde_json::Value::Null) {
+                    map.remove(*key);
+                } else {
+                    map.insert((*key).to_string(), value.clone());
+                }
             }
-        }
-        if matches!(value, serde_json::Value::Null) {
-            map.remove(*key);
-        } else {
-            map.insert((*key).to_string(), value.clone());
-        }
-    }
+            Ok(())
+        },
+    )?;
     // The list stored: a rename onto a taken name lands as " (1)", ...
-    save_active_user_profiles(cli, store, &profiles)
-        .map_err(|e| format!("Failed to write profiles: {}", e))
+    Ok(stored)
 }
 
 /// Tiny wrapper around `storage_tone` that consumes the `u128` totals from
@@ -41262,125 +41418,118 @@ async fn apply_rclone_import_to_vault(
     cli: &Cli,
     result: &ftp_client_gui_lib::rclone_import::RcloneImportResult,
 ) -> Result<RcloneApplySummary, String> {
+    use ftp_client_gui_lib::profile_import_plan::SecretWrite;
     let store = open_vault(cli)?;
-
-    let mut passwords_stored = 0usize;
-    let mut oauth_tokens_stored = 0usize;
-    let mut jotta_refresh_stored = 0usize;
-
-    // MUV-3: dual-write each imported credential (vault + the scoped user's
-    // partition). The vault write stays authoritative (hard error on failure).
-    let scoped_uid = scoped_credential_user_id(cli, &store);
-    for server in &result.servers {
-        if let Some(ref cred) = server.credential {
-            dual_store_server_cred_checked(
-                &store,
-                scoped_uid,
-                &format!("server_{}", server.id),
-                cred,
-            )
-            .map_err(|e| format!("vault write failed for {}: {}", server.id, e))?;
-            passwords_stored += 1;
-        }
+    let target = ensure_active_user_unlocked(cli, &store)
+        .map_err(|e| format!("cannot read profiles: {e}"))?
+        .ok_or_else(|| "cannot read profiles: NO_ACTIVE_USER".to_string())?;
+    // Secrets also reach the shared vault key, which an account without its own copy
+    // reads, so they cannot be written for an account that is not the active one.
+    if !is_active_user(&store, target.id) {
+        return Err(
+            "the account named for this import (--user or AEROFTP_USER) must be the active one, because imported secrets also reach the shared vault; run `users switch` first"
+                .to_string(),
+        );
     }
 
-    let protocol_by_id: std::collections::HashMap<&str, String> = result
-        .servers
-        .iter()
-        .map(|s| {
-            (
-                s.id.as_str(),
-                s.protocol.clone().unwrap_or_default().to_lowercase(),
-            )
+    let protocol_of = |id: &str| -> Option<String> {
+        result
+            .servers
+            .iter()
+            .find(|s| s.id == id)
+            .map(|s| s.protocol.clone().unwrap_or_default().to_lowercase())
+    };
+    // Secrets and list as one operation: a failure leaves neither, and a save made
+    // meanwhile is kept. Existing entries are preserved; ids that already exist in
+    // the list are skipped, with their secrets, to keep the operation idempotent.
+    let (summary, profiles, stored) =
+        ftp_client_gui_lib::store_imported_profiles(&store, target.id, |current| {
+            let mut summary = RcloneApplySummary {
+                passwords_stored: 0,
+                oauth_tokens_stored: 0,
+                jotta_refresh_stored: 0,
+                profiles_appended: 0,
+                profiles_renamed: Vec::new(),
+            };
+            // Ids are minted per parse, so one is held only if the list took it since.
+            // It then keeps its secrets, as a skipped `.aeroftp` profile does.
+            let held = |id: &str| {
+                current
+                    .iter()
+                    .any(|p| p.get("id").and_then(|v| v.as_str()) == Some(id))
+            };
+            let mut writes = Vec::new();
+            for server in result.servers.iter().filter(|s| !held(&s.id)) {
+                if let Some(ref cred) = server.credential {
+                    writes.push(SecretWrite::new(
+                        format!("server_{}", server.id),
+                        None,
+                        cred,
+                    ));
+                    summary.passwords_stored += 1;
+                }
+            }
+            for (profile_id, secrets) in &result.provider_secrets {
+                let Some(protocol) = protocol_of(profile_id).filter(|_| !held(profile_id)) else {
+                    continue;
+                };
+                if let Some(ref oauth_json) = secrets.oauth {
+                    if let Some(slug) = cli_oauth_vault_slug_for_protocol(&protocol) {
+                        writes.push(SecretWrite::new(
+                            format!("oauth_{slug}_{profile_id}"),
+                            Some("oauth"),
+                            oauth_json,
+                        ));
+                        summary.oauth_tokens_stored += 1;
+                    }
+                }
+                if let Some(ref jotta_json) = secrets.jotta_refresh {
+                    if protocol == "jottacloud" {
+                        writes.push(SecretWrite::new(
+                            format!("jottacloud_refresh_{profile_id}"),
+                            Some("jottacloud_refresh"),
+                            jotta_json,
+                        ));
+                        summary.jotta_refresh_stored += 1;
+                    }
+                }
+                // The cached session of an rclone `protondrive` remote, under the
+                // key the native Proton Drive client reads.
+                if let Some(ref session_json) = secrets.proton_native_session {
+                    if protocol == "proton" {
+                        writes.push(SecretWrite::new(
+                            format!("proton_native_session_{profile_id}"),
+                            Some("proton_native_session"),
+                            session_json,
+                        ));
+                    }
+                }
+            }
+            let mut additions = Vec::new();
+            for server in &result.servers {
+                if held(&server.id) {
+                    continue;
+                }
+                let profile = imported_server_profile(server, |key, secret| {
+                    writes.push(SecretWrite::new(key.to_string(), None, secret));
+                    Ok(())
+                })
+                .map_err(|e| format!("vault write failed for {}: {}", server.id, e))?;
+                additions.push(profile);
+                summary.profiles_appended += 1;
+            }
+            Ok(ftp_client_gui_lib::ImportedProfilesPlan {
+                writes,
+                additions,
+                result: summary,
+            })
         })
-        .collect();
-    for (profile_id, secrets) in &result.provider_secrets {
-        let protocol = match protocol_by_id.get(profile_id.as_str()) {
-            Some(p) => p,
-            None => continue,
-        };
-        if let Some(ref oauth_json) = secrets.oauth {
-            if let Some(slug) = cli_oauth_vault_slug_for_protocol(protocol) {
-                // MUV-4: dual-write into vault + the scoped user's partition.
-                dual_store_typed_cred_checked(
-                    &store,
-                    scoped_uid,
-                    &format!("oauth_{}_{}", slug, profile_id),
-                    "oauth",
-                    oauth_json,
-                )
-                .map_err(|e| format!("vault write failed for oauth {}: {}", profile_id, e))?;
-                oauth_tokens_stored += 1;
-            }
-        }
-        if let Some(ref jotta_json) = secrets.jotta_refresh {
-            if protocol == "jottacloud" {
-                dual_store_typed_cred_checked(
-                    &store,
-                    scoped_uid,
-                    &format!("jottacloud_refresh_{}", profile_id),
-                    "jottacloud_refresh",
-                    jotta_json,
-                )
-                .map_err(|e| format!("vault write failed for jotta {}: {}", profile_id, e))?;
-                jotta_refresh_stored += 1;
-            }
-        }
-        // The cached session of an rclone `protondrive` remote, under the key
-        // the native Proton Drive client reads.
-        if let Some(ref session_json) = secrets.proton_native_session {
-            if protocol == "proton" {
-                dual_store_typed_cred_checked(
-                    &store,
-                    scoped_uid,
-                    &format!("proton_native_session_{}", profile_id),
-                    "proton_native_session",
-                    session_json,
-                )
-                .map_err(|e| {
-                    format!(
-                        "vault write failed for proton session {}: {}",
-                        profile_id, e
-                    )
-                })?;
-            }
-        }
-    }
-
-    // Append the imported profiles to the active user's partition. Existing
-    // entries are preserved; new ids that already exist in the list are
-    // skipped to keep the operation idempotent on retry. Falls back to the
-    // legacy blob when the partition layer is unavailable (downgrade).
-    let mut profiles: Vec<serde_json::Value> =
-        load_active_user_profiles(cli, &store).unwrap_or_default();
-    let existing_ids: std::collections::HashSet<String> = profiles
-        .iter()
-        .filter_map(|p| p.get("id").and_then(|v| v.as_str()).map(String::from))
-        .collect();
-    let mut profiles_appended = 0usize;
-    for server in &result.servers {
-        if existing_ids.contains(&server.id) {
-            continue;
-        }
-        let profile = imported_server_profile(server, |key, secret| {
-            dual_store_server_cred_checked(&store, scoped_uid, key, secret)
-        })
-        .map_err(|e| format!("vault write failed for {}: {}", server.id, e))?;
-        profiles.push(profile);
-        profiles_appended += 1;
-    }
-    let stored = save_active_user_profiles(cli, &store, &profiles)
-        .map_err(|e| format!("vault write failed for server profiles: {}", e))?;
+        .map_err(|e| format!("vault write failed: {e}"))?;
     // Read from the list stored: only the write knows which profile had a
     // name first (an older list may hold two of one name).
-    let profiles_renamed = renamed_by_write(&profiles, &stored);
-
     Ok(RcloneApplySummary {
-        passwords_stored,
-        oauth_tokens_stored,
-        jotta_refresh_stored,
-        profiles_appended,
-        profiles_renamed,
+        profiles_renamed: renamed_by_write(&profiles, &stored),
+        ..summary
     })
 }
 
@@ -42644,10 +42793,10 @@ async fn cmd_profile_export(
 }
 
 /// `profile-import`: restore profiles (and, when present, every saved secret)
-/// from a native `.aeroftp` file into the active user's vault. Reuses the exact
-/// GUI command (`import_server_profiles`) for the credential restore, then
-/// merges the redacted profile list into the active user's profile store,
-/// skipping duplicates by id or host:port:username (mirrors the GUI dialog).
+/// from a native `.aeroftp` file into the active user's vault. The decision for
+/// a profile the active user already has, and the secret restore, are the
+/// GUI's (`import_server_profiles_with_mode`), which also writes the profile list.
+#[allow(clippy::too_many_arguments)]
 async fn cmd_profile_import(
     cli: &Cli,
     input: &str,
@@ -42655,12 +42804,24 @@ async fn cmd_profile_import(
     password_stdin: bool,
     json: bool,
     dry_run: bool,
+    on_existing: ExistingProfileArg,
     format: OutputFormat,
 ) -> i32 {
+    use ftp_client_gui_lib::profile_import_plan::{display_name, lay_import_over, ImportOutcome};
+    use ftp_client_gui_lib::util::profile_name::unique_profile_names;
     use zeroize::Zeroize;
 
     let store = match open_vault(cli) {
         Ok(s) => s,
+        // The vault opens through the account store: one it cannot open stops here.
+        Err(e) if e.to_lowercase().contains("user partitions") => {
+            print_error(
+                format,
+                &format!("{}: {e}", ftp_client_gui_lib::IMPORT_NEEDS_PARTITION),
+                6,
+            );
+            return 6;
+        }
         Err(e) => {
             print_error(format, &format!("vault unavailable: {e}"), 6);
             return 6;
@@ -42675,212 +42836,319 @@ async fn cmd_profile_import(
         }
     };
 
-    // Audit v4.1.0: the merge below decides which profiles are duplicates and
-    // skipped. The shared core used to restore EVERY secret before that decision,
-    // so a "skipped" profile silently had its existing vault credential
-    // overwritten. We therefore run import in two phases against the shared path:
-    //  1. preview (restore_only = empty set): decrypt + return the redacted list
-    //     WITHOUT touching the vault, so we can compute the dedup decision;
-    //  2. restore (restore_only = ids we actually add): restore credentials only
-    //     for the new profiles, keeping the skip report and the vault consistent.
-    let preview = ftp_client_gui_lib::import_server_profiles_core_filtered(
-        input.to_string(),
-        password.clone(),
-        Some(std::collections::HashSet::new()),
-    )
-    .await;
-
-    let value = match preview {
-        Ok(v) => v,
+    // The import reads and writes this user's profiles, and restores secrets for
+    // this user. Another window or process may switch the active user meanwhile:
+    // the list write below refuses if it is no longer this one.
+    let user_id = match import_user_id(cli, &store) {
+        Ok(Some(id)) => id,
+        Ok(None) => {
+            password.zeroize();
+            print_error(format, "cannot read profiles: NO_ACTIVE_USER", 1);
+            return 1;
+        }
+        // A store that cannot be opened stops earlier, at the vault.
         Err(e) => {
             password.zeroize();
+            print_error(format, &format!("cannot read profiles: {e}"), 1);
+            return 1;
+        }
+    };
+    // Restored secrets also go to the shared vault key, which an account without
+    // its own copy reads, so they cannot be written for an account that is not the
+    // active one. A dry run writes nothing.
+    if !dry_run {
+        let active = ftp_client_gui_lib::user_partitions::cli_get_active_user(&store);
+        match active.map(|user| user.map(|user| user.id)) {
+            Ok(active) if active == Some(user_id) => {}
+            Ok(_) => {
+                password.zeroize();
+                print_error(
+                    format,
+                    "the account named for this import (--user or AEROFTP_USER) must be the active one, because restored secrets also reach the shared vault; run `users switch` first, or use --dry-run to preview",
+                    1,
+                );
+                return 1;
+            }
+            Err(e) => {
+                password.zeroize();
+                print_error(format, &format!("cannot read the active account: {e}"), 1);
+                return 1;
+            }
+        }
+    }
+    // The plan compares the file with these profiles, so an unreadable list
+    // is an error: read as empty, every profile would look new and an
+    // overwrite would land as a second profile of the same id.
+    let current = match load_active_user_profiles(cli, &store) {
+        Ok(p) => p,
+        Err(e) => {
+            password.zeroize();
+            print_error(format, &format!("cannot read profiles: {e}"), 1);
+            return 1;
+        }
+    };
+    // A real import needs its account unlocked; the operation refuses otherwise.
+    if !dry_run {
+        if let Err(e) = ensure_active_user_unlocked(cli, &store) {
+            password.zeroize();
+            print_error(format, &format!("cannot unlock the account: {e}"), 1);
+            return 1;
+        }
+    }
+
+    // Audit v4.1.0 holds in every mode: secrets are restored only for the
+    // profiles added, overwritten or duplicated, never for a skipped one, and
+    // for none on --dry-run. A real import reads and writes the list itself, in
+    // one operation with the secrets.
+    let result = if dry_run {
+        ftp_client_gui_lib::preview_server_profiles(
+            input,
+            &password,
+            on_existing.into_inner(),
+            &current,
+        )
+    } else {
+        ftp_client_gui_lib::import_server_profiles_with_mode(
+            input.to_string(),
+            password.clone(),
+            on_existing.into_inner(),
+            user_id,
+        )
+        .await
+    };
+    password.zeroize();
+    let report = match result {
+        Ok(r) => r,
+        Err(e) => {
             let exit = if e.contains("Invalid password") { 6 } else { 1 };
             print_error(format, &format!("import failed: {e}"), exit);
             return exit;
         }
     };
 
-    let imported: Vec<serde_json::Value> = value
-        .get("servers")
-        .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default();
-
-    // Merge into the active user's profiles. Skip ONLY a true re-import (same
-    // stable id); profiles that merely share host:port:username are kept (see
-    // decide_import_merge). Same rule as ExportImportDialog.
-    let mut current = load_active_user_profiles(cli, &store).unwrap_or_default();
-    let decision = decide_import_merge(&imported, &current);
-    let added = decision.add_indices.len();
-    let skipped = decision.skipped;
-    let similar = decision.similar;
-
-    // --dry-run: phase 1 already decrypted the file and decide_import_merge
-    // computed the exact plan, both without touching the vault or the keyring.
-    // Print that plan and stop before phase 2 (credential restore) and the
-    // save. Mirrors the delete verbs' --dry-run: the plan goes to stdout, the
-    // notices to stderr, and nothing is moved. A duplicate is skipped, never
-    // overwritten, so there is no "would overwrite" case to report.
-    if dry_run {
-        password.zeroize();
-        let name_of = |idx: usize| -> String {
-            let p = &imported[idx];
-            p.get("name")
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| {
-                    let host = p.get("host").and_then(|v| v.as_str()).unwrap_or("?");
-                    format!("({host})")
-                })
-        };
-        let would_add: Vec<String> = decision.add_indices.iter().map(|&i| name_of(i)).collect();
-        let would_skip: Vec<String> = decision
-            .skipped_indices
+    let outcome_of = |p: &serde_json::Value| -> Option<ImportOutcome> {
+        match p.get("importOutcome").and_then(|v| v.as_str()) {
+            Some("added") => Some(ImportOutcome::Added),
+            Some("overwritten") => Some(ImportOutcome::Overwritten),
+            Some("duplicated") => Some(ImportOutcome::Duplicated),
+            _ => None,
+        }
+    };
+    // How each stored profile of an outcome is named in `list`, the list
+    // written (or, on --dry-run, the one a write would store): a duplicate or
+    // a profile whose name was taken carries the write's " (1)", " (2)".
+    let names_in = |list: &[serde_json::Value], outcome: ImportOutcome| -> Vec<String> {
+        report
+            .servers
             .iter()
-            .map(|&i| name_of(i))
-            .collect();
+            .filter(|p| outcome_of(p) == Some(outcome))
+            .map(|p| {
+                let field = |key: &str| p.get(key).and_then(|v| v.as_str()).unwrap_or("");
+                name_of(list, field("id"))
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| display_name(field("name"), field("host")))
+            })
+            .collect()
+    };
+    let jotta_names = |list: &[serde_json::Value]| -> Vec<String> {
+        report
+            .jotta_chains
+            .iter()
+            .map(|c| {
+                name_of(list, &c.id)
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| c.name.clone())
+            })
+            .collect()
+    };
+    let skipped = &report.skipped;
+    let similar = report.similar;
+    let metadata = &report.metadata;
+    let mode = on_existing.into_inner();
+
+    // --dry-run: the file was decrypted and planned without touching the vault
+    // or the keyring. Mirrors the delete verbs' --dry-run: the plan goes to
+    // stdout, the notices to stderr, and nothing is moved. The names are the
+    // ones the write would store, from the same naming rule.
+    if dry_run {
+        let mut sent = current.clone();
+        lay_import_over(&mut sent, &report.servers);
+        let (preview, renamed) = if report.servers.is_empty() {
+            (current.clone(), Vec::new())
+        } else {
+            unique_profile_names(&current, &sent)
+        };
+        let added = names_in(&preview, ImportOutcome::Added);
+        let overwritten = names_in(&preview, ImportOutcome::Overwritten);
+        let duplicated = names_in(&preview, ImportOutcome::Duplicated);
+        let jotta = jotta_names(&preview);
         if json {
             println!(
                 "{}",
                 serde_json::json!({
                     "status": "ok",
                     "dry_run": true,
-                    "would_import": added,
-                    "would_skip": skipped,
+                    "on_existing": mode,
+                    "would_import": added.len(),
+                    "would_overwrite": overwritten.len(),
+                    "would_duplicate": duplicated.len(),
+                    "would_skip": skipped.len(),
                     "similar": similar,
-                    "total_in_file": imported.len(),
-                    "added": would_add,
-                    "skipped": would_skip,
-                    "metadata": value
-                        .get("metadata")
-                        .cloned()
-                        .unwrap_or(serde_json::Value::Null),
+                    "total_in_file": report.total_in_file,
+                    "added": added,
+                    "overwritten": overwritten,
+                    "duplicated": duplicated,
+                    "skipped": skipped,
+                    "renamed": renamed,
+                    "jotta_chains": jotta,
+                    "target_changed": report.target_changed,
+                    "metadata": metadata,
                 })
             );
         } else {
             eprintln!("DRY RUN: no profiles were imported.");
-            for n in &would_add {
-                println!("+ would add   {n}");
+            for n in &added {
+                println!("+ would add        {n}");
             }
-            for n in &would_skip {
-                println!("= would skip  {n} (already present)");
+            for n in &overwritten {
+                println!("~ would overwrite  {n}");
             }
-            let tail = if similar > 0 {
-                format!(", {similar} resemble an existing profile")
-            } else {
-                String::new()
-            };
+            for n in &duplicated {
+                println!("+ would duplicate  {n} (new id)");
+            }
+            for n in skipped {
+                println!("= would skip       {n} (already present)");
+            }
+            print_jotta_chain_notice(&jotta, true);
+            print_target_changed_notice(&report.target_changed);
             eprintln!(
-                "Would add {added} profile(s), skip {skipped} (already present){tail} from {input}"
+                "Would add {}, overwrite {}, duplicate {}, skip {} (already present){} from {input}",
+                added.len(),
+                overwritten.len(),
+                duplicated.len(),
+                skipped.len(),
+                similar_tail(similar),
             );
         }
         return 0;
     }
 
-    // Ids of the profiles we actually add: only these get their credentials
-    // restored in phase 2.
-    let mut restore_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for &idx in &decision.add_indices {
-        if let Some(id) = imported[idx]
-            .get("id")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-        {
-            restore_ids.insert(id.to_string());
-        }
-    }
-
-    // Phase 2: restore credentials for the added profiles only. Its returned
-    // servers carry the corrected `hasStoredAeroCrypt*` flags: the phase-1
-    // preview ran with an empty restore set, so ITS flags are always false even
-    // when the secret travels with the file. Persist the phase-2 redaction for
-    // the added profiles, not the preview, so an imported crypt-overlay profile
-    // reports its stored overlay password and the GUI auto-unlock fires
-    // (`maybeAutoUnlockProfileOverlay` gates on `hasStoredAeroCryptPassword`);
-    // otherwise the binding round-trips but the session never decrypts.
-    let mut restored_by_id: std::collections::HashMap<String, serde_json::Value> =
-        std::collections::HashMap::new();
-    if !restore_ids.is_empty() {
-        match ftp_client_gui_lib::import_server_profiles_core_filtered(
-            input.to_string(),
-            password.clone(),
-            Some(restore_ids),
-        )
-        .await
-        {
-            Ok(v) => {
-                if let Some(arr) = v.get("servers").and_then(|s| s.as_array()) {
-                    for s in arr {
-                        if let Some(id) = s.get("id").and_then(|x| x.as_str()) {
-                            restored_by_id.insert(id.to_string(), s.clone());
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                password.zeroize();
-                let exit = if e.contains("Invalid password") { 6 } else { 1 };
-                print_error(format, &format!("import failed: {e}"), exit);
-                return exit;
-            }
-        }
-    }
-    password.zeroize();
-
-    // Append the added profiles, preferring the phase-2 redaction (true
-    // credential-presence flags) over the phase-1 preview (flags all false).
-    let added_profiles = merged_added_profiles(&decision.add_indices, &imported, &restored_by_id);
-    current.extend(added_profiles);
-
-    // Read from the list stored: only the write knows which profile had a
-    // name first (an older list may hold two of one name).
-    let mut renamed = Vec::new();
-    if added > 0 {
-        match save_active_user_profiles(cli, &store, &current) {
-            Ok(stored) => renamed = renamed_by_write(&current, &stored),
-            Err(e) => {
-                print_error(format, &format!("save profiles: {e}"), 1);
-                return 1;
-            }
-        }
-    }
-
-    let metadata = value
-        .get("metadata")
-        .cloned()
-        .unwrap_or(serde_json::Value::Null);
+    let stored = &report.stored;
+    let renamed = &report.renamed;
+    let added = names_in(stored, ImportOutcome::Added);
+    let overwritten = names_in(stored, ImportOutcome::Overwritten);
+    let duplicated = names_in(stored, ImportOutcome::Duplicated);
+    let jotta = jotta_names(stored);
+    let imported = report.servers.len();
     if json {
         println!(
             "{}",
             serde_json::json!({
                 "status": "ok",
-                "imported": added,
-                "skipped": skipped,
-                // Added profiles that share an account (host:port:username) with
-                // one already present: legitimately distinct (different protocol,
-                // crypt overlay, folder, or auth mode), kept, just flagged.
+                "on_existing": mode,
+                // Profiles taken from the file: added, overwritten or duplicated.
+                "imported": imported,
+                "added": added.len(),
+                "overwritten": overwritten.len(),
+                "duplicated": duplicated.len(),
+                "skipped": skipped.len(),
+                // Stored profiles that share an account (host:port:username)
+                // with one of another id: legitimately distinct (different
+                // protocol, crypt overlay, folder, or auth mode), just flagged.
                 "similar": similar,
-                // Profiles the write stored under another name: an added one
-                // whose name was taken, or one of an older list's two of one
-                // name. Each `to` is the name that selects that profile.
+                // Profiles the write stored under another name: a duplicate, an
+                // added one whose name was taken, or one of an older list's two
+                // of one name. Each `to` is the name that selects that profile.
                 "renamed": renamed,
-                "total_in_file": imported.len(),
+                "jotta_chains": jotta,
+                // Stored profiles whose custom OAuth app differs from the one
+                // this device keeps for the provider.
+                "oauth_apps_kept": report.oauth_apps_kept,
+                // Stored profiles whose provider-wide secret or native session
+                // could not be written: they ask for a new sign-in.
+                "shared_secrets_failed": report.shared_secrets_failed,
+                // Profiles the overwrite refused because the file points them at
+                // another server; they are also in the skipped count.
+                "target_changed": report.target_changed,
+                "total_in_file": report.total_in_file,
                 "metadata": metadata,
             })
         );
     } else {
         let mut tail = String::new();
-        if skipped > 0 {
-            tail.push_str(&format!(", {skipped} skipped (already present)"));
+        if !overwritten.is_empty() {
+            tail.push_str(&format!(", {} overwritten", overwritten.len()));
         }
-        if similar > 0 {
-            tail.push_str(&format!(", {similar} resemble an existing profile"));
+        if !duplicated.is_empty() {
+            tail.push_str(&format!(", {} duplicated", duplicated.len()));
         }
-        eprintln!("Imported {added} profile(s){tail} from {input}");
-        print_profile_renames(&renamed);
+        if !skipped.is_empty() {
+            tail.push_str(&format!(", {} skipped (already present)", skipped.len()));
+        }
+        tail.push_str(&similar_tail(similar));
+        eprintln!("Imported {imported} profile(s){tail} from {input}");
+        print_profile_renames(renamed);
+        print_jotta_chain_notice(&jotta, false);
+        for name in &report.shared_secrets_failed {
+            eprintln!(
+                "Warning: \"{name}\" was imported, but a shared secret or session of the file could not be stored. Sign this profile in again."
+            );
+        }
+        for name in &report.oauth_apps_kept {
+            eprintln!(
+                "Warning: \"{name}\" came with another custom OAuth app than the one this device has for that provider. The stored app was kept, so sign this profile in again if it stops connecting."
+            );
+        }
+        print_target_changed_notice(&report.target_changed);
     }
     0
+}
+
+/// The id of the user whose profiles an import reads and writes (`--user`, or
+/// the active user), resolved without unlocking anything.
+fn import_user_id(
+    cli: &Cli,
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+) -> Result<Option<i64>, String> {
+    use ftp_client_gui_lib::user_partitions;
+    Ok(match cli.user {
+        Some(ref name) => Some(user_partitions::cli_find_user_by_name(store, name)?.id),
+        None => user_partitions::cli_get_active_user(store)?.map(|u| u.id),
+    })
+}
+
+/// One line per profile an Overwrite refused because the file points it at
+/// another server, saying what to do instead.
+fn print_target_changed_notice(names: &[String]) {
+    for name in names {
+        eprintln!(
+            "Warning: \"{name}\" was not overwritten: the file points it at another server, and its stored passwords and tokens must not go there. Use --on-existing duplicate to add the file's copy, or delete the profile first."
+        );
+    }
+}
+
+/// The summary's ", N resemble an existing profile", or nothing for none.
+fn similar_tail(similar: usize) -> String {
+    if similar > 0 {
+        format!(", {similar} resemble an existing profile")
+    } else {
+        String::new()
+    }
+}
+
+/// Jottacloud rotates a refresh chain on every connection, so two holders of
+/// one chain (this device and the one the file came from, or a profile and its
+/// duplicate) cannot both stay signed in: the first to connect signs the other
+/// out. Said on stderr for each stored profile that brought its chain along.
+fn print_jotta_chain_notice(names: &[String], dry_run: bool) {
+    for name in names {
+        eprintln!(
+            "Warning: \"{name}\" {} a Jottacloud refresh chain. Jottacloud rotates it on every connection, so whichever copy connects first signs the other out: the device the file came from, or the profile it was duplicated from. Sign the other one in again with a new Personal Login Token.",
+            if dry_run { "would bring" } else { "brought" }
+        );
+    }
 }
 
 /// One line per profile the import's write stored under another name.
@@ -42890,97 +43158,6 @@ fn print_profile_renames(renamed: &[ftp_client_gui_lib::util::profile_name::Rena
             "Renamed \"{}\" to \"{}\": a profile already has that name",
             r.from, r.to
         );
-    }
-}
-
-/// Pick the JSON to persist for each newly-added profile, preferring the
-/// phase-2 redaction (which restored credentials and so carries the true
-/// `hasStoredAeroCrypt*` flags) over the phase-1 preview (whose flags are all
-/// false because the preview restores nothing). Falls back to the preview when
-/// a profile had no phase-2 entry (no credential to restore). Keeping the two
-/// in sync is what makes an imported crypt-overlay profile auto-unlock instead
-/// of round-tripping the binding while reporting no stored overlay password.
-fn merged_added_profiles(
-    add_indices: &[usize],
-    imported: &[serde_json::Value],
-    restored_by_id: &std::collections::HashMap<String, serde_json::Value>,
-) -> Vec<serde_json::Value> {
-    add_indices
-        .iter()
-        .map(|&idx| {
-            let preview = &imported[idx];
-            preview
-                .get("id")
-                .and_then(|v| v.as_str())
-                .and_then(|id| restored_by_id.get(id))
-                .cloned()
-                .unwrap_or_else(|| preview.clone())
-        })
-        .collect()
-}
-
-/// Coarse "same account/endpoint" key (host:port:username). NOT a skip key any
-/// more: it used to silently drop legitimately-distinct profiles that share an
-/// account but differ by protocol, crypt overlay, folder, or auth mode. Kept
-/// only to FLAG near-duplicates in the import summary.
-fn profile_account_key(p: &serde_json::Value) -> String {
-    format!(
-        "{}:{}:{}",
-        p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
-        p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
-        p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
-    )
-}
-
-/// Decision for merging imported profiles into the current set.
-struct ImportMergeDecision {
-    /// Indices into `imported` of the profiles to add.
-    add_indices: Vec<usize>,
-    /// Indices into `imported` of the true re-imports skipped (same stable
-    /// `id`). `skipped` is its length; the indices let `--dry-run` name them.
-    skipped_indices: Vec<usize>,
-    /// True re-imports skipped because their stable `id` already exists.
-    skipped: usize,
-    /// Added profiles that share an account with an existing profile.
-    similar: usize,
-}
-
-/// Decide which imported profiles to add. Skips ONLY a true re-import (same
-/// stable `id`): profiles that merely share host:port:username with an existing
-/// one are legitimately distinct (different protocol, crypt overlay, bound
-/// folder, or auth mode) and are added, counted as `similar` so the UI can flag
-/// them without ever silently dropping a wanted profile.
-fn decide_import_merge(
-    imported: &[serde_json::Value],
-    current: &[serde_json::Value],
-) -> ImportMergeDecision {
-    let existing_ids: std::collections::HashSet<&str> = current
-        .iter()
-        .filter_map(|p| p.get("id").and_then(|v| v.as_str()))
-        .filter(|s| !s.is_empty())
-        .collect();
-    let existing_accounts: std::collections::HashSet<String> =
-        current.iter().map(profile_account_key).collect();
-
-    let mut add_indices = Vec::new();
-    let mut skipped_indices = Vec::new();
-    let mut similar = 0usize;
-    for (idx, p) in imported.iter().enumerate() {
-        let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
-        if !id.is_empty() && existing_ids.contains(id) {
-            skipped_indices.push(idx);
-            continue;
-        }
-        if existing_accounts.contains(&profile_account_key(p)) {
-            similar += 1;
-        }
-        add_indices.push(idx);
-    }
-    ImportMergeDecision {
-        add_indices,
-        skipped: skipped_indices.len(),
-        skipped_indices,
-        similar,
     }
 }
 
@@ -43121,10 +43298,16 @@ async fn cmd_keystore_import(
     }
 
     // Unlock vault so import can write entries via CredentialStore.
-    if let Err(e) = open_vault(cli) {
-        print_error(format, &format!("vault unavailable: {e}"), 6);
-        return 6;
-    }
+    let store = match open_vault(cli) {
+        Ok(store) => store,
+        Err(e) => {
+            print_error(format, &format!("vault unavailable: {e}"), 6);
+            return 6;
+        }
+    };
+    // Unlocks a passphrase account the usual way. One left locked is refused by the
+    // import only when the backup's list could not reach its partition otherwise.
+    let _ = ensure_active_user_unlocked(cli, &store);
 
     let mut password = match resolve_keystore_password(cli_password, password_stdin) {
         Ok(p) => p,
@@ -44474,6 +44657,8 @@ fn classify_keystore_error(err: &ftp_client_gui_lib::keystore_export::KeystoreEx
     match err {
         E::InvalidPassword => 6,          // auth failure
         E::VaultNotReady => 5,            // configuration / vault-locked
+        E::ActiveAccountLocked => 5,      // same family: unlock, then try again
+        E::ProfileListBusy(_) => 5,       // same family: not available right now, try again
         E::UnsupportedVersion(_) => 7,    // not-supported / unsupported version
         E::UnsupportedCodec(_) => 7,      // same family: this build cannot read it
         E::StaleProfileDecisions(_) => 5, // usage: the choices do not fit this backup
@@ -46021,26 +46206,28 @@ fn persist_scanned_quota_to_profile(cli: &Cli, used: u64, total: u64, total_sour
         return;
     };
     let Ok(store) = open_vault(cli) else { return };
-    let Ok(mut profiles) = load_active_user_profiles(cli, &store) else {
-        return;
-    };
-    let Ok(idx) = resolve_profile_selector(&profiles, profile_name) else {
-        return;
-    };
     let now = chrono::Utc::now().to_rfc3339();
-    if let Some(serde_json::Value::Object(p)) = profiles.get_mut(idx) {
-        let mut q = serde_json::Map::new();
-        q.insert("used".into(), serde_json::json!(used));
-        q.insert("total".into(), serde_json::json!(total));
-        q.insert("fetched_at".into(), serde_json::json!(now));
-        q.insert("usedSource".into(), serde_json::json!("scan"));
-        q.insert("used_at".into(), serde_json::json!(now));
-        if let Some(src) = total_source {
-            q.insert("totalSource".into(), serde_json::json!(src));
-        }
-        p.insert("lastQuota".into(), serde_json::Value::Object(q));
-    }
-    let _ = save_active_user_profiles(cli, &store, &profiles);
+    let _ = update_active_user_profiles(
+        cli,
+        &store,
+        |_| (),
+        |profiles| {
+            let idx = resolve_profile_selector(profiles, profile_name).map_err(|_| ())?;
+            if let Some(serde_json::Value::Object(p)) = profiles.get_mut(idx) {
+                let mut q = serde_json::Map::new();
+                q.insert("used".into(), serde_json::json!(used));
+                q.insert("total".into(), serde_json::json!(total));
+                q.insert("fetched_at".into(), serde_json::json!(now));
+                q.insert("usedSource".into(), serde_json::json!("scan"));
+                q.insert("used_at".into(), serde_json::json!(now));
+                if let Some(src) = total_source {
+                    q.insert("totalSource".into(), serde_json::json!(src));
+                }
+                p.insert("lastQuota".into(), serde_json::Value::Object(q));
+            }
+            Ok(())
+        },
+    );
 }
 
 /// Persist the aggregate compression telemetry of a vault op into the
@@ -46066,22 +46253,24 @@ fn persist_compression_to_profile(cli: &Cli, plaintext: u64, compressed: u64, ra
         return;
     };
     let Ok(store) = open_vault(cli) else { return };
-    let Ok(mut profiles) = load_active_user_profiles(cli, &store) else {
-        return;
-    };
-    let Ok(idx) = resolve_profile_selector(&profiles, profile_name) else {
-        return;
-    };
     let now = chrono::Utc::now().to_rfc3339();
-    if let Some(serde_json::Value::Object(p)) = profiles.get_mut(idx) {
-        let mut c = serde_json::Map::new();
-        c.insert("plaintext".into(), serde_json::json!(plaintext));
-        c.insert("compressed".into(), serde_json::json!(compressed));
-        c.insert("ratio".into(), serde_json::json!(ratio));
-        c.insert("at".into(), serde_json::json!(now));
-        p.insert("lastCompression".into(), serde_json::Value::Object(c));
-    }
-    let _ = save_active_user_profiles(cli, &store, &profiles);
+    let _ = update_active_user_profiles(
+        cli,
+        &store,
+        |_| (),
+        |profiles| {
+            let idx = resolve_profile_selector(profiles, profile_name).map_err(|_| ())?;
+            if let Some(serde_json::Value::Object(p)) = profiles.get_mut(idx) {
+                let mut c = serde_json::Map::new();
+                c.insert("plaintext".into(), serde_json::json!(plaintext));
+                c.insert("compressed".into(), serde_json::json!(compressed));
+                c.insert("ratio".into(), serde_json::json!(ratio));
+                c.insert("at".into(), serde_json::json!(now));
+                p.insert("lastCompression".into(), serde_json::Value::Object(c));
+            }
+            Ok(())
+        },
+    );
 }
 
 async fn cmd_df(url: &str, scan: bool, full: bool, cli: &Cli, format: OutputFormat) -> i32 {
@@ -79233,6 +79422,7 @@ async fn main() {
             password,
             password_stdin,
             dry_run,
+            on_existing,
         } => {
             cmd_profile_import(
                 &cli,
@@ -79241,6 +79431,7 @@ async fn main() {
                 *password_stdin,
                 json_output,
                 *dry_run,
+                *on_existing,
                 format,
             )
             .await
@@ -79995,6 +80186,7 @@ async fn main() {
                 password,
                 password_stdin,
                 dry_run,
+                on_existing,
             } => {
                 cmd_profile_import(
                     &cli,
@@ -80003,6 +80195,7 @@ async fn main() {
                     *password_stdin,
                     json_output,
                     *dry_run,
+                    *on_existing,
                     format,
                 )
                 .await
@@ -81381,28 +81574,6 @@ mod tests {
     }
 
     #[test]
-    fn test_decide_import_merge_reports_skipped_indices() {
-        // The dry-run lists skipped profiles by name, so the decision must
-        // expose WHICH imported entries were skipped, not just the count. A
-        // same-id profile is skipped (never overwritten); a new id is added,
-        // and flagged `similar` when it shares host:port:username.
-        let current = vec![json!({
-            "id": "a", "name": "Kept", "host": "h", "port": 22, "username": "u"
-        })];
-        let imported = vec![
-            json!({"id": "a", "name": "Dup", "host": "h", "port": 22, "username": "u"}),
-            json!({"id": "b", "name": "New", "host": "h", "port": 22, "username": "u"}),
-            json!({"id": "c", "name": "Fresh", "host": "other", "port": 21, "username": "x"}),
-        ];
-        let d = decide_import_merge(&imported, &current);
-        assert_eq!(d.add_indices, vec![1, 2]);
-        assert_eq!(d.skipped_indices, vec![0]);
-        assert_eq!(d.skipped, 1);
-        // index 1 shares the account of the kept profile, index 2 does not.
-        assert_eq!(d.similar, 1);
-    }
-
-    #[test]
     fn test_lsjson_ndjson_line_is_single_line_compact_json() {
         // The NDJSON path emits `serde_json::to_string(&entry)` per line, so a
         // record must serialise to exactly one line (no embedded newline) and
@@ -81552,38 +81723,28 @@ mod tests {
         assert!(!filter.matches_file("outside.txt", "/root/../outside.txt", 1, None));
     }
 
+    #[test]
+    fn position_of_profile_finds_one_saved_without_an_id() {
+        let listed = serde_json::json!([
+            {"name": "first"},
+            {"id": "srv_b", "name": "second"},
+            {"name": "third"},
+        ]);
+        let listed = listed.as_array().unwrap();
+        assert_eq!(position_of_profile(listed, &listed[2]), Some(2));
+        assert_eq!(position_of_profile(listed, &listed[1]), Some(1));
+        let gone = serde_json::json!({"id": "srv_gone", "name": "first"});
+        assert_eq!(position_of_profile(listed, &gone), None);
+        assert_eq!(
+            position_of_profile(listed, &serde_json::json!({"name": "gone"})),
+            None
+        );
+    }
+
     fn argv(parts: &[&str]) -> Vec<String> {
         std::iter::once("aeroftp-cli".to_string())
             .chain(parts.iter().map(|part| part.to_string()))
             .collect()
-    }
-
-    #[test]
-    fn import_appends_phase2_credential_flags_not_preview() {
-        // Phase-1 preview always reports the crypt-overlay secret as absent
-        // (it restores nothing). Phase-2 restores it and reports it present.
-        // The persisted profile must take the phase-2 flag, otherwise an
-        // imported crypt-overlay profile never auto-unlocks (regression: the
-        // CLI used to push the preview and discard the phase-2 result).
-        let imported = vec![
-            json!({"id": "a", "name": "A", "hasStoredAeroCryptPassword": false}),
-            json!({"id": "b", "name": "B", "hasStoredAeroCryptPassword": false}),
-        ];
-        let mut restored_by_id: std::collections::HashMap<String, serde_json::Value> =
-            std::collections::HashMap::new();
-        restored_by_id.insert(
-            "a".to_string(),
-            json!({"id": "a", "name": "A", "hasStoredAeroCryptPassword": true}),
-        );
-        // "b" had no secret in the file, so phase 2 returns nothing for it.
-        let out = merged_added_profiles(&[0, 1], &imported, &restored_by_id);
-        assert_eq!(out.len(), 2);
-        // Restored profile carries the corrected (true) flag from phase 2.
-        assert_eq!(out[0]["id"], json!("a"));
-        assert_eq!(out[0]["hasStoredAeroCryptPassword"], json!(true));
-        // No phase-2 entry -> falls back to the preview verbatim (flag false).
-        assert_eq!(out[1]["id"], json!("b"));
-        assert_eq!(out[1]["hasStoredAeroCryptPassword"], json!(false));
     }
 
     #[test]
@@ -87996,34 +88157,6 @@ mod tests {
         let sel = select_export_profiles(&profiles, &selectors(&["srv_c"]));
         assert_eq!(sel.selected.iter().copied().collect::<Vec<_>>(), [2]);
         assert!(sel.unmatched.is_empty());
-    }
-
-    #[test]
-    fn decide_import_merge_keeps_distinct_profiles_sharing_an_account() {
-        let current = vec![json!({"id": "a", "host": "h", "port": 22, "username": "u"})];
-        let imported = vec![
-            // same id: a true re-import, skipped
-            json!({"id": "a", "host": "h", "port": 22, "username": "u"}),
-            // same account (host:port:username) but a new id + crypt overlay:
-            // legitimately distinct, must be kept and flagged similar
-            json!({"id": "b", "host": "h", "port": 22, "username": "u",
-                   "aeroCryptOverlay": {"enabled": true, "kind": "rclone-crypt"}}),
-            // same account, new id, different protocol (FTP vs FTPS style): kept, similar
-            json!({"id": "c", "host": "h", "port": 22, "username": "u", "protocol": "ftps"}),
-            // unrelated account: kept, not similar
-            json!({"id": "d", "host": "other", "port": 21, "username": "x"}),
-        ];
-        let decision = decide_import_merge(&imported, &current);
-        assert_eq!(
-            decision.add_indices,
-            vec![1, 2, 3],
-            "only the same-id re-import is skipped"
-        );
-        assert_eq!(decision.skipped, 1);
-        assert_eq!(
-            decision.similar, 2,
-            "b and c share the account with existing 'a'"
-        );
     }
 
     #[test]

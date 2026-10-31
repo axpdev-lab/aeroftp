@@ -280,17 +280,21 @@ fn materialize_github_metadata(
     };
     if let Some(user) = scope.user_id {
         users::cli_update_server_profiles_for_user(scope.store, user, apply)?;
-    } else if let Ok(raw) = scope.store.get("config_server_profiles") {
-        let mut profiles: Vec<Value> =
-            serde_json::from_str(&raw).map_err(|_| "Invalid saved profiles")?;
-        if apply(&mut profiles) {
-            scope
-                .store
-                .store(
-                    "config_server_profiles",
-                    &serde_json::to_string(&profiles).map_err(|e| e.to_string())?,
-                )
-                .map_err(|e| e.to_string())?;
+    } else {
+        // Read and written under the lock of the list it stands in for.
+        let _lock = users::ProfileListLock::acquire_for_path(&users::cli_db_path()?)?;
+        if let Ok(raw) = scope.store.get("config_server_profiles") {
+            let mut profiles: Vec<Value> =
+                serde_json::from_str(&raw).map_err(|_| "Invalid saved profiles")?;
+            if apply(&mut profiles) {
+                scope
+                    .store
+                    .store(
+                        "config_server_profiles",
+                        &serde_json::to_string(&profiles).map_err(|e| e.to_string())?,
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
         }
     }
     Ok(())

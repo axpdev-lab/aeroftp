@@ -776,6 +776,10 @@ impl SwitchTargets for DiskTargets<'_> {
             }
             None => {
                 let not_saved = ProfileStoreError::NotSaved;
+                // Read and written under the lock of the list it stands in for.
+                let _lock = crate::user_partitions::cli_db_path()
+                    .and_then(|db| crate::user_partitions::ProfileListLock::acquire_for_path(&db))
+                    .map_err(not_saved)?;
                 let raw = store
                     .get("config_server_profiles")
                     .map_err(|e| not_saved(e.to_string()))?;
