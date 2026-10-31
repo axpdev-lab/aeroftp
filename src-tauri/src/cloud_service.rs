@@ -36,6 +36,7 @@ use tokio::sync::{mpsc, Mutex, RwLock};
 
 mod bulk;
 mod incremental;
+mod root_identity;
 pub use incremental::{
     prepare_incremental, run_pair_incremental_cycle, IncrementalHints, IncrementalPlan,
     IncrementalPrep, LocalChanges, REMOTE_WORK_LIMIT,
@@ -62,6 +63,13 @@ impl LocalRootIdentity {
     /// Fail closed when the root or its replacement cannot be identified.
     fn read(root: &Path) -> Option<Self> {
         let metadata = std::fs::metadata(root).ok().filter(|meta| meta.is_dir())?;
+        Self::from_metadata(&metadata)
+    }
+
+    fn from_metadata(metadata: &std::fs::Metadata) -> Option<Self> {
+        if !metadata.is_dir() {
+            return None;
+        }
         #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt;
@@ -389,6 +397,9 @@ pub struct CloudService {
     // Outer None is allowed only for anonymous test/injected providers; a real unresolved account fails closed.
     connection_identity: Option<Option<String>>,
     revoked_receipts: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
+    receipt_root_cache: std::sync::Mutex<Option<(PathBuf, LocalRootIdentity, serde_json::Value)>>,
+    #[cfg(test)]
+    native_root_reads: std::sync::atomic::AtomicUsize,
     /// Files of the running cycle that kept changing while they uploaded
     /// (relative path): the cycle reports them once its baseline is saved.
     unsettled: Arc<std::sync::Mutex<Vec<String>>>,
@@ -480,6 +491,9 @@ impl CloudService {
             cloud_receipts: Arc::default(),
             connection_identity: None,
             revoked_receipts: Arc::default(),
+            receipt_root_cache: std::sync::Mutex::new(None),
+            #[cfg(test)]
+            native_root_reads: std::sync::atomic::AtomicUsize::new(0),
             unsettled: Arc::default(),
             left_unsettled: Arc::default(),
             send_quiet_window: SEND_QUIET_WINDOW,
@@ -604,6 +618,9 @@ impl CloudService {
     }
 
     fn forget_landed(&self) {
+        if let Ok(mut cache) = self.receipt_root_cache.lock() {
+            *cache = None;
+        }
         if let Ok(mut landed) = self.landed.lock() {
             landed.clear();
         }
@@ -731,22 +748,79 @@ impl CloudService {
         }
     }
 
+    /// Open and identify the same directory the cycle verified. Native volume
+    /// and file IDs survive remounts; unsupported filesystems stay mount-bound.
+    fn receipt_root_key(
+        config: &CloudConfig,
+        expected: Option<LocalRootIdentity>,
+    ) -> Option<serde_json::Value> {
+        let expected = expected?;
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            options.custom_flags(0x02000000); // FILE_FLAG_BACKUP_SEMANTICS: open a directory.
+        }
+        let file = options.open(&config.local_folder).ok()?;
+        if LocalRootIdentity::from_metadata(&file.metadata().ok()?) != Some(expected) {
+            return None;
+        }
+        root_identity::native(&file)
+            .or_else(|| Some(serde_json::json!({"kind":"mount-bound-v1", "identity":expected})))
+    }
+
+    fn cached_receipt_root_key(
+        &self,
+        config: &CloudConfig,
+        expected: Option<LocalRootIdentity>,
+    ) -> Option<serde_json::Value> {
+        let expected = expected?;
+        if let Ok(cache) = self.receipt_root_cache.lock() {
+            if let Some((_, _, key)) = cache
+                .as_ref()
+                .filter(|(path, identity, _)| path == &config.local_folder && *identity == expected)
+            {
+                return Some(key.clone());
+            }
+        }
+        #[cfg(test)]
+        self.native_root_reads
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let key = Self::receipt_root_key(config, Some(expected))?;
+        if let Ok(mut cache) = self.receipt_root_cache.lock() {
+            *cache = Some((config.local_folder.clone(), expected, key.clone()));
+        }
+        Some(key)
+    }
+
     /// Bind proofs to the actual profile, pair and mounted root without persisting credentials.
+    #[cfg(test)]
     fn receipt_scope(config: &CloudConfig) -> String {
         Self::receipt_scope_at_root(config, LocalRootIdentity::read(&config.local_folder))
     }
 
+    #[cfg(test)]
     fn receipt_scope_at_root(
         config: &CloudConfig,
         root_identity: Option<LocalRootIdentity>,
     ) -> String {
+        Self::receipt_scope_with_key(config, Self::receipt_root_key(config, root_identity))
+    }
+
+    fn receipt_scope_with_key(config: &CloudConfig, root: Option<serde_json::Value>) -> String {
         use sha2::Digest;
+        let profile = config
+            .server_profile_id
+            .as_deref()
+            .filter(|id| !id.is_empty())
+            .unwrap_or(&config.server_profile);
         let identity = serde_json::json!({
-            "profile_id": config.server_profile_id, "profile": config.server_profile,
+            "profile": profile,
             "protocol": config.protocol_type,
             "local": config.local_folder, "remote": config.remote_folder,
-            "root_identity": root_identity,
-            "compress": [config.compress_enabled as i64, config.compress_level as i64],
+            "root_identity": root,
+            "compress": config.compress_enabled,
         });
         format!(
             "{:x}",
@@ -756,7 +830,9 @@ impl CloudService {
 
     /// Add the factory's resolved target; unknown authenticated accounts cannot authorize deletion.
     fn effective_receipt_scope(&self, config: &CloudConfig) -> Option<String> {
-        self.bind_receipt_scope(config, Self::receipt_scope(config))
+        let key =
+            self.cached_receipt_root_key(config, LocalRootIdentity::read(&config.local_folder));
+        self.bind_receipt_scope(config, Self::receipt_scope_with_key(config, key))
     }
 
     fn bind_receipt_scope(&self, config: &CloudConfig, base: String) -> Option<String> {
@@ -920,8 +996,11 @@ impl CloudService {
         {
             return receipts;
         }
+        let Some(root_key) = self.cached_receipt_root_key(config, captured_root) else {
+            return receipts;
+        };
         let Some(scope) =
-            self.bind_receipt_scope(config, Self::receipt_scope_at_root(config, captured_root))
+            self.bind_receipt_scope(config, Self::receipt_scope_with_key(config, Some(root_key)))
         else {
             return receipts;
         };
@@ -958,10 +1037,17 @@ impl CloudService {
                     )
                 }
                 CompareDirection::RemoteToLocal => {
-                    let Some(file) = files.get(&row.relative_path) else {
+                    let Some(size) = done.size else {
                         continue;
                     };
-                    (CompareDirection::RemoteToLocal, file.clone())
+                    (
+                        CompareDirection::RemoteToLocal,
+                        SyncIndexEntry {
+                            size,
+                            modified: Some(done.modified),
+                            is_dir: false,
+                        },
+                    )
                 }
                 _ => continue,
             };
@@ -2199,7 +2285,7 @@ impl CloudService {
                 } else if let Some(reason) = changed_reason {
                     reason
                 } else if needs_review {
-                    "No verified AeroCloud transfer receipt: never-synced or legacy destination file kept. Open the same source and destination in AeroSync, select Mirror with One-way Update, review the plan and confirm any intended deletions.".to_string()
+                    "No AeroCloud transfer receipt can be verified for this destination and the current account/root; file kept. Open the same source and destination in AeroSync, select Mirror with One-way Update, review the plan and confirm any intended deletions.".to_string()
                 } else {
                     comparison.sync_reason.clone()
                 };
@@ -6006,6 +6092,9 @@ mod baseline_tests {
         broken: Option<String>,
         list_time: Option<String>,
         fail_upload: bool,
+        fail_upload_path: Option<String>,
+        fail_stat_path: Option<String>,
+        stat_calls: Vec<String>,
     }
 
     impl MemoryProvider {
@@ -6111,7 +6200,7 @@ mod baseline_tests {
             remote_path: &str,
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
-            if self.fail_upload {
+            if self.fail_upload || self.fail_upload_path.as_deref() == Some(remote_path) {
                 return Err(ProviderError::Other("fixture upload refused".into()));
             }
             let content =
@@ -6143,6 +6232,10 @@ mod baseline_tests {
             Err(ProviderError::NotSupported("rename".to_string()))
         }
         async fn stat(&mut self, path: &str) -> Result<ProviderRemoteEntry, ProviderError> {
+            self.stat_calls.push(path.to_string());
+            if self.fail_stat_path.as_deref() == Some(path) {
+                return Err(ProviderError::Other("fixture stat unavailable".into()));
+            }
             self.entry(path)
                 .ok_or_else(|| ProviderError::NotFound(path.to_string()))
         }
@@ -6554,6 +6647,319 @@ mod baseline_tests {
                 );
             }
         });
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn update_transient_account_identity_preserves_proof_without_minting() {
+        with_scratch_index(async {
+            for upload in [true, false] {
+                let root = tempfile::tempdir().unwrap();
+                let config = CloudConfig {
+                    enabled: true,
+                    update_only: true,
+                    preserve_remote_deletes: false,
+                    local_folder: root.path().into(),
+                    remote_folder: "/identity".into(),
+                    sync_direction: if upload {
+                        CompareDirection::LocalToRemote
+                    } else {
+                        CompareDirection::RemoteToLocal
+                    },
+                    ..Default::default()
+                };
+                let mut provider = MemoryProvider::default();
+                std::fs::write(root.path().join("keep"), b"keep").unwrap();
+                provider.put("/identity/keep", b"keep");
+                if upload {
+                    std::fs::write(root.path().join("photo"), b"photo").unwrap();
+                } else {
+                    provider.put("/identity/photo", b"photo");
+                }
+                let mut svc = CloudService::new();
+                svc.connection_identity = Some(Some("account-one".into()));
+                svc.init(config.clone()).await;
+                assert!(svc
+                    .perform_full_sync_with_provider(&mut provider)
+                    .await
+                    .unwrap()
+                    .errors
+                    .is_empty());
+                let before =
+                    serde_json::to_value(svc.load_index(&config).unwrap().cloud_receipts).unwrap();
+                svc.connection_identity = Some(None);
+                assert!(svc
+                    .perform_full_sync_with_provider(&mut provider)
+                    .await
+                    .unwrap()
+                    .errors
+                    .is_empty());
+                assert_eq!(
+                    serde_json::to_value(svc.load_index(&config).unwrap().cloud_receipts).unwrap(),
+                    before
+                );
+                // A new transfer while identity is unavailable cannot acquire proof.
+                if upload {
+                    std::fs::write(root.path().join("unknown"), b"unknown").unwrap();
+                } else {
+                    provider.put("/identity/unknown", b"unknown");
+                }
+                svc.perform_full_sync_with_provider(&mut provider)
+                    .await
+                    .unwrap();
+                assert!(!svc
+                    .load_index(&config)
+                    .unwrap()
+                    .cloud_receipts
+                    .contains_key("unknown"));
+                svc.connection_identity = Some(Some("account-one".into()));
+                if upload {
+                    std::fs::remove_file(root.path().join("photo")).unwrap();
+                } else {
+                    provider.stored.remove("/identity/photo");
+                }
+                assert_eq!(
+                    svc.perform_full_sync_with_provider(&mut provider)
+                        .await
+                        .unwrap()
+                        .deleted,
+                    1
+                );
+            }
+        });
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn update_inspects_changed_rows_not_the_unchanged_tree() {
+        with_scratch_index(async {
+            let root = tempfile::tempdir().unwrap();
+            let config = CloudConfig {
+                enabled: true,
+                update_only: true,
+                preserve_remote_deletes: true,
+                local_folder: root.path().into(),
+                remote_folder: "/scale".into(),
+                sync_direction: CompareDirection::LocalToRemote,
+                ..Default::default()
+            };
+            let mut provider = MemoryProvider::default();
+            for i in 0..1000 {
+                let name = format!("file{i}");
+                let path = root.path().join(&name);
+                std::fs::write(&path, b"same").unwrap();
+                filetime::set_file_mtime(
+                    &path,
+                    filetime::FileTime::from_unix_time(1_700_000_000, 0),
+                )
+                .unwrap();
+                provider.stored.insert(
+                    format!("/scale/{name}"),
+                    (b"same".to_vec(), "2023-11-14T22:13:20Z".into()),
+                );
+            }
+            provider.put("/scale/untracked", b"remote only");
+            let svc = CloudService::new();
+            svc.init(config.clone()).await;
+            let preview = svc
+                .preview_full_sync_with_provider(&mut provider)
+                .await
+                .unwrap();
+            assert!(preview.errors.is_empty());
+            assert!(provider.stat_calls.is_empty());
+            std::fs::write(root.path().join("file1"), b"changed").unwrap();
+            let preview = svc
+                .preview_full_sync_with_provider(&mut provider)
+                .await
+                .unwrap();
+            assert_eq!(preview.uploaded, 1);
+            assert_eq!(provider.stat_calls.len(), 1);
+            provider.stat_calls.clear();
+            let run = svc
+                .perform_full_sync_with_provider(&mut provider)
+                .await
+                .unwrap();
+            assert!(run.errors.is_empty(), "{:?}", run.errors);
+            assert_eq!(run.uploaded, 1);
+            assert!(
+                provider.stat_calls.len() <= 4,
+                "{}",
+                provider.stat_calls.len()
+            );
+        });
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn update_partial_failure_keeps_successful_transfer_receipts_and_aliases() {
+        with_scratch_index(async {
+            for upload in [true, false] {
+                let root = tempfile::tempdir().unwrap();
+                let local = root.path().join("café.txt");
+                let remote = "/partial/cafe\u{301}.txt";
+                let config = CloudConfig {
+                    enabled: true,
+                    update_only: true,
+                    preserve_remote_deletes: false,
+                    local_folder: root.path().into(),
+                    remote_folder: "/partial".into(),
+                    sync_direction: if upload {
+                        CompareDirection::LocalToRemote
+                    } else {
+                        CompareDirection::RemoteToLocal
+                    },
+                    ..Default::default()
+                };
+                let mut provider = MemoryProvider::default();
+                std::fs::write(
+                    &local,
+                    if upload {
+                        &b"actual source"[..]
+                    } else {
+                        &b"old"[..]
+                    },
+                )
+                .unwrap();
+                filetime::set_file_mtime(
+                    &local,
+                    filetime::FileTime::from_unix_time(
+                        if upload { 1_800_000_000 } else { 1_600_000_000 },
+                        0,
+                    ),
+                )
+                .unwrap();
+                provider.stored.insert(
+                    remote.into(),
+                    (
+                        (if upload {
+                            &b"old"[..]
+                        } else {
+                            &b"actual source"[..]
+                        })
+                        .to_vec(),
+                        "2023-11-14T22:13:20Z".into(),
+                    ),
+                );
+                if upload {
+                    std::fs::write(root.path().join("bad"), b"bad source").unwrap();
+                    provider.fail_upload_path = Some("/partial/bad".into());
+                } else {
+                    provider.put("/partial/bad", b"bad source");
+                    provider.fail_stat_path = Some("/partial/bad".into());
+                }
+                let svc = CloudService::new();
+                svc.init(config.clone()).await;
+                let result = svc
+                    .perform_full_sync_with_provider(&mut provider)
+                    .await
+                    .unwrap();
+                assert!(!result.errors.is_empty());
+                assert_eq!(result.uploaded + result.downloaded, 1, "{result:?}");
+                let saved = svc.load_index(&config).unwrap();
+                assert!(saved.cloud_receipts.contains_key("café.txt"));
+                assert!(!saved.cloud_receipts.contains_key("bad"));
+                assert!(!saved.files.contains_key("bad"));
+                provider.fail_stat_path = None;
+                provider.fail_upload_path = None;
+                if upload {
+                    std::fs::remove_file(&local).unwrap();
+                } else {
+                    provider.stored.remove(remote);
+                }
+                let run = svc
+                    .perform_full_sync_with_provider(&mut provider)
+                    .await
+                    .unwrap();
+                assert!(run.errors.is_empty(), "{:?}", run.errors);
+                assert_eq!(run.deleted, 1, "{run:?}");
+            }
+        });
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn native_root_identity_is_resolved_once_for_a_large_orphan_plan() {
+        with_scratch_index(async {
+            let root = tempfile::tempdir().unwrap();
+            std::fs::write(root.path().join("keep"), b"keep").unwrap();
+            let config = CloudConfig {
+                enabled: true,
+                update_only: true,
+                preserve_remote_deletes: false,
+                local_folder: root.path().into(),
+                remote_folder: "/many".into(),
+                sync_direction: CompareDirection::LocalToRemote,
+                ..Default::default()
+            };
+            let mut provider = MemoryProvider::default();
+            provider.put("/many/keep", b"keep");
+            let mut index = SyncIndex::new(
+                root.path().to_string_lossy().into_owned(),
+                config.remote_folder.clone(),
+            );
+            let scope = CloudService::receipt_scope(&config);
+            for i in 0..1000 {
+                let key = format!("file{i}");
+                provider.stored.insert(
+                    format!("/many/{key}"),
+                    (b"data".to_vec(), "2023-11-14T22:13:20Z".into()),
+                );
+                let state = SyncIndexEntry {
+                    size: 4,
+                    modified: Some(DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap()),
+                    is_dir: false,
+                };
+                index.files.insert(key.clone(), state.clone());
+                index.cloud_receipts.insert(
+                    key.clone(),
+                    CloudTransferReceipt {
+                        scope: scope.clone(),
+                        remote_key: key,
+                        destination_side: CompareDirection::LocalToRemote,
+                        destination: state,
+                    },
+                );
+            }
+            save_sync_index(&index).unwrap();
+            let svc = CloudService::new();
+            svc.init(config).await;
+            let preview = svc
+                .preview_full_sync_with_provider(&mut provider)
+                .await
+                .unwrap();
+            assert!(!preview.errors.is_empty(), "mass gate must remain active");
+            assert_eq!(
+                svc.native_root_reads
+                    .load(std::sync::atomic::Ordering::Relaxed),
+                1
+            );
+        });
+    }
+
+    #[test]
+    fn stable_profile_and_root_identity_ignore_display_and_compression_level() {
+        let mut config = CloudConfig {
+            server_profile_id: Some("stable-id".into()),
+            server_profile: "old label".into(),
+            compress_enabled: true,
+            ..Default::default()
+        };
+        let root =
+            Some(serde_json::json!({"kind":"native-test","volume":"uuid","file":"native-file-id"}));
+        let before = CloudService::receipt_scope_with_key(&config, root.clone());
+        config.server_profile = "renamed".into();
+        config.compress_level = 9;
+        assert_eq!(
+            CloudService::receipt_scope_with_key(&config, root.clone()),
+            before
+        );
+        let other = Some(
+            serde_json::json!({"kind":"native-test","volume":"other-uuid","file":"native-file-id"}),
+        );
+        assert_ne!(CloudService::receipt_scope_with_key(&config, other), before);
+        let other =
+            Some(serde_json::json!({"kind":"native-test","volume":"uuid","file":"other-file-id"}));
+        assert_ne!(CloudService::receipt_scope_with_key(&config, other), before);
     }
 
     /// Exact recorded alias identity survives source disappearance without borrowing other names.

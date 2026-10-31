@@ -186,7 +186,6 @@ fn resolved_target_identity(
                     | "tenant_id"
                     | "role_arn"
                     | "public_key"
-                    | "imagekit_id"
                     | "space_id"
                     | "library_id"
             )
@@ -195,8 +194,24 @@ fn resolved_target_identity(
     Some(identity_digest(serde_json::json!({
         "protocol": config.provider_type.to_string(), "host": config.host, "port": config.port.unwrap_or(config.provider_type.default_port()),
         "principal": principal, "account": account, "root": config.initial_path,
-        "options": options, "overlay": binding,
+        "options": options, "overlay": overlay_identity(binding),
     })))
+}
+
+/// Canonical mapping options, excluding UI-only fields and explicit defaults.
+fn overlay_identity(binding: &serde_json::Value) -> serde_json::Value {
+    if binding.get("enabled").and_then(serde_json::Value::as_bool) != Some(true) {
+        return serde_json::Value::Null;
+    }
+    serde_json::json!({
+        "enabled":true,
+        "kind": binding.get("kind").and_then(serde_json::Value::as_str).unwrap_or(crate::crypt_overlay_provider::DEFAULT_OVERLAY_KIND),
+        "remoteScope":binding.get("remoteScope").and_then(serde_json::Value::as_str).unwrap_or(""),
+        "filenameEncryption":binding.get("filenameEncryption").and_then(serde_json::Value::as_str).unwrap_or("standard"),
+        "directoryNameEncryption":binding.get("directoryNameEncryption").and_then(serde_json::Value::as_bool).unwrap_or(true),
+        "withHeader":binding.get("withHeader").and_then(serde_json::Value::as_bool).unwrap_or(false),
+        "useDefaultSalt":binding.get("useDefaultSalt").and_then(serde_json::Value::as_bool).unwrap_or(false),
+    })
 }
 
 fn overlay_binding(profile: Option<&serde_json::Value>) -> serde_json::Value {
@@ -565,31 +580,46 @@ async fn create_yandex(config: &CloudConfig) -> Result<OpenedCloudProvider, Stri
             let tokens = manager
                 .load_tokens(OAuthProvider::YandexDisk, &profile_id)
                 .map_err(|e| format!("No Yandex Disk tokens: {}", e))?;
-            let mut p = YandexDiskProvider::new(tokens.access_token.clone(), None);
-            p.connect()
-                .await
-                .map_err(|e| format!("Yandex Disk: {}", e))?;
-            enter_profile_root(&mut p, profile.as_ref().map(profile_root).as_deref()).await?;
-            info!("AeroCloud: connected to Yandex Disk");
-            let account = p.account_email().filter(|value| !value.trim().is_empty());
-            let binding = overlay_binding(profile.as_ref());
-            let identity = account.map(|account| {
-                identity_digest(serde_json::json!([
-                    "yandexdisk",
-                    profile_id,
-                    profile.as_ref().map(profile_root),
-                    account,
-                    binding,
-                ]))
-            });
-            return Ok(OpenedCloudProvider {
-                provider: Box::new(p),
-                identity,
-                overlay_binding: binding,
-            });
+            return open_yandex_oauth(
+                YandexDiskProvider::new(tokens.access_token.clone(), None),
+                &profile_id,
+                profile.as_ref(),
+            )
+            .await;
         }
     }
     create_via_factory(config, ProviderType::YandexDisk).await
+}
+
+/// Finish both production OAuth-token connections and isolated provider probes.
+async fn open_yandex_oauth(
+    mut provider: YandexDiskProvider,
+    profile_id: &str,
+    profile: Option<&serde_json::Value>,
+) -> Result<OpenedCloudProvider, String> {
+    provider
+        .connect()
+        .await
+        .map_err(|error| format!("Yandex Disk: {error}"))?;
+    enter_profile_root(&mut provider, profile.map(profile_root).as_deref()).await?;
+    let binding = overlay_binding(profile);
+    let identity = provider
+        .account_email()
+        .filter(|account| !account.trim().is_empty())
+        .map(|account| {
+            identity_digest(serde_json::json!([
+                "yandexdisk",
+                profile_id,
+                profile.map(profile_root),
+                account,
+                overlay_identity(&binding)
+            ]))
+        });
+    Ok(OpenedCloudProvider {
+        provider: Box::new(provider),
+        identity,
+        overlay_binding: binding,
+    })
 }
 
 // ── OAuth providers ────────────────────────────────────────────────
@@ -676,7 +706,7 @@ fn opened_oauth(provider: Box<dyn StorageProvider>, app: &OAuthApp) -> OpenedClo
         identity_digest(serde_json::json!({
             "protocol": endpoint.protocol, "host": endpoint.host, "account": account,
             "app": app.client_id, "slot": app.profile_id, "region": app.region,
-            "root": app.root, "overlay": app.overlay_binding,
+            "root": app.root, "overlay": overlay_identity(&app.overlay_binding),
         }))
     });
     OpenedCloudProvider {
@@ -838,7 +868,7 @@ mod tests {
         assert_ne!(
             resolved_target_identity(
                 &original,
-                &serde_json::json!({"id":"other-key"}),
+                &serde_json::json!({"enabled":true,"remoteScope":"/other"}),
                 Some("account-one")
             )
             .unwrap(),
@@ -888,6 +918,98 @@ mod tests {
             .extra
             .insert("imagekit_id".into(), "display-url-only".into());
         assert!(resolved_target_identity(&display_only, &binding, None).is_none());
+    }
+
+    #[test]
+    fn behavior_and_one_time_auth_inputs_do_not_change_namespace_identity() {
+        let mut config = ProviderConfig {
+            name: "label".into(),
+            provider_type: ProviderType::S3,
+            host: "server".into(),
+            port: None,
+            username: Some("account".into()),
+            password: Some("secret".into()),
+            initial_path: Some("/root".into()),
+            extra: HashMap::from([("bucket".into(), "data".into())]),
+        };
+        let binding = serde_json::json!({"enabled":true,"remoteScope":"/crypt"});
+        let before = resolved_target_identity(&config, &binding, None).unwrap();
+        for key in [
+            "save_session",
+            "logout_on_disconnect",
+            "two_factor_code",
+            "totp_secret",
+            "timeout",
+            "verify_cert",
+            "retry_count",
+            "storage_class",
+        ] {
+            config.extra.insert(key.into(), "changed".into());
+        }
+        config.port = Some(ProviderType::S3.default_port());
+        config.name = "new label".into();
+        let explicit = serde_json::json!({"enabled":true,"kind":"aerocrypt","remoteScope":"/crypt","filenameEncryption":"standard","directoryNameEncryption":true,"withHeader":false,"useDefaultSalt":false,"lastOpened":"volatile"});
+        assert_eq!(
+            resolved_target_identity(&config, &explicit, None).unwrap(),
+            before
+        );
+        config.extra.insert("bucket".into(), "other".into());
+        assert_ne!(
+            resolved_target_identity(&config, &explicit, None).unwrap(),
+            before
+        );
+    }
+
+    #[tokio::test]
+    async fn opened_yandex_and_oauth_use_authenticated_identity_and_preserve_unknown_as_none() {
+        use std::sync::{Arc, Mutex};
+        let user = Arc::new(Mutex::new(
+            serde_json::json!({"uid":"uid-one","login":"display"}),
+        ));
+        let state = user.clone();
+        let app = axum::Router::new().route(
+            "/",
+            axum::routing::get(move || {
+                let user = state.clone();
+                async move { axum::Json(serde_json::json!({"user":user.lock().unwrap().clone()})) }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let profile = serde_json::json!({"id":"same-slot","initialPath":"/"});
+        let oauth = OAuthApp {
+            client_id: "app".into(),
+            client_secret: "not-persisted".into(),
+            profile_id: "same-slot".into(),
+            region: None,
+            root: Some("/".into()),
+            overlay_binding: serde_json::Value::Null,
+        };
+        let open =
+            |url: &str| YandexDiskProvider::new("token".into(), None).with_test_api_base(url);
+        let first = open_yandex_oauth(open(&endpoint), "same-slot", Some(&profile))
+            .await
+            .unwrap();
+        assert!(first.identity.is_some());
+        let generic = opened_oauth(first.provider, &oauth);
+        assert!(generic.identity.is_some());
+        *user.lock().unwrap() = serde_json::json!({"uid":"uid-two","login":"display"});
+        let second = open_yandex_oauth(open(&endpoint), "same-slot", Some(&profile))
+            .await
+            .unwrap();
+        assert_ne!(second.identity, first.identity);
+        assert_ne!(
+            opened_oauth(second.provider, &oauth).identity,
+            generic.identity
+        );
+        *user.lock().unwrap() = serde_json::Value::Null;
+        let unknown = open_yandex_oauth(open(&endpoint), "same-slot", Some(&profile))
+            .await
+            .unwrap();
+        assert!(unknown.identity.is_none());
+        assert!(opened_oauth(unknown.provider, &oauth).identity.is_none());
+        server.abort();
     }
 
     #[test]

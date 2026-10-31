@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "52e8ed65f47669a1e4fd8b7a5799ea4fcff5dacb704ca9d39df1f618890dfe06",
+    "enHash": "79fc5d4877d94d2c624a3ee8481d9c8570c1ef4b6f9b99b283f22e7207e7b085",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -269,7 +269,8 @@
             "{count} destination files have never been synced and were kept. Open the same source and destination in AeroSync, select Mirror with One-way Update, review the plan and confirm any intended deletions."
         ],
         "cloud.updateOnlyHint": [
-            "One-way Update copies only from the source and keeps newer destination files. Turn off additive backup to also delete destination-only files, including files with no sync history. The conflict policy is ignored; unknown dates stay unresolved."
+            "One-way Update copies only from the source and keeps newer destination files. Turn off additive backup to also delete destination-only files, including files with no sync history. The conflict policy is ignored; unknown dates stay unresolved.",
+            "One-way Update keeps newer destination files. With additive backup off, only previously synced destination-only files are deleted. Never-synced files are kept for review in AeroSync. The conflict policy is ignored; unknown dates stay unresolved."
         ],
         "connection.aerocloudDesc": [
             "Turn any FTP server into your personal cloud with automatic sync"

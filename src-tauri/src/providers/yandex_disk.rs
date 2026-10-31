@@ -432,6 +432,12 @@ impl YandexDiskProvider {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn with_test_api_base(mut self, base: &str) -> Self {
+        self.api_base_override = Some(base.into());
+        self
+    }
+
     /// `API_BASE`, pointed at a local double in tests.
     fn api_base(&self) -> &str {
         #[cfg(test)]
@@ -1084,9 +1090,10 @@ impl StorageProvider for YandexDiskProvider {
     async fn connect(&mut self) -> Result<(), ProviderError> {
         yd_log("Connecting: verifying token via GET /v1/disk/");
 
+        self.authenticated_account = None;
         let resp = self
             .client
-            .get(format!("{}/", API_BASE))
+            .get(format!("{}/", self.api_base()))
             .header(AUTHORIZATION, self.auth_header())
             .send()
             .await
@@ -2106,6 +2113,24 @@ impl StorageProvider for YandexDiskProvider {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn reconnect_does_not_reuse_an_old_account_when_user_info_is_absent() {
+        use super::*;
+        let app = axum::Router::new().route(
+            "/",
+            axum::routing::get(|| async { axum::Json(serde_json::json!({})) }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider =
+            YandexDiskProvider::new("token".into(), None).with_test_api_base(&endpoint);
+        provider.authenticated_account = Some("old-uid".into());
+        provider.connected = true;
+        provider.connect().await.unwrap();
+        assert!(provider.account_email().is_none());
+        server.abort();
+    }
 
     /// A Yandex Disk double holding the files `/a.txt` and `/b.txt` and the
     /// folder `/d`. A move onto a taken path without `overwrite=true`
