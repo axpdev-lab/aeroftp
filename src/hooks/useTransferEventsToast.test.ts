@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TransferToastState } from '../components/Transfer';
 import { useTransferEvents } from './useTransferEvents';
 import { bucketSpeeds } from '../utils/speedProfile';
+import { withTransferRun } from '../utils/transferRun';
 
 const listeners = vi.hoisted(() => new Map<string, (event: { payload: unknown }) => void>());
 const toasts = vi.hoisted(() => [] as Array<TransferToastState | null>);
@@ -100,6 +101,29 @@ describe('useTransferEvents batch toast', () => {
         expect(lastToast().summary.eta_seconds).toBe(1);
         await laneProgress('ul-files-1-a', 600, 400);
         expect(lastToast().summary.speed_bps).toBe(900);
+    });
+
+    it('names one run for the files of a run and keeps it to the transfer\'s last event', async () => {
+        await mount();
+        const start = (transfer_id: string) => fire('transfer_event', {
+            event_type: 'start', transfer_id, filename: transfer_id, direction: 'upload',
+            progress: { transfer_id, filename: transfer_id, transferred: 0, total: 100, percentage: 0, speed_bps: 0, eta_seconds: 0, direction: 'upload' },
+        });
+        let run: string | undefined;
+        await withTransferRun(async () => {
+            await start('pul-1');
+            run = lastToast().run;
+            await start('pul-2');
+            expect(lastToast().run).toBe(run);
+        });
+        expect(run).toBeTruthy();
+        await fire('transfer_event', {
+            event_type: 'progress', transfer_id: 'pul-2', filename: 'pul-2', direction: 'upload',
+            progress: { transfer_id: 'pul-2', filename: 'pul-2', transferred: 50, total: 100, percentage: 50, speed_bps: 1, eta_seconds: 1, direction: 'upload' },
+        });
+        expect(lastToast().run).toBe(run);
+        await start('pul-3');
+        expect(lastToast().run).toBe('pul-3');
     });
 
     it('records the batch on the speed graph by bytes over the whole batch', async () => {
