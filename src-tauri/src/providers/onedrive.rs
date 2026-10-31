@@ -989,9 +989,15 @@ impl OneDriveProvider {
     /// a shortcut, and its name changes with the account's language. It is
     /// reported like a link, which a compare or a sync leaves alone on both
     /// sides, so one folder cannot fail a whole tree and a mirror cannot read it
-    /// as deleted. Only a shortcut that reads as empty is asked.
+    /// as deleted. Only a shortcut that does not report children is asked.
     async fn is_unreachable_shortcut(&self, item: &DriveItem, path: &str) -> bool {
-        if item.folder.as_ref().and_then(|f| f.child_count) != Some(0) {
+        if item
+            .folder
+            .as_ref()
+            .and_then(|f| f.child_count)
+            .unwrap_or(0)
+            != 0
+        {
             return false;
         }
         let target = self
@@ -3533,6 +3539,8 @@ mod tests {
         };
         let listing = json!({"value": [
             shortcut("V", "Personal Vault", "VAULT", 0),
+            {"id": "U", "name": "Uncounted", "size": 0, "remoteItem": {"id": "VAULT",
+                "folder": {}, "parentReference": {"driveId": "drv2"}}},
             shortcut("E", "Empty", "EMPTY", 0),
             shortcut("F", "Full", "FULL", 3),
         ]});
@@ -3576,6 +3584,7 @@ mod tests {
             entry.is_symlink
         };
         assert!(link("Personal Vault"));
+        assert!(link("Uncounted"));
         assert!(!link("Empty"));
         assert!(!link("Full"));
         let asked = requests.lock().unwrap();
