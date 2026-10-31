@@ -40702,6 +40702,22 @@ fn rcat_staging_file() -> Result<tempfile::NamedTempFile, String> {
     tempfile::NamedTempFile::new_in(&dir).map_err(|e| e.to_string())
 }
 
+#[cfg(test)]
+thread_local! {
+    /// What `rcat` reads instead of stdin, put there by a test: a test reading
+    /// the real stdin would wait on the terminal it runs in.
+    static TEST_RCAT_STDIN: std::cell::RefCell<Option<Vec<u8>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// What `rcat` uploads: stdin.
+fn rcat_input() -> Box<dyn Read> {
+    #[cfg(test)]
+    if let Some(bytes) = TEST_RCAT_STDIN.with(|slot| slot.borrow_mut().take()) {
+        return Box::new(io::Cursor::new(bytes));
+    }
+    Box::new(io::stdin().lock())
+}
+
 async fn cmd_rcat(url: &str, remote: &str, cli: &Cli, format: OutputFormat) -> i32 {
     if remote.is_empty() {
         print_error(format, "Missing remote path for rcat", 5);
@@ -40728,7 +40744,7 @@ async fn cmd_rcat(url: &str, remote: &str, cli: &Cli, format: OutputFormat) -> i
         }
     };
 
-    let bytes = match io::copy(&mut io::stdin().lock(), &mut temp) {
+    let bytes = match io::copy(&mut rcat_input(), &mut temp) {
         Ok(bytes) => bytes,
         Err(e) => {
             print_error(format, &format!("Cannot read stdin: {}", e), 2);
@@ -89223,6 +89239,14 @@ mod tests {
         finish_download: bool,
         /// Refuses ranged hashing before the ordinary download stalls.
         refuse_hash_ranges: bool,
+        /// Keeps file versions: each version call answers, none are listed.
+        versions: bool,
+        /// Completes an upload instead of stalling.
+        finish_upload: bool,
+        /// The remote paths `stat`, an upload and the version calls were
+        /// asked for, and the local path a version was downloaded to, across
+        /// the clones.
+        asked: Arc<std::sync::Mutex<Vec<String>>>,
     }
 
     impl StallingProvider {
@@ -89364,10 +89388,48 @@ mod tests {
         async fn upload(
             &mut self,
             _local_path: &str,
-            _remote_path: &str,
+            remote_path: &str,
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
+            self.asked.lock().unwrap().push(remote_path.to_string());
+            if self.finish_upload {
+                return Ok(());
+            }
             std::future::pending().await
+        }
+        fn supports_versions(&self) -> bool {
+            self.versions
+        }
+        async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
+            self.asked.lock().unwrap().push(path.to_string());
+            Ok(Vec::new())
+        }
+        async fn download_version(
+            &mut self,
+            path: &str,
+            _version_id: &str,
+            local_path: &str,
+        ) -> Result<(), ProviderError> {
+            let mut asked = self.asked.lock().unwrap();
+            asked.push(path.to_string());
+            asked.push(local_path.to_string());
+            Ok(())
+        }
+        async fn restore_version(
+            &mut self,
+            path: &str,
+            _version_id: &str,
+        ) -> Result<(), ProviderError> {
+            self.asked.lock().unwrap().push(path.to_string());
+            Ok(())
+        }
+        async fn delete_version(
+            &mut self,
+            path: &str,
+            _version_id: &str,
+        ) -> Result<(), ProviderError> {
+            self.asked.lock().unwrap().push(path.to_string());
+            Ok(())
         }
         async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
             Ok(())
@@ -89388,6 +89450,7 @@ mod tests {
             Err(ProviderError::NotSupported("rename".to_string()))
         }
         async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            self.asked.lock().unwrap().push(path.to_string());
             if self.stat_stalls {
                 std::future::pending::<()>().await;
             }
@@ -89619,22 +89682,71 @@ mod tests {
         assert_eq!(code, 130, "-1 means the put was still running");
     }
 
-    /// A remote name of spaces only is a name: `versions list` and `get`
-    /// refused it as a missing argument (exit 5) before connecting.
+    /// A remote name of spaces only is a name: `versions` list, get, restore
+    /// and purge, `get` and `rcat` refused it as a missing argument (exit 5)
+    /// before connecting.
     #[test]
     fn a_remote_name_of_spaces_is_not_a_missing_path() {
-        let code = against_stalling(StallingProvider::default(), |_| async {
-            cmd_versions_list("memory://", "   ", &quiet_cli(), OutputFormat::Json).await
-        });
-        assert_eq!(code, 7, "it reached the provider, which keeps no versions");
-
+        // Each reaches the provider with the name as given: a trim after the
+        // argument check would keep these exit codes and lose the name.
+        let spaces = || "   ".to_string();
+        assert_eq!(
+            asked_of(|_| async {
+                cmd_versions_list("memory://", "   ", &quiet_cli(), OutputFormat::Json).await
+            }),
+            (0, vec![spaces()])
+        );
         let dir = tempfile::tempdir().unwrap();
         let local = dir.path().join("f.bin").to_string_lossy().into_owned();
+        assert_eq!(
+            asked_of(|_| async {
+                cmd_versions_get(
+                    "memory://",
+                    "   ",
+                    "v1",
+                    &local,
+                    &quiet_cli(),
+                    OutputFormat::Json,
+                )
+                .await
+            }),
+            (0, vec![spaces(), local.clone()])
+        );
+        assert_eq!(
+            asked_of(|_| async {
+                cmd_versions_restore("memory://", "   ", "v1", &quiet_cli(), OutputFormat::Json)
+                    .await
+            }),
+            (0, vec![spaces()])
+        );
+        assert_eq!(
+            asked_of(|_| async {
+                cmd_versions_purge(
+                    "memory://",
+                    "   ",
+                    "v1",
+                    true,
+                    &quiet_cli(),
+                    OutputFormat::Json,
+                )
+                .await
+            }),
+            (0, vec![spaces()])
+        );
+        assert_eq!(
+            asked_of(|_| async {
+                TEST_RCAT_STDIN.with(|slot| *slot.borrow_mut() = Some(b"x".to_vec()));
+                cmd_rcat("memory://", "   ", &quiet_cli(), OutputFormat::Json).await
+            }),
+            (0, vec![spaces()])
+        );
+
+        // The get of `   ` asks the provider for `   `, starts, and is stopped.
         let cli = Cli {
             quiet: true,
             ..test_cli()
         };
-        let code = interrupted_after_a_moment(|cancelled| async move {
+        let (code, asked) = asked_of(|cancelled| async move {
             cmd_get(
                 "memory://",
                 "   ",
@@ -89649,6 +89761,61 @@ mod tests {
             .await
         });
         assert_eq!(code, 130, "the get of `   ` started and was stopped");
+        assert!(asked.contains(&spaces()), "{asked:?}");
+    }
+
+    /// So is a local name: `put` and `versions get` refused it the same way.
+    #[test]
+    fn a_local_name_of_spaces_is_not_a_missing_path() {
+        // A version is downloaded to `   ` as given.
+        assert_eq!(
+            asked_of(|_| async {
+                cmd_versions_get(
+                    "memory://",
+                    "/f.bin",
+                    "v1",
+                    "   ",
+                    &quiet_cli(),
+                    OutputFormat::Json,
+                )
+                .await
+            }),
+            (0, vec!["/f.bin".to_string(), "   ".to_string()])
+        );
+        // `put` looks `   ` up as a local file: none is there, so it stops at
+        // that (exit 2), past the check for a missing argument (exit 5).
+        let code = against_stalling(StallingProvider::default(), |cancelled| async move {
+            cmd_put(
+                "memory://",
+                "   ",
+                Some("/f.bin"),
+                false,
+                false,
+                false,
+                None,
+                &quiet_cli(),
+                OutputFormat::Json,
+                cancelled,
+            )
+            .await
+        });
+        assert_eq!(code, 2);
+    }
+
+    /// The exit code of `command` against a provider that keeps versions and
+    /// completes uploads, and the paths it was asked for.
+    fn asked_of<F: std::future::Future<Output = i32>>(
+        command: impl FnOnce(Arc<AtomicBool>) -> F + Send,
+    ) -> (i32, Vec<String>) {
+        let provider = StallingProvider {
+            versions: true,
+            finish_upload: true,
+            ..StallingProvider::default()
+        };
+        let asked = Arc::clone(&provider.asked);
+        let code = against_stalling(provider, command);
+        let asked = asked.lock().unwrap().clone();
+        (code, asked)
     }
 
     /// `get` of `/f.bin` into a local file that already holds "keep me", with
