@@ -60,8 +60,9 @@ export interface CliCommandInput {
     updateOnly?: boolean;
     /** Effective compare window; the CLI raises it to backend precision too. */
     modifyWindowMs?: number;
+    /** Required true for Update; also gates `--modify-window` emission. */
     timestampsComparable?: boolean;
-    /** False when native whole-second ordering would overwrite a GUI-preserved file. */
+    /** Required true for Update: whole-second CLI ordering must preserve GUI-kept files. */
     updateTimestampPrecisionSafe?: boolean;
     direction: PresetDirection;
     /** Saved server name, when the connection came from a saved server. */
@@ -102,8 +103,10 @@ export function buildCliSyncCommand(input: CliCommandInput): CliCommandResult {
 
     if (input.pairKind !== 'local-remote' && input.pairKind !== 'remote-local') return none('local-pair');
     if (!input.profileName) return none('unsaved-server');
-    if (input.updateOnly && input.timestampsComparable === false) return none('overwrites-newer');
-    if (input.updateOnly && input.updateTimestampPrecisionSafe === false) return none('overwrites-newer');
+    if (input.updateOnly
+        && (input.timestampsComparable !== true || input.updateTimestampPrecisionSafe !== true)) {
+        return none('overwrites-newer');
+    }
     if (input.preset === 'backup' || input.preset === 'update') return none('overwrites-newer');
     if (input.preset === 'bisync') return none('two-way');
     if (input.canary) return none('canary');

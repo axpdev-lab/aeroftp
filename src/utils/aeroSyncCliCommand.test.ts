@@ -95,9 +95,23 @@ describe('aeroftp-cli sync line for the Plan tab', () => {
         expect(built.argv.slice(built.argv.indexOf('--modify-window'), built.argv.indexOf('--modify-window') + 2))
             .toEqual(['--modify-window', '0']);
     });
+    it('refuses Update when either timestamp safety input is missing', () => {
+        const update = { ...mirrorUpload, updateOnly: true };
+        expect(buildCliSyncCommand({ ...update, updateTimestampPrecisionSafe: true }))
+            .toEqual({ kind: 'none', reason: 'overwrites-newer' });
+        expect(buildCliSyncCommand({ ...update, timestampsComparable: true }))
+            .toEqual({ kind: 'none', reason: 'overwrites-newer' });
+    });
     it('offers Mirror Update with deletes and the compare time window in both directions', () => {
         for (const direction of ['left-to-right', 'right-to-left'] as const) {
-            const built = buildCliSyncCommand({ ...mirrorUpload, direction, updateOnly: true, modifyWindowMs: 2000 });
+            const built = buildCliSyncCommand({
+                ...mirrorUpload,
+                direction,
+                updateOnly: true,
+                modifyWindowMs: 2000,
+                timestampsComparable: true,
+                updateTimestampPrecisionSafe: true,
+            });
             expect(built.kind).toBe('command');
             if (built.kind !== 'command') return;
             expect(built.argv).toContain('--delete');
