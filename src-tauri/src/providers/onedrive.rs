@@ -45,6 +45,13 @@ struct OneDriveMultipartMeta {
     url: String,
     total: u64,
     part: u64,
+    /// The local file's date, set when the session completes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    modified: Option<String>,
+    /// The session's destination, resolved when it opened: the current folder
+    /// can change before it completes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    destination: Option<String>,
 }
 
 impl OneDriveMultipartMeta {
@@ -183,6 +190,12 @@ async fn onedrive_error_from_response(
 /// OneDrive item metadata (fields needed for API response deserialization)
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct FileSystemInfo {
+    last_modified_date_time: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
 struct DriveItem {
     id: String,
@@ -190,6 +203,10 @@ struct DriveItem {
     #[serde(default)]
     size: u64,
     last_modified_date_time: Option<String>,
+    /// The date of the file itself, which an upload can set. The item's own
+    /// date above is when OneDrive stored it.
+    #[serde(default)]
+    file_system_info: Option<FileSystemInfo>,
     #[serde(default)]
     folder: Option<FolderFacet>,
     #[serde(default)]
@@ -760,7 +777,11 @@ impl OneDriveProvider {
             path,
             is_dir,
             size: item.size,
-            modified: item.last_modified_date_time.clone(),
+            modified: item
+                .file_system_info
+                .as_ref()
+                .and_then(|info| info.last_modified_date_time.clone())
+                .or_else(|| item.last_modified_date_time.clone()),
             permissions: None,
             owner: None,
             group: None,
@@ -1326,6 +1347,39 @@ impl OneDriveProvider {
         Ok(())
     }
 
+    /// Give an uploaded file its local date. The upload has already succeeded,
+    /// so a refusal costs only the date: the Compare reads the file as newer
+    /// here, and the sync index still recognises it.
+    async fn keep_local_date(&self, path: &str, date: &str) {
+        let body = serde_json::json!({"fileSystemInfo": {"lastModifiedDateTime": date}});
+        let request = match self.auth_header().await {
+            Ok(auth) => self
+                .client
+                .patch(self.api_path(path))
+                .header(AUTHORIZATION, auth)
+                .header(CONTENT_TYPE, "application/json")
+                .body(body.to_string()),
+            Err(error) => {
+                tracing::warn!("OneDrive: could not keep the date of {path}: {error}");
+                return;
+            }
+        };
+        let answer = request
+            .send()
+            .await
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()));
+        match answer {
+            Ok(response) if response.status().is_success() => {}
+            Ok(response) => {
+                tracing::warn!(
+                    "OneDrive: could not keep the date of {path}: HTTP {}",
+                    response.status()
+                );
+            }
+            Err(error) => tracing::warn!("OneDrive: could not keep the date of {path}: {error}"),
+        }
+    }
+
     /// Resolve `remote_path` against the current directory and POST
     /// `<its address>:/createUploadSession`, returning the per-session
     /// `uploadUrl`. Used by the multipart trait; `resume_upload` opens its
@@ -1759,6 +1813,10 @@ impl StorageProvider for OneDriveProvider {
         // KE-B3.1: post-upload version sweep. Resolve path → item_id and
         // delete all non-current versions. Failures are logged but the
         // upload is still reported as success.
+        // Before the sweep: setting the date can add a version.
+        if let Some(date) = super::local_modified_rfc3339(local_path) {
+            self.keep_local_date(&path, &date).await;
+        }
         if self.no_versions {
             self.purge_versions_after_upload(&path, "post-upload").await;
         }
@@ -2773,6 +2831,11 @@ impl StorageProvider for OneDriveProvider {
 
         info!("Resumable upload completed: {}", path);
 
+        // As on the small-file path, before the sweep.
+        if let Some(date) = super::local_modified_rfc3339(local_path) {
+            self.keep_local_date(&path, &date).await;
+        }
+
         // KE-B3.1: post-upload version sweep mirrors the small-file path, on
         // the path the session was created for.
         if self.no_versions {
@@ -2819,7 +2882,7 @@ impl StorageProvider for OneDriveProvider {
         remote_path: &str,
         total_size: u64,
         _content_type: Option<&str>,
-        _local_source_path: Option<&str>,
+        local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
         if total_size == 0 {
             return Err(ProviderError::Other(
@@ -2836,6 +2899,8 @@ impl StorageProvider for OneDriveProvider {
             url: upload_url,
             total: total_size,
             part: onedrive_runner_part_size(total_size),
+            modified: local_source_path.and_then(super::local_modified_rfc3339),
+            destination: Some(resolved_path),
         };
         Ok(MultipartHandle {
             upload_id: meta.encode(),
@@ -2929,6 +2994,9 @@ impl StorageProvider for OneDriveProvider {
                 expected,
                 parts.len()
             )));
+        }
+        if let (Some(date), Some(path)) = (&meta.modified, &meta.destination) {
+            self.keep_local_date(path, date).await;
         }
         Ok(())
     }
@@ -3643,7 +3711,9 @@ mod tests {
             [
                 "GET /v1.0/me/drive/root:/Docs",
                 "PUT /v1.0/me/drive/root:/Docs/a.txt:/content",
+                "PATCH /v1.0/me/drive/root:/Docs/a.txt",
                 "PUT /v1.0/me/drive/root:/Docs/b.txt:/content",
+                "PATCH /v1.0/me/drive/root:/Docs/b.txt",
             ]
         );
     }
@@ -4261,6 +4331,7 @@ mod tests {
             *requests.lock().unwrap(),
             [
                 "PUT /v1.0/me/drive/root:/a.txt:/content",
+                "PATCH /v1.0/me/drive/root:/a.txt",
                 "GET /v1.0/me/drive/root:/a.txt",
                 "GET /v1.0/me/drive/items/NEW/versions",
             ]
@@ -4515,6 +4586,8 @@ mod tests {
             url: "https://api.onedrive.com/rup?guid=XYZ".to_string(),
             total: 524_288_000,
             part: 10_485_760,
+            modified: None,
+            destination: None,
         };
         let encoded = meta.encode();
         let decoded = OneDriveMultipartMeta::decode(&encoded).expect("decode");

@@ -1023,6 +1023,8 @@ export interface SyncIndexEntry {
   size: number;
   modified: string | null;
   is_dir: boolean;
+  /** When this run uploaded the file: the remote date up to here is our stamp. */
+  uploaded_at?: string;
 }
 
 export interface SyncIndex {

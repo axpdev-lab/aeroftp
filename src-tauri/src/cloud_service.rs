@@ -798,6 +798,7 @@ impl CloudService {
                     size,
                     modified: Some(UNSETTLED_BASELINE),
                     is_dir: false,
+                    uploaded_at: None,
                 },
             );
         }
@@ -955,6 +956,7 @@ impl CloudService {
                 size: fi.size,
                 modified: fi.modified,
                 is_dir,
+                uploaded_at: matches!(action, SyncAction::Upload).then(chrono::Utc::now),
             }),
             // A kept directory carries no size/mtime but must stay tracked so it
             // is not treated as new (and re-created) every cycle.
@@ -962,6 +964,7 @@ impl CloudService {
                 size: 0,
                 modified: None,
                 is_dir: true,
+                uploaded_at: None,
             }),
             None => None,
         }
@@ -2628,6 +2631,7 @@ mod baseline_tests {
             size,
             modified: None,
             is_dir: false,
+            uploaded_at: None,
         };
         let mut prior = SyncIndex::new("/l".to_string(), "/r".to_string());
         prior.files.insert("synced.txt".to_string(), entry(1));
@@ -2716,6 +2720,7 @@ mod baseline_tests {
                 size: 1,
                 modified: None,
                 is_dir: false,
+                uploaded_at: None,
             },
         );
         prior.files.insert(
@@ -2724,6 +2729,7 @@ mod baseline_tests {
                 size: 4,
                 modified: None,
                 is_dir: false,
+                uploaded_at: None,
             },
         );
         let kept = svc.post_sync_baseline(&report.differences, &config, Some(&prior));
@@ -2788,6 +2794,7 @@ mod baseline_tests {
                 size: 8,
                 modified: None,
                 is_dir: false,
+                uploaded_at: None,
             },
         );
         prior.remote_spellings.insert(local.into(), remote.into());
@@ -2840,6 +2847,7 @@ mod baseline_tests {
                         size: info.size,
                         modified: info.modified,
                         is_dir: false,
+                        uploaded_at: None,
                     },
                 )
             })
@@ -2894,6 +2902,7 @@ mod baseline_tests {
                 size: 8,
                 modified: None,
                 is_dir: false,
+                uploaded_at: None,
             },
         );
         let report = crate::sync::classify_with_summary(
@@ -3025,6 +3034,7 @@ mod baseline_tests {
                 size: 8,
                 modified: Some(DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap()),
                 is_dir: false,
+                uploaded_at: None,
             },
         );
         prior
@@ -3725,6 +3735,7 @@ mod baseline_tests {
                 size,
                 modified: None,
                 is_dir: false,
+                uploaded_at: None,
             };
             let prior = SyncIndex {
                 profile_id: None,
@@ -4911,6 +4922,7 @@ mod baseline_tests {
                         size: 1,
                         modified: None,
                         is_dir: *is_dir,
+                        uploaded_at: None,
                     };
                     (key.to_string(), entry)
                 })
@@ -5353,6 +5365,7 @@ mod secval_b_tests {
                                     size: 7,
                                     modified: Some(DateTime::<Utc>::UNIX_EPOCH),
                                     is_dir: false,
+                                    uploaded_at: None,
                                 },
                             )]),
                             remote_spellings: Default::default(),
