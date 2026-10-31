@@ -744,17 +744,19 @@ const runSync = async (
     // anyway, two files would become one and the contents of the first be lost.
     const localNameProblems = new Map<string, string>();
     const downloads = files.filter((f) => f.action === 'download' && !f.isDir).map((f) => f.relativePath);
-    if (downloads.length > 0) {
+    const localTargets = [...downloads, ...dirs.local];
+    if (localTargets.length > 0) {
         try {
             const problems = await invoke<{ path: string; reason: string }[]>('local_target_problems', {
                 destination: localBase,
-                paths: downloads,
+                paths: localTargets,
             });
             if (Array.isArray(problems)) {
                 problems.forEach((problem) => localNameProblems.set(problem.path, problem.reason));
             }
-        } catch {
-            // The download commands still refuse a name the disk cannot hold.
+        } catch (error) {
+            // Not knowing is not a pass: writing could lose a file.
+            localTargets.forEach((path) => localNameProblems.set(path, `Could not check the local name: ${String(error)}`));
         }
     }
     const bulkEligible = (f: SyncRunFile): boolean =>
@@ -916,6 +918,18 @@ const runSync = async (
         }
     }
     for (const dir of [...dirs.local].sort(byDepth)) {
+        const problem = localNameProblems.get(dir);
+        if (problem) {
+            const errInfo: SyncErrorInfo = {
+                kind: 'disk_error',
+                message: problem,
+                retryable: false,
+                file_path: dir,
+            };
+            errors.push(errInfo);
+            setStatus(dir, 'error', problem);
+            continue;
+        }
         try {
             await invoke('create_local_folder', { path: `${localBase}/${dir}` });
             dirsCreated++;
@@ -1470,6 +1484,7 @@ const runSync = async (
                 }
             }
             for (const dir of [...dirs.remote, ...dirs.local]) {
+                if (localNameProblems.has(dir)) continue;
                 mergedFiles[dir] = { size: 0, modified: null, is_dir: true };
             }
             for (const key of Object.keys(spellings)) {

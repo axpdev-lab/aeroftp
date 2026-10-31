@@ -135,17 +135,19 @@ fn unwritable_on(path: &str, windows: bool) -> Option<String> {
     })
 }
 
-/// Refuse a download whose own name this machine cannot hold, before anything
-/// is created for it.
+/// Refuse a download whose path this machine cannot hold, before anything is
+/// created for it. Every folder on the way is read too: a remote folder named
+/// `bad.` would land as `bad` and take the file with it. A drive prefix is not a
+/// name, so a colon there is fine.
 pub fn refuse_unwritable_name(local_path: &str) -> Result<(), String> {
-    let name = Path::new(local_path)
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    match unwritable_on(&name, cfg!(windows)) {
-        Some(reason) => Err(reason),
-        None => Ok(()),
+    for component in Path::new(local_path).components() {
+        if let std::path::Component::Normal(name) = component {
+            if let Some(reason) = unwritable_on(&name.to_string_lossy(), cfg!(windows)) {
+                return Err(reason);
+            }
+        }
     }
+    Ok(())
 }
 
 /// A file a run cannot download as it is, and why.
@@ -161,12 +163,20 @@ fn target_problems(
     paths: &[String],
 ) -> Vec<LocalTargetProblem> {
     let guard = LocalTargetGuard::with_rules(rules);
-    let mut same_target: HashMap<String, Vec<&String>> = HashMap::new();
+    // Every folder on the way counts: `Foo/a.txt` and `foo/b.txt` would share one
+    // folder and could not keep the two names.
+    let prefixes = |path: &'_ str| -> Vec<String> {
+        let parts: Vec<&str> = path.split('/').collect();
+        (1..=parts.len()).map(|n| parts[..n].join("/")).collect()
+    };
+    let mut spellings: HashMap<String, Vec<String>> = HashMap::new();
     for path in paths {
-        same_target
-            .entry(guard.key(Path::new(path)))
-            .or_default()
-            .push(path);
+        for prefix in prefixes(path) {
+            let same = spellings.entry(guard.key(Path::new(&prefix))).or_default();
+            if !same.contains(&prefix) {
+                same.push(prefix);
+            }
+        }
     }
     let mut problems = Vec::new();
     for path in paths {
@@ -177,12 +187,15 @@ fn target_problems(
             });
             continue;
         }
-        let others = &same_target[&guard.key(Path::new(path))];
-        if let Some(other) = others.iter().find(|other| **other != path) {
+        let collision = prefixes(path).into_iter().find_map(|prefix| {
+            let same = &spellings[&guard.key(Path::new(&prefix))];
+            same.iter().find(|other| **other != prefix).cloned()
+        });
+        if let Some(other) = collision {
             problems.push(LocalTargetProblem {
                 path: path.clone(),
                 reason: format!(
-                    "This disk cannot tell it from {other}: one would replace the other"
+                    "This disk cannot tell {path} apart from {other}: one would replace the other"
                 ),
             });
         }
@@ -347,6 +360,17 @@ mod tests {
         assert_eq!(
             problems.iter().map(|p| p.path.as_str()).collect::<Vec<_>>(),
             ["a/File.txt", "a/file.txt"]
+        );
+        // Folders that differ only by case collide too, whatever the files are.
+        let folders = [
+            "Foo/a.txt".to_string(),
+            "foo/b.txt".to_string(),
+            "bar/c.txt".to_string(),
+        ];
+        let problems = target_problems(folds, false, &folders);
+        assert_eq!(
+            problems.iter().map(|p| p.path.as_str()).collect::<Vec<_>>(),
+            ["Foo/a.txt", "foo/b.txt"]
         );
         let keeps = DestinationRules {
             fold_case: false,

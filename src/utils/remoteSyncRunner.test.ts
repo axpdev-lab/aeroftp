@@ -146,6 +146,35 @@ describe('remoteSyncRunner — copy legs', () => {
         expect(JSON.stringify(calls)).not.toContain('"bad"');
     });
 
+    it('downloads nothing when the local names could not be checked', async () => {
+        const { invoke, calls } = makeInvoke({
+            local_target_problems: async () => { throw new Error('no answer'); },
+        });
+        const report = await runRemoteSync(
+            [file('a.txt', 'download')],
+            { remote: [], local: ['newdir'] },
+            baseConfig(),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(calls.filter((c) => c.cmd === 'download_file')).toHaveLength(0);
+        expect(calls.filter((c) => c.cmd === 'create_local_folder')).toHaveLength(0);
+        expect(report.errors[0].message).toContain('Could not check');
+    });
+
+    it('does not create folders the disk cannot hold apart', async () => {
+        const { invoke, calls } = makeInvoke({
+            local_target_problems: async () => [
+                { path: 'Foo', reason: 'This disk cannot tell Foo apart from foo' },
+                { path: 'foo', reason: 'This disk cannot tell foo apart from Foo' },
+            ],
+        });
+        await runRemoteSync([], { remote: [], local: ['Foo', 'foo', 'ok'] }, baseConfig(), {}, noWaitDeps(invoke));
+        const made = calls.filter((c) => c.cmd === 'create_local_folder').map((c) => JSON.stringify(c.args));
+        expect(made).toHaveLength(1);
+        expect(made[0]).toContain('ok');
+    });
+
     it('uploads and downloads, counting bytes and dirs', async () => {
         const { invoke, calls } = makeInvoke();
         const report = await runRemoteSync(
