@@ -18,7 +18,7 @@ import {
   MtpDeviceInfo,
 } from '../types/aerofile';
 import { FolderTree } from './FolderTree';
-import { PartitionsNeedUdisks2, VolumesUnavailable, readUnmountedPartitions, readVolumes, volumeActionError, type VolumesUnavailableReason } from './volumesUnavailable';
+import { PartitionsNeedUdisks2, VolumesUnavailable, readVolumesAndPartitions, volumeActionError, type VolumesUnavailableReason } from './volumesUnavailable';
 import { formatBytes } from '../utils/formatters';
 import { readLatest } from '../utils/readLatest';
 import { findGvfsMtpMount, isPathOnOrUnderMount, portableDeviceNeedsReplug } from '../utils/gvfsMtpMount';
@@ -372,18 +372,14 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   const fetchVolumes = useCallback(async () => {
     // A failed read clears the rows and says why (a snap without
     // mount-observe, or a failed read) instead of leaving the section blank.
-    let needsPlug = false;
-    const { value, latest } = await readLatest(volumesReadRef, () => readVolumes(() => Promise.all([
-      invoke<VolumeInfo[]>('list_mounted_volumes'),
-      readUnmountedPartitions(() => invoke<UnmountedPartition[]>('list_unmounted_partitions')).then(({ partitions, needsPlug: refused }) => {
-        needsPlug = refused;
-        return partitions;
-      }),
-    ])));
+    const { value, latest } = await readLatest(volumesReadRef, () => readVolumesAndPartitions(
+      () => invoke<VolumeInfo[]>('list_mounted_volumes'),
+      () => invoke<UnmountedPartition[]>('list_unmounted_partitions'),
+    ));
     if (!latest || !mountedRef.current) return;
     setVolumes(value.volumes);
     setUnmountedPartitions(value.unmounted);
-    setPartitionsNeedUdisks2(needsPlug);
+    setPartitionsNeedUdisks2(value.partitionsNeedPlug);
     setVolumesUnavailable(value.unavailable);
     setVolumesLoading(false);
   }, []);

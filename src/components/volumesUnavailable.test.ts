@@ -17,6 +17,7 @@ import {
     needsUdisks2Plug,
     readUnmountedPartitions,
     readVolumes,
+    readVolumesAndPartitions,
     volumeActionError,
     volumesUnavailableReason,
 } from './volumesUnavailable';
@@ -77,7 +78,28 @@ describe('volumes the snap may not read', () => {
         expect(sidebarSource).toContain('!volumesLoading && partitionsNeedUdisks2 && <PartitionsNeedUdisks2 t={t} />');
         expect(sidebarSource).toContain("title: t('sidebar.mountFailed')");
         expect(sidebarSource.match(/message: volumeActionError\(err, t\)/g)).toHaveLength(2);
-        expect(sidebarSource).toContain("readUnmountedPartitions(() => invoke<UnmountedPartition[]>('list_unmounted_partitions'))");
+        expect(sidebarSource).toContain('readVolumesAndPartitions(');
+        expect(sidebarSource).toContain('setPartitionsNeedUdisks2(value.partitionsNeedPlug)');
+    });
+
+    it('shows both hints when the volume read fails before UDisks2 answers, as on a fresh snap', async () => {
+        let refuse: (reason: string) => void = () => {};
+        const read = readVolumesAndPartitions<string, string>(
+            async () => { throw `${MOUNT_OBSERVE_NOT_CONNECTED}: cannot read /proc/mounts (Permission denied)`; },
+            () => new Promise((_, reject) => { refuse = reject; }),
+        );
+        await new Promise(resolve => setTimeout(resolve, 0));
+        refuse(`${UDISKS2_NOT_CONNECTED}: refused`);
+        await expect(read).resolves.toEqual({
+            volumes: [], unmounted: [], unavailable: 'snap-mount-observe', partitionsNeedPlug: true,
+        });
+    });
+
+    it('keeps the volumes when only the partitions are refused', async () => {
+        await expect(readVolumesAndPartitions(async () => ['/media/usb'], async () => { throw `${UDISKS2_NOT_CONNECTED}: refused`; }))
+            .resolves.toEqual({ volumes: ['/media/usb'], unmounted: [], unavailable: null, partitionsNeedPlug: true });
+        await expect(readVolumesAndPartitions(async () => ['/media/usb'], async () => ['sdb1']))
+            .resolves.toEqual({ volumes: ['/media/usb'], unmounted: ['sdb1'], unavailable: null, partitionsNeedPlug: false });
     });
 
     it('says the plug only for its refusal, and keeps any other error as it is', async () => {
@@ -106,7 +128,7 @@ describe('volumes the snap may not read', () => {
     });
 
     it('is what the sidebar shows when the volume list fails', () => {
-        expect(sidebarSource).toMatch(/readLatest\(volumesReadRef, \(\) => readVolumes\(/);
+        expect(sidebarSource).toMatch(/readLatest\(volumesReadRef, \(\) => readVolumesAndPartitions\(/);
         expect(sidebarSource).toContain('setVolumesUnavailable(value.unavailable)');
         expect(sidebarSource).toMatch(/<VolumesUnavailable reason=\{volumesUnavailable\}/);
     });
