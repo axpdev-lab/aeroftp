@@ -12,21 +12,30 @@ use crate::providers::ProviderError;
 
 /// `path` as one single-quoted shell word.
 pub fn shell_quote(path: &str) -> Result<String, ProviderError> {
-    if path.contains('\0') {
+    let quoted = shell_quote_bytes(path.as_bytes())?;
+    // Only ASCII quotes were added to valid UTF-8, so this never fails.
+    String::from_utf8(quoted)
+        .map_err(|_| ProviderError::InvalidPath("quoting broke the path's UTF-8".to_string()))
+}
+
+/// [`shell_quote`] for a name read back from the server, which need not be
+/// UTF-8: inside single quotes the shell passes every byte but NUL as is.
+pub fn shell_quote_bytes(path: &[u8]) -> Result<Vec<u8>, ProviderError> {
+    if path.contains(&0) {
         return Err(ProviderError::InvalidPath(
             "a path with a NUL byte cannot be passed to the server".to_string(),
         ));
     }
-    let mut out = String::with_capacity(path.len() + 2);
-    out.push('\'');
-    for c in path.chars() {
-        if c == '\'' {
-            out.push_str("'\\''");
+    let mut out = Vec::with_capacity(path.len() + 2);
+    out.push(b'\'');
+    for &b in path {
+        if b == b'\'' {
+            out.extend_from_slice(b"'\\''");
         } else {
-            out.push(c);
+            out.push(b);
         }
     }
-    out.push('\'');
+    out.push(b'\'');
     Ok(out)
 }
 

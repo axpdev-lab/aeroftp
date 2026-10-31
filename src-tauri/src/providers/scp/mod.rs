@@ -12,3 +12,4 @@
 //! Design and measurements: `docs/dev/roadmap/APPENDIX-SCP-PROTOCOL/`.
 
 pub mod codec;
+pub mod listing;
