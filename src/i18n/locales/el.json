@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "Ρωτήστε το AeroAgent...",
             "browseArchive": "Περιήγηση Αρχείου",
-            "calculateSize": "Υπολογισμός Μεγέθους",
             "compress": "Συμπίεση",
             "compress7zMultiple": "Συμπίεση 7z ({count})",
             "compressSubmenu": "Συμπίεση",

@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "Прашај AeroAgent...",
             "browseArchive": "Прелистај архива",
-            "calculateSize": "Пресметај големина",
             "compress": "Компресирај",
             "compress7zMultiple": "Компресирај 7z ({count})",
             "compressSubmenu": "Компресирај",

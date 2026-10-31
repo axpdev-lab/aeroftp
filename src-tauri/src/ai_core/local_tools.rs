@@ -1003,6 +1003,8 @@ pub async fn local_file_info(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, T
     Ok(info)
 }
 
+/// Size of a local folder for AeroAgent: bytes, files and folders, with what
+/// could not be read and whether the entry cap cut the walk short.
 pub async fn local_disk_usage(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let path = resolve_local_path(&get_str(args, "path")?, ctx.context_local_path());
     validate_path(&path, "path").map_err(map_str_err)?;
@@ -1015,62 +1017,38 @@ pub async fn local_disk_usage(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
         )));
     }
 
+    // The engine the app's folder Properties uses (a parallel walk, each file
+    // once), under this tool's own entry cap. A total that leaves out a
+    // directory it could not open, or a file whose size it could not read, is
+    // smaller than the tree and says nothing about it: both are counted, and
+    // the cap is reported, so the number reads as a lower bound.
+    const MAX_ENTRIES: u64 = 500_000;
     let path_for_walk = path.clone();
     tokio::task::spawn_blocking(move || {
-        let mut total_bytes: u64 = 0;
-        let mut file_count: u64 = 0;
-        let mut dir_count: u64 = 0;
-        const MAX_ENTRIES: u64 = 500_000;
-        let mut entry_count: u64 = 0;
-        let base = std::path::Path::new(&path_for_walk);
-
-        // A total that leaves out a directory the walk could not open, or a file
-        // whose size it could not read, is smaller than the tree and says
-        // nothing about it. Both are counted, and the cap is reported, so the
-        // number is readable as a lower bound rather than as the answer.
-        let mut unreadable: u64 = 0;
-        let mut truncated = false;
-
-        for entry in walkdir::WalkDir::new(&path_for_walk)
-            .follow_links(false)
-            .max_depth(100)
-            .into_iter()
-        {
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(_) => {
-                    unreadable += 1;
-                    continue;
-                }
-            };
-            entry_count += 1;
-            if entry_count > MAX_ENTRIES {
-                truncated = true;
-                break;
-            }
-            if entry.file_type().is_file() {
-                match entry.metadata() {
-                    Ok(meta) => total_bytes += meta.len(),
-                    Err(_) => unreadable += 1,
-                }
-                file_count += 1;
-            } else if entry.file_type().is_dir() && entry.path() != base {
-                dir_count += 1;
-            }
-        }
-
-        json!({
+        let limits = crate::folder_size::Limits {
+            max_entries: MAX_ENTRIES,
+            ..Default::default()
+        };
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        let size = crate::folder_size::scan(
+            std::path::Path::new(&path_for_walk),
+            limits,
+            &cancel,
+            |_| {},
+        )
+        .map_err(ToolError::Exec)?;
+        Ok(json!({
             "path": path_for_walk,
-            "total_bytes": total_bytes,
-            "total_human": format!("{:.1} MB", total_bytes as f64 / 1_048_576.0),
-            "file_count": file_count,
-            "dir_count": dir_count,
-            "unreadable": unreadable,
-            "truncated": truncated,
-        })
+            "total_bytes": size.total_bytes,
+            "total_human": format!("{:.1} MB", size.total_bytes as f64 / 1_048_576.0),
+            "file_count": size.file_count,
+            "dir_count": size.dir_count,
+            "unreadable": size.unreadable_dirs + size.unreadable_files,
+            "truncated": size.capped,
+        }))
     })
     .await
-    .map_err(|e| ToolError::Exec(format!("local_disk_usage task failed: {}", e)))
+    .map_err(|e| ToolError::Exec(format!("local_disk_usage task failed: {}", e)))?
 }
 
 pub async fn local_find_duplicates(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {

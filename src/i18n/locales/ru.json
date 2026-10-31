@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "Спросить AeroAgent...",
             "browseArchive": "Просмотреть архив",
-            "calculateSize": "Вычислить размер",
             "compress": "Сжать",
             "compress7zMultiple": "Сжать в 7z ({count})",
             "compressSubmenu": "Сжать",

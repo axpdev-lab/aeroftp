@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "AeroAgent에게 질문...",
             "browseArchive": "압축 파일 탐색",
-            "calculateSize": "크기 계산",
             "compress": "압축",
             "compress7zMultiple": "7z 압축 ({count})",
             "compressSubmenu": "압축",

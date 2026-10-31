@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "Kérdezd meg AeroAgent...",
             "browseArchive": "Archívum böngészése",
-            "calculateSize": "Méret számítása",
             "compress": "Tömörítés",
             "compress7zMultiple": "7z tömörítés ({count})",
             "compressSubmenu": "Tömörítés",

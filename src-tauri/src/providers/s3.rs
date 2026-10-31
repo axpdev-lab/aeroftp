@@ -645,8 +645,12 @@ impl S3Provider {
         );
         let mut client_builder = Client::builder()
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
-            .connect_timeout(std::time::Duration::from_secs(30))
-            .read_timeout(std::time::Duration::from_secs(1800))
+            .connect_timeout(crate::providers::http_limits::limit(
+                std::time::Duration::from_secs(30),
+            ))
+            .read_timeout(crate::providers::http_limits::limit(
+                crate::providers::http_limits::READ_TIMEOUT,
+            ))
             // Never follow redirects on a SigV4-signed request. Two reasons,
             // and the second is the one that bites:
             //

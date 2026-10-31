@@ -616,6 +616,8 @@ fn rclone_root_folder_id_from_discovery(
 }
 
 impl ZohoWorkdriveProvider {
+    /// Build the provider and its HTTP client, with the limits of [`crate::providers::http_limits`].
+    /// Nothing is sent until the first request.
     pub fn new(config: ZohoWorkdriveConfig) -> Self {
         // Build HTTP client with default Accept header required by Zoho JSON:API
         let mut default_headers = reqwest::header::HeaderMap::new();
@@ -623,8 +625,12 @@ impl ZohoWorkdriveProvider {
         let client = reqwest::Client::builder()
             .user_agent(crate::providers::AEROFTP_USER_AGENT)
             .default_headers(default_headers)
-            .connect_timeout(std::time::Duration::from_secs(30))
-            .read_timeout(std::time::Duration::from_secs(1800))
+            .connect_timeout(crate::providers::http_limits::limit(
+                std::time::Duration::from_secs(30),
+            ))
+            .read_timeout(crate::providers::http_limits::limit(
+                crate::providers::http_limits::READ_TIMEOUT,
+            ))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
 

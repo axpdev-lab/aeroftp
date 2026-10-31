@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "Kysy AeroAgent-ilta...",
             "browseArchive": "Selaa arkistoa",
-            "calculateSize": "Laske koko",
             "compress": "Pakkaa",
             "compress7zMultiple": "Pakkaa 7z ({count})",
             "compressSubmenu": "Pakkaa",

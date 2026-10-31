@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "Întreabă AeroAgent...",
             "browseArchive": "Navighează în arhivă",
-            "calculateSize": "Calculează dimensiunea",
             "compress": "Comprimă",
             "compress7zMultiple": "Comprimă 7z ({count})",
             "compressSubmenu": "Comprimă",

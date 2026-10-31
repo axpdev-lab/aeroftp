@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "Itanong sa AeroAgent...",
             "browseArchive": "Mag-browse ng Archive",
-            "calculateSize": "Kalkulahin ang Laki",
             "compress": "I-compress",
             "compress7zMultiple": "I-compress 7z ({count})",
             "compressSubmenu": "I-compress",

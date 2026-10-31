@@ -38,6 +38,22 @@ impl std::fmt::Display for OAuth2TransportError {
 
 impl std::error::Error for OAuth2TransportError {}
 
+/// reqwest's `Display` for a timeout is the generic "error sending request",
+/// so a token request that ran out of time says so.
+fn token_transport_error(
+    e: reqwest::Error,
+    limit: std::time::Duration,
+) -> oauth2::HttpClientError<OAuth2TransportError> {
+    if e.is_timeout() {
+        oauth2::HttpClientError::Other(format!(
+            "the token server did not answer within {} s",
+            limit.as_secs()
+        ))
+    } else {
+        oauth2::HttpClientError::Other(e.to_string())
+    }
+}
+
 /// Async HTTP client adapter for oauth2 v5.
 /// Bridges the project's reqwest (0.13) with oauth2's `AsyncHttpClient` trait.
 /// Required because oauth2 v5's built-in reqwest support targets reqwest 0.12.
@@ -54,11 +70,16 @@ impl<'c> oauth2::AsyncHttpClient<'c> for OAuth2HttpClient {
         >,
     >;
 
+    /// Send one token request, connect and whole reply bounded by the
+    /// sign-in limit.
     fn call(&'c self, request: oauth2::HttpRequest) -> Self::Future {
         Box::pin(async move {
+            let limit = super::http_limits::limit(super::http_limits::SIGN_IN_TIMEOUT);
             let client = reqwest::Client::builder()
                 .user_agent(crate::providers::AEROFTP_USER_AGENT)
                 .redirect(reqwest::redirect::Policy::none())
+                .connect_timeout(limit)
+                .timeout(limit)
                 .build()
                 .map_err(|e| oauth2::HttpClientError::Other(e.to_string()))?;
 
@@ -75,14 +96,14 @@ impl<'c> oauth2::AsyncHttpClient<'c> for OAuth2HttpClient {
             let response = builder
                 .send()
                 .await
-                .map_err(|e| oauth2::HttpClientError::Other(e.to_string()))?;
+                .map_err(|e| token_transport_error(e, limit))?;
 
             let status_code = response.status().as_u16();
             let headers = response.headers().clone();
             let body = response
                 .bytes()
                 .await
-                .map_err(|e| oauth2::HttpClientError::Other(e.to_string()))?;
+                .map_err(|e| token_transport_error(e, limit))?;
 
             let mut http_response = http::Response::builder().status(
                 http::StatusCode::from_u16(status_code)
@@ -1632,6 +1653,27 @@ fn parse_callback_request(request: &str) -> Result<(String, String), ProviderErr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A token request (exchange or refresh) to a server that accepts the
+    /// connection and never answers. The clock is paused, so a limit elapses
+    /// at once and the outer bound only fires when the request has none.
+    #[tokio::test(start_paused = true)]
+    async fn a_token_request_the_server_never_answers_ends() {
+        use oauth2::AsyncHttpClient;
+        let request = http::Request::builder()
+            .method("POST")
+            .uri(crate::providers::mute_http_endpoint())
+            .body(b"grant_type=refresh_token".to_vec())
+            .expect("request");
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(3600),
+            OAuth2HttpClient.call(request),
+        )
+        .await
+        .expect("the token request is still waiting for the server after an hour");
+        let error = outcome.expect_err("no answer").to_string();
+        assert!(error.contains("did not answer within 30 s"), "{error}");
+    }
 
     #[test]
     fn test_parse_callback_request() {

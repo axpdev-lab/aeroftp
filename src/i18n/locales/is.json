@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "Spyrja AeroAgent...",
             "browseArchive": "Skoða skjalasafn",
-            "calculateSize": "Reikna stærð",
             "compress": "Þjappa",
             "compress7zMultiple": "Þjappa 7z ({count})",
             "compressSubmenu": "Þjappa",
