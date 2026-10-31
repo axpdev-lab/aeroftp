@@ -2404,21 +2404,19 @@ impl PCloudProvider {
 mod tests {
     #[test]
     fn dates_read_as_iso_like_every_other_provider() {
-        #[derive(serde::Deserialize)]
-        struct Dated {
-            #[serde(default, deserialize_with = "super::iso_modified")]
-            modified: Option<String>,
-        }
-        let read = |json: &str| serde_json::from_str::<Dated>(json).unwrap().modified;
+        let read = |date: &str| {
+            let json = format!(r#"{{"name":"a","modified":{date}}}"#);
+            serde_json::from_str::<PCloudMetadata>(&json)
+                .unwrap()
+                .modified
+        };
         assert_eq!(
-            read(r#"{"modified":"Sat, 31 Oct 2026 07:18:16 +0000"}"#).as_deref(),
+            read(r#""Sat, 31 Oct 2026 07:18:16 +0000""#).as_deref(),
             Some("2026-10-31T07:18:16Z")
         );
-        assert_eq!(
-            read(r#"{"modified":"not a date"}"#).as_deref(),
-            Some("not a date")
-        );
-        assert_eq!(read("{}"), None);
+        assert_eq!(read(r#""not a date""#).as_deref(), Some("not a date"));
+        let missing: PCloudMetadata = serde_json::from_str(r#"{"name":"a"}"#).unwrap();
+        assert_eq!(missing.modified, None);
     }
 
     use super::*;

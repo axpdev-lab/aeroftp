@@ -19051,6 +19051,8 @@ mod folder_download_live_tests {
         list_moves_cwd: bool,
         /// `cd` fails.
         cd_fails: bool,
+        /// The path a listing gives a file, where it differs from folder plus name.
+        canonical: HashMap<String, String>,
         /// Raised when a download starts, as the first Stop raises it.
         stop_on_download: Option<Arc<AtomicBool>>,
     }
@@ -19159,10 +19161,12 @@ mod folder_download_live_tests {
                 return Err(ProviderError::Other(format!("cannot list {path}")));
             }
             let (files, folders) = st.dirs.get(&path).cloned().unwrap_or_default();
+            let canonical = st.canonical.clone();
             Ok(files
                 .into_iter()
                 .map(|(name, size)| {
                     let full = format!("{path}/{name}");
+                    let full = canonical.get(&full).cloned().unwrap_or(full);
                     RemoteEntry::file(name, full, size)
                 })
                 .chain(folders.into_iter().map(|name| {
@@ -19379,6 +19383,21 @@ mod folder_download_live_tests {
             .collect();
         found.sort();
         assert_eq!(found, ["/r/sub/deep/a.txt"]);
+    }
+
+    /// A hit carries the path the listing gave it, not one rebuilt from the
+    /// folder and the name: a provider can spell it differently.
+    #[tokio::test]
+    async fn a_walked_search_keeps_the_path_the_listing_gave() {
+        let (mut tree, state) = FolderTree::new(&["sub/Canonical/a.txt"]);
+        state.lock().unwrap().canonical.insert(
+            "/r/sub/Canonical/a.txt".to_string(),
+            "/r/sub/canonical/a.txt".to_string(),
+        );
+        let found = crate::providers::find_by_walk(&mut tree, "/r/sub", "a.txt")
+            .await
+            .unwrap();
+        assert_eq!(found[0].path, "/r/sub/canonical/a.txt");
     }
 
     /// A provider that moves its current folder as it lists is back where it

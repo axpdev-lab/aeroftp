@@ -2679,6 +2679,8 @@ mod tests {
         assert_eq!(session_error_text("gateway down"), "gateway down");
         let no_summary = session_error_text(r#"{"error":"x","upload_session_id":"AAAAsecret"}"#);
         assert!(!no_summary.contains("AAAAsecret"), "{no_summary}");
+        let plain_id = session_error_text(r#"{"error":"x","session_id":"AAAAsecret"}"#);
+        assert!(!plain_id.contains("AAAAsecret"), "{plain_id}");
     }
 
     #[tokio::test]

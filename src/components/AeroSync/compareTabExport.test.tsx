@@ -10,7 +10,9 @@ import { compareEntries } from '../../utils/compareEndpoints';
 const mocks = vi.hoisted(() => ({ pickSave: vi.fn(), writeTextFile: vi.fn() }));
 vi.mock('@tauri-apps/plugin-fs', () => ({ writeTextFile: mocks.writeTextFile }));
 vi.mock('../../utils/pickPath', () => ({ pickSave: mocks.pickSave, pickFile: vi.fn() }));
-vi.mock('../../i18n', () => ({ useTranslation: () => (key: string) => key }));
+vi.mock('../../i18n', () => ({
+    useTranslation: () => (key: string, args?: Record<string, unknown>) => (args ? `${key} ${Object.values(args).join(' ')}` : key),
+}));
 
 const result = compareEntries([{ name: 'only-here', isDir: true, size: 0 }, { name: 'a.txt', isDir: false, size: 3 }], []);
 let root: Root;
@@ -37,7 +39,22 @@ describe('the Compare tab', () => {
     it('says a write error of the export', async () => {
         mocks.writeTextFile.mockRejectedValue(new Error('disk full'));
         await React.act(async () => button('syncPanel.exportJSON').click());
-        expect(host.querySelector('[role=alert]')?.textContent).toContain('aerosync.exportFailed');
+        const alert = host.querySelector('[role=alert]')?.textContent;
+        expect(alert).toContain('aerosync.exportFailed');
+        expect(alert).toContain('disk full');
+    });
+
+    it('writes each format to the path chosen, with its own filter and content', async () => {
+        await React.act(async () => button('syncPanel.exportCSV').click());
+        expect(mocks.pickSave.mock.calls[0][0].filters).toEqual([{ name: 'CSV', extensions: ['csv'] }]);
+        const [csvPath, csv] = mocks.writeTextFile.mock.calls[0];
+        expect(csvPath).toBe('/tmp/out.json');
+        expect(csv).toContain('a.txt');
+        expect(() => JSON.parse(csv)).toThrow();
+
+        await React.act(async () => button('syncPanel.exportJSON').click());
+        expect(mocks.pickSave.mock.calls[1][0].filters).toEqual([{ name: 'JSON', extensions: ['json'] }]);
+        expect(JSON.stringify(JSON.parse(mocks.writeTextFile.mock.calls[1][1]))).toContain('a.txt');
     });
 
     it('opens one save dialog however many times the export is clicked', async () => {

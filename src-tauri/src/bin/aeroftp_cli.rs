@@ -97703,7 +97703,8 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             "nothing moves when it refuses"
         );
 
-        // A file that appears after the check is not replaced either.
+        // The move itself refuses a file already at the target, with no check of
+        // its own before it: a rename here would replace `late`.
         std::fs::write(root.path().join("late"), "late").unwrap();
         let moved = root.path().join("moved");
         std::fs::write(&moved, "vault").unwrap();
