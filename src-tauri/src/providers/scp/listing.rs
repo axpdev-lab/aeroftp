@@ -106,7 +106,7 @@ fn mode_bits(perm: &[u8]) -> Option<u32> {
             8 => Some((0o1000, b't', b'T')),
             _ => None,
         };
-        let plain = [b'r', b'w', b'x'][i % 3];
+        let plain = b"rwx"[i % 3];
         mode |= match (c, special) {
             (b'-', _) => 0,
             (c, _) if c == plain => bit,

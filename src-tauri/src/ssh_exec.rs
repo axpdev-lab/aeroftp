@@ -123,6 +123,9 @@ impl ExitTracker {
 
 /// Open a remote exec channel on `handle_shared` and run `command`.
 ///
+/// `command` is bytes, not text: the remote shell takes any byte but NUL, and
+/// a path read back from the server need not be UTF-8.
+///
 /// Returns immediately after the exec request has been acknowledged; caller pumps I/O
 /// by reading `stdout_rx` / `stderr_rx` and writing to `stdin`. Remote exit status is
 /// delivered on `exit_rx` (lossy if the process exits abnormally: `EXIT_ABNORMAL`).
@@ -132,7 +135,7 @@ impl ExitTracker {
 /// measurably impacted.
 pub async fn ssh_exec<H>(
     handle_shared: Arc<TokioMutex<Handle<H>>>,
-    command: &str,
+    command: impl AsRef<[u8]>,
 ) -> Result<ExecSession, String>
 where
     H: Handler<Error = russh::Error> + Send + Sync + 'static,
@@ -146,7 +149,7 @@ where
     };
 
     channel
-        .exec(true, command.as_bytes())
+        .exec(true, command.as_ref())
         .await
         .map_err(|e| format!("ssh exec: request: {}", e))?;
 
@@ -231,7 +234,7 @@ where
 /// is unnecessary. Returns `(stdout_bytes, exit_code)`. Stderr is captured separately.
 pub async fn ssh_exec_collect<H>(
     handle_shared: Arc<TokioMutex<Handle<H>>>,
-    command: &str,
+    command: impl AsRef<[u8]>,
     max_output_bytes: usize,
 ) -> Result<(Vec<u8>, Vec<u8>, u32), String>
 where
