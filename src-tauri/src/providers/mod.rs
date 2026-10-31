@@ -223,9 +223,12 @@ async fn walk_for_find<P>(
 where
     P: StorageProvider + ?Sized,
 {
+    // One absolute root, for the walk and for the listing, which answers with
+    // absolute paths.
     let root = match path {
         "" | "." => start.to_string(),
-        path => path.to_string(),
+        path if path.starts_with('/') => path.to_string(),
+        path => format!("{}/{}", start.trim_end_matches('/'), path),
     };
     let mut walk = crate::sync_core::FindWalk::new(&root);
     let mut folders = vec![root.clone()];

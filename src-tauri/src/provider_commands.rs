@@ -19387,6 +19387,15 @@ mod folder_download_live_tests {
             .await
             .unwrap();
         assert_eq!(tree.cwd, "/r");
+        // A relative folder is read from the current one.
+        let found = crate::providers::find_by_walk(&mut tree, "sub", "a.txt")
+            .await
+            .unwrap();
+        assert_eq!(
+            found.iter().map(|e| e.path.as_str()).collect::<Vec<_>>(),
+            ["/r/sub/a.txt"]
+        );
+        assert_eq!(tree.cwd, "/r");
     }
 
     /// The folder searched that cannot be read is an error, not an empty

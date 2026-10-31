@@ -39208,7 +39208,15 @@ fn move_without_replacing(from: &std::path::Path, to: &std::path::Path) -> std::
                 .write(true)
                 .create_new(true)
                 .open(to)?;
-            std::io::copy(&mut std::fs::File::open(from)?, &mut target)?;
+            // Created here, so it is ours to remove: a partial file would read
+            // as an extract, and refuse the retry.
+            if let Err(e) = std::fs::File::open(from)
+                .and_then(|mut source| std::io::copy(&mut source, &mut target))
+            {
+                drop(target);
+                let _ = std::fs::remove_file(to);
+                return Err(e);
+            }
         }
     }
     std::fs::remove_file(from)
