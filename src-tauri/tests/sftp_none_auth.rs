@@ -12,7 +12,7 @@
 //!
 //! The server below is russh plus the smallest SFTP v3 loop `connect()`
 //! needs (INIT and REALPATH), the shape of `tests/sftp_rename.rs`, with
-//! every `none` and password attempt counted.
+//! every `none`, password and public key attempt recorded in order.
 
 // Unix only, for the reason `tests/sftp_size_hint.rs` gives: the guard
 // against writing into a real `known_hosts` is a redirected `HOME`, which
@@ -23,13 +23,15 @@
 mod scoped_env;
 
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use ftp_client_gui_lib::providers::sftp::SftpProvider;
 use ftp_client_gui_lib::providers::types::SftpConfig;
 use ftp_client_gui_lib::providers::{ProviderError, StorageProvider};
+use russh::keys::ssh_key::LineEnding;
+use russh::keys::{PrivateKey, PublicKey};
 use russh::server::{Auth, ChannelOpenHandle, Handler, Msg, Server, Session};
 use russh::{Channel, ChannelId};
 use scoped_env::ScopedEnv;
@@ -57,7 +59,7 @@ fn r32(data: &[u8], pos: &mut usize) -> Option<u32> {
     Some(v)
 }
 
-/// How the server answers each method, and how many attempts reached it.
+/// How the server answers each method, and the attempts that reached it.
 #[derive(Default)]
 struct Policy {
     /// Lets the account in with no credential (OpenWrt's root with no
@@ -66,8 +68,21 @@ struct Policy {
     /// The one password it accepts. `None` refuses every password, as that
     /// Dropbear does for an account whose password is blank.
     password: Option<&'static str>,
-    nones: AtomicU32,
-    passwords: AtomicU32,
+    /// The one public key it accepts. `None` refuses every key.
+    key: Option<PublicKey>,
+    /// Every attempt in arrival order: `"none"`, `"password"` or
+    /// `"publickey"` (a key whose signature checked out).
+    attempts: Mutex<Vec<&'static str>>,
+}
+
+impl Policy {
+    fn record(&self, method: &'static str) {
+        self.attempts.lock().unwrap().push(method);
+    }
+
+    fn attempts(&self) -> Vec<&'static str> {
+        self.attempts.lock().unwrap().clone()
+    }
 }
 
 struct AuthServer {
@@ -123,7 +138,7 @@ impl Handler for AuthHandler {
     type Error = russh::Error;
 
     async fn auth_none(&mut self, _user: &str) -> Result<Auth, Self::Error> {
-        self.policy.nones.fetch_add(1, Ordering::SeqCst);
+        self.policy.record("none");
         Ok(if self.policy.accept_none {
             Auth::Accept
         } else {
@@ -132,12 +147,24 @@ impl Handler for AuthHandler {
     }
 
     async fn auth_password(&mut self, _user: &str, password: &str) -> Result<Auth, Self::Error> {
-        self.policy.passwords.fetch_add(1, Ordering::SeqCst);
+        self.policy.record("password");
         Ok(if self.policy.password == Some(password) {
             Auth::Accept
         } else {
             Auth::reject()
         })
+    }
+
+    /// Reached only once the client has proved it holds the key.
+    async fn auth_publickey(&mut self, _user: &str, key: &PublicKey) -> Result<Auth, Self::Error> {
+        self.policy.record("publickey");
+        Ok(
+            if self.policy.key.as_ref().map(PublicKey::key_data) == Some(key.key_data()) {
+                Auth::Accept
+            } else {
+                Auth::reject()
+            },
+        )
     }
 
     async fn channel_open_session(
@@ -199,7 +226,9 @@ async fn start_server(policy: Policy) -> (u16, Arc<Policy>) {
         russh::keys::PrivateKey::random(&mut rand_010::rng(), russh::keys::Algorithm::Ed25519)
             .expect("ed25519 key");
     let config = Arc::new(russh::server::Config {
-        methods: russh::MethodSet::from(&[russh::MethodKind::Password][..]),
+        methods: russh::MethodSet::from(
+            &[russh::MethodKind::Password, russh::MethodKind::PublicKey][..],
+        ),
         // A refused `none` is answered at once, as OpenSSH and Dropbear do;
         // russh's default would hold it a second.
         auth_rejection_time_initial: Some(Duration::ZERO),
@@ -224,13 +253,27 @@ async fn start_server(policy: Policy) -> (u16, Arc<Policy>) {
     (port, policy)
 }
 
-async fn connect(port: u16, password: Option<&str>) -> Result<SftpProvider, ProviderError> {
+/// The credential a profile carries into `connect`.
+enum Credential<'a> {
+    Nothing,
+    Password(&'a str),
+    Key(&'a PathBuf),
+}
+
+/// Connect a provider to the loopback server on `port` as `root`, carrying
+/// `credential`, with a 15 s cap so a hang fails the test.
+async fn connect(port: u16, credential: Credential<'_>) -> Result<SftpProvider, ProviderError> {
+    let (password, private_key_path) = match credential {
+        Credential::Nothing => (None, None),
+        Credential::Password(pw) => (Some(secrecy::SecretString::from(pw.to_string())), None),
+        Credential::Key(path) => (None, Some(path.to_string_lossy().into_owned())),
+    };
     let mut p = SftpProvider::new(SftpConfig {
         host: "127.0.0.1".to_string(),
         port,
         username: "root".to_string(),
-        password: password.map(|pw| secrecy::SecretString::from(pw.to_string())),
-        private_key_path: None,
+        password,
+        private_key_path,
         key_passphrase: None,
         initial_path: Some("/".to_string()),
         timeout_secs: 30,
@@ -251,6 +294,24 @@ async fn connect_sends_none_before_any_credential() {
     // path.
     let _home_env = ScopedEnv::set("HOME", &home);
 
+    // An unencrypted Ed25519 key, at an absolute path the provider loads
+    // as given.
+    let client_key = PrivateKey::random(&mut rand_010::rng(), russh::keys::Algorithm::Ed25519)
+        .expect("ed25519 key");
+    let key_path = home.join("id_ed25519");
+    std::fs::write(
+        &key_path,
+        client_key
+            .to_openssh(LineEnding::LF)
+            .expect("openssh key")
+            .as_bytes(),
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+
     // 1. OpenWrt's root with no password set, the password field left
     // empty: `none` lets it in and no password is sent.
     let (port, policy) = start_server(Policy {
@@ -258,10 +319,11 @@ async fn connect_sends_none_before_any_credential() {
         ..Policy::default()
     })
     .await;
-    let mut provider = connect(port, None).await.expect("in through none");
+    let mut provider = connect(port, Credential::Nothing)
+        .await
+        .expect("in through none");
     assert!(provider.is_connected());
-    assert_eq!(policy.nones.load(Ordering::SeqCst), 1);
-    assert_eq!(policy.passwords.load(Ordering::SeqCst), 0);
+    assert_eq!(policy.attempts(), ["none"]);
     provider.disconnect().await.unwrap();
 
     // 2. The same device with an empty string saved as the password: that
@@ -271,9 +333,10 @@ async fn connect_sends_none_before_any_credential() {
         ..Policy::default()
     })
     .await;
-    let mut provider = connect(port, Some("")).await.expect("in through none");
-    assert_eq!(policy.nones.load(Ordering::SeqCst), 1);
-    assert_eq!(policy.passwords.load(Ordering::SeqCst), 0);
+    let mut provider = connect(port, Credential::Password(""))
+        .await
+        .expect("in through none");
+    assert_eq!(policy.attempts(), ["none"]);
     provider.disconnect().await.unwrap();
 
     // 3. Every other server refuses `none`, and the password follows on the
@@ -283,27 +346,54 @@ async fn connect_sends_none_before_any_credential() {
         ..Policy::default()
     })
     .await;
-    let mut provider = connect(port, Some("testpass"))
+    let mut provider = connect(port, Credential::Password("testpass"))
         .await
         .expect("in through the password after a refused none");
-    assert_eq!(policy.nones.load(Ordering::SeqCst), 1);
-    assert_eq!(policy.passwords.load(Ordering::SeqCst), 1);
+    assert_eq!(policy.attempts(), ["none", "password"]);
     provider.disconnect().await.unwrap();
 
     // 4. A refused `none` and nothing configured to follow it is an
     // authentication failure that says what is missing.
-    let (port, _policy) = start_server(Policy {
+    let (port, policy) = start_server(Policy {
         password: Some("testpass"),
         ..Policy::default()
     })
     .await;
-    match connect(port, None).await {
+    match connect(port, Credential::Nothing).await {
         Err(ProviderError::AuthenticationFailed(msg)) => {
             assert!(msg.contains("password or a private key"), "{msg}")
         }
         Err(other) => panic!("expected AuthenticationFailed, got {other:?}"),
         Ok(_) => panic!("a server that refuses none let in an account with no credential"),
     }
+    assert_eq!(policy.attempts(), ["none"]);
+
+    // 5. A profile with a private key on a server that lets the account in
+    // through `none`: the key is not offered at all.
+    let (port, policy) = start_server(Policy {
+        accept_none: true,
+        key: Some(client_key.public_key().clone()),
+        ..Policy::default()
+    })
+    .await;
+    let mut provider = connect(port, Credential::Key(&key_path))
+        .await
+        .expect("in through none");
+    assert_eq!(policy.attempts(), ["none"]);
+    provider.disconnect().await.unwrap();
+
+    // 6. The same profile on a server that refuses `none`: the key follows
+    // on the same connection.
+    let (port, policy) = start_server(Policy {
+        key: Some(client_key.public_key().clone()),
+        ..Policy::default()
+    })
+    .await;
+    let mut provider = connect(port, Credential::Key(&key_path))
+        .await
+        .expect("in through the key after a refused none");
+    assert_eq!(policy.attempts(), ["none", "publickey"]);
+    provider.disconnect().await.unwrap();
 
     let _ = std::fs::remove_dir_all(&home);
 }
