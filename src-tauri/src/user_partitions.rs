@@ -1660,7 +1660,16 @@ impl ProfileListLock {
             .open(resolved.with_extension("write-lock"))
             .map_err(|e| format!("Open profile list lock: {e}"))?;
         let exclusive = std::cell::Cell::new(true);
-        let take = || match file.try_lock() {
+        let try_lock = || {
+            #[cfg(test)]
+            if NO_FILE_LOCKS_IN_TEST.get() {
+                return Err(std::fs::TryLockError::Error(std::io::Error::from(
+                    std::io::ErrorKind::Unsupported,
+                )));
+            }
+            file.try_lock()
+        };
+        let take = || match try_lock() {
             Ok(()) => Ok(true),
             Err(std::fs::TryLockError::WouldBlock) => Ok(false),
             // A filesystem without file locks (some network mounts) must not end
@@ -1704,6 +1713,13 @@ impl ProfileListLock {
             _file: file,
         })
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Plays a filesystem without file locks, for a test on any filesystem.
+    pub(crate) static NO_FILE_LOCKS_IN_TEST: std::cell::Cell<bool> =
+        const { std::cell::Cell::new(false) };
 }
 
 /// Whether a failed lock says the filesystem has no file locks at all.
@@ -6104,13 +6120,11 @@ pub async fn user_partitions_store_legacy_server_profiles(
         .map(|raw| serde_json::from_str::<Vec<Value>>(&raw))
         .transpose()
         .map_err(|e| format!("Invalid saved profiles: {e}"))?;
-    if let (Some(held), Some(expected)) = (&held, &expected_list) {
-        if held != expected {
-            return Err(PROFILES_CHANGED.to_string());
-        }
+    let held = held.unwrap_or_default();
+    if expected_list.is_some_and(|expected| expected != held) {
+        return Err(PROFILES_CHANGED.to_string());
     }
-    let (stored, _) =
-        crate::util::profile_name::unique_profile_names(&held.unwrap_or_default(), &profiles);
+    let (stored, _) = crate::util::profile_name::unique_profile_names(&held, &profiles);
     let serialized = serde_json::to_string(&stored).map_err(|e| e.to_string())?;
     store
         .store(LEGACY_PROFILES_BLOB, &serialized)

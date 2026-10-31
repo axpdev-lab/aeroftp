@@ -865,6 +865,14 @@ async fn durable_profile_auth_lifecycle(
             store.get("server_rollback-partial").unwrap(),
             "vault-before"
         );
+        assert!(users::get_user_credential_for(
+            &conn,
+            &store.derive_user_partition_wrapping_key(),
+            active_id,
+            "server_rollback-partial",
+        )
+        .unwrap()
+        .is_none());
 
         // Relocation takes the list lock too.
         let held = users::ProfileListLock::acquire(&users::open_or_init_cli().unwrap())
@@ -969,6 +977,29 @@ async fn durable_profile_auth_lifecycle(
     let (kept, _) =
         users::cli_update_server_profiles_for_user(store, active_id, |_| false).unwrap();
     assert!(!kept.iter().any(|p| p["id"] == "bridge-gone"));
+
+    // A filesystem without file locks: an import stops before writing, says what to
+    // do and changes nothing, and an ordinary save goes on.
+    users::store_active_credential_typed_dual(store, &stale_key, "oauth", "stale-local").unwrap();
+    let list_before = list_of(active_id);
+    users::NO_FILE_LOCKS_IN_TEST.set(true);
+    let without_locks = crate::import_server_profiles_with_mode(
+        file.to_string_lossy().into_owned(),
+        "fixture-export-password".into(),
+        ExistingProfileMode::Overwrite,
+        active_id,
+    )
+    .await
+    .unwrap_err();
+    let saved_anyway = users::cli_update_server_profiles_for_user(store, active_id, |_| false);
+    users::NO_FILE_LOCKS_IN_TEST.set(false);
+    assert!(
+        without_locks.contains("without file locks"),
+        "{without_locks}"
+    );
+    assert_eq!(read(&stale_key).unwrap().as_str(), "stale-local");
+    assert_eq!(list_of(active_id), list_before);
+    assert!(saved_anyway.is_ok());
 
     // A file repeating an id holds one set of provider secrets: the first profile
     // brings the chain, the later one stored under a new id does not.
