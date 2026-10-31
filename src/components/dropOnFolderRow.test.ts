@@ -1,8 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { describe, it, expect } from 'vitest';
-import appRaw from '../App.tsx?raw';
+import { transformWithOxc } from 'vite';
+import app from '../App.tsx?raw';
+import overwriteHook from '../hooks/useOverwriteCheck.ts?raw';
+import { describe, expect, it, vi } from 'vitest';
+import { usesProviderApi, type LocalFile, type RemoteFile } from '../types';
+import { loadOverwriteDestination } from '../utils/overwriteDestination';
+import { fileBatchCommand, folderTransferIsComplete, keepsSingleFilePath, splitForFileBatch } from '../utils/fileBatchRouting';
+import { asLocalFileEntry, localRowNameClashes, selectedLocalTrees } from '../utils/localSelection';
+import { isSafeRemoteDownloadName, remoteDownloadTarget } from '../utils/localPath';
+import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from '../utils/transferErrorClassifier';
+import { withTransferRun } from '../utils/transferRun';
+import { createFileBatchDispatcher, rearmedOnUserAction } from './transferQueueActions';
+import { INITIAL_SCANNING_STATE } from './ScanningToast';
 
 /**
  * A drop on the other panel writes into the folder it was dropped on.
@@ -14,81 +25,271 @@ import appRaw from '../App.tsx?raw';
  * folder. A folder the panel does not list has to be listed for the
  * overwrite questions, and a listing that fails stops the transfer: it never
  * passes for an empty folder (#1049).
+ *
+ * This runs App's own closures, from the drop to the IPC call that writes,
+ * with the IPC mocked: the paths checked are the ones the backend would be
+ * asked to write.
  */
+
+/** App's `const name = ...` up to `endMarker`. */
+function closure(name: string, endMarker: string) {
+  const start = app.indexOf(`\n  const ${name} =`);
+  const end = app.indexOf(endMarker, start + 1);
+  if (start < 0 || end < 0) throw new Error(`Missing App closure: ${name}`);
+  return app.slice(start, end);
+}
+const dropStart = app.indexOf('\n    crossPanelDropRef.current = async (');
+const dropEnd = app.indexOf('\n  });', dropStart);
+if (dropStart < 0 || dropEnd < 0) throw new Error('Missing App closure: crossPanelDropRef');
+
+const { code } = await transformWithOxc(
+  closure('getOverwriteDestination', '\n  // Helper: check folder overwrite')
+  + closure('downloadFile', '\n  const uploadFile =')
+  + closure('uploadFile', '\n  // Keep restore-retry')
+  + closure('withBatchLatch', '\n  const uploadMultipleFiles =')
+  + closure('uploadMultipleFiles', '\n  // === Bulk Operations ===')
+  + closure('downloadMultipleFiles', '\n  // Wire cross-panel drag & drop callback')
+  + app.slice(dropStart, dropEnd),
+  'drop-on-folder-row.ts',
+);
+const { code: overwriteCode } = await transformWithOxc(
+  overwriteHook.slice(overwriteHook.indexOf('  const checkOverwrite ='), overwriteHook.indexOf('  const resetOverwriteSettings =')),
+  'overwrite-check.ts',
+);
+
+const REMOTE = '/remote';
+const INBOX = '/remote/Inbox';
+const LOCAL = '/home/me';
+const SUB = '/home/me/Sub';
+const PANEL2 = '/home/me/other';
+
+const remote = (name: string, dir = REMOTE, size = 40): RemoteFile =>
+  ({ name, path: `${dir}/${name}`, size, modified: null, is_dir: false, permissions: null });
+const local = (name: string, dir = LOCAL, size = 40): LocalFile =>
+  ({ name, path: `${dir}/${name}`, size, modified: null, is_dir: false });
+const folder = <T extends LocalFile | RemoteFile>(entry: T): T => ({ ...entry, size: 0, is_dir: true });
+
+type Options = {
+  /** What each folder holds, as the backend would list it. */
+  folders?: Record<string, (LocalFile | RemoteFile)[]>;
+  /** Folders whose listing fails. */
+  unlistable?: string[];
+  policy?: 'skip' | 'overwrite';
+  protocol?: 'webdav' | 'github';
+};
+
+function fixture(options: Options = {}) {
+  const folders = options.folders ?? {};
+  const listingOf = (path: string) => {
+    if (options.unlistable?.includes(path)) throw new Error(`Listing of ${path} refused`);
+    return folders[path] ?? [];
+  };
+  const invoke = vi.fn(async (command: string, args?: Record<string, any>) => {
+    if (command === 'get_local_files') return listingOf(args!.path);
+    if (command === 'provider_list_files') return { files: listingOf(args!.path), current_path: args!.path };
+    if (command === 'provider_download_files_batch' || command === 'provider_upload_files_batch') {
+      const entries = args!.params.entries;
+      return { completed: entries.length, failed: 0, cancelled: false, succeeded: entries.map((_: unknown, i: number) => i) };
+    }
+    if (['provider_upload_file', 'provider_download_file', 'reset_cancel_flag'].includes(command)) return undefined;
+    if (command === 'provider_upload_folder' || command === 'provider_download_folder') return { cancelled: false, failed: 0, skipped: 0 };
+    if (command === 'github_check_local_sync') return { is_local_repo: false };
+    if (command === 'github_batch_upload') return { commit_sha: 'abcdef1234', files_count: args!.files.length };
+    throw new Error(`Unexpected IPC: ${command}`);
+  });
+
+  // Panel 1 shows LOCAL, the remote panel REMOTE; what they list is what the
+  // folders hold there.
+  const localFiles = (folders[LOCAL] ?? []) as LocalFile[];
+  const localFiles2 = (folders[PANEL2] ?? []) as LocalFile[];
+  const remoteFiles = (folders[REMOTE] ?? []) as RemoteFile[];
+  const panels = {
+    local: { id: 'local', files: localFiles, sortedFiles: localFiles, currentPath: LOCAL, selection: new Set<string>(), setSelection: vi.fn() },
+    local2: { id: 'local2', files: localFiles2, sortedFiles: localFiles2, currentPath: PANEL2, selection: new Set<string>(), setSelection: vi.fn() },
+  };
+  const checkOverwrite = vi.fn(new Function('useCallback', 'localFiles', 'remoteFiles', 'fileExistsAction', 'overwriteApplyToAllRef', 'setOverwriteDialog',
+    `${overwriteCode}; return checkOverwrite;`)((fn: unknown) => fn, localFiles, remoteFiles, options.policy ?? 'skip',
+      { current: { enabled: false, action: 'overwrite' } }, () => { throw new Error('Unexpected interactive overwrite'); }));
+  const queueItemsRef = { current: [] as { id: string; status: string }[] };
+  const transferQueue = {
+    addItem: vi.fn(() => {
+      const id = `q${queueItemsRef.current.length}`;
+      queueItemsRef.current.push({ id, status: 'pending' });
+      return id;
+    }),
+    startTransfer: vi.fn(), completeTransfer: vi.fn(), failTransfer: vi.fn(),
+  };
+  const retryCallbacksRef = { current: new Map<string, () => Promise<void>>() };
+  const notify = { info: vi.fn(), error: vi.fn(), success: vi.fn() };
+  const checkFolderOverwrite = vi.fn(async (..._args: unknown[]) => ({ action: 'merge_overwrite' }));
+  const refreshLocalPanelForPath = vi.fn(async () => undefined);
+  const loadRemoteFiles = vi.fn(async () => null);
+  // Panel 1's own loader, which the download called before it reloaded every
+  // panel showing the folder written.
+  const loadLocalFiles = vi.fn(async () => undefined);
+  const crossPanelDropRef = { current: null as null | ((files: { name: string; path: string }[], fromRemote: boolean, targetDir: string | undefined, sourceKey?: string) => Promise<void>) };
+  const protocol = options.protocol ?? 'webdav';
+  const requestGitHubBatchCommitMessage = vi.fn(async (..._args: unknown[]) => 'Add files');
+  const context = {
+    invoke, checkOverwrite, loadOverwriteDestination, usesProviderApi,
+    resetOverwriteSettings: vi.fn(), checkFolderOverwrite,
+    isSafeRemoteDownloadName, remoteDownloadTarget, splitForFileBatch, selectedLocalTrees, asLocalFileEntry,
+    refuseLocalNameClashes: (rows: Pick<LocalFile, 'name' | 'path'>[]) => localRowNameClashes(rows).length > 0,
+    getActiveLocalState: (id: 'local' | 'local2' = 'local') => panels[id],
+    focusedLocalPanelId: 'local',
+    sessions: [{ id: 'A', connectionParams: { protocol } }], activeSessionId: 'A', connectionParams: { protocol },
+    liveConnectionParams: { protocol }, aeroVaultOverlaySession: null, isConnected: true,
+    currentRemotePath: REMOTE, currentLocalPath: LOCAL, localFiles, localFiles2, sortedLocalFiles: localFiles, sortedLocalFiles2: localFiles2, remoteFiles,
+    selectedRemoteFiles: new Set<string>(), setSelectedRemoteFiles: vi.fn(),
+    humanLog: { logStart: () => 'log', logRaw: vi.fn(), log: vi.fn(), logError: vi.fn(), updateEntry: vi.fn() },
+    pendingFileLogIds: { current: new Map() }, batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
+    batchOpInFlightRef: { current: false }, folderOverwriteApplyToAll: { current: { action: 'merge_overwrite', enabled: false } },
+    circuitBreaker: {
+      reset: vi.fn(), recordSuccess: vi.fn(), recordFailure: () => ({ isFatal: false, retryable: false, shouldPause: false }),
+      stateRef: { current: 'closed' }, pauseReasonRef: { current: null }, tripErrorKindRef: { current: null },
+      config: { maxRetriesPerFile: 0 }, getRetryDelay: () => 0,
+    },
+    RECONNECT_ERROR_KINDS, getErrorKindI18nKey, attemptBatchReconnect: vi.fn(), waitForBatchResume: vi.fn(),
+    retryCallbacksRef, queueItemsRef, transferQueue, recordQueueDescriptor: vi.fn(), registerFileBatchRows: vi.fn(), withTransferRun,
+    fileBatchCommand, keepsSingleFilePath, folderTransferIsComplete, createFileBatchDispatcher, rearmedOnUserAction,
+    joinRemotePath: (dir: string, name: string) => `${dir}${dir.endsWith('/') ? '' : '/'}${name}`,
+    settings: { autoStartTransfers: true }, fileExistsAction: options.policy ?? 'skip',
+    effectiveMaxConcurrentTransfers: 4, retryCount: 1, timeoutSeconds: 30,
+    downloadSegments: 0, sftpDownloadPreset: 'balanced', supportsFtpTransferPresets: false,
+    buildSftpDownloadPresetPayload: () => ({}), resolveFtpDownloadSegments: () => 0,
+    formatBytes: (size: number) => String(size), t: (key: string) => key, notify,
+    refreshLocalPanelForPath, loadRemoteFiles, loadLocalFiles, crossPanelDropRef, setScanningState: vi.fn(), INITIAL_SCANNING_STATE,
+    requestGitHubBatchCommitMessage, setGitHubSyncWarning: vi.fn(),
+  };
+  new Function(...Object.keys(context), code)(...Object.values(context));
+
+  /** Where each write lands: the backend path of every single and batch write. */
+  const written = () => invoke.mock.calls.flatMap(([command, args]) => {
+    if (command === 'provider_upload_files_batch') return args!.params.entries.map((e: any) => e.remote_path);
+    if (command === 'github_batch_upload') return args!.files.map((f: any) => f.remotePath);
+    if (command === 'provider_download_files_batch') return args!.params.entries.map((e: any) => e.local_path);
+    if (command === 'provider_upload_file' || command === 'provider_upload_folder') return [args!.remotePath];
+    if (command === 'provider_download_file' || command === 'provider_download_folder') return [args!.localPath];
+    return [];
+  });
+  const drop = (...args: Parameters<NonNullable<typeof crossPanelDropRef.current>>) => crossPanelDropRef.current!(...args);
+  return { drop, invoke, written, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, transferQueue, retryCallbacksRef, refreshLocalPanelForPath, loadRemoteFiles };
+}
+
 describe('a drop on the other panel writes into the folder it was dropped on', () => {
-    /** The body of a component-level `const name = ...`, up to the next one. */
-    const body = (name: string): string => {
-        const start = appRaw.indexOf(`\n  const ${name} = `);
-        expect(start, `${name} exists in App.tsx`).toBeGreaterThan(-1);
-        return appRaw.slice(start, appRaw.indexOf('\n  const ', start + 1));
-    };
-    const count = (text: string, re: RegExp) => [...text.matchAll(re)].length;
-    const upload = body('uploadMultipleFiles');
-    const download = body('downloadMultipleFiles');
-    const drop = (() => {
-        const start = appRaw.indexOf('crossPanelDropRef.current = async (');
-        expect(start).toBeGreaterThan(-1);
-        return appRaw.slice(start, appRaw.indexOf('\n  });', start));
-    })();
-
-    it('hands the folder dropped on to the upload and to the download', () => {
-        expect(drop).toMatch(/^crossPanelDropRef\.current = async \(files, fromRemote, targetDir, sourceKey\) => \{/);
-        expect(drop).toMatch(/await downloadMultipleFiles\(files\.map\(f => f\.name\), targetDir \|\| undefined\);/);
-        expect(drop).toMatch(/await uploadMultipleFiles\(keys, panelId, targetDir \|\| undefined\);/);
+  // One file keeps the single-file path, two go out as one batch.
+  describe.each([['one file', ['up.txt']], ['two files', ['up.txt', 'b.txt']]] as const)('%s', (_label, names) => {
+    it('local files dropped on a remote folder row are uploaded into that folder', async () => {
+      const f = fixture({ folders: { [LOCAL]: names.map(n => local(n)) } });
+      await f.drop(names.map(n => local(n)), false, INBOX, 'local');
+      expect(f.written()).toEqual(names.map(n => `${INBOX}/${n}`));
+      expect(f.notify.error).not.toHaveBeenCalled();
     });
 
-    it('uploads into that folder, a retried file too', () => {
-        expect(upload).toMatch(/async \(filesOverride\?: string\[\], localPanelId: 'local' \| 'local2' = focusedLocalPanelId, remoteDir: string = currentRemotePath\) => \{/);
-        // The panel's folder is the default and decides whether the panel's
-        // listing will do; nothing else in the upload reads it. A retry read
-        // it when it ran, after the panel had moved on.
-        expect(count(upload, /\bcurrentRemotePath\b/g)).toBe(2);
-        expect(upload).toMatch(/remoteDir === currentRemotePath \? undefined : await getOverwriteDestination\('upload', remoteDir\)/);
-        const uploads = [...upload.matchAll(/\buploadFile\(([^;]*?)\);/g)].map(m => m[1]);
-        expect(uploads).toHaveLength(5);
-        for (const args of uploads) expect(args, args).toMatch(/, remoteDir$/);
-        expect(upload).toMatch(/runFileBatch\('upload', pickedBatch, remoteDir\)/);
-        expect(upload).toMatch(/runFileBatch\(\s*'upload',[\s\S]{0,400}?\)\),\s*remoteDir,\s*\);\s*if \(outcome\.aborted\)/);
+    it('remote files dropped on a local folder row are downloaded into that folder', async () => {
+      const f = fixture({ folders: { [REMOTE]: names.map(n => remote(n)) } });
+      await f.drop(names.map(n => remote(n)), true, SUB);
+      expect(f.written()).toEqual(names.map(n => `${SUB}/${n}`));
+      expect(f.refreshLocalPanelForPath).toHaveBeenCalledWith(SUB);
+      expect(f.notify.error).not.toHaveBeenCalled();
     });
 
-    it('downloads into that folder and reloads the panels that show it', () => {
-        expect(download).toMatch(/async \(filesOverride\?: string\[\], localDir: string = currentLocalPath\) => \{/);
-        expect(count(download, /\bcurrentLocalPath\b/g)).toBe(2);
-        expect(download).toMatch(/localDir === currentLocalPath \? undefined : await getOverwriteDestination\('download', localDir\)/);
-        expect(download).toMatch(/const frozenLocalPath = localDir;/);
-        expect(download).toMatch(/await downloadFile\(item\.file\.path, item\.file\.name, localDir, /);
-        expect(download).toMatch(/runFileBatch\(\s*'download',[\s\S]{0,300}?\)\),\s*localDir,\s*\);\s*if \(outcome\.aborted\) return;/);
-        // Panel 2 when it shows the folder: panel 1 was reloaded whichever it was.
-        expect(download).not.toMatch(/loadLocalFiles\(/);
-        expect(count(download, /await refreshLocalPanelForPath\(localDir\);/g)).toBe(2);
+    it('remote files dropped on panel 2 are downloaded into the folder panel 2 shows', async () => {
+      const f = fixture({ folders: { [REMOTE]: names.map(n => remote(n)) } });
+      await f.drop(names.map(n => remote(n)), true, PANEL2);
+      expect(f.written()).toEqual(names.map(n => `${PANEL2}/${n}`));
+      expect(f.refreshLocalPanelForPath).toHaveBeenCalledWith(PANEL2);
     });
 
-    it('asks about what the folder written to holds, not what the panel lists', () => {
-        const check = body('checkFolderOverwrite');
-        expect(check).toMatch(/const destination = destinationFiles \?\? \(direction === 'upload' \? remoteFiles : localFiles\);/);
-        expect(check).toMatch(/const exists = destination\.some\(f => f\.name === folderName && f\.is_dir\);/);
-        // Each question of both transfers, a file's and a folder's.
-        for (const [name, source, questions] of [['upload', upload, 3], ['download', download, 2]] as const) {
-            const asked = [...source.matchAll(/\bcheck(?:Folder)?Overwrite\(([^;]*?)\);/g)].map(m => m[1]);
-            expect(asked, name).toHaveLength(questions);
-            for (const args of asked) expect(args, `${name}: ${args}`).toMatch(/remainingInQueue,\s*destinationFiles,?\s*$/);
-        }
+    it('a drop on the panel\'s own folder still writes there', async () => {
+      const up = fixture({ folders: { [LOCAL]: names.map(n => local(n)) } });
+      await up.drop(names.map(n => local(n)), false, REMOTE, 'local');
+      expect(up.written()).toEqual(names.map(n => `${REMOTE}/${n}`));
+      const down = fixture({ folders: { [REMOTE]: names.map(n => remote(n)) } });
+      await down.drop(names.map(n => remote(n)), true, LOCAL);
+      expect(down.written()).toEqual(names.map(n => `${LOCAL}/${n}`));
     });
 
-    it('stops when that folder cannot be listed', () => {
-        // Before the queue holds a row or a writer runs, in each lane that
-        // asks: the upload's selected rows and its file dialog, the download.
-        for (const [name, source, failed, before, lanes] of [
-            ['upload', upload, 'uploadFailed', /const (stagedUploadMode|stagedDialogMode) = /, 2],
-            ['download', download, 'downloadFailed', /const frozenLocalPath = /, 1],
-        ] as const) {
-            const guards = [...source.matchAll(/let destinationFiles: LocalFile\[\] \| RemoteFile\[\] \| undefined;\s*try \{\s*destinationFiles = await destinationListing\(\);\s*\} catch \(error\) \{\s*notify\.error\(t\('toast\.(\w+)'\), String\(error\)\);\s*return;\s*\}\s*([^\n]*)/g)];
-            expect(guards, name).toHaveLength(lanes);
-            for (const guard of guards) {
-                expect(guard[1]).toBe(failed);
-                expect(guard[2]).toMatch(before);
-            }
-            expect(source, name).not.toMatch(/destinationListing\(\)\.catch\(/);
-        }
+    it('asks about what the folder dropped on holds, not what the panel lists', async () => {
+      // The remote panel lists none of the names; Inbox holds them all: with
+      // "skip", nothing is uploaded.
+      const up = fixture({ folders: { [LOCAL]: names.map(n => local(n)), [INBOX]: names.map(n => remote(n, INBOX)) } });
+      await up.drop(names.map(n => local(n)), false, INBOX, 'local');
+      expect(up.written()).toEqual([]);
+      expect(up.checkOverwrite).toHaveBeenCalledTimes(names.length);
+      // The local panel lists them all; Sub holds none: everything is downloaded.
+      const down = fixture({ folders: { [REMOTE]: names.map(n => remote(n)), [LOCAL]: names.map(n => local(n)) } });
+      await down.drop(names.map(n => remote(n)), true, SUB);
+      expect(down.written()).toEqual(names.map(n => `${SUB}/${n}`));
     });
+
+    it('a folder dropped on that cannot be listed stops the transfer before a queue row', async () => {
+      const up = fixture({ folders: { [LOCAL]: names.map(n => local(n)) }, unlistable: [INBOX] });
+      await up.drop(names.map(n => local(n)), false, INBOX, 'local');
+      const down = fixture({ folders: { [REMOTE]: names.map(n => remote(n)) }, unlistable: [SUB] });
+      await down.drop(names.map(n => remote(n)), true, SUB);
+      for (const f of [up, down]) {
+        expect(f.written()).toEqual([]);
+        expect(f.transferQueue.addItem).not.toHaveBeenCalled();
+        expect(f.notify.error).toHaveBeenCalled();
+      }
+    });
+  });
+
+  // A folder goes out on its own, after the folder question: the question
+  // reads what the folder dropped on holds.
+  it('a folder dropped on a folder row is asked about and written there', async () => {
+    const pics = folder(local('pics'));
+    const up = fixture({ folders: { [LOCAL]: [pics], [INBOX]: [folder(remote('pics', INBOX))] } });
+    await up.drop([pics], false, INBOX, 'local');
+    expect(up.checkFolderOverwrite.mock.calls[0][3]).toEqual([folder(remote('pics', INBOX))]);
+    expect(up.written()).toEqual([`${INBOX}/pics`]);
+    expect(up.notify.error).not.toHaveBeenCalled();
+    const rpics = folder(remote('pics'));
+    const down = fixture({ folders: { [REMOTE]: [rpics], [SUB]: [folder(local('pics', SUB))] } });
+    await down.drop([rpics], true, SUB);
+    expect(down.checkFolderOverwrite.mock.calls[0][3]).toEqual([folder(local('pics', SUB))]);
+    expect(down.written()).toEqual([`${SUB}/pics`]);
+    expect(down.notify.error).not.toHaveBeenCalled();
+  });
+
+  // A repository upload is one commit of the files; a folder goes after it.
+  it('GitHub: files dropped on a folder row are committed into that folder, a folder with them', async () => {
+    const pics = folder(local('pics'));
+    const f = fixture({ protocol: 'github', folders: { [LOCAL]: [local('up.txt'), pics] } });
+    await f.drop([local('up.txt'), pics], false, INBOX, 'local');
+    expect(f.requestGitHubBatchCommitMessage.mock.calls[0][0]).toEqual([
+      { local: `${LOCAL}/up.txt`, remote: `${INBOX}/up.txt` },
+      { local: `${LOCAL}/pics`, remote: `${INBOX}/pics` },
+    ]);
+    expect(f.written()).toEqual([`${INBOX}/up.txt`, `${INBOX}/pics`]);
+    expect(f.notify.error).not.toHaveBeenCalled();
+  });
+
+  // Retry runs the callback the queue row was given, later, when the panel
+  // may show another folder: it writes where the drop was queued for.
+  it('Retry of an upload writes into the folder it was dropped on', async () => {
+    const f = fixture({ folders: { [LOCAL]: [local('up.txt')] } });
+    await f.drop([local('up.txt')], false, INBOX, 'local');
+    const [retry] = [...f.retryCallbacksRef.current.values()];
+    await retry();
+    expect(f.written()).toEqual([`${INBOX}/up.txt`, `${INBOX}/up.txt`]);
+  });
+
+  it('Retry of a download writes into the folder it was dropped on', async () => {
+    const f = fixture({ folders: { [REMOTE]: [remote('a.txt')] } });
+    await f.drop([remote('a.txt')], true, SUB);
+    const [retry] = [...f.retryCallbacksRef.current.values()];
+    await retry();
+    expect(f.written()).toEqual([`${SUB}/a.txt`, `${SUB}/a.txt`]);
+  });
+
+  it('a nested row of panel 2 is uploaded from panel 2, into the folder dropped on', async () => {
+    const nested = { ...local('deep.txt', `${PANEL2}/x`), name: 'x/deep.txt' };
+    const f = fixture({ folders: { [PANEL2]: [nested] } });
+    await f.drop([{ name: 'deep.txt', path: nested.path }], false, INBOX, 'local2');
+    expect(f.written()).toEqual([`${INBOX}/deep.txt`]);
+    const upload = f.invoke.mock.calls.find(([command]) => command === 'provider_upload_file')!;
+    expect(upload[1]!.localPath).toBe(nested.path);
+  });
 });
