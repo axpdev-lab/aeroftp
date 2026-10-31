@@ -2214,10 +2214,12 @@ fn import_keystore_with_store(
     // transport key, a locked passphrase partition) the blob is left as the
     // backup carried it, which is the only list available. A partition left
     // out of the restore is written by the plan below, blob included.
+    let mut restored_list_unread = false;
     if partition_in_restore {
         if let Some(cfg) = config_dir {
             put_right_restored_profile_names(store, cfg);
-            refresh_legacy_profiles_blob(store, cfg, "import (after restore)");
+            restored_list_unread =
+                !refresh_legacy_profiles_blob(store, cfg, "import (after restore)");
         }
     }
 
@@ -2303,8 +2305,12 @@ fn import_keystore_with_store(
     // after this import would mirror the partition over it. Without a partition the
     // next load migrates the blob. A failure is reported like the decisions' own, and
     // the rest stays imported. After a failed decision step list and blob are back
-    // as they were, and there is nothing to copy.
-    if profile_decisions_error.is_none() {
+    // as they were, and there is nothing to copy. A restored partition that could not
+    // be read did not reach the blob, which may still be the backup's old list: it
+    // keeps its own list, and the next load that reads it repairs the blob.
+    if profile_decisions_error.is_none()
+        && (!restored_list_unread || profiles_after_decisions.is_some())
+    {
         if let Some(db) = partition_db(config_dir) {
             if let Err(e) = adopt_restored_list(store, &db, profiles_after_decisions.is_some()) {
                 tracing::error!("Keystore import: restored server list not stored: {e}");
@@ -2357,21 +2363,28 @@ fn import_keystore_with_store(
 
 /// Mirror the active partition's profile list into the vault blob
 /// `config_server_profiles` (#736). Best-effort: a partition that cannot be
-/// read leaves the blob as it is, and the reason is logged with `stage`.
+/// read leaves the blob as it is, and the reason is logged with `stage`. Returns
+/// whether the partition was read, or there is none to read.
 fn refresh_legacy_profiles_blob(
     store: &crate::credential_store::CredentialStore,
     config_dir: &Path,
     stage: &str,
-) {
+) -> bool {
     let db_path = config_dir.join("user_partitions.db");
     match crate::user_partitions::refresh_legacy_profiles_blob_from_db(store, &db_path) {
-        Ok(true) => tracing::info!(
-            "Keystore {stage}: server profile list refreshed from the active partition"
-        ),
-        Ok(false) => {}
-        Err(e) => tracing::warn!(
-            "Keystore {stage}: server profile list kept as stored, partition not readable: {e}"
-        ),
+        Ok(true) => {
+            tracing::info!(
+                "Keystore {stage}: server profile list refreshed from the active partition"
+            );
+            true
+        }
+        Ok(false) => true,
+        Err(e) => {
+            tracing::warn!(
+                "Keystore {stage}: server profile list kept as stored, partition not readable: {e}"
+            );
+            false
+        }
     }
 }
 
@@ -4021,6 +4034,54 @@ mod tests {
         let message = refused.err().unwrap().to_string();
         assert!(message.contains("Unlock the account"), "{message}");
         assert_eq!(store.get("config_server_profiles").unwrap(), blob);
+    }
+
+    /// A restored partition with a row that cannot be read never reached the blob, so
+    /// the blob's older list must not replace it.
+    #[test]
+    fn a_restored_partition_that_cannot_be_read_keeps_its_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, cfg) = machine_with_a_frozen_blob(dir.path());
+        let db = cfg.join("user_partitions.db");
+        let unreadable = |conn: &rusqlite::Connection| -> i64 {
+            conn.query_row(
+                "SELECT COUNT(*) FROM server_profiles WHERE encrypted_blob = x'00'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.execute("UPDATE server_profiles SET encrypted_blob = x'00'", [])
+            .unwrap();
+        assert_eq!(unreadable(&conn), 1);
+        drop(conn);
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&vec![profile("srv_stale", "Stale")]).unwrap(),
+        );
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&db).unwrap().unwrap(),
+        );
+        let backup = dir.path().join("unreadable.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(result.profile_decisions_error, None);
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        assert_eq!(unreadable(&conn), 1, "the restored row was replaced");
     }
 
     /// An empty list in the blob is an answer only when a restore's decisions left it.

@@ -2,10 +2,10 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Shield, Server, Bot, Cloud, X, CheckCircle2, AlertTriangle, ArrowRight, Loader2 } from 'lucide-react';
 import { secureStore } from '../utils/secureStorage';
-import { addMigratedServerProfiles } from '../utils/serverProfileStore';
+import { addMigratedServerProfiles, readSavedServerProfilesForWrite } from '../utils/serverProfileStore';
 import type { ServerProfile } from '../types';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
@@ -98,12 +98,19 @@ export const KeystoreMigrationWizard: React.FC<KeystoreMigrationWizardProps> = (
     const [migratedCount, setMigratedCount] = useState(0);
     const [migrationError, setMigrationError] = useState<string | null>(null);
     const [removeLocalStorage, setRemoveLocalStorage] = useState(true);
+    // The account the profiles were found under, undefined until it has been read.
+    const detectedUserId = useRef<number | null | undefined>(undefined);
 
     // Step 1: Detect
     useEffect(() => {
         if (isOpen && step === 1) {
             const data = detectLocalStorageData();
             setDetected(data);
+            if (data.serverProfiles.count > 0) {
+                readSavedServerProfilesForWrite()
+                    .then(read => { detectedUserId.current = read.userId ?? null; })
+                    .catch(err => logger.warn('[Migration] Active account not read', err));
+            }
             // If nothing found, auto-complete
             const total = data.serverProfiles.count + (data.aiSettings.found ? 1 : 0) + data.oauthCredentials.count;
             if (total === 0) {
@@ -140,7 +147,7 @@ export const KeystoreMigrationWizard: React.FC<KeystoreMigrationWizardProps> = (
                     // Route into the active user's vault partition so the
                     // migrated profiles land under the default-user id and
                     // not in the legacy shared blob.
-                    await addMigratedServerProfiles(task.data as ServerProfile[]);
+                    await addMigratedServerProfiles(task.data as ServerProfile[], detectedUserId.current);
                 } else {
                     await secureStore(task.key, task.data);
                 }

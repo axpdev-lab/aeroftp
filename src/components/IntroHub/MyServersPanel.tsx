@@ -1385,18 +1385,21 @@ export function MyServersPanel({
         try {
             const accountBefore = accountChangeGeneration();
             const { profiles: currentServers, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
+            // From the list just read: the card clicked may be the previous account's.
+            const source = currentServers.find(s => s.id === server.id);
+            if (!source) return;
             const newId = `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
             const dup: ServerProfile = {
-                ...server,
+                ...source,
                 id: newId,
-                name: `${server.name} (copy)`,
+                name: `${source.name} (copy)`,
                 lastConnected: undefined,
                 hasStoredCredential: false,
                 hasStoredFilenApiKey: false,
                 hasStoredAeroCryptPassword: false,
                 hasStoredAeroCryptSalt: false,
             };
-            const copiedSecrets = await copyProfileVaultSecrets(server.id, newId, server.protocol, profilesUserId);
+            const copiedSecrets = await copyProfileVaultSecrets(source.id, newId, source.protocol, profilesUserId);
             dup.hasStoredCredential = copiedSecrets.server;
             dup.hasStoredFilenApiKey = copiedSecrets.filen_api_key;
             dup.hasStoredAeroCryptPassword = copiedSecrets.aerocrypt_overlay_pw;
@@ -1413,7 +1416,7 @@ export function MyServersPanel({
                 // acts on the active account: after a switch it could miss them or hit
                 // another's, so they stay, unused under an id nothing refers to.
                 if (accountChangeGeneration() === accountBefore) {
-                    await deleteProfileVaultSecrets(newId, server.protocol).catch(e => logger.warn('Secrets of the unsaved copy could not be removed', e));
+                    await deleteProfileVaultSecrets(newId, source.protocol).catch(e => logger.warn('Secrets of the unsaved copy could not be removed', e));
                 }
                 throw err;
             }
@@ -1428,13 +1431,13 @@ export function MyServersPanel({
             const dedupKey = getStorageDedupKey(copy);
             logActivity(
                 'PROFILE_DUPLICATE',
-                `Duplicate profile detected: "${copy.name}" overlaps with "${server.name}"`,
+                `Duplicate profile detected: "${copy.name}" overlaps with "${source.name}"`,
                 'success',
                 `dedupKey=${dedupKey}`,
             );
             logActivity(
                 'PROFILE_SAVE',
-                `Profile duplicated: "${server.name}" → "${copy.name}"`,
+                `Profile duplicated: "${source.name}" → "${copy.name}"`,
                 'success',
                 `dedupKey=${dedupKey}`,
             );

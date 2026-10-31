@@ -179,6 +179,7 @@ mod only_main_window_tests {
     fn secrets_and_shell_answer_the_main_window_only() {
         for command in [
             "get_credential",
+            "import_server_profiles",
             "ai_delegate_local",
             "ai_cancel_delegation",
             "provider_site_command",
@@ -18254,10 +18255,12 @@ pub async fn export_server_profiles_core(
 /// the user already has. The report carries the list stored.
 #[tauri::command]
 async fn import_server_profiles(
+    webview: tauri::Webview,
     file_path: String,
     password: String,
     existing: Option<profile_import_plan::ExistingProfileMode>,
 ) -> Result<profile_import_plan::ProfileImportReport, String> {
+    only_main_window(webview.label(), "import_server_profiles")?;
     let store = credential_store::CredentialStore::from_cache().ok_or(IMPORT_VAULT_NOT_READY)?;
     let user = user_partitions::cli_get_active_user(&store)
         .map_err(|e| format!("{IMPORT_NEEDS_PARTITION}: {e}"))?
@@ -18717,6 +18720,48 @@ impl profile_import_plan::SecretSlots for VaultSecretSlots<'_> {
     }
 }
 
+/// The global vault singletons of an OAuth app, which every profile of the
+/// provider reads and no partition holds.
+struct OAuthAppSlots<'a> {
+    store: &'a credential_store::CredentialStore,
+}
+
+impl profile_import_plan::SecretSlots for OAuthAppSlots<'_> {
+    type Snapshot = Option<zeroize::Zeroizing<String>>;
+
+    fn snapshot(&self, write: &profile_import_plan::SecretWrite) -> Result<Self::Snapshot, String> {
+        Ok(vault_value(self.store, &write.key)?.map(zeroize::Zeroizing::new))
+    }
+
+    fn write(&self, write: &profile_import_plan::SecretWrite) -> Result<(), String> {
+        self.store
+            .store(&write.key, &write.value)
+            .map_err(|e| e.to_string())
+    }
+
+    fn restore(
+        &self,
+        write: &profile_import_plan::SecretWrite,
+        before: Self::Snapshot,
+    ) -> Result<(), String> {
+        let current = vault_value(self.store, &write.key)?;
+        match profile_import_plan::rollback_action(
+            current.as_deref(),
+            &write.value,
+            before.as_ref().map(|value| value.as_str()),
+        ) {
+            profile_import_plan::RollbackAction::Leave => Ok(()),
+            profile_import_plan::RollbackAction::Restore(value) => self
+                .store
+                .store(&write.key, value)
+                .map_err(|e| e.to_string()),
+            profile_import_plan::RollbackAction::Delete => {
+                self.store.delete(&write.key).map_err(|e| e.to_string())
+            }
+        }
+    }
+}
+
 /// Which profiles had a secret restored whose presence the redaction reports:
 /// a binding or a key can round-trip without its secret when the export left
 /// credentials out or the vault was not ready.
@@ -18972,17 +19017,29 @@ fn restore_shared_import_secrets(
                             secrets.oauth_client_id.as_deref(),
                         ) =>
                     {
-                        for (name, value) in [
+                        let writes = [
                             ("client_id", &secrets.oauth_client_id),
                             ("client_secret", &secrets.oauth_client_secret),
                             ("region", &secrets.oauth_region),
-                        ] {
-                            let Some(value) = value else { continue };
-                            if let Err(e) = store.store(&format!("oauth_{cred_slug}_{name}"), value)
-                            {
-                                log::warn!("Import: {profile_id} oauth {name}: {e}");
-                                shared.failed.insert(profile_id.clone());
-                            }
+                        ]
+                        .into_iter()
+                        .filter_map(|(name, value)| {
+                            value.as_deref().map(|value| {
+                                profile_import_plan::SecretWrite::new(
+                                    format!("oauth_{cred_slug}_{name}"),
+                                    None,
+                                    value,
+                                )
+                            })
+                        })
+                        .collect();
+                        // All or none: a client id without its secret cannot sign in.
+                        if let Err(e) = profile_import_plan::apply_secret_writes(
+                            &OAuthAppSlots { store },
+                            writes,
+                        ) {
+                            log::warn!("Import: {profile_id} oauth app: {e}");
+                            shared.failed.insert(profile_id.clone());
                         }
                     }
                     (Ok(_), Ok(_)) => {

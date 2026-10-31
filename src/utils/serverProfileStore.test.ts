@@ -327,6 +327,14 @@ describe('addMigratedServerProfiles', () => {
         });
     });
 
+    it('refuses an account other than the one the migration found them under', async () => {
+        mockInvoke.mockReset();
+        mockInvoke.mockResolvedValueOnce({ userId: 9, profiles: [], revision: 'r1' });
+        await expect(addMigratedServerProfiles([sampleProfile()], 4)).rejects.toThrow('ACCOUNT_CHANGED');
+        expect(mockInvoke.mock.calls.some(call => call[0] === 'user_partitions_save_active_server_profiles')).toBe(false);
+        mockInvoke.mockReset();
+    });
+
     it('fails without writing when the list cannot be read', async () => {
         mockInvoke.mockReset();
         mockInvoke.mockImplementation(async (command: string) => {

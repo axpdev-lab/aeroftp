@@ -316,9 +316,16 @@ export const mergeSavedServerProfile = async (
  * Add the profiles a migration found to the active account's list, bound to the
  * account and the revision read just before. A profile the list already holds stays
  * as it is: a migration that runs late must not undo what was saved since.
+ *
+ * @param expectedUserId the account active when the migration found them (`null`:
+ *   the legacy store, which has no account). Another one now refuses the write:
+ *   the CLI can switch while the wizard is open. Undefined skips the check.
  */
-export const addMigratedServerProfiles = (migrated: ServerProfile[]): Promise<ServerProfile[]> =>
-    withFreshSavedProfiles(({ profiles, userId, revision }) => {
+export const addMigratedServerProfiles = (migrated: ServerProfile[], expectedUserId?: number | null): Promise<ServerProfile[]> =>
+    withFreshSavedProfiles(async ({ profiles, userId, revision }) => {
+        if (expectedUserId !== undefined && (userId ?? null) !== expectedUserId) {
+            throw new Error('ACCOUNT_CHANGED: the active account changed since the profiles to migrate were found; nothing was saved');
+        }
         const held = new Set(profiles.map(s => s.id));
         return storeSavedServerProfiles([...profiles, ...migrated.filter(s => !held.has(s.id))], false, userId, revision);
     });

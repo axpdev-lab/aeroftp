@@ -3843,7 +3843,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                         // The restore stored the list in the active account's partition itself, under
                                                                         // the list lock: a load before that would have lost what it left in the blob.
                                                                         try {
-                                                                            setServers(await reloadRestoredServerProfiles());
+                                                                            const accountBefore = accountChangeGeneration();
+                                                                            const restored = await reloadRestoredServerProfiles();
+                                                                            // A switch meanwhile brings its own re-read: this list is the previous account's.
+                                                                            if (accountChangeGeneration() === accountBefore) setServers(restored);
                                                                             onServersChanged?.();
                                                                         } catch (err) {
                                                                             logger.warn('Imported server profiles could not be read', err);

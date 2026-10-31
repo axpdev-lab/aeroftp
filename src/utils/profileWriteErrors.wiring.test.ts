@@ -550,7 +550,8 @@ describe('the saved-profile list shown after a write', () => {
 
     it('Settings never shows the list it sent once the write has stored it', () => {
         // Its one list write is the keystore restore, which shows what that stored.
-        expect(settingsSource).not.toMatch(/await storeSavedServerProfiles\(\w+/);
-        expect(settingsSource).toContain('setServers(await reloadRestoredServerProfiles());');
+        expect(settingsSource).not.toMatch(/await storeSavedServerProfiles\(/);
+        expect(settingsSource).toContain('const restored = await reloadRestoredServerProfiles();');
+        expect(settingsSource).toContain('if (accountChangeGeneration() === accountBefore) setServers(restored);');
     });
 });

@@ -3566,10 +3566,11 @@ pub fn credential_owner_and_fallback(explicit: Option<i64>) -> Result<(Option<i6
 /// fallback even while the credential store is closed.
 pub fn ensure_credential_user_unlocked(user_id: i64) -> Result<(), String> {
     let conn = open_or_init_cli()?;
-    if !read_user_key_row(&conn, user_id)?.has_passphrase {
+    let row = read_user_key_row(&conn, user_id)?;
+    if !row.has_passphrase {
         return Ok(());
     }
-    if session_unlocks(user_id)? {
+    if session_unlocks(user_id, &row.dek_verifier)? {
         Ok(())
     } else {
         Err("USER_LOCKED".to_string())
@@ -3577,13 +3578,14 @@ pub fn ensure_credential_user_unlocked(user_id: i64) -> Result<(), String> {
 }
 
 /// Whether the session holds `user_id`'s key.
-fn session_unlocks(user_id: i64) -> Result<bool, String> {
+fn session_unlocks(user_id: i64, dek_verifier: &[u8]) -> Result<bool, String> {
     let _session = hold_session()?;
-    Ok(HELD_SESSION.with_borrow(|held| {
-        held.as_ref()
-            .and_then(Option::as_ref)
-            .is_some_and(|(session_user, _)| *session_user == user_id)
-    }))
+    HELD_SESSION.with_borrow(|held| match held.as_ref().and_then(Option::as_ref) {
+        Some((session_user, dek)) if *session_user == user_id => {
+            user_crypto::verify_dek(dek, dek_verifier)
+        }
+        _ => Ok(false),
+    })
 }
 
 /// Whether the active account of the database at `db_path` is protected by a
@@ -3597,10 +3599,13 @@ pub fn active_user_locked_in_db(db_path: &std::path::Path) -> Result<bool, Strin
     let Some(user_id) = active_user_id(&conn)? else {
         return Ok(false);
     };
-    if !read_user_key_row(&conn, user_id)?.has_passphrase {
+    let row = read_user_key_row(&conn, user_id)?;
+    if !row.has_passphrase {
         return Ok(false);
     }
-    Ok(!session_unlocks(user_id)?)
+    // A restored database can give this numeric id to another account, so the id
+    // alone does not say that this process's session opens it.
+    Ok(!session_unlocks(user_id, &row.dek_verifier)?)
 }
 
 /// Strict write of one secret into `user_id`'s partition only, never the
@@ -3802,29 +3807,17 @@ pub fn restore_credential_for_user(
     use crate::profile_import_plan::{rollback_action, RollbackAction};
     let mut conn = open_or_init_cli()?;
     let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
-    // The session and the partition's transaction first, through both places: if
-    // either cannot be had, nothing is restored, so the two cannot end up apart. The
-    // session before the reservation ([`SessionHold`]). Check and restore share the
-    // transaction: a token refreshed in between stays.
+    // The session and the partition's transaction first: if either cannot be had,
+    // nothing is restored. The session before the reservation ([`SessionHold`]). Check
+    // and restore share the transaction: a token refreshed in between stays.
     let _session = hold_user_session(&conn, user_id);
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| format!("Start credential restore: {e}"))?;
     let partition = get_user_credential_for(&tx, &root_key, user_id, credential_id)?;
     let vault = get_optional_secret(store, credential_id)?;
-    match rollback_action(
-        vault.as_ref().map(|v| v.as_str()),
-        written,
-        before.vault.as_ref().map(|v| v.as_str()),
-    ) {
-        RollbackAction::Leave => {}
-        RollbackAction::Restore(value) => store
-            .store(credential_id, value)
-            .map_err(|e| format!("Restore credential in vault: {e}"))?,
-        RollbackAction::Delete => store
-            .delete(credential_id)
-            .map_err(|e| format!("Delete credential from vault: {e}"))?,
-    }
+    // The partition first: until the commit it can still go back by itself, so a
+    // failure here or in the vault leaves both places holding what they held.
     match rollback_action(
         partition.as_ref().map(|v| v.as_str()),
         written,
@@ -3838,8 +3831,38 @@ pub fn restore_credential_for_user(
         }
         RollbackAction::Delete => delete_user_credential_for(&tx, user_id, credential_id)?,
     }
-    tx.commit()
-        .map_err(|e| format!("Commit credential restore: {e}"))
+    let vault_action = rollback_action(
+        vault.as_ref().map(|v| v.as_str()),
+        written,
+        before.vault.as_ref().map(|v| v.as_str()),
+    );
+    let vault_changed = vault_action != RollbackAction::Leave;
+    match vault_action {
+        RollbackAction::Leave => {}
+        RollbackAction::Restore(value) => store
+            .store(credential_id, value)
+            .map_err(|e| format!("Restore credential in vault: {e}"))?,
+        RollbackAction::Delete => store
+            .delete(credential_id)
+            .map_err(|e| format!("Delete credential from vault: {e}"))?,
+    }
+    if let Err(e) = tx.commit() {
+        let cause = format!("Commit credential restore: {e}");
+        // The partition keeps what it held, so the vault goes back to match it.
+        if vault_changed {
+            let undone = match vault.as_ref() {
+                Some(value) => store.store(credential_id, value.as_str()),
+                None => store.delete(credential_id),
+            };
+            if let Err(undo) = undone {
+                return Err(format!(
+                    "{cause}; the vault could not be put back to match the partition: {undo}"
+                ));
+            }
+        }
+        return Err(cause);
+    }
+    Ok(())
 }
 
 /// Active-user dual delete (GUI): delete from the vault and best-effort from the
@@ -4142,6 +4165,12 @@ fn unlock_user_inner(
     passphrase: Option<&str>,
     promote_to_active: bool,
 ) -> Result<UserUnlockStatus, String> {
+    // Promoting another account is a switch ([`set_active_user`]).
+    let _lock = if promote_to_active && active_user_id(conn)? != Some(user_id) {
+        ProfileListLock::acquire(conn)?
+    } else {
+        None
+    };
     let row = read_user_key_row(conn, user_id)?;
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
 
@@ -4443,6 +4472,8 @@ pub fn rekey_transport_deks(
 }
 
 pub fn set_active_user(conn: &Connection, user_id: i64) -> Result<(), String> {
+    // A switch must not land between an import's account check and its writes.
+    let _lock = ProfileListLock::acquire(conn)?;
     clear_user_session();
     set_active_user_row(conn, user_id)
 }
@@ -7648,9 +7679,37 @@ mod tests {
             admin_reset_user_passphrase(&mut conn, &root, other.id, None).err(),
             Some(busy.clone())
         );
-        assert_eq!(delete_user(&mut conn, other.id).err(), Some(busy));
+        assert_eq!(delete_user(&mut conn, other.id).err(), Some(busy.clone()));
+        // A switch waits too, by both of its doors, and leaves the account as it was.
+        assert_eq!(set_active_user(&conn, other.id).err(), Some(busy.clone()));
+        assert_eq!(
+            unlock_user(&conn, &root, other.id, None).map(|_| ()).err(),
+            Some(busy)
+        );
+        assert_eq!(active_user_id(&conn).unwrap(), Some(user));
         drop(held);
         replace_server_profiles_for(&mut conn, &root, user, &list).expect("free again");
+    }
+
+    /// The same numeric id in a restored database can be another account: a session
+    /// whose key does not open it does not count as unlocked.
+    #[test]
+    fn a_session_that_does_not_open_the_partition_leaves_the_account_locked() {
+        let _guard = test_lock();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("partitions.db");
+        let mut conn = open_or_init_path(path.clone()).expect("open");
+        let root = test_root();
+        migrate_legacy_payloads(&mut conn, Some("[]"), None, &root).expect("seed");
+        let protected =
+            create_user(&mut conn, &root, "Protected", None, None, Some("pass")).expect("create");
+        set_active_user(&conn, protected.id).expect("switch");
+        assert!(active_user_locked_in_db(&path).unwrap());
+        unlock_user(&conn, &root, protected.id, Some("pass")).expect("unlock");
+        assert!(!active_user_locked_in_db(&path).unwrap());
+        set_user_session(protected.id, user_crypto::secret_key_from_bytes(&[7u8; 32])).unwrap();
+        assert!(active_user_locked_in_db(&path).unwrap());
+        clear_user_session();
     }
 
     /// A list another writer saved after the read is refused, in both write paths,

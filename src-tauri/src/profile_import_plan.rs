@@ -474,11 +474,41 @@ const OMITTED_WHEN_EMPTY: [&str; 6] = [
     "persistModeCredentials",
 ];
 
+/// Whether a stored SAS token can still open what `imported` points at. A service
+/// SAS (it carries `sr`) is signed for one container. An account SAS (no `sr`)
+/// reaches all of them, and a file that names no container changes nothing.
+fn stored_sas_applies(
+    token: &serde_json::Value,
+    existing: &serde_json::Value,
+    imported: &serde_json::Value,
+) -> bool {
+    let is_service_sas = token.as_str().is_some_and(|token| {
+        token
+            .trim_start_matches('?')
+            .split('&')
+            .any(|pair| pair.split('=').next() == Some("sr"))
+    });
+    let container = |profile: &serde_json::Value| -> Option<String> {
+        let options = profile.get("options")?;
+        ["container", "bucket"]
+            .iter()
+            .find_map(|key| options.get(*key)?.as_str())
+            .filter(|name| !name.is_empty())
+            .map(str::to_string)
+    };
+    !is_service_sas
+        || match container(imported) {
+            Some(name) => container(existing).as_deref() == Some(name.as_str()),
+            None => true,
+        }
+}
+
 /// The options that decide where a stored secret travels and how: which server
 /// a connection reaches, and whether it is protected on the way (a backup that
 /// turns TLS or certificate checks off must not take a saved password with it).
 /// A bucket or a container is not here: it is a place on the same server, for
-/// the same account, over the same connection.
+/// the same account, over the same connection ([`stored_sas_applies`] is the one
+/// secret bound to it).
 const OPTIONS_THAT_GUARD_THE_SECRET: [&str; 13] = [
     "endpoint",
     "region",
@@ -589,6 +619,9 @@ pub fn overwrite_profile(
                     .get("options")
                     .and_then(|v| v.get(key.as_str()))
                     .is_none()
+            })
+            .filter(|(key, value)| {
+                key.as_str() != "sasToken" || stored_sas_applies(value, existing, imported)
             })
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect();
@@ -842,6 +875,25 @@ mod tests {
         assert_eq!(
             merged["options"],
             json!({"totp_secret": "stored-seed", "sasToken": "stored-sas"})
+        );
+
+        // A service SAS is signed for one container and stays behind when the file
+        // moves to another. An account SAS opens them all.
+        let azure = |sas: &str, bucket: &str| json!({"id": "srv_a", "options": {"bucket": bucket, "sasToken": sas}});
+        let moved = json!({"id": "srv_a", "options": {"bucket": "other"}});
+        let unmoved = json!({"id": "srv_a", "options": {"bucket": "mine"}});
+        let service = "sv=2024&sr=c&sig=x";
+        let kept = |existing: &serde_json::Value, imported: &serde_json::Value| {
+            overwrite_profile(existing, imported)["options"]["sasToken"].clone()
+        };
+        assert_eq!(
+            kept(&azure(service, "mine"), &moved),
+            serde_json::Value::Null
+        );
+        assert_eq!(kept(&azure(service, "mine"), &unmoved), service);
+        assert_eq!(
+            kept(&azure("sv=2024&ss=b&sig=x", "mine"), &moved),
+            "sv=2024&ss=b&sig=x"
         );
 
         let merged = overwrite_profile(&existing, &imported);

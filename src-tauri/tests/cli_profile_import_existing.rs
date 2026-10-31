@@ -201,6 +201,7 @@ async fn a_backup_of_a_profile_still_held_is_skipped_overwritten_or_duplicated()
 
     // Duplicated from the backup, whose account (the restored host) the saved
     // profile now shares, so the copy is reported as similar.
+    let whole_before = saved_whole(config).await;
     let preview = import(
         config,
         &backup,
@@ -210,6 +211,11 @@ async fn a_backup_of_a_profile_still_held_is_skipped_overwritten_or_duplicated()
     assert_eq!(preview["would_duplicate"], 1, "{preview}");
     assert_eq!(preview["duplicated"][0], "lab (1)", "{preview}");
     assert_eq!(saved(config), original, "a dry run writes nothing");
+    assert_eq!(
+        saved_whole(config).await,
+        whole_before,
+        "a dry run writes nothing"
+    );
 
     // Restored secrets also reach the shared vault key, so a --user that is not
     // the active account is refused; a dry run writes nothing and may preview it.

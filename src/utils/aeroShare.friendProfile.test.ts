@@ -9,7 +9,7 @@ import { upsertFriendProfile } from './aeroShare';
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
 const other = { id: 'srv_other', name: 'Saved elsewhere', host: 'h', port: 21, username: 'u' };
-const binding = { afid: 'friend-afid', alias: 'Friend' };
+const binding = { afid: 'friend-afid', alias: 'Friend', namespace: 'ns-friend', ticket: 'ticket-friend' };
 
 /** The backend: each read answers the next of `reads`, each save the next of `saves`. */
 const backend = (reads: unknown[], saves: unknown[]) => {
@@ -39,10 +39,11 @@ describe('upsertFriendProfile after another writer saved', () => {
         );
         await upsertFriendProfile(binding);
         expect(saves()).toHaveLength(2);
-        const last = saves()[1][1] as { profiles: { id: string }[]; expectedUserId: number; expectedRevision: string };
+        const last = saves()[1][1] as { profiles: { id: string; options?: Record<string, string> }[]; expectedUserId: number; expectedRevision: string };
         expect(last.profiles[0]).toEqual(other);
         expect(last.profiles).toHaveLength(2);
         expect(last.profiles[1].id).toBe('peer_friend-afid');
+        expect(last.profiles[1].options).toMatchObject({ peerNamespace: 'ns-friend', peerTicket: 'ticket-friend' });
         expect(last.expectedUserId).toBe(4);
         expect(last.expectedRevision).toBe('r2');
     });

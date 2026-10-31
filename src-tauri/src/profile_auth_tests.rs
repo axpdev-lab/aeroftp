@@ -1,6 +1,41 @@
 use super::*;
 use std::sync::{Arc, Mutex};
 
+/// Slots whose write of one key fails, for a failure the real vault cannot be made
+/// to produce.
+struct FailingAt<'a, S> {
+    slots: S,
+    key: &'a str,
+}
+
+impl<S: crate::profile_import_plan::SecretSlots> crate::profile_import_plan::SecretSlots
+    for FailingAt<'_, S>
+{
+    type Snapshot = S::Snapshot;
+
+    fn snapshot(
+        &self,
+        write: &crate::profile_import_plan::SecretWrite,
+    ) -> Result<S::Snapshot, String> {
+        self.slots.snapshot(write)
+    }
+
+    fn write(&self, write: &crate::profile_import_plan::SecretWrite) -> Result<(), String> {
+        if write.key == self.key {
+            return Err("injected".to_string());
+        }
+        self.slots.write(write)
+    }
+
+    fn restore(
+        &self,
+        write: &crate::profile_import_plan::SecretWrite,
+        before: S::Snapshot,
+    ) -> Result<(), String> {
+        self.slots.restore(write, before)
+    }
+}
+
 // Fork before initializing either vault or user partitions. The child binary
 // and portable marker have a private pathname, even in a full parallel suite.
 #[test]
@@ -837,6 +872,87 @@ async fn durable_profile_auth_lifecycle(
         );
         assert!(store.get("filen_api_key_rollback").is_err());
 
+        // An OAuth app is one unit: a failure at its last key puts the first back,
+        // and clears the one that had nothing to go back to.
+        store
+            .store("oauth_rollback_client_id", "app-before")
+            .unwrap();
+        let refused = apply_secret_writes(
+            &FailingAt {
+                slots: crate::OAuthAppSlots { store },
+                key: "oauth_rollback_region",
+            },
+            vec![
+                SecretWrite::new("oauth_rollback_client_id".into(), None, "app-file"),
+                SecretWrite::new("oauth_rollback_client_secret".into(), None, "secret-file"),
+                SecretWrite::new("oauth_rollback_region".into(), None, "region-file"),
+            ],
+        )
+        .map(|_| ())
+        .unwrap_err();
+        assert!(!refused.contains("app-file"), "{refused}");
+        assert_eq!(store.get("oauth_rollback_client_id").unwrap(), "app-before");
+        assert!(store.get("oauth_rollback_client_secret").is_err());
+        assert!(store.get("oauth_rollback_region").is_err());
+        store.delete("oauth_rollback_client_id").unwrap();
+
+        // Undoing a write ends with both places agreeing, whatever fails. Partition
+        // step: the vault was never touched. Commit: the vault goes back to match.
+        let key = "server_rollback-order";
+        store.store(key, "vault-before").unwrap();
+        let before = users::snapshot_credential_for_user(store, active_id, key).unwrap();
+        users::store_imported_credential_for_user(store, active_id, key, None, "file-value")
+            .unwrap();
+        let in_partition = |conn: &rusqlite::Connection| {
+            users::get_user_credential_for(
+                conn,
+                &store.derive_user_partition_wrapping_key(),
+                active_id,
+                key,
+            )
+            .unwrap()
+            .map(|value| value.to_string())
+        };
+        let conn = users::open_or_init_cli().unwrap();
+        conn.execute_batch(&format!(
+            "CREATE TRIGGER refuse_undo BEFORE DELETE ON user_credentials
+             WHEN OLD.credential_id = '{key}'
+             BEGIN SELECT RAISE(ABORT, 'injected'); END;"
+        ))
+        .unwrap();
+        users::restore_credential_for_user(store, active_id, key, None, "file-value", &before)
+            .unwrap_err();
+        assert_eq!(store.get(key).unwrap(), "file-value");
+        assert_eq!(in_partition(&conn).unwrap(), "file-value");
+        conn.execute_batch(&format!(
+            "DROP TRIGGER refuse_undo;
+             CREATE TABLE commit_parent (id INTEGER PRIMARY KEY);
+             CREATE TABLE commit_child (parent INTEGER
+                 REFERENCES commit_parent(id) DEFERRABLE INITIALLY DEFERRED);
+             CREATE TRIGGER refuse_commit AFTER DELETE ON user_credentials
+             WHEN OLD.credential_id = '{key}'
+             BEGIN INSERT INTO commit_child VALUES (1); END;"
+        ))
+        .unwrap();
+        let refused =
+            users::restore_credential_for_user(store, active_id, key, None, "file-value", &before)
+                .unwrap_err();
+        assert!(
+            refused.starts_with("Commit credential restore"),
+            "{refused}"
+        );
+        assert_eq!(store.get(key).unwrap(), "file-value");
+        assert_eq!(in_partition(&conn).unwrap(), "file-value");
+        conn.execute_batch(
+            "DROP TRIGGER refuse_commit; DROP TABLE commit_child; DROP TABLE commit_parent;",
+        )
+        .unwrap();
+        users::restore_credential_for_user(store, active_id, key, None, "file-value", &before)
+            .unwrap();
+        assert_eq!(store.get(key).unwrap(), "vault-before");
+        assert!(in_partition(&conn).is_none());
+        store.delete(key).unwrap();
+
         // A write that reaches the vault and then fails in the partition goes back
         // in the vault too, and the error names the key.
         store
@@ -1040,6 +1156,43 @@ async fn durable_profile_auth_lifecycle(
     assert_eq!(repeated.servers[1]["importOutcome"], "duplicated");
     assert_eq!(repeated.jotta_chains.len(), 1);
     assert_eq!(repeated.jotta_chains[0].id, repeated.servers[0]["id"]);
+    // Stored for real: two ids, and the chain stays with the first of them. The
+    // first is an added profile, which reports its overlay password and stores it.
+    let repeated = import_over(
+        store,
+        repeated_file.to_string_lossy().into_owned(),
+        "fixture-export-password".into(),
+        ExistingProfileMode::Duplicate,
+        &[],
+        active,
+        false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(repeated.servers[0]["importOutcome"], "added");
+    assert_eq!(repeated.servers[0]["hasStoredAeroCryptPassword"], true);
+    let (first, second) = (
+        field(&repeated.servers[0], "id"),
+        field(&repeated.servers[1], "id"),
+    );
+    assert_ne!(first, second);
+    let stored_first = repeated
+        .stored
+        .iter()
+        .find(|p| p["id"].as_str() == Some(first))
+        .unwrap();
+    assert_eq!(stored_first["hasStoredAeroCryptPassword"], true);
+    assert!(repeated
+        .stored
+        .iter()
+        .any(|p| p["id"].as_str() == Some(second)));
+    assert_eq!(
+        read(&format!("jottacloud_refresh_{first}"))
+            .unwrap()
+            .as_str(),
+        "synthetic-refresh-chain"
+    );
+    assert!(read(&format!("jottacloud_refresh_{second}")).is_none());
 
     // The profile whose own chain is the singleton refreshes it on an overwrite.
     users::store_active_credential_typed_dual(

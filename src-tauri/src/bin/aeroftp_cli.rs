@@ -25010,6 +25010,25 @@ fn users_tui_pick(fav_marker: &str) -> std::io::Result<SectionTuiOutcome> {
 /// (lowercase) name, then exact id, then disambiguated substring. Mirrors
 /// the same precedence used by `--profile` so the interactive flow stays
 /// consistent with scripted invocations.
+/// Where `source`, read earlier, stands in a list read again: by id, and by name
+/// for a profile saved without one.
+fn position_of_profile(
+    profiles: &[serde_json::Value],
+    source: &serde_json::Value,
+) -> Option<usize> {
+    let field = |p: &serde_json::Value, key: &str| -> String {
+        p.get(key)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
+    let id = field(source, "id");
+    let name = field(source, "name");
+    profiles
+        .iter()
+        .position(|p| field(p, "id") == id && (!id.is_empty() || field(p, "name") == name))
+}
+
 fn resolve_profile_selector(
     profiles: &[serde_json::Value],
     selector: &str,
@@ -28418,10 +28437,7 @@ fn cmd_proton_mode_switch(
             &store,
             |e| e,
             |profiles| {
-                let source_id = text("id");
-                let idx = profiles
-                    .iter()
-                    .position(|p| p.get("id").and_then(|v| v.as_str()) == Some(source_id.as_str()))
+                let idx = position_of_profile(profiles, &source)
                     .ok_or_else(|| format!("Profile lookup failed: '{}' is gone", text("name")))?;
                 let mut copy = profiles[idx].clone();
                 // From the source as it stands now, not as first read.
@@ -81137,6 +81153,24 @@ mod tests {
             root: "/root".to_string(),
         };
         assert!(!filter.matches_file("outside.txt", "/root/../outside.txt", 1, None));
+    }
+
+    #[test]
+    fn position_of_profile_finds_one_saved_without_an_id() {
+        let listed = serde_json::json!([
+            {"name": "first"},
+            {"id": "srv_b", "name": "second"},
+            {"name": "third"},
+        ]);
+        let listed = listed.as_array().unwrap();
+        assert_eq!(position_of_profile(listed, &listed[2]), Some(2));
+        assert_eq!(position_of_profile(listed, &listed[1]), Some(1));
+        let gone = serde_json::json!({"id": "srv_gone", "name": "first"});
+        assert_eq!(position_of_profile(listed, &gone), None);
+        assert_eq!(
+            position_of_profile(listed, &serde_json::json!({"name": "gone"})),
+            None
+        );
     }
 
     fn argv(parts: &[&str]) -> Vec<String> {
