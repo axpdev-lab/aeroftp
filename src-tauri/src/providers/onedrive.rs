@@ -345,6 +345,9 @@ pub struct OneDriveProvider {
     test_access_token: Option<String>,
 }
 
+/// Characters a OneDrive name cannot hold.
+const RESERVED_NAME_CHARS: &[char] = &['"', '*', ':', '<', '>', '?', '\\', '|'];
+
 impl OneDriveProvider {
     /// Build the provider and its HTTP client, with the limits of [`crate::providers::http_limits`].
     /// Nothing is sent until the first request.
@@ -773,6 +776,14 @@ impl OneDriveProvider {
 
     /// Get item by path
     async fn get_item(&self, path: &str) -> Result<DriveItem, ProviderError> {
+        // Such a name cannot exist on OneDrive, and Graph answers it with a 400:
+        // to a caller it is a path that is not there.
+        if path
+            .split('/')
+            .any(|name| name.contains(RESERVED_NAME_CHARS))
+        {
+            return Err(ProviderError::NotFound(path.to_string()));
+        }
         match self.fetch_item(path).await {
             // Graph does not follow a path through a shortcut: find the
             // shortcuts among its parents, then address it through them. A
@@ -2252,70 +2263,9 @@ impl StorageProvider for OneDriveProvider {
     }
 
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let item_id = if path == "/" || path.is_empty() {
-            "root".to_string()
-        } else {
-            self.resolve_container(path).await?
-        };
-
-        // Graph search(q=...) is a substring match on filename and ignores
-        // glob metacharacters. Strip glob chars for the server query, then
-        // apply the precise match client-side.
-        let literal: String = pattern
-            .chars()
-            .filter(|c| !matches!(c, '*' | '?' | '[' | ']'))
-            .collect();
-        let server_query = if literal.is_empty() {
-            ".".to_string()
-        } else {
-            literal
-        };
-
-        let url = format!(
-            "{}/search(q='{}')",
-            self.api_item(&item_id),
-            urlencoding::encode(&server_query)
-        );
-
-        let mut all_entries = Vec::new();
-        let mut current_url = url;
-
-        loop {
-            let response = self
-                .client
-                .get(&current_url)
-                .header(AUTHORIZATION, self.auth_header().await?)
-                .send()
-                .await
-                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-            if !response.status().is_success() {
-                let text = response.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!(
-                    "Search failed: {}",
-                    sanitize_api_error(&text)
-                )));
-            }
-
-            let result: ChildrenResponse = response
-                .json()
-                .await
-                .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
-
-            for item in &result.value {
-                let entry = self.to_remote_entry(item, path);
-                if super::matches_find_pattern(&entry.name, pattern) {
-                    all_entries.push(entry);
-                }
-            }
-
-            match result.next_link {
-                Some(next) if all_entries.len() < 500 => current_url = next,
-                _ => break,
-            }
-        }
-
-        Ok(all_entries)
+        // The search API answers outside the folder or without the hit's real
+        // path, and a caller acts on that path.
+        super::find_by_walk(self, path, pattern).await
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
@@ -3409,6 +3359,22 @@ mod tests {
         assert!(!paths.iter().any(|p| p.contains("deleted-parent-id")));
         assert!(paths.last().unwrap().contains("/root/children"));
         server.abort();
+    }
+
+    /// A name OneDrive cannot hold is a path that is not there, with no request:
+    /// Graph would answer it with a 400, and `rm -f` would fail on it.
+    #[tokio::test]
+    async fn a_name_onedrive_cannot_hold_is_not_found() {
+        let mut p = OneDriveProvider::new(OneDriveConfig {
+            client_id: "fixture".into(),
+            client_secret: "fixture".into(),
+        });
+        p.api_origin_override = Some("http://127.0.0.1:9".into());
+        p.test_access_token = Some("fixture".into());
+        assert!(matches!(
+            p.stat("/folder/a:b.txt").await,
+            Err(ProviderError::NotFound(_))
+        ));
     }
 
     /// #368 (Ehud): a folder reached through a shortcut ("Add shortcut to My

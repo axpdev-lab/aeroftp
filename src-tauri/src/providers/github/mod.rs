@@ -1834,11 +1834,7 @@ impl StorageProvider for GitHubProvider {
         true
     }
 
-    async fn find(
-        &mut self,
-        _path: &str,
-        pattern: &str,
-    ) -> Result<Vec<RemoteEntry>, ProviderError> {
+    async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -1854,6 +1850,9 @@ impl StorageProvider for GitHubProvider {
         #[derive(serde::Deserialize)]
         struct TreeResponse {
             tree: Vec<TreeItem>,
+            /// The tree was too large for one answer: the search walks instead.
+            #[serde(default)]
+            truncated: bool,
         }
         #[derive(serde::Deserialize)]
         struct TreeItem {
@@ -1870,16 +1869,26 @@ impl StorageProvider for GitHubProvider {
             .await
             .map_err(ProviderError::from)?;
 
+        if response.truncated {
+            return crate::providers::find_by_walk(self, path, pattern).await;
+        }
+
+        // The tree covers the whole repository: keep what is under the folder.
+        let under = match path.trim_matches('/') {
+            "" | "." => String::new(),
+            folder => format!("{folder}/"),
+        };
         let entries = response
             .tree
             .into_iter()
+            .filter(|item| item.path.starts_with(&under))
             .filter(|item| {
                 // Match filename or path against pattern (glob or substring)
                 let name = item.path.rsplit('/').next().unwrap_or(&item.path);
                 crate::providers::matches_find_pattern(name, pattern)
                     || crate::providers::matches_find_pattern(&item.path, pattern)
             })
-            .take(100)
+            .take(crate::providers::FIND_RESULT_LIMIT)
             .map(|item| {
                 let name = item
                     .path
@@ -1889,7 +1898,7 @@ impl StorageProvider for GitHubProvider {
                     .to_string();
                 RemoteEntry {
                     name,
-                    path: item.path,
+                    path: format!("/{}", item.path),
                     is_dir: item.item_type == "tree",
                     size: item.size.unwrap_or(0),
                     modified: None,

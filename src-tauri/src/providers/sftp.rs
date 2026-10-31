@@ -4219,7 +4219,7 @@ impl StorageProvider for SftpProvider {
         let root = self.normalize_path(path);
         let mut results = Vec::new();
         let mut walk = crate::sync_core::FindWalk::new(&root);
-        let mut dirs_to_scan = vec![root];
+        let mut dirs_to_scan = vec![root.clone()];
 
         while let Some(dir) = dirs_to_scan.pop() {
             let entries = match until_sftp_ends(&sftp.ended, sftp.read_dir(&dir)).await {
@@ -4229,6 +4229,8 @@ impl StorageProvider for SftpProvider {
                 // be read either.
                 Err(e) => match classify_russh_err(e, ProviderError::ServerError) {
                     lost @ ProviderError::ConnectionLost(_) => return Err(lost),
+                    // The folder searched itself is not an empty result.
+                    error if dir == root => return Err(error),
                     _ => continue,
                 },
             };

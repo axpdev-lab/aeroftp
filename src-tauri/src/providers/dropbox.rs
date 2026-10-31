@@ -45,6 +45,23 @@ const DROPBOX_TRANSFER_MAX_SESSIONS: u16 = 4;
 /// `total_size` / `part_size` (so `upload_part` rebuilds the byte offset
 /// from `part_number` alone) and the normalised destination path needed by
 /// the `upload_session/finish` commit body.
+/// What a failed upload session says: Dropbox's summary of the error, or the
+/// body without any session id, which must not reach a message or a log.
+fn session_error_text(body: &str) -> String {
+    let summary = serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|json| json.get("error_summary")?.as_str().map(str::to_string));
+    let text = summary.unwrap_or_else(|| {
+        static SESSION_ID: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+            regex::Regex::new(r#""[a-z_]*session_id"\s*:\s*"[^"]*""#).expect("a valid pattern")
+        });
+        SESSION_ID
+            .replace_all(body, r#""session_id":"***""#)
+            .into_owned()
+    });
+    sanitize_api_error(&text)
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
 struct DropboxMultipartMeta {
     session_id: String,
@@ -1278,7 +1295,7 @@ impl StorageProvider for DropboxProvider {
                 let text = start_resp.text().await.unwrap_or_default();
                 return Err(ProviderError::Other(format!(
                     "Upload session start failed: {}",
-                    sanitize_api_error(&text)
+                    session_error_text(&text)
                 )));
             }
 
@@ -1328,7 +1345,7 @@ impl StorageProvider for DropboxProvider {
                     let text = append_resp.text().await.unwrap_or_default();
                     return Err(ProviderError::Other(format!(
                         "Upload session append failed: {}",
-                        sanitize_api_error(&text)
+                        session_error_text(&text)
                     )));
                 }
 
@@ -1370,7 +1387,7 @@ impl StorageProvider for DropboxProvider {
                 let text = finish_resp.text().await.unwrap_or_default();
                 return Err(ProviderError::Other(format!(
                     "Upload session finish failed: {}",
-                    sanitize_api_error(&text)
+                    session_error_text(&text)
                 )));
             }
             progress.complete();
@@ -1633,75 +1650,9 @@ impl StorageProvider for DropboxProvider {
     }
 
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let search_path = self.normalize_path(path);
-
-        // Dropbox search_v2 treats the query as a substring on filename.content,
-        // so glob metacharacters confuse it. Send the literal core to the
-        // server for a broad prefilter and apply the precise match client-side
-        // via matches_find_pattern (glob via globset, substring fallback).
-        let literal: String = pattern
-            .chars()
-            .filter(|c| !matches!(c, '*' | '?' | '[' | ']'))
-            .collect();
-        let server_query = if literal.is_empty() {
-            ".".to_string() // any character, broadest possible prefilter
-        } else {
-            literal
-        };
-
-        let body = serde_json::json!({
-            "query": server_query,
-            "options": {
-                "path": if search_path.is_empty() { "" } else { search_path.as_str() },
-                "max_results": 200,
-                "file_status": "active"
-            }
-        });
-
-        let url = format!("{}/files/search_v2", API_BASE);
-
-        let response = self
-            .client
-            .post(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, "application/json")
-            .body(body.to_string())
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Search failed: {}",
-                sanitize_api_error(&text)
-            )));
-        }
-
-        #[derive(Deserialize)]
-        struct MatchMetadata {
-            metadata: DropboxMetadata,
-        }
-        #[derive(Deserialize)]
-        struct SearchMatch {
-            metadata: MatchMetadata,
-        }
-        #[derive(Deserialize)]
-        struct SearchResult {
-            matches: Vec<SearchMatch>,
-        }
-
-        let result: SearchResult = response
-            .json()
-            .await
-            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
-
-        Ok(result
-            .matches
-            .iter()
-            .map(|m| self.to_remote_entry(&m.metadata.metadata))
-            .filter(|e| super::matches_find_pattern(&e.name, pattern))
-            .collect())
+        // The search API answers outside the folder or without the hit's real
+        // path, and a caller acts on that path.
+        super::find_by_walk(self, path, pattern).await
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
@@ -2459,7 +2410,7 @@ impl StorageProvider for DropboxProvider {
             let mut msg = format!(
                 "Dropbox upload_session/start failed (HTTP {}): {}",
                 status,
-                sanitize_api_error(&text)
+                session_error_text(&text)
             );
             if let Some(tail) =
                 dropbox_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref())
@@ -2579,7 +2530,7 @@ impl StorageProvider for DropboxProvider {
                 "Dropbox upload_part {} failed (HTTP {}): {}",
                 part_number,
                 status,
-                sanitize_api_error(&text)
+                session_error_text(&text)
             );
             if let Some(tail) =
                 dropbox_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref())
@@ -2648,7 +2599,7 @@ impl StorageProvider for DropboxProvider {
             let mut msg = format!(
                 "Dropbox upload_session/append_v2 close=true failed (HTTP {}): {}",
                 status,
-                sanitize_api_error(&text)
+                session_error_text(&text)
             );
             if let Some(tail) =
                 dropbox_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref())
@@ -2695,7 +2646,7 @@ impl StorageProvider for DropboxProvider {
             let mut msg = format!(
                 "Dropbox upload_session/finish failed (HTTP {}): {}",
                 status,
-                sanitize_api_error(&text)
+                session_error_text(&text)
             );
             if let Some(tail) =
                 dropbox_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref())
@@ -2721,6 +2672,17 @@ impl StorageProvider for DropboxProvider {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_failed_session_keeps_its_id_out_of_the_message() {
+        let body = r#"{"error_summary":"path/disallowed_name/.","error":{".tag":"path"},"upload_session_id":"AAAAsecret"}"#;
+        assert_eq!(session_error_text(body), "path/disallowed_name/.");
+        assert_eq!(session_error_text("gateway down"), "gateway down");
+        let no_summary = session_error_text(r#"{"error":"x","upload_session_id":"AAAAsecret"}"#);
+        assert!(!no_summary.contains("AAAAsecret"), "{no_summary}");
+        let plain_id = session_error_text(r#"{"error":"x","session_id":"AAAAsecret"}"#);
+        assert!(!plain_id.contains("AAAAsecret"), "{plain_id}");
+    }
+
     #[tokio::test]
     async fn probe_contract_dropbox_root_uses_a_supported_probe() {
         use axum::response::IntoResponse;

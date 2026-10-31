@@ -7881,15 +7881,7 @@ pub async fn provider_find(
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    if !provider.supports_find() {
-        return Err(format!(
-            "{} does not support remote search",
-            provider.provider_type()
-        ));
-    }
-
-    provider
-        .find(&path, &pattern)
+    crate::providers::find_or_walk(provider.as_mut(), &path, &pattern)
         .await
         .map_err(|e| format!("Search failed: {}", e))
 }
@@ -8761,7 +8753,12 @@ pub async fn provider_compare_directories(
     let report = classify_with_summary(local_files, remote_files, &options, index.as_ref());
     info!(
         "Provider compare complete: {} differences out of {} examined (index: {})",
-        report.differences.len(),
+        // A row for a folder on both sides is not a difference to the window.
+        report
+            .differences
+            .iter()
+            .filter(|row| row.status != crate::sync::SyncStatus::Identical)
+            .count(),
         report.summary.examined_count,
         if index.is_some() { "used" } else { "none" }
     );
@@ -19050,6 +19047,12 @@ mod folder_download_live_tests {
         held: Option<String>,
         served_at_held: Option<usize>,
         failing: std::collections::HashSet<String>,
+        /// A listing moves the current folder, as on kDrive.
+        list_moves_cwd: bool,
+        /// `cd` fails.
+        cd_fails: bool,
+        /// The path a listing gives a file, where it differs from folder plus name.
+        canonical: HashMap<String, String>,
         /// Raised when a download starts, as the first Stop raises it.
         stop_on_download: Option<Arc<AtomicBool>>,
     }
@@ -19149,16 +19152,21 @@ mod folder_download_live_tests {
                 let mut st = self.state.lock().unwrap();
                 st.served_at_held = Some(st.served.len());
             }
+            if self.state.lock().unwrap().list_moves_cwd {
+                self.cwd = path.clone();
+            }
             let mut st = self.state.lock().unwrap();
             st.listed.push(path.clone());
             if st.failing.contains(&path) {
                 return Err(ProviderError::Other(format!("cannot list {path}")));
             }
             let (files, folders) = st.dirs.get(&path).cloned().unwrap_or_default();
+            let canonical = st.canonical.clone();
             Ok(files
                 .into_iter()
                 .map(|(name, size)| {
                     let full = format!("{path}/{name}");
+                    let full = canonical.get(&full).cloned().unwrap_or(full);
                     RemoteEntry::file(name, full, size)
                 })
                 .chain(folders.into_iter().map(|name| {
@@ -19171,6 +19179,9 @@ mod folder_download_live_tests {
             Ok(self.cwd.clone())
         }
         async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
+            if self.state.lock().unwrap().cd_fails {
+                return Err(ProviderError::Other("cd refused".to_string()));
+            }
             self.cwd = path.to_string();
             Ok(())
         }
@@ -19350,6 +19361,99 @@ mod folder_download_live_tests {
             )),
             "{error}"
         );
+    }
+
+    /// A search reports what `list` reports under the folder searched, at any
+    /// depth, with its real path: a caller may go on to delete it.
+    #[tokio::test]
+    async fn a_walked_search_stays_under_its_folder_with_real_paths() {
+        let (mut tree, state) =
+            FolderTree::new(&["a.txt", "sub/deep/a.txt", "sub/b.bin", "other/a.txt"]);
+        state.lock().unwrap().dirs.remove("/r/other");
+        state
+            .lock()
+            .unwrap()
+            .dirs
+            .insert("/elsewhere".into(), (vec![("a.txt".into(), 4)], vec![]));
+        let mut found: Vec<String> = crate::providers::find_by_walk(&mut tree, "/r/sub", "a.txt")
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|entry| entry.path)
+            .collect();
+        found.sort();
+        assert_eq!(found, ["/r/sub/deep/a.txt"]);
+    }
+
+    /// A hit carries the path the listing gave it, not one rebuilt from the
+    /// folder and the name: a provider can spell it differently.
+    #[tokio::test]
+    async fn a_walked_search_keeps_the_path_the_listing_gave() {
+        let (mut tree, state) = FolderTree::new(&["sub/Canonical/a.txt"]);
+        state.lock().unwrap().canonical.insert(
+            "/r/sub/Canonical/a.txt".to_string(),
+            "/r/sub/canonical/a.txt".to_string(),
+        );
+        let found = crate::providers::find_by_walk(&mut tree, "/r/sub", "a.txt")
+            .await
+            .unwrap();
+        assert_eq!(found[0].path, "/r/sub/canonical/a.txt");
+    }
+
+    /// A provider that moves its current folder as it lists is back where it
+    /// was after a search, so a later relative upload lands where it should.
+    #[tokio::test]
+    async fn a_walked_search_leaves_the_current_folder_alone() {
+        let (mut tree, state) = FolderTree::new(&["a.txt", "sub/a.txt"]);
+        state.lock().unwrap().list_moves_cwd = true;
+        tree.cwd = "/r".to_string();
+        crate::providers::find_by_walk(&mut tree, "/r/sub", "a.txt")
+            .await
+            .unwrap();
+        assert_eq!(tree.cwd, "/r");
+        // A relative folder is read from the current one.
+        let found = crate::providers::find_by_walk(&mut tree, "sub", "a.txt")
+            .await
+            .unwrap();
+        assert_eq!(
+            found.iter().map(|e| e.path.as_str()).collect::<Vec<_>>(),
+            ["/r/sub/a.txt"]
+        );
+        assert_eq!(tree.cwd, "/r");
+    }
+
+    /// A search that cannot return to its folder fails, or a later relative
+    /// upload would land in the last folder it walked. A `..` in the folder is
+    /// resolved before it is listed.
+    #[tokio::test]
+    async fn a_walked_search_resolves_its_root_and_reports_a_lost_position() {
+        let (mut tree, state) = FolderTree::new(&["a.txt", "sub/a.txt"]);
+        tree.cwd = "/r".to_string();
+        let found = crate::providers::find_by_walk(&mut tree, "/r/sub/../sub", "a.txt")
+            .await
+            .unwrap();
+        assert_eq!(found.len(), 1);
+        state.lock().unwrap().list_moves_cwd = true;
+        state.lock().unwrap().cd_fails = true;
+        assert!(crate::providers::find_by_walk(&mut tree, "/r/sub", "a.txt")
+            .await
+            .is_err());
+    }
+
+    /// The folder searched that cannot be read is an error, not an empty
+    /// result; a subfolder that cannot be read leaves the rest of the search.
+    #[tokio::test]
+    async fn a_walked_search_fails_only_on_its_own_folder() {
+        let (mut tree, state) = FolderTree::new(&["a.txt", "sub/a.txt", "lost/a.txt"]);
+        state.lock().unwrap().failing.insert("/r/lost".to_string());
+        let found = crate::providers::find_by_walk(&mut tree, "/r", "a.txt")
+            .await
+            .unwrap();
+        assert_eq!(found.len(), 2);
+        state.lock().unwrap().failing.insert("/r".to_string());
+        assert!(crate::providers::find_by_walk(&mut tree, "/r", "a.txt")
+            .await
+            .is_err());
     }
 
     /// The first Stop while the scan runs ends the scan too: no further

@@ -12,7 +12,7 @@
 export const AEROSYNC_DEFAULT_EXCLUDES: readonly string[] = [
     'node_modules', '.git', '.DS_Store', 'Thumbs.db',
     '__pycache__', '*.pyc', '.env', 'target',
-    '*.aerocorrect',
+    '*.aerocorrect', '*.aerotmp',
 ];
 
 /**

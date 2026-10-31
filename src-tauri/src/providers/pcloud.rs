@@ -160,6 +160,19 @@ fn pcloud_throttle_error(context: &str, error: Option<&str>) -> ProviderError {
 }
 
 /// pCloud folder metadata
+/// pCloud dates its items in RFC 2822; every other provider reports ISO 8601.
+fn iso_modified<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let date = Option::<String>::deserialize(deserializer)?;
+    Ok(date.map(|date| {
+        crate::parse_remote_datetime(&date)
+            .map(|parsed| parsed.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
+            .unwrap_or(date)
+    }))
+}
+
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 struct PCloudMetadata {
@@ -170,6 +183,7 @@ struct PCloudMetadata {
     isfile: Option<bool>,
     #[serde(default)]
     size: u64,
+    #[serde(default, deserialize_with = "iso_modified")]
     modified: Option<String>,
     created: Option<String>,
     path: Option<String>,
@@ -242,7 +256,7 @@ struct PCloudPubLinkEntry {
     link: Option<String>,
     #[serde(default)]
     created: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "iso_modified")]
     modified: Option<String>,
     /// Metadata contains the path for the linked file/folder
     metadata: Option<PCloudPubLinkMeta>,
@@ -263,6 +277,7 @@ struct PCloudRevision {
     revisionid: u64,
     #[serde(default)]
     size: u64,
+    #[serde(default, deserialize_with = "iso_modified")]
     modified: Option<String>,
 }
 
@@ -2387,6 +2402,23 @@ impl PCloudProvider {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn dates_read_as_iso_like_every_other_provider() {
+        let read = |date: &str| {
+            let json = format!(r#"{{"name":"a","modified":{date}}}"#);
+            serde_json::from_str::<PCloudMetadata>(&json)
+                .unwrap()
+                .modified
+        };
+        assert_eq!(
+            read(r#""Sat, 31 Oct 2026 07:18:16 +0000""#).as_deref(),
+            Some("2026-10-31T07:18:16Z")
+        );
+        assert_eq!(read(r#""not a date""#).as_deref(), Some("not a date"));
+        let missing: PCloudMetadata = serde_json::from_str(r#"{"name":"a"}"#).unwrap();
+        assert_eq!(missing.modified, None);
+    }
+
     use super::*;
 
     fn test_provider() -> PCloudProvider {

@@ -187,6 +187,138 @@ pub fn matches_find_pattern(name: &str, pattern: &str) -> bool {
     }
 }
 
+/// Results a search returns, as the providers that walk their own tree do. A
+/// caller that gets this many cannot tell whether there are more, and says so.
+pub const FIND_RESULT_LIMIT: usize = 500;
+
+/// Folders a search lists before it gives up. The provider is held while it
+/// walks, and a search with few matches would otherwise read a whole account.
+const FIND_FOLDER_LIMIT: usize = 20_000;
+
+/// One absolute root for the walk and the listing, with `.` and `..` resolved.
+fn search_root(start: &str, path: &str) -> String {
+    let joined = if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("{start}/{path}")
+    };
+    let mut segments: Vec<&str> = Vec::new();
+    for segment in joined.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                segments.pop();
+            }
+            segment => segments.push(segment),
+        }
+    }
+    format!("/{}", segments.join("/"))
+}
+
+/// Whether a failed listing speaks about that folder alone. Anything else, a
+/// lost connection or expired sign-in above all, would fail the folders after
+/// it too, and a partial result would read as a complete one.
+fn listing_failure_is_the_folders(error: &ProviderError) -> bool {
+    matches!(
+        error,
+        ProviderError::NotFound(_)
+            | ProviderError::PermissionDenied(_)
+            | ProviderError::InvalidPath(_)
+            | ProviderError::ParseError(_)
+            | ProviderError::ServerError(_)
+            | ProviderError::Other(_)
+    )
+}
+
+/// Search under `path` by walking its listings, so every hit is under `path`
+/// and carries the path `list` gives it, which a caller may go on to delete.
+/// The folder searched failing, or a failure that is not about one folder, is
+/// an error, not an empty or partial result. A subfolder that cannot be listed
+/// is skipped with a warning, and a link is not followed.
+pub(crate) async fn find_by_walk<P>(
+    provider: &mut P,
+    path: &str,
+    pattern: &str,
+) -> Result<Vec<RemoteEntry>, ProviderError>
+where
+    P: StorageProvider + ?Sized,
+{
+    // Some providers move their current folder as they list: a search must not
+    // leave a later relative upload or delete in the last folder it walked.
+    let start = provider.pwd().await?;
+    let found = walk_for_find(provider, path, pattern, &start).await;
+    if provider.pwd().await.ok().as_deref() != Some(start.as_str()) {
+        provider.cd(&start).await?;
+    }
+    found
+}
+
+async fn walk_for_find<P>(
+    provider: &mut P,
+    path: &str,
+    pattern: &str,
+    start: &str,
+) -> Result<Vec<RemoteEntry>, ProviderError>
+where
+    P: StorageProvider + ?Sized,
+{
+    let root = search_root(start, path);
+    let mut walk = crate::sync_core::FindWalk::new(&root);
+    let mut folders = vec![root.clone()];
+    let mut listed = 0;
+    let mut results = Vec::new();
+    while let Some(folder) = folders.pop() {
+        listed += 1;
+        if listed > FIND_FOLDER_LIMIT {
+            return Err(ProviderError::Other(format!(
+                "Search stopped after {FIND_FOLDER_LIMIT} folders under {root}: search a smaller folder"
+            )));
+        }
+        let entries = match provider.list(&folder).await {
+            Ok(entries) => entries,
+            Err(error) if folder == root || !listing_failure_is_the_folders(&error) => {
+                return Err(error)
+            }
+            Err(error) => {
+                tracing::warn!("find: skipping {folder:?}: {error}");
+                continue;
+            }
+        };
+        let sorted = walk.sort(&folder, entries);
+        for (path, step) in &sorted.refused {
+            tracing::warn!(
+                "find: skipping {path:?}, named in {folder}: {}",
+                step.reason()
+            );
+        }
+        folders.extend(sorted.follow);
+        for entry in sorted.entries {
+            if matches_find_pattern(&entry.name, pattern) {
+                results.push(entry);
+                if results.len() >= FIND_RESULT_LIMIT {
+                    return Ok(results);
+                }
+            }
+        }
+    }
+    Ok(results)
+}
+
+/// The provider's own search, or a walk where it has none.
+pub(crate) async fn find_or_walk<P>(
+    provider: &mut P,
+    path: &str,
+    pattern: &str,
+) -> Result<Vec<RemoteEntry>, ProviderError>
+where
+    P: StorageProvider + ?Sized,
+{
+    match provider.find(path, pattern).await {
+        Err(ProviderError::NotSupported(_)) => find_by_walk(provider, path, pattern).await,
+        found => found,
+    }
+}
+
 /// H2: Maximum size for download_to_bytes operations (500 MB).
 /// Prevents OOM when a remote file is unexpectedly large.
 /// For larger files, use the streaming download() method instead.
