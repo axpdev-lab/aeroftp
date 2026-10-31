@@ -3373,7 +3373,12 @@ impl CloudService {
 
                     self.revoke_cloud_receipt(comparison);
                     provider
-                        .download(&remote_info.path, &local_path.to_string_lossy(), None)
+                        .download_checked(
+                            &remote_info.path,
+                            &local_path.to_string_lossy(),
+                            None,
+                            None,
+                        )
                         .await
                         .map_err(|e| format!("Download failed: {}", e))?;
                     // After download, preserve remote mtime on local file
@@ -3405,7 +3410,12 @@ impl CloudService {
                     }
                     self.revoke_cloud_receipt(comparison);
                     provider
-                        .download(&remote_info.path, &local_path.to_string_lossy(), None)
+                        .download_checked(
+                            &remote_info.path,
+                            &local_path.to_string_lossy(),
+                            None,
+                            None,
+                        )
                         .await
                         .map_err(|e| format!("KeepBoth download failed: {}", e))?;
                     // The original path now holds the remote copy, as after a

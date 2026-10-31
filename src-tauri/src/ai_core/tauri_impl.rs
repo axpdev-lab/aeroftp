@@ -510,7 +510,7 @@ impl RemoteBackend for TauriRemoteBackend {
             TauriRemoteBackend::Active { app } => {
                 if let Some(ref mut p) = *Self::active_provider(app).lock().await {
                     return p
-                        .download(remote, local, None)
+                        .download_checked(remote, local, None, None)
                         .await
                         .map_err(|e| e.to_string());
                 }
@@ -523,7 +523,7 @@ impl RemoteBackend for TauriRemoteBackend {
             TauriRemoteBackend::Temp { provider } => provider
                 .lock()
                 .await
-                .download(remote, local, None)
+                .download_checked(remote, local, None, None)
                 .await
                 .map_err(|e| e.to_string()),
         }

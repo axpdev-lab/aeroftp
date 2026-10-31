@@ -41,7 +41,7 @@ describe('segmented publication boundaries', () => {
   it('reports success once the final file has been atomically committed', () => {
     // A missing anchor must fail here: slicing on -1 gives '' and turned a
     // renamed call into an unrelated-looking assertion failure.
-    const start = executor.indexOf('None => match temp.publish(Path::new(local_path)).await');
+    const start = executor.indexOf('let published = match checked {');
     // Through the end of the function, so a cancellation added after the
     // publication arm is caught too.
     const end = executor.indexOf('\n}\n', start);
@@ -84,6 +84,6 @@ it('rechecks Stop immediately before the cross-profile single-stream fallback', 
     crossProfile.indexOf('// ── Planning:'),
   );
   expect(staging).toContain(
-    'check_copy_cancel(&options.cancel_token)?;\n    source.download(source_path, tmp_path, None).await',
+    'check_copy_cancel(&options.cancel_token)?;\n    source\n        .download_checked(source_path, tmp_path, None, None)',
   );
 });

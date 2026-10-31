@@ -1359,6 +1359,8 @@
             "aiKeysCount": "{count}টি AI কী",
             "oauthTokensCount": "{count}টি OAuth টোকেন",
             "configEntriesCount": "{count}টি কনফিগারেশন এন্ট্রি",
+            "verifyDownloadHash": "ডাউনলোড সার্ভারের হ্যাশের সাথে যাচাই করুন",
+            "verifyDownloadHashHelp": "ডাউনলোডের পরে ফাইলটি সার্ভারের প্রকাশিত হ্যাশের সাথে মিলিয়ে দেখা হয়, এবং না মিললে সেটি রাখা হয় না। হ্যাশ নেই এমন সার্ভারের ফাইল শুধু আকার দিয়ে যাচাই করা হয়।",
             "importExistingLabel": "যদি প্রোফাইল আগে থেকেই থাকে",
             "importExistingSkip": "এড়িয়ে যান",
             "importExistingOverwrite": "ওভাররাইট করুন",

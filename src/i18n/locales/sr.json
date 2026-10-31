@@ -1359,6 +1359,8 @@
             "aiKeysCount": "AI кључеви: {count}",
             "oauthTokensCount": "OAuth токени: {count}",
             "configEntriesCount": "Уноси конфигурације: {count}",
+            "verifyDownloadHash": "Провери преузимања према хешу сервера",
+            "verifyDownloadHashHelp": "Након преузимања датотека се упоређује са хешом који сервер објављује и не задржава се ако се разликују. Датотеке са сервера без хеша проверавају се само по величини.",
             "importExistingLabel": "Ако профил већ постоји",
             "importExistingSkip": "Прескочи",
             "importExistingOverwrite": "Препиши",

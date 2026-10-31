@@ -225,7 +225,7 @@ pub(crate) async fn single_file_transfer(
                 .await
         } else {
             provider
-                .download(&item.remote_path, &item.local_path, None)
+                .download_checked(&item.remote_path, &item.local_path, None, None)
                 .await
         }
     };

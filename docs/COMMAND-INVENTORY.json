@@ -574,7 +574,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 40,
     "mcp_tools_total": 78,
-    "tauri_commands": 796
+    "tauri_commands": 797
   },
   "mcp": {
     "count": 78,
@@ -972,7 +972,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 466,
+    "name_matched_count": 467,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -1339,6 +1339,7 @@
       "download_folder",
       "upload_folder",
       "cancel_transfer",
+      "set_download_content_check",
       "stop_starting_transfers",
       "reset_cancel_flag",
       "set_speed_limit",
@@ -2108,6 +2109,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 796
+    "count": 797
   }
 }

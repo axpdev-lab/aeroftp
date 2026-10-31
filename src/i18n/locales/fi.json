@@ -1359,6 +1359,8 @@
             "aiKeysCount": "AI-avaimet: {count}",
             "oauthTokensCount": "OAuth-tunnukset: {count}",
             "configEntriesCount": "Määritysmerkinnät: {count}",
+            "verifyDownloadHash": "Tarkista lataukset palvelimen tiivisteellä",
+            "verifyDownloadHashHelp": "Latauksen jälkeen tiedosto verrataan palvelimen julkaisemaan tiivisteeseen, eikä sitä säilytetä, jos ne eroavat. Palvelimilla, joilla ei ole tiivistettä, tiedostot tarkistetaan vain koon perusteella.",
             "importExistingLabel": "Jos profiili on jo olemassa",
             "importExistingSkip": "Ohita",
             "importExistingOverwrite": "Korvaa",

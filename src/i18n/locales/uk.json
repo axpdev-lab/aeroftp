@@ -1359,6 +1359,8 @@
             "aiKeysCount": "Ключі AI: {count}",
             "oauthTokensCount": "Токени OAuth: {count}",
             "configEntriesCount": "Записи конфігурації: {count}",
+            "verifyDownloadHash": "Перевіряти завантаження за хешем сервера",
+            "verifyDownloadHashHelp": "Після завантаження файл порівнюється з хешем, який публікує сервер, і не зберігається, якщо вони відрізняються. Файли на серверах без хеша перевіряються лише за розміром.",
             "importExistingLabel": "Якщо профіль уже існує",
             "importExistingSkip": "Пропустити",
             "importExistingOverwrite": "Перезаписати",

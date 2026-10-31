@@ -1359,6 +1359,8 @@
             "aiKeysCount": "{count} AI anahtarı",
             "oauthTokensCount": "{count} OAuth belirteci",
             "configEntriesCount": "{count} yapılandırma girdisi",
+            "verifyDownloadHash": "İndirmeleri sunucunun karmasıyla doğrula",
+            "verifyDownloadHashHelp": "İndirmeden sonra dosya, sunucunun yayımladığı karma değeriyle karşılaştırılır ve farklıysa saklanmaz. Karma değeri olmayan sunuculardaki dosyalar yalnızca boyutuna göre denetlenir.",
             "importExistingLabel": "Profil zaten varsa",
             "importExistingSkip": "Atla",
             "importExistingOverwrite": "Üzerine yaz",

@@ -272,14 +272,31 @@ fn etag_to_md5(raw: &str, sse_opaque: bool) -> Option<String> {
 
 /// True when a response's headers say the object is stored under SSE-KMS
 /// (including DSSE) or SSE-C, in which case its ETag is not the content MD5.
-/// SSE-S3 (`AES256`) keeps the plain semantics and is not matched here.
+/// SSE-S3 (`AES256`) keeps the plain semantics and is not matched here. Alibaba
+/// OSS and Tencent COS say the same in headers of their own, and OSS also marks
+/// an appendable object, whose tag is no MD5 and has no dash to show it.
 fn response_declares_opaque_etag(headers: &reqwest::header::HeaderMap) -> bool {
     let kms = headers
         .get("x-amz-server-side-encryption")
         .and_then(|v| v.to_str().ok())
         .map(|v| v.starts_with("aws:kms"))
         .unwrap_or(false);
-    kms || headers.contains_key("x-amz-server-side-encryption-customer-algorithm")
+    let not_aes256 = |name: &str| {
+        headers
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| !v.eq_ignore_ascii_case("AES256"))
+    };
+    let oss_object_is_not_plain = headers
+        .get("x-oss-object-type")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| !v.eq_ignore_ascii_case("Normal"));
+    kms || not_aes256("x-oss-server-side-encryption")
+        || not_aes256("x-cos-server-side-encryption")
+        || oss_object_is_not_plain
+        || headers.contains_key("x-amz-server-side-encryption-customer-algorithm")
+        || headers.contains_key("x-oss-server-side-encryption-customer-algorithm")
+        || headers.contains_key("x-cos-server-side-encryption-customer-algorithm")
 }
 
 /// Plan the `UploadPartCopy` parts for a server-side multipart copy of
@@ -12815,6 +12832,149 @@ mod tests {
         );
     }
 
+    /// A provider answering a GET with `body`, and a HEAD with the entity tag at
+    /// `tags`: each answer takes the next, the last one stays.
+    async fn provider_serving_content(
+        body: &'static [u8],
+        tags: &'static [&'static str],
+    ) -> S3Provider {
+        let readings = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let readings = std::sync::Arc::clone(&readings);
+                async move {
+                    if req.method() == axum::http::Method::HEAD {
+                        let at = readings.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        return axum::response::Response::builder()
+                            .header("etag", format!("\"{}\"", tags[at.min(tags.len() - 1)]))
+                            .header("content-length", body.len().to_string())
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    axum::response::Response::builder()
+                        .header("last-modified", SERVED_TIME)
+                        .body(axum::body::Body::from(body))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider
+    }
+
+    const SERVED_TIME: &str = "Wed, 21 Oct 2026 07:28:00 GMT";
+    const HELLO_MD5: &str = "5d41402abc4b2a76b9719d911017c592";
+    const HULLO_MD5: &str = "54bf43965e2bbaa20c22c22ca7b4e9c7";
+
+    #[tokio::test]
+    async fn a_download_that_differs_from_the_published_hash_is_not_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("x");
+        let out_text = out.to_str().unwrap();
+        std::fs::write(&out, b"what was there").unwrap();
+
+        let mut provider = provider_serving_content(b"hello", &[HELLO_MD5]).await;
+        provider
+            .download_checked("/x", out_text, None, None)
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(&out).unwrap(), b"hello");
+        assert_eq!(
+            provider.take_download_time(false),
+            None,
+            "keeps the listing"
+        );
+
+        std::fs::write(&out, b"what was there").unwrap();
+        let mut provider = provider_serving_content(b"hullo", &[HELLO_MD5]).await;
+        let error = provider
+            .download_checked("/x", out_text, None, None)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(HELLO_MD5), "{error}");
+        assert_eq!(std::fs::read(&out).unwrap(), b"what was there");
+    }
+
+    /// A tag that moved between the two readings is a replacement, not
+    /// corruption: one more download, compared with the new tag.
+    #[tokio::test]
+    async fn a_replacement_during_the_download_gets_one_more_download() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("x");
+        let mut provider = provider_serving_content(b"hullo", &[HELLO_MD5, HULLO_MD5]).await;
+        provider
+            .download_checked("/x", out.to_str().unwrap(), None, None)
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(&out).unwrap(), b"hullo");
+        // The listing the caller holds describes the object it replaced.
+        assert_eq!(
+            provider.take_download_time(false).as_deref(),
+            Some(SERVED_TIME)
+        );
+    }
+
+    /// A tag that keeps moving is a file being written: one copy, unchecked.
+    #[tokio::test]
+    async fn a_source_that_keeps_changing_is_downloaded_unchecked() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("x");
+        let mut provider = provider_serving_content(
+            b"hullo",
+            &[
+                HELLO_MD5,
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            ],
+        )
+        .await;
+        provider
+            .download_checked("/x", out.to_str().unwrap(), None, None)
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(&out).unwrap(), b"hullo");
+        assert_eq!(
+            provider.take_download_time(false).as_deref(),
+            Some(SERVED_TIME)
+        );
+    }
+
+    #[test]
+    fn the_headers_of_other_vendors_declare_an_opaque_tag_too() {
+        let with = |name: &'static str, value: &'static str| {
+            let mut headers = reqwest::header::HeaderMap::new();
+            headers.insert(name, value.parse().unwrap());
+            response_declares_opaque_etag(&headers)
+        };
+        assert!(with("x-oss-server-side-encryption", "KMS"));
+        assert!(with("x-cos-server-side-encryption", "cos/kms"));
+        assert!(with("x-oss-object-type", "Appendable"));
+        assert!(with(
+            "x-cos-server-side-encryption-customer-algorithm",
+            "AES256"
+        ));
+        assert!(!with("x-oss-server-side-encryption", "AES256"));
+        assert!(!with("x-oss-object-type", "Normal"));
+    }
+
+    /// A multipart tag is no content hash, so nothing is compared.
+    #[tokio::test]
+    async fn a_multipart_tag_checks_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("x");
+        let mut provider =
+            provider_serving_content(b"hullo", &["5d41402abc4b2a76b9719d911017c592-2"]).await;
+        provider
+            .download_checked("/x", out.to_str().unwrap(), None, None)
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(&out).unwrap(), b"hullo");
+    }
+
     /// The single stream after a refusal may read another object than any
     /// listing saw: the time goes with the response that carried its bytes. A
     /// plain download, and windows published from an unchanged object, keep the
@@ -13244,19 +13404,19 @@ mod tests {
     async fn the_executor_tells_a_refused_pin_from_a_replaced_object() {
         use super::super::multi_thread::pin_server::{self, PinMode, OBJECT_SIZE};
         use super::super::multi_thread::SOURCE_CHANGED_MARKER;
-        // The unreadable diagnosis is read twice: the reading retries once
-        // before it takes the object for changed.
+        // The first reading is the hash of the content check. The unreadable
+        // diagnosis is read twice: the reading retries once before it takes
+        // the object for changed.
         for (mode, published, readings) in [
-            (PinMode::Honoured, true, 2),
-            (PinMode::RefusedUnchanged, true, 3),
-            (PinMode::RefusedReplaced, false, 2),
-            (PinMode::RefusedThenReplacedUnpinned, false, 3),
-            (PinMode::RefusedWithStaleReadings, false, 2),
-            (PinMode::RefusedWithLargerWindows, false, 2),
-            (PinMode::RefusedThenUnreadable, false, 3),
-            (PinMode::HonouredWithAnotherMd5, true, 2),
-            (PinMode::RefusedUnchangedMd5, true, 3),
-            (PinMode::RefusedRestored, false, 3),
+            (PinMode::Honoured, true, 3),
+            (PinMode::RefusedUnchanged, true, 4),
+            (PinMode::RefusedReplaced, false, 3),
+            (PinMode::RefusedThenReplacedUnpinned, false, 4),
+            (PinMode::RefusedWithStaleReadings, false, 3),
+            (PinMode::RefusedWithLargerWindows, false, 3),
+            (PinMode::RefusedThenUnreadable, false, 4),
+            (PinMode::RefusedUnchangedMd5, true, 4),
+            (PinMode::RefusedRestored, false, 4),
         ] {
             let server = pin_server::start(mode).await;
             let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
@@ -13295,6 +13455,35 @@ mod tests {
                 assert!(server.refused() >= 2, "{mode:?}");
             }
         }
+    }
+
+    /// A pin the server honours says nothing about the bytes: an entity tag that
+    /// is an MD5 they do not hash to stops the publish, on the check of the
+    /// finished file and not as a replacement, and the single stream takes over.
+    #[tokio::test]
+    async fn the_executor_does_not_publish_windows_that_differ_from_the_published_hash() {
+        use super::super::multi_thread::pin_server::{self, PinMode, OBJECT_SIZE};
+        use super::super::multi_thread::SOURCE_CHANGED_MARKER;
+        let server = pin_server::start(PinMode::HonouredWithAnotherMd5).await;
+        let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+        provider.connected = true;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        let err = crate::provider_transfer_executor::run_provider_segmented_download(
+            &mut provider,
+            "/big.bin",
+            out.to_str().unwrap(),
+            OBJECT_SIZE as u64,
+            4,
+            None,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .expect_err("windows that differ from the published hash are not published");
+        let message = err.to_string();
+        assert!(message.contains("hashes to md5"), "{message}");
+        assert!(!message.contains(SOURCE_CHANGED_MARKER), "{message}");
+        assert!(!out.exists());
     }
 
     /// The native path takes one reading for a pin refusal, the HEAD a
@@ -13441,8 +13630,9 @@ mod tests {
                 async move {
                     if req.method() == axum::http::Method::HEAD {
                         // The object is replaced while the windows are in
-                        // flight: the first reading sees v1, later ones v2.
-                        let tag = if counter.fetch_add(1, Ordering::SeqCst) == 0 {
+                        // flight: the hash of the content check and the pin
+                        // read v1, later readings v2.
+                        let tag = if counter.fetch_add(1, Ordering::SeqCst) < 2 {
                             "\"v1\""
                         } else {
                             "\"v2\""

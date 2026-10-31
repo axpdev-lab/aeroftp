@@ -1359,6 +1359,8 @@
             "aiKeysCount": "Κλειδιά AI: {count}",
             "oauthTokensCount": "Διακριτικά OAuth: {count}",
             "configEntriesCount": "Καταχωρήσεις ρυθμίσεων: {count}",
+            "verifyDownloadHash": "Έλεγχος λήψεων με το hash του διακομιστή",
+            "verifyDownloadHashHelp": "Μετά από μια λήψη, το αρχείο συγκρίνεται με το hash που δημοσιεύει ο διακομιστής και δεν διατηρείται αν διαφέρουν. Τα αρχεία σε διακομιστές χωρίς hash ελέγχονται μόνο ως προς το μέγεθος.",
             "importExistingLabel": "Αν ένα προφίλ υπάρχει ήδη",
             "importExistingSkip": "Παράλειψη",
             "importExistingOverwrite": "Αντικατάσταση",

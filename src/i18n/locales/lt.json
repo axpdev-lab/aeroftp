@@ -1359,6 +1359,8 @@
             "aiKeysCount": "AI raktai: {count}",
             "oauthTokensCount": "OAuth prieigos raktai: {count}",
             "configEntriesCount": "Konfigūracijos įrašai: {count}",
+            "verifyDownloadHash": "Tikrinti atsisiuntimus pagal serverio maišą",
+            "verifyDownloadHashHelp": "Po atsisiuntimo failas palyginamas su serverio paskelbtu maišos kodu ir nepaliekamas, jei jie skiriasi. Failai serveriuose be maišos kodo tikrinami tik pagal dydį.",
             "importExistingLabel": "Jei profilis jau egzistuoja",
             "importExistingSkip": "Praleisti",
             "importExistingOverwrite": "Perrašyti",

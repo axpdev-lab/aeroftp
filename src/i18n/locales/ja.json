@@ -1359,6 +1359,8 @@
             "aiKeysCount": "{count} 件の AI キー",
             "oauthTokensCount": "{count} 件の OAuth トークン",
             "configEntriesCount": "{count} 件の設定エントリ",
+            "verifyDownloadHash": "ダウンロードをサーバーのハッシュで検証する",
+            "verifyDownloadHashHelp": "ダウンロード後、サーバーが公開しているハッシュとファイルを照合し、一致しない場合はファイルを保持しません。ハッシュを持たないサーバーのファイルは、サイズのみで確認します。",
             "importExistingLabel": "プロファイルが既に存在する場合",
             "importExistingSkip": "スキップ",
             "importExistingOverwrite": "上書き",

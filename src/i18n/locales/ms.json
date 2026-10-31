@@ -1359,6 +1359,8 @@
             "aiKeysCount": "{count} kunci AI",
             "oauthTokensCount": "{count} token OAuth",
             "configEntriesCount": "{count} entri konfigurasi",
+            "verifyDownloadHash": "Semak muat turun dengan hash pelayan",
+            "verifyDownloadHashHelp": "Selepas muat turun, fail dibandingkan dengan hash yang diterbitkan pelayan dan tidak disimpan jika berbeza. Fail pada pelayan tanpa hash hanya disemak mengikut saiz.",
             "importExistingLabel": "Jika profil sudah wujud",
             "importExistingSkip": "Langkau",
             "importExistingOverwrite": "Tulis ganti",

@@ -1359,6 +1359,8 @@
             "aiKeysCount": "AI ключове: {count}",
             "oauthTokensCount": "OAuth токени: {count}",
             "configEntriesCount": "Конфигурационни записи: {count}",
+            "verifyDownloadHash": "Проверявай изтеглянията спрямо хеша на сървъра",
+            "verifyDownloadHashHelp": "След изтегляне файлът се сравнява с хеша, публикуван от сървъра, и не се запазва, ако се различава. Файловете от сървъри без хеш се проверяват само по размер.",
             "importExistingLabel": "Ако профилът вече съществува",
             "importExistingSkip": "Пропусни",
             "importExistingOverwrite": "Презапиши",

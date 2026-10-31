@@ -273,7 +273,9 @@ async fn download_source_to_temp(
     }
 
     check_copy_cancel(&options.cancel_token)?;
-    source.download(source_path, tmp_path, None).await
+    source
+        .download_checked(source_path, tmp_path, None, None)
+        .await
 }
 
 // ── Planning: collect + filter + plan ──────────────────────────────────────

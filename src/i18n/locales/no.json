@@ -1359,6 +1359,8 @@
             "aiKeysCount": "AI-nøkler: {count}",
             "oauthTokensCount": "{count} OAuth-token",
             "configEntriesCount": "Konfigurasjonsoppføringer: {count}",
+            "verifyDownloadHash": "Kontroller nedlastinger mot serverens hash",
+            "verifyDownloadHashHelp": "Etter en nedlasting sammenlignes filen med hashen serveren publiserer, og den beholdes ikke hvis de er ulike. Filer på servere uten hash kontrolleres bare på størrelse.",
             "importExistingLabel": "Hvis en profil allerede finnes",
             "importExistingSkip": "Hopp over",
             "importExistingOverwrite": "Overskriv",

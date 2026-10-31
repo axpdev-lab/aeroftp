@@ -423,17 +423,25 @@ pub async fn run_provider_segmented_download(
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     cancel_token: CancellationToken,
 ) -> Result<(), SegmentedDownloadError> {
-    run_provider_segmented_download_with(
-        crate::transfer_dag::governor::global(),
-        primary,
-        remote_path,
-        local_path,
-        file_size,
-        segments,
-        on_progress,
-        cancel_token,
-    )
-    .await
+    // A publish refused for its content reports like any other: the single
+    // stream that takes over is checked in its turn.
+    let expected = tokio::select! {
+        biased;
+        _ = cancel_token.cancelled() => return Err(SegmentedDownloadError::Cancelled),
+        expected = primary.content_digest(remote_path, Some(file_size)) => expected,
+    };
+    crate::providers::content_check::ContentCheck::expecting(expected, local_path)
+        .scope(run_provider_segmented_download_with(
+            crate::transfer_dag::governor::global(),
+            primary,
+            remote_path,
+            local_path,
+            file_size,
+            segments,
+            on_progress,
+            cancel_token,
+        ))
+        .await
 }
 
 /// [`run_provider_segmented_download`] charging an explicit governor.
@@ -785,13 +793,33 @@ async fn run_provider_segmented_windows(
                         SOURCE_NOT_VERIFIED,
                     ))
                 }
-                None => match temp.publish(Path::new(local_path)).await {
-                    Ok(()) => Ok(()),
-                    Err(e) => Err(SegmentedDownloadError::unavailable(
-                        format!("segmented download: finalize failed: {}", e),
-                        "the segmented temporary could not be published",
-                    )),
-                },
+                None => {
+                    // It reads the whole file: a Stop does not wait for it, and
+                    // nothing is published after one.
+                    let checked = tokio::select! {
+                        biased;
+                        _ = cancel_token.cancelled() => None,
+                        checked = temp.check_content(Path::new(local_path)) => Some(checked),
+                    };
+                    let Some(checked) = checked else {
+                        temp.discard();
+                        return Err(SegmentedDownloadError::Cancelled);
+                    };
+                    let published = match checked {
+                        Ok(()) => temp.publish(Path::new(local_path)).await,
+                        Err(differs) => {
+                            temp.discard();
+                            Err(differs)
+                        }
+                    };
+                    match published {
+                        Ok(()) => Ok(()),
+                        Err(e) => Err(SegmentedDownloadError::unavailable(
+                            format!("segmented download: finalize failed: {}", e),
+                            "the segmented temporary could not be published",
+                        )),
+                    }
+                }
             }
         }
         Ok(SegmentedRun::ServerIgnoredRange) => Err(SegmentedDownloadError::unavailable(
@@ -1477,9 +1505,9 @@ impl ProviderDownloadExecutor {
                 attempt,
                 remote_path
             );
-            provider.resume_download(&remote_path, &local_path, partial_offset, progress_cb)
+            provider.resume_download_checked(&remote_path, &local_path, partial_offset, progress_cb)
         } else {
-            provider.download_with_size_hint(
+            provider.download_checked(
                 &remote_path,
                 &local_path,
                 (file_size > 0).then_some(file_size),

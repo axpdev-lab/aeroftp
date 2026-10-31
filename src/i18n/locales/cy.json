@@ -1359,6 +1359,8 @@
             "aiKeysCount": "{count} allwedd AI",
             "oauthTokensCount": "{count} tocyn OAuth",
             "configEntriesCount": "{count} cofnod ffurfweddu",
+            "verifyDownloadHash": "Gwirio lawrlwythiadau yn erbyn hash y gweinydd",
+            "verifyDownloadHashHelp": "Ar ôl lawrlwytho, caiff y ffeil ei chymharu â'r hash y mae'r gweinydd yn ei gyhoeddi, ac ni chaiff ei chadw os ydynt yn wahanol. Mae ffeiliau ar weinyddion heb hash yn cael eu gwirio yn ôl maint yn unig.",
             "importExistingLabel": "Os yw proffil eisoes yn bodoli",
             "importExistingSkip": "Hepgor",
             "importExistingOverwrite": "Trosysgrifo",

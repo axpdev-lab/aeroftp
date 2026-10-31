@@ -492,6 +492,13 @@ impl FtpManager {
             tokio::fs::create_dir_all(parent).await?;
         }
 
+        // What the server says it holds: a short transfer must not take the name.
+        let expected_size =
+            tokio::time::timeout(self.timeouts.command_timeout, stream.size(remote_path))
+                .await
+                .context("SIZE timeout")?
+                .ok();
+
         // Download using retr_as_stream
         let mut data_stream = stream
             .retr_as_stream(remote_path)
@@ -507,6 +514,17 @@ impl FtpManager {
             .finish()
             .await
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+
+        if let Some(expected) = expected_size {
+            if buf.len() as u64 != expected as u64 {
+                return Err(FtpManagerError::OperationFailed(format!(
+                    "the download was not kept: {} bytes arrived and the server holds {}",
+                    buf.len(),
+                    expected
+                ))
+                .into());
+            }
+        }
 
         // Write to local file
         tokio::fs::write(local_path, buf).await?;
@@ -1150,6 +1168,66 @@ LIST "drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 ."
 #[cfg(test)]
 pub(crate) mod exists_tests {
     use super::*;
+
+    /// A server that holds `held` bytes and sends `sent` of them.
+    async fn server_sending(held: usize, sent: usize) -> String {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        use tokio::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let (read, mut write) = socket.into_split();
+            let mut lines = BufReader::new(read).lines();
+            let mut data_listener = None;
+            write.write_all(b"220 ready\r\n").await.unwrap();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let verb = line.split_whitespace().next().unwrap_or("").to_string();
+                let reply = match verb.as_str() {
+                    "USER" => "331 password please\r\n".to_string(),
+                    "PASS" => "230 logged in\r\n".to_string(),
+                    "SIZE" => format!("213 {held}\r\n"),
+                    "PASV" => {
+                        let data = TcpListener::bind("127.0.0.1:0").await.unwrap();
+                        let port = data.local_addr().unwrap().port();
+                        data_listener = Some(data);
+                        format!(
+                            "227 Entering Passive Mode (127,0,0,1,{},{})\r\n",
+                            port / 256,
+                            port % 256
+                        )
+                    }
+                    "RETR" => {
+                        let (mut data, _) = data_listener.take().unwrap().accept().await.unwrap();
+                        write.write_all(b"150 opening\r\n").await.unwrap();
+                        data.write_all(&vec![7u8; sent]).await.unwrap();
+                        drop(data);
+                        "226 done\r\n".to_string()
+                    }
+                    _ => "200 ok\r\n".to_string(),
+                };
+                if write.write_all(reply.as_bytes()).await.is_err() {
+                    return;
+                }
+            }
+        });
+        addr
+    }
+
+    #[tokio::test]
+    async fn a_short_transfer_does_not_take_the_name() {
+        for (held, sent, kept) in [(10, 10, true), (10, 4, false)] {
+            let addr = server_sending(held, sent).await;
+            let mut ftp = FtpManager::new();
+            ftp.connect(&addr).await.unwrap();
+            ftp.login("u", "p").await.unwrap();
+            let dir = tempfile::tempdir().unwrap();
+            let out = dir.path().join("f.bin");
+            let outcome = ftp.download_file("/f.bin", out.to_str().unwrap()).await;
+            assert_eq!(outcome.is_ok(), kept, "{outcome:?}");
+            assert_eq!(out.exists(), kept);
+        }
+    }
 
     #[tokio::test]
     async fn probe_contract_ftp_manager_refuses_an_unverified_missing_answer() {

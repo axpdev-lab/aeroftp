@@ -29,6 +29,7 @@ pub mod box_provider;
 pub mod bulk;
 pub mod checksum_matrix;
 pub mod cloudinary;
+pub mod content_check;
 pub mod directory;
 pub mod drime_cloud;
 pub mod dropbox;
@@ -1070,6 +1071,98 @@ pub trait StorageProvider: Send + Sync {
     /// the moved object in windows that carry no time.
     fn download_was_refused(&self) -> bool {
         false
+    }
+
+    /// The digest a download of `remote_path` is compared with, if there is one.
+    /// Any failure to read it only leaves the file unchecked.
+    async fn content_digest(
+        &mut self,
+        remote_path: &str,
+        size_hint: Option<u64>,
+    ) -> Option<content_check::ContentDigest> {
+        if !content_check::worth_asking(self.provider_type()) {
+            return None;
+        }
+        let limit = content_check::reading_limit(size_hint);
+        let digests = tokio::time::timeout(limit, self.checksum(remote_path))
+            .await
+            .ok()?
+            .ok()?;
+        content_check::ContentDigest::strongest(&digests)
+    }
+
+    /// [`Self::download_with_size_hint`], compared with the hash the server
+    /// publishes before the file is published. A difference is read once more:
+    /// the same digest means the bytes are wrong, and the file fails. A digest that
+    /// moved means the object was replaced, which gets one more download. One that
+    /// moves again is a file being written, which no hash can vouch for: a copy of
+    /// it is taken unchecked, as it always was, and the log says so.
+    /// With no hash to compare, size alone decides, as it always did.
+    async fn download_checked(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        size_hint: Option<u64>,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let Some(expected) = self.content_digest(remote_path, size_hint).await else {
+            log::debug!("[content-check] {local_path}: no usable hash, size alone decides");
+            return self
+                .download_with_size_hint(remote_path, local_path, size_hint, on_progress)
+                .await;
+        };
+        let (first, rest) = multi_thread::share_progress(on_progress);
+        let check = content_check::ContentCheck::expecting(Some(expected.clone()), local_path);
+        let result = check
+            .scope(self.download_with_size_hint(remote_path, local_path, size_hint, first))
+            .await;
+        let result = check.settle(result).await;
+        if !check.differs() {
+            return result;
+        }
+        let fresh = match self.content_digest(remote_path, size_hint).await {
+            Some(fresh) if fresh != expected => fresh,
+            _ => return result,
+        };
+        let (second, third) = multi_thread::share_progress(rest);
+        self.expect_moved_source();
+        let check = content_check::ContentCheck::expecting(Some(fresh.clone()), local_path);
+        let again = check
+            .scope(self.download_with_size_hint(remote_path, local_path, size_hint, second))
+            .await;
+        let again = check.settle(again).await;
+        if !check.differs() {
+            return again;
+        }
+        match self.content_digest(remote_path, size_hint).await {
+            Some(latest) if latest != fresh => {
+                log::warn!(
+                    "[content-check] {local_path}: the source keeps changing, downloaded unchecked"
+                );
+                self.expect_moved_source();
+                self.download_with_size_hint(remote_path, local_path, size_hint, third)
+                    .await
+            }
+            _ => again,
+        }
+    }
+
+    /// [`Self::resume_download`], with the whole file compared before it is
+    /// published. A part that does not match is discarded by its writer, so the
+    /// caller's next attempt starts over.
+    async fn resume_download_checked(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let expected = self.content_digest(remote_path, None).await;
+        let check = content_check::ContentCheck::expecting(expected, local_path);
+        let result = check
+            .scope(self.resume_download(remote_path, local_path, offset, on_progress))
+            .await;
+        check.settle(result).await
     }
 
     /// The modification time for the file the last `download` wrote, when a

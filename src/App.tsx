@@ -4660,6 +4660,10 @@ const App: React.FC = () => {
   // offered on a connected FTP/FTPS session only. Computed here, ahead of the
   // command palette that lists it.
   const canSendSiteCommand = siteCommandAvailable(isConnected, liveConnectionParams.protocol);
+  useEffect(() => {
+    invoke('set_download_content_check', { enabled: settings.verifyDownloadHash }).catch(() => { /* not in the desktop shell */ });
+  }, [settings.verifyDownloadHash]);
+
   // The native menu (macOS menu bar, optional on Linux/Windows) follows the
   // same rule: Connection > SITE Command is off unless this is true.
   useEffect(() => {

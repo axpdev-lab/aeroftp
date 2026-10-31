@@ -420,7 +420,7 @@ impl RemoteBackend for CliRemoteBackend {
     async fn download(&self, remote: &str, local: &str) -> Result<(), String> {
         let mut guard = self.provider.lock().await;
         let p = guard.as_mut().ok_or("Not connected")?;
-        p.download(remote, local, None)
+        p.download_checked(remote, local, None, None)
             .await
             .map_err(|e| e.to_string())
     }

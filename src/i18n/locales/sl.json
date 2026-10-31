@@ -1359,6 +1359,8 @@
             "aiKeysCount": "Ključi AI: {count}",
             "oauthTokensCount": "Žetoni OAuth: {count}",
             "configEntriesCount": "Vnosi konfiguracije: {count}",
+            "verifyDownloadHash": "Preveri prenose s razpršilom strežnika",
+            "verifyDownloadHashHelp": "Po prenosu se datoteka primerja z razpršilom, ki ga objavi strežnik, in se ne obdrži, če se razlikujeta. Datoteke na strežnikih brez razpršila se preverjajo samo po velikosti.",
             "importExistingLabel": "Če profil že obstaja",
             "importExistingSkip": "Preskoči",
             "importExistingOverwrite": "Prepiši",

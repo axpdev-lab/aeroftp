@@ -1359,6 +1359,8 @@
             "aiKeysCount": "{count} AI გასაღები",
             "oauthTokensCount": "{count} OAuth ტოკენი",
             "configEntriesCount": "{count} კონფიგურაციის ჩანაწერი",
+            "verifyDownloadHash": "ჩამოტვირთვების შემოწმება სერვერის ჰეშით",
+            "verifyDownloadHashHelp": "ჩამოტვირთვის შემდეგ ფაილი ედარება სერვერის მიერ გამოქვეყნებულ ჰეშს და არ ინახება, თუ ისინი განსხვავდება. ჰეშის გარეშე სერვერებზე ფაილები მოწმდება მხოლოდ ზომით.",
             "importExistingLabel": "თუ პროფილი უკვე არსებობს",
             "importExistingSkip": "გამოტოვება",
             "importExistingOverwrite": "გადაწერა",

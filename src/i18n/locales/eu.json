@@ -1359,6 +1359,8 @@
             "aiKeysCount": "{count} AI gako",
             "oauthTokensCount": "{count} OAuth token",
             "configEntriesCount": "{count} konfigurazio-sarrera",
+            "verifyDownloadHash": "Egiaztatu deskargak zerbitzariaren hash-arekin",
+            "verifyDownloadHashHelp": "Deskarga baten ondoren, fitxategia zerbitzariak argitaratzen duen hash-arekin alderatzen da, eta ez da gordetzen desberdinak badira. Hash-ik gabeko zerbitzarietako fitxategiak tamainaren arabera soilik egiaztatzen dira.",
             "importExistingLabel": "Profila lehendik badago bada",
             "importExistingSkip": "Saltatu",
             "importExistingOverwrite": "Gainidatzi",

@@ -2739,7 +2739,10 @@ async fn run_dag_download_leaf(
             match guard.as_mut() {
                 Some(p) => {
                     let result = {
-                        let dl = async { p.download(&remote_path, &local_path, progress_cb).await };
+                        let dl = async {
+                            p.download_checked(&remote_path, &local_path, None, progress_cb)
+                                .await
+                        };
                         match &cancel_token {
                             Some(tok) => tokio::select! {
                                 biased;
@@ -3814,11 +3817,11 @@ pub async fn provider_download_file(
                     partial_offset, filename
                 );
                 provider
-                    .resume_download(&remote_path, &local_path, partial_offset, progress_cb)
+                    .resume_download_checked(&remote_path, &local_path, partial_offset, progress_cb)
                     .await
             } else {
                 provider
-                    .download(&remote_path, &local_path, progress_cb)
+                    .download_checked(&remote_path, &local_path, None, progress_cb)
                     .await
             }
         };

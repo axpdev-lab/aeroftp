@@ -1359,6 +1359,8 @@
             "aiKeysCount": "Clés AI : {count}",
             "oauthTokensCount": "Jetons OAuth : {count}",
             "configEntriesCount": "Entrées de configuration : {count}",
+            "verifyDownloadHash": "Vérifier les téléchargements avec le hash du serveur",
+            "verifyDownloadHashHelp": "Après un téléchargement, le fichier est comparé au hash publié par le serveur et n'est pas conservé s'ils diffèrent. Les fichiers des serveurs sans hash sont vérifiés uniquement par leur taille.",
             "importExistingLabel": "Si un profil existe déjà",
             "importExistingSkip": "Ignorer",
             "importExistingOverwrite": "Écraser",

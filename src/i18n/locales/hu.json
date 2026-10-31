@@ -1359,6 +1359,8 @@
             "aiKeysCount": "{count} AI-kulcs",
             "oauthTokensCount": "{count} OAuth-token",
             "configEntriesCount": "{count} konfigurációs bejegyzés",
+            "verifyDownloadHash": "Letöltések ellenőrzése a szerver hash-értékével",
+            "verifyDownloadHashHelp": "Letöltés után a fájlt összehasonlítja a szerver által közzétett hash-értékkel, és nem tartja meg, ha eltérnek. A hash nélküli szervereken lévő fájlokat csak méret alapján ellenőrzi.",
             "importExistingLabel": "Ha a profil már létezik",
             "importExistingSkip": "Kihagyás",
             "importExistingOverwrite": "Felülírás",

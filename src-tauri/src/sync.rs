@@ -2939,7 +2939,7 @@ async fn sync_download_transfer(
 
     crate::sync_core::access::authorize(local_access, local_root, rel)?;
     provider
-        .download_with_size_hint(
+        .download_checked(
             remote_path,
             local_path,
             (file_size > 0).then_some(file_size),

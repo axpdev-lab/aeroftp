@@ -193,6 +193,7 @@ interface AppSettings {
      *  immediately on drag/drop or click. When false, transfers are parked
      *  in the queue panel as `staged` for prune-then-start workflows. */
     autoStartTransfers: boolean;
+    verifyDownloadHash: boolean;
     // File Handling
     fileExistsAction: 'ask' | 'overwrite' | 'skip' | 'rename' | 'resume' | 'overwrite_if_newer' | 'overwrite_if_different' | 'skip_if_identical';
     preserveTimestamps: boolean;
@@ -253,6 +254,7 @@ const defaultSettings: AppSettings = {
     downloadSegments: 0,
     sftpDownloadPreset: DEFAULT_SFTP_DOWNLOAD_PRESET,
     autoStartTransfers: true,
+    verifyDownloadHash: true,
     fileExistsAction: 'ask',
     preserveTimestamps: true,
     transferMode: 'auto',
@@ -1657,6 +1659,25 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 ))}
                                             </select>
                                             <p className="text-xs text-gray-500 mt-1">{t('settings.downloadSegmentsDesc')}</p>
+                                        </div>
+
+                                        <div>
+                                            <label className="flex items-start gap-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={settings.verifyDownloadHash}
+                                                    onChange={(e) => updateSetting('verifyDownloadHash', e.target.checked)}
+                                                    className="mt-1 w-4 h-4 rounded text-amber-500 focus:ring-amber-500"
+                                                />
+                                                <span className="flex-1">
+                                                    <span className="block text-sm font-medium text-gray-700 dark:text-gray-200">
+                                                        {t('settings.verifyDownloadHash')}
+                                                    </span>
+                                                    <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                                        {t('settings.verifyDownloadHashHelp')}
+                                                    </span>
+                                                </span>
+                                            </label>
                                         </div>
 
                                         <div>

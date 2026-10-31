@@ -1359,6 +1359,8 @@
             "aiKeysCount": "AI कुंजियाँ: {count}",
             "oauthTokensCount": "OAuth टोकन: {count}",
             "configEntriesCount": "कॉन्फ़िगरेशन प्रविष्टियाँ: {count}",
+            "verifyDownloadHash": "डाउनलोड को सर्वर के हैश से जाँचें",
+            "verifyDownloadHashHelp": "डाउनलोड के बाद फ़ाइल की तुलना सर्वर द्वारा प्रकाशित हैश से की जाती है, और अलग होने पर उसे रखा नहीं जाता। जिन सर्वरों पर हैश नहीं है, उनकी फ़ाइलें केवल आकार से जाँची जाती हैं।",
             "importExistingLabel": "अगर प्रोफ़ाइल पहले से मौजूद हो",
             "importExistingSkip": "छोड़ें",
             "importExistingOverwrite": "ओवरराइट करें",

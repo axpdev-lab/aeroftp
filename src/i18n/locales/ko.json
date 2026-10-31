@@ -1359,6 +1359,8 @@
             "aiKeysCount": "AI 키 {count}개",
             "oauthTokensCount": "OAuth 토큰 {count}개",
             "configEntriesCount": "구성 항목 {count}개",
+            "verifyDownloadHash": "서버의 해시로 다운로드 확인",
+            "verifyDownloadHashHelp": "다운로드 후 서버가 게시한 해시와 파일을 비교하고, 다르면 파일을 보관하지 않습니다. 해시가 없는 서버의 파일은 크기만으로 확인합니다.",
             "importExistingLabel": "프로필이 이미 있는 경우",
             "importExistingSkip": "건너뛰기",
             "importExistingOverwrite": "덮어쓰기",
