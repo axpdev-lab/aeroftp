@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "询问 AeroAgent...",
             "browseArchive": "浏览压缩包",
-            "calculateSize": "计算大小",
             "compress": "压缩",
             "compress7zMultiple": "压缩 7z（{count}）",
             "compressSubmenu": "压缩",

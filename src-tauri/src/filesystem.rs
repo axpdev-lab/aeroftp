@@ -1,12 +1,13 @@
 //! Filesystem utilities for AeroFile Places Sidebar
 //!
-//! Provides 13 Tauri commands for local filesystem navigation and management:
+//! Provides the Tauri commands for local filesystem navigation and management, among them:
 //! - `get_user_directories`: Standard XDG user directories (cross-platform via `dirs` crate)
 //! - `list_mounted_volumes`: Mounted filesystem volumes with space info
 //! - `list_subdirectories`: Subdirectories of a given path (for tree/breadcrumb)
 //! - `eject_volume`: Unmount/eject a removable volume
 //! - `get_file_properties`: Detailed metadata (permissions, ownership, symlinks, timestamps)
 //! - `calculate_folder_size`: Recursive folder size, file count, and directory count
+//! - `cancel_folder_size`: Stop a running `calculate_folder_size` walk
 //! - `delete_to_trash`: Move file/directory to system trash (via `trash` crate)
 //! - `list_trash_items`: List items in system trash (FreeDesktop spec / macOS)
 //! - `restore_trash_item`: Restore a trash item to its original location
@@ -18,6 +19,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::folder_size::FolderSizeResult;
 use serde::Serialize;
 use std::path::{Component, Path, PathBuf};
 #[cfg(target_os = "linux")]
@@ -1348,14 +1350,6 @@ pub struct DetailedFileProperties {
     pub is_hidden: Option<bool>,
 }
 
-/// Result of a recursive folder size calculation.
-#[derive(Serialize, Clone)]
-pub struct FolderSizeResult {
-    pub total_bytes: u64,
-    pub file_count: u64,
-    pub dir_count: u64,
-}
-
 /// An item in the system trash/recycle bin.
 #[derive(Serialize, Clone)]
 pub struct TrashItem {
@@ -1694,50 +1688,55 @@ pub async fn set_local_file_attributes(
 
 // ─── Command 6: calculate_folder_size ───────────────────────────────────────
 
-/// Recursively calculates the total size, file count, and subdirectory count of a folder.
+/// Totals of a local folder walk so far, tagged with the id of the walk so a
+/// dialog showing one folder never takes the numbers of another.
+#[derive(Serialize, Clone)]
+struct LocalFolderSizeProgress<'a> {
+    scan_id: &'a str,
+    #[serde(flatten)]
+    totals: &'a FolderSizeResult,
+}
+
+/// Recursively calculates the total size, file count, and subdirectory count of
+/// a folder (see [`crate::folder_size`] for how it is counted and how fast).
+///
+/// With a `scan_id` the walk reports its totals so far as
+/// `local-folder-size-progress` events, and `cancel_folder_size` can stop it.
 #[tauri::command]
-pub async fn calculate_folder_size(path: String) -> Result<FolderSizeResult, String> {
+pub async fn calculate_folder_size(
+    app: tauri::AppHandle,
+    path: String,
+    scan_id: Option<String>,
+) -> Result<FolderSizeResult, String> {
+    // Registered first, so a cancel that the runtime ran before this command
+    // is taken now, even by a path refused just below.
+    let registration = crate::folder_size::Registration::new(scan_id);
     validate_path(&path)?;
-
-    let path_ref = Path::new(&path);
-    if !path_ref.is_dir() {
-        return Err("Path is not a directory".to_string());
-    }
-
-    let mut total_bytes: u64 = 0;
-    let mut file_count: u64 = 0;
-    let mut dir_count: u64 = 0;
-    // AF-RUST-H02: Resource exhaustion limits
-    const MAX_ENTRIES: u64 = 1_000_000;
-    let mut entry_count: u64 = 0;
-
-    for entry in walkdir::WalkDir::new(&path)
-        .follow_links(false)
-        .max_depth(100)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
-        entry_count += 1;
-        if entry_count > MAX_ENTRIES {
-            warn!(
-                "calculate_folder_size: entry limit ({}) reached, returning partial result",
-                MAX_ENTRIES
-            );
-            break;
-        }
-        if entry.file_type().is_file() {
-            total_bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
-            file_count += 1;
-        } else if entry.file_type().is_dir() && entry.path() != path_ref {
-            dir_count += 1;
-        }
-    }
-
-    Ok(FolderSizeResult {
-        total_bytes,
-        file_count,
-        dir_count,
+    tokio::task::spawn_blocking(move || {
+        crate::folder_size::scan(
+            Path::new(&path),
+            crate::folder_size::Limits::default(),
+            registration.flag(),
+            |totals| {
+                if let Some(scan_id) = registration.id() {
+                    let _ = app.emit(
+                        "local-folder-size-progress",
+                        LocalFolderSizeProgress { scan_id, totals },
+                    );
+                }
+            },
+        )
     })
+    .await
+    .map_err(|e| format!("Folder size calculation failed: {e}"))?
+}
+
+/// Stops the folder size walk started under `scan_id`: the running one, or the
+/// one whose command the runtime has not run yet.
+#[tauri::command]
+pub async fn cancel_folder_size(scan_id: String) -> Result<(), String> {
+    crate::folder_size::cancel(&scan_id);
+    Ok(())
 }
 
 // ─── Command 7: delete_to_trash ─────────────────────────────────────────────

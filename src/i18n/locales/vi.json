@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "Hỏi AeroAgent...",
             "browseArchive": "Duyệt tệp lưu trữ",
-            "calculateSize": "Tính kích thước",
             "compress": "Nén",
             "compress7zMultiple": "Nén 7z ({count})",
             "compressSubmenu": "Nén",

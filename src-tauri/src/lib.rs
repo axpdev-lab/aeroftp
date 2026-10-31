@@ -247,6 +247,7 @@ mod file_tags;
 mod file_watcher;
 mod filesystem;
 pub mod filezilla_import;
+pub mod folder_size;
 mod ftp;
 mod ftp_session_pool;
 mod ftp_transfer_executor;
@@ -21786,6 +21787,7 @@ pub fn run() {
             filesystem::set_local_file_attributes,
             filesystem::hidden_attribute_is_toggleable,
             filesystem::calculate_folder_size,
+            filesystem::cancel_folder_size,
             filesystem::delete_to_trash,
             filesystem::list_trash_items,
             filesystem::restore_trash_item,

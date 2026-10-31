@@ -2014,6 +2014,7 @@
       "set_local_file_attributes",
       "hidden_attribute_is_toggleable",
       "calculate_folder_size",
+      "cancel_folder_size",
       "delete_to_trash",
       "list_trash_items",
       "restore_trash_item",

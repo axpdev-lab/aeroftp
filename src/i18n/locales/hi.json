@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "AeroAgent से पूछें...",
             "browseArchive": "आर्काइव ब्राउज़ करें",
-            "calculateSize": "आकार की गणना करें",
             "compress": "सम्पीडित करें (Compress)",
             "compress7zMultiple": "7z ({count}) में सम्पीडित करें",
             "compressSubmenu": "सम्पीडित करें...",

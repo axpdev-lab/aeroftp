@@ -10,7 +10,8 @@ import { TID } from '../../utils/testIds';
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../../i18n';
-import { Folder, FileText, Copy, X, HardDrive, Calendar, Shield, ShieldCheck, Hash, FileType, Eye, EyeOff, AlertTriangle, Info, ShieldAlert, KeyRound, Lock, Clock, Link as LinkIcon, User, Users, Loader2, Files as FilesIcon } from 'lucide-react';
+import { Folder, FileText, Copy, X, HardDrive, Calendar, Shield, ShieldCheck, Hash, FileType, Eye, EyeOff, AlertTriangle, Info, ShieldAlert, KeyRound, Lock, Clock, Link as LinkIcon, User, Users, Loader2, RefreshCw, Files as FilesIcon } from 'lucide-react';
+import type { FolderSizeResult } from '../../types/aerofile';
 import { formatBytes } from '../../utils/formatters';
 import { formatArchiveCipher } from '../../utils/archiveCipher';
 import { getMimeType, getFileExtension } from '../Preview/utils/fileTypes';
@@ -959,6 +960,19 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                                                 {folderSizeCalculating && (
                                                     <Loader2 size={12} className="animate-spin text-blue-500 shrink-0" />
                                                 )}
+                                                {/* A figure stays in the cache for the session (a remote
+                                                    scan is a walk over the network), so it can go stale:
+                                                    once the scan has stopped it can be run again. */}
+                                                {!folderSizeCalculating && onCalculateFolderSize && (
+                                                    <button
+                                                        onClick={onCalculateFolderSize}
+                                                        aria-label={t('properties.calculateSize')}
+                                                        title={t('properties.calculateSize')}
+                                                        className="text-gray-400 hover:text-blue-500 shrink-0"
+                                                    >
+                                                        <RefreshCw size={12} />
+                                                    </button>
+                                                )}
                                             </div>
                                         ) : onCalculateFolderSize ? (
                                             <button
@@ -1312,6 +1326,11 @@ export interface MultiFileProperties {
 interface MultiFilePropertiesDialogProps {
     selection: MultiFileProperties;
     onClose: () => void;
+    /** Sizes of the selected folders counted so far, by path. A folder with no
+     *  entry has not been sized, and the total says it is incomplete. */
+    folderSizes?: ReadonlyMap<string, FolderSizeResult>;
+    /** The selected folders are being counted: the total is still growing. */
+    folderSizeCalculating?: boolean;
     /** OpenDrive (#252): when provided, renders a privacy chooser that applies
      *  the chosen level to every selected item. */
     onPrivacyChange?: (level: 'public' | 'private' | 'hidden') => void | Promise<void>;
@@ -1340,6 +1359,8 @@ export const MultiFilePropertiesDialog: React.FC<MultiFilePropertiesDialogProps>
     selection,
     onClose,
     onPrivacyChange,
+    folderSizes,
+    folderSizeCalculating = false,
 }) => {
     const t = useTranslation();
     const { files, isRemote, protocol } = selection;
@@ -1375,8 +1396,19 @@ export const MultiFilePropertiesDialog: React.FC<MultiFilePropertiesDialogProps>
     const fileCount = files.filter(f => !f.is_dir).length;
     const folderCount = files.filter(f => f.is_dir).length;
     const knownSizes = files.filter(f => !f.is_dir && typeof f.size === 'number');
-    const totalSize = knownSizes.reduce((acc, f) => acc + (f.size || 0), 0);
-    const sizesUnknown = files.some(f => !f.is_dir && (f.size == null));
+    // A folder's listing size is not its contents: a folder counts with the
+    // size of what it holds, once that has been measured.
+    const sizedFolders = files
+        .filter(f => f.is_dir)
+        .map(f => folderSizes?.get(f.path))
+        .filter((size): size is FolderSizeResult => size != null);
+    const totalSize = knownSizes.reduce((acc, f) => acc + (f.size || 0), 0)
+        + sizedFolders.reduce((acc, size) => acc + size.total_bytes, 0);
+    // While the folders are counted the total is a running one, and says so;
+    // once they are, a folder left unmeasured or measured in part makes it a
+    // lower bound.
+    const sizesUnknown = files.some(f => !f.is_dir && (f.size == null))
+        || (!folderSizeCalculating && (sizedFolders.length < folderCount || sizedFolders.some(size => size.partial)));
 
     const commonParent = computeCommonParent(files.map(f => f.path));
 
@@ -1473,12 +1505,18 @@ export const MultiFilePropertiesDialog: React.FC<MultiFilePropertiesDialogProps>
                         icon={<Hash size={16} />}
                         label={t('properties.totalSize')}
                         value={
-                            knownSizes.length === 0 && folderCount > 0 ? (
+                            knownSizes.length === 0 && sizedFolders.length === 0 && folderCount > 0 && !folderSizeCalculating ? (
                                 <span className="text-gray-500">{t('properties.foldersOnly')}</span>
                             ) : (
                                 <>
                                     {formatBytes(totalSize)}
                                     <span className="text-gray-500"> {t('properties.exactBytes', { bytes: totalSize.toLocaleString() })}</span>
+                                    {folderSizeCalculating && (
+                                        <span className="ml-2 inline-flex items-center gap-1 text-xs text-blue-500" role="status">
+                                            <Loader2 size={12} className="animate-spin" />
+                                            {t('properties.calculating')}
+                                        </span>
+                                    )}
                                     {sizesUnknown && (
                                         <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">
                                             {t('properties.sizesPartial')}

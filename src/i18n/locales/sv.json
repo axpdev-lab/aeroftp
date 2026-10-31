@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "Fråga AeroAgent...",
             "browseArchive": "Bläddra i arkiv",
-            "calculateSize": "Beräkna storlek",
             "compress": "Komprimera",
             "compress7zMultiple": "Komprimera 7z ({count})",
             "compressSubmenu": "Komprimera",

@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "ჰკითხე AeroAgent-ს...",
             "browseArchive": "არქივის დათვალიერება",
-            "calculateSize": "ზომის გამოთვლა",
             "compress": "შეკუმშვა",
             "compress7zMultiple": "7z-ში შეკუმშვა ({count})",
             "compressSubmenu": "შეკუმშვა",

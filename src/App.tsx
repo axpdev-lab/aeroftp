@@ -24,6 +24,7 @@ import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } fr
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useTauriListener, guardedUnlisten } from './hooks/useTauriListener';
+import { useSelectionFolderSizes } from './hooks/useSelectionFolderSizes';
 import { pickFile } from './utils/pickPath';
 import { homeDir, downloadDir } from '@tauri-apps/api/path';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -501,7 +502,9 @@ import { useLocalPanel } from './hooks/useLocalPanel';
 import { useTerminalCwd } from './hooks/useTerminalCwd';
 import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 import { isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
-import { isSameConnection, resolveLiveConnectionParams, savedProfileIdOf } from './utils/liveConnection';
+import { connectionNumberOf, connectionTargetKey, isSameConnection, resolveLiveConnectionParams, savedProfileIdOf } from './utils/liveConnection';
+import { remoteFolderSizes, type RemoteFolderSizes, type RemoteSizeProgress } from './utils/remoteFolderSizes';
+import { selectedLocalRows } from './utils/localSelection';
 
 // W3.1 (#270.5): marker the backend connect commands return when the user
 // aborts an in-progress connection (Esc / "still connecting" Cancel). The
@@ -634,6 +637,26 @@ const resolveTargetDisplayPath = (
   if (path.startsWith('/')) return normDisplayPath(path);
   return joinDisplayPath(current, path);
 };
+
+/**
+ * Key of a local folder in the folder size cache. The same path names a local
+ * folder and a remote one, so the side is part of the key (see `remoteSizeKey`
+ * for the remote half).
+ */
+const localSizeKey = (path: string) => `local:${path}`;
+
+/** An id for one folder size scan, which its progress events carry. */
+const newSizeScanId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+
+/** A local listing entry as the Properties dialogs take it. */
+const localEntryProperties = (f: LocalFile, dir: string): FileProperties => ({
+  name: f.name,
+  path: f.path || `${dir}/${f.name}`,
+  size: f.size,
+  is_dir: f.is_dir,
+  modified: f.modified,
+  isRemote: false,
+});
 
 const App: React.FC = () => {
   // Mouse Back button (button code 3) → synthetic Escape, so any open
@@ -1529,6 +1552,97 @@ const App: React.FC = () => {
   const [folderSizeCache, setFolderSizeCache] = useState<Map<string, FolderSizeResult>>(new Map());
   const [folderSizeCalculating, setFolderSizeCalculating] = useState<Set<string>>(new Set());
   const folderSizeCalculatingRef = useRef<Set<string>>(new Set());
+  // A remote path names a folder on every connection target (server, port,
+  // bucket, container, drive, branch), so the target is part of the key:
+  // "/docs" sized in one is not the size of "/docs" in the next. So is the
+  // tab's connection, for two accounts that differ only in a credential
+  // (connectionNumberOf): a new connect counts afresh, and a tab switched back
+  // to keeps its figures, as it keeps its listing; the dialog offers a recount.
+  const remoteSizeKey = (path: string) => `remote:${connectionTargetKey(liveConnectionParams)}#${connectionNumberOf(liveConnectionParams)}:${path}`;
+  const propertiesSizeKey = propertiesDialog
+    ? (propertiesDialog.isRemote ? remoteSizeKey(propertiesDialog.path) : localSizeKey(propertiesDialog.path))
+    : '';
+  // The local walk each folder is waiting on, by key. Progress and results of
+  // any other walk of that folder (one whose dialog closed) are dropped.
+  const localSizeScanRef = useRef<Map<string, string>>(new Map());
+  // The walk running for each folder, by key, for a second caller to wait on.
+  const localSizeRunsRef = useRef<Map<string, Promise<void>>>(new Map());
+
+  /**
+   * Opens Properties on local entries: the one-item dialog for one entry, the
+   * aggregate one for several. The one way in for every Properties entry (a
+   * row, the panel's empty space, a breadcrumb segment) and for Alt+Enter, and
+   * on the General tab, where the size is: the tab is otherwise remembered
+   * from the last remote Properties (OpenDrive opens it on Permissions).
+   */
+  const openLocalProperties = async (entries: FileProperties[]) => {
+    if (entries.length === 0) return;
+    setPropertiesInitialTab('general');
+    // The dialog this one replaces stops counting the folders it alone shows:
+    // not those of the new entries, nor those the other dialog still shows.
+    const replacing: 'single' | 'multi' = entries.length > 1 ? 'multi' : 'single';
+    const stillShown = new Set([
+      ...entries.filter(e => e.is_dir).map(e => e.path),
+      ...localFoldersShownBy(replacing === 'multi' ? 'single' : 'multi'),
+    ]);
+    cancelLocalFolderSizes(localFoldersShownBy(replacing).filter(path => !stillShown.has(path)));
+    if (entries.length > 1) {
+      setMultiPropertiesDialog({ files: entries, isRemote: false });
+      // Lazy-load extended attributes per file (read-only / hidden) so the
+      // mixed-state indicators surface without blocking first paint.
+      const enriched = await Promise.all(entries.map(async (sf) => {
+        try {
+          const detailed = await invoke<any>('get_file_properties', { path: sf.path });
+          return {
+            ...sf,
+            permissions: detailed.permissions_text || sf.permissions,
+            permissions_mode: detailed.permissions_mode,
+            is_readonly: detailed.is_readonly,
+            is_hidden: detailed.is_hidden,
+            owner: detailed.owner,
+            group: detailed.group,
+          } as FileProperties;
+        } catch {
+          return sf;
+        }
+      }));
+      // Only into the dialog these attributes were read for: one reopened on
+      // another selection of the same size keeps its own.
+      setMultiPropertiesDialog(prev => prev
+        && prev.files.length === enriched.length
+        && prev.files.every((f, i) => f.path === enriched[i].path)
+        ? { ...prev, files: enriched }
+        : prev);
+      return;
+    }
+    const [entry] = entries;
+    if (!entry) return;
+    setPropertiesDialog(entry);
+    // Load extended properties asynchronously
+    try {
+      const detailed = await invoke<any>('get_file_properties', { path: entry.path });
+      setPropertiesDialog(prev => prev && prev.path === entry.path ? {
+        ...prev,
+        // A folder opened from the breadcrumb or the panel background has no
+        // listing entry to take its date from.
+        modified: prev.modified ?? detailed.modified,
+        created: detailed.created,
+        accessed: detailed.accessed,
+        owner: detailed.owner,
+        group: detailed.group,
+        permissions: detailed.permissions_text,
+        permissions_mode: detailed.permissions_mode,
+        is_symlink: detailed.is_symlink,
+        link_target: detailed.link_target,
+        inode: detailed.inode,
+        hard_links: detailed.hard_links,
+        is_readonly: detailed.is_readonly,
+        is_hidden: detailed.is_hidden,
+      } : prev);
+    } catch {
+      // Silently fail - basic properties are still shown
+    }
+  };
 
   // Duplicate Finder & Disk Usage dialogs
   const [duplicateFinderPath, setDuplicateFinderPath] = useState<string | null>(null);
@@ -2865,33 +2979,9 @@ const App: React.FC = () => {
     'Alt+Enter': () => {
       if (activePanel !== 'local') return;
       const panel = getActiveLocalState();
-      if (panel.selection.size === 0) return;
-      if (panel.selection.size === 1) {
-        const fileName = [...panel.selection][0];
-        const file = panel.files.find(f => f.name === fileName);
-        if (file) {
-          setPropertiesDialog({
-            name: file.name,
-            path: file.path || `${panel.currentPath}/${file.name}`,
-            size: file.size,
-            is_dir: file.is_dir,
-            modified: file.modified,
-            isRemote: false,
-          });
-        }
-        return;
-      }
-      const selectedFiles = panel.files
-        .filter(f => panel.selection.has(f.name))
-        .map(f => ({
-          name: f.name,
-          path: f.path || `${panel.currentPath}/${f.name}`,
-          size: f.size,
-          is_dir: f.is_dir,
-          modified: f.modified,
-          isRemote: false,
-        } as FileProperties));
-      setMultiPropertiesDialog({ files: selectedFiles, isRemote: false });
+      const entries = selectedLocalRows(panel.sortedFiles, panel.files, panel.selection)
+        .map(f => localEntryProperties(f, panel.currentPath));
+      if (entries.length > 0) void openLocalProperties(entries);
     },
 
     // Arrow Down: select next file
@@ -5040,74 +5130,151 @@ const App: React.FC = () => {
     });
   }, [notify, t]);
 
-  // Folder size calculation
-  const calculateFolderSize = useCallback(async (path: string) => {
-    if (folderSizeCalculatingRef.current.has(path)) return;
-    folderSizeCalculatingRef.current.add(path);
-    setFolderSizeCalculating(new Set(folderSizeCalculatingRef.current));
-    try {
-      const result = await invoke<FolderSizeResult>('calculate_folder_size', { path });
-      setFolderSizeCache(prev => {
-        const next = new Map(prev);
-        next.set(path, result);
-        return next;
-      });
-    } catch (err) {
-      notify.error(t('toast.sizeFailed'), String(err));
-    } finally {
-      folderSizeCalculatingRef.current.delete(path);
-      setFolderSizeCalculating(new Set(folderSizeCalculatingRef.current));
-    }
+  // Local folder size. Each walk has an id: its progress events carry it, so
+  // a dialog shows the totals of its own walk as they grow, and closing the
+  // dialog stops the walk (cancelLocalFolderSizes) instead of leaving a walk
+  // of a whole disk running behind it.
+  const calculateFolderSize = useCallback((path: string): Promise<void> => {
+    const key = localSizeKey(path);
+    // A walk of this folder is running: the caller waits for it instead of
+    // starting a second one (a multi-selection counts one folder at a time).
+    const running = localSizeRunsRef.current.get(key);
+    if (running) return running;
+    const run = countLocalFolder(path, key);
+    localSizeRunsRef.current.set(key, run);
+    void run.finally(() => {
+      if (localSizeRunsRef.current.get(key) === run) localSizeRunsRef.current.delete(key);
+    });
+    return run;
   }, [notify, t]);
 
-  // Remote folder size calculation via provider
-  const calculateRemoteFolderSize = useCallback(async (path: string) => {
-    if (folderSizeCalculatingRef.current.has(path)) return;
-    folderSizeCalculatingRef.current.add(path);
+  // One walk of a local folder, with its progress, for calculateFolderSize.
+  const countLocalFolder = async (path: string, key: string) => {
+    const scanId = newSizeScanId();
+    const current = () => localSizeScanRef.current.get(key) === scanId;
+    localSizeScanRef.current.set(key, scanId);
+    folderSizeCalculatingRef.current.add(key);
     setFolderSizeCalculating(new Set(folderSizeCalculatingRef.current));
-
-    // Listen for progress events
-    const unlisten = await listen<FolderSizeResult & { scanning: boolean }>(
-      'folder-size-progress',
-      (event) => {
-        const p = event.payload;
-        // Update cache with partial results during scan
+    let unlisten: (() => void) | undefined;
+    try {
+      unlisten = await listen<FolderSizeResult & { scan_id: string }>('local-folder-size-progress', (event) => {
+        const { scan_id, ...totals } = event.payload;
+        if (scan_id !== scanId || !current()) return;
+        setFolderSizeCache(prev => new Map(prev).set(key, totals));
+      });
+      // The dialog may have closed while the listener was set up.
+      if (!current()) return;
+      const result = await invoke<FolderSizeResult>('calculate_folder_size', { path, scanId });
+      if (current()) setFolderSizeCache(prev => new Map(prev).set(key, result));
+    } catch (err) {
+      if (current()) {
+        // The total of an earlier walk is not the folder's size now.
         setFolderSizeCache(prev => {
           const next = new Map(prev);
-          next.set(path, { total_bytes: p.total_bytes, file_count: p.file_count, dir_count: p.dir_count, partial: p.partial });
+          next.delete(key);
           return next;
         });
+        notify.error(t('toast.sizeFailed'), String(err));
       }
-    );
-
-    try {
-      const result = await invoke<FolderSizeResult>('provider_calculate_folder_size', { path });
-      setFolderSizeCache(prev => new Map(prev).set(path, result));
-    } catch (err) {
-      setFolderSizeCache(prev => {
-        const cached = prev.get(path);
-        return cached ? new Map(prev).set(path, { ...cached, partial: true }) : prev;
-      });
-      notify.error(t('toast.sizeFailed'), String(err));
     } finally {
-      unlisten();
-      folderSizeCalculatingRef.current.delete(path);
-      setFolderSizeCalculating(new Set(folderSizeCalculatingRef.current));
+      unlisten?.();
+      if (current()) {
+        localSizeScanRef.current.delete(key);
+        folderSizeCalculatingRef.current.delete(key);
+        setFolderSizeCalculating(new Set(folderSizeCalculatingRef.current));
+      }
     }
-  }, [notify, t]);
+  };
 
-  // Auto-start folder size calculation when properties dialog opens on a folder
+  // Stops the local walks of `paths`, whose dialog closed, and drops what they
+  // had counted: a half-counted total is not the folder's size.
+  const cancelLocalFolderSizes = useCallback((paths: string[]) => {
+    const stopped: string[] = [];
+    for (const path of paths) {
+      const key = localSizeKey(path);
+      const scanId = localSizeScanRef.current.get(key);
+      if (scanId === undefined) continue;
+      localSizeScanRef.current.delete(key);
+      localSizeRunsRef.current.delete(key);
+      folderSizeCalculatingRef.current.delete(key);
+      stopped.push(key);
+      invoke('cancel_folder_size', { scanId }).catch(() => {});
+    }
+    if (stopped.length === 0) return;
+    setFolderSizeCalculating(new Set(folderSizeCalculatingRef.current));
+    setFolderSizeCache(prev => {
+      const next = new Map(prev);
+      stopped.forEach(key => next.delete(key));
+      return next;
+    });
+  }, []);
+
+  // Remote folder sizes: one count kept at a time, which alone writes a
+  // figure; a count ended leaves none (remoteFolderSizes, tested there).
+  const sizeFailedRef = useRef<(err: unknown) => void>(() => {});
+  useLayoutEffect(() => {
+    sizeFailedRef.current = (err) => notify.error(t('toast.sizeFailed'), String(err));
+  }, [notify, t]);
+  const remoteSizesRef = useRef<RemoteFolderSizes | null>(null);
+  if (!remoteSizesRef.current) {
+    remoteSizesRef.current = remoteFolderSizes({
+      listen: (handler) => listen<RemoteSizeProgress>('folder-size-progress', (event) => handler(event.payload)),
+      count: (path, scanId) => invoke<FolderSizeResult>('provider_calculate_folder_size', { path, scanId }),
+      cancel: (scanId) => { invoke('provider_cancel_folder_size', { scanId }).catch(() => {}); },
+      newScanId: newSizeScanId,
+      setFigure: (key, update) => setFolderSizeCache(prev => {
+        const figure = update(prev.get(key));
+        const next = new Map(prev);
+        if (figure) next.set(key, figure);
+        else next.delete(key);
+        return next;
+      }),
+      setCalculating: (key, calculating) => {
+        if (calculating) folderSizeCalculatingRef.current.add(key);
+        else folderSizeCalculatingRef.current.delete(key);
+        setFolderSizeCalculating(new Set(folderSizeCalculatingRef.current));
+      },
+      onError: (err) => sizeFailedRef.current(err),
+    });
+  }
+  const { count: calculateRemoteFolderSize, stop: stopRemoteFolderSize } = remoteSizesRef.current;
+
+  // Start the folder size scans of the dialog that just opened. A local folder
+  // is measured afresh every time: the walk is fast and the folder may have
+  // changed since. A remote one is listed over the network, so a figure this
+  // connection already counted is kept, and the dialog offers a recount.
   useEffect(() => {
     if (!propertiesDialog || !propertiesDialog.is_dir) return;
     const p = propertiesDialog.path;
-    // Skip if already cached or calculating
-    if (folderSizeCache.has(p) || folderSizeCalculatingRef.current.has(p)) return;
-    if (propertiesDialog.isRemote) {
-      calculateRemoteFolderSize(p);
-    } else {
+    if (!propertiesDialog.isRemote) {
       calculateFolderSize(p);
+      return;
     }
+    const key = remoteSizeKey(p);
+    if (folderSizeCache.has(key) || folderSizeCalculatingRef.current.has(key)) return;
+    calculateRemoteFolderSize(p, key);
   }, [propertiesDialog?.path, propertiesDialog?.is_dir]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The same for the folders of a local selection. A remote selection is not
+  // scanned: the provider walk runs one folder at a time and a new one cancels
+  // the last.
+  const multiLocalFolders = useMemo(
+    () => multiPropertiesDialog && !multiPropertiesDialog.isRemote
+      ? multiPropertiesDialog.files.filter(f => f.is_dir).map(f => f.path)
+      : [],
+    [multiPropertiesDialog],
+  );
+  // The local folders a Properties dialog shows: a folder's walk goes on
+  // while either dialog still shows it, whichever of them closes or changes.
+  function localFoldersShownBy(dialog: 'single' | 'multi'): string[] {
+    if (dialog === 'single') {
+      return propertiesDialog && !propertiesDialog.isRemote && propertiesDialog.is_dir ? [propertiesDialog.path] : [];
+    }
+    return multiPropertiesDialog && !multiPropertiesDialog.isRemote
+      ? multiPropertiesDialog.files.filter(f => f.is_dir).map(f => f.path)
+      : [];
+  }
+  const multiSizeRunning = useSelectionFolderSizes(multiLocalFolders, calculateFolderSize);
 
   // Stuck detection moved to TransferToastContainer (isolated from App re-renders)
 
@@ -15308,6 +15475,10 @@ const App: React.FC = () => {
       ? (count > 1 ? t('github.commitFiles', { count }) : t('github.commit'))
       : (count > 1 ? t('contextMenu.uploadCount', { count }) : t('common.upload'));
     const filesToUpload = Array.from(selection);
+    // From the rows shown: a nested row of a flattened search is not in the
+    // listing.
+    const selectedEntries = () => selectedLocalRows(ctxPanel.sortedFiles, localFiles, selection)
+      .map(f => localEntryProperties(f, currentLocalPath));
 
     // Detect AeroFTP container files early for context menu ordering.
     const isAeroVaultFile = count === 1 && !file.is_dir && /\.aerovault$/i.test(file.name);
@@ -15532,71 +15703,8 @@ const App: React.FC = () => {
         }
       }] : []),
       {
-        label: t('contextMenu.properties'), icon: <Info size={14} />, action: async () => {
-          if (count > 1) {
-            const selectedFiles = localFiles.filter(f => selection.has(f.name)).map(f => ({
-              name: f.name,
-              path: f.path || `${currentLocalPath}/${f.name}`,
-              size: f.size,
-              is_dir: f.is_dir,
-              modified: f.modified,
-              isRemote: false,
-            } as FileProperties));
-            setMultiPropertiesDialog({ files: selectedFiles, isRemote: false });
-            // Lazy-load extended attributes per file (read-only / hidden) so the
-            // mixed-state indicators surface without blocking first paint.
-            (async () => {
-              const enriched = await Promise.all(selectedFiles.map(async (sf) => {
-                try {
-                  const detailed = await invoke<any>('get_file_properties', { path: sf.path });
-                  return {
-                    ...sf,
-                    permissions: detailed.permissions_text || sf.permissions,
-                    permissions_mode: detailed.permissions_mode,
-                    is_readonly: detailed.is_readonly,
-                    is_hidden: detailed.is_hidden,
-                    owner: detailed.owner,
-                    group: detailed.group,
-                  } as FileProperties;
-                } catch {
-                  return sf;
-                }
-              }));
-              setMultiPropertiesDialog(prev => prev && prev.files.length === enriched.length ? { ...prev, files: enriched } : prev);
-            })();
-            return;
-          }
-          const filePath = file.path || `${currentLocalPath}/${file.name}`;
-          setPropertiesDialog({
-            name: file.name,
-            path: filePath,
-            size: file.size,
-            is_dir: file.is_dir,
-            modified: file.modified,
-            isRemote: false,
-          });
-          // Load extended properties asynchronously
-          try {
-            const detailed = await invoke<any>('get_file_properties', { path: filePath });
-            setPropertiesDialog(prev => prev ? {
-              ...prev,
-              created: detailed.created,
-              accessed: detailed.accessed,
-              owner: detailed.owner,
-              group: detailed.group,
-              permissions: detailed.permissions_text,
-              permissions_mode: detailed.permissions_mode,
-              is_symlink: detailed.is_symlink,
-              link_target: detailed.link_target,
-              inode: detailed.inode,
-              hard_links: detailed.hard_links,
-              is_readonly: detailed.is_readonly,
-              is_hidden: detailed.is_hidden,
-            } : null);
-          } catch {
-            // Silently fail - basic properties are still shown
-          }
-        }
+        label: t('contextMenu.properties'), icon: <Info size={14} />,
+        action: () => openLocalProperties(selectedEntries()),
       },
       { actionId: 'delete', label: t('contextMenu.delete'), icon: <Trash2 size={14} />, action: () => deleteMultipleLocalFiles(filesToUpload), danger: true, divider: true },
       {
@@ -15620,7 +15728,8 @@ const App: React.FC = () => {
       { label: t('contextMenu.copyPath'), icon: <Copy size={14} />, action: () => { copyText(file.path).then(() => notify.success(t('contextMenu.pathCopied')), () => notify.error(t('toast.copyFailed'))); } },
       { label: t('contextMenu.copyName'), icon: <Clipboard size={14} />, action: () => { copyText(file.name).then(() => notify.success(t('contextMenu.nameCopied')), () => notify.error(t('toast.copyFailed'))); }, divider: true },
       { label: t('contextMenu.openInFileManager'), icon: <ExternalLink size={14} />, action: () => openInFileManager(file.is_dir ? file.path : currentLocalPath) },
-      // Directory-specific actions: Calculate Size, Find Duplicates, Disk Usage.
+      // Directory-specific actions: Find Duplicates, Disk Usage. A folder's size
+      // is in Properties, above.
       // Same list the empty-area and breadcrumb menus raise, so a folder answers
       // the same way whether you reach it from its parent or from inside it.
       ...(file.is_dir ? directoryActionItems(file.path || `${currentLocalPath}/${file.name}`) : []),
@@ -16131,14 +16240,10 @@ const App: React.FC = () => {
    * These used to exist only on a folder *entry* in the listing, which meant
    * running any of them on the folder you were already inside required leaving
    * it, finding it in the parent, and right-clicking it there (discussion #347).
-   * They are now built from a path so the same three can be raised from the
+   * They are now built from a path so the same ones can be raised from the
    * empty space of the panel and from a breadcrumb segment.
    */
   const directoryActionItems = (dirPath: string): ContextMenuItem[] => [
-    {
-      label: t('contextMenu.calculateSize'), icon: <HardDrive size={14} />,
-      action: () => calculateFolderSize(dirPath),
-    },
     {
       label: t('contextMenu.findDuplicates'), icon: <Copy size={14} />,
       action: () => setDuplicateFinderPath(dirPath),
@@ -16148,6 +16253,26 @@ const App: React.FC = () => {
       action: () => setDiskUsagePath(dirPath),
     },
   ];
+
+  /**
+   * Properties of a directory named only by its path: the one a panel shows,
+   * for its empty space, or a breadcrumb segment. A folder row has its own
+   * Properties entry. A folder's size shows in Properties as it is counted, so
+   * this is also how the size of the directory you are in is asked for. These
+   * two menus offered Calculate Size for it instead, which did nothing on its
+   * own (#1441), and no Properties.
+   */
+  const directoryPropertiesItem = (dirPath: string): ContextMenuItem => ({
+    label: t('contextMenu.properties'), icon: <Info size={14} />, divider: true,
+    action: () => openLocalProperties([{
+      name: localPathBasename(dirPath) || dirPath,
+      path: dirPath,
+      size: null,
+      is_dir: true,
+      modified: null,
+      isRemote: false,
+    }]),
+  });
 
   /**
    * Context menu for one segment of the local breadcrumb, i.e. for a directory
@@ -16169,6 +16294,7 @@ const App: React.FC = () => {
         divider: true,
       },
       ...directoryActionItems(dirPath),
+      directoryPropertiesItem(dirPath),
     ]);
   };
 
@@ -16203,7 +16329,9 @@ const App: React.FC = () => {
       },
       // Aimed at the directory this panel is showing, so they no longer require
       // going up a level to find it (#347).
-      ...(ctxPanel.currentPath ? directoryActionItems(ctxPanel.currentPath) : []),
+      ...(ctxPanel.currentPath
+        ? [...directoryActionItems(ctxPanel.currentPath), directoryPropertiesItem(ctxPanel.currentPath)]
+        : []),
     ];
     contextMenu.show(e, items);
   };
@@ -17228,9 +17356,13 @@ const App: React.FC = () => {
             file={propertiesDialog}
             checksumCapability={propertiesChecksumCapability}
             onClose={() => {
-              // Cancel remote folder size scan if active
+              // Cancel the folder size scan if active
               if (propertiesDialog.isRemote && propertiesDialog.is_dir) {
-                invoke('provider_cancel_folder_size').catch(() => {});
+                stopRemoteFolderSize();
+              } else if (propertiesDialog.is_dir) {
+                // A folder the multi-item dialog also shows keeps its walk.
+                const shown = new Set(localFoldersShownBy('multi'));
+                cancelLocalFolderSizes([propertiesDialog.path].filter(path => !shown.has(path)));
               }
               setPropertiesDialog(null);
             }}
@@ -17293,13 +17425,13 @@ const App: React.FC = () => {
             onCalculateFolderSize={propertiesDialog.is_dir ? () => {
               const p = propertiesDialog.path;
               if (propertiesDialog.isRemote) {
-                calculateRemoteFolderSize(p);
+                calculateRemoteFolderSize(p, remoteSizeKey(p));
               } else {
                 calculateFolderSize(p);
               }
             } : undefined}
-            folderSize={propertiesDialog.is_dir ? folderSizeCache.get(propertiesDialog.path) ?? null : null}
-            folderSizeCalculating={propertiesDialog.is_dir ? folderSizeCalculating.has(propertiesDialog.path) : false}
+            folderSize={propertiesDialog.is_dir ? folderSizeCache.get(propertiesSizeKey) ?? null : null}
+            folderSizeCalculating={propertiesDialog.is_dir ? folderSizeCalculating.has(propertiesSizeKey) : false}
             initialTab={propertiesInitialTab}
             onPrivacyChange={propertiesDialog.isRemote && propertiesDialog.protocol === 'opendrive'
               ? (level) => applyOpenDrivePrivacyToPaths(level, [{ path: propertiesDialog.path, isDir: !!propertiesDialog.is_dir }])
@@ -17330,7 +17462,21 @@ const App: React.FC = () => {
         {multiPropertiesDialog && (
           <MultiFilePropertiesDialog
             selection={multiPropertiesDialog}
-            onClose={() => setMultiPropertiesDialog(null)}
+            onClose={() => {
+              if (!multiPropertiesDialog.isRemote) {
+                // The folder the one-item dialog also shows keeps its walk.
+                const shown = new Set(localFoldersShownBy('single'));
+                cancelLocalFolderSizes(localFoldersShownBy('multi').filter(path => !shown.has(path)));
+              }
+              setMultiPropertiesDialog(null);
+            }}
+            folderSizes={multiPropertiesDialog.isRemote ? undefined : new Map(multiPropertiesDialog.files.flatMap(f => {
+              const size = f.is_dir ? folderSizeCache.get(localSizeKey(f.path)) : undefined;
+              return size ? [[f.path, size] as const] : [];
+            }))}
+            // A folder of the selection may still be counted for another
+            // dialog, which this one's count skipped.
+            folderSizeCalculating={multiSizeRunning || multiLocalFolders.some(p => folderSizeCalculating.has(localSizeKey(p)))}
             onPrivacyChange={multiPropertiesDialog.protocol === 'opendrive'
               ? (level) => applyOpenDrivePrivacyToPaths(level, multiPropertiesDialog.files.map(f => ({ path: f.path, isDir: !!f.is_dir })))
               : undefined}

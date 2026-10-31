@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "Spørg AeroAgent...",
             "browseArchive": "Gennemse arkiv",
-            "calculateSize": "Beregn størrelse",
             "compress": "Komprimer",
             "compress7zMultiple": "Komprimer 7z ({count})",
             "compressSubmenu": "Komprimer",

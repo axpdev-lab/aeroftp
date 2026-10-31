@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "Opýtať sa AeroAgent...",
             "browseArchive": "Prehľadávať archív",
-            "calculateSize": "Vypočítať veľkosť",
             "compress": "Komprimovať",
             "compress7zMultiple": "Komprimovať do 7z ({count})",
             "compressSubmenu": "Komprimovať",

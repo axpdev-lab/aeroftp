@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "Gofyn i AeroAgent...",
             "browseArchive": "Pori Archif",
-            "calculateSize": "Cyfrifo Maint",
             "compress": "Cywasgu",
             "compress7zMultiple": "Cywasgu 7z ({count})",
             "compressSubmenu": "Cywasgu",

@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "Klausti AeroAgent...",
             "browseArchive": "Naršyti archyvą",
-            "calculateSize": "Apskaičiuoti dydį",
             "compress": "Suspausti",
             "compress7zMultiple": "Suspausti 7z ({count})",
             "compressSubmenu": "Suspausti",

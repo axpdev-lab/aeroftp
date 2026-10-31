@@ -938,7 +938,6 @@
         "contextMenu": {
             "askAeroAgent": "Chiedi ad AeroAgent...",
             "browseArchive": "Esplora Archivio",
-            "calculateSize": "Calcola Dimensione",
             "compress": "Comprimi",
             "compress7zMultiple": "Comprimi 7z ({count})",
             "compressSubmenu": "Comprimi",

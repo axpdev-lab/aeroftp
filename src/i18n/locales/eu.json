@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "Galdetu AeroAgent-i...",
             "browseArchive": "Arakatu artxiboa",
-            "calculateSize": "Kalkulatu tamaina",
             "compress": "Konprimitu",
             "compress7zMultiple": "Konprimitu 7zra ({count})",
             "compressSubmenu": "Konprimitu...",

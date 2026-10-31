@@ -468,6 +468,9 @@ pub enum WorkerEvent {
         path: String,
         bytes: u64,
         files: u64,
+        /// Why the figure is a lower bound (a folder that could not be read, a
+        /// cap); `None` when it is the folder's size.
+        lower_bound: Option<String>,
     },
     /// Edit step 1 done ([`WorkerCommand::EditFetch`]): the remote file is staged
     /// at `temp_path` and the run loop should open `$EDITOR` on it.
@@ -535,9 +538,15 @@ impl WorkerEvent {
                     if *binary { "binary" } else { "text" }
                 )
             }
-            WorkerEvent::DirSize { path, bytes, files } => {
-                format!("size {} {} bytes {} files", path, bytes, files)
-            }
+            WorkerEvent::DirSize {
+                path,
+                bytes,
+                files,
+                lower_bound,
+            } => match lower_bound {
+                Some(why) => format!("size {} {} bytes {} files ({})", path, bytes, files, why),
+                None => format!("size {} {} bytes {} files", path, bytes, files),
+            },
             WorkerEvent::EditReady { remote_path, .. } => format!("edit ready {}", remote_path),
             WorkerEvent::EditDone { remote_path, .. } => format!("edit done {}", remote_path),
             WorkerEvent::SiteReply { title, .. } => format!("site reply {}", title),

@@ -19701,38 +19701,29 @@ async fn size_remote_dir(
     Ok((total_bytes, files))
 }
 
-/// Recursive byte count + file count under a local directory, bounded by
-/// [`TUI_SIZE_MAX_ENTRIES`].
-async fn size_local_dir(path: &str) -> Result<(u64, u64), String> {
-    use tokio::fs;
-    let mut total_bytes: u64 = 0;
-    let mut files: u64 = 0;
-    let mut visited: usize = 0;
-    let mut stack = vec![path.to_string()];
-    while let Some(dir) = stack.pop() {
-        let mut rd = match fs::read_dir(&dir).await {
-            Ok(rd) => rd,
-            Err(err) => return Err(format!("read '{}': {}", dir, err)),
-        };
-        while let Some(entry) = rd.next_entry().await.map_err(|e| e.to_string())? {
-            visited += 1;
-            if visited > TUI_SIZE_MAX_ENTRIES {
-                return Err("directory too large to size".to_string());
-            }
-            // symlink_metadata: do not follow links (avoids cycles / double count).
-            let meta = match entry.metadata().await {
-                Ok(meta) => meta,
-                Err(_) => continue,
-            };
-            if meta.is_dir() {
-                stack.push(entry.path().to_string_lossy().into_owned());
-            } else {
-                total_bytes += meta.len();
-                files += 1;
-            }
-        }
-    }
-    Ok((total_bytes, files))
+/// Recursive byte count + file count under a local directory: the engine the
+/// app's folder Properties uses, bounded by [`TUI_SIZE_MAX_ENTRIES`]. A folder it
+/// cannot read, or the cap, no longer fails the whole size: the total comes
+/// back with the reason it is a lower bound. `stop` ends the walk early, when
+/// the TUI closes: the walk runs on a blocking thread the runtime cannot drop.
+async fn size_local_dir(
+    path: &str,
+    stop: Arc<AtomicBool>,
+) -> Result<(u64, u64, Option<String>), String> {
+    let root = std::path::PathBuf::from(path);
+    let limits = ftp_client_gui_lib::folder_size::Limits {
+        max_entries: TUI_SIZE_MAX_ENTRIES as u64,
+        // No depth bound, as the TUI's walk never had one: the entry cap
+        // already bounds the work, and a deep tree is counted whole.
+        max_depth: usize::MAX,
+        ..Default::default()
+    };
+    let size = tokio::task::spawn_blocking(move || {
+        ftp_client_gui_lib::folder_size::scan(&root, limits, &stop, |_| {})
+    })
+    .await
+    .map_err(|e| format!("size task failed: {e}"))??;
+    Ok((size.total_bytes, size.file_count, size.lower_bound_reason()))
 }
 
 /// Create an empty remote file by uploading a zero-byte temp file (no provider
@@ -19911,11 +19902,15 @@ async fn reconnect_session_after_transfer_cancel(
     }
 }
 
+/// The TUI's worker: runs each command the screen sends and reports back.
+/// `closing` is set when the screen has closed, to stop a local size walk
+/// that would otherwise hold the exit until it finished.
 async fn run_cli_tui_worker(
     cli: &mut Cli,
     format: OutputFormat,
     mut command_rx: cli_tui::worker::WorkerCommandReceiver,
     event_tx: cli_tui::worker::WorkerEventSender,
+    closing: Arc<AtomicBool>,
 ) {
     use cli_tui::worker::{TransferDrive, TuiWorkerOperation, WorkerCommand, WorkerEvent};
     use std::collections::VecDeque;
@@ -20626,16 +20621,23 @@ async fn run_cli_tui_worker(
                     identity: identity.clone(),
                 });
                 let result = if local {
-                    size_local_dir(&path).await
+                    size_local_dir(&path, closing.clone()).await
                 } else {
                     match session.as_mut() {
-                        Some(active) => size_remote_dir(active, &path).await,
+                        Some(active) => size_remote_dir(active, &path)
+                            .await
+                            .map(|(bytes, files)| (bytes, files, None)),
                         None => Err("no active TUI session".to_string()),
                     }
                 };
                 match result {
-                    Ok((bytes, files)) => {
-                        let _ = event_tx.send(WorkerEvent::DirSize { path, bytes, files });
+                    Ok((bytes, files, lower_bound)) => {
+                        let _ = event_tx.send(WorkerEvent::DirSize {
+                            path,
+                            bytes,
+                            files,
+                            lower_bound,
+                        });
                     }
                     Err(message) => {
                         let _ = event_tx.send(WorkerEvent::Failed {
@@ -20764,12 +20766,32 @@ fn run_tui_with_cli_worker(
     let (worker_client, command_rx, event_tx) = cli_tui::worker::worker_channels();
     let handle = tokio::runtime::Handle::current();
 
+    let closing = Arc::new(AtomicBool::new(false));
+    let worker_closing = closing.clone();
+
     std::thread::scope(|scope| {
         let worker_thread = scope.spawn(move || {
-            handle.block_on(run_cli_tui_worker(cli, format, command_rx, event_tx));
+            handle.block_on(run_cli_tui_worker(
+                cli,
+                format,
+                command_rx,
+                event_tx,
+                worker_closing,
+            ));
         });
 
-        let result = cli_tui::run_tui_with_worker(context, worker_client);
+        /// Sets the flag however the TUI returns, a panic included: a local
+        /// size still walking would hold the join until it finished.
+        struct Closing<'a>(&'a AtomicBool);
+        impl Drop for Closing<'_> {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::Relaxed);
+            }
+        }
+        let result = {
+            let _closing = Closing(&closing);
+            cli_tui::run_tui_with_worker(context, worker_client)
+        };
         if worker_thread.join().is_err() && result.is_ok() {
             return Err(std::io::Error::other("TUI worker thread panicked"));
         }
@@ -39264,7 +39286,10 @@ async fn run_rm_dry_run(
     format: OutputFormat,
 ) -> i32 {
     let spinner = if recursive {
-        Some(create_spinner(&format!("Scanning {} ...", path)))
+        Some(create_spinner(&format!(
+            "Scanning {} ...",
+            sanitize_filename(path)
+        )))
     } else {
         None
     };
@@ -39379,7 +39404,10 @@ async fn run_filtered_rm(
     format: OutputFormat,
 ) -> i32 {
     let spinner = if recursive {
-        Some(create_spinner(&format!("Scanning {} ...", path)))
+        Some(create_spinner(&format!(
+            "Scanning {} ...",
+            sanitize_filename(path)
+        )))
     } else {
         None
     };
@@ -46099,7 +46127,10 @@ async fn cmd_df(url: &str, scan: bool, full: bool, cli: &Cli, format: OutputForm
             cancel_sig.store(true, Ordering::Relaxed);
         });
 
-        let spinner = create_spinner(&format!("Scanning {} for used storage...", root));
+        let spinner = create_spinner(&format!(
+            "Scanning {} for used storage...",
+            sanitize_filename(&root)
+        ));
         // None = no depth asked, the parachute applies on the BFS only.
         // Flattening this to MAX_SCAN_DEPTH used to make a requested depth
         // indistinguishable from the safety net, so `size --max-depth 2`
@@ -46327,6 +46358,22 @@ async fn cmd_df(url: &str, scan: bool, full: bool, cli: &Cli, format: OutputForm
 /// depth/entry caps as `df --scan`), so it never issues a per-file
 /// `stat()`.
 async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32 {
+    // A folder of this machine is measured by the engine the app's Calculate
+    // Size uses, so the terminal and the Properties dialog give one answer for
+    // one folder, at the speed of a parallel walk. `--max-depth` asks for a
+    // figure to that depth, which the provider walk below answers, and a
+    // `--profile` given with a URL is refused there, as by every command.
+    if cli.max_depth.is_none() && cli.profile.is_none() {
+        // Named as the provider walk names it, from the folder given rather
+        // than from this machine's root, so a script can pass it on.
+        if let (Some(folder), Ok(resolved)) = (
+            local_size_folder(url, path),
+            try_resolve_cli_remote_path("/", path),
+        ) {
+            let shown = size_path_shown(resolved, cfg!(windows));
+            return cmd_size_local(&folder, &shown, cli, format).await;
+        }
+    }
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
@@ -46334,8 +46381,9 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
 
     let resolved = resolve_cli_remote_path(&initial_path, path);
     // Mirror `df --scan`: an empty effective path means "the provider's
-    // canonical root", which the BFS expresses as "/".
-    let root = if resolved.trim().is_empty() {
+    // canonical root", which the BFS expresses as "/". A path of spaces is a
+    // folder's name, not an omitted path.
+    let root = if resolved.is_empty() {
         "/".to_string()
     } else {
         resolved
@@ -46349,7 +46397,7 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
         cancel_sig.store(true, Ordering::Relaxed);
     });
 
-    let spinner = create_spinner(&format!("Scanning {} ...", root));
+    let spinner = create_spinner(&format!("Scanning {} ...", sanitize_filename(&root)));
     // None = no depth asked; Some is a complete answer to that depth, not a cap.
     let scan_depth = cli.max_depth.map(|d| d as usize);
     let mut last_tick = Instant::now()
@@ -46398,7 +46446,11 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
                         s.used_bytes
                     );
                     if !cli.quiet {
-                        eprintln!("Path: {} (scan method: {})", root, s.method);
+                        eprintln!(
+                            "Path: {} (scan method: {})",
+                            sanitize_filename(&root),
+                            s.method
+                        );
                         // Say WHY the figure is a lower bound. Blaming the
                         // caps when the real cause was an unreadable directory
                         // sends the user to raise --max-depth, which cannot
@@ -46464,6 +46516,182 @@ async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
             provider_error_to_exit_code(&e)
         }
     }
+}
+
+/// The folder `size <local folder> [path]` measures, when it is one: the path
+/// is read inside the folder, as a URL's path is read inside the remote. A
+/// file, a missing path, or a path that climbs out with `..` is left to the
+/// provider walk, which already answers each of those.
+fn local_size_folder(url: &str, path: &str) -> Option<std::path::PathBuf> {
+    let base = std::path::absolute(local_path_target(url)?.ok()?).ok()?;
+    #[cfg(windows)]
+    let inner = path.trim_start_matches(['/', '\\']);
+    #[cfg(not(windows))]
+    let inner = path.trim_start_matches('/');
+    let inner = std::path::Path::new(inner);
+    if inner.components().any(|c| {
+        !matches!(
+            c,
+            std::path::Component::Normal(_) | std::path::Component::CurDir
+        )
+    }) {
+        return None;
+    }
+    let folder = base.join(inner);
+    // Through a link the folder can lie outside the one named: like `..`, it
+    // is left to the provider walk.
+    let inside = std::fs::canonicalize(&folder)
+        .ok()?
+        .starts_with(std::fs::canonicalize(&base).ok()?);
+    (inside && folder.is_dir()).then_some(folder)
+}
+
+/// The path `size` prints for a local folder: the one the provider walk prints
+/// for it, `/` for the folder given itself. On Windows `sub\child` names the
+/// same folder as `sub/child`, and only the second is a path the provider
+/// takes, so the separators are printed as `/`; elsewhere a backslash is part
+/// of a name and stays, as a name of spaces does.
+fn size_path_shown(resolved: String, windows: bool) -> String {
+    let resolved = if windows {
+        resolved.replace('\\', "/")
+    } else {
+        resolved
+    };
+    if resolved.is_empty() {
+        "/".to_string()
+    } else {
+        resolved
+    }
+}
+
+/// `size` of a local folder, through [`ftp_client_gui_lib::folder_size`]. The
+/// output is the provider walk's, line for line and key for key, so a script
+/// reading it does not need to know which of the two answered.
+async fn cmd_size_local(
+    folder: &std::path::Path,
+    shown: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    use ftp_client_gui_lib::folder_size::{scan, Limits, MAX_DEPTH, MAX_ENTRIES};
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    let cancel_sig = cancel.clone();
+    let stop = shutdown_signal();
+    tokio::spawn(async move {
+        let _ = stop.await;
+        cancel_sig.store(true, Ordering::Relaxed);
+    });
+
+    let spinner = create_spinner(&format!("Scanning {} ...", sanitize_filename(shown)));
+    let progress = spinner.clone();
+    let walk_cancel = cancel.clone();
+    let walk_folder = folder.to_path_buf();
+    let result = tokio::task::spawn_blocking(move || {
+        scan(&walk_folder, Limits::default(), &walk_cancel, |so_far| {
+            progress.set_message(format!(
+                "Scanning... {} files, {} so far",
+                so_far.file_count,
+                format_size(so_far.total_bytes)
+            ));
+        })
+    })
+    .await
+    .unwrap_or_else(|e| Err(format!("scan task failed: {e}")));
+    spinner.finish_and_clear();
+
+    let s = match result {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &format!("size failed: {}", e), 11);
+            return 11;
+        }
+    };
+    match format {
+        OutputFormat::Text => {
+            println!(
+                "Total objects: {} ({} files, {} dirs){}",
+                s.file_count + s.dir_count,
+                s.file_count,
+                s.dir_count,
+                local_size_marker(&s),
+            );
+            println!(
+                "Total size: {} ({} Byte)",
+                format_size(s.total_bytes),
+                s.total_bytes
+            );
+            if !cli.quiet {
+                eprintln!(
+                    "Path: {} (scan method: parallel local walk)",
+                    sanitize_filename(shown)
+                );
+                if s.unreadable_dirs > 0 {
+                    eprintln!(
+                        "Warning: {} director{} could not be listed (permission denied or I/O error); figure is a lower bound",
+                        s.unreadable_dirs,
+                        if s.unreadable_dirs == 1 { "y" } else { "ies" }
+                    );
+                }
+                if s.unreadable_files > 0 {
+                    eprintln!(
+                        "Warning: {} file{} could not be sized (permission denied or I/O error); figure is a lower bound",
+                        s.unreadable_files,
+                        if s.unreadable_files == 1 { "" } else { "s" }
+                    );
+                }
+                if s.capped {
+                    eprintln!(
+                        "Warning: scan capped (depth {} / {} entries); figure is a lower bound",
+                        MAX_DEPTH, MAX_ENTRIES
+                    );
+                }
+                if s.cancelled {
+                    eprintln!("Warning: scan cancelled; figure is a lower bound");
+                }
+            }
+        }
+        OutputFormat::Json => print_json(&local_size_json(&s, shown)),
+    }
+    size_exit_code(s.cancelled)
+}
+
+/// The marker after the object count, by the rule of
+/// [`ftp_client_gui_lib::used_scan::size_bound_marker`]: a cancel first, then
+/// a lower bound for any reason (a folder or file it could not read, a cap).
+fn local_size_marker(s: &ftp_client_gui_lib::folder_size::FolderSizeResult) -> &'static str {
+    if s.cancelled {
+        " (CANCELLED)"
+    } else if s.partial {
+        " (TRUNCATED)"
+    } else {
+        ""
+    }
+}
+
+/// The JSON of a local `size`: the provider walk's keys with the same meaning
+/// (`truncated` is any lower bound, `status` is `partial` only for a cancel),
+/// plus `unreadable_files`, which only the local walk can tell apart.
+fn local_size_json(
+    s: &ftp_client_gui_lib::folder_size::FolderSizeResult,
+    shown: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "status": if s.cancelled { "partial" } else { "ok" },
+        "path": shown,
+        "count": s.file_count,
+        "dirs": s.dir_count,
+        "objects": s.file_count + s.dir_count,
+        "bytes": s.total_bytes,
+        "human": format_size(s.total_bytes),
+        "truncated": s.partial,
+        "unreadable_dirs": s.unreadable_dirs,
+        "unreadable_files": s.unreadable_files,
+        "hit_cap": s.capped,
+        "cancelled": s.cancelled,
+        "depth_limited": false,
+        "scan_method": "parallel local walk",
+    })
 }
 
 /// G67: the exit code of a `size` whose scan was cancelled.
@@ -84337,6 +84565,105 @@ mod tests {
                 .unwrap(),
             "folder/file.txt"
         );
+    }
+
+    /// The path printed for a local folder is one the provider takes: `/` for
+    /// the folder given, Windows separators as `/`, a backslash elsewhere left
+    /// in the name it belongs to.
+    #[test]
+    fn size_prints_a_local_folder_path_the_provider_takes() {
+        assert_eq!(size_path_shown(String::new(), false), "/");
+        assert_eq!(size_path_shown(" ".into(), false), " ");
+        assert_eq!(size_path_shown("docs\\sub".into(), true), "docs/sub");
+        assert_eq!(size_path_shown("/docs\\sub".into(), true), "/docs/sub");
+        assert_eq!(size_path_shown("docs\\sub".into(), false), "docs\\sub");
+        assert_eq!(size_path_shown("/docs/sub".into(), false), "/docs/sub");
+    }
+
+    /// `size` takes the parallel walk only for a folder it can name inside the
+    /// one given; anything else stays with the provider walk and its errors.
+    #[test]
+    fn size_measures_a_local_folder_inside_the_one_named() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(dir.path().join("docs/sub")).expect("mkdir");
+        std::fs::write(dir.path().join("docs/file.txt"), b"x").expect("write");
+        let base = dir.path().to_string_lossy().into_owned();
+        let url = format!("file://{}", dir.path().display());
+
+        assert_eq!(local_size_folder(&base, "").as_deref(), Some(dir.path()));
+        assert_eq!(
+            local_size_folder(&url, "/docs/sub").as_deref(),
+            Some(dir.path().join("docs/sub").as_path())
+        );
+        for leaves_the_fast_path in ["docs/file.txt", "absent", "../", "docs/../.."] {
+            assert_eq!(
+                local_size_folder(&base, leaves_the_fast_path),
+                None,
+                "{leaves_the_fast_path}"
+            );
+        }
+        assert_eq!(local_size_folder("sftp://host", ""), None);
+        assert_eq!(local_size_folder("_", ""), None);
+        // A link inside the folder given reaches the fast path only while it
+        // stays inside: one pointing out is left to the provider walk.
+        #[cfg(unix)]
+        {
+            let outside = tempfile::tempdir().expect("tempdir");
+            std::os::unix::fs::symlink(outside.path(), dir.path().join("docs/away")).expect("link");
+            assert_eq!(local_size_folder(&base, "docs/away"), None);
+            std::os::unix::fs::symlink(dir.path().join("docs/sub"), dir.path().join("docs/near"))
+                .expect("link");
+            assert_eq!(
+                local_size_folder(&base, "docs/near").as_deref(),
+                Some(dir.path().join("docs/near").as_path())
+            );
+        }
+        // On Unix a backslash is part of a name, not a separator to strip;
+        // the lint reads `\docs` as rooted, which it is only on Windows.
+        #[cfg(unix)]
+        #[allow(clippy::join_absolute_paths)]
+        {
+            let named = "\\docs";
+            std::fs::create_dir(dir.path().join(named)).expect("mkdir");
+            assert_eq!(
+                local_size_folder(&base, named).as_deref(),
+                Some(dir.path().join(named).as_path())
+            );
+        }
+    }
+
+    /// The local walk reports a lower bound the way the provider walk does:
+    /// `truncated` and the `(TRUNCATED)` marker for any reason, not only a cap,
+    /// so a script branching on them takes the same branch for both walks.
+    #[test]
+    fn a_local_size_marks_every_lower_bound_as_the_provider_walk_does() {
+        use ftp_client_gui_lib::folder_size::FolderSizeResult;
+        let complete = FolderSizeResult {
+            total_bytes: 3,
+            file_count: 1,
+            ..Default::default()
+        };
+        let unreadable = FolderSizeResult {
+            partial: true,
+            unreadable_dirs: 1,
+            ..complete.clone()
+        };
+        let cancelled = FolderSizeResult {
+            partial: true,
+            cancelled: true,
+            ..complete.clone()
+        };
+        for (s, marker, status, truncated) in [
+            (&complete, "", "ok", false),
+            (&unreadable, " (TRUNCATED)", "ok", true),
+            (&cancelled, " (CANCELLED)", "partial", true),
+        ] {
+            assert_eq!(local_size_marker(s), marker);
+            let json = local_size_json(s, "/x/");
+            assert_eq!(json["status"], status);
+            assert_eq!(json["truncated"], truncated);
+            assert_eq!(json["unreadable_dirs"], s.unreadable_dirs);
+        }
     }
 
     /// Which positionals name a folder of this machine: a file URL, an

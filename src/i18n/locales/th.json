@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "ถาม AeroAgent...",
             "browseArchive": "เรียกดูไฟล์เก็บถาวร",
-            "calculateSize": "คำนวณขนาด",
             "compress": "บีบอัด",
             "compress7zMultiple": "บีบอัด 7z ({count})",
             "compressSubmenu": "บีบอัด",

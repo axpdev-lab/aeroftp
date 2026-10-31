@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "Uliza AeroAgent...",
             "browseArchive": "Vinjari Kumbukumbu",
-            "calculateSize": "Hesabu Ukubwa",
             "compress": "Bana",
             "compress7zMultiple": "Bana 7z ({count})",
             "compressSubmenu": "Finya",

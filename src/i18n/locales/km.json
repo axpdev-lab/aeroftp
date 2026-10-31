@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "សួរ AeroAgent...",
             "browseArchive": "រកមើលបណ្ណសារ",
-            "calculateSize": "គណនាទំហំ",
             "compress": "បង្ហាប់",
             "compress7zMultiple": "បង្ហាប់ទៅ 7z ({count})",
             "compressSubmenu": "បង្ហាប់",
