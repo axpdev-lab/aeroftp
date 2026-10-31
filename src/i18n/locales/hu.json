@@ -4179,7 +4179,10 @@
             "drivesLeftPanel": "Bal panel meghajtói",
             "drivesRightPanel": "Jobb panel meghajtói",
             "modeGroupLabel": "Oldalsáv módja",
-            "placesSidebarLabel": "Helyek oldalsáv"
+            "placesSidebarLabel": "Helyek oldalsáv",
+            "mountFailed": "A csatolás sikertelen",
+            "partitions_need_udisks2": "A snapben a nem csatolt partíciók megjelennek, és csatolhatók, illetve kiadhatók, ha az udisks2 engedély csatlakoztatva van. Futtassa ezt egy terminálban, majd térjen vissza az AeroFTP-be:",
+            "volume_action_needs_udisks2": "A snapben a csatolás és a kiadás az udisks2 engedélyt igényli. Futtassa ezt egy terminálban, majd próbálja újra: {command}"
         },
         "viewMode": {
             "list": "Lista",

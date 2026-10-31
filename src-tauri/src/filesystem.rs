@@ -76,7 +76,7 @@ pub struct VolumeInfo {
     pub is_ejectable: bool,
 }
 
-/// An unmounted partition detected via lsblk (mountable by user).
+/// An unmounted partition detected via lsblk, or UDisks2 in a snap (mountable by user).
 #[derive(Serialize, Clone)]
 pub struct UnmountedPartition {
     pub name: String,
@@ -233,6 +233,42 @@ fn mount_table_error(err: &std::io::Error, in_snap: bool) -> String {
         format!("Failed to read /proc/mounts: {err}")
     }
 }
+
+/// The message for a local path the system refuses. A snap reaches `/media`,
+/// `/run/media` and `/mnt` through its `removable-media` plug, which snapd never
+/// connects on its own, so a mounted partition can be refused after a good mount.
+pub(crate) fn local_path_refused(path: &Path, err: &std::io::Error) -> String {
+    #[cfg(target_os = "linux")]
+    {
+        refused_message(path, err, in_snap())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = path;
+        format!("Failed to read directory: {err}")
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn refused_message(path: &Path, err: &std::io::Error, in_snap: bool) -> String {
+    let removable = ["/media", "/run/media", "/mnt"]
+        .iter()
+        .any(|root| path.starts_with(root));
+    if in_snap && removable && err.kind() == std::io::ErrorKind::PermissionDenied {
+        format!(
+            "cannot read {} ({err}); in the snap, connect the plug with `sudo snap connect aeroftp:removable-media`",
+            path.display()
+        )
+    } else {
+        format!("Failed to read directory: {err}")
+    }
+}
+
+/// Error marker when the snap may not reach the UDisks2 service: its `udisks2` plug,
+/// which snapd never connects on its own, is not connected. The sidebar shows the
+/// command that connects it.
+#[cfg(target_os = "linux")]
+pub const UDISKS2_NOT_CONNECTED: &str = "UDISKS2_NOT_CONNECTED";
 
 #[cfg(target_os = "linux")]
 fn in_snap() -> bool {
@@ -1011,6 +1047,17 @@ async fn eject_volume_linux(mount_point: &str) -> Result<String, String> {
     // First, try to find the device for this mount point from /proc/mounts
     let device = find_device_for_mount(mount_point);
 
+    // A snap reaches the service directly, and has no other way to unmount.
+    if let (true, Some(dev)) = (in_snap(), device.clone()) {
+        validate_device_path(&dev)?;
+        tokio::task::spawn_blocking(move || udisks::unmount(&dev))
+            .await
+            .map_err(|e| format!("Unmount task failed: {e}"))??;
+        let msg = format!("Volume unmounted successfully: {mount_point}");
+        info!("{}", msg);
+        return Ok(msg);
+    }
+
     // Try udisksctl first (user-level, no sudo needed)
     if let Some(ref dev) = device {
         // AF-RUST-C01: Validate device path before passing to subprocess
@@ -1187,6 +1234,11 @@ async fn eject_volume_windows(mount_point: &str) -> Result<String, String> {
 #[cfg(target_os = "linux")]
 #[tauri::command]
 pub async fn list_unmounted_partitions() -> Result<Vec<UnmountedPartition>, String> {
+    if in_snap() {
+        return tokio::task::spawn_blocking(udisks::unmounted_partitions)
+            .await
+            .map_err(|e| format!("Partition list task failed: {e}"))?;
+    }
     let output = std::process::Command::new("lsblk")
         .args(["-J", "-b", "-o", "NAME,SIZE,TYPE,FSTYPE,LABEL,MOUNTPOINT"])
         .output()
@@ -1228,54 +1280,512 @@ pub async fn list_unmounted_partitions() -> Result<Vec<UnmountedPartition>, Stri
             continue;
         }
 
-        let fs_type = match part["fstype"].as_str() {
-            Some(fs) if !fs.is_empty() => fs,
-            _ => continue, // Skip partitions with no filesystem (MSR, unformatted)
-        };
-
         // Some lsblk versions return size as string, not number (audit fix FS-002)
         let size = part["size"]
             .as_u64()
             .or_else(|| part["size"].as_str().and_then(|s| s.parse::<u64>().ok()))
             .unwrap_or(0);
-        let label = part["label"].as_str().unwrap_or("");
-        let name_raw = part["name"].as_str().unwrap_or("");
-
-        // Skip swap partitions
-        if fs_type == "swap" || fs_type == "linux-swap" {
-            continue;
-        }
-
-        // Skip small vfat partitions (EFI/boot, typically < 1GB)
-        if fs_type == "vfat" && size < 1_073_741_824 {
-            continue;
-        }
-
-        // Skip recovery partitions
-        let label_lower = label.to_lowercase();
-        if label_lower.contains("recovery")
-            || label_lower.contains("windows re")
-            || label_lower.contains("winre")
-        {
-            continue;
-        }
-
-        let display_name = if !label.is_empty() {
-            label.to_string()
-        } else {
-            name_raw.to_string()
-        };
-
-        partitions.push(UnmountedPartition {
-            name: display_name,
-            device: format!("/dev/{}", name_raw),
-            fs_type: fs_type.to_string(),
-            size_bytes: size,
-        });
+        partitions.extend(listable_partition(
+            part["name"].as_str().unwrap_or(""),
+            part["fstype"].as_str().unwrap_or(""),
+            size,
+            part["label"].as_str().unwrap_or(""),
+        ));
     }
 
     info!("Detected {} unmounted partitions", partitions.len());
     Ok(partitions)
+}
+
+/// The sidebar row of an unmounted partition, unless it is one a user has no
+/// reason to mount.
+#[cfg(target_os = "linux")]
+fn listable_partition(
+    name_raw: &str,
+    fs_type: &str,
+    size: u64,
+    label: &str,
+) -> Option<UnmountedPartition> {
+    // Skip partitions with no filesystem (MSR, unformatted)
+    if fs_type.is_empty() {
+        return None;
+    }
+
+    // Skip swap partitions
+    if fs_type == "swap" || fs_type == "linux-swap" {
+        return None;
+    }
+
+    // Skip small vfat partitions (EFI/boot, typically < 1GB)
+    if fs_type == "vfat" && size < 1_073_741_824 {
+        return None;
+    }
+
+    // Skip recovery partitions
+    let label_lower = label.to_lowercase();
+    if label_lower.contains("recovery")
+        || label_lower.contains("windows re")
+        || label_lower.contains("winre")
+    {
+        return None;
+    }
+
+    Some(UnmountedPartition {
+        name: if label.is_empty() { name_raw } else { label }.to_string(),
+        device: format!("/dev/{name_raw}"),
+        fs_type: fs_type.to_string(),
+        size_bytes: size,
+    })
+}
+
+/// Partitions, mounting and unmounting through the UDisks2 service. A snap cannot
+/// use `lsblk` and `udisksctl`: `lsblk` needs `hardware-observe`, with the broad
+/// capabilities it grants, and neither core22 nor the snap ships `udisksctl`. The
+/// one `udisks2` plug covers all three here.
+#[cfg(target_os = "linux")]
+mod udisks {
+    use super::{listable_partition, UnmountedPartition, UDISKS2_NOT_CONNECTED};
+    use std::collections::HashMap;
+    use zbus::blocking::Connection;
+    use zbus::zvariant::{Array, OwnedObjectPath, OwnedValue, Value};
+
+    const SERVICE: &str = "org.freedesktop.UDisks2";
+    const BLOCK: &str = "org.freedesktop.UDisks2.Block";
+    const FILESYSTEM: &str = "org.freedesktop.UDisks2.Filesystem";
+    const PARTITION: &str = "org.freedesktop.UDisks2.Partition";
+    const ACCESS_DENIED: &str = "org.freedesktop.DBus.Error.AccessDenied";
+
+    type Interfaces = HashMap<String, HashMap<String, OwnedValue>>;
+    type Objects = HashMap<OwnedObjectPath, Interfaces>;
+
+    /// The message for a call the snap's confinement refused, led by the marker
+    /// the sidebar reads, since that is the one cause the user can fix.
+    fn not_connected(detail: &str) -> String {
+        format!(
+            "{UDISKS2_NOT_CONNECTED}: {detail}; \
+             connect the plug with `sudo snap connect aeroftp:udisks2`"
+        )
+    }
+
+    /// The message for a failed call. Only a refusal is blamed on the plug: a
+    /// refused authorization or a busy device has nothing to do with it.
+    fn call_failed(action: &str, error_name: Option<&str>, detail: &str) -> String {
+        if error_name == Some(ACCESS_DENIED) {
+            not_connected(detail)
+        } else {
+            format!("Failed to {action}: {detail}")
+        }
+    }
+
+    fn failure(action: &str, error: &zbus::Error) -> String {
+        let name = match error {
+            zbus::Error::MethodError(name, _, _) => Some(name.as_str()),
+            _ => None,
+        };
+        call_failed(action, name, &error.to_string())
+    }
+
+    /// A bus that refuses the snap is the plug. Any other failure to reach it keeps
+    /// its own message: the plug may be connected already.
+    fn connect_failed(error: &zbus::Error) -> String {
+        match error {
+            zbus::Error::InputOutput(io) if io.kind() == std::io::ErrorKind::PermissionDenied => {
+                not_connected(&format!("the system bus refused the connection ({error})"))
+            }
+            _ => format!("Failed to reach the system bus: {error}"),
+        }
+    }
+
+    fn system_bus() -> Result<Connection, String> {
+        Connection::system().map_err(|e| connect_failed(&e))
+    }
+
+    fn string_of(properties: &HashMap<String, OwnedValue>, key: &str) -> String {
+        properties
+            .get(key)
+            .and_then(|value| value.downcast_ref::<&str>().ok())
+            .unwrap_or("")
+            .to_string()
+    }
+
+    /// The rows for what the service reports: a block device that is a partition
+    /// with a filesystem mounted nowhere, which the service does not ask to hide.
+    fn partitions_in(objects: &Objects) -> Vec<UnmountedPartition> {
+        let mut found: Vec<UnmountedPartition> = objects
+            .values()
+            .filter(|interfaces| interfaces.contains_key(PARTITION))
+            .filter_map(|interfaces| {
+                let block = interfaces.get(BLOCK)?;
+                let mounted = interfaces
+                    .get(FILESYSTEM)?
+                    .get("MountPoints")
+                    .and_then(|value| value.downcast_ref::<Array>().ok())
+                    .is_some_and(|points| !points.is_empty());
+                let hidden = block
+                    .get("HintIgnore")
+                    .and_then(|value| value.downcast_ref::<bool>().ok())
+                    .unwrap_or(false);
+                if mounted || hidden {
+                    return None;
+                }
+                let device = block
+                    .get("Device")
+                    .and_then(|value| Vec::<u8>::try_from(value.try_clone().ok()?).ok())?;
+                let device = String::from_utf8_lossy(&device);
+                let name = device.trim_end_matches('\0').strip_prefix("/dev/")?;
+                let size = block
+                    .get("Size")
+                    .and_then(|value| value.downcast_ref::<u64>().ok())
+                    .unwrap_or(0);
+                listable_partition(
+                    name,
+                    &string_of(block, "IdType"),
+                    size,
+                    &string_of(block, "IdLabel"),
+                )
+            })
+            .collect();
+        found.sort_by(|a, b| a.device.cmp(&b.device));
+        found
+    }
+
+    pub(super) fn unmounted_partitions() -> Result<Vec<UnmountedPartition>, String> {
+        let bus = system_bus()?;
+        let reply = bus
+            .call_method(
+                Some(SERVICE),
+                "/org/freedesktop/UDisks2",
+                Some("org.freedesktop.DBus.ObjectManager"),
+                "GetManagedObjects",
+                &(),
+            )
+            .map_err(|e| failure("list partitions", &e))?;
+        let objects: Objects = reply
+            .body()
+            .deserialize()
+            .map_err(|e| format!("Failed to read the partitions: {e}"))?;
+        Ok(partitions_in(&objects))
+    }
+
+    /// The service's object for `device`.
+    fn object_of(bus: &Connection, device: &str, action: &str) -> Result<OwnedObjectPath, String> {
+        let spec: HashMap<&str, Value> = HashMap::from([("path", Value::from(device))]);
+        let options: HashMap<&str, Value> = HashMap::new();
+        let reply = bus
+            .call_method(
+                Some(SERVICE),
+                "/org/freedesktop/UDisks2/Manager",
+                Some("org.freedesktop.UDisks2.Manager"),
+                "ResolveDevice",
+                &(spec, options),
+            )
+            .map_err(|e| failure(action, &e))?;
+        let objects: Vec<OwnedObjectPath> = reply
+            .body()
+            .deserialize()
+            .map_err(|e| format!("Failed to {action}: {e}"))?;
+        objects
+            .into_iter()
+            .next()
+            .ok_or_else(|| format!("Failed to {action}: no such device {device}"))
+    }
+
+    /// Mount `device` and return where it landed.
+    pub(super) fn mount(device: &str) -> Result<String, String> {
+        mount_on(&system_bus()?, device)
+    }
+
+    fn mount_on(bus: &Connection, device: &str) -> Result<String, String> {
+        let action = format!("mount {device}");
+        let object = object_of(bus, device, &action)?;
+        let options: HashMap<&str, Value> =
+            HashMap::from([("auth.no_user_interaction", Value::from(true))]);
+        let reply = bus
+            .call_method(
+                Some(SERVICE),
+                &object,
+                Some(FILESYSTEM),
+                "Mount",
+                &(options,),
+            )
+            .map_err(|e| failure(&action, &e))?;
+        reply
+            .body()
+            .deserialize()
+            .map_err(|e| format!("Failed to {action}: {e}"))
+    }
+
+    pub(super) fn unmount(device: &str) -> Result<(), String> {
+        unmount_on(&system_bus()?, device)
+    }
+
+    fn unmount_on(bus: &Connection, device: &str) -> Result<(), String> {
+        let action = format!("unmount {device}");
+        let object = object_of(bus, device, &action)?;
+        let options: HashMap<&str, Value> = HashMap::new();
+        bus.call_method(
+            Some(SERVICE),
+            &object,
+            Some(FILESYSTEM),
+            "Unmount",
+            &(options,),
+        )
+        .map_err(|e| failure(&action, &e))?;
+        Ok(())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        fn owned(value: Value<'_>) -> OwnedValue {
+            value.try_to_owned().unwrap()
+        }
+
+        /// A block device as the service reports it.
+        fn object(
+            device: &str,
+            fs: &str,
+            size: u64,
+            label: &str,
+            mounted: bool,
+            ignore: bool,
+        ) -> Interfaces {
+            let mut path = device.as_bytes().to_vec();
+            path.push(0);
+            let points: Vec<Vec<u8>> = if mounted {
+                vec![b"/media/x\0".to_vec()]
+            } else {
+                vec![]
+            };
+            let block = HashMap::from([
+                ("Device".to_string(), owned(Value::from(path))),
+                ("IdType".to_string(), owned(Value::from(fs))),
+                ("IdLabel".to_string(), owned(Value::from(label))),
+                ("Size".to_string(), owned(Value::from(size))),
+                ("HintIgnore".to_string(), owned(Value::from(ignore))),
+            ]);
+            let filesystem =
+                HashMap::from([("MountPoints".to_string(), owned(Value::from(points)))]);
+            HashMap::from([
+                (BLOCK.to_string(), block),
+                (FILESYSTEM.to_string(), filesystem),
+                (PARTITION.to_string(), HashMap::new()),
+            ])
+        }
+
+        fn path(name: &str) -> OwnedObjectPath {
+            OwnedObjectPath::try_from(format!("/org/freedesktop/UDisks2/block_devices/{name}"))
+                .unwrap()
+        }
+
+        #[test]
+        fn lists_what_lsblk_would_and_what_the_service_does_not_hide() {
+            const GB: u64 = 1 << 30;
+            let mut not_a_partition = object("/dev/sdz", "ext4", GB, "", false, false);
+            not_a_partition.remove(PARTITION);
+            let mut no_filesystem = object("/dev/sdy1", "", GB, "", false, false);
+            no_filesystem.remove(FILESYSTEM);
+            let objects: Objects = HashMap::from([
+                (
+                    path("sdb1"),
+                    object("/dev/sdb1", "ntfs", 5 * GB, "Data", false, false),
+                ),
+                (
+                    path("sda2"),
+                    object("/dev/sda2", "ext4", 2 * GB, "", false, false),
+                ),
+                (
+                    path("sda3"),
+                    object("/dev/sda3", "ext4", GB, "", true, false),
+                ),
+                (
+                    path("sda4"),
+                    object("/dev/sda4", "ext4", GB, "", false, true),
+                ),
+                (
+                    path("sda5"),
+                    object("/dev/sda5", "vfat", GB / 2, "", false, false),
+                ),
+                (
+                    path("sda6"),
+                    object("/dev/sda6", "ntfs", GB, "Recovery", false, false),
+                ),
+                (
+                    path("sda7"),
+                    object("/dev/sda7", "swap", GB, "", false, false),
+                ),
+                (path("sdz"), not_a_partition),
+                (path("sdy1"), no_filesystem),
+            ]);
+            let listed = partitions_in(&objects);
+            let rows: Vec<(&str, &str, &str, u64)> = listed
+                .iter()
+                .map(|p| {
+                    (
+                        p.name.as_str(),
+                        p.device.as_str(),
+                        p.fs_type.as_str(),
+                        p.size_bytes,
+                    )
+                })
+                .collect();
+            assert_eq!(
+                rows,
+                [
+                    ("sda2", "/dev/sda2", "ext4", 2 * GB),
+                    ("Data", "/dev/sdb1", "ntfs", 5 * GB),
+                ]
+            );
+        }
+
+        #[test]
+        fn only_a_refusal_by_the_bus_is_blamed_on_the_plug() {
+            let refused = call_failed("mount /dev/sda1", Some(ACCESS_DENIED), "AppArmor policy");
+            assert!(refused.starts_with(UDISKS2_NOT_CONNECTED), "{refused}");
+            assert!(
+                refused.contains("snap connect aeroftp:udisks2"),
+                "{refused}"
+            );
+            for name in [
+                Some("org.freedesktop.UDisks2.Error.NotAuthorized"),
+                Some("org.freedesktop.UDisks2.Error.DeviceBusy"),
+                Some("org.freedesktop.DBus.Error.ServiceUnknown"),
+                None,
+            ] {
+                let message = call_failed("mount /dev/sda1", name, "detail");
+                assert_eq!(message, "Failed to mount /dev/sda1: detail");
+            }
+        }
+
+        #[test]
+        fn a_bus_blames_the_plug_only_when_it_refuses_the_connection() {
+            use std::io::{Error, ErrorKind};
+            use std::sync::Arc;
+            let refused = connect_failed(&zbus::Error::InputOutput(Arc::new(Error::from(
+                ErrorKind::PermissionDenied,
+            ))));
+            assert!(refused.starts_with(UDISKS2_NOT_CONNECTED), "{refused}");
+            for error in [
+                zbus::Error::InputOutput(Arc::new(Error::from(ErrorKind::NotFound))),
+                zbus::Error::Handshake("no".to_string()),
+            ] {
+                let message = connect_failed(&error);
+                assert!(
+                    message.starts_with("Failed to reach the system bus"),
+                    "{message}"
+                );
+            }
+        }
+
+        /// A stand-in for the service, as the two ends of a socket: the calls and
+        /// the replies are the real D-Bus ones.
+        struct FakeManager;
+
+        #[zbus::interface(name = "org.freedesktop.UDisks2.Manager")]
+        impl FakeManager {
+            fn resolve_device(
+                &self,
+                spec: HashMap<String, OwnedValue>,
+                _options: HashMap<String, OwnedValue>,
+            ) -> zbus::fdo::Result<Vec<OwnedObjectPath>> {
+                let device = spec
+                    .get("path")
+                    .and_then(|value| value.downcast_ref::<&str>().ok())
+                    .unwrap_or("")
+                    .to_string();
+                match device.strip_prefix("/dev/") {
+                    Some("nothing") | None => Ok(vec![]),
+                    Some(name) => Ok(vec![path(name)]),
+                }
+            }
+        }
+
+        struct FakeFilesystem {
+            refuse: bool,
+            options: std::sync::Arc<std::sync::Mutex<Vec<bool>>>,
+        }
+
+        impl FakeFilesystem {
+            fn outcome(&self, reply: String) -> zbus::fdo::Result<String> {
+                if self.refuse {
+                    return Err(zbus::fdo::Error::AccessDenied(
+                        "AppArmor policy".to_string(),
+                    ));
+                }
+                Ok(reply)
+            }
+        }
+
+        #[zbus::interface(name = "org.freedesktop.UDisks2.Filesystem")]
+        impl FakeFilesystem {
+            fn mount(&self, options: HashMap<String, OwnedValue>) -> zbus::fdo::Result<String> {
+                let quiet = options
+                    .get("auth.no_user_interaction")
+                    .and_then(|value| value.downcast_ref::<bool>().ok())
+                    .unwrap_or(false);
+                self.options.lock().unwrap().push(quiet);
+                self.outcome("/media/u/Data".to_string())
+            }
+
+            fn unmount(&self, _options: HashMap<String, OwnedValue>) -> zbus::fdo::Result<()> {
+                self.outcome(String::new()).map(|_| ())
+            }
+        }
+
+        #[test]
+        fn mount_and_unmount_speak_to_the_service_as_it_expects() {
+            use zbus::blocking::connection::Builder;
+            let (ours, theirs) = std::os::unix::net::UnixStream::pair().unwrap();
+            let options = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            let seen = options.clone();
+            let service = std::thread::spawn(move || {
+                Builder::async_io_unix_stream(theirs)
+                    .server(zbus::Guid::generate())
+                    .unwrap()
+                    .p2p()
+                    .serve_at("/org/freedesktop/UDisks2/Manager", FakeManager)
+                    .unwrap()
+                    .serve_at(
+                        path("sda1").as_str(),
+                        FakeFilesystem {
+                            refuse: false,
+                            options: seen.clone(),
+                        },
+                    )
+                    .unwrap()
+                    .serve_at(
+                        path("denied").as_str(),
+                        FakeFilesystem {
+                            refuse: true,
+                            options: seen,
+                        },
+                    )
+                    .unwrap()
+                    .build()
+                    .unwrap()
+            });
+            let bus = Builder::async_io_unix_stream(ours).p2p().build().unwrap();
+            let _service = service.join().unwrap();
+
+            assert_eq!(mount_on(&bus, "/dev/sda1").unwrap(), "/media/u/Data");
+            assert_eq!(*options.lock().unwrap(), [true]);
+            unmount_on(&bus, "/dev/sda1").unwrap();
+
+            // A refusal comes back as the bus reports it, through `failure`.
+            for refused in [
+                mount_on(&bus, "/dev/denied").unwrap_err(),
+                unmount_on(&bus, "/dev/denied").unwrap_err(),
+            ] {
+                assert!(refused.starts_with(UDISKS2_NOT_CONNECTED), "{refused}");
+            }
+            let gone = mount_on(&bus, "/dev/nothing").unwrap_err();
+            assert_eq!(
+                gone,
+                "Failed to mount /dev/nothing: no such device /dev/nothing"
+            );
+        }
+    }
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -1290,6 +1800,12 @@ pub async fn list_unmounted_partitions() -> Result<Vec<UnmountedPartition>, Stri
 #[tauri::command]
 pub async fn mount_partition(device: String) -> Result<String, String> {
     validate_device_path(&device)?;
+
+    if in_snap() {
+        return tokio::task::spawn_blocking(move || udisks::mount(&device))
+            .await
+            .map_err(|e| format!("Mount task failed: {e}"))?;
+    }
 
     let output = std::process::Command::new("udisksctl")
         .args(["mount", "-b", &device, "--no-user-interaction"])
@@ -3123,6 +3639,33 @@ mod main_thread_tests {
             .await
             .expect("a no-op must still read");
         assert_eq!(props.size, 5);
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod local_path_refused_tests {
+    use super::*;
+    use std::io::{Error, ErrorKind};
+
+    #[test]
+    fn only_a_refused_mount_location_in_a_snap_names_the_plug() {
+        let denied = Error::from(ErrorKind::PermissionDenied);
+        for path in ["/media/u/Data", "/run/media/u/Data", "/mnt/data"] {
+            let message = refused_message(Path::new(path), &denied, true);
+            assert!(
+                message.contains("snap connect aeroftp:removable-media"),
+                "{message}"
+            );
+        }
+        for (path, kind, snap) in [
+            ("/media/u/Data", ErrorKind::PermissionDenied, false),
+            ("/home/u/secret", ErrorKind::PermissionDenied, true),
+            ("/media/u/Data", ErrorKind::Other, true),
+            ("/mediafiles", ErrorKind::PermissionDenied, true),
+        ] {
+            let message = refused_message(Path::new(path), &Error::from(kind), snap);
+            assert!(message.starts_with("Failed to read directory"), "{message}");
+        }
     }
 }
 

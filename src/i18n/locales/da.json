@@ -4179,7 +4179,10 @@
             "drivesLeftPanel": "Drev i venstre panel",
             "drivesRightPanel": "Drev i højre panel",
             "modeGroupLabel": "Sidepanelets tilstand",
-            "placesSidebarLabel": "Sidepanel med steder"
+            "placesSidebarLabel": "Sidepanel med steder",
+            "mountFailed": "Montering mislykkedes",
+            "partitions_need_udisks2": "I snap'en vises ikke-monterede partitioner, og de kan monteres og skubbes ud, når tilladelsen udisks2 er tilsluttet. Kør dette i en terminal, og vend derefter tilbage til AeroFTP:",
+            "volume_action_needs_udisks2": "I snap'en kræver montering og udskubning tilladelsen udisks2. Kør dette i en terminal, og prøv derefter igen: {command}"
         },
         "viewMode": {
             "list": "Liste",

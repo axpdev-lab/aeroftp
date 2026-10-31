@@ -4179,7 +4179,10 @@
             "drivesLeftPanel": "Jednotky ľavého panela",
             "drivesRightPanel": "Jednotky pravého panela",
             "modeGroupLabel": "Režim bočného panela",
-            "placesSidebarLabel": "Bočný panel miest"
+            "placesSidebarLabel": "Bočný panel miest",
+            "mountFailed": "Pripojenie zlyhalo",
+            "partitions_need_udisks2": "V balíku snap sa nepripojené oddiely zobrazia a dajú sa pripojiť aj vysunúť po pripojení oprávnenia udisks2. Spustite toto v termináli a potom sa vráťte do AeroFTP:",
+            "volume_action_needs_udisks2": "V balíku snap si pripojenie aj vysunutie vyžadujú oprávnenie udisks2. Spustite toto v termináli a skúste to znova: {command}"
         },
         "viewMode": {
             "list": "Zoznam",

@@ -4179,7 +4179,10 @@
             "drivesLeftPanel": "Pogoni levega podokna",
             "drivesRightPanel": "Pogoni desnega podokna",
             "modeGroupLabel": "Način stranske vrstice",
-            "placesSidebarLabel": "Stranska vrstica mest"
+            "placesSidebarLabel": "Stranska vrstica mest",
+            "mountFailed": "Priklop ni uspel",
+            "partitions_need_udisks2": "V snapu se nepriklopljene particije prikažejo in jih je mogoče priklopiti ter izvreči, ko je dovoljenje udisks2 povezano. To zaženite v terminalu in se nato vrnite v AeroFTP:",
+            "volume_action_needs_udisks2": "V snapu priklop in izvrženje zahtevata dovoljenje udisks2. To zaženite v terminalu in poskusite znova: {command}"
         },
         "viewMode": {
             "list": "Seznam",

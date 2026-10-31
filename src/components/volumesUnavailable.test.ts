@@ -9,9 +9,15 @@ import snapcraftYaml from '../../snap/snapcraft.yaml?raw';
 import sidebarSource from './PlacesSidebar.tsx?raw';
 import {
     MOUNT_OBSERVE_NOT_CONNECTED,
+    PartitionsNeedUdisks2,
     SNAP_CONNECT_MOUNT_OBSERVE,
+    SNAP_CONNECT_UDISKS2,
+    UDISKS2_NOT_CONNECTED,
     VolumesUnavailable,
+    needsUdisks2Plug,
+    readUnmountedPartitions,
     readVolumes,
+    volumeActionError,
     volumesUnavailableReason,
 } from './volumesUnavailable';
 
@@ -51,6 +57,39 @@ describe('volumes the snap may not read', () => {
         expect(snapcraftYaml).toMatch(new RegExp(`^name: ${snapName}$`, 'm'));
         const plugs = snapcraftYaml.slice(snapcraftYaml.indexOf('    plugs:'), snapcraftYaml.indexOf('\nparts:'));
         expect(plugs).toMatch(new RegExp(`^      - ${plug}$`, 'm'));
+    });
+
+    it('tells the snap udisks2 refusal from any other failure, with the marker and a plug the snap declares', () => {
+        expect(needsUdisks2Plug(`${UDISKS2_NOT_CONNECTED}: refused; connect the plug`)).toBe(true);
+        expect(needsUdisks2Plug('Failed to mount /dev/sda1: device busy')).toBe(false);
+        expect(needsUdisks2Plug(undefined)).toBe(false);
+        expect(filesystemRs).toContain(`pub const UDISKS2_NOT_CONNECTED: &str = "${UDISKS2_NOT_CONNECTED}";`);
+        expect(filesystemRs).toContain(SNAP_CONNECT_UDISKS2);
+        const [, plug] = SNAP_CONNECT_UDISKS2.match(/snap connect aeroftp:([a-z0-9-]+)$/) ?? [];
+        const plugs = snapcraftYaml.slice(snapcraftYaml.indexOf('    plugs:'), snapcraftYaml.indexOf('\nparts:'));
+        expect(plugs).toMatch(new RegExp(`^      - ${plug}$`, 'm'));
+        const hint = renderToStaticMarkup(createElement(PartitionsNeedUdisks2, { t }));
+        expect(hint).toContain('sidebar.partitions_need_udisks2');
+        expect(hint).toContain(SNAP_CONNECT_UDISKS2);
+    });
+
+    it('shows the partition hint, and a failed mount or eject, in the sidebar', () => {
+        expect(sidebarSource).toContain('!volumesLoading && partitionsNeedUdisks2 && <PartitionsNeedUdisks2 t={t} />');
+        expect(sidebarSource).toContain("title: t('sidebar.mountFailed')");
+        expect(sidebarSource.match(/message: volumeActionError\(err, t\)/g)).toHaveLength(2);
+        expect(sidebarSource).toContain("readUnmountedPartitions(() => invoke<UnmountedPartition[]>('list_unmounted_partitions'))");
+    });
+
+    it('says the plug only for its refusal, and keeps any other error as it is', async () => {
+        const params = (key: string, values?: Record<string, string | number>) => `${key}:${values?.command}`;
+        expect(volumeActionError(`${UDISKS2_NOT_CONNECTED}: refused`, params))
+            .toBe(`sidebar.volume_action_needs_udisks2:${SNAP_CONNECT_UDISKS2}`);
+        expect(volumeActionError('Failed to mount /dev/sda1: device busy', params)).toBe('Failed to mount /dev/sda1: device busy');
+        await expect(readUnmountedPartitions(async () => ['sda1'])).resolves.toEqual({ partitions: ['sda1'], needsPlug: false });
+        await expect(readUnmountedPartitions(async () => { throw `${UDISKS2_NOT_CONNECTED}: refused`; }))
+            .resolves.toEqual({ partitions: [], needsPlug: true });
+        await expect(readUnmountedPartitions(async () => { throw 'lsblk returned non-zero exit code'; }))
+            .resolves.toEqual({ partitions: [], needsPlug: false });
     });
 
     it('drops the rows of an earlier read when a read fails, and says why', async () => {
