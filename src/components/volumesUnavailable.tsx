@@ -21,6 +21,12 @@ export const UDISKS2_NOT_CONNECTED = 'UDISKS2_NOT_CONNECTED';
 /** Connects the other plug snapd never connects on its own. */
 export const SNAP_CONNECT_UDISKS2 = 'sudo snap connect aeroftp:udisks2';
 
+/** What a local listing says when the snap may not read a mount location. */
+export const SNAP_CONNECT_REMOVABLE_MEDIA = 'sudo snap connect aeroftp:removable-media';
+
+/** Whether a failed local listing is the one the user can fix by connecting the plug. */
+export const needsRemovableMediaPlug = (err: unknown): boolean => String(err).includes(SNAP_CONNECT_REMOVABLE_MEDIA);
+
 /** Whether `err` is the snap's refusal to reach UDisks2. */
 export const needsUdisks2Plug = (err: unknown): boolean => String(err).startsWith(UDISKS2_NOT_CONNECTED);
 

@@ -7,13 +7,16 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import filesystemRs from '../../src-tauri/src/filesystem.rs?raw';
 import snapcraftYaml from '../../snap/snapcraft.yaml?raw';
 import sidebarSource from './PlacesSidebar.tsx?raw';
+import appSource from '../App.tsx?raw';
 import {
     MOUNT_OBSERVE_NOT_CONNECTED,
     PartitionsNeedUdisks2,
     SNAP_CONNECT_MOUNT_OBSERVE,
+    SNAP_CONNECT_REMOVABLE_MEDIA,
     SNAP_CONNECT_UDISKS2,
     UDISKS2_NOT_CONNECTED,
     VolumesUnavailable,
+    needsRemovableMediaPlug,
     needsUdisks2Plug,
     readUnmountedPartitions,
     readVolumes,
@@ -93,6 +96,14 @@ describe('volumes the snap may not read', () => {
         await expect(read).resolves.toEqual({
             volumes: [], unmounted: [], unavailable: 'snap-mount-observe', partitionsNeedPlug: true,
         });
+    });
+
+    it('surfaces a refused mount location whatever the toast setting, and only that', () => {
+        expect(filesystemRs).toContain(SNAP_CONNECT_REMOVABLE_MEDIA);
+        expect(snapcraftYaml).toMatch(/^      - removable-media$/m);
+        expect(needsRemovableMediaPlug(`cannot read /run/media/u/D (Permission denied); in the snap, connect the plug with \`${SNAP_CONNECT_REMOVABLE_MEDIA}\``)).toBe(true);
+        expect(needsRemovableMediaPlug('Failed to read directory: Permission denied')).toBe(false);
+        expect(appSource.match(/needsRemovableMediaPlug\(error\)/g)).toHaveLength(2);
     });
 
     it('keeps the volumes when only the partitions are refused', async () => {
