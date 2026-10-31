@@ -4130,9 +4130,12 @@ const App: React.FC = () => {
     setShowExportImport(true);
   }, []);
 
-  // Keep refs in sync for keyboard navigation (refs are used in useKeyboardShortcuts above)
-  sortedLocalFilesRef.current = sortedLocalFiles;
-  sortedRemoteFilesRef.current = sortedRemoteFiles;
+  // Keep refs in sync for keyboard navigation (refs are used in useKeyboardShortcuts above).
+  // Written once the render commits: a render React discards never reaches them.
+  useLayoutEffect(() => {
+    sortedLocalFilesRef.current = sortedLocalFiles;
+    sortedRemoteFilesRef.current = sortedRemoteFiles;
+  }, [sortedLocalFiles, sortedRemoteFiles]);
 
   // True when the active session tab is the one that owns the encrypted overlay
   // (or is unlocking it). Routing and the decryption animation are both gated on
@@ -5709,6 +5712,18 @@ const App: React.FC = () => {
     void loadLocalFiles2(seedPath);
   }, [showDualLocalPanel, currentLocalPath2, currentLocalPath, defaultLocalPath, loadLocalFiles2]);
 
+  // Panel 2 keeps its listing while it is hidden (a server connected with the
+  // remote panel shown, or dual mode off), and what was written to its folder
+  // meanwhile did not reach it: a download or a sync reloads panel 1 only.
+  // Reload it when it comes back.
+  const localPanel2Visible = (!isConnected || !showRemotePanel) && showDualLocalPanel;
+  const localPanel2WasVisible = useRef(localPanel2Visible);
+  useEffect(() => {
+    const cameBack = localPanel2Visible && !localPanel2WasVisible.current;
+    localPanel2WasVisible.current = localPanel2Visible;
+    if (cameBack && currentLocalPath2) void loadLocalFiles2(currentLocalPath2);
+  }, [localPanel2Visible, currentLocalPath2, loadLocalFiles2]);
+
   useEffect(() => {
     if (!showDualLocalPanel || !currentLocalPath2 || localTabs2.length > 0) return;
     const id = `tab2-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -6739,7 +6754,7 @@ const App: React.FC = () => {
       setShowConnectionScreen(true);
     }
   }, [showConnectionScreen, isConnected, currentLocalPath, loadLocalFiles]);
-  handleToggleAeroFileRef.current = handleToggleAeroFile;
+  useLayoutEffect(() => { handleToggleAeroFileRef.current = handleToggleAeroFile; }, [handleToggleAeroFile]);
 
   // Listen for View > AeroFile menu event
   useEffect(() => {
@@ -10609,7 +10624,7 @@ const App: React.FC = () => {
   };
 
   // Keep restore-retry callbacks pointing at the latest transfer fns.
-  transferFnsRef.current = { uploadFile, downloadFile };
+  useLayoutEffect(() => { transferFnsRef.current = { uploadFile, downloadFile }; });
 
   // TQ-7b: restore interrupted queue items from the journal on startup.
   // Does NOT auto-start or auto-reconnect; items land pending + restored.
@@ -13719,21 +13734,23 @@ const App: React.FC = () => {
   });
 
   // Wire cross-panel drag & drop callback now that upload/download are defined
-  crossPanelDropRef.current = async (files, fromRemote, _targetDir, sourceKey) => {
-    if (!isConnected || files.length === 0) return;
-    if (fromRemote) {
-      await downloadMultipleFiles(files.map(f => f.name));
-    } else {
-      // The rows dragged, found by path in the panel they came from. A drag
-      // carries each file's own name, and upload takes the panel's row keys:
-      // a nested row of a flattened search is keyed by its relative path, and
-      // its own name may be a different entry of the panel's folder.
-      const panelId = sourceKey === 'local2' ? 'local2' : 'local';
-      const dragged = new Set(files.map(f => f.path));
-      const keys = getActiveLocalState(panelId).sortedFiles.filter(r => dragged.has(r.path)).map(r => r.name);
-      if (keys.length > 0) await uploadMultipleFiles(keys, panelId);
-    }
-  };
+  useLayoutEffect(() => {
+    crossPanelDropRef.current = async (files, fromRemote, _targetDir, sourceKey) => {
+      if (!isConnected || files.length === 0) return;
+      if (fromRemote) {
+        await downloadMultipleFiles(files.map(f => f.name));
+      } else {
+        // The rows dragged, found by path in the panel they came from. A drag
+        // carries each file's own name, and upload takes the panel's row keys:
+        // a nested row of a flattened search is keyed by its relative path, and
+        // its own name may be a different entry of the panel's folder.
+        const panelId = sourceKey === 'local2' ? 'local2' : 'local';
+        const dragged = new Set(files.map(f => f.path));
+        const keys = getActiveLocalState(panelId).sortedFiles.filter(r => dragged.has(r.path)).map(r => r.name);
+        if (keys.length > 0) await uploadMultipleFiles(keys, panelId);
+      }
+    };
+  });
 
   // Build a user-friendly delete confirm message that distinguishes a single
   // file/folder from a batch, and shows separate counts when the selection
@@ -16826,7 +16843,7 @@ const App: React.FC = () => {
   }, (intent, ok, owner) => activityLog.log(ok ? 'INFO' : 'ERROR',
     `${t('guiController.banner', { agent: owner })}: ${intent === 'stop' ? t('guiController.stopped') : t(intent === 'tools_open' ? 'common.open' : intent === 'tools_close' ? 'common.close' : intent === 'tools_read' ? 'guiController.actions.state' : intent === 'connect' ? 'common.connect' : `guiController.actions.${intent}`)}`,
     ok ? 'success' : 'error'), settings.guiPresentation);
-  lockControllerInterrupt.current = guiController.interrupt;
+  useLayoutEffect(() => { lockControllerInterrupt.current = guiController.interrupt; }, [guiController.interrupt]);
 
   return (
     <>
