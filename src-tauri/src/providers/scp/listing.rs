@@ -21,6 +21,8 @@
 //! Measurements and fixtures: `fixtures/scp/` (BusyBox 1.36.1 from OpenWrt
 //! 24.10.4, GNU coreutils 9.4, uutils 0.10.0).
 
+use std::collections::HashMap;
+
 use crate::providers::shell_quote::shell_quote_bytes;
 use crate::providers::ProviderError;
 
@@ -211,25 +213,34 @@ pub fn merge(find_output: &[u8], ls_output: &[u8]) -> Merged {
         .split(|&b| b == b'\n')
         .filter_map(parse_line)
         .collect();
+    // Every name a line can belong to, indexed once so a folder of n entries
+    // costs O(n) and not O(n^2): a non-symlink's whole rest, and for a
+    // symlink each prefix that ends where a ` -> ` starts (a link named
+    // `x -> y` or a target holding ` -> ` gives several). `None` marks a
+    // name that two lines claim, which goes to resolution.
+    let mut owners: HashMap<&[u8], Option<usize>> = HashMap::with_capacity(lines.len());
+    for (i, line) in lines.iter().enumerate() {
+        if line.meta.kind == Kind::Symlink {
+            for (at, w) in line.rest.windows(4).enumerate() {
+                if w == b" -> " {
+                    claim(&mut owners, &line.rest[..at], i);
+                }
+            }
+        } else {
+            claim(&mut owners, line.rest, i);
+        }
+    }
     let mut merged = Merged::default();
     for name in find_names(find_output) {
         if needs_resolution(&name) {
             merged.unresolved.push(name);
             continue;
         }
-        let mut arrow = name.clone();
-        arrow.extend_from_slice(b" -> ");
-        let mut matches = lines.iter().filter(|l| {
-            if l.meta.kind == Kind::Symlink {
-                l.rest.starts_with(&arrow)
-            } else {
-                l.rest == name.as_slice()
-            }
-        });
-        match (matches.next(), matches.next()) {
-            (Some(line), None) => {
-                let link_target =
-                    (line.meta.kind == Kind::Symlink).then(|| line.rest[arrow.len()..].to_vec());
+        match owners.get(name.as_slice()) {
+            Some(Some(i)) => {
+                let line = &lines[*i];
+                let link_target = (line.meta.kind == Kind::Symlink)
+                    .then(|| line.rest[name.len() + b" -> ".len()..].to_vec());
                 merged.entries.push(Entry {
                     name,
                     meta: line.meta.clone(),
@@ -240,6 +251,15 @@ pub fn merge(find_output: &[u8], ls_output: &[u8]) -> Merged {
         }
     }
     merged
+}
+
+/// Records that line `i` can belong to `name`; a second claimant makes the
+/// name ambiguous.
+fn claim<'a>(owners: &mut HashMap<&'a [u8], Option<usize>>, name: &'a [u8], i: usize) {
+    owners
+        .entry(name)
+        .and_modify(|o| *o = None)
+        .or_insert(Some(i));
 }
 
 /// One shell command that runs `ls -land --full-time` on each of `names`
@@ -392,6 +412,28 @@ mod tests {
             assert_common(&m);
             assert_eq!(m.entries.len() + m.unresolved.len(), 15);
         }
+    }
+
+    /// The index keeps the per-line rules: a symlink line can belong to the
+    /// part before any of its ` -> `, a name two lines claim is resolved,
+    /// and a folder of 50 000 entries merges every one.
+    #[test]
+    fn the_name_index_keeps_the_matching_rules_at_any_size() {
+        let line = |mode: &str, rest: &str| {
+            format!("{mode}    1 0        0               3 2026-10-31 09:13:23 +0000 {rest}\n")
+        };
+        let mut ls = line("lrwxrwxrwx", "p -> q -> r");
+        ls.push_str(&line("-rw-r--r--", "twice"));
+        ls.push_str(&line("lrwxrwxrwx", "twice -> elsewhere"));
+        let mut find = b"/d/./p\0/d/./twice\0".to_vec();
+        for i in 0..50_000 {
+            ls.push_str(&line("-rw-r--r--", &format!("f{i:05}")));
+            find.extend_from_slice(format!("/d/./f{i:05}\0").as_bytes());
+        }
+        let m = merge(&find, ls.as_bytes());
+        assert_eq!(entry(&m, b"p").link_target.as_deref(), Some(&b"q -> r"[..]));
+        assert_eq!(m.unresolved, vec![b"twice".to_vec()]);
+        assert_eq!(m.entries.len(), 50_001);
     }
 
     #[test]

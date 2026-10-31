@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use russh::client::{Handle, Handler};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::sync::{mpsc, Mutex as TokioMutex};
+use tokio::sync::{mpsc, oneshot, Mutex as TokioMutex};
 
 use super::codec::{self, Control, Reply};
 use super::listing::{self, Entry};
@@ -89,7 +89,7 @@ pub struct ScpSession<H: Handler> {
 
 /// Bytes from a channel's stdout, read a byte, a line or a length at a time.
 struct Incoming {
-    rx: mpsc::UnboundedReceiver<Vec<u8>>,
+    rx: mpsc::Receiver<Vec<u8>>,
     buf: Vec<u8>,
     pos: usize,
     io_timeout: Duration,
@@ -156,6 +156,27 @@ impl Incoming {
         Ok(())
     }
 
+    /// The exit status, reading on past any stdout the server still sends:
+    /// stdout is a bounded queue, and a full one would hold the status back.
+    async fn exit_status(
+        &mut self,
+        exit_rx: &mut oneshot::Receiver<u32>,
+    ) -> Result<u32, ProviderError> {
+        let mut open = true;
+        tokio::time::timeout(self.io_timeout, async {
+            loop {
+                tokio::select! {
+                    status = &mut *exit_rx => {
+                        return status.unwrap_or(crate::ssh_exec::EXIT_ABNORMAL);
+                    }
+                    chunk = self.rx.recv(), if open => open = chunk.is_some(),
+                }
+            }
+        })
+        .await
+        .map_err(|_| ProviderError::Timeout)
+    }
+
     /// One SCP status reply: `\0`, or `\1`/`\2` and a message line.
     async fn reply(&mut self) -> Result<Reply, ProviderError> {
         let status = self.byte().await?;
@@ -177,10 +198,12 @@ fn basename(path: &str) -> Result<&str, ProviderError> {
 /// A failed command as the error the caller can act on.
 fn command_error(what: &str, path: &str, out: &Output) -> ProviderError {
     let msg = out.stderr_text();
-    if msg.contains("No such file or directory") {
-        ProviderError::NotFound(path.to_string())
-    } else if msg.contains("Permission denied") {
+    // `Permission denied` first: an unreadable operand can print both, and
+    // the denial is the one the user can act on.
+    if msg.contains("Permission denied") {
         ProviderError::PermissionDenied(format!("{what} {path}: {msg}"))
+    } else if msg.contains("No such file or directory") {
+        ProviderError::NotFound(path.to_string())
     } else if msg.contains("File exists") {
         ProviderError::AlreadyExists(path.to_string())
     } else if msg.contains("Directory not empty") {
@@ -192,10 +215,12 @@ fn command_error(what: &str, path: &str, out: &Output) -> ProviderError {
 
 /// The error an SCP `\1` or `\2` message stands for.
 fn refusal(message: &str, path: &str) -> ProviderError {
-    if message.contains("No such file or directory") {
-        ProviderError::NotFound(path.to_string())
-    } else if message.contains("Permission denied") {
+    if message.contains("Permission denied") {
         ProviderError::PermissionDenied(format!("{path}: {message}"))
+    } else if message.contains("No such file or directory") {
+        ProviderError::NotFound(path.to_string())
+    } else if message.contains("Is a directory") {
+        ProviderError::InvalidPath(format!("{path} is a directory"))
     } else {
         ProviderError::TransferFailed(format!("{path}: {message}"))
     }
@@ -233,7 +258,8 @@ where
         }
         script.push_str(
             "; do command -v \"$t\" >/dev/null 2>&1 && printf 'has=%s\\0' \"$t\"; done; \
-             ls -land --full-time -- / >/dev/null 2>&1 && printf 'has=ls-full-time\\0'",
+             ls -land --full-time -- / >/dev/null 2>&1 && printf 'has=ls-full-time\\0'; \
+             find / -mindepth 0 -maxdepth 0 -print0 >/dev/null 2>&1 && printf 'has=find-print0\\0'",
         );
         let out = session.run(script.as_bytes()).await?;
         for record in out.stdout.split(|&b| b == 0) {
@@ -246,7 +272,9 @@ where
                 session.probe.tools.push(v.to_string());
             }
         }
-        let missing: Vec<&str> = ["scp", "ls-full-time", "find"]
+        // `find` alone is not enough: the listing needs its `-mindepth`,
+        // `-maxdepth` and `-print0`, which a minimal BusyBox may leave out.
+        let missing: Vec<&str> = ["scp", "ls-full-time", "find-print0"]
             .into_iter()
             .filter(|t| !session.probe.has(t))
             .collect();
@@ -405,14 +433,20 @@ where
 
     /// Rename `from` to `to`, refusing a `to` that exists, as SFTP's rename
     /// does. `mv` alone would replace a file, and would move `from` inside
-    /// `to` when that is a folder, both without a word. The check and the
-    /// `mv` are two steps, so a `to` created in between is not caught; a
-    /// caller that must not lose a concurrent write cannot rely on it.
+    /// `to` when that is a folder, both without a word: the check refuses
+    /// both. A file that appears at `to` after the check is not replaced
+    /// either: `mv -n` leaves `from` where it is, and `from` still being
+    /// there is the refusal (the exit status of `mv -n` on a skipped move
+    /// differs between GNU releases, measured 0 on 9.7 and 1 on 9.4). What
+    /// stays open is a folder created at `to` in that instant, which takes
+    /// `from` inside it: the same window OpenSSH's `sftp-server` has when it
+    /// renames a folder (it stats, then renames).
     pub async fn rename(&self, from: &str, to: &str) -> Result<(), ProviderError> {
         let (f, t) = (shell_quote(from)?, shell_quote(to)?);
         let cmd = format!(
             "if [ -e {t} ] || [ -L {t} ]; then echo 'mv: target: File exists' >&2; exit 1; fi; \
-             mv -- {f} {t}"
+             mv -n -- {f} {t} || exit; \
+             if [ -e {f} ] || [ -L {f} ]; then echo 'mv: target: File exists' >&2; exit 1; fi"
         );
         self.run_ok("rename", to, cmd.as_bytes()).await.map(drop)
     }
@@ -436,10 +470,17 @@ where
     ) -> Result<(), ProviderError> {
         let name = basename(path)?;
         let flags = if mtime.is_some() { "-p -t" } else { "-t" };
-        let cmd = format!("LC_ALL=C scp {flags} -- {}", shell_quote(path)?);
+        // A sink given a folder writes into it under the `C` line's name, so
+        // an upload to `/x/dir` would land in `/x/dir/dir` and succeed. The
+        // check runs in the same exec and refuses in the sink's own words.
+        let p = shell_quote(path)?;
+        let cmd = format!(
+            "if [ -d {p} ]; then printf '\\001scp: Is a directory\\n'; exit 1; fi; \
+             LC_ALL=C scp {flags} -- {p}"
+        );
         let mut exec = self.exec(cmd.as_bytes()).await?;
         let mut incoming = Incoming {
-            rx: std::mem::replace(&mut exec.stdout_rx, mpsc::unbounded_channel().1),
+            rx: std::mem::replace(&mut exec.stdout_rx, mpsc::channel(1).1),
             buf: Vec::new(),
             pos: 0,
             io_timeout: self.io_timeout,
@@ -478,10 +519,7 @@ where
         exec.stdin.write_all(&[0]).await.map_err(io)?;
         reply_ok(incoming.reply().await?, path)?;
         exec.stdin.shutdown().await.map_err(io)?;
-        let status = tokio::time::timeout(self.io_timeout, &mut exec.exit_rx)
-            .await
-            .map_err(|_| ProviderError::Timeout)?
-            .unwrap_or(crate::ssh_exec::EXIT_ABNORMAL);
+        let status = incoming.exit_status(&mut exec.exit_rx).await?;
         if status != 0 {
             return Err(ProviderError::TransferFailed(format!(
                 "{path}: scp exited with status {status}"
@@ -503,7 +541,7 @@ where
         let cmd = format!("LC_ALL=C scp -p -f -- {}", shell_quote(path)?);
         let mut exec = self.exec(cmd.as_bytes()).await?;
         let mut incoming = Incoming {
-            rx: std::mem::replace(&mut exec.stdout_rx, mpsc::unbounded_channel().1),
+            rx: std::mem::replace(&mut exec.stdout_rx, mpsc::channel(1).1),
             buf: Vec::new(),
             pos: 0,
             io_timeout: self.io_timeout,
@@ -543,10 +581,7 @@ where
         exec.stdin.write_all(&[0]).await.map_err(io)?;
         sink.flush().await.map_err(io)?;
         exec.stdin.shutdown().await.map_err(io)?;
-        let status = tokio::time::timeout(self.io_timeout, &mut exec.exit_rx)
-            .await
-            .map_err(|_| ProviderError::Timeout)?
-            .unwrap_or(crate::ssh_exec::EXIT_ABNORMAL);
+        let status = incoming.exit_status(&mut exec.exit_rx).await?;
         if status != 0 {
             return Err(ProviderError::TransferFailed(format!(
                 "{path}: scp exited with status {status}"

@@ -350,6 +350,17 @@ async fn a_file_goes_up_and_comes_back_byte_exact_with_its_mtime() {
         .await
         .expect_err("missing");
     assert!(matches!(err, ProviderError::NotFound(_)), "{err:?}");
+
+    // An upload onto a folder is refused, not written inside it under the
+    // folder's own name.
+    let folder = root.join("folder");
+    std::fs::create_dir(&folder).unwrap();
+    let err = scp
+        .upload(&s(&folder), &mut &data[..10], 10, 0o644, None, &mut |_| {})
+        .await
+        .expect_err("folder target");
+    assert!(matches!(err, ProviderError::InvalidPath(_)), "{err:?}");
+    assert_eq!(std::fs::read_dir(&folder).unwrap().count(), 0);
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -377,6 +388,52 @@ async fn a_download_refuses_a_file_the_server_renamed() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// A download into a sink that stops reading holds the server back instead
+/// of buffering the file: the server's `scp` cannot get 64 MiB out while the
+/// sink is stalled, and the file arrives whole once the sink reads again.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_stalled_download_holds_the_server_back() {
+    const SIZE: u64 = 64 * 1024 * 1024;
+    let root = temp_dir("stall");
+    let bin = root.join("bin");
+    std::fs::create_dir(&bin).unwrap();
+    let fake = bin.join("scp");
+    std::fs::write(
+        &fake,
+        format!(
+            "#!/bin/sh\nhead -c 1 >/dev/null\nprintf 'C0644 {SIZE} big\\n'\nhead -c 1 >/dev/null\n\
+             head -c {SIZE} /dev/zero\n: > sent\nprintf '\\0'\nhead -c 1 >/dev/null\n"
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&fake, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let path = format!("{}:{}", s(&bin), system_path());
+    let scp = ScpSession::open(connect(&root, &path).await, IO)
+        .await
+        .expect("probe");
+    let (mut sink, mut drain) = tokio::io::duplex(64 * 1024);
+    let big = s(&root.join("big"));
+    let sent = root.join("sent");
+    let mut progress = |_| {};
+    let (result, (held, got)) = tokio::join!(scp.download(&big, &mut sink, &mut progress), async {
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        let held = !sent.exists();
+        let mut buf = vec![0u8; 1 << 16];
+        let mut got = 0u64;
+        while got < SIZE {
+            let n = drain.read(&mut buf).await.expect("drain");
+            assert!(n > 0, "the download ended after {got} bytes");
+            got += n as u64;
+        }
+        (held, got)
+    });
+    assert!(held, "the server sent the whole file into a stalled sink");
+    assert_eq!(result.expect("download"), (SIZE, None));
+    assert_eq!(got, SIZE);
+    assert!(sent.exists());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// A server without `scp` is refused at the probe, by name.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_server_without_scp_is_refused_naming_it() {
@@ -398,6 +455,32 @@ async fn a_server_without_scp_is_refused_naming_it() {
         .expect("no scp");
     assert!(
         matches!(&err, ProviderError::NotSupported(m) if m.contains("scp") && !m.contains("find")),
+        "{err:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A `find` that refuses the listing's options is refused at the probe, by
+/// name, instead of failing at the first listing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_find_without_the_listing_options_is_refused_naming_it() {
+    let root = temp_dir("oldfind");
+    let bin = root.join("bin");
+    std::fs::create_dir(&bin).unwrap();
+    let fake = bin.join("find");
+    std::fs::write(
+        &fake,
+        "#!/bin/sh\necho 'find: unrecognized: -print0' >&2\nexit 1\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&fake, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let path = format!("{}:{}", s(&bin), system_path());
+    let err = ScpSession::open(connect(&root, &path).await, IO)
+        .await
+        .err()
+        .expect("find without -print0");
+    assert!(
+        matches!(&err, ProviderError::NotSupported(m) if m.contains("find") && !m.contains("scp,")),
         "{err:?}"
     );
     let _ = std::fs::remove_dir_all(&root);

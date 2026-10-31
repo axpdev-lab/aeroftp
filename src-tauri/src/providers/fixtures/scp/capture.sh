@@ -1,7 +1,11 @@
 # Builds the same folder on any POSIX system and captures the listing commands
 # the SCP engine runs. $1 = output dir, $2 = prefix (busybox or gnu).
+# The folder path is fixed because the fixtures print it. `mkdir` without -p
+# fails when it exists, so a second run never wipes a folder in use.
 out=$1; pre=$2; d=/tmp/scpfx
-rm -rf "$d"; mkdir -p "$d" && cd "$d" || exit 1
+mkdir "$d" || { echo "$d exists: another capture is running, or remove it" >&2; exit 1; }
+trap 'rm -rf "$d"' EXIT
+cd "$d" || exit 1
 printf 'hello' > ./"a b"
 : > ./"it's"
 : > ./-dash
