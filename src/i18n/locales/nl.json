@@ -598,7 +598,8 @@
             "setAsPublic": "Instellen als openbaar",
             "makeAllPrivate": "Alles privé maken",
             "dropboxRestoreLimit": "AeroFTP kan herstelbare bestandsversies terugzetten. Zet mappen terug via Verwijderde bestanden op dropbox.com. Een vraagteken betekent dat Dropbox het itemtype niet heeft herkend.",
-            "openWithDefaultApp": "Openen met standaardapp"
+            "openWithDefaultApp": "Openen met standaardapp",
+            "extractHereUncheckedConfirm": "De namen in {name} kunnen niet worden gelezen vóór het uitpakken, dus AeroFTP kan niet controleren wat “Hier uitpakken” in deze map zou overschrijven. “Uitpakken naar map” overschrijft nooit iets."
         },
         "transfer": {
             "transferring": "Overdragen...",
@@ -2471,7 +2472,9 @@
             "flattenScanning": "Subboom scannen...",
             "flattenTruncated": "afgekapt",
             "flattenTruncatedHint": "Limiet van 5.000 vermeldingen bereikt; verfijn uw filter of ga naar een submap.",
-            "local_placeholder_flatten": "Lokale bestanden filteren... (* voor recursief)"
+            "local_placeholder_flatten": "Lokale bestanden filteren... (* voor recursief)",
+            "flattenNameClash": "{names}: geselecteerd in meer dan één map. Op één plek geplaatst zouden ze elkaar vervangen; werk met één van elk per keer.",
+            "flattenNameClashTitle": "Dezelfde naam in meer dan één map"
         },
         "versions": {
             "title": "Bestandsversies",

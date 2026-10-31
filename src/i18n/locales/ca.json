@@ -598,7 +598,8 @@
             "setAsPublic": "Establir com a públic",
             "makeAllPrivate": "Fes-ho tot privat",
             "dropboxRestoreLimit": "AeroFTP pot restaurar revisions recuperables de fitxers. Restaureu les carpetes des de Fitxers suprimits a dropbox.com. Un signe d'interrogació indica que Dropbox no ha identificat el tipus d'element.",
-            "openWithDefaultApp": "Obre amb l'aplicació predeterminada"
+            "openWithDefaultApp": "Obre amb l'aplicació predeterminada",
+            "extractHereUncheckedConfirm": "Els noms dins de {name} no es poden llegir abans d'extreure, així que AeroFTP no pot comprovar què sobreescriuria «Extreure aquí» en aquesta carpeta. «Extreure a carpeta» mai sobreescriu."
         },
         "transfer": {
             "transferring": "Transferint...",
@@ -2471,7 +2472,9 @@
             "flattenScanning": "S'està escanejant el subarbre...",
             "flattenTruncated": "truncat",
             "flattenTruncatedHint": "S'ha assolit el límit de 5.000 entrades; refina el filtre o entra en una subcarpeta.",
-            "local_placeholder_flatten": "Filtra fitxers locals... (* per recursiu)"
+            "local_placeholder_flatten": "Filtra fitxers locals... (* per recursiu)",
+            "flattenNameClash": "{names}: seleccionats en més d'una carpeta. Si es posen en un sol lloc, es substituirien entre ells; treballa amb un de cada nom alhora.",
+            "flattenNameClashTitle": "El mateix nom en més d'una carpeta"
         },
         "versions": {
             "title": "Versions del fitxer",

@@ -598,7 +598,8 @@
             "setAsPublic": "Iestatīt kā publisku",
             "makeAllPrivate": "Padarīt visus privātus",
             "dropboxRestoreLimit": "AeroFTP var atjaunot atjaunojamās failu versijas. Mapes atjaunojiet vietnes dropbox.com sadaļā Dzēstie faili. Jautājuma zīme nozīmē, ka Dropbox nav noteicis vienuma veidu.",
-            "openWithDefaultApp": "Atvērt ar noklusējuma lietotni"
+            "openWithDefaultApp": "Atvērt ar noklusējuma lietotni",
+            "extractHereUncheckedConfirm": "Nosaukumus arhīvā {name} nevar nolasīt pirms izvilkšanas, tāpēc AeroFTP nevar pārbaudīt, ko „Izvilkt šeit“ pārrakstītu šajā mapē. „Izvilkt mapē“ nekad neko nepārraksta."
         },
         "transfer": {
             "transferring": "Pārsūta...",
@@ -2471,7 +2472,9 @@
             "flattenScanning": "Skenē apakškoku...",
             "flattenTruncated": "saīsināts",
             "flattenTruncatedHint": "Sasniegts 5 000 ierakstu limits; precizējiet filtru vai ieejiet apakšmapē.",
-            "local_placeholder_flatten": "Filtrēt lokālos failus... (* rekursīvam)"
+            "local_placeholder_flatten": "Filtrēt lokālos failus... (* rekursīvam)",
+            "flattenNameClash": "{names}: atlasīts vairākās mapēs. Ievietoti vienā vietā, tie aizstātu cits citu; darbojieties ar vienu no katra vienlaikus.",
+            "flattenNameClashTitle": "Viens un tas pats nosaukums vairākās mapēs"
         },
         "versions": {
             "title": "Failu versijas",

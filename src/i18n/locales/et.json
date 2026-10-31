@@ -598,7 +598,8 @@
             "setAsPublic": "Määra avalikuks",
             "makeAllPrivate": "Muuda kõik privaatseks",
             "dropboxRestoreLimit": "AeroFTP saab taastada taastatavaid failiversioone. Taasta kaustad lehel dropbox.com jaotises Kustutatud failid. Küsimärk tähendab, et Dropbox ei tuvastanud üksuse tüüpi.",
-            "openWithDefaultApp": "Ava vaikerakendusega"
+            "openWithDefaultApp": "Ava vaikerakendusega",
+            "extractHereUncheckedConfirm": "Arhiivi {name} sees olevaid nimesid ei saa enne lahtipakkimist lugeda, seega ei saa AeroFTP kontrollida, mida „Paki siia lahti“ selles kaustas üle kirjutaks. „Paki kausta lahti“ ei kirjuta kunagi midagi üle."
         },
         "transfer": {
             "transferring": "Ülekanne...",
@@ -2471,7 +2472,9 @@
             "flattenScanning": "Alampuu skannimine...",
             "flattenTruncated": "lühendatud",
             "flattenTruncatedHint": "Saavutati 5000 kirje piirang; täpsustage filtrit või laskuge alamkausta.",
-            "local_placeholder_flatten": "Filtreeri kohalikke faile... (* rekursiivseks)"
+            "local_placeholder_flatten": "Filtreeri kohalikke faile... (* rekursiivseks)",
+            "flattenNameClash": "{names}: valitud rohkem kui ühes kaustas. Ühte kohta pandult asendaksid nad teineteist; tegutse korraga ühega igast nimest.",
+            "flattenNameClashTitle": "Sama nimi mitmes kaustas"
         },
         "versions": {
             "title": "Failiversioonid",

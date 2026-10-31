@@ -598,7 +598,8 @@
             "setAsPublic": "Als öffentlich festlegen",
             "makeAllPrivate": "Alle auf privat setzen",
             "dropboxRestoreLimit": "AeroFTP kann wiederherstellbare Dateiversionen wiederherstellen. Stellen Sie Ordner unter „Gelöschte Dateien“ auf dropbox.com wieder her. Ein Fragezeichen bedeutet, dass Dropbox den Elementtyp nicht erkannt hat.",
-            "openWithDefaultApp": "Mit Standard-App öffnen"
+            "openWithDefaultApp": "Mit Standard-App öffnen",
+            "extractHereUncheckedConfirm": "Die Namen in {name} können vor dem Entpacken nicht gelesen werden, daher kann AeroFTP nicht prüfen, was „Hier entpacken“ in diesem Ordner überschreiben würde. „In Ordner entpacken“ überschreibt nie etwas."
         },
         "transfer": {
             "transferring": "Übertragung...",
@@ -2471,7 +2472,9 @@
             "flattenScanning": "Unterbaum wird gescannt...",
             "flattenTruncated": "gekürzt",
             "flattenTruncatedHint": "Limit von 5.000 Einträgen erreicht; verfeinern Sie den Filter oder steigen Sie in einen Unterordner ab.",
-            "local_placeholder_flatten": "Lokale Dateien filtern... (* für rekursiv)"
+            "local_placeholder_flatten": "Lokale Dateien filtern... (* für rekursiv)",
+            "flattenNameClash": "{names}: in mehr als einem Ordner ausgewählt. An einem Ort abgelegt, würden sie sich gegenseitig ersetzen; bearbeiten Sie jeweils nur eine Datei pro Name.",
+            "flattenNameClashTitle": "Gleicher Name in mehr als einem Ordner"
         },
         "versions": {
             "title": "Dateiversionen",
