@@ -466,6 +466,11 @@ pub struct S3Provider {
     /// that reads several windows of one object in parallel. `None` leaves
     /// ranges unpinned, which is right for a single read.
     range_validator: Option<String>,
+    /// `None` sends `range_validator` with each range as `If-Match`. `Some`
+    /// is the object's size, for a gateway that refuses `If-Match` on an
+    /// object that did not change: no header is sent, and each answer's tag
+    /// and total are compared with `range_validator` and this size.
+    range_unpinned_size: Option<u64>,
     /// KE-B1.1: Override for multipart upload parallelism. `None` keeps the
     /// historical 4-part-in-flight ceiling used by both `upload_multipart_streaming`
     /// and the server-side multipart copy planner. Set via
@@ -689,6 +694,7 @@ impl S3Provider {
             multi_thread_streams: 1,
             multi_thread_cutoff: Self::MULTI_THREAD_CUTOFF_DEFAULT,
             range_validator: None,
+            range_unpinned_size: None,
             upload_concurrency_override: None,
             no_check_bucket: false,
             disable_checksum: false,
@@ -3884,12 +3890,22 @@ impl S3Provider {
     ///
     /// Equivalent to rclone `--multi-thread-streams N`.
     /// Caller must ensure `total_size > 0` and the server advertises range support.
+    ///
+    /// `validator` is the entity tag the object is compared on before the
+    /// file is published; with `pin` every window also carries it as
+    /// `If-Match`. A gateway that refuses `If-Match` on an object that did not
+    /// change is read with `pin` off: each window's answer must then carry
+    /// `validator` or no tag at all, the HEAD after the windows must not have
+    /// moved, and the file must hash to `content_md5` where there is one.
+    #[allow(clippy::too_many_arguments)]
     async fn download_multi_thread(
         &self,
         key: &str,
         local_path: &str,
         total_size: u64,
         validator: String,
+        pin: bool,
+        content_md5: Option<&str>,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         // R21: window count from the shared planner via the provider gate
@@ -4007,7 +4023,7 @@ impl S3Provider {
                         let etag = etag.clone();
                         async move {
                             download_range_to_offset(
-                                provider, key, temp, start, end, etag, bytes, mark,
+                                provider, key, temp, start, end, etag, pin, total_size, bytes, mark,
                             )
                             .await
                             .map(|()| super::multi_thread::ConcurrentRangeOutcome::Completed)
@@ -4060,6 +4076,25 @@ impl S3Provider {
         }
 
         if let Some(err) = first_error {
+            // A 412 to the pin is either a replacement or a gateway that
+            // refuses If-Match on the version it still serves: the same HEAD
+            // a completed download takes tells which, once for the file.
+            // `PinRefused` leaves here only for the second: its caller reads
+            // the windows again.
+            if matches!(err, ProviderError::PinRefused(_)) {
+                let verdict = super::multi_thread::PinRefusal::from_second_reading(
+                    self.object_moved_since(key, &validator, total_size).await,
+                );
+                let message = verdict.message("S3 multi-thread", key);
+                return Err(match verdict {
+                    super::multi_thread::PinRefusal::PinUnsupported => {
+                        ProviderError::PinRefused(message)
+                    }
+                    super::multi_thread::PinRefusal::SourceChanged(_) => {
+                        ProviderError::ParallelRefused(message)
+                    }
+                });
+            }
             return Err(err);
         }
 
@@ -4075,6 +4110,19 @@ impl S3Provider {
                 super::multi_thread::SOURCE_CHANGED_MARKER,
                 what
             )));
+        }
+
+        // Read without If-Match, a replacement restored before that HEAD leaves
+        // it unmoved; the content shows it where an MD5 is published.
+        if !pin {
+            if let Some(what) = segmented.differs_from_md5(content_md5).await {
+                return Err(ProviderError::ParallelRefused(format!(
+                    "Object {} {} ({})",
+                    key,
+                    super::multi_thread::SOURCE_CHANGED_MARKER,
+                    what
+                )));
+            }
         }
 
         // All ranges committed: atomic rename of the temporary onto the final
@@ -4113,10 +4161,11 @@ impl S3Provider {
                         // an answer without one is not "nothing to compare",
                         // it is an endpoint that stopped pinning the bytes.
                         None => {
-                            return Some(format!(
+                            last_error = Some(format!(
                                 "entity tag {} is no longer reported, so nothing pins the bytes",
                                 etag
                             ));
+                            continue;
                         }
                         Some(_) => {}
                     }
@@ -4125,9 +4174,19 @@ impl S3Provider {
                         .get(reqwest::header::CONTENT_LENGTH)
                         .and_then(|v| v.to_str().ok())
                         .and_then(|v| v.parse::<u64>().ok());
-                    if let Some(after) = now_size {
-                        if after != size {
+                    // The windows were cut for `size`: a HEAD that no longer
+                    // says the size cannot show the object still has it.
+                    match now_size {
+                        Some(after) if after != size => {
                             return Some(format!("size {} became {}", size, after));
+                        }
+                        Some(_) => {}
+                        None => {
+                            last_error = Some(format!(
+                                "size {} is no longer reported, so the windows are not checked",
+                                size
+                            ));
+                            continue;
                         }
                     }
                     return None;
@@ -5162,6 +5221,7 @@ impl StorageProvider for S3Provider {
                     // otherwise pass every byte count and commit a file made
                     // of two versions. Without a validator the split is not
                     // attempted at all.
+                    let opaque_etag = response_declares_opaque_etag(head.headers());
                     let validator = head
                         .headers()
                         .get(reqwest::header::ETAG)
@@ -5186,18 +5246,55 @@ impl StorageProvider for S3Provider {
                             if let Some(etag) = validator {
                                 let (attempt_progress, fallback_progress) =
                                     super::multi_thread::share_progress(on_progress);
-                                match self
+                                let content_md5 = etag_to_md5(&etag, opaque_etag);
+                                let mut outcome = self
                                     .download_multi_thread(
                                         key,
                                         local_path,
                                         size,
-                                        etag,
+                                        etag.clone(),
+                                        true,
+                                        None,
                                         attempt_progress,
                                     )
-                                    .await
-                                {
+                                    .await;
+                                // A gateway that refuses If-Match on an object
+                                // that did not change: the windows are read once
+                                // more, for this file only and with no pin, and
+                                // the HEAD after them compares entity tag and
+                                // size, as for a gateway that ignores the header.
+                                let fallback_progress = match outcome {
+                                    Err(e @ ProviderError::PinRefused(_)) => {
+                                        warn!(
+                                            "S3: {}; reading the windows again without If-Match",
+                                            e
+                                        );
+                                        let (retry_progress, rest) =
+                                            super::multi_thread::share_progress(fallback_progress);
+                                        outcome = self
+                                            .download_multi_thread(
+                                                key,
+                                                local_path,
+                                                size,
+                                                etag,
+                                                false,
+                                                content_md5.as_deref(),
+                                                retry_progress,
+                                            )
+                                            .await;
+                                        rest
+                                    }
+                                    other => {
+                                        outcome = other;
+                                        fallback_progress
+                                    }
+                                };
+                                match outcome {
                                     Ok(()) => return Ok(()),
-                                    Err(e @ ProviderError::ParallelRefused(_)) => {
+                                    Err(
+                                        e @ (ProviderError::ParallelRefused(_)
+                                        | ProviderError::PinRefused(_)),
+                                    ) => {
                                         // Refused, not failed: the object moved
                                         // while the windows were reading it, and a
                                         // single stream reads one consistent view,
@@ -6509,6 +6606,10 @@ impl StorageProvider for S3Provider {
         });
     }
 
+    fn read_ranges_unpinned(&mut self, size: u64) {
+        self.range_unpinned_size = Some(size);
+    }
+
     async fn read_range(
         &mut self,
         path: &str,
@@ -6544,8 +6645,9 @@ impl StorageProvider for S3Provider {
         // newer version, instead of handing back bytes that assemble into a
         // file made of two.
         let validator = self.range_validator.clone();
+        let pinned = validator.is_some() && self.range_unpinned_size.is_none();
         let mut headers: Vec<(&str, &str)> = vec![("range", &range_value)];
-        if let Some(ref tag) = validator {
+        if let Some(tag) = validator.as_deref().filter(|_| pinned) {
             headers.push(("if-match", tag));
         }
         let response = self
@@ -6554,6 +6656,19 @@ impl StorageProvider for S3Provider {
 
         match response.status() {
             StatusCode::PARTIAL_CONTENT => {
+                // Read without If-Match, a window still has to come from the
+                // version the windows were planned on.
+                if let Some(size) = self.range_unpinned_size {
+                    if let Some(refused) = super::multi_thread::unpinned_window_refusal(
+                        "S3 range read",
+                        path,
+                        validator.as_deref(),
+                        size,
+                        response.headers(),
+                    ) {
+                        return Err(refused);
+                    }
+                }
                 // The caller writes these bytes at the offset it asked for, so
                 // the answer has to say it is that window, and carry it.
                 let answered = response
@@ -6608,13 +6723,21 @@ impl StorageProvider for S3Provider {
                     ),
                 ))
             }
-            StatusCode::PRECONDITION_FAILED => Err(ProviderError::ParallelRefused(format!(
-                "Object {} {}: the range request no longer matches the version the download \
-                 started from",
-                key,
-                super::multi_thread::SOURCE_CHANGED_MARKER
-            ))),
+            StatusCode::PRECONDITION_FAILED if pinned => {
+                Err(super::multi_thread::pin_refused("S3 range read", path))
+            }
+            StatusCode::PRECONDITION_FAILED => Err(ProviderError::ParallelRefused(
+                super::multi_thread::unpinned_412("S3 range read", path),
+            )),
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(path.to_string())),
+            // A window of an object read in parallel: it is shorter than the
+            // plan, and one stream reads what is there. A lone range with no
+            // version behind it is a range this server cannot do.
+            StatusCode::RANGE_NOT_SATISFIABLE if validator.is_some() => {
+                Err(ProviderError::ParallelRefused(
+                    super::multi_thread::range_past_the_end("S3 range read", path),
+                ))
+            }
             StatusCode::RANGE_NOT_SATISFIABLE => Err(ProviderError::NotSupported(
                 "Server does not support range requests".to_string(),
             )),
@@ -7787,6 +7910,11 @@ async fn drain_bounded(response: &mut reqwest::Response, limit: usize) {
     }
 }
 
+/// Read the window `start..=end` of `key` into `temp_path` at its offset.
+/// With `send_pin` the request carries `validator` as `If-Match`; without it
+/// the answer's entity tag and total are compared with `validator` and
+/// `total_size` instead, so a window from another object is refused either
+/// way.
 #[allow(clippy::too_many_arguments)]
 async fn download_range_to_offset(
     provider: S3Provider,
@@ -7795,23 +7923,34 @@ async fn download_range_to_offset(
     start: u64,
     end: u64,
     validator: String,
+    send_pin: bool,
+    total_size: u64,
     aggregate: Arc<AtomicU64>,
     mark: super::multi_thread::RangeMark,
 ) -> Result<(), ProviderError> {
     let range_value = format!("bytes={}-{}", start, end);
+    let mut headers = vec![("range", range_value.as_str())];
+    if send_pin {
+        headers.push(("if-match", validator.as_str()));
+    }
     let response = provider
-        .s3_request_ext(
-            Method::GET,
-            &key,
-            None,
-            None,
-            &[("range", &range_value), ("if-match", &validator)],
-        )
+        .s3_request_ext(Method::GET, &key, None, None, &headers)
         .await?;
 
     let status = response.status();
     match status {
         StatusCode::PARTIAL_CONTENT => {
+            if !send_pin {
+                if let Some(refused) = super::multi_thread::unpinned_window_refusal(
+                    "S3 multi-thread",
+                    &key,
+                    Some(&validator),
+                    total_size,
+                    response.headers(),
+                ) {
+                    return Err(refused);
+                }
+            }
             // The window is written at its own offset, so a body that is not
             // the window asked for puts the wrong bytes there while the total
             // still adds up, and no comparison of the object would see it.
@@ -7851,16 +7990,20 @@ async fn download_range_to_offset(
             ));
         }
         StatusCode::NOT_FOUND => return Err(ProviderError::NotFound(key)),
-        StatusCode::PRECONDITION_FAILED => {
-            return Err(ProviderError::ParallelRefused(format!(
-                "Object {key} {}: the range request no longer matches the version the \
-                 download started from",
-                super::multi_thread::SOURCE_CHANGED_MARKER
-            )));
+        StatusCode::PRECONDITION_FAILED if send_pin => {
+            return Err(super::multi_thread::pin_refused("S3 multi-thread", &key));
         }
+        StatusCode::PRECONDITION_FAILED => {
+            return Err(ProviderError::ParallelRefused(
+                super::multi_thread::unpinned_412("S3 multi-thread", &key),
+            ));
+        }
+        // The object is shorter than the plan, with or without a pin: its
+        // caller takes one stream. This was a hard error for a download a
+        // single stream could finish.
         StatusCode::RANGE_NOT_SATISFIABLE => {
-            return Err(ProviderError::NotSupported(
-                "Server rejected Range request mid-flight (file may have changed)".to_string(),
+            return Err(ProviderError::ParallelRefused(
+                super::multi_thread::range_past_the_end("S3 multi-thread", &key),
             ));
         }
         other => {
@@ -12225,15 +12368,19 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn an_object_replaced_mid_download_falls_back_instead_of_mixing_versions() {
-        // 412 is what a server answers when the pinned ETag no longer matches.
-        // The windows must not be published, because the bytes of two versions
-        // would pass every length check; the download itself still finishes,
-        // on one stream, which reads one consistent version.
-        const SIZE: usize = 2 * 1024 * 1024;
-        let (addr, _gets) = spawn_range_server(SIZE, Some("\"v1\""), 412).await;
-        let mut provider = make_provider(Some(&format!("http://{addr}")));
+    /// Runs `download` against a pin server in `mode`, with the parallel path
+    /// on, and returns its warnings, the published bytes and the last
+    /// progress it reported.
+    async fn download_against_pin_server(
+        mode: super::super::multi_thread::pin_server::PinMode,
+    ) -> (
+        Vec<String>,
+        Vec<u8>,
+        u64,
+        super::super::multi_thread::pin_server::PinServer,
+    ) {
+        let server = super::super::multi_thread::pin_server::start(mode).await;
+        let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
         provider.connected = true;
         provider.set_multi_thread_download(4, 1024 * 1024);
         let dir = tempfile::tempdir().expect("tempdir");
@@ -12250,24 +12397,523 @@ mod tests {
                 })),
             ))
             .await
-            .expect("the refusal falls back to a single stream, which succeeds");
-        let messages = warnings.take();
+            .expect("every outcome ends with the file downloaded");
+        let bytes = std::fs::read(&out).expect("the file is published");
+        let progress = reported.load(std::sync::atomic::Ordering::SeqCst);
+        (warnings.take(), bytes, progress, server)
+    }
+
+    #[tokio::test]
+    async fn an_object_replaced_mid_download_falls_back_instead_of_mixing_versions() {
+        // 412 is what a server answers when the pinned ETag no longer matches.
+        // The windows must not be published, because the bytes of two versions
+        // would pass every length check; the download itself still finishes,
+        // on one stream, which reads one consistent version.
+        use super::super::multi_thread::pin_server::{PinMode, OBJECT_SIZE};
+        let (messages, bytes, progress, server) =
+            download_against_pin_server(PinMode::RefusedReplaced).await;
         assert_eq!(messages.len(), 1);
         assert!(messages[0].contains("one confirmed object version"));
         assert!(!messages[0].contains("big.bin"));
-        assert_eq!(std::fs::read(&out).unwrap(), vec![7u8; SIZE]);
+        assert_eq!(bytes, vec![9u8; OBJECT_SIZE], "one whole version");
+        assert_eq!(server.unpinned(), 0, "a replacement is never read unpinned");
         assert_eq!(
-            std::fs::metadata(&out)
-                .expect("the file is published")
-                .len(),
-            SIZE as u64,
-            "one whole version"
-        );
-        assert_eq!(
-            reported.load(std::sync::atomic::Ordering::SeqCst),
-            SIZE as u64,
+            progress, OBJECT_SIZE as u64,
             "the single-stream fallback must keep reporting progress"
         );
+    }
+
+    /// A gateway that answers 412 to every pinned window of an object that did
+    /// not change refuses If-Match; it saw no replacement. The windows are
+    /// read once more without the pin and the HEAD after them decides, as for
+    /// a gateway that ignores the header.
+    #[tokio::test]
+    async fn a_gateway_that_refuses_if_match_is_read_again_without_the_pin() {
+        use super::super::multi_thread::pin_server::{PinMode, OBJECT_SIZE};
+        let (messages, bytes, progress, server) =
+            download_against_pin_server(PinMode::RefusedUnchanged).await;
+        assert!(messages.is_empty(), "{messages:?}");
+        assert_eq!(bytes, vec![7u8; OBJECT_SIZE], "published from the windows");
+        assert_eq!(progress, OBJECT_SIZE as u64);
+        assert!(server.refused() >= 2, "every window was pinned and refused");
+        assert!(
+            server.unpinned() >= 2,
+            "the windows were read again unpinned"
+        );
+        // The HEAD that plans the windows, the diagnosis and the HEAD that
+        // decides the publish: the diagnosis is one HEAD for the file, not
+        // one per refused window.
+        assert_eq!(server.readings(), 3);
+    }
+
+    /// A stale HEAD that keeps answering with the first version does not get
+    /// a mixture published: read without If-Match, each window must carry
+    /// that version's entity tag.
+    #[tokio::test]
+    async fn a_window_newer_than_a_stale_head_is_refused() {
+        use super::super::multi_thread::pin_server::{PinMode, OBJECT_SIZE};
+        for mode in [
+            PinMode::RefusedWithStaleReadings,
+            PinMode::RefusedWithLargerWindows,
+            PinMode::RefusedThenShrunk,
+            PinMode::RefusedRestored,
+        ] {
+            let (messages, bytes, _progress, server) = download_against_pin_server(mode).await;
+            assert_eq!(messages.len(), 1, "{mode:?}: {messages:?}");
+            assert!(messages[0].contains("one confirmed object version"));
+            let whole = if mode == PinMode::RefusedThenShrunk {
+                OBJECT_SIZE - 1
+            } else {
+                OBJECT_SIZE
+            };
+            assert_eq!(bytes, vec![9u8; whole], "{mode:?}: one whole version");
+            assert!(server.unpinned() >= 1, "{mode:?}");
+        }
+    }
+
+    /// Unpinned windows that hash to the MD5 the entity tag publishes are
+    /// published; a refused content leaves an existing destination alone and
+    /// no temporary behind.
+    #[tokio::test]
+    async fn the_unpinned_content_is_compared_before_the_file_is_published() {
+        use super::super::multi_thread::pin_server::{self, PinMode, OBJECT_SIZE};
+        use super::super::multi_thread::segmented_temp_path_for;
+        let (messages, bytes, _progress, server) =
+            download_against_pin_server(PinMode::RefusedUnchangedMd5).await;
+        assert!(messages.is_empty(), "{messages:?}");
+        assert_eq!(bytes, vec![7u8; OBJECT_SIZE]);
+        assert!(server.unpinned() >= 2);
+
+        let server = pin_server::start(PinMode::RefusedRestored).await;
+        let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+        provider.connected = true;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        std::fs::write(&out, b"what was there before").unwrap();
+        let err = crate::provider_transfer_executor::run_provider_segmented_download(
+            &mut provider,
+            "/big.bin",
+            out.to_str().unwrap(),
+            OBJECT_SIZE as u64,
+            4,
+            None,
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .expect_err("content that does not hash to the MD5 is not published");
+        assert!(err.to_string().contains("hashes to MD5"), "{err}");
+        assert_eq!(std::fs::read(&out).unwrap(), b"what was there before");
+        assert!(!segmented_temp_path_for(&out).exists());
+    }
+
+    /// A Stop while the content is being hashed ends the download at once: the
+    /// reading that precedes the hash grows the temporary to many gigabytes of
+    /// holes, far more than the time allowed here, and nothing is published.
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_stop_during_the_content_hash_ends_the_download_at_once() {
+        use super::super::multi_thread::pin_server::{self, PinMode, OBJECT_SIZE};
+        use super::super::multi_thread::segmented_temp_path_for;
+        const HOLES: u64 = 16 * 1024 * 1024 * 1024;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        std::fs::write(&out, b"what was there before").unwrap();
+        let temp = segmented_temp_path_for(&out);
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let stop = cancel.clone();
+        let hook_temp = temp.clone();
+        let server = pin_server::start_with_hook(
+            PinMode::RefusedRestored,
+            std::sync::Arc::new(move || {
+                let file = std::fs::OpenOptions::new()
+                    .write(true)
+                    .open(&hook_temp)
+                    .expect("the temporary is there while the object is read");
+                file.set_len(HOLES).expect("grow the temporary");
+                let stop = stop.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(300));
+                    stop.cancel();
+                });
+            }),
+        )
+        .await;
+        let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+        provider.connected = true;
+        let target = out.to_str().unwrap().to_string();
+        let error = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            crate::provider_transfer_executor::run_provider_segmented_download(
+                &mut provider,
+                "/big.bin",
+                &target,
+                OBJECT_SIZE as u64,
+                4,
+                None,
+                cancel,
+            ),
+        )
+        .await
+        .expect("a Stop does not wait for the hash")
+        .expect_err("a stopped download is not published");
+        assert!(error.is_cancelled(), "{error}");
+        assert_eq!(std::fs::read(&out).unwrap(), b"what was there before");
+        assert!(!temp.exists());
+    }
+
+    /// Every progress value a transfer reports, in order.
+    #[derive(Default)]
+    struct ProgressRecorder(std::sync::Mutex<Vec<u64>>);
+
+    impl crate::transfer_event_sink::TransferEventSink for ProgressRecorder {
+        fn emit_transfer_event(&self, event: crate::TransferEvent) {
+            if event.event_type == "progress" {
+                if let Some(progress) = event.progress {
+                    self.0.lock().unwrap().push(progress.transferred);
+                }
+            }
+        }
+    }
+
+    /// A batch with no retries: the object refuses the windows, and the same
+    /// attempt reads it on one stream instead of failing the file, with the
+    /// progress of the windows held until the stream passes it.
+    #[tokio::test]
+    async fn a_batch_with_no_retries_takes_one_stream_when_the_object_refuses_the_windows() {
+        use super::super::multi_thread::pin_server::{self, PinMode, OBJECT_SIZE};
+        use crate::provider_transfer_executor::{
+            ProviderDownloadExecutor, ProviderExecutorSessionModel,
+        };
+        use crate::transfer_domain::{TransferEntry, TransferOutcome};
+        use crate::transfer_orchestrator::TransferExecutor;
+        // A size that moved since the listing stops the run before any window:
+        // nothing is refused there, and the whole read's bytes (9, the windows
+        // serve 7) show who read the file.
+        for (mode, planned, whole) in [
+            (PinMode::RefusedRestored, OBJECT_SIZE, OBJECT_SIZE),
+            (PinMode::RefusedWithStaleReadings, OBJECT_SIZE, OBJECT_SIZE),
+            (PinMode::RefusedThenShrunk, OBJECT_SIZE, OBJECT_SIZE - 1),
+            (PinMode::Honoured, OBJECT_SIZE + 1, OBJECT_SIZE),
+        ] {
+            let server = pin_server::start(mode).await;
+            let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+            provider.connected = true;
+            let dir = tempfile::tempdir().expect("tempdir");
+            let out = dir.path().join("big.bin");
+            let capabilities = crate::transfer_dag::TransferCapabilities::default();
+            let recorder = std::sync::Arc::new(ProgressRecorder::default());
+            let executor = ProviderDownloadExecutor::new(
+                recorder.clone(),
+                std::sync::Arc::new(tokio::sync::Mutex::new(Some(
+                    Box::new(provider) as Box<dyn StorageProvider>
+                ))),
+                crate::transfer_settings::ResolvedTransferSettings {
+                    requested_max_concurrent: 1,
+                    max_concurrent: 1,
+                    retry_count: 0,
+                    timeout_seconds: 30,
+                    download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(
+                        4,
+                    ),
+                    sftp_download_preset: None,
+                },
+                tokio_util::sync::CancellationToken::new(),
+                ProviderExecutorSessionModel::HttpClonePool {
+                    provider_type: ProviderType::S3,
+                    max_leases: 4,
+                },
+                capabilities,
+            );
+            let outcome = executor
+                .execute(TransferEntry {
+                    id: "big".to_string(),
+                    display_name: "big".to_string(),
+                    remote_path: "/big.bin".to_string(),
+                    local_path: out.to_string_lossy().to_string(),
+                    size: planned as u64,
+                    modified: Some("2000-01-01T00:00:00Z".to_string()),
+                })
+                .await;
+            assert!(
+                matches!(outcome, TransferOutcome::Success),
+                "{mode:?}: {outcome:?}"
+            );
+            if mode != PinMode::Honoured {
+                assert!(
+                    server.refused() >= 2,
+                    "{mode:?}: the segmented path ran first"
+                );
+            }
+            assert_eq!(executor.take_transfer_attempts("big"), Some(1), "{mode:?}");
+            assert_eq!(std::fs::read(&out).unwrap(), vec![9u8; whole], "{mode:?}");
+            let seen = recorder.0.lock().unwrap().clone();
+            assert!(
+                seen.windows(2).all(|pair| pair[0] <= pair[1]),
+                "{mode:?}: progress went back: {seen:?}"
+            );
+            assert_eq!(seen.last().copied(), Some(whole as u64), "{mode:?}");
+            // The time of the object the stream read, not the listing's.
+            let time =
+                filetime::FileTime::from_last_modification_time(&std::fs::metadata(&out).unwrap());
+            assert_eq!(
+                Some(time.unix_seconds()),
+                crate::parse_remote_mtime("Wed, 21 Oct 2026 07:28:00 GMT"),
+                "{mode:?}"
+            );
+        }
+    }
+
+    /// The worker that replaces a failed one on the unpinned pass stays
+    /// unpinned. `replace_failed_range_worker` clones the worker and sets the
+    /// version on the clone, so `set_range_validator` must not clear the
+    /// unpinned state: a replacement would send `If-Match` again and the pass
+    /// would be refused by the same server.
+    #[tokio::test]
+    async fn a_replacement_worker_stays_unpinned() {
+        use super::super::multi_thread::pin_server::{self, PinMode, OBJECT_SIZE};
+        use super::super::multi_thread::replace_failed_range_worker;
+        let server = pin_server::start(PinMode::RefusedUnchanged).await;
+        let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+        provider.connected = true;
+        provider.set_range_validator(Some("v1".to_string()));
+        provider.read_ranges_unpinned(OBJECT_SIZE as u64);
+        let (mut next, _failure) = replace_failed_range_worker(
+            Box::new(provider),
+            Some("v1".to_string()),
+            ProviderError::Timeout,
+        )
+        .await;
+        let bytes = next
+            .read_range("/big.bin", 0, 1024)
+            .await
+            .expect("no If-Match goes out, so the server serves the range");
+        assert_eq!(bytes.len(), 1024);
+        assert_eq!(server.refused(), 0);
+        assert_eq!(server.unpinned(), 1);
+    }
+
+    /// A window past the end of a shorter object is a refusal, pinned or not:
+    /// the caller takes one stream, whichever path it came by. It is not a
+    /// refused pin, and a lone range with no version keeps its old meaning.
+    #[tokio::test]
+    async fn an_unpinned_range_past_the_end_is_a_refusal() {
+        use super::super::multi_thread::pin_server::{self, PinMode, OBJECT_SIZE};
+        let server = pin_server::start(PinMode::RefusedThenShrunk).await;
+        let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+        provider.connected = true;
+        provider.set_range_validator(Some("v1".to_string()));
+        provider.read_ranges_unpinned(OBJECT_SIZE as u64);
+        let err = provider
+            .read_range("/big.bin", 0, 1024)
+            .await
+            .expect_err("the range lies past the end");
+        assert!(matches!(err, ProviderError::ParallelRefused(_)), "{err}");
+
+        // Pinned: a refusal too, never read as a refused pin.
+        let (addr, _gets) = spawn_range_server(OBJECT_SIZE, Some("\"v1\""), 416).await;
+        let mut pinned = make_provider(Some(&format!("http://{addr}")));
+        pinned.connected = true;
+        pinned.set_range_validator(Some("v1".to_string()));
+        let err = pinned
+            .read_range("/big.bin", 0, 1024)
+            .await
+            .expect_err("a 416 fails the pinned read");
+        assert!(matches!(err, ProviderError::ParallelRefused(_)), "{err}");
+
+        let (addr, _gets) = spawn_range_server(OBJECT_SIZE, Some("\"v1\""), 416).await;
+        let mut lone = make_provider(Some(&format!("http://{addr}")));
+        lone.connected = true;
+        let err = lone
+            .read_range("/big.bin", 0, 1024)
+            .await
+            .expect_err("a 416 fails the lone read");
+        assert!(matches!(err, ProviderError::NotSupported(_)), "{err}");
+    }
+
+    /// The windows were cut for the size the first HEAD gave. A HEAD after
+    /// them that no longer says the size cannot show the object still has it,
+    /// so the file is not published on its word.
+    #[tokio::test]
+    async fn a_head_without_a_length_does_not_pass_the_publish_check() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        const SIZE: usize = 8 * 1024 * 1024;
+        // Raw HTTP: an axum handler's HEAD always gets a `content-length`.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let mut head = Vec::new();
+                    let mut byte = [0u8; 1];
+                    while !head.ends_with(b"\r\n\r\n") {
+                        match stream.read(&mut byte).await {
+                            Ok(1) => head.push(byte[0]),
+                            _ => return,
+                        }
+                    }
+                    let head = String::from_utf8_lossy(&head).to_lowercase();
+                    let window = head
+                        .lines()
+                        .find_map(|line| line.strip_prefix("range: "))
+                        .and_then(requested_window);
+                    let answer = match window {
+                        Some((start, end)) => {
+                            let mut answer = format!(
+                                "HTTP/1.1 206 Partial Content\r\ncontent-range: bytes {start}-{end}/{SIZE}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                                end - start + 1
+                            )
+                            .into_bytes();
+                            answer.extend(vec![7u8; end - start + 1]);
+                            answer
+                        }
+                        None => {
+                            b"HTTP/1.1 200 OK\r\netag: \"v1\"\r\nconnection: close\r\n\r\n".to_vec()
+                        }
+                    };
+                    let _ = stream.write_all(&answer).await;
+                });
+            }
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        let err = provider
+            .download_multi_thread(
+                "big.bin",
+                out.to_str().unwrap(),
+                SIZE as u64,
+                "\"v1\"".to_string(),
+                true,
+                None,
+                None,
+            )
+            .await
+            .expect_err("an object of unknown size is not published");
+        assert!(err.to_string().contains("no longer reported"), "{err}");
+        assert!(!out.exists());
+    }
+
+    /// The unpinned retry is guarded by the HEAD after it: an object replaced
+    /// while the unpinned windows read it goes to a single stream.
+    #[tokio::test]
+    async fn an_object_replaced_during_the_unpinned_retry_falls_back() {
+        use super::super::multi_thread::pin_server::{PinMode, OBJECT_SIZE};
+        let (messages, bytes, _progress, server) =
+            download_against_pin_server(PinMode::RefusedThenReplacedUnpinned).await;
+        assert_eq!(messages.len(), 1, "{messages:?}");
+        assert!(messages[0].contains("one confirmed object version"));
+        assert_eq!(bytes, vec![9u8; OBJECT_SIZE], "one whole version");
+        assert!(server.unpinned() >= 1);
+    }
+
+    /// The shared executor, against each answer a pinned window can get. A
+    /// gateway that refuses If-Match on an unchanged object is read again
+    /// without the pin and published from the windows; a replacement, before
+    /// or during that retry, is never published. Readings are counted: the
+    /// diagnosis is one reading for the file, however many windows it refused.
+    #[tokio::test]
+    async fn the_executor_tells_a_refused_pin_from_a_replaced_object() {
+        use super::super::multi_thread::pin_server::{self, PinMode, OBJECT_SIZE};
+        use super::super::multi_thread::SOURCE_CHANGED_MARKER;
+        // The unreadable diagnosis is read twice: the reading retries once
+        // before it takes the object for changed.
+        for (mode, published, readings) in [
+            (PinMode::Honoured, true, 2),
+            (PinMode::RefusedUnchanged, true, 3),
+            (PinMode::RefusedReplaced, false, 2),
+            (PinMode::RefusedThenReplacedUnpinned, false, 3),
+            (PinMode::RefusedWithStaleReadings, false, 2),
+            (PinMode::RefusedWithLargerWindows, false, 2),
+            (PinMode::RefusedThenUnreadable, false, 3),
+            (PinMode::HonouredWithAnotherMd5, true, 2),
+            (PinMode::RefusedUnchangedMd5, true, 3),
+            (PinMode::RefusedRestored, false, 3),
+        ] {
+            let server = pin_server::start(mode).await;
+            let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+            provider.connected = true;
+            let dir = tempfile::tempdir().expect("tempdir");
+            let out = dir.path().join("big.bin");
+            let outcome = crate::provider_transfer_executor::run_provider_segmented_download(
+                &mut provider,
+                "/big.bin",
+                out.to_str().unwrap(),
+                OBJECT_SIZE as u64,
+                4,
+                None,
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .await;
+            assert_eq!(server.readings(), readings, "{mode:?}");
+            if published {
+                outcome.unwrap_or_else(|e| panic!("{mode:?}: {e}"));
+                assert_eq!(std::fs::read(&out).unwrap(), vec![7u8; OBJECT_SIZE]);
+            } else {
+                let err = outcome.expect_err("a replaced object is not published");
+                assert!(
+                    err.to_string().contains(SOURCE_CHANGED_MARKER),
+                    "{mode:?}: {err}"
+                );
+                assert!(!out.exists(), "{mode:?}");
+            }
+            if matches!(
+                mode,
+                PinMode::RefusedReplaced | PinMode::RefusedThenUnreadable
+            ) {
+                assert_eq!(server.unpinned(), 0, "{mode:?}: never read unpinned");
+            }
+            if !matches!(mode, PinMode::Honoured | PinMode::HonouredWithAnotherMd5) {
+                assert!(server.refused() >= 2, "{mode:?}");
+            }
+        }
+    }
+
+    /// The native path takes one reading for a pin refusal, the HEAD a
+    /// completed download takes before it publishes, whatever the verdict.
+    #[tokio::test]
+    async fn the_native_path_takes_one_reading_for_a_refused_pin() {
+        use super::super::multi_thread::pin_server::{self, PinMode, OBJECT_SIZE};
+        for (mode, unchanged) in [
+            (PinMode::RefusedUnchanged, true),
+            (PinMode::RefusedReplaced, false),
+        ] {
+            let server = pin_server::start(mode).await;
+            let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+            provider.connected = true;
+            provider.set_multi_thread_download(4, 1024 * 1024);
+            let dir = tempfile::tempdir().expect("tempdir");
+            let out = dir.path().join("big.bin");
+            let err = provider
+                .download_multi_thread(
+                    "big.bin",
+                    out.to_str().unwrap(),
+                    OBJECT_SIZE as u64,
+                    "\"v1\"".to_string(),
+                    true,
+                    None,
+                    None,
+                )
+                .await
+                .expect_err("a refused pin is not published");
+            assert_eq!(
+                matches!(err, ProviderError::PinRefused(_)),
+                unchanged,
+                "{mode:?}: {err}"
+            );
+            assert_eq!(
+                !matches!(err, ProviderError::PinRefused(_)),
+                err.to_string()
+                    .contains(super::super::multi_thread::SOURCE_CHANGED_MARKER),
+                "{mode:?}: {err}"
+            );
+            assert!(!out.exists());
+            assert!(server.refused() >= 2, "{mode:?}");
+            assert_eq!(server.readings(), 1, "{mode:?}: one HEAD for the file");
+        }
     }
 
     /// Pinning the windows is not enough on a backend that ignores the
@@ -12670,10 +13316,11 @@ mod tests {
         );
     }
 
-    /// A window the server refuses because the pin no longer matches must
-    /// read as what it is, not as a transport failure.
+    /// A window the server refuses under its pin must read as a refused pin,
+    /// not as a transport failure, and not yet as a replacement: a 412 does
+    /// not say which.
     #[tokio::test]
-    async fn a_refused_pin_names_the_object_that_changed() {
+    async fn a_refused_pin_reads_as_a_refused_pin() {
         const SIZE: usize = 8 * 1024 * 1024;
         let (addr, _gets) = spawn_range_server(SIZE, Some("\"v1\""), 412).await;
         let mut provider = make_provider(Some(&format!("http://{addr}")));
@@ -12683,8 +13330,9 @@ mod tests {
             .read_range("/big.bin", 0, 1024)
             .await
             .expect_err("a refused pin must fail the read");
+        assert!(matches!(err, ProviderError::PinRefused(_)), "{err}");
         assert!(
-            format!("{err}").contains("changed while it was being downloaded"),
+            !format!("{err}").contains(super::super::multi_thread::SOURCE_CHANGED_MARKER),
             "{err}"
         );
     }

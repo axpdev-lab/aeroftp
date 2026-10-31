@@ -326,6 +326,7 @@ pub fn range_read_failed(what: &str, offset: u64, e: ProviderError) -> ProviderE
         ProviderError::NetworkError(_) => ProviderError::NetworkError(text),
         ProviderError::ConnectionLost(_) => ProviderError::ConnectionLost(text),
         ProviderError::ParallelRefused(_) => ProviderError::ParallelRefused(text),
+        ProviderError::PinRefused(_) => ProviderError::PinRefused(text),
         _ => ProviderError::TransferFailed(text),
     }
 }
@@ -770,6 +771,42 @@ impl SegmentedTemp {
 
     /// Remove the temporary while it is still claimed.
     pub fn discard(self) {}
+
+    /// Why the temporary's content is not the one `expected` names, or `None`
+    /// when it is or when there is no MD5 to compare with. Read without
+    /// `If-Match`, a window replaced and restored while the others ran passes
+    /// every reading of the object; only the content shows it.
+    pub async fn differs_from_md5(&self, expected: Option<&str>) -> Option<String> {
+        let expected = expected?;
+        let path = self.held.as_ref()?.path.clone();
+        file_differs_from_md5(path, expected).await
+    }
+}
+
+/// Why the file at `path` does not hash to the MD5 `expected`, or `None` when
+/// it does. A file that cannot be read differs: nothing shows it is the one.
+/// The hash reads the whole file on the blocking pool, so a large file costs
+/// its read time there and never holds up the runtime. A caller that stops
+/// awaiting stops the reading too, at its next chunk.
+pub async fn file_differs_from_md5(path: PathBuf, expected: &str) -> Option<String> {
+    /// Tells the reading to stop when the future awaiting it is dropped.
+    struct StopOnDrop(Arc<std::sync::atomic::AtomicBool>);
+    impl Drop for StopOnDrop {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::Relaxed);
+        }
+    }
+    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let _stop_on_drop = StopOnDrop(Arc::clone(&stop));
+    let actual = tokio::task::spawn_blocking(move || hash_file_md5(&path, &stop)).await;
+    match actual {
+        Ok(Ok(actual)) if actual.eq_ignore_ascii_case(expected) => None,
+        Ok(Ok(actual)) => Some(format!(
+            "the assembled content hashes to MD5 {actual}, not {expected}"
+        )),
+        Ok(Err(e)) => Some(format!("the assembled content could not be hashed: {e}")),
+        Err(e) => Some(format!("the assembled content could not be hashed: {e}")),
+    }
 }
 
 impl Drop for SegmentedTemp {
@@ -798,6 +835,12 @@ pub struct RangeSourceFingerprint {
     size: u64,
     modified: Option<String>,
     validator: Option<String>,
+    /// The content's MD5 as hex, when the provider publishes one in that form.
+    /// For this run only:
+    /// `differs_from` compares the entity tag it comes from, and a resume reads
+    /// nothing from it, so it is not written next to a part.
+    #[serde(skip)]
+    content_md5: Option<String>,
 }
 
 impl RangeSourceFingerprint {
@@ -805,6 +848,11 @@ impl RangeSourceFingerprint {
         Self {
             size: entry.size,
             modified: entry.modified.clone(),
+            content_md5: entry
+                .metadata
+                .get("md5")
+                .filter(|md5| md5.len() == 32 && md5.bytes().all(|b| b.is_ascii_hexdigit()))
+                .cloned(),
             validator: entry
                 .metadata
                 .get("etag")
@@ -836,6 +884,7 @@ impl RangeSourceFingerprint {
             size,
             modified: text(reqwest::header::LAST_MODIFIED),
             validator: text(reqwest::header::ETAG),
+            content_md5: None,
         })
     }
 
@@ -872,6 +921,11 @@ impl RangeSourceFingerprint {
     /// The validator to pin ranged reads to, when the provider published one.
     pub fn validator(&self) -> Option<String> {
         self.validator.clone()
+    }
+
+    /// The content's MD5 this reading found, when the provider publishes one.
+    pub fn content_md5(&self) -> Option<&str> {
+        self.content_md5.as_deref()
     }
 
     /// The size this reading found.
@@ -955,13 +1009,188 @@ pub fn source_changed(scope: &str, remote_path: &str, what: &str) -> String {
     format!("{scope}: {remote_path} {SOURCE_CHANGED_MARKER} ({what})")
 }
 
+/// The refusal for a window the server answered `412` under its version pin.
+///
+/// It says what the server did, not why: a `412` answers both an object
+/// replaced since the first reading and a server that refuses `If-Match` on
+/// the version it still serves. Only one more reading of the object tells
+/// them apart ([`PinRefusal::from_second_reading`]).
+pub fn pin_refused(scope: &str, remote_path: &str) -> ProviderError {
+    ProviderError::PinRefused(format!(
+        "{scope}: the server refused the version pin of a range of {remote_path} (412)"
+    ))
+}
+
+/// The refusal for a range the server answered `412` although it carried no
+/// precondition. It is a plain parallel refusal, not a pin refusal: there is
+/// no pin to diagnose or to drop.
+pub fn unpinned_412(scope: &str, remote_path: &str) -> String {
+    parallel_refused(
+        scope,
+        remote_path,
+        "the server answered 412 to a range with no precondition",
+    )
+}
+
+/// The refusal for a window the server answered `416`: the object is shorter
+/// than the windows were planned on, so it moved or the reading that gave its
+/// size was stale. One stream reads what is there.
+pub fn range_past_the_end(scope: &str, remote_path: &str) -> String {
+    parallel_refused(
+        scope,
+        remote_path,
+        "the range lies past the end of the object, which is shorter than planned",
+    )
+}
+
+/// Whether two entity tags name the same version. The comparison is strong;
+/// only the quotes, which a header carries and a listing may drop, are not
+/// part of the tag.
+pub fn same_entity_tag(a: &str, b: &str) -> bool {
+    a.trim().trim_matches('"') == b.trim().trim_matches('"')
+}
+
+/// The refusal for a `206` read without `If-Match` whose headers describe
+/// another object than the one the windows were planned on: another entity
+/// tag than `expected`, or another total than `planned_size`. The object moved
+/// while the windows read it, or the reading that found it unchanged came from
+/// a stale replica. `None` when the headers say nothing against it; the
+/// reading after the windows still decides then.
+pub fn unpinned_window_refusal(
+    scope: &str,
+    remote_path: &str,
+    expected: Option<&str>,
+    planned_size: u64,
+    headers: &reqwest::header::HeaderMap,
+) -> Option<ProviderError> {
+    let text = |name| {
+        headers
+            .get(name)
+            .and_then(|value: &HeaderValue| value.to_str().ok())
+    };
+    let refused = |what: String| {
+        Some(ProviderError::ParallelRefused(source_changed(
+            scope,
+            remote_path,
+            &what,
+        )))
+    };
+    if let (Some(expected), Some(answered)) = (expected, text(reqwest::header::ETAG)) {
+        if !same_entity_tag(expected, answered) {
+            return refused(format!(
+                "a window came from entity tag {answered}, not {expected}"
+            ));
+        }
+    }
+    let total = text(reqwest::header::CONTENT_RANGE)
+        .and_then(parse_content_range)
+        .and_then(|(_, _, total)| total);
+    match total {
+        Some(total) if total != planned_size => refused(format!(
+            "a window came from an object of {total} bytes, not {planned_size}"
+        )),
+        _ => None,
+    }
+}
+
+/// What a window refused under its version pin turns out to be, once the
+/// object has been read once more. That reading is taken once per file,
+/// after the windows have stopped, never once per refused window.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PinRefusal {
+    /// The object changed since the first reading, or could not be read
+    /// again: the refusal stands as a replacement.
+    SourceChanged(String),
+    /// The object is the one the windows were pinned to: the server refuses
+    /// `If-Match` on a version it still serves.
+    PinUnsupported,
+}
+
+impl PinRefusal {
+    /// The verdict from the second reading's comparison with the first:
+    /// `changed` is what differs, `None` when nothing does.
+    pub fn from_second_reading(changed: Option<String>) -> Self {
+        match changed {
+            Some(what) => Self::SourceChanged(what),
+            None => Self::PinUnsupported,
+        }
+    }
+
+    /// The message for the log and the refusal, with the object's path.
+    pub fn message(&self, scope: &str, remote_path: &str) -> String {
+        match self {
+            Self::SourceChanged(what) => source_changed(scope, remote_path, what),
+            Self::PinUnsupported => format!(
+                "{scope}: the server does not honour If-Match on range reads: it refused the \
+                 version pin of {remote_path}, which did not change"
+            ),
+        }
+    }
+
+    /// The fallback notice, with no path: a notice reaches stderr and a
+    /// signed URL can carry credentials.
+    pub fn notice(&self) -> &'static str {
+        match self {
+            Self::SourceChanged(_) => {
+                "the server refused a range pinned to the object's version, and the object \
+                 changed or could not be read again"
+            }
+            Self::PinUnsupported => {
+                "the server does not honour If-Match on range reads (the object did not change)"
+            }
+        }
+    }
+}
+
+/// The MD5 of the file at `path` as lowercase hex, read a chunk at a time so
+/// `stop` is honoured within one chunk.
+fn hash_file_md5(path: &Path, stop: &std::sync::atomic::AtomicBool) -> std::io::Result<String> {
+    use md5::{Digest, Md5};
+    use std::io::Read;
+    let mut hasher = Md5::new();
+    let mut file = std::fs::File::open(path)?;
+    let mut chunk = vec![0u8; 1024 * 1024];
+    loop {
+        if stop.load(Ordering::Relaxed) {
+            return Err(std::io::Error::other("the hash was stopped"));
+        }
+        let read = file.read(&mut chunk)?;
+        if read == 0 {
+            return Ok(format!("{:x}", hasher.finalize()));
+        }
+        hasher.update(&chunk[..read]);
+    }
+}
+
 /// A transfer progress callback, as every provider download takes it.
 pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send>;
+
+/// The byte count a transfer has shown, across a parallel run and the
+/// single-stream path that takes over from it. A fallback counts from zero what
+/// the run had already reported, and a bar that shrinks makes the time left grow.
+#[derive(Clone, Default)]
+pub struct ProgressMark(Arc<std::sync::atomic::AtomicU64>);
+
+impl ProgressMark {
+    /// What to show for `done`: the highest count so far. Only a total below
+    /// it lowers the value, when a replaced object is shorter than what was
+    /// reported, so the share of the total stays complete.
+    pub fn shown(&self, done: u64, total: u64) -> u64 {
+        let reached = self.0.fetch_max(done, Ordering::Relaxed).max(done);
+        if total > 0 {
+            reached.min(total)
+        } else {
+            reached
+        }
+    }
+}
 
 /// Two callbacks that both report to `progress`: one goes with the parallel
 /// attempt, the other stays behind for the single-stream path a refusal falls
 /// back to. The callback is `Send` and not `Sync`, so it is shared behind a
-/// lock rather than cloned; the two halves never run at the same time.
+/// lock rather than cloned; the two halves never run at the same time. Both
+/// pass the bytes really moved, so a later half counts from zero: whoever draws
+/// a bar holds it with a [`ProgressMark`], and measures speed on the real count.
 pub fn share_progress(
     progress: Option<ProgressCallback>,
 ) -> (Option<ProgressCallback>, Option<ProgressCallback>) {
@@ -2059,6 +2288,12 @@ pub fn report_download_fallback(reason: &str) {
 /// own retry-hardened single-stream path stays the single source of truth for
 /// the canonical error. A `200` is logged as a `range_ignored` event
 /// (observability hook for PD-ADAPT-1 metrics).
+///
+/// The windows carry the probe's strong entity tag as `If-Match`. A `412` to
+/// one of them is diagnosed by one more probe for the file: a changed object
+/// falls back, an unchanged one is read once more without `If-Match`, each
+/// answer compared with that tag and the probe after the windows deciding the
+/// publish. That second pass is the last: no pin is left to drop.
 pub(crate) async fn try_http_concurrent_range_download(
     req: HttpRangeRequest,
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
@@ -2192,7 +2427,7 @@ pub(crate) async fn try_http_concurrent_range_download(
     }
 
     // --- Concurrent path (server proved 206 honesty) ---------------------
-    let cfg = ConcurrentRangeConfig {
+    let config = || ConcurrentRangeConfig {
         final_path: PathBuf::from(&req.local_path),
         provider_type: req.provider_type,
         endpoint_identity: reqwest::Url::parse(&req.url)
@@ -2215,87 +2450,153 @@ pub(crate) async fn try_http_concurrent_range_download(
         max_parallel: planned,
     };
 
-    let client = req.client.clone();
-    let url: Arc<str> = Arc::from(req.url.as_str());
-    let headers = Arc::new(req.headers.clone());
-    let pin: Arc<Option<String>> = Arc::new(validator.clone());
-    let fetch_range = move |start: u64, end: u64| {
-        let client = client.clone();
-        let url = url.clone();
-        let headers = headers.clone();
-        let pin = pin.clone();
-        async move {
-            let mut rb = client.get(url.as_ref());
-            for (k, v) in headers.iter() {
-                rb = rb.header(k.clone(), v.clone());
-            }
-            if let Some(tag) = pin.as_ref() {
-                rb = rb.header(reqwest::header::IF_MATCH, tag.as_str());
-            }
-            let range = HeaderValue::from_str(&format!("bytes={}-{}", start, end))
-                .map_err(|e| ProviderError::TransferFailed(format!("Invalid Range: {}", e)))?;
-            let request = rb
-                .header(RANGE, range)
-                .build()
-                .map_err(|e| ProviderError::TransferFailed(format!("Build request: {}", e)))?;
-            let response = send_with_retry(&client, request, &HttpRetryConfig::default())
-                .await
-                .map_err(range_read_error)?;
-            if response.status() == reqwest::StatusCode::PRECONDITION_FAILED {
-                return Err(ProviderError::ParallelRefused(source_changed(
-                    "http range",
-                    url.as_ref(),
-                    "the server refused a window pinned to the version the probe saw",
-                )));
-            }
-            Ok(response)
-        }
-    };
-
-    let (on_progress, fallback_progress) = share_progress(on_progress);
-    match download_via_concurrent_range(cfg, fetch_range, CancellationToken::new(), on_progress)
-        .await
-    {
-        Ok(SegmentedRun::Completed(temp)) => {
-            if let Some(what) =
-                http_range_source_moved(&req, validator.as_deref(), last_modified.as_deref(), total)
+    // A server that answers 412 to every pinned window of an object that did
+    // not change refuses If-Match; it did not see a replacement. The windows
+    // are read once more, for this file only and with no pin, and the probe
+    // after them compares entity tag, size and time, as for a server that
+    // ignores the header: anything that moved is refused there.
+    let (mut attempt_progress, mut fallback_progress) = share_progress(on_progress);
+    // The windows carry the probe's entity tag as If-Match while this holds;
+    // once the server is found to refuse it, each answer is compared with it.
+    let mut send_pin = validator.is_some();
+    loop {
+        let client = req.client.clone();
+        let url: Arc<str> = Arc::from(req.url.as_str());
+        let headers = Arc::new(req.headers.clone());
+        let expected: Arc<Option<String>> = Arc::new(validator.clone());
+        let fetch_range = move |start: u64, end: u64| {
+            let client = client.clone();
+            let url = url.clone();
+            let headers = headers.clone();
+            let expected = expected.clone();
+            async move {
+                let mut rb = client.get(url.as_ref());
+                for (k, v) in headers.iter() {
+                    rb = rb.header(k.clone(), v.clone());
+                }
+                if let Some(tag) = expected.as_deref().filter(|_| send_pin) {
+                    rb = rb.header(reqwest::header::IF_MATCH, tag);
+                }
+                let range = HeaderValue::from_str(&format!("bytes={}-{}", start, end))
+                    .map_err(|e| ProviderError::TransferFailed(format!("Invalid Range: {}", e)))?;
+                let request = rb
+                    .header(RANGE, range)
+                    .build()
+                    .map_err(|e| ProviderError::TransferFailed(format!("Build request: {}", e)))?;
+                let response = send_with_retry(&client, request, &HttpRetryConfig::default())
                     .await
-            {
-                temp.discard();
-                report_download_fallback(
-                    "the object version could not be confirmed after reading the ranges",
+                    .map_err(range_read_error)?;
+                if response.status() == reqwest::StatusCode::PRECONDITION_FAILED {
+                    return Err(if send_pin {
+                        pin_refused("http range", url.as_ref())
+                    } else {
+                        ProviderError::ParallelRefused(unpinned_412("http range", url.as_ref()))
+                    });
+                }
+                if response.status() == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+                    return Err(ProviderError::ParallelRefused(range_past_the_end(
+                        "http range",
+                        url.as_ref(),
+                    )));
+                }
+                if !send_pin && response.status() == reqwest::StatusCode::PARTIAL_CONTENT {
+                    if let Some(refused) = unpinned_window_refusal(
+                        "http range",
+                        url.as_ref(),
+                        expected.as_deref(),
+                        total,
+                        response.headers(),
+                    ) {
+                        return Err(refused);
+                    }
+                }
+                Ok(response)
+            }
+        };
+
+        let outcome = download_via_concurrent_range(
+            config(),
+            fetch_range,
+            CancellationToken::new(),
+            attempt_progress.take(),
+        )
+        .await;
+        return match outcome {
+            Ok(SegmentedRun::Completed(temp)) => {
+                if let Some(what) = http_range_source_moved(
+                    &req,
+                    validator.as_deref(),
+                    last_modified.as_deref(),
+                    total,
+                )
+                .await
+                {
+                    temp.discard();
+                    report_download_fallback(
+                        "the object version could not be confirmed after reading the ranges",
+                    );
+                    tracing::warn!(
+                        "[multi-thread] {}; single-stream fallback",
+                        source_changed("http range", &req.url, &what)
+                    );
+                    return HttpRangeAttempt::Fallback(fallback_progress);
+                }
+                match temp.publish(Path::new(&req.local_path)).await {
+                    Ok(()) => HttpRangeAttempt::Completed,
+                    Err(e) => HttpRangeAttempt::Failed(ProviderError::IoError(e)),
+                }
+            }
+            Ok(SegmentedRun::ServerIgnoredRange) => {
+                // Server honoured the probe then ignored a real Range: rare
+                // inconsistency. The helper already removed the temp.
+                report_download_fallback("the server ignored Range after accepting the probe");
+                tracing::warn!(
+                    "[multi-thread] range_ignored mid-flight after a good probe for {}; single-stream fallback",
+                    req.url
                 );
+                HttpRangeAttempt::Fallback(fallback_progress)
+            }
+            Err(ProviderError::PinRefused(_)) => {
+                // A 412 to the pin: the object moved, or the server refuses
+                // If-Match on the version it still serves. One more probe,
+                // once for the file, tells which.
+                let verdict = PinRefusal::from_second_reading(
+                    http_range_source_moved(
+                        &req,
+                        validator.as_deref(),
+                        last_modified.as_deref(),
+                        total,
+                    )
+                    .await,
+                );
+                if verdict == PinRefusal::PinUnsupported && send_pin {
+                    tracing::warn!(
+                        "[multi-thread] {}; reading the windows again without If-Match",
+                        verdict.message("http range", &req.url)
+                    );
+                    send_pin = false;
+                    (attempt_progress, fallback_progress) = share_progress(fallback_progress);
+                    continue;
+                }
+                report_download_fallback(verdict.notice());
                 tracing::warn!(
                     "[multi-thread] {}; single-stream fallback",
-                    source_changed("http range", &req.url, &what)
+                    verdict.message("http range", &req.url)
                 );
-                return HttpRangeAttempt::Fallback(fallback_progress);
+                HttpRangeAttempt::Fallback(fallback_progress)
             }
-            match temp.publish(Path::new(&req.local_path)).await {
-                Ok(()) => HttpRangeAttempt::Completed,
-                Err(e) => HttpRangeAttempt::Failed(ProviderError::IoError(e)),
+            Err(e @ ProviderError::ParallelRefused(_)) => {
+                // A window was refused: it came from another version, or the
+                // server would not serve it in parallel. That is not a failed
+                // download: one stream reads one consistent view, which is
+                // exactly what the windows could not promise. The engine already
+                // removed the staged file and preserved the typed refusal.
+                report_download_fallback("the server refused a range or its version check");
+                tracing::warn!("[multi-thread] {}; single-stream fallback", e);
+                HttpRangeAttempt::Fallback(fallback_progress)
             }
-        }
-        Ok(SegmentedRun::ServerIgnoredRange) => {
-            // Server honoured the probe then ignored a real Range: rare
-            // inconsistency. The helper already removed the temp.
-            report_download_fallback("the server ignored Range after accepting the probe");
-            tracing::warn!(
-                "[multi-thread] range_ignored mid-flight after a good probe for {}; single-stream fallback",
-                req.url
-            );
-            HttpRangeAttempt::Fallback(fallback_progress)
-        }
-        Err(e @ ProviderError::ParallelRefused(_)) => {
-            // A window was refused because the object moved. That is not a
-            // failed download: one stream reads one consistent view, which is
-            // exactly what the windows could not promise. The engine already
-            // removed the staged file and preserved the typed refusal.
-            report_download_fallback("the server refused a range or its version check");
-            tracing::warn!("[multi-thread] {}; single-stream fallback", e);
-            HttpRangeAttempt::Fallback(fallback_progress)
-        }
-        Err(e) => HttpRangeAttempt::Failed(e),
+            Err(e) => HttpRangeAttempt::Failed(e),
+        };
     }
 }
 
@@ -2304,9 +2605,9 @@ pub(crate) async fn try_http_concurrent_range_download(
 ///
 /// A second one-byte probe on the same client, so the cost is a request and
 /// not a connection. It exists for the servers that ignore `If-Match`: where
-/// the pin is honoured a window is refused mid-flight and never reaches here.
-/// One retry, because this reading decides whether bytes already on disk are
-/// kept.
+/// the pin is honoured a window is refused mid-flight, and this reading then
+/// only tells a replacement from a server that refuses the pin. One retry,
+/// because this reading decides whether bytes already on disk are kept.
 async fn http_range_source_moved(
     req: &HttpRangeRequest,
     validator: Option<&str>,
@@ -2403,11 +2704,13 @@ async fn http_range_source_moved(
             size: total,
             modified: last_modified.map(str::to_owned),
             validator: validator.map(str::to_owned),
+            content_md5: None,
         };
         let after = RangeSourceFingerprint {
             size: now_total,
             modified: now_modified.map(str::to_owned),
             validator: now_tag,
+            content_md5: None,
         };
         return before.differs_from(&after);
     }
@@ -2565,6 +2868,253 @@ pub(crate) mod window_server {
             let (start, end) = value.trim().strip_prefix("bytes=")?.split_once('-')?;
             Some((start.parse().ok()?, end.parse().ok()?))
         })
+    }
+}
+
+/// A server for the version pin, shared by the S3 and the HTTP range tests.
+/// It counts the readings of the object (every `HEAD`, and the one-byte probe
+/// of the HTTP range path), the windows it refused with `412` and the
+/// unpinned windows it served. A window is the bytes `7`, a plain `GET` the
+/// bytes `9`, so a file made of windows is told apart from a single stream.
+#[cfg(test)]
+pub(crate) mod pin_server {
+    use std::net::SocketAddr;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    pub(crate) const OBJECT_SIZE: usize = 8 * 1024 * 1024;
+
+    /// How the server answers a window pinned with `If-Match`.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(crate) enum PinMode {
+        /// Served: the server honours the pin.
+        Honoured,
+        /// Refused, on an object that never changes.
+        RefusedUnchanged,
+        /// Refused, and the object reads as replaced once a window has been.
+        RefusedReplaced,
+        /// Refused, and the object reads as replaced once an unpinned window
+        /// has been served: a replacement during the unpinned retry. The
+        /// windows carry no entity tag, so only the reading after them sees
+        /// it.
+        RefusedThenReplacedUnpinned,
+        /// Refused, with readings that stay at the first version while the
+        /// windows come from a newer one: a stale replica answering the
+        /// readings. Only the tag each window carries shows it.
+        RefusedWithStaleReadings,
+        /// Refused, with readings that stay put while the unpinned windows,
+        /// which carry no entity tag, say they belong to a larger object.
+        RefusedWithLargerWindows,
+        /// Served under a pin, on an object whose entity tag is an MD5 the
+        /// windows do not hash to: a pinned read that hashed would refuse.
+        HonouredWithAnotherMd5,
+        /// Refused on an object whose entity tag is the MD5 of the bytes the
+        /// unpinned windows serve.
+        RefusedUnchangedMd5,
+        /// Refused on an object whose entity tag is an MD5, with untagged
+        /// unpinned windows from other content and readings that stay put: a
+        /// replacement restored before the last reading.
+        RefusedRestored,
+        /// Refused, with readings that stay put while every unpinned window
+        /// is answered `416`: an object shorter than the plan.
+        RefusedThenShrunk,
+        /// Refused, and every reading after a refusal fails (`404`, which no
+        /// HTTP retry repeats, so the count is the readings' own).
+        RefusedThenUnreadable,
+        /// No entity tag anywhere, and every window refused with `412`
+        /// although none carries a precondition.
+        UntaggedRangesRefused,
+    }
+
+    pub(crate) struct PinServer {
+        pub(crate) addr: SocketAddr,
+        pub(crate) readings: Arc<AtomicUsize>,
+        pub(crate) refused: Arc<AtomicUsize>,
+        pub(crate) unpinned: Arc<AtomicUsize>,
+    }
+
+    impl PinServer {
+        pub(crate) fn readings(&self) -> usize {
+            self.readings.load(Ordering::SeqCst)
+        }
+
+        pub(crate) fn refused(&self) -> usize {
+            self.refused.load(Ordering::SeqCst)
+        }
+
+        pub(crate) fn unpinned(&self) -> usize {
+            self.unpinned.load(Ordering::SeqCst)
+        }
+    }
+
+    fn window(raw: &str) -> Option<(usize, usize)> {
+        let (start, end) = raw.strip_prefix("bytes=")?.split_once('-')?;
+        Some((start.parse().ok()?, end.parse().ok()?))
+    }
+
+    /// [`start_with_hook`] with nothing to run.
+    pub(crate) async fn start(mode: PinMode) -> PinServer {
+        start_with_hook(mode, Arc::new(|| {})).await
+    }
+
+    /// Start the server; `after_windows` runs on each reading that comes after
+    /// an unpinned window was served, before the reading is answered.
+    pub(crate) async fn start_with_hook(
+        mode: PinMode,
+        after_windows: Arc<dyn Fn() + Send + Sync>,
+    ) -> PinServer {
+        // The MD5 of what a plain GET serves, or of what a window serves.
+        let md5_tag = |byte: u8| -> &'static str {
+            use md5::{Digest, Md5};
+            let digest = Md5::digest(vec![byte; OBJECT_SIZE]);
+            Box::leak(format!("\"{digest:x}\"").into_boxed_str())
+        };
+        let content_tag = match mode {
+            PinMode::RefusedUnchangedMd5 => Some(md5_tag(7)),
+            PinMode::RefusedRestored | PinMode::HonouredWithAnotherMd5 => Some(md5_tag(9)),
+            _ => None,
+        };
+        let readings = Arc::new(AtomicUsize::new(0));
+        let refused = Arc::new(AtomicUsize::new(0));
+        let unpinned = Arc::new(AtomicUsize::new(0));
+        let counters = (
+            Arc::clone(&readings),
+            Arc::clone(&refused),
+            Arc::clone(&unpinned),
+        );
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (readings, refused, unpinned) = counters.clone();
+                let after_windows = Arc::clone(&after_windows);
+                async move {
+                    use axum::http::StatusCode;
+                    use axum::response::Response;
+                    let refused_any = refused.load(Ordering::SeqCst) > 0;
+                    let replaced = match mode {
+                        PinMode::RefusedReplaced => refused_any,
+                        PinMode::RefusedThenReplacedUnpinned => unpinned.load(Ordering::SeqCst) > 0,
+                        _ => false,
+                    };
+                    // What a reading reports, and what a window carries.
+                    let reading_tag = match mode {
+                        PinMode::UntaggedRangesRefused => None,
+                        _ if replaced => Some("\"v2\""),
+                        _ => Some(content_tag.unwrap_or("\"v1\"")),
+                    };
+                    let window_tag = match mode {
+                        PinMode::RefusedThenReplacedUnpinned
+                        | PinMode::UntaggedRangesRefused
+                        | PinMode::RefusedWithLargerWindows
+                        | PinMode::RefusedRestored => None,
+                        PinMode::RefusedWithStaleReadings => Some("\"v2\""),
+                        _ => reading_tag,
+                    };
+                    let unreadable = mode == PinMode::RefusedThenUnreadable && refused_any;
+                    let range = req
+                        .headers()
+                        .get("range")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(window);
+                    let pinned = req.headers().contains_key("if-match");
+                    let probe = range == Some((0, 0)) && !pinned;
+                    let respond = |status: StatusCode, tag: Option<&str>| {
+                        let mut builder = Response::builder()
+                            .status(status)
+                            .header("last-modified", "Wed, 21 Oct 2026 07:28:00 GMT");
+                        if let Some(tag) = tag {
+                            builder = builder.header("etag", tag);
+                        }
+                        builder
+                    };
+                    if req.method() == axum::http::Method::HEAD || probe {
+                        readings.fetch_add(1, Ordering::SeqCst);
+                        if unpinned.load(Ordering::SeqCst) > 0 {
+                            after_windows();
+                        }
+                        if unreadable {
+                            return respond(StatusCode::NOT_FOUND, None)
+                                .body(axum::body::Body::empty())
+                                .unwrap();
+                        }
+                    }
+                    if req.method() == axum::http::Method::HEAD {
+                        let head =
+                            respond(StatusCode::OK, reading_tag).header("accept-ranges", "bytes");
+                        return head
+                            .header("content-length", OBJECT_SIZE.to_string())
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    let refuse = match mode {
+                        PinMode::Honoured | PinMode::HonouredWithAnotherMd5 => false,
+                        PinMode::UntaggedRangesRefused => range.is_some() && !probe,
+                        _ => pinned,
+                    };
+                    if refuse {
+                        refused.fetch_add(1, Ordering::SeqCst);
+                        // Every window in flight reaches the server before
+                        // the first refusal is answered, so a reading taken
+                        // per window would show in the count.
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        return respond(StatusCode::PRECONDITION_FAILED, None)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    if mode == PinMode::RefusedThenShrunk && range.is_some() && !probe {
+                        unpinned.fetch_add(1, Ordering::SeqCst);
+                        return respond(StatusCode::RANGE_NOT_SATISFIABLE, None)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    match range {
+                        Some((start, end)) => {
+                            let tag = if probe { reading_tag } else { window_tag };
+                            let window_total =
+                                if mode == PinMode::RefusedWithLargerWindows && !probe {
+                                    OBJECT_SIZE * 2
+                                } else {
+                                    OBJECT_SIZE
+                                };
+                            if !probe && !pinned {
+                                unpinned.fetch_add(1, Ordering::SeqCst);
+                            }
+                            respond(StatusCode::PARTIAL_CONTENT, tag)
+                                .header(
+                                    "content-range",
+                                    format!("bytes {start}-{end}/{window_total}"),
+                                )
+                                .body(axum::body::Body::from(vec![7u8; end - start + 1]))
+                                .unwrap()
+                        }
+                        None => {
+                            // A shorter object: only the whole read shows it,
+                            // since the readings stay put.
+                            let len = if mode == PinMode::RefusedThenShrunk {
+                                OBJECT_SIZE - 1
+                            } else {
+                                OBJECT_SIZE
+                            };
+                            respond(StatusCode::OK, reading_tag)
+                                .header("content-length", len.to_string())
+                                .body(axum::body::Body::from(vec![9u8; len]))
+                                .unwrap()
+                        }
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        PinServer {
+            addr,
+            readings,
+            refused,
+            unpinned,
+        }
     }
 }
 
@@ -5191,11 +5741,13 @@ mod tests {
             size: 2048,
             modified: Some("2026-09-21T00:00:00Z".into()),
             validator: None,
+            content_md5: None,
         };
         let after = RangeSourceFingerprint {
             size: 2048,
             modified: None,
             validator: None,
+            content_md5: None,
         };
         assert!(
             before.differs_from(&after).is_some(),
@@ -5597,5 +6149,287 @@ mod tests {
             "the read did not wait on the limiter"
         );
         assert_eq!(waiting.await.unwrap().unwrap().len() as u64, cap);
+    }
+
+    /// A 412 says the server refused the pin, not why: the message must not
+    /// claim a replacement, and the variant survives a window's wrapping.
+    #[test]
+    fn a_pin_refusal_names_the_refusal_until_a_second_reading_names_its_cause() {
+        let refused = pin_refused("S3 range read", "big.bin");
+        assert!(matches!(refused, ProviderError::PinRefused(_)));
+        assert!(
+            !refused.to_string().contains(SOURCE_CHANGED_MARKER),
+            "{refused}"
+        );
+        let wrapped = range_read_failed("segmented download", 7, refused);
+        assert!(matches!(wrapped, ProviderError::PinRefused(_)), "{wrapped}");
+
+        let changed = PinRefusal::from_second_reading(Some("entity tag v1 became v2".into()));
+        assert_eq!(
+            changed,
+            PinRefusal::SourceChanged("entity tag v1 became v2".into())
+        );
+        assert!(changed
+            .message("scope", "big.bin")
+            .contains(SOURCE_CHANGED_MARKER));
+        let unsupported = PinRefusal::from_second_reading(None);
+        assert_eq!(unsupported, PinRefusal::PinUnsupported);
+        let message = unsupported.message("scope", "big.bin");
+        assert!(message.contains("does not honour If-Match"), "{message}");
+        assert!(!message.contains(SOURCE_CHANGED_MARKER), "{message}");
+        for notice in [changed.notice(), unsupported.notice()] {
+            assert!(!notice.contains("big.bin"), "{notice}");
+        }
+    }
+
+    /// Runs the HTTP range path against a [`pin_server`] in `mode`, and
+    /// returns the attempt, its warnings and the published bytes.
+    async fn http_range_against(
+        mode: pin_server::PinMode,
+    ) -> (
+        HttpRangeAttempt,
+        Vec<String>,
+        Option<Vec<u8>>,
+        pin_server::PinServer,
+    ) {
+        let server = pin_server::start(mode).await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out.bin");
+        let warnings = super::super::CallWarnings::default();
+        let attempt = warnings
+            .scope(try_http_concurrent_range_download(
+                HttpRangeRequest {
+                    client: reqwest::Client::new(),
+                    url: format!("http://{}/object.bin", server.addr),
+                    headers: Vec::new(),
+                    local_path: out.to_string_lossy().into_owned(),
+                    provider_type: super::super::ProviderType::WebDav,
+                    streams: 4,
+                    max_streams: 4,
+                    cutoff: 1,
+                    known_size: Some(pin_server::OBJECT_SIZE as u64),
+                },
+                Some(Box::new(|_, _| {})),
+            ))
+            .await;
+        assert!(!segmented_temp_path_for(&out).exists());
+        let published = std::fs::read(&out).ok();
+        (attempt, warnings.take(), published, server)
+    }
+
+    /// A server that refuses If-Match on an object that did not change is
+    /// read once more without the pin, and the probe after the windows still
+    /// decides: the file is published from the windows, and the diagnosis
+    /// costs one probe for the file however many windows were refused.
+    #[tokio::test]
+    async fn the_http_range_path_reads_again_unpinned_when_the_server_refuses_if_match() {
+        use pin_server::PinMode;
+        let (attempt, warnings, published, server) = http_range_against(PinMode::Honoured).await;
+        assert!(matches!(attempt, HttpRangeAttempt::Completed));
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(published, Some(vec![7u8; pin_server::OBJECT_SIZE]));
+        // The probe that plans the windows and the one after them.
+        assert_eq!(server.readings(), 2);
+
+        let (attempt, warnings, published, server) =
+            http_range_against(PinMode::RefusedUnchanged).await;
+        assert!(matches!(attempt, HttpRangeAttempt::Completed));
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(published, Some(vec![7u8; pin_server::OBJECT_SIZE]));
+        assert!(server.refused() >= 2, "every window was pinned and refused");
+        assert!(
+            server.unpinned() >= 2,
+            "the windows were read again unpinned"
+        );
+        // One more probe than a completed download, the diagnosis, taken once
+        // for the file and not once per refused window.
+        assert_eq!(server.readings(), 3);
+    }
+
+    /// A 412 on an object that did change is a replacement: nothing is
+    /// published, no unpinned retry is made, and the notice says so.
+    #[tokio::test]
+    async fn the_http_range_path_names_a_refused_pin_on_a_replaced_object() {
+        let (attempt, warnings, published, server) =
+            http_range_against(pin_server::PinMode::RefusedReplaced).await;
+        assert!(matches!(attempt, HttpRangeAttempt::Fallback(Some(_))));
+        assert_eq!(
+            warnings,
+            vec![format!(
+                "parallel download unavailable: {}; using a single stream",
+                PinRefusal::SourceChanged(String::new()).notice()
+            )]
+        );
+        assert_eq!(published, None);
+        assert_eq!(server.unpinned(), 0, "a replacement is never read unpinned");
+        assert_eq!(server.readings(), 2);
+    }
+
+    /// The unpinned retry is guarded by the probe after it: an object replaced
+    /// while the unpinned windows read it is refused, never published.
+    #[tokio::test]
+    async fn the_http_range_path_refuses_an_object_replaced_during_the_unpinned_retry() {
+        let (attempt, warnings, published, server) =
+            http_range_against(pin_server::PinMode::RefusedThenReplacedUnpinned).await;
+        assert!(matches!(attempt, HttpRangeAttempt::Fallback(Some(_))));
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert!(
+            warnings[0].contains("using a single stream"),
+            "{warnings:?}"
+        );
+        assert_eq!(published, None);
+        assert!(server.unpinned() >= 1);
+        assert_eq!(server.readings(), 3);
+    }
+
+    /// A stale replica can answer the readings with the first version while
+    /// the windows come from a newer one. Read without If-Match, each window
+    /// must carry the expected entity tag: the stale reading does not get the
+    /// mixture published.
+    #[tokio::test]
+    async fn the_http_range_path_refuses_windows_newer_than_a_stale_reading() {
+        for mode in [
+            pin_server::PinMode::RefusedWithStaleReadings,
+            pin_server::PinMode::RefusedWithLargerWindows,
+            pin_server::PinMode::RefusedThenShrunk,
+        ] {
+            let (attempt, warnings, published, server) = http_range_against(mode).await;
+            assert!(
+                matches!(attempt, HttpRangeAttempt::Fallback(Some(_))),
+                "{mode:?}"
+            );
+            assert_eq!(
+                warnings,
+                vec![
+                    "parallel download unavailable: the server refused a range or its version check; using a single stream"
+                        .to_string()
+                ],
+                "{mode:?}"
+            );
+            assert_eq!(published, None, "{mode:?}");
+            assert!(server.unpinned() >= 1, "{mode:?}");
+            // The planning probe and the diagnosis; the windows stopped the run.
+            assert_eq!(server.readings(), 2, "{mode:?}");
+        }
+    }
+
+    /// A diagnosis that cannot read the object is no proof that it did not
+    /// change: no unpinned retry, the "changed" notice.
+    #[tokio::test]
+    async fn the_http_range_path_does_not_read_again_when_the_diagnosis_fails() {
+        let (attempt, warnings, published, server) =
+            http_range_against(pin_server::PinMode::RefusedThenUnreadable).await;
+        assert!(matches!(attempt, HttpRangeAttempt::Fallback(Some(_))));
+        assert_eq!(
+            warnings,
+            vec![format!(
+                "parallel download unavailable: {}; using a single stream",
+                PinRefusal::SourceChanged(String::new()).notice()
+            )]
+        );
+        assert_eq!(published, None);
+        assert_eq!(server.unpinned(), 0);
+    }
+
+    /// A 412 to ranges that carried no If-Match is not a pin refusal: one
+    /// pass of windows, then one stream, never a loop of passes.
+    #[tokio::test]
+    async fn an_untagged_412_on_every_range_falls_back_after_one_pass() {
+        let (attempt, warnings, published, server) = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            http_range_against(pin_server::PinMode::UntaggedRangesRefused),
+        )
+        .await
+        .expect("one pass, not a loop");
+        assert!(matches!(attempt, HttpRangeAttempt::Fallback(Some(_))));
+        assert_eq!(
+            warnings,
+            vec![
+                "parallel download unavailable: the server refused a range or its version check; using a single stream"
+                    .to_string()
+            ]
+        );
+        assert_eq!(published, None);
+        assert!(
+            server.refused() <= 4,
+            "one pass of four windows: {}",
+            server.refused()
+        );
+        assert_eq!(server.readings(), 1, "the planning probe only");
+    }
+
+    /// A fallback counts from zero what the attempt already reported. The mark
+    /// holds until the count passes it, and a shorter object still ends complete.
+    #[test]
+    fn a_progress_mark_never_goes_back() {
+        let mark = ProgressMark::default();
+        assert_eq!(mark.shown(40, 100), 40);
+        assert_eq!(mark.shown(10, 100), 40);
+        assert_eq!(mark.shown(100, 100), 100);
+        assert_eq!(mark.shown(50, 30), 30);
+    }
+
+    /// The comparison is case-insensitive, a file that cannot be read differs,
+    /// and a stopped hash ends at its next chunk.
+    #[tokio::test]
+    async fn the_content_comparison_names_what_differs() {
+        use std::sync::atomic::AtomicBool;
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("object.bin");
+        std::fs::write(&file, b"abc").unwrap();
+        let md5 = "900150983cd24fb0d6963f7d28e17f72";
+        assert_eq!(file_differs_from_md5(file.clone(), md5).await, None);
+        assert_eq!(
+            file_differs_from_md5(file.clone(), &md5.to_uppercase()).await,
+            None
+        );
+        let other = file_differs_from_md5(file.clone(), "00000000000000000000000000000000")
+            .await
+            .expect("another MD5 differs");
+        assert!(other.contains(md5), "{other}");
+        let gone = file_differs_from_md5(dir.path().join("gone"), md5)
+            .await
+            .expect("a file that cannot be read differs");
+        assert!(gone.contains("could not be hashed"), "{gone}");
+        assert_eq!(hash_file_md5(&file, &AtomicBool::new(false)).unwrap(), md5);
+        assert!(hash_file_md5(&file, &AtomicBool::new(true)).is_err());
+    }
+
+    #[test]
+    fn a_window_is_refused_only_when_its_headers_name_another_object() {
+        let answer = |tag: Option<&str>, range: Option<&str>| {
+            let mut headers = reqwest::header::HeaderMap::new();
+            if let Some(tag) = tag {
+                headers.insert(reqwest::header::ETAG, tag.parse().unwrap());
+            }
+            if let Some(range) = range {
+                headers.insert(reqwest::header::CONTENT_RANGE, range.parse().unwrap());
+            }
+            headers
+        };
+        let refusal = |expected: Option<&str>, headers: &reqwest::header::HeaderMap| {
+            unpinned_window_refusal("s", "p", expected, 100, headers)
+        };
+        assert!(same_entity_tag("\"v1\"", "v1"));
+        assert!(!same_entity_tag("\"v1\"", "W/\"v1\""));
+        let v1 = Some("\"v1\"");
+        assert!(refusal(v1, &answer(None, None)).is_none());
+        assert!(refusal(None, &answer(Some("\"v2\""), None)).is_none());
+        assert!(refusal(Some("v1"), &answer(v1, Some("bytes 0-9/100"))).is_none());
+        assert!(refusal(v1, &answer(None, Some("bytes 0-9/*"))).is_none());
+        for headers in [
+            answer(Some("\"v2\""), Some("bytes 0-9/100")),
+            answer(None, Some("bytes 0-9/101")),
+        ] {
+            let refused = refusal(v1, &headers).expect("the headers name another object");
+            assert!(
+                matches!(refused, ProviderError::ParallelRefused(_)),
+                "{refused}"
+            );
+            assert!(
+                refused.to_string().contains(SOURCE_CHANGED_MARKER),
+                "{refused}"
+            );
+        }
     }
 }

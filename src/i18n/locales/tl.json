@@ -1357,7 +1357,20 @@
             "serverProfilesCount": "{count} profile ng server",
             "aiKeysCount": "{count} AI key",
             "oauthTokensCount": "{count} OAuth token",
-            "configEntriesCount": "{count} entry ng config"
+            "configEntriesCount": "{count} entry ng config",
+            "importExistingLabel": "Kung may profile nang umiiral",
+            "importExistingSkip": "Laktawan",
+            "importExistingOverwrite": "I-overwrite",
+            "importExistingDuplicate": "I-duplicate",
+            "importExistingSkipHint": "Ang profile na mayroon ka na ay mananatili kung ano ito, kasama ang mga password at token nito.",
+            "importExistingOverwriteHint": "Ang profile na mayroon ka na ay papalitan sa mismong lugar nito, gamit ang mga password at token na dala ng file. Mananatili ito sa iyong mga paborito at grupo.",
+            "importExistingDuplicateHint": "Mananatili ang profile na mayroon ka na, at idadagdag sa tabi nito ang kopya mula sa file na may may-numerong pangalan.",
+            "overwrittenCount": "{count} ang na-overwrite",
+            "duplicatedCount": "{count} ang na-duplicate",
+            "importJottaChainWarning": "Nire-renew ng Jottacloud ang sign-in nito sa bawat koneksyon, at ang {names} ay may kahati na ngayong isa sa ibang kopya: ang kopyang unang kumonekta ang magsa-sign out sa isa pa (ang device kung saan galing ang file, o ang profile na pinagmulan ng duplicate). Mag-sign in muli sa isa pa gamit ang bagong Personal Login Token.",
+            "importOauthAppKept": "{names} ay dumating na may ibang custom na OAuth app kaysa sa nasa device na ito para sa provider na iyon. Pinanatili ang nakaimbak na app, kaya mag-sign in muli kung hindi na makakonekta ang mga profile na ito.",
+            "importTargetChanged": "Hindi na-overwrite ang {names}: itinuturo sila ng file sa ibang server, at hindi dapat mapunta roon ang kanilang mga naka-save na password at token. Mag-import gamit ang I-duplicate para idagdag ang kopya mula sa file, o burahin muna ang profile.",
+            "importSharedSecretsFailed": "Na-import ang {names}, ngunit hindi ma-store ang isang nakabahaging lihim o session mula sa file. Mag-sign in muli sa mga profile na ito kung hindi sila kumokonekta."
         },
         "devtools": {
             "title": "AeroTools",

@@ -21,6 +21,10 @@ import {
     loadSavedServerProfilesStrict,
     mergeSavedServerProfile,
     readSavedServerProfilesForWrite,
+    reloadRestoredServerProfiles,
+    addMigratedServerProfiles,
+    revertConvertedProfile,
+    withFreshSavedProfiles,
     savedProfilesGeneration,
     storeSavedServerProfiles,
 } from './serverProfileStore';
@@ -96,42 +100,22 @@ describe('storeSavedServerProfiles', () => {
         expect(localStoreMap.has('aeroftp-saved-servers')).toBe(false);
     });
 
-    it('falls back to the legacy vault key on STORE_NOT_READY and still cleans up + dispatches', async () => {
+    it('falls back to the guarded legacy write on STORE_NOT_READY and still cleans up + dispatches', async () => {
         const handler = vi.fn();
         eventTarget.addEventListener(PROFILES_CHANGED_EVENT, handler);
         localStoreMap.set('aeroftp-saved-servers', '[]');
-
+        const held = sampleProfile({ name: 'Lab (1)' });
         mockInvoke
             .mockRejectedValueOnce(new Error('STORE_NOT_READY')) // partition save rejects
-            .mockRejectedValueOnce(new Error('not found')) // legacy get_credential: nothing held
-            .mockResolvedValueOnce(undefined); // legacy store_credential succeeds
+            .mockResolvedValueOnce([held]); // the backend's legacy write, names settled there
 
-        await storeSavedServerProfiles([sampleProfile()]);
+        const stored = await storeSavedServerProfiles([sampleProfile()]);
 
+        expect(stored).toEqual([held]);
         expect(mockInvoke.mock.calls[0][0]).toBe('user_partitions_save_active_server_profiles');
-        expect(mockInvoke.mock.calls[1][0]).toBe('get_credential');
-        expect(mockInvoke.mock.calls[2][0]).toBe('store_credential');
-        expect(mockInvoke.mock.calls[2][1]).toMatchObject({
-            account: 'config_server_profiles',
-        });
+        expect(mockInvoke.mock.calls[1]).toEqual(['user_partitions_store_legacy_server_profiles', { profiles: [sampleProfile()], expectedList: undefined }]);
         expect(handler).toHaveBeenCalledTimes(1);
         expect(localStoreMap.has('aeroftp-saved-servers')).toBe(false);
-    });
-
-    it('lets the profile the legacy store holds keep its name on a fallback write', async () => {
-        // Save-as-new puts the new profile in front of the one holding its
-        // name: the list order must not hand the name to the new one.
-        const held = sampleProfile({ id: 'srv_held', name: 'Lab' });
-        const added = sampleProfile({ id: 'srv_new', name: 'Lab' });
-        mockInvoke
-            .mockRejectedValueOnce(new Error('STORE_NOT_READY')) // partition save rejects
-            .mockResolvedValueOnce(JSON.stringify([held])) // legacy get_credential
-            .mockResolvedValueOnce(undefined); // legacy store_credential succeeds
-
-        const stored = await storeSavedServerProfiles([added, held]);
-
-        expect(stored.map(p => [p.id, p.name])).toEqual([['srv_new', 'Lab (1)'], ['srv_held', 'Lab']]);
-        expect(JSON.parse((mockInvoke.mock.calls[2][1] as { password: string }).password)).toEqual(stored);
     });
 
     it('does not swallow a non-fallback error from the partition write', async () => {
@@ -327,12 +311,146 @@ describe('loadSavedServerProfilesStrict', () => {
     });
 });
 
+describe('addMigratedServerProfiles', () => {
+    it('keeps the list, adds what it lacks, bound to the read just before, and redoes it once', async () => {
+        const held = sampleProfile({ id: 'srv_held', name: 'Saved here' });
+        const sameId = sampleProfile({ id: 'srv_held', name: 'From the migration' });
+        const added = sampleProfile({ id: 'srv_new', name: 'New' });
+        mockInvoke
+            .mockResolvedValueOnce({ userId: 4, profiles: [], revision: 'r1' })
+            .mockRejectedValueOnce(new Error('PROFILES_CHANGED: nothing was saved'))
+            .mockResolvedValueOnce({ userId: 4, profiles: [held], revision: 'r2' })
+            .mockResolvedValueOnce(undefined);
+        await addMigratedServerProfiles([sameId, added]);
+        expect(mockInvoke).toHaveBeenLastCalledWith('user_partitions_save_active_server_profiles', {
+            profiles: [held, added], expectedUserId: 4, expectedRevision: 'r2',
+        });
+    });
+
+    it('refuses an account other than the one the migration found them under', async () => {
+        mockInvoke.mockReset();
+        mockInvoke.mockResolvedValueOnce({ userId: 9, profiles: [], revision: 'r1' });
+        await expect(addMigratedServerProfiles([sampleProfile()], 4)).rejects.toThrow('ACCOUNT_CHANGED');
+        expect(mockInvoke.mock.calls.some(call => call[0] === 'user_partitions_save_active_server_profiles')).toBe(false);
+        mockInvoke.mockReset();
+    });
+
+    it('fails without writing when the list cannot be read', async () => {
+        mockInvoke.mockReset();
+        mockInvoke.mockImplementation(async (command: string) => {
+            if (command === 'get_credential') return null;
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            return undefined;
+        });
+        await expect(addMigratedServerProfiles([sampleProfile()])).rejects.toThrow('STORE_NOT_READY');
+        expect(mockInvoke.mock.calls.some(call => call[0] === 'user_partitions_save_active_server_profiles')).toBe(false);
+        mockInvoke.mockReset();
+    });
+});
+
+describe('reloadRestoredServerProfiles', () => {
+    it('reads the list the restore stored, writes nothing and tells this window', async () => {
+        const stored = [sampleProfile()];
+        const handler = vi.fn();
+        eventTarget.addEventListener(PROFILES_CHANGED_EVENT, handler);
+        mockInvoke.mockReset();
+        mockInvoke.mockImplementation(async (command: string) =>
+            (command === 'user_partitions_load_active_server_profiles' ? stored : null));
+        await expect(reloadRestoredServerProfiles()).resolves.toEqual(stored);
+        expect(mockInvoke.mock.calls.some(call => String(call[0]).includes('save_active'))).toBe(false);
+        expect(handler).toHaveBeenCalledTimes(1);
+        mockInvoke.mockReset();
+    });
+
+    it('rejects rather than show an empty list when the partition cannot be read', async () => {
+        mockInvoke.mockReset();
+        mockInvoke.mockImplementation(async (command: string) => {
+            if (command === 'user_partitions_load_active_server_profiles') throw new Error('STORE_NOT_READY');
+            return null;
+        });
+        await expect(reloadRestoredServerProfiles()).rejects.toThrow('STORE_NOT_READY');
+        mockInvoke.mockReset();
+    });
+});
+
+describe('a list read from the legacy store', () => {
+    it('goes only to the guarded legacy write, with the list it read, and a refusal stays one', async () => {
+        const legacy = [sampleProfile({ name: 'from the legacy store' })];
+        mockInvoke.mockImplementation(async (command: string) => {
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            if (command === 'get_credential') return JSON.stringify(legacy);
+            return undefined;
+        });
+        const read = await readSavedServerProfilesForWrite();
+        expect(read.profiles).toEqual(legacy);
+        expect(read.userId).toBeUndefined();
+
+        const edited = [sampleProfile({ name: 'edited' })];
+        mockInvoke.mockReset();
+        mockInvoke.mockResolvedValueOnce(edited);
+        await storeSavedServerProfiles(edited, false, read.userId, read.revision);
+        expect(mockInvoke.mock.calls).toEqual([['user_partitions_store_legacy_server_profiles', { profiles: edited, expectedList: legacy }]]);
+
+        // The partition is reachable by now, or the store holds another list.
+        mockInvoke.mockReset();
+        mockInvoke.mockRejectedValueOnce(new Error('PROFILES_CHANGED: nothing was saved'));
+        await expect(storeSavedServerProfiles(edited, false, read.userId, read.revision)).rejects.toThrow('PROFILES_CHANGED');
+        expect(mockInvoke).toHaveBeenCalledTimes(1);
+        mockInvoke.mockReset();
+    });
+});
+
+describe('a retry after another writer saved', () => {
+    it('stops when the account changed, and never writes the first account\'s data on the second', async () => {
+        const write = vi.fn(async () => { throw new Error('PROFILES_CHANGED: nothing was saved'); });
+        const read = vi.fn()
+            .mockResolvedValueOnce({ profiles: [], userId: 4, revision: 'r1' })
+            .mockResolvedValueOnce({ profiles: [], userId: 9, revision: 'r9' });
+        await expect(withFreshSavedProfiles(write, read)).rejects.toThrow('ACCOUNT_CHANGED');
+        expect(write).toHaveBeenCalledTimes(1);
+    });
+
+    it('redoes the write once in the same account, on the new read', async () => {
+        const write = vi.fn()
+            .mockRejectedValueOnce(new Error('PROFILES_CHANGED: nothing was saved'))
+            .mockResolvedValueOnce('done');
+        const second = { profiles: [], userId: 4, revision: 'r2' };
+        const read = vi.fn()
+            .mockResolvedValueOnce({ profiles: [], userId: 4, revision: 'r1' })
+            .mockResolvedValueOnce(second);
+        await expect(withFreshSavedProfiles(write, read)).resolves.toBe('done');
+        expect(write).toHaveBeenLastCalledWith(second);
+    });
+});
+
+describe('revertConvertedProfile', () => {
+    const original = sampleProfile({ id: 'orig', name: 'Original' });
+    const converted = sampleProfile({ id: 'new', name: 'Converted' });
+    const added = sampleProfile({ id: 'added', name: 'Added since' });
+
+    it('puts the original where the converted profile stands and keeps what was added since', () => {
+        expect(revertConvertedProfile([converted, added], 'new', original)).toEqual([original, added]);
+    });
+
+    it('brings the original back if the converted one is gone, without a second copy', () => {
+        expect(revertConvertedProfile([added], 'new', original)).toEqual([added, original]);
+        expect(revertConvertedProfile([original, added], 'new', original)).toEqual([original, added]);
+    });
+
+    it('stores no id twice, and a convert that kept the id gets the original back in place', () => {
+        const heldAgain = sampleProfile({ id: 'orig', name: 'Saved since' });
+        expect(revertConvertedProfile([converted, heldAgain], 'new', original)).toEqual([heldAgain]);
+        const sameId = sampleProfile({ id: 'orig', name: 'Converted in place' });
+        expect(revertConvertedProfile([sameId, added], 'orig', original)).toEqual([original, added]);
+    });
+});
+
 describe('account-bound profile writes', () => {
     it('reads the list together with the account it belongs to', async () => {
         const profiles = [sampleProfile()];
-        mockInvoke.mockResolvedValueOnce({ userId: 4, profiles });
+        mockInvoke.mockResolvedValueOnce({ userId: 4, profiles, revision: 'r1' });
 
-        await expect(readSavedServerProfilesForWrite()).resolves.toEqual({ profiles, userId: 4 });
+        await expect(readSavedServerProfilesForWrite()).resolves.toEqual({ profiles, userId: 4, revision: 'r1' });
         expect(mockInvoke).toHaveBeenCalledWith('user_partitions_load_active_server_profiles_scoped', undefined);
     });
 
@@ -351,7 +469,7 @@ describe('account-bound profile writes', () => {
 
     it('binds a single-profile merge to the account it read', async () => {
         mockInvoke
-            .mockResolvedValueOnce({ userId: 4, profiles: [sampleProfile()] })
+            .mockResolvedValueOnce({ userId: 4, profiles: [sampleProfile()], revision: 'r1' })
             .mockResolvedValueOnce(undefined);
 
         await mergeSavedServerProfile('srv_1', profile => ({ ...profile, name: 'merged' }));
@@ -359,7 +477,30 @@ describe('account-bound profile writes', () => {
         expect(mockInvoke).toHaveBeenLastCalledWith('user_partitions_save_active_server_profiles', {
             profiles: [sampleProfile({ name: 'merged' })],
             expectedUserId: 4,
+            expectedRevision: 'r1',
         });
+    });
+
+    it('redoes a merge once on the list another writer saved, then reports the conflict', async () => {
+        const other = sampleProfile({ id: 'srv_2', name: 'Saved elsewhere' });
+        mockInvoke
+            .mockResolvedValueOnce({ userId: 4, profiles: [sampleProfile()], revision: 'r1' })
+            .mockRejectedValueOnce(new Error('PROFILES_CHANGED: nothing was saved'))
+            .mockResolvedValueOnce({ userId: 4, profiles: [sampleProfile(), other], revision: 'r2' })
+            .mockResolvedValueOnce(undefined);
+        await mergeSavedServerProfile('srv_1', profile => ({ ...profile, name: 'merged' }));
+        expect(mockInvoke).toHaveBeenLastCalledWith('user_partitions_save_active_server_profiles', {
+            profiles: [sampleProfile({ name: 'merged' }), other],
+            expectedUserId: 4,
+            expectedRevision: 'r2',
+        });
+
+        mockInvoke
+            .mockResolvedValueOnce({ userId: 4, profiles: [sampleProfile()], revision: 'r3' })
+            .mockRejectedValueOnce(new Error('PROFILES_CHANGED: nothing was saved'))
+            .mockResolvedValueOnce({ userId: 4, profiles: [sampleProfile()], revision: 'r4' })
+            .mockRejectedValueOnce(new Error('PROFILES_CHANGED: nothing was saved'));
+        await expect(mergeSavedServerProfile('srv_1', profile => profile)).rejects.toThrow('PROFILES_CHANGED');
     });
 
     it('resolves a merge to the list the write stored', async () => {

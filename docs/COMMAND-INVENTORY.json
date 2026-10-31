@@ -429,7 +429,7 @@
         "name": "profile-export"
       },
       {
-        "about": "Import server profiles from a `.aeroftp` file (existing profiles are SKIPPED, never overwritten)",
+        "about": "Import server profiles from a `.aeroftp` file (`--on-existing` picks what happens to a profile that already exists; it is skipped by default)",
         "name": "profile-import"
       },
       {
@@ -574,7 +574,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 40,
     "mcp_tools_total": 78,
-    "tauri_commands": 792
+    "tauri_commands": 793
   },
   "mcp": {
     "count": 78,
@@ -595,7 +595,7 @@
         "namespace": "aeroftp_"
       },
       {
-        "description": "Compare a local directory against a remote directory and report differences. The result also says how much of each tree the comparison actually covers: `local_scan_incomplete` and `remote_scan_incomplete`, with `{side}_scan_errors` (directory listings that failed), `{side}_scan_truncated` (the walk stopped at its depth or entry cap), and `{side}_policy_denied_total` (named prefixes excluded by the local-path policy). A side is reported incomplete when its counters are non-zero OR when the walk left out a path it can name, because a symbolic link is a gap without being a failure: no walk follows one, so the subtree behind it was never compared. Those paths are listed in `{side}_skipped_links` and `{side}_unseen_paths`, each capped at 1000 entries with `_total` and `_truncated` alongside, and OMITTED entirely when empty. The eight counter keys are always present, zero included, so an agent can branch on them without first checking whether they exist. An unnameable `policy_denied` boundary on either side returns an error instead of a partial comparison. Under summary_only=true only the counters and flags are returned, not the path lists. A file reported as missing on one side by an incomplete scan may simply be unread rather than absent: do not turn it into a delete.",
+        "description": "Compare a local directory against a remote directory and report differences. The result also says how much of each tree the comparison actually covers: `local_scan_incomplete` and `remote_scan_incomplete`, with `{side}_scan_errors` (directory listings that failed), `{side}_scan_truncated` (the walk stopped at its depth or entry cap), and `{side}_policy_denied_total` (named prefixes excluded by the local-path policy). A side is reported incomplete when its counters are non-zero OR when the walk left out a path it can name, because a symbolic link is a gap without being a failure: no walk follows one, so the subtree behind it was never compared. Those paths are listed in `{side}_skipped_links` and `{side}_unseen_paths`, each capped at 1000 entries with `_total` and `_truncated` alongside, and OMITTED entirely when empty. The four counters (`{side}_scan_errors`, `{side}_policy_denied_total`) and four flags (`{side}_scan_truncated`, `{side}_scan_incomplete`) are always present, zero or false included, so an agent can branch on them without first checking whether they exist. An unnameable `policy_denied` boundary on either side returns an error instead of a partial comparison. Under summary_only=true only the counters and flags are returned, not the path lists. A file reported as missing on one side by an incomplete scan may simply be unread rather than absent: do not turn it into a delete.",
         "name": "aeroftp_check_tree",
         "namespace": "aeroftp_"
       },
@@ -972,7 +972,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 465,
+    "name_matched_count": 466,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -1492,6 +1492,7 @@
       "user_partitions_load_active_server_profiles",
       "user_partitions_load_active_server_profiles_scoped",
       "user_partitions_save_active_server_profiles",
+      "user_partitions_store_legacy_server_profiles",
       "user_partitions_relocate_server_profile",
       "user_partitions_add_user",
       "user_partitions_copy_user",
@@ -2101,6 +2102,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 792
+    "count": 793
   }
 }
