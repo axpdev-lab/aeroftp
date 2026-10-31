@@ -10748,6 +10748,8 @@ async fn download_with_resume(
     cli: &Cli,
     progress_cb: Option<Box<dyn Fn(u64, u64) + Send>>,
 ) -> Result<(), ProviderError> {
+    ftp_client_gui_lib::local_download_target::refuse_unwritable_name(local_path)
+        .map_err(ProviderError::InvalidPath)?;
     // The destination of an in-place download has no record of its source
     // version. Neither its length nor --partial proves it is a prefix of
     // the current remote object: even equal sizes can hide a replacement.

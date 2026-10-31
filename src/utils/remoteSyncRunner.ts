@@ -586,7 +586,8 @@ const runSync = async (
                 : invoke('delete_remote_file', { path: sidecarPath, isDir: false });
         await sidecarInvoke.catch(() => undefined);
     };
-    /** Record a file the backup step failed: its destination copy is untouched. */
+    /** Record a file refused before writing, by the backup step or for its name:
+     *  its destination copy is untouched. */
     const failBackup = (item: SyncRunFile, journalEntry: SyncJournalEntry | undefined, e: unknown): void => {
         const errInfo: SyncErrorInfo = {
             kind: 'disk_error',
@@ -738,9 +739,28 @@ const runSync = async (
             .catch(() => null);
         bulk = support && (support.upload || support.download) ? support : null;
     }
+    // Requested 124: a name this disk cannot hold, or cannot tell from another
+    // one in this run, fails on its own and leaves nothing behind. Written
+    // anyway, two files would become one and the contents of the first be lost.
+    const localNameProblems = new Map<string, string>();
+    const downloads = files.filter((f) => f.action === 'download' && !f.isDir).map((f) => f.relativePath);
+    if (downloads.length > 0) {
+        try {
+            const problems = await invoke<{ path: string; reason: string }[]>('local_target_problems', {
+                destination: localBase,
+                paths: downloads,
+            });
+            if (Array.isArray(problems)) {
+                problems.forEach((problem) => localNameProblems.set(problem.path, problem.reason));
+            }
+        } catch {
+            // The download commands still refuse a name the disk cannot hold.
+        }
+    }
     const bulkEligible = (f: SyncRunFile): boolean =>
         bulk !== null
         && !f.isDir
+        && !localNameProblems.has(f.relativePath)
         // A source spelled differently (keep-both, Unicode counterpart) keeps
         // the single-file command, which writes under the destination name.
         && f.sourcePath == null
@@ -849,7 +869,7 @@ const runSync = async (
         for (let i = 1; i < parts.length; i++) {
             const dir = parts.slice(0, i).join('/');
             if (f.action === 'upload') remoteParentDirs.add(dir);
-            if (f.action === 'download') localParentDirs.add(dir);
+            if (f.action === 'download' && !localNameProblems.has(f.relativePath)) localParentDirs.add(dir);
         }
     }
     const byDepth = (a: string, b: string): number =>
@@ -940,6 +960,14 @@ const runSync = async (
             else if (journalEntry.action === 'download') downloaded++;
             else deleted++;
             totalBytes += journalEntry.bytes_transferred;
+            completed++;
+            callbacks.onProgress?.(completed, files.length);
+            continue;
+        }
+
+        const nameProblem = item.action === 'download' ? localNameProblems.get(item.relativePath) : undefined;
+        if (nameProblem) {
+            failBackup(item, journalEntry, new Error(nameProblem));
             completed++;
             callbacks.onProgress?.(completed, files.length);
             continue;

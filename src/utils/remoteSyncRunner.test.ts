@@ -116,6 +116,36 @@ const file = (
 });
 
 describe('remoteSyncRunner — copy legs', () => {
+    it('refuses names the disk cannot hold apart, and downloads the rest (Requested 124)', async () => {
+        const { invoke, calls } = makeInvoke({
+            local_target_problems: async () => [
+                { path: 'docs/File.txt', reason: 'This disk cannot tell it from docs/file.txt' },
+                { path: 'docs/file.txt', reason: 'This disk cannot tell it from docs/File.txt' },
+                { path: 'bad/colon:name.txt', reason: 'Windows cannot hold a name' },
+            ],
+        });
+        const report = await runRemoteSync(
+            [
+                file('docs/File.txt', 'download'),
+                file('docs/file.txt', 'download'),
+                file('bad/colon:name.txt', 'download'),
+                file('docs/ok.txt', 'download'),
+            ],
+            { remote: [], local: [] },
+            baseConfig(),
+            {},
+            noWaitDeps(invoke),
+        );
+        const sent = calls.filter((c) => c.cmd === 'download_file' || c.cmd === 'provider_download_file');
+        expect(sent).toHaveLength(1);
+        expect(JSON.stringify(sent[0].args)).toContain('ok.txt');
+        expect(report.errors.map((e) => e.file_path).sort()).toEqual([
+            'bad/colon:name.txt', 'docs/File.txt', 'docs/file.txt',
+        ]);
+        expect(report.errors[0].message).toContain('This disk cannot tell it');
+        expect(JSON.stringify(calls)).not.toContain('"bad"');
+    });
+
     it('uploads and downloads, counting bytes and dirs', async () => {
         const { invoke, calls } = makeInvoke();
         const report = await runRemoteSync(

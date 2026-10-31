@@ -3557,6 +3557,7 @@ async fn download_file(
     if state.cancel_flag.load(Ordering::Relaxed) {
         return Err("Transfer cancelled by user".to_string());
     }
+    local_download_target::refuse_unwritable_name(&params.local_path)?;
 
     let cancel_flag = state.cancel_flag.clone();
     let filename = PathBuf::from(&params.remote_path)
@@ -12745,6 +12746,19 @@ fn classify_walked_pair(
 /// unified Compare / Plan tabs and the runner operate on every nested level.
 /// The `left` directory maps onto `local_info`, `right` onto `remote_info`;
 /// the frontend adapts the result with `leftIsLocal = true`.
+/// What a sync's downloads cannot write as they are (Requested 124).
+#[tauri::command]
+async fn local_target_problems(
+    destination: String,
+    paths: Vec<String>,
+) -> Result<Vec<local_download_target::LocalTargetProblem>, String> {
+    tokio::task::spawn_blocking(move || {
+        local_download_target::local_target_problems(Path::new(&destination), &paths)
+    })
+    .await
+    .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 async fn compare_local_directories(
     app: AppHandle,
@@ -21172,6 +21186,7 @@ pub fn run() {
             rebuild_menu,
             set_site_command_menu_enabled,
             compare_directories,
+            local_target_problems,
             compare_local_directories,
             cancel_compare,
             proton_mode_switch::proton_mode_switch_plan,
