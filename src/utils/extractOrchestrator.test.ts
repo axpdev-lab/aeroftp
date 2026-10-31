@@ -125,6 +125,15 @@ describe('extractCollisions (what an "Extract here" would write over)', () => {
         expect(extractCollisions(['docs\\a.txt', '/readme.md'], ['docs', 'readme.md'])).toEqual(['docs', 'readme.md']);
     });
 
+    it('reads past a leading "./", as a tar of "." lists its entries', () => {
+        // `tar -cf a.tar .` lists `./`, `./docs/` and `./docs/a.txt`, and
+        // list_tar returns them as they are: `.` was the name compared.
+        expect(extractCollisions(['./', './docs/', './docs/a.txt', './readme.md'], ['docs', 'readme.md'])).toEqual(['docs', 'readme.md']);
+        expect(extractCollisions(['././docs/a.txt'], ['docs'])).toEqual(['docs']);
+        expect(extractCollisions(['/./docs/b.txt'], ['docs'])).toEqual(['docs']);
+        expect(extractCollisions(['./', '.'], ['docs'])).toEqual([]);
+    });
+
     it('finds nothing in a folder that holds none of the entries', () => {
         expect(extractCollisions(['docs/a.txt', 'readme.md'], ['other'])).toEqual([]);
         expect(extractCollisions([], ['docs'])).toEqual([]);

@@ -127,13 +127,14 @@ export function isWrongPasswordError(err: unknown): boolean {
  * the archive's entries that the folder already holds. An entry `docs/a.txt`
  * lands in `docs`, so `docs` is the name compared. Compared without case: on a
  * case-insensitive file system `Docs/a.txt` lands in `docs`, and asking once
- * too often costs a click where not asking costs a file. Pure.
+ * too often costs a click where not asking costs a file. A leading `./` (a tar
+ * made with `tar -cf a.tar .` lists `./docs/a.txt`) or `/` is not a name. Pure.
  */
 export function extractCollisions(entryNames: readonly string[], destNames: Iterable<string>): string[] {
     const dest = new Set([...destNames].map(n => n.toLowerCase()));
     const found = new Set<string>();
     for (const entry of entryNames) {
-        const norm = entry.replace(/\\/g, '/').replace(/^\/+/, '');
+        const norm = entry.replace(/\\/g, '/').replace(/^(?:\.\/|\/)+/, '');
         const slash = norm.indexOf('/');
         const top = slash === -1 ? norm : norm.slice(0, slash);
         if (top && dest.has(top.toLowerCase())) found.add(top);

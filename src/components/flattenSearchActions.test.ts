@@ -147,6 +147,11 @@ describe('local actions on the rows of a flattened search', () => {
         expect(toolbarDelete).not.toMatch(/selectedLocalFiles\b/);
         expect(appRaw).not.toMatch(/deleteMultipleLocalFiles\(Array\.from\(selectedLocalFiles\)\)/);
         expect(appRaw).toMatch(/hasSelection=\{selectedRemoteFiles\.size > 0 \|\| focusedLocalSelection\.size > 0\}/);
+        // Ctrl+U asked panel 1 whether there was anything to upload, and
+        // uploadMultipleFiles then read the focused panel: with panel 2 focused
+        // and nothing selected there, it opened the file picker.
+        expect(shortcut('Ctrl+U')).toMatch(/if \(isConnected && getActiveLocalState\(\)\.selection\.size > 0\) \{\s*uploadMultipleFiles\(\);/);
+        expect(shortcut('Ctrl+U')).not.toMatch(/selectedLocalFiles\b/);
         // The row menu acts on the panel right-clicked.
         const menu = body('showLocalContextMenu');
         expect(menu).toMatch(/uploadMultipleFiles\(filesToUpload, localPanelId\)/);
@@ -220,8 +225,11 @@ describe('local actions on the rows of a flattened search', () => {
     it('reloads every panel that shows a folder an action wrote to', () => {
         // Panel 1 also when its flattened search lists a folder below its own.
         const refresh = body('refreshLocalPanelForPath');
-        expect(refresh).toMatch(/localPanelShows\(dir, currentLocalPath, flattenSearchParse\.active\)/);
-        expect(refresh).toMatch(/localPanelShows\(dir, currentLocalPath2, false\)/);
+        expect(refresh).toMatch(/list\.some\(dir => localPanelShows\(dir, currentLocalPath, flattenSearchParse\.active\)\)/);
+        expect(refresh).toMatch(/list\.some\(dir => localPanelShows\(dir, currentLocalPath2, false\)\)/);
+        // A batch passes its folders at once: each panel reloads once, not
+        // once per folder it shows.
+        expect(appRaw).not.toMatch(/\.map\(dir => refreshLocalPanelForPath\(dir\)\)/);
         // Extract (four aero lanes and two general ones) reloaded the panel
         // right-clicked only; compress, a Cryptomator vault, Batch Rename and
         // Rename reloaded panel 1 whichever panel they came from; the editor
@@ -229,12 +237,22 @@ describe('local actions on the rows of a flattened search', () => {
         expect(count(body('showLocalContextMenu'), /await refreshLocalPanelForPath\(rowFolder\);/g)).toBe(6);
         expect(appRaw).toMatch(/await refreshLocalPanelForPath\(compressDialogState\.outputDir\);/);
         expect(appRaw).toMatch(/onCreated=\{\(\) => refreshLocalPanelForPath\(cryptomatorCreateDialog\.outputDir\)\}/);
-        expect(body('handleBatchRename')).toMatch(/\[\.\.\.renames\.keys\(\)\]\.map\(p => parentDir\(p\)\)/);
-        expect(body('renameFile')).toMatch(/await refreshLocalPanelForPath\(parentDir\);/);
+        expect(body('handleBatchRename')).toMatch(/await refreshLocalPanelForPath\(\[\.\.\.renames\.keys\(\)\]\.map\(p => parentDir\(p\)\)\);/);
+        // The shared helper: `/file.txt` is in `/`, where the text before the
+        // last slash is '' and reloaded nothing. No local of that name hides it.
+        expect(body('renameFile')).toMatch(/await refreshLocalPanelForPath\(parentDir\(path\)\);/);
         expect(body('renameFile')).not.toMatch(/loadLocalFiles\(currentLocalPath\)/);
-        expect(body('commitInlineRename')).toMatch(/await refreshLocalPanelForPath\(parentDir\);/);
+        expect(body('commitInlineRename')).toMatch(/await refreshLocalPanelForPath\(parentDir\(path\)\);/);
+        expect(appRaw).not.toMatch(/const parentDir = /);
         expect(appRaw).toMatch(/await refreshLocalPanelForPath\(parentDir\(file\.path\)\);/);
-        expect(appRaw).toMatch(/paths\.map\(p => parentDir\(p\)\)\)\]\.map\(dir => refreshLocalPanelForPath\(dir\)\)/);
+        expect(appRaw).toMatch(/await refreshLocalPanelForPath\(paths\.map\(p => parentDir\(p\)\)\);/);
+        // Delete reloaded the panel it came from; a new folder, the focused
+        // panel. The other one could show the same folder, or panel 1's
+        // flattened search a folder below its own.
+        const del = body('deleteMultipleLocalFiles');
+        expect(del).toMatch(/await refreshLocalPanelForPath\(\[panel\.currentPath, \.\.\.selected\.map\(f => localRowFolder\(f, panel\.currentPath\)\)\]\);\s*panel\.setSelection\(new Set\(\)\);/);
+        expect(del).not.toMatch(/panel\.load\(/);
+        expect(body('createFolder')).toMatch(/await invoke\('create_local_folder', \{ path \}\);\s*\/\/[^\n]*\n\s*await refreshLocalPanelForPath\(basePath\);/);
         expect(appRaw).toMatch(/onVaultCreated=\{\(dir\) => \{[^}]*void refreshLocalPanelForPath\(dir\);\s*\}\}/);
     });
 

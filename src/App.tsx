@@ -2922,7 +2922,7 @@ const App: React.FC = () => {
 
     // Ctrl+U: upload selected local files
     'Ctrl+U': () => {
-      if (isConnected && selectedLocalFiles.size > 0) {
+      if (isConnected && getActiveLocalState().selection.size > 0) {
         uploadMultipleFiles();
       }
     },
@@ -5629,15 +5629,18 @@ const App: React.FC = () => {
     }
   }, [showHiddenFiles, notify, t, setLocalFiles2, setCurrentLocalPath2, setSelectedLocalFiles2]);
 
-  const refreshLocalPanelForPath = useCallback(async (dir: string | null | undefined) => {
-    if (!dir) return;
+  // The local panels that show `dirs` (one folder, or each folder a batch
+  // wrote to), each reloaded once however many of them it shows.
+  const refreshLocalPanelForPath = useCallback(async (dirs: string | null | undefined | readonly (string | null | undefined)[]) => {
+    const list = (typeof dirs === 'string' || dirs == null ? [dirs] : dirs).filter((dir): dir is string => !!dir);
+    if (list.length === 0) return;
     const tasks: Promise<unknown>[] = [];
     // Panel 1 also when its flattened search lists a folder below its own:
     // the reload rescans the flattened rows.
-    if (currentLocalPath && localPanelShows(dir, currentLocalPath, flattenSearchParse.active)) {
+    if (currentLocalPath && list.some(dir => localPanelShows(dir, currentLocalPath, flattenSearchParse.active))) {
       tasks.push(loadLocalFiles(currentLocalPath));
     }
-    if (currentLocalPath2 && localPanelShows(dir, currentLocalPath2, false)) {
+    if (currentLocalPath2 && list.some(dir => localPanelShows(dir, currentLocalPath2, false))) {
       tasks.push(loadLocalFiles2(currentLocalPath2));
     }
     if (tasks.length > 0) await Promise.all(tasks);
@@ -13999,7 +14002,10 @@ const App: React.FC = () => {
         notify.info(t('trash.keptMultiple', { count: outcome.kept.length }));
       }
       setScanningState(INITIAL_SCANNING_STATE);
-      if (panel.currentPath) await panel.load(panel.currentPath);
+      // Every panel that shows a folder an entry was deleted from: panel 2
+      // can show the same folder, or one of the folders a flattened search
+      // deleted nested rows from.
+      await refreshLocalPanelForPath([panel.currentPath, ...selected.map(f => localRowFolder(f, panel.currentPath))]);
       panel.setSelection(new Set());
       // Summary: same logic as remote (see deleteMultipleRemoteFiles)
       const loc = t('browser.local');
@@ -14123,8 +14129,8 @@ const App: React.FC = () => {
         const logId = humanLog.logStart('RENAME', { oldname: currentName, newname: newName, isRemote });
         try {
           // Get parent directory from the file's path
-          const parentDir = path.substring(0, path.lastIndexOf('/'));
-          const newPath = parentDir + '/' + newName;
+          const pathParent = path.substring(0, path.lastIndexOf('/'));
+          const newPath = pathParent + '/' + newName;
 
           if (isRemote) {
             // Protocol of the live connection
@@ -14165,7 +14171,7 @@ const App: React.FC = () => {
               }
             }
             // The panels that list the folder, panel 2 when the row is its.
-            await refreshLocalPanelForPath(parentDir);
+            await refreshLocalPanelForPath(parentDir(path));
           }
           humanLog.logSuccess('RENAME', { oldname: currentName, newname: newName, isRemote }, logId);
           notify.success(t('toast.renamed'), newName);
@@ -14219,8 +14225,8 @@ const App: React.FC = () => {
 
     const logId = humanLog.logStart('RENAME', { oldname: name, newname: newName, isRemote });
     try {
-      const parentDir = path.substring(0, path.lastIndexOf('/'));
-      const newPath = parentDir + '/' + newName;
+      const pathParent = path.substring(0, path.lastIndexOf('/'));
+      const newPath = pathParent + '/' + newName;
 
       if (isRemote) {
         const protocol = liveConnectionParams.protocol;
@@ -14263,7 +14269,7 @@ const App: React.FC = () => {
         // missed renames that originated in panel 2, leaving the new
         // name invisible until Ctrl+R. When both panels point at the
         // same directory (common after Tab cycling) we reload both.
-        await refreshLocalPanelForPath(parentDir);
+        await refreshLocalPanelForPath(parentDir(path));
       }
       humanLog.logSuccess('RENAME', { oldname: name, newname: newName, isRemote }, logId);
       notify.success(t('toast.renamed'), newName);
@@ -14306,8 +14312,8 @@ const App: React.FC = () => {
     const ordered = deepestLocalRowsFirst([...renames].map(([path, newName]) => ({ path, newName })));
     for (const { path: oldPath, newName } of ordered) {
       try {
-        const parentDir = oldPath.substring(0, oldPath.lastIndexOf('/'));
-        const newPath = parentDir + '/' + newName;
+        const pathParent = oldPath.substring(0, oldPath.lastIndexOf('/'));
+        const newPath = pathParent + '/' + newName;
 
         if (isRemote) {
           const protocol = liveConnectionParams.protocol;
@@ -14344,7 +14350,7 @@ const App: React.FC = () => {
     if (isRemote) {
       await loadRemoteFiles(undefined, true);
     } else {
-      await Promise.all([...new Set([...renames.keys()].map(p => parentDir(p)))].map(dir => refreshLocalPanelForPath(dir)));
+      await refreshLocalPanelForPath([...renames.keys()].map(p => parentDir(p)));
     }
 
     // Log and notify
@@ -14398,11 +14404,8 @@ const App: React.FC = () => {
             const basePath = localPanelId === 'local2' ? (currentLocalPath2 || currentLocalPath) : currentLocalPath;
             const path = basePath + '/' + name;
             await invoke('create_local_folder', { path });
-            if (localPanelId === 'local2' && currentLocalPath2) {
-              await loadLocalFiles2(currentLocalPath2);
-            } else {
-              await loadLocalFiles(currentLocalPath);
-            }
+            // Both panels when they show the same folder.
+            await refreshLocalPanelForPath(basePath);
           }
           humanLog.logSuccess('MKDIR', { foldername: name, isRemote }, logId);
           notify.success(t('toast.folderCreated'), name);
@@ -17673,7 +17676,7 @@ const App: React.FC = () => {
                 notify.info(t('trash.keptMultiple', { count: outcome.kept.length }));
               }
               // The panels that show a folder a duplicate was deleted from.
-              await Promise.all([...new Set(paths.map(p => parentDir(p)))].map(dir => refreshLocalPanelForPath(dir)));
+              await refreshLocalPanelForPath(paths.map(p => parentDir(p)));
             }}
           />
         )}
