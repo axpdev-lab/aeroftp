@@ -1329,7 +1329,13 @@ impl StorageProvider for SwiftProvider {
     /// already sent; one that does not is an error instead of a loop. An
     /// empty page may be a 204 with no body.
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let prefix = Self::normalize_path(path);
+        // `.` is the folder `cd` reached; `normalize_path` alone reads it as the
+        // container root, so every folder entered in the GUI showed the root.
+        let prefix = if path.is_empty() || path == "." {
+            Self::normalize_path(&self.current_path)
+        } else {
+            Self::normalize_path(path)
+        };
         let prefix_query = if prefix.is_empty() {
             String::new()
         } else {
@@ -2850,6 +2856,47 @@ mod tests {
     /// folder `d` with the path `/d`, the folder being listed. A walk that
     /// follows children listed `/d` inside `/d` again and again. The folder is
     /// not its own child; its real content is listed as before.
+    #[tokio::test]
+    async fn a_listing_of_the_current_folder_follows_the_cd() {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| async move {
+                let query = req.uri().query().unwrap_or("").to_string();
+                if query.contains("marker=") {
+                    return axum::response::Response::builder()
+                        .status(204)
+                        .body(axum::body::Body::empty())
+                        .unwrap();
+                }
+                let body = if query.contains("prefix=d%2F") || query.contains("prefix=d/") {
+                    r#"[{"name":"d/a.txt","bytes":1}]"#
+                } else {
+                    r#"[{"name":"top.txt","bytes":1}]"#
+                };
+                axum::response::Response::builder()
+                    .status(200)
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(body))
+                    .unwrap()
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = cleartext_opted_in_provider();
+        p.auth = Some(SwiftAuth {
+            token: SecretString::from("t".to_string()),
+            storage_url: format!("http://{addr}/v1/AUTH_a"),
+            obtained_at: Instant::now(),
+        });
+        p.container = "c".to_string();
+        p.cd("/d").await.expect("the folder");
+        let inside = p.list(".").await.expect("the folder");
+        assert_eq!(inside[0].path, "/d/a.txt");
+        p.cd("/").await.expect("the root");
+        let top = p.list(".").await.expect("the root");
+        assert_eq!(top[0].path, "/top.txt");
+    }
+
     #[tokio::test]
     async fn list_leaves_out_the_marker_of_the_folder_being_listed() {
         let app = axum::Router::new().fallback(axum::routing::any(

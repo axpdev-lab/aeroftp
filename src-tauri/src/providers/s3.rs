@@ -1324,6 +1324,24 @@ impl S3Provider {
         self.s3_request(Method::GET, "", Some(params), None).await
     }
 
+    /// The prefix a listing of `path` reads. `.` is the current folder. `/` is
+    /// the top of this profile, whatever folder it has navigated to: its
+    /// configured prefix if it has one, so a run over `/` keeps to that scope,
+    /// else the bucket.
+    fn listing_prefix(&self, path: &str) -> String {
+        match path {
+            "" | "." => self.current_prefix.clone(),
+            "/" => self
+                .config
+                .prefix
+                .as_deref()
+                .unwrap_or("")
+                .trim_matches('/')
+                .to_string(),
+            _ => path.trim_matches('/').to_string(),
+        }
+    }
+
     fn is_filen_s3_endpoint(&self) -> bool {
         self.config
             .endpoint
@@ -4874,11 +4892,7 @@ impl StorageProvider for S3Provider {
             return Err(ProviderError::NotConnected);
         }
 
-        let prefix = if path.is_empty() || path == "/" || path == "." {
-            self.current_prefix.clone()
-        } else {
-            path.trim_matches('/').to_string()
-        };
+        let prefix = self.listing_prefix(path);
 
         let prefix_with_slash = if prefix.is_empty() {
             String::new()
@@ -5115,18 +5129,17 @@ impl StorageProvider for S3Provider {
             format!("{}/", new_prefix)
         };
 
-        let response = self
-            .s3_request(
-                Method::GET,
-                "",
-                Some(&[
-                    ("list-type", "2"),
-                    ("prefix", &prefix_check),
-                    ("max-keys", "1"),
-                ]),
-                None,
-            )
-            .await?;
+        // Filen takes `prefix` and `delimiter` only, as in `list`.
+        let probe: &[(&str, &str)] = if self.is_filen_s3_endpoint() {
+            &[("delimiter", "/"), ("prefix", &prefix_check)]
+        } else {
+            &[
+                ("list-type", "2"),
+                ("prefix", &prefix_check),
+                ("max-keys", "1"),
+            ]
+        };
+        let response = self.s3_request(Method::GET, "", Some(probe), None).await?;
 
         if response.status() == StatusCode::OK {
             self.current_prefix = new_prefix;
@@ -7803,11 +7816,7 @@ impl S3Provider {
             return Err(ProviderError::NotConnected);
         }
 
-        let prefix = if path.is_empty() || path == "/" || path == "." {
-            self.current_prefix.clone()
-        } else {
-            path.trim_matches('/').to_string()
-        };
+        let prefix = self.listing_prefix(path);
 
         let prefix_with_slash = if prefix.is_empty() {
             String::new()
@@ -8483,6 +8492,72 @@ fn parse_object_versions_page(xml_str: &str) -> Result<VersionsPage, ProviderErr
 
 #[cfg(test)]
 mod tests {
+    /// A double that answers every request with an empty listing and records
+    /// each decoded query.
+    async fn s3_recording_queries() -> (
+        std::net::SocketAddr,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        let queries: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
+        let seen = queries.clone();
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = seen.clone();
+                async move {
+                    let query = urlencoding::decode(req.uri().query().unwrap_or(""))
+                        .unwrap()
+                        .to_string();
+                    seen.lock().unwrap().push(query);
+                    "<ListBucketResult></ListBucketResult>"
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (addr, queries, server)
+    }
+
+    /// #1457: a listing of `/` is the top of the profile from any folder. The
+    /// subfolder menu of the root button listed the current folder instead.
+    #[tokio::test]
+    async fn a_listing_of_the_root_leaves_the_folder_and_keeps_the_configured_prefix() {
+        let (addr, queries, server) = s3_recording_queries().await;
+        let mut p = make_provider(Some(&format!("http://{addr}")));
+        p.connected = true;
+        p.current_prefix = "a/b".to_string();
+        p.list("/").await.expect("the bucket");
+        p.list(".").await.expect("the folder");
+        p.config.prefix = Some("/top/".to_string());
+        p.list("/").await.expect("the configured prefix");
+        server.abort();
+        let queries = queries.lock().unwrap();
+        assert!(!queries[0].contains("a/b"), "{queries:?}");
+        assert!(queries[1].contains("prefix=a/b/"), "{queries:?}");
+        assert!(queries[2].contains("prefix=top/"), "{queries:?}");
+    }
+
+    /// A folder change on the Filen gateway probes with what that gateway
+    /// accepts: it rejects `list-type` and `max-keys`.
+    #[tokio::test]
+    async fn a_folder_change_on_filen_probes_with_the_parameters_it_accepts() {
+        let (addr, queries, server) = s3_recording_queries().await;
+        let mut p = make_provider(Some(&format!("http://{addr}")));
+        p.config.region = "filen".to_string();
+        p.connected = true;
+        assert!(p.is_filen_s3_endpoint());
+        p.cd("/d").await.expect("the folder");
+        p.cd("/").await.expect("the root");
+        server.abort();
+        assert_eq!(p.current_prefix, "");
+        for query in queries.lock().unwrap().iter() {
+            assert!(
+                !query.contains("list-type") && !query.contains("max-keys"),
+                "{query}"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn probe_contract_s3_requires_an_explicit_missing_answer() {
         for status in [403, 404] {

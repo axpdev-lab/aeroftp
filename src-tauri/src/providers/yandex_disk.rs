@@ -503,7 +503,7 @@ impl YandexDiskProvider {
     /// Resolve a relative path against current_path with traversal validation.
     fn resolve_path_safe(&self, path: &str) -> Result<String, ProviderError> {
         validate_yd_path(path)?;
-        let resolved = if path.is_empty() || path == "." || path == "/" {
+        let resolved = if path.is_empty() || path == "." {
             self.current_path.clone()
         } else if path.starts_with('/') || path.starts_with("disk:") {
             path.to_string()
@@ -2456,6 +2456,44 @@ mod tests {
         assert_eq!(provider.resolve_path("file.txt"), "/Documents/file.txt");
         assert_eq!(provider.resolve_path("/absolute/path"), "/absolute/path");
         assert_eq!(provider.resolve_path("disk:/something"), "disk:/something");
+    }
+
+    /// #1457: `/` is the root from any folder. It read as the current folder,
+    /// so the root button and a typed `/` stayed where they were.
+    #[tokio::test]
+    async fn a_cd_to_the_root_leaves_the_folder() {
+        use std::sync::{Arc, Mutex};
+        let asked: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&asked);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let query = urlencoding::decode(req.uri().query().unwrap_or(""))
+                        .unwrap()
+                        .to_string();
+                    seen.lock().unwrap().push(query);
+                    axum::Json(serde_json::json!({
+                        "name": "disk",
+                        "path": "disk:/",
+                        "type": "dir",
+                    }))
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = YandexDiskProvider::new("t".to_string(), None);
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        provider.current_path = "/a/b".to_string();
+
+        provider.cd("/").await.expect("the root exists");
+        server.abort();
+
+        assert_eq!(provider.current_path, "/");
+        let asked = asked.lock().unwrap();
+        assert!(!asked[0].contains("/a/b"), "{asked:?}");
     }
 
     #[test]
