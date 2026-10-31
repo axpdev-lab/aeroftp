@@ -1358,7 +1358,20 @@
             "serverProfilesCount": "{count} 件のサーバープロファイル",
             "aiKeysCount": "{count} 件の AI キー",
             "oauthTokensCount": "{count} 件の OAuth トークン",
-            "configEntriesCount": "{count} 件の設定エントリ"
+            "configEntriesCount": "{count} 件の設定エントリ",
+            "importExistingLabel": "プロファイルが既に存在する場合",
+            "importExistingSkip": "スキップ",
+            "importExistingOverwrite": "上書き",
+            "importExistingDuplicate": "複製",
+            "importExistingSkipHint": "既にあるプロファイルは、パスワードやトークンも含めてそのまま残ります。",
+            "importExistingOverwriteHint": "既にあるプロファイルは、ファイルに含まれるパスワードとトークンでその場で置き換えられます。お気に入りやグループにはそのまま残ります。",
+            "importExistingDuplicateHint": "既にあるプロファイルは残り、ファイルのコピーが番号付きの名前で隣に追加されます。",
+            "overwrittenCount": "{count} 件を上書き",
+            "duplicatedCount": "{count} 件を複製",
+            "importJottaChainWarning": "Jottacloud は接続のたびにサインインを更新します。{names} は現在、別のコピーとサインインを共有しており、先に接続したコピーがもう一方をサインアウトさせます (ファイルの元のデバイス、または複製元のプロファイル)。もう一方は新しい Personal Login Token で再度サインインしてください。",
+            "importOauthAppKept": "{names} は、このデバイスにあるそのプロバイダー用のものとは異なるカスタム OAuth アプリと共にインポートされました。保存済みのアプリは維持されたため、これらのプロファイルが接続できなくなった場合は再度サインインしてください。",
+            "importTargetChanged": "{names} は上書きされませんでした。ファイルがこれらを別のサーバーに向けており、保存されているパスワードとトークンをそこへ送ってはならないためです。ファイルのコピーを追加するには「複製」でインポートするか、先にプロファイルを削除してください。",
+            "importSharedSecretsFailed": "{names} をインポートしましたが、ファイル内の共有シークレットまたはセッションを保存できませんでした。接続できない場合は、これらのプロファイルに再度サインインしてください。"
         },
         "devtools": {
             "title": "AeroTools",

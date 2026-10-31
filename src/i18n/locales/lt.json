@@ -1358,7 +1358,20 @@
             "serverProfilesCount": "Serverių profiliai: {count}",
             "aiKeysCount": "AI raktai: {count}",
             "oauthTokensCount": "OAuth prieigos raktai: {count}",
-            "configEntriesCount": "Konfigūracijos įrašai: {count}"
+            "configEntriesCount": "Konfigūracijos įrašai: {count}",
+            "importExistingLabel": "Jei profilis jau egzistuoja",
+            "importExistingSkip": "Praleisti",
+            "importExistingOverwrite": "Perrašyti",
+            "importExistingDuplicate": "Dubliuoti",
+            "importExistingSkipHint": "Jau turimas profilis lieka toks, koks yra, su savo slaptažodžiais ir prieigos raktais.",
+            "importExistingOverwriteHint": "Jau turimas profilis pakeičiamas vietoje failo slaptažodžiais ir prieigos raktais. Jis lieka jūsų mėgstamiausiuose ir grupėse.",
+            "importExistingDuplicateHint": "Jau turimas profilis lieka, o failo kopija pridedama šalia su sunumeruotu pavadinimu.",
+            "overwrittenCount": "{count} perrašyta",
+            "duplicatedCount": "{count} sudubliuota",
+            "importJottaChainWarning": "Jottacloud atnaujina prisijungimą kiekvieną kartą jungiantis, o {names} dabar dalijasi vienu su kita kopija: pirmoji prisijungianti kopija atjungia kitą (įrenginį, iš kurio atkeliavo failas, arba profilį, iš kurio jis buvo sudubliuotas). Prisijunkite prie kitos iš naujo su nauju Personal Login Token.",
+            "importOauthAppKept": "{names} atkeliavo su kita pasirinktine OAuth programa nei ta, kurią šis įrenginys turi tam teikėjui. Išsaugota programa buvo palikta, todėl prisijunkite iš naujo, jei šie profiliai nustos jungtis.",
+            "importTargetChanged": "{names} nebuvo perrašyti: failas nukreipia juos į kitą serverį, o jų išsaugoti slaptažodžiai ir žetonai neturi ten patekti. Importuokite su Dubliuoti, kad pridėtumėte failo kopiją, arba pirmiausia ištrinkite profilį.",
+            "importSharedSecretsFailed": "{names} importuoti, bet nepavyko išsaugoti bendros paslapties ar seanso iš failo. Jei šie profiliai neprisijungia, prisijunkite prie jų iš naujo."
         },
         "devtools": {
             "title": "AeroTools",

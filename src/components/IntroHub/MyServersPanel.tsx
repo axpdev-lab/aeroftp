@@ -40,6 +40,7 @@ import { useMyServersBreakdown } from '../../hooks/useMyServersBreakdown';
 import { useResponsiveColumns } from '../../hooks/useResponsiveColumns';
 import { PROVIDER_HEALTH_URLS } from './discoverData';
 import { mergeSavedServerProfile } from '../../utils/serverProfileStore';
+import { accountChangeGeneration } from '../../utils/userPartitions';
 import { matchLiveDevice } from '../../utils/mtpFingerprint';
 import { keyReadFailure, notifyOAuthKeysUnavailable } from '../../utils/oauthKeysMissing';
 import { loadFourSharedCredentials } from '../../utils/fourSharedCredentials';
@@ -807,7 +808,7 @@ export function MyServersPanel({
                     : idx;
             if (fromVisible === rawTarget) { dragServerIdRef.current = null; setDragIdx(null); setOverIdx(null); return; }
 
-            const { profiles: currentServers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
+            const { profiles: currentServers, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
             const updated = reorderVisibleInFull(currentServers, visible, fromVisible, rawTarget);
             if (updated.every((s, i) => s.id === currentServers[i]?.id)) {
                 dragServerIdRef.current = null;
@@ -815,7 +816,7 @@ export function MyServersPanel({
                 setOverIdx(null);
                 return;
             }
-            setServers(await storeSavedServerProfiles(updated, false, profilesUserId));
+            setServers(await storeSavedServerProfiles(updated, false, profilesUserId, profilesRevision));
         } catch (err) {
             logger.warn('Saved profile operation failed', err);
             window.dispatchEvent(new CustomEvent('aeroftp-toast', {
@@ -1382,19 +1383,23 @@ export function MyServersPanel({
 
     const handleDuplicate = useCallback(async (server: ServerProfile) => {
         try {
-            const { profiles: currentServers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
+            const accountBefore = accountChangeGeneration();
+            const { profiles: currentServers, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
+            // From the list just read: the card clicked may be the previous account's.
+            const source = currentServers.find(s => s.id === server.id);
+            if (!source) return;
             const newId = `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
             const dup: ServerProfile = {
-                ...server,
+                ...source,
                 id: newId,
-                name: `${server.name} (copy)`,
+                name: `${source.name} (copy)`,
                 lastConnected: undefined,
                 hasStoredCredential: false,
                 hasStoredFilenApiKey: false,
                 hasStoredAeroCryptPassword: false,
                 hasStoredAeroCryptSalt: false,
             };
-            const copiedSecrets = await copyProfileVaultSecrets(server.id, newId, server.protocol);
+            const copiedSecrets = await copyProfileVaultSecrets(source.id, newId, source.protocol, profilesUserId);
             dup.hasStoredCredential = copiedSecrets.server;
             dup.hasStoredFilenApiKey = copiedSecrets.filen_api_key;
             dup.hasStoredAeroCryptPassword = copiedSecrets.aerocrypt_overlay_pw;
@@ -1403,7 +1408,20 @@ export function MyServersPanel({
             // SavedServers duplicate handler. The list has no id/order sort (array
             // position IS the order), so prepending made the copy jump to the top.
             const updated = [...currentServers, dup];
-            const stored = await storeSavedServerProfiles(updated, false, profilesUserId);
+            let stored: ServerProfile[];
+            try {
+                stored = await storeSavedServerProfiles(updated, false, profilesUserId, profilesRevision);
+            } catch (err) {
+                // The copy was not listed, so its secrets have no profile. The delete
+                // acts on the active account: after a switch it could miss them or hit
+                // another's, so they stay, unused under an id nothing refers to.
+                if (accountChangeGeneration() === accountBefore) {
+                    await deleteProfileVaultSecrets(newId, source.protocol).catch(e => logger.warn('Secrets of the unsaved copy could not be removed', e));
+                }
+                throw err;
+            }
+            // A switch meanwhile brings its own re-read: this list is the previous account's.
+            if (accountChangeGeneration() !== accountBefore) return;
             setServers(stored);
             // The name the copy was stored with: " (1)" when another holds it.
             const copy = stored.find(s => s.id === dup.id) ?? dup;
@@ -1413,13 +1431,13 @@ export function MyServersPanel({
             const dedupKey = getStorageDedupKey(copy);
             logActivity(
                 'PROFILE_DUPLICATE',
-                `Duplicate profile detected: "${copy.name}" overlaps with "${server.name}"`,
+                `Duplicate profile detected: "${copy.name}" overlaps with "${source.name}"`,
                 'success',
                 `dedupKey=${dedupKey}`,
             );
             logActivity(
                 'PROFILE_SAVE',
-                `Profile duplicated: "${server.name}" → "${copy.name}"`,
+                `Profile duplicated: "${source.name}" → "${copy.name}"`,
                 'success',
                 `dedupKey=${dedupKey}`,
             );
@@ -1443,9 +1461,9 @@ export function MyServersPanel({
         try {
             const trimmed = newName.trim();
             if (trimmed && trimmed !== server.name) {
-                const { profiles: currentServers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
+                const { profiles: currentServers, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
                 const updated = currentServers.map(s => s.id === server.id ? { ...s, name: trimmed } : s);
-                setServers(await storeSavedServerProfiles(updated, false, profilesUserId));
+                setServers(await storeSavedServerProfiles(updated, false, profilesUserId, profilesRevision));
             }
             setRenamingId(null);
         } catch (err) {
@@ -1514,9 +1532,9 @@ export function MyServersPanel({
     const confirmDelete = useCallback(async () => {
         try {
             if (!deleteTarget) return;
-            const { profiles: currentServers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
+            const { profiles: currentServers, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
             const updated = currentServers.filter(s => s.id !== deleteTarget.id);
-            setServers(await storeSavedServerProfiles(updated, false, profilesUserId));
+            setServers(await storeSavedServerProfiles(updated, false, profilesUserId, profilesRevision));
             deleteProfileVaultSecrets(deleteTarget.id, deleteTarget.protocol).catch(() => {});
             // Drop the deleted profile from any group it belonged to (#320).
             pruneServerFromGroups(deleteTarget.id).catch(() => {});

@@ -1358,7 +1358,20 @@
             "serverProfilesCount": "Wasifu wa seva: {count}",
             "aiKeysCount": "Funguo za AI: {count}",
             "oauthTokensCount": "Tokeni za OAuth: {count}",
-            "configEntriesCount": "Maingizo ya usanidi: {count}"
+            "configEntriesCount": "Maingizo ya usanidi: {count}",
+            "importExistingLabel": "Ikiwa wasifu tayari upo",
+            "importExistingSkip": "Ruka",
+            "importExistingOverwrite": "Andika juu",
+            "importExistingDuplicate": "Nakili",
+            "importExistingSkipHint": "Wasifu ulio nao tayari hubaki kama ulivyo, pamoja na nenosiri na tokeni zake.",
+            "importExistingOverwriteHint": "Wasifu ulio nao tayari hubadilishwa papo hapo kwa nenosiri na tokeni zilizomo kwenye faili. Hubaki kwenye vipendwa na vikundi vyako.",
+            "importExistingDuplicateHint": "Wasifu ulio nao tayari hubaki, na nakala kutoka kwenye faili huongezwa kando yake kwa jina lenye nambari.",
+            "overwrittenCount": "{count} zimeandikwa juu",
+            "duplicatedCount": "{count} zimenakiliwa",
+            "importJottaChainWarning": "Jottacloud hufanya upya uingiaji wake kila inapounganisha, na sasa {names} inashiriki mmoja na nakala nyingine: nakala inayounganisha kwanza huitoa nyingine (kifaa ambako faili lilitoka, au wasifu ambao ulinakiliwa kutoka kwake). Ingia tena kwenye nyingine kwa Personal Login Token mpya.",
+            "importOauthAppKept": "{names} zilikuja na programu maalum ya OAuth tofauti na ile ambayo kifaa hiki kina kwa mtoa huduma huyo. Programu iliyohifadhiwa ilibaki, kwa hivyo ingia tena ikiwa wasifu huu utaacha kuunganisha.",
+            "importTargetChanged": "{names} hazikuandikwa upya: faili inazielekeza kwenye seva nyingine, na nywila na tokeni zilizohifadhiwa hazipaswi kwenda huko. Leta kwa Nakili ili kuongeza nakala kutoka kwenye faili, au futa wasifu kwanza.",
+            "importSharedSecretsFailed": "{names} zimeletwa, lakini siri iliyoshirikiwa au kipindi kutoka kwenye faili hakikuweza kuhifadhiwa. Ingia tena kwenye wasifu hizi ikiwa hazitaunganishwa."
         },
         "devtools": {
             "title": "AeroTools",

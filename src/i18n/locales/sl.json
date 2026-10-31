@@ -1358,7 +1358,20 @@
             "serverProfilesCount": "Profili strežnikov: {count}",
             "aiKeysCount": "Ključi AI: {count}",
             "oauthTokensCount": "Žetoni OAuth: {count}",
-            "configEntriesCount": "Vnosi konfiguracije: {count}"
+            "configEntriesCount": "Vnosi konfiguracije: {count}",
+            "importExistingLabel": "Če profil že obstaja",
+            "importExistingSkip": "Preskoči",
+            "importExistingOverwrite": "Prepiši",
+            "importExistingDuplicate": "Podvoji",
+            "importExistingSkipHint": "Profil, ki ga že imate, ostane nespremenjen, z gesli in žetoni vred.",
+            "importExistingOverwriteHint": "Profil, ki ga že imate, se zamenja na mestu z gesli in žetoni iz datoteke. Ostane med priljubljenimi in v skupinah.",
+            "importExistingDuplicateHint": "Profil, ki ga že imate, ostane, kopija iz datoteke pa se doda poleg njega z oštevilčenim imenom.",
+            "overwrittenCount": "{count} prepisanih",
+            "duplicatedCount": "{count} podvojenih",
+            "importJottaChainWarning": "Jottacloud ob vsaki povezavi obnovi prijavo, {names} pa zdaj deli eno z drugo kopijo: kopija, ki se poveže prva, odjavi drugo (napravo, od koder izvira datoteka, ali profil, iz katerega je bila podvojena). Drugo znova prijavite z novim Personal Login Token.",
+            "importOauthAppKept": "{names} so prišli z drugačno aplikacijo OAuth po meri, kot jo ima ta naprava za tega ponudnika. Shranjena aplikacija je bila ohranjena, zato se znova prijavite, če se ti profili prenehajo povezovati.",
+            "importTargetChanged": "{names} niso bili prepisani: datoteka jih usmerja na drug strežnik, njihova shranjena gesla in žetoni pa tja ne smejo. Uvozite z Podvoji, da dodate kopijo iz datoteke, ali pa najprej izbrišite profil.",
+            "importSharedSecretsFailed": "{names} so bili uvoženi, vendar skupne skrivnosti ali seje iz datoteke ni bilo mogoče shraniti. Če se ti profili ne povežejo, se vanje znova prijavite."
         },
         "devtools": {
             "title": "AeroTools",

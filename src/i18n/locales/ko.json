@@ -1358,7 +1358,20 @@
             "serverProfilesCount": "서버 프로필 {count}개",
             "aiKeysCount": "AI 키 {count}개",
             "oauthTokensCount": "OAuth 토큰 {count}개",
-            "configEntriesCount": "구성 항목 {count}개"
+            "configEntriesCount": "구성 항목 {count}개",
+            "importExistingLabel": "프로필이 이미 있는 경우",
+            "importExistingSkip": "건너뛰기",
+            "importExistingOverwrite": "덮어쓰기",
+            "importExistingDuplicate": "복제",
+            "importExistingSkipHint": "이미 있는 프로필은 암호와 토큰을 포함해 그대로 유지됩니다.",
+            "importExistingOverwriteHint": "이미 있는 프로필은 파일에 담긴 암호와 토큰으로 제자리에서 교체됩니다. 즐겨찾기와 그룹에는 그대로 남습니다.",
+            "importExistingDuplicateHint": "이미 있는 프로필은 그대로 두고, 파일의 사본이 번호가 붙은 이름으로 옆에 추가됩니다.",
+            "overwrittenCount": "{count}개 덮어씀",
+            "duplicatedCount": "{count}개 복제됨",
+            "importJottaChainWarning": "Jottacloud는 연결할 때마다 로그인을 갱신하며, {names}은(는) 이제 다른 사본과 로그인을 공유합니다. 먼저 연결한 사본이 다른 사본을 로그아웃시킵니다(파일을 가져온 기기 또는 복제 원본 프로필). 다른 쪽은 새 Personal Login Token으로 다시 로그인하세요.",
+            "importOauthAppKept": "{names}은(는) 이 기기에 있는 해당 제공업체용 앱과 다른 사용자 지정 OAuth 앱과 함께 가져와졌습니다. 저장된 앱을 유지했으므로 이 프로필이 연결되지 않으면 다시 로그인하세요.",
+            "importTargetChanged": "{names}은(는) 덮어쓰지 않았습니다. 파일이 이 프로필들을 다른 서버로 연결하며, 저장된 비밀번호와 토큰은 그곳으로 보내면 안 되기 때문입니다. 파일의 사본을 추가하려면 복제로 가져오거나, 먼저 프로필을 삭제하세요.",
+            "importSharedSecretsFailed": "{names}을(를) 가져왔지만 파일의 공유 비밀 또는 세션을 저장하지 못했습니다. 연결되지 않으면 이 프로필에 다시 로그인하세요."
         },
         "devtools": {
             "title": "AeroTools",

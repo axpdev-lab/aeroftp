@@ -1,6 +1,41 @@
 use super::*;
 use std::sync::{Arc, Mutex};
 
+/// Slots whose write of one key fails, for a failure the real vault cannot be made
+/// to produce.
+struct FailingAt<'a, S> {
+    slots: S,
+    key: &'a str,
+}
+
+impl<S: crate::profile_import_plan::SecretSlots> crate::profile_import_plan::SecretSlots
+    for FailingAt<'_, S>
+{
+    type Snapshot = S::Snapshot;
+
+    fn snapshot(
+        &self,
+        write: &crate::profile_import_plan::SecretWrite,
+    ) -> Result<S::Snapshot, String> {
+        self.slots.snapshot(write)
+    }
+
+    fn write(&self, write: &crate::profile_import_plan::SecretWrite) -> Result<(), String> {
+        if write.key == self.key {
+            return Err("injected".to_string());
+        }
+        self.slots.write(write)
+    }
+
+    fn restore(
+        &self,
+        write: &crate::profile_import_plan::SecretWrite,
+        before: S::Snapshot,
+    ) -> Result<(), String> {
+        self.slots.restore(write, before)
+    }
+}
+
 // Fork before initializing either vault or user partitions. The child binary
 // and portable marker have a private pathname, even in a full parallel suite.
 #[test]
@@ -406,7 +441,7 @@ async fn round_trip() {
     if scope.config("corrupt").is_ok() {
         gaps.push("Corrupt non-object auth configuration is accepted");
     }
-    durable_profile_auth_lifecycle(&store, &github).await;
+    durable_profile_auth_lifecycle(&store, &github, active.id, owner.id).await;
     #[cfg(feature = "proton-native")]
     native_session_ownership(&store, active.id, owner.id).await;
     crate::crypt_overlay_provider::tests::captured_overlay_owner_survives_account_switch(
@@ -417,7 +452,39 @@ async fn round_trip() {
     assert!(gaps.is_empty(), "Auth lifecycle gaps: {gaps:?}");
 }
 
-async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value) {
+/// Import `file` with `list` as the saved profiles of `user` (the active one when
+/// `None`), or preview it against `list` on a `dry_run`.
+async fn import_over(
+    store: &CredentialStore,
+    file: String,
+    password: String,
+    mode: crate::profile_import_plan::ExistingProfileMode,
+    list: &[serde_json::Value],
+    user: Option<i64>,
+    dry_run: bool,
+) -> Result<crate::profile_import_plan::ProfileImportReport, String> {
+    if dry_run {
+        return crate::preview_server_profiles(&file, &password, mode, list);
+    }
+    let user = match user {
+        Some(user) => user,
+        None => users::cli_get_active_user(store)?.unwrap().id,
+    };
+    users::cli_update_server_profiles_for_user(store, user, |stored| {
+        *stored = list.to_vec();
+        true
+    })?;
+    crate::import_server_profiles_with_mode(file, password, mode, user).await
+}
+
+/// Durable profile-auth secrets through copy, export, purge and every import
+/// mode, against the real vault of the forked fixture.
+async fn durable_profile_auth_lifecycle(
+    store: &CredentialStore,
+    github: &Value,
+    active_id: i64,
+    other_id: i64,
+) {
     let source = field(github, "id");
     let target = "fixture-github-copy";
     // A pending sign-in and an installation token's cache deadline are local
@@ -431,9 +498,10 @@ async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value)
         )
         .unwrap();
     }
-    let copied = crate::copy_profile_secrets(source.into(), target.into(), Some("github".into()))
-        .await
-        .unwrap();
+    let copied =
+        crate::copy_profile_secrets(source.into(), target.into(), Some("github".into()), None)
+            .await
+            .unwrap();
     for prefix in DURABLE_KEY_PREFIXES {
         assert_eq!(copied.get(prefix), Some(&true), "{prefix}");
         let source_value = users::resolve_active_credential(store, &format!("{prefix}_{source}"))
@@ -484,9 +552,15 @@ async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value)
             "{prefix}"
         );
     }
-    crate::import_server_profiles_core(
+    // Nothing of this id is listed any more: the import restores every secret.
+    import_over(
+        store,
         file.to_string_lossy().into_owned(),
         "fixture-export-password".into(),
+        crate::profile_import_plan::ExistingProfileMode::Skip,
+        &[],
+        None,
+        false,
     )
     .await
     .unwrap();
@@ -499,6 +573,651 @@ async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value)
     for prefix in TRANSIENT_KEY_PREFIXES {
         assert!(store.get(&format!("{prefix}_{source}")).is_err());
     }
+
+    // Re-importing a profile the user already has: skip keeps the local
+    // secrets, overwrite replaces them under the same id, duplicate writes them
+    // to a new id only, and a dry run writes nothing.
+    use crate::profile_import_plan::ExistingProfileMode;
+    let current = vec![export_profile.clone()];
+    let entries = auth.entries();
+    let (stale_prefix, expected) = (entries[0].0, entries[0].1.unwrap());
+    let stale_key = format!("{stale_prefix}_{source}");
+    let read = |key: &str| users::resolve_active_credential(store, key).unwrap();
+    // The import is pinned to the active user, as the GUI and the CLI pin it.
+    let active = users::cli_get_active_user(store)
+        .unwrap()
+        .map(|user| user.id);
+    assert!(active.is_some());
+    let import_with = |mode, dry_run| {
+        import_over(
+            store,
+            file.to_string_lossy().into_owned(),
+            "fixture-export-password".into(),
+            mode,
+            &current,
+            active,
+            dry_run,
+        )
+    };
+    users::store_active_credential_typed_dual(store, &stale_key, "oauth", "stale-local").unwrap();
+    let skip = import_with(ExistingProfileMode::Skip, false).await.unwrap();
+    assert!(skip.servers.is_empty());
+    assert_eq!(skip.skipped, [field(&export_profile, "name")]);
+    assert_eq!(read(&stale_key).unwrap().as_str(), "stale-local");
+    let overwrite = import_with(ExistingProfileMode::Overwrite, false)
+        .await
+        .unwrap();
+    assert_eq!(overwrite.servers[0]["importOutcome"], "overwritten");
+    assert_eq!(overwrite.servers[0]["id"], source);
+    assert_eq!(read(&stale_key).unwrap().as_str(), expected);
+    users::store_active_credential_typed_dual(store, &stale_key, "oauth", "stale-local").unwrap();
+    let preview = import_with(ExistingProfileMode::Duplicate, true)
+        .await
+        .unwrap();
+    let preview_id = field(&preview.servers[0], "id");
+    assert_ne!(preview_id, source);
+    assert!(read(&format!("{stale_prefix}_{preview_id}")).is_none());
+    let duplicate = import_with(ExistingProfileMode::Duplicate, false)
+        .await
+        .unwrap();
+    assert_eq!(duplicate.servers[0]["importOutcome"], "duplicated");
+    let copy_id = field(&duplicate.servers[0], "id");
+    assert_ne!(copy_id, source);
+    for (prefix, value) in &entries {
+        let copied = read(&format!("{prefix}_{copy_id}")).unwrap();
+        assert_eq!(copied.as_str(), value.unwrap(), "{prefix}");
+    }
+    assert_eq!(read(&stale_key).unwrap().as_str(), "stale-local");
+    users::store_active_credential_typed_dual(store, &stale_key, "oauth", expected).unwrap();
+    crate::purge_profile_secrets(copy_id.into(), Some("github".into()))
+        .await
+        .unwrap();
+    assert!(overwrite.jotta_chains.is_empty());
+
+    // A Jottacloud profile that brings its rotating refresh chain is named in
+    // the report, for the GUI and CLI warning; a dry run names it too.
+    let jotta = json!({"id":"fixture-jotta","name":"synthetic jotta","protocol":"jottacloud",
+        "host":"","port":443});
+    users::store_active_credential_typed_dual(
+        store,
+        "jottacloud_refresh_fixture-jotta",
+        "jottacloud_refresh",
+        "synthetic-refresh-chain",
+    )
+    .unwrap();
+    users::store_active_credential_dual(
+        store,
+        "aerocrypt_overlay_pw_fixture-jotta",
+        "synthetic-overlay-password",
+    )
+    .unwrap();
+    let jotta_file = directory.path().join("jotta.aeroftp");
+    crate::export_server_profiles_core(
+        json!([jotta.clone()]).to_string(),
+        "fixture-export-password".into(),
+        true,
+        jotta_file.to_string_lossy().into_owned(),
+    )
+    .await
+    .unwrap();
+    // Another profile's chain already sits in the legacy singleton: an import
+    // or a duplicate must not replace it.
+    store
+        .store("jottacloud_refresh", "other-profile-chain")
+        .unwrap();
+    for dry_run in [true, false] {
+        let jotta_report = import_over(
+            store,
+            jotta_file.to_string_lossy().into_owned(),
+            "fixture-export-password".into(),
+            ExistingProfileMode::Duplicate,
+            std::slice::from_ref(&jotta),
+            active,
+            dry_run,
+        )
+        .await
+        .unwrap();
+        assert_eq!(jotta_report.servers[0]["importOutcome"], "duplicated");
+        assert_eq!(jotta_report.jotta_chains.len(), 1);
+        assert_eq!(jotta_report.jotta_chains[0].name, "synthetic jotta");
+        let copy = field(&jotta_report.servers[0], "id");
+        assert_eq!(jotta_report.jotta_chains[0].id, copy);
+        let chain = read(&format!("jottacloud_refresh_{copy}"));
+        if dry_run {
+            assert!(chain.is_none());
+        } else {
+            // A real import wrote the chain to the copy: the warning is due.
+            assert_eq!(chain.unwrap().as_str(), "synthetic-refresh-chain");
+            // A restored secret shows in the profile to store, so a Crypt
+            // profile added by an import reports its stored overlay password.
+            assert_eq!(jotta_report.servers[0]["hasStoredAeroCryptPassword"], true);
+            // And in the list as stored, not only in the report.
+            let stored_copy = jotta_report
+                .stored
+                .iter()
+                .find(|p| p["id"].as_str() == Some(copy))
+                .unwrap();
+            assert_eq!(stored_copy["hasStoredAeroCryptPassword"], true);
+            assert_eq!(
+                store.get("jottacloud_refresh").unwrap(),
+                "other-profile-chain"
+            );
+            crate::purge_profile_secrets(copy.into(), Some("jottacloud".into()))
+                .await
+                .unwrap();
+        }
+    }
+    // A backup that points the profile at another server is refused, and nothing
+    // is written or removed: the stored password stays, and never reaches the
+    // new server. The same backup over the same target goes through.
+    users::store_active_credential_dual(store, &format!("server_{source}"), "stored-password")
+        .unwrap();
+    users::store_active_credential_typed_dual(store, &stale_key, "oauth", "stale-local").unwrap();
+    let mut elsewhere = export_profile.clone();
+    elsewhere["host"] = json!("other-owner/other-repo");
+    let refused = import_over(
+        store,
+        file.to_string_lossy().into_owned(),
+        "fixture-export-password".into(),
+        ExistingProfileMode::Overwrite,
+        std::slice::from_ref(&elsewhere),
+        active,
+        false,
+    )
+    .await
+    .unwrap();
+    assert!(refused.servers.is_empty());
+    // The same with only an option of the backup weakening the connection: the
+    // options reach the comparison.
+    let mut weaker = export_profile.clone();
+    weaker["options"] = json!({"verifyCert": false});
+    let weaker_file = directory.path().join("weaker.aeroftp");
+    crate::export_server_profiles_core(
+        json!([weaker]).to_string(),
+        "fixture-export-password".into(),
+        false,
+        weaker_file.to_string_lossy().into_owned(),
+    )
+    .await
+    .unwrap();
+    let weaker = import_over(
+        store,
+        weaker_file.to_string_lossy().into_owned(),
+        "fixture-export-password".into(),
+        ExistingProfileMode::Overwrite,
+        &current,
+        active,
+        false,
+    )
+    .await
+    .unwrap();
+    assert!(weaker.servers.is_empty());
+    assert_eq!(weaker.target_changed, [field(&export_profile, "name")]);
+    assert_eq!(refused.target_changed, [field(&export_profile, "name")]);
+    assert_eq!(refused.skipped, [field(&export_profile, "name")]);
+    assert_eq!(read(&stale_key).unwrap().as_str(), "stale-local");
+    assert_eq!(
+        read(&format!("server_{source}")).unwrap().as_str(),
+        "stored-password"
+    );
+    let kept = import_with(ExistingProfileMode::Overwrite, false)
+        .await
+        .unwrap();
+    assert!(kept.target_changed.is_empty());
+    assert_eq!(read(&stale_key).unwrap().as_str(), expected);
+    assert_eq!(
+        read(&format!("server_{source}")).unwrap().as_str(),
+        "stored-password"
+    );
+
+    // An import for another account than the active one is refused before it
+    // writes anything: restored secrets also reach the shared vault key.
+    let list_of = |user: i64| {
+        users::cli_update_server_profiles_for_user(store, user, |_| false)
+            .unwrap()
+            .0
+    };
+    let other_list = list_of(other_id);
+    let shared_before = store.get(&stale_key).ok();
+    let for_other = crate::import_server_profiles_with_mode(
+        file.to_string_lossy().into_owned(),
+        "fixture-export-password".into(),
+        ExistingProfileMode::Duplicate,
+        other_id,
+    )
+    .await
+    .unwrap_err();
+    assert!(for_other.starts_with("ACCOUNT_CHANGED"), "{for_other}");
+    assert_eq!(list_of(other_id), other_list);
+    assert_eq!(store.get(&stale_key).ok(), shared_before);
+
+    // The real vault and partition: a rollback puts the old value back in both,
+    // removes a key that did not exist, and leaves one changed since.
+    {
+        use crate::profile_import_plan::{
+            apply_secret_writes, roll_back_secret_writes, SecretWrite,
+        };
+        let slots = crate::VaultSecretSlots {
+            store,
+            user: active_id,
+        };
+        store.store("server_rollback-held", "vault-before").unwrap();
+        users::store_active_credential_dual(store, "server_rollback-held", "before").unwrap();
+        let applied = apply_secret_writes(
+            &slots,
+            vec![
+                SecretWrite::new("server_rollback-held".into(), None, "file-held"),
+                SecretWrite::new("server_rollback-new".into(), None, "file-new"),
+                SecretWrite::new("server_rollback-raced".into(), None, "file-raced"),
+            ],
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(read("server_rollback-held").unwrap().as_str(), "file-held");
+        users::store_active_credential_dual(store, "server_rollback-raced", "newer").unwrap();
+        assert!(roll_back_secret_writes(&slots, applied).is_empty());
+        assert_eq!(read("server_rollback-held").unwrap().as_str(), "before");
+        assert_eq!(store.get("server_rollback-held").unwrap(), "before");
+        assert!(read("server_rollback-new").is_none());
+        assert!(store.get("server_rollback-new").is_err());
+        assert_eq!(read("server_rollback-raced").unwrap().as_str(), "newer");
+
+        // A token private to an account lives in its partition alone, and a key
+        // a partition holds outside the prefix classes is updated there too: its
+        // reader prefers that row.
+        let other_slots = crate::VaultSecretSlots {
+            store,
+            user: other_id,
+        };
+        let partition = |key: &str| {
+            users::get_user_credential_for(
+                &users::open_or_init_cli().unwrap(),
+                &store.derive_user_partition_wrapping_key(),
+                other_id,
+                key,
+            )
+            .unwrap()
+            .map(|value| value.to_string())
+        };
+        users::store_credential_for_user(
+            store,
+            other_id,
+            "filen_api_key_rollback",
+            "filen_api_key",
+            "partition-before",
+        )
+        .unwrap();
+        let applied = apply_secret_writes(
+            &other_slots,
+            vec![
+                SecretWrite::new(
+                    "jottacloud_refresh_rollback".into(),
+                    Some("jottacloud_refresh"),
+                    "file-chain",
+                ),
+                SecretWrite::new("filen_api_key_rollback".into(), None, "file-key"),
+            ],
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(
+            partition("jottacloud_refresh_rollback").unwrap(),
+            "file-chain"
+        );
+        assert!(store.get("jottacloud_refresh_rollback").is_err());
+        assert_eq!(partition("filen_api_key_rollback").unwrap(), "file-key");
+        assert!(roll_back_secret_writes(&other_slots, applied).is_empty());
+        assert!(partition("jottacloud_refresh_rollback").is_none());
+        assert_eq!(
+            partition("filen_api_key_rollback").unwrap(),
+            "partition-before"
+        );
+        assert!(store.get("filen_api_key_rollback").is_err());
+
+        // An OAuth app is one unit: a failure at its last key puts the first back,
+        // and clears the one that had nothing to go back to.
+        store
+            .store("oauth_rollback_client_id", "app-before")
+            .unwrap();
+        let refused = apply_secret_writes(
+            &FailingAt {
+                slots: crate::OAuthAppSlots { store },
+                key: "oauth_rollback_region",
+            },
+            vec![
+                SecretWrite::new("oauth_rollback_client_id".into(), None, "app-file"),
+                SecretWrite::new("oauth_rollback_client_secret".into(), None, "secret-file"),
+                SecretWrite::new("oauth_rollback_region".into(), None, "region-file"),
+            ],
+        )
+        .map(|_| ())
+        .unwrap_err();
+        assert!(!refused.contains("app-file"), "{refused}");
+        assert_eq!(store.get("oauth_rollback_client_id").unwrap(), "app-before");
+        assert!(store.get("oauth_rollback_client_secret").is_err());
+        assert!(store.get("oauth_rollback_region").is_err());
+        store.delete("oauth_rollback_client_id").unwrap();
+
+        // Undoing a write ends with both places agreeing, whatever fails. Partition
+        // step: the vault was never touched. Commit: the vault goes back to match.
+        let key = "server_rollback-order";
+        store.store(key, "vault-before").unwrap();
+        let before = users::snapshot_credential_for_user(store, active_id, key).unwrap();
+        users::store_imported_credential_for_user(store, active_id, key, None, "file-value")
+            .unwrap();
+        let in_partition = |conn: &rusqlite::Connection| {
+            users::get_user_credential_for(
+                conn,
+                &store.derive_user_partition_wrapping_key(),
+                active_id,
+                key,
+            )
+            .unwrap()
+            .map(|value| value.to_string())
+        };
+        let conn = users::open_or_init_cli().unwrap();
+        conn.execute_batch(&format!(
+            "CREATE TRIGGER refuse_undo BEFORE DELETE ON user_credentials
+             WHEN OLD.credential_id = '{key}'
+             BEGIN SELECT RAISE(ABORT, 'injected'); END;"
+        ))
+        .unwrap();
+        users::restore_credential_for_user(store, active_id, key, None, "file-value", &before)
+            .unwrap_err();
+        assert_eq!(store.get(key).unwrap(), "file-value");
+        assert_eq!(in_partition(&conn).unwrap(), "file-value");
+        conn.execute_batch(&format!(
+            "DROP TRIGGER refuse_undo;
+             CREATE TABLE commit_parent (id INTEGER PRIMARY KEY);
+             CREATE TABLE commit_child (parent INTEGER
+                 REFERENCES commit_parent(id) DEFERRABLE INITIALLY DEFERRED);
+             CREATE TRIGGER refuse_commit AFTER DELETE ON user_credentials
+             WHEN OLD.credential_id = '{key}'
+             BEGIN INSERT INTO commit_child VALUES (1); END;"
+        ))
+        .unwrap();
+        let refused =
+            users::restore_credential_for_user(store, active_id, key, None, "file-value", &before)
+                .unwrap_err();
+        assert!(
+            refused.starts_with("Commit credential restore"),
+            "{refused}"
+        );
+        assert_eq!(store.get(key).unwrap(), "file-value");
+        assert_eq!(in_partition(&conn).unwrap(), "file-value");
+        conn.execute_batch(
+            "DROP TRIGGER refuse_commit; DROP TABLE commit_child; DROP TABLE commit_parent;",
+        )
+        .unwrap();
+        users::restore_credential_for_user(store, active_id, key, None, "file-value", &before)
+            .unwrap();
+        assert_eq!(store.get(key).unwrap(), "vault-before");
+        assert!(in_partition(&conn).is_none());
+        store.delete(key).unwrap();
+
+        // A write that reaches the vault and then fails in the partition goes back
+        // in the vault too, and the error names the key.
+        store
+            .store("server_rollback-partial", "vault-before")
+            .unwrap();
+        let conn = users::open_or_init_cli().unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER refuse_partial BEFORE INSERT ON user_credentials
+             WHEN NEW.credential_id = 'server_rollback-partial'
+             BEGIN SELECT RAISE(ABORT, 'injected'); END;",
+        )
+        .unwrap();
+        let refused = apply_secret_writes(
+            &slots,
+            vec![SecretWrite::new(
+                "server_rollback-partial".into(),
+                None,
+                "file-partial",
+            )],
+        )
+        .map(|_| ())
+        .unwrap_err();
+        conn.execute_batch("DROP TRIGGER refuse_partial;").unwrap();
+        assert!(refused.contains("server_rollback-partial"), "{refused}");
+        assert!(!refused.contains("file-partial"), "{refused}");
+        assert_eq!(
+            store.get("server_rollback-partial").unwrap(),
+            "vault-before"
+        );
+        assert!(users::get_user_credential_for(
+            &conn,
+            &store.derive_user_partition_wrapping_key(),
+            active_id,
+            "server_rollback-partial",
+        )
+        .unwrap()
+        .is_none());
+
+        // Relocation takes the list lock too.
+        let held = users::ProfileListLock::acquire(&users::open_or_init_cli().unwrap())
+            .unwrap()
+            .unwrap();
+        let busy = users::cli_relocate_server_profile(
+            store,
+            active_id,
+            other_id,
+            source,
+            "rollback-copy",
+            None,
+            false,
+        );
+        assert_eq!(busy.err().as_deref(), Some(users::PROFILE_LIST_BUSY));
+        drop(held);
+    }
+
+    // Another writer saving between the secrets and the list: the real write
+    // refuses, the secrets go back, and the import plans again on the new list,
+    // keeping that save. Saving again on the second plan refuses the import, with
+    // the secrets back.
+    let raced_write = move || {
+        let store = CredentialStore::from_cache().unwrap();
+        let (_, revision) = users::cli_read_active_profiles_at_revision(&store, active_id).unwrap();
+        users::cli_update_profiles_at_revision(&store, active_id, &revision, |list| {
+            list.retain(|p| p["id"] != "raced");
+            list.push(
+                json!({"id": "raced", "name": "raced", "host": "h", "port": 1, "username": "u"}),
+            );
+        })
+        .unwrap();
+    };
+    users::store_active_credential_typed_dual(store, &stale_key, "oauth", "stale-local").unwrap();
+    let mut left = 1;
+    crate::IMPORT_BEFORE_COMMIT.with_borrow_mut(|hook| {
+        *hook = Some(Box::new(move || {
+            if left > 0 {
+                left -= 1;
+                raced_write();
+            }
+        }))
+    });
+    let replanned = import_with(ExistingProfileMode::Overwrite, false)
+        .await
+        .unwrap();
+    assert_eq!(replanned.servers[0]["importOutcome"], "overwritten");
+    assert!(replanned.stored.iter().any(|p| p["id"] == "raced"));
+    assert_eq!(read(&stale_key).unwrap().as_str(), expected);
+    users::store_active_credential_typed_dual(store, &stale_key, "oauth", "stale-local").unwrap();
+    crate::IMPORT_BEFORE_COMMIT.with_borrow_mut(|hook| *hook = Some(Box::new(raced_write)));
+    let refused_twice = import_with(ExistingProfileMode::Overwrite, false)
+        .await
+        .unwrap_err();
+    crate::IMPORT_BEFORE_COMMIT.with_borrow_mut(|hook| *hook = None);
+    assert_eq!(refused_twice, users::PROFILES_CHANGED);
+    assert_eq!(read(&stale_key).unwrap().as_str(), "stale-local");
+
+    // The operation of the rclone import, the same way: a save in between costs one
+    // more plan and is kept, a second one refuses with no secret and no profile left.
+    let bridge_plan = |id: &'static str| {
+        move |_: &[serde_json::Value]| {
+            Ok(crate::ImportedProfilesPlan {
+                writes: vec![crate::profile_import_plan::SecretWrite::new(
+                    format!("server_{id}"),
+                    None,
+                    "bridge-secret",
+                )],
+                additions: vec![
+                    json!({"id": id, "name": id, "host": "b", "port": 2, "username": "u"}),
+                ],
+                result: (),
+            })
+        }
+    };
+    let mut left = 1;
+    crate::IMPORT_BEFORE_COMMIT.with_borrow_mut(|hook| {
+        *hook = Some(Box::new(move || {
+            if left > 0 {
+                left -= 1;
+                raced_write();
+            }
+        }))
+    });
+    let (_, _, bridged) =
+        crate::store_imported_profiles(store, active_id, bridge_plan("bridge-kept")).unwrap();
+    assert!(bridged.iter().any(|p| p["id"] == "bridge-kept"));
+    assert!(bridged.iter().any(|p| p["id"] == "raced"));
+    assert_eq!(
+        read("server_bridge-kept").unwrap().as_str(),
+        "bridge-secret"
+    );
+    crate::IMPORT_BEFORE_COMMIT.with_borrow_mut(|hook| *hook = Some(Box::new(raced_write)));
+    let bridge_refused =
+        crate::store_imported_profiles(store, active_id, bridge_plan("bridge-gone"))
+            .map(|_| ())
+            .unwrap_err();
+    crate::IMPORT_BEFORE_COMMIT.with_borrow_mut(|hook| *hook = None);
+    assert_eq!(bridge_refused, users::PROFILES_CHANGED);
+    assert!(read("server_bridge-gone").is_none());
+    assert!(store.get("server_bridge-gone").is_err());
+    let (kept, _) =
+        users::cli_update_server_profiles_for_user(store, active_id, |_| false).unwrap();
+    assert!(!kept.iter().any(|p| p["id"] == "bridge-gone"));
+
+    // A filesystem without file locks: an import stops before writing, says what to
+    // do and changes nothing, and an ordinary save goes on.
+    users::store_active_credential_typed_dual(store, &stale_key, "oauth", "stale-local").unwrap();
+    let list_before = list_of(active_id);
+    users::NO_FILE_LOCKS_IN_TEST.set(true);
+    let without_locks = crate::import_server_profiles_with_mode(
+        file.to_string_lossy().into_owned(),
+        "fixture-export-password".into(),
+        ExistingProfileMode::Overwrite,
+        active_id,
+    )
+    .await
+    .unwrap_err();
+    let saved_anyway = users::cli_update_server_profiles_for_user(store, active_id, |_| false);
+    users::NO_FILE_LOCKS_IN_TEST.set(false);
+    assert!(
+        without_locks.contains("without file locks"),
+        "{without_locks}"
+    );
+    assert_eq!(read(&stale_key).unwrap().as_str(), "stale-local");
+    assert_eq!(list_of(active_id), list_before);
+    assert!(saved_anyway.is_ok());
+
+    // A copy for a list of another account than the active one writes nothing.
+    let refused_copy = crate::copy_profile_secrets(
+        source.into(),
+        "copy-for-other".into(),
+        Some("github".into()),
+        Some(other_id),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(refused_copy, users::ACCOUNT_CHANGED);
+    assert!(read(&format!("{stale_prefix}_copy-for-other")).is_none());
+
+    // A file repeating an id holds one set of provider secrets: the first profile
+    // brings the chain, the later one stored under a new id does not.
+    let repeated_file = directory.path().join("repeated.aeroftp");
+    crate::export_server_profiles_core(
+        json!([jotta.clone(), jotta.clone()]).to_string(),
+        "fixture-export-password".into(),
+        true,
+        repeated_file.to_string_lossy().into_owned(),
+    )
+    .await
+    .unwrap();
+    let repeated = import_over(
+        store,
+        repeated_file.to_string_lossy().into_owned(),
+        "fixture-export-password".into(),
+        ExistingProfileMode::Duplicate,
+        &[],
+        active,
+        true,
+    )
+    .await
+    .unwrap();
+    assert_eq!(repeated.servers.len(), 2);
+    assert_eq!(repeated.servers[1]["importOutcome"], "duplicated");
+    assert_eq!(repeated.jotta_chains.len(), 1);
+    assert_eq!(repeated.jotta_chains[0].id, repeated.servers[0]["id"]);
+    // Stored for real: two ids, and the chain stays with the first of them. The
+    // first is an added profile, which reports its overlay password and stores it.
+    let repeated = import_over(
+        store,
+        repeated_file.to_string_lossy().into_owned(),
+        "fixture-export-password".into(),
+        ExistingProfileMode::Duplicate,
+        &[],
+        active,
+        false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(repeated.servers[0]["importOutcome"], "added");
+    assert_eq!(repeated.servers[0]["hasStoredAeroCryptPassword"], true);
+    let (first, second) = (
+        field(&repeated.servers[0], "id"),
+        field(&repeated.servers[1], "id"),
+    );
+    assert_ne!(first, second);
+    let stored_first = repeated
+        .stored
+        .iter()
+        .find(|p| p["id"].as_str() == Some(first))
+        .unwrap();
+    assert_eq!(stored_first["hasStoredAeroCryptPassword"], true);
+    assert!(repeated
+        .stored
+        .iter()
+        .any(|p| p["id"].as_str() == Some(second)));
+    assert_eq!(
+        read(&format!("jottacloud_refresh_{first}"))
+            .unwrap()
+            .as_str(),
+        "synthetic-refresh-chain"
+    );
+    assert!(read(&format!("jottacloud_refresh_{second}")).is_none());
+
+    // The profile whose own chain is the singleton refreshes it on an overwrite.
+    users::store_active_credential_typed_dual(
+        store,
+        "jottacloud_refresh_fixture-jotta",
+        "jottacloud_refresh",
+        "other-profile-chain",
+    )
+    .unwrap();
+    import_over(
+        store,
+        jotta_file.to_string_lossy().into_owned(),
+        "fixture-export-password".into(),
+        ExistingProfileMode::Overwrite,
+        std::slice::from_ref(&jotta),
+        active,
+        false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        store.get("jottacloud_refresh").unwrap(),
+        "synthetic-refresh-chain"
+    );
+
     let redacted = directory.path().join("headless-redacted.aeroftp");
     let metadata = crate::export_server_profiles_core(
         json!([export_profile]).to_string(),
@@ -514,6 +1233,8 @@ async fn durable_profile_auth_lifecycle(store: &CredentialStore, github: &Value)
     assert!(secrets.is_empty());
 }
 
+/// Native Proton sessions stay with the user who owns them through refresh,
+/// copy, export, import and purge.
 #[cfg(feature = "proton-native")]
 async fn native_session_ownership(store: &CredentialStore, active_id: i64, selected_id: i64) {
     use crate::providers::proton_native::{
@@ -628,6 +1349,7 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
         "native-selected".into(),
         "native-gui-copy".into(),
         Some("proton".into()),
+        None,
     )
     .await
     .unwrap();
@@ -657,9 +1379,14 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
         .await
         .unwrap();
     assert_eq!(count(selected_id, &selected_key), 0);
-    crate::import_server_profiles_core(
+    import_over(
+        store,
         file.to_string_lossy().into_owned(),
         "native-fixture-export-password".into(),
+        crate::profile_import_plan::ExistingProfileMode::Skip,
+        &[],
+        None,
+        false,
     )
     .await
     .unwrap();
@@ -675,6 +1402,26 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
         "access-after"
     );
     users::cli_set_active_user(store, active_id).unwrap();
+
+    // Another account is active than the one the import is for: nothing is
+    // written, for either of them.
+    users::cli_set_active_user(store, selected_id).unwrap();
+    crate::purge_profile_secrets("native-selected".into(), Some("proton".into()))
+        .await
+        .unwrap();
+    users::cli_set_active_user(store, active_id).unwrap();
+    assert_eq!(count(selected_id, &selected_key), 0);
+    let refused = crate::import_server_profiles_with_mode(
+        file.to_string_lossy().into_owned(),
+        "native-fixture-export-password".into(),
+        crate::profile_import_plan::ExistingProfileMode::Skip,
+        selected_id,
+    )
+    .await
+    .unwrap_err();
+    assert!(refused.starts_with("ACCOUNT_CHANGED"), "{refused}");
+    assert_eq!(count(selected_id, &selected_key), 0);
+    assert_eq!(count(active_id, &selected_key), 0);
 
     // Reproduce the old takeover gap using the real vault and local lease:
     // connect read U1, a new browser sign-in stored U2, then connect binds U1.

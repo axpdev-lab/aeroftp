@@ -1358,7 +1358,20 @@
             "serverProfilesCount": "Perfís de servidor: {count}",
             "aiKeysCount": "Chaves de AI: {count}",
             "oauthTokensCount": "Tokens OAuth: {count}",
-            "configEntriesCount": "Entradas de configuración: {count}"
+            "configEntriesCount": "Entradas de configuración: {count}",
+            "importExistingLabel": "Se un perfil xa existe",
+            "importExistingSkip": "Omitir",
+            "importExistingOverwrite": "Sobrescribir",
+            "importExistingDuplicate": "Duplicar",
+            "importExistingSkipHint": "Un perfil que xa tes queda tal como está, cos seus contrasinais e tokens.",
+            "importExistingOverwriteHint": "Un perfil que xa tes substitúese no seu sitio, cos contrasinais e tokens que leva o ficheiro. Segue nos teus favoritos e grupos.",
+            "importExistingDuplicateHint": "Un perfil que xa tes mantense, e a copia do ficheiro engádese ao seu carón cun nome numerado.",
+            "overwrittenCount": "{count} sobrescritos",
+            "duplicatedCount": "{count} duplicados",
+            "importJottaChainWarning": "Jottacloud renova o seu inicio de sesión en cada conexión, e {names} agora comparte un con outra copia: a copia que se conecta primeiro pecha a sesión da outra (o dispositivo de onde vén o ficheiro, ou o perfil do que se duplicou). Volve iniciar sesión na outra cun novo Personal Login Token.",
+            "importOauthAppKept": "{names} chegaron cunha app OAuth personalizada distinta da que este dispositivo ten para ese provedor. Conservouse a app almacenada, así que inicia sesión de novo se estes perfís deixan de conectarse.",
+            "importTargetChanged": "{names} non se sobrescribiron: o ficheiro apúntaos a outro servidor, e os seus contrasinais e tokens gardados non deben ir alí. Importa con Duplicar para engadir a copia do ficheiro, ou elimina primeiro o perfil.",
+            "importSharedSecretsFailed": "Importouse {names}, pero non se puido gardar un segredo compartido ou unha sesión do ficheiro. Volve iniciar sesión nestes perfís se non se conectan."
         },
         "devtools": {
             "title": "AeroTools",
