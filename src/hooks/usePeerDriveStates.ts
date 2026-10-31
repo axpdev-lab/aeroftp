@@ -79,8 +79,6 @@ export const usePeerDriveStates = (enabled: boolean): UsePeerDriveStates => {
 
   // Keep a ref so the event handlers always merge onto the latest map without
   // resubscribing on every state change.
-  const statesRef = useRef(states);
-  statesRef.current = states;
 
   const apply = useCallback((ns: string, next: Partial<PeerDriveBadge> & { atMs: number }) => {
     setStates((prev) => {
