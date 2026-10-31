@@ -361,6 +361,16 @@ describe('reloadRestoredServerProfiles', () => {
         expect(handler).toHaveBeenCalledTimes(1);
         mockInvoke.mockReset();
     });
+
+    it('rejects rather than show an empty list when the partition cannot be read', async () => {
+        mockInvoke.mockReset();
+        mockInvoke.mockImplementation(async (command: string) => {
+            if (command === 'user_partitions_load_active_server_profiles') throw new Error('STORE_NOT_READY');
+            return null;
+        });
+        await expect(reloadRestoredServerProfiles()).rejects.toThrow('STORE_NOT_READY');
+        mockInvoke.mockReset();
+    });
 });
 
 describe('a list read from the legacy store', () => {

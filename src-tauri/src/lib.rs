@@ -18261,12 +18261,18 @@ async fn import_server_profiles(
     existing: Option<profile_import_plan::ExistingProfileMode>,
 ) -> Result<profile_import_plan::ProfileImportReport, String> {
     only_main_window(webview.label(), "import_server_profiles")?;
-    let store = credential_store::CredentialStore::from_cache().ok_or(IMPORT_VAULT_NOT_READY)?;
-    let user = user_partitions::cli_get_active_user(&store)
-        .map_err(|e| format!("{IMPORT_NEEDS_PARTITION}: {e}"))?
-        .ok_or_else(|| format!("{IMPORT_NEEDS_PARTITION}: NO_ACTIVE_USER"))?;
-    import_server_profiles_with_mode(file_path, password, existing.unwrap_or_default(), user.id)
-        .await
+    // Argon2id and blocking vault, lock and database work, off the async workers
+    // like the keystore commands (AUDIT 2026-05-11 M1).
+    tokio::task::spawn_blocking(move || {
+        let store =
+            credential_store::CredentialStore::from_cache().ok_or(IMPORT_VAULT_NOT_READY)?;
+        let user = user_partitions::cli_get_active_user(&store)
+            .map_err(|e| format!("{IMPORT_NEEDS_PARTITION}: {e}"))?
+            .ok_or_else(|| format!("{IMPORT_NEEDS_PARTITION}: NO_ACTIVE_USER"))?;
+        import_server_profiles_blocking(file_path, password, existing.unwrap_or_default(), user.id)
+    })
+    .await
+    .map_err(|e| format!("Import task failed: {e}"))?
 }
 
 /// Without an unlocked vault neither the list nor the secrets can be reached,
@@ -18498,6 +18504,15 @@ pub fn preview_server_profiles(
 /// an id nothing refers to, an overwritten profile holds the file's secret on the
 /// same server, and importing the same file again converges.
 pub async fn import_server_profiles_with_mode(
+    file_path: String,
+    password: String,
+    mode: profile_import_plan::ExistingProfileMode,
+    user: i64,
+) -> Result<profile_import_plan::ProfileImportReport, String> {
+    import_server_profiles_blocking(file_path, password, mode, user)
+}
+
+fn import_server_profiles_blocking(
     file_path: String,
     password: String,
     mode: profile_import_plan::ExistingProfileMode,

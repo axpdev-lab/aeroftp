@@ -336,7 +336,8 @@ export const addMigratedServerProfiles = (migrated: ServerProfile[], expectedUse
  */
 export const reloadRestoredServerProfiles = async (): Promise<ServerProfile[]> => {
     const accountBefore = accountChangeGeneration();
-    const profiles = await loadSavedServerProfiles();
+    // Strict: a partition that cannot be read now is not an empty restored list.
+    const profiles = await loadSavedServerProfilesStrict();
     announceStoredServerProfiles(profiles, accountBefore);
     return profiles;
 };

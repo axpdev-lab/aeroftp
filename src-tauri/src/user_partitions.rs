@@ -5218,6 +5218,43 @@ pub fn mirror_latest_profiles_to_legacy_blob(store: &CredentialStore, user_id: i
     }
 }
 
+/// Mirror the active account's list for a load, which must not wait for a writer
+/// and must not overwrite what one left in the blob: a keystore restore adopts it. A
+/// writer holding [`ProfileListLock`] mirrors by itself, and the next load heals the
+/// blob otherwise.
+fn mirror_after_load(
+    conn: &Connection,
+    store: &CredentialStore,
+    root_key: &[u8; 32],
+    user_id: i64,
+) {
+    let _lock = match conn.path() {
+        Some(path) if !path.is_empty() => {
+            match ProfileListLock::acquire_within(
+                std::path::Path::new(path),
+                std::time::Duration::ZERO,
+            ) {
+                Ok(lock) => Some(lock),
+                Err(e) => {
+                    tracing::debug!("Legacy blob not mirrored by this load: {e}");
+                    return;
+                }
+            }
+        }
+        _ => None,
+    };
+    let mirrored = active_user_id(conn).and_then(|active| {
+        if active != Some(user_id) {
+            return Ok(false);
+        }
+        let list = list_server_profiles_for(conn, root_key, user_id)?;
+        mirror_active_profiles_to_legacy_blob(store, &list)
+    });
+    if let Err(e) = mirrored {
+        tracing::warn!("Could not mirror server profiles to the legacy blob: {e}");
+    }
+}
+
 /// CLI-path [`update_server_profiles_at_revision`].
 pub fn cli_update_profiles_at_revision(
     store: &CredentialStore,
@@ -6091,13 +6128,11 @@ fn load_active_server_profiles_scoped(app: &AppHandle) -> Result<ScopedServerPro
             }
         }
     }
-    root_key.zeroize();
     // #736: heal a legacy blob that an older build left frozen, so AeroAgent
     // and MCP see the same list as My Servers without waiting for a save.
     // Best-effort: the list is what the caller asked for.
-    if let Err(e) = mirror_active_profiles_to_legacy_blob(&store, &profiles) {
-        tracing::warn!("Could not mirror server profiles to the legacy blob: {e}");
-    }
+    mirror_after_load(&conn, &store, &root_key, user_id);
+    root_key.zeroize();
     // BUG-LT2a backward-compat: recompute the redacted overlay-secret flags from
     // the vault so legacy crypt profiles auto-unlock without a manual re-save.
     reconcile_overlay_secret_flags(
@@ -7010,6 +7045,31 @@ mod tests {
             )
             .unwrap();
         assert!(!mirror_active_profiles_to_legacy_blob(&store, &current).unwrap());
+    }
+
+    /// A load does not wait for a writer holding the lock, and does not touch the
+    /// blob while it does.
+    #[test]
+    fn a_load_leaves_the_blob_to_a_writer_holding_the_list_lock() {
+        let _guard = test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_vault(dir.path());
+        let mut conn = open_or_init_path(dir.path().join("partitions.db")).expect("open");
+        let root = test_root();
+        let seed = json!([{ "id": "p", "name": "P", "protocol": "sftp", "host": "h", "port": 22, "username": "u" }]);
+        migrate_legacy_payloads(&mut conn, Some(&seed.to_string()), None, &root).expect("seed");
+        let user = active_user_id(&conn).unwrap().unwrap();
+        store.store(LEGACY_PROFILES_BLOB, "[]").unwrap();
+
+        let held = ProfileListLock::acquire(&conn).unwrap().unwrap();
+        mirror_after_load(&conn, &store, &root, user);
+        assert_eq!(store.get(LEGACY_PROFILES_BLOB).unwrap(), "[]");
+        drop(held);
+
+        mirror_after_load(&conn, &store, &root, user);
+        let mirrored: Vec<Value> =
+            serde_json::from_str(&store.get(LEGACY_PROFILES_BLOB).unwrap()).unwrap();
+        assert_eq!(mirrored[0]["id"], "p");
     }
 
     /// No partition database means nothing to mirror, and the blob is left as

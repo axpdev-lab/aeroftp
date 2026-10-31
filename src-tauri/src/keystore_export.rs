@@ -2307,9 +2307,12 @@ fn import_keystore_with_store(
     // the rest stays imported. After a failed decision step list and blob are back
     // as they were, and there is nothing to copy. A restored partition that could not
     // be read did not reach the blob, which may still be the backup's old list: it
-    // keeps its own list, and the next load that reads it repairs the blob.
+    // keeps its own list, and the next load that reads it repairs the blob. An import
+    // that brought no list (files only, say) has nothing to adopt: the blob may be old.
+    let decided = profiles_after_decisions.is_some();
     if profile_decisions_error.is_none()
-        && (!restored_list_unread || profiles_after_decisions.is_some())
+        && (list_in_vault || partition_in_restore || decided)
+        && (!restored_list_unread || decided)
     {
         if let Some(db) = partition_db(config_dir) {
             if let Err(e) = adopt_restored_list(store, &db, profiles_after_decisions.is_some()) {
@@ -4082,6 +4085,43 @@ mod tests {
         assert_eq!(result.profile_decisions_error, None);
         let conn = rusqlite::Connection::open(&db).unwrap();
         assert_eq!(unreadable(&conn), 1, "the restored row was replaced");
+    }
+
+    /// An import that brought no list leaves the partition alone, even with a blob
+    /// that the import could not refresh because a row cannot be read.
+    #[test]
+    fn an_import_without_a_list_adopts_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, cfg) = machine_with_a_frozen_blob(dir.path());
+        let db = cfg.join("user_partitions.db");
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.execute("UPDATE server_profiles SET encrypted_blob = x'00'", [])
+            .unwrap();
+        drop(conn);
+        let backup = dir.path().join("no-list.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &ExportPayload::default());
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(result.profile_decisions_error, None);
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        let left: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM server_profiles WHERE encrypted_blob = x'00'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(left, 1, "the partition's row was replaced");
     }
 
     /// An empty list in the blob is an answer only when a restore's decisions left it.
