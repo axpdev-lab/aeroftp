@@ -313,14 +313,14 @@
                 "fetch": "获取",
                 "fetching": "正在获取...",
                 "refresh": "刷新",
-                "none": "未返回任何目标。你仍可以手动输入一个。",
+                "none": "未返回任何目标。您仍可以手动输入一个。",
                 "found": "找到 {count} 个可访问的目标。输入以搜索，或选择其中一个。"
             },
             "swiftAuthUrl": "Keystone 认证 URL",
             "swiftAllowCleartextStorage": "此部署通过明文 HTTP 提供对象存储。为此配置文件接受：访问令牌和每个文件都将以未加密方式穿越网络。",
             "kdriveTokenScopes": "令牌需要 drive 和 user_info 两个范围。仅有 drive 时可以连接并列出文件，但“获取”会被拒绝，因为它需要读取您的账户资料来查找 Drive ID。",
             "protonCliTitle": "使用官方 Proton Drive CLI",
-            "protonCliBody": "从 proton.me/download/drive/cli 安装 Proton Drive CLI，然后在终端运行 proton-drive auth login 并在浏览器中完成。AeroFTP 绝不会看到你的密码；会话留在操作系统的密钥库中。",
+            "protonCliBody": "从 proton.me/download/drive/cli 安装 Proton Drive CLI，然后在终端运行 proton-drive auth login 并在浏览器中完成。AeroFTP 绝不会看到您的密码；会话留在操作系统的密钥库中。",
             "protonConnectHint": "\"连接\" 使用本机已登录的 CLI。每个操作系统用户一个 Proton 账户。",
             "twakeInstance": "Twake 地址",
             "twakeInstanceHelp": "您自己的地址,例如 yourname.twake.app。您也可以粘贴从浏览器中复制的任意 Twake 页面地址。",
@@ -336,13 +336,13 @@
             "oauthKeysReadFailed": "AeroFTP 无法从保险库中读取 {provider} 应用密钥，因此无法登录。密钥未被更改。错误：{error}",
             "profileName": "配置名称",
             "protonNativeTitle": "原生 Proton Drive 客户端",
-            "protonNativeBody": "AeroFTP 直接连接 Proton Drive，并在这台电脑上加密和解密你的文件。你在浏览器中通过 Proton 自己的页面登录：AeroFTP 绝不会看到你的密码，并将会话保存在其加密保险库中。",
+            "protonNativeBody": "AeroFTP 直接连接 Proton Drive，并在这台电脑上加密和解密您的文件。您在浏览器中通过 Proton 自己的页面登录：AeroFTP 绝不会看到您的密码，并将会话保存在其加密保险库中。",
             "protonNativeDisclosure": "这是第三方应用程序，未获得 Proton 的官方支持。",
             "protonSignIn": "登录 Proton",
             "protonSignInAgain": "重新登录",
             "protonWaitingBrowser": "请在浏览器中完成登录...",
             "protonSignedInAs": "已以 {email} 身份登录",
-            "protonSignInHelp": "AeroFTP 会在你的浏览器中打开 Proton 的登录页面。你可以随时在 Proton 账户设置中结束会话，或在此处使用退出登录。",
+            "protonSignInHelp": "AeroFTP 会在您的浏览器中打开 Proton 的登录页面。您可以随时在 Proton 账户设置中结束会话，或在此处使用退出登录。",
             "protonSignOut": "退出登录",
             "protonSignOutHelp": "结束 Proton 上的会话，并将其从此配置文件中移除。",
             "protonSignInExpired": "登录页面已过期。请重新登录。",
@@ -1223,7 +1223,7 @@
             "downloadSegmentsN": "每个文件 {n} 个分段",
             "downloadSegmentsDesc": "将每次下载拆分为并行字节范围。显式设置的值优先于 FTP/FTPS 工具栏速度预设；自动则由该预设决定（安全模式保持单流）。对支持范围请求的提供商（SFTP、FTP/FTPS、S3、HTTP）有效，适用于足以受益的大文件。",
             "autoStartTransfers": "自动启动传输",
-            "autoStartTransfersHelp": "开启时,拖放和点击传输立即开始。关闭时,它们以 staged 状态停放在 Transfer Queue 中,你可以在按下 Start 之前修剪文件夹树并重新排序。",
+            "autoStartTransfersHelp": "开启时,拖放和点击传输立即开始。关闭时,它们以 staged 状态停放在 Transfer Queue 中,您可以在按下 Start 之前修剪文件夹树并重新排序。",
             "importKeystorePrompt": "请输入用于加密此 keystore 备份的密码。",
             "importServersPrompt": "请输入用于加密此 server-profiles 备份的密码。",
             "exportFormatComparisonHint": ".aeroftp 文件包含配置文件在另一台设备上连接所需的所有内容。如需完整的保险库备份(包括 AI 提供商密钥和全局设置),请改用 .aeroftp-keystore 导出。",
@@ -1298,7 +1298,7 @@
             "fileAssociationCurrentHandler": "当前处理程序",
             "encryptionPrivacyTitle": "加密隐私",
             "warnSameNameEncrypted": "在加密保险库中标记同名条目",
-            "warnSameNameEncryptedDesc": "默认关闭。在活动的 AeroCrypt 或 rclone-crypt 覆盖层中，标记名称也出现在你访问的另一个路径中的文件和文件夹。名称采用确定性加密，因此相同的名称对加密存储的观察者来说显示为相同（与 rclone-crypt 和 Cryptomator 相同的权衡）。",
+            "warnSameNameEncryptedDesc": "默认关闭。在活动的 AeroCrypt 或 rclone-crypt 覆盖层中，标记名称也出现在您访问的另一个路径中的文件和文件夹。名称采用确定性加密，因此相同的名称对加密存储的观察者来说显示为相同（与 rclone-crypt 和 Cryptomator 相同的权衡）。",
             "loading": "加载中...",
             "resumeRecords": "续传记录",
             "resumeRecordsDesc": "中断的分片传输会保留一条小记录以便续传。该存储有上限，写满后会丢弃最旧的可续传传输。删除不再使用的服务器即可腾出空间。",
@@ -2898,7 +2898,7 @@
                 "general": "常规",
                 "generalDesc": "未分类任务的默认设置",
                 "autoDefault": "自动（默认）",
-                "autoRoutingTip": "提示：将某项任务保留为「自动（默认）」即使用你的默认模型。仅为需要不同模型的任务设置首选模型，并设置一个在首选模型失败时作答的备用模型。",
+                "autoRoutingTip": "提示：将某项任务保留为「自动（默认）」即使用您的默认模型。仅为需要不同模型的任务设置首选模型，并设置一个在首选模型失败时作答的备用模型。",
                 "advancedDescription": "配置高级 AI 参数以控制响应生成。",
                 "conversationStyle": "对话风格",
                 "styleHelp": "精确 = 事实性回答。创意 = 更有想象力。均衡 = 默认。",
@@ -3537,7 +3537,7 @@
                     "installExists": "请先移除现有安装再重新安装。",
                     "installIo": "无法读取或写入安装文件。"
                 },
-                "routingNotice": "已启用的服务器会向 AeroAgent 提供其工具。每次调用工具前都会先征求你的批准。",
+                "routingNotice": "已启用的服务器会向 AeroAgent 提供其工具。每次调用工具前都会先征求您的批准。",
                 "checkNow": "立即检查",
                 "healthChecking": "正在检查服务器...",
                 "healthDisabled": "禁用期间不会启动",
@@ -3558,7 +3558,7 @@
                 "managedStatus": "托管安装：{version}",
                 "renewDirectory": "续期访问权限",
                 "presetsTitle": "推荐的服务器",
-                "presetsSubtitle": "已审核的预设仅在你确认后安装。启用前保持关闭。",
+                "presetsSubtitle": "已审核的预设仅在您确认后安装。启用前保持关闭。",
                 "presetDeepwikiName": "DeepWiki",
                 "presetDeepwikiReason": "查找公开仓库的文档。",
                 "presetInstall": "安装",
@@ -4956,7 +4956,7 @@
             "argon2Iterations": "迭代次数",
             "argon2Parallelism": "并行度",
             "argon2OutputLength": "长度（字节）",
-            "argon2DefaultsHint": "默认值：AeroVault 和 AeroCrypt 使用的配置（128 MiB、4 次迭代、4 条通道、32 字节输出）。上方的盐值是你的。内存最高 2 GiB。",
+            "argon2DefaultsHint": "默认值：AeroVault 和 AeroCrypt 使用的配置（128 MiB、4 次迭代、4 条通道、32 字节输出）。上方的盐值是您的。内存最高 2 GiB。",
             "argon2Derive": "派生",
             "argon2Phc": "PHC 字符串",
             "hashError": "错误：{error}",
@@ -6038,7 +6038,7 @@
             "nothingToDo": "没有需要同步的内容",
             "allSkipped": "此预设没有可执行的条目。",
             "builtinModesGroup": "内置模式",
-            "savedPresetsGroup": "你保存的预设"
+            "savedPresetsGroup": "您保存的预设"
         },
         "aerosync": {
             "title": "AeroSync",
@@ -6432,7 +6432,7 @@
             "errNewRequired": "需要新的账户密码。",
             "confirmRemovePassword": "移除 \"{name}\" 的账户密码？",
             "confirmDelete": "删除账户 \"{name}\"？\n\n要移除的加密数据：{profiles} 个配置文件，{settings} 个设置范围。",
-            "passwordChoiceNote": "设置账户密码是可选的。它可以防止使用此设备的其他人打开你的账户;无论是否设置，你保存的数据都会保持加密。如果这里只有你一个人使用，或者你信任使用此设备的每个人，可以跳过此步骤。",
+            "passwordChoiceNote": "设置账户密码是可选的。它可以防止使用此设备的其他人打开您的账户;无论是否设置，您保存的数据都会保持加密。如果这里只有您一个人使用，或者您信任使用此设备的每个人，可以跳过此步骤。",
             "copy": "复制用户（仅服务器，不含密码）",
             "copyLockedHint": "请先切换到此账户以复制其服务器",
             "crossUserDedupTitle": "已被其他账户保存",
@@ -6471,9 +6471,9 @@
             "recommended": "推荐",
             "intro": {
                 "heading": "此叠加层的功能",
-                "p1": "在将文件名和内容发送到服务器之前<strong>实时</strong>加密，并在下载时解密。服务器只能看到名称被打乱的数据块。而你看到的是原始名称。",
+                "p1": "在将文件名和内容发送到服务器之前<strong>实时</strong>加密，并在下载时解密。服务器只能看到名称被打乱的数据块。而您看到的是原始名称。",
                 "p2": "当叠加层处于活动状态时：远程会话以明文显示内容，每次上传都会被加密，每次下载都会被解密。请留意路径栏中的 <em>AEROCRYPT</em> 徽章。",
-                "p3": "这是 AeroFTP 的<strong>原生</strong> overlay，使用与 AeroVault 相同且已审计的引擎（AES-256-GCM-SIV 内容、AES-256-SIV 名称、Argon2id）。overlay 的 salt 存储在远程根目录的 marker 中（新 vault 使用 <code>.aerocrypt.tsv</code>，旧版 <code>.aeroftp-crypt.json</code> 仍可读取），因此你只需密码就能从任何设备重新打开它。"
+                "p3": "这是 AeroFTP 的<strong>原生</strong> overlay，使用与 AeroVault 相同且已审计的引擎（AES-256-GCM-SIV 内容、AES-256-SIV 名称、Argon2id）。overlay 的 salt 存储在远程根目录的 marker 中（新 vault 使用 <code>.aerocrypt.tsv</code>，旧版 <code>.aeroftp-crypt.json</code> 仍可读取），因此您只需密码就能从任何设备重新打开它。"
             },
             "openExisting": "打开现有",
             "createNew": "新建",
@@ -6523,7 +6523,7 @@
             "verifyKitMismatch": "不匹配：此恢复包/标记与活动配置文件密钥库配置不一致。",
             "verifyKitKind": "检测到的输入：{kind}",
             "markerMissingRestoredTitle": "AeroCrypt 安全网已恢复",
-            "markerMissingRestoredBody": "远程标记 (.aerocrypt.tsv) 缺失，已从本地密钥库重建。除非切换到无头 (headerless) 模式，否则不要再次删除它：第二次删除加上密钥库丢失将使你永远无法打开。",
+            "markerMissingRestoredBody": "远程标记 (.aerocrypt.tsv) 缺失，已从本地密钥库重建。除非切换到无头 (headerless) 模式，否则不要再次删除它：第二次删除加上密钥库丢失将使您永远无法打开。",
             "markerMissingRestoreFailedTitle": "AeroCrypt 标记仍然缺失",
             "markerMissingRestoreFailedBody": "已从本地密钥库解锁，但无法恢复远程安全网：{error}",
             "kitNotCachedYet": "此配置文件尚未缓存恢复套件。请先连接一次，以便将其公开配置保存到本地（连接时会自动完成），然后重新打开恢复套件。这不是错误。",
@@ -6582,7 +6582,7 @@
             "openDefaultSaltLabel": "此 vault 使用 AeroCrypt 默认 salt",
             "openDefaultSaltHint": "此处没有标记时，使用默认 salt 的 vault 仅凭密码即可打开，只要此文件夹中的名称能用该密码解密。不会向远程写入任何内容。",
             "keyslotsSetAsideRisks": "此服务器无法一步替换文件。当前标记文件会先被重命名并放到一边,新标记文件移动到它的位置,然后删除旧文件。在这段时间里,保险库没有标记文件,无法打开。如果更改在中途被中断,标记文件会以包含 .aeroftp-replaced- 的名称留在保险库文件夹中,需要手动改回原名。在保留回收站或文件版本的存储上,之前的标记文件仍可在那里恢复。",
-            "keyslotsSetAsideRevocation": "之前的标记文件仍可使用你正在移除或替换的因素打开保险库。更改后,保险库文件夹中留下的每个副本都会被删除,无法删除的副本会作为错误报告。存储回收站或文件版本中的副本不会被处理:清空它们会移除这些副本,但不会移除他人保留的副本,因此并不能完成撤销。",
+            "keyslotsSetAsideRevocation": "之前的标记文件仍可使用您正在移除或替换的因素打开保险库。更改后,保险库文件夹中留下的每个副本都会被删除,无法删除的副本会作为错误报告。存储回收站或文件版本中的副本不会被处理:清空它们会移除这些副本,但不会移除他人保留的副本,因此并不能完成撤销。",
             "keyslotsSetAsideConsent": "我已了解:在此服务器上通过重命名并搁置旧文件的方式替换标记文件",
             "keyslotsSetAsideConsentRequired": "此服务器只能通过重命名并搁置旧文件的方式替换保险库标记文件:请在上方的框中确认以继续。",
             "keyslotsMarkerReplaceUnsupported": "此服务器无法替换保险库标记文件,因此这里会拒绝槽位更改。请通过能一步替换文件的服务器(例如 SFTP)打开同一存储。"
@@ -6626,7 +6626,7 @@
             "defaultSaltValueLabel": "公开默认盐值（AeroCrypt v3），即以下字符串的 SHA-256",
             "defaultSaltTierMeaning": "默认盐值意味着仅凭密码即可打开保险库：无需随身携带其他东西，也没有其他东西在保护它。",
             "pastedObscured": "从 rclone.conf 粘贴（已混淆）",
-            "pastedObscuredHint": "仅当你从 rclone.conf 文件复制了此值时，才选择“从 rclone.conf 粘贴”；rclone 在该文件中以混淆形式保存它。",
+            "pastedObscuredHint": "仅当您从 rclone.conf 文件复制了此值时，才选择“从 rclone.conf 粘贴”；rclone 在该文件中以混淆形式保存它。",
             "formNotRecorded": "未记录：此值是在 AeroFTP 询问之前保存的。请选择它的输入方式；AeroFTP 从 rclone.conf 导入的值是按“手动输入”保存的。",
             "secretFormTyped": "手动输入",
             "secretFormChangeConfirm": "这会改变读取已存储值的方式，从而改变打开文件所用的密钥：只有正确的选择才能打开它们。要更改此选择吗？"
@@ -6637,7 +6637,7 @@
             "wait": "继续",
             "stopAndClose": "停止并关闭",
             "dirtyTitle": "未保存的更改",
-            "dirtyBody": "你有未保存的更改。放弃并关闭？",
+            "dirtyBody": "您有未保存的更改。放弃并关闭？",
             "keepEditing": "继续编辑",
             "discardAndClose": "放弃并关闭"
         },
@@ -6756,7 +6756,7 @@
             },
             "shared": {
                 "title": "我的共享",
-                "subtitle": "你正在与好友共享的文件夹",
+                "subtitle": "您正在与好友共享的文件夹",
                 "serving": "提供中",
                 "idle": "空闲",
                 "stop": "停止",
@@ -6766,7 +6766,7 @@
                 "noRecipients": "暂无接收者",
                 "shareFolder": "共享文件夹",
                 "removeTitle": "停止共享",
-                "removeMessage": "停止共享“{name}”并将其从此列表中移除？你的文件仍保留在你的设备上；与你共享的人会保留已经收到的内容，但不会再收到更新。"
+                "removeMessage": "停止共享“{name}”并将其从此列表中移除？您的文件仍保留在您的设备上；与您共享的人会保留已经收到的内容，但不会再收到更新。"
             },
             "send": {
                 "menu": "通过 AeroShare 发送",
@@ -6828,7 +6828,7 @@
             "autoAcceptLabel": "自动接受来自已保存好友的文件",
             "autoAcceptDesc": "跳过来自好友列表中人员的文件提示。未知发送者始终会询问。",
             "notifyOnReceiveLabel": "有文件到达时通知我",
-            "notifyOnReceiveDesc": "为每个接收到的文件显示系统通知，包括自动接受的文件，这样即使 AeroFTP 未处于焦点状态，你也能知道。",
+            "notifyOnReceiveDesc": "为每个接收到的文件显示系统通知，包括自动接受的文件，这样即使 AeroFTP 未处于焦点状态，您也能知道。",
             "contacts": {
                 "title": "联系人",
                 "intro": "已保存的联系人是您的 AeroShare 好友：发送时选择他们，并且（开启自动接收后）无需提示即可接收他们的文件。",
@@ -6850,9 +6850,9 @@
             },
             "privacy": {
                 "title": "隐私与防泛滥",
-                "intro": "控制谁可以通过 AeroShare 联系你，以及你在接收时的可发现程度。",
+                "intro": "控制谁可以通过 AeroShare 联系您，以及您在接收时的可发现程度。",
                 "friendsOnlyLabel": "仅接受来自已保存联系人的请求",
-                "friendsOnlyDesc": "丢弃来自不在你通讯录中的任何人的敲门、操作和文件邀请。",
+                "friendsOnlyDesc": "丢弃来自不在您通讯录中的任何人的敲门、操作和文件邀请。",
                 "rateLimitLabel": "每个发送者的速率限制",
                 "rateLimitDesc": "来自单个发送者每分钟超过此数量的信号将被丢弃。",
                 "rateLimitUnit": "每分钟",
@@ -6862,17 +6862,17 @@
                 "discovery_dht": "仅 Mainline DHT",
                 "discovery_n0": "仅 n0 DNS",
                 "discovery_none": "无 (不可发现)",
-                "discovery_both_desc": "最易访问：接收时，你的地址会同时发布到 n0 目录和公共 DHT，并通过 mDNS 在你的本地网络中公布。",
+                "discovery_both_desc": "最易访问：接收时，您的地址会同时发布到 n0 目录和公共 DHT，并通过 mDNS 在您的本地网络中公布。",
                 "discovery_dht_desc": "仅发布到公共 Mainline DHT，不使用 n0 目录。",
                 "discovery_n0_desc": "仅发布到 n0 目录，不使用公共 DHT。",
-                "discovery_none_desc": "接收时，你的 AeroFTP-ID 不会在任何地方发布，因此无法在公共 DHT 上被枚举。只有已经持有你完整地址的人才能联系到你（例如通过驱动器票据）。",
+                "discovery_none_desc": "接收时，您的 AeroFTP-ID 不会在任何地方发布，因此无法在公共 DHT 上被枚举。只有已经持有您完整地址的人才能联系到您（例如通过驱动器票据）。",
                 "mutedTitle": "已静音的发送者",
                 "mutedEmpty": "没有已静音的发送者。",
                 "unmute": "取消静音",
                 "rotateTitle": "轮换 AeroFTP-ID",
                 "rotateDesc": "为此配置文件生成一个全新的 AeroFTP-ID。",
                 "rotateButton": "轮换身份",
-                "rotateConfirm": "此操作将替换你的 AeroFTP-ID。你当前的 ID、每个共享链接以及你提供的每个驱动器都将停止工作，你必须再次与好友共享新的 ID。此操作无法撤销。",
+                "rotateConfirm": "此操作将替换您的 AeroFTP-ID。您当前的 ID、每个共享链接以及您提供的每个驱动器都将停止工作，您必须再次与好友共享新的 ID。此操作无法撤销。",
                 "rotateConfirmYes": "立即轮换",
                 "rotateCancel": "取消",
                 "rotateDone": "新的 AeroFTP-ID：",
@@ -6908,8 +6908,8 @@
                 },
                 "proton": {
                     "headerDescription": "带端到端加密的 Proton 云存储",
-                    "apiDescription": "AeroFTP 自带的 Proton Drive 客户端：你在浏览器中的 Proton 页面登录，文件在本机上加密和解密，无需其他应用。",
-                    "cliDescription": "驱动本机上已安装并登录的官方 Proton Drive CLI。你在浏览器中登录；AeroFTP 永远看不到你的 Proton 密码。",
+                    "apiDescription": "AeroFTP 自带的 Proton Drive 客户端：您在浏览器中的 Proton 页面登录，文件在本机上加密和解密，无需其他应用。",
+                    "cliDescription": "驱动本机上已安装并登录的官方 Proton Drive CLI。您在浏览器中登录；AeroFTP 永远看不到您的 Proton 密码。",
                     "apiPaths": "路径从 My Files 开始：My Files 即 /。",
                     "cliPaths": "绝对路径从各分区开始：My Files 即 /my-files，会话在此打开。"
                 },
@@ -6925,7 +6925,7 @@
                 "mega": {
                     "headerDescription": "带客户端加密的 MEGA 云存储",
                     "apiDescription": "使用电子邮件 + 密码 (+ 可选 TOTP) 的原生 MEGA API。完整功能：客户端加密、存储配额、共享链接、缩略图。",
-                    "webdavDescription": "由官方 MEGAcmd CLI 提供的本地 WebDAV 桥接，在 127.0.0.1 上匿名访问。AeroFTP 在连接时会替你运行 \"mega-webdav /\"，因此无需任何手动步骤。",
+                    "webdavDescription": "由官方 MEGAcmd CLI 提供的本地 WebDAV 桥接，在 127.0.0.1 上匿名访问。AeroFTP 在连接时会替您运行 \"mega-webdav /\"，因此无需任何手动步骤。",
                     "s4Description": "MEGA S4 对象存储，兼容 S3 (EU/CA 区域)。访问密钥 + 私密密钥 + 存储桶。需要 Pro 套餐。"
                 }
             }
@@ -6959,7 +6959,7 @@
         "aiApproval": {
             "windowTitle": "AeroAgent 审批",
             "whyTitle": "为什么使用单独的窗口？",
-            "whyBody": "此审批在聊天之外打开，因此代理在聊天中读取和显示的内容无法代替你确认操作。",
+            "whyBody": "此审批在聊天之外打开，因此代理在聊天中读取和显示的内容无法代替您确认操作。",
             "wantsTo": "AeroAgent 想要：",
             "scopeOnce": "仅批准这一次具体操作。",
             "scopeSession": "在本次聊天会话剩余时间内批准此工具。",
@@ -7020,7 +7020,7 @@
             "speedSource": {
                 "default": "设置默认值",
                 "agent": "为此会话请求",
-                "human": "由你更改"
+                "human": "由您更改"
             }
         },
         "siteCommand": {
