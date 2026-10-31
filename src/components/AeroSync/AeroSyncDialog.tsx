@@ -166,6 +166,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
             className="fixed inset-0 z-[9998] flex items-start justify-center pt-[5vh] bg-black/50 animate-scale-in"
             role="dialog"
             aria-modal="true"
+            data-gui-owned="aerosync"
             aria-label={t('aerosync.title') || 'AeroSync'}
             onClick={(e) => {
                 if (e.target === e.currentTarget) guarded.requestBackdropClose();

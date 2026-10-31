@@ -16624,8 +16624,16 @@ const App: React.FC = () => {
       ai: aiPublicSettings,
     },
     tools: guiToolsState,
+    aerosync: {
+      open: !!aeroSync,
+      scanning: !!aeroSync?.context.compareLoading,
+      entries: aeroSync?.context.compareResult ? aeroSync.context.compareResult.entries.length : null,
+    },
   }, {
     showView: view => setShowConnectionScreen(view === 'servers'),
+    aeroSyncOpen: () => openAeroSync('compare'),
+    aeroSyncCompare: () => openAeroSync('compare', [], AEROSYNC_DEFAULT_BACKUP_DIR, true),
+    aeroSyncClose: () => setAeroSync(null),
     navigate: async (panel, path) => {
       const target = panel === 'remote' ? await changeRemoteDirectory(path, undefined, !!(rcloneCryptVaultId || aeroCryptVaultId))
         : panel === 'local2' ? await changeLocalDirectory2(path) : await changeLocalDirectory(path);
@@ -18944,6 +18952,7 @@ const App: React.FC = () => {
                             ? 'bg-blue-500 hover:bg-blue-600 text-white shadow-sm'
                             : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200'
                         }`}
+                        data-testid="aerosync.open"
                         title={t('aerosync.toolbarButton') || t('statusBar.syncFiles')}
                         aria-label={t('aerosync.toolbarButton') || t('statusBar.syncFiles')}
                       >
