@@ -71,6 +71,8 @@ interface PlanTabContentProps {
     scanProgressId?: string;
     /** The last compare was stopped by the user. */
     compareStopped?: boolean;
+    /** Why the last compare was refused. */
+    compareRefused?: string;
     leftLabel?: string;
     rightLabel?: string;
     /** Start the recursive compare; absent when there is no pair to compare. */
@@ -196,6 +198,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     loading,
     scanProgressId,
     compareStopped,
+    compareRefused,
     leftLabel,
     rightLabel,
     onStartCompare,
@@ -336,6 +339,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                     loading={!!loading}
                     scanProgressId={scanProgressId}
                     stopped={compareStopped}
+                    refused={compareRefused}
                     leftLabel={leftLabel ?? ''}
                     rightLabel={rightLabel ?? ''}
                     onStart={onStartCompare}
