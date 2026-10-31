@@ -598,7 +598,8 @@
             "setAsPublic": "Ezarri publiko gisa",
             "makeAllPrivate": "Egin denak pribatu",
             "dropboxRestoreLimit": "AeroFTP-k fitxategien bertsio berreskuragarriak lehenera ditzake. Berreskuratu karpetak dropbox.com-eko Ezabatutako fitxategiak ataletik. Galdera-markak esan nahi du Dropbox-ek ez duela elementu mota identifikatu.",
-            "openWithDefaultApp": "Ireki aplikazio lehenetsiarekin"
+            "openWithDefaultApp": "Ireki aplikazio lehenetsiarekin",
+            "extractHereUncheckedConfirm": "{name} barruko izenak ezin dira erauzi aurretik irakurri, beraz AeroFTP-k ezin du egiaztatu «Erauzi hemen» aukerak karpeta honetan zer gainidatziko lukeen. «Erauzi karpetara» aukerak ez du inoiz ezer gainidatziko."
         },
         "transfer": {
             "transferring": "Transferitzen...",

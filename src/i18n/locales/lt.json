@@ -598,7 +598,8 @@
             "setAsPublic": "Nustatyti kaip viešą",
             "makeAllPrivate": "Padaryti visus privačius",
             "dropboxRestoreLimit": "AeroFTP gali atkurti atkuriamas failų versijas. Aplankus atkurkite dropbox.com skiltyje „Ištrinti failai“. Klaustukas reiškia, kad Dropbox neatpažino elemento tipo.",
-            "openWithDefaultApp": "Atidaryti numatytąja programa"
+            "openWithDefaultApp": "Atidaryti numatytąja programa",
+            "extractHereUncheckedConfirm": "Pavadinimų archyve {name} negalima perskaityti prieš išskleidžiant, todėl AeroFTP negali patikrinti, ką „Išskleisti čia“ perrašytų šiame aplanke. „Išskleisti į aplanką“ niekada nieko neperrašo."
         },
         "transfer": {
             "transferring": "Perduodama...",

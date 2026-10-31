@@ -598,7 +598,8 @@
             "setAsPublic": "Establir com a públic",
             "makeAllPrivate": "Fes-ho tot privat",
             "dropboxRestoreLimit": "AeroFTP pot restaurar revisions recuperables de fitxers. Restaureu les carpetes des de Fitxers suprimits a dropbox.com. Un signe d'interrogació indica que Dropbox no ha identificat el tipus d'element.",
-            "openWithDefaultApp": "Obre amb l'aplicació predeterminada"
+            "openWithDefaultApp": "Obre amb l'aplicació predeterminada",
+            "extractHereUncheckedConfirm": "Els noms dins de {name} no es poden llegir abans d'extreure, així que AeroFTP no pot comprovar què sobreescriuria «Extreure aquí» en aquesta carpeta. «Extreure a carpeta» mai sobreescriu."
         },
         "transfer": {
             "transferring": "Transferint...",

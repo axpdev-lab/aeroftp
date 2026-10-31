@@ -31,16 +31,33 @@ describe('an extraction never writes over a file without asking', () => {
     };
 
     it('asks before an "Extract here" writes over what the archive\'s folder holds', () => {
-        const confirm = after('const confirmExtractHere = async');
-        // Listed afresh with its hidden entries, which the panel may not show.
-        expect(confirm).toMatch(/invoke<LocalFile\[\]>\('get_local_files', \{ path: rowFolder, showHidden: true \}\)/);
-        expect(confirm).toMatch(/const collisions = extractCollisions\(entryNames, destNames\);/);
+        const confirm = after('const confirmExtractHere = async', 900);
+        // Listed afresh with its hidden entries, which the panel may not show
+        // (extractHereCollisions, unit tested). A folder that cannot be listed
+        // stops the extraction: its error is not caught here and taken as an
+        // empty folder.
+        expect(confirm).toMatch(/const collisions = await extractHereCollisions\(entryNames, rowFolder\);/);
+        expect(confirm.slice(0, confirm.indexOf('setConfirmDialog('))).not.toMatch(/\.catch\(/);
         expect(confirm).toMatch(/message: t\('contextMenu\.extractOverwriteConfirm'/);
         // The general lane, the .aerozip lane and a v3 vault, each before it
         // extracts.
-        expect(menu).toMatch(/if \(!createSubfolder && !await confirmExtractHere\(await generalEntryNames\(\)\)\) return;/);
+        expect(menu).toMatch(/const entryNames = await generalEntryNames\(\);\s*if \(entryNames === null\) \{[\s\S]*?\} else if \(!await confirmExtractHere\(entryNames\)\) return;/);
         expect(menu).toMatch(/if \(!await confirmExtractHere\(await aeroEntryNames\('aerozip', file\.path, null\)\)\) return;\s*notify\.info[^\n]*\n\s*const \{ result: count \} = await runExtractWithToast<number>\('aerovz_extract_all', \{ vaultPath: file\.path, destPath: rowFolder \}/);
         expect(menu).toMatch(/if \(kind === 'aerovault_v3' && !await confirmExtractHere\(await aeroEntryNames\(kind, file\.path, password\)\)\) return;\s*notify\.info[^\n]*\n\s*await dispatchAeroExtract\(\{ kind, archivePath: file\.path, destDir: rowFolder,/);
+    });
+
+    it('says so when the archive\'s names cannot be read, and offers a folder of its own', () => {
+        // A 7z or RAR archive with encrypted names lists nothing before the
+        // password: the check found nothing and the extraction went ahead.
+        const names = after('const generalEntryNames = async', 1200);
+        expect(names).toMatch(/\} catch \{\s*return null;\s*\}/);
+        const unchecked = after('if (entryNames === null) {', 1200);
+        expect(unchecked).toMatch(/message: t\('contextMenu\.extractHereUncheckedConfirm', \{ name: rowName \}\)/);
+        expect(unchecked).toMatch(/secondaryLabel: t\('contextMenu\.extractToFolder'\)/);
+        expect(unchecked).toMatch(/if \(choice === 'cancel'\) return;\s*if \(choice === 'folder'\) \{ await doExtract\(true\); return; \}/);
+        // Asked before the password: the password dialog is drawn over the
+        // confirmation (#537).
+        expect(menu.indexOf('if (entryNames === null) {')).toBeLessThan(menu.indexOf('setArchivePasswordDialog({'));
     });
 
     it('extracts "to folder" into a folder of its own, never one that is there', () => {

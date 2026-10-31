@@ -598,7 +598,8 @@
             "setAsPublic": "Postavi kao javno",
             "makeAllPrivate": "Postavi sve kao privatno",
             "dropboxRestoreLimit": "AeroFTP može vratiti verzije datoteka koje je moguće oporaviti. Mape vratite iz odjeljka Izbrisane datoteke na dropbox.com. Upitnik znači da Dropbox nije prepoznao vrstu stavke.",
-            "openWithDefaultApp": "Otvori zadanom aplikacijom"
+            "openWithDefaultApp": "Otvori zadanom aplikacijom",
+            "extractHereUncheckedConfirm": "Imena unutar {name} ne mogu se pročitati prije izdvajanja, pa AeroFTP ne može provjeriti što bi „Izdvoji ovdje” prepisalo u ovoj mapi. „Izdvoji u mapu” nikada ništa ne prepisuje."
         },
         "transfer": {
             "transferring": "Prijenos...",

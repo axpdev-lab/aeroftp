@@ -473,7 +473,7 @@ import { useTranslation } from './i18n';
 import { ConfirmDialog, InputDialog, ArchivePasswordDialog, SyncNavDialog, PropertiesDialog, FileProperties, ChecksumAlgorithm, ChecksumCapability, MultiFilePropertiesDialog, MultiFileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
 import { TransferToastContainer, dispatchTransferToast, toggleTransferToast } from './components/Transfer/TransferToastContainer';
 import { runExtractWithToast } from './utils/extractToast';
-import { aeroEntryNames, aeroVaultKind, archiveStem, dispatchAeroExtract, dispatchGeneralExtract, extractCollisionList, extractCollisions, isWrongPasswordError, resolveUniqueExtractDir } from './utils/extractOrchestrator';
+import { aeroEntryNames, aeroVaultKind, archiveStem, dispatchAeroExtract, dispatchGeneralExtract, extractCollisionList, extractHereCollisions, isWrongPasswordError, resolveUniqueExtractDir } from './utils/extractOrchestrator';
 import { formatExtractDetails, formatCompressDetails } from './utils/archiveSizeReport';
 import { findGvfsMtpMount, isGvfsMtpPath } from './utils/gvfsMtpMount';
 import { acceptFlatpakImport, flatpakImportResultDialog, flatpakOfferHandlers } from './utils/flatpakImport';
@@ -15599,10 +15599,10 @@ const App: React.FC = () => {
     const rowFolder = localRowFolder(file, currentLocalPath);
     // C-F03: an "Extract here" merges the archive into its folder and writes
     // over what is there under the same name, so it asks first. The folder is
-    // listed afresh with its hidden entries, which the panel may not show.
+    // listed afresh with its hidden entries, which the panel may not show; a
+    // folder that cannot be listed stops the extraction with its error.
     const confirmExtractHere = async (entryNames: string[]): Promise<boolean> => {
-      const destNames = (await invoke<LocalFile[]>('get_local_files', { path: rowFolder, showHidden: true }).catch(() => [] as LocalFile[])).map(f => f.name);
-      const collisions = extractCollisions(entryNames, destNames);
+      const collisions = await extractHereCollisions(entryNames, rowFolder);
       if (collisions.length === 0) return true;
       return new Promise<boolean>((resolve) => {
         setConfirmDialog({
@@ -15916,11 +15916,11 @@ const App: React.FC = () => {
     const isArchive = isZipArchive || is7zArchive || isRarArchive || isTarArchive || isSingleArchive;
 
     if (isArchive && count === 1) {
-      // The entries an "Extract here" writes into the archive's folder.
-      // Best-effort: listing an encrypted-header archive needs a password we
-      // do not have yet, so a listing failure lists nothing and the extraction
-      // proceeds exactly as before (no regression).
-      const generalEntryNames = async (): Promise<string[]> => {
+      // The entries an "Extract here" writes into the archive's folder, or
+      // null when they cannot be read: a 7z or RAR archive with encrypted
+      // names lists nothing without the password we do not have yet (a zip
+      // never encrypts its names), and a damaged archive lists nothing at all.
+      const generalEntryNames = async (): Promise<string[] | null> => {
         // gz/xz/bz2: one output member, named by the codec-stripped stem.
         if (isSingleArchive) return [archiveStem(rowName)];
         try {
@@ -15931,7 +15931,7 @@ const App: React.FC = () => {
           else if (isRarArchive) entries = await invoke('list_rar', { archivePath: file.path });
           return entries.map(e => e.name);
         } catch {
-          return [];
+          return null;
         }
       };
 
@@ -15939,7 +15939,27 @@ const App: React.FC = () => {
         try {
           // "Extract to folder" (below) is collision-free via
           // resolveUniqueExtractDir, so it is not pre-checked.
-          if (!createSubfolder && !await confirmExtractHere(await generalEntryNames())) return;
+          if (!createSubfolder) {
+            const entryNames = await generalEntryNames();
+            if (entryNames === null) {
+              // What it would write over cannot be checked: say so, and offer
+              // the folder of its own. Asked before the password, whose dialog
+              // would cover this one.
+              const choice = await new Promise<'here' | 'folder' | 'cancel'>((resolve) => {
+                setConfirmDialog({
+                  message: t('contextMenu.extractHereUncheckedConfirm', { name: rowName }),
+                  confirmLabel: t('contextMenu.extractHere'),
+                  confirmColor: 'red',
+                  secondaryLabel: t('contextMenu.extractToFolder'),
+                  onConfirm: () => { setConfirmDialog(null); resolve('here'); },
+                  onSecondary: () => { setConfirmDialog(null); resolve('folder'); },
+                  onCancel: () => { setConfirmDialog(null); resolve('cancel'); },
+                });
+              });
+              if (choice === 'cancel') return;
+              if (choice === 'folder') { await doExtract(true); return; }
+            } else if (!await confirmExtractHere(entryNames)) return;
+          }
           // "Extract to folder" must never clobber: resolve a unique stem
           // subfolder (stem, stem (2), ...) up front and extract into it with
           // createSubfolder:false, exactly like the OS "Extract to folder" verb

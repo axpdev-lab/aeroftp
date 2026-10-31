@@ -598,7 +598,8 @@
             "setAsPublic": "Määra avalikuks",
             "makeAllPrivate": "Muuda kõik privaatseks",
             "dropboxRestoreLimit": "AeroFTP saab taastada taastatavaid failiversioone. Taasta kaustad lehel dropbox.com jaotises Kustutatud failid. Küsimärk tähendab, et Dropbox ei tuvastanud üksuse tüüpi.",
-            "openWithDefaultApp": "Ava vaikerakendusega"
+            "openWithDefaultApp": "Ava vaikerakendusega",
+            "extractHereUncheckedConfirm": "Arhiivi {name} sees olevaid nimesid ei saa enne lahtipakkimist lugeda, seega ei saa AeroFTP kontrollida, mida „Paki siia lahti“ selles kaustas üle kirjutaks. „Paki kausta lahti“ ei kirjuta kunagi midagi üle."
         },
         "transfer": {
             "transferring": "Ülekanne...",

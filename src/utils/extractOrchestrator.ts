@@ -141,6 +141,21 @@ export function extractCollisions(entryNames: readonly string[], destNames: Iter
     return [...found];
 }
 
+/**
+ * The entries an "Extract here" into `destDir` would write over, from the
+ * folder's own listing, hidden entries included. A folder that cannot be listed
+ * is not taken as empty: the error goes to the caller, which stops, since an
+ * empty listing would let the extraction replace files without asking.
+ */
+export async function extractHereCollisions(
+    entryNames: readonly string[],
+    destDir: string,
+    listDir: (path: string) => Promise<readonly { name: string }[]> = (path) =>
+        invoke<{ name: string }[]>('get_local_files', { path, showHidden: true }),
+): Promise<string[]> {
+    return extractCollisions(entryNames, (await listDir(destDir)).map(f => f.name));
+}
+
 /** The names an overwrite confirmation lists: the first five, then how many more. Pure. */
 export function extractCollisionList(collisions: readonly string[]): string {
     return collisions.slice(0, 5).join(', ') + (collisions.length > 5 ? `, +${collisions.length - 5}` : '');

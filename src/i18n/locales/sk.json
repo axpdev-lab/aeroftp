@@ -598,7 +598,8 @@
             "setAsPublic": "Nastaviť ako verejný",
             "makeAllPrivate": "Nastaviť všetko ako súkromné",
             "dropboxRestoreLimit": "AeroFTP môže obnoviť obnoviteľné verzie súborov. Priečinky obnovte v časti Odstránené súbory na dropbox.com. Otáznik znamená, že Dropbox nerozpoznal typ položky.",
-            "openWithDefaultApp": "Otvoriť predvolenou aplikáciou"
+            "openWithDefaultApp": "Otvoriť predvolenou aplikáciou",
+            "extractHereUncheckedConfirm": "Názvy v archíve {name} nie je možné pred rozbalením prečítať, takže AeroFTP nemôže skontrolovať, čo by „Rozbaliť tu“ v tomto priečinku prepísalo. „Rozbaliť do priečinka“ nikdy nič neprepisuje."
         },
         "transfer": {
             "transferring": "Prenáša sa...",

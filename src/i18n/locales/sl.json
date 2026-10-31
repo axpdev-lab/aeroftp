@@ -598,7 +598,8 @@
             "setAsPublic": "Nastavi kot javno",
             "makeAllPrivate": "Nastavi vse kot zasebno",
             "dropboxRestoreLimit": "AeroFTP lahko obnovi obnovljive različice datotek. Mape obnovite v razdelku Izbrisane datoteke na dropbox.com. Vprašaj pomeni, da Dropbox ni prepoznal vrste elementa.",
-            "openWithDefaultApp": "Odpri s privzeto aplikacijo"
+            "openWithDefaultApp": "Odpri s privzeto aplikacijo",
+            "extractHereUncheckedConfirm": "Imen znotraj {name} ni mogoče prebrati pred razširjanjem, zato AeroFTP ne more preveriti, kaj bi „Razširi sem“ prepisalo v tej mapi. „Razširi v mapo“ nikoli ničesar ne prepiše."
         },
         "transfer": {
             "transferring": "Prenašanje...",

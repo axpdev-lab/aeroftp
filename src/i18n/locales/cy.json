@@ -598,7 +598,8 @@
             "setAsPublic": "Gosod fel Cyhoeddus",
             "makeAllPrivate": "Gwneud pob un yn breifat",
             "dropboxRestoreLimit": "Gall AeroFTP adfer fersiynau o ffeiliau y gellir eu hadfer. Adferwch ffolderi o Ffeiliau wedi'u dileu ar dropbox.com. Mae marc cwestiwn yn golygu nad yw Dropbox wedi adnabod math yr eitem.",
-            "openWithDefaultApp": "Agor gyda'r ap rhagosodedig"
+            "openWithDefaultApp": "Agor gyda'r ap rhagosodedig",
+            "extractHereUncheckedConfirm": "Ni ellir darllen yr enwau y tu mewn i {name} cyn echdynnu, felly ni all AeroFTP wirio beth fyddai “Echdynnu Yma” yn ei drosysgrifennu yn y ffolder hon. Nid yw “Echdynnu i Ffolder” byth yn trosysgrifennu."
         },
         "transfer": {
             "transferring": "Yn trosglwyddo...",

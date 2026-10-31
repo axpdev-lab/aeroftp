@@ -598,7 +598,8 @@
             "setAsPublic": "Ustaw jako publiczny",
             "makeAllPrivate": "Ustaw wszystkie jako prywatne",
             "dropboxRestoreLimit": "AeroFTP może przywracać możliwe do odzyskania wersje plików. Foldery przywróć w sekcji Usunięte pliki na dropbox.com. Znak zapytania oznacza, że Dropbox nie rozpoznał typu elementu.",
-            "openWithDefaultApp": "Otwórz w domyślnej aplikacji"
+            "openWithDefaultApp": "Otwórz w domyślnej aplikacji",
+            "extractHereUncheckedConfirm": "Nazw plików wewnątrz {name} nie można odczytać przed wypakowaniem, więc AeroFTP nie może sprawdzić, co „Wypakuj tutaj” nadpisałoby w tym folderze. „Wypakuj do folderu” nigdy niczego nie nadpisuje."
         },
         "transfer": {
             "transferring": "Przesyłanie...",

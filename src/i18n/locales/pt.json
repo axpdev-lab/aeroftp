@@ -598,7 +598,8 @@
             "setAsPublic": "Definir como público",
             "makeAllPrivate": "Tornar tudo privado",
             "dropboxRestoreLimit": "O AeroFTP pode restaurar versões recuperáveis de arquivos. Restaure pastas em Arquivos excluídos no dropbox.com. Um ponto de interrogação significa que o Dropbox não identificou o tipo de item.",
-            "openWithDefaultApp": "Abrir com o aplicativo padrão"
+            "openWithDefaultApp": "Abrir com o aplicativo padrão",
+            "extractHereUncheckedConfirm": "Os nomes dentro de {name} não podem ser lidos antes da extração, por isso o AeroFTP não consegue verificar o que “Extrair Aqui” sobrescreveria nesta pasta. “Extrair para Pasta” nunca sobrescreve nada."
         },
         "transfer": {
             "transferring": "Transferindo...",

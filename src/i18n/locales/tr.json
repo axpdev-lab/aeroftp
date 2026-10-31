@@ -598,7 +598,8 @@
             "setAsPublic": "Herkese Açık Olarak Ayarla",
             "makeAllPrivate": "Tümünü özel yap",
             "dropboxRestoreLimit": "AeroFTP, kurtarılabilir dosya sürümlerini geri yükleyebilir. Klasörleri dropbox.com üzerindeki Silinen dosyalar bölümünden geri yükleyin. Soru işareti, Dropbox'ın öğe türünü belirleyemediği anlamına gelir.",
-            "openWithDefaultApp": "Varsayılan uygulamayla aç"
+            "openWithDefaultApp": "Varsayılan uygulamayla aç",
+            "extractHereUncheckedConfirm": "{name} içindeki adlar çıkarmadan önce okunamaz, bu yüzden AeroFTP “Buraya Çıkar” seçeneğinin bu klasörde neyin üzerine yazacağını denetleyemez. “Klasöre Çıkar” hiçbir zaman üzerine yazmaz."
         },
         "transfer": {
             "transferring": "Aktarılıyor...",

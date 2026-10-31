@@ -598,7 +598,8 @@
             "setAsPublic": "Beállítás nyilvánosra",
             "makeAllPrivate": "Összes priváttá tétele",
             "dropboxRestoreLimit": "Az AeroFTP vissza tudja állítani a helyreállítható fájlverziókat. A mappákat a dropbox.com Törölt fájlok részéből állíthatja vissza. A kérdőjel azt jelenti, hogy a Dropbox nem azonosította az elem típusát.",
-            "openWithDefaultApp": "Megnyitás az alapértelmezett alkalmazással"
+            "openWithDefaultApp": "Megnyitás az alapértelmezett alkalmazással",
+            "extractHereUncheckedConfirm": "A(z) {name} belsejében lévő nevek kibontás előtt nem olvashatók, ezért az AeroFTP nem tudja ellenőrizni, mit írna felül a „Kibontás ide” művelet ebben a mappában. A „Kibontás mappába” művelet soha nem ír felül semmit."
         },
         "transfer": {
             "transferring": "Átvitel...",

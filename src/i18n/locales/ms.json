@@ -598,7 +598,8 @@
             "setAsPublic": "Tetapkan sebagai Awam",
             "makeAllPrivate": "Jadikan semua peribadi",
             "dropboxRestoreLimit": "AeroFTP boleh memulihkan versi fail yang masih boleh dipulihkan. Pulihkan folder daripada Fail dipadam di dropbox.com. Tanda soal bermaksud Dropbox tidak mengenal pasti jenis item.",
-            "openWithDefaultApp": "Buka dengan apl lalai"
+            "openWithDefaultApp": "Buka dengan apl lalai",
+            "extractHereUncheckedConfirm": "Nama di dalam {name} tidak boleh dibaca sebelum pengekstrakan, jadi AeroFTP tidak dapat menyemak apa yang akan ditulis ganti oleh “Ekstrak Di Sini” dalam folder ini. “Ekstrak ke Folder” tidak pernah menulis ganti apa-apa."
         },
         "transfer": {
             "transferring": "Memindahkan...",

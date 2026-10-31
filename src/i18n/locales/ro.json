@@ -598,7 +598,8 @@
             "setAsPublic": "Setați ca public",
             "makeAllPrivate": "Fă totul privat",
             "dropboxRestoreLimit": "AeroFTP poate restaura versiunile recuperabile ale fișierelor. Restaurați dosarele din Fișiere șterse pe dropbox.com. Un semn de întrebare înseamnă că Dropbox nu a identificat tipul elementului.",
-            "openWithDefaultApp": "Deschide cu aplicația implicită"
+            "openWithDefaultApp": "Deschide cu aplicația implicită",
+            "extractHereUncheckedConfirm": "Numele din {name} nu pot fi citite înainte de extragere, deci AeroFTP nu poate verifica ce ar suprascrie opțiunea „Extrage aici” în acest dosar. Opțiunea „Extrage în dosar” nu suprascrie niciodată nimic."
         },
         "transfer": {
             "transferring": "Se transferă...",

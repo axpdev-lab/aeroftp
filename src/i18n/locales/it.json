@@ -1067,7 +1067,8 @@
             "setAsPublic": "Rendi Pubblico",
             "makeAllPrivate": "Rendi tutto privato",
             "dropboxRestoreLimit": "AeroFTP può ripristinare le versioni recuperabili dei file. Ripristina le cartelle da File eliminati su dropbox.com. Un punto interrogativo indica che Dropbox non ha identificato il tipo di elemento.",
-            "openWithDefaultApp": "Apri con l'app predefinita"
+            "openWithDefaultApp": "Apri con l'app predefinita",
+            "extractHereUncheckedConfirm": "I nomi dentro {name} non si possono leggere prima dell'estrazione, quindi AeroFTP non può verificare cosa sovrascriverebbe Estrai qui in questa cartella. Estrai nella cartella non sovrascrive mai."
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",

@@ -2130,6 +2130,7 @@
             "extract": "Extract",
             "extract7zHere": "Extract 7z Here",
             "extractHere": "Extract Here",
+            "extractHereUncheckedConfirm": "The names inside {name} cannot be read before extracting, so AeroFTP cannot check what Extract Here would overwrite in this folder. Extract to Folder never overwrites.",
             "extracting": "Extracting...",
             "extractionFailed": "Extraction failed",
             "extractOverwriteConfirm": "Extracting here will overwrite {count} existing item(s): {names}. Continue?",

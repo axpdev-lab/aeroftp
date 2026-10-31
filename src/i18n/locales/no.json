@@ -598,7 +598,8 @@
             "setAsPublic": "Angi som offentlig",
             "makeAllPrivate": "Gjør alle private",
             "dropboxRestoreLimit": "AeroFTP kan gjenopprette filversjoner som kan gjenopprettes. Gjenopprett mapper fra Slettede filer på dropbox.com. Et spørsmålstegn betyr at Dropbox ikke har identifisert elementtypen.",
-            "openWithDefaultApp": "Åpne med standardapp"
+            "openWithDefaultApp": "Åpne med standardapp",
+            "extractHereUncheckedConfirm": "Navnene inni {name} kan ikke leses før utpakking, så AeroFTP kan ikke sjekke hva «Pakk ut her» ville overskrive i denne mappen. «Pakk ut til mappe» overskriver aldri noe."
         },
         "transfer": {
             "transferring": "Overfører...",

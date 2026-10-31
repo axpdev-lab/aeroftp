@@ -598,7 +598,8 @@
             "setAsPublic": "Instellen als openbaar",
             "makeAllPrivate": "Alles privé maken",
             "dropboxRestoreLimit": "AeroFTP kan herstelbare bestandsversies terugzetten. Zet mappen terug via Verwijderde bestanden op dropbox.com. Een vraagteken betekent dat Dropbox het itemtype niet heeft herkend.",
-            "openWithDefaultApp": "Openen met standaardapp"
+            "openWithDefaultApp": "Openen met standaardapp",
+            "extractHereUncheckedConfirm": "De namen in {name} kunnen niet worden gelezen vóór het uitpakken, dus AeroFTP kan niet controleren wat “Hier uitpakken” in deze map zou overschrijven. “Uitpakken naar map” overschrijft nooit iets."
         },
         "transfer": {
             "transferring": "Overdragen...",

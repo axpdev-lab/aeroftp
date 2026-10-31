@@ -598,7 +598,8 @@
             "setAsPublic": "Jadikan Publik",
             "makeAllPrivate": "Jadikan semua privat",
             "dropboxRestoreLimit": "AeroFTP dapat memulihkan revisi file yang masih dapat dipulihkan. Pulihkan folder dari File yang dihapus di dropbox.com. Tanda tanya berarti Dropbox tidak mengidentifikasi jenis item.",
-            "openWithDefaultApp": "Buka dengan aplikasi default"
+            "openWithDefaultApp": "Buka dengan aplikasi default",
+            "extractHereUncheckedConfirm": "Nama di dalam {name} tidak dapat dibaca sebelum diekstrak, sehingga AeroFTP tidak dapat memeriksa apa yang akan ditimpa oleh “Ekstrak Di Sini” di folder ini. “Ekstrak ke Folder” tidak pernah menimpa apa pun."
         },
         "transfer": {
             "transferring": "Mentransfer...",
