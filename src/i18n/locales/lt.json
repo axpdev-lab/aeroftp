@@ -6311,7 +6311,12 @@
                 }
             },
             "rescan": "Nuskaityti iš naujo",
-            "rescanNeeded": "Palyginimas atliktas su kitais išskyrimais arba kitu atsarginių kopijų aplanku. Prieš paleisdami nuskaitykite iš naujo.",
+            "rescanBringsBack": "Šie nustatymai grąžina failus, kuriuos nuskaitymas praleido, todėl jų niekada neperskaitė. Prieš paleisdami nuskaitykite iš naujo.",
+            "rescanFlat": "Šis palyginimas gautas iš dviejų skydelių sąrašų, o ne iš viso nuskaitymo, todėl negali taikyti išskyrimų. Prieš paleisdami nuskaitykite iš naujo.",
+            "narrowAvailable": "Šie nustatymai tik susiaurina palyginimą, todėl jį galima filtruoti nenuskaitant iš naujo.",
+            "narrowApply": "Taikyti šiam palyginimui",
+            "narrowedNote": "Filtruota su naujais išskyrimais nenuskaitant iš naujo. Identiškų failų skaičius vis dar yra iš nuskaitymo.",
+            "narrowAfterRestore": "Vyksta atkūrimas. Šiuos nustatymus galima taikyti palyginimui, kai atkūrimas baigsis.",
             "backup": {
                 "checking": "Tikrinama, kaip šis serveris perkelia failus...",
                 "serverCopy": "Šis serveris negali perkelti: kiekviena saugoma kopija nukopijuojama serveryje ir tada ištrinama. Tai kainuoja visą kiekvieno saugomo failo kopiją, dviem atskirais žingsniais.",

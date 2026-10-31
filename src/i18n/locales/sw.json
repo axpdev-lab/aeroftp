@@ -6311,7 +6311,12 @@
                 }
             },
             "rescan": "Changanua upya",
-            "rescanNeeded": "Ulinganisho ulifanywa kwa vighairi vingine au folda nyingine ya hifadhi rudufu. Changanua upya kabla ya kuendesha.",
+            "rescanBringsBack": "Mipangilio hii hurudisha faili ambazo uchanganuzi uliziacha, kwa hivyo haukuzisoma kamwe. Changanua upya kabla ya kuendesha.",
+            "rescanFlat": "Ulinganisho huu ulitoka kwenye orodha za paneli mbili, si uchanganuzi kamili, kwa hivyo hauwezi kutumia vighairi. Changanua upya kabla ya kuendesha.",
+            "narrowAvailable": "Mipangilio hii hupunguza ulinganisho tu, kwa hivyo unaweza kuchujwa bila kuchanganua upya.",
+            "narrowApply": "Tumia kwenye ulinganisho huu",
+            "narrowedNote": "Umechujwa kwa vighairi vipya bila kuchanganua upya. Idadi ya zinazofanana bado ni ile ya uchanganuzi.",
+            "narrowAfterRestore": "Urejeshaji unaendelea. Mipangilio hii inaweza kutumika kwa ulinganisho urejeshaji utakapokamilika.",
             "backup": {
                 "checking": "Inakagua jinsi seva hii inavyohamisha faili...",
                 "serverCopy": "Seva hii haiwezi kuhamisha: kila nakala inayohifadhiwa inanakiliwa kwenye seva kisha inafutwa. Hiyo inagharimu nakala kamili ya kila faili linalohifadhiwa, kwa hatua mbili tofauti.",

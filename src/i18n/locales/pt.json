@@ -6311,7 +6311,12 @@
                 }
             },
             "rescan": "Escanear novamente",
-            "rescanNeeded": "A comparação foi feita com outras exclusões ou outra pasta de backup. Escaneie novamente antes de executar.",
+            "rescanBringsBack": "Estas configurações trazem de volta arquivos que o escaneamento deixou de fora, por isso nunca os leu. Escaneie novamente antes de executar.",
+            "rescanFlat": "Esta comparação veio das listagens dos dois painéis, não de um escaneamento completo, por isso não pode aplicar exclusões. Escaneie novamente antes de executar.",
+            "narrowAvailable": "Estas configurações apenas restringem a comparação, por isso ela pode ser filtrada sem escanear novamente.",
+            "narrowApply": "Aplicar a esta comparação",
+            "narrowedNote": "Filtrada com novas exclusões sem escanear novamente. A contagem de idênticos continua sendo a do escaneamento.",
+            "narrowAfterRestore": "Uma restauração está em andamento. Estas configurações podem ser aplicadas à comparação quando a restauração terminar.",
             "backup": {
                 "checking": "Verificando como este servidor move arquivos...",
                 "serverCopy": "Este servidor não suporta mover: cada cópia mantida é copiada no servidor e depois excluída. Isso custa uma cópia completa de cada arquivo mantido, em duas etapas separadas.",

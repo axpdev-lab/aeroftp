@@ -6311,7 +6311,12 @@
                 }
             },
             "rescan": "Skanna om",
-            "rescanNeeded": "Jämförelsen gjordes med andra exkluderingar eller en annan säkerhetskopieringsmapp. Skanna om innan körning.",
+            "rescanBringsBack": "De här inställningarna tar tillbaka filer som skanningen utelämnade, så den har aldrig läst dem. Skanna om innan körning.",
+            "rescanFlat": "Den här jämförelsen kom från listorna för de två panelerna, inte från en full skanning, så den kan inte tillämpa exkluderingar. Skanna om innan körning.",
+            "narrowAvailable": "De här inställningarna begränsar bara jämförelsen, så den kan filtreras utan ny skanning.",
+            "narrowApply": "Tillämpa på den här jämförelsen",
+            "narrowedNote": "Filtrerad med nya exkluderingar utan ny skanning. Antalet identiska är fortfarande det från skanningen.",
+            "narrowAfterRestore": "En återställning pågår. De här inställningarna kan tillämpas på jämförelsen när återställningen är klar.",
             "backup": {
                 "checking": "Kontrollerar hur den här servern flyttar filer...",
                 "serverCopy": "Den här servern kan inte flytta: varje bevarad kopia kopieras på servern och raderas sedan. Det kostar en fullständig kopia av varje bevarad fil, i två separata steg.",

@@ -6311,7 +6311,12 @@
                 }
             },
             "rescan": "Neu scannen",
-            "rescanNeeded": "Der Vergleich wurde mit anderen Ausschlüssen oder einem anderen Backup-Ordner erstellt. Vor dem Ausführen neu scannen.",
+            "rescanBringsBack": "Diese Einstellungen bringen Dateien zurück, die der Scan ausgelassen hat, also nie gelesen wurden. Vor dem Ausführen neu scannen.",
+            "rescanFlat": "Dieser Vergleich stammt aus den Listen der beiden Panels, nicht aus einem vollständigen Scan, daher kann er keine Ausschlüsse anwenden. Vor dem Ausführen neu scannen.",
+            "narrowAvailable": "Diese Einstellungen schränken den Vergleich nur ein, daher kann er ohne neuen Scan gefiltert werden.",
+            "narrowApply": "Auf diesen Vergleich anwenden",
+            "narrowedNote": "Mit neuen Ausschlüssen gefiltert, ohne neu zu scannen. Die Anzahl identischer Dateien stammt weiterhin aus dem Scan.",
+            "narrowAfterRestore": "Eine Wiederherstellung läuft. Diese Einstellungen können auf den Vergleich angewendet werden, sobald sie beendet ist.",
             "backup": {
                 "checking": "Prüfe, wie dieser Server Dateien verschiebt...",
                 "serverCopy": "Dieser Server kann nicht verschieben: Jede aufbewahrte Kopie wird auf dem Server kopiert und dann gelöscht. Das kostet eine vollständige Kopie jeder aufbewahrten Datei, in zwei getrennten Schritten.",
