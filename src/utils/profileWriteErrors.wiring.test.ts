@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { revertConvertedProfile } from './serverProfileStore';
 import { transformWithOxc } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 import connection from '../components/ConnectionScreen.tsx?raw';
@@ -54,8 +55,8 @@ function fixture(fail: 'read' | 'write' | 'none' = 'write') {
         modeChanged: true, targetModeLabel: 'Native', originalEditMode: { protocol: 'webdav' },
         customIconForSave: undefined, faviconForSave: undefined, editHydratedPasswordRef: { current: '' },
         modeCredentialSnapshotsRef: { current: { ftp: 'fixture' } }, bridgeSaveBlocked: false,
-        loadSavedServerProfiles: read, loadSavedServerProfilesStrict: read, storeSavedServerProfiles: store,
-        readSavedServerProfilesForWrite: async () => ({ profiles: await read(), userId: 7 }),
+        loadSavedServerProfiles: read, loadSavedServerProfilesStrict: read, storeSavedServerProfiles: store, revertConvertedProfile, accountChangeGeneration: () => 0,
+        readSavedServerProfilesForWrite: async () => ({ profiles: await read(), userId: 7, revision: 'r7' }),
         tryStoreCredential: vi.fn(async () => true), stashFilenApiKey: vi.fn(async () => false),
         aeroCryptOverlayFields: vi.fn(async () => ({})), migrateCryptCredentials: vi.fn(),
         normalizeMegaOptions: (v: unknown) => v, getDefaultPort: () => 21, connectionProfileDefaults,
@@ -163,8 +164,8 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.events.filter(e => e.detail?.title === 'connection.convertUndone')).toEqual([]);
     });
 
-    it.each(['read', 'write'] as const)('retains the Settings dialog and dirty state on %s failure', async fail => {
-        const f = fixture(fail);
+    it('retains the Settings dialog and dirty state when the saved profiles cannot be read', async () => {
+        const f = fixture('read');
         Object.assign(f.context, {
             saveState: 'idle', settings: { fontSize: 14, fontFamily: 'system', introHubIconSize: 32 },
             settingsBase: { current: { fontSize: 12, fontFamily: 'system', introHubIconSize: 32 } },
@@ -184,8 +185,8 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.context.setTimeout).not.toHaveBeenCalled();
         expect(f.context.invoke).not.toHaveBeenCalled();
         expect(f.events.filter(e => e.type === 'aeroftp-settings-changed')).toEqual([]);
-        if (fail === 'read') expect(f.context.updateAppSettings).not.toHaveBeenCalled();
-        else expect(f.store).toHaveBeenCalledWith(f.servers, false, 7);
+        expect(f.context.updateAppSettings).not.toHaveBeenCalled();
+        expect(f.store).not.toHaveBeenCalled();
     });
 
     it('portable Settings save never changes the installed app autostart', async () => {
@@ -289,7 +290,14 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.context.setServers).not.toHaveBeenCalled();
         expect(f.events.some(e => e.detail?.type === 'error')).toBe(true);
         expect(f.context.logActivity).not.toHaveBeenCalled();
-        expect(f.context.deleteProfileVaultSecrets).not.toHaveBeenCalled();
+        // A failed duplicate removes the secrets it copied for its unlisted copy,
+        // never those of the profile it copied from.
+        if (name === 'handleDuplicate') {
+            expect(f.context.deleteProfileVaultSecrets).toHaveBeenCalledTimes(1);
+            expect(f.context.deleteProfileVaultSecrets).not.toHaveBeenCalledWith(f.servers[0].id, expect.anything());
+        } else {
+            expect(f.context.deleteProfileVaultSecrets).not.toHaveBeenCalled();
+        }
         expect(f.context.pruneServerFromGroups).not.toHaveBeenCalled();
         expect(f.context.setGroups).not.toHaveBeenCalled();
         expect(f.context.setRenamingId).not.toHaveBeenCalled();
@@ -300,7 +308,7 @@ describe('saved profile write rejection in production handlers', () => {
         const f = fixture('none');
         const fn = await execute(connection, ['saveToServers', 'handleConnectAndSave'], f.context);
         await fn.handleConnectAndSave();
-        expect(f.store).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ id: 'old', name: 'Edited' })]), false, 7);
+        expect(f.store).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ id: 'old', name: 'Edited' })]), false, 7, 'r7');
         expect(f.context.onFormSaved).toHaveBeenCalledTimes(1);
         expect(f.context.syncPersistedModeCredentials).toHaveBeenCalledWith('old');
     });
@@ -349,7 +357,7 @@ describe('saved profile write rejection in production handlers', () => {
         f.read.mockResolvedValueOnce([...f.servers, unseen]);
         const fn = await execute(hub, ['handleRenameSubmit'], f.context);
         await fn.handleRenameSubmit(f.servers[0], 'Renamed');
-        expect(f.store).toHaveBeenCalledWith([expect.objectContaining({ name: 'Renamed' }), f.servers[1], unseen], false, 7);
+        expect(f.store).toHaveBeenCalledWith([expect.objectContaining({ name: 'Renamed' }), f.servers[1], unseen], false, 7, 'r7');
         expect(f.context.setRenamingId).toHaveBeenCalledWith(null);
     });
 
@@ -413,12 +421,12 @@ describe('saved profile write rejection in production handlers', () => {
 
     it('failed import persistence retains import input and reports the failure', async () => {
         const f = fixture();
-        const start = settingsSource.indexOf('                                                                        try {', settingsSource.indexOf('// Reload server profiles from the imported keystore'));
+        const start = settingsSource.indexOf('                                                                        try {', settingsSource.indexOf('// The restore stored the list in the active account'));
         const end = settingsSource.indexOf("setKeystoreImportPassword('');", start) + "setKeystoreImportPassword('');".length;
         Object.assign(f.context, {
             result: { profilesAfterDecisions: f.servers }, setKeystoreMessage: vi.fn(), onServersChanged: vi.fn(),
             setKeystoreMetadata: vi.fn(), setKeystoreImportFilePath: vi.fn(), setKeystoreImportPassword: vi.fn(), setKeystoreImportResult: vi.fn(),
-            invoke: vi.fn(async () => JSON.stringify(f.servers)),
+            reloadRestoredServerProfiles: vi.fn(async () => { throw new Error('the partition could not be read'); }),
         });
         await snippet(settingsSource.slice(start, end), f.context);
         expect(f.context.setKeystoreMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
@@ -536,17 +544,14 @@ describe('the saved-profile list shown after a write', () => {
         const writes = hub.split('\n').filter(line => /storeSavedServerProfiles\(.+\)/.test(line) && !line.trim().startsWith('//'));
         expect(writes.length).toBeGreaterThan(0);
         for (const line of writes) {
-            expect(line).toMatch(/setServers\(await storeSavedServerProfiles\(|const stored = await storeSavedServerProfiles\(/);
+            expect(line).toMatch(/setServers\(await storeSavedServerProfiles\(|(?:const )?stored = await storeSavedServerProfiles\(/);
         }
     });
 
     it('Settings never shows the list it sent once the write has stored it', () => {
-        const lines = settingsSource.split('\n');
-        const writes = lines.flatMap((line, i) => (/await storeSavedServerProfiles\(\w+/.test(line) && !line.trim().startsWith('//') ? [i] : []));
-        expect(writes.length).toBeGreaterThan(0);
-        for (const i of writes) {
-            const sent = /await storeSavedServerProfiles\((\w+)/.exec(lines[i])![1];
-            expect(lines.slice(i, i + 3).join('\n')).not.toMatch(new RegExp(`setServers\\(${sent}\\)`));
-        }
+        // Its one list write is the keystore restore, which shows what that stored.
+        expect(settingsSource).not.toMatch(/await storeSavedServerProfiles\(/);
+        expect(settingsSource).toContain('const restored = await reloadRestoredServerProfiles();');
+        expect(settingsSource).toContain('if (accountChangeGeneration() === accountBefore) setServers(restored);');
     });
 });

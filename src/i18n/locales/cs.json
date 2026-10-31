@@ -1357,7 +1357,20 @@
             "serverProfilesCount": "Profily serverů: {count}",
             "aiKeysCount": "Klíče AI: {count}",
             "oauthTokensCount": "Tokeny OAuth: {count}",
-            "configEntriesCount": "Položky konfigurace: {count}"
+            "configEntriesCount": "Položky konfigurace: {count}",
+            "importExistingLabel": "Pokud profil již existuje",
+            "importExistingSkip": "Přeskočit",
+            "importExistingOverwrite": "Přepsat",
+            "importExistingDuplicate": "Duplikovat",
+            "importExistingSkipHint": "Profil, který již máte, zůstane beze změny, včetně hesel a tokenů.",
+            "importExistingOverwriteHint": "Profil, který již máte, se nahradí na místě hesly a tokeny ze souboru. Zůstane v oblíbených a skupinách.",
+            "importExistingDuplicateHint": "Profil, který již máte, zůstane a kopie ze souboru se přidá vedle něj s číslovaným názvem.",
+            "overwrittenCount": "{count} přepsáno",
+            "duplicatedCount": "{count} duplikováno",
+            "importJottaChainWarning": "Jottacloud obnovuje přihlášení při každém připojení a {names} nyní sdílí přihlášení s jinou kopií: kopie, která se připojí první, odhlásí tu druhou (zařízení, ze kterého soubor pochází, nebo profil, ze kterého byla duplikována). Přihlaste druhou znovu pomocí nového Personal Login Token.",
+            "importOauthAppKept": "{names} přišly s jinou vlastní aplikací OAuth, než jakou má toto zařízení pro daného poskytovatele. Uložená aplikace byla zachována, takže se přihlaste znovu, pokud se tyto profily přestanou připojovat.",
+            "importTargetChanged": "{names} nebyly přepsány: soubor je nasměruje na jiný server a jejich uložená hesla a tokeny tam nesmí jít. Importujte s volbou Duplikovat pro přidání kopie ze souboru, nebo nejprve profil smažte.",
+            "importSharedSecretsFailed": "{names} byly importovány, ale sdílené tajemství nebo relaci ze souboru se nepodařilo uložit. Pokud se tyto profily nepřipojí, přihlaste se do nich znovu."
         },
         "devtools": {
             "title": "AeroTools",

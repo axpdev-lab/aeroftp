@@ -3363,7 +3363,7 @@ pub async fn provider_download_file(
     state: State<'_, ProviderState>,
     remote_path: String,
     local_path: String,
-    modified: Option<String>,
+    mut modified: Option<String>,
     use_delta: Option<bool>,
     download_segments: Option<u32>,
     sftp_download_preset: Option<SftpDownloadPreset>,
@@ -3417,17 +3417,23 @@ pub async fn provider_download_file(
     let tid_progress = transfer_id.clone();
     let fname_progress = filename.clone();
 
+    // One stream taking over from a segmented run counts from zero: the mark
+    // keeps the bar where the run left it, while speed and time left follow the
+    // bytes really moving.
+    let progress_mark = crate::providers::multi_thread::ProgressMark::default();
+    let first_mark = progress_mark.clone();
     let speed_meter = crate::transfer_speed::SpeedMeter::new();
     let mut progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> = if file_size > 0 {
-        Some(Box::new(move |transferred: u64, total: u64| {
+        Some(Box::new(move |moved: u64, total: u64| {
+            let transferred = first_mark.shown(moved, total);
             let pct = if total > 0 {
                 ((transferred as f64 / total as f64) * 100.0) as u8
             } else {
                 0
             };
-            let speed = speed_meter.bps(transferred);
-            let eta = if speed > 0 && transferred < total {
-                ((total - transferred) as f64 / speed as f64) as u64
+            let speed = speed_meter.bps(moved);
+            let eta = if speed > 0 && moved < total {
+                ((total - moved) as f64 / speed as f64) as u64
             } else {
                 0
             };
@@ -3641,6 +3647,25 @@ pub async fn provider_download_file(
             )
             .await;
             if let Err(ref e) = outcome {
+                // The stream may read another object than the listing saw, and
+                // its time goes on the local file. If this fails the listing
+                // stands: an old time only makes the next sync download again.
+                // A Stop during the reading ends in the branch below.
+                if e.refused_by_the_source() {
+                    let reading = tokio::select! {
+                        biased;
+                        _ = session_cancel.cancelled() => None,
+                        reading = tokio::time::timeout(
+                            Duration::from_secs(30),
+                            provider.stat(&remote_path),
+                        ) => reading.ok().and_then(Result::ok),
+                    };
+                    if let Some(fresh) = reading.and_then(|entry| entry.modified) {
+                        if crate::parse_remote_mtime(&fresh).is_some() {
+                            modified = Some(fresh);
+                        }
+                    }
+                }
                 if session_cancel.is_cancelled() || e.is_cancelled() {
                     let message = format!("Download cancelled by user: {}", filename);
                     crate::transfer_event_sink::emit_gui_transfer_event(
@@ -3677,15 +3702,17 @@ pub async fn provider_download_file(
         let tid_fb = transfer_id.clone();
         let fname_fb = filename.clone();
         let speed_meter = crate::transfer_speed::SpeedMeter::new();
-        progress_cb = Some(Box::new(move |transferred: u64, total: u64| {
+        progress_cb = Some(Box::new(move |moved: u64, total: u64| {
+            let transferred = progress_mark.shown(moved, total);
             let pct = if total > 0 {
                 ((transferred as f64 / total as f64) * 100.0) as u8
             } else {
                 0
             };
-            let speed = speed_meter.bps(transferred);
-            let eta = if speed > 0 && transferred < total {
-                ((total - transferred) as f64 / speed as f64) as u64
+            // Speed and time left follow the bytes this stream is moving.
+            let speed = speed_meter.bps(moved);
+            let eta = if speed > 0 && moved < total {
+                ((total - moved) as f64 / speed as f64) as u64
             } else {
                 0
             };

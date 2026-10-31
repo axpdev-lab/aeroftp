@@ -87,7 +87,7 @@ describe('ConnectionScreen edit sessions', () => {
         expect(save).toContain("logger.warn('Saved profiles could not be written for the OAuth edit Save', err)");
         expect(save).toContain('await credentials.rollback()');
         // The success activity and the editor close come only after the write.
-        const write = save.indexOf('await storeSavedServerProfiles(updated, false, profilesUserId)');
+        const write = save.indexOf('await storeSavedServerProfiles(updated, false, profilesUserId, profilesRevision)');
         expect(write).toBeGreaterThan(-1);
         for (const after of ["'PROFILE_SAVE'", 'onFormSaved()']) {
             expect(save.indexOf(after), after).toBeGreaterThan(write);
