@@ -33,6 +33,9 @@ const INTENTS: &[&str] = &[
     "tools_open",
     "tools_read",
     "tools_close",
+    "aerosync_open",
+    "aerosync_compare",
+    "aerosync_close",
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -379,6 +382,15 @@ fn valid_settings_view(settings: &SettingsView) -> bool {
     }
     true
 }
+/// The AeroSync window: open, a scan under way, and the entries of its result.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct AeroSyncView {
+    open: bool,
+    scanning: bool,
+    entries: Option<u64>,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct ToolsView {
@@ -423,12 +435,17 @@ struct Snapshot {
     settings: Option<SettingsView>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     tools: Option<ToolsView>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    aerosync: Option<AeroSyncView>,
 }
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Reply {
     ok: bool,
     error: Option<String>,
+    /// What to change in a refused request: a field and what it accepts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    detail: Option<String>,
     snapshot: Snapshot,
 }
 
@@ -510,6 +527,7 @@ fn parse_reply(payload: Value, unlocked: bool) -> Result<Reply, String> {
             || s.panels.local2.is_some()
             || s.settings.is_some()
             || s.tools.is_some()
+            || s.aerosync.is_some()
             || s.control.is_some()
             || s.queue.active != 0
             || s.queue.pending != 0
@@ -934,6 +952,24 @@ mod tests {
         value["snapshot"]["sessions"][0]["password"] = json!("SECRET");
         assert!(parse_reply(value, true).is_err());
     }
+    /// The frontend's reply carries the AeroSync window and the detail of a
+    /// refusal. A field the backend does not know fails the whole reply, and the
+    /// caller then sees a timeout on every intent, `state` included.
+    #[test]
+    fn a_reply_may_carry_the_aerosync_window_and_a_detail() {
+        let mut value = unlocked_reply_with_settings();
+        value["snapshot"]["aerosync"] = json!({ "open": true, "scanning": false, "entries": 3 });
+        value["detail"] = json!("timeout_ms must be an integer from 100 to 30000");
+        let reply = parse_reply(value, true).unwrap();
+        assert_eq!(reply.snapshot.aerosync.unwrap().entries, Some(3));
+        assert!(reply.detail.is_some());
+
+        let mut locked = locked_reply();
+        locked["snapshot"]["aerosync"] =
+            json!({ "open": false, "scanning": false, "entries": null });
+        assert!(parse_reply(locked, false).is_err());
+    }
+
     fn unlocked_reply_with_settings() -> Value {
         json!({ "ok": true, "error": null, "snapshot": { "schema_version": 1, "state_revision": 2,
             "version": "test", "locked": false, "blocked": false, "view": "other", "connected": false,

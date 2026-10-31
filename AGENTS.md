@@ -38,11 +38,16 @@ When the user explicitly requests visible work in the AeroFTP GUI, use the seman
 | `gui_wait` | `condition`, optional `timeout_ms` | Wait for `connected`, `disconnected`, `idle` or `unlocked` |
 | `gui_run` | `intent` plus the fields below; optional `if_revision`, `timeout_ms`, initial `speed_percent` | Approved GUI action through the normal UI handlers |
 
+After `connect`, wait for `idle` and read the committed panels before acting: a saved profile can move the local panel to its own folder, and a `navigate` issued right after `connect` can answer `lease_interrupted`. An `invalid_args` reply carries `detail`, which names the field and what it accepts. While the AeroSync window is open, only its own intents run.
+
 The current closed action catalog is:
 
 | Intent | Required/action fields | Completion |
 |--------|------------------------|------------|
 | `show_view` | `view`: `servers` or `files` | Requested view is committed |
+| `aerosync_open` | none | The AeroSync window is open, with no scan started |
+| `aerosync_compare` | none | The window is open and a Compare of the two panels has a result, in `aerosync.entries` of the state. Metadata only: nothing is transferred. Raise `timeout_ms` for a large tree |
+| `aerosync_close` | none | The window is closed |
 | `connect` | `profile_id`: exact saved profile ID | Requested active session is connected with a usable idle remote panel |
 | `navigate` | `panel`, `path` | Requested panel has committed the canonical path and is idle |
 | `refresh` | `panel` | Fresh listing is committed and idle |

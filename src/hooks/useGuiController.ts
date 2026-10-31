@@ -46,7 +46,9 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
         const service = new GuiController(() => ({ ...current.current.source,
             // The owned Settings dialog is a first-class controller surface, so
             // it does not self-block; any OTHER modal still interrupts control.
-            blocked: current.current.source.blocked || Array.from(document.querySelectorAll('[aria-modal="true"]')).some(modal =>
+            // The AeroSync window is one too: the controller opens it and only its own
+            // intents run while it is open.
+            blocked: current.current.source.blocked || Array.from(document.querySelectorAll('[aria-modal="true"]:not([data-gui-owned="aerosync"])')).some(modal =>
                 modal.getAttribute('data-gui-owned') !== 'settings' || modal.getAttribute('data-gui-safe') !== 'true' ||
                 ![ownedSettingsArea.current, requestedSettingsArea.current].some(area => area && modal.getAttribute('data-gui-area') === area)) }), () => ({ ...current.current.handlers,
                 stop: async () => { ownedSettingsArea.current = null; requestedSettingsArea.current = null; await current.current.handlers.stop(); },
