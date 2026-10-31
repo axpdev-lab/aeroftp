@@ -1139,9 +1139,14 @@ impl JottacloudProvider {
 
         let mut entries = Vec::new();
         let mut reader = Reader::from_str(xml);
-        // trim_text(true) is SAFE here: entry names arrive as attributes
-        // (xml_text::attr_value), never as Text events; only scalars do.
-        reader.config_mut().trim_text(true);
+        // Entry names arrive as attributes (xml_text::attr_value); element
+        // text holds the scalars. A scalar can still carry an entity (a MIME
+        // parameter such as `name=&quot;A &amp; B&quot;`), which quick-xml
+        // hands over in pieces, so each element's pieces are joined in
+        // `current_text` and the value is applied, trimmed once, at its end
+        // tag. No trim_text: it trims every piece, spaces next to an entity
+        // included.
+        reader.config_mut().trim_text(false);
         let mut buf = Vec::new();
 
         let mut depth: u32 = 0;
@@ -1163,6 +1168,7 @@ impl JottacloudProvider {
         let mut current_state = String::new();
         let mut current_deleted = false; // skip trashed files
         let mut current_tag = String::new();
+        let mut current_text = String::new();
 
         loop {
             match reader.read_event_into(&mut buf) {
@@ -1256,6 +1262,7 @@ impl JottacloudProvider {
                         }
                         _ => {
                             current_tag = tag;
+                            current_text.clear();
                         }
                     }
                 }
@@ -1357,38 +1364,50 @@ impl JottacloudProvider {
                         "currentRevision" => {
                             in_revision = false;
                         }
+                        // The end of a scalar element: its pieces are all in.
+                        _ if in_file && tag == current_tag => {
+                            let text = current_text.trim();
+                            // <deleted> tag at file level (outside revision) marks trashed files
+                            if current_tag == "deleted" && !text.is_empty() {
+                                current_deleted = true;
+                            }
+                            if in_revision {
+                                match current_tag.as_str() {
+                                    "size" => {
+                                        current_size = text.parse().unwrap_or(0);
+                                    }
+                                    "mime" => {
+                                        current_mime = text.to_string();
+                                    }
+                                    "md5" => {
+                                        current_md5 = text.to_string();
+                                    }
+                                    "state" => {
+                                        current_state = text.to_string();
+                                    }
+                                    "modified" | "updated" if current_modified.is_empty() => {
+                                        current_modified = Self::parse_jotta_time(text);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
                         _ => {}
                     }
 
                     depth = depth.saturating_sub(1);
                     current_tag.clear();
+                    current_text.clear();
                 }
                 Ok(Event::Text(ref e)) => {
-                    let text = e.as_ref().trim().to_string();
-                    if in_file {
-                        // <deleted> tag at file level (outside revision) marks trashed files
-                        if current_tag == "deleted" && !text.is_empty() {
-                            current_deleted = true;
-                        }
-                        if in_revision {
-                            match current_tag.as_str() {
-                                "size" => {
-                                    current_size = text.parse().unwrap_or(0);
-                                }
-                                "mime" => {
-                                    current_mime = text;
-                                }
-                                "md5" => {
-                                    current_md5 = text;
-                                }
-                                "state" => {
-                                    current_state = text;
-                                }
-                                "modified" | "updated" if current_modified.is_empty() => {
-                                    current_modified = Self::parse_jotta_time(&text);
-                                }
-                                _ => {}
-                            }
+                    if in_file && !current_tag.is_empty() {
+                        current_text.push_str(e.as_ref());
+                    }
+                }
+                Ok(Event::GeneralRef(ref e)) => {
+                    if in_file && !current_tag.is_empty() {
+                        if let Some(expanded) = super::xml_text::xml_entity_to_str(e.as_ref()) {
+                            current_text.push_str(&expanded);
                         }
                     }
                 }
@@ -4276,6 +4295,38 @@ mod tests {
         // Garbage / empty bodies yield an empty list, never a panic.
         assert!(JottacloudProvider::parse_folder_xml("not xml at all", "/").is_empty());
         assert!(JottacloudProvider::parse_folder_xml("", "/").is_empty());
+    }
+
+    /// A scalar with an entity in it arrives in pieces around the reference.
+    /// `<mime>` kept only the last piece, so a MIME parameter lost everything
+    /// before its first `&amp;`; the pieces are joined, and the spaces next
+    /// to a reference kept, before the value is trimmed once.
+    #[test]
+    fn parse_folder_xml_keeps_entities_in_element_text() {
+        let xml = r#"<folder name="Docs">
+            <files>
+                <file name="notes.txt">
+                    <currentRevision>
+                        <state>COMPLETED</state>
+                        <size> 12 </size>
+                        <mime>text/plain; name=&quot;A &amp; B&quot;</mime>
+                        <md5>0123456789abcdef0123456789abcdef</md5>
+                    </currentRevision>
+                </file>
+            </files>
+        </folder>"#;
+
+        let entries = JottacloudProvider::parse_folder_xml(xml, "/Docs");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].size, 12);
+        assert_eq!(
+            entries[0].mime_type.as_deref(),
+            Some("text/plain; name=\"A & B\"")
+        );
+        assert_eq!(
+            entries[0].metadata.get("md5").map(String::as_str),
+            Some("0123456789abcdef0123456789abcdef")
+        );
     }
 
     /// A station can hold two refresh chains for one profile (GUI per-profile,

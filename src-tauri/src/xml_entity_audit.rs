@@ -31,11 +31,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     ),
     (
         "providers/jottacloud.rs",
-        "parse_folder_xml",
-        "names arrive as attributes (`xml_text::attr_value`); element text is only size, md5, state, MIME type and dates",
-    ),
-    (
-        "providers/jottacloud.rs",
         "parse_jfs_file_revision",
         "element text is only a revision's size, md5 and dates",
     ),

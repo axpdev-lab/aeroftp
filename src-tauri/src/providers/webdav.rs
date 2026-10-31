@@ -8438,7 +8438,9 @@ mod tests {
 
     /// SabreDAV (Nextcloud, ownCloud) writes the quotes of an ETag as
     /// `&quot;`. Without the reference arm the quotes were dropped, and a
-    /// single-file entry carried `abc 1` where the listing carries `"abc 1"`.
+    /// single-file entry carried no quotes where the listing carries them.
+    /// The raw space between two references arrives as a whitespace-only
+    /// piece and belongs to the value as much as `&#32;` does.
     #[test]
     fn extract_single_file_entry_keeps_entities_in_the_props() {
         let xml = r#"<?xml version="1.0" encoding="utf-8"?>
@@ -8450,7 +8452,7 @@ mod tests {
                             <d:resourcetype/>
                             <d:getcontentlength>10</d:getcontentlength>
                             <d:getcontenttype>text/plain; charset=&quot;utf-8&quot;</d:getcontenttype>
-                            <d:getetag>&quot;abc&#32;1&quot;</d:getetag>
+                            <d:getetag>&quot;a&amp; &amp;b&#32;1&quot;</d:getetag>
                         </d:prop>
                         <d:status>HTTP/1.1 200 OK</d:status>
                     </d:propstat>
@@ -8460,7 +8462,7 @@ mod tests {
         let entry = WebDavProvider::extract_single_file_entry(xml, "/s/AbCd/notes.txt").unwrap();
         assert_eq!(
             entry.metadata.get("etag").map(String::as_str),
-            Some("\"abc 1\"")
+            Some("\"a& &b 1\"")
         );
         assert_eq!(
             entry.mime_type.as_deref(),
