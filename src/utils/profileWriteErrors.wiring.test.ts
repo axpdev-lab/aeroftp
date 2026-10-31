@@ -159,7 +159,8 @@ describe('saved profile write rejection in production handlers', () => {
         const fn = await execute(connection, ['handleConvertMode'], f.context);
         await fn.handleConvertMode();
         expect(f.store).not.toHaveBeenCalled();
-        expect(f.context.deleteModeCredentials).not.toHaveBeenCalled();
+        // The new map goes, the original stays.
+        expect(f.context.deleteModeCredentials).not.toHaveBeenCalledWith('old');
         expect(f.events.filter(e => e.detail?.type === 'success')).toEqual([]);
     });
 
