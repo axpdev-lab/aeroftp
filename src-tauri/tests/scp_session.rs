@@ -485,3 +485,53 @@ async fn a_find_without_the_listing_options_is_refused_naming_it() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// A target that appears between the check and the move is reported as
+/// existing, whatever a skipped `mv -n` returns: GNU 9.4 exits 1 without a
+/// word, GNU 9.7 and BusyBox exit 0. Any other `mv` failure keeps its own
+/// message. The fake `mv` creates the target and then skips, as a racing
+/// client would make the real one do.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_rename_skipped_by_mv_n_is_reported_as_an_existing_target() {
+    let root = temp_dir("mvn");
+    let bin = root.join("bin");
+    std::fs::create_dir(&bin).unwrap();
+    let fake = bin.join("mv");
+    std::fs::write(
+        &fake,
+        "#!/bin/sh\ncase $(cat mode) in\n\
+         skip1) : > \"$4\"; exit 1 ;;\n\
+         skip0) : > \"$4\"; exit 0 ;;\n\
+         deny) echo \"mv: cannot move '$3': Permission denied\" >&2; exit 1 ;;\n\
+         esac\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&fake, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let path = format!("{}:{}", s(&bin), system_path());
+    let scp = ScpSession::open(connect(&root, &path).await, IO)
+        .await
+        .expect("probe");
+    for mode in ["skip1", "skip0", "deny"] {
+        std::fs::write(root.join("mode"), mode).unwrap();
+        let from = root.join(format!("from-{mode}"));
+        let to = root.join(format!("to-{mode}"));
+        std::fs::write(&from, "kept").unwrap();
+        let err = scp
+            .rename(&s(&from), &s(&to))
+            .await
+            .expect_err("skipped move");
+        if mode == "deny" {
+            assert!(
+                matches!(&err, ProviderError::PermissionDenied(m) if m.contains("cannot move")),
+                "{mode}: {err:?}"
+            );
+        } else {
+            assert!(
+                matches!(err, ProviderError::AlreadyExists(_)),
+                "{mode}: {err:?}"
+            );
+        }
+        assert_eq!(std::fs::read(&from).unwrap(), b"kept", "{mode}");
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}

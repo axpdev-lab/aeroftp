@@ -435,9 +435,11 @@ where
     /// does. `mv` alone would replace a file, and would move `from` inside
     /// `to` when that is a folder, both without a word: the check refuses
     /// both. A file that appears at `to` after the check is not replaced
-    /// either: `mv -n` leaves `from` where it is, and `from` still being
-    /// there is the refusal (the exit status of `mv -n` on a skipped move
-    /// differs between GNU releases, measured 0 on 9.7 and 1 on 9.4). What
+    /// either: `mv -n` leaves `from` where it is, and `from` and `to` both
+    /// being there, with no diagnostic but a `not replacing`, is the
+    /// refusal. A skipped `mv -n` says nothing and exits 1 on GNU 9.4, 0 on
+    /// GNU 9.7 and BusyBox (measured), so its status alone decides nothing;
+    /// any other diagnostic is passed on with its status. What
     /// stays open is a folder created at `to` in that instant, which takes
     /// `from` inside it: the same window OpenSSH's `sftp-server` has when it
     /// renames a folder (it stats, then renames).
@@ -445,8 +447,16 @@ where
         let (f, t) = (shell_quote(from)?, shell_quote(to)?);
         let cmd = format!(
             "if [ -e {t} ] || [ -L {t} ]; then echo 'mv: target: File exists' >&2; exit 1; fi; \
-             mv -n -- {f} {t} || exit; \
-             if [ -e {f} ] || [ -L {f} ]; then echo 'mv: target: File exists' >&2; exit 1; fi"
+             err=$(mv -n -- {f} {t} 2>&1); rc=$?; \
+             if [ -e {f} ] || [ -L {f} ]; then \
+               if {{ [ -e {t} ] || [ -L {t} ]; }} && \
+                  {{ [ -z \"$err\" ] || [ \"${{err#*not replacing}}\" != \"$err\" ]; }}; then \
+                 echo 'mv: target: File exists' >&2; exit 1; \
+               fi; \
+               [ -n \"$err\" ] || err='mv: the source is still in place'; \
+               [ \"$rc\" -ne 0 ] || rc=1; \
+             fi; \
+             [ -z \"$err\" ] || printf '%s\\n' \"$err\" >&2; exit \"$rc\""
         );
         self.run_ok("rename", to, cmd.as_bytes()).await.map(drop)
     }
