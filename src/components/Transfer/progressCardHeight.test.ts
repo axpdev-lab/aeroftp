@@ -109,6 +109,7 @@ describe('ProgressCard during a transfer', () => {
         expect(toggle()).not.toBeNull();
         await render({ summary: batch('two'), speedProfile: emptySpeedProfile() }, 300);
         expect(toggle()).toBeNull();
+        expect(held()).toBe('300px');
     });
 
     it('keeps the height of the open graph, measured when its animation ends', async () => {
@@ -137,7 +138,14 @@ describe('ProgressCard during a transfer', () => {
 
     it('caps the held height to the window in the class that reads it', async () => {
         await render(toast('a.bin'), 300);
-        expect(card().className).toContain(`[${HELD_HEIGHT}:0px] min-h-[min(var(${HELD_HEIGHT}),calc(100vh-4rem))]`);
+        // Tailwind reads this file too: a class written with a placeholder here would
+        // reach the stylesheet, and break the build.
+        const classes = card().className.split(' ');
+        const declares = classes.find((name) => name.endsWith(':0px]'));
+        const caps = classes.find((name) => name.startsWith('min-h-'));
+        expect(declares?.slice(1, -5)).toBe(HELD_HEIGHT);
+        expect(caps).toContain(HELD_HEIGHT);
+        expect(caps).toContain('100vh');
     });
 
     it('grows when its content needs more room', async () => {
