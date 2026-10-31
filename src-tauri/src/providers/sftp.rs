@@ -1306,6 +1306,8 @@ pub struct SftpProvider {
     /// at/above `multi_thread_cutoff`. Set via `set_multi_thread_download`
     /// (CLI `--multi-thread-streams`).
     multi_thread_streams: usize,
+    /// What the last `download` read, see `DownloadTime`.
+    download_time: super::multi_thread::DownloadTime,
     /// File size at/above which intra-file parallelism engages.
     multi_thread_cutoff: u64,
     /// Per-provider read-ahead selection. The legacy environment is consulted
@@ -1363,6 +1365,7 @@ impl SftpProvider {
             buffer_size: 256 * 1024,
             host_key_sha256_hex: Arc::new(std::sync::OnceLock::new()),
             connection_spec: None,
+            download_time: Default::default(),
             multi_thread_streams: 1,
             multi_thread_cutoff: SFTP_MULTI_THREAD_CUTOFF_DEFAULT,
             sftp_readahead: SftpReadaheadSetting::LegacyEnvironment,
@@ -2827,6 +2830,14 @@ impl StorageProvider for SftpProvider {
         self.cd("..").await
     }
 
+    fn take_download_time(&mut self, source_refused: bool) -> Option<String> {
+        self.download_time.take(source_refused)
+    }
+
+    fn expect_moved_source(&mut self) {
+        self.download_time.expect_moved();
+    }
+
     async fn download(
         &mut self,
         remote_path: &str,
@@ -2846,6 +2857,7 @@ impl StorageProvider for SftpProvider {
     ) -> Result<(), ProviderError> {
         let resume_in_place = std::mem::take(&mut self.resume_in_place);
         self.ensure_connected().await?;
+        self.download_time.begin();
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(remote_path);
 
@@ -2884,6 +2896,10 @@ impl StorageProvider for SftpProvider {
                 );
             }
         };
+        // SFTP answers no time with the data: this reading, next to the open, is
+        // the closest to it. After a refusal the time comes from the handle.
+        let mut read_time =
+            Self::metadata_to_entry(String::new(), String::new(), &metadata).modified;
         let mut total_size = metadata.size.unwrap_or(0);
         // The version a part resumed below must have been started from.
         let mut source = RangeSourceFingerprint::of(&Self::metadata_to_entry(
@@ -2944,12 +2960,17 @@ impl StorageProvider for SftpProvider {
         // pipelined paths below open several handles to the same path, a few
         // milliseconds apart, and a replacement inside that burst would put
         // the fallback back in the hole the refusal just avoided.
-        let mut source_is_moving = false;
+        let mut source_is_moving = self.download_time.is_refused();
+        if source_is_moving {
+            // The handle must come after the size read below, or its bytes can
+            // be of the old object and their bound of the new one.
+            close_preopened!();
+        }
         // R21: the provider gate method (shared planner: explicit cutoff +
         // provider floor via the setter, 16 clamp, 1 MiB minimum window), so
         // the single-file path agrees with batch and pget.
         let planned_mt = self.planned_download_segments(total_size);
-        if planned_mt >= 2 && self.connection_spec.is_some() {
+        if planned_mt >= 2 && !source_is_moving && self.connection_spec.is_some() {
             close_preopened!();
             // Half of the callback goes with the attempt and half stays, so
             // the path a refusal falls back to keeps reporting.
@@ -2972,7 +2993,10 @@ impl StorageProvider for SftpProvider {
                 // exactly what the parallel path could not promise, so take
                 // the path below instead of failing a download that has a
                 // correct way to finish.
-                Ok(false) => source_is_moving = true,
+                Ok(false) => {
+                    source_is_moving = true;
+                    self.download_time.refused();
+                }
                 Err(e) => return Err(e),
             }
         }
@@ -3023,7 +3047,10 @@ impl StorageProvider for SftpProvider {
                     )
                     .await
                     {
-                        Ok(()) => return Ok(()),
+                        Ok(()) => {
+                            self.download_time.read(read_time);
+                            return Ok(());
+                        }
                         Err(e @ ProviderError::ParallelRefused(_)) => {
                             // Read on several handles and the object moved
                             // between the opens, or it is not the object the
@@ -3034,6 +3061,7 @@ impl StorageProvider for SftpProvider {
                                 "SFTP: concurrent reads could not verify one source version",
                             );
                             source_is_moving = true;
+                            self.download_time.refused();
                         }
                         Err(e) => return Err(e),
                     }
@@ -3087,6 +3115,7 @@ impl StorageProvider for SftpProvider {
                             window,
                             total_size
                         );
+                        self.download_time.read(read_time);
                         return Ok(());
                     }
                     // Read on several handles and the object moved under
@@ -3098,6 +3127,7 @@ impl StorageProvider for SftpProvider {
                             "SFTP: concurrent reads could not verify one source version",
                         );
                         source_is_moving = true;
+                        self.download_time.refused();
                     }
                     Err(e) => return Err(e),
                 }
@@ -3136,6 +3166,16 @@ impl StorageProvider for SftpProvider {
                     })
                 })?,
         };
+
+        if source_is_moving {
+            // A failed reading says nothing: the first one is of the object that moved.
+            read_time = until_sftp_ends(&sftp.ended, remote_file.metadata())
+                .await
+                .ok()
+                .and_then(|attributes| {
+                    Self::metadata_to_entry(String::new(), String::new(), &attributes).modified
+                });
+        }
 
         // Everything that can fail once the handle is open runs inside this
         // block, so the handle is closed, awaited, on every exit and not only
@@ -3312,6 +3352,7 @@ impl StorageProvider for SftpProvider {
             Err(error) => return super::keep_failed_download(part, error).await,
         };
         part.commit().await.map_err(ProviderError::IoError)?;
+        self.download_time.read(read_time);
 
         if from_partial {
             tracing::info!(
@@ -3580,6 +3621,7 @@ impl StorageProvider for SftpProvider {
         _offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.download_time.begin();
         self.resume_in_place = true;
         self.download(remote_path, local_path, on_progress).await
     }
@@ -7522,6 +7564,51 @@ mod tests {
         provider
     }
 
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_download_keeps_the_time_it_read_for_a_caller_that_saw_a_refusal() {
+        let bytes = pattern(400);
+        let mut server = ReadCappingServer::new(&bytes, 100, false);
+        server.mtime = Some(1_700_000_000);
+        let mut provider = server.serve().await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("target");
+        provider
+            .download("/down.bin", out.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!(provider.take_download_time(false), None, "a plain download");
+        assert_eq!(
+            provider.take_download_time(true).as_deref(),
+            Some("2023-11-14 22:13:20Z")
+        );
+    }
+
+    /// After a refusal the path may name another object by now: the time is the
+    /// open handle's, and that handle is opened after the size read, even when a
+    /// small hint had already opened one.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_download_after_a_refusal_takes_the_time_of_its_handle() {
+        let bytes = pattern(400);
+        for size_hint in [None, Some(400)] {
+            let mut server = ReadCappingServer::new(&bytes, 100, false);
+            server.mtime = Some(1_600_000_000);
+            server.handle_mtime = Some(1_700_000_000);
+            let mut provider = server.serve().await;
+            let dir = tempfile::tempdir().unwrap();
+            let out = dir.path().join("target");
+            provider.expect_moved_source();
+            provider
+                .download_with_size_hint("/down.bin", out.to_str().unwrap(), size_hint, None)
+                .await
+                .unwrap();
+            assert_eq!(std::fs::read(&out).unwrap(), bytes);
+            assert_eq!(
+                provider.take_download_time(false).as_deref(),
+                Some("2023-11-14 22:13:20Z")
+            );
+        }
+    }
+
     #[tokio::test]
     async fn a_refused_sftp_parallel_plan_reports_a_safe_terminal_notice() {
         let provider =
@@ -8450,6 +8537,8 @@ mod tests {
         announce: bool,
         /// The modification time STAT reports, when it reports one.
         mtime: Option<u32>,
+        /// The modification time FSTAT reports on an open handle.
+        handle_mtime: Option<u32>,
         first_cap: Option<usize>,
         /// Malformed DATA replies, including the first READ or a later chunk.
         oversize_from: Option<u64>,
@@ -8471,6 +8560,7 @@ mod tests {
                 cap,
                 announce,
                 mtime: None,
+                handle_mtime: None,
                 first_cap: None,
                 oversize_from: None,
                 read_error_at: None,
@@ -8612,6 +8702,23 @@ mod tests {
                     permissions: Some(0o100644),
                     atime: self.mtime,
                     mtime: self.mtime,
+                    ..Default::default()
+                },
+            })
+        }
+
+        async fn fstat(
+            &mut self,
+            id: u32,
+            _handle: String,
+        ) -> Result<russh_sftp::protocol::Attrs, Self::Error> {
+            Ok(russh_sftp::protocol::Attrs {
+                id,
+                attrs: russh_sftp::protocol::FileAttributes {
+                    size: Some(self.data.len() as u64),
+                    permissions: Some(0o100644),
+                    atime: self.handle_mtime,
+                    mtime: self.handle_mtime,
                     ..Default::default()
                 },
             })

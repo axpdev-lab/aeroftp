@@ -11241,7 +11241,11 @@ async fn download_transfer_on(
     // (same as the shared executor and the GUI).
     let mut landed = None;
     if result.is_ok() {
-        ftp_client_gui_lib::preserve_remote_mtime(&local_path, remote_modified.as_deref());
+        let read_time = provider.take_download_time(false);
+        ftp_client_gui_lib::preserve_remote_mtime(
+            &local_path,
+            read_time.as_deref().or(remote_modified.as_deref()),
+        );
         let bytes = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
         session_transfer_add(bytes);
         // What the download left, read as it ends: an edit made later is a
@@ -36001,7 +36005,11 @@ async fn cmd_get(
 
     match dl_result {
         Ok(()) => {
-            ftp_client_gui_lib::preserve_remote_mtime(local_path, remote_modified.as_deref());
+            let read_time = provider.take_download_time(false);
+            ftp_client_gui_lib::preserve_remote_mtime(
+                local_path,
+                read_time.as_deref().or(remote_modified.as_deref()),
+            );
             let elapsed = start.elapsed();
             let file_size = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
             session_transfer_add(file_size);
@@ -36706,10 +36714,10 @@ async fn pget_fallback_single(
 
     let filename = remote_path.rsplit('/').next().unwrap_or("download");
     // The stream may read another object than the listing saw: this reading is
-    // the one its size and its time come from. If it fails the listing's time
-    // stands, and the size is asked on its own: no time would leave the local
-    // write time, which reads newer still. The exact time is the one of the
-    // response carrying the bytes (Requested 129).
+    // the one its size and its time come from, until the response that carries
+    // the bytes reports its own. If it fails the listing's time stands, and the
+    // size is asked on its own: no time would leave the local write time, which
+    // reads newer still.
     let probed = run_until_interrupted(cancelled, async {
         match provider.stat(remote_path).await {
             Ok(entry) => (
@@ -36744,6 +36752,7 @@ async fn pget_fallback_single(
         }) as Box<dyn Fn(u64, u64) + Send>
     });
 
+    provider.expect_moved_source();
     let before = local_file_state(local_path);
     let result = run_until_interrupted(
         cancelled,
@@ -36776,9 +36785,13 @@ async fn pget_fallback_single(
     }
     match result {
         Ok(()) => {
+            let carried_time = provider.take_download_time(true);
             ftp_client_gui_lib::preserve_remote_mtime(
                 local_path,
-                read_time.as_deref().or(listed_time),
+                carried_time
+                    .as_deref()
+                    .or(read_time.as_deref())
+                    .or(listed_time),
             );
             let elapsed = start.elapsed();
             let file_size = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);

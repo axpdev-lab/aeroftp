@@ -286,6 +286,10 @@ pub struct KoofrProvider {
     /// Multi-thread concurrent-Range download (rclone `--multi-thread-streams`).
     /// `1` = disabled (default). Set via `set_multi_thread_download`.
     multi_thread_streams: usize,
+    /// What the last `download` read, see `DownloadTime`.
+    download_time: super::multi_thread::DownloadTime,
+    /// The caller saw a refusal: the next `download` reads a moved object.
+    expects_moved_source: bool,
     /// Files at or above this size use the concurrent-Range path when
     /// `multi_thread_streams >= 2`.
     multi_thread_cutoff: u64,
@@ -330,6 +334,8 @@ impl KoofrProvider {
             space_total: 0,
             space_used: 0,
             account_email: None,
+            download_time: Default::default(),
+            expects_moved_source: false,
             multi_thread_streams: 1,
             multi_thread_cutoff: 8 * 1024 * 1024,
             #[cfg(test)]
@@ -864,6 +870,14 @@ impl StorageProvider for KoofrProvider {
         Ok(())
     }
 
+    fn take_download_time(&mut self, source_refused: bool) -> Option<String> {
+        self.download_time.take(source_refused)
+    }
+
+    fn expect_moved_source(&mut self) {
+        self.expects_moved_source = true;
+    }
+
     async fn download(
         &mut self,
         remote_path: &str,
@@ -884,6 +898,8 @@ impl StorageProvider for KoofrProvider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        self.download_time.begin();
+        let mut source_refused = std::mem::take(&mut self.expects_moved_source);
 
         let mut on_progress = on_progress;
 
@@ -899,6 +915,7 @@ impl StorageProvider for KoofrProvider {
         // Koofr content auth is a static Basic header (no per-request nonce),
         // so it is safe to replay concurrently through the live client.
         if self.multi_thread_streams >= 2
+            && !source_refused
             && !super::multi_thread::size_hint_rules_out_ranges(size_hint, self.multi_thread_cutoff)
         {
             let req = super::multi_thread::HttpRangeRequest {
@@ -916,8 +933,24 @@ impl StorageProvider for KoofrProvider {
                 super::multi_thread::HttpRangeAttempt::Completed => return Ok(()),
                 super::multi_thread::HttpRangeAttempt::Failed(e) => return Err(e),
                 super::multi_thread::HttpRangeAttempt::Fallback(p) => on_progress = p,
+                super::multi_thread::HttpRangeAttempt::Refused(p) => {
+                    self.download_time.refused();
+                    source_refused = true;
+                    on_progress = p;
+                }
             }
         }
+        // The time a listing shows here is set by the client that uploaded, which
+        // the response's Last-Modified need not repeat. Two readings around the
+        // stream give the same value: if they agree, that is the object it read.
+        let time_before = if source_refused {
+            self.stat(remote_path)
+                .await
+                .ok()
+                .and_then(|entry| entry.modified)
+        } else {
+            None
+        };
 
         let request = self
             .client
@@ -963,6 +996,16 @@ impl StorageProvider for KoofrProvider {
             ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
         })?;
 
+        if source_refused && time_before.is_some() {
+            let time_after = self
+                .stat(remote_path)
+                .await
+                .ok()
+                .and_then(|entry| entry.modified);
+            if time_after == time_before {
+                self.download_time.read(time_after);
+            }
+        }
         Ok(())
     }
 
@@ -1590,6 +1633,7 @@ impl StorageProvider for KoofrProvider {
         offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.download_time.begin();
         // Out of place this provider keeps no part: its downloads write
         // through `AtomicFile`, which removes its temporary when it fails. An
         // offset handed in out of place was measured on someone else's part

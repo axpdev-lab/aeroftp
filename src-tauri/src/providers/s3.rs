@@ -459,6 +459,8 @@ pub struct S3Provider {
     /// Number of concurrent Range streams for multi-thread download (1 = disabled).
     /// Used by `download_multi_thread`. Set via `set_multi_thread_download`.
     multi_thread_streams: usize,
+    /// What the last `download` read, see `DownloadTime`.
+    download_time: super::multi_thread::DownloadTime,
     /// Minimum file size (bytes) above which multi-thread download is engaged.
     /// Below this threshold, the standard single-stream path is always used.
     multi_thread_cutoff: u64,
@@ -691,6 +693,7 @@ impl S3Provider {
             baseline_test_path: None,
             clock_offset_secs: 0,
             upload_chunk_override: None,
+            download_time: Default::default(),
             multi_thread_streams: 1,
             multi_thread_cutoff: Self::MULTI_THREAD_CUTOFF_DEFAULT,
             range_validator: None,
@@ -2726,6 +2729,18 @@ impl S3Provider {
         }
     }
 
+    /// An object's modification time in the headers of a HEAD or GET. The source
+    /// mtime travels as `x-amz-meta-mtime` (written by AeroFTP and by rclone);
+    /// `Last-Modified` is only the upload time and is the fallback for objects
+    /// written by neither.
+    fn object_time(headers: &reqwest::header::HeaderMap) -> Option<String> {
+        headers
+            .get(Self::MTIME_METADATA_HEADER)
+            .and_then(|v| v.to_str().ok())
+            .and_then(Self::parse_mtime_metadata)
+            .or_else(|| super::multi_thread::response_time(headers))
+    }
+
     /// Parse an `x-amz-meta-mtime` value (integer or fractional unix seconds,
     /// the forms rclone writes) into an RFC 3339 timestamp, or `None` when it
     /// is not a timestamp.
@@ -2754,11 +2769,8 @@ impl S3Provider {
         };
         // A negative value applies to the whole number (`-1.5` is one and a
         // half seconds before the epoch), so normalise after applying the sign.
-        let total_nanos = if negative {
-            -(secs * 1_000_000_000 + nanos)
-        } else {
-            secs * 1_000_000_000 + nanos
-        };
+        let magnitude = secs.checked_mul(1_000_000_000)?.checked_add(nanos)?;
+        let total_nanos = if negative { -magnitude } else { magnitude };
         let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(
             i64::try_from(total_nanos.div_euclid(1_000_000_000)).ok()?,
             u32::try_from(total_nanos.rem_euclid(1_000_000_000)).ok()?,
@@ -5169,6 +5181,14 @@ impl StorageProvider for S3Provider {
             .then_some(super::FILEN_DESKTOP_BRIDGE_NOTE)
     }
 
+    fn take_download_time(&mut self, source_refused: bool) -> Option<String> {
+        self.download_time.take(source_refused)
+    }
+
+    fn expect_moved_source(&mut self) {
+        self.download_time.expect_moved();
+    }
+
     async fn download(
         &mut self,
         remote_path: &str,
@@ -5190,6 +5210,7 @@ impl StorageProvider for S3Provider {
             return Err(ProviderError::NotConnected);
         }
 
+        self.download_time.begin();
         let key = remote_path.trim_start_matches('/');
 
         // U-13 Phase 1: multi-thread chunk-parallel download.
@@ -5202,6 +5223,7 @@ impl StorageProvider for S3Provider {
         // On any HEAD-side problem we fall through to the single-stream path so
         // a one-off mismatch never fails an otherwise downloadable transfer.
         let on_progress = if self.multi_thread_streams >= 2
+            && !self.download_time.is_refused()
             && !super::multi_thread::size_hint_rules_out_ranges(size_hint, self.multi_thread_cutoff)
         {
             match self.s3_request(Method::HEAD, key, None, None).await {
@@ -5310,7 +5332,8 @@ impl StorageProvider for S3Provider {
                                         // and the credentials.
                                         let mut single = self.clone();
                                         single.multi_thread_streams = 1;
-                                        return single
+                                        single.download_time = self.download_time.share();
+                                        let result = single
                                             .download_with_size_hint(
                                                 remote_path,
                                                 local_path,
@@ -5318,6 +5341,8 @@ impl StorageProvider for S3Provider {
                                                 fallback_progress,
                                             )
                                             .await;
+                                        self.download_time.refused();
+                                        return result;
                                     }
                                     Err(e) => return Err(e),
                                 }
@@ -5379,6 +5404,7 @@ impl StorageProvider for S3Provider {
                 let total_size = response.content_length().unwrap_or(0);
 
                 // H-01: Streaming download: write chunks as they arrive (atomic)
+                let read_time = Self::object_time(response.headers());
                 let mut stream = response.bytes_stream();
                 let mut atomic = super::atomic_write::AtomicFile::new(local_path)
                     .await
@@ -5406,6 +5432,7 @@ impl StorageProvider for S3Provider {
                     ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
                 })?;
 
+                self.download_time.read(read_time);
                 Ok(())
             }
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(remote_path.to_string())),
@@ -5427,6 +5454,7 @@ impl StorageProvider for S3Provider {
         _offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.download_time.begin();
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -5800,21 +5828,7 @@ impl StorageProvider for S3Provider {
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(0);
 
-                // The source mtime travels as `x-amz-meta-mtime` (written by
-                // AeroFTP and by rclone); `Last-Modified` is only the upload
-                // time and is the fallback for objects written by neither.
-                let modified = response
-                    .headers()
-                    .get(Self::MTIME_METADATA_HEADER)
-                    .and_then(|v| v.to_str().ok())
-                    .and_then(Self::parse_mtime_metadata)
-                    .or_else(|| {
-                        response
-                            .headers()
-                            .get("last-modified")
-                            .and_then(|v| v.to_str().ok())
-                            .map(|s| s.to_string())
-                    });
+                let modified = Self::object_time(response.headers());
 
                 let content_type = response
                     .headers()
@@ -12136,7 +12150,16 @@ mod tests {
             S3Provider::parse_mtime_metadata("-2.500000000").as_deref(),
             Some("1969-12-31T23:59:57.500Z")
         );
-        for bad in ["", "yesterday", "1725600000.12x", "1e9", "-", "--1", "-x.5"] {
+        for bad in [
+            "",
+            "yesterday",
+            "1725600000.12x",
+            "1e9",
+            "-",
+            "--1",
+            "-x.5",
+            "99999999999999999999999999999999999",
+        ] {
             assert!(
                 S3Provider::parse_mtime_metadata(bad).is_none(),
                 "{bad:?} is not a timestamp"
@@ -12423,6 +12446,94 @@ mod tests {
         );
     }
 
+    /// Found on a live MinIO: a stat reads the source time from the metadata and
+    /// the GET read the upload time, so a refused download took another clock than
+    /// every listing-free comparison.
+    #[tokio::test]
+    async fn a_download_reads_the_time_a_stat_reads() {
+        let app = axum::Router::new().fallback(axum::routing::any(|| async {
+            axum::response::Response::builder()
+                .header("last-modified", "Wed, 21 Oct 2026 07:28:00 GMT")
+                .header("x-amz-meta-mtime", "1600000000")
+                .body(axum::body::Body::from(vec![7u8; 16]))
+                .unwrap()
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("x");
+        provider
+            .download("/x", out.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        let carried = provider.take_download_time(true).expect("a time");
+        let stat = provider.stat("/x").await.unwrap().modified.expect("a time");
+        assert_eq!(carried, stat);
+        assert_eq!(crate::parse_remote_mtime(&carried), Some(1_600_000_000));
+    }
+
+    /// After a refusal the caller saw, the provider's own windows are not tried
+    /// again: one stream reads the object and carries its time.
+    #[tokio::test]
+    async fn a_download_after_a_refusal_reads_one_stream() {
+        use super::super::multi_thread::pin_server::{self, PinMode, OBJECT_SIZE};
+        let server = pin_server::start(PinMode::Honoured).await;
+        let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+
+        provider.expect_moved_source();
+        provider
+            .download("big.bin", out.to_str().unwrap(), None)
+            .await
+            .unwrap();
+
+        // The fixture's windows serve 7s, its whole read 9s.
+        assert_eq!(std::fs::read(&out).unwrap(), vec![9u8; OBJECT_SIZE]);
+        assert_eq!(
+            provider.take_download_time(false).as_deref(),
+            Some(pin_server::WHOLE_READ_TIME)
+        );
+    }
+
+    /// The single stream after a refusal may read another object than any
+    /// listing saw: the time goes with the response that carried its bytes. A
+    /// plain download, and windows published from an unchanged object, keep the
+    /// listing's time unless the caller saw a refusal itself.
+    #[tokio::test]
+    async fn a_refused_download_reports_the_time_of_what_carried_its_bytes() {
+        use super::super::multi_thread::pin_server::{start, PinMode, WHOLE_READ_TIME as SERVED};
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        let out = out.to_str().unwrap();
+
+        let server = start(PinMode::RefusedReplaced).await;
+        let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        provider.download("/big.bin", out, None).await.unwrap();
+        assert_eq!(provider.take_download_time(false).as_deref(), Some(SERVED));
+        assert_eq!(provider.take_download_time(true), None, "taken once");
+
+        let server = start(PinMode::RefusedUnchanged).await;
+        let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        provider.download("/big.bin", out, None).await.unwrap();
+        assert_eq!(provider.take_download_time(false), None, "no refusal stood");
+
+        let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+        provider.connected = true;
+        provider.download("/big.bin", out, None).await.unwrap();
+        assert_eq!(provider.take_download_time(false), None, "a plain download");
+        assert_eq!(provider.take_download_time(true).as_deref(), Some(SERVED));
+    }
+
     /// A gateway that answers 412 to every pinned window of an object that did
     /// not change refuses If-Match; it saw no replacement. The windows are
     /// read once more without the pin and the HEAD after them decides, as for
@@ -12657,7 +12768,7 @@ mod tests {
                 filetime::FileTime::from_last_modification_time(&std::fs::metadata(&out).unwrap());
             assert_eq!(
                 Some(time.unix_seconds()),
-                crate::parse_remote_mtime("Wed, 21 Oct 2026 07:28:00 GMT"),
+                crate::parse_remote_mtime(pin_server::WHOLE_READ_TIME),
                 "{mode:?}"
             );
         }

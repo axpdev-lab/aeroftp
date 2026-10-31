@@ -28,7 +28,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use futures_util::StreamExt;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
@@ -1185,6 +1185,97 @@ impl ProgressMark {
     }
 }
 
+/// The modification time of the object one `download` really read, kept next
+/// to the provider until the caller takes it. A listing can be stale by then,
+/// and only a refusal (a pin, a moved source) shows that it is, so the time is
+/// handed over only after one: a plain download keeps the listing's time, the
+/// one a sync compares it with, on a server whose two answers differ.
+#[derive(Debug, Default)]
+pub struct DownloadTime(Arc<Mutex<DownloadReading>>);
+
+#[derive(Debug, Default)]
+struct DownloadReading {
+    time: Option<String>,
+    refused: bool,
+    /// The next download reads an object the caller saw moved.
+    moved_source: bool,
+}
+
+/// A copy of a provider is another session with its own downloads.
+impl Clone for DownloadTime {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
+}
+
+impl DownloadTime {
+    fn reading(&self) -> std::sync::MutexGuard<'_, DownloadReading> {
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// The same record, for a copy of the provider that downloads on its behalf.
+    pub fn share(&self) -> Self {
+        Self(Arc::clone(&self.0))
+    }
+
+    /// A new download: what the last one read says nothing about this one.
+    pub fn begin(&self) {
+        let mut reading = self.reading();
+        let refused = reading.moved_source;
+        *reading = DownloadReading {
+            refused,
+            ..DownloadReading::default()
+        };
+    }
+
+    /// The next download is the answer to a refusal or a moved hash the provider
+    /// cannot see: the time it reads goes to the local file.
+    pub fn expect_moved(&self) {
+        self.reading().moved_source = true;
+    }
+
+    /// The provider's own parallel path was refused.
+    pub fn refused(&self) {
+        self.reading().refused = true;
+    }
+
+    /// Whether this download follows a refusal. It reads one stream then: one
+    /// consistent view of an object that moved, and the time that goes with it.
+    pub fn is_refused(&self) -> bool {
+        self.reading().refused
+    }
+
+    /// The bytes are on disk and this is the time of what carried them. A value
+    /// that is not an instant is dropped, so it never hides a usable listing.
+    pub fn read(&self, time: Option<String>) {
+        if let Some(time) = time.filter(|time| crate::parse_remote_mtime(time).is_some()) {
+            self.reading().time = Some(time);
+        }
+    }
+
+    /// The time for the local file, once. `source_refused` is the caller's own
+    /// refusal, which the provider cannot see. With no refusal yet the reading
+    /// stays, for a caller further out that saw one.
+    pub fn take(&self, source_refused: bool) -> Option<String> {
+        let mut reading = self.reading();
+        if source_refused || reading.refused {
+            std::mem::take(&mut *reading).time
+        } else {
+            None
+        }
+    }
+}
+
+/// The `Last-Modified` of a response.
+pub(crate) fn response_time(headers: &reqwest::header::HeaderMap) -> Option<String> {
+    headers
+        .get(reqwest::header::LAST_MODIFIED)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string)
+}
+
 /// Two callbacks that both report to `progress`: one goes with the parallel
 /// attempt, the other stays behind for the single-stream path a refusal falls
 /// back to. The callback is `Send` and not `Sync`, so it is shared behind a
@@ -2263,6 +2354,9 @@ pub(crate) enum HttpRangeAttempt {
     /// only on the rare post-probe inconsistency where the server honoured
     /// the probe but then ignored a real Range mid-flight.
     Fallback(Option<Box<dyn Fn(u64, u64) + Send>>),
+    /// The windows were read and refused: the single stream reads an object
+    /// the probe did not see, so its own time goes on the file.
+    Refused(Option<Box<dyn Fn(u64, u64) + Send>>),
     /// Hard failure from the concurrent path (already past a good probe).
     Failed(ProviderError),
 }
@@ -2539,7 +2633,7 @@ pub(crate) async fn try_http_concurrent_range_download(
                         "[multi-thread] {}; single-stream fallback",
                         source_changed("http range", &req.url, &what)
                     );
-                    return HttpRangeAttempt::Fallback(fallback_progress);
+                    return HttpRangeAttempt::Refused(fallback_progress);
                 }
                 match temp.publish(Path::new(&req.local_path)).await {
                     Ok(()) => HttpRangeAttempt::Completed,
@@ -2583,7 +2677,7 @@ pub(crate) async fn try_http_concurrent_range_download(
                     "[multi-thread] {}; single-stream fallback",
                     verdict.message("http range", &req.url)
                 );
-                HttpRangeAttempt::Fallback(fallback_progress)
+                HttpRangeAttempt::Refused(fallback_progress)
             }
             Err(e @ ProviderError::ParallelRefused(_)) => {
                 // A window was refused: it came from another version, or the
@@ -2593,7 +2687,7 @@ pub(crate) async fn try_http_concurrent_range_download(
                 // removed the staged file and preserved the typed refusal.
                 report_download_fallback("the server refused a range or its version check");
                 tracing::warn!("[multi-thread] {}; single-stream fallback", e);
-                HttpRangeAttempt::Fallback(fallback_progress)
+                HttpRangeAttempt::Refused(fallback_progress)
             }
             Err(e) => HttpRangeAttempt::Failed(e),
         };
@@ -2926,6 +3020,10 @@ pub(crate) mod pin_server {
         UntaggedRangesRefused,
     }
 
+    /// The time of a whole read: only the response that carried the bytes has
+    /// it, every reading and window answers an earlier one.
+    pub(crate) const WHOLE_READ_TIME: &str = "Thu, 22 Oct 2026 08:00:00 GMT";
+
     pub(crate) struct PinServer {
         pub(crate) addr: SocketAddr,
         pub(crate) readings: Arc<AtomicUsize>,
@@ -3094,7 +3192,12 @@ pub(crate) mod pin_server {
                             } else {
                                 OBJECT_SIZE
                             };
-                            respond(StatusCode::OK, reading_tag)
+                            let mut whole = respond(StatusCode::OK, reading_tag);
+                            whole.headers_mut().expect("valid headers").insert(
+                                "last-modified",
+                                axum::http::HeaderValue::from_static(WHOLE_READ_TIME),
+                            );
+                            whole
                                 .header("content-length", len.to_string())
                                 .body(axum::body::Body::from(vec![9u8; len]))
                                 .unwrap()
@@ -4752,6 +4855,7 @@ mod tests {
             match attempt {
                 HttpRangeAttempt::Failed(e) => format!("Failed({e})"),
                 HttpRangeAttempt::Fallback(_) => "Fallback".to_string(),
+                HttpRangeAttempt::Refused(_) => "Refused".to_string(),
                 HttpRangeAttempt::Completed => "Completed".to_string(),
             }
         );
@@ -4801,6 +4905,7 @@ mod tests {
             match attempt {
                 HttpRangeAttempt::Failed(e) => format!("Failed({e})"),
                 HttpRangeAttempt::Fallback(_) => "Fallback".to_string(),
+                HttpRangeAttempt::Refused(_) => "Refused".to_string(),
                 HttpRangeAttempt::Completed => "Completed".to_string(),
             }
         );
@@ -5623,7 +5728,7 @@ mod tests {
         )
         .await;
         assert!(
-            matches!(attempt, HttpRangeAttempt::Fallback(None)),
+            matches!(attempt, HttpRangeAttempt::Refused(None)),
             "a reading that could not be taken must not publish the file"
         );
         assert!(!local.exists(), "no file may be published");
@@ -5829,7 +5934,7 @@ mod tests {
                 );
             }
             assert!(
-                matches!(attempt, HttpRangeAttempt::Fallback(None)),
+                matches!(attempt, HttpRangeAttempt::Refused(None)),
                 "a larger, fully replaced object must not publish mixed generations"
             );
             assert!(!local.exists());
@@ -5914,7 +6019,7 @@ mod tests {
         )
         .await;
         assert!(
-            matches!(attempt, HttpRangeAttempt::Fallback(None)),
+            matches!(attempt, HttpRangeAttempt::Refused(None)),
             "an object that moved must be handed back to a single stream"
         );
         assert!(!local.exists(), "no file may be published");
@@ -6252,7 +6357,7 @@ mod tests {
     async fn the_http_range_path_names_a_refused_pin_on_a_replaced_object() {
         let (attempt, warnings, published, server) =
             http_range_against(pin_server::PinMode::RefusedReplaced).await;
-        assert!(matches!(attempt, HttpRangeAttempt::Fallback(Some(_))));
+        assert!(matches!(attempt, HttpRangeAttempt::Refused(Some(_))));
         assert_eq!(
             warnings,
             vec![format!(
@@ -6271,7 +6376,7 @@ mod tests {
     async fn the_http_range_path_refuses_an_object_replaced_during_the_unpinned_retry() {
         let (attempt, warnings, published, server) =
             http_range_against(pin_server::PinMode::RefusedThenReplacedUnpinned).await;
-        assert!(matches!(attempt, HttpRangeAttempt::Fallback(Some(_))));
+        assert!(matches!(attempt, HttpRangeAttempt::Refused(Some(_))));
         assert_eq!(warnings.len(), 1, "{warnings:?}");
         assert!(
             warnings[0].contains("using a single stream"),
@@ -6295,7 +6400,7 @@ mod tests {
         ] {
             let (attempt, warnings, published, server) = http_range_against(mode).await;
             assert!(
-                matches!(attempt, HttpRangeAttempt::Fallback(Some(_))),
+                matches!(attempt, HttpRangeAttempt::Refused(Some(_))),
                 "{mode:?}"
             );
             assert_eq!(
@@ -6319,7 +6424,7 @@ mod tests {
     async fn the_http_range_path_does_not_read_again_when_the_diagnosis_fails() {
         let (attempt, warnings, published, server) =
             http_range_against(pin_server::PinMode::RefusedThenUnreadable).await;
-        assert!(matches!(attempt, HttpRangeAttempt::Fallback(Some(_))));
+        assert!(matches!(attempt, HttpRangeAttempt::Refused(Some(_))));
         assert_eq!(
             warnings,
             vec![format!(
@@ -6341,7 +6446,7 @@ mod tests {
         )
         .await
         .expect("one pass, not a loop");
-        assert!(matches!(attempt, HttpRangeAttempt::Fallback(Some(_))));
+        assert!(matches!(attempt, HttpRangeAttempt::Refused(Some(_))));
         assert_eq!(
             warnings,
             vec![
@@ -6356,6 +6461,51 @@ mod tests {
             server.refused()
         );
         assert_eq!(server.readings(), 1, "the planning probe only");
+    }
+
+    #[test]
+    fn a_download_time_is_handed_over_only_after_a_refusal() {
+        const TIME: &str = "Wed, 21 Oct 2026 07:28:00 GMT";
+        let time = DownloadTime::default();
+        time.read(Some(TIME.to_string()));
+        assert_eq!(time.take(false), None, "a plain download keeps the listing");
+        assert_eq!(
+            time.take(true).as_deref(),
+            Some(TIME),
+            "the caller's refusal"
+        );
+        assert_eq!(time.take(true), None, "taken once");
+
+        time.read(Some(TIME.to_string()));
+        time.refused();
+        assert_eq!(time.take(false).as_deref(), Some(TIME), "its own refusal");
+
+        time.read(Some("2026-09-24 19:41".to_string()));
+        assert_eq!(time.take(true), None, "not an instant");
+
+        time.read(Some(TIME.to_string()));
+        time.begin();
+        assert_eq!(time.take(true), None, "a new download forgets the last");
+
+        time.expect_moved();
+        time.begin();
+        assert!(time.is_refused());
+        time.read(Some(TIME.to_string()));
+        assert_eq!(time.take(false).as_deref(), Some(TIME), "a moved source");
+        time.begin();
+        time.read(Some(TIME.to_string()));
+        assert!(!time.is_refused());
+        assert_eq!(time.take(false), None, "the expectation is used up");
+        time.take(true);
+
+        let shared = time.share();
+        shared.read(Some(TIME.to_string()));
+        assert_eq!(time.clone().take(true), None, "a copy is another session");
+        assert_eq!(
+            time.take(true).as_deref(),
+            Some(TIME),
+            "a share is the same"
+        );
     }
 
     /// A fallback counts from zero what the attempt already reported. The mark
