@@ -1525,7 +1525,8 @@ impl StorageProvider for JottacloudProvider {
         // Step 6: Navigate to initial path
         self.current_path = "/".to_string();
         if let Some(ref initial) = self.config.initial_path {
-            let initial = initial.trim().to_string();
+            // As given: a name may begin or end with a space.
+            let initial = initial.to_string();
             if !initial.is_empty() && initial != "/" {
                 self.current_path = Self::normalize_path(&initial);
             }
@@ -3120,13 +3121,13 @@ impl JottacloudProvider {
         let mut entries = Vec::new();
         let mut reader = Reader::from_str(xml);
         // Names arrive as attributes. `<abspath>` is Text + GeneralRef and
-        // is accumulated (then trimmed once) rather than assigned per chunk.
+        // is accumulated, as given, rather than assigned per chunk: a folder
+        // name may end with a space.
         //
         // Trimming is left OFF here on purpose: quick-xml trims every Text
         // EVENT, not the node, so an entity splits `Photos &amp; Videos` into
         // three events whose own edges carry the spaces. Trimming per event
-        // welds the pieces into `Photos&Videos`, and the single trim applied
-        // when the path is derived cannot put back what was already dropped.
+        // welds the pieces into `Photos&Videos`.
         // The scalars that need it (`size`, `state`, `modified`) trim
         // themselves below, where a whitespace-only event is also harmless
         // because it never matches their tag.
@@ -3274,7 +3275,7 @@ impl JottacloudProvider {
                                 entries.push(RemoteEntry {
                                     name: pending_folder_name.clone(),
                                     path: Self::trash_relative_path(
-                                        pending_folder_abspath.trim(),
+                                        &pending_folder_abspath,
                                         &pending_folder_name,
                                     ),
                                     is_dir: true,
@@ -3313,7 +3314,7 @@ impl JottacloudProvider {
                                 entries.push(RemoteEntry {
                                     name: current_name.clone(),
                                     path: Self::trash_relative_path(
-                                        current_abspath.trim(),
+                                        &current_abspath,
                                         &current_name,
                                     ),
                                     is_dir: false,
@@ -4015,6 +4016,31 @@ mod tests {
         let entries = JottacloudProvider::parse_trash_xml(xml);
         let file = entries.iter().find(|e| !e.is_dir).expect("file");
         assert_eq!(file.path, "/Photos & Videos/x.txt");
+    }
+
+    #[test]
+    fn parse_trash_xml_keeps_a_parent_name_that_ends_with_a_space() {
+        // `reports ` and `reports` are two folders. The parent taken from
+        // `<abspath>` was trimmed, so an entry deleted from `reports ` would
+        // be restored to `reports`.
+        let xml = r#"<mountPoint name="Trash">
+  <folders>
+    <folder name="q3">
+      <abspath>/user123/Jotta/Archive/reports </abspath>
+    </folder>
+  </folders>
+  <files>
+    <file name="x.txt">
+      <abspath>/user123/Jotta/Archive/reports </abspath>
+      <currentRevision><size>1</size></currentRevision>
+    </file>
+  </files>
+</mountPoint>"#;
+        let entries = JottacloudProvider::parse_trash_xml(xml);
+        let folder = entries.iter().find(|e| e.is_dir).expect("folder");
+        assert_eq!(folder.path, "/reports /q3");
+        let file = entries.iter().find(|e| !e.is_dir).expect("file");
+        assert_eq!(file.path, "/reports /x.txt");
     }
 
     #[test]

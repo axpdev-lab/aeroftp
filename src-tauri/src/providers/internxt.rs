@@ -1438,7 +1438,8 @@ impl InternxtProvider {
 
         // Navigate to initial path if specified
         if let Some(ref initial) = self.config.initial_path {
-            let initial = initial.trim().to_string();
+            // As given: a name may begin or end with a space.
+            let initial = initial.to_string();
             if !initial.is_empty() && initial != "/" {
                 let normalized = Self::normalize_path(&initial);
                 internxt_log(&format!(
@@ -1677,7 +1678,8 @@ impl StorageProvider for InternxtProvider {
 
         // Navigate to initial path if specified
         if let Some(ref initial) = self.config.initial_path {
-            let initial = initial.trim().to_string();
+            // As given: a name may begin or end with a space.
+            let initial = initial.to_string();
             if !initial.is_empty() && initial != "/" {
                 let normalized = Self::normalize_path(&initial);
                 internxt_log(&format!(

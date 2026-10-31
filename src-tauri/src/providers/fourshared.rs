@@ -1312,9 +1312,8 @@ impl StorageProvider for FourSharedProvider {
             offset += page_count;
         }
 
-        self.current_path = normalized;
-        self.current_folder_id = folder_id;
-
+        // A listing does not move the current folder: `cd` does. Moved, a
+        // relative path listed twice reached `docs/docs`.
         Ok(entries)
     }
 

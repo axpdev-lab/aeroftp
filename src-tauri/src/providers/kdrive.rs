@@ -900,7 +900,8 @@ impl StorageProvider for KDriveProvider {
 
         // Navigate to initial path if specified
         if let Some(ref initial) = self.config.initial_path {
-            let initial = initial.trim().to_string();
+            // As given: a name may begin or end with a space.
+            let initial = initial.to_string();
             if !initial.is_empty() && initial != "/" {
                 let normalized = Self::normalize_path(&initial);
                 kdrive_log(&format!("Navigating to initial path: {}", normalized));
@@ -1060,10 +1061,8 @@ impl StorageProvider for KDriveProvider {
             cursor = next_cursor;
         }
 
-        // Update current position
-        self.current_path = resolved;
-        self.current_file_id = folder_id;
-
+        // A listing does not move the current folder: `cd` does. Moved, a
+        // relative path listed twice reached `docs/docs`.
         Ok(entries)
     }
 

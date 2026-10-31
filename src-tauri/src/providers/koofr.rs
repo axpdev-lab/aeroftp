@@ -811,8 +811,8 @@ impl StorageProvider for KoofrProvider {
             .map(|f| self.file_to_entry(f, &resolved))
             .collect();
 
-        // Update current_path on successful listing
-        self.current_path = resolved;
+        // A listing does not move the current folder: `cd` does. Moved, a
+        // relative path listed twice reached `docs/docs`.
         Ok(entries)
     }
 
@@ -2282,6 +2282,49 @@ mod tests {
 
     /// A rename onto its own path is a no-op everywhere else; Koofr refused
     /// it (live on 2026-09-26). Nothing is sent.
+    /// A listing does not move the current folder: `cd` does. Koofr's
+    /// listing moved it, and with a relative path joined to the current
+    /// folder, a relative path listed twice (the CLI's sync doctor lists the
+    /// root it was given, then walks it) reached `/docs/docs`.
+    #[tokio::test]
+    async fn a_listing_leaves_the_current_folder_where_it_is() {
+        use std::sync::{Arc, Mutex};
+        let listed: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&listed);
+        let app = axum::Router::new().route(
+            "/mounts/M/files/list",
+            axum::routing::get(move |uri: axum::http::Uri| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let url = reqwest::Url::parse(&format!("http://h{uri}")).unwrap();
+                    let path = url
+                        .query_pairs()
+                        .find(|(k, _)| k == "path")
+                        .map(|(_, v)| v.to_string())
+                        .unwrap_or_default();
+                    seen.lock().unwrap().push(path);
+                    axum::Json(serde_json::json!({ "files": [] }))
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = KoofrProvider::new(KoofrConfig {
+            email: "u@example.com".to_string(),
+            password: secrecy::SecretString::from("p".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.mount_id = "M".to_string();
+        provider.api_base_override = Some(format!("http://{addr}"));
+
+        provider.list("docs").await.expect("first listing");
+        provider.list("docs").await.expect("second listing");
+        assert_eq!(*listed.lock().unwrap(), ["/docs", "/docs"]);
+        assert_eq!(provider.pwd().await.unwrap(), "/");
+    }
+
     #[tokio::test]
     async fn a_rename_onto_its_own_path_sends_nothing() {
         let (mut provider, calls) = provider_on_refusing_koofr().await;

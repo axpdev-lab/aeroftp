@@ -1048,7 +1048,8 @@ impl StorageProvider for TwakeProvider {
         self.connected = true;
         self.current_path = "/".into();
         if let Some(initial) = self.config.initial_path.clone() {
-            if !initial.trim().is_empty() && initial.trim() != "/" {
+            // As given: a name of spaces is a folder too.
+            if !initial.is_empty() && initial != "/" {
                 self.cd(&initial).await?;
             }
         }

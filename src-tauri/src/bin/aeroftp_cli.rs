@@ -30815,7 +30815,7 @@ async fn connect_mtp_device_profile(
 
     // GUI parity: land on saved remote path when set. Absolute path resolution
     // still works if cd fails; warn and keep listing via initialPath join.
-    if !initial_path.trim().is_empty() && initial_path.trim() != "/" {
+    if !initial_path.is_empty() && initial_path != "/" {
         if let Err(e) = mtp.cd(&initial_path).await {
             if !cli.quiet {
                 eprintln!(
@@ -30826,7 +30826,7 @@ async fn connect_mtp_device_profile(
         }
     }
 
-    let path_out = if initial_path.trim().is_empty() {
+    let path_out = if initial_path.is_empty() {
         "/".to_string()
     } else {
         initial_path
@@ -30872,7 +30872,7 @@ async fn connect_mtp_device_profile_agent(
         .await
         .map_err(|e| format!("Failed to open MTP device: {}", e))?;
 
-    if !initial_path.trim().is_empty() && initial_path.trim() != "/" {
+    if !initial_path.is_empty() && initial_path != "/" {
         if let Err(e) = mtp.cd(&initial_path).await {
             // Soft: agent list/get still resolve absolute paths from initial_path.
             eprintln!(
@@ -30882,7 +30882,7 @@ async fn connect_mtp_device_profile_agent(
         }
     }
 
-    let path_out = if initial_path.trim().is_empty() {
+    let path_out = if initial_path.is_empty() {
         "/".to_string()
     } else {
         initial_path
@@ -32388,7 +32388,8 @@ fn resolve_cli_remote_path_in(
     emit_resolution_note: bool,
     start_folder: Option<&str>,
 ) -> String {
-    let base = initial_path.trim();
+    // As given: a folder name may begin or end with a space.
+    let base = initial_path;
     // No meaningful initial_path: pass user_path through with minimal
     // rewriting:
     //   - empty user_path -> "" so the provider applies its canonical
@@ -86157,6 +86158,46 @@ mod tests {
             resolve_cli_remote_path("/www.example.com", "front/includes"),
             "/www.example.com/front/includes"
         );
+    }
+
+    #[test]
+    fn test_resolve_cli_remote_path_keeps_the_spaces_of_the_base() {
+        // `/reports ` and `/reports` are two folders: the profile's base is
+        // joined as given.
+        assert_eq!(
+            resolve_cli_remote_path("/reports ", "a.txt"),
+            "/reports /a.txt"
+        );
+        assert_eq!(
+            resolve_cli_remote_path("/reports ", "/a.txt"),
+            "/reports /a.txt"
+        );
+        assert_eq!(resolve_cli_remote_path("/ reports", ""), "/ reports");
+    }
+
+    /// The profile's initial folder is taken as given, spaces included, in
+    /// every place the CLI reads it (the resolver, the MTP open).
+    #[test]
+    fn test_no_initial_path_is_trimmed() {
+        let source = include_str!("aeroftp_cli.rs");
+        // Cut at the test module, LF or CRLF (Git for Windows' default).
+        let at = [
+            "\n#[cfg(test)]\nmod tests {",
+            "\r\n#[cfg(test)]\r\nmod tests {",
+        ]
+        .iter()
+        .find_map(|marker| source.find(marker))
+        .expect("the CLI has a test module to cut at");
+        // Built, so this test does not name it.
+        let needle = ["initial_path", ".trim()"].concat();
+        let found: Vec<usize> = source[..at]
+            .lines()
+            .enumerate()
+            .filter(|(_, line)| !line.trim_start().starts_with("//"))
+            .filter(|(_, line)| line.contains(&needle))
+            .map(|(index, _)| index + 1)
+            .collect();
+        assert!(found.is_empty(), "initial_path trimmed at lines {found:?}");
     }
 
     #[test]

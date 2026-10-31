@@ -15,6 +15,10 @@
 //! `.resolve_path(` (rustfmt breaks a long call as `self\n    .resolve_path(`),
 //! `current_folder_id` in any form (`&self.current_folder_id` borrows it
 //! without `.clone()`), and `"root"` in any form (`"root".into()`).
+//!
+//! Two guards read every provider: a listing does not move the current
+//! folder, and the initial folder of a profile is taken as given, spaces
+//! included.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
@@ -436,4 +440,98 @@ async fn live_cd_then_one_segment_paths_resolve_like_every_provider() {
         ran += 1;
     }
     assert!(ran > 0, "set at least one AEROFTP_LIVE_CD_*_PROFILE_ID");
+}
+
+/// Every provider source but this guard (which names the patterns), as
+/// `(file name, source)`.
+fn provider_sources() -> Vec<(String, String)> {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/providers");
+    let mut sources: Vec<(String, String)> = std::fs::read_dir(&dir)
+        .expect("the providers folder")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "rs"))
+        .filter(|path| !path.ends_with("path_resolution_guard.rs"))
+        .map(|path| {
+            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            (
+                name,
+                std::fs::read_to_string(&path).expect("a provider source"),
+            )
+        })
+        .collect();
+    sources.sort();
+    assert!(sources.len() > 40, "{} sources", sources.len());
+    sources
+}
+
+/// [`production`] for a source that may have no test module.
+fn production_part(source: &str) -> &str {
+    [
+        "\n#[cfg(test)]\nmod tests {",
+        "\r\n#[cfg(test)]\r\nmod tests {",
+    ]
+    .iter()
+    .find_map(|marker| source.find(marker))
+    .map_or(source, |at| &source[..at])
+}
+
+/// A listing does not move the current folder: `cd` does. Koofr, kDrive and
+/// 4shared moved it in `list`, so a relative path listed twice (the CLI's
+/// sync doctor lists the root it was given, then walks it) reached
+/// `docs/docs`, and a listing of another folder (the overwrite check's
+/// destination) left the session there.
+#[test]
+fn no_provider_listing_moves_the_current_folder() {
+    let moves = |line: &str| {
+        [
+            "self.current_path =",
+            "self.current_dir =",
+            "self.current_folder_id =",
+            "self.current_file_id =",
+            "self.current_fld_id =",
+        ]
+        .iter()
+        .any(|needle| line.contains(needle))
+    };
+    let (mut in_cd, mut in_list) = (0, Vec::new());
+    for (file, source) in provider_sources() {
+        for (line, function) in sites_where(production_part(&source), moves) {
+            match function {
+                "cd" => in_cd += 1,
+                "list" => in_list.push(format!("{file}:{line}")),
+                _ => {}
+            }
+        }
+    }
+    // The guard sees the current folder moved where it belongs.
+    assert!(in_cd > 10, "{in_cd} moves in cd");
+    assert!(
+        in_list.is_empty(),
+        "a listing moves the current folder: {in_list:?}"
+    );
+}
+
+/// A path is the name as typed, spaces included, and so is the initial
+/// folder of a profile: `/reports ` and `/reports` are two folders. kDrive,
+/// Drime, Internxt, Jottacloud and Twake trimmed it on connect, and the
+/// session started in the other one.
+#[test]
+fn no_provider_trims_the_initial_folder() {
+    let trims = |line: &str| line.contains("initial") && line.contains(".trim");
+    assert!(trims(
+        "            let initial = initial.trim().to_string();"
+    ));
+    assert!(trims(
+        r#"            if !initial.trim().is_empty() && initial.trim() != "/" {"#
+    ));
+    let found: Vec<String> = provider_sources()
+        .iter()
+        .flat_map(|(file, source)| {
+            sites_where(production_part(source), trims)
+                .into_iter()
+                .map(move |(line, _)| format!("{file}:{line}"))
+        })
+        .collect();
+    assert!(found.is_empty(), "the initial folder is trimmed: {found:?}");
 }
