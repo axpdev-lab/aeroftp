@@ -48,6 +48,10 @@ struct OneDriveMultipartMeta {
     /// The local file's date, set when the session completes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     modified: Option<String>,
+    /// The session's destination, resolved when it opened: the current folder
+    /// can change before it completes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    destination: Option<String>,
 }
 
 impl OneDriveMultipartMeta {
@@ -2892,6 +2896,7 @@ impl StorageProvider for OneDriveProvider {
             total: total_size,
             part: onedrive_runner_part_size(total_size),
             modified: local_source_path.and_then(super::local_modified_rfc3339),
+            destination: Some(resolved_path),
         };
         Ok(MultipartHandle {
             upload_id: meta.encode(),
@@ -2986,9 +2991,8 @@ impl StorageProvider for OneDriveProvider {
                 parts.len()
             )));
         }
-        if let Some(date) = &meta.modified {
-            let path = self.absolute_path(&handle.remote_path);
-            self.keep_local_date(&path, date).await;
+        if let (Some(date), Some(path)) = (&meta.modified, &meta.destination) {
+            self.keep_local_date(path, date).await;
         }
         Ok(())
     }
@@ -4579,6 +4583,7 @@ mod tests {
             total: 524_288_000,
             part: 10_485_760,
             modified: None,
+            destination: None,
         };
         let encoded = meta.encode();
         let decoded = OneDriveMultipartMeta::decode(&encoded).expect("decode");

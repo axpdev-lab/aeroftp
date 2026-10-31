@@ -4154,15 +4154,14 @@ pub fn local_changed_since(local: &FileInfo, cached: &SyncIndexEntry, compare_si
             && !timestamps_equal(local.modified, cached.modified, ModifyWindow::LOCAL))
 }
 
-/// Clock difference allowed between this machine and a server.
-const LAST_SYNC_CLOCK_SKEW_SECS: i64 = 60;
-
 /// Whether a remote date that differs from the baseline is the one the server
 /// stamped on our own upload (Requested 125). A provider that cannot keep a
 /// file's date dates it at the upload, after the baseline's local date and no
 /// later than the end of that sync, and the file would then read as changed
 /// remotely forever. A date after that sync is an edit, and so is one older
-/// than the baseline: a replacement that kept an older date.
+/// than the baseline: a replacement that kept an older date. No margin for a
+/// server's clock: one running ahead reads as changed, as before, and a margin
+/// would hide a same-size edit made just after the sync.
 fn stamped_by_last_sync(
     remote: Option<DateTime<Utc>>,
     baseline: Option<DateTime<Utc>>,
@@ -4170,8 +4169,8 @@ fn stamped_by_last_sync(
 ) -> bool {
     match (remote, baseline, last_sync) {
         (Some(remote), Some(baseline), Some(last_sync)) => {
-            remote > baseline
-                && remote <= last_sync + chrono::Duration::seconds(LAST_SYNC_CLOCK_SKEW_SECS)
+            // An upload that never settled proves nothing about the remote copy.
+            baseline != UNSETTLED_BASELINE && remote > baseline && remote <= last_sync
         }
         _ => false,
     }
@@ -6583,8 +6582,8 @@ mod tests {
         let stamped = |remote| stamped_by_last_sync(at(remote), baseline, last_sync);
         // Dated by the upload, during that sync.
         assert!(stamped("2026-10-31T09:59:58Z"));
-        // Within the clock difference allowed.
-        assert!(stamped("2026-10-31T10:00:30Z"));
+        // Edited just after the sync.
+        assert!(!stamped("2026-10-31T10:00:30Z"));
         // Edited after the sync.
         assert!(!stamped("2026-10-31T10:05:00Z"));
         // Replaced by a copy that kept an older date.
@@ -6592,6 +6591,11 @@ mod tests {
         assert!(!stamped_by_last_sync(
             at("2026-10-31T09:59:58Z"),
             None,
+            last_sync
+        ));
+        assert!(!stamped_by_last_sync(
+            at("2026-10-31T09:59:58Z"),
+            Some(UNSETTLED_BASELINE),
             last_sync
         ));
     }

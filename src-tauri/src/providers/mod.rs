@@ -191,12 +191,9 @@ pub fn matches_find_pattern(name: &str, pattern: &str) -> bool {
 /// an upload. Without it the server stamps the time of the upload, and a Compare
 /// afterwards reads identical files as newer on that side (Requested 125).
 pub(crate) fn local_modified(path: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    use chrono::Timelike;
     let modified = std::fs::metadata(path).ok()?.modified().ok()?;
-    let seconds = modified
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()?
-        .as_secs();
-    chrono::DateTime::from_timestamp(i64::try_from(seconds).ok()?, 0)
+    chrono::DateTime::<chrono::Utc>::from(modified).with_nanosecond(0)
 }
 
 /// [`local_modified`] as RFC 3339, the form Drive, OneDrive and Dropbox take.
@@ -4254,6 +4251,15 @@ mod tests {
             Some("2021-03-04T05:06:07Z")
         );
         assert_eq!(local_modified_rfc3339("/no/such/file"), None);
+
+        let file = std::fs::File::options().write(true).open(&path).unwrap();
+        file.set_modified(std::time::UNIX_EPOCH - std::time::Duration::from_secs(86_400))
+            .unwrap();
+        drop(file);
+        assert_eq!(
+            local_modified_rfc3339(path.to_str().unwrap()).as_deref(),
+            Some("1969-12-31T00:00:00Z")
+        );
     }
 
     use super::*;
