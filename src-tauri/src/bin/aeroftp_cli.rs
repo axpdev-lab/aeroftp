@@ -13993,16 +13993,7 @@ fn update_active_user_profiles<R, E>(
         (Err(e), _) if !e.starts_with(user_partitions::PARTITION_UNAVAILABLE) => {
             Err(store_error(format!("Failed to write profiles: {e}")))
         }
-        (Err(e), _) => {
-            // The partition answers again: this was a passing fault, and the blob
-            // would hold a change the next load replaces with the partition's list.
-            if user_partitions::cli_list_server_profiles_for_user(store, target.id).is_ok() {
-                return Err(store_error(format!(
-                    "Failed to write profiles: {e}. Nothing was changed; run the command again"
-                )));
-            }
-            change_profiles_in_legacy_blob(store, target.id, &store_error, change)
-        }
+        (Err(_), _) => change_profiles_in_legacy_blob(store, target.id, &store_error, change),
         (Ok(_), None) => Err(store_error(
             "Failed to write profiles: the list write did not run".to_string(),
         )),
@@ -14012,8 +14003,8 @@ fn update_active_user_profiles<R, E>(
 /// Change the list in the legacy blob alone, the partition being unavailable
 /// (downgrade, unreachable file), and only when this would have been the active
 /// user anyway: the blob has no accounts. Same R3-safety reasoning as the mirror.
-/// The blob is read and written under the lock, so a save made since the command
-/// started is kept. A blob that holds no list yet is an empty list, and one that
+/// The partition is checked and the blob read and written under the lock, so a save
+/// made since the command started is kept. A blob that holds no list yet is an empty list, and one that
 /// cannot be read is an error, so its profiles are never written over.
 fn change_profiles_in_legacy_blob<R, E>(
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
@@ -14032,6 +14023,14 @@ fn change_profiles_in_legacy_blob<R, E>(
     }
     let db = user_partitions::cli_db_path().map_err(&failed)?;
     let _lock = user_partitions::ProfileListLock::acquire_for_path(&db).map_err(&failed)?;
+    // The partition answers again: this was a passing fault, and the blob would hold
+    // a change the next load replaces with the partition's list.
+    if user_partitions::cli_list_server_profiles_for_user(store, user_id).is_ok() {
+        return Err(failed(
+            "the account store answers again. Nothing was changed; run the command again"
+                .to_string(),
+        ));
+    }
     let held: Vec<serde_json::Value> = match store.get("config_server_profiles") {
         Ok(raw) => serde_json::from_str(&raw)
             .map_err(|e| failed(format!("Failed to parse server profiles: {e}")))?,
@@ -28380,8 +28379,6 @@ fn cmd_proton_mode_switch(
     }
 
     if duplicate {
-        let initial = text("initialPath");
-        let translated = switch::translate_path(&initial, from, to);
         let new_id = format!(
             "srv_{}_{}",
             chrono::Utc::now().timestamp_millis().max(0),
@@ -28405,6 +28402,14 @@ fn cmd_proton_mode_switch(
                     .position(|p| p.get("id").and_then(|v| v.as_str()) == Some(source_id.as_str()))
                     .ok_or_else(|| format!("Profile lookup failed: '{}' is gone", text("name")))?;
                 let mut copy = profiles[idx].clone();
+                // From the source as it stands now, not as first read.
+                let initial = copy
+                    .get("initialPath")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let translated =
+                    switch::translate_path(&initial, ProtonMode::of_profile(&copy), to);
                 copy["id"] = serde_json::Value::from(new_id.clone());
                 copy["name"] = serde_json::Value::from(name.clone());
                 if let Some(map) = copy.as_object_mut() {
@@ -28416,13 +28421,16 @@ fn cmd_proton_mode_switch(
                     translated.as_deref().filter(|_| !initial.is_empty()),
                 );
                 profiles.insert(idx + 1, copy);
-                Ok(())
+                Ok((initial, translated))
             },
         );
-        if let Err(e) = updated {
-            print_error(format, &e, 5);
-            return 5;
-        }
+        let (initial, translated) = match updated {
+            Ok((copied, _, _)) => copied,
+            Err(e) => {
+                print_error(format, &e, 5);
+                return 5;
+            }
+        };
         let source_id = text("id");
         if !source_id.is_empty() {
             let fav_raw = favs_blob_get(&store);
@@ -28716,13 +28724,19 @@ fn delete_profile_in_vault(
         Some(profile_id),
     )
     .map_err(|error| error.to_string())?;
-    let (_, _, stored) = update_active_user_profiles(
+    // The protocol as it stands now decides which token keys go below.
+    let (protocol, _, stored) = update_active_user_profiles(
         cli,
         store,
         |e| e,
         |profiles| {
+            let current = profiles
+                .iter()
+                .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id))
+                .and_then(|p| p.get("protocol").and_then(|v| v.as_str()))
+                .map(str::to_string);
             profiles.retain(|p| p.get("id").and_then(|v| v.as_str()) != Some(profile_id));
-            Ok(())
+            Ok(current.or_else(|| protocol.clone()))
         },
     )?;
     for key in
@@ -41192,138 +41206,116 @@ async fn apply_rclone_import_to_vault(
     cli: &Cli,
     result: &ftp_client_gui_lib::rclone_import::RcloneImportResult,
 ) -> Result<RcloneApplySummary, String> {
+    use ftp_client_gui_lib::profile_import_plan::SecretWrite;
     let store = open_vault(cli)?;
-
-    let mut passwords_stored = 0usize;
-    let mut oauth_tokens_stored = 0usize;
-    let mut jotta_refresh_stored = 0usize;
-
-    // MUV-3: dual-write each imported credential (vault + the scoped user's
-    // partition). The vault write stays authoritative (hard error on failure).
-    let scoped_uid = scoped_credential_user_id(cli, &store);
-    for server in &result.servers {
-        if let Some(ref cred) = server.credential {
-            dual_store_server_cred_checked(
-                &store,
-                scoped_uid,
-                &format!("server_{}", server.id),
-                cred,
-            )
-            .map_err(|e| format!("vault write failed for {}: {}", server.id, e))?;
-            passwords_stored += 1;
-        }
+    let target = ensure_active_user_unlocked(cli, &store)
+        .map_err(|e| format!("cannot read profiles: {e}"))?
+        .ok_or_else(|| "cannot read profiles: NO_ACTIVE_USER".to_string())?;
+    // Secrets also reach the shared vault key, which an account without its own copy
+    // reads, so they cannot be written for an account that is not the active one.
+    if !is_active_user(&store, target.id) {
+        return Err(
+            "the account named for this import (--user or AEROFTP_USER) must be the active one, because imported secrets also reach the shared vault; run `users switch` first"
+                .to_string(),
+        );
     }
 
-    let protocol_by_id: std::collections::HashMap<&str, String> = result
-        .servers
-        .iter()
-        .map(|s| {
-            (
-                s.id.as_str(),
-                s.protocol.clone().unwrap_or_default().to_lowercase(),
-            )
-        })
-        .collect();
-    for (profile_id, secrets) in &result.provider_secrets {
-        let protocol = match protocol_by_id.get(profile_id.as_str()) {
-            Some(p) => p,
-            None => continue,
-        };
-        if let Some(ref oauth_json) = secrets.oauth {
-            if let Some(slug) = cli_oauth_vault_slug_for_protocol(protocol) {
-                // MUV-4: dual-write into vault + the scoped user's partition.
-                dual_store_typed_cred_checked(
-                    &store,
-                    scoped_uid,
-                    &format!("oauth_{}_{}", slug, profile_id),
-                    "oauth",
-                    oauth_json,
-                )
-                .map_err(|e| format!("vault write failed for oauth {}: {}", profile_id, e))?;
-                oauth_tokens_stored += 1;
-            }
-        }
-        if let Some(ref jotta_json) = secrets.jotta_refresh {
-            if protocol == "jottacloud" {
-                dual_store_typed_cred_checked(
-                    &store,
-                    scoped_uid,
-                    &format!("jottacloud_refresh_{}", profile_id),
-                    "jottacloud_refresh",
-                    jotta_json,
-                )
-                .map_err(|e| format!("vault write failed for jotta {}: {}", profile_id, e))?;
-                jotta_refresh_stored += 1;
-            }
-        }
-        // The cached session of an rclone `protondrive` remote, under the key
-        // the native Proton Drive client reads.
-        if let Some(ref session_json) = secrets.proton_native_session {
-            if protocol == "proton" {
-                dual_store_typed_cred_checked(
-                    &store,
-                    scoped_uid,
-                    &format!("proton_native_session_{}", profile_id),
-                    "proton_native_session",
-                    session_json,
-                )
-                .map_err(|e| {
-                    format!(
-                        "vault write failed for proton session {}: {}",
-                        profile_id, e
-                    )
-                })?;
-            }
-        }
-    }
-
-    // Append the imported profiles to the active user's partition. Existing
-    // entries are preserved; new ids that already exist in the list are
-    // skipped to keep the operation idempotent on retry. Falls back to the
-    // legacy blob when the partition layer is unavailable (downgrade).
-    let held = load_active_user_profiles(cli, &store)
-        .map_err(|e| format!("Failed to read profiles: {e}. Nothing was added; unlock the account if it is locked, check that the AeroFTP data folder is readable, then run the import again"))?;
-    let has_id = |list: &[serde_json::Value], id: &str| {
-        list.iter()
-            .any(|p| p.get("id").and_then(|v| v.as_str()) == Some(id))
+    let protocol_of = |id: &str| -> Option<String> {
+        result
+            .servers
+            .iter()
+            .find(|s| s.id == id)
+            .map(|s| s.protocol.clone().unwrap_or_default().to_lowercase())
     };
-    // Before the list write, whose transaction a secret write would wait on.
-    let mut imported = Vec::new();
-    for server in &result.servers {
-        if has_id(&held, &server.id) {
-            continue;
-        }
-        let profile = imported_server_profile(server, |key, secret| {
-            dual_store_server_cred_checked(&store, scoped_uid, key, secret)
-        })
-        .map_err(|e| format!("vault write failed for {}: {}", server.id, e))?;
-        imported.push((server.id.as_str(), profile));
-    }
-    let (profiles_appended, profiles, stored) = update_active_user_profiles(
-        cli,
-        &store,
-        |e| format!("vault write failed for server profiles: {e}"),
-        |profiles| {
-            let mut appended = 0usize;
-            for (id, profile) in &imported {
-                if !has_id(profiles, id) {
-                    profiles.push(profile.clone());
-                    appended += 1;
+    // Secrets and list as one operation: a failure leaves neither, and a save made
+    // meanwhile is kept. Existing entries are preserved; new ids that already exist
+    // in the list are skipped to keep the operation idempotent on retry.
+    let (summary, profiles, stored) =
+        ftp_client_gui_lib::store_imported_profiles(&store, target.id, |current| {
+            let mut summary = RcloneApplySummary {
+                passwords_stored: 0,
+                oauth_tokens_stored: 0,
+                jotta_refresh_stored: 0,
+                profiles_appended: 0,
+                profiles_renamed: Vec::new(),
+            };
+            let mut writes = Vec::new();
+            for server in &result.servers {
+                if let Some(ref cred) = server.credential {
+                    writes.push(SecretWrite::new(
+                        format!("server_{}", server.id),
+                        None,
+                        cred,
+                    ));
+                    summary.passwords_stored += 1;
                 }
             }
-            Ok(appended)
-        },
-    )?;
+            for (profile_id, secrets) in &result.provider_secrets {
+                let Some(protocol) = protocol_of(profile_id) else {
+                    continue;
+                };
+                if let Some(ref oauth_json) = secrets.oauth {
+                    if let Some(slug) = cli_oauth_vault_slug_for_protocol(&protocol) {
+                        writes.push(SecretWrite::new(
+                            format!("oauth_{slug}_{profile_id}"),
+                            Some("oauth"),
+                            oauth_json,
+                        ));
+                        summary.oauth_tokens_stored += 1;
+                    }
+                }
+                if let Some(ref jotta_json) = secrets.jotta_refresh {
+                    if protocol == "jottacloud" {
+                        writes.push(SecretWrite::new(
+                            format!("jottacloud_refresh_{profile_id}"),
+                            Some("jottacloud_refresh"),
+                            jotta_json,
+                        ));
+                        summary.jotta_refresh_stored += 1;
+                    }
+                }
+                // The cached session of an rclone `protondrive` remote, under the
+                // key the native Proton Drive client reads.
+                if let Some(ref session_json) = secrets.proton_native_session {
+                    if protocol == "proton" {
+                        writes.push(SecretWrite::new(
+                            format!("proton_native_session_{profile_id}"),
+                            Some("proton_native_session"),
+                            session_json,
+                        ));
+                    }
+                }
+            }
+            let held = |id: &str| {
+                current
+                    .iter()
+                    .any(|p| p.get("id").and_then(|v| v.as_str()) == Some(id))
+            };
+            let mut additions = Vec::new();
+            for server in &result.servers {
+                if held(&server.id) {
+                    continue;
+                }
+                let profile = imported_server_profile(server, |key, secret| {
+                    writes.push(SecretWrite::new(key.to_string(), None, secret));
+                    Ok(())
+                })
+                .map_err(|e| format!("vault write failed for {}: {}", server.id, e))?;
+                additions.push(profile);
+                summary.profiles_appended += 1;
+            }
+            Ok(ftp_client_gui_lib::ImportedProfilesPlan {
+                writes,
+                additions,
+                result: summary,
+            })
+        })
+        .map_err(|e| format!("vault write failed: {e}"))?;
     // Read from the list stored: only the write knows which profile had a
     // name first (an older list may hold two of one name).
-    let profiles_renamed = renamed_by_write(&profiles, &stored);
-
     Ok(RcloneApplySummary {
-        passwords_stored,
-        oauth_tokens_stored,
-        jotta_refresh_stored,
-        profiles_appended,
-        profiles_renamed,
+        profiles_renamed: renamed_by_write(&profiles, &stored),
+        ..summary
     })
 }
 

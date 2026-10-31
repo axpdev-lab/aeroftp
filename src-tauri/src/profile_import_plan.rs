@@ -516,7 +516,6 @@ pub fn same_target(a: &serde_json::Value, b: &serde_json::Value) -> bool {
     let host = |p: &serde_json::Value| -> String {
         let host = p.get("host").and_then(|v| v.as_str()).unwrap_or("");
         let port = p.get("port").and_then(|v| v.as_u64()).unwrap_or(0);
-        let host = host.strip_suffix(&format!(":{port}")).unwrap_or(host);
         let scheme_end = host.find("://").map_or(0, |at| at + 3);
         let end = host[scheme_end..]
             .find(['/', '?', '#'])
@@ -524,11 +523,13 @@ pub fn same_target(a: &serde_json::Value, b: &serde_json::Value) -> bool {
         let name_start = host[scheme_end..end]
             .rfind('@')
             .map_or(scheme_end, |at| scheme_end + at + 1);
+        let name = &host[name_start..end];
+        let name = name.strip_suffix(&format!(":{port}")).unwrap_or(name);
         format!(
             "{}{}{}{}",
             host[..scheme_end].to_ascii_lowercase(),
             &host[scheme_end..name_start],
-            host[name_start..end].to_ascii_lowercase(),
+            name.to_ascii_lowercase(),
             &host[end..]
         )
     };
@@ -871,6 +872,17 @@ mod tests {
 
     /// What decides a move to another server or a weaker connection, and what
     /// does not.
+    #[test]
+    fn same_target_strips_the_port_before_a_path() {
+        let with_port =
+            json!({"host": "https://dav.example:443/files", "port": 443, "username": "u"});
+        let without = json!({"host": "https://dav.example/files", "port": 443, "username": "u"});
+        assert!(same_target(&with_port, &without));
+        let other_port =
+            json!({"host": "https://dav.example:8443/files", "port": 443, "username": "u"});
+        assert!(!same_target(&other_port, &without));
+    }
+
     #[test]
     fn same_target_tells_another_server_from_another_setting() {
         let stored = json!({

@@ -21,6 +21,7 @@ import { ServerProfile } from '../types';
 import { LanguageSelector } from './LanguageSelector';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { ExportImportDialog } from './ExportImportDialog';
+import { accountChangeGeneration } from '../utils/userPartitions';
 import { KeystoreImportResultModal, KeystoreImportResult } from './KeystoreImportResultModal';
 import { RepairMultiUserPanel } from './RepairMultiUserPanel';
 import { GENERIC_BRIDGE_SOURCES, BRIDGE_FORMAT_EXTENSIONS } from './bridge/bridgeSources';
@@ -1111,6 +1112,26 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     }, [appearanceSubTab, appearanceTabs, focusAppearanceSubTab]);
 
     if (!isOpen) return null;
+
+    // An import can fill a provider's stored OAuth app. Without this, a later Save of
+    // this panel would write the old value back over it. A field being edited stays.
+    const refreshStoredOAuthApps = async () => {
+        const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'] as const;
+        for (const p of providers) {
+            try {
+                const loaded = await loadOAuthClientCredentials(p);
+                setOauthSettings(previous => ({
+                    ...previous,
+                    [p]: {
+                        clientId: oauthEdits.current[p]?.clientId ? previous[p].clientId : loaded.clientId,
+                        clientSecret: oauthEdits.current[p]?.clientSecret ? previous[p].clientSecret : loaded.clientSecret,
+                    },
+                }));
+            } catch (error) {
+                logger.warn('OAuth app could not be read after the import', p, error);
+            }
+        }
+    };
 
     const updateOAuthSetting = (provider: keyof OAuthSettings, field: 'clientId' | 'clientSecret', value: string) => {
         oauthEdits.current[provider] = { ...oauthEdits.current[provider], [field]: true };
@@ -4029,12 +4050,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                     initialMode={exportImportInitialMode}
                     onImport={async (newServers, expectedUserId) => {
                         // The dialog closes itself (onClose) after its result.
+                        const accountBefore = accountChangeGeneration();
                         const updated = await appendImportedProfiles(newServers, expectedUserId);
-                        setServers(updated);
+                        // A switch meanwhile brings its own re-read: this list is the previous account's.
+                        if (accountChangeGeneration() === accountBefore) setServers(updated);
                         onServersChanged?.();
                     }}
                     onProfilesStored={(stored) => {
                         setServers(stored);
+                        void refreshStoredOAuthApps();
                         onServersChanged?.();
                     }}
                     onClose={() => { setShowExportImport(false); setExportImportInitialMode(undefined); }}

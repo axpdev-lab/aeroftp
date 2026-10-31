@@ -19,7 +19,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import type { ProviderOptions, ServerProfile } from '../types';
-import { readSavedServerProfilesForWrite, storeSavedServerProfiles } from './serverProfileStore';
+import { storeSavedServerProfiles, withFreshSavedProfiles } from './serverProfileStore';
 import { updateAppSettings } from './appSettings';
 import { secureGetWithFallback } from './secureStorage';
 
@@ -492,34 +492,37 @@ export interface FriendBinding {
 export const upsertFriendProfile = async (b: FriendBinding): Promise<ServerProfile> => {
   // Strict: the whole list is written back below, so a partition that could
   // not be read must not look like one with no profiles in it.
-  const { profiles: profiles, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
   const id = peerProfileId(b.afid);
-  const existing = profiles.find((p) => p.id === id);
+  // Once more if another writer saved meanwhile: the drive binding is already kept,
+  // and the friend's profile would otherwise be missing.
+  const { next, stored } = await withFreshSavedProfiles(async ({ profiles, userId, revision }) => {
+    const existing = profiles.find((p) => p.id === id);
 
-  const options: ProviderOptions = {
-    ...(existing?.options ?? {}),
-    ...(b.namespace ? { peerNamespace: b.namespace } : {}),
-    ...(b.ticket ? { peerTicket: b.ticket } : {}),
-    ...(b.localFolder ? { peerLocalFolder: b.localFolder } : {}),
-    ...(b.role ? { peerRole: b.role } : {}),
-    ...(b.driveName ? { peerDriveName: b.driveName } : {}),
-  };
+    const options: ProviderOptions = {
+      ...(existing?.options ?? {}),
+      ...(b.namespace ? { peerNamespace: b.namespace } : {}),
+      ...(b.ticket ? { peerTicket: b.ticket } : {}),
+      ...(b.localFolder ? { peerLocalFolder: b.localFolder } : {}),
+      ...(b.role ? { peerRole: b.role } : {}),
+      ...(b.driveName ? { peerDriveName: b.driveName } : {}),
+    };
 
-  const alias = (b.alias && b.alias.trim()) || existing?.username || shortAfid(b.afid);
-  const next: ServerProfile = {
-    ...(existing ?? {}),
-    id,
-    name: existing?.name?.trim() || alias,
-    host: b.afid,
-    port: 0,
-    username: alias,
-    protocol: 'peer',
-    customIconUrl: b.customIconUrl ?? existing?.customIconUrl,
-    options,
-  };
+    const alias = (b.alias && b.alias.trim()) || existing?.username || shortAfid(b.afid);
+    const next: ServerProfile = {
+      ...(existing ?? {}),
+      id,
+      name: existing?.name?.trim() || alias,
+      host: b.afid,
+      port: 0,
+      username: alias,
+      protocol: 'peer',
+      customIconUrl: b.customIconUrl ?? existing?.customIconUrl,
+      options,
+    };
 
-  const others = profiles.filter((p) => p.id !== id);
-  const stored = await storeSavedServerProfiles([...others, next], false, profilesUserId, profilesRevision);
+    const others = profiles.filter((p) => p.id !== id);
+    return { next, stored: await storeSavedServerProfiles([...others, next], false, userId, revision) };
+  });
   // Saving a friend (received-folder or share flow) auto-activates AeroShare.
   await ensureAeroShareActivated();
   // As stored: a name another profile holds is stored with " (1)", " (2)", ...

@@ -40,6 +40,7 @@ import { useMyServersBreakdown } from '../../hooks/useMyServersBreakdown';
 import { useResponsiveColumns } from '../../hooks/useResponsiveColumns';
 import { PROVIDER_HEALTH_URLS } from './discoverData';
 import { mergeSavedServerProfile } from '../../utils/serverProfileStore';
+import { accountChangeGeneration } from '../../utils/userPartitions';
 import { matchLiveDevice } from '../../utils/mtpFingerprint';
 import { keyReadFailure, notifyOAuthKeysUnavailable } from '../../utils/oauthKeysMissing';
 import { loadFourSharedCredentials } from '../../utils/fourSharedCredentials';
@@ -1382,6 +1383,7 @@ export function MyServersPanel({
 
     const handleDuplicate = useCallback(async (server: ServerProfile) => {
         try {
+            const accountBefore = accountChangeGeneration();
             const { profiles: currentServers, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
             const newId = `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
             const dup: ServerProfile = {
@@ -1403,7 +1405,18 @@ export function MyServersPanel({
             // SavedServers duplicate handler. The list has no id/order sort (array
             // position IS the order), so prepending made the copy jump to the top.
             const updated = [...currentServers, dup];
-            const stored = await storeSavedServerProfiles(updated, false, profilesUserId, profilesRevision);
+            let stored: ServerProfile[];
+            try {
+                stored = await storeSavedServerProfiles(updated, false, profilesUserId, profilesRevision);
+            } catch (err) {
+                // The copy was not listed, so its secrets have no profile. The delete
+                // acts on the active account: after a switch it could miss them or hit
+                // another's, so they stay, unused under an id nothing refers to.
+                if (accountChangeGeneration() === accountBefore) {
+                    await deleteProfileVaultSecrets(newId, server.protocol).catch(e => logger.warn('Secrets of the unsaved copy could not be removed', e));
+                }
+                throw err;
+            }
             setServers(stored);
             // The name the copy was stored with: " (1)" when another holds it.
             const copy = stored.find(s => s.id === dup.id) ?? dup;

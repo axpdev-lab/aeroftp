@@ -1605,9 +1605,18 @@ const PROFILE_LIST_LOCK_WAIT: std::time::Duration = if cfg!(test) {
 /// must not call a writer that takes it.
 pub struct ProfileListLock {
     _file: std::fs::File,
+    exclusive: bool,
 }
 
 impl ProfileListLock {
+    /// Whether this holder really excludes the others: false on a filesystem
+    /// without file locks. An ordinary save goes on, the revision refusing a stale
+    /// read. An import must not: another import's rollback could put back a secret
+    /// under the list this one stored.
+    pub fn is_exclusive(&self) -> bool {
+        self.exclusive
+    }
+
     /// Wait for the lock of the database `conn` has open, up to one minute. An
     /// in-memory database has no other writer and no lock.
     pub fn acquire(conn: &Connection) -> Result<Option<Self>, String> {
@@ -1650,20 +1659,25 @@ impl ProfileListLock {
             .write(true)
             .open(resolved.with_extension("write-lock"))
             .map_err(|e| format!("Open profile list lock: {e}"))?;
+        let exclusive = std::cell::Cell::new(true);
         let take = || match file.try_lock() {
             Ok(()) => Ok(true),
             Err(std::fs::TryLockError::WouldBlock) => Ok(false),
             // A filesystem without file locks (some network mounts) must not end
             // every save: the revision still refuses a list written from a stale
-            // read, and only two imports at once lose their ordering.
+            // read. An import refuses by itself ([`Self::is_exclusive`]).
             Err(std::fs::TryLockError::Error(e)) if file_locks_unavailable(&e) => {
                 tracing::warn!("Profile list lock not available on this filesystem: {e}");
+                exclusive.set(false);
                 Ok(true)
             }
             Err(std::fs::TryLockError::Error(e)) => Err(format!("Take profile list lock: {e}")),
         };
         if take()? {
-            return Ok(Self { _file: file });
+            return Ok(Self {
+                exclusive: exclusive.get(),
+                _file: file,
+            });
         }
         let wait_for_it = || {
             let deadline = std::time::Instant::now() + wait;
@@ -1685,7 +1699,10 @@ impl ProfileListLock {
         } else {
             wait_for_it()?;
         }
-        Ok(Self { _file: file })
+        Ok(Self {
+            exclusive: exclusive.get(),
+            _file: file,
+        })
     }
 }
 
@@ -3741,6 +3758,13 @@ pub fn restore_credential_for_user(
     before: &CredentialSnapshot,
 ) -> Result<(), String> {
     use crate::profile_import_plan::{rollback_action, RollbackAction};
+    let mut conn = open_or_init_cli()?;
+    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    // The session before anything changes and through both places: an account
+    // locked between them would leave the vault restored and the partition not.
+    // The session before the reservation ([`SessionHold`]).
+    let _session = hold_user_session(&conn, user_id);
+    get_user_credential_for(&conn, &root_key, user_id, credential_id)?;
     let vault = get_optional_secret(store, credential_id)?;
     match rollback_action(
         vault.as_ref().map(|v| v.as_str()),
@@ -3755,11 +3779,7 @@ pub fn restore_credential_for_user(
             .delete(credential_id)
             .map_err(|e| format!("Delete credential from vault: {e}"))?,
     }
-    let mut conn = open_or_init_cli()?;
-    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
     // Check and restore in one transaction: a token refreshed in between stays.
-    // The session before the reservation ([`SessionHold`]).
-    let _session = hold_user_session(&conn, user_id);
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| format!("Start credential restore: {e}"))?;
@@ -6055,6 +6075,46 @@ pub async fn user_partitions_save_active_server_profiles(
     if let Some(user) = active_user_id(&conn)? {
         mirror_latest_profiles_to_legacy_blob(&store, user);
     }
+    Ok(stored)
+}
+
+/// Keep `profiles` in the legacy store, for a frontend whose partition could not
+/// be reached. Under [`ProfileListLock`], this refuses with [`PROFILES_CHANGED`] if
+/// the partition can be reached now, since the next load would replace the blob
+/// with the partition's list, or if the blob no longer holds `expected_list`, the
+/// list the caller read and changed. The list held decides who had a name first,
+/// as the partition's does (`util::profile_name`). Resolves to the list stored.
+#[tauri::command]
+pub async fn user_partitions_store_legacy_server_profiles(
+    app: AppHandle,
+    profiles: Vec<Value>,
+    expected_list: Option<Vec<Value>>,
+) -> Result<Vec<Value>, String> {
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    let _lock = ProfileListLock::acquire_for_path(&db_path(&app)?)?;
+    let partition_ready = init_or_migrate(&app).and_then(|_| {
+        let conn = open_or_init(&app)?;
+        let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+        list_active_server_profiles(&conn, &root_key)
+    });
+    if partition_ready.is_ok() {
+        return Err(PROFILES_CHANGED.to_string());
+    }
+    let held = get_optional_store_entry(&store, LEGACY_PROFILES_BLOB)?
+        .map(|raw| serde_json::from_str::<Vec<Value>>(&raw))
+        .transpose()
+        .map_err(|e| format!("Invalid saved profiles: {e}"))?;
+    if let (Some(held), Some(expected)) = (&held, &expected_list) {
+        if held != expected {
+            return Err(PROFILES_CHANGED.to_string());
+        }
+    }
+    let (stored, _) =
+        crate::util::profile_name::unique_profile_names(&held.unwrap_or_default(), &profiles);
+    let serialized = serde_json::to_string(&stored).map_err(|e| e.to_string())?;
+    store
+        .store(LEGACY_PROFILES_BLOB, &serialized)
+        .map_err(|e| format!("Store server profiles in vault: {e}"))?;
     Ok(stored)
 }
 

@@ -18502,7 +18502,8 @@ pub async fn import_server_profiles_with_mode(
         .map_err(|e| format!("{IMPORT_NEEDS_PARTITION}: {e}"))?;
     let lock_conn = user_partitions::open_or_init_cli()
         .map_err(|e| format!("{IMPORT_NEEDS_PARTITION}: {e}"))?;
-    let _lock = user_partitions::ProfileListLock::acquire(&lock_conn)?;
+    let lock = user_partitions::ProfileListLock::acquire(&lock_conn)?;
+    refuse_import_without_file_locks(lock.as_ref())?;
     user_partitions::ensure_credential_user_unlocked(user)?;
     let slots = VaultSecretSlots {
         store: &store,
@@ -18593,6 +18594,76 @@ thread_local! {
     /// play another writer there.
     pub(crate) static IMPORT_BEFORE_COMMIT: std::cell::RefCell<Option<Box<dyn FnMut()>>> =
         const { std::cell::RefCell::new(None) };
+}
+
+/// What one attempt of [`store_imported_profiles`] will do with the list it was
+/// shown: the secrets to write, the profiles to append, and the caller's result.
+pub struct ImportedProfilesPlan<T> {
+    pub writes: Vec<profile_import_plan::SecretWrite>,
+    pub additions: Vec<serde_json::Value>,
+    pub result: T,
+}
+
+/// Store profiles imported from another client's config with their secrets, as
+/// one operation like [`import_server_profiles_with_mode`]: under the list lock,
+/// `plan` sees the list, its secrets are written, and the additions are stored only
+/// if the list is still that revision. On a failure the secrets go back. A changed
+/// list asks for one more plan. `user` must be the active account, since the
+/// secrets also reach the shared vault key. Returns the plan's result, the list
+/// sent and the list stored.
+pub fn store_imported_profiles<T>(
+    store: &credential_store::CredentialStore,
+    user: i64,
+    mut plan: impl FnMut(&[serde_json::Value]) -> Result<ImportedProfilesPlan<T>, String>,
+) -> Result<(T, Vec<serde_json::Value>, Vec<serde_json::Value>), String> {
+    let lock_conn = user_partitions::open_or_init_cli()
+        .map_err(|e| format!("{IMPORT_NEEDS_PARTITION}: {e}"))?;
+    let lock = user_partitions::ProfileListLock::acquire(&lock_conn)?;
+    refuse_import_without_file_locks(lock.as_ref())?;
+    user_partitions::ensure_credential_user_unlocked(user)?;
+    let slots = VaultSecretSlots { store, user };
+    let mut replanned = false;
+    loop {
+        let (current, revision) =
+            user_partitions::cli_read_active_profiles_at_revision(store, user)?;
+        let ImportedProfilesPlan {
+            writes,
+            additions,
+            result,
+        } = plan(&current)?;
+        let committed =
+            profile_import_plan::write_secrets_and_commit(&slots, writes, !replanned, || {
+                user_partitions::cli_update_profiles_at_revision(store, user, &revision, |list| {
+                    list.extend(additions.iter().cloned())
+                })
+            })?;
+        let (sent, stored) = match committed {
+            profile_import_plan::SecretCommit::Done(written) => written,
+            profile_import_plan::SecretCommit::Replan => {
+                replanned = true;
+                continue;
+            }
+        };
+        if let Err(e) = user_partitions::mirror_active_profiles_to_legacy_blob(store, &stored) {
+            tracing::warn!("Could not mirror server profiles to the legacy blob: {e}");
+        }
+        return Ok((result, sent, stored));
+    }
+}
+
+/// An import writes secrets and list as one: on a filesystem without file locks,
+/// another import's rollback could put back a secret under the list this one
+/// stored, so it stops here and says what to do. Other saves go on.
+fn refuse_import_without_file_locks(
+    lock: Option<&user_partitions::ProfileListLock>,
+) -> Result<(), String> {
+    if lock.is_some_and(|lock| !lock.is_exclusive()) {
+        return Err(
+            "The AeroFTP data folder is on a filesystem without file locks, so an import cannot be kept safe from another one, and nothing was imported. Move the data folder to a local disk, then import the file again"
+                .to_string(),
+        );
+    }
+    Ok(())
 }
 
 /// The per-profile keys an import writes for `user`, in the vault and its
@@ -21130,6 +21201,7 @@ pub fn run() {
             user_partitions::user_partitions_load_active_server_profiles,
             user_partitions::user_partitions_load_active_server_profiles_scoped,
             user_partitions::user_partitions_save_active_server_profiles,
+            user_partitions::user_partitions_store_legacy_server_profiles,
             user_partitions::user_partitions_relocate_server_profile,
             user_partitions::user_partitions_add_user,
             user_partitions::user_partitions_copy_user,

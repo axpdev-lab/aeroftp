@@ -194,6 +194,25 @@ describe('the import callback and the commit helper together', () => {
         expect(vault.profiles).toEqual([other, base]);
     });
 
+    // Another profile took the removed profile's name meanwhile: the rollback keeps
+    // it and says so, rather than claim nothing changed.
+    it('a rollback reports a profile put back under another name', async () => {
+        const vault = fakeVault([base]);
+        const other: ServerProfile = { ...base, id: 'other' };
+        vi.mocked(storeSavedServerProfiles).mockImplementation(async (profiles: ServerProfile[]) => {
+            vault.profiles = profiles.map(p => (p.id === base.id && profiles.some(q => q.id === 'other') ? { ...p, name: `${p.name} (1)` } : p));
+            return vault.profiles;
+        });
+        const replacement: ServerProfile = { ...base, id: 'replacement' };
+        const outcome = await commitImportedServers([replacement], new Set([bridgeProfileKey(base)]),
+            async () => {
+                vault.profiles = [other];
+                throw new Error('vault write failed');
+            });
+        expect(outcome.error).toContain('stored with a number');
+        expect(outcome.error).not.toContain('No changes were made');
+    });
+
     it('refuses the import when the saved profiles cannot be read, without writing or calling back', async () => {
         const vault = fakeVault([base]);
         vi.mocked(readSavedServerProfilesForWrite).mockRejectedValueOnce(new Error('vault read failed'));

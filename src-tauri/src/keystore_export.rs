@@ -3878,6 +3878,8 @@ mod tests {
         let (store, cfg) = machine_with_a_frozen_blob(dir.path());
         let (backup, _other_vault) = backup_of_another_machine(dir.path());
         let blob = store.get("config_server_profiles").unwrap();
+        let photos_before = store.get("server_srv_photos").ok();
+        let profiles_before = my_servers(&store, &cfg);
         let held = crate::user_partitions::ProfileListLock::acquire_for_path(
             &cfg.join("user_partitions.db"),
         )
@@ -3898,6 +3900,8 @@ mod tests {
             refused.map(|_| ()).map_err(|e| e.to_string())
         );
         assert_eq!(store.get("config_server_profiles").unwrap(), blob);
+        assert_eq!(store.get("server_srv_photos").ok(), photos_before);
+        assert_eq!(my_servers(&store, &cfg), profiles_before);
         drop(held);
     }
 

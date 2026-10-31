@@ -55,7 +55,7 @@ function fixture(fail: 'read' | 'write' | 'none' = 'write') {
         modeChanged: true, targetModeLabel: 'Native', originalEditMode: { protocol: 'webdav' },
         customIconForSave: undefined, faviconForSave: undefined, editHydratedPasswordRef: { current: '' },
         modeCredentialSnapshotsRef: { current: { ftp: 'fixture' } }, bridgeSaveBlocked: false,
-        loadSavedServerProfiles: read, loadSavedServerProfilesStrict: read, storeSavedServerProfiles: store, revertConvertedProfile,
+        loadSavedServerProfiles: read, loadSavedServerProfilesStrict: read, storeSavedServerProfiles: store, revertConvertedProfile, accountChangeGeneration: () => 0,
         readSavedServerProfilesForWrite: async () => ({ profiles: await read(), userId: 7, revision: 'r7' }),
         tryStoreCredential: vi.fn(async () => true), stashFilenApiKey: vi.fn(async () => false),
         aeroCryptOverlayFields: vi.fn(async () => ({})), migrateCryptCredentials: vi.fn(),
@@ -290,7 +290,14 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.context.setServers).not.toHaveBeenCalled();
         expect(f.events.some(e => e.detail?.type === 'error')).toBe(true);
         expect(f.context.logActivity).not.toHaveBeenCalled();
-        expect(f.context.deleteProfileVaultSecrets).not.toHaveBeenCalled();
+        // A failed duplicate removes the secrets it copied for its unlisted copy,
+        // never those of the profile it copied from.
+        if (name === 'handleDuplicate') {
+            expect(f.context.deleteProfileVaultSecrets).toHaveBeenCalledTimes(1);
+            expect(f.context.deleteProfileVaultSecrets).not.toHaveBeenCalledWith(f.servers[0].id, expect.anything());
+        } else {
+            expect(f.context.deleteProfileVaultSecrets).not.toHaveBeenCalled();
+        }
         expect(f.context.pruneServerFromGroups).not.toHaveBeenCalled();
         expect(f.context.setGroups).not.toHaveBeenCalled();
         expect(f.context.setRenamingId).not.toHaveBeenCalled();
@@ -537,7 +544,7 @@ describe('the saved-profile list shown after a write', () => {
         const writes = hub.split('\n').filter(line => /storeSavedServerProfiles\(.+\)/.test(line) && !line.trim().startsWith('//'));
         expect(writes.length).toBeGreaterThan(0);
         for (const line of writes) {
-            expect(line).toMatch(/setServers\(await storeSavedServerProfiles\(|const stored = await storeSavedServerProfiles\(/);
+            expect(line).toMatch(/setServers\(await storeSavedServerProfiles\(|(?:const )?stored = await storeSavedServerProfiles\(/);
         }
     });
 

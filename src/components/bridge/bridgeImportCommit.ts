@@ -69,13 +69,15 @@ export async function appendImportedProfiles(
     return storeSavedServerProfiles([...current, ...newServers], false, userId, revision);
 }
 
-/** Put `removed` back into the list as it stands now, in `userId`'s account. */
-async function restoreRemovedProfiles(removed: ServerProfile[], userId: number | undefined): Promise<void> {
-    if (removed.length === 0) return;
+/** Put `removed` back into the list as it stands now, in `userId`'s account. Returns those put back under another name. */
+async function restoreRemovedProfiles(removed: ServerProfile[], userId: number | undefined): Promise<ServerProfile[]> {
+    if (removed.length === 0) return [];
     const { profiles, userId: readUserId, revision } = await readSavedServerProfilesForWrite();
     if (readUserId !== userId) throw new Error('The active account changed during the import.');
     const held = new Set(profiles.map(s => s.id));
-    await storeSavedServerProfiles([...profiles, ...removed.filter(s => !held.has(s.id))], false, userId, revision);
+    const stored = await storeSavedServerProfiles([...profiles, ...removed.filter(s => !held.has(s.id))], false, userId, revision);
+    // A name another profile took meanwhile stays with it: the one put back got " (1)".
+    return removed.filter(s => stored.some(p => p.id === s.id && p.name !== s.name));
 }
 
 /**
@@ -132,13 +134,15 @@ export async function commitImportedServers(
         // Only what this call removed goes back, into a list read now: the backup
         // is old by this point, and writing it whole would undo what another
         // window saved since.
-        const restored = await restoreRemovedProfiles(removed, backupUserId).then(() => true, () => false);
+        const renamed = await restoreRemovedProfiles(removed, backupUserId).catch(() => null);
         return {
             added: 0,
             updated: 0,
-            error: restored
-                ? 'Import failed. No changes were made.'
-                : 'Import failed, and the previous profiles could not be restored. Check My Servers before importing again.',
+            error: renamed === null
+                ? 'Import failed, and the previous profiles could not be restored. Check My Servers before importing again.'
+                : renamed.length > 0
+                    ? `Import failed. The previous profiles were restored, but another profile took the name of ${renamed.map(s => s.name).join(', ')} meanwhile, so it was stored with a number. Check My Servers.`
+                    : 'Import failed. No changes were made.',
         };
     }
 

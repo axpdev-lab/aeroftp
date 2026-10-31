@@ -528,4 +528,27 @@ fn an_rclone_crypt_import_stores_its_secrets_in_the_partition() {
         )
         .unwrap();
     assert_eq!(rows, 1);
+
+    // The value, as the export reads it back: the password the remote revealed.
+    let check = config.join("check.aeroftp");
+    let exported = cli(
+        config,
+        &[
+            "profile-export",
+            "-o",
+            check.to_str().unwrap(),
+            "--password",
+            PASSWORD,
+            "--include-credentials",
+        ],
+    );
+    assert!(exported.status.success(), "{}", describe(&exported));
+    let (_, secrets, _) =
+        ftp_client_gui_lib::profile_export::import_profiles(&check, PASSWORD).unwrap();
+    assert!(
+        secrets
+            .values()
+            .any(|s| s.aerocrypt_overlay_pw.as_deref() == Some("crypt-pass-954")),
+        "the crypt password was not stored"
+    );
 }

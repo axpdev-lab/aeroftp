@@ -23,6 +23,7 @@ import {
     readSavedServerProfilesForWrite,
     replaceSavedServerProfiles,
     revertConvertedProfile,
+    withFreshSavedProfiles,
     savedProfilesGeneration,
     storeSavedServerProfiles,
 } from './serverProfileStore';
@@ -98,42 +99,22 @@ describe('storeSavedServerProfiles', () => {
         expect(localStoreMap.has('aeroftp-saved-servers')).toBe(false);
     });
 
-    it('falls back to the legacy vault key on STORE_NOT_READY and still cleans up + dispatches', async () => {
+    it('falls back to the guarded legacy write on STORE_NOT_READY and still cleans up + dispatches', async () => {
         const handler = vi.fn();
         eventTarget.addEventListener(PROFILES_CHANGED_EVENT, handler);
         localStoreMap.set('aeroftp-saved-servers', '[]');
-
+        const held = sampleProfile({ name: 'Lab (1)' });
         mockInvoke
             .mockRejectedValueOnce(new Error('STORE_NOT_READY')) // partition save rejects
-            .mockRejectedValueOnce(new Error('not found')) // legacy get_credential: nothing held
-            .mockResolvedValueOnce(undefined); // legacy store_credential succeeds
+            .mockResolvedValueOnce([held]); // the backend's legacy write, names settled there
 
-        await storeSavedServerProfiles([sampleProfile()]);
+        const stored = await storeSavedServerProfiles([sampleProfile()]);
 
+        expect(stored).toEqual([held]);
         expect(mockInvoke.mock.calls[0][0]).toBe('user_partitions_save_active_server_profiles');
-        expect(mockInvoke.mock.calls[1][0]).toBe('get_credential');
-        expect(mockInvoke.mock.calls[2][0]).toBe('store_credential');
-        expect(mockInvoke.mock.calls[2][1]).toMatchObject({
-            account: 'config_server_profiles',
-        });
+        expect(mockInvoke.mock.calls[1]).toEqual(['user_partitions_store_legacy_server_profiles', { profiles: [sampleProfile()], expectedList: undefined }]);
         expect(handler).toHaveBeenCalledTimes(1);
         expect(localStoreMap.has('aeroftp-saved-servers')).toBe(false);
-    });
-
-    it('lets the profile the legacy store holds keep its name on a fallback write', async () => {
-        // Save-as-new puts the new profile in front of the one holding its
-        // name: the list order must not hand the name to the new one.
-        const held = sampleProfile({ id: 'srv_held', name: 'Lab' });
-        const added = sampleProfile({ id: 'srv_new', name: 'Lab' });
-        mockInvoke
-            .mockRejectedValueOnce(new Error('STORE_NOT_READY')) // partition save rejects
-            .mockResolvedValueOnce(JSON.stringify([held])) // legacy get_credential
-            .mockResolvedValueOnce(undefined); // legacy store_credential succeeds
-
-        const stored = await storeSavedServerProfiles([added, held]);
-
-        expect(stored.map(p => [p.id, p.name])).toEqual([['srv_new', 'Lab (1)'], ['srv_held', 'Lab']]);
-        expect(JSON.parse((mockInvoke.mock.calls[2][1] as { password: string }).password)).toEqual(stored);
     });
 
     it('does not swallow a non-fallback error from the partition write', async () => {
@@ -386,36 +367,52 @@ describe('a replacement that cannot read the list', () => {
 });
 
 describe('a list read from the legacy store', () => {
-    it('never replaces the partition once that can be reached, and stays in the legacy store while it cannot', async () => {
+    it('goes only to the guarded legacy write, with the list it read, and a refusal stays one', async () => {
         const legacy = [sampleProfile({ name: 'from the legacy store' })];
-        let partition: unknown = new Error('STORE_NOT_READY');
         mockInvoke.mockImplementation(async (command: string) => {
-            if (command === 'user_partitions_load_active_server_profiles_scoped') {
-                if (partition instanceof Error) throw partition;
-                return partition;
-            }
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
             if (command === 'get_credential') return JSON.stringify(legacy);
-            if (command === 'user_partitions_save_active_server_profiles') throw new Error('STORE_NOT_READY');
             return undefined;
         });
         const read = await readSavedServerProfilesForWrite();
         expect(read.profiles).toEqual(legacy);
         expect(read.userId).toBeUndefined();
-        const savedToPartition = () => mockInvoke.mock.calls.some(call => call[0] === 'user_partitions_save_active_server_profiles');
 
-        // Not ready yet: the list stays in the store it came from.
-        await storeSavedServerProfiles(read.profiles, false, read.userId, read.revision);
-        expect(savedToPartition()).toBe(false);
-        expect(mockInvoke.mock.calls.some(call => call[0] === 'store_credential')).toBe(true);
-
-        // Ready by the time of the write: refused, and no save reaches the partition.
-        partition = { userId: 4, profiles: [], revision: 'r1' };
-        mockInvoke.mockClear();
-        await expect(storeSavedServerProfiles(read.profiles, false, read.userId, read.revision))
-            .rejects.toThrow('PROFILES_CHANGED');
-        expect(savedToPartition()).toBe(false);
-        expect(mockInvoke.mock.calls.some(call => call[0] === 'store_credential')).toBe(false);
+        const edited = [sampleProfile({ name: 'edited' })];
         mockInvoke.mockReset();
+        mockInvoke.mockResolvedValueOnce(edited);
+        await storeSavedServerProfiles(edited, false, read.userId, read.revision);
+        expect(mockInvoke.mock.calls).toEqual([['user_partitions_store_legacy_server_profiles', { profiles: edited, expectedList: legacy }]]);
+
+        // The partition is reachable by now, or the store holds another list.
+        mockInvoke.mockReset();
+        mockInvoke.mockRejectedValueOnce(new Error('PROFILES_CHANGED: nothing was saved'));
+        await expect(storeSavedServerProfiles(edited, false, read.userId, read.revision)).rejects.toThrow('PROFILES_CHANGED');
+        expect(mockInvoke).toHaveBeenCalledTimes(1);
+        mockInvoke.mockReset();
+    });
+});
+
+describe('a retry after another writer saved', () => {
+    it('stops when the account changed, and never writes the first account\'s data on the second', async () => {
+        const write = vi.fn(async () => { throw new Error('PROFILES_CHANGED: nothing was saved'); });
+        const read = vi.fn()
+            .mockResolvedValueOnce({ profiles: [], userId: 4, revision: 'r1' })
+            .mockResolvedValueOnce({ profiles: [], userId: 9, revision: 'r9' });
+        await expect(withFreshSavedProfiles(write, read)).rejects.toThrow('ACCOUNT_CHANGED');
+        expect(write).toHaveBeenCalledTimes(1);
+    });
+
+    it('redoes the write once in the same account, on the new read', async () => {
+        const write = vi.fn()
+            .mockRejectedValueOnce(new Error('PROFILES_CHANGED: nothing was saved'))
+            .mockResolvedValueOnce('done');
+        const second = { profiles: [], userId: 4, revision: 'r2' };
+        const read = vi.fn()
+            .mockResolvedValueOnce({ profiles: [], userId: 4, revision: 'r1' })
+            .mockResolvedValueOnce(second);
+        await expect(withFreshSavedProfiles(write, read)).resolves.toBe('done');
+        expect(write).toHaveBeenLastCalledWith(second);
     });
 });
 

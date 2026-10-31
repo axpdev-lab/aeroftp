@@ -3,12 +3,12 @@
 
 import type { ServerProfile } from '../types';
 import { secureGet, secureStore } from './secureStorage';
-import { uniqueProfileNames } from './uniqueProfileName';
 import {
     accountChangeGeneration,
     loadActiveServerProfiles,
     loadActiveServerProfilesScoped,
     saveActiveServerProfiles,
+    storeLegacyServerProfiles,
 } from './userPartitions';
 
 export const SAVED_SERVERS_ACCOUNT = 'server_profiles';
@@ -133,10 +133,11 @@ export interface SavedProfilesRead {
     revision?: string;
 }
 
-// The revision of a list read from the legacy store. A write carrying it stays in
-// that store: if the partition can be reached by then, this list is older than
-// what the partition holds, and the write is refused like any other stale one.
-const LEGACY_STORE_REVISION = 'legacy-store';
+// What the revision of a list read from the legacy store starts with, followed by
+// that list. A write carrying it stays in that store: the backend refuses it, under
+// the list lock, if the partition can be reached by then or the store no longer
+// holds that list.
+const LEGACY_STORE_REVISION = 'legacy-store:';
 
 /**
  * `loadSavedServerProfilesStrict` plus the account the list belongs to. Pass
@@ -156,7 +157,7 @@ export const readSavedServerProfilesForWrite = async (): Promise<SavedProfilesRe
     } catch (error) {
         if (!canUseLegacyProfileFallback(error)) throw error;
         const legacy = await loadLegacySavedServerProfiles();
-        if (legacy.length > 0) return { profiles: legacy, revision: LEGACY_STORE_REVISION };
+        if (legacy.length > 0) return { profiles: legacy, revision: LEGACY_STORE_REVISION + JSON.stringify(legacy) };
         throw error;
     }
 };
@@ -208,22 +209,18 @@ export const storeSavedServerProfiles = async (
     const accountBefore = accountChangeGeneration();
     let stored: ServerProfile[];
     try {
-        if (expectedRevision === LEGACY_STORE_REVISION) {
-            await loadActiveServerProfilesScoped();
-            throw new Error('PROFILES_CHANGED: the saved profiles were read from the legacy store and the account store is available now; nothing was saved');
+        if (expectedRevision?.startsWith(LEGACY_STORE_REVISION)) {
+            const expected = JSON.parse(expectedRevision.slice(LEGACY_STORE_REVISION.length)) as ServerProfile[];
+            stored = await storeLegacyServerProfiles(profiles, expected);
+        } else {
+            const written = await saveActiveServerProfiles(profiles, expectedUserId, expectedRevision);
+            stored = Array.isArray(written) ? written : profiles;
         }
-        const written = await saveActiveServerProfiles(profiles, expectedUserId, expectedRevision);
-        stored = Array.isArray(written) ? written : profiles;
     } catch (error) {
-        // A list bound to an account never falls back to the legacy store,
-        // which has no accounts.
-        if (expectedUserId !== undefined || !canUseLegacyProfileFallback(error)) throw error;
-        // The list the legacy store holds decides which profile had a name
-        // first, as the partition's does in the backend: a profile saved in
-        // front of the one holding its name must not take the name from it.
-        const held = (await secureGet<ServerProfile[]>(SAVED_SERVERS_ACCOUNT)) ?? readLocalProfiles();
-        stored = uniqueProfileNames(Array.isArray(held) ? held : [], profiles);
-        await secureStore(SAVED_SERVERS_ACCOUNT, stored);
+        // A list bound to an account never falls back to the legacy store, which has
+        // no accounts, and one already bound to that store has just been refused.
+        if (expectedUserId !== undefined || expectedRevision !== undefined || !canUseLegacyProfileFallback(error)) throw error;
+        stored = await storeLegacyServerProfiles(profiles);
     }
     announceStoredServerProfiles(stored, accountBefore, connectionMetadata);
     return stored;
@@ -255,21 +252,42 @@ export const announceStoredServerProfiles = (
     }
 };
 
+/**
+ * Run a read-modify-write on a fresh read, and once more on a new read if another
+ * writer saved in between (`PROFILES_CHANGED`). The second try belongs to the account
+ * of the first: if the account changed, the data the write was made from may be the
+ * previous account's, so it stops with `ACCOUNT_CHANGED` and writes nothing.
+ */
+export const withFreshSavedProfiles = async <T>(
+    write: (read: SavedProfilesRead) => Promise<T>,
+    read: () => Promise<SavedProfilesRead> = readSavedServerProfilesForWrite,
+): Promise<T> => {
+    const accountBefore = accountChangeGeneration();
+    const first = await read();
+    try {
+        return await write(first);
+    } catch (error) {
+        if (!String(error).includes('PROFILES_CHANGED')) throw error;
+        const again = await read();
+        if (again.userId !== first.userId || accountChangeGeneration() !== accountBefore) {
+            throw new Error('ACCOUNT_CHANGED: the active account changed since these profiles were read; nothing was saved');
+        }
+        return write(again);
+    }
+};
+
 export const mergeSavedServerProfile = async (
     profileId: string,
     updater: (profile: ServerProfile) => ServerProfile | Promise<ServerProfile>,
     connectionMetadata = false,
 ): Promise<ServerProfile[]> => {
     let result: ServerProfile[] = [];
-    const attempt = async () => {
-        let read: SavedProfilesRead;
-        try {
-            read = await readSavedServerProfilesForWrite();
-        } catch (error) {
-            // Same outcome as the plain read: nothing reachable to merge into.
-            if (!canUseLegacyProfileFallback(error)) throw error;
-            read = { profiles: [] };
-        }
+    // Same outcome as the plain read: nothing reachable to merge into.
+    const readForMerge = () => readSavedServerProfilesForWrite().catch((error: unknown): SavedProfilesRead => {
+        if (!canUseLegacyProfileFallback(error)) throw error;
+        return { profiles: [] };
+    });
+    const run = () => withFreshSavedProfiles(async read => {
         const profiles = read.profiles;
         let found = false;
         const next: ServerProfile[] = [];
@@ -286,18 +304,7 @@ export const mergeSavedServerProfile = async (
         result = found ? next : profiles;
         // As stored: a name another profile holds comes back as " (1)".
         if (found) result = await storeSavedServerProfiles(result, connectionMetadata, read.userId, read.revision);
-    };
-    // A merge is one field of one profile, so it can simply be redone on the list
-    // another window or process just saved. Once: a list changing that fast
-    // reports the conflict like any other write.
-    const run = async () => {
-        try {
-            await attempt();
-        } catch (error) {
-            if (!String(error).includes('PROFILES_CHANGED')) throw error;
-            await attempt();
-        }
-    };
+    }, readForMerge);
 
     const queued = profileWriteQueue.then(run, run);
     profileWriteQueue = queued.then(() => undefined, () => undefined);
@@ -314,19 +321,11 @@ export const mergeSavedServerProfile = async (
  */
 export const replaceSavedServerProfiles = async (
     list: () => ServerProfile[] | null | Promise<ServerProfile[] | null>,
-): Promise<ServerProfile[] | null> => {
-    const attempt = async () => {
-        const { userId, revision } = await readSavedServerProfilesForWrite();
+): Promise<ServerProfile[] | null> =>
+    withFreshSavedProfiles(async ({ userId, revision }) => {
         const profiles = await list();
         return profiles === null ? null : storeSavedServerProfiles(profiles, false, userId, revision);
-    };
-    try {
-        return await attempt();
-    } catch (error) {
-        if (!String(error).includes('PROFILES_CHANGED')) throw error;
-        return attempt();
-    }
-};
+    });
 
 /**
  * The list `profiles` with a convert undone: the converted profile (`convertedId`)

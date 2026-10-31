@@ -836,6 +836,36 @@ async fn durable_profile_auth_lifecycle(
         );
         assert!(store.get("filen_api_key_rollback").is_err());
 
+        // A write that reaches the vault and then fails in the partition goes back
+        // in the vault too, and the error names the key.
+        store
+            .store("server_rollback-partial", "vault-before")
+            .unwrap();
+        let conn = users::open_or_init_cli().unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER refuse_partial BEFORE INSERT ON user_credentials
+             WHEN NEW.credential_id = 'server_rollback-partial'
+             BEGIN SELECT RAISE(ABORT, 'injected'); END;",
+        )
+        .unwrap();
+        let refused = apply_secret_writes(
+            &slots,
+            vec![SecretWrite::new(
+                "server_rollback-partial".into(),
+                None,
+                "file-partial",
+            )],
+        )
+        .map(|_| ())
+        .unwrap_err();
+        conn.execute_batch("DROP TRIGGER refuse_partial;").unwrap();
+        assert!(refused.contains("server_rollback-partial"), "{refused}");
+        assert!(!refused.contains("file-partial"), "{refused}");
+        assert_eq!(
+            store.get("server_rollback-partial").unwrap(),
+            "vault-before"
+        );
+
         // Relocation takes the list lock too.
         let held = users::ProfileListLock::acquire(&users::open_or_init_cli().unwrap())
             .unwrap()

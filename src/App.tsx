@@ -425,7 +425,7 @@ import {
   PROFILES_CHANGED_EVENT,
 } from './utils/serverProfileStore';
 import { appendImportedProfiles } from './components/bridge/bridgeImportCommit';
-import { announceStoredServerProfiles, readSavedServerProfilesForWrite, replaceSavedServerProfiles } from './utils/serverProfileStore';
+import { announceStoredServerProfiles, readSavedServerProfilesForWrite, replaceSavedServerProfiles, withFreshSavedProfiles } from './utils/serverProfileStore';
 import { maskCredential } from './utils/maskCredential';
 import { getOpenWithDefaultRoute } from './utils/openWithDefault';
 import { createRemoteEndpoint } from './utils/panelEndpoints';
@@ -2023,20 +2023,23 @@ const App: React.FC = () => {
     let cancelled = false;
     (async () => {
       try {
-        const { profiles: profiles, userId: profilesUserId, revision: profilesRevision } = await readSavedServerProfilesForWrite();
-        const { migrated, changed } = await migrateFilenApiKeysToVault(
-          profiles,
-          (account, key) => invoke('store_credential', { account, password: key }) as Promise<void>,
-          (id, e) => logger.warn('[#230] Filen API key vault migration failed for profile', id, e),
-        );
-        if (cancelled) return;
-        if (changed) {
-          await storeSavedServerProfiles(migrated, false, profilesUserId, profilesRevision);
-          setServersRefreshKey(k => k + 1);
-        }
-        if (migrated.every((p) => !p.options?.filen_api_key)) {
-          localStorage.setItem('aeroftp_filen_apikey_vault_migrated', 'true');
-        }
+        // Once more if another writer saved meanwhile: the key would otherwise stay
+        // in the stored profile until the next launch.
+        await withFreshSavedProfiles(async ({ profiles, userId, revision }) => {
+          const { migrated, changed } = await migrateFilenApiKeysToVault(
+            profiles,
+            (account, key) => invoke('store_credential', { account, password: key }) as Promise<void>,
+            (id, e) => logger.warn('[#230] Filen API key vault migration failed for profile', id, e),
+          );
+          if (cancelled) return;
+          if (changed) {
+            await storeSavedServerProfiles(migrated, false, userId, revision);
+            setServersRefreshKey(k => k + 1);
+          }
+          if (migrated.every((p) => !p.options?.filen_api_key)) {
+            localStorage.setItem('aeroftp_filen_apikey_vault_migrated', 'true');
+          }
+        });
       } catch (e) {
         logger.warn('[#230] Filen API key vault migration error', e);
       }
@@ -17494,8 +17497,10 @@ const App: React.FC = () => {
               // list; the dialog's opening snapshot is no longer authoritative.
               // The dialog closes itself (onClose) once its result has been
               // read, or stays open on a warning that must be seen.
+              const accountBefore = accountChangeGeneration();
               const merged = await appendImportedProfiles(newServers, expectedUserId);
-              setExportImportServers(merged);
+              // A switch meanwhile brings its own re-read: this list is the previous account's.
+              if (accountChangeGeneration() === accountBefore) setExportImportServers(merged);
               setServersRefreshKey(k => k + 1);
             }}
             onProfilesStored={(stored) => {
