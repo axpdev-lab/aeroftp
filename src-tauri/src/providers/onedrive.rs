@@ -1364,7 +1364,11 @@ impl OneDriveProvider {
                 return;
             }
         };
-        match request.send().await {
+        let answer = request
+            .send()
+            .await
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()));
+        match answer {
             Ok(response) if response.status().is_success() => {}
             Ok(response) => {
                 tracing::warn!(
