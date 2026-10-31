@@ -144,8 +144,8 @@ describe('ProgressCard during a transfer', () => {
         const declares = classes.find((name) => name.endsWith(':0px]'));
         const caps = classes.find((name) => name.startsWith('min-h-'));
         expect(declares?.slice(1, -5)).toBe(HELD_HEIGHT);
-        expect(caps).toContain(HELD_HEIGHT);
-        expect(caps).toContain('100vh');
+        const value = caps?.replace('min-h-', '').replace(HELD_HEIGHT, 'HELD');
+        expect(value).toBe('[' + 'min(var(HELD),calc(100vh-4rem))' + ']');
     });
 
     it('grows when its content needs more room', async () => {
