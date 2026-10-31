@@ -56,7 +56,9 @@ export const connectLandsOutsideOverlay = (
 ): boolean => {
   const island = normCryptScope(overlayPath);
   if (!island) return false;
-  const landing = normCryptScope(remotePath);
+  // The folder the connect opens, read as navigation reads it: `/Crypt ` is
+  // another folder than an island at `/Crypt`, and opens outside it.
+  const landing = normLandingPath(remotePath);
   if (!landing) return true;
   if (landing === island || landing.startsWith(island + '/')) return false;
   return true;

@@ -2576,6 +2576,11 @@ mod tests {
                 "upload",
                 provider.upload(local, "/src/ lead.txt", None).await,
             ),
+            // A letter above U+FFFF: ImageKit stores it as `_`.
+            (
+                "upload",
+                provider.upload(local, "/src/a\u{1d538}.txt", None).await,
+            ),
             ("mkdir", provider.mkdir("/src/my albums").await),
             ("mkdir", provider.mkdir("/src/a.b").await),
             (
@@ -2605,6 +2610,8 @@ mod tests {
         );
         let upload = refused[0].1.as_ref().unwrap_err().to_string();
         assert!(upload.contains("\"a_b.txt\", not \"a b.txt\""), "{upload}");
+        let astral = refused[2].1.as_ref().unwrap_err().to_string();
+        assert!(astral.contains("\"a_.txt\""), "{astral}");
 
         provider
             .upload(local, "/src/aéb-1_2.txt", None)

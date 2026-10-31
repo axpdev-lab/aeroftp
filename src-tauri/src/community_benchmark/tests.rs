@@ -633,6 +633,10 @@ mod engine_runs {
         refuse_deep_mkdir: bool,
         /// The folder `pwd` reports, `/` when unset.
         cwd: Option<String>,
+        /// `pwd` never answers, as an FTP server that stopped.
+        hang_pwd: bool,
+        /// The provider it passes for, SFTP when unset.
+        kind: Option<ProviderType>,
         /// Every folder asked for, in order.
         mkdirs: Vec<String>,
     }
@@ -649,7 +653,7 @@ mod engine_runs {
             self
         }
         fn provider_type(&self) -> ProviderType {
-            ProviderType::Sftp
+            self.0.lock().unwrap().kind.unwrap_or(ProviderType::Sftp)
         }
         fn display_name(&self) -> String {
             "mem".into()
@@ -681,6 +685,9 @@ mod engine_runs {
             Ok(out)
         }
         async fn pwd(&mut self) -> Result<String, ProviderError> {
+            if self.0.lock().unwrap().hang_pwd {
+                std::future::pending::<()>().await;
+            }
             Ok(self
                 .0
                 .lock()
@@ -907,42 +914,83 @@ mod engine_runs {
 
     /// A relative start path is the folder connect entered, which the
     /// session stands in: the scratch folder joined to it again was created
-    /// in `team /team /aeroftp-bench`, or not at all.
+    /// in `team /team /aeroftp-bench`, or not at all. A `..` in it is taken
+    /// with the folder before it: `docs/../team ` stood in `/home/u/team `
+    /// unseen, and the scratch folder went to `docs/../team /aeroftp-bench`
+    /// under it, which a provider that keeps `..` as a name cannot create.
     #[tokio::test]
     async fn a_relative_start_path_is_applied_once() {
-        let (state, provider) = remote();
-        let home = ["/data", "/home", "/home/u", "/home/u/team "].map(String::from);
-        {
-            let mut r = state.lock().unwrap();
-            r.cwd = Some("/home/u/team ".into());
-            r.dirs.extend(home.clone());
+        for start in ["team ", "docs/../team ", "./docs/../team /"] {
+            let (state, provider) = remote();
+            let home = ["/data", "/home", "/home/u", "/home/u/team "].map(String::from);
+            {
+                let mut r = state.lock().unwrap();
+                r.cwd = Some("/home/u/team ".into());
+                r.dirs.extend(home.clone());
+            }
+            let opts = options(BenchmarkLevel::Quick, "1K", None);
+            let outcome = run(provider, start, opts, &Silent).await.unwrap();
+            assert!(
+                outcome.report.summary.errors.is_empty(),
+                "{start:?}: {:?}",
+                outcome.report.summary.errors
+            );
+            let r = state.lock().unwrap();
+            // Every folder asked for is where the session stands, none
+            // relative.
+            assert_eq!(r.mkdirs[0], "/home/u/team /aeroftp-bench", "{start:?}");
+            assert!(
+                r.mkdirs
+                    .iter()
+                    .all(|dir| dir.starts_with('/') && !dir.contains("team /team ")),
+                "{start:?}: {:?}",
+                r.mkdirs
+            );
+            assert!(
+                r.mkdirs
+                    .iter()
+                    .any(|dir| dir.starts_with("/home/u/team /aeroftp-bench/")),
+                "{start:?}: {:?}",
+                r.mkdirs
+            );
+            assert!(r.files.is_empty(), "{start:?}: {:?}", r.files.keys());
+            assert_eq!(r.dirs, BTreeSet::from(home), "{start:?}");
         }
-        let opts = options(BenchmarkLevel::Quick, "1K", None);
-        let outcome = run(provider, "team ", opts, &Silent).await.unwrap();
-        assert!(
-            outcome.report.summary.errors.is_empty(),
-            "{:?}",
-            outcome.report.summary.errors
-        );
-        let r = state.lock().unwrap();
-        // Every folder asked for is where the session stands, none relative.
-        assert_eq!(r.mkdirs[0], "/home/u/team /aeroftp-bench");
-        assert!(
-            r.mkdirs
-                .iter()
-                .all(|dir| dir.starts_with('/') && !dir.contains("team /team ")),
-            "{:?}",
-            r.mkdirs
-        );
-        assert!(
-            r.mkdirs
-                .iter()
-                .any(|dir| dir.starts_with("/home/u/team /aeroftp-bench/")),
-            "{:?}",
-            r.mkdirs
-        );
-        assert!(r.files.is_empty(), "{:?}", r.files.keys());
-        assert_eq!(r.dirs, BTreeSet::from(home));
+    }
+
+    /// The run asks where the session stands before its scratch folder: for
+    /// a relative start path, and on Proton Drive for a relative prefix. A
+    /// `pwd` that never answers, as from an FTP server that stopped, held the
+    /// run past its profile timeout and its cancel; it ends at the timeout.
+    #[tokio::test]
+    async fn a_pwd_that_never_answers_ends_at_the_profile_timeout() {
+        for (kind, prefix) in [
+            (ProviderType::Sftp, None),
+            (ProviderType::Proton, Some("live-tests")),
+        ] {
+            let (state, provider) = remote();
+            {
+                let mut r = state.lock().unwrap();
+                r.hang_pwd = true;
+                r.kind = Some(kind);
+            }
+            let mut opts = options(BenchmarkLevel::Quick, "1K", None);
+            opts.profile_timeout_secs = 1;
+            opts.test_root_prefix = prefix.map(str::to_string);
+            let outcome = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                run(provider, "team", opts, &Silent),
+            )
+            .await
+            .unwrap_or_else(|_| panic!("{kind:?}: the run waited on pwd past its timeout"));
+            let error = match outcome {
+                Err(error) => error,
+                Ok(_) => panic!("{kind:?}: the run stopped before its scratch folder"),
+            };
+            assert!(error.contains("timed out"), "{kind:?}: {error}");
+            let r = state.lock().unwrap();
+            assert_eq!(r.dirs, BTreeSet::from(["/data".to_string()]), "{kind:?}");
+        }
     }
 
     #[tokio::test]

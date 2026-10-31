@@ -17,16 +17,27 @@ use crate::providers::StorageProvider;
 /// Whether a session in `cwd` stands in the relative folder `base`: `cwd` is
 /// `/docs`, or ends with `/docs` (the login home's `docs`). Compared folder
 /// by folder, so `./docs` and `docs//sub` match the `/docs` and `/docs/sub` a
-/// provider reports. A base with `..` cannot be told from here and is kept.
+/// provider reports, and a `..` is taken with the folder before it:
+/// `docs/../team` is `team`. A `..` with no folder before it goes above the
+/// start, which cannot be told from here, and the base is kept.
 pub fn stands_in(cwd: &str, base: &str) -> bool {
-    let folders = |path: &str| -> Vec<String> {
-        path.split('/')
-            .filter(|folder| !folder.is_empty() && *folder != ".")
-            .map(str::to_string)
-            .collect()
-    };
     let (cwd, base) = (folders(cwd), folders(base));
-    !base.is_empty() && !base.iter().any(|folder| folder == "..") && cwd.ends_with(&base)
+    !base.is_empty() && !base.contains(&"..") && cwd.ends_with(&base)
+}
+
+/// The folders of `path`, without `.` and with each `folder/..` taken out.
+fn folders(path: &str) -> Vec<&str> {
+    let mut folders: Vec<&str> = Vec::new();
+    for folder in path.split('/') {
+        match folder {
+            "" | "." => {}
+            ".." if folders.last().is_some_and(|last| *last != "..") => {
+                folders.pop();
+            }
+            _ => folders.push(folder),
+        }
+    }
+    folders
 }
 
 /// The initial folder `path` as the connected session has entered it: the
@@ -60,6 +71,9 @@ mod tests {
             ("/home/u/docs/sub", "docs//sub/"),
             ("/docs/sub", "./docs/./sub"),
             ("/home/u/docs ", "docs "),
+            ("/home/team", "docs/../team"),
+            ("/home/team/sub", "./a/b/../../team/sub/"),
+            ("/docs", "docs/sub/.."),
         ] {
             assert!(stands_in(cwd, base), "{cwd:?} {base:?}");
         }
@@ -67,6 +81,9 @@ mod tests {
             ("/mydocs", "docs"),
             ("/docs", "docs "),
             ("/docs", "../docs"),
+            ("/docs", "a/../../docs"),
+            ("/home/team", "docs/.. /team"),
+            ("/docs", "docs/.."),
             ("/docs", "."),
             ("/", ""),
         ] {

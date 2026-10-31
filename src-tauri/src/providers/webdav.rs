@@ -3288,21 +3288,31 @@ impl WebDavProvider {
                             // ...) the input has no percent-encoding and decode is a
                             // no-op; on the Filen bridge it un-mangles the name. Issue
                             // #128.
-                            // As given, like the rest of the name: ` a` and
-                            // `a ` are two other files than `a`, and a name
-                            // of spaces is a name. XML writers indent around
-                            // the element, never inside its text.
-                            let name = if !displayname.is_empty() {
-                                urlencoding::decode(&displayname)
-                                    .unwrap_or_else(|_| displayname.as_str().into())
-                                    .into_owned()
+                            // The spaces around a name are part of it: ` a`
+                            // and `a ` are two other files than `a`, and a
+                            // name of spaces is a name. The href names the
+                            // resource, so a displayname that says its name
+                            // with other spaces around it takes the href's:
+                            // the entry's path must reach that resource. A
+                            // displayname that names something else (a
+                            // server whose href is not the name) is the name.
+                            let leaf = decoded_href
+                                .trim_end_matches('/')
+                                .rsplit('/')
+                                .next()
+                                .unwrap_or("")
+                                .to_string();
+                            let name = if displayname.is_empty() {
+                                leaf
                             } else {
-                                decoded_href
-                                    .trim_end_matches('/')
-                                    .rsplit('/')
-                                    .next()
-                                    .unwrap_or("")
-                                    .to_string()
+                                let shown = urlencoding::decode(&displayname)
+                                    .unwrap_or_else(|_| displayname.as_str().into())
+                                    .into_owned();
+                                if shown.trim() == leaf.trim() {
+                                    leaf
+                                } else {
+                                    shown
+                                }
                             };
 
                             if name.is_empty() || name == "." || name == ".." {
@@ -7179,7 +7189,10 @@ mod tests {
     /// A displayname that begins or ends with a space names that file, in a
     /// text node or in a CDATA section: it was trimmed, so ` a.txt ` was
     /// listed as `a.txt` at `/dav/a.txt`, and every operation on it reached
-    /// another file or none.
+    /// another file or none. The href names the resource: a displayname that
+    /// says the href's name with other spaces around it (` b.txt ` for
+    /// `/dav/b.txt`) takes the href's, so the entry's path reaches the file.
+    /// A displayname that names something else than the href is the name.
     #[test]
     fn parse_propfind_keeps_the_spaces_around_a_displayname() {
         let provider = WebDavProvider::new(test_config("https://example.com/dav"))
@@ -7224,6 +7237,42 @@ mod tests {
                     </d:prop>
                 </d:propstat>
             </d:response>
+            <d:response>
+                <d:href>/dav/b.txt</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname> b.txt </d:displayname>
+                        <d:resourcetype/>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/d.txt</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname><![CDATA[  d.txt]]></d:displayname>
+                        <d:resourcetype/>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/%20/</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname>    </d:displayname>
+                        <d:resourcetype><d:collection/></d:resourcetype>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/e7</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname> e.txt</d:displayname>
+                        <d:resourcetype/>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
         </d:multistatus>"#;
 
         let entries = provider.parse_propfind_response(xml, "/dav").unwrap();
@@ -7238,6 +7287,10 @@ mod tests {
                 ("  ", "/dav/  "),
                 (" c.txt ", "/dav/ c.txt "),
                 ("   ", "/dav/   "),
+                ("b.txt", "/dav/b.txt"),
+                ("d.txt", "/dav/d.txt"),
+                (" ", "/dav/ "),
+                (" e.txt", "/dav/ e.txt"),
             ]
         );
     }

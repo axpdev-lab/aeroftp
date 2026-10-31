@@ -577,33 +577,147 @@ fn trims_whitespace(text: &str) -> bool {
 /// `.map(str::trim)`) is one statement, which a check line by line misses,
 /// and so is a call whose arguments run over several lines (`pick(initial,` /
 /// `other).trim()`): a comma ends a statement only outside brackets, where it
-/// ends a field or an argument of its own.
+/// ends a field or an argument of its own. Comments are not part of a
+/// statement (a `.trim()` named in one trims nothing), and a literal is read
+/// whole: a bracket inside one (`")"`, `')'`) counts for nothing, and `//`
+/// inside one (a URL) is not a comment.
 fn statements(source: &str) -> Vec<(usize, String)> {
     let mut found = Vec::new();
     let mut open: Option<(usize, String)> = None;
     let mut depth = 0usize;
+    let mut scan = Scan::Code;
     for (index, line) in source.lines().enumerate() {
-        let code = line.trim_start();
-        if code.starts_with("//") {
+        let code = code_of(line, &mut scan, &mut depth);
+        let code = code.trim();
+        if code.is_empty() {
             continue;
         }
         let (_, text) = open.get_or_insert_with(|| (index + 1, String::new()));
         text.push_str(code);
         text.push(' ');
-        for c in code.chars() {
-            match c {
-                '(' | '[' => depth += 1,
-                ')' | ']' => depth = depth.saturating_sub(1),
-                _ => {}
-            }
-        }
-        if code.ends_with([';', '{', '}']) || (code.ends_with(',') && depth == 0) {
+        // A line that ends inside a literal or a comment ends no statement.
+        let ends = code.ends_with([';', '{', '}']) || (code.ends_with(',') && depth == 0);
+        if scan == Scan::Code && ends {
             found.extend(open.take());
             depth = 0;
         }
     }
     found.extend(open);
     found
+}
+
+/// Where the end of a line leaves the scan: in code, or inside a string, a
+/// raw string (with its `#`s) or a block comment (with its depth) that runs
+/// on to the next line.
+#[derive(Clone, Copy, PartialEq)]
+enum Scan {
+    Code,
+    Str,
+    RawStr(usize),
+    Comment(usize),
+}
+
+/// The code of one line: its comments taken out, its string and char
+/// literals kept whole. Only a bracket outside a literal changes `depth`.
+fn code_of(line: &str, scan: &mut Scan, depth: &mut usize) -> String {
+    let chars: Vec<char> = line.chars().collect();
+    let starts_word =
+        |at: usize| at == 0 || !(chars[at - 1].is_alphanumeric() || chars[at - 1] == '_');
+    let mut code = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        let (c, next) = (chars[i], chars.get(i + 1).copied());
+        match *scan {
+            Scan::Comment(open) => {
+                if (c, next) == ('*', Some('/')) {
+                    *scan = if open == 1 {
+                        Scan::Code
+                    } else {
+                        Scan::Comment(open - 1)
+                    };
+                    i += 2;
+                } else if (c, next) == ('/', Some('*')) {
+                    *scan = Scan::Comment(open + 1);
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+                continue;
+            }
+            Scan::Str => {
+                code.push(c);
+                if c == '\\' {
+                    code.extend(next);
+                    i += 2;
+                    continue;
+                }
+                if c == '"' {
+                    *scan = Scan::Code;
+                }
+                i += 1;
+                continue;
+            }
+            Scan::RawStr(hashes) => {
+                code.push(c);
+                i += 1;
+                let closing = chars[i..].iter().take(hashes).filter(|&&h| h == '#');
+                if c == '"' && closing.count() == hashes {
+                    code.extend(&chars[i..i + hashes]);
+                    i += hashes;
+                    *scan = Scan::Code;
+                }
+                continue;
+            }
+            Scan::Code => {}
+        }
+        match (c, next) {
+            ('/', Some('/')) => break,
+            ('/', Some('*')) => {
+                *scan = Scan::Comment(1);
+                i += 2;
+                continue;
+            }
+            ('"', _) => *scan = Scan::Str,
+            // `r"..."`, `r#"..."#`, `br"..."`; not a raw identifier (`r#type`).
+            ('r', _)
+                if starts_word(i)
+                    || (i > 0 && matches!(chars[i - 1], 'b' | 'c') && starts_word(i - 1)) =>
+            {
+                let hashes = chars[i + 1..].iter().take_while(|&&h| h == '#').count();
+                if chars.get(i + 1 + hashes) == Some(&'"') {
+                    code.extend(&chars[i..i + 2 + hashes]);
+                    i += 2 + hashes;
+                    *scan = Scan::RawStr(hashes);
+                    continue;
+                }
+            }
+            // A char literal (`')'`, `'\''`, `'\u{29}'`); a lifetime (`'a`) is
+            // not one and is code.
+            ('\'', _) => {
+                let end = if next == Some('\\') {
+                    chars
+                        .get(i + 3..)
+                        .and_then(|rest| rest.iter().position(|&q| q == '\''))
+                        .map(|at| i + 3 + at)
+                } else if chars.get(i + 2) == Some(&'\'') {
+                    Some(i + 2)
+                } else {
+                    None
+                };
+                if let Some(end) = end {
+                    code.extend(&chars[i..=end]);
+                    i = end + 1;
+                    continue;
+                }
+            }
+            ('(' | '[', _) => *depth += 1,
+            (')' | ']', _) => *depth = depth.saturating_sub(1),
+            _ => {}
+        }
+        code.push(c);
+        i += 1;
+    }
+    code
 }
 
 #[test]
@@ -625,6 +739,65 @@ fn a_call_over_several_lines_is_one_statement() {
     assert_eq!(
         found.iter().map(|(line, _)| *line).collect::<Vec<_>>(),
         [1, 4, 5, 7, 8]
+    );
+}
+
+/// A comment is not code: `.trim()` named in a trailing comment trimmed
+/// nothing and failed the check, and a statement whose line ended in a
+/// comment ran on into the next one. `//` in a string (a URL) is not a
+/// comment, and a bracket in a literal does not end an argument list early.
+#[test]
+fn comments_are_left_out_and_literals_read_whole() {
+    let texts = |source: &str| -> Vec<String> {
+        statements(source)
+            .into_iter()
+            .map(|(_, text)| text)
+            .collect()
+    };
+    assert_eq!(
+        texts("let base = initial_path.trim_end_matches('/'); // was .trim()\nlet b = 2;\n"),
+        [
+            "let base = initial_path.trim_end_matches('/'); ",
+            "let b = 2; "
+        ]
+    );
+    assert_eq!(
+        texts("let u = format!(\"https://h/{initial}\"); // .trim()\n"),
+        ["let u = format!(\"https://h/{initial}\"); "]
+    );
+    assert_eq!(
+        texts("let a = /* .trim() */ initial;\n/* one\n.trim() */\nlet b = 2;\n"),
+        ["let a =  initial; ", "let b = 2; "]
+    );
+    for (open, literal) in [
+        ("pick(", "\")\","),
+        ("pick(", "')',"),
+        ("pick(", "\"\\\")\","),
+        ("pick(", "'\\'',"),
+        ("pick(", "r#\"a \")\" b\"#,"),
+        ("pick(", "b')',"),
+    ] {
+        let source = format!("let a = {open}{literal}\n    initial)\n    .trim();\n");
+        assert_eq!(
+            texts(&source),
+            [format!("let a = {open}{literal} initial) .trim(); ")],
+            "{literal}"
+        );
+    }
+    // A lifetime is not a char literal; the argument list still closes.
+    assert_eq!(
+        texts("fn f<'a>(x: &'a str,\n    y: u8) {\nlet z = 1;\n"),
+        ["fn f<'a>(x: &'a str, y: u8) { ", "let z = 1; "]
+    );
+    // A raw string ends at its first quote: its backslash escapes nothing.
+    assert_eq!(
+        texts("let a = pick(r\"C:\\\",\n    initial);\nlet b = 2;\n"),
+        ["let a = pick(r\"C:\\\", initial); ", "let b = 2; "]
+    );
+    // A string over several lines ends no statement inside it.
+    assert_eq!(
+        texts("let s = \"a;\nb {\";\nlet t = 1;\n"),
+        ["let s = \"a; b {\"; ", "let t = 1; "]
     );
 }
 

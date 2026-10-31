@@ -43,6 +43,16 @@ describe('connectLandsOutsideOverlay', () => {
     expect(connectLandsOutsideOverlay('/Crypt/', '/Crypt')).toBe(false);
   });
 
+  // The landing is the folder navigation opens (normLandingPath), spaces
+  // included: read with the anchor's trim, `/Crypt ` was inside `/Crypt` and
+  // the overlay unlocked on a folder outside it.
+  it('opens outside the island when the Remote Path is another folder by its spaces', () => {
+    expect(connectLandsOutsideOverlay('/Crypt ', '/Crypt')).toBe(true);
+    expect(connectLandsOutsideOverlay(' /Crypt', '/Crypt')).toBe(true);
+    expect(connectLandsOutsideOverlay('/Crypt /sub', '/Crypt')).toBe(true);
+    expect(connectLandsOutsideOverlay('/Crypt /sub', '/Crypt ')).toBe(true);
+  });
+
   it('treats an empty Overlays Path as the Remote Path itself', () => {
     expect(connectLandsOutsideOverlay('/', '')).toBe(false);
     expect(connectLandsOutsideOverlay('/', '/')).toBe(false);
