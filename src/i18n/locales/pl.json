@@ -6309,7 +6309,12 @@
                 }
             },
             "rescan": "Skanuj ponownie",
-            "rescanNeeded": "Porównanie wykonano z innymi wykluczeniami lub innym folderem kopii zapasowych. Przed uruchomieniem przeskanuj ponownie.",
+            "rescanBringsBack": "Te ustawienia przywracają pliki pominięte przez skanowanie, więc nigdy ich nie odczytało. Przed uruchomieniem przeskanuj ponownie.",
+            "rescanFlat": "To porównanie powstało z list dwóch paneli, a nie z pełnego skanowania, więc nie może zastosować wykluczeń. Przed uruchomieniem przeskanuj ponownie.",
+            "narrowAvailable": "Te ustawienia tylko zawężają porównanie, więc można je przefiltrować bez ponownego skanowania.",
+            "narrowApply": "Zastosuj do tego porównania",
+            "narrowedNote": "Przefiltrowano z nowymi wykluczeniami bez ponownego skanowania. Liczba identycznych nadal pochodzi ze skanowania.",
+            "narrowAfterRestore": "Trwa przywracanie. Te ustawienia można zastosować do porównania po zakończeniu przywracania.",
             "backup": {
                 "checking": "Sprawdzanie, jak ten serwer przenosi pliki...",
                 "serverCopy": "Ten serwer nie obsługuje przenoszenia: każda zachowywana kopia jest kopiowana na serwerze, a następnie usuwana. Kosztuje to pełną kopię każdego zachowanego pliku, w dwóch osobnych krokach.",

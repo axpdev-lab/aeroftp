@@ -12746,6 +12746,14 @@ fn classify_walked_pair(
 /// The `left` directory maps onto `local_info`, `right` onto `remote_info`;
 /// the frontend adapts the result with `leftIsLocal = true`.
 #[tauri::command]
+async fn compare_paths_left_out(
+    options: CompareOptions,
+    paths: Vec<sync::ComparedPath>,
+) -> Result<Vec<bool>, String> {
+    options.paths_left_out(&paths)
+}
+
+#[tauri::command]
 async fn compare_local_directories(
     app: AppHandle,
     left_path: String,
@@ -21172,6 +21180,7 @@ pub fn run() {
             rebuild_menu,
             set_site_command_menu_enabled,
             compare_directories,
+            compare_paths_left_out,
             compare_local_directories,
             cancel_compare,
             proton_mode_switch::proton_mode_switch_plan,
