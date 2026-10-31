@@ -6331,7 +6331,12 @@
                 }
             },
             "rescan": "Tornar a analitzar",
-            "rescanNeeded": "La comparació es va fer amb altres exclusions o una altra carpeta de còpia de seguretat. Torna a analitzar abans d'executar.",
+            "rescanBringsBack": "Aquests ajustos recuperen fitxers que l'anàlisi va deixar fora, així que mai no els va llegir. Torna a analitzar abans d'executar.",
+            "rescanFlat": "Aquesta comparació prové dels llistats dels dos taulers, no d'una anàlisi completa, així que no pot aplicar exclusions. Torna a analitzar abans d'executar.",
+            "narrowAvailable": "Aquests ajustos només redueixen la comparació, de manera que es pot filtrar sense tornar a analitzar.",
+            "narrowApply": "Aplica a aquesta comparació",
+            "narrowedNote": "Filtrada amb noves exclusions sense tornar a analitzar. El recompte d'idèntics continua sent el de l'anàlisi.",
+            "narrowAfterRestore": "S'està executant una restauració. Aquests ajustos es poden aplicar a la comparació quan acabi.",
             "backup": {
                 "checking": "Comprovant com mou els fitxers aquest servidor...",
                 "serverCopy": "Aquest servidor no pot moure: cada còpia conservada es copia al servidor i després s'elimina. Això costa una còpia completa de cada fitxer conservat, en dos passos separats.",

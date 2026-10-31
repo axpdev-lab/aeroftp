@@ -6331,7 +6331,12 @@
                 }
             },
             "rescan": "Skann på nytt",
-            "rescanNeeded": "Sammenligningen ble gjort med andre ekskluderinger eller en annen sikkerhetskopimappe. Skann på nytt før kjøring.",
+            "rescanBringsBack": "Disse innstillingene tar tilbake filer som skanningen utelot, så den har aldri lest dem. Skann på nytt før kjøring.",
+            "rescanFlat": "Denne sammenligningen kom fra listene til de to panelene, ikke fra en full skanning, så den kan ikke bruke ekskluderinger. Skann på nytt før kjøring.",
+            "narrowAvailable": "Disse innstillingene begrenser bare sammenligningen, så den kan filtreres uten ny skanning.",
+            "narrowApply": "Bruk på denne sammenligningen",
+            "narrowedNote": "Filtrert med nye ekskluderinger uten ny skanning. Antallet identiske er fortsatt det fra skanningen.",
+            "narrowAfterRestore": "En gjenoppretting pågår. Disse innstillingene kan brukes på sammenligningen når gjenopprettingen er ferdig.",
             "backup": {
                 "checking": "Sjekker hvordan denne serveren flytter filer...",
                 "serverCopy": "Denne serveren kan ikke flytte: hver bevarte kopi kopieres på serveren og slettes deretter. Det koster en full kopi av hver bevarte fil, i to separate trinn.",

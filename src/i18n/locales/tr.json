@@ -6312,7 +6312,12 @@
                 }
             },
             "rescan": "Yeniden tara",
-            "rescanNeeded": "Karşılaştırma başka hariç tutmalarla veya başka bir yedekleme klasörüyle yapıldı. Çalıştırmadan önce yeniden tarayın.",
+            "rescanBringsBack": "Bu ayarlar taramanın dışarıda bıraktığı dosyaları geri getirir, bu yüzden tarama onları hiç okumadı. Çalıştırmadan önce yeniden tarayın.",
+            "rescanFlat": "Bu karşılaştırma tam taramadan değil, iki panelin listelerinden geldi, bu yüzden hariç tutmalar uygulanamaz. Çalıştırmadan önce yeniden tarayın.",
+            "narrowAvailable": "Bu ayarlar karşılaştırmayı yalnızca daraltır, bu yüzden yeniden taramadan filtrelenebilir.",
+            "narrowApply": "Bu karşılaştırmaya uygula",
+            "narrowedNote": "Yeniden taramadan yeni hariç tutmalarla filtrelendi. Aynı olanların sayısı hâlâ taramadaki sayıdır.",
+            "narrowAfterRestore": "Bir geri yükleme çalışıyor. Bu ayarlar, geri yükleme bittiğinde karşılaştırmaya uygulanabilir.",
             "backup": {
                 "checking": "Bu sunucunun dosyaları nasıl taşıdığı denetleniyor...",
                 "serverCopy": "Bu sunucu taşıma yapamıyor: saklanan her kopya sunucuda kopyalanır ve ardından silinir. Bu, saklanan her dosya için iki ayrı adımda tam bir kopyaya mal olur.",

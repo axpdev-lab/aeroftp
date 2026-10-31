@@ -6312,7 +6312,12 @@
                 }
             },
             "rescan": "Skanni uuesti",
-            "rescanNeeded": "Võrdlus tehti teiste välistuste või teise varukoopiakaustaga. Skanni enne käivitamist uuesti.",
+            "rescanBringsBack": "Need sätted toovad tagasi failid, mille skannimine välja jättis, seega ei lugenud see neid kunagi. Skanni enne käivitamist uuesti.",
+            "rescanFlat": "See võrdlus pärines kahe paneeli loenditest, mitte täielikust skannimisest, seega ei saa see välistusi rakendada. Skanni enne käivitamist uuesti.",
+            "narrowAvailable": "Need sätted ainult kitsendavad võrdlust, nii et seda saab filtreerida ilma uuesti skannimata.",
+            "narrowApply": "Rakenda sellele võrdlusele",
+            "narrowedNote": "Filtreeritud uute välistustega ilma uuesti skannimata. Identsete arv on endiselt skannimisest.",
+            "narrowAfterRestore": "Käimas on taastamine. Neid sätteid saab võrdlusele rakendada, kui taastamine lõpeb.",
             "backup": {
                 "checking": "Kontrollin, kuidas see server faile teisaldab...",
                 "serverCopy": "See server ei oska teisaldada: iga säilitatav koopia kopeeritakse serveris ja seejärel kustutatakse. See maksab iga säilitatava faili täieliku koopia, kahes eraldi etapis.",

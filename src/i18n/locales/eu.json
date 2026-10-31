@@ -6331,7 +6331,12 @@
                 }
             },
             "rescan": "Eskaneatu berriro",
-            "rescanNeeded": "Konparaketa beste bazterketa batzuekin edo beste babeskopia-karpeta batekin egin zen. Eskaneatu berriro exekutatu aurretik.",
+            "rescanBringsBack": "Ezarpen hauek eskaneatzean kanpoan utzitako fitxategiak itzultzen dituzte, beraz ez ditu inoiz irakurri. Eskaneatu berriro exekutatu aurretik.",
+            "rescanFlat": "Konparaketa hau bi panelen zerrendetatik dator, ez eskaneatze osotik, beraz ezin ditu bazterketak aplikatu. Eskaneatu berriro exekutatu aurretik.",
+            "narrowAvailable": "Ezarpen hauek konparaketa murrizten dute soilik, beraz berriro eskaneatu gabe iragazi daiteke.",
+            "narrowApply": "Aplikatu konparaketa honi",
+            "narrowedNote": "Bazterketa berriekin iragazi da, berriro eskaneatu gabe. Berdinen kopurua eskaneatzean lortutakoa da oraindik.",
+            "narrowAfterRestore": "Leheneratzea martxan dago. Ezarpen hauek konparaketari aplika dakizkioke leheneratzea amaitzen denean.",
             "backup": {
                 "checking": "Zerbitzari honek fitxategiak nola mugitzen dituen egiaztatzen...",
                 "serverCopy": "Zerbitzari honek ezin du mugitu: gordetako kopia bakoitza zerbitzarian kopiatu eta gero ezabatu egiten da. Horrek gordetako fitxategi bakoitzaren kopia oso bat kostatzen du, bi urrats bereizitan.",

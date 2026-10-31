@@ -6312,7 +6312,12 @@
                 }
             },
             "rescan": "Ponovno preglej",
-            "rescanNeeded": "Primerjava je bila narejena z drugimi izključitvami ali drugo mapo varnostnih kopij. Pred zagonom ponovno preglejte.",
+            "rescanBringsBack": "Te nastavitve vrnejo datoteke, ki jih je pregled izpustil, zato jih nikoli ni prebral. Pred zagonom ponovno preglejte.",
+            "rescanFlat": "Ta primerjava izvira iz seznamov obeh plošč, ne iz popolnega pregleda, zato ne more uporabiti izključitev. Pred zagonom ponovno preglejte.",
+            "narrowAvailable": "Te nastavitve samo zožujejo primerjavo, zato jo je mogoče filtrirati brez ponovnega pregleda.",
+            "narrowApply": "Uporabi za to primerjavo",
+            "narrowedNote": "Filtrirano z novimi izključitvami brez ponovnega pregleda. Število enakih je še vedno iz pregleda.",
+            "narrowAfterRestore": "Poteka obnovitev. Te nastavitve je mogoče uporabiti za primerjavo, ko se obnovitev konča.",
             "backup": {
                 "checking": "Preverjanje, kako ta strežnik premika datoteke...",
                 "serverCopy": "Ta strežnik ne podpira premikanja: vsaka ohranjena kopija se kopira na strežniku in nato izbriše. To stane celotno kopijo vsake ohranjene datoteke, v dveh ločenih korakih.",
