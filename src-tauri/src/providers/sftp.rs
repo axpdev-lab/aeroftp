@@ -2438,8 +2438,21 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: SSH connection established, authenticating...");
 
-        // Authenticate
-        let authenticated = if self.config.private_key_path.is_some() {
+        // Authenticate. The `none` method goes first, as OpenSSH, PuTTY and
+        // WinSCP send it (RFC 4252 section 5.2): a server that lets the
+        // account in with no credential accepts it, every other server
+        // refuses it and the configured credential follows. OpenWrt's
+        // Dropbear is the case that needs it: for a root with no password
+        // set it accepts only `none` and refuses the password method
+        // outright, so without this the device cannot be reached at all.
+        let none_result = handle
+            .authenticate_none(&self.config.username)
+            .await
+            .map_err(|e| ProviderError::AuthenticationFailed(format!("SSH auth failed: {}", e)))?;
+        let authenticated = if matches!(none_result, AuthResult::Success) {
+            tracing::info!("SFTP: Server accepted the account with no credential");
+            true
+        } else if self.config.private_key_path.is_some() {
             // Try key-based authentication
             self.authenticate_with_key(&mut handle).await?
         } else if let Some(password) = &self.config.password {
@@ -2488,7 +2501,7 @@ impl StorageProvider for SftpProvider {
             }
         } else {
             return Err(ProviderError::AuthenticationFailed(
-                "No authentication method provided (need password or private key)".to_string(),
+                "The server requires a password or a private key, and neither is set".to_string(),
             ));
         };
 
