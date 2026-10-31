@@ -1494,6 +1494,10 @@ impl ProviderDownloadExecutor {
     /// size sets the time limit and its time goes on the local file. One reading,
     /// only after a refusal. If it fails the listing stands: an old time makes the
     /// next sync see the remote as newer and download again, which loses nothing.
+    /// A replacement dated before the listed time is the case this misses: the
+    /// local file looks newer and a sync skips the remote until it passes that
+    /// time. Clearing the time is worse, the local write time is later still. The
+    /// exact time is the one of the response carrying the bytes (Requested 129).
     async fn read_entry_again(
         &self,
         provider: &mut dyn StorageProvider,

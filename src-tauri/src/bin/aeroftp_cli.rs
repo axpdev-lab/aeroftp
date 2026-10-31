@@ -36529,7 +36529,9 @@ async fn pget_fallback_single(
     let filename = remote_path.rsplit('/').next().unwrap_or("download");
     // The stream may read another object than the listing saw: this reading is
     // the one its size and its time come from. If it fails the listing's time
-    // stands, and the size is asked on its own.
+    // stands, and the size is asked on its own: no time would leave the local
+    // write time, which reads newer still. The exact time is the one of the
+    // response carrying the bytes (Requested 129).
     let probed = run_until_interrupted(cancelled, async {
         match provider.stat(remote_path).await {
             Ok(entry) => (

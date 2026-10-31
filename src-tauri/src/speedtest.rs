@@ -583,14 +583,13 @@ async fn run_speedtest_inner(
             }
             last_emit_clone.store(elapsed_ms_now, Ordering::Relaxed);
             let elapsed = phase_started_at.elapsed().as_secs_f64().max(0.001);
-            let transferred = mark.shown(transferred, total_now);
-            let bps = transferred as f64 / elapsed;
+            let (shown, bps) = download_sample(&mark, transferred, total_now, elapsed);
             emit_progress(
                 &app_for_progress,
                 &test_id_for_progress,
                 server_name_for_progress.as_deref(),
                 "downloading",
-                transferred,
+                shown,
                 total_now,
                 Some(bps),
             );
@@ -946,6 +945,20 @@ fn unix_ms() -> u64 {
         .unwrap_or(0)
 }
 
+/// One download sample: the count held for the bar and the phase's average
+/// speed, as the final result reports it. The average counts the bytes the
+/// current stream really read, so one that restarted after a fallback does not
+/// borrow the count the bar is holding. The time of the refused attempt stays in
+/// it: the phase did take that long.
+fn download_sample(
+    mark: &crate::providers::multi_thread::ProgressMark,
+    moved: u64,
+    total: u64,
+    elapsed_secs: f64,
+) -> (u64, f64) {
+    (mark.shown(moved, total), moved as f64 / elapsed_secs)
+}
+
 fn emit_progress(
     app: &AppHandle,
     test_id: &str,
@@ -1145,6 +1158,13 @@ mod tests {
     #[test]
     fn join_remote_path_trims_trailing_slash() {
         assert_eq!(join_remote_path("/tmp/", "x.bin"), "/tmp/x.bin");
+    }
+
+    #[test]
+    fn a_held_bar_does_not_lift_the_download_speed() {
+        let mark = crate::providers::multi_thread::ProgressMark::default();
+        assert_eq!(download_sample(&mark, 800, 1000, 1.0), (800, 800.0));
+        assert_eq!(download_sample(&mark, 100, 1000, 2.0), (800, 50.0));
     }
 
     #[test]
