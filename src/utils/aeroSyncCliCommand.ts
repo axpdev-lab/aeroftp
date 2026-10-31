@@ -123,7 +123,8 @@ export function buildCliSyncCommand(input: CliCommandInput): CliCommandResult {
         '--delete',
     ];
     if (input.updateOnly) argv.push('--update');
-    if (input.modifyWindowMs != null && Number.isFinite(input.modifyWindowMs)) {
+    if (input.timestampsComparable !== false
+        && input.modifyWindowMs != null && Number.isFinite(input.modifyWindowMs)) {
         argv.push('--modify-window', String(Math.ceil(Math.max(0, input.modifyWindowMs) / 1000)));
     }
     for (const pattern of input.excludes) argv.push('--exclude', pattern);

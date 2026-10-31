@@ -18,6 +18,7 @@ use crate::sync_core::mtime::ModifyWindow;
 use crate::sync_core::scan::{
     scan_local_tree_checked, scan_remote_tree_checked, ScanCompleteness, ScanOptions,
 };
+use crate::sync_script::UNATTENDED_MAX_DELETE;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -5952,6 +5953,7 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
             out.push_str(&format!("  --direction {} \\\n", direction));
             if profile.delete_orphans {
                 out.push_str("  --delete \\\n");
+                out.push_str(&format!("  --max-delete {} \\\n", UNATTENDED_MAX_DELETE));
             }
             if profile.update_only && profile.direction != CompareDirection::Bidirectional {
                 out.push_str("  --update \\\n");
@@ -6010,6 +6012,7 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
             out.push_str(&format!("  --direction {} `\n", direction));
             if profile.delete_orphans {
                 out.push_str("  --delete `\n");
+                out.push_str(&format!("  --max-delete {} `\n", UNATTENDED_MAX_DELETE));
             }
             if profile.update_only && profile.direction != CompareDirection::Bidirectional {
                 out.push_str("  --update `\n");
@@ -6124,6 +6127,35 @@ mod sync_script_tests {
             .unwrap();
             let meta = import_sync_script(&script).unwrap();
             assert_eq!(meta.backup_dir.as_deref(), Some("history/versions"));
+        }
+    }
+
+    #[test]
+    fn shell_exports_cap_unattended_deletes() {
+        let profile = sample_profile();
+        for format in [SyncScriptFormat::Bash, SyncScriptFormat::PowerShell] {
+            let script = export_sync_script(SyncScriptExportOptions {
+                profile: &profile,
+                profile_display_name: "My Server",
+                template_name: "Daily Backup",
+                template_description: "Nightly mirror",
+                local_path: "/home/me/proj",
+                remote_path: "/backups/proj",
+                exclude_patterns: &profile.exclude_patterns,
+                backup_dir: None,
+                format,
+            })
+            .unwrap();
+            let expected = match format {
+                SyncScriptFormat::Bash => format!(
+                    "  --delete \\\n  --max-delete {} \\\n",
+                    UNATTENDED_MAX_DELETE
+                ),
+                SyncScriptFormat::PowerShell => {
+                    format!("  --delete `\n  --max-delete {} `\n", UNATTENDED_MAX_DELETE)
+                }
+            };
+            assert!(script.contains(&expected), "{script}");
         }
     }
 
