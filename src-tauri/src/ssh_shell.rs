@@ -148,21 +148,28 @@ pub async fn ssh_shell_open(
         .await
         .map_err(|e| format!("SSH connect failed: {}", e))?;
 
-    // Authenticate
-    let mut authenticated = false;
+    // Authenticate. `none` first, as the SFTP provider does: an account the
+    // server lets in with no credential (OpenWrt's root with no password
+    // set) is reachable only through it.
+    let mut authenticated = matches!(
+        handle.authenticate_none(&username).await,
+        Ok(AuthResult::Success)
+    );
 
-    // Try key-based auth first
-    if let Some(ref key_path) = private_key_path {
-        let path = std::path::Path::new(key_path);
-        if path.exists() {
-            let passphrase = key_passphrase.as_deref();
-            if let Ok(key_data) = std::fs::read_to_string(path) {
-                if let Ok(key) = keys::decode_secret_key(&key_data, passphrase) {
-                    let key_pair = PrivateKeyWithHashAlg::new(Arc::new(key), None);
-                    if let Ok(AuthResult::Success) =
-                        handle.authenticate_publickey(&username, key_pair).await
-                    {
-                        authenticated = true;
+    // Then the key
+    if !authenticated {
+        if let Some(ref key_path) = private_key_path {
+            let path = std::path::Path::new(key_path);
+            if path.exists() {
+                let passphrase = key_passphrase.as_deref();
+                if let Ok(key_data) = std::fs::read_to_string(path) {
+                    if let Ok(key) = keys::decode_secret_key(&key_data, passphrase) {
+                        let key_pair = PrivateKeyWithHashAlg::new(Arc::new(key), None);
+                        if let Ok(AuthResult::Success) =
+                            handle.authenticate_publickey(&username, key_pair).await
+                        {
+                            authenticated = true;
+                        }
                     }
                 }
             }
