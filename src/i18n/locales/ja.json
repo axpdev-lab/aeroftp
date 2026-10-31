@@ -469,7 +469,6 @@
         "contextMenu": {
             "askAeroAgent": "AeroAgentに質問...",
             "browseArchive": "アーカイブを参照",
-            "calculateSize": "サイズを計算",
             "compress": "圧縮",
             "compress7zMultiple": "7zに圧縮（{count}）",
             "compressSubmenu": "圧縮",

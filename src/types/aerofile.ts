@@ -97,6 +97,8 @@ export interface TrashItem {
 export interface FolderSizeResult {
   /** The scan did not cover the whole folder; counts are lower bounds. */
   partial?: boolean;
+  /** A cancel stopped the scan: the counts are not the folder's size. */
+  cancelled?: boolean;
   total_bytes: number;
   file_count: number;
   dir_count: number;
