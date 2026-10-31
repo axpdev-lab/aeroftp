@@ -1509,8 +1509,10 @@ impl ProviderDownloadExecutor {
             if fresh.size > 0 {
                 entry.size = fresh.size;
             }
-            if fresh.modified.is_some() {
-                entry.modified = fresh.modified;
+            if let Some(time) = fresh.modified {
+                if crate::parse_remote_mtime(&time).is_some() {
+                    entry.modified = Some(time);
+                }
             }
         }
     }
@@ -3471,6 +3473,16 @@ mod tests {
         ranges: Option<ScriptedRanges>,
         cancel_on_mkdir: Option<CancellationToken>,
         upload_calls: usize,
+        stat_reading: StatReading,
+    }
+
+    /// What the fake's `stat` does when it has no scripted ranges.
+    #[derive(Clone, Default)]
+    enum StatReading {
+        #[default]
+        Unscripted,
+        Stalls,
+        Answers(u64, Option<String>),
     }
 
     impl FlakyDownloadProvider {
@@ -3483,6 +3495,7 @@ mod tests {
                 ranges: None,
                 cancel_on_mkdir: None,
                 upload_calls: 0,
+                stat_reading: StatReading::default(),
             }
         }
 
@@ -3662,8 +3675,21 @@ mod tests {
         }
         async fn stat(
             &mut self,
-            _path: &str,
+            path: &str,
         ) -> Result<crate::providers::RemoteEntry, crate::providers::ProviderError> {
+            match self.stat_reading.clone() {
+                StatReading::Unscripted => {}
+                StatReading::Stalls => std::future::pending::<()>().await,
+                StatReading::Answers(size, modified) => {
+                    let mut entry = crate::providers::RemoteEntry::file(
+                        "flaky".to_string(),
+                        path.to_string(),
+                        size,
+                    );
+                    entry.modified = modified;
+                    return Ok(entry);
+                }
+            }
             if let Some(ranges) = &self.ranges {
                 let call = ranges
                     .metadata_calls
@@ -4300,6 +4326,44 @@ mod tests {
             "a validation rejection must not enter the transfer retry loop"
         );
         assert!(singles.lock().unwrap().is_empty());
+    }
+
+    /// The reading after a refusal takes what it can use and leaves the rest as
+    /// listed, and a Stop does not wait for a server that does not answer.
+    #[tokio::test]
+    async fn a_refused_entry_is_read_again_only_for_what_the_reading_knows() {
+        const LISTED: &str = "2000-01-01T00:00:00Z";
+        const READ: &str = "2026-10-21T07:28:00Z";
+        for (reading, size, modified) in [
+            (StatReading::Answers(7, Some(READ.to_string())), 7, READ),
+            (StatReading::Answers(0, None), 2, LISTED),
+            (
+                StatReading::Answers(7, Some("2026-09-24 19:41".to_string())),
+                7,
+                LISTED,
+            ),
+            (StatReading::Stalls, 2, LISTED),
+        ] {
+            let stalls = matches!(reading, StatReading::Stalls);
+            let mut provider = FlakyDownloadProvider::fail_first(0);
+            provider.stat_reading = reading;
+            let cancel = CancellationToken::new();
+            if stalls {
+                cancel.cancel();
+            }
+            let executor = retry_download_executor(FlakyDownloadProvider::fail_first(0), 0, cancel);
+            let dir = tempfile::tempdir().unwrap();
+            let mut entry = retry_entry(dir.path());
+            entry.modified = Some(LISTED.to_string());
+            tokio::time::timeout(
+                Duration::from_secs(5),
+                executor.read_entry_again(&mut provider, &mut entry),
+            )
+            .await
+            .expect("a Stop does not wait for the reading");
+            assert_eq!(entry.size, size);
+            assert_eq!(entry.modified.as_deref(), Some(modified));
+        }
     }
 
     fn retry_download_executor(

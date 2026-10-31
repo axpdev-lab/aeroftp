@@ -567,6 +567,7 @@ async fn run_speedtest_inner(
         let ttfb_for_cb = Arc::clone(&ttfb_ms);
         let last_emit_ms = Arc::new(AtomicU64::new(0));
         let last_emit_clone = Arc::clone(&last_emit_ms);
+        let mark = crate::providers::multi_thread::ProgressMark::default();
         let progress = Box::new(move |transferred: u64, total_bytes: u64| {
             // TTFB sampled on every callback (cheap), but emission is throttled.
             if transferred > 0 && ttfb_for_cb.load(Ordering::Relaxed) == 0 {
@@ -582,6 +583,7 @@ async fn run_speedtest_inner(
             }
             last_emit_clone.store(elapsed_ms_now, Ordering::Relaxed);
             let elapsed = phase_started_at.elapsed().as_secs_f64().max(0.001);
+            let transferred = mark.shown(transferred, total_now);
             let bps = transferred as f64 / elapsed;
             emit_progress(
                 &app_for_progress,

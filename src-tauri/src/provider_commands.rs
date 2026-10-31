@@ -3584,6 +3584,25 @@ pub async fn provider_download_file(
             )
             .await;
             if let Err(ref e) = outcome {
+                // The stream may read another object than the listing saw, and
+                // its time goes on the local file. If this fails the listing
+                // stands: an old time only makes the next sync download again.
+                // A Stop during the reading ends in the branch below.
+                if e.refused_by_the_source() {
+                    let reading = tokio::select! {
+                        biased;
+                        _ = session_cancel.cancelled() => None,
+                        reading = tokio::time::timeout(
+                            Duration::from_secs(30),
+                            provider.stat(&remote_path),
+                        ) => reading.ok().and_then(Result::ok),
+                    };
+                    if let Some(fresh) = reading.and_then(|entry| entry.modified) {
+                        if crate::parse_remote_mtime(&fresh).is_some() {
+                            modified = Some(fresh);
+                        }
+                    }
+                }
                 if session_cancel.is_cancelled() || e.is_cancelled() {
                     let message = format!("Download cancelled by user: {}", filename);
                     crate::transfer_event_sink::emit_gui_transfer_event(
@@ -3607,22 +3626,6 @@ pub async fn provider_download_file(
                     "Segmented download failed, falling back to provider download: {}",
                     e
                 );
-                // The stream may read another object than the listing saw, and
-                // its time goes on the local file. If this fails the listing
-                // stands: an old time only makes the next sync download again.
-                if e.refused_by_the_source() {
-                    let reading = tokio::select! {
-                        biased;
-                        _ = session_cancel.cancelled() => None,
-                        reading = tokio::time::timeout(
-                            Duration::from_secs(30),
-                            provider.stat(&remote_path),
-                        ) => reading.ok().and_then(Result::ok),
-                    };
-                    if let Some(fresh) = reading.and_then(|entry| entry.modified) {
-                        modified = Some(fresh);
-                    }
-                }
             }
             segmented_result = Some(outcome.map_err(|e| e.to_string()));
         }

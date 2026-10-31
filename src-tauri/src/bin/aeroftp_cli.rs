@@ -19241,11 +19241,12 @@ async fn download_tui_session_via_cli_handler(
         .map_err(|err| err.to_string())?;
     let provider = session.provider_mut();
     let tx = event_tx.clone();
+    let mark = ftp_client_gui_lib::providers::multi_thread::ProgressMark::default();
     let on_progress: Option<Box<dyn Fn(u64, u64) + Send>> =
         Some(Box::new(move |transferred, total| {
             let _ = tx.send(cli_tui::worker::WorkerEvent::TransferProgress {
                 id,
-                transferred,
+                transferred: mark.shown(transferred, total),
                 total,
             });
         }));
@@ -36123,13 +36124,11 @@ async fn pget_segmented_download(
     };
     let pb_for_cb = pb.clone();
     let on_progress: Option<Box<dyn Fn(u64, u64) + Send>> = pb_for_cb.map(|pb| {
-        // The unpinned pass counts from zero: the bar holds until it passes.
-        let mark = ftp_client_gui_lib::providers::multi_thread::ProgressMark::default();
         Box::new(move |transferred: u64, total: u64| {
             if total > 0 {
                 pb.set_length(total);
             }
-            pb.set_position(mark.shown(transferred, total));
+            pb.set_position(transferred);
         }) as Box<dyn Fn(u64, u64) + Send>
     });
 
@@ -36529,10 +36528,16 @@ async fn pget_fallback_single(
 
     let filename = remote_path.rsplit('/').next().unwrap_or("download");
     // The stream may read another object than the listing saw: this reading is
-    // the one its size and its time come from. If it fails the listing stands.
+    // the one its size and its time come from. If it fails the listing's time
+    // stands, and the size is asked on its own.
     let probed = run_until_interrupted(cancelled, async {
         match provider.stat(remote_path).await {
-            Ok(entry) => (entry.size, entry.modified),
+            Ok(entry) => (
+                entry.size,
+                entry
+                    .modified
+                    .filter(|time| ftp_client_gui_lib::parse_remote_mtime(time).is_some()),
+            ),
             Err(_) => (provider.size(remote_path).await.unwrap_or(0), None),
         }
     })
@@ -89920,8 +89925,6 @@ mod tests {
         assert_eq!(kept, None, "the partial file stayed");
     }
 
-    /// Runs `pget` on four segments against `provider` in a thread of its
-    /// own, as the CLI does, and returns its exit code and warnings.
     /// The time `pget_against` was listed with, older than any the fixture reports.
     const LISTED_TIME: &str = "2000-01-01T00:00:00Z";
 
@@ -89931,6 +89934,8 @@ mod tests {
             .unix_seconds()
     }
 
+    /// Runs `pget` on four segments against `provider` in a thread of its
+    /// own, as the CLI does, and returns its exit code and warnings.
     async fn pget_against(
         provider: ftp_client_gui_lib::providers::s3::S3Provider,
         size: u64,
@@ -89991,7 +89996,7 @@ mod tests {
         assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 0);
         // The reading before the segments, the diagnosis, the reading after.
         assert_eq!(fixture.heads.load(Ordering::SeqCst), 3);
-        // The windows published the object the listing saw.
+        // A publish from the windows keeps the time it was listed with.
         assert_eq!(
             local_time(&out),
             ftp_client_gui_lib::parse_remote_mtime(LISTED_TIME).unwrap()
