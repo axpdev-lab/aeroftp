@@ -106,6 +106,110 @@ impl LocalTargetGuard {
     }
 }
 
+/// Why Windows cannot hold a name, or `None`. A colon does not fail there: it
+/// opens an alternate stream and leaves a 0-byte file under the part before it,
+/// which a reverse mirror then uploads. A trailing dot or space is dropped on
+/// the way in, so the name that lands is another one and a Compare never meets
+/// it again (Requested 124).
+fn windows_name_problem(name: &str) -> Option<String> {
+    if let Some(found) = name
+        .chars()
+        .find(|c| matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*' | '\\') || (*c as u32) < 32)
+    {
+        return Some(format!("Windows cannot hold a name with {found:?}"));
+    }
+    if name.ends_with('.') || name.ends_with(' ') {
+        return Some("Windows cannot hold a name ending in a dot or a space".to_string());
+    }
+    crate::windows_acl::check_windows_reserved(name)
+        .map(|reserved| format!("Windows reserves the name {reserved}"))
+}
+
+/// Why this machine cannot hold a local path relative to a destination.
+fn unwritable_on(path: &str, windows: bool) -> Option<String> {
+    if !windows {
+        return None;
+    }
+    path.split('/').find_map(|segment| {
+        windows_name_problem(segment).map(|reason| format!("{reason}: {segment}"))
+    })
+}
+
+/// Refuse a download whose path this machine cannot hold, before anything is
+/// created for it. Every folder on the way is read too: a remote folder named
+/// `bad.` would land as `bad` and take the file with it. A drive prefix is not a
+/// name, so a colon there is fine.
+pub fn refuse_unwritable_name(local_path: &str) -> Result<(), String> {
+    for component in Path::new(local_path).components() {
+        if let std::path::Component::Normal(name) = component {
+            if let Some(reason) = unwritable_on(&name.to_string_lossy(), cfg!(windows)) {
+                return Err(reason);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// A file a run cannot download as it is, and why.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct LocalTargetProblem {
+    pub path: String,
+    pub reason: String,
+}
+
+fn target_problems(
+    rules: DestinationRules,
+    windows: bool,
+    paths: &[String],
+) -> Vec<LocalTargetProblem> {
+    let guard = LocalTargetGuard::with_rules(rules);
+    // Every folder on the way counts: `Foo/a.txt` and `foo/b.txt` would share one
+    // folder and could not keep the two names.
+    let prefixes = |path: &'_ str| -> Vec<String> {
+        let parts: Vec<&str> = path.split('/').collect();
+        (1..=parts.len()).map(|n| parts[..n].join("/")).collect()
+    };
+    let mut spellings: HashMap<String, Vec<String>> = HashMap::new();
+    for path in paths {
+        for prefix in prefixes(path) {
+            let same = spellings.entry(guard.key(Path::new(&prefix))).or_default();
+            if !same.contains(&prefix) {
+                same.push(prefix);
+            }
+        }
+    }
+    let mut problems = Vec::new();
+    for path in paths {
+        if let Some(reason) = unwritable_on(path, windows) {
+            problems.push(LocalTargetProblem {
+                path: path.clone(),
+                reason,
+            });
+            continue;
+        }
+        let collision = prefixes(path).into_iter().find_map(|prefix| {
+            let same = &spellings[&guard.key(Path::new(&prefix))];
+            same.iter().find(|other| **other != prefix).cloned()
+        });
+        if let Some(other) = collision {
+            problems.push(LocalTargetProblem {
+                path: path.clone(),
+                reason: format!(
+                    "This disk cannot tell {path} apart from {other}: one would replace the other"
+                ),
+            });
+        }
+    }
+    problems
+}
+
+/// The paths a run would download that `destination` cannot hold apart, or at
+/// all. Both sides of a collision are named: which one should win is not ours
+/// to choose, and the loser's contents would be gone.
+pub fn local_target_problems(destination: &Path, paths: &[String]) -> Vec<LocalTargetProblem> {
+    target_problems(destination_rules(destination), cfg!(windows), paths)
+}
+
 /// Case key for a case-insensitive volume: map every character to its full
 /// uppercase and every character of that to its full lowercase, and repeat
 /// until the key stops changing. NTFS compares through an uppercase table and
@@ -219,6 +323,62 @@ fn probe_alias(dir: &Path, first: &str, second: &str) -> std::io::Result<bool> {
 
 #[cfg(test)]
 mod tests {
+    use super::{target_problems, unwritable_on, DestinationRules};
+
+    #[test]
+    fn names_windows_cannot_hold_are_named_with_a_reason() {
+        for path in [
+            "colon:name.txt",
+            "q?mark",
+            "pipe|x",
+            "trail-dot.",
+            "trail-space ",
+            "CON.txt",
+            "sub/LPT1",
+            "lpt9.log",
+        ] {
+            assert!(unwritable_on(path, true).is_some(), "{path}");
+            assert!(unwritable_on(path, false).is_none(), "{path}");
+        }
+        for path in ["plain.txt", "CONFIG.txt", "COM0.txt", "a b/c.d"] {
+            assert_eq!(unwritable_on(path, true), None, "{path}");
+        }
+    }
+
+    #[test]
+    fn names_that_differ_only_by_case_are_both_refused_where_the_disk_folds_case() {
+        let paths = [
+            "a/File.txt".to_string(),
+            "a/file.txt".to_string(),
+            "b.txt".to_string(),
+        ];
+        let folds = DestinationRules {
+            fold_case: true,
+            fold_normalization: true,
+        };
+        let problems = target_problems(folds, false, &paths);
+        assert_eq!(
+            problems.iter().map(|p| p.path.as_str()).collect::<Vec<_>>(),
+            ["a/File.txt", "a/file.txt"]
+        );
+        // Folders that differ only by case collide too, whatever the files are.
+        let folders = [
+            "Foo/a.txt".to_string(),
+            "foo/b.txt".to_string(),
+            "bar/c.txt".to_string(),
+        ];
+        let problems = target_problems(folds, false, &folders);
+        assert_eq!(
+            problems.iter().map(|p| p.path.as_str()).collect::<Vec<_>>(),
+            ["Foo/a.txt", "foo/b.txt"]
+        );
+        let keeps = DestinationRules {
+            fold_case: false,
+            fold_normalization: false,
+        };
+        assert!(target_problems(keeps, false, &paths).is_empty());
+    }
+
     use super::*;
     fn claim(local: &str, remote: &str) -> LocalTargetClaim {
         LocalTargetClaim {
