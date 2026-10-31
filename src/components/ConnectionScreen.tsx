@@ -2137,16 +2137,21 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // Replace in slot: remove original, insert new at the same index
         const newServers = [...existingServers];
         newServers.splice(originalIdx, 1, newServer);
+        // Migrate the persisted per-mode credential snapshots from the old id to the
+        // converted one (or clear them when the opt-in is off), so a later mode switch on
+        // the converted profile restores without asking. Before the profile changes: if
+        // it fails, the convert stops and the original still reaches its snapshots.
+        if (!(await syncPersistedModeCredentials(newId))) {
+            await credentials.rollback().catch((e: unknown) => logger.warn('Saved profile credential restoration failed', e));
+            return;
+        }
         const storedServers = await persistProfilesForSave(newServers, credentials, profilesUserId, profilesRevision);
-        if (!storedServers) return;
-        // Migrate the persisted per-mode credential snapshots from the old id
-        // to the converted one (or clear them when the opt-in is off), so a
-        // later mode switch on the converted profile restores without asking.
-        // The original map goes only once the converted one is stored: it may be the
-        // only copy of the other modes' credentials.
-        const modesStored = await syncPersistedModeCredentials(newId);
+        if (!storedServers) {
+            await deleteModeCredentials(newId);
+            return;
+        }
         if (newId !== originalServer.id) {
-        if (modesStored) await deleteModeCredentials(originalServer.id);
+            await deleteModeCredentials(originalServer.id);
         }
         // Move the ⭐ favourite flag from the deleted original to the new
         // profile (issue #215): convert replaces in place, so remove the old id.

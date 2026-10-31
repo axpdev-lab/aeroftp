@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "„{name}“ გადავიდა {user}-ში",
             "relocateAlreadyPresent": "„{name}“ უკვე შენახულია {user}-ში",
             "relocateError": "სერვერის გადატანა ვერ მოხერხდა: {error}",
-            "relocateWrongPassword": "არასწორი პაროლი {user}-ისთვის."
+            "relocateWrongPassword": "არასწორი პაროლი {user}-ისთვის.",
+            "relocateSecretsNotCopied": "„{name}“ {user}-ს მიაღწია, მაგრამ შენახული პაროლი ან ტოკენი ვერ მივიდა, ამიტომ იქ მათ ხელახლა მოითხოვს."
         },
         "cyberTools": {
             "title": "უსაფრთხოების ხელსაწყოები",

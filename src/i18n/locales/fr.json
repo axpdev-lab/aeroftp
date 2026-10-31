@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "« {name} » déplacé vers {user}",
             "relocateAlreadyPresent": "« {name} » est déjà enregistré dans {user}",
             "relocateError": "Impossible de transférer le serveur : {error}",
-            "relocateWrongPassword": "Mot de passe incorrect pour {user}."
+            "relocateWrongPassword": "Mot de passe incorrect pour {user}.",
+            "relocateSecretsNotCopied": "« {name} » a atteint {user}, mais le mot de passe ou le token enregistré n'a pas suivi, il sera donc redemandé là-bas."
         },
         "cyberTools": {
             "title": "Outils de sécurité",

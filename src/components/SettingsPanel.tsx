@@ -864,14 +864,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'] as const;
             for (const p of providers) {
                 const creds = oauthSettings[p];
-                if (creds.clientId || creds.clientSecret) {
+                // A field the user emptied is stored empty, which readers take as no
+                // value; one that was always empty stays out of the vault.
+                const edited = oauthEdits.current[p];
+                const clientId = creds.clientId || edited?.clientId ? creds.clientId : null;
+                const clientSecret = creds.clientSecret || edited?.clientSecret ? creds.clientSecret : null;
+                if (clientId !== null || clientSecret !== null) {
                     // A failure reaches the save's own handler: the panel stays open
                     // with the edit, and Save tries again.
-                    await invoke('store_oauth_app', {
-                        provider: p,
-                        clientId: creds.clientId || null,
-                        clientSecret: creds.clientSecret || null,
-                    });
+                    await invoke('store_oauth_app', { provider: p, clientId, clientSecret });
                 }
             }
             // Remove legacy OAuth settings from localStorage

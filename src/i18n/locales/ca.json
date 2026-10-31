@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "«{name}» s'ha mogut a {user}",
             "relocateAlreadyPresent": "«{name}» ja està desat a {user}",
             "relocateError": "No s'ha pogut transferir el servidor: {error}",
-            "relocateWrongPassword": "Contrasenya incorrecta per a {user}."
+            "relocateWrongPassword": "Contrasenya incorrecta per a {user}.",
+            "relocateSecretsNotCopied": "«{name}» ha arribat a {user}, però la contrasenya o el token desats no, així que els tornarà a demanar allà."
         },
         "cyberTools": {
             "title": "Eines de seguretat",

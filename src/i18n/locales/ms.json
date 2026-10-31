@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "\"{name}\" dialih ke {user}",
             "relocateAlreadyPresent": "\"{name}\" sudah disimpan dalam {user}",
             "relocateError": "Pelayan tidak dapat dipindahkan: {error}",
-            "relocateWrongPassword": "Kata laluan salah untuk {user}."
+            "relocateWrongPassword": "Kata laluan salah untuk {user}.",
+            "relocateSecretsNotCopied": "\"{name}\" telah sampai ke {user}, tetapi kata laluan atau token yang disimpan tidak sampai, jadi ia akan memintanya semula di sana."
         },
         "cyberTools": {
             "title": "Alatan Keselamatan",

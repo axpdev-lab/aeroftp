@@ -920,6 +920,35 @@ async fn durable_profile_auth_lifecycle(
         .unwrap();
         assert_eq!(store.get("oauth_rollback_app_client_id").unwrap(), "id");
         assert!(store.get("oauth_rollback_app_client_secret").is_err());
+        // An emptied field is stored empty, and goes back whole if a later key fails.
+        crate::write_oauth_app(
+            &crate::VaultOnlySlots { store },
+            "rollback_app",
+            [
+                ("client_id", Some("")),
+                ("client_secret", None),
+                ("region", None),
+            ],
+        )
+        .unwrap();
+        assert!(crate::vault_value(store, "oauth_rollback_app_client_id")
+            .unwrap()
+            .is_none());
+        store.store("oauth_rollback_app_client_id", "id").unwrap();
+        crate::write_oauth_app(
+            &FailingAt {
+                slots: crate::VaultOnlySlots { store },
+                key: "oauth_rollback_app_region",
+            },
+            "rollback_app",
+            [
+                ("client_id", Some("")),
+                ("client_secret", None),
+                ("region", Some("x")),
+            ],
+        )
+        .unwrap_err();
+        assert_eq!(store.get("oauth_rollback_app_client_id").unwrap(), "id");
         store.delete("oauth_rollback_app_client_id").unwrap();
 
         // An ordinary save that does not reach the row a reader prefers is an error

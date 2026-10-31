@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "“{name}” pārvietots uz {user}",
             "relocateAlreadyPresent": "“{name}” jau ir saglabāts kontā {user}",
             "relocateError": "Neizdevās pārsūtīt serveri: {error}",
-            "relocateWrongPassword": "Nepareiza {user} parole."
+            "relocateWrongPassword": "Nepareiza {user} parole.",
+            "relocateSecretsNotCopied": "“{name}” sasniedza {user}, taču tā saglabātā parole vai atslēga nesasniedza, tāpēc tur tās tiks pieprasītas vēlreiz."
         },
         "cyberTools": {
             "title": "Drošības rīki",

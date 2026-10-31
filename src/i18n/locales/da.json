@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "\"{name}\" flyttet til {user}",
             "relocateAlreadyPresent": "\"{name}\" er allerede gemt i {user}",
             "relocateError": "Serveren kunne ikke overføres: {error}",
-            "relocateWrongPassword": "Forkert adgangskode til {user}."
+            "relocateWrongPassword": "Forkert adgangskode til {user}.",
+            "relocateSecretsNotCopied": "\"{name}\" nåede frem til {user}, men den gemte adgangskode eller det gemte token kom ikke med, så der bliver spurgt efter dem igen dér."
         },
         "cyberTools": {
             "title": "Sikkerhedsværktøjer",

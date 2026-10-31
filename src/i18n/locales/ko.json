@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "\"{name}\"을(를) {user}(으)로 이동했습니다",
             "relocateAlreadyPresent": "\"{name}\"은(는) 이미 {user}에 저장되어 있습니다",
             "relocateError": "서버를 전송할 수 없습니다: {error}",
-            "relocateWrongPassword": "{user}의 비밀번호가 잘못되었습니다."
+            "relocateWrongPassword": "{user}의 비밀번호가 잘못되었습니다.",
+            "relocateSecretsNotCopied": "\"{name}\"은(는) {user}에 반영되었지만 저장된 비밀번호 또는 토큰은 반영되지 않았으므로 그곳에서 다시 요청합니다."
         },
         "cyberTools": {
             "title": "보안 도구",

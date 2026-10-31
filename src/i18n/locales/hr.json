@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "„{name}“ premješten na {user}",
             "relocateAlreadyPresent": "„{name}“ je već spremljen u {user}",
             "relocateError": "Poslužitelj nije moguće prenijeti: {error}",
-            "relocateWrongPassword": "Pogrešna lozinka za {user}."
+            "relocateWrongPassword": "Pogrešna lozinka za {user}.",
+            "relocateSecretsNotCopied": "„{name}“ je stigao do {user}, ali spremljena lozinka ili token nisu, pa će ih ondje ponovno zatražiti."
         },
         "cyberTools": {
             "title": "Sigurnosni alati",

@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "„{name}“ nach {user} verschoben",
             "relocateAlreadyPresent": "„{name}“ ist bereits in {user} gespeichert",
             "relocateError": "Server konnte nicht übertragen werden: {error}",
-            "relocateWrongPassword": "Falsches Passwort für {user}."
+            "relocateWrongPassword": "Falsches Passwort für {user}.",
+            "relocateSecretsNotCopied": "„{name}“ ist bei {user} angekommen, das gespeicherte Passwort oder Token jedoch nicht, daher wird dort erneut danach gefragt."
         },
         "cyberTools": {
             "title": "Sicherheitstools",

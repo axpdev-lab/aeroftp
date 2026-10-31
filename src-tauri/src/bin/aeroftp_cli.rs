@@ -27730,6 +27730,13 @@ fn cmd_profile_relocate_user(
         p.zeroize();
     }
 
+    if !relocation.secrets_not_copied.is_empty() {
+        eprintln!(
+            "Warning: {} of this profile's secrets did not reach the target account, so it will ask for them again there",
+            relocation.secrets_not_copied.len()
+        );
+    }
+
     if relocation.moved {
         // Drop the moved id from the favourites set (best effort).
         let fav_raw = favs_blob_get(&store);
@@ -41555,7 +41562,7 @@ async fn apply_rclone_import_to_vault(
     // Read from the list stored: only the write knows which profile had a
     // name first (an older list may hold two of one name).
     for warning in &oauth_app_warnings {
-        eprintln!("Warning: {warning}");
+        eprintln!("Warning: {}", sanitize_filename(warning));
     }
     Ok(RcloneApplySummary {
         profiles_renamed: renamed_by_write(&profiles, &stored),

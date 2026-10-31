@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "\"{name}\" {user}-এ সরানো হয়েছে",
             "relocateAlreadyPresent": "\"{name}\" ইতিমধ্যে {user}-এ সংরক্ষিত আছে",
             "relocateError": "সার্ভার স্থানান্তর করা যায়নি: {error}",
-            "relocateWrongPassword": "{user}-এর জন্য ভুল পাসওয়ার্ড।"
+            "relocateWrongPassword": "{user}-এর জন্য ভুল পাসওয়ার্ড।",
+            "relocateSecretsNotCopied": "\"{name}\" {user}-এ পৌঁছেছে, কিন্তু এর সংরক্ষিত পাসওয়ার্ড বা টোকেন পৌঁছায়নি, তাই সেখানে সেগুলো আবার চাওয়া হবে।"
         },
         "cyberTools": {
             "title": "নিরাপত্তা সরঞ্জাম",

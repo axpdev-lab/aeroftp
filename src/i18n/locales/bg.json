@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "„{name}“ е преместен в {user}",
             "relocateAlreadyPresent": "„{name}“ вече е запазен в {user}",
             "relocateError": "Сървърът не може да бъде прехвърлен: {error}",
-            "relocateWrongPassword": "Грешна парола за {user}."
+            "relocateWrongPassword": "Грешна парола за {user}.",
+            "relocateSecretsNotCopied": "„{name}“ стигна до {user}, но запазената му парола или токен не бяха прехвърлени, затова ще ги поиска отново там."
         },
         "cyberTools": {
             "title": "Инструменти за сигурност",

@@ -18984,7 +18984,8 @@ impl profile_import_plan::SecretSlots for VaultOnlySlots<'_> {
         write: &profile_import_plan::SecretWrite,
         before: Self::Snapshot,
     ) -> Result<(), String> {
-        let current = vault_value(self.store, &write.key)?;
+        // The raw value: an emptied field was written as an empty string.
+        let current = self.store.get(&write.key).ok();
         match profile_import_plan::rollback_action(
             current.as_deref(),
             &write.value,

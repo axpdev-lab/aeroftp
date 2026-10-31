@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "Đã chuyển \"{name}\" sang {user}",
             "relocateAlreadyPresent": "\"{name}\" đã được lưu trong {user}",
             "relocateError": "Không thể chuyển máy chủ: {error}",
-            "relocateWrongPassword": "Sai mật khẩu cho {user}."
+            "relocateWrongPassword": "Sai mật khẩu cho {user}.",
+            "relocateSecretsNotCopied": "\"{name}\" đã sang tới {user}, nhưng mật khẩu hoặc token đã lưu thì không, nên sẽ yêu cầu nhập lại ở đó."
         },
         "cyberTools": {
             "title": "Công cụ bảo mật",

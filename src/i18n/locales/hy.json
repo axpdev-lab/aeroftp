@@ -4847,7 +4847,8 @@
             "relocateSuccessMove": "«{name}»-ը տեղափոխվեց {user}-ին",
             "relocateAlreadyPresent": "«{name}»-ն արդեն պահված է {user}-ում",
             "relocateError": "Չհաջողվեց փոխանցել սերվերը՝ {error}",
-            "relocateWrongPassword": "Սխալ գաղտնաբառ {user}-ի համար։"
+            "relocateWrongPassword": "Սխալ գաղտնաբառ {user}-ի համար։",
+            "relocateSecretsNotCopied": "«{name}»-ը հասավ {user}-ին, բայց պահված գաղտնաբառը կամ թոկենը չհասավ, ուստի այնտեղ դրանք նորից կպահանջվեն։"
         },
         "cyberTools": {
             "title": "Անվտանգության գործիքներ",

@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "„{name}“ fært á {user}",
             "relocateAlreadyPresent": "„{name}“ er þegar vistað á {user}",
             "relocateError": "Ekki tókst að flytja þjóninn: {error}",
-            "relocateWrongPassword": "Rangt lykilorð fyrir {user}."
+            "relocateWrongPassword": "Rangt lykilorð fyrir {user}.",
+            "relocateSecretsNotCopied": "„{name}“ komst á {user}, en vistað lykilorð eða token fylgdu ekki með, svo beðið verður um þau aftur þar."
         },
         "cyberTools": {
             "title": "Öryggistæki",

@@ -41,6 +41,26 @@ describe('an OAuth app is saved as one unit', () => {
         expect(connection).not.toMatch(/github_store_pat[^;]*catch\(\(\) => \{\}\)/);
     });
 
+    it('stores an OAuth field the user emptied, and leaves an always empty one out', () => {
+        expect(settings).toContain('creds.clientId || edited?.clientId ? creds.clientId : null');
+        expect(settings).toContain('creds.clientSecret || edited?.clientSecret ? creds.clientSecret : null');
+    });
+
+    it('binds overlay metadata to the account read before the migration', () => {
+        for (const source of [app, unlock]) {
+            expect(source.indexOf('readSavedServerProfilesForWrite().catch(() => null)'))
+                .toBeLessThan(source.indexOf("'aerocrypt_provider_migrate_legacy"));
+            expect(source).toContain('expectedUserId: accountRead?.userId ?? null');
+        }
+    });
+
+    it('stores the converted mode map before the profile, and stops if it cannot', () => {
+        const convert = connection.slice(connection.indexOf('if (!(await syncPersistedModeCredentials(newId))) {'));
+        expect(convert.indexOf('credentials.rollback()')).toBeGreaterThan(-1);
+        expect(convert.indexOf('credentials.rollback()')).toBeLessThan(convert.indexOf('persistProfilesForSave('));
+        expect(convert.indexOf('deleteModeCredentials(originalServer.id)')).toBeGreaterThan(convert.indexOf('persistProfilesForSave('));
+    });
+
     it('reports a failed save in Settings', () => {
         // No catch of its own: the save's handler reports it and keeps the panel open.
         const save = settings.slice(settings.indexOf("invoke('store_oauth_app'"));

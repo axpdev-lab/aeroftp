@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "«{name}» movido a {user}",
             "relocateAlreadyPresent": "«{name}» xa está gardado en {user}",
             "relocateError": "Non se puido transferir o servidor: {error}",
-            "relocateWrongPassword": "Contrasinal incorrecto para {user}."
+            "relocateWrongPassword": "Contrasinal incorrecto para {user}.",
+            "relocateSecretsNotCopied": "«{name}» chegou a {user}, pero o contrasinal ou o token gardados non, así que os volverá pedir alí."
         },
         "cyberTools": {
             "title": "Ferramentas de seguridade",

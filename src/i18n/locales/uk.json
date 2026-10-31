@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "«{name}» переміщено до {user}",
             "relocateAlreadyPresent": "«{name}» вже збережено в {user}",
             "relocateError": "Не вдалося перенести сервер: {error}",
-            "relocateWrongPassword": "Неправильний пароль для {user}."
+            "relocateWrongPassword": "Неправильний пароль для {user}.",
+            "relocateSecretsNotCopied": "«{name}» потрапив до {user}, але збережені пароль або токен не потрапили, тому там їх буде запитано знову."
         },
         "cyberTools": {
             "title": "Інструменти безпеки",

@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "„{name}“ премештен на {user}",
             "relocateAlreadyPresent": "„{name}“ је већ сачуван у {user}",
             "relocateError": "Сервер није могуће пренети: {error}",
-            "relocateWrongPassword": "Погрешна лозинка за {user}."
+            "relocateWrongPassword": "Погрешна лозинка за {user}.",
+            "relocateSecretsNotCopied": "„{name}“ је стигао на {user}, али сачувана лозинка или токен нису, па ће их тамо поново затражити."
         },
         "cyberTools": {
             "title": "Безбедносни алати",

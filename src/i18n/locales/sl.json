@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "»{name}« premaknjen v {user}",
             "relocateAlreadyPresent": "»{name}« je že shranjen v {user}",
             "relocateError": "Strežnika ni bilo mogoče prenesti: {error}",
-            "relocateWrongPassword": "Napačno geslo za {user}."
+            "relocateWrongPassword": "Napačno geslo za {user}.",
+            "relocateSecretsNotCopied": "»{name}« je prispel v {user}, vendar shranjeno geslo ali žeton nista, zato bo tam znova zahteval vnos."
         },
         "cyberTools": {
             "title": "Varnostna orodja",

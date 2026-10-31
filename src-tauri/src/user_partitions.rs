@@ -2173,6 +2173,10 @@ pub struct ProfileRelocation {
     /// without changing caller signatures. Empty when unknown (serde default).
     #[serde(default)]
     pub protocol: String,
+    /// Secrets of the profile that did not reach the target, by key. The profile is
+    /// there, but it will ask for them again; on a Move they stay with the source.
+    #[serde(default)]
+    pub secrets_not_copied: Vec<String>,
 }
 
 /// Copy or move a single server profile from `source_user_id` into
@@ -2315,50 +2319,51 @@ fn relocate_server_profile_and_credentials(
     let apply = |native_raw: Option<&str>| {
         // with_user_dek acquires the source SessionHold BEFORE SQLite's write
         // reservation and verifies that the source is still unlocked.
-        let relocation = with_user_dek(conn, &root_secret, source_user_id, |_, current_dek| {
-            let tx = Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
-                .map_err(|error| format!("Start profile relocation: {error}"))?;
-            let source_row = read_user_key_row(&tx, source_user_id)?;
-            let target_row = read_user_key_row(&tx, target_user_id)?;
-            if !user_crypto::verify_dek(&source_dek, &source_row.dek_verifier)?
-                || !user_crypto::verify_dek(&target_dek, &target_row.dek_verifier)?
-            {
-                return Err("DEK_VERIFIER_MISMATCH".into());
-            }
-            let relocation = relocate_server_profile_in_transaction(
-                &tx,
-                root_key,
-                &root_secret,
-                source_user_id,
-                current_dek,
-                target_user_id,
-                &target_dek,
-                profile_id,
-                new_profile_id,
-                remove_from_source,
-            )?;
-            if relocation.inserted {
-                if let Some(raw) = native_raw {
-                    set_user_credential_with_dek(
-                        &tx,
-                        target_user_id,
-                        &target_dek,
-                        &new_key,
-                        "proton_native_session",
-                        raw,
-                    )?;
+        let mut relocation =
+            with_user_dek(conn, &root_secret, source_user_id, |_, current_dek| {
+                let tx = Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                    .map_err(|error| format!("Start profile relocation: {error}"))?;
+                let source_row = read_user_key_row(&tx, source_user_id)?;
+                let target_row = read_user_key_row(&tx, target_user_id)?;
+                if !user_crypto::verify_dek(&source_dek, &source_row.dek_verifier)?
+                    || !user_crypto::verify_dek(&target_dek, &target_row.dek_verifier)?
+                {
+                    return Err("DEK_VERIFIER_MISMATCH".into());
                 }
-            }
-            if relocation.moved {
-                delete_user_credential_for(&tx, source_user_id, &source_key)?;
-            }
-            tx.commit()
-                .map_err(|error| format!("Commit profile relocation: {error}"))?;
-            Ok(relocation)
-        })?;
+                let relocation = relocate_server_profile_in_transaction(
+                    &tx,
+                    root_key,
+                    &root_secret,
+                    source_user_id,
+                    current_dek,
+                    target_user_id,
+                    &target_dek,
+                    profile_id,
+                    new_profile_id,
+                    remove_from_source,
+                )?;
+                if relocation.inserted {
+                    if let Some(raw) = native_raw {
+                        set_user_credential_with_dek(
+                            &tx,
+                            target_user_id,
+                            &target_dek,
+                            &new_key,
+                            "proton_native_session",
+                            raw,
+                        )?;
+                    }
+                }
+                if relocation.moved {
+                    delete_user_credential_for(&tx, source_user_id, &source_key)?;
+                }
+                tx.commit()
+                    .map_err(|error| format!("Commit profile relocation: {error}"))?;
+                Ok(relocation)
+            })?;
         // This loop skips native sessions entirely. It cannot overwrite the
         // exact pair above or delete a source outside the native guards.
-        relocate_server_credential_dual(
+        relocation.secrets_not_copied = relocate_server_credential_dual(
             conn,
             store,
             root_key,
@@ -2539,6 +2544,7 @@ fn relocate_server_profile_in_transaction(
         already_present,
         inserted,
         protocol,
+        secrets_not_copied: Vec::new(),
     })
 }
 
@@ -2597,13 +2603,13 @@ fn relocate_secret_key_dual(
     source_key: &str,
     new_key: &str,
     kind: &str,
-) {
+) -> bool {
     // Native sessions require the enclosing profile transaction and key/UID
     // guards. Never let this generic best-effort helper mutate one directly.
     if source_key.starts_with("proton_native_session_")
         || new_key.starts_with("proton_native_session_")
     {
-        return;
+        return true;
     }
     // Copy onto the new id only when a fresh target row was inserted; a dedup
     // no-op (Copy into a target that already has the drive) leaves the target's
@@ -2660,13 +2666,14 @@ fn relocate_secret_key_dual(
     if relocation.moved {
         if !copied {
             tracing::warn!("Relocate: {source_key} kept, its copy {new_key} was not written");
-            return;
+            return false;
         }
         if let Some(store) = store {
             let _ = store.delete(source_key);
         }
         let _ = delete_user_credential_for(conn, source_user_id, source_key);
     }
+    copied
 }
 
 /// MUV-3 cross-user credential relocation: the partition profile row is already
@@ -2693,16 +2700,17 @@ fn relocate_server_credential_dual(
     source_user_id: i64,
     relocation: &ProfileRelocation,
     target_passphrase: Option<&str>,
-) {
+) -> Vec<String> {
     let source_keys =
         relocate_all_secret_key_candidates(&relocation.protocol, &relocation.source_profile_id);
     let new_keys =
         relocate_all_secret_key_candidates(&relocation.protocol, &relocation.new_profile_id);
+    let mut not_copied = Vec::new();
     for (source_key, new_key) in source_keys.iter().zip(new_keys.iter()) {
         if source_key.starts_with("proton_native_session_") {
             continue;
         }
-        relocate_secret_key_dual(
+        let copied = relocate_secret_key_dual(
             conn,
             Some(store),
             root_key,
@@ -2713,7 +2721,11 @@ fn relocate_server_credential_dual(
             new_key,
             relocate_secret_kind(source_key),
         );
+        if !copied {
+            not_copied.push(new_key.clone());
+        }
     }
+    not_copied
 }
 
 /// Read a single user_settings scope for the given user, decrypted as JSON.
@@ -7194,6 +7206,7 @@ mod tests {
             inserted: true,
             already_present: false,
             protocol: "sftp".into(),
+            secrets_not_copied: Vec::new(),
         };
         let read = |user: i64, key: &str| {
             get_user_credential_for(&conn, &root, user, key)
@@ -7201,7 +7214,7 @@ mod tests {
                 .map(|value| value.to_string())
         };
         // Locked target and no vault: nowhere to put it, so the source stays.
-        relocate_secret_key_dual(
+        assert!(!relocate_secret_key_dual(
             &conn,
             None,
             &root,
@@ -7211,10 +7224,10 @@ mod tests {
             "server_old",
             "server_new",
             "server",
-        );
+        ));
         assert_eq!(read(source, "server_old").as_deref(), Some("secret"));
         // An open target takes it, and the source goes.
-        relocate_secret_key_dual(
+        assert!(relocate_secret_key_dual(
             &conn,
             None,
             &root,
@@ -7224,7 +7237,7 @@ mod tests {
             "server_old",
             "server_new",
             "server",
-        );
+        ));
         assert_eq!(read(open.id, "server_new").as_deref(), Some("secret"));
         assert_eq!(read(source, "server_old"), None);
     }

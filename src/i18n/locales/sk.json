@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "„{name}“ presunuté do {user}",
             "relocateAlreadyPresent": "„{name}“ je už uložené v {user}",
             "relocateError": "Server sa nepodarilo preniesť: {error}",
-            "relocateWrongPassword": "Nesprávne heslo pre {user}."
+            "relocateWrongPassword": "Nesprávne heslo pre {user}.",
+            "relocateSecretsNotCopied": "„{name}“ sa dostalo do {user}, ale uložené heslo alebo token nie, preto si ich tam vypýta znova."
         },
         "cyberTools": {
             "title": "Bezpečnostné nástroje",

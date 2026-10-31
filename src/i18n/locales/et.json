@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "„{name}“ teisaldati kontole {user}",
             "relocateAlreadyPresent": "„{name}“ on juba salvestatud kontole {user}",
             "relocateError": "Serverit ei õnnestunud üle kanda: {error}",
-            "relocateWrongPassword": "Vale parool kontole {user}."
+            "relocateWrongPassword": "Vale parool kontole {user}.",
+            "relocateSecretsNotCopied": "„{name}“ jõudis kontole {user}, aga salvestatud parool või token mitte, seega küsib see neid seal uuesti."
         },
         "cyberTools": {
             "title": "Turvalisuse tööriistad",

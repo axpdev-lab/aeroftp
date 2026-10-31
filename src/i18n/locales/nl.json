@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "\"{name}\" verplaatst naar {user}",
             "relocateAlreadyPresent": "\"{name}\" is al opgeslagen in {user}",
             "relocateError": "Kan de server niet overdragen: {error}",
-            "relocateWrongPassword": "Onjuist wachtwoord voor {user}."
+            "relocateWrongPassword": "Onjuist wachtwoord voor {user}.",
+            "relocateSecretsNotCopied": "\"{name}\" is bij {user} aangekomen, maar het opgeslagen wachtwoord of token niet, dus er wordt daar opnieuw naar gevraagd."
         },
         "cyberTools": {
             "title": "Beveiligingstools",

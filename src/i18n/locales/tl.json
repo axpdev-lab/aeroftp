@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "Nailipat ang \"{name}\" sa {user}",
             "relocateAlreadyPresent": "Naka-save na ang \"{name}\" sa {user}",
             "relocateError": "Hindi mailipat ang server: {error}",
-            "relocateWrongPassword": "Maling password para sa {user}."
+            "relocateWrongPassword": "Maling password para sa {user}.",
+            "relocateSecretsNotCopied": "Nakarating ang \"{name}\" sa {user}, pero hindi nakarating ang naka-save na password o token, kaya hihingin ang mga ito muli roon."
         },
         "cyberTools": {
             "title": "Security Tools",

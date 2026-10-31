@@ -4818,7 +4818,8 @@
             "relocateSuccessMove": "「{name}」を {user} に移動しました",
             "relocateAlreadyPresent": "「{name}」はすでに {user} に保存されています",
             "relocateError": "サーバーを転送できませんでした: {error}",
-            "relocateWrongPassword": "{user} のパスワードが違います。"
+            "relocateWrongPassword": "{user} のパスワードが違います。",
+            "relocateSecretsNotCopied": "「{name}」は {user} に反映されましたが、保存済みのパスワードまたはトークンは引き継がれなかったため、そちらで再度入力を求められます。"
         },
         "cyberTools": {
             "title": "セキュリティツール",

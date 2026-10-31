@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "«{name}» {user}(e)ra eraman da",
             "relocateAlreadyPresent": "«{name}» dagoeneko gordeta dago {user}(e)n",
             "relocateError": "Ezin izan da zerbitzaria transferitu: {error}",
-            "relocateWrongPassword": "Pasahitz okerra {user}(r)entzat."
+            "relocateWrongPassword": "Pasahitz okerra {user}(r)entzat.",
+            "relocateSecretsNotCopied": "«{name}» {user}(e)ra iritsi da, baina gordetako pasahitza edo tokena ez, beraz, han berriro eskatuko ditu."
         },
         "cyberTools": {
             "title": "Segurtasun tresnak",

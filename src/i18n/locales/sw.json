@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "\"{name}\" imehamishwa kwa {user}",
             "relocateAlreadyPresent": "\"{name}\" tayari imehifadhiwa katika {user}",
             "relocateError": "Seva haikuweza kuhamishwa: {error}",
-            "relocateWrongPassword": "Nenosiri si sahihi kwa {user}."
+            "relocateWrongPassword": "Nenosiri si sahihi kwa {user}.",
+            "relocateSecretsNotCopied": "\"{name}\" imefika kwa {user}, lakini nywila au tokeni zilizohifadhiwa hazikufika, kwa hivyo itaziomba tena huko."
         },
         "cyberTools": {
             "title": "Zana za Usalama",

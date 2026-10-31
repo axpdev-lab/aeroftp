@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "«{name}» movido a {user}",
             "relocateAlreadyPresent": "«{name}» ya está guardado en {user}",
             "relocateError": "No se pudo transferir el servidor: {error}",
-            "relocateWrongPassword": "Contraseña incorrecta para {user}."
+            "relocateWrongPassword": "Contraseña incorrecta para {user}.",
+            "relocateSecretsNotCopied": "«{name}» llegó a {user}, pero su contraseña o token guardados no, así que los volverá a pedir allí."
         },
         "cyberTools": {
             "title": "Herramientas de seguridad",

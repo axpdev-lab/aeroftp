@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "Przeniesiono „{name}” do {user}",
             "relocateAlreadyPresent": "„{name}” jest już zapisane w {user}",
             "relocateError": "Nie udało się przenieść serwera: {error}",
-            "relocateWrongPassword": "Nieprawidłowe hasło do {user}."
+            "relocateWrongPassword": "Nieprawidłowe hasło do {user}.",
+            "relocateSecretsNotCopied": "„{name}” dotarł do {user}, ale zapisane hasło lub token nie dotarły, więc poprosi o nie tam ponownie."
         },
         "cyberTools": {
             "title": "Narzędzia bezpieczeństwa",

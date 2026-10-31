@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "已将“{name}”移动到 {user}",
             "relocateAlreadyPresent": "“{name}”已保存在 {user} 中",
             "relocateError": "无法转移服务器：{error}",
-            "relocateWrongPassword": "{user} 的密码错误。"
+            "relocateWrongPassword": "{user} 的密码错误。",
+            "relocateSecretsNotCopied": "“{name}”已到达 {user}，但已保存的密码或令牌未一同转移，因此将在那里重新询问。"
         },
         "cyberTools": {
             "title": "安全工具",

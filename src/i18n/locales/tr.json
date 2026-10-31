@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "\"{name}\" {user} hesabına taşındı",
             "relocateAlreadyPresent": "\"{name}\" zaten {user} hesabında kayıtlı",
             "relocateError": "Sunucu aktarılamadı: {error}",
-            "relocateWrongPassword": "{user} için yanlış parola."
+            "relocateWrongPassword": "{user} için yanlış parola.",
+            "relocateSecretsNotCopied": "\"{name}\" {user} hesabına ulaştı, ancak kayıtlı parola veya token ulaşmadı, bu yüzden orada yeniden istenecek."
         },
         "cyberTools": {
             "title": "Güvenlik Araçları",

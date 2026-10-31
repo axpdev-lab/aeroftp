@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "\"{name}\" को {user} में ले जाया गया",
             "relocateAlreadyPresent": "\"{name}\" पहले से ही {user} में सहेजा गया है",
             "relocateError": "सर्वर स्थानांतरित नहीं किया जा सका: {error}",
-            "relocateWrongPassword": "{user} के लिए गलत पासवर्ड।"
+            "relocateWrongPassword": "{user} के लिए गलत पासवर्ड।",
+            "relocateSecretsNotCopied": "\"{name}\" {user} तक पहुँच गया, लेकिन उसका सहेजा हुआ पासवर्ड या टोकन नहीं पहुँचा, इसलिए वहाँ उन्हें दोबारा माँगा जाएगा।"
         },
         "cyberTools": {
             "title": "सुरक्षा उपकरण",

@@ -365,6 +365,8 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
         setError(null);
         setSuccess(null);
         try {
+            // The account this migration runs under: a switch during it must not put the metadata elsewhere.
+            const accountRead = await readSavedServerProfilesForWrite().catch(() => null);
             const result = await invoke<AeroCryptMarkerMigrationResult>('aerocrypt_provider_migrate_legacy_marker', {
                 password: pw || '',
                 keyfilePath: kf || null,
@@ -378,8 +380,6 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                 // Publish the new TSV into the keystore so Recovery kit works
                 // offline immediately (pre-Tier-1 vaults lacked vault_id).
                 try {
-                    // Bound to the account this ran under: a switch while it reads must not put the metadata elsewhere.
-                    const accountRead = await readSavedServerProfilesForWrite();
                     const configJson =
                         (await invoke<string | null>('aerocrypt_provider_read_config', {
                             basePath: vaultRoot,
@@ -397,7 +397,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                                 /* ignore */
                             }
                         }
-                        await invoke('store_overlay_metadata', { profileId, configJson, salt: saltB64 || null, expectedUserId: accountRead.userId ?? null });
+                        await invoke('store_overlay_metadata', { profileId, configJson, salt: saltB64 || null, expectedUserId: accountRead?.userId ?? null });
                         const kit = await invoke<AerocryptEmergencyKit>('aerocrypt_profile_recovery_kit', {
                             profileId,
                         });

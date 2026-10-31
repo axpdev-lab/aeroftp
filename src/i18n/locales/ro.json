@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "„{name}” mutat în {user}",
             "relocateAlreadyPresent": "„{name}” este deja salvat în {user}",
             "relocateError": "Serverul nu a putut fi transferat: {error}",
-            "relocateWrongPassword": "Parolă greșită pentru {user}."
+            "relocateWrongPassword": "Parolă greșită pentru {user}.",
+            "relocateSecretsNotCopied": "„{name}” a ajuns la {user}, dar parola sau tokenul salvate nu, așa că le va cere din nou acolo."
         },
         "cyberTools": {
             "title": "Instrumente de Securitate",

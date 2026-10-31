@@ -518,14 +518,25 @@ impl JottacloudProvider {
                     "Refresh token persisted to vault ({} key(s))",
                     accounts.len()
                 ));
-                return;
+            } else {
+                // Readers prefer the partition row: a stale one holds a chain Jotta has
+                // already rotated, so this must not read as a success.
+                jotta_log(
+                    "Refresh token NOT fully persisted: the vault or the partition refused it",
+                );
             }
+            return;
         }
         // Try auto-init vault
         if crate::credential_store::CredentialStore::init().is_ok() {
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                let _ = write_all(&store);
-                jotta_log("Refresh token persisted to auto-initialized vault");
+                if write_all(&store) {
+                    jotta_log("Refresh token persisted to auto-initialized vault");
+                } else {
+                    jotta_log(
+                        "Refresh token NOT fully persisted: the vault or the partition refused it",
+                    );
+                }
             }
         }
     }

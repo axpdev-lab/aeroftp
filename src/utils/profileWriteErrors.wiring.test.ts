@@ -62,7 +62,7 @@ function fixture(fail: 'read' | 'write' | 'none' = 'write') {
         normalizeMegaOptions: (v: unknown) => v, getDefaultPort: () => 21, connectionProfileDefaults,
         findDuplicateProfile: () => undefined,
         getStorageDedupKey: () => 'dedup', isBlompAuthUrl: () => false,
-        syncPersistedModeCredentials: vi.fn(), carryFavoriteServer: vi.fn(), carryServerGroups: vi.fn(),
+        syncPersistedModeCredentials: vi.fn(async () => true), carryFavoriteServer: vi.fn(), carryServerGroups: vi.fn(),
         deleteModeCredentials: vi.fn(), warnIfSavedByOtherAccount: vi.fn(),
         setSavedServersUpdate: vi.fn(), logActivity: vi.fn(), setGitHubAlert: vi.fn(),
         endEditSession: vi.fn(), setConnectionName: vi.fn(), setSaveConnection: vi.fn(), setPersistModeCredentials: vi.fn(),
@@ -96,6 +96,7 @@ function settingsSaveFixture(launchOnStartup: boolean, autostartAtOpen: boolean 
         mergeAppSettingsDraft, normalizeGuiPresentation, updateAppSettings: vi.fn(async () => ({ ...settings })),
         clampAppFontSize: (v: unknown) => v, normalizeAppFontFamily: (v: unknown) => v, clampIntroHubIconSize: (v: unknown) => v,
         SETTINGS_VAULT_KEY: 'settings', SETTINGS_KEY: 'settings', OAUTH_SETTINGS_KEY: 'oauth',
+        oauthEdits: { current: {} },
         oauthSettings: Object.fromEntries(['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'].map(p => [p, {}])),
         localStorage: { removeItem: vi.fn() }, enableAutostart: vi.fn(), disableAutostart: vi.fn(), isAutostartEnabled: vi.fn(),
         setSettings: vi.fn(), setHasChanges: vi.fn(), setSaveState: vi.fn(), onClose: vi.fn(), setTimeout: vi.fn(),
@@ -134,9 +135,12 @@ describe('saved profile write rejection in production handlers', () => {
         const fn = await execute(connection, [name], f.context);
         await fn[name]();
         expect(f.context.setGitHubAlert).toHaveBeenCalled();
-        for (const n of ['syncPersistedModeCredentials', 'deleteModeCredentials', 'carryFavoriteServer', 'carryServerGroups', 'setSavedServersUpdate', 'endEditSession', 'onFormSaved']) {
+        // A convert stores the new mode map before the list: the original map must stay.
+        const stopped = ['syncPersistedModeCredentials', 'deleteModeCredentials', 'carryFavoriteServer', 'carryServerGroups', 'setSavedServersUpdate', 'endEditSession', 'onFormSaved'];
+        for (const n of stopped.filter(n => name !== 'handleConvertMode' || !n.endsWith('ModeCredentials'))) {
             expect(f.context[n], n).not.toHaveBeenCalled();
         }
+        if (name === 'handleConvertMode') expect(f.context.deleteModeCredentials).not.toHaveBeenCalledWith('old');
         expect(f.events.filter(e => e.detail?.type === 'success')).toEqual([]);
     });
 
@@ -147,6 +151,16 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.context.setGitHubAlert).toHaveBeenCalled();
         expect(f.store).not.toHaveBeenCalled();
         expect(f.context.tryStoreCredential).not.toHaveBeenCalled();
+    });
+
+    it('stops a convert before the list when the new mode map cannot be stored', async () => {
+        const f = fixture('none');
+        f.context.syncPersistedModeCredentials.mockResolvedValue(false);
+        const fn = await execute(connection, ['handleConvertMode'], f.context);
+        await fn.handleConvertMode();
+        expect(f.store).not.toHaveBeenCalled();
+        expect(f.context.deleteModeCredentials).not.toHaveBeenCalled();
+        expect(f.events.filter(e => e.detail?.type === 'success')).toEqual([]);
     });
 
     it('keeps the convert Undo available if restoring the profiles fails', async () => {

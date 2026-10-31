@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "Symudwyd \"{name}\" i {user}",
             "relocateAlreadyPresent": "Mae \"{name}\" eisoes wedi'i gadw yn {user}",
             "relocateError": "Methu trosglwyddo'r gweinydd: {error}",
-            "relocateWrongPassword": "Cyfrinair anghywir ar gyfer {user}."
+            "relocateWrongPassword": "Cyfrinair anghywir ar gyfer {user}.",
+            "relocateSecretsNotCopied": "Cyrhaeddodd \"{name}\" {user}, ond ni chyrhaeddodd y cyfrinair neu'r token a gadwyd, felly bydd yn gofyn amdanynt eto yno."
         },
         "cyberTools": {
             "title": "Offer diogelwch",

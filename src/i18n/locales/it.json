@@ -5356,7 +5356,8 @@
             "relocateSuccessMove": "\"{name}\" spostato in {user}",
             "relocateAlreadyPresent": "\"{name}\" è già salvato in {user}",
             "relocateError": "Impossibile trasferire il server: {error}",
-            "relocateWrongPassword": "Password errata per {user}."
+            "relocateWrongPassword": "Password errata per {user}.",
+            "relocateSecretsNotCopied": "\"{name}\" è arrivato in {user}, ma la password o il token salvati no, quindi li chiederà di nuovo lì."
         },
         "dialog": {
             "deleteFile": "Eliminare \"{name}\"?",

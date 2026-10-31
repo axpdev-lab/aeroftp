@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "„{name}“ perkelta į {user}",
             "relocateAlreadyPresent": "„{name}“ jau išsaugota paskyroje {user}",
             "relocateError": "Nepavyko perkelti serverio: {error}",
-            "relocateWrongPassword": "Neteisingas {user} slaptažodis."
+            "relocateWrongPassword": "Neteisingas {user} slaptažodis.",
+            "relocateSecretsNotCopied": "„{name}“ pasiekė {user}, bet jo išsaugotas slaptažodis ar prieigos raktas nepasiekė, todėl ten jų bus paprašyta dar kartą."
         },
         "cyberTools": {
             "title": "Saugumo įrankiai",

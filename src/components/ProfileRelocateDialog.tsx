@@ -130,6 +130,12 @@ export const ProfileRelocateDialog: React.FC<ProfileRelocateDialogProps> = ({
                     t(isMove ? 'savedServers.moveToUser' : 'savedServers.copyToUser'),
                     t('savedServers.relocateAlreadyPresent', { name, user: target.name }),
                 );
+            } else if (result.secretsNotCopied?.length) {
+                toastEvent(
+                    'warning',
+                    t(isMove ? 'savedServers.moveToUser' : 'savedServers.copyToUser'),
+                    t('savedServers.relocateSecretsNotCopied', { name, user: target.name }),
+                );
             } else {
                 toastEvent(
                     'success',

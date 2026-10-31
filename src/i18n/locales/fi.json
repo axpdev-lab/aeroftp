@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "”{name}” siirretty tilille {user}",
             "relocateAlreadyPresent": "”{name}” on jo tallennettu tilille {user}",
             "relocateError": "Palvelinta ei voitu siirtää: {error}",
-            "relocateWrongPassword": "Väärä salasana tilille {user}."
+            "relocateWrongPassword": "Väärä salasana tilille {user}.",
+            "relocateSecretsNotCopied": "”{name}” pääsi tilille {user}, mutta sen tallennettu salasana tai avain ei päässyt, joten se kysyy ne siellä uudelleen."
         },
         "cyberTools": {
             "title": "Turvallisuustyö­kalut",

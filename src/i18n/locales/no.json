@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "«{name}» flyttet til {user}",
             "relocateAlreadyPresent": "«{name}» er allerede lagret i {user}",
             "relocateError": "Kunne ikke overføre serveren: {error}",
-            "relocateWrongPassword": "Feil passord for {user}."
+            "relocateWrongPassword": "Feil passord for {user}.",
+            "relocateSecretsNotCopied": "«{name}» kom frem til {user}, men det lagrede passordet eller tokenet kom ikke med, så det spørres etter dem igjen der."
         },
         "cyberTools": {
             "title": "Sikkerhetsverk­tøy",

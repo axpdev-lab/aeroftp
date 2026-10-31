@@ -4854,7 +4854,8 @@
             "relocateSuccessMove": "”{name}” flyttades till {user}",
             "relocateAlreadyPresent": "”{name}” är redan sparat i {user}",
             "relocateError": "Det gick inte att överföra servern: {error}",
-            "relocateWrongPassword": "Fel lösenord för {user}."
+            "relocateWrongPassword": "Fel lösenord för {user}.",
+            "relocateSecretsNotCopied": "”{name}” kom fram till {user}, men det sparade lösenordet eller tokenet följde inte med, så de efterfrågas på nytt där."
         },
         "cyberTools": {
             "title": "Säkerhetsverktyg",
