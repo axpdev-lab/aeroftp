@@ -752,15 +752,19 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
         })
         .collect();
 
+    let names: HashMap<&str, &str> = servers
+        .iter()
+        .filter_map(|s| {
+            Some((
+                s.get("id").and_then(|v| v.as_str())?,
+                s.get("name").and_then(|v| v.as_str())?,
+            ))
+        })
+        .collect();
     let secret_warnings: Vec<Value> = secret_failures
-        .into_iter()
+        .iter()
         .map(|(id, reason)| {
-            let name = servers
-                .iter()
-                .find(|s| s.get("id").and_then(|v| v.as_str()) == Some(id.as_str()))
-                .and_then(|s| s.get("name"))
-                .and_then(|v| v.as_str())
-                .unwrap_or(&id);
+            let name = names.get(id.as_str()).copied().unwrap_or(id.as_str());
             json!({ "name": name, "reason": reason })
         })
         .collect();

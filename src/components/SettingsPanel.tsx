@@ -865,15 +865,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             for (const p of providers) {
                 const creds = oauthSettings[p];
                 if (creds.clientId || creds.clientSecret) {
+                    // A failure reaches the save's own handler: the panel stays open
+                    // with the edit, and Save tries again.
                     await invoke('store_oauth_app', {
                         provider: p,
                         clientId: creds.clientId || null,
                         clientSecret: creds.clientSecret || null,
-                    }).catch((err) => {
-                        logger.warn(`OAuth app for ${p} not saved`, err);
-                        window.dispatchEvent(new CustomEvent('aeroftp-toast', {
-                            detail: { type: 'error', title: t('toast.saveFailed'), message: String(err), important: true },
-                        }));
                     });
                 }
             }

@@ -173,12 +173,19 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
   const handleSignIn = async () => {
     if (!clientId || !clientSecret) return;
     // One call: an import or another window must not see half of the pair.
-    await invoke('store_oauth_app', {
-      provider: credentialProvider,
-      clientId,
-      clientSecret,
-      ...(isZoho ? { region: zohoRegion } : {}),
-    });
+    try {
+      await invoke('store_oauth_app', {
+        provider: credentialProvider,
+        clientId,
+        clientSecret,
+        ...(isZoho ? { region: zohoRegion } : {}),
+      });
+    } catch (reason) {
+      window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+        detail: { type: 'error', title: t('toast.saveFailed'), message: String(reason), important: true },
+      }));
+      return;
+    }
     localStorage.removeItem(`oauth_${provider}_client_id`);
     localStorage.removeItem(`oauth_${provider}_client_secret`);
 

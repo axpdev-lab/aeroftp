@@ -17548,6 +17548,9 @@ async fn store_overlay_metadata(
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
     tokio::task::spawn_blocking(move || {
+        // The lock an import holds: it writes the same keys.
+        let conn = user_partitions::open_or_init_cli()?;
+        let _lock = user_partitions::ProfileListLock::acquire(&conn)?;
         let mut writes = vec![profile_import_plan::SecretWrite::new(
             format!("aerocrypt_overlay_config_{profile_id}"),
             None,

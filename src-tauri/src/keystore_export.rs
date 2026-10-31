@@ -2087,6 +2087,9 @@ fn import_keystore_with_store(
         if let Some(cfg) = config_dir {
             if let Err(e) = std::fs::create_dir_all(cfg) {
                 tracing::warn!("Cannot create config_dir for SQLite restore: {}", e);
+                // Reachable only if the folder goes after the list lock created it.
+                sqlite_dbs_failed.extend(payload.sqlite_dumps.keys().cloned());
+                sqlite_dbs_failed.sort();
             } else {
                 let total_dbs = payload.sqlite_dumps.len() as u32;
                 if let Some(cb) = &on_progress {
@@ -4165,6 +4168,42 @@ mod tests {
         .unwrap();
         assert_eq!(result.sqlite_dbs_failed, ["ai_chat.db"]);
         assert_eq!(result.sqlite_dbs_restored, 0);
+    }
+
+    /// A folder that cannot be created stops the import at the list lock, which needs
+    /// it, before anything is restored: no database is left out silently.
+    #[test]
+    fn a_config_folder_that_cannot_be_created_refuses_the_import() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let blocked = dir.path().join("a-file");
+        std::fs::write(&blocked, b"").unwrap();
+        let cfg = blocked.join("config");
+        let mut payload = ExportPayload::default();
+        payload
+            .sqlite_dumps
+            .insert("ai_chat.db".to_string(), String::new());
+        payload
+            .sqlite_dumps
+            .insert("file_tags.db".to_string(), String::new());
+        let backup = dir.path().join("no-folder.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let refused = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        );
+        assert!(
+            matches!(refused, Err(KeystoreExportError::ProfileListBusy(_))),
+            "{:?}",
+            refused.map(|_| ()).map_err(|e| e.to_string())
+        );
     }
 
     /// An empty list in the blob is an answer only when a restore's decisions left it.

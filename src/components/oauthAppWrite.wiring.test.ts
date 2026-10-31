@@ -22,6 +22,14 @@ describe('an OAuth app is saved as one unit', () => {
         const command = librs.slice(librs.indexOf('async fn store_oauth_app('), librs.indexOf('fn write_oauth_app<'));
         expect(command).toContain('only_main_window(webview.label(), "store_oauth_app")');
         expect(command).toContain('ProfileListLock::acquire');
+        const overlay = librs.slice(librs.indexOf('async fn store_overlay_metadata('), librs.indexOf('async fn store_oauth_app('));
+        expect(overlay).toContain('ProfileListLock::acquire');
+    });
+
+    it('stops a sign-in whose app could not be saved, and says so', () => {
+        expect(connect).toContain("title: t('toast.saveFailed')");
+        const write = connect.slice(connect.indexOf("invoke('store_oauth_app'"));
+        expect(write.slice(0, 500)).toMatch(/catch \(reason\)[\s\S]*return;/);
     });
 
     it('saves an overlay config with its salt, never apart', () => {
@@ -38,7 +46,9 @@ describe('an OAuth app is saved as one unit', () => {
     });
 
     it('reports a failed save in Settings', () => {
+        // No catch of its own: the save's handler reports it and keeps the panel open.
         const save = settings.slice(settings.indexOf("invoke('store_oauth_app'"));
-        expect(save.slice(0, 500)).toContain("title: t('toast.saveFailed')");
+        expect(save.slice(0, 220)).not.toContain('.catch(');
+        expect(save).toContain("title: t('toast.saveFailed')");
     });
 });
