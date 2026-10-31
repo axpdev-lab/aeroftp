@@ -3288,9 +3288,13 @@ impl WebDavProvider {
                             // ...) the input has no percent-encoding and decode is a
                             // no-op; on the Filen bridge it un-mangles the name. Issue
                             // #128.
-                            let name = if !displayname.trim().is_empty() {
-                                urlencoding::decode(displayname.trim())
-                                    .unwrap_or_else(|_| displayname.trim().into())
+                            // As given, like the rest of the name: ` a` and
+                            // `a ` are two other files than `a`, and a name
+                            // of spaces is a name. XML writers indent around
+                            // the element, never inside its text.
+                            let name = if !displayname.is_empty() {
+                                urlencoding::decode(&displayname)
+                                    .unwrap_or_else(|_| displayname.as_str().into())
                                     .into_owned()
                             } else {
                                 decoded_href
@@ -7140,6 +7144,45 @@ mod tests {
         assert_eq!(entries[0].size, 65536);
         // No displayname: falls back to the (decoded) href leaf.
         assert_eq!(entries[1].name, "a & b.txt");
+    }
+
+    /// A displayname that begins or ends with a space names that file: it
+    /// was trimmed, so ` a.txt ` was listed as `a.txt` at `/dav/a.txt`, and
+    /// every operation on it reached another file or none.
+    #[test]
+    fn parse_propfind_keeps_the_spaces_around_a_displayname() {
+        let provider = WebDavProvider::new(test_config("https://example.com/dav"))
+            .expect("Failed to create WebDavProvider");
+
+        let xml = r#"<?xml version="1.0"?>
+        <d:multistatus xmlns:d="DAV:">
+            <d:response>
+                <d:href>/dav/%20a.txt%20</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname> a.txt </d:displayname>
+                        <d:resourcetype/>
+                        <d:getcontentlength>3</d:getcontentlength>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/%20%20/</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname>  </d:displayname>
+                        <d:resourcetype><d:collection/></d:resourcetype>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+        </d:multistatus>"#;
+
+        let entries = provider.parse_propfind_response(xml, "/dav").unwrap();
+        let named: Vec<(&str, &str)> = entries
+            .iter()
+            .map(|e| (e.name.as_str(), e.path.as_str()))
+            .collect();
+        assert_eq!(named, [(" a.txt ", "/dav/ a.txt "), ("  ", "/dav/  ")]);
     }
 
     /// CR-536 regression: a whitespace-ONLY Text fragment between two entity

@@ -537,7 +537,7 @@ pub struct AeroCryptCreatedVault {
 /// subpath is always relative to `base`, its slashes trimmed, so `/x` typed in
 /// the field does not escape to the remote root.
 pub(crate) fn overlay_create_root(base: &str, subpath: Option<&str>) -> String {
-    let base = base.trim();
+    // The folder as given: `/reports ` is not `/reports`.
     let base = if base.is_empty() { "/" } else { base };
     match subpath
         .map(|s| s.trim().trim_matches('/'))
@@ -1696,6 +1696,11 @@ mod tests {
         assert_eq!(overlay_create_root("/home/u/", Some("a/b")), "/home/u/a/b");
         assert_eq!(overlay_create_root("/", Some("New")), "/New");
         assert_eq!(overlay_create_root("", Some("New")), "/New");
+        assert_eq!(overlay_create_root("/reports ", None), "/reports ");
+        assert_eq!(
+            overlay_create_root("/reports ", Some("New")),
+            "/reports /New"
+        );
         assert_eq!(overlay_create_root("", None), "/");
     }
 

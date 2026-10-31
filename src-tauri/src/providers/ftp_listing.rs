@@ -542,12 +542,30 @@ fn dos_list_date(date: &str, time: &str) -> Option<String> {
     ))
 }
 
+/// suppaftp trims the MLST reply line, and with it the spaces a name ends
+/// with: the reply about `/a ` names `/a`, another file. The entry is the
+/// one asked for, so it takes back the name asked when that is all it lost.
+pub(crate) fn name_as_asked(entry: &mut RemoteEntry, asked: &str) {
+    let Some(asked_name) = asked.trim_end_matches('/').rsplit('/').next() else {
+        return;
+    };
+    if asked_name == entry.name || asked_name.trim_end() != entry.name {
+        return;
+    }
+    if let Some(parent) = entry.path.strip_suffix(entry.name.as_str()) {
+        entry.path = format!("{parent}{asked_name}");
+        entry.name = asked_name.to_string();
+    }
+}
+
 /// Parse MLSD/MLST line (RFC 3659 machine-readable format)
 /// Format: "fact1=val1;fact2=val2; filename"
 pub(crate) fn parse_mlsd_entry(line: &str, base_path: &str) -> Option<RemoteEntry> {
     // Split on first space after semicolons to get facts and filename
     let (facts_str, name) = line.split_once(' ')?;
-    let raw_name = name.trim();
+    // The name is all that follows that one space (RFC 3659 7.2), its own
+    // spaces included; suppaftp hands the line without its CRLF.
+    let raw_name = name;
     let name = normalize_mlsd_name(raw_name);
 
     if name == "." || name == ".." {
@@ -855,6 +873,37 @@ mod tests {
     /// its size, and the 0 it leaves is marked like an unreadable one: the
     /// CLI's `--immutable` trusted it as exact and refused every complete file
     /// on such a server as a partial. A directory needs no size.
+    /// The name is what follows the one space after the facts: trimmed,
+    /// ` a.txt ` was listed as `a.txt`, another file.
+    #[test]
+    fn an_mlsd_name_keeps_its_spaces() {
+        let entry = parse_mlsd_entry("type=file;size=1;  a.txt ", "/d").expect("a file");
+        assert_eq!(
+            (entry.name.as_str(), entry.path.as_str()),
+            (" a.txt ", "/d/ a.txt ")
+        );
+        let entry = parse_mlsd_entry("type=dir;   ", "/d").expect("a folder");
+        assert_eq!((entry.name.as_str(), entry.path.as_str()), ("  ", "/d/  "));
+    }
+
+    /// suppaftp trims the MLST line: the entry asked as `/x/a ` comes back
+    /// as `a`, and gets its name back. Any other difference is the server's.
+    #[test]
+    fn an_mlst_entry_takes_back_the_spaces_its_name_ended_with() {
+        let mut entry = parse_mlsd_entry("type=file;size=3; /x/a", "/x").expect("a file");
+        name_as_asked(&mut entry, "/x/a  ");
+        assert_eq!(
+            (entry.name.as_str(), entry.path.as_str()),
+            ("a  ", "/x/a  ")
+        );
+        let mut entry = parse_mlsd_entry("type=file;size=3; /x/A.TXT", "/x").expect("a file");
+        name_as_asked(&mut entry, "/x/a.txt");
+        assert_eq!(
+            (entry.name.as_str(), entry.path.as_str()),
+            ("A.TXT", "/x/A.TXT")
+        );
+    }
+
     #[test]
     fn an_mlsd_file_without_a_size_fact_is_marked() {
         let file = parse_mlsd_entry("type=file;modify=20240101000000; a.txt", "/").expect("a file");

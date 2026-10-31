@@ -1909,7 +1909,8 @@ fn folder_to_entry(folder: &CloudinarySubFolder, parent: &str) -> RemoteEntry {
 /// its public id when it has none: the name on a dynamic-folder account.
 fn resource_display_name(item: &CloudinaryResource) -> String {
     if let Some(ref dn) = item.display_name {
-        if !dn.trim().is_empty() {
+        // As given: a name of spaces is a name too.
+        if !dn.is_empty() {
             let mut name = dn.clone();
             if let Some(ref fmt) = item.format {
                 if !name
@@ -2140,6 +2141,22 @@ fn validate_download_url(url: &str) -> Result<(), ProviderError> {
 
 #[cfg(test)]
 mod tests {
+    /// A display name of spaces names the asset: read as absent, the asset
+    /// went by its public id, and a lookup of the name it was given failed.
+    #[test]
+    fn a_display_name_keeps_its_spaces() {
+        let asset = |display: &str| {
+            serde_json::from_value::<super::CloudinaryResource>(serde_json::json!({
+                "public_id": "photos/x1", "display_name": display, "format": "jpg",
+                "bytes": 3, "resource_type": "image",
+            }))
+            .unwrap()
+        };
+        assert_eq!(super::resource_display_name(&asset("   ")), "   .jpg");
+        assert_eq!(super::resource_display_name(&asset(" a ")), " a .jpg");
+        assert_eq!(super::resource_display_name(&asset("")), "x1.jpg");
+    }
+
     #[test]
     fn a_name_keeps_its_leading_and_trailing_spaces() {
         // A name with a leading or trailing space is a name of its own, and a

@@ -2342,6 +2342,9 @@ impl JottacloudProvider {
     /// Relative path under the live mountpoint: strip
     /// `/{user}/{device}/{mount}` from the trash `<abspath>` (the original
     /// parent) and append the entry name. Root-level items stay `/{name}`.
+    /// The parent's names are the stored ones, `reports％` for `reports%`:
+    /// each is decoded like a listed name, since `jfs_url` encodes the path
+    /// again and an encoded name would reach another folder.
     fn trash_relative_path(abspath: &str, name: &str) -> String {
         let parts: Vec<&str> = abspath
             .trim_matches('/')
@@ -2350,7 +2353,11 @@ impl JottacloudProvider {
             .collect();
         // 0 user, 1 device, 2 mountpoint, 3… original parent under that mount.
         let parent = if parts.len() > 3 {
-            parts[3..].join("/")
+            parts[3..]
+                .iter()
+                .map(|s| crate::restricted_chars::decode_leaf(ProviderType::Jottacloud, s))
+                .collect::<Vec<_>>()
+                .join("/")
         } else {
             String::new()
         };
@@ -4041,6 +4048,37 @@ mod tests {
         assert_eq!(folder.path, "/reports /q3");
         let file = entries.iter().find(|e| !e.is_dir).expect("file");
         assert_eq!(file.path, "/reports /x.txt");
+    }
+
+    #[test]
+    fn parse_trash_xml_decodes_the_stored_names_of_the_parent() {
+        // `reports% ` is stored as `reports％ ` and named so in `<abspath>`.
+        // Kept encoded, the path was encoded again by `jfs_url`, and restore
+        // or purge reached `reports‛％ `, another name.
+        let xml = r#"<mountPoint name="Trash">
+  <folders>
+    <folder name="q3">
+      <abspath>/user123/Jotta/Archive/reports％ /a：b</abspath>
+    </folder>
+  </folders>
+  <files>
+    <file name="x％.txt">
+      <abspath>/user123/Jotta/Archive/reports％ </abspath>
+      <currentRevision><size>1</size></currentRevision>
+    </file>
+  </files>
+</mountPoint>"#;
+        let entries = JottacloudProvider::parse_trash_xml(xml);
+        let folder = entries.iter().find(|e| e.is_dir).expect("folder");
+        assert_eq!(folder.path, "/reports% /a:b/q3");
+        let file = entries.iter().find(|e| !e.is_dir).expect("file");
+        assert_eq!(file.path, "/reports% /x%.txt");
+        // Back to the stored names once, as the listing writes them.
+        let url = test_provider().jfs_url(&file.path);
+        assert!(
+            url.ends_with("/reports%EF%BC%85%20/x%EF%BC%85.txt"),
+            "{url}"
+        );
     }
 
     #[test]
