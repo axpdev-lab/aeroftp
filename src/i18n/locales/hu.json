@@ -6309,7 +6309,12 @@
                 }
             },
             "rescan": "Újraszkennelés",
-            "rescanNeeded": "Az összehasonlítás más kizárásokkal vagy másik biztonsági mentési mappával készült. Futtatás előtt szkenneld újra.",
+            "rescanBringsBack": "Ezek a beállítások olyan fájlokat hoznak vissza, amelyeket a szkennelés kihagyott, így soha nem olvasta be őket. Futtatás előtt szkenneld újra.",
+            "rescanFlat": "Ez az összehasonlítás a két panel listájából készült, nem teljes szkennelésből, így nem tud kizárásokat alkalmazni. Futtatás előtt szkenneld újra.",
+            "narrowAvailable": "Ezek a beállítások csak szűkítik az összehasonlítást, így újraszkennelés nélkül szűrhető.",
+            "narrowApply": "Alkalmazás erre az összehasonlításra",
+            "narrowedNote": "Új kizárásokkal szűrve, újraszkennelés nélkül. Az azonosak száma még mindig a szkennelésből származik.",
+            "narrowAfterRestore": "Egy visszaállítás fut. Ezeket a beállításokat az összehasonlításra a visszaállítás befejezése után lehet alkalmazni.",
             "backup": {
                 "checking": "Annak ellenőrzése, hogyan helyez át fájlokat ez a szerver...",
                 "serverCopy": "Ez a szerver nem tud áthelyezni: minden megőrzött példányt a szerveren lemásol, majd töröl. Ez minden megőrzött fájl teljes másolatába kerül, két külön lépésben.",
