@@ -7627,6 +7627,7 @@ fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
         ProviderError::TransferFailed(msg) if provider_error_message_looks_not_found(msg) => 2,
         ProviderError::TransferFailed(_)
         | ProviderError::ParallelRefused(_)
+        | ProviderError::PinRefused(_)
         | ProviderError::Cancelled => 4,
         ProviderError::InvalidConfig(_)
         | ProviderError::InvalidPath(_)
@@ -10634,7 +10635,8 @@ fn make_aggregate_progress_cb(
     };
     let added = attempt.added.clone();
     let callback = Box::new(move |transferred, _total| {
-        let previous = last_seen.swap(transferred, Ordering::Relaxed);
+        // A fallback counts from zero what this attempt already added.
+        let previous = last_seen.fetch_max(transferred, Ordering::Relaxed);
         let delta = transferred.saturating_sub(previous);
         if delta == 0 {
             return;
@@ -19239,11 +19241,12 @@ async fn download_tui_session_via_cli_handler(
         .map_err(|err| err.to_string())?;
     let provider = session.provider_mut();
     let tx = event_tx.clone();
+    let mark = ftp_client_gui_lib::providers::multi_thread::ProgressMark::default();
     let on_progress: Option<Box<dyn Fn(u64, u64) + Send>> =
         Some(Box::new(move |transferred, total| {
             let _ = tx.send(cli_tui::worker::WorkerEvent::TransferProgress {
                 id,
-                transferred,
+                transferred: mark.shown(transferred, total),
                 total,
             });
         }));
@@ -35652,7 +35655,7 @@ async fn cmd_get(
         let planned = pget_planned_segments(total_size, segments, pget_cutoff);
         if hints.supports_range_download && planned >= 2 {
             let _ = provider.disconnect().await;
-            let code = pget_segmented_download(
+            return pget_segmented_download(
                 url,
                 remote,
                 local_path,
@@ -35661,12 +35664,10 @@ async fn cmd_get(
                 cli,
                 format,
                 cancelled.clone(),
+                None,
+                remote_modified.as_deref(),
             )
             .await;
-            if code == 0 {
-                ftp_client_gui_lib::preserve_remote_mtime(local_path, remote_modified.as_deref());
-            }
-            return code;
         } else if !quiet {
             let reason = if !hints.supports_range_download {
                 "provider does not support range downloads".to_string()
@@ -35689,12 +35690,13 @@ async fn cmd_get(
 
     let pb_clone = pb.clone();
     let progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> = if pb_clone.is_some() {
+        let mark = ftp_client_gui_lib::providers::multi_thread::ProgressMark::default();
         Some(Box::new(move |transferred, total| {
             if let Some(ref pb) = pb_clone {
                 if total > 0 {
                     pb.set_length(total);
                 }
-                pb.set_position(transferred);
+                pb.set_position(mark.shown(transferred, total));
             }
         }))
     } else {
@@ -35977,6 +35979,11 @@ fn pget_planned_segments(file_size: u64, segments: usize, cutoff: u64) -> usize 
 /// historical N-real-connections parallelism (clone-pool / PD-SFTP-1
 /// coherent): the engine orchestrates and bounds, the parallel transfers
 /// live on those connections.
+///
+/// `unpinned_from` is `None` on a first run. A server that refuses the
+/// segments' `If-Match` on an object one more reading finds unchanged gets
+/// one more run with that reading as `Some`: no new first reading, segments
+/// read without `If-Match` and each answer compared with its entity tag.
 #[allow(clippy::too_many_arguments)]
 async fn pget_segmented_download(
     url: &str,
@@ -35987,12 +35994,14 @@ async fn pget_segmented_download(
     cli: &Cli,
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
+    unpinned_from: Option<ftp_client_gui_lib::providers::multi_thread::RangeSourceFingerprint>,
+    listed_time: Option<&str>,
 ) -> i32 {
     use ftp_client_gui_lib::providers::multi_thread::{
-        open_after_transfer, range_read_failed, range_source_changed_through, read_range_paced,
-        read_range_source_through, replace_failed_range_worker, report_download_fallback,
-        run_concurrent_range_download, settle_range_attempt, ConcurrentRangeConfig,
-        ConcurrentRangeOutcome, RangeMark, SegmentedRun,
+        range_read_failed, read_range_paced, read_range_source_through,
+        replace_failed_range_worker, report_download_fallback, run_concurrent_range_download,
+        settle_range_attempt, ConcurrentRangeConfig, ConcurrentRangeOutcome, PinRefusal, RangeMark,
+        SegmentedRun,
     };
 
     let actual_segments = pget_effective_segments(file_size, segments);
@@ -36001,7 +36010,16 @@ async fn pget_segmented_download(
         // Degenerate: a single effective segment is just a single-stream
         // download. The initial probe provider was already disconnected by
         // the caller, so reconnect and stream once (honest, no overclaim).
-        return pget_fallback_single(url, remote_path, local_path, cli, format, &cancelled).await;
+        return pget_fallback_single(
+            url,
+            remote_path,
+            local_path,
+            cli,
+            format,
+            &cancelled,
+            listed_time,
+        )
+        .await;
     }
 
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
@@ -36030,34 +36048,46 @@ async fn pget_segmented_download(
     // exactly when the second reading matters most.
     // The setup stops on Ctrl-C (`None`); `Some(None)` is a fallback to one
     // stream, its reason already said.
+    // With `unpinned_from`, the server refused If-Match on an object a reading
+    // found unchanged: that reading stands as the first one, and the windows
+    // carry no pin.
+    let pinned = unpinned_from.is_none();
     let setup = run_until_interrupted(&cancelled, async {
-        let mut checker = match create_and_connect(url, cli, format).await {
-            Ok((provider, _)) => provider,
-            Err(_) => {
-                report_download_fallback("pget: the source-check connection could not be opened");
-                return None;
-            }
-        };
-        let before = match read_range_source_through(checker.as_mut(), remote_path).await {
-            Ok(reading) => match reading.matches_planned_size(file_size) {
-                Ok(()) => reading,
-                Err(_why) => {
-                    let _ = checker.disconnect().await;
-                    report_download_fallback(
-                        "pget: the source size no longer matches the parallel plan",
-                    );
-                    return None;
-                }
-            },
-            Err(_why) => {
+        let before = match unpinned_from {
+            Some(before) => before,
+            None => {
+                let mut checker = match create_and_connect(url, cli, format).await {
+                    Ok((provider, _)) => provider,
+                    Err(_) => {
+                        report_download_fallback(
+                            "pget: the source-check connection could not be opened",
+                        );
+                        return None;
+                    }
+                };
+                let before = match read_range_source_through(checker.as_mut(), remote_path).await {
+                    Ok(reading) => match reading.matches_planned_size(file_size) {
+                        Ok(()) => reading,
+                        Err(_why) => {
+                            let _ = checker.disconnect().await;
+                            report_download_fallback(
+                                "pget: the source size no longer matches the parallel plan",
+                            );
+                            return None;
+                        }
+                    },
+                    Err(_why) => {
+                        let _ = checker.disconnect().await;
+                        report_download_fallback(
+                            "pget: source metadata could not be read before the parallel transfer",
+                        );
+                        return None;
+                    }
+                };
                 let _ = checker.disconnect().await;
-                report_download_fallback(
-                    "pget: source metadata could not be read before the parallel transfer",
-                );
-                return None;
+                before
             }
         };
-        let _ = checker.disconnect().await;
 
         let mut conns: Vec<Box<dyn StorageProvider>> = Vec::with_capacity(actual_segments);
         for _ in 0..actual_segments {
@@ -36067,6 +36097,9 @@ async fn pget_segmented_download(
                     // the shared executor does: on S3 this is the `If-Match` that
                     // refuses a window the moment the object is replaced.
                     p.set_range_validator(before.validator());
+                    if !pinned {
+                        p.read_ranges_unpinned(before.size());
+                    }
                     conns.push(p)
                 }
                 Err(_) => {
@@ -36086,8 +36119,16 @@ async fn pget_segmented_download(
     let (before, conns) = match setup {
         Some(Some(ready)) => ready,
         Some(None) => {
-            return pget_fallback_single(url, remote_path, local_path, cli, format, &cancelled)
-                .await
+            return pget_fallback_single(
+                url,
+                remote_path,
+                local_path,
+                cli,
+                format,
+                &cancelled,
+                listed_time,
+            )
+            .await
         }
         None => return interrupted_exit(None, format, "the download did not finish").await,
     };
@@ -36282,43 +36323,56 @@ async fn pget_segmented_download(
             // Opened twice if need be: the window connections have just
             // closed, and one refused connection must not discard a transfer
             // that is complete.
-            let second_reading = run_until_interrupted(&cancelled, async {
-                let reopened = open_after_transfer(|| create_and_connect(url, cli, format)).await;
-                match reopened {
-                    Ok((mut session, _)) => {
-                        // The shared comparison, so this reading retries once
-                        // like the others before it discards a finished
-                        // download.
-                        let changed =
-                            range_source_changed_through(session.as_mut(), remote_path, &before)
-                                .await;
-                        let _ = session.disconnect().await;
-                        changed
-                    }
-                    Err(_) => Some(
-                        "it could not be read again after the transfer: no session to read it with"
-                            .to_string(),
-                    ),
-                }
-            })
+            let second_reading = run_until_interrupted(
+                &cancelled,
+                pget_read_again(url, remote_path, cli, format, &before),
+            )
             .await;
             // Stopped before the file could be checked: nothing is published.
             let Some(changed) = second_reading else {
                 temp.discard();
                 return interrupted_exit(None, format, "the download did not finish").await;
             };
+            // Read without If-Match, a replacement restored before that reading
+            // leaves it unmoved; the content shows it where an MD5 is published.
+            let changed = match changed {
+                None if !pinned => {
+                    let content = run_until_interrupted(
+                        &cancelled,
+                        temp.differs_from_md5(before.content_md5()),
+                    )
+                    .await;
+                    // Stopped before the content could be checked: nothing is
+                    // published.
+                    let Some(content) = content else {
+                        temp.discard();
+                        return interrupted_exit(None, format, "the download did not finish").await;
+                    };
+                    content
+                }
+                other => other,
+            };
             if changed.is_some() {
                 temp.discard();
                 report_download_fallback(
                     "pget: the source changed or could not be verified after the parallel transfer",
                 );
-                return pget_fallback_single(url, remote_path, local_path, cli, format, &cancelled)
-                    .await;
+                return pget_fallback_single(
+                    url,
+                    remote_path,
+                    local_path,
+                    cli,
+                    format,
+                    &cancelled,
+                    listed_time,
+                )
+                .await;
             }
             if let Err(e) = temp.publish(Path::new(local_path)).await {
                 print_error(format, &format!("pget: finalize failed: {}", e), 4);
                 return 4;
             }
+            ftp_client_gui_lib::preserve_remote_mtime(local_path, listed_time);
 
             let elapsed = start.elapsed();
             let speed = if elapsed.as_secs_f64() > 0.0 {
@@ -36358,12 +36412,69 @@ async fn pget_segmented_download(
             // `read_range` cannot produce this (no HTTP-200 semantics); the
             // engine already dropped the temp. Defensive honest fallback.
             report_download_fallback("pget: the server ignored Range");
-            pget_fallback_single(url, remote_path, local_path, cli, format, &cancelled).await
+            pget_fallback_single(
+                url,
+                remote_path,
+                local_path,
+                cli,
+                format,
+                &cancelled,
+                listed_time,
+            )
+            .await
         }
         Err(_) if cancelled.load(Ordering::Relaxed) => {
             // Ctrl-C stopped the windows (the engine's guard removed the
             // temp): the user asked to stop, not for a single stream.
             interrupted_exit(None, format, "the download did not finish").await
+        }
+        Err(ProviderError::PinRefused(_)) => {
+            // A 412 to the pin: the object moved, or the server refuses
+            // If-Match on the version it still serves. One more reading,
+            // once for the file, names which: a changed object takes one stream,
+            // an unchanged one is read again without the pin.
+            let Some(changed) = run_until_interrupted(
+                &cancelled,
+                pget_read_again(url, remote_path, cli, format, &before),
+            )
+            .await
+            else {
+                return interrupted_exit(None, format, "the download did not finish").await;
+            };
+            let verdict = PinRefusal::from_second_reading(changed);
+            if verdict == PinRefusal::PinUnsupported && pinned {
+                // Read once more, for this file only and with no pin: the
+                // reading after the windows compares entity tag, size and
+                // time with `before`, as for a server that ignores the
+                // header, and refuses anything that moved.
+                if !(cli.quiet || matches!(format, OutputFormat::Json)) {
+                    eprintln!("pget: the server refused If-Match on an unchanged object, reading the segments again without it");
+                }
+                return Box::pin(pget_segmented_download(
+                    url,
+                    remote_path,
+                    local_path,
+                    segments,
+                    file_size,
+                    cli,
+                    format,
+                    cancelled,
+                    Some(before),
+                    listed_time,
+                ))
+                .await;
+            }
+            report_download_fallback(&format!("pget: {}", verdict.notice()));
+            pget_fallback_single(
+                url,
+                remote_path,
+                local_path,
+                cli,
+                format,
+                &cancelled,
+                listed_time,
+            )
+            .await
         }
         Err(e) => {
             // The engine's RAII guard already removed the temp. Honest
@@ -36373,8 +36484,44 @@ async fn pget_segmented_download(
             } else {
                 "pget: a segmented range transfer failed"
             });
-            pget_fallback_single(url, remote_path, local_path, cli, format, &cancelled).await
+            pget_fallback_single(
+                url,
+                remote_path,
+                local_path,
+                cli,
+                format,
+                &cancelled,
+                listed_time,
+            )
+            .await
         }
+    }
+}
+
+/// Read the object once more on a session of its own and compare it with
+/// `before`: `Some(what)` when it differs or cannot be read, `None` when it
+/// is the same object. The window connections have just closed, so the
+/// session is opened twice if need be, and the shared comparison retries its
+/// reading once before it discards a finished download.
+async fn pget_read_again(
+    url: &str,
+    remote_path: &str,
+    cli: &Cli,
+    format: OutputFormat,
+    before: &ftp_client_gui_lib::providers::multi_thread::RangeSourceFingerprint,
+) -> Option<String> {
+    use ftp_client_gui_lib::providers::multi_thread::{
+        open_after_transfer, range_source_changed_through,
+    };
+    match open_after_transfer(|| create_and_connect(url, cli, format)).await {
+        Ok((mut session, _)) => {
+            let changed = range_source_changed_through(session.as_mut(), remote_path, before).await;
+            let _ = session.disconnect().await;
+            changed
+        }
+        Err(_) => Some(
+            "it could not be read again after the transfer: no session to read it with".to_string(),
+        ),
     }
 }
 
@@ -36386,6 +36533,7 @@ async fn pget_fallback_single(
     cli: &Cli,
     format: OutputFormat,
     cancelled: &AtomicBool,
+    listed_time: Option<&str>,
 ) -> i32 {
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
     if !quiet {
@@ -36401,11 +36549,26 @@ async fn pget_fallback_single(
         };
 
     let filename = remote_path.rsplit('/').next().unwrap_or("download");
-    let Some(total_size) = run_until_interrupted(cancelled, provider.size(remote_path)).await
-    else {
+    // The stream may read another object than the listing saw: this reading is
+    // the one its size and its time come from. If it fails the listing's time
+    // stands, and the size is asked on its own: no time would leave the local
+    // write time, which reads newer still. The exact time is the one of the
+    // response carrying the bytes (Requested 129).
+    let probed = run_until_interrupted(cancelled, async {
+        match provider.stat(remote_path).await {
+            Ok(entry) => (
+                entry.size,
+                entry
+                    .modified
+                    .filter(|time| ftp_client_gui_lib::parse_remote_mtime(time).is_some()),
+            ),
+            Err(_) => (provider.size(remote_path).await.unwrap_or(0), None),
+        }
+    })
+    .await;
+    let Some((total_size, read_time)) = probed else {
         return interrupted_exit(Some(&mut *provider), format, NOT_FINISHED).await;
     };
-    let total_size = total_size.unwrap_or(0);
     let start = Instant::now();
 
     let pb = if !quiet && total_size > 0 {
@@ -36416,11 +36579,12 @@ async fn pget_fallback_single(
 
     let pb_clone = pb.clone();
     let progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> = pb_clone.map(|pb| {
+        let mark = ftp_client_gui_lib::providers::multi_thread::ProgressMark::default();
         Box::new(move |transferred: u64, total: u64| {
             if total > 0 {
                 pb.set_length(total);
             }
-            pb.set_position(transferred);
+            pb.set_position(mark.shown(transferred, total));
         }) as Box<dyn Fn(u64, u64) + Send>
     });
 
@@ -36456,6 +36620,10 @@ async fn pget_fallback_single(
     }
     match result {
         Ok(()) => {
+            ftp_client_gui_lib::preserve_remote_mtime(
+                local_path,
+                read_time.as_deref().or(listed_time),
+            );
             let elapsed = start.elapsed();
             let file_size = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
             let speed = if elapsed.as_secs_f64() > 0.0 {
@@ -66787,9 +66955,11 @@ async fn digest_downloaded(
 /// from where it stopped. A file that fits in one window, or a backend that
 /// cannot open connections of its own (Koofr, Cloudinary, ImageKit), is read
 /// in order on the session already open, with no resume: what a download
-/// through that session offered. A refusal discards every consumed window
-/// and hashes one complete download on disk, checked against the pinned size
-/// and source fingerprint.
+/// through that session offered. A window the server refuses under its pin
+/// is diagnosed by one more reading: a changed object fails the hash, an
+/// unchanged one is hashed once more from windows read without `If-Match`.
+/// Any other refusal discards every consumed window and hashes one complete
+/// download on disk, checked against the pinned size and source fingerprint.
 async fn digest_in_order(
     provider: &mut dyn StorageProvider,
     path: &str,
@@ -66808,8 +66978,37 @@ async fn digest_in_order(
             .await
             .map(Some);
     }
-    match digest_in_order_attempt(provider, path, digest, &before).await {
-        Err(ProviderError::ParallelRefused(_) | ProviderError::NotSupported(_)) => {
+    let mut outcome = digest_in_order_attempt(provider, path, digest, &before, true).await;
+    if matches!(outcome, Err(ProviderError::PinRefused(_))) {
+        // A 412 to the pin: one more reading, once for the file, names a
+        // replacement apart from a server that refuses If-Match. A reading
+        // that fails proves neither, so one whole download decides.
+        let Ok(after) = read_range_source_through(provider, path).await else {
+            report_download_fallback("the server refused ranged hashing");
+            digest.restart();
+            return digest_downloaded(provider, path, digest, Some(&before))
+                .await
+                .map(Some);
+        };
+        // A changed object fails here: a whole download would be refused by
+        // the same comparison, after reading every byte of it.
+        if let Some(why) = before.differs_from(&after) {
+            return Err(ProviderError::TransferFailed(format!(
+                "{path} changed while it was hashed: {why}"
+            )));
+        }
+        // The windows are read once more, for this file only and with no
+        // pin; the reading after them compares entity tag, size and time
+        // with `before`, as for a server that ignores the header.
+        digest.restart();
+        outcome = digest_in_order_attempt(provider, path, digest, &before, false).await;
+    }
+    match outcome {
+        Err(
+            ProviderError::ParallelRefused(_)
+            | ProviderError::PinRefused(_)
+            | ProviderError::NotSupported(_),
+        ) => {
             report_download_fallback("the server refused ranged hashing");
             digest.restart();
             digest_downloaded(provider, path, digest, Some(&before))
@@ -66820,11 +67019,34 @@ async fn digest_in_order(
     }
 }
 
+/// A refusal, not a failure, when windows read without `If-Match` do not hash
+/// to the MD5 the object publishes: the object as it stands can still be
+/// hashed whole.
+fn unpinned_content_matches(
+    path: &str,
+    content: Option<(&str, md5::Md5)>,
+) -> Result<(), ProviderError> {
+    if let Some((expected, hasher)) = content {
+        let actual = format!("{:x}", md5::Digest::finalize(hasher));
+        if !actual.eq_ignore_ascii_case(expected) {
+            return Err(ProviderError::ParallelRefused(format!(
+                "{path}: the windows hash to MD5 {actual}, not {expected}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// One pass of [`digest_in_order`] over the object `before` describes. The
+/// workers know its version; with `send_pin` each window carries it as
+/// `If-Match`, without it each answer is compared with it. The object is read
+/// once more after the windows before the digest is trusted.
 async fn digest_in_order_attempt(
     provider: &mut dyn StorageProvider,
     path: &str,
     digest: &mut LocalDigest,
     before: &ftp_client_gui_lib::providers::multi_thread::RangeSourceFingerprint,
+    send_pin: bool,
 ) -> Result<Option<u64>, ProviderError> {
     use ftp_client_gui_lib::providers::multi_thread::{
         range_source_changed_through, read_in_order, read_range_paced, IN_ORDER_WINDOW,
@@ -66839,9 +67061,19 @@ async fn digest_in_order_attempt(
                 break;
             };
             worker.set_range_validator(before.validator());
+            if !send_pin {
+                worker.read_ranges_unpinned(size);
+            }
             workers.push(worker);
         }
     }
+
+    // Read without If-Match, a replacement restored before the reading below
+    // leaves it unmoved; the content shows it where an MD5 is published.
+    let mut content = before
+        .content_md5()
+        .filter(|_| !send_pin)
+        .map(|expected| (expected, <md5::Md5 as md5::Digest>::new()));
 
     if workers.is_empty() {
         // A read may return fewer bytes than asked; only an empty one before
@@ -66858,6 +67090,9 @@ async fn digest_in_order_attempt(
             }
             let take = data.len().min((size - at) as usize);
             digest.update(&data[..take]);
+            if let Some((_, hasher)) = content.as_mut() {
+                md5::Digest::update(hasher, &data[..take]);
+            }
             at += take as u64;
         }
         // Several windows apart, the object may have been replaced between
@@ -66869,6 +67104,7 @@ async fn digest_in_order_attempt(
                 )));
             }
         }
+        unpinned_content_matches(path, content)?;
         return Ok(Some(size));
     }
 
@@ -66880,7 +67116,12 @@ async fn digest_in_order_attempt(
         before.validator(),
         IN_ORDER_WINDOW,
         &cancel,
-        |bytes| digest.update(bytes),
+        |bytes| {
+            digest.update(bytes);
+            if let Some((_, hasher)) = content.as_mut() {
+                md5::Digest::update(hasher, bytes);
+            }
+        },
     )
     .await;
     // The windows came over separate connections: an object replaced
@@ -66899,6 +67140,7 @@ async fn digest_in_order_attempt(
             "{path} changed while it was hashed: {why}"
         )));
     }
+    unpinned_content_matches(path, content)?;
     Ok(Some(size))
 }
 
@@ -67210,11 +67452,16 @@ mod hashsum_digest_tests {
         }
     }
 
-    struct RangeHashFixture {
-        provider: ftp_client_gui_lib::providers::s3::S3Provider,
-        body: Vec<u8>,
-        whole_gets: Arc<std::sync::atomic::AtomicUsize>,
+    pub(super) struct RangeHashFixture {
+        pub(super) provider: ftp_client_gui_lib::providers::s3::S3Provider,
+        pub(super) body: Vec<u8>,
+        /// What the object holds once it is replaced (modes 5 and 6).
+        pub(super) replacement: Vec<u8>,
+        pub(super) whole_gets: Arc<std::sync::atomic::AtomicUsize>,
         ranged_gets: Arc<std::sync::atomic::AtomicUsize>,
+        /// Ranged GETs that carried no `If-Match`.
+        unpinned_gets: Arc<std::sync::atomic::AtomicUsize>,
+        pub(super) heads: Arc<std::sync::atomic::AtomicUsize>,
         server: tokio::task::JoinHandle<()>,
     }
 
@@ -67224,7 +67471,19 @@ mod hashsum_digest_tests {
         }
     }
 
-    async fn range_hash_fixture(
+    /// An S3 provider connected to a local server holding one object of
+    /// `size` bytes (`body_delta` more or fewer in the body it serves).
+    /// `range_mode` picks how ranged GETs are answered: 0 the whole object,
+    /// 1 every range, 2 only the first window, 3 the whole object with the
+    /// HEAD reading as replaced after one whole GET, 4 a 412 to every range
+    /// pinned with If-Match and the others served, 5 as 4 with the object
+    /// replaced after one refusal, 6 as 4 with the unpinned ranges coming from
+    /// a replacement, under its own tag, while the HEAD and a whole GET stay
+    /// at the first version, 7 as 4 with the first HEAD after a refusal
+    /// answered `404`, 8 as 4 with the entity tag the MD5 of the content, 9 as
+    /// 8 with the unpinned ranges, untagged, coming from a replacement, 10 as 4
+    /// with the pinned range at byte 0 served and the later ones refused.
+    pub(super) async fn range_hash_fixture(
         size: usize,
         body_delta: isize,
         range_mode: u8,
@@ -67239,26 +67498,62 @@ mod hashsum_digest_tests {
         let body: Vec<u8> = (0..size.saturating_add_signed(body_delta))
             .map(|n| (n % 251) as u8)
             .collect();
+        let replacement: Vec<u8> = body.iter().map(|byte| byte.wrapping_add(1)).collect();
         let served = Arc::new(body.clone());
+        let replaced = Arc::new(replacement.clone());
         let whole_gets = Arc::new(AtomicUsize::new(0));
         let ranged_gets = Arc::new(AtomicUsize::new(0));
+        let unpinned_gets = Arc::new(AtomicUsize::new(0));
+        let heads = Arc::new(AtomicUsize::new(0));
+        let refused = Arc::new(AtomicUsize::new(0));
+        let lost_heads = Arc::new(AtomicUsize::new(0));
         let app = axum::Router::new().fallback(axum::routing::any({
             let whole_gets = whole_gets.clone();
             let ranged_gets = ranged_gets.clone();
+            let unpinned_gets = unpinned_gets.clone();
+            let heads = heads.clone();
             move |request: axum::extract::Request| {
                 let served = served.clone();
+                let replaced = replaced.clone();
                 let whole_gets = whole_gets.clone();
                 let ranged_gets = ranged_gets.clone();
+                let unpinned_gets = unpinned_gets.clone();
+                let heads = heads.clone();
+                let refused = refused.clone();
+                let lost_heads = lost_heads.clone();
                 async move {
+                    let current = if range_mode == 5 && refused.load(Ordering::SeqCst) > 0 {
+                        replaced.clone()
+                    } else {
+                        served.clone()
+                    };
                     if request.method() == Method::HEAD {
+                        heads.fetch_add(1, Ordering::SeqCst);
+                        if range_mode == 7
+                            && refused.load(Ordering::SeqCst) > 0
+                            && lost_heads.fetch_add(1, Ordering::SeqCst) == 0
+                        {
+                            return Response::builder()
+                                .status(StatusCode::NOT_FOUND)
+                                .body(Body::empty())
+                                .unwrap();
+                        }
                         return Response::builder()
                             .header("content-length", size.to_string())
+                            .header("last-modified", "Wed, 21 Oct 2026 07:28:00 GMT")
                             .header(
                                 "etag",
-                                if range_mode == 3 && whole_gets.load(Ordering::SeqCst) > 0 {
-                                    "\"changed-version\""
+                                if (range_mode == 3 && whole_gets.load(Ordering::SeqCst) > 0)
+                                    || (range_mode == 5 && refused.load(Ordering::SeqCst) > 0)
+                                {
+                                    "\"changed-version\"".to_string()
+                                } else if matches!(range_mode, 8 | 9) {
+                                    format!(
+                                        "\"{:x}\"",
+                                        <md5::Md5 as md5::Digest>::digest(served.as_slice())
+                                    )
                                 } else {
-                                    "\"fixed-version\""
+                                    "\"fixed-version\"".to_string()
                                 },
                             )
                             .header("accept-ranges", "bytes")
@@ -67268,7 +67563,24 @@ mod hashsum_digest_tests {
                     assert_eq!(request.method(), Method::GET);
                     if let Some(range) = request.headers().get("range") {
                         ranged_gets.fetch_add(1, Ordering::SeqCst);
-                        if matches!(range_mode, 1 | 2) {
+                        if !request.headers().contains_key("if-match") {
+                            unpinned_gets.fetch_add(1, Ordering::SeqCst);
+                        }
+                        // Modes 4 to 9 refuse every range pinned with If-Match
+                        // and answer the others as their mode says. Mode 10
+                        // serves the pinned first window.
+                        let pinned = request.headers().contains_key("if-match");
+                        let first_window = range.to_str().unwrap().starts_with("bytes=0-");
+                        if pinned
+                            && (matches!(range_mode, 4..=9) || (range_mode == 10 && !first_window))
+                        {
+                            refused.fetch_add(1, Ordering::SeqCst);
+                            return Response::builder()
+                                .status(StatusCode::PRECONDITION_FAILED)
+                                .body(Body::empty())
+                                .unwrap();
+                        }
+                        if range_mode == 9 {
                             let (start, end) = range
                                 .to_str()
                                 .unwrap()
@@ -67278,11 +67590,44 @@ mod hashsum_digest_tests {
                                 .unwrap();
                             let start: usize = start.parse().unwrap();
                             let end: usize = end.parse().unwrap();
-                            if range_mode == 1 || start == 0 {
+                            return Response::builder()
+                                .status(StatusCode::PARTIAL_CONTENT)
+                                .header("content-range", format!("bytes {start}-{end}/{size}"))
+                                .body(Body::from(replaced[start..=end].to_vec()))
+                                .unwrap();
+                        }
+                        if range_mode == 6 {
+                            let (start, end) = range
+                                .to_str()
+                                .unwrap()
+                                .strip_prefix("bytes=")
+                                .unwrap()
+                                .split_once('-')
+                                .unwrap();
+                            let start: usize = start.parse().unwrap();
+                            let end: usize = end.parse().unwrap();
+                            return Response::builder()
+                                .status(StatusCode::PARTIAL_CONTENT)
+                                .header("content-range", format!("bytes {start}-{end}/{size}"))
+                                .header("etag", "\"newer-version\"")
+                                .body(Body::from(replaced[start..=end].to_vec()))
+                                .unwrap();
+                        }
+                        if matches!(range_mode, 1 | 2 | 4 | 5 | 8 | 10) {
+                            let (start, end) = range
+                                .to_str()
+                                .unwrap()
+                                .strip_prefix("bytes=")
+                                .unwrap()
+                                .split_once('-')
+                                .unwrap();
+                            let start: usize = start.parse().unwrap();
+                            let end: usize = end.parse().unwrap();
+                            if range_mode != 2 || start == 0 {
                                 return Response::builder()
                                     .status(StatusCode::PARTIAL_CONTENT)
                                     .header("content-range", format!("bytes {start}-{end}/{size}"))
-                                    .body(Body::from(served[start..=end].to_vec()))
+                                    .body(Body::from(current[start..=end].to_vec()))
                                     .unwrap();
                             }
                         }
@@ -67294,7 +67639,7 @@ mod hashsum_digest_tests {
                     Response::builder()
                         .status(StatusCode::OK)
                         .header("etag", "\"fixed-version\"")
-                        .body(Body::from(served.as_ref().clone()))
+                        .body(Body::from(current.as_ref().clone()))
                         .unwrap()
                 }
             }
@@ -67331,13 +67676,17 @@ mod hashsum_digest_tests {
         provider.connect().await.unwrap();
         whole_gets.store(0, Ordering::SeqCst);
         ranged_gets.store(0, Ordering::SeqCst);
+        heads.store(0, Ordering::SeqCst);
         // Exercise a fallback that must override configured parallel downloads.
         provider.set_multi_thread_download(4, 1024 * 1024);
         RangeHashFixture {
             provider,
             body,
+            replacement,
             whole_gets,
             ranged_gets,
+            unpinned_gets,
+            heads,
             server,
         }
     }
@@ -67471,6 +67820,225 @@ mod hashsum_digest_tests {
         assert_eq!(size, fixture.body.len() as u64);
         assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
         assert_eq!(warnings.take().len(), 1);
+    }
+
+    /// A server that refuses If-Match on an object that did not change: the
+    /// windows are hashed once more without the pin, with no whole download,
+    /// and the diagnosis is one HEAD for the file.
+    #[tokio::test]
+    async fn ranged_hashsum_reads_again_unpinned_when_the_server_refuses_if_match() {
+        let mut fixture = range_hash_fixture(
+            (ftp_client_gui_lib::providers::multi_thread::IN_ORDER_WINDOW * 2 + 31) as usize,
+            0,
+            4,
+        )
+        .await;
+        let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+        let (hash, size) = warnings
+            .scope(hashsum_digest(
+                &mut fixture.provider,
+                PATH,
+                HashAlgorithm::Sha256,
+                true,
+            ))
+            .await
+            .expect("the unpinned windows hash the unchanged object");
+        assert_eq!(
+            hash,
+            format!(
+                "{:x}",
+                <sha2::Sha256 as sha2::Digest>::digest(&fixture.body)
+            )
+        );
+        assert_eq!(size, fixture.body.len() as u64);
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 0);
+        assert!(fixture.unpinned_gets.load(Ordering::SeqCst) > 0);
+        assert!(warnings.take().is_empty());
+        // The reading before the windows, the diagnosis, the reading after.
+        assert_eq!(fixture.heads.load(Ordering::SeqCst), 3);
+    }
+
+    /// A pinned window hashed before a later one is refused does not count
+    /// twice: the digest starts over for the unpinned pass. `read_in_order`
+    /// hands the windows over in order, so the first always reaches the digest
+    /// before the refusal of the second is seen, with no timing involved.
+    #[tokio::test]
+    async fn ranged_hashsum_starts_over_when_a_later_window_refuses_the_pin() {
+        let mut fixture = range_hash_fixture(
+            (ftp_client_gui_lib::providers::multi_thread::IN_ORDER_WINDOW * 2 + 31) as usize,
+            0,
+            10,
+        )
+        .await;
+        let window = ftp_client_gui_lib::providers::multi_thread::IN_ORDER_WINDOW as usize;
+        let (hash, _) = hashsum_digest(&mut fixture.provider, PATH, HashAlgorithm::Sha256, true)
+            .await
+            .expect("the unpinned windows hash the unchanged object");
+        assert_eq!(
+            hash,
+            format!(
+                "{:x}",
+                <sha2::Sha256 as sha2::Digest>::digest(&fixture.body)
+            )
+        );
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 0);
+        // All the windows read again, whatever the pinned pass reached.
+        assert_eq!(
+            fixture.unpinned_gets.load(Ordering::SeqCst),
+            fixture.body.len().div_ceil(window)
+        );
+    }
+
+    /// The entity tag is the content's MD5: unpinned windows that hash to it
+    /// give the digest with no whole download, and ones that do not, from a
+    /// replacement restored before the last reading, do not reach the result.
+    #[tokio::test]
+    async fn ranged_hashsum_checks_unpinned_windows_against_a_published_md5() {
+        for (mode, whole_gets) in [(8, 0), (9, 1)] {
+            let mut fixture = range_hash_fixture(
+                (ftp_client_gui_lib::providers::multi_thread::IN_ORDER_WINDOW * 2 + 31) as usize,
+                0,
+                mode,
+            )
+            .await;
+            let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+            let (hash, _size) = warnings
+                .scope(hashsum_digest(
+                    &mut fixture.provider,
+                    PATH,
+                    HashAlgorithm::Sha256,
+                    true,
+                ))
+                .await
+                .expect("the first version is hashed either way");
+            assert_eq!(
+                hash,
+                format!(
+                    "{:x}",
+                    <sha2::Sha256 as sha2::Digest>::digest(&fixture.body)
+                ),
+                "mode {mode}"
+            );
+            assert_eq!(
+                fixture.whole_gets.load(Ordering::SeqCst),
+                whole_gets,
+                "mode {mode}"
+            );
+            assert!(
+                fixture.unpinned_gets.load(Ordering::SeqCst) > 0,
+                "mode {mode}"
+            );
+        }
+    }
+
+    /// A stale HEAD and unpinned windows from a replacement under its own tag:
+    /// the windows are refused and never reach the digest, and the hash comes
+    /// from one whole download.
+    #[tokio::test]
+    async fn ranged_hashsum_refuses_windows_from_another_version() {
+        let mut fixture = range_hash_fixture(
+            (ftp_client_gui_lib::providers::multi_thread::IN_ORDER_WINDOW * 2 + 31) as usize,
+            0,
+            6,
+        )
+        .await;
+        let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+        let (hash, _size) = warnings
+            .scope(hashsum_digest(
+                &mut fixture.provider,
+                PATH,
+                HashAlgorithm::Sha256,
+                true,
+            ))
+            .await
+            .expect("the whole download hashes the first version");
+        assert_eq!(
+            hash,
+            format!(
+                "{:x}",
+                <sha2::Sha256 as sha2::Digest>::digest(&fixture.body)
+            )
+        );
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+        let messages = warnings.take();
+        assert_eq!(messages.len(), 1, "{messages:?}");
+        assert!(
+            messages[0].contains("refused ranged hashing"),
+            "{messages:?}"
+        );
+    }
+
+    /// A reading after the 412 that fails proves neither a replacement nor an
+    /// unchanged object: the hash is not refused on it and no unpinned pass
+    /// runs, one whole download decides.
+    #[tokio::test]
+    async fn ranged_hashsum_downloads_whole_when_the_diagnosis_fails() {
+        let mut fixture = range_hash_fixture(
+            (ftp_client_gui_lib::providers::multi_thread::IN_ORDER_WINDOW * 2 + 31) as usize,
+            0,
+            7,
+        )
+        .await;
+        let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+        let (hash, _size) = warnings
+            .scope(hashsum_digest(
+                &mut fixture.provider,
+                PATH,
+                HashAlgorithm::Sha256,
+                true,
+            ))
+            .await
+            .expect("the whole download hashes the unchanged object");
+        assert_eq!(fixture.unpinned_gets.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            hash,
+            format!(
+                "{:x}",
+                <sha2::Sha256 as sha2::Digest>::digest(&fixture.body)
+            )
+        );
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+        let messages = warnings.take();
+        assert_eq!(messages.len(), 1, "{messages:?}");
+        assert!(
+            messages[0].contains("refused ranged hashing"),
+            "{messages:?}"
+        );
+    }
+
+    /// A 412 on an object that did change is a replacement: no unpinned
+    /// retry and no whole download, which the same comparison would refuse
+    /// after reading every byte; the hash fails and says why.
+    #[tokio::test]
+    async fn ranged_hashsum_names_a_refused_pin_on_a_replaced_object() {
+        let mut fixture = range_hash_fixture(
+            (ftp_client_gui_lib::providers::multi_thread::IN_ORDER_WINDOW * 2 + 31) as usize,
+            0,
+            5,
+        )
+        .await;
+        let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+        let outcome = warnings
+            .scope(hashsum_digest(
+                &mut fixture.provider,
+                PATH,
+                HashAlgorithm::Sha256,
+                true,
+            ))
+            .await;
+        let error = outcome.expect_err("a replaced object is not hashed");
+        assert!(
+            matches!(
+                &error,
+                HashsumDigestError::Provider(ProviderError::TransferFailed(why))
+                    if why.contains("changed while it was hashed")
+            ),
+            "{error:?}"
+        );
+        assert!(warnings.take().is_empty(), "no fallback is announced");
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 0);
+        // The reading before the windows and the diagnosis.
+        assert_eq!(fixture.heads.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]
@@ -89492,6 +90060,8 @@ mod tests {
                         &cli,
                         format,
                         cancelled,
+                        None,
+                        None,
                     ))
                     .await
             });
@@ -89682,6 +90252,171 @@ mod tests {
         });
         assert_ne!(code, 0);
         assert_eq!(kept, None, "the partial file stayed");
+    }
+
+    /// The time `pget_against` was listed with, older than any the fixture reports.
+    const LISTED_TIME: &str = "2000-01-01T00:00:00Z";
+
+    /// The modification time of a downloaded file, in Unix seconds.
+    fn local_time(path: &Path) -> i64 {
+        filetime::FileTime::from_last_modification_time(&std::fs::metadata(path).unwrap())
+            .unix_seconds()
+    }
+
+    /// Runs `pget` on four segments against `provider` in a thread of its
+    /// own, as the CLI does, and returns its exit code and warnings.
+    async fn pget_against(
+        provider: ftp_client_gui_lib::providers::s3::S3Provider,
+        size: u64,
+        target: String,
+    ) -> (i32, Vec<String>) {
+        let run = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(move || {
+                TEST_PROVIDER_FACTORY.with(|slot| {
+                    *slot.borrow_mut() = Some(std::rc::Rc::new(move || {
+                        Box::new(provider.clone()) as Box<dyn StorageProvider>
+                    }));
+                });
+                let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+                let cli = quiet_cli();
+                let code = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("test runtime")
+                    .block_on(warnings.scope(pget_segmented_download(
+                        "s3://test-bucket",
+                        "/file.bin",
+                        &target,
+                        4,
+                        size,
+                        &cli,
+                        OutputFormat::Text,
+                        Arc::new(AtomicBool::new(false)),
+                        None,
+                        Some(LISTED_TIME),
+                    )));
+                (code, warnings.take())
+            })
+            .expect("spawn the pget thread");
+        tokio::task::spawn_blocking(move || run.join().expect("pget thread"))
+            .await
+            .expect("join the pget thread")
+    }
+
+    /// pget against a server that refuses If-Match on an object that did not
+    /// change: the segments are read again without the pin, with no single
+    /// stream, and the diagnosis is one HEAD for the file.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn pget_reads_again_unpinned_when_the_server_refuses_if_match() {
+        let size = 8 * 1024 * 1024 + 31;
+        let fixture = super::hashsum_digest_tests::range_hash_fixture(size, 0, 4).await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("f.bin");
+        let (code, warnings) = pget_against(
+            fixture.provider.clone(),
+            size as u64,
+            out.to_string_lossy().into_owned(),
+        )
+        .await;
+        assert_eq!(code, 0, "{warnings:?}");
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(std::fs::read(&out).unwrap(), fixture.body);
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 0);
+        // The reading before the segments, the diagnosis, the reading after.
+        assert_eq!(fixture.heads.load(Ordering::SeqCst), 3);
+        // A publish from the windows keeps the time it was listed with.
+        assert_eq!(
+            local_time(&out),
+            ftp_client_gui_lib::parse_remote_mtime(LISTED_TIME).unwrap()
+        );
+    }
+
+    /// A stale HEAD and unpinned segments from a replacement under its own
+    /// tag: nothing from the segments is published, whatever the HEAD says.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn pget_does_not_publish_segments_from_another_version() {
+        let size = 8 * 1024 * 1024 + 31;
+        let fixture = super::hashsum_digest_tests::range_hash_fixture(size, 0, 6).await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("f.bin");
+        let (code, warnings) = pget_against(
+            fixture.provider.clone(),
+            size as u64,
+            out.to_string_lossy().into_owned(),
+        )
+        .await;
+        assert_eq!(code, 0, "{warnings:?}");
+        // This notice means the unpinned segments ran and were refused: a run
+        // that never retried would name the refused pin instead.
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("a ranged response or its version check was refused")),
+            "{warnings:?}"
+        );
+        assert_eq!(std::fs::read(&out).unwrap(), fixture.body);
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+    }
+
+    /// Unpinned segments that do not hash to a published MD5, from a
+    /// replacement restored before the last reading, are not published; ones
+    /// that do are.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn pget_checks_unpinned_segments_against_a_published_md5() {
+        for (mode, whole_gets) in [(8, 0), (9, 1)] {
+            let size = 8 * 1024 * 1024 + 31;
+            let fixture = super::hashsum_digest_tests::range_hash_fixture(size, 0, mode).await;
+            let dir = tempfile::tempdir().unwrap();
+            let out = dir.path().join("f.bin");
+            let (code, warnings) = pget_against(
+                fixture.provider.clone(),
+                size as u64,
+                out.to_string_lossy().into_owned(),
+            )
+            .await;
+            assert_eq!(code, 0, "mode {mode}: {warnings:?}");
+            assert_eq!(std::fs::read(&out).unwrap(), fixture.body, "mode {mode}");
+            assert_eq!(
+                fixture.whole_gets.load(Ordering::SeqCst),
+                whole_gets,
+                "mode {mode}: {warnings:?}"
+            );
+        }
+    }
+
+    /// A 412 on an object that did change: no unpinned retry, the fallback
+    /// notice names the change, and one stream downloads the object.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn pget_names_a_refused_pin_on_a_replaced_object() {
+        let size = 8 * 1024 * 1024 + 31;
+        let fixture = super::hashsum_digest_tests::range_hash_fixture(size, 0, 5).await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("f.bin");
+        let (code, warnings) = pget_against(
+            fixture.provider.clone(),
+            size as u64,
+            out.to_string_lossy().into_owned(),
+        )
+        .await;
+        assert_eq!(code, 0, "{warnings:?}");
+        assert_eq!(
+            warnings,
+            vec![format!(
+                "parallel download unavailable: pget: {}; using a single stream",
+                ftp_client_gui_lib::providers::multi_thread::PinRefusal::SourceChanged(
+                    String::new()
+                )
+                .notice()
+            )]
+        );
+        // The new version whole: a stale copy of the first one must not pass.
+        assert_eq!(std::fs::read(&out).unwrap(), fixture.replacement);
+        // And the time of the object read, not the listing's.
+        assert_eq!(
+            local_time(&out),
+            ftp_client_gui_lib::parse_remote_mtime("Wed, 21 Oct 2026 07:28:00 GMT").unwrap()
+        );
     }
 
     /// A quiet CLI for these tests.
@@ -90093,6 +90828,7 @@ mod tests {
                 &cli,
                 OutputFormat::Json,
                 &cancelled,
+                None,
             )
             .await
         });
@@ -90233,6 +90969,7 @@ mod tests {
                     &cli,
                     OutputFormat::Json,
                     &never,
+                    None,
                 )
                 .await
             });
@@ -92827,6 +93564,17 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             !put_screens_targets_by_listing(&provider(true), &flat[..1], &cli),
             "one file saves no launch"
         );
+    }
+
+    /// One stream taking over counts from zero what the attempt already added.
+    #[test]
+    fn the_aggregate_does_not_count_a_fallback_twice() {
+        let aggregate = Arc::new(AtomicU64::new(0));
+        let (progress, _attempt) = make_aggregate_progress_cb(aggregate.clone(), None);
+        progress(800, 1000);
+        progress(10, 1000);
+        progress(900, 1000);
+        assert_eq!(aggregate.load(Ordering::Relaxed), 900);
     }
 
     /// A failed attempt takes back the bytes it added to the batch's
