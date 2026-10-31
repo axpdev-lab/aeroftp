@@ -257,12 +257,6 @@ struct BoxVersionCollection {
     entries: Vec<BoxFileVersion>,
 }
 
-/// Box search result
-#[derive(Debug, Deserialize)]
-struct BoxSearchResult {
-    entries: Vec<BoxItem>,
-}
-
 /// Box trash item (includes trashed_at)
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
@@ -2854,81 +2848,10 @@ impl StorageProvider for BoxProvider {
         true
     }
 
-    async fn find(
-        &mut self,
-        _path: &str,
-        pattern: &str,
-    ) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let token = self.get_token().await?;
-
-        // Box /search?query= is substring on filename and metadata. Strip
-        // glob metachars for the broad server prefilter, then apply the
-        // precise glob/substring filter client-side via matches_find_pattern.
-        let literal: String = pattern
-            .chars()
-            .filter(|c| !matches!(c, '*' | '?' | '[' | ']'))
-            .collect();
-        let server_query = if literal.is_empty() {
-            ".".to_string()
-        } else {
-            literal
-        };
-
-        let url = format!(
-            "{}/search?query={}&limit=200",
-            self.api_base(),
-            urlencoding::encode(&server_query)
-        );
-        let resp = self
-            .client
-            .get(&url)
-            .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-        if !resp.status().is_success() {
-            return Err(ProviderError::Other(format!(
-                "Search failed: {}",
-                resp.status()
-            )));
-        }
-
-        let results: BoxSearchResult = resp
-            .json()
-            .await
-            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
-
-        Ok(results
-            .entries
-            .into_iter()
-            .filter_map(|item| {
-                // Match the user's pattern against the DECODED name (the stored
-                // name is encoded), and surface the decoded name to the user.
-                let name = crate::restricted_chars::decode_leaf(ProviderType::Box, &item.name);
-                if !super::matches_find_pattern(&name, pattern) {
-                    return None;
-                }
-                Some(RemoteEntry {
-                    name,
-                    path: String::new(), // Box search doesn't return full path
-                    is_dir: item.item_type == "folder",
-                    size: item.size.unwrap_or(0),
-                    modified: item.modified_at,
-                    permissions: None,
-                    owner: None,
-                    group: None,
-                    is_symlink: false,
-                    link_target: None,
-                    mime_type: None,
-                    metadata: {
-                        let mut m = HashMap::new();
-                        m.insert("id".to_string(), item.id);
-                        m
-                    },
-                })
-            })
-            .collect())
+    async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        // The search API answers outside the folder or without the hit's real
+        // path, and a caller acts on that path.
+        super::find_by_walk(self, path, pattern).await
     }
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {

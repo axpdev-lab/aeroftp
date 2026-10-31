@@ -1834,81 +1834,10 @@ impl StorageProvider for GitHubProvider {
         true
     }
 
-    async fn find(
-        &mut self,
-        _path: &str,
-        pattern: &str,
-    ) -> Result<Vec<RemoteEntry>, ProviderError> {
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
-        }
-
-        // Use Git Trees API with recursive flag: lists all files in repo
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/git/trees/{}?recursive=1",
-            self.owner,
-            self.repo,
-            urlencoding::encode(self.active_branch())
-        );
-
-        #[derive(serde::Deserialize)]
-        struct TreeResponse {
-            tree: Vec<TreeItem>,
-        }
-        #[derive(serde::Deserialize)]
-        struct TreeItem {
-            path: String,
-            #[serde(rename = "type")]
-            item_type: String,
-            sha: String,
-            size: Option<u64>,
-        }
-
-        let response: TreeResponse = self
-            .client
-            .get_json(&url)
-            .await
-            .map_err(ProviderError::from)?;
-
-        let entries = response
-            .tree
-            .into_iter()
-            .filter(|item| {
-                // Match filename or path against pattern (glob or substring)
-                let name = item.path.rsplit('/').next().unwrap_or(&item.path);
-                crate::providers::matches_find_pattern(name, pattern)
-                    || crate::providers::matches_find_pattern(&item.path, pattern)
-            })
-            .take(100)
-            .map(|item| {
-                let name = item
-                    .path
-                    .rsplit('/')
-                    .next()
-                    .unwrap_or(&item.path)
-                    .to_string();
-                RemoteEntry {
-                    name,
-                    path: item.path,
-                    is_dir: item.item_type == "tree",
-                    size: item.size.unwrap_or(0),
-                    modified: None,
-                    permissions: None,
-                    owner: None,
-                    group: None,
-                    is_symlink: false,
-                    link_target: None,
-                    mime_type: None,
-                    metadata: {
-                        let mut m = HashMap::new();
-                        m.insert("sha".to_string(), item.sha);
-                        m
-                    },
-                }
-            })
-            .collect();
-
-        Ok(entries)
+    async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        // The search API answers outside the folder or without the hit's real
+        // path, and a caller acts on that path.
+        crate::providers::find_by_walk(self, path, pattern).await
     }
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {

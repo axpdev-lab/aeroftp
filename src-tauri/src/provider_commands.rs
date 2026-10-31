@@ -7881,15 +7881,7 @@ pub async fn provider_find(
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    if !provider.supports_find() {
-        return Err(format!(
-            "{} does not support remote search",
-            provider.provider_type()
-        ));
-    }
-
-    provider
-        .find(&path, &pattern)
+    crate::providers::find_or_walk(provider.as_mut(), &path, &pattern)
         .await
         .map_err(|e| format!("Search failed: {}", e))
 }
@@ -19350,6 +19342,44 @@ mod folder_download_live_tests {
             )),
             "{error}"
         );
+    }
+
+    /// A search reports what `list` reports under the folder searched, at any
+    /// depth, with its real path: a caller may go on to delete it.
+    #[tokio::test]
+    async fn a_walked_search_stays_under_its_folder_with_real_paths() {
+        let (mut tree, state) =
+            FolderTree::new(&["a.txt", "sub/deep/a.txt", "sub/b.bin", "other/a.txt"]);
+        state.lock().unwrap().dirs.remove("/r/other");
+        state
+            .lock()
+            .unwrap()
+            .dirs
+            .insert("/elsewhere".into(), (vec![("a.txt".into(), 4)], vec![]));
+        let mut found: Vec<String> = crate::providers::find_by_walk(&mut tree, "/r/sub", "a.txt")
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|entry| entry.path)
+            .collect();
+        found.sort();
+        assert_eq!(found, ["/r/sub/deep/a.txt"]);
+    }
+
+    /// The folder searched that cannot be read is an error, not an empty
+    /// result; a subfolder that cannot be read leaves the rest of the search.
+    #[tokio::test]
+    async fn a_walked_search_fails_only_on_its_own_folder() {
+        let (mut tree, state) = FolderTree::new(&["a.txt", "sub/a.txt", "lost/a.txt"]);
+        state.lock().unwrap().failing.insert("/r/lost".to_string());
+        let found = crate::providers::find_by_walk(&mut tree, "/r", "a.txt")
+            .await
+            .unwrap();
+        assert_eq!(found.len(), 2);
+        state.lock().unwrap().failing.insert("/r".to_string());
+        assert!(crate::providers::find_by_walk(&mut tree, "/r", "a.txt")
+            .await
+            .is_err());
     }
 
     /// The first Stop while the scan runs ends the scan too: no further

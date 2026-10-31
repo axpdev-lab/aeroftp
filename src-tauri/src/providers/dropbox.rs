@@ -1633,75 +1633,9 @@ impl StorageProvider for DropboxProvider {
     }
 
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let search_path = self.normalize_path(path);
-
-        // Dropbox search_v2 treats the query as a substring on filename.content,
-        // so glob metacharacters confuse it. Send the literal core to the
-        // server for a broad prefilter and apply the precise match client-side
-        // via matches_find_pattern (glob via globset, substring fallback).
-        let literal: String = pattern
-            .chars()
-            .filter(|c| !matches!(c, '*' | '?' | '[' | ']'))
-            .collect();
-        let server_query = if literal.is_empty() {
-            ".".to_string() // any character, broadest possible prefilter
-        } else {
-            literal
-        };
-
-        let body = serde_json::json!({
-            "query": server_query,
-            "options": {
-                "path": if search_path.is_empty() { "" } else { search_path.as_str() },
-                "max_results": 200,
-                "file_status": "active"
-            }
-        });
-
-        let url = format!("{}/files/search_v2", API_BASE);
-
-        let response = self
-            .client
-            .post(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, "application/json")
-            .body(body.to_string())
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Search failed: {}",
-                sanitize_api_error(&text)
-            )));
-        }
-
-        #[derive(Deserialize)]
-        struct MatchMetadata {
-            metadata: DropboxMetadata,
-        }
-        #[derive(Deserialize)]
-        struct SearchMatch {
-            metadata: MatchMetadata,
-        }
-        #[derive(Deserialize)]
-        struct SearchResult {
-            matches: Vec<SearchMatch>,
-        }
-
-        let result: SearchResult = response
-            .json()
-            .await
-            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
-
-        Ok(result
-            .matches
-            .iter()
-            .map(|m| self.to_remote_entry(&m.metadata.metadata))
-            .filter(|e| super::matches_find_pattern(&e.name, pattern))
-            .collect())
+        // The search API answers outside the folder or without the hit's real
+        // path, and a caller acts on that path.
+        super::find_by_walk(self, path, pattern).await
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {

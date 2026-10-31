@@ -1839,92 +1839,9 @@ impl StorageProvider for FourSharedProvider {
     }
 
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        // FS-005: Apply resolve_path to the search path parameter
-        let _resolved = self.resolve_path(path);
-        info!(
-            "4shared find: searching for '{}' (scope: {})",
-            pattern, _resolved
-        );
-
-        // FS-009: Use signed_get with retry for the search request.
-        // The 4shared search API requires OAuth-signed query parameters.
-        let base_url = format!("{}/files", self.api_base());
-        let extra = [("searchName", pattern)];
-        let auth = oauth1::authorization_header("GET", &base_url, &self.credentials(), &extra);
-
-        // Build full URL with query parameter
-        let url = format!(
-            "{}/files?searchName={}",
-            self.api_base(),
-            oauth1::percent_encode(pattern)
-        );
-
-        let request = self
-            .client
-            .get(&url)
-            .header("Authorization", &auth)
-            .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-        let resp = send_with_retry(&self.client, request, &Self::retry_config())
-            .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Search failed ({}): {}",
-                status,
-                &body[..body.floor_char_boundary(300)]
-            )));
-        }
-
-        let body = resp
-            .text()
-            .await
-            .map_http_err(|e| ProviderError::ParseError(format!("Read search body: {}", e)))?;
-        let files = Self::parse_file_list(&body);
-
-        let entries = files
-            .iter()
-            .filter(|f| {
-                !matches!(
-                    f.status.as_deref(),
-                    Some("deleted") | Some("trashed") | Some("incomplete")
-                )
-            })
-            .filter_map(|f| {
-                let name = f.name.as_ref()?;
-                if name.is_empty() {
-                    return None;
-                }
-                Some(RemoteEntry {
-                    name: name.clone(),
-                    path: String::new(), // Search results don't have reliable full paths
-                    is_dir: false,
-                    size: f.size.unwrap_or(0) as u64,
-                    modified: f.modified.clone(),
-                    permissions: None,
-                    owner: None,
-                    group: None,
-                    is_symlink: false,
-                    link_target: None,
-                    // FS-011: Populate MIME type from API response
-                    mime_type: f.mime_type.clone(),
-                    metadata: {
-                        let mut m = std::collections::HashMap::new();
-                        if let Some(ref id) = f.id {
-                            m.insert("id".to_string(), id.clone());
-                        }
-                        m
-                    },
-                })
-            })
-            .collect::<Vec<_>>();
-
-        info!("4shared find '{}': {} results", pattern, entries.len());
-        Ok(entries)
+        // The search API answers outside the folder or without the hit's real
+        // path, and a caller acts on that path.
+        super::find_by_walk(self, path, pattern).await
     }
 
     // FS-012: TODO: 4shared supports file share links via GET /v1_2/files/{id}/download

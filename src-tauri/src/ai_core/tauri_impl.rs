@@ -759,16 +759,18 @@ impl RemoteBackend for TauriRemoteBackend {
         match self {
             TauriRemoteBackend::Active { app } => {
                 if let Some(ref mut p) = *Self::active_provider(app).lock().await {
-                    return p.find(path, pattern).await.map_err(|e| e.to_string());
+                    return crate::providers::find_or_walk(p.as_mut(), path, pattern)
+                        .await
+                        .map_err(|e| e.to_string());
                 }
                 Err("search not supported on FTP fallback".to_string())
             }
-            TauriRemoteBackend::Temp { provider } => provider
-                .lock()
-                .await
-                .find(path, pattern)
-                .await
-                .map_err(|e| e.to_string()),
+            TauriRemoteBackend::Temp { provider } => {
+                let mut provider = provider.lock().await;
+                crate::providers::find_or_walk(provider.as_mut(), path, pattern)
+                    .await
+                    .map_err(|e| e.to_string())
+            }
         }
     }
 

@@ -257,12 +257,6 @@ fn validate_yd_url(url: &str) -> Result<(), ProviderError> {
 }
 
 #[derive(Debug, Deserialize)]
-struct YdFilesResourceList {
-    #[serde(default)]
-    items: Vec<YdResource>,
-}
-
-#[derive(Debug, Deserialize)]
 struct YdError {
     #[serde(default)]
     error: String,
@@ -1741,59 +1735,10 @@ impl StorageProvider for YandexDiskProvider {
         true
     }
 
-    async fn find(
-        &mut self,
-        _path: &str,
-        pattern: &str,
-    ) -> Result<Vec<RemoteEntry>, ProviderError> {
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
-        }
-        // Use flat file list and filter by pattern
-        let mut results = Vec::new();
-        let mut offset: u64 = 0;
-        let limit: u64 = 1000;
-
-        loop {
-            let url = format!(
-                "{}/resources/files?limit={}&offset={}",
-                API_BASE, limit, offset
-            );
-            let resp = self
-                .send_with_reauth(|this| {
-                    this.client
-                        .get(&url)
-                        .header(AUTHORIZATION, this.auth_header())
-                })
-                .await?;
-
-            if !resp.status().is_success() {
-                return Err(self.parse_error(resp).await);
-            }
-
-            let list: YdFilesResourceList = resp
-                .json()
-                .await
-                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
-
-            let count = list.items.len() as u64;
-            for item in &list.items {
-                if super::matches_find_pattern(&item.name, pattern) {
-                    results.push(resource_to_entry(item));
-                }
-            }
-
-            if count < limit {
-                break;
-            }
-            offset += count;
-            // Safety cap
-            if offset > 50_000 {
-                break;
-            }
-        }
-
-        Ok(results)
+    async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        // The search API answers outside the folder or without the hit's real
+        // path, and a caller acts on that path.
+        super::find_by_walk(self, path, pattern).await
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {

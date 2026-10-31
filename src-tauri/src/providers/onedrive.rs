@@ -2252,70 +2252,9 @@ impl StorageProvider for OneDriveProvider {
     }
 
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let item_id = if path == "/" || path.is_empty() {
-            "root".to_string()
-        } else {
-            self.resolve_container(path).await?
-        };
-
-        // Graph search(q=...) is a substring match on filename and ignores
-        // glob metacharacters. Strip glob chars for the server query, then
-        // apply the precise match client-side.
-        let literal: String = pattern
-            .chars()
-            .filter(|c| !matches!(c, '*' | '?' | '[' | ']'))
-            .collect();
-        let server_query = if literal.is_empty() {
-            ".".to_string()
-        } else {
-            literal
-        };
-
-        let url = format!(
-            "{}/search(q='{}')",
-            self.api_item(&item_id),
-            urlencoding::encode(&server_query)
-        );
-
-        let mut all_entries = Vec::new();
-        let mut current_url = url;
-
-        loop {
-            let response = self
-                .client
-                .get(&current_url)
-                .header(AUTHORIZATION, self.auth_header().await?)
-                .send()
-                .await
-                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-            if !response.status().is_success() {
-                let text = response.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!(
-                    "Search failed: {}",
-                    sanitize_api_error(&text)
-                )));
-            }
-
-            let result: ChildrenResponse = response
-                .json()
-                .await
-                .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
-
-            for item in &result.value {
-                let entry = self.to_remote_entry(item, path);
-                if super::matches_find_pattern(&entry.name, pattern) {
-                    all_entries.push(entry);
-                }
-            }
-
-            match result.next_link {
-                Some(next) if all_entries.len() < 500 => current_url = next,
-                _ => break,
-            }
-        }
-
-        Ok(all_entries)
+        // The search API answers outside the folder or without the hit's real
+        // path, and a caller acts on that path.
+        super::find_by_walk(self, path, pattern).await
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {

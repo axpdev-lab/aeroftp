@@ -5286,6 +5286,8 @@ impl StorageProvider for WebDavProvider {
         while let Some(dir) = dirs_to_scan.pop() {
             let entries = match self.list(&dir).await {
                 Ok(e) => e,
+                // A folder searched that cannot be read is not an empty result.
+                Err(e) if dir == path => return Err(e),
                 Err(_) => continue,
             };
 
