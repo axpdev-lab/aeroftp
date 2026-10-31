@@ -61,6 +61,15 @@ impl UploadSource {
         self.size
     }
 
+    /// Refuse an upload planned for another size: a file that grew before this
+    /// observation would otherwise go up cut short, and pass the later check.
+    pub fn ensure_size(&self, planned: u64, scope: &str) -> Result<(), ProviderError> {
+        if self.size == planned {
+            return Ok(());
+        }
+        Err(self.changed(scope, &format!("size {planned} became {}", self.size)))
+    }
+
     /// Refuse the commit when the file no longer has the facts it had before
     /// the upload read it. `scope` names the upload in the message.
     pub async fn ensure_unchanged(&self, scope: &str) -> Result<(), ProviderError> {
@@ -121,6 +130,16 @@ mod tests {
         std::fs::write(path, data).unwrap();
         let file = std::fs::File::options().write(true).open(path).unwrap();
         file.set_modified(modified).unwrap();
+    }
+
+    #[tokio::test]
+    async fn an_upload_planned_for_another_size_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.bin");
+        std::fs::write(&path, b"12345").unwrap();
+        let source = UploadSource::observe(path.to_str().unwrap()).await.unwrap();
+        assert!(source.ensure_size(5, "test").is_ok());
+        assert!(source.ensure_size(4, "test").is_err());
     }
 
     #[tokio::test]

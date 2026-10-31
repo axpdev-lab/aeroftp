@@ -1767,6 +1767,7 @@ impl StorageProvider for GoogleDriveProvider {
             // Step 2: Upload in 10MB chunks from file handle
             const CHUNK_SIZE: usize = 10 * 1024 * 1024;
             let source = super::upload_source::UploadSource::observe(local_path).await?;
+            source.ensure_size(total_size, "Google Drive upload")?;
             let mut file = tokio::fs::File::open(local_path)
                 .await
                 .map_err(|e| ProviderError::Other(format!("Open file error: {}", e)))?;

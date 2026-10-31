@@ -2678,6 +2678,7 @@ impl StorageProvider for OneDriveProvider {
             .map_err(ProviderError::IoError)?
             .len();
         let source = super::upload_source::UploadSource::observe(local_path).await?;
+        source.ensure_size(total_size, "OneDrive upload")?;
         let mut file = tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;

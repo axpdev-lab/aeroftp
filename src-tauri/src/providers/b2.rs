@@ -1291,6 +1291,7 @@ impl B2Provider {
         };
 
         let source = super::upload_source::UploadSource::observe(local_path).await?;
+        source.ensure_size(size, "B2 large file upload")?;
         let start = match self.start_large_file(key).await {
             Err(e) if is_b2_token_failure(&e) => {
                 if !self.maybe_reauth(&e).await {
