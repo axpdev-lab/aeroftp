@@ -78,6 +78,8 @@ async function activation(hold?: string, setup?: 'generation-error' | 'missing-u
     logger: { debug: () => effects.push('debug') },
     t: (key: string) => key, overlayWarningTitleKey: () => 'notice',
     isCurrent: () => current,
+    // Outside React, a function from useLatestCallback is the function itself.
+    useLatestCallback: <F,>(fn: F) => fn,
   };
   const { code } = await transformWithOxc(source, 'overlay-ownership.ts');
   const run: Promise<unknown> = new Function(...Object.keys(context), `return (async () => { ${code}\n return maybeAutoUnlockProfileOverlay('old_profile', isCurrent); })();`)(...Object.values(context));

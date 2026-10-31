@@ -20,7 +20,7 @@ describe('App writes no ref during render', () => {
         const body = appRaw.slice(start, appRaw.indexOf('\nexport default App;'));
         // A statement of the component's own body, not of a function inside it.
         expect(body.match(/^ {2}[A-Za-z0-9_]+\.current = .*$/gm) ?? []).toEqual([]);
-        for (const ref of ['sortedLocalFilesRef', 'sortedRemoteFilesRef', 'handleToggleAeroFileRef', 'transferFnsRef', 'crossPanelDropRef', 'lockControllerInterrupt']) {
+        for (const ref of ['sortedLocalFilesRef', 'sortedRemoteFilesRef', 'handleToggleAeroFileRef', 'crossPanelDropRef', 'lockControllerInterrupt']) {
             expect(body, ref).toMatch(new RegExp(`useLayoutEffect\\(\\(\\) => \\{[^}]*?\\b${ref}\\.current = `));
         }
     });

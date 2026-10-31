@@ -7,6 +7,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { transformWithOxc } from 'vite';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import app from '../App.tsx?raw';
+import { useLatestCallback } from '../hooks/useLatestCallback';
 
 /**
  * Each local panel reloads when what it shows changes on disk.
@@ -54,8 +55,8 @@ const listen = vi.fn(async (_name: string, handler: Handler) => {
   handlers.push(handler);
   return unlistened;
 });
-const Watcher = new Function('useEffect', 'useLayoutEffect', 'useMemo', 'useRef', 'invoke', 'listen', `${code}; return Watcher;`)(
-  useEffect, useLayoutEffect, useMemo, useRef, invoke, listen) as (props: Props) => null;
+const Watcher = new Function('useEffect', 'useLayoutEffect', 'useMemo', 'useRef', 'useLatestCallback', 'invoke', 'listen', `${code}; return Watcher;`)(
+  useEffect, useLayoutEffect, useMemo, useRef, useLatestCallback, invoke, listen) as (props: Props) => null;
 
 let root: Root | null = null;
 const loaders = () => ({
