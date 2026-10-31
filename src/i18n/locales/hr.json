@@ -1357,7 +1357,20 @@
             "serverProfilesCount": "Profili poslužitelja: {count}",
             "aiKeysCount": "AI ključevi: {count}",
             "oauthTokensCount": "OAuth tokeni: {count}",
-            "configEntriesCount": "Unosi konfiguracije: {count}"
+            "configEntriesCount": "Unosi konfiguracije: {count}",
+            "importExistingLabel": "Ako profil već postoji",
+            "importExistingSkip": "Preskoči",
+            "importExistingOverwrite": "Prepiši",
+            "importExistingDuplicate": "Dupliciraj",
+            "importExistingSkipHint": "Profil koji već imate ostaje kakav jest, sa svojim lozinkama i tokenima.",
+            "importExistingOverwriteHint": "Profil koji već imate zamjenjuje se na mjestu, lozinkama i tokenima iz datoteke. Ostaje u vašim favoritima i grupama.",
+            "importExistingDuplicateHint": "Profil koji već imate ostaje, a kopija iz datoteke dodaje se pokraj njega s numeriranim imenom.",
+            "overwrittenCount": "{count} prepisano",
+            "duplicatedCount": "{count} duplicirano",
+            "importJottaChainWarning": "Jottacloud obnavlja prijavu pri svakom povezivanju, a {names} sada dijeli jednu s drugom kopijom: kopija koja se prva poveže odjavljuje drugu (uređaj s kojeg datoteka dolazi ili profil iz kojeg je dupliciran). Ponovno prijavite drugu novim Personal Login Tokenom.",
+            "importOauthAppKept": "{names} stigli su s drugom prilagođenom OAuth aplikacijom od one koju ovaj uređaj ima za tog pružatelja. Spremljena aplikacija je zadržana, pa se ponovno prijavite ako se ti profili prestanu povezivati.",
+            "importTargetChanged": "{names} nisu prepisani: datoteka ih usmjerava na drugi poslužitelj, a njihove spremljene lozinke i tokeni ne smiju ići tamo. Uvezite s Dupliciraj da dodate kopiju iz datoteke ili prvo izbrišite profil.",
+            "importSharedSecretsFailed": "{names} su uvezeni, ali zajednička tajna ili sesija iz datoteke nije mogla biti spremljena. Ponovno se prijavite u te profile ako se ne povežu."
         },
         "devtools": {
             "title": "AeroTools",

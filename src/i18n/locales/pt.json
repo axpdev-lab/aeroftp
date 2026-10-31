@@ -1357,7 +1357,20 @@
             "serverProfilesCount": "Perfis de servidor: {count}",
             "aiKeysCount": "Chaves de AI: {count}",
             "oauthTokensCount": "Tokens OAuth: {count}",
-            "configEntriesCount": "Entradas de configuração: {count}"
+            "configEntriesCount": "Entradas de configuração: {count}",
+            "importExistingLabel": "Se um perfil já existir",
+            "importExistingSkip": "Ignorar",
+            "importExistingOverwrite": "Substituir",
+            "importExistingDuplicate": "Duplicar",
+            "importExistingSkipHint": "Um perfil que já tem fica como está, com as suas palavras-passe e tokens.",
+            "importExistingOverwriteHint": "Um perfil que já tem é substituído no local, com as palavras-passe e os tokens do ficheiro. Continua nos seus favoritos e grupos.",
+            "importExistingDuplicateHint": "Um perfil que já tem mantém-se, e a cópia do ficheiro é adicionada ao lado com um nome numerado.",
+            "overwrittenCount": "{count} substituídos",
+            "duplicatedCount": "{count} duplicados",
+            "importJottaChainWarning": "O Jottacloud renova o seu início de sessão em cada ligação, e {names} partilha agora um com outra cópia: a cópia que se liga primeiro termina a sessão da outra (o dispositivo de onde veio o ficheiro, ou o perfil de que foi duplicada). Inicie sessão novamente na outra com um novo Personal Login Token.",
+            "importOauthAppKept": "{names} vieram com uma aplicação OAuth personalizada diferente da que este dispositivo tem para esse fornecedor. A aplicação guardada foi mantida, por isso inicie sessão novamente se estes perfis deixarem de se ligar.",
+            "importTargetChanged": "{names} não foram substituídos: o ficheiro aponta-os para outro servidor, e as palavras-passe e os tokens guardados não devem ir para lá. Importe com Duplicar para adicionar a cópia do ficheiro, ou elimine primeiro o perfil.",
+            "importSharedSecretsFailed": "{names} foram importados, mas um segredo partilhado ou uma sessão do ficheiro não pôde ser guardado. Inicie sessão novamente nestes perfis se não se ligarem."
         },
         "devtools": {
             "title": "AeroTools",

@@ -2154,6 +2154,14 @@ pub enum ProviderError {
     #[error("{0}")]
     ParallelRefused(String),
 
+    /// A window pinned with `If-Match` was answered `412`. It says what the
+    /// server did, not why: the object was replaced, or the server refuses
+    /// `If-Match` on the version it still serves. A type of its own, so a
+    /// file name in a message is never taken for one; the path that pinned
+    /// the window reads the object once more to tell the two apart.
+    #[error("{0}")]
+    PinRefused(String),
+
     #[error("Timeout")]
     Timeout,
 

@@ -1357,7 +1357,20 @@
             "serverProfilesCount": "Serveri profiilid: {count}",
             "aiKeysCount": "AI võtmed: {count}",
             "oauthTokensCount": "OAuth-märgid: {count}",
-            "configEntriesCount": "Konfiguratsioonikirjed: {count}"
+            "configEntriesCount": "Konfiguratsioonikirjed: {count}",
+            "importExistingLabel": "Kui profiil on juba olemas",
+            "importExistingSkip": "Jäta vahele",
+            "importExistingOverwrite": "Kirjuta üle",
+            "importExistingDuplicate": "Dubleeri",
+            "importExistingSkipHint": "Profiil, mis teil juba on, jääb samaks koos oma paroolide ja tokenitega.",
+            "importExistingOverwriteHint": "Profiil, mis teil juba on, asendatakse kohapeal faili paroolide ja tokenitega. See jääb teie lemmikutesse ja gruppidesse.",
+            "importExistingDuplicateHint": "Profiil, mis teil juba on, jääb alles ning faili koopia lisatakse selle kõrvale nummerdatud nimega.",
+            "overwrittenCount": "{count} üle kirjutatud",
+            "duplicatedCount": "{count} dubleeritud",
+            "importJottaChainWarning": "Jottacloud uuendab oma sisselogimist igal ühendumisel ja {names} jagab nüüd ühte teise koopiaga: koopia, mis ühendub esimesena, logib teise välja (seade, kust fail pärineb, või profiil, millest see dubleeriti). Logige teine uuesti sisse uue Personal Login Tokeniga.",
+            "importOauthAppKept": "{names} tulid teistsuguse kohandatud OAuth-rakendusega kui see, mis sellel seadmel selle pakkuja jaoks on. Salvestatud rakendus jäeti alles, nii et logige uuesti sisse, kui need profiilid enam ühendust ei loo.",
+            "importTargetChanged": "{names} ei kirjutatud üle: fail suunab need teisele serverile ja nende salvestatud paroole ja tokeneid ei tohi sinna saata. Importige valikuga Dubleeri, et lisada faili koopia, või kustutage esmalt profiil.",
+            "importSharedSecretsFailed": "{names} imporditi, kuid failist ei õnnestunud salvestada jagatud saladust ega seanssi. Logige nendesse profiilidesse uuesti sisse, kui need ei ühendu."
         },
         "devtools": {
             "title": "AeroTools",

@@ -171,6 +171,8 @@ fn proton_mode_and_sign_in_refuse_what_is_not_a_proton_profile() {
     assert_eq!(out.status.code(), Some(2), "{}", describe(&out));
 }
 
+/// The Proton alias keeps the manifest options and the explicitly chosen client
+/// once saved, as an export of the profile shows.
 #[tokio::test]
 async fn proton_alias_preserves_manifest_options_and_explicit_client_after_saving() {
     let root = isolated_cli::root();
@@ -226,16 +228,15 @@ async fn proton_alias_preserves_manifest_options_and_explicit_client_after_savin
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
-    let preview = ftp_client_gui_lib::import_server_profiles_core_filtered(
-        export.to_string_lossy().into_owned(),
-        "synthetic alias export".into(),
-        Some(std::collections::HashSet::new()),
+    let preview = ftp_client_gui_lib::preview_server_profiles(
+        &export.to_string_lossy(),
+        "synthetic alias export",
+        ftp_client_gui_lib::profile_import_plan::ExistingProfileMode::Skip,
+        &[],
     )
-    .await
     .unwrap();
-    let saved = preview["servers"]
-        .as_array()
-        .unwrap()
+    let saved = preview
+        .servers
         .iter()
         .find(|profile| profile["id"] == added["id"])
         .unwrap();
@@ -269,16 +270,15 @@ async fn saved(root: &Path, id: &str) -> serde_json::Value {
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(0), "{}", describe(&out));
-    let preview = ftp_client_gui_lib::import_server_profiles_core_filtered(
-        export.to_string_lossy().into_owned(),
-        "synthetic switch export".into(),
-        Some(std::collections::HashSet::new()),
+    let preview = ftp_client_gui_lib::preview_server_profiles(
+        &export.to_string_lossy(),
+        "synthetic switch export",
+        ftp_client_gui_lib::profile_import_plan::ExistingProfileMode::Skip,
+        &[],
     )
-    .await
     .unwrap();
-    preview["servers"]
-        .as_array()
-        .unwrap()
+    preview
+        .servers
         .iter()
         .find(|profile| profile["id"] == id)
         .cloned()

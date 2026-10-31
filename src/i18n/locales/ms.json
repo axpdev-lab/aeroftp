@@ -1357,7 +1357,20 @@
             "serverProfilesCount": "{count} profil pelayan",
             "aiKeysCount": "{count} kunci AI",
             "oauthTokensCount": "{count} token OAuth",
-            "configEntriesCount": "{count} entri konfigurasi"
+            "configEntriesCount": "{count} entri konfigurasi",
+            "importExistingLabel": "Jika profil sudah wujud",
+            "importExistingSkip": "Langkau",
+            "importExistingOverwrite": "Tulis ganti",
+            "importExistingDuplicate": "Gandakan",
+            "importExistingSkipHint": "Profil yang sudah anda miliki kekal seperti sedia ada, dengan kata laluan dan token-nya.",
+            "importExistingOverwriteHint": "Profil yang sudah anda miliki diganti di tempat, dengan kata laluan dan token daripada fail. Ia kekal dalam kegemaran dan kumpulan anda.",
+            "importExistingDuplicateHint": "Profil yang sudah anda miliki kekal, dan salinan daripada fail ditambah di sebelahnya dengan nama bernombor.",
+            "overwrittenCount": "{count} ditulis ganti",
+            "duplicatedCount": "{count} digandakan",
+            "importJottaChainWarning": "Jottacloud memperbaharui log masuknya pada setiap sambungan, dan {names} kini berkongsi satu dengan salinan lain: salinan yang bersambung dahulu akan melog keluar yang satu lagi (peranti asal fail, atau profil tempat ia digandakan). Log masuk semula yang satu lagi dengan Personal Login Token baharu.",
+            "importOauthAppKept": "{names} datang dengan apl OAuth tersuai yang berbeza daripada yang ada pada peranti ini untuk penyedia itu. Apl yang disimpan dikekalkan, jadi log masuk semula jika profil ini tidak lagi bersambung.",
+            "importTargetChanged": "{names} tidak ditimpa: fail itu mengarahkannya ke pelayan lain, dan kata laluan serta token yang disimpan tidak boleh dihantar ke sana. Import dengan Gandakan untuk menambah salinan daripada fail, atau padam profil dahulu.",
+            "importSharedSecretsFailed": "{names} telah diimport, tetapi rahsia kongsi atau sesi daripada fail tidak dapat disimpan. Log masuk semula ke profil ini jika tidak dapat disambungkan."
         },
         "devtools": {
             "title": "AeroTools",
