@@ -18,7 +18,7 @@ import {
   MtpDeviceInfo,
 } from '../types/aerofile';
 import { FolderTree } from './FolderTree';
-import { PartitionsNeedUdisks2, SNAP_CONNECT_UDISKS2, VolumesUnavailable, needsUdisks2Plug, readVolumes, type VolumesUnavailableReason } from './volumesUnavailable';
+import { PartitionsNeedUdisks2, VolumesUnavailable, readUnmountedPartitions, readVolumes, volumeActionError, type VolumesUnavailableReason } from './volumesUnavailable';
 import { formatBytes } from '../utils/formatters';
 import { readLatest } from '../utils/readLatest';
 import { findGvfsMtpMount, isPathOnOrUnderMount, portableDeviceNeedsReplug } from '../utils/gvfsMtpMount';
@@ -375,9 +375,9 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
     let needsPlug = false;
     const { value, latest } = await readLatest(volumesReadRef, () => readVolumes(() => Promise.all([
       invoke<VolumeInfo[]>('list_mounted_volumes'),
-      invoke<UnmountedPartition[]>('list_unmounted_partitions').catch((err: unknown) => {
-        needsPlug = needsUdisks2Plug(err);
-        return [] as UnmountedPartition[];
+      readUnmountedPartitions(() => invoke<UnmountedPartition[]>('list_unmounted_partitions')).then(({ partitions, needsPlug: refused }) => {
+        needsPlug = refused;
+        return partitions;
       }),
     ])));
     if (!latest || !mountedRef.current) return;
@@ -473,9 +473,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
         detail: {
           type: 'error',
           title: t('sidebar.ejectFailed'),
-          message: needsUdisks2Plug(err)
-            ? t('sidebar.volume_action_needs_udisks2', { command: SNAP_CONNECT_UDISKS2 })
-            : typeof err === 'string' ? err : String(err),
+          message: volumeActionError(err, t),
           duration: 8000,
           // Direct user action (clicked eject) that failed: must surface even if
           // ambient toast notifications are turned off.
@@ -503,9 +501,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
         detail: {
           type: 'error',
           title: t('sidebar.mountFailed'),
-          message: needsUdisks2Plug(err)
-            ? t('sidebar.volume_action_needs_udisks2', { command: SNAP_CONNECT_UDISKS2 })
-            : String(err),
+          message: volumeActionError(err, t),
           duration: 8000,
           // Direct user action that failed: must surface even if ambient toast
           // notifications are turned off.

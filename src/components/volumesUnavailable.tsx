@@ -24,6 +24,25 @@ export const SNAP_CONNECT_UDISKS2 = 'sudo snap connect aeroftp:udisks2';
 /** Whether `err` is the snap's refusal to reach UDisks2. */
 export const needsUdisks2Plug = (err: unknown): boolean => String(err).startsWith(UDISKS2_NOT_CONNECTED);
 
+/** The toast text for a failed mount or eject: the plug when the snap refused it, else the error. */
+export function volumeActionError(
+  err: unknown,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string {
+  return needsUdisks2Plug(err)
+    ? t('sidebar.volume_action_needs_udisks2', { command: SNAP_CONNECT_UDISKS2 })
+    : String(err);
+}
+
+/** Reads the unmounted partitions: no rows on any failure, and whether the plug is the cause. */
+export async function readUnmountedPartitions<P>(read: () => Promise<P[]>): Promise<{ partitions: P[]; needsPlug: boolean }> {
+  try {
+    return { partitions: await read(), needsPlug: false };
+  } catch (err) {
+    return { partitions: [], needsPlug: needsUdisks2Plug(err) };
+  }
+}
+
 export type VolumesUnavailableReason = 'snap-mount-observe' | 'failed';
 
 /** Why the volume list could not be read, from the error of `list_mounted_volumes`. */

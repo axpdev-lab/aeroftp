@@ -234,6 +234,31 @@ fn mount_table_error(err: &std::io::Error, in_snap: bool) -> String {
     }
 }
 
+/// The message for a local path the system refuses. A snap reaches `/media`,
+/// `/run/media` and `/mnt` through its `removable-media` plug, which snapd never
+/// connects on its own, so a mounted partition can be refused after a good mount.
+pub(crate) fn local_path_refused(path: &Path, err: &std::io::Error) -> String {
+    #[cfg(target_os = "linux")]
+    return refused_message(path, err, in_snap());
+    #[cfg(not(target_os = "linux"))]
+    format!("Failed to read directory: {err}")
+}
+
+#[cfg(target_os = "linux")]
+fn refused_message(path: &Path, err: &std::io::Error, in_snap: bool) -> String {
+    let removable = ["/media", "/run/media", "/mnt"]
+        .iter()
+        .any(|root| path.starts_with(root));
+    if in_snap && removable && err.kind() == std::io::ErrorKind::PermissionDenied {
+        format!(
+            "cannot read {} ({err}); in the snap, connect the plug with `sudo snap connect aeroftp:removable-media`",
+            path.display()
+        )
+    } else {
+        format!("Failed to read directory: {err}")
+    }
+}
+
 /// Error marker when the snap may not reach the UDisks2 service: its `udisks2` plug,
 /// which snapd never connects on its own, is not connected. The sidebar shows the
 /// command that connects it.
@@ -1355,8 +1380,19 @@ mod udisks {
         call_failed(action, name, &error.to_string())
     }
 
+    /// A bus that refuses the snap is the plug. Any other failure to reach it keeps
+    /// its own message: the plug may be connected already.
+    fn connect_failed(error: &zbus::Error) -> String {
+        match error {
+            zbus::Error::InputOutput(io) if io.kind() == std::io::ErrorKind::PermissionDenied => {
+                not_connected(&format!("the system bus refused the connection ({error})"))
+            }
+            _ => format!("Failed to reach the system bus: {error}"),
+        }
+    }
+
     fn system_bus() -> Result<Connection, String> {
-        Connection::system().map_err(|e| not_connected(&format!("no system bus ({e})")))
+        Connection::system().map_err(|e| connect_failed(&e))
     }
 
     fn string_of(properties: &HashMap<String, OwnedValue>, key: &str) -> String {
@@ -1451,9 +1487,12 @@ mod udisks {
 
     /// Mount `device` and return where it landed.
     pub(super) fn mount(device: &str) -> Result<String, String> {
+        mount_on(&system_bus()?, device)
+    }
+
+    fn mount_on(bus: &Connection, device: &str) -> Result<String, String> {
         let action = format!("mount {device}");
-        let bus = system_bus()?;
-        let object = object_of(&bus, device, &action)?;
+        let object = object_of(bus, device, &action)?;
         let options: HashMap<&str, Value> =
             HashMap::from([("auth.no_user_interaction", Value::from(true))]);
         let reply = bus
@@ -1472,9 +1511,12 @@ mod udisks {
     }
 
     pub(super) fn unmount(device: &str) -> Result<(), String> {
+        unmount_on(&system_bus()?, device)
+    }
+
+    fn unmount_on(bus: &Connection, device: &str) -> Result<(), String> {
         let action = format!("unmount {device}");
-        let bus = system_bus()?;
-        let object = object_of(&bus, device, &action)?;
+        let object = object_of(bus, device, &action)?;
         let options: HashMap<&str, Value> = HashMap::new();
         bus.call_method(
             Some(SERVICE),
@@ -1600,7 +1642,6 @@ mod udisks {
                 refused.contains("snap connect aeroftp:udisks2"),
                 "{refused}"
             );
-            assert!(system_bus_refusal().starts_with(UDISKS2_NOT_CONNECTED));
             for name in [
                 Some("org.freedesktop.UDisks2.Error.NotAuthorized"),
                 Some("org.freedesktop.UDisks2.Error.DeviceBusy"),
@@ -1612,8 +1653,132 @@ mod udisks {
             }
         }
 
-        fn system_bus_refusal() -> String {
-            not_connected("no system bus (Permission denied)")
+        #[test]
+        fn a_bus_blames_the_plug_only_when_it_refuses_the_connection() {
+            use std::io::{Error, ErrorKind};
+            use std::sync::Arc;
+            let refused = connect_failed(&zbus::Error::InputOutput(Arc::new(Error::from(
+                ErrorKind::PermissionDenied,
+            ))));
+            assert!(refused.starts_with(UDISKS2_NOT_CONNECTED), "{refused}");
+            for error in [
+                zbus::Error::InputOutput(Arc::new(Error::from(ErrorKind::NotFound))),
+                zbus::Error::Handshake("no".to_string()),
+            ] {
+                let message = connect_failed(&error);
+                assert!(
+                    message.starts_with("Failed to reach the system bus"),
+                    "{message}"
+                );
+            }
+        }
+
+        /// A stand-in for the service, as the two ends of a socket: the calls and
+        /// the replies are the real D-Bus ones.
+        struct FakeManager;
+
+        #[zbus::interface(name = "org.freedesktop.UDisks2.Manager")]
+        impl FakeManager {
+            fn resolve_device(
+                &self,
+                spec: HashMap<String, OwnedValue>,
+                _options: HashMap<String, OwnedValue>,
+            ) -> zbus::fdo::Result<Vec<OwnedObjectPath>> {
+                let device = spec
+                    .get("path")
+                    .and_then(|value| value.downcast_ref::<&str>().ok())
+                    .unwrap_or("")
+                    .to_string();
+                match device.strip_prefix("/dev/") {
+                    Some("nothing") | None => Ok(vec![]),
+                    Some(name) => Ok(vec![path(name)]),
+                }
+            }
+        }
+
+        struct FakeFilesystem {
+            refuse: bool,
+            options: std::sync::Arc<std::sync::Mutex<Vec<bool>>>,
+        }
+
+        impl FakeFilesystem {
+            fn outcome(&self, reply: String) -> zbus::fdo::Result<String> {
+                if self.refuse {
+                    return Err(zbus::fdo::Error::AccessDenied(
+                        "AppArmor policy".to_string(),
+                    ));
+                }
+                Ok(reply)
+            }
+        }
+
+        #[zbus::interface(name = "org.freedesktop.UDisks2.Filesystem")]
+        impl FakeFilesystem {
+            fn mount(&self, options: HashMap<String, OwnedValue>) -> zbus::fdo::Result<String> {
+                let quiet = options
+                    .get("auth.no_user_interaction")
+                    .and_then(|value| value.downcast_ref::<bool>().ok())
+                    .unwrap_or(false);
+                self.options.lock().unwrap().push(quiet);
+                self.outcome("/media/u/Data".to_string())
+            }
+
+            fn unmount(&self, _options: HashMap<String, OwnedValue>) -> zbus::fdo::Result<()> {
+                self.outcome(String::new()).map(|_| ())
+            }
+        }
+
+        #[test]
+        fn mount_and_unmount_speak_to_the_service_as_it_expects() {
+            use zbus::blocking::connection::Builder;
+            let (ours, theirs) = std::os::unix::net::UnixStream::pair().unwrap();
+            let options = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            let seen = options.clone();
+            let service = std::thread::spawn(move || {
+                Builder::socket(theirs)
+                    .server(zbus::Guid::generate())
+                    .unwrap()
+                    .p2p()
+                    .serve_at("/org/freedesktop/UDisks2/Manager", FakeManager)
+                    .unwrap()
+                    .serve_at(
+                        path("sda1").as_str(),
+                        FakeFilesystem {
+                            refuse: false,
+                            options: seen.clone(),
+                        },
+                    )
+                    .unwrap()
+                    .serve_at(
+                        path("denied").as_str(),
+                        FakeFilesystem {
+                            refuse: true,
+                            options: seen,
+                        },
+                    )
+                    .unwrap()
+                    .build()
+                    .unwrap()
+            });
+            let bus = Builder::socket(ours).p2p().build().unwrap();
+            let _service = service.join().unwrap();
+
+            assert_eq!(mount_on(&bus, "/dev/sda1").unwrap(), "/media/u/Data");
+            assert_eq!(*options.lock().unwrap(), [true]);
+            unmount_on(&bus, "/dev/sda1").unwrap();
+
+            // A refusal comes back as the bus reports it, through `failure`.
+            for refused in [
+                mount_on(&bus, "/dev/denied").unwrap_err(),
+                unmount_on(&bus, "/dev/denied").unwrap_err(),
+            ] {
+                assert!(refused.starts_with(UDISKS2_NOT_CONNECTED), "{refused}");
+            }
+            let gone = mount_on(&bus, "/dev/nothing").unwrap_err();
+            assert_eq!(
+                gone,
+                "Failed to mount /dev/nothing: no such device /dev/nothing"
+            );
         }
     }
 }
@@ -3469,6 +3634,33 @@ mod main_thread_tests {
             .await
             .expect("a no-op must still read");
         assert_eq!(props.size, 5);
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod local_path_refused_tests {
+    use super::*;
+    use std::io::{Error, ErrorKind};
+
+    #[test]
+    fn only_a_refused_mount_location_in_a_snap_names_the_plug() {
+        let denied = Error::from(ErrorKind::PermissionDenied);
+        for path in ["/media/u/Data", "/run/media/u/Data", "/mnt/data"] {
+            let message = refused_message(Path::new(path), &denied, true);
+            assert!(
+                message.contains("snap connect aeroftp:removable-media"),
+                "{message}"
+            );
+        }
+        for (path, kind, snap) in [
+            ("/media/u/Data", ErrorKind::PermissionDenied, false),
+            ("/home/u/secret", ErrorKind::PermissionDenied, true),
+            ("/media/u/Data", ErrorKind::Other, true),
+            ("/mediafiles", ErrorKind::PermissionDenied, true),
+        ] {
+            let message = refused_message(Path::new(path), &Error::from(kind), snap);
+            assert!(message.starts_with("Failed to read directory"), "{message}");
+        }
     }
 }
 

@@ -15,7 +15,9 @@ import {
     UDISKS2_NOT_CONNECTED,
     VolumesUnavailable,
     needsUdisks2Plug,
+    readUnmountedPartitions,
     readVolumes,
+    volumeActionError,
     volumesUnavailableReason,
 } from './volumesUnavailable';
 
@@ -72,9 +74,22 @@ describe('volumes the snap may not read', () => {
     });
 
     it('shows the partition hint, and a failed mount or eject, in the sidebar', () => {
-        expect(sidebarSource).toContain('<PartitionsNeedUdisks2 t={t} />');
+        expect(sidebarSource).toContain('!volumesLoading && partitionsNeedUdisks2 && <PartitionsNeedUdisks2 t={t} />');
         expect(sidebarSource).toContain("title: t('sidebar.mountFailed')");
-        expect(sidebarSource.match(/sidebar\.volume_action_needs_udisks2/g)).toHaveLength(2);
+        expect(sidebarSource.match(/message: volumeActionError\(err, t\)/g)).toHaveLength(2);
+        expect(sidebarSource).toContain("readUnmountedPartitions(() => invoke<UnmountedPartition[]>('list_unmounted_partitions'))");
+    });
+
+    it('says the plug only for its refusal, and keeps any other error as it is', async () => {
+        const params = (key: string, values?: Record<string, string | number>) => `${key}:${values?.command}`;
+        expect(volumeActionError(`${UDISKS2_NOT_CONNECTED}: refused`, params))
+            .toBe(`sidebar.volume_action_needs_udisks2:${SNAP_CONNECT_UDISKS2}`);
+        expect(volumeActionError('Failed to mount /dev/sda1: device busy', params)).toBe('Failed to mount /dev/sda1: device busy');
+        await expect(readUnmountedPartitions(async () => ['sda1'])).resolves.toEqual({ partitions: ['sda1'], needsPlug: false });
+        await expect(readUnmountedPartitions(async () => { throw `${UDISKS2_NOT_CONNECTED}: refused`; }))
+            .resolves.toEqual({ partitions: [], needsPlug: true });
+        await expect(readUnmountedPartitions(async () => { throw 'lsblk returned non-zero exit code'; }))
+            .resolves.toEqual({ partitions: [], needsPlug: false });
     });
 
     it('drops the rows of an earlier read when a read fails, and says why', async () => {
