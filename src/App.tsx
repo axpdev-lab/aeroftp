@@ -146,6 +146,14 @@ type MountManagerOpenOptions = {
   remotePath?: string;
 };
 
+/**
+ * What uploadFile and downloadFile do with an error: show it and answer false
+ * (`notify`), or hand it to the caller (`throw`). A queue row needs the error:
+ * false also means a skip, which completes the row, and the circuit breaker
+ * and the per-file retry only see a failure that is thrown.
+ */
+type TransferErrorMode = 'notify' | 'throw';
+
 import { SessionTabs } from './components/SessionTabs';
 import { PermissionsDialog } from './components/PermissionsDialog';
 import { SiteCommandDialog } from './components/SiteCommand/SiteCommandDialog';
@@ -1709,6 +1717,7 @@ const App: React.FC = () => {
       skipConflictCheck?: boolean,
       commitMessage?: string,
       explicitRemoteDir?: string,
+      onError?: TransferErrorMode,
     ) => Promise<boolean>;
     downloadFile: (
       remoteFilePath: string,
@@ -1717,6 +1726,7 @@ const App: React.FC = () => {
       isDir?: boolean,
       fileSize?: number,
       skipConflictCheck?: boolean,
+      onError?: TransferErrorMode,
     ) => Promise<boolean>;
   } | null>(null);
 
@@ -10264,7 +10274,7 @@ const App: React.FC = () => {
     });
   }, [localFiles, remoteFiles, fileExistsAction]);
 
-  const downloadFile = async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false): Promise<boolean> => {
+  const downloadFile = async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false, onError: TransferErrorMode = 'notify'): Promise<boolean> => {
     const logId = humanLog.logStart('DOWNLOAD', { filename: fileName });
     pendingFileLogIds.current.set(fileName, logId); // Dedup
     const startTime = Date.now();
@@ -10405,6 +10415,7 @@ const App: React.FC = () => {
         }
       }
       humanLog.logError('DOWNLOAD', { filename: fileName }, logId);
+      if (onError === 'throw') throw error;
       // Don't spam toasts when batch was cancelled: one summary toast is enough
       if (!batchCancelledRef.current) {
         notify.error(t('toast.downloadFailed'), String(error));
@@ -10424,6 +10435,7 @@ const App: React.FC = () => {
     _skipConflictCheck: boolean = false,
     commitMessage?: string,
     explicitRemoteDir?: string,
+    onError: TransferErrorMode = 'notify',
   ): Promise<boolean> => {
     const startTime = Date.now();
     // True only when the file or folder actually landed (see downloadFile).
@@ -10605,6 +10617,7 @@ const App: React.FC = () => {
         }
       }
       humanLog.logRaw('activity.upload_error', 'UPLOAD', { filename: fileName }, 'error');
+      if (onError === 'throw') throw error;
       if (!batchCancelledRef.current) {
         notify.error(t('toast.uploadFailed'), String(error));
       }
@@ -10669,6 +10682,8 @@ const App: React.FC = () => {
                   localDir || undefined,
                   !!entry.is_folder,
                   Number(entry.size) || undefined,
+                  false,
+                  'throw',
                 );
               } else {
                 // Option (a): explicit remote dir from the journal.
@@ -10680,11 +10695,13 @@ const App: React.FC = () => {
                   false,
                   undefined,
                   remoteDir || undefined,
+                  'throw',
                 );
               }
               transferQueue.completeTransfer(id);
             } catch (error) {
               transferQueue.failTransfer(id, String(error));
+              notify.error(t(direction === 'download' ? 'toast.downloadFailed' : 'toast.uploadFailed'), String(error));
             }
           });
         }
@@ -13153,10 +13170,11 @@ const App: React.FC = () => {
           retryCallbacksRef.current.set(id, async () => {
             transferQueue.startTransfer(id);
             try {
-              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir);
+              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir, 'throw');
               transferQueue.completeTransfer(id);
             } catch (error) {
               transferQueue.failTransfer(id, String(error));
+              notify.error(t('toast.uploadFailed'), String(error));
             }
           });
           return { id, filePath, fileName, file };
@@ -13254,10 +13272,11 @@ const App: React.FC = () => {
             for (const item of kept.filter(i => i.file.is_dir)) {
               transferQueue.startTransfer(item.id);
               try {
-                await uploadFile(item.filePath, item.fileName, true, item.file.size || undefined, false, batchCommitMessage, remoteDir);
+                await uploadFile(item.filePath, item.fileName, true, item.file.size || undefined, false, batchCommitMessage, remoteDir, 'throw');
                 transferQueue.completeTransfer(item.id);
               } catch (error) {
                 transferQueue.failTransfer(item.id, String(error));
+                if (!batchCancelledRef.current) notify.error(t('toast.uploadFailed'), String(error));
               }
             }
             resetOverwriteSettings();
@@ -13378,17 +13397,26 @@ const App: React.FC = () => {
           for (let attempt = 0; attempt <= circuitBreaker.config.maxRetriesPerFile; attempt++) {
             if (attempt > 0) {
               await new Promise(r => setTimeout(r, circuitBreaker.getRetryDelay(attempt)));
+              // The error event of the attempt before may have settled the row.
+              transferQueue.retryItem(item.id);
               transferQueue.startTransfer(item.id);
             }
             try {
-              await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined, true, batchCommitMessage, remoteDir);
+              await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined, true, batchCommitMessage, remoteDir, 'throw');
+              if (attempt > 0) transferQueue.retryItem(item.id);
               transferQueue.completeTransfer(item.id);
               circuitBreaker.recordSuccess();
               break;
             } catch (error) {
+              // A cancelled batch stops here: the file is cancelled, not retried.
+              if (batchCancelledRef.current) {
+                transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+                break;
+              }
               const result = circuitBreaker.recordFailure(String(error));
               if (result.isFatal || !result.retryable || result.shouldPause || attempt >= circuitBreaker.config.maxRetriesPerFile) {
                 transferQueue.failTransfer(item.id, String(error));
+                notify.error(t('toast.uploadFailed'), String(error));
                 break;
               }
             }
@@ -13473,10 +13501,11 @@ const App: React.FC = () => {
         retryCallbacksRef.current.set(id, async () => {
           transferQueue.startTransfer(id);
           try {
-            await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir);
+            await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir, 'throw');
             transferQueue.completeTransfer(id);
           } catch (error) {
             transferQueue.failTransfer(id, String(error));
+            notify.error(t('toast.uploadFailed'), String(error));
           }
         });
         return { id, filePath, fileName };
@@ -13571,17 +13600,26 @@ const App: React.FC = () => {
         for (let attempt = 0; attempt <= circuitBreaker.config.maxRetriesPerFile; attempt++) {
           if (attempt > 0) {
             await new Promise(r => setTimeout(r, circuitBreaker.getRetryDelay(attempt)));
+            // The error event of the attempt before may have settled the row.
+            transferQueue.retryItem(item.id);
             transferQueue.startTransfer(item.id);
           }
           try {
-            await uploadFile(item.filePath, item.fileName, false, undefined, true, undefined, remoteDir);
+            await uploadFile(item.filePath, item.fileName, false, undefined, true, undefined, remoteDir, 'throw');
+            if (attempt > 0) transferQueue.retryItem(item.id);
             transferQueue.completeTransfer(item.id);
             circuitBreaker.recordSuccess();
             break;
           } catch (error) {
+            // A cancelled batch stops here: the file is cancelled, not retried.
+            if (batchCancelledRef.current) {
+              transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+              break;
+            }
             const result = circuitBreaker.recordFailure(String(error));
             if (result.isFatal || !result.retryable || result.shouldPause || attempt >= circuitBreaker.config.maxRetriesPerFile) {
               transferQueue.failTransfer(item.id, String(error));
+              notify.error(t('toast.uploadFailed'), String(error));
               break;
             }
           }
@@ -13670,10 +13708,11 @@ const App: React.FC = () => {
         retryCallbacksRef.current.set(id, async () => {
           transferQueue.startTransfer(id);
           try {
-            await downloadFile(file.path, file.name, frozenLocalPath, file.is_dir, file.size || undefined);
+            await downloadFile(file.path, file.name, frozenLocalPath, file.is_dir, file.size || undefined, false, 'throw');
             transferQueue.completeTransfer(id);
           } catch (error) {
             transferQueue.failTransfer(id, String(error));
+            notify.error(t('toast.downloadFailed'), String(error));
           }
         });
         return { id, file };
@@ -13796,17 +13835,26 @@ const App: React.FC = () => {
         for (let attempt = 0; attempt <= circuitBreaker.config.maxRetriesPerFile; attempt++) {
           if (attempt > 0) {
             await new Promise(r => setTimeout(r, circuitBreaker.getRetryDelay(attempt)));
+            // The error event of the attempt before may have settled the row.
+            transferQueue.retryItem(item.id);
             transferQueue.startTransfer(item.id);
           }
           try {
-            await downloadFile(item.file.path, item.file.name, localDir, item.file.is_dir, item.file.size || undefined, true);
+            await downloadFile(item.file.path, item.file.name, localDir, item.file.is_dir, item.file.size || undefined, true, 'throw');
+            if (attempt > 0) transferQueue.retryItem(item.id);
             transferQueue.completeTransfer(item.id);
             circuitBreaker.recordSuccess();
             break;
           } catch (error) {
+            // A cancelled batch stops here: the file is cancelled, not retried.
+            if (batchCancelledRef.current) {
+              transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+              break;
+            }
             const result = circuitBreaker.recordFailure(String(error));
             if (result.isFatal || !result.retryable || result.shouldPause || attempt >= circuitBreaker.config.maxRetriesPerFile) {
               transferQueue.failTransfer(item.id, String(error));
+              notify.error(t('toast.downloadFailed'), String(error));
               break;
             }
           }
