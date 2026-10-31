@@ -4513,6 +4513,10 @@ struct DownloadWalk {
     scope: crate::sync_core::WalkScope,
     fetched: std::collections::HashSet<String>,
     local_targets: Option<LocalTargetGuard>,
+    /// Folders the listing marked as links. One that cannot be listed (a
+    /// dangling link, a OneDrive Personal Vault) is left out of the folder,
+    /// as the compare leaves it out, and does not fail the download.
+    links: std::collections::HashSet<String>,
 }
 
 impl DownloadWalk {
@@ -4522,6 +4526,7 @@ impl DownloadWalk {
             scope: crate::sync_core::WalkScope::new(root),
             fetched: std::collections::HashSet::new(),
             local_targets: None,
+            links: std::collections::HashSet::new(),
         }
     }
 }
@@ -4621,6 +4626,10 @@ async fn take_download_listing(
                 .await
                 .map_err(|e| format!("Failed to create folder {}: {}", local_path.display(), e))?;
             verify_path_containment(base_local, &local_path)?;
+            if file.is_symlink {
+                walk.links
+                    .insert(crate::sync_core::walk_path_key(&remote_file_path));
+            }
             listed
                 .folders
                 .push((remote_file_path, local_path.to_string_lossy().into_owned()));
@@ -5149,15 +5158,47 @@ impl FolderScan<'_> {
                     .as_mut()
                     .ok_or("Not connected to any provider")?;
 
-                provider
-                    .cd(&remote_folder)
-                    .await
-                    .map_err(|e| format!("Failed to change to folder {}: {}", remote_folder, e))?;
-
-                let files = provider
-                    .list(".")
-                    .await
-                    .map_err(|e| format!("Failed to list files in {}: {}", remote_folder, e))?;
+                let files = match provider.cd(&remote_folder).await {
+                    Ok(()) => provider
+                        .list(".")
+                        .await
+                        .map_err(|e| format!("Failed to list files in {}: {}", remote_folder, e)),
+                    Err(e) => Err(format!(
+                        "Failed to change to folder {}: {}",
+                        remote_folder, e
+                    )),
+                };
+                let files = match files {
+                    Ok(files) => files,
+                    Err(error)
+                        if walk
+                            .links
+                            .contains(&crate::sync_core::walk_path_key(&remote_folder)) =>
+                    {
+                        warn!("Skipping a link that cannot be read: {error}");
+                        drop(provider_lock);
+                        // Its local folder was made with the listing; empty, it says nothing.
+                        let _ = tokio::fs::remove_dir(&local_folder).await;
+                        self.tally.found.fetch_add(1, Ordering::Relaxed);
+                        self.tally.skipped.fetch_add(1, Ordering::Relaxed);
+                        file_global_index += 1;
+                        (self.run.lifecycle)(crate::TransferEvent {
+                            event_type: "file_skip".to_string(),
+                            transfer_id: format!("{}-{}", self.transfer_id, file_global_index),
+                            filename: remote_folder.rsplit('/').next().unwrap_or("").to_string(),
+                            direction: "download".to_string(),
+                            message: Some(format!(
+                                "Skipped (a link that cannot be read): {remote_folder}"
+                            )),
+                            progress: None,
+                            path: Some(remote_folder.clone()),
+                            delta_stats: None,
+                            fallback_reason: None,
+                        });
+                        continue;
+                    }
+                    Err(error) => return Err(error),
+                };
 
                 let listed = take_download_listing(
                     &mut walk,
@@ -10879,6 +10920,8 @@ async fn provider_calculate_folder_size_with_limits(
     // way there is no true total to show.
     let mut scope = crate::sync_core::WalkScope::new(&path);
     let mut counted = std::collections::HashSet::new();
+    // A link that cannot be listed is not part of the folder, as in a compare.
+    let mut links = std::collections::HashSet::new();
     let root = path.clone();
 
     // BFS queue: (path, depth)
@@ -10921,7 +10964,15 @@ async fn provider_calculate_folder_size_with_limits(
             cancelled = true;
             break;
         };
-        let entries = entries?;
+        let entries = match entries {
+            Ok(entries) => entries,
+            Err(error) if links.contains(&crate::sync_core::walk_path_key(&current_path)) => {
+                warn!("Not sizing a link that cannot be read: {error}");
+                dir_count -= 1;
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
 
         let mut listing_scope = crate::sync_core::WalkScope::new(&current_path);
         listing_scope.learn_root_listing(&entries);
@@ -10957,6 +11008,9 @@ async fn provider_calculate_folder_size_with_limits(
             }
             if entry.is_dir {
                 dir_count += 1;
+                if entry.is_symlink {
+                    links.insert(crate::sync_core::walk_path_key(&subpath));
+                }
                 queue.push((subpath, depth + 1));
             } else if counted.insert(crate::sync_core::walk_path_key(&subpath)) {
                 file_count += 1;
@@ -17332,6 +17386,7 @@ mod tests {
         dirs: HashMap<String, Vec<RemoteEntry>>,
         list_delay: HashMap<String, Duration>,
         quota_delay: Option<Duration>,
+        failing: std::collections::HashSet<String>,
     }
 
     #[async_trait::async_trait]
@@ -17357,6 +17412,9 @@ mod tests {
         async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
             if let Some(delay) = self.list_delay.get(path) {
                 tokio::time::sleep(*delay).await;
+            }
+            if self.failing.contains(path) {
+                return Err(ProviderError::Other(format!("cannot list {path}")));
             }
             match self.dirs.get(path) {
                 Some(entries) => Ok(entries.clone()),
@@ -17516,6 +17574,48 @@ mod tests {
         );
         let size = size.expect("a lock wait is not a timeout");
         assert_eq!((size.total_bytes, size.file_count), (7, 1));
+    }
+
+    /// A link that cannot be listed is left out of the size; a real folder that
+    /// cannot be listed still fails it.
+    #[tokio::test(start_paused = true)]
+    async fn folder_size_leaves_out_a_link_it_cannot_list() {
+        let mut vault = RemoteEntry::directory("vault".into(), "/docs/vault".into());
+        vault.is_symlink = true;
+        let mut provider = StallProvider::default();
+        provider.dirs.insert(
+            "/docs".into(),
+            vec![RemoteEntry::file("a".into(), "/docs/a".into(), 7), vault],
+        );
+        provider.failing.insert("/docs/vault".into());
+        let state = stall_state(provider);
+        let size =
+            super::provider_calculate_folder_size_inner(&state, "/docs".into(), None, |_| {})
+                .await
+                .expect("a link does not fail the size");
+        assert_eq!(
+            (
+                size.total_bytes,
+                size.file_count,
+                size.dir_count,
+                size.partial
+            ),
+            (7, 1, 0, false)
+        );
+
+        let mut provider = StallProvider::default();
+        provider.dirs.insert(
+            "/docs".into(),
+            vec![RemoteEntry::directory("real".into(), "/docs/real".into())],
+        );
+        provider.failing.insert("/docs/real".into());
+        let state = stall_state(provider);
+        let size =
+            super::provider_calculate_folder_size_inner(&state, "/docs".into(), None, |_| {}).await;
+        assert!(
+            size.is_err(),
+            "a real folder that cannot be listed fails the size"
+        );
     }
 
     // #960 review M1: one directory slower than 30 s (a huge flat FTP/SFTP
@@ -19023,6 +19123,8 @@ mod folder_download_live_tests {
         held: Option<String>,
         served_at_held: Option<usize>,
         failing: std::collections::HashSet<String>,
+        /// Folders listed as links.
+        links: std::collections::HashSet<String>,
         /// Raised when a download starts, as the first Stop raises it.
         stop_on_download: Option<Arc<AtomicBool>>,
     }
@@ -19128,6 +19230,7 @@ mod folder_download_live_tests {
                 return Err(ProviderError::Other(format!("cannot list {path}")));
             }
             let (files, folders) = st.dirs.get(&path).cloned().unwrap_or_default();
+            let links = st.links.clone();
             Ok(files
                 .into_iter()
                 .map(|(name, size)| {
@@ -19136,7 +19239,9 @@ mod folder_download_live_tests {
                 })
                 .chain(folders.into_iter().map(|name| {
                     let full = format!("{path}/{name}");
-                    RemoteEntry::directory(name, full)
+                    let mut folder = RemoteEntry::directory(name, full.clone());
+                    folder.is_symlink = links.contains(&full);
+                    folder
                 }))
                 .collect())
         }
@@ -19322,6 +19427,32 @@ mod folder_download_live_tests {
                 "{on_disk} files were downloaded before the scan stopped"
             )),
             "{error}"
+        );
+    }
+
+    /// A link that cannot be listed (a OneDrive Personal Vault) leaves the rest
+    /// of the folder to download and is reported as skipped; a link that lists
+    /// is still followed.
+    #[tokio::test]
+    async fn folder_download_skips_a_link_it_cannot_list() {
+        let (tree, state) = FolderTree::new(&["a.txt", "vault/x.txt", "link/y.txt"]);
+        {
+            let mut st = state.lock().unwrap();
+            st.links.insert("/r/vault".to_string());
+            st.links.insert("/r/link".to_string());
+            st.failing.insert("/r/vault".to_string());
+        }
+        let ran = download_folder(tree, "", Arc::new(AtomicBool::new(false)), |_| {}).await;
+        let outcome = ran.result.expect("the rest of the folder downloads");
+        assert_eq!((outcome.completed, outcome.failed), (2, 0));
+        assert!(ran.local.path().join("r/a.txt").exists());
+        assert!(ran.local.path().join("r/link/y.txt").exists());
+        assert!(!ran.local.path().join("r/vault").exists());
+        assert!(
+            ran.events
+                .iter()
+                .any(|e| e.event_type == "file_skip" && e.path.as_deref() == Some("/r/vault")),
+            "the skipped link is reported"
         );
     }
 
