@@ -2342,6 +2342,18 @@ impl S3Provider {
         xml_str: &str,
         keep_markers: bool,
     ) -> Result<(Vec<RemoteEntry>, Option<String>), ProviderError> {
+        self.parse_listing_of(xml_str, keep_markers, &self.current_prefix)
+    }
+
+    /// [`Self::parse_list_response`] for a listing of `listed_prefix`, the only
+    /// folder whose own marker the listing leaves out. Another folder's marker
+    /// is an entry, the current folder's among them.
+    fn parse_listing_of(
+        &self,
+        xml_str: &str,
+        keep_markers: bool,
+        listed_prefix: &str,
+    ) -> Result<(Vec<RemoteEntry>, Option<String>), ProviderError> {
         let mut entries = Vec::new();
 
         debug!(
@@ -2546,9 +2558,9 @@ impl S3Provider {
                                 // whether this listing has a use for it.
                                 if !key.ends_with('/') {
                                     // Skip if key equals current prefix
-                                    let dominated = key == self.current_prefix
+                                    let dominated = key == listed_prefix
                                         || key.trim_start_matches('/')
-                                            == self.current_prefix.trim_start_matches('/');
+                                            == listed_prefix.trim_start_matches('/');
                                     if !dominated {
                                         let name =
                                             key.rsplit('/').next().unwrap_or(key).to_string();
@@ -2605,7 +2617,7 @@ impl S3Provider {
                                     // consumer counts the same components the
                                     // walk would.
                                     let trimmed = key.trim_end_matches('/');
-                                    let prefix = self.current_prefix.trim_end_matches('/');
+                                    let prefix = listed_prefix.trim_end_matches('/');
                                     let dominated = trimmed == prefix
                                         || trimmed.trim_start_matches('/')
                                             == prefix.trim_start_matches('/');
@@ -4958,7 +4970,7 @@ impl StorageProvider for S3Provider {
                         return Err(error);
                     }
 
-                    let (entries, next_token) = self.parse_list_response(&xml, false)?;
+                    let (entries, next_token) = self.parse_listing_of(&xml, false, &prefix)?;
                     info!("S3 LIST parsed {} entries from response", entries.len());
                     all_entries.extend(entries);
 
@@ -7857,7 +7869,7 @@ impl S3Provider {
                         return Err(error);
                     }
 
-                    let (entries, next_token) = self.parse_list_response(&xml, true)?;
+                    let (entries, next_token) = self.parse_listing_of(&xml, true, &prefix)?;
 
                     // Bound memory on a huge or hostile bucket: keep at most the
                     // cap and stop paginating once it is reached. A page can
@@ -10734,6 +10746,35 @@ mod tests {
                 .any(|entry| entry.is_dir && entry.path.contains("d1/d2")),
             "the only thing this bucket holds is the marker, and the listing dropped it: {entries:?}"
         );
+    }
+
+    /// The marker left out is the listed folder's. After a `cd`, a listing of
+    /// the top of the profile keeps the current folder, which is an entry there.
+    #[tokio::test]
+    async fn a_listing_above_the_current_folder_keeps_its_marker() {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |_req: axum::extract::Request| async move {
+                axum::http::Response::new(axum::body::Body::from(
+                    "<ListBucketResult><Contents><Key>top/</Key><Size>0</Size></Contents><Contents><Key>top/sub/</Key><Size>0</Size></Contents></ListBucketResult>",
+                ))
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.config.prefix = Some("top".to_string());
+        provider.current_prefix = "top/sub".to_string();
+        let (entries, _) = provider
+            .list_recursive("/")
+            .await
+            .expect("the listing answers");
+        server.abort();
+        let paths: Vec<&str> = entries.iter().map(|entry| entry.path.as_str()).collect();
+        assert_eq!(paths, ["/top/sub"], "{entries:?}");
     }
 
     #[tokio::test]
