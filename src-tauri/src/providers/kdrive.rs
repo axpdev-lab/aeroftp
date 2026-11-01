@@ -1703,100 +1703,10 @@ impl StorageProvider for KDriveProvider {
         true
     }
 
-    async fn find(
-        &mut self,
-        _path: &str,
-        pattern: &str,
-    ) -> Result<Vec<RemoteEntry>, ProviderError> {
-        // kDrive /files/search?query= is substring on filename and ignores
-        // glob metacharacters. Strip glob chars for the broad server
-        // prefilter, then apply the precise filter client-side via
-        // matches_find_pattern.
-        let literal: String = pattern
-            .chars()
-            .filter(|c| !matches!(c, '*' | '?' | '[' | ']'))
-            .collect();
-        let server_query = if literal.is_empty() {
-            ".".to_string()
-        } else {
-            literal
-        };
-
-        let base_url = self.api_url_v3("/files/search");
-        let mut entries = Vec::new();
-        let mut cursor: Option<String> = None;
-
-        loop {
-            let url = match cursor {
-                Some(ref c) => format!(
-                    "{}?query={}&cursor={}",
-                    base_url,
-                    urlencoding::encode(&server_query),
-                    c
-                ),
-                None => format!("{}?query={}", base_url, urlencoding::encode(&server_query)),
-            };
-
-            let resp = self.get_with_retry(&url).await?;
-
-            if !resp.status().is_success() {
-                let status = resp.status();
-                let body = resp.text().await.unwrap_or_default();
-                return Err(api_failure("Search failed", Some(status), &body));
-            }
-
-            let api_resp: ApiResponse<FilesPayload> = resp.json().await.map_http_err(|e| {
-                ProviderError::ServerError(format!("Parse search response failed: {}", e))
-            })?;
-
-            let (files, has_more, next_cursor) = match api_resp.data {
-                Some(FilesPayload::Paginated {
-                    data,
-                    has_more,
-                    cursor: c,
-                }) => (data, has_more, c),
-                Some(FilesPayload::Flat(data)) => (data, Some(false), None),
-                None => (vec![], Some(false), None),
-            };
-
-            for file in files {
-                let name = file.name.unwrap_or_else(|| format!("unnamed_{}", file.id));
-                if !super::matches_find_pattern(&name, pattern) {
-                    continue;
-                }
-                let is_dir = file.file_type.as_deref() == Some("dir");
-                let size = file.size.unwrap_or(0).max(0) as u64;
-                let modified = file.last_modified.map(|ts| {
-                    chrono::DateTime::from_timestamp(ts, 0)
-                        .unwrap_or_default()
-                        .format("%Y-%m-%d %H:%M:%SZ")
-                        .to_string()
-                });
-                let file_path = file.path.unwrap_or_else(|| format!("/{}", name));
-
-                entries.push(RemoteEntry {
-                    name,
-                    path: file_path,
-                    is_dir,
-                    size,
-                    modified,
-                    permissions: None,
-                    owner: None,
-                    group: None,
-                    is_symlink: false,
-                    link_target: None,
-                    metadata: HashMap::new(),
-                    mime_type: None,
-                });
-            }
-
-            if has_more != Some(true) || next_cursor.is_none() {
-                break;
-            }
-            cursor = next_cursor;
-        }
-
-        Ok(entries)
+    async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        // The search API answers outside the folder or without the hit's real
+        // path, and a caller acts on that path.
+        super::find_by_walk(self, path, pattern).await
     }
 
     // ─── KD-007: Share links via kDrive link API ──────────────────────

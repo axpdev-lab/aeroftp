@@ -393,6 +393,7 @@ impl Default for CompareOptions {
                 "*.pyc".to_string(),
                 ".env".to_string(),
                 "target".to_string(),
+                "*.aerotmp".to_string(),
             ],
             error_correction: None,
             direction: CompareDirection::Bidirectional,
