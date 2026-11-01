@@ -10780,6 +10780,13 @@ fn partial_resume_plan(local_bytes: u64, remote_size: Option<u64>) -> ResumePlan
     }
 }
 
+/// A download this machine cannot write, refused before anything is created. A
+/// destination already complete writes nothing, so it comes before this.
+fn refuse_local_name(local_path: &str) -> Result<(), ProviderError> {
+    ftp_client_gui_lib::local_download_target::refuse_unwritable_name(local_path)
+        .map_err(ProviderError::InvalidPath)
+}
+
 async fn download_with_resume(
     provider: &mut dyn StorageProvider,
     remote_path: &str,
@@ -10803,6 +10810,7 @@ async fn download_with_resume(
             ftp_client_gui_lib::providers::atomic_write::resumable_part_len(Path::new(local_path))
                 .await;
         if offset > 0 {
+            refuse_local_name(local_path)?;
             return provider
                 .resume_download_checked(remote_path, local_path, offset, progress_cb)
                 .await;
@@ -10831,6 +10839,7 @@ async fn download_with_resume(
             }
         }
     }
+    refuse_local_name(local_path)?;
     provider
         .download_checked(remote_path, local_path, size_hint, progress_cb)
         .await

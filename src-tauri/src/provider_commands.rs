@@ -3380,6 +3380,7 @@ pub async fn provider_download_file(
     download_segments: Option<u32>,
     sftp_download_preset: Option<SftpDownloadPreset>,
 ) -> Result<String, String> {
+    crate::local_download_target::refuse_unwritable_name(&local_path)?;
     let mut provider_lock = state.provider.lock().await;
 
     let provider = provider_lock

@@ -1010,6 +1010,7 @@
       "rebuild_menu",
       "compare_directories",
       "compare_paths_left_out",
+      "local_target_problems",
       "compare_local_directories",
       "cancel_compare",
       "clear_all_journals_cmd",
@@ -1305,7 +1306,7 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "name_unmatched_count": 330,
+    "name_unmatched_count": 331,
     "note": "Name-based structural diff, not a semantic one. `name_matched` are Tauri commands whose token set matches a CLI/MCP/agent command (a LOWER bound on real coverage, since differently-named equivalents are missed). `name_unmatched` is the remainder: an UPPER bound for manual triage, dominated by GUI, OS-integration and internal commands with no command-line meaning, plus real capabilities named differently. Neither figure is a capability-gap count; curating genuine gaps stays manual (tracker #9)."
   },
   "schema_version": 1,
@@ -1391,6 +1392,7 @@
       "set_site_command_menu_enabled",
       "compare_directories",
       "compare_paths_left_out",
+      "local_target_problems",
       "compare_local_directories",
       "cancel_compare",
       "proton_mode_switch_plan",
