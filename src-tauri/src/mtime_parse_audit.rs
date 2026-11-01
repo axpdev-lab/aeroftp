@@ -65,6 +65,11 @@ const ALLOWED: &[(&str, usize, &str)] = &[
         "HTTP Retry-After deadline, not a file time",
     ),
     (
+        "providers/scp/listing.rs",
+        1,
+        "producer: the `ls --full-time` date, time and `+HHMM` offset of an SCP-mode listing to the entry's mtime",
+    ),
+    (
         "providers/twake.rs",
         1,
         "producer: the `updated_at` an upload writes, kept at or after `created_at`",
