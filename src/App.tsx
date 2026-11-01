@@ -11680,7 +11680,7 @@ const App: React.FC = () => {
               progressId: scanProgressId,
             });
             // Both sides are local: local_info = left, remote_info = right.
-            resolved = adaptFileComparisons(report.differences, true, report.summary);
+            resolved = adaptFileComparisons(report.differences, true, report.summary, report.modify_window);
           } catch (err) {
             // Stopped from the dialog, which already shows it as stopped.
             if (isCompareCancelled(err)) return;
@@ -11802,7 +11802,7 @@ const App: React.FC = () => {
             isProviderConn ? 'provider_compare_directories' : 'compare_directories',
             compareArgs,
           );
-          resolved = adaptFileComparisons(report.differences, leftLocal, report.summary);
+          resolved = adaptFileComparisons(report.differences, leftLocal, report.summary, report.modify_window);
         } catch (err) {
           // Stopped from the dialog, which already shows it as stopped.
           if (isCompareCancelled(err)) return;

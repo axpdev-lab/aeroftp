@@ -17,17 +17,19 @@
 //! the full scan decides it behind its safety gate, which knows a remote
 //! folder that vanished as a whole from a few files deleted on purpose.
 
+#[cfg(test)]
+use super::open_aerocloud_provider;
 use super::{
-    open_aerocloud_provider, CloudService, FailedPath, PairCycleError, PairCycleReport,
-    ProviderScanTraits, ScanScope, SkippedEntry, SyncOperationResult,
+    CloudService, FailedPath, PairCycleError, PairCycleReport, ProviderScanTraits, ScanScope,
+    SkippedEntry, SyncOperationResult, UpdatePolicy,
 };
 use crate::cloud_config::{CloudConfig, CloudSyncStatus};
 use crate::credential_store;
 use crate::providers::{ProviderError, RemoteEntry, StorageProvider};
 use crate::sync::{
     build_comparison_results_with_index, decide_sync_action, local_changed_since,
-    normalize_relative_key, save_sync_index, CompareOptions, FileComparison, FileInfo, SyncAction,
-    SyncIndex, SyncIndexEntry, SyncStatus, SYNC_INDEX_VERSION,
+    normalize_relative_key, save_sync_index, CompareDirection, CompareOptions, FileComparison,
+    FileInfo, SyncAction, SyncIndex, SyncIndexEntry, SyncStatus, SYNC_INDEX_VERSION,
 };
 use crate::sync_ignore::AeroIgnore;
 use chrono::{DateTime, Utc};
@@ -92,11 +94,22 @@ pub enum IncrementalPrep {
 
 /// The paths of one incremental pass that need the remote.
 pub struct IncrementalPlan {
+    config_identity: serde_json::Value,
+    root_identity: Option<super::LocalRootIdentity>,
     renames: Vec<PlannedRename>,
     /// Relative key -> the local copy, `None` when it is gone.
     work: BTreeMap<String, Option<FileInfo>>,
     /// The baseline, with the planned renames applied.
     index: SyncIndex,
+}
+
+/// Invalidate prepared work on rule, profile or root changes; scan time is only bookkeeping.
+fn config_identity(config: &CloudConfig) -> Result<serde_json::Value, String> {
+    let mut value = serde_json::to_value(config).map_err(|error| error.to_string())?;
+    if let Some(fields) = value.as_object_mut() {
+        fields.remove("last_sync");
+    }
+    Ok(value)
 }
 
 impl IncrementalPlan {
@@ -359,6 +372,7 @@ fn plan(
             root.display()
         ));
     }
+    let root_identity = super::LocalRootIdentity::read(root);
     let Some(mut index) = index else {
         return Ok(IncrementalPrep::FullScanOnly(
             "the pair has no baseline yet".to_string(),
@@ -399,7 +413,14 @@ fn plan(
         full_scan_wanted = Some("the .aeroignore rules changed".to_string());
     }
 
-    let mut renames = plan_renames(&candidates, &mut index, &mut disk, &scope, config);
+    // A remote rename could replace a newer destination without consulting
+    // its timestamp. One-way Update compares both paths before any write.
+    let mut renames =
+        if config.update_only && config.sync_direction != CompareDirection::Bidirectional {
+            Vec::new()
+        } else {
+            plan_renames(&candidates, &mut index, &mut disk, &scope, config)
+        };
 
     // Every path the changes reach: the changed ones, what a folder that
     // changed holds on disk, and what the baseline holds under it (a folder
@@ -449,6 +470,15 @@ fn plan(
             (Local::File(info), Some(entry))
                 if !entry.is_dir && !changed_since(info, entry, hints.compare_size) => {}
             (Local::Dir(_), Some(entry)) if entry.is_dir => {}
+            (Local::Absent, None)
+                if config.update_only
+                    && config.sync_direction == CompareDirection::LocalToRemote =>
+            {
+                // A remove event can name a file this device never synced.
+                // Stat the destination so it can be kept and reported, never
+                // inferred to be a user-approved delete from the event alone.
+                work.insert(key.clone(), None);
+            }
             (Local::Absent, None) => {}
             (Local::Absent, Some(_)) => {
                 work.insert(key.clone(), None);
@@ -481,8 +511,13 @@ fn plan(
     if work.is_empty() && renames.is_empty() {
         return Ok(IncrementalPrep::Settled { full_scan_wanted });
     }
+    if root_identity != super::LocalRootIdentity::read(root) {
+        return Err("AeroCloud local root changed during watcher preparation; discard plan".into());
+    }
     Ok(IncrementalPrep::Work {
         plan: Box::new(IncrementalPlan {
+            config_identity: config_identity(config)?,
+            root_identity,
             renames,
             work,
             index,
@@ -605,7 +640,7 @@ fn plan_renames(
 /// for another reason than absence is settled by `exists`, the way the full
 /// sync settles a failed `cd` of its folder; one that cannot answer either
 /// is an error, never an absence.
-async fn remote_state<P: StorageProvider + ?Sized>(
+pub(super) async fn remote_state<P: StorageProvider + ?Sized>(
     provider: &mut P,
     path: &str,
 ) -> Result<Option<RemoteEntry>, String> {
@@ -638,8 +673,17 @@ fn remote_info(key: &str, path: &str, entry: &RemoteEntry) -> FileInfo {
 
 /// Whether the local folder holds nothing, or is gone: a pass that would
 /// propagate deletes from such a folder trips the safety gate.
-fn local_root_is_empty(root: &Path) -> bool {
+pub(super) fn local_root_is_empty(root: &Path) -> bool {
     std::fs::read_dir(root).map_or(true, |mut entries| entries.next().is_none())
+}
+
+/// Distinguish confirmed absence from an unreadable path or a parent link.
+pub(super) fn local_source_is_absent(root: &Path, key: &str) -> Result<bool, String> {
+    match Disk::new(root).entry(key) {
+        Local::Absent => Ok(true),
+        Local::File(_) | Local::Dir(_) => Ok(false),
+        Local::Skipped => Err("source path cannot be safely inspected; deletion refused".into()),
+    }
 }
 
 /// How an executed pass ended.
@@ -682,11 +726,27 @@ impl CloudService {
         if !config.enabled {
             return Err("AeroCloud is not enabled".to_string());
         }
+        if config_identity(&config)? != plan.config_identity {
+            return Err("AeroCloud configuration changed after watcher preparation; discard plan and run a full scan".into());
+        }
+        // A watcher plan can outlive the mounted/renamed local root. Refuse
+        // before any remote rename or write, rather than interpreting its
+        // disappearance as a batch of user deletes.
+        if !config.local_folder.is_dir() {
+            return Err("AeroCloud local folder is unavailable; incremental sync refused".into());
+        }
+        if plan.root_identity != super::LocalRootIdentity::read(&config.local_folder) {
+            return Err(
+                "AeroCloud local root changed after watcher preparation; discard plan".into(),
+            );
+        }
         let start = std::time::Instant::now();
         let IncrementalPlan {
             renames,
             mut work,
             mut index,
+            root_identity,
+            ..
         } = *plan;
         let local_str = config.local_folder.to_string_lossy().to_string();
         let remote_root = config.remote_folder.trim_end_matches('/').to_string();
@@ -763,6 +823,7 @@ impl CloudService {
                     path: key.clone(),
                     reason: "this path has an ambiguous or occupied remote spelling; it waits for the next full scan".to_string(),
                     is_dir: local.as_ref().is_some_and(|info| info.is_dir),
+                    needs_review: false,
                 });
                 continue;
             };
@@ -844,7 +905,11 @@ impl CloudService {
                 comparison.remote_relative_path = Some(remote.clone());
             }
         }
-        if !provider.listing_is_authoritative() {
+        self.remember_cloud_receipts(Some(&index));
+        self.apply_cloud_authority(&config, &mut comparisons);
+        if !provider.listing_is_authoritative()
+            && !(config.update_only && config.sync_direction != CompareDirection::Bidirectional)
+        {
             for c in &mut comparisons {
                 if c.status == SyncStatus::LocalOnly {
                     c.previously_synced = false;
@@ -852,26 +917,64 @@ impl CloudService {
             }
         }
 
+        let mut update_policy = UpdatePolicy {
+            window: options.modify_window,
+            root_identity,
+            // This bounded pass stats only changed paths, not the entire
+            // destination. Missing remote copies are deferred to a full scan
+            // below. Unknown remove events are inspected only to report a
+            // never-synced destination file; deletion still needs a baseline.
+            // A failed stat stays out of the comparisons altogether.
+            allow_orphan_deletes: config.sync_direction == CompareDirection::LocalToRemote
+                && if config.update_only {
+                    match CloudService::local_source_has_syncable_file(&config) {
+                        Ok(found) => found,
+                        Err(error) => {
+                            result.errors.push(format!("Update orphan deletes disabled: cannot inspect local source: {error}"));
+                            false
+                        }
+                    }
+                } else {
+                    !local_root_is_empty(&config.local_folder)
+                },
+        };
+
         // A local file whose remote copy is gone reads as deleted on the
         // remote: a remote change, left to the full scan and its gate.
-        let (deferred, mut comparisons): (Vec<FileComparison>, Vec<FileComparison>) = comparisons
-            .into_iter()
-            .partition(|c| self.resolve_action(&config, c) == SyncAction::DeleteLocal);
+        let (deferred, mut comparisons): (Vec<FileComparison>, Vec<FileComparison>) =
+            comparisons.into_iter().partition(|c| {
+                self.resolve_action(&config, c, update_policy) == SyncAction::DeleteLocal
+            });
         for c in &deferred {
             result.skipped += 1;
             result.skipped_details.push(SkippedEntry {
                 path: c.relative_path.clone(),
                 reason: "the remote copy is gone; deletes from the remote side wait for the next full scan".to_string(),
                 is_dir: c.is_dir,
+                needs_review: false,
             });
         }
 
         // The full sync's gate, on what this pass can see: the baseline, the
         // local folder, and the deletes it would propagate.
         let prior_count = index.files.len();
-        let pending_deletes = self.count_pending_deletes(&config, &comparisons);
+        let pending_deletes = self.count_pending_deletes(&config, &comparisons, update_policy);
+        // A bounded watcher pass has no complete destination count. A batch
+        // that could trip the destination-relative gate needs the full scan;
+        // when that scan is rate-limited, keep its deletes until it is allowed.
+        if config.update_only
+            && config.sync_direction != CompareDirection::Bidirectional
+            && Self::update_delete_safety_trips(pending_deletes, pending_deletes)
+        {
+            if work_limit.is_some() {
+                return Ok((IncrementalRun::TooLarge(result), index));
+            }
+            update_policy.allow_orphan_deletes = false;
+            result.errors.push("Update deletes deferred: a full destination scan is required to evaluate the mass-delete limit".into());
+        }
         let local_empty = local_root_is_empty(&config.local_folder);
         if Self::delete_safety_trips(prior_count, local_empty, false, pending_deletes, false) {
+            update_policy.allow_orphan_deletes = false;
             tracing::warn!(
                 "AeroCloud safety gate (incremental): {} pending deletes vs {} baselined (local folder empty: {}). Disabling delete propagation this pass to prevent accidental wipe.",
                 pending_deletes,
@@ -879,7 +982,9 @@ impl CloudService {
                 local_empty
             );
             for c in &mut comparisons {
-                if c.status == SyncStatus::LocalOnly || c.status == SyncStatus::RemoteOnly {
+                if !(config.update_only && config.sync_direction != CompareDirection::Bidirectional)
+                    && (c.status == SyncStatus::LocalOnly || c.status == SyncStatus::RemoteOnly)
+                {
                     c.previously_synced = false;
                 }
             }
@@ -887,7 +992,7 @@ impl CloudService {
 
         let total = comparisons.len();
         let mut done = Vec::with_capacity(total);
-        let mut ahead = super::bulk::BulkAhead::default();
+        let mut ahead = super::bulk::BulkAhead::new(update_policy);
         for (i, comparison) in comparisons.iter().enumerate() {
             self.set_status(CloudSyncStatus::Syncing {
                 current_file: comparison.relative_path.clone(),
@@ -906,7 +1011,7 @@ impl CloudService {
                     done.push(comparison.clone());
                 }
                 Ok(action) => {
-                    Self::record_sync_action(&mut result, comparison, &action);
+                    self.record_sync_action(&mut result, &config, comparison, &action);
                     done.push(comparison.clone());
                 }
                 Err(e) => {
@@ -927,12 +1032,19 @@ impl CloudService {
             }
         }
 
-        let mut files = self.post_sync_baseline(&done, &config, Some(&index));
+        let mut files = self.post_sync_baseline(&done, &config, Some(&index), update_policy);
         for key in gone_on_both {
             files.remove(&key);
         }
         let remote_spellings =
             crate::sync::spellings_after_baseline(&done, Some(&index.remote_spellings), &files);
+        let cloud_receipts = self.receipts_after(
+            &done,
+            &config,
+            Some(&index),
+            &files,
+            update_policy.root_identity,
+        );
         let saved = SyncIndex {
             profile_id: config.server_profile_id.clone(),
             version: SYNC_INDEX_VERSION,
@@ -941,14 +1053,15 @@ impl CloudService {
             remote_path: config.remote_folder.clone(),
             files,
             remote_spellings,
+            cloud_receipts,
+            cloud_remote_metadata: self
+                .retain_remote_observations(index.cloud_remote_metadata.clone(), &comparisons),
             unverified_keys: Default::default(),
         };
 
         result.duration_secs = start.elapsed().as_secs();
         for path in self.take_unsettled() {
-            result.errors.push(format!(
-                "{path}: it kept changing while it uploaded; the next cycle reads it as a conflict, asked about under PreferNewer or PreferRemote until one cycle runs under PreferLocal (sends the local copy) or KeepBoth"
-            ));
+            result.errors.push(Self::unsettled_message(&config, &path));
         }
         if result.conflicts > 0 {
             self.set_status(CloudSyncStatus::HasConflicts {
@@ -971,7 +1084,10 @@ impl CloudService {
             .await;
         }
         if let Some(app) = &self.app_handle {
-            let _ = app.emit("cloud_sync_complete", &result);
+            let _ = app.emit(
+                "cloud_sync_complete",
+                Self::completion_payload(&config, &result, false),
+            );
         }
         Ok((IncrementalRun::Done(result, failed), saved))
     }
@@ -1025,11 +1141,13 @@ pub async fn run_pair_incremental_cycle(
     plan: Box<IncrementalPlan>,
     full_scan_allowed: bool,
 ) -> Result<PairCycleReport, PairCycleError> {
-    let mut provider = open_aerocloud_provider(&config, store)
+    let opened = super::open_aerocloud_connection(&config, store)
         .await
         .map_err(PairCycleError::before_connecting)?;
+    let mut provider = opened.provider;
     let traits = ProviderScanTraits::of(&*provider);
     let mut svc = CloudService::new();
+    svc.connection_identity = Some(opened.identity);
     if let Some(handle) = app {
         svc.set_app_handle(handle);
     }

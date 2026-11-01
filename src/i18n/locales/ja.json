@@ -1589,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud 有効",
             "selectPairLocalFolder": "ペアのローカルフォルダーを選択",
             "secondsAgo": "{count}秒前",
-            "conflictsCount": "{count} 件の競合に対応が必要"
+            "conflictsCount": "{count} 件の競合に対応が必要",
+            "updateOnlyHint": "一方向更新ではコピー先の新しいファイルを保持します。追加バックアップがオフの場合、コピー先にのみ存在し、変更されておらず、検証済みのAeroCloud転送証明があるファイルだけを削除します。その他のファイルはAeroSyncで確認できるよう保持します。競合ポリシーは無視され、日時が不明な場合は未解決のままになります。",
+            "untrackedDestinationFiles": "コピー先の{count}個のファイルを確認用に保持しました。転送履歴が未確認か、最後のAeroCloud転送後に変更されています。削除を決める前に、AeroSyncで確認してください。"
         },
         "statusBar": {
             "connected": "接続済み",
@@ -6344,7 +6346,10 @@
             "progressCopy": "[コピー]",
             "deleteCount": "{count} 件を削除予定",
             "overwriteCount": "{count} 件を上書き予定",
-            "conflictCount": "{count} 件の競合"
+            "conflictCount": "{count} 件の競合",
+            "updateOnly": "コピー先の新しいファイルをスキップ（一方向更新）",
+            "updateOnlyHint": "不足しているまたは変更されたソースファイルをコピーし、宛先のより新しいファイルを保持して、宛先にのみ存在するエントリを削除します。日付を比較できないファイルはサイズで比較し、サイズの差異はレビュー用に残します。",
+            "rescanNeeded": "更新スクリプトをエクスポートする前に、現在の設定で新しい比較を実行してください。"
         },
         "accountLock": {
             "title": "アカウントを選択",
