@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { ProviderOptions } from '../types';
-import { scpFallbackAllowed, scpFallbackConnectParam, withScpFallback } from './scpFallback';
+import { connectionProtocolLabel, scpFallbackAllowed, scpFallbackConnectParam, withScpFallback } from './scpFallback';
 
 describe('SFTP with SCP fallback', () => {
     it('is on for a profile that never touched the option', () => {
@@ -39,5 +39,15 @@ describe('SFTP with SCP fallback', () => {
         // A saved profile goes through JSON: what is stored reads back the same.
         expect(scpFallbackAllowed(JSON.parse(JSON.stringify(off)))).toBe(false);
         expect(scpFallbackAllowed(JSON.parse(JSON.stringify(on)))).toBe(true);
+    });
+
+    it('names SCP only for an SFTP connection that went on over SCP', () => {
+        expect(connectionProtocolLabel('sftp', true)).toBe('scp');
+        expect(connectionProtocolLabel('sftp', false)).toBe('sftp');
+        // No other protocol has the fallback, whatever the flag says.
+        for (const protocol of ['ftp', 'ftps', 'scp', 'webdav', 's3']) {
+            expect(connectionProtocolLabel(protocol, true)).toBe(protocol);
+        }
+        expect(connectionProtocolLabel(undefined, true)).toBeUndefined();
     });
 });
