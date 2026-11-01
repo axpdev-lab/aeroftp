@@ -23,6 +23,7 @@ use tokio::sync::{mpsc, oneshot, Mutex as TokioMutex, Semaphore};
 use super::codec::{self, Control, Reply};
 use super::listing::{self, Entry};
 use crate::providers::shell_quote::{shell_quote, shell_quote_bytes};
+use crate::providers::types::is_session_closed_error_message;
 use crate::providers::ProviderError;
 use crate::ssh_exec::{ssh_exec, ExecSession};
 
@@ -343,11 +344,53 @@ where
             .acquire_owned()
             .await
             .map_err(|_| ProviderError::NotConnected)?;
-        let mut exec = ssh_exec(self.handle.clone(), command)
-            .await
-            .map_err(ProviderError::ConnectionFailed)?;
+        self.exec_in(place, command).await
+    }
+
+    /// [`exec`](Self::exec) in a place already taken.
+    async fn exec_in(
+        &self,
+        place: tokio::sync::OwnedSemaphorePermit,
+        command: &[u8],
+    ) -> Result<ExecSession, ProviderError> {
+        let mut exec = match ssh_exec(self.handle.clone(), command).await {
+            Ok(exec) => exec,
+            // A connection the server ended (an idle timeout, a restart) is
+            // lost, so a caller may dial again; a channel refused on a live
+            // connection is not.
+            Err(e)
+                if self.handle.lock().await.is_closed() || is_session_closed_error_message(&e) =>
+            {
+                return Err(ProviderError::ConnectionLost(e))
+            }
+            Err(e) => return Err(ProviderError::ConnectionFailed(e)),
+        };
         exec.hold_until_closed(place);
         Ok(exec)
+    }
+
+    /// Whether the connection still answers, with a `:` on a channel of its
+    /// own. When all [`CHANNELS_PER_CONNECTION`] are taken the connection is
+    /// carrying commands, which is its traffic: the tick is skipped rather
+    /// than queued behind them, so a keepalive never waits for a transfer.
+    pub async fn keep_alive(&self) -> Result<(), ProviderError> {
+        if self.handle.lock().await.is_closed() {
+            return Err(ProviderError::ConnectionLost(
+                "the SSH connection has ended".to_string(),
+            ));
+        }
+        let Ok(place) = self.channels.clone().try_acquire_owned() else {
+            return Ok(());
+        };
+        let exec = self.exec_in(place, b":").await?;
+        let out = self.collect(exec).await?;
+        if out.status != 0 {
+            return Err(ProviderError::ConnectionLost(format!(
+                "exit status {}",
+                out.status
+            )));
+        }
+        Ok(())
     }
 
     /// Run `command` under `LC_ALL=C` and collect its output. A command that
@@ -437,13 +480,29 @@ where
         let (ls_out, find_out) = (&out.stdout[..split], &out.stdout[split + 1..]);
         let mut merged = listing::merge(find_out, ls_out);
         if !merged.unresolved.is_empty() {
-            let script = listing::resolve_script(target.as_bytes(), &merged.unresolved)?;
-            let out = self.run(&script).await?;
-            merged
-                .entries
-                .extend(listing::parse_resolved(&merged.unresolved, &out.stdout));
+            let resolved = self
+                .resolve("list", dir, target.as_bytes(), &merged.unresolved, false)
+                .await?;
+            merged.entries.extend(resolved);
         }
         Ok(merged.entries)
+    }
+
+    /// The metadata of each of `names` in `dir`, symlinks followed with
+    /// `follow`, from one [`listing::resolve_script`]. A name not there is
+    /// left out; one the server could not read fails the whole call, except
+    /// with `follow`, where a target that cannot be read is left out too.
+    pub async fn resolve(
+        &self,
+        what: &str,
+        shown: &str,
+        dir: &[u8],
+        names: &[Vec<u8>],
+        follow: bool,
+    ) -> Result<Vec<Entry>, ProviderError> {
+        let script = listing::resolve_script(dir, names, follow)?;
+        let out = self.run_ok(what, shown, &script).await?;
+        Ok(listing::parse_resolved(names, &out.stdout))
     }
 
     /// The metadata of `path` itself (a symlink is not followed).
@@ -703,7 +762,8 @@ where
     /// followed), in batches
     /// that keep one command well under the 128 KiB a single argument may
     /// take: the shell gets the whole script as one. A path gone in the
-    /// meantime is left out.
+    /// meantime is left out; one the server could not read is an error, so a
+    /// search never comes back short without saying so.
     pub async fn stat_many(&self, paths: &[Vec<u8>]) -> Result<Vec<Entry>, ProviderError> {
         const BUDGET: usize = 64 * 1024;
         let mut entries = Vec::with_capacity(paths.len());
@@ -722,8 +782,9 @@ where
                 .iter()
                 .map(|p| p.strip_prefix(b"/").unwrap_or(p).to_vec())
                 .collect();
-            let script = listing::resolve_script(b"/", &relative)?;
-            let out = self.run(&script).await?;
+            let script = listing::resolve_script(b"/", &relative, false)?;
+            let shown = String::from_utf8_lossy(&batch[0]).into_owned();
+            let out = self.run_ok("stat", &shown, &script).await?;
             entries.extend(listing::parse_resolved(batch, &out.stdout));
             start = end;
         }

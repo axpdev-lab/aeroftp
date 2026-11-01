@@ -66,6 +66,26 @@ fn on_router(script: &str, stdin: &[u8]) {
     assert!(child.wait().unwrap().success(), "on the router: {script}");
 }
 
+/// Puts the router back to its stock login (root with no password, no
+/// authorized key) when dropped, failed test included: Dropbear refuses
+/// `none` once root has a password, so a rerun on the same container would
+/// stop at its first connect.
+struct StockLogin;
+
+impl Drop for StockLogin {
+    fn drop(&mut self) {
+        let _ = Command::new("docker")
+            .args([
+                "exec",
+                &container(),
+                "sh",
+                "-c",
+                "passwd -d root >/dev/null 2>&1; rm -f /etc/dropbear/authorized_keys",
+            ])
+            .status();
+    }
+}
+
 fn sftp_config(password: Option<&str>, key: Option<&Path>) -> SftpConfig {
     SftpConfig {
         host: "127.0.0.1".to_string(),
@@ -319,6 +339,7 @@ async fn stock_openwrt_is_reached_over_scp_with_its_defaults() {
     scp.disconnect().await.unwrap();
 
     // A root password and an authorized key, as a configured router has.
+    let _stock = StockLogin;
     let key =
         russh::keys::PrivateKey::random(&mut rand_010::rng(), russh::keys::Algorithm::Ed25519)
             .unwrap();

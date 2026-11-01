@@ -808,6 +808,10 @@ enum SessionEventKind {
     /// An SFTP connection whose server has no SFTP went on over SCP; the
     /// detail is the host.
     ScpMode,
+    /// What an SFTP connection runs on after a silent reconnect, `scp` or
+    /// `sftp`: the reconnect asks for SFTP again, so a session can change
+    /// either way.
+    SshTransport,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -849,6 +853,15 @@ async fn try_silent_reconnect(
     provider.connect().await.inspect_err(|e| {
         emit_session_event(app, SessionEventKind::ReconnectFailed, e.to_string());
     })?;
+    if provider.provider_type() == ProviderType::Sftp {
+        let transport = if crate::providers::sftp::SftpProvider::went_on_over_scp(provider.as_mut())
+        {
+            "scp"
+        } else {
+            "sftp"
+        };
+        emit_session_event(app, SessionEventKind::SshTransport, transport);
+    }
 
     // Best-effort cwd restore. Failure here is not fatal: the caller's
     // retry will hit the right error if the path is genuinely gone.
@@ -1768,11 +1781,7 @@ async fn provider_connect_inner(
 
     let display_name = provider.display_name();
     let mut protocol = format!("{:?}", provider.provider_type());
-    if provider
-        .as_any_mut()
-        .downcast_mut::<crate::providers::sftp::SftpProvider>()
-        .is_some_and(|sftp| sftp.in_scp_mode())
-    {
+    if crate::providers::sftp::SftpProvider::went_on_over_scp(provider.as_mut()) {
         protocol = "Scp (the server has no SFTP)".to_string();
         emit_session_event(&app, SessionEventKind::ScpMode, params.server.clone());
     }
@@ -14233,6 +14242,18 @@ pub(crate) fn bound_compare_rows(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn session_event_kinds_keep_the_names_the_app_listens_for() {
+        // `App.tsx` and `wentOnOverScpAfter` match on these strings.
+        for (kind, wire) in [
+            (SessionEventKind::ScpMode, "scp-mode"),
+            (SessionEventKind::SshTransport, "ssh-transport"),
+            (SessionEventKind::Reconnected, "reconnected"),
+        ] {
+            assert_eq!(serde_json::to_value(kind).unwrap(), wire);
+        }
+    }
 
     #[test]
     fn compare_inventory_retains_shared_and_remote_only_empty_folders() {

@@ -1116,6 +1116,9 @@ pub struct SftpConnectionSpec {
     /// re-dials verify the new connection's key against this (defense in
     /// depth on top of `known_hosts`), same posture as the U-02 rsync pin.
     pub pinned_host_key_sha256: Option<String>,
+    /// The profile's SCP fallback choice: a worker whose server refuses the
+    /// subsystem goes on over SCP only if the primary was allowed to.
+    pub scp_fallback: bool,
 }
 
 impl SftpConnectionSpec {
@@ -1477,6 +1480,16 @@ impl SftpProvider {
     /// SFTP.
     pub fn in_scp_mode(&self) -> bool {
         self.scp.is_some()
+    }
+
+    /// Whether `provider` is an SFTP connection that went on over SCP,
+    /// looking through an AeroCrypt overlay: the overlay answers
+    /// `as_any_mut` for itself, so a direct downcast misses the SFTP below.
+    pub fn went_on_over_scp(provider: &mut dyn StorageProvider) -> bool {
+        crate::crypt_overlay_provider::concrete_provider_mut(provider)
+            .as_any_mut()
+            .downcast_mut::<SftpProvider>()
+            .is_some_and(|sftp| sftp.in_scp_mode())
     }
 
     /// The server gave no SFTP after a verified host key and an accepted
@@ -2745,7 +2758,22 @@ impl StorageProvider for SftpProvider {
         let wait = std::time::Duration::from_secs(self.config.timeout_secs.max(1));
         let opened = match request_sftp_subsystem(&mut channel, wait).await? {
             Ok(()) => SftpChannel::open(channel.into_stream()).await,
-            Err(no_sftp) => Err(SftpOpenError::NoSftp(no_sftp)),
+            // The channel ended because the whole connection did: that is a
+            // dropped connection, not a server without SFTP.
+            Err(NoSftp::Ended) if handle.is_closed() => {
+                return Err(ProviderError::ConnectionLost(
+                    "the SSH connection ended while the server was asked for SFTP".to_string(),
+                ));
+            }
+            Err(no_sftp) => {
+                // A refused channel stays open on the server until it is
+                // closed, and a server with one session per connection
+                // (`MaxSessions 1`) would refuse the SCP channel beside it.
+                // Dropping it closes nothing: only `into_stream` closes on
+                // drop.
+                let _ = channel.close().await;
+                Err(SftpOpenError::NoSftp(no_sftp))
+            }
         };
         let handle = Arc::new(TokioMutex::new(handle));
         match opened {
@@ -2801,6 +2829,7 @@ impl StorageProvider for SftpProvider {
             initial_path: self.config.initial_path.clone(),
             timeout_secs: self.config.timeout_secs,
             pinned_host_key_sha256: self.host_key_sha256_hex.get().cloned().or(prior_pin),
+            scp_fallback: self.scp_fallback,
         });
 
         tracing::info!(
@@ -4830,6 +4859,7 @@ impl StorageProvider for SftpProvider {
         worker.multi_thread_streams = self.multi_thread_streams;
         worker.multi_thread_cutoff = self.multi_thread_cutoff;
         worker.sftp_readahead = self.sftp_readahead;
+        worker.scp_fallback = self.scp_fallback;
         Ok(Box::new(worker))
     }
 
@@ -6408,6 +6438,7 @@ async fn sftp_download_one_range(
     worker.home_dir = home_dir;
     worker.buffer_size = buffer_size;
     worker.compression_enabled = compression_enabled;
+    worker.scp_fallback = spec.scp_fallback;
     worker.connection_spec = Some(spec);
     worker
         .ensure_connected()
@@ -7029,6 +7060,7 @@ mod tests {
             initial_path: None,
             timeout_secs: 30,
             pinned_host_key_sha256: None,
+            scp_fallback: true,
         });
         assert_eq!(
             provider.list_executor_kind(),

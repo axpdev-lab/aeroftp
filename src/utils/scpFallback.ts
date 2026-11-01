@@ -38,3 +38,15 @@ export const scpFallbackConnectParam = (
  */
 export const connectionProtocolLabel = (protocol: string | undefined, wentOnOverScp: boolean): string | undefined =>
     protocol === 'sftp' && wentOnOverScp ? 'scp' : protocol;
+
+/**
+ * Whether the live SFTP connection runs over SCP after a `provider-session`
+ * event. `scp-mode` comes from a full connect; `ssh-transport` from a silent
+ * reconnect, which asks for SFTP again and so can land on either. Any other
+ * event leaves it as it was.
+ */
+export const wentOnOverScpAfter = (kind: string | undefined, detail: string | undefined, current: boolean): boolean => {
+    if (kind === 'scp-mode') return true;
+    if (kind === 'ssh-transport') return detail === 'scp';
+    return current;
+};

@@ -13102,6 +13102,24 @@ fn local_target_to_provider_config(
     Ok((config, path))
 }
 
+/// The SSH flags (`--key`, `--key-passphrase`, `--trust-host-key`,
+/// `--no-scp-fallback`) as connection extras, the same for a URL and for a
+/// saved profile.
+fn apply_cli_ssh_extras(cli: &Cli, extra: &mut HashMap<String, String>) {
+    if let Some(ref key) = cli.key {
+        extra.insert("private_key_path".to_string(), key.clone());
+    }
+    if let Some(ref kp) = cli.key_passphrase {
+        extra.insert("key_passphrase".to_string(), kp.clone());
+    }
+    if cli.trust_host_key {
+        extra.insert("trust_unknown_hosts".to_string(), "true".to_string());
+    }
+    if cli.no_scp_fallback {
+        extra.insert("allow_scp_fallback".to_string(), "false".to_string());
+    }
+}
+
 fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, String), String> {
     if let Some(target) = local_path_target(url) {
         return local_target_to_provider_config(target?);
@@ -13271,7 +13289,12 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
             if url_obj.path().is_empty() || url_obj.path() == "/" {
                 "/".to_string()
             } else {
-                url_obj.path().to_string()
+                // The path as the server names it: `url::Url` keeps it
+                // percent-encoded (a space typed in is already `%20`), and
+                // the app's Copy URL encodes each segment.
+                urlencoding::decode(url_obj.path())
+                    .map(|p| p.into_owned())
+                    .unwrap_or_else(|_| url_obj.path().to_string())
             }
         }
     };
@@ -13320,18 +13343,7 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
     let mut extra = HashMap::new();
 
     // SFTP
-    if let Some(ref key) = cli.key {
-        extra.insert("private_key_path".to_string(), key.clone());
-    }
-    if let Some(ref kp) = cli.key_passphrase {
-        extra.insert("key_passphrase".to_string(), kp.clone());
-    }
-    if cli.trust_host_key {
-        extra.insert("trust_unknown_hosts".to_string(), "true".to_string());
-    }
-    if cli.no_scp_fallback {
-        extra.insert("allow_scp_fallback".to_string(), "false".to_string());
-    }
+    apply_cli_ssh_extras(cli, &mut extra);
 
     // Warn about secrets on command line (visible in process list)
     if cli.token.is_some() && std::env::var("AEROFTP_TOKEN").is_err() && !cli.quiet {
@@ -30314,7 +30326,11 @@ async fn cmd_agent_connect(cli: &Cli, query: &str) -> i32 {
         return 2;
     }
 
-    let payload = ftp_client_gui_lib::agent_session::build_agent_connect_payload(query).await;
+    let payload = ftp_client_gui_lib::agent_session::build_agent_connect_payload_with(
+        query,
+        cli.no_scp_fallback,
+    )
+    .await;
     println!(
         "{}",
         serde_json::to_string_pretty(&payload).unwrap_or_default()
@@ -31307,18 +31323,7 @@ fn profile_value_to_provider_config(
     }
 
     // CLI overrides take precedence
-    if let Some(ref key) = cli.key {
-        extra.insert("private_key_path".to_string(), key.clone());
-    }
-    if let Some(ref kp) = cli.key_passphrase {
-        extra.insert("key_passphrase".to_string(), kp.clone());
-    }
-    if cli.trust_host_key {
-        extra.insert("trust_unknown_hosts".to_string(), "true".to_string());
-    }
-    if cli.no_scp_fallback {
-        extra.insert("allow_scp_fallback".to_string(), "false".to_string());
-    }
+    apply_cli_ssh_extras(cli, &mut extra);
     if let Some(ref tls) = cli.tls {
         extra.insert("tls_mode".to_string(), tls.clone());
     }
@@ -31994,10 +31999,7 @@ async fn connect_with_base_path(
     // A server with no SFTP went on over SCP: said once, on stderr, where it
     // mixes with no listing and no JSON.
     if !cli.quiet
-        && provider
-            .as_any_mut()
-            .downcast_mut::<ftp_client_gui_lib::providers::sftp::SftpProvider>()
-            .is_some_and(|sftp| sftp.in_scp_mode())
+        && ftp_client_gui_lib::providers::sftp::SftpProvider::went_on_over_scp(provider.as_mut())
     {
         eprintln!(
             "Note: {} has no SFTP; connected with SCP on the same connection.",
@@ -35437,10 +35439,8 @@ async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
     let elapsed = start.elapsed();
     let server_info = provider.server_info().await.ok();
     let pt = provider.provider_type();
-    let scp_fallback = provider
-        .as_any_mut()
-        .downcast_mut::<ftp_client_gui_lib::providers::sftp::SftpProvider>()
-        .is_some_and(|sftp| sftp.in_scp_mode());
+    let scp_fallback =
+        ftp_client_gui_lib::providers::sftp::SftpProvider::went_on_over_scp(provider.as_mut());
 
     if let Some(sp) = spinner {
         sp.finish_and_clear();
@@ -85507,6 +85507,30 @@ mod tests {
     /// file; a path that does not exist is a usage error, not a connection
     /// to an empty folder.
     #[test]
+    fn no_scp_fallback_reaches_the_config_of_a_url_and_of_a_profile() {
+        let mut cli = test_cli();
+        let (config, _) = url_to_provider_config("sftp://root@192.0.2.1/", &cli).unwrap();
+        assert!(!config.extra.contains_key("allow_scp_fallback"));
+        let mut extra = HashMap::new();
+        apply_cli_ssh_extras(&cli, &mut extra);
+        assert!(!extra.contains_key("allow_scp_fallback"));
+
+        cli.no_scp_fallback = true;
+        let (config, _) = url_to_provider_config("sftp://root@192.0.2.1/", &cli).unwrap();
+        assert_eq!(
+            config.extra.get("allow_scp_fallback").map(String::as_str),
+            Some("false")
+        );
+        // A saved profile takes its extras from the same function.
+        let mut extra = HashMap::new();
+        apply_cli_ssh_extras(&cli, &mut extra);
+        assert_eq!(
+            extra.get("allow_scp_fallback").map(String::as_str),
+            Some("false")
+        );
+    }
+
+    #[test]
     fn a_local_folder_resolves_to_a_local_remote() {
         let cli = test_cli();
         let dir = tempfile::tempdir().unwrap();
@@ -85663,6 +85687,26 @@ mod tests {
         assert_eq!(config.port, Some(2222));
         assert_eq!(config.username.as_deref(), Some("admin"));
         assert_eq!(path, "/home");
+    }
+
+    #[test]
+    fn a_url_path_is_read_back_as_the_name_it_encodes() {
+        let cli = test_cli();
+        // What the app's Copy URL writes for "/srv/a dir/what? #1 100%.txt".
+        let (config, path) = url_to_provider_config(
+            "scp://me%40corp@host/srv/a%20dir/what%3F%20%231%20100%25.txt",
+            &cli,
+        )
+        .unwrap();
+        assert_eq!(config.username.as_deref(), Some("me@corp"));
+        assert_eq!(path, "/srv/a dir");
+        assert_eq!(
+            config.extra.get("url_target").map(String::as_str),
+            Some("/srv/a dir/what? #1 100%.txt")
+        );
+        // A space typed in is encoded by the parse and decoded back.
+        let (_, path) = url_to_provider_config("sftp://u@host/home/my files/", &cli).unwrap();
+        assert_eq!(path, "/home/my files/");
     }
 
     #[test]

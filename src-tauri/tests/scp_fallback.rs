@@ -78,6 +78,7 @@ impl Fixture {
             key: None,
             host_key: ed25519(),
             restricted: None,
+            sftp_after_first: None,
         }
     }
 }
@@ -190,6 +191,113 @@ async fn exercise(p: &mut dyn StorageProvider, fx: &Fixture) {
         !remote.join("pwned").exists() && !fx.root.join("pwned").exists(),
         "a name ran as a command"
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_refused_sftp_channel_is_closed_before_scp_starts() {
+    let fx = Fixture::new("fallback-close-refused");
+    let (port, seen) = start(fx.options(Sftp::Refuse)).await;
+    let mut p = SftpProvider::new(config(port, &fx.remote()));
+    timed_connect(&mut p).await.0.expect("connect");
+    assert!(p.in_scp_mode());
+    // The refused channel is the one the client closed: every command since
+    // ended and was closed by the server. A server with one session per
+    // connection could not open the SCP channel beside it.
+    assert_eq!(seen.closes(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_connection_dropped_while_asking_for_sftp_is_not_a_server_without_it() {
+    let fx = Fixture::new("fallback-dropped-asking");
+    let (port, seen) = start(fx.options(Sftp::DropConnection)).await;
+    let mut p = SftpProvider::new(config(port, &fx.remote()));
+    let err = timed_connect(&mut p)
+        .await
+        .0
+        .expect_err("the connection went away");
+    assert!(matches!(err, ProviderError::ConnectionLost(_)), "{err:?}");
+    assert!(!p.in_scp_mode());
+    assert_eq!(seen.execs(), 0, "SCP was tried: {err}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_connection_the_server_dropped_is_lost_not_failed() {
+    let fx = Fixture::new("scp-dropped");
+    let (port, seen) = start(fx.options(Sftp::Serve)).await;
+    let mut profile = scp_profile(port, &fx.remote(), &[]);
+    profile.password = Some(PASSWORD.to_string());
+    let mut p = ProviderFactory::create(&profile).expect("factory");
+    timed_connect(p.as_mut()).await.0.expect("connect");
+    p.list(".").await.expect("a live listing");
+
+    // As a server that ends an idle session: what comes next is a lost
+    // connection, which the GUI answers by dialling again in place.
+    seen.drop_connections().await;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let err = loop {
+        match p.list(".").await {
+            Err(e) => break e,
+            Ok(_) if Instant::now() < deadline => {
+                tokio::time::sleep(Duration::from_millis(20)).await
+            }
+            Ok(_) => panic!("the dropped connection still lists"),
+        }
+    };
+    assert!(matches!(err, ProviderError::ConnectionLost(_)), "{err:?}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_transfer_worker_keeps_the_profiles_scp_fallback_choice() {
+    let fx = Fixture::new("fallback-worker-off");
+    let mut options = fx.options(Sftp::Serve);
+    options.sftp_after_first = Some(Sftp::Refuse);
+    let (port, seen) = start(options).await;
+    let mut p = SftpProvider::new(config(port, &fx.remote()));
+    p.set_scp_fallback(false);
+    timed_connect(&mut p)
+        .await
+        .0
+        .expect("the first connection has SFTP");
+    assert!(!p.in_scp_mode());
+
+    // The worker's server has no SFTP now: with the fallback off, it stops
+    // there instead of going on over SCP.
+    let mut worker = p.clone_for_transfer().expect("a worker");
+    let err = worker
+        .connect()
+        .await
+        .expect_err("no SFTP, and no fallback");
+    assert!(!SftpProvider::went_on_over_scp(worker.as_mut()), "{err}");
+    assert_eq!(seen.connections(), 2);
+    assert_eq!(seen.execs(), 0, "a worker ran a command: {err}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn scp_mode_is_seen_through_an_aerocrypt_overlay() {
+    use ftp_client_gui_lib::aerocrypt::overlay;
+    use ftp_client_gui_lib::crypt_overlay_provider::{CryptOverlayProvider, OverlayKeys};
+
+    let fx = Fixture::new("fallback-overlay");
+    let (port, _) = start(fx.options(Sftp::Refuse)).await;
+    let mut p = SftpProvider::new(config(port, &fx.remote()));
+    timed_connect(&mut p).await.0.expect("connect");
+    let salt = overlay::random_salt_v3();
+    let master_key =
+        overlay::derive_master_key(&overlay::OverlayConfig::v3_bootstrap(salt), "pass").unwrap();
+    let config =
+        overlay::parse_config(&overlay::init_config_v3(&salt, &master_key).unwrap()).unwrap();
+    let mut wrapped: Box<dyn StorageProvider> = Box::new(CryptOverlayProvider::new(
+        Box::new(p),
+        OverlayKeys::AeroCrypt { master_key, config },
+        &s(&fx.remote()),
+    ));
+    // The overlay answers a downcast for itself, which is what the CLI's
+    // connect report and the GUI's SCP notice used to ask.
+    assert!(wrapped
+        .as_any_mut()
+        .downcast_mut::<SftpProvider>()
+        .is_none());
+    assert!(SftpProvider::went_on_over_scp(wrapped.as_mut()));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -611,6 +719,34 @@ async fn a_replace_that_fails_leaves_the_target_as_it_was() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_search_that_cannot_read_a_match_says_so() {
+    use std::os::unix::fs::PermissionsExt;
+    let fx = Fixture::new("scp-find-unreadable");
+    let mut p = scp_session(&fx).await;
+    let r = fx.remote();
+    std::fs::create_dir(r.join("locked")).unwrap();
+    std::fs::write(r.join("locked/match.log"), b"m").unwrap();
+    std::fs::write(r.join("open.log"), b"o").unwrap();
+    // Readable but not searchable: `find` names the file, `ls` cannot stat it.
+    std::fs::set_permissions(r.join("locked"), std::fs::Permissions::from_mode(0o444)).unwrap();
+    let found = p.find(".", "*.log").await;
+    std::fs::set_permissions(r.join("locked"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    let err = found.expect_err("a short result with no sign of the missing match");
+    assert!(err.to_string().contains("match.log"), "{err}");
+
+    // Readable again, both matches come back.
+    let mut names: Vec<String> = p
+        .find(".", "*.log")
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|e| e.name)
+        .collect();
+    names.sort();
+    assert_eq!(names, ["match.log", "open.log"]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_symlink_reports_its_file_and_a_read_to_memory_keeps_its_cap() {
     let fx = Fixture::new("scp-size-cap");
     let (port, seen) = start(fx.options(Sftp::Serve)).await;
@@ -624,6 +760,43 @@ async fn a_symlink_reports_its_file_and_a_read_to_memory_keeps_its_cap() {
     std::fs::write(r.join("target it's.bin"), pattern(12_345)).unwrap();
     std::os::unix::fs::symlink("target it's.bin", r.join("link")).unwrap();
     assert_eq!(p.size("link").await.unwrap(), 12_345);
+
+    // And a listing gives a link the size and kind of what it points to,
+    // as SFTP's does; a link whose target cannot be read (dangling, looping,
+    // through a file, behind a folder the user cannot search) keeps its own,
+    // and the folder still lists.
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::create_dir(r.join("a dir")).unwrap();
+    std::os::unix::fs::symlink("a dir", r.join("to dir")).unwrap();
+    std::os::unix::fs::symlink("nowhere", r.join("dangling")).unwrap();
+    std::os::unix::fs::symlink("looping", r.join("looping")).unwrap();
+    std::os::unix::fs::symlink("target it's.bin/x", r.join("through a file")).unwrap();
+    std::fs::create_dir(r.join("locked")).unwrap();
+    std::fs::write(r.join("locked/in"), b"x").unwrap();
+    std::os::unix::fs::symlink("locked/in", r.join("out of reach")).unwrap();
+    std::fs::set_permissions(r.join("locked"), std::fs::Permissions::from_mode(0o000)).unwrap();
+    let listed = p.list(".").await;
+    std::fs::set_permissions(r.join("locked"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    let listed = listed.unwrap();
+    let named = |n: &str| listed.iter().find(|e| e.name == n).unwrap().clone();
+    let link = named("link");
+    assert!(link.is_symlink && !link.is_dir);
+    assert_eq!(link.size, 12_345, "a link lists with its own length");
+    assert!(named("to dir").is_dir);
+    let dangling = named("dangling");
+    assert!(dangling.is_symlink && !dangling.is_dir);
+    assert_eq!(dangling.size, "nowhere".len() as u64);
+    for (name, target) in [
+        ("looping", "looping"),
+        ("through a file", "target it's.bin/x"),
+    ] {
+        let unread = named(name);
+        assert!(unread.is_symlink && !unread.is_dir, "{name}");
+        assert_eq!(unread.size, target.len() as u64, "{name}");
+    }
+    // As root the folder is searchable all the same, so only the listing
+    // itself is asserted there.
+    assert!(named("out of reach").is_symlink);
 
     // Under the cap the file comes back whole, through the link too.
     assert_eq!(

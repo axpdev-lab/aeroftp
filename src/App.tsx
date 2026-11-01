@@ -229,7 +229,8 @@ import {
   getSftpDownloadPresetDefinition,
   nextSftpDownloadPreset,
 } from './utils/sftpDownloadPresets';
-import { connectionProtocolLabel, scpFallbackConnectParam } from './utils/scpFallback';
+import { connectionProtocolLabel, scpFallbackConnectParam, wentOnOverScpAfter } from './utils/scpFallback';
+import { remoteCopyUrl } from './utils/copyUrl';
 import {
   TRANSFER_SPEED_PRESETS,
   deriveTransferSpeedPreset,
@@ -5882,9 +5883,12 @@ const App: React.FC = () => {
             if (pendingId) removeToast(pendingId);
             pendingId = null;
             notify.error(t('reconnect.toastTitle'), t('reconnect.reconnectFailed'));
-          } else if (kind === 'scp-mode') {
+          }
+          // Properties and Copy URL follow the transport: a full connect
+          // and a silent reconnect can each land on SCP or SFTP.
+          wentOnOverScpRef.current = wentOnOverScpAfter(kind, event.payload?.detail, wentOnOverScpRef.current);
+          if (kind === 'scp-mode') {
             // An SFTP connection whose server has no SFTP went on over SCP.
-            wentOnOverScpRef.current = true;
             notify.info(t('toast.scpModeTitle'), t('toast.scpModeBody', { host: event.payload?.detail || '' }));
           }
           // 'lost' is intentionally silent: showing it would briefly flash
@@ -9386,7 +9390,7 @@ const App: React.FC = () => {
       const protocolLabel = connectionViaLabel({ protocol, providerId: cloudServer.providerId, options: cloudServer.options });
 
       // Build connection server string
-      const defaultPort = protocol === 'sftp' ? 22 : protocol === 'ftps' ? 990 : 21;
+      const defaultPort = isSshProtocol(protocol) ? 22 : protocol === 'ftps' ? 990 : 21;
       const cloudServerString = cloudServer.port && cloudServer.port !== defaultPort
         ? `${cloudServer.host}:${cloudServer.port}`
         : cloudServer.host;
@@ -9409,8 +9413,14 @@ const App: React.FC = () => {
         } catch { /* no stored Filen API key for this profile */ }
       }
 
-      // Helper: connect to cloud server using the correct protocol
+      // Helper: connect to cloud server using the correct protocol. It ends
+      // the current connection itself, after the host-key check: a refused
+      // key leaves that connection live for the callers to restore.
       const connectToCloudServer = async (): Promise<void> => {
+        const endCurrentConnection = async () => {
+          try { await invoke('provider_disconnect'); } catch { }
+          try { await invoke('disconnect_ftp'); } catch { }
+        };
         if (isProvider) {
           // Non-FTP: use provider_connect (SFTP, WebDAV, S3, MEGA, Azure, Filen, Koofr, etc.)
           // S3 endpoint + region from the rule the main connect path uses.
@@ -9421,7 +9431,7 @@ const App: React.FC = () => {
             protocol,
             profile_id: cloudServer.id || null,
             server: cloudServer.host,
-            port: cloudServer.port || (protocol === 'sftp' ? 22 : 443),
+            port: cloudServer.port || (isSshProtocol(protocol) ? 22 : 443),
             username: cloudServer.username || '',
             password: cloudPassword,
             initial_path: cloudConfig.remote_folder || null,
@@ -9443,6 +9453,14 @@ const App: React.FC = () => {
             filen_api_key: cloudFilenApiKey,
             opendrive_default_privacy: cloudServer.options?.opendriveDefaultPrivacy || null,
           };
+          // SEC-P1-06: TOFU host key check for SFTP and SCP (one known_hosts).
+          // A rejected key ends the connect as a cancel: no failure toast, and
+          // the callers restore the previous session or reopen the cloud panel.
+          if (isSshProtocol(protocol)) {
+            const accepted = await checkSftpHostKey(providerParams.server, providerParams.port);
+            if (!accepted) throw new Error(CONNECT_CANCELLED_MARKER);
+          }
+          await endCurrentConnection();
           await runConnect('provider_connect', providerParams);
         } else {
           // FTP/FTPS: use connect_ftp
@@ -9452,6 +9470,7 @@ const App: React.FC = () => {
             password: cloudPassword,
             protocol,
           };
+          await endCurrentConnection();
           await runConnect('connect_ftp', ftpParams);
         }
       };
@@ -9538,9 +9557,6 @@ const App: React.FC = () => {
         // If different server/protocol, reconnect
         if (!isSameServer) {
           logger.debug('Different server, reconnecting to cloud server...');
-          try { await invoke('provider_disconnect'); } catch { }
-          try { await invoke('disconnect_ftp'); } catch { }
-
           try {
             setLoading(true);
             await connectToCloudServer();
@@ -9612,10 +9628,7 @@ const App: React.FC = () => {
         toast.info(t('toast.connecting'), t('toast.connectingTo', { server: cloudConfig.server_profile }));
       }
 
-      // Disconnect any stale connections
-      try { await invoke('provider_disconnect'); } catch { }
-      try { await invoke('disconnect_ftp'); } catch { }
-
+      // connectToCloudServer ends any stale connection first.
       await connectToCloudServer();
       setIsConnected(true);
       setShowRemotePanel(true);
@@ -15044,7 +15057,7 @@ const App: React.FC = () => {
       const scheme = isSshProtocol(currentProtocol) ? (shownProtocol ?? currentProtocol) : 'ftp';
       items.push({
         label: t('contextMenu.copyUrl', { scheme: scheme.toUpperCase() }), icon: <Link2 size={14} />, action: () => {
-          const url = `${scheme}://${currentUsername}@${currentServer}${file.path}`;
+          const url = remoteCopyUrl(scheme, currentUsername, currentServer, liveConnectionParams.port, file.path);
           copyText(url).then(
               () => notify.success(t('contextMenu.urlCopied', { scheme: scheme.toUpperCase() })),
               () => notify.error(t('toast.copyFailed')),
