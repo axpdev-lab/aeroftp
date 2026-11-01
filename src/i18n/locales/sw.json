@@ -1371,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud hufanya upya uingiaji wake kila inapounganisha, na sasa {names} inashiriki mmoja na nakala nyingine: nakala inayounganisha kwanza huitoa nyingine (kifaa ambako faili lilitoka, au wasifu ambao ulinakiliwa kutoka kwake). Ingia tena kwenye nyingine kwa Personal Login Token mpya.",
             "importOauthAppKept": "{names} zilikuja na programu maalum ya OAuth tofauti na ile ambayo kifaa hiki kina kwa mtoa huduma huyo. Programu iliyohifadhiwa ilibaki, kwa hivyo ingia tena ikiwa wasifu huu utaacha kuunganisha.",
             "importTargetChanged": "{names} hazikuandikwa upya: faili inazielekeza kwenye seva nyingine, na nywila na tokeni zilizohifadhiwa hazipaswi kwenda huko. Leta kwa Nakili ili kuongeza nakala kutoka kwenye faili, au futa wasifu kwanza.",
-            "importSharedSecretsFailed": "{names} zimeletwa, lakini siri iliyoshirikiwa au kipindi kutoka kwenye faili hakikuweza kuhifadhiwa. Ingia tena kwenye wasifu hizi ikiwa hazitaunganishwa."
+            "importSharedSecretsFailed": "{names} zimeletwa, lakini siri iliyoshirikiwa au kipindi kutoka kwenye faili hakikuweza kuhifadhiwa. Ingia tena kwenye wasifu hizi ikiwa hazitaunganishwa.",
+            "keystoreDatabasesFailed": "Uingizaji umekamilika, lakini hifadhidata hizi hazikuweza kurejeshwa na zinabaki na kilichokuwemo: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4858,7 +4859,8 @@
             "relocateSuccessMove": "\"{name}\" imehamishwa kwa {user}",
             "relocateAlreadyPresent": "\"{name}\" tayari imehifadhiwa katika {user}",
             "relocateError": "Seva haikuweza kuhamishwa: {error}",
-            "relocateWrongPassword": "Nenosiri si sahihi kwa {user}."
+            "relocateWrongPassword": "Nenosiri si sahihi kwa {user}.",
+            "relocateSecretsNotCopied": "\"{name}\" imefika kwa {user}, lakini nywila au tokeni zilizohifadhiwa hazikufika, kwa hivyo itaziomba tena huko."
         },
         "cyberTools": {
             "title": "Zana za Usalama",
@@ -6593,7 +6595,8 @@
             "keyslotsSetAsideRevocation": "Alama ya awali bado inafungua chumba salama kwa kipengele unachokiondoa au kukibadilisha. Kila nakala iliyobaki kwenye folda ya chumba salama inafutwa baada ya mabadiliko, na nakala isiyoweza kufutwa inaripotiwa kama hitilafu. Nakala iliyo kwenye tupio la hifadhi au matoleo ya faili haifikiwi: kuyasafisha huondoa nakala hizo, lakini si nakala aliyoihifadhi mtu mwingine, kwa hivyo hakukamilishi ubatilishaji.",
             "keyslotsSetAsideConsent": "Naelewa: badilisha alama kwenye seva hii kwa kubadilisha jina la ya zamani na kuiweka kando",
             "keyslotsSetAsideConsentRequired": "Seva hii inaweza kubadilisha alama ya chumba salama kwa kubadilisha jina la ya zamani na kuiweka kando tu: thibitisha kwenye kisanduku hapo juu ili kuendelea.",
-            "keyslotsMarkerReplaceUnsupported": "Seva hii haiwezi kubadilisha alama ya chumba salama, kwa hiyo mabadiliko ya nafasi yanakataliwa hapa. Fungua hifadhi hiyo hiyo kupitia seva inayobadilisha faili kwa hatua moja (kwa mfano SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Seva hii haiwezi kubadilisha alama ya chumba salama, kwa hiyo mabadiliko ya nafasi yanakataliwa hapa. Fungua hifadhi hiyo hiyo kupitia seva inayobadilisha faili kwa hatua moja (kwa mfano SFTP).",
+            "overlayMetadataNotSaved": "Uhamishaji umefaulu, lakini kifurushi cha kurejesha cha nje ya mtandao bado hakijahifadhiwa kwenye kache. Kitahifadhiwa wakati wa kufungua kinachofuata."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Usimbaji fiche)",

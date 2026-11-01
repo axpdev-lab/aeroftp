@@ -38,10 +38,12 @@ const toastEvent = (
     type: 'success' | 'warning' | 'error',
     title: string,
     message: string,
+    // Must surface even if ambient toast notifications are turned off.
+    important = false,
 ) => {
     window.dispatchEvent(
         new CustomEvent('aeroftp-toast', {
-            detail: { type, title, message, duration: 6000 },
+            detail: { type, title, message, duration: 6000, important },
         }),
     );
 };
@@ -129,6 +131,13 @@ export const ProfileRelocateDialog: React.FC<ProfileRelocateDialogProps> = ({
                     'warning',
                     t(isMove ? 'savedServers.moveToUser' : 'savedServers.copyToUser'),
                     t('savedServers.relocateAlreadyPresent', { name, user: target.name }),
+                );
+            } else if (result.secretsNotCopied?.length) {
+                toastEvent(
+                    'warning',
+                    t(isMove ? 'savedServers.moveToUser' : 'savedServers.copyToUser'),
+                    t('savedServers.relocateSecretsNotCopied', { name, user: target.name }),
+                    true,
                 );
             } else {
                 toastEvent(

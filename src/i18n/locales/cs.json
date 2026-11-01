@@ -1371,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud obnovuje přihlášení při každém připojení a {names} nyní sdílí přihlášení s jinou kopií: kopie, která se připojí první, odhlásí tu druhou (zařízení, ze kterého soubor pochází, nebo profil, ze kterého byla duplikována). Přihlaste druhou znovu pomocí nového Personal Login Token.",
             "importOauthAppKept": "{names} přišly s jinou vlastní aplikací OAuth, než jakou má toto zařízení pro daného poskytovatele. Uložená aplikace byla zachována, takže se přihlaste znovu, pokud se tyto profily přestanou připojovat.",
             "importTargetChanged": "{names} nebyly přepsány: soubor je nasměruje na jiný server a jejich uložená hesla a tokeny tam nesmí jít. Importujte s volbou Duplikovat pro přidání kopie ze souboru, nebo nejprve profil smažte.",
-            "importSharedSecretsFailed": "{names} byly importovány, ale sdílené tajemství nebo relaci ze souboru se nepodařilo uložit. Pokud se tyto profily nepřipojí, přihlaste se do nich znovu."
+            "importSharedSecretsFailed": "{names} byly importovány, ale sdílené tajemství nebo relaci ze souboru se nepodařilo uložit. Pokud se tyto profily nepřipojí, přihlaste se do nich znovu.",
+            "keystoreDatabasesFailed": "Import skončil, ale tyto databáze se nepodařilo obnovit a ponechaly si původní obsah: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4858,7 +4859,8 @@
             "relocateSuccessMove": "„{name}“ přesunuto do {user}",
             "relocateAlreadyPresent": "„{name}“ je už uloženo v {user}",
             "relocateError": "Server se nepodařilo přenést: {error}",
-            "relocateWrongPassword": "Nesprávné heslo pro {user}."
+            "relocateWrongPassword": "Nesprávné heslo pro {user}.",
+            "relocateSecretsNotCopied": "„{name}“ se do {user} dostalo, ale jeho uložené heslo nebo token ne, proto o ně tam znovu požádá."
         },
         "cyberTools": {
             "title": "Bezpečnostní nástroje",
@@ -6593,7 +6595,8 @@
             "keyslotsSetAsideRevocation": "Předchozí značka stále otevírá trezor pomocí faktoru, který odebíráte nebo nahrazujete. Každá kopie ponechaná ve složce trezoru se po změně smaže a kopie, kterou nelze smazat, je hlášena jako chyba. Kopie v koši úložiště nebo ve verzích souborů se nedotkne: jejich vyprázdnění odstraní tyto kopie, ale ne kopii, kterou si ponechal někdo jiný, takže odvolání nedokončí.",
             "keyslotsSetAsideConsent": "Rozumím: nahradit značku na tomto serveru přejmenováním staré stranou",
             "keyslotsSetAsideConsentRequired": "Tento server může značku trezoru nahradit pouze přejmenováním staré stranou: pro pokračování to potvrďte v poli výše.",
-            "keyslotsMarkerReplaceUnsupported": "Tento server nemůže nahradit značku trezoru, proto jsou zde změny slotů odmítnuty. Otevřete totéž úložiště přes server, který nahrazuje soubor jedním krokem (například SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Tento server nemůže nahradit značku trezoru, proto jsou zde změny slotů odmítnuty. Otevřete totéž úložiště přes server, který nahrazuje soubor jedním krokem (například SFTP).",
+            "overlayMetadataNotSaved": "Migrace proběhla úspěšně, ale sada pro obnovení offline zatím není uložena do mezipaměti. Stane se tak při příštím odemknutí."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifrování)",

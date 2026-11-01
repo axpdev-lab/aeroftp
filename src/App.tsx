@@ -4434,6 +4434,8 @@ const App: React.FC = () => {
                     );
                     return;
                   }
+                  // The account this migration runs under: a switch during it must not put the metadata elsewhere.
+                  const accountRead = await readSavedServerProfilesForWrite().catch(() => null);
                   const result = await invoke<{
                     changed: boolean;
                     legacyDeleted: boolean;
@@ -4458,19 +4460,16 @@ const App: React.FC = () => {
                         let saltB64 = '';
                         const saltLine = configJson.split('\n').find((l) => l.startsWith('salt\t'));
                         if (saltLine) saltB64 = saltLine.split('\t')[1]?.trim() || '';
-                        await invoke('store_credential', {
-                          account: `aerocrypt_overlay_config_${profileId}`,
-                          password: configJson,
-                        });
-                        if (saltB64) {
-                          await invoke('store_credential', {
-                            account: `aerocrypt_overlay_salt_${profileId}`,
-                            password: saltB64,
-                          });
+                        // A failed read gives no account to bind this to, so it is not saved here.
+                        if (accountRead) {
+                          await invoke('store_overlay_metadata', { profileId, configJson, salt: saltB64 || null, expectedUserId: accountRead.userId ?? null });
+                        } else {
+                          notify.warning(t('aerocryptNative.legacyMarkerConnectBanner'), t('aerocryptNative.overlayMetadataNotSaved'));
                         }
                       }
-                    } catch {
-                      /* kit warms on next connect */
+                    } catch (err) {
+                      // The remote marker did migrate: this only leaves the recovery kit behind.
+                      notify.warning(t('toast.saveFailed'), String(err));
                     }
                     humanLog.updateEntry(logId, {
                       status: 'success',
@@ -15540,6 +15539,7 @@ const App: React.FC = () => {
             userPartitionsRekeyed?: number;
             userPartitionsUnreadable?: number;
             userPartitionsBackupPath?: string;
+            sqliteDbsFailed?: string[];
           }>('import_keystore', {
             password,
             filePath,
@@ -15573,7 +15573,8 @@ const App: React.FC = () => {
             !!result.requiresRestart ||
             (result.userPartitionsUnreadable ?? 0) > 0 ||
             (result.userPartitionsRekeyed ?? 0) > 0 ||
-            !!result.userPartitionsBackupPath;
+            !!result.userPartitionsBackupPath ||
+            !!result.sqliteDbsFailed?.length;
           if (needsModal) {
             setKeystoreImportResult({
               imported: result.imported,
@@ -15582,6 +15583,7 @@ const App: React.FC = () => {
               userPartitionsRekeyed: result.userPartitionsRekeyed,
               userPartitionsUnreadable: result.userPartitionsUnreadable,
               userPartitionsBackupPath: result.userPartitionsBackupPath,
+              sqliteDbsFailed: result.sqliteDbsFailed,
             });
           } else {
             notify.success(

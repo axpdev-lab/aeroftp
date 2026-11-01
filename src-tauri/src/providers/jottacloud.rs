@@ -498,13 +498,16 @@ impl JottacloudProvider {
                     continue;
                 }
                 // MUV-4: mirror into the active user's partition (per-profile only).
-                if account != "jottacloud_refresh" {
-                    crate::user_partitions::mirror_active_credential(
+                if account != "jottacloud_refresh"
+                    && crate::user_partitions::mirror_active_credential(
                         store,
                         account,
                         "jottacloud_refresh",
                         &json,
-                    );
+                    )
+                    .is_err()
+                {
+                    ok = false;
                 }
             }
             ok
@@ -518,13 +521,19 @@ impl JottacloudProvider {
                 return;
             }
         }
-        // Try auto-init vault
+        // Try auto-init vault. Also a second attempt after a failed write: Jotta has
+        // already rotated the chain, and the old one in the vault is of no use.
         if crate::credential_store::CredentialStore::init().is_ok() {
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                let _ = write_all(&store);
-                jotta_log("Refresh token persisted to auto-initialized vault");
+                if write_all(&store) {
+                    jotta_log("Refresh token persisted to auto-initialized vault");
+                    return;
+                }
             }
         }
+        // Readers prefer the partition row: a stale one holds a rotated chain, so this
+        // must not read as a success.
+        jotta_log("Refresh token NOT fully persisted: the vault or the partition refused it");
     }
 
     /// Read one refresh chain: the active user's partition, falling back to the

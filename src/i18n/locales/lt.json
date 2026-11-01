@@ -1371,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud atnaujina prisijungimą kiekvieną kartą jungiantis, o {names} dabar dalijasi vienu su kita kopija: pirmoji prisijungianti kopija atjungia kitą (įrenginį, iš kurio atkeliavo failas, arba profilį, iš kurio jis buvo sudubliuotas). Prisijunkite prie kitos iš naujo su nauju Personal Login Token.",
             "importOauthAppKept": "{names} atkeliavo su kita pasirinktine OAuth programa nei ta, kurią šis įrenginys turi tam teikėjui. Išsaugota programa buvo palikta, todėl prisijunkite iš naujo, jei šie profiliai nustos jungtis.",
             "importTargetChanged": "{names} nebuvo perrašyti: failas nukreipia juos į kitą serverį, o jų išsaugoti slaptažodžiai ir žetonai neturi ten patekti. Importuokite su Dubliuoti, kad pridėtumėte failo kopiją, arba pirmiausia ištrinkite profilį.",
-            "importSharedSecretsFailed": "{names} importuoti, bet nepavyko išsaugoti bendros paslapties ar seanso iš failo. Jei šie profiliai neprisijungia, prisijunkite prie jų iš naujo."
+            "importSharedSecretsFailed": "{names} importuoti, bet nepavyko išsaugoti bendros paslapties ar seanso iš failo. Jei šie profiliai neprisijungia, prisijunkite prie jų iš naujo.",
+            "keystoreDatabasesFailed": "Importavimas baigtas, bet šių duomenų bazių nepavyko atkurti, todėl jose išliko ankstesnis turinys: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4858,7 +4859,8 @@
             "relocateSuccessMove": "„{name}“ perkelta į {user}",
             "relocateAlreadyPresent": "„{name}“ jau išsaugota paskyroje {user}",
             "relocateError": "Nepavyko perkelti serverio: {error}",
-            "relocateWrongPassword": "Neteisingas {user} slaptažodis."
+            "relocateWrongPassword": "Neteisingas {user} slaptažodis.",
+            "relocateSecretsNotCopied": "„{name}“ pasiekė {user}, bet jo išsaugotas slaptažodis ar prieigos raktas nepasiekė, todėl ten jų bus paprašyta dar kartą."
         },
         "cyberTools": {
             "title": "Saugumo įrankiai",
@@ -6593,7 +6595,8 @@
             "keyslotsSetAsideRevocation": "Ankstesnis žymeklis vis dar atidaro seifą su veiksniu, kurį šalinate ar keičiate. Kiekviena seifo aplanke likusi kopija po pakeitimo ištrinama, o kopija, kurios ištrinti nepavyksta, pranešama kaip klaida. Kopija atminties šiukšlinėje ar failų versijose nepasiekiama: jų ištuštinimas pašalina tas kopijas, bet ne tą, kurią pasilaikė kas nors kitas, todėl atšaukimo nebaigia.",
             "keyslotsSetAsideConsent": "Suprantu: pakeisti žymeklį šiame serveryje pervadinant seną į šalį",
             "keyslotsSetAsideConsentRequired": "Šis serveris gali pakeisti seifo žymeklį tik pervadindamas seną į šalį: patvirtinkite aukščiau esančiame langelyje, kad tęstumėte.",
-            "keyslotsMarkerReplaceUnsupported": "Šis serveris negali pakeisti seifo žymeklio, todėl lizdų pakeitimai čia atmetami. Atidarykite tą pačią atmintį per serverį, kuris pakeičia failą vienu žingsniu (pavyzdžiui, SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Šis serveris negali pakeisti seifo žymeklio, todėl lizdų pakeitimai čia atmetami. Atidarykite tą pačią atmintį per serverį, kuris pakeičia failą vienu žingsniu (pavyzdžiui, SFTP).",
+            "overlayMetadataNotSaved": "Perkėlimas pavyko, bet neprisijungus naudojamas atkūrimo rinkinys dar neįrašytas į talpyklą. Tai bus padaryta kitą kartą atrakinus."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifravimas)",

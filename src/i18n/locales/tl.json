@@ -1371,7 +1371,8 @@
             "importJottaChainWarning": "Nire-renew ng Jottacloud ang sign-in nito sa bawat koneksyon, at ang {names} ay may kahati na ngayong isa sa ibang kopya: ang kopyang unang kumonekta ang magsa-sign out sa isa pa (ang device kung saan galing ang file, o ang profile na pinagmulan ng duplicate). Mag-sign in muli sa isa pa gamit ang bagong Personal Login Token.",
             "importOauthAppKept": "{names} ay dumating na may ibang custom na OAuth app kaysa sa nasa device na ito para sa provider na iyon. Pinanatili ang nakaimbak na app, kaya mag-sign in muli kung hindi na makakonekta ang mga profile na ito.",
             "importTargetChanged": "Hindi na-overwrite ang {names}: itinuturo sila ng file sa ibang server, at hindi dapat mapunta roon ang kanilang mga naka-save na password at token. Mag-import gamit ang I-duplicate para idagdag ang kopya mula sa file, o burahin muna ang profile.",
-            "importSharedSecretsFailed": "Na-import ang {names}, ngunit hindi ma-store ang isang nakabahaging lihim o session mula sa file. Mag-sign in muli sa mga profile na ito kung hindi sila kumokonekta."
+            "importSharedSecretsFailed": "Na-import ang {names}, ngunit hindi ma-store ang isang nakabahaging lihim o session mula sa file. Mag-sign in muli sa mga profile na ito kung hindi sila kumokonekta.",
+            "keystoreDatabasesFailed": "Tapos na ang pag-import, pero hindi naibalik ang mga database na ito at nananatili ang laman ng mga ito: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4858,7 +4859,8 @@
             "relocateSuccessMove": "Nailipat ang \"{name}\" sa {user}",
             "relocateAlreadyPresent": "Naka-save na ang \"{name}\" sa {user}",
             "relocateError": "Hindi mailipat ang server: {error}",
-            "relocateWrongPassword": "Maling password para sa {user}."
+            "relocateWrongPassword": "Maling password para sa {user}.",
+            "relocateSecretsNotCopied": "Nakarating ang \"{name}\" sa {user}, pero hindi nakarating ang naka-save na password o token, kaya hihingin ang mga ito muli roon."
         },
         "cyberTools": {
             "title": "Security Tools",
@@ -6612,7 +6614,8 @@
             "keyslotsSetAsideRevocation": "Nabubuksan pa rin ng dating marker ang vault gamit ang factor na inaalis o pinapalitan mo. Binubura pagkatapos ng pagbabago ang bawat kopyang naiwan sa folder ng vault, at iniuulat bilang error ang kopyang hindi mabura. Hindi naaabot ang kopya sa trash ng storage o sa mga bersyon ng file: inaalis ng pag-alis ng laman sa mga iyon ang mga kopyang iyon, pero hindi ang kopyang iningatan ng iba, kaya hindi nito nakukumpleto ang pagbawi.",
             "keyslotsSetAsideConsent": "Naiintindihan ko: palitan ang marker sa server na ito sa pamamagitan ng pagpapalit ng pangalan ng luma at pagtatabi nito",
             "keyslotsSetAsideConsentRequired": "Mapapalitan lang ng server na ito ang marker ng vault sa pamamagitan ng pagpapalit ng pangalan ng luma at pagtatabi nito: kumpirmahin sa kahon sa itaas para magpatuloy.",
-            "keyslotsMarkerReplaceUnsupported": "Hindi mapapalitan ng server na ito ang marker ng vault, kaya tinatanggihan dito ang mga pagbabago sa slot. Buksan ang parehong storage sa pamamagitan ng server na nagpapalit ng file sa isang hakbang (halimbawa, SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Hindi mapapalitan ng server na ito ang marker ng vault, kaya tinatanggihan dito ang mga pagbabago sa slot. Buksan ang parehong storage sa pamamagitan ng server na nagpapalit ng file sa isang hakbang (halimbawa, SFTP).",
+            "overlayMetadataNotSaved": "Matagumpay ang migration, ngunit hindi pa naka-cache ang offline na recovery kit. Magaganap ito sa susunod na pag-unlock."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Pag-encrypt)",

@@ -591,6 +591,9 @@ pub struct KeystoreImportResult {
     /// applied afterwards; the profile list is then what the import left.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile_decisions_error: Option<String>,
+    /// Databases of the backup that could not be written: each keeps what it held.
+    #[serde(default)]
+    pub sqlite_dbs_failed: Vec<String>,
 }
 
 /// User-facing selectivity for import. All flags default to `true` so
@@ -2074,15 +2077,25 @@ fn import_keystore_with_store(
     // failed to write is strictly more useful than a "nothing happened
     // because one file was locked" outcome.
     let mut sqlite_dbs_restored = 0u32;
+    let mut sqlite_dbs_failed: Vec<String> = Vec::new();
     let mut files_restored = 0u32;
     // F-012 W3: path of the pre-import snapshot of user_partitions.db, set
     // when an existing local partition DB is preserved before the overwrite.
     let mut user_partitions_backup_path: Option<String> = None;
 
     if sections.sqlite_dbs && !payload.sqlite_dumps.is_empty() {
+        // The databases this restore should have written: a known name, and not the
+        // partition it deliberately left out.
+        let wanted = |name: &&String| {
+            SQLITE_DBS.contains(&name.as_str())
+                && !(name.as_str() == "user_partitions.db" && profile_partition_skipped)
+        };
         if let Some(cfg) = config_dir {
             if let Err(e) = std::fs::create_dir_all(cfg) {
                 tracing::warn!("Cannot create config_dir for SQLite restore: {}", e);
+                // Reachable only if the folder goes after the list lock created it.
+                sqlite_dbs_failed.extend(payload.sqlite_dumps.keys().filter(wanted).cloned());
+                sqlite_dbs_failed.sort();
             } else {
                 let total_dbs = payload.sqlite_dumps.len() as u32;
                 if let Some(cb) = &on_progress {
@@ -2103,6 +2116,9 @@ fn import_keystore_with_store(
                                 name,
                                 e
                             );
+                            if wanted(&name) {
+                                sqlite_dbs_failed.push(name.clone());
+                            }
                             continue;
                         }
                     };
@@ -2156,7 +2172,10 @@ fn import_keystore_with_store(
                                 cb("sqlite", idx as u32 + 1, total_dbs);
                             }
                         }
-                        Err(e) => tracing::warn!("SQLite restore failed for {}: {}", name, e),
+                        Err(e) => {
+                            tracing::warn!("SQLite restore failed for {}: {}", name, e);
+                            sqlite_dbs_failed.push(name.clone());
+                        }
                     }
                 }
             }
@@ -2165,6 +2184,8 @@ fn import_keystore_with_store(
                 "Import has {} SQLite dumps but config_dir is None; skipping",
                 payload.sqlite_dumps.len()
             );
+            sqlite_dbs_failed.extend(payload.sqlite_dumps.keys().filter(wanted).cloned());
+            sqlite_dbs_failed.sort();
         }
     }
 
@@ -2361,6 +2382,7 @@ fn import_keystore_with_store(
         user_partitions_backup_path,
         profiles_after_decisions,
         profile_decisions_error,
+        sqlite_dbs_failed,
     })
 }
 
@@ -4122,6 +4144,81 @@ mod tests {
             )
             .unwrap();
         assert_eq!(left, 1, "the partition's row was replaced");
+    }
+
+    /// A database that cannot be written reaches the report, not only the log, and
+    /// the others are restored.
+    #[test]
+    fn a_database_that_cannot_be_restored_is_reported() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, cfg) = machine_with_a_frozen_blob(dir.path());
+        let good = dir.path().join("source.db");
+        rusqlite::Connection::open(&good)
+            .unwrap()
+            .execute_batch("CREATE TABLE t (a);")
+            .unwrap();
+        let dump = snapshot_sqlite_db(&good).unwrap().unwrap();
+        std::fs::create_dir(cfg.join("ai_chat.db")).unwrap();
+        let mut payload = ExportPayload::default();
+        payload
+            .sqlite_dumps
+            .insert("ai_chat.db".to_string(), dump.clone());
+        payload
+            .sqlite_dumps
+            .insert("file_tags.db".to_string(), dump.clone());
+        let backup = dir.path().join("blocked.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(result.sqlite_dbs_failed, ["ai_chat.db"]);
+        assert_eq!(result.sqlite_dbs_restored, 1);
+        assert!(cfg.join("file_tags.db").is_file());
+    }
+
+    /// A folder that cannot be created stops the import at the list lock, which needs
+    /// it, before anything is restored: no database is left out silently.
+    #[test]
+    fn a_config_folder_that_cannot_be_created_refuses_the_import() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let blocked = dir.path().join("a-file");
+        std::fs::write(&blocked, b"").unwrap();
+        let cfg = blocked.join("config");
+        let mut payload = ExportPayload::default();
+        payload
+            .sqlite_dumps
+            .insert("ai_chat.db".to_string(), String::new());
+        payload
+            .sqlite_dumps
+            .insert("file_tags.db".to_string(), String::new());
+        let backup = dir.path().join("no-folder.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let refused = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        );
+        assert!(
+            matches!(refused, Err(KeystoreExportError::ProfileListBusy(_))),
+            "{:?}",
+            refused.map(|_| ()).map_err(|e| e.to_string())
+        );
     }
 
     /// An empty list in the blob is an answer only when a restore's decisions left it.

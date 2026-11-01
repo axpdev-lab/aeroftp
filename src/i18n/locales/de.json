@@ -1371,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud erneuert die Anmeldung bei jeder Verbindung, und {names} teilt sich jetzt eine mit einer anderen Kopie: Die Kopie, die sich zuerst verbindet, meldet die andere ab (das Gerät, von dem die Datei stammt, oder das Profil, von dem dupliziert wurde). Melden Sie die andere mit einem neuen Personal Login Token erneut an.",
             "importOauthAppKept": "{names} kamen mit einer anderen benutzerdefinierten OAuth-App als die, die dieses Gerät für diesen Anbieter hat. Die gespeicherte App wurde beibehalten. Melden Sie sich erneut an, falls diese Profile keine Verbindung mehr herstellen.",
             "importTargetChanged": "{names} wurden nicht überschrieben: Die Datei verweist sie auf einen anderen Server, und ihre gespeicherten Passwörter und Tokens dürfen nicht dorthin gelangen. Importieren Sie mit Duplizieren, um die Kopie aus der Datei hinzuzufügen, oder löschen Sie zuerst das Profil.",
-            "importSharedSecretsFailed": "{names} wurden importiert, aber ein geteiltes Geheimnis oder eine Sitzung aus der Datei konnte nicht gespeichert werden. Melden Sie sich bei diesen Profilen erneut an, wenn sie keine Verbindung herstellen."
+            "importSharedSecretsFailed": "{names} wurden importiert, aber ein geteiltes Geheimnis oder eine Sitzung aus der Datei konnte nicht gespeichert werden. Melden Sie sich bei diesen Profilen erneut an, wenn sie keine Verbindung herstellen.",
+            "keystoreDatabasesFailed": "Der Import ist abgeschlossen, aber diese Datenbanken konnten nicht wiederhergestellt werden und behalten ihren bisherigen Inhalt: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4858,7 +4859,8 @@
             "relocateSuccessMove": "„{name}“ nach {user} verschoben",
             "relocateAlreadyPresent": "„{name}“ ist bereits in {user} gespeichert",
             "relocateError": "Server konnte nicht übertragen werden: {error}",
-            "relocateWrongPassword": "Falsches Passwort für {user}."
+            "relocateWrongPassword": "Falsches Passwort für {user}.",
+            "relocateSecretsNotCopied": "„{name}“ ist bei {user} angekommen, das gespeicherte Passwort oder Token jedoch nicht, daher wird dort erneut danach gefragt."
         },
         "cyberTools": {
             "title": "Sicherheitstools",
@@ -6593,7 +6595,8 @@
             "keyslotsSetAsideRevocation": "Die vorherige Markierungsdatei öffnet den Tresor weiterhin mit dem Faktor, den Sie entfernen oder ersetzen. Jede im Tresorordner verbliebene Kopie wird nach der Änderung gelöscht, und eine Kopie, die sich nicht löschen lässt, wird als Fehler gemeldet. Eine Kopie im Papierkorb oder in den Dateiversionen des Speichers wird nicht erreicht: Das Leeren entfernt diese Kopien, nicht aber eine, die jemand anderes aufbewahrt hat, und schließt den Widerruf daher nicht ab.",
             "keyslotsSetAsideConsent": "Ich habe verstanden: Markierungsdatei auf diesem Server ersetzen, indem die alte zur Seite umbenannt wird",
             "keyslotsSetAsideConsentRequired": "Dieser Server kann die Markierungsdatei des Tresors nur ersetzen, indem die alte zur Seite umbenannt wird: Bestätigen Sie dies im Feld oben, um fortzufahren.",
-            "keyslotsMarkerReplaceUnsupported": "Dieser Server kann die Markierungsdatei des Tresors nicht ersetzen, daher werden Slot-Änderungen hier abgelehnt. Öffnen Sie denselben Speicher über einen Server, der eine Datei in einem Schritt ersetzt (z. B. SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Dieser Server kann die Markierungsdatei des Tresors nicht ersetzen, daher werden Slot-Änderungen hier abgelehnt. Öffnen Sie denselben Speicher über einen Server, der eine Datei in einem Schritt ersetzt (z. B. SFTP).",
+            "overlayMetadataNotSaved": "Die Migration war erfolgreich, aber das Offline-Wiederherstellungskit ist noch nicht zwischengespeichert. Das geschieht beim nächsten Entsperren."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Verschlüsselung)",

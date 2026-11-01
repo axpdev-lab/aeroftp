@@ -2393,7 +2393,8 @@
             "keyslotsRecoveryAutoOffered": "A recovery slot was auto-added because this vault would have been keyfile-only. Save the recovery code below.",
             "keyslotsRecoverySaveOnce": "Save this recovery code now (shown once):",
             "keyslotsRecoveryCopy": "Copy code",
-            "keyslotsUnlockWithRecovery": "You can also unlock with a recovery code (paste it as the password)."
+            "keyslotsUnlockWithRecovery": "You can also unlock with a recovery code (paste it as the password).",
+            "overlayMetadataNotSaved": "The migration succeeded, but the offline recovery kit is not cached yet. It will be at the next unlock."
         },
         "cryptomator": {
             "confirmPassword": "Confirm Password",
@@ -3794,7 +3795,8 @@
             "relocateSuccessMove": "Moved \"{name}\" to {user}",
             "relocateAlreadyPresent": "\"{name}\" is already saved in {user}",
             "relocateError": "Could not transfer the server: {error}",
-            "relocateWrongPassword": "Wrong password for {user}."
+            "relocateWrongPassword": "Wrong password for {user}.",
+            "relocateSecretsNotCopied": "{name} reached {user}, but its saved password or token did not, so it will ask for them again there."
         },
         "search": {
             "clear": "Clear search",
@@ -4435,7 +4437,8 @@
             "serverProfilesCount": "{count} server profiles",
             "aiKeysCount": "{count} AI keys",
             "oauthTokensCount": "{count} OAuth tokens",
-            "configEntriesCount": "{count} config entries"
+            "configEntriesCount": "{count} config entries",
+            "keystoreDatabasesFailed": "The import finished, but these databases could not be restored and keep what they held: {names}."
         },
         "sharing": {
             "add": "Add",

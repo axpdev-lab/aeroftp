@@ -1371,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud renova o seu inicio de sesión en cada conexión, e {names} agora comparte un con outra copia: a copia que se conecta primeiro pecha a sesión da outra (o dispositivo de onde vén o ficheiro, ou o perfil do que se duplicou). Volve iniciar sesión na outra cun novo Personal Login Token.",
             "importOauthAppKept": "{names} chegaron cunha app OAuth personalizada distinta da que este dispositivo ten para ese provedor. Conservouse a app almacenada, así que inicia sesión de novo se estes perfís deixan de conectarse.",
             "importTargetChanged": "{names} non se sobrescribiron: o ficheiro apúntaos a outro servidor, e os seus contrasinais e tokens gardados non deben ir alí. Importa con Duplicar para engadir a copia do ficheiro, ou elimina primeiro o perfil.",
-            "importSharedSecretsFailed": "Importouse {names}, pero non se puido gardar un segredo compartido ou unha sesión do ficheiro. Volve iniciar sesión nestes perfís se non se conectan."
+            "importSharedSecretsFailed": "Importouse {names}, pero non se puido gardar un segredo compartido ou unha sesión do ficheiro. Volve iniciar sesión nestes perfís se non se conectan.",
+            "keystoreDatabasesFailed": "A importación rematou, pero non se puideron restaurar estas bases de datos e conservan o que tiñan: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4858,7 +4859,8 @@
             "relocateSuccessMove": "«{name}» movido a {user}",
             "relocateAlreadyPresent": "«{name}» xa está gardado en {user}",
             "relocateError": "Non se puido transferir o servidor: {error}",
-            "relocateWrongPassword": "Contrasinal incorrecto para {user}."
+            "relocateWrongPassword": "Contrasinal incorrecto para {user}.",
+            "relocateSecretsNotCopied": "«{name}» chegou a {user}, pero o contrasinal ou o token gardados non, así que os volverá pedir alí."
         },
         "cyberTools": {
             "title": "Ferramentas de seguridade",
@@ -6612,7 +6614,8 @@
             "keyslotsSetAsideRevocation": "O marcador anterior segue abrindo o cofre co factor que estás a quitar ou substituír. Cada copia que quede no cartafol do cofre elimínase despois do cambio, e unha copia que non se poida eliminar notifícase como erro. Non se chega a unha copia na papeleira ou nas versións de ficheiros do almacenamento: baleirar esas áreas elimina esas copias, pero non unha que conservase outra persoa, polo que non completa a revogación.",
             "keyslotsSetAsideConsent": "Entendo: substituír o marcador neste servidor renomeando o anterior á parte",
             "keyslotsSetAsideConsentRequired": "Este servidor só pode substituír o marcador do cofre renomeando o anterior á parte: confírmao na caixa de arriba para continuar.",
-            "keyslotsMarkerReplaceUnsupported": "Este servidor non pode substituír o marcador do cofre, polo que aquí se rexeitan os cambios de ranuras. Abre o mesmo almacenamento a través dun servidor que substitúa un ficheiro nun só paso (SFTP, por exemplo)."
+            "keyslotsMarkerReplaceUnsupported": "Este servidor non pode substituír o marcador do cofre, polo que aquí se rexeitan os cambios de ranuras. Abre o mesmo almacenamento a través dun servidor que substitúa un ficheiro nun só paso (SFTP, por exemplo).",
+            "overlayMetadataNotSaved": "A migración realizouse correctamente, pero o kit de recuperación sen conexión aínda non está na caché. Gardarase no seguinte desbloqueo."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Cifrado)",

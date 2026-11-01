@@ -1371,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud her bağlantıda oturum açmayı yeniler ve {names} artık bunu başka bir kopyayla paylaşıyor: önce bağlanan kopya diğerinin oturumunu kapatır (dosyanın geldiği cihaz veya çoğaltıldığı profil). Diğerinde yeni bir Personal Login Token ile yeniden oturum açın.",
             "importOauthAppKept": "{names}, bu cihazda o sağlayıcı için bulunandan farklı bir özel OAuth uygulamasıyla geldi. Kayıtlı uygulama korundu, bu yüzden bu profiller bağlanmayı bırakırsa yeniden oturum açın.",
             "importTargetChanged": "{names} üzerine yazılmadı: dosya bunları başka bir sunucuya yönlendiriyor ve kayıtlı parolalarıyla belirteçlerinin oraya gitmemesi gerekir. Dosyadaki kopyayı eklemek için Çoğalt ile içe aktarın veya önce profili silin.",
-            "importSharedSecretsFailed": "{names} içe aktarıldı, ancak dosyadaki paylaşılan bir gizli bilgi veya oturum saklanamadı. Bağlanmazlarsa bu profillerde yeniden oturum açın."
+            "importSharedSecretsFailed": "{names} içe aktarıldı, ancak dosyadaki paylaşılan bir gizli bilgi veya oturum saklanamadı. Bağlanmazlarsa bu profillerde yeniden oturum açın.",
+            "keystoreDatabasesFailed": "İçe aktarma tamamlandı ancak bu veritabanları geri yüklenemedi ve önceki içeriklerini koruyor: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4858,7 +4859,8 @@
             "relocateSuccessMove": "\"{name}\" {user} hesabına taşındı",
             "relocateAlreadyPresent": "\"{name}\" zaten {user} hesabında kayıtlı",
             "relocateError": "Sunucu aktarılamadı: {error}",
-            "relocateWrongPassword": "{user} için yanlış parola."
+            "relocateWrongPassword": "{user} için yanlış parola.",
+            "relocateSecretsNotCopied": "\"{name}\" {user} hesabına ulaştı, ancak kayıtlı parola veya token ulaşmadı, bu yüzden orada yeniden istenecek."
         },
         "cyberTools": {
             "title": "Güvenlik Araçları",
@@ -6593,7 +6595,8 @@
             "keyslotsSetAsideRevocation": "Önceki işaretçi, kaldırdığınız veya değiştirdiğiniz faktörle kasayı hâlâ açar. Kasa klasöründe kalan her kopya değişiklikten sonra silinir ve silinemeyen kopya hata olarak bildirilir. Depolamanın çöp kutusundaki veya dosya sürümlerindeki bir kopyaya ulaşılamaz: bunları boşaltmak bu kopyaları kaldırır, ancak başka birinin sakladığı kopyayı kaldırmaz; bu nedenle iptali tamamlamaz.",
             "keyslotsSetAsideConsent": "Anladım: işaretçiyi bu sunucuda eskisini yeniden adlandırıp kenara alarak değiştir",
             "keyslotsSetAsideConsentRequired": "Bu sunucu kasa işaretçisini yalnızca eskisini yeniden adlandırıp kenara alarak değiştirebilir: devam etmek için yukarıdaki kutuda onaylayın.",
-            "keyslotsMarkerReplaceUnsupported": "Bu sunucu kasa işaretçisini değiştiremez, bu yüzden slot değişiklikleri burada reddedilir. Aynı depolamayı bir dosyayı tek adımda değiştiren bir sunucu üzerinden açın (örneğin SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Bu sunucu kasa işaretçisini değiştiremez, bu yüzden slot değişiklikleri burada reddedilir. Aynı depolamayı bir dosyayı tek adımda değiştiren bir sunucu üzerinden açın (örneğin SFTP).",
+            "overlayMetadataNotSaved": "Taşıma başarılı oldu, ancak çevrimdışı kurtarma kiti henüz önbelleğe alınmadı. Bir sonraki kilit açmada alınacak."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Şifreleme)",

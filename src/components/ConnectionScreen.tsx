@@ -193,10 +193,8 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
         setIsAuthenticating(true);
         setError(null);
         try {
-            await Promise.all([
-                invoke('store_credential', { account: 'oauth_fourshared_client_id', password: consumerKey }),
-                invoke('store_credential', { account: 'oauth_fourshared_client_secret', password: consumerSecret }),
-            ]);
+            // One call: an import or another window must not see half of the pair.
+            await invoke('store_oauth_app', { provider: 'fourshared', clientId: consumerKey, clientSecret: consumerSecret });
             await invoke<string>('fourshared_full_auth', { params: { consumer_key: consumerKey, consumer_secret: consumerSecret } });
             setHasExistingTokens(true);
             setWantsNewAccount(false);
@@ -972,14 +970,28 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         return map;
     };
 
+    // The connection or the profile stands, but its secret will be asked for again.
+    const reportSecretNotSaved = (err: unknown) => {
+        logger.warn('A secret could not be saved', err);
+        window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+            detail: { type: 'error', title: t('toast.saveFailed'), message: String(err), important: true },
+        }));
+    };
+
     // Write or clear the persisted per-mode snapshots for a profile depending on
     // the opt-in. Called from saveToServers for both the edit and new branches.
-    const syncPersistedModeCredentials = async (profileId: string): Promise<void> => {
+    const syncPersistedModeCredentials = async (profileId: string): Promise<boolean> => {
         if (persistModeCredentials && inModeGroup) {
-            await storeModeCredentials(profileId, buildModeCredentialMap());
+            try {
+                await storeModeCredentials(profileId, buildModeCredentialMap());
+            } catch (err) {
+                reportSecretNotSaved(err);
+                return false;
+            }
         } else {
             await deleteModeCredentials(profileId);
         }
+        return true;
     };
 
     // P3: the AeroCrypt overlay binding is offered only on backends where a
@@ -1478,7 +1490,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     `dedupKey=${dedupKey}`,
                 );
             }
-            await syncPersistedModeCredentials(editingProfileId);
+            // The caller keeps the editor open: a retry updates this same profile.
+            if (!(await syncPersistedModeCredentials(editingProfileId))) return false;
             setSavedServersUpdate(Date.now());
             const savedServer = storedServers.find((s) => s.id === editingProfileId);
             if (savedServer) {
@@ -1657,7 +1670,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         if (bridgeSaveBlocked) return;
         // Store PAT in vault for future connections (if GitHub PAT mode)
         if (connectionParams.options?.githubAuthMode === 'pat' && connectionParams.password) {
-            invoke('github_store_pat', { pat: connectionParams.password }).catch(() => {});
+            invoke('github_store_pat', { pat: connectionParams.password }).catch(reportSecretNotSaved);
         }
 
         if (editingProfileId) {
@@ -2125,12 +2138,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // Replace in slot: remove original, insert new at the same index
         const newServers = [...existingServers];
         newServers.splice(originalIdx, 1, newServer);
+        // Migrate the persisted per-mode credential snapshots from the old id to the
+        // converted one (or clear them when the opt-in is off), so a later mode switch on
+        // the converted profile restores without asking. Before the profile changes: if
+        // it fails, the convert stops and the original still reaches its snapshots.
+        if (!(await syncPersistedModeCredentials(newId))) {
+            await deleteModeCredentials(newId);
+            await credentials.rollback().catch((e: unknown) => logger.warn('Saved profile credential restoration failed', e));
+            return;
+        }
         const storedServers = await persistProfilesForSave(newServers, credentials, profilesUserId, profilesRevision);
-        if (!storedServers) return;
-        // Migrate the persisted per-mode credential snapshots from the old id
-        // to the converted one (or clear them when the opt-in is off), so a
-        // later mode switch on the converted profile restores without asking.
-        await syncPersistedModeCredentials(newId);
+        if (!storedServers) {
+            await deleteModeCredentials(newId);
+            return;
+        }
         if (newId !== originalServer.id) {
             await deleteModeCredentials(originalServer.id);
         }

@@ -1371,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloudek konexio bakoitzean berritzen du saio-hasiera, eta {names} orain beste kopia batekin partekatzen du bat: lehenengo konektatzen den kopiak bestearen saioa ixten du (fitxategia nondik etorri den gailua, edo bikoiztu zen profila). Hasi saioa berriro bestean Personal Login Token berri batekin.",
             "importOauthAppKept": "{names} OAuth aplikazio pertsonalizatu desberdin batekin iritsi dira, gailu honek hornitzaile horretarako duenarekin alderatuta. Gordetako aplikazioa mantendu da, beraz, hasi saioa berriro profil hauek konektatzeari uzten badiote.",
             "importTargetChanged": "{names} ez dira gainidatzi: fitxategiak beste zerbitzari batera bideratzen ditu, eta gordetako pasahitzak eta tokenak ez dira hara joan behar. Inportatu Bikoiztu aukerarekin fitxategiko kopia gehitzeko, edo ezabatu lehenengo profila.",
-            "importSharedSecretsFailed": "{names} inportatu dira, baina fitxategiko partekatutako sekretu bat edo saio bat ezin izan da gorde. Hasi saioa berriro profil hauetan, konektatzen ez badira."
+            "importSharedSecretsFailed": "{names} inportatu dira, baina fitxategiko partekatutako sekretu bat edo saio bat ezin izan da gorde. Hasi saioa berriro profil hauetan, konektatzen ez badira.",
+            "keystoreDatabasesFailed": "Inportazioa amaitu da, baina datu-base hauek ezin izan dira berrezarri eta lehen zutena gordetzen dute: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4858,7 +4859,8 @@
             "relocateSuccessMove": "«{name}» {user}(e)ra eraman da",
             "relocateAlreadyPresent": "«{name}» dagoeneko gordeta dago {user}(e)n",
             "relocateError": "Ezin izan da zerbitzaria transferitu: {error}",
-            "relocateWrongPassword": "Pasahitz okerra {user}(r)entzat."
+            "relocateWrongPassword": "Pasahitz okerra {user}(r)entzat.",
+            "relocateSecretsNotCopied": "«{name}» {user}(e)ra iritsi da, baina gordetako pasahitza edo tokena ez, beraz, han berriro eskatuko ditu."
         },
         "cyberTools": {
             "title": "Segurtasun tresnak",
@@ -6612,7 +6614,8 @@
             "keyslotsSetAsideRevocation": "Aurreko markatzaileak oraindik kutxa gotorra irekitzen du kentzen ari zaren edo ordezkatzen ari zaren faktorearekin. Kutxa gotorraren karpetan geratzen den kopia bakoitza ezabatzen da aldaketaren ondoren, eta ezin den kopia bat errore gisa jakinarazten da. Biltegiratzeko zakarrontziko edo fitxategi-bertsioetako kopiara ez da iristen: hustuz gero kopia horiek kentzen dira, baina ez beste norbaitek gorde duena, beraz ez da indargabetzea osatzen.",
             "keyslotsSetAsideConsent": "Ulertzen dut: ordezkatu markatzailea zerbitzari honetan zaharra alboratuz berrizendatuta",
             "keyslotsSetAsideConsentRequired": "Zerbitzari honek kutxa gotorraren markatzailea zaharra alboratuz berrizendatuta bakarrik ordezkatu dezake: baieztatu goiko laukian jarraitzeko.",
-            "keyslotsMarkerReplaceUnsupported": "Zerbitzari honek ezin du kutxa gotorraren markatzailea ordezkatu, beraz hemen zirrikituen aldaketak baztertzen dira. Ireki biltegiratze bera fitxategi bat urrats bakarrean ordezkatzen duen zerbitzari baten bidez (adibidez SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Zerbitzari honek ezin du kutxa gotorraren markatzailea ordezkatu, beraz hemen zirrikituen aldaketak baztertzen dira. Ireki biltegiratze bera fitxategi bat urrats bakarrean ordezkatzen duen zerbitzari baten bidez (adibidez SFTP).",
+            "overlayMetadataNotSaved": "Migrazioak ondo funtzionatu du, baina lineaz kanpoko berreskuratze-kita ez dago oraindik cachean gordeta. Hurrengo desblokeoan gordeko da."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Zifratzea)",
