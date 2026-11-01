@@ -2167,6 +2167,7 @@ impl ZohoWorkdriveProvider {
         let first = parts[0];
         let mut current_path = format!("/{}", first);
 
+        let mut legacy_root = false;
         let mut current_id = if let Some(cached) = self.folder_cache.get(&current_path) {
             cached.clone()
         } else if let Some((tf_id, _)) = self
@@ -2189,10 +2190,17 @@ impl ZohoWorkdriveProvider {
             // Never treat an arbitrary opaque-looking path as an API id.
             let id = match self.find_by_name(first, root_id).await? {
                 Some(file) => file.id,
-                None if self.is_discovered_root_id(first) => first.to_string(),
+                None if self.is_discovered_root_id(first) => {
+                    legacy_root = true;
+                    first.to_string()
+                }
                 None => return Err(ProviderError::NotFound(current_path.clone())),
             };
-            self.folder_cache.insert(current_path.clone(), id.clone());
+            // An alias is valid only while no real child has this name.
+            // Caching it (or descendants) would hide a child created later.
+            if !legacy_root {
+                self.folder_cache.insert(current_path.clone(), id.clone());
+            }
             id
         };
 
@@ -2200,9 +2208,11 @@ impl ZohoWorkdriveProvider {
         for part in &parts[1..] {
             current_path = format!("{}/{}", current_path, part);
 
-            if let Some(cached) = self.folder_cache.get(&current_path) {
-                current_id = cached.clone();
-                continue;
+            if !legacy_root {
+                if let Some(cached) = self.folder_cache.get(&current_path) {
+                    current_id = cached.clone();
+                    continue;
+                }
             }
 
             let file = self
@@ -2211,7 +2221,9 @@ impl ZohoWorkdriveProvider {
                 .ok_or_else(|| ProviderError::NotFound(current_path.clone()))?;
 
             current_id = file.id.clone();
-            self.folder_cache.insert(current_path.clone(), file.id);
+            if !legacy_root {
+                self.folder_cache.insert(current_path.clone(), file.id);
+            }
         }
 
         Ok(current_id)
@@ -2854,6 +2866,8 @@ impl StorageProvider for ZohoWorkdriveProvider {
         Ok(false)
     }
 
+    /// Probe a named entry or discovered legacy root, verifying root readability
+    /// instead of manufacturing a successful directory after an API failure.
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         if path.starts_with('/') && path.trim_matches('/').is_empty() {
             if !self.connected {
@@ -3692,6 +3706,55 @@ mod tests {
             .unwrap()
             .iter()
             .any(|path| path == "/workdrive/api/v1/files/WS/files"));
+        server.abort();
+    }
+
+    /// A negative name lookup must not permanently turn that name into an
+    /// alias: a folder created later takes precedence, including descendants.
+    #[tokio::test]
+    async fn a_later_real_folder_displaces_the_legacy_alias_and_its_descendants() {
+        use std::sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        };
+        let appeared = Arc::new(AtomicBool::new(false));
+        let seen = appeared.clone();
+        let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
+            let real = seen.load(Ordering::SeqCst);
+            async move {
+                match uri.path() {
+                    "/workdrive/api/v1/privatespace/PS/files" if real =>
+                        r#"{"data":[{"id":"REAL","attributes":{"name":"PS","type":"folder"}}]}"#,
+                    "/workdrive/api/v1/privatespace/PS/files" =>
+                        r#"{"data":[{"id":"OLD_DOCS","attributes":{"name":"docs","type":"folder"}}]}"#,
+                    "/workdrive/api/v1/files/REAL/files" =>
+                        r#"{"data":[{"id":"NEW_DOCS","attributes":{"name":"docs","type":"folder"}}]}"#,
+                    _ => r#"{"data":[]}"#,
+                }
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        p.endpoint_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("test-token".into());
+        p.connected = true;
+        p.privatespace_id = Some("PS".into());
+        p.current_folder_id = "PS".into();
+        p.folder_cache.insert("/".into(), "PS".into());
+        assert_eq!(p.resolve_path("/PS/docs").await.unwrap(), "OLD_DOCS");
+        p.list("/PS").await.unwrap();
+        assert!(!p.folder_cache.contains_key("/PS"));
+        assert!(!p.folder_cache.contains_key("/PS/docs"));
+        appeared.store(true, Ordering::SeqCst);
+        assert_eq!(p.resolve_path("/PS/docs").await.unwrap(), "NEW_DOCS");
+        assert_eq!(p.folder_cache.get("/PS").map(String::as_str), Some("REAL"));
+        assert_eq!(
+            p.folder_cache.get("/PS/docs").map(String::as_str),
+            Some("NEW_DOCS")
+        );
+        assert_eq!(p.stat("/PS").await.unwrap().path, "/PS");
         server.abort();
     }
 
