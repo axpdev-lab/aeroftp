@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "213d2acb3f391c53eca51b19ad9b33eac007d599a65d71bba6de72b731e64583",
+    "enHash": "407684c057711a6a94b1c4f636cccd003a98fc824cc07e7939047fc9bd5a1256",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -133,6 +133,9 @@
             "Copy missing and newer files. Never delete, never overwrite a newer destination copy. Resolve conflicts with the selected policy.",
             "Copy missing and newer files. Skip conflicts so you can resolve them manually."
         ],
+        "aerosync.rescanNeeded": [
+            "The comparison was made with other exclusions or another backup folder. Rescan before running."
+        ],
         "aerosync.speedModeHint": [
             "Parallel streams + compression preset applied to the run."
         ],
@@ -141,6 +144,9 @@
         ],
         "aerosync.tabSync": [
             "Sync"
+        ],
+        "aerosync.updateOnlyHint": [
+            "Copy missing or changed source files, keep newer destination files, and delete destination-only entries. Files without comparable dates are left for review."
         ],
         "aerosync.versionedBackupHint": [
             "Capture the destination copy under this directory before each overwrite or delete."
@@ -264,6 +270,13 @@
         ],
         "cloud.syncing": [
             "Syncing..."
+        ],
+        "cloud.untrackedDestinationFiles": [
+            "{count} destination files have never been synced and were kept. Open the same source and destination in AeroSync, select Mirror with One-way Update, review the plan and confirm any intended deletions."
+        ],
+        "cloud.updateOnlyHint": [
+            "One-way Update copies only from the source and keeps newer destination files. Turn off additive backup to also delete destination-only files, including files with no sync history. The conflict policy is ignored; unknown dates stay unresolved.",
+            "One-way Update keeps newer destination files. With additive backup off, only previously synced destination-only files are deleted. Never-synced files are kept for review in AeroSync. The conflict policy is ignored; unknown dates stay unresolved."
         ],
         "connection.aerocloudDesc": [
             "Turn any FTP server into your personal cloud with automatic sync"

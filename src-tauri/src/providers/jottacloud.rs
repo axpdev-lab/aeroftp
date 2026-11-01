@@ -2089,6 +2089,13 @@ impl StorageProvider for JottacloudProvider {
         Ok(())
     }
 
+    fn sync_namespace_identity(&self) -> Option<String> {
+        (self.connected && !self.username.trim().is_empty()).then(|| {
+            serde_json::json!([self.username, self.config.device, self.config.mountpoint])
+                .to_string()
+        })
+    }
+
     async fn server_info(&mut self) -> Result<String, ProviderError> {
         Ok(format!(
             "Jottacloud: User: {}, Device: {}, Mountpoint: {}",
@@ -3419,6 +3426,22 @@ fn refresh_or_login_token(refresh: Result<bool, ProviderError>) -> Result<bool, 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sync_namespace_identity_tracks_authenticated_account_and_discovered_mount() {
+        let mut provider = test_provider();
+        assert!(provider.sync_namespace_identity().is_none());
+        provider.connected = true;
+        let initial = provider.sync_namespace_identity().unwrap();
+        provider.config.mountpoint = "Other".into();
+        assert_ne!(provider.sync_namespace_identity().unwrap(), initial);
+        provider.config.mountpoint = "Archive".into();
+        provider.config.device = "OtherDevice".into();
+        assert_ne!(provider.sync_namespace_identity().unwrap(), initial);
+        provider.config.device = "Jotta".into();
+        provider.username = "other-user".into();
+        assert_ne!(provider.sync_namespace_identity().unwrap(), initial);
+    }
+
     #[tokio::test]
     async fn probe_contract_jotta_does_not_report_a_failed_find_as_empty() {
         let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));

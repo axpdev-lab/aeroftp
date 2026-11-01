@@ -94,6 +94,144 @@ pub(crate) fn parse_server_field(server: &str) -> (String, Option<u16>) {
 pub async fn create_cloud_provider(
     config: &CloudConfig,
 ) -> Result<Box<dyn StorageProvider>, String> {
+    Ok(create_cloud_connection(config).await?.provider)
+}
+
+/// The provider and the identity of the exact connection settings consumed by its builder.
+pub(crate) struct OpenedCloudProvider {
+    pub provider: Box<dyn StorageProvider>,
+    pub identity: Option<String>,
+    pub overlay_binding: serde_json::Value,
+}
+
+/// Hash canonical structured identity without persisting credentials or depending on map order.
+fn identity_digest(value: serde_json::Value) -> String {
+    use sha2::Digest;
+    fn canonical(value: serde_json::Value) -> serde_json::Value {
+        match value {
+            serde_json::Value::Object(values) => serde_json::Value::Object(
+                values
+                    .into_iter()
+                    .map(|(key, value)| (key, canonical(value)))
+                    .collect::<std::collections::BTreeMap<_, _>>()
+                    .into_iter()
+                    .collect(),
+            ),
+            serde_json::Value::Array(values) => {
+                serde_json::Value::Array(values.into_iter().map(canonical).collect())
+            }
+            value => value,
+        }
+    }
+    format!(
+        "{:x}",
+        sha2::Sha256::digest(canonical(value).to_string().as_bytes())
+    )
+}
+
+/// Fingerprint the resolved endpoint, account, root and options actually passed to ProviderFactory.
+fn resolved_target_identity(
+    config: &ProviderConfig,
+    binding: &serde_json::Value,
+    account: Option<&str>,
+) -> Option<String> {
+    let username = config
+        .username
+        .as_deref()
+        .filter(|value| !value.trim().is_empty());
+    let account = account.filter(|value| !value.trim().is_empty());
+    // These are the actual login or namespace selectors consumed by each builder,
+    // not the display username (token/bridge profiles may carry a placeholder).
+    let principal = match config.provider_type {
+        ProviderType::Ftp
+        | ProviderType::Ftps
+        | ProviderType::Sftp
+        | ProviderType::WebDav
+        | ProviderType::S3
+        | ProviderType::Azure
+        | ProviderType::Mega
+        | ProviderType::Filen
+        | ProviderType::Backblaze => username,
+        ProviderType::Uploadcare => config
+            .extra
+            .get("public_key")
+            .map(String::as_str)
+            .or(username),
+        ProviderType::KDrive => config.extra.get("drive_id").map(String::as_str),
+        _ => None,
+    }
+    .filter(|value| !value.trim().is_empty());
+    if account.is_none() && principal.is_none() {
+        return None;
+    }
+    let options: std::collections::BTreeMap<_, _> = config
+        .extra
+        .iter()
+        // Only selectors that can change the addressed namespace belong here.
+        // Retry/session/TLS behavior and one-time authentication inputs do not.
+        .filter(|(key, _)| {
+            matches!(
+                key.as_str(),
+                "endpoint"
+                    | "bucket"
+                    | "region"
+                    | "container"
+                    | "account_name"
+                    | "drive_id"
+                    | "device"
+                    | "mountpoint"
+                    | "root_folder_id"
+                    | "cloud_name"
+                    | "project_id"
+                    | "tenant_id"
+                    | "role_arn"
+                    | "public_key"
+                    | "space_id"
+                    | "library_id"
+            )
+        })
+        .collect();
+    Some(identity_digest(serde_json::json!({
+        "protocol": config.provider_type.to_string(), "host": config.host, "port": config.port.unwrap_or(config.provider_type.default_port()),
+        "principal": principal, "account": account, "root": config.initial_path,
+        "options": options, "overlay": overlay_identity(binding),
+    })))
+}
+
+/// Canonical mapping options, excluding UI-only fields and explicit defaults.
+fn overlay_identity(binding: &serde_json::Value) -> serde_json::Value {
+    if binding.get("enabled").and_then(serde_json::Value::as_bool) != Some(true) {
+        return serde_json::Value::Null;
+    }
+    serde_json::json!({
+        "enabled":true,
+        "kind": binding.get("kind").and_then(serde_json::Value::as_str).unwrap_or(crate::crypt_overlay_provider::DEFAULT_OVERLAY_KIND),
+        "remoteScope":binding.get("remoteScope").and_then(serde_json::Value::as_str).unwrap_or(""),
+        "filenameEncryption":binding.get("filenameEncryption").and_then(serde_json::Value::as_str).unwrap_or("standard"),
+        "directoryNameEncryption":binding.get("directoryNameEncryption").and_then(serde_json::Value::as_bool).unwrap_or(true),
+        "withHeader":binding.get("withHeader").and_then(serde_json::Value::as_bool).unwrap_or(false),
+        "useDefaultSalt":binding.get("useDefaultSalt").and_then(serde_json::Value::as_bool).unwrap_or(false),
+    })
+}
+
+fn overlay_binding(profile: Option<&serde_json::Value>) -> serde_json::Value {
+    profile
+        .and_then(|profile| profile.get("aeroCryptOverlay"))
+        .cloned()
+        .unwrap_or(serde_json::Value::Null)
+}
+
+/// Recheck overlay selection around composition so a profile edit cannot mix a new binding with an old connection.
+pub(crate) fn current_overlay_binding(
+    config: &CloudConfig,
+    store: &credential_store::CredentialStore,
+) -> Result<serde_json::Value, String> {
+    Ok(overlay_binding(saved_profile(store, config)?.as_ref()))
+}
+
+pub(crate) async fn create_cloud_connection(
+    config: &CloudConfig,
+) -> Result<OpenedCloudProvider, String> {
     match config.protocol_type.as_str() {
         // --- Direct auth providers: use ProviderFactory ---
         "ftp" => create_via_factory(config, ProviderType::Ftp).await,
@@ -320,7 +458,7 @@ fn connection_extra(
 async fn create_via_factory(
     config: &CloudConfig,
     provider_type: ProviderType,
-) -> Result<Box<dyn StorageProvider>, String> {
+) -> Result<OpenedCloudProvider, String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Credential vault not open".to_string())?;
 
@@ -383,6 +521,7 @@ async fn create_via_factory(
         extra,
     };
 
+    let binding = overlay_binding(profile.as_ref());
     let mut provider = ProviderFactory::create(&provider_config)
         .map_err(|e| format!("Failed to create provider: {}", e))?;
     // A3-05: Zeroize password after it has been consumed by the provider
@@ -409,14 +548,27 @@ async fn create_via_factory(
         enter_profile_root(&mut *provider, Some(&profile_root(profile))).await?;
     }
 
-    Ok(provider)
+    // Config identity is immutable here; authenticated identity further isolates API accounts.
+    let identity = resolved_target_identity(
+        &provider_config,
+        &binding,
+        provider
+            .sync_namespace_identity()
+            .or_else(|| provider.account_email())
+            .as_deref(),
+    );
+    Ok(OpenedCloudProvider {
+        provider,
+        identity,
+        overlay_binding: binding,
+    })
 }
 
 /// Yandex Disk profiles either authorize with OAuth, the tokens living in the
 /// profile's slot where the connect path and the CLI read them, or carry a
 /// token typed into the password field. The OAuth tokens win when the profile
 /// has them; otherwise the typed token connects through the factory.
-async fn create_yandex(config: &CloudConfig) -> Result<Box<dyn StorageProvider>, String> {
+async fn create_yandex(config: &CloudConfig) -> Result<OpenedCloudProvider, String> {
     if let Some(store) = credential_store::CredentialStore::from_cache() {
         let profile = saved_profile(&store, config)?;
         let profile_id = profile
@@ -428,16 +580,47 @@ async fn create_yandex(config: &CloudConfig) -> Result<Box<dyn StorageProvider>,
             let tokens = manager
                 .load_tokens(OAuthProvider::YandexDisk, &profile_id)
                 .map_err(|e| format!("No Yandex Disk tokens: {}", e))?;
-            let mut p = YandexDiskProvider::new(tokens.access_token.clone(), None);
-            p.connect()
-                .await
-                .map_err(|e| format!("Yandex Disk: {}", e))?;
-            enter_profile_root(&mut p, profile.as_ref().map(profile_root).as_deref()).await?;
-            info!("AeroCloud: connected to Yandex Disk");
-            return Ok(Box::new(p));
+            return open_yandex_oauth(
+                YandexDiskProvider::new(tokens.access_token.clone(), None),
+                &profile_id,
+                profile.as_ref(),
+            )
+            .await;
         }
     }
     create_via_factory(config, ProviderType::YandexDisk).await
+}
+
+/// Finish both production OAuth-token connections and isolated provider probes.
+async fn open_yandex_oauth(
+    mut provider: YandexDiskProvider,
+    profile_id: &str,
+    profile: Option<&serde_json::Value>,
+) -> Result<OpenedCloudProvider, String> {
+    provider
+        .connect()
+        .await
+        .map_err(|error| format!("Yandex Disk: {error}"))?;
+    enter_profile_root(&mut provider, profile.map(profile_root).as_deref()).await?;
+    let binding = overlay_binding(profile);
+    let identity = provider
+        .sync_namespace_identity()
+        .or_else(|| provider.account_email())
+        .filter(|account| !account.trim().is_empty())
+        .map(|account| {
+            identity_digest(serde_json::json!([
+                "yandexdisk",
+                profile_id,
+                profile.map(profile_root),
+                account,
+                overlay_identity(&binding)
+            ]))
+        });
+    Ok(OpenedCloudProvider {
+        provider: Box::new(provider),
+        identity,
+        overlay_binding: binding,
+    })
 }
 
 // ── OAuth providers ────────────────────────────────────────────────
@@ -453,6 +636,7 @@ fn get_param<'a>(config: &'a CloudConfig, key: &str) -> Result<&'a str, String> 
 /// The OAuth app an AeroCloud config connects with and the profile whose
 /// tokens it uses.
 struct OAuthApp {
+    overlay_binding: serde_json::Value,
     client_id: String,
     client_secret: String,
     /// Empty for a legacy config: the provider's singleton token slot.
@@ -483,6 +667,7 @@ fn oauth_app(config: &CloudConfig, id_key: &str, secret_key: &str) -> Result<OAu
             profile_id: String::new(),
             region: param_region,
             root: None,
+            overlay_binding: serde_json::Value::Null,
         });
     }
 
@@ -508,10 +693,32 @@ fn oauth_app(config: &CloudConfig, id_key: &str, secret_key: &str) -> Result<OAu
         profile_id: options.remove("profile_id").unwrap_or_default(),
         region: options.remove("region").or(param_region),
         root: Some(profile_root(&profile)),
+        overlay_binding: overlay_binding(Some(&profile)),
     })
 }
 
-async fn create_google_drive(config: &CloudConfig) -> Result<Box<dyn StorageProvider>, String> {
+/// OAuth receipts require a stable authenticated account, not merely a reusable token slot.
+fn opened_oauth(provider: Box<dyn StorageProvider>, app: &OAuthApp) -> OpenedCloudProvider {
+    let account = provider
+        .sync_namespace_identity()
+        .or_else(|| provider.account_email())
+        .filter(|value| !value.trim().is_empty());
+    let endpoint = provider.endpoint_identity();
+    let identity = account.map(|account| {
+        identity_digest(serde_json::json!({
+            "protocol": endpoint.protocol, "host": endpoint.host, "account": account,
+            "app": app.client_id, "slot": app.profile_id, "region": app.region,
+            "root": app.root, "overlay": overlay_identity(&app.overlay_binding),
+        }))
+    });
+    OpenedCloudProvider {
+        provider,
+        identity,
+        overlay_binding: app.overlay_binding.clone(),
+    }
+}
+
+async fn create_google_drive(config: &CloudConfig) -> Result<OpenedCloudProvider, String> {
     let app = oauth_app(config, "client_id", "client_secret")?;
     let gc = GoogleDriveConfig::new(&app.client_id, &app.client_secret);
     let mut p = GoogleDriveProvider::new(gc).with_profile_id(&app.profile_id);
@@ -520,66 +727,69 @@ async fn create_google_drive(config: &CloudConfig) -> Result<Box<dyn StorageProv
         .map_err(|e| format!("Google Drive: {}", e))?;
     enter_profile_root(&mut p, app.root.as_deref()).await?;
     info!("AeroCloud: connected to Google Drive");
-    Ok(Box::new(p))
+    Ok(opened_oauth(Box::new(p), &app))
 }
 
-async fn create_dropbox(config: &CloudConfig) -> Result<Box<dyn StorageProvider>, String> {
+async fn create_dropbox(config: &CloudConfig) -> Result<OpenedCloudProvider, String> {
     let app = oauth_app(config, "client_id", "client_secret")?;
     let dc = DropboxConfig::new(&app.client_id, &app.client_secret);
     let mut p = DropboxProvider::new(dc).with_profile_id(&app.profile_id);
     p.connect().await.map_err(|e| format!("Dropbox: {}", e))?;
     enter_profile_root(&mut p, app.root.as_deref()).await?;
     info!("AeroCloud: connected to Dropbox");
-    Ok(Box::new(p))
+    Ok(opened_oauth(Box::new(p), &app))
 }
 
-async fn create_onedrive(config: &CloudConfig) -> Result<Box<dyn StorageProvider>, String> {
+async fn create_onedrive(config: &CloudConfig) -> Result<OpenedCloudProvider, String> {
     let app = oauth_app(config, "client_id", "client_secret")?;
     let oc = OneDriveConfig::new(&app.client_id, &app.client_secret);
     let mut p = OneDriveProvider::new(oc).with_profile_id(&app.profile_id);
     p.connect().await.map_err(|e| format!("OneDrive: {}", e))?;
     enter_profile_root(&mut p, app.root.as_deref()).await?;
     info!("AeroCloud: connected to OneDrive");
-    Ok(Box::new(p))
+    Ok(opened_oauth(Box::new(p), &app))
 }
 
-async fn create_box(config: &CloudConfig) -> Result<Box<dyn StorageProvider>, String> {
+async fn create_box(config: &CloudConfig) -> Result<OpenedCloudProvider, String> {
     let app = oauth_app(config, "client_id", "client_secret")?;
     let bc = BoxConfig::new(&app.client_id, &app.client_secret);
     let mut p = BoxProvider::new(bc).with_profile_id(&app.profile_id);
     p.connect().await.map_err(|e| format!("Box: {}", e))?;
     enter_profile_root(&mut p, app.root.as_deref()).await?;
     info!("AeroCloud: connected to Box");
-    Ok(Box::new(p))
+    Ok(opened_oauth(Box::new(p), &app))
 }
 
-async fn create_pcloud(config: &CloudConfig) -> Result<Box<dyn StorageProvider>, String> {
-    let app = oauth_app(config, "client_id", "client_secret")?;
+async fn create_pcloud(config: &CloudConfig) -> Result<OpenedCloudProvider, String> {
+    let mut app = oauth_app(config, "client_id", "client_secret")?;
     // pCloud tokens are region-locked: the region detected during the token
     // exchange (vault) wins, as in the normal connect path.
     let region = credential_store::CredentialStore::from_cache()
         .and_then(|store| store.get("oauth_pcloud_region").ok())
-        .or(app.region)
+        .or(app.region.clone())
         .unwrap_or_else(|| "us".to_string());
+    app.region = Some(region.clone());
     let pc = PCloudConfig::new(&app.client_id, &app.client_secret, &region);
     let mut p = PCloudProvider::new(pc).with_profile_id(&app.profile_id);
     p.connect().await.map_err(|e| format!("pCloud: {}", e))?;
     enter_profile_root(&mut p, app.root.as_deref()).await?;
     info!("AeroCloud: connected to pCloud ({})", region);
-    Ok(Box::new(p))
+    Ok(opened_oauth(Box::new(p), &app))
 }
 
-async fn create_zoho(config: &CloudConfig) -> Result<Box<dyn StorageProvider>, String> {
-    let app = oauth_app(config, "client_id", "client_secret")?;
+async fn create_zoho(config: &CloudConfig) -> Result<OpenedCloudProvider, String> {
+    let mut app = oauth_app(config, "client_id", "client_secret")?;
     // The profile's region, then the one stored at authorization, as the normal
     // connect path resolves it.
     let region = app
         .region
+        .clone()
         .or_else(|| {
             credential_store::CredentialStore::from_cache()
                 .and_then(|store| store.get("oauth_zohoworkdrive_region").ok())
         })
         .unwrap_or_else(|| "us".to_string());
+    app.region = Some(region.clone());
     let zc = ZohoWorkdriveConfig::new(&app.client_id, &app.client_secret, &region);
     let mut p = ZohoWorkdriveProvider::new(zc).with_profile_id(&app.profile_id);
     p.connect()
@@ -587,12 +797,12 @@ async fn create_zoho(config: &CloudConfig) -> Result<Box<dyn StorageProvider>, S
         .map_err(|e| format!("Zoho WorkDrive: {}", e))?;
     enter_profile_root(&mut p, app.root.as_deref()).await?;
     info!("AeroCloud: connected to Zoho WorkDrive ({})", region);
-    Ok(Box::new(p))
+    Ok(opened_oauth(Box::new(p), &app))
 }
 
 // ── OAuth1 (4shared) ───────────────────────────────────────────────
 
-async fn create_fourshared(config: &CloudConfig) -> Result<Box<dyn StorageProvider>, String> {
+async fn create_fourshared(config: &CloudConfig) -> Result<OpenedCloudProvider, String> {
     let app = oauth_app(config, "consumer_key", "consumer_secret")?;
     // The tokens live where the 4shared connect path stores them: the
     // profile's slot, or the provider singleton for a legacy config.
@@ -600,8 +810,8 @@ async fn create_fourshared(config: &CloudConfig) -> Result<Box<dyn StorageProvid
         crate::provider_commands::load_fourshared_tokens(&app.profile_id)?;
 
     let fs_config = FourSharedConfig {
-        consumer_key: app.client_id,
-        consumer_secret: SecretString::from(app.client_secret),
+        consumer_key: app.client_id.clone(),
+        consumer_secret: SecretString::from(app.client_secret.clone()),
         access_token: SecretString::from(access_token),
         access_token_secret: SecretString::from(access_token_secret),
     };
@@ -610,12 +820,204 @@ async fn create_fourshared(config: &CloudConfig) -> Result<Box<dyn StorageProvid
     p.connect().await.map_err(|e| format!("4shared: {}", e))?;
     enter_profile_root(&mut p, app.root.as_deref()).await?;
     info!("AeroCloud: connected to 4shared");
-    Ok(Box::new(p))
+    Ok(opened_oauth(Box::new(p), &app))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn receipt_identity_follows_resolved_target_even_when_profile_labels_do_not_change() {
+        let original = ProviderConfig {
+            name: "same saved profile".into(),
+            provider_type: ProviderType::S3,
+            host: "first.example".into(),
+            port: Some(443),
+            username: Some("access-id".into()),
+            password: Some("not fingerprinted".into()),
+            initial_path: Some("/root".into()),
+            extra: HashMap::from([
+                ("bucket".into(), "first-bucket".into()),
+                ("region".into(), "first-region".into()),
+            ]),
+        };
+        let binding = serde_json::json!({"enabled":true,"remoteScope":"/crypt","id":"key-one"});
+        let expected = resolved_target_identity(&original, &binding, Some("account-one")).unwrap();
+        for change in [
+            "host", "port", "username", "root", "bucket", "region", "endpoint",
+        ] {
+            let mut changed = original.clone();
+            match change {
+                "host" => changed.host = "second.example".into(),
+                "port" => changed.port = Some(9443),
+                "username" => changed.username = Some("other-access-id".into()),
+                "root" => changed.initial_path = Some("/other".into()),
+                option => {
+                    changed.extra.insert(option.into(), "different".into());
+                }
+            }
+            assert_ne!(
+                resolved_target_identity(&changed, &binding, Some("account-one")).unwrap(),
+                expected,
+                "{change}"
+            );
+        }
+        assert_ne!(
+            resolved_target_identity(&original, &binding, Some("account-two")).unwrap(),
+            expected
+        );
+        assert_ne!(
+            resolved_target_identity(
+                &original,
+                &serde_json::json!({"enabled":true,"remoteScope":"/other"}),
+                Some("account-one")
+            )
+            .unwrap(),
+            expected
+        );
+        let mut rotated_secret = original.clone();
+        rotated_secret.password = Some("new password".into());
+        rotated_secret
+            .extra
+            .insert("key_passphrase".into(), "secret".into());
+        assert_eq!(
+            resolved_target_identity(&rotated_secret, &binding, Some("account-one")).unwrap(),
+            expected
+        );
+        let mut unknown = original.clone();
+        unknown.username = None;
+        assert!(resolved_target_identity(&unknown, &binding, None).is_none());
+        assert!(
+            resolved_target_identity(&unknown, &binding, Some("known actual account")).is_some()
+        );
+        let mut bridge = original.clone();
+        bridge.provider_type = ProviderType::Proton;
+        bridge.username = Some("placeholder login".into());
+        assert!(resolved_target_identity(&bridge, &binding, None).is_none());
+        assert!(resolved_target_identity(&bridge, &binding, Some("actual account")).is_some());
+        for (kind, selector) in [
+            (ProviderType::Uploadcare, "public_key"),
+            (ProviderType::KDrive, "drive_id"),
+        ] {
+            let mut namespace = unknown.clone();
+            namespace.provider_type = kind;
+            namespace
+                .extra
+                .insert(selector.into(), "first-namespace".into());
+            let first = resolved_target_identity(&namespace, &binding, None).unwrap();
+            namespace
+                .extra
+                .insert(selector.into(), "other-namespace".into());
+            assert_ne!(
+                resolved_target_identity(&namespace, &binding, None).unwrap(),
+                first
+            );
+        }
+        let mut display_only = original;
+        display_only.provider_type = ProviderType::ImageKit;
+        display_only
+            .extra
+            .insert("imagekit_id".into(), "display-url-only".into());
+        assert!(resolved_target_identity(&display_only, &binding, None).is_none());
+    }
+
+    #[test]
+    fn behavior_and_one_time_auth_inputs_do_not_change_namespace_identity() {
+        let mut config = ProviderConfig {
+            name: "label".into(),
+            provider_type: ProviderType::S3,
+            host: "server".into(),
+            port: None,
+            username: Some("account".into()),
+            password: Some("secret".into()),
+            initial_path: Some("/root".into()),
+            extra: HashMap::from([("bucket".into(), "data".into())]),
+        };
+        let binding = serde_json::json!({"enabled":true,"remoteScope":"/crypt"});
+        let before = resolved_target_identity(&config, &binding, None).unwrap();
+        for key in [
+            "save_session",
+            "logout_on_disconnect",
+            "two_factor_code",
+            "totp_secret",
+            "timeout",
+            "verify_cert",
+            "retry_count",
+            "storage_class",
+        ] {
+            config.extra.insert(key.into(), "changed".into());
+        }
+        config.port = Some(ProviderType::S3.default_port());
+        config.name = "new label".into();
+        let explicit = serde_json::json!({"enabled":true,"kind":"aerocrypt","remoteScope":"/crypt","filenameEncryption":"standard","directoryNameEncryption":true,"withHeader":false,"useDefaultSalt":false,"lastOpened":"volatile"});
+        assert_eq!(
+            resolved_target_identity(&config, &explicit, None).unwrap(),
+            before
+        );
+        config.extra.insert("bucket".into(), "other".into());
+        assert_ne!(
+            resolved_target_identity(&config, &explicit, None).unwrap(),
+            before
+        );
+    }
+
+    #[tokio::test]
+    async fn opened_yandex_and_oauth_use_authenticated_identity_and_preserve_unknown_as_none() {
+        use std::sync::{Arc, Mutex};
+        let user = Arc::new(Mutex::new(
+            serde_json::json!({"uid":"uid-one","login":"display"}),
+        ));
+        let state = user.clone();
+        let app = axum::Router::new().route(
+            "/",
+            axum::routing::get(move || {
+                let user = state.clone();
+                async move { axum::Json(serde_json::json!({"user":user.lock().unwrap().clone()})) }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let profile = serde_json::json!({"id":"same-slot","initialPath":"/"});
+        let oauth = OAuthApp {
+            client_id: "app".into(),
+            client_secret: "not-persisted".into(),
+            profile_id: "same-slot".into(),
+            region: None,
+            root: Some("/".into()),
+            overlay_binding: serde_json::Value::Null,
+        };
+        let open =
+            |url: &str| YandexDiskProvider::new("token".into(), None).with_test_api_base(url);
+        let first = open_yandex_oauth(open(&endpoint), "same-slot", Some(&profile))
+            .await
+            .unwrap();
+        assert!(first.identity.is_some());
+        assert_eq!(first.provider.account_email().as_deref(), Some("display"));
+        assert_eq!(
+            first.provider.sync_namespace_identity().as_deref(),
+            Some("uid-one")
+        );
+        let generic = opened_oauth(first.provider, &oauth);
+        assert!(generic.identity.is_some());
+        *user.lock().unwrap() = serde_json::json!({"uid":"uid-two","login":"display"});
+        let second = open_yandex_oauth(open(&endpoint), "same-slot", Some(&profile))
+            .await
+            .unwrap();
+        assert_ne!(second.identity, first.identity);
+        assert_ne!(
+            opened_oauth(second.provider, &oauth).identity,
+            generic.identity
+        );
+        *user.lock().unwrap() = serde_json::Value::Null;
+        let unknown = open_yandex_oauth(open(&endpoint), "same-slot", Some(&profile))
+            .await
+            .unwrap();
+        assert!(unknown.identity.is_none());
+        assert!(opened_oauth(unknown.provider, &oauth).identity.is_none());
+        server.abort();
+    }
 
     #[test]
     fn test_parse_server_field_hostname_only() {

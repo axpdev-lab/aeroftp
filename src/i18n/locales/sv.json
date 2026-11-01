@@ -1590,7 +1590,9 @@
             "aerocloudEnabled": "AeroCloud aktiverat",
             "selectPairLocalFolder": "Välj lokal mapp för paret",
             "secondsAgo": "{count}s sedan",
-            "conflictsCount": "Konflikter som kräver åtgärd: {count}"
+            "conflictsCount": "Konflikter som kräver åtgärd: {count}",
+            "updateOnlyHint": "Envägsuppdatering behåller nyare målfiler. När additiv säkerhetskopiering är avstängd tas bara oförändrade filer som enbart finns på målet och har ett verifierat AeroCloud-överföringskvitto bort. Andra filer ligger kvar för granskning i AeroSync. Konfliktpolicyn ignoreras; okända datum förblir olösta.",
+            "untrackedDestinationFiles": "{count} målfiler behölls för granskning: deras överföringshistorik är inte verifierad eller så har de ändrats sedan den senaste AeroCloud-överföringen. Granska dem i AeroSync innan du beslutar om borttagning."
         },
         "statusBar": {
             "connected": "Ansluten",
@@ -6346,7 +6348,10 @@
             "progressCopy": "[kopia]",
             "deleteCount": "{count} att radera",
             "overwriteCount": "{count} att skriva över",
-            "conflictCount": "Konflikter: {count}"
+            "conflictCount": "Konflikter: {count}",
+            "updateOnly": "Hoppa över nyare målfiler (envägsuppdatering)",
+            "updateOnlyHint": "Kopierar saknade eller ändrade källfiler, behåller nyare målfiler och tar bort poster som endast finns på målet. Filer utan jämförbara datum jämförs efter storlek; storleksskillnader lämnas för granskning.",
+            "rescanNeeded": "Kör en ny jämförelse med de aktuella inställningarna innan du exporterar ett uppdateringsskript."
         },
         "accountLock": {
             "title": "Välj ett konto",

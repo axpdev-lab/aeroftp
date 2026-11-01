@@ -1590,7 +1590,9 @@
             "aerocloudEnabled": "AeroCloud käytössä",
             "selectPairLocalFolder": "Valitse paikallinen kansio parille",
             "secondsAgo": "{count}s sitten",
-            "conflictsCount": "Huomiota vaativat ristiriidat: {count}"
+            "conflictsCount": "Huomiota vaativat ristiriidat: {count}",
+            "updateOnlyHint": "Yksisuuntainen päivitys säilyttää uudemmat kohdetiedostot. Kun lisäävä varmuuskopiointi on pois käytöstä, vain muuttumattomat, pelkästään kohteessa olevat tiedostot, joilla on vahvistettu AeroCloud-siirtokuitti, poistetaan. Muut tiedostot jäävät tarkistettaviksi AeroSyncissä. Ristiriitakäytäntö ohitetaan; tuntemattomat päivämäärät jäävät ratkaisematta.",
+            "untrackedDestinationFiles": "{count} kohdetiedostoa säilytettiin tarkistettaviksi: niiden siirtohistoriaa ei ole vahvistettu tai niitä on muutettu viimeisimmän AeroCloud-siirron jälkeen. Tarkista ne AeroSyncissä ennen kuin päätät poistamisesta."
         },
         "statusBar": {
             "connected": "Yhdistetty",
@@ -6346,7 +6348,10 @@
             "progressCopy": "[kopio]",
             "deleteCount": "Poistettavat: {count}",
             "overwriteCount": "Korvattavat: {count}",
-            "conflictCount": "Ristiriidat: {count}"
+            "conflictCount": "Ristiriidat: {count}",
+            "updateOnly": "Ohita uudemmat kohdetiedostot (yksisuuntainen päivitys)",
+            "updateOnlyHint": "Kopioi puuttuvat tai muuttuneet lähdetiedostot, säilyttää kohteen uudemmat tiedostot ja poistaa vain kohteessa olevat merkinnät. Tiedostoja, joilla ei ole vertailukelpoisia päivämääriä, verrataan koon perusteella; kokoerot jätetään tarkistettavaksi.",
+            "rescanNeeded": "Suorita uusi vertailu nykyisillä asetuksilla ennen päivitysskriptin vientiä."
         },
         "accountLock": {
             "title": "Valitse tili",

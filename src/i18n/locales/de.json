@@ -1590,7 +1590,9 @@
             "aerocloudEnabled": "AeroCloud aktiviert",
             "selectPairLocalFolder": "Lokalen Ordner für Paar auswählen",
             "secondsAgo": "vor {count}s",
-            "conflictsCount": "Zu prüfende Konflikte: {count}"
+            "conflictsCount": "Zu prüfende Konflikte: {count}",
+            "updateOnlyHint": "Die Einweg-Aktualisierung behält neuere Zieldateien bei. Bei deaktivierter additiver Sicherung werden nur unveränderte Dateien gelöscht, die ausschließlich im Ziel vorhanden sind und einen verifizierten AeroCloud-Übertragungsbeleg haben. Andere Dateien bleiben zur Prüfung in AeroSync erhalten. Die Konfliktrichtlinie wird ignoriert; unbekannte Datumsangaben bleiben ungeklärt.",
+            "untrackedDestinationFiles": "{count} Zieldateien wurden zur Prüfung beibehalten: Ihr Übertragungsverlauf ist unbestätigt oder sie wurden seit der letzten AeroCloud-Übertragung geändert. Prüfen Sie sie in AeroSync, bevor Sie über eine Löschung entscheiden."
         },
         "statusBar": {
             "connected": "Verbunden",
@@ -6346,7 +6348,10 @@
             "progressCopy": "[Kopie]",
             "deleteCount": "{count} zu löschen",
             "overwriteCount": "{count} zu überschreiben",
-            "conflictCount": "Konflikte: {count}"
+            "conflictCount": "Konflikte: {count}",
+            "updateOnly": "Neuere Zieldateien überspringen (Einweg-Aktualisierung)",
+            "updateOnlyHint": "Kopiert fehlende oder geänderte Quelldateien, behält neuere Dateien am Ziel und löscht Einträge, die nur am Ziel vorhanden sind. Dateien ohne vergleichbare Datumsangaben werden nach Größe verglichen; Größenunterschiede bleiben zur Überprüfung bestehen.",
+            "rescanNeeded": "Führe einen neuen Vergleich mit den aktuellen Einstellungen durch, bevor du ein Aktualisierungsskript exportierst."
         },
         "accountLock": {
             "title": "Konto auswählen",

@@ -1590,7 +1590,9 @@
             "aerocloudEnabled": "AeroCloud lubatud",
             "selectPairLocalFolder": "Vali paari jaoks kohalik kaust",
             "secondsAgo": "{count}s tagasi",
-            "conflictsCount": "Tähelepanu vajavad konfliktid: {count}"
+            "conflictsCount": "Tähelepanu vajavad konfliktid: {count}",
+            "updateOnlyHint": "Ühesuunaline uuendamine säilitab uuemad sihtfailid. Kui lisav varundamine on välja lülitatud, kustutatakse ainult muutmata failid, mis asuvad üksnes sihtkohas ja millel on kinnitatud AeroCloudi edastuskviitung. Muud failid jäävad AeroSyncis ülevaatamiseks. Konfliktireeglit eiratakse; tundmatud kuupäevad jäävad lahendamata.",
+            "untrackedDestinationFiles": "{count} sihtfaili säilitati ülevaatamiseks: nende edastusajalugu on kinnitamata või on neid pärast viimast AeroCloudi edastust muudetud. Vaata need AeroSyncis üle, enne kui otsustad kustutamise üle."
         },
         "statusBar": {
             "connected": "Ühendatud",
@@ -6346,7 +6348,10 @@
             "progressCopy": "[koopia]",
             "deleteCount": "{count} kustutamiseks",
             "overwriteCount": "{count} ülekirjutamiseks",
-            "conflictCount": "Konfliktid: {count}"
+            "conflictCount": "Konfliktid: {count}",
+            "updateOnly": "Jäta uuemad sihtfailid vahele (ühesuunaline uuendamine)",
+            "updateOnlyHint": "Kopeerib puuduvad või muudetud lähtefailid, säilitab sihtkoha uuemad failid ja kustutab ainult sihtkohas olevad kirjed. Faile, millel puuduvad võrreldavad kuupäevad, võrreldakse suuruse järgi; suuruse erinevused jäetakse läbivaatamiseks.",
+            "rescanNeeded": "Enne uuendamisskripti eksportimist käivita uus võrdlus praeguste sätetega."
         },
         "accountLock": {
             "title": "Vali konto",

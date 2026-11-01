@@ -1590,7 +1590,9 @@
             "aerocloudEnabled": "Pinagana ang AeroCloud",
             "selectPairLocalFolder": "Pumili ng lokal na folder para sa pares",
             "secondsAgo": "{count}s nakalipas",
-            "conflictsCount": "{count} salungatan ang nangangailangan ng pansin"
+            "conflictsCount": "{count} salungatan ang nangangailangan ng pansin",
+            "updateOnlyHint": "Pinapanatili ng isang direksiyong pag-update ang mas bagong mga file sa destinasyon. Kapag naka-off ang backup na nagdaragdag lang, tanging mga file na hindi nagbago, nasa destinasyon lang at may beripikadong resibo ng paglilipat sa AeroCloud ang binubura. Ang ibang mga file ay mananatili para sa pagsusuri sa AeroSync. Hindi sinusunod ang patakaran sa salungatan; nananatiling hindi nalulutas ang mga hindi kilalang petsa.",
+            "untrackedDestinationFiles": "Pinanatili ang {count} file sa destinasyon para sa pagsusuri: hindi pa nabeberipika ang kasaysayan ng paglilipat ng mga ito o nabago ang mga ito matapos ang huling paglilipat sa AeroCloud. Suriin ang mga ito sa AeroSync bago magpasya kung buburahin."
         },
         "statusBar": {
             "connected": "Nakakonekta",
@@ -6365,7 +6367,10 @@
             "progressCopy": "[kopya]",
             "deleteCount": "Buburahin: {count}",
             "overwriteCount": "Papatungan: {count}",
-            "conflictCount": "{count} salungatan"
+            "conflictCount": "{count} salungatan",
+            "updateOnly": "Laktawan ang mas bagong mga file sa destinasyon (isang direksiyong pag-update)",
+            "updateOnlyHint": "Kinokopya ang mga source file na nawawala o nagbago, pinapanatili ang mas bagong mga file sa destination, at tinatanggal ang mga entry na nasa destination lang. Ang mga file na walang maihahambing na petsa ay inihahambing ayon sa laki; iniiwan ang mga pagkakaiba sa laki para sa pagsusuri.",
+            "rescanNeeded": "Magpatakbo ng bagong paghahambing gamit ang kasalukuyang mga setting bago mag-export ng script sa pag-update."
         },
         "accountLock": {
             "title": "Pumili ng account",

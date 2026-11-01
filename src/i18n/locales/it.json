@@ -2079,7 +2079,9 @@
             "aerocloudEnabled": "AeroCloud attivato",
             "selectPairLocalFolder": "Seleziona cartella locale per la coppia",
             "secondsAgo": "{count}s fa",
-            "conflictsCount": "Conflitti da risolvere: {count}"
+            "conflictsCount": "Conflitti da risolvere: {count}",
+            "updateOnlyHint": "L’aggiornamento unidirezionale conserva i file di destinazione più recenti. Con il backup additivo disattivato, vengono eliminati solo i file invariati presenti esclusivamente nella destinazione e con una ricevuta di trasferimento AeroCloud verificata. Gli altri file restano da esaminare in AeroSync. La politica dei conflitti viene ignorata; le date sconosciute restano irrisolte.",
+            "untrackedDestinationFiles": "{count} file di destinazione sono stati conservati per la revisione: la cronologia dei trasferimenti non è verificata oppure sono stati modificati dopo l’ultimo trasferimento AeroCloud. Esaminali in AeroSync prima di decidere se eliminarli."
         },
         "statusBar": {
             "connected": "Connesso",
@@ -6600,7 +6602,10 @@
             "progressCopy": "[copia]",
             "deleteCount": "Da eliminare: {count}",
             "overwriteCount": "Da sovrascrivere: {count}",
-            "conflictCount": "Conflitti: {count}"
+            "conflictCount": "Conflitti: {count}",
+            "updateOnly": "Salta i file di destinazione più recenti (aggiornamento unidirezionale)",
+            "updateOnlyHint": "Copia i file di origine mancanti o modificati, conserva i file di destinazione più recenti ed elimina le voci presenti solo nella destinazione. I file senza date confrontabili vengono confrontati in base alla dimensione; le differenze di dimensione restano in attesa di revisione.",
+            "rescanNeeded": "Esegui un nuovo confronto con le impostazioni attuali prima di esportare uno script di aggiornamento."
         },
         "aerocryptProfile": {
             "overlaysSection": "Wrapper / Overlay",

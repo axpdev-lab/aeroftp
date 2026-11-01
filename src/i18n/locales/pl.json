@@ -1590,7 +1590,9 @@
             "aerocloudEnabled": "AeroCloud włączony",
             "selectPairLocalFolder": "Wybierz folder lokalny dla pary",
             "secondsAgo": "{count}s temu",
-            "conflictsCount": "Konflikty wymagające uwagi: {count}"
+            "conflictsCount": "Konflikty wymagające uwagi: {count}",
+            "updateOnlyHint": "Aktualizacja jednokierunkowa zachowuje nowsze pliki docelowe. Gdy kopia zapasowa z dodawaniem jest wyłączona, usuwane są tylko niezmienione pliki istniejące wyłącznie w miejscu docelowym ze zweryfikowanym potwierdzeniem transferu AeroCloud. Pozostałe pliki pozostają do sprawdzenia w AeroSync. Zasady konfliktów są ignorowane; nieznane daty pozostają nierozstrzygnięte.",
+            "untrackedDestinationFiles": "{count} plików docelowych zachowano do sprawdzenia: ich historia transferów nie została zweryfikowana lub zmieniły się od ostatniego transferu AeroCloud. Sprawdź je w AeroSync przed podjęciem decyzji o usunięciu."
         },
         "statusBar": {
             "connected": "Połączono",
@@ -6346,7 +6348,10 @@
             "progressCopy": "[kopia]",
             "deleteCount": "Do usunięcia: {count}",
             "overwriteCount": "Do nadpisania: {count}",
-            "conflictCount": "Konflikty: {count}"
+            "conflictCount": "Konflikty: {count}",
+            "updateOnly": "Pomiń nowsze pliki docelowe (aktualizacja jednokierunkowa)",
+            "updateOnlyHint": "Kopiuje brakujące lub zmienione pliki źródłowe, zachowuje nowsze pliki docelowe i usuwa wpisy istniejące tylko w miejscu docelowym. Pliki bez porównywalnych dat są porównywane według rozmiaru; różnice rozmiaru pozostają do przejrzenia.",
+            "rescanNeeded": "Przed wyeksportowaniem skryptu aktualizacji uruchom nowe porównanie z bieżącymi ustawieniami."
         },
         "accountLock": {
             "title": "Wybierz konto",

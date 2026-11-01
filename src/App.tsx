@@ -10227,16 +10227,17 @@ const App: React.FC = () => {
   const checkFolderOverwrite = useCallback(async (
     folderName: string,
     direction: 'upload' | 'download',
-    queueCount: number = 0
+    queueCount: number = 0,
+    // The listing of the folder written to, when the panel lists another one.
+    destinationFiles?: readonly { name: string; is_dir: boolean }[],
   ): Promise<{ action: FolderMergeAction; applyToAll: boolean }> => {
     // If apply-to-all was set previously in this batch, reuse it
     if (folderOverwriteApplyToAll.current.enabled) {
       return { action: folderOverwriteApplyToAll.current.action, applyToAll: true };
     }
     // Check if destination folder exists
-    const exists = direction === 'upload'
-      ? remoteFiles.some(f => f.name === folderName && f.is_dir)
-      : localFiles.some(f => f.name === folderName && f.is_dir);
+    const destination = destinationFiles ?? (direction === 'upload' ? remoteFiles : localFiles);
+    const exists = destination.some(f => f.name === folderName && f.is_dir);
     if (!exists) {
       return { action: 'merge_overwrite', applyToAll: false };
     }
@@ -11678,7 +11679,7 @@ const App: React.FC = () => {
               progressId: scanProgressId,
             });
             // Both sides are local: local_info = left, remote_info = right.
-            resolved = adaptFileComparisons(report.differences, true, report.summary);
+            resolved = adaptFileComparisons(report.differences, true, report.summary, report.modify_window);
           } catch (err) {
             // Stopped from the dialog, which already shows it as stopped.
             if (isCompareCancelled(err)) return;
@@ -11800,7 +11801,7 @@ const App: React.FC = () => {
             isProviderConn ? 'provider_compare_directories' : 'compare_directories',
             compareArgs,
           );
-          resolved = adaptFileComparisons(report.differences, leftLocal, report.summary);
+          resolved = adaptFileComparisons(report.differences, leftLocal, report.summary, report.modify_window);
         } catch (err) {
           // Stopped from the dialog, which already shows it as stopped.
           if (isCompareCancelled(err)) return;
@@ -12998,7 +12999,7 @@ const App: React.FC = () => {
   };
 
   // Upload files (Selected or Dialog)
-  const uploadMultipleFiles = withBatchLatch(async (filesOverride?: string[], localPanelId: 'local' | 'local2' = focusedLocalPanelId) => {
+  const uploadMultipleFiles = withBatchLatch(async (filesOverride?: string[], localPanelId: 'local' | 'local2' = focusedLocalPanelId, remoteDir: string = currentRemotePath) => {
     if (!isConnected) return;
     // The panel the names come from: a right-click in panel 2 uploads panel
     // 2's files, not panel 1's of the same name.
@@ -13009,6 +13010,12 @@ const App: React.FC = () => {
 
     // Use override or fallback to selected state
     const targetNames = filesOverride || Array.from(panel.selection);
+
+    // A drop on a folder row writes into that folder, which the panel may
+    // not list: its own listing decides what an upload would overwrite. A
+    // listing that fails stops the upload; it never passes for an empty folder.
+    const destinationListing = async (): Promise<LocalFile[] | RemoteFile[] | undefined> =>
+      remoteDir === currentRemotePath ? undefined : await getOverwriteDestination('upload', remoteDir);
 
     // Priority 1: Upload specific target files
     if (targetNames.length > 0) {
@@ -13021,7 +13028,7 @@ const App: React.FC = () => {
 
       if (filesToUpload.length > 0) {
         const protocol = liveConnectionParams.protocol;
-        const isGitHubRepoMode = (protocol === 'github' && !currentRemotePath.startsWith('/.github-releases')) || protocol === 'gitlab';
+        const isGitHubRepoMode = (protocol === 'github' && !remoteDir.startsWith('/.github-releases')) || protocol === 'gitlab';
         let batchCommitMessage: string | undefined;
 
         if (isGitHubRepoMode) {
@@ -13059,7 +13066,7 @@ const App: React.FC = () => {
           const commitMessage = await requestGitHubBatchCommitMessage(
             filesToUpload.map(({ path: filePath, file }) => ({
               local: filePath,
-              remote: `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${file.name}`,
+              remote: `${remoteDir}${remoteDir.endsWith('/') ? '' : '/'}${file.name}`,
             })),
             'upload',
           );
@@ -13077,6 +13084,9 @@ const App: React.FC = () => {
           filesToUpload.map(entry => ({ ...entry, is_dir: entry.file.is_dir })),
           fileBatchSessionFlags('upload'),
         );
+        // Set once the file batch has run: a listing that fails after it
+        // still ends the run as the batch alone would.
+        let batchStaged: boolean | undefined;
         if (batchUploads.length > 0) {
           const outcome = await runFileBatch(
             'upload',
@@ -13086,12 +13096,13 @@ const App: React.FC = () => {
               size: file.size || 0,
               modified: file.modified || null,
             })),
-            currentRemotePath,
+            remoteDir,
           );
           if (outcome.aborted) {
             folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
             return;
           }
+          batchStaged = outcome.staged;
           // A Stop during the file batch also stops the folders after it.
           if (restUploads.length === 0 || batchCancelledRef.current) {
             folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
@@ -13108,10 +13119,22 @@ const App: React.FC = () => {
         // staged executor (dispatcher fires it on staged -> pending). Legacy
         // path falls through to the overwrite + circuit-breaker for-loop;
         // staged path returns immediately after seeding the queue.
+        let destinationFiles: LocalFile[] | RemoteFile[] | undefined;
+        try {
+          destinationFiles = await destinationListing();
+        } catch (error) {
+          notify.error(t('toast.uploadFailed'), String(error));
+          if (batchStaged !== undefined) {
+            folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
+            panel.setSelection(new Set());
+            if (!batchStaged) loadRemoteFiles();
+          }
+          return;
+        }
         const stagedUploadMode = settings.autoStartTransfers === false;
         const sequentialUploadProfileId =
           sessions.find(s => s.id === activeSessionId)?.savedServerId ?? null;
-        const frozenUploadRemoteDir = currentRemotePath;
+        const frozenUploadRemoteDir = remoteDir;
         const queueItems = filesToUpload.map(({ path: filePath, file }) => {
           const fileName = filePath.split(/[/\\]/).pop() || filePath;
           const size = file?.size || 0;
@@ -13129,7 +13152,7 @@ const App: React.FC = () => {
           retryCallbacksRef.current.set(id, async () => {
             transferQueue.startTransfer(id);
             try {
-              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage);
+              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir);
               transferQueue.completeTransfer(id);
             } catch (error) {
               transferQueue.failTransfer(id, String(error));
@@ -13156,42 +13179,92 @@ const App: React.FC = () => {
           const MAX_BATCH_SIZE = 50 * 1024 * 1024; // 50 MB GraphQL limit
 
           if (totalSize <= MAX_BATCH_SIZE) {
-            try {
-              const files = nonDirItems.map(item => ({
-                localPath: item.filePath,
-                remotePath: `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${item.fileName}`,
-              }));
-              const batchCommand = protocol === 'gitlab' ? 'gitlab_batch_upload' : 'github_batch_upload';
-              const result = await invoke<{ commit_sha: string; files_count: number }>(
-                batchCommand, { files, message: batchCommitMessage }
-              );
-              // Mark all as complete
-              for (const item of nonDirItems) {
-                transferQueue.completeTransfer(item.id);
-              }
-              notify.success(
-                `Atomic commit: ${result.files_count} files`,
-                result.commit_sha.substring(0, 7)
-              );
-            } catch (error) {
-              for (const item of nonDirItems) {
-                transferQueue.failTransfer(item.id, String(error));
-              }
-              notify.error('Batch upload failed', String(error));
-            }
-            // Process remaining dir items sequentially if any
-            const dirItems = queueItems.filter(i => i.file.is_dir);
-            if (dirItems.length > 0) {
-              for (const item of dirItems) {
-                transferQueue.startTransfer(item.id);
-                try {
-                  await uploadFile(item.filePath, item.fileName, true, item.file.size || undefined, false, batchCommitMessage);
-                  transferQueue.completeTransfer(item.id);
-                } catch (error) {
-                  transferQueue.failTransfer(item.id, String(error));
+            // The commit writes every file it names at once, so each item is
+            // put to the overwrite settings first, in queue order as the
+            // sequential path below does: a skipped item stays out, a renamed
+            // file goes in under its new name, and a cancel fails that item
+            // and every item after it.
+            const kept: typeof queueItems = [];
+            let skippedInCommit = 0;
+            for (let i = 0; i < queueItems.length; i++) {
+              const item = queueItems[i];
+              const remainingInQueue = queueItems.length - i - 1;
+              let action: string;
+              if (item.file.is_dir) {
+                action = (await checkFolderOverwrite(item.fileName, 'upload', remainingInQueue, destinationFiles)).action;
+              } else {
+                const overwriteResult = await checkOverwrite(
+                  item.fileName,
+                  item.file.size || 0,
+                  item.file.modified ? new Date(item.file.modified) : undefined,
+                  false, // sourceIsRemote = false for upload
+                  remainingInQueue,
+                  destinationFiles,
+                );
+                action = overwriteResult.action;
+                if (action !== 'cancel' && action !== 'skip' && overwriteResult.newName) {
+                  item.fileName = overwriteResult.newName;
                 }
               }
+              if (action === 'cancel') {
+                for (let j = i; j < queueItems.length; j++) {
+                  transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+                }
+                break;
+              }
+              if (action === 'skip') {
+                transferQueue.completeTransfer(item.id);
+                if (!item.file.is_dir) {
+                  humanLog.logRaw('activity.upload_skipped', 'UPLOAD', { filename: item.fileName }, 'success');
+                }
+                skippedInCommit++;
+                continue;
+              }
+              kept.push(item);
             }
+
+            const keptFiles = kept.filter(i => !i.file.is_dir);
+            if (keptFiles.length > 0) {
+              try {
+                const files = keptFiles.map(item => ({
+                  localPath: item.filePath,
+                  remotePath: `${remoteDir}${remoteDir.endsWith('/') ? '' : '/'}${item.fileName}`,
+                }));
+                const batchCommand = protocol === 'gitlab' ? 'gitlab_batch_upload' : 'github_batch_upload';
+                const result = await invoke<{ commit_sha: string; files_count: number }>(
+                  batchCommand, { files, message: batchCommitMessage }
+                );
+                // Mark all as complete
+                for (const item of keptFiles) {
+                  transferQueue.completeTransfer(item.id);
+                }
+                notify.success(
+                  `Atomic commit: ${result.files_count} files`,
+                  result.commit_sha.substring(0, 7)
+                );
+              } catch (error) {
+                for (const item of keptFiles) {
+                  transferQueue.failTransfer(item.id, String(error));
+                }
+                notify.error('Batch upload failed', String(error));
+              }
+            }
+            // Process remaining dir items sequentially if any
+            for (const item of kept.filter(i => i.file.is_dir)) {
+              transferQueue.startTransfer(item.id);
+              try {
+                await uploadFile(item.filePath, item.fileName, true, item.file.size || undefined, false, batchCommitMessage, remoteDir);
+                transferQueue.completeTransfer(item.id);
+              } catch (error) {
+                transferQueue.failTransfer(item.id, String(error));
+              }
+            }
+            resetOverwriteSettings();
+            folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
+            if (skippedInCommit > 0) {
+              notify.info(t('toast.fileSkipped', { count: skippedInCommit }));
+            }
+            panel.setSelection(new Set());
             loadRemoteFiles(undefined, true);
             return;
           }
@@ -13206,7 +13279,7 @@ const App: React.FC = () => {
 
           if (item.file.is_dir) {
             // Folder: show FolderOverwriteDialog in 'ask' mode
-            const folderResult = await checkFolderOverwrite(item.fileName, 'upload', remainingInQueue);
+            const folderResult = await checkFolderOverwrite(item.fileName, 'upload', remainingInQueue, destinationFiles);
             if (folderResult.action === 'cancel') {
               transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
               for (let j = i + 1; j < queueItems.length; j++) {
@@ -13226,7 +13299,8 @@ const App: React.FC = () => {
               item.file.size || 0,
               item.file.modified ? new Date(item.file.modified) : undefined,
               false, // sourceIsRemote = false for upload
-              remainingInQueue
+              remainingInQueue,
+              destinationFiles,
             );
 
             if (overwriteResult.action === 'cancel') {
@@ -13306,7 +13380,7 @@ const App: React.FC = () => {
               transferQueue.startTransfer(item.id);
             }
             try {
-              await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined, true, batchCommitMessage);
+              await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined, true, batchCommitMessage, remoteDir);
               transferQueue.completeTransfer(item.id);
               circuitBreaker.recordSuccess();
               break;
@@ -13357,7 +13431,7 @@ const App: React.FC = () => {
       const { batch: pickedBatch } = splitForFileBatch(picked, fileBatchSessionFlags('upload'));
       if (pickedBatch.length > 0) {
         resetOverwriteSettings();
-        const outcome = await runFileBatch('upload', pickedBatch, currentRemotePath);
+        const outcome = await runFileBatch('upload', pickedBatch, remoteDir);
         if (!outcome.aborted && !outcome.staged) loadRemoteFiles();
         return;
       }
@@ -13372,10 +13446,17 @@ const App: React.FC = () => {
 
       // TQ-4-routing: stage the dialog-selected entries. Same callback
       // is reused as the staged executor.
+      let destinationFiles: LocalFile[] | RemoteFile[] | undefined;
+      try {
+        destinationFiles = await destinationListing();
+      } catch (error) {
+        notify.error(t('toast.uploadFailed'), String(error));
+        return;
+      }
       const stagedDialogMode = settings.autoStartTransfers === false;
       const dialogUploadProfileId =
         sessions.find(s => s.id === activeSessionId)?.savedServerId ?? null;
-      const frozenDialogRemoteDir = currentRemotePath;
+      const frozenDialogRemoteDir = remoteDir;
       const queueItems = files.map(filePath => {
         const fileName = filePath.replace(/^.*[\\\/]/, '');
         const id = transferQueue.addItem(fileName, filePath, 0, 'upload', stagedDialogMode ? { staged: true } : undefined);
@@ -13391,7 +13472,7 @@ const App: React.FC = () => {
         retryCallbacksRef.current.set(id, async () => {
           transferQueue.startTransfer(id);
           try {
-            await uploadFile(filePath, fileName, false, undefined, true);
+            await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir);
             transferQueue.completeTransfer(id);
           } catch (error) {
             transferQueue.failTransfer(id, String(error));
@@ -13414,7 +13495,8 @@ const App: React.FC = () => {
           0, // Size unknown from dialog
           undefined, // Modified unknown from dialog
           false, // sourceIsRemote = false for upload
-          remainingInQueue
+          remainingInQueue,
+          destinationFiles,
         );
 
         if (overwriteResult.action === 'cancel') {
@@ -13491,7 +13573,7 @@ const App: React.FC = () => {
             transferQueue.startTransfer(item.id);
           }
           try {
-            await uploadFile(item.filePath, item.fileName, false, undefined, true);
+            await uploadFile(item.filePath, item.fileName, false, undefined, true, undefined, remoteDir);
             transferQueue.completeTransfer(item.id);
             circuitBreaker.recordSuccess();
             break;
@@ -13514,7 +13596,7 @@ const App: React.FC = () => {
   });
 
   // === Bulk Operations ===
-  const downloadMultipleFiles = withBatchLatch(async (filesOverride?: string[]) => {
+  const downloadMultipleFiles = withBatchLatch(async (filesOverride?: string[], localDir: string = currentLocalPath) => {
     if (!isConnected) return;
     const names = filesOverride || Array.from(selectedRemoteFiles);
     if (names.length === 0) return;
@@ -13522,22 +13604,32 @@ const App: React.FC = () => {
     // Reset apply-to-all for new batch
     resetOverwriteSettings();
 
+    // A drop on a folder row writes into that folder, which the panel may
+    // not list: its own listing decides what a download would overwrite. A
+    // listing that fails stops the download; it never passes for an empty folder.
+    const destinationListing = async (): Promise<LocalFile[] | RemoteFile[] | undefined> =>
+      localDir === currentLocalPath ? undefined : await getOverwriteDestination('download', localDir);
+
     let filesToDownload = names.map(n => remoteFiles.find(f => f.name === n)).filter(Boolean) as RemoteFile[];
     if (filesToDownload.length > 0) {
       // Issue #591: plain files go out as one parallel batch; folders, and a
       // lone file, keep the per-item loop below.
       const { batch: batchFiles, sequential } = splitForFileBatch(filesToDownload, fileBatchSessionFlags('download'));
+      // Set once the file batch has run: a listing that fails after it
+      // still ends the run as the batch alone would.
+      let batchStaged: boolean | undefined;
       if (batchFiles.length > 0) {
         const outcome = await runFileBatch(
           'download',
           batchFiles.map(f => ({ name: f.name, sourcePath: f.path, size: f.size || 0, modified: f.modified || null })),
-          currentLocalPath,
+          localDir,
         );
         if (outcome.aborted) return;
+        batchStaged = outcome.staged;
         // A Stop during the file batch also stops the folders after it.
         if (sequential.length === 0 || batchCancelledRef.current) {
           setSelectedRemoteFiles(new Set());
-          if (!outcome.staged) await loadLocalFiles(currentLocalPath);
+          if (!outcome.staged) await refreshLocalPanelForPath(localDir);
           return;
         }
         filesToDownload = sequential;
@@ -13548,7 +13640,18 @@ const App: React.FC = () => {
       // TQ-4-routing: stage the entries. Same retry callback reused as the
       // staged executor (dispatcher fires it on staged -> pending).
       // Freeze paths at queue time so retry callbacks don't use stale state
-      const frozenLocalPath = currentLocalPath;
+      let destinationFiles: LocalFile[] | RemoteFile[] | undefined;
+      try {
+        destinationFiles = await destinationListing();
+      } catch (error) {
+        notify.error(t('toast.downloadFailed'), String(error));
+        if (batchStaged !== undefined) {
+          setSelectedRemoteFiles(new Set());
+          if (!batchStaged) await refreshLocalPanelForPath(localDir);
+        }
+        return;
+      }
+      const frozenLocalPath = localDir;
       const stagedDownloadMode = settings.autoStartTransfers === false;
       const sequentialDownloadProfileId =
         sessions.find(s => s.id === activeSessionId)?.savedServerId ?? null;
@@ -13594,7 +13697,7 @@ const App: React.FC = () => {
 
         if (item.file.is_dir) {
           // Folder: show FolderOverwriteDialog in 'ask' mode
-          const folderResult = await checkFolderOverwrite(item.file.name, 'download', remainingInQueue);
+          const folderResult = await checkFolderOverwrite(item.file.name, 'download', remainingInQueue, destinationFiles);
           if (folderResult.action === 'cancel') {
             transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
             for (let j = i + 1; j < queueItems.length; j++) {
@@ -13614,7 +13717,8 @@ const App: React.FC = () => {
             item.file.size || 0,
             item.file.modified ? new Date(item.file.modified) : undefined,
             true, // sourceIsRemote
-            remainingInQueue
+            remainingInQueue,
+            destinationFiles,
           );
 
           if (overwriteResult.action === 'cancel') {
@@ -13694,7 +13798,7 @@ const App: React.FC = () => {
             transferQueue.startTransfer(item.id);
           }
           try {
-            await downloadFile(item.file.path, item.file.name, currentLocalPath, item.file.is_dir, item.file.size || undefined, true);
+            await downloadFile(item.file.path, item.file.name, localDir, item.file.is_dir, item.file.size || undefined, true);
             transferQueue.completeTransfer(item.id);
             circuitBreaker.recordSuccess();
             break;
@@ -13717,16 +13821,17 @@ const App: React.FC = () => {
         notify.info(t('toast.fileSkipped', { count: skippedCount }));
       }
       setSelectedRemoteFiles(new Set());
-      await loadLocalFiles(currentLocalPath);  // Refresh local panel
+      await refreshLocalPanelForPath(localDir);  // Refresh the panels that show it
     }
   });
 
   // Wire cross-panel drag & drop callback now that upload/download are defined
   useLayoutEffect(() => {
-    crossPanelDropRef.current = async (files, fromRemote, _targetDir, sourceKey) => {
+    // `targetDir` is the folder row dropped on, or the panel's own folder.
+    crossPanelDropRef.current = async (files, fromRemote, targetDir, sourceKey) => {
       if (!isConnected || files.length === 0) return;
       if (fromRemote) {
-        await downloadMultipleFiles(files.map(f => f.name));
+        await downloadMultipleFiles(files.map(f => f.name), targetDir || undefined);
       } else {
         // The rows dragged, found by path in the panel they came from. A drag
         // carries each file's own name, and upload takes the panel's row keys:
@@ -13735,7 +13840,7 @@ const App: React.FC = () => {
         const panelId = sourceKey === 'local2' ? 'local2' : 'local';
         const dragged = new Set(files.map(f => f.path));
         const keys = getActiveLocalState(panelId).sortedFiles.filter(r => dragged.has(r.path)).map(r => r.name);
-        if (keys.length > 0) await uploadMultipleFiles(keys, panelId);
+        if (keys.length > 0) await uploadMultipleFiles(keys, panelId, targetDir || undefined);
       }
     };
   });
