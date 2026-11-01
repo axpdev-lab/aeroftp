@@ -32184,21 +32184,34 @@ async fn connect_with_base_path(
 /// Whether the name a URL ends with is a folder. A folder of an object store
 /// can be invisible to `stat`: a prefix with no marker still lists its
 /// contents, and an empty one is only its `name/` marker, which a `stat` of
-/// the name without the slash does not find. `Err` when the kind cannot be
-/// told.
+/// the name without the slash does not find (flat Azure even reports the
+/// marker as a file; with the bare name missing, anything at `name/` is a
+/// folder). Only a not-found answer to the name means "not a folder"; after
+/// it, the listing and the marker can only agree by not finding the path or
+/// by refusing it (`InvalidPath`: FTP answers a CWD into a missing folder
+/// that way, since vsftpd says the same for a forbidden one). Any other
+/// failure is `Err`, as the kind cannot be told.
 async fn url_target_is_folder(
     provider: &mut dyn StorageProvider,
     target: &str,
 ) -> Result<bool, ProviderError> {
     match provider.stat(target).await {
-        Ok(entry) => Ok(entry.is_dir),
-        Err(e) if is_not_found_error(&e) => {
-            if matches!(provider.list(target).await, Ok(entries) if !entries.is_empty()) {
-                return Ok(true);
-            }
-            let marker = format!("{}/", target.trim_end_matches('/'));
-            Ok(matches!(provider.stat(&marker).await, Ok(entry) if entry.is_dir))
-        }
+        Ok(entry) => return Ok(entry.is_dir),
+        Err(e) if is_not_found_error(&e) => {}
+        Err(e) => return Err(e),
+    }
+    let agrees_it_is_absent =
+        |e: &ProviderError| is_not_found_error(e) || matches!(e, ProviderError::InvalidPath(_));
+    match provider.list(target).await {
+        Ok(entries) if !entries.is_empty() => return Ok(true),
+        Ok(_) => {}
+        Err(e) if agrees_it_is_absent(&e) => {}
+        Err(e) => return Err(e),
+    }
+    let marker = format!("{}/", target.trim_end_matches('/'));
+    match provider.stat(&marker).await {
+        Ok(_) => Ok(true),
+        Err(e) if agrees_it_is_absent(&e) => Ok(false),
         Err(e) => Err(e),
     }
 }
@@ -83934,17 +83947,28 @@ mod tests {
     }
 
     /// An object store's keys: a folder is a `name/` marker or the prefix of
-    /// other keys, and a listing never shows the marker it lists.
+    /// other keys, and a listing never shows the marker it lists. `c/flat/`
+    /// is a marker that `stat` reports as a file, as flat Azure does; under
+    /// `c/slow` and `c/odd` a listing and a marker `stat` time out, and a
+    /// listing of `c/refused` is refused as FTP refuses a CWD into a missing
+    /// folder.
     const STORE_KEYS: &[&str] = &[
         "c/empty/",
         "c/marked/a.txt",
         "c/marked/",
         "c/bare/a.txt",
         "c/f.txt",
+        "c/flat/",
     ];
 
     fn store_stat(path: &str) -> Result<RemoteEntry, ProviderError> {
         let key = path.trim_start_matches('/');
+        if key == "c/odd/" {
+            return Err(ProviderError::Timeout);
+        }
+        if key == "c/flat/" {
+            return Ok(RemoteEntry::file("flat".to_string(), path.to_string(), 0));
+        }
         if !STORE_KEYS.contains(&key) {
             return not_found(path);
         }
@@ -83957,6 +83981,12 @@ mod tests {
     }
 
     fn store_list(path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        match path.trim_matches('/') {
+            "c/slow" => return Err(ProviderError::Timeout),
+            "c/gone" => return Err(ProviderError::NotFound(path.to_string())),
+            "c/refused" => return Err(ProviderError::InvalidPath(path.to_string())),
+            _ => {}
+        }
         let prefix = format!("{}/", path.trim_matches('/'));
         Ok(STORE_KEYS
             .iter()
@@ -83968,7 +83998,8 @@ mod tests {
     /// A URL that names a folder of an object store without the trailing
     /// slash: an empty one is only its marker, which a `stat` of the bare
     /// name misses, and a listing of it is empty. It must still be read as a
-    /// folder, or `serve` refuses it and `put` writes a file beside it.
+    /// folder, or `serve` refuses it and a command given no path acts on it
+    /// as a name.
     #[tokio::test]
     async fn a_url_names_a_folder_an_object_store_shows_only_by_its_marker() {
         let mut store = StatAnswerProvider {
@@ -83979,12 +84010,26 @@ mod tests {
             ("/c/empty", true),
             ("/c/marked", true),
             ("/c/bare", true),
+            ("/c/flat", true),
             ("/c/f.txt", false),
             ("/c/new", false),
+            ("/c/gone", false),
+            ("/c/refused", false),
         ] {
             assert_eq!(
                 url_target_is_folder(&mut store, target).await.ok(),
                 Some(folder),
+                "{target}"
+            );
+        }
+        // A listing or a marker that does not answer leaves the kind unknown:
+        // read as a name, a path given beside the URL would land beside it.
+        for target in ["/c/slow", "/c/odd"] {
+            assert!(
+                matches!(
+                    url_target_is_folder(&mut store, target).await,
+                    Err(ProviderError::Timeout)
+                ),
                 "{target}"
             );
         }
