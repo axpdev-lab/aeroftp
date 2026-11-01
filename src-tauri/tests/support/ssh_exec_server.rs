@@ -51,6 +51,8 @@ pub struct Seen {
     pub execs: AtomicUsize,
     pub subsystems: AtomicUsize,
     pub connections: AtomicUsize,
+    /// Channels the client closed.
+    pub closes: AtomicUsize,
 }
 
 #[allow(dead_code)]
@@ -65,6 +67,10 @@ impl Seen {
 
     pub fn connections(&self) -> usize {
         self.connections.load(Ordering::SeqCst)
+    }
+
+    pub fn closes(&self) -> usize {
+        self.closes.load(Ordering::SeqCst)
     }
 }
 
@@ -287,6 +293,16 @@ impl Handler for Conn {
         _session: &mut Session,
     ) -> Result<(), Self::Error> {
         // Dropping the pipe is the process's end of input.
+        self.stdins.lock().await.remove(&channel);
+        Ok(())
+    }
+
+    async fn channel_close(
+        &mut self,
+        channel: ChannelId,
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        self.seen.closes.fetch_add(1, Ordering::SeqCst);
         self.stdins.lock().await.remove(&channel);
         Ok(())
     }

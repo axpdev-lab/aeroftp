@@ -566,6 +566,51 @@ async fn a_replace_puts_a_file_in_place_and_refuses_across_kinds() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_replace_that_fails_leaves_the_target_as_it_was() {
+    use std::os::unix::fs::symlink;
+    let fx = Fixture::new("scp-replace-fails");
+    let mut p = scp_session(&fx).await;
+    let r = fx.remote();
+    std::fs::write(r.join("real.txt"), b"real").unwrap();
+    std::fs::create_dir(r.join("real dir")).unwrap();
+    symlink(r.join("real.txt"), r.join("to file")).unwrap();
+    symlink(r.join("nowhere"), r.join("dangling")).unwrap();
+    symlink(r.join("real dir"), r.join("to dir")).unwrap();
+    let is_link = |name: &str| {
+        std::fs::symlink_metadata(r.join(name))
+            .map(|m| m.file_type().is_symlink())
+            .unwrap_or(false)
+    };
+
+    // The staged file is gone: each link stays.
+    for link in ["to file", "dangling", "to dir"] {
+        assert!(p.replace("gone.tmp", link).await.is_err(), "{link}");
+        assert!(is_link(link), "{link} was removed");
+    }
+    // A name in place of itself.
+    let _ = p.replace("to file", "to file").await;
+    assert!(is_link("to file"), "a link in place of itself was removed");
+    assert_eq!(std::fs::read(r.join("real.txt")).unwrap(), b"real");
+
+    // A folder cannot go inside itself: the empty folder there stays.
+    std::fs::create_dir_all(r.join("outer/inner")).unwrap();
+    assert!(p.replace("outer", "outer/inner").await.is_err());
+    assert!(
+        r.join("outer/inner").is_dir(),
+        "the empty folder was removed"
+    );
+
+    // With nothing removed first, a folder still replaces an empty folder.
+    std::fs::create_dir(r.join("staged dir")).unwrap();
+    std::fs::write(r.join("staged dir/n"), b"n").unwrap();
+    std::fs::create_dir(r.join("empty")).unwrap();
+    p.replace("staged dir", "empty")
+        .await
+        .expect("a folder in place of an empty one");
+    assert!(r.join("empty/n").is_file() && !r.join("staged dir").exists());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_symlink_reports_its_file_and_a_read_to_memory_keeps_its_cap() {
     let fx = Fixture::new("scp-size-cap");
     let (port, seen) = start(fx.options(Sftp::Serve)).await;
@@ -700,6 +745,53 @@ async fn an_interrupted_download_goes_on_from_its_partial_and_the_limit_paces_it
     assert_eq!(
         *calls.last().unwrap(),
         (body.len() as u64, body.len() as u64)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_transfer_given_up_part_way_closes_its_channel() {
+    let fx = Fixture::new("scp-give-up");
+    let (port, seen) = start(fx.options(Sftp::Serve)).await;
+    let mut profile = scp_profile(port, &fx.remote(), &[]);
+    profile.password = Some(PASSWORD.to_string());
+    let mut p = ProviderFactory::create(&profile).expect("factory");
+    timed_connect(p.as_mut()).await.0.expect("connect");
+    std::fs::write(fx.remote().join("big.bin"), pattern(2 * 1024 * 1024)).unwrap();
+    let local = fx.local("big.bin");
+
+    // Paced so that it is still running when it is given up.
+    p.set_speed_limit(0, 512).await.unwrap();
+    let ran = seen.execs();
+    let closed = seen.closes();
+    {
+        let local_path = s(&local);
+        let download = p.download("big.bin", &local_path, None);
+        tokio::pin!(download);
+        loop {
+            tokio::select! {
+                done = &mut download => panic!("finished before it was given up: {done:?}"),
+                _ = tokio::time::sleep(Duration::from_millis(20)) => {
+                    let temp = local.with_file_name("big.bin.aerotmp");
+                    if std::fs::metadata(&temp).map(|m| m.len()).unwrap_or(0) >= 128 * 1024 {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    assert!(seen.execs() > ran, "the download ran no command");
+    // A command that ends closes its own channel from the server's side; the
+    // one given up is still running there, so only the client can close it,
+    // or it keeps one of the server's sessions for as long as we stay
+    // connected.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while seen.closes() == closed && Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert_eq!(
+        seen.closes(),
+        closed + 1,
+        "the abandoned channel was left open"
     );
 }
 
