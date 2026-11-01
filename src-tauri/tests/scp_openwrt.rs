@@ -14,6 +14,7 @@ mod scoped_env;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use ftp_client_gui_lib::providers::sftp::SftpProvider;
@@ -117,16 +118,106 @@ async fn exercise(p: &mut dyn StorageProvider, local: &Path, tag: &str) {
     want.sort_unstable();
     assert_eq!(names, want);
 
-    p.rename(&format!("{dir}/a b.txt"), &format!("{dir}/renamed it's.txt"))
-        .await
-        .expect("rename");
+    p.rename(
+        &format!("{dir}/a b.txt"),
+        &format!("{dir}/renamed it's.txt"),
+    )
+    .await
+    .expect("rename");
     assert!(p.exists(&format!("{dir}/renamed it's.txt")).await.unwrap());
     assert!(!p.exists(&format!("{dir}/a b.txt")).await.unwrap());
     p.delete(&format!("{dir}/-dash.txt")).await.expect("delete");
     assert!(!p.exists(&format!("{dir}/-dash.txt")).await.unwrap());
+    operations(p, local, &dir).await;
     p.rmdir_recursive(&dir).await.expect("rmdir -r");
     assert!(!p.exists(&dir).await.unwrap());
     assert!(!p.exists("pwned").await.unwrap(), "a name ran as a command");
+}
+
+/// What BusyBox's tools give beyond moving files: a replace, the free
+/// space, digests, a search, and transfers that go on from a partial.
+async fn operations(p: &mut dyn StorageProvider, local: &Path, dir: &str) {
+    use md5::Md5;
+    use sha2::{Digest, Sha256};
+
+    let body: Vec<u8> = (0..1024 * 1024).map(|i| (i * 7 + i / 251) as u8).collect();
+    let file = local.join(format!("body-{}", dir.len()));
+    std::fs::write(&file, &body).unwrap();
+
+    // Replace: the staged file takes the target's place.
+    let target = format!("{dir}/target it's.bin");
+    let staged = format!("{dir}/staged $(x).tmp");
+    p.upload(&s(&file), &staged, None).await.expect("stage");
+    std::fs::write(local.join("old"), b"old").unwrap();
+    p.upload(&s(&local.join("old")), &target, None)
+        .await
+        .unwrap();
+    assert!(p.supports_atomic_replace().await.unwrap());
+    p.replace(&staged, &target).await.expect("replace");
+    assert!(!p.exists(&staged).await.unwrap());
+    assert_eq!(p.size(&target).await.unwrap(), body.len() as u64);
+
+    let space = p.storage_info().await.expect("df");
+    assert!(space.total > 0 && space.free <= space.total);
+
+    let sums = p.checksum(&target).await.unwrap();
+    assert_eq!(sums["sha256"], hex::encode(Sha256::digest(&body)));
+    assert_eq!(sums["md5"], hex::encode(Md5::digest(&body)));
+
+    let found = p.find(dir, "target*").await.expect("find");
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].name, "target it's.bin");
+
+    // An upload that stopped half way goes on by appending.
+    let half = local.join("half");
+    std::fs::write(&half, &body[..body.len() / 2]).unwrap();
+    let appended = format!("{dir}/appended.bin");
+    p.upload(&s(&half), &appended, None).await.unwrap();
+    p.resume_upload(&s(&file), &appended, (body.len() / 2) as u64, None)
+        .await
+        .expect("append");
+    assert_eq!(p.download_to_bytes(&appended).await.unwrap(), body);
+
+    // A download stopped part way goes on from its partial: paced to 256
+    // KiB/s, it is stopped once the partial holds 64 KiB.
+    let down = local.join(format!("down-{}", dir.len()));
+    p.set_speed_limit(0, 256).await.unwrap();
+    {
+        let down_path = s(&down);
+        let download = p.download(&target, &down_path, None);
+        tokio::pin!(download);
+        loop {
+            tokio::select! {
+                done = &mut download => panic!("finished before it was stopped: {done:?}"),
+                _ = tokio::time::sleep(Duration::from_millis(20)) => {
+                    let temp = down.with_file_name(format!(
+                        "{}.aerotmp",
+                        down.file_name().unwrap().to_str().unwrap()
+                    ));
+                    if std::fs::metadata(&temp).map(|m| m.len()).unwrap_or(0) >= 64 * 1024 {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    p.set_speed_limit(0, 0).await.unwrap();
+    let part = ftp_client_gui_lib::providers::atomic_write::resumable_part_len(&down).await;
+    assert!(part >= 64 * 1024, "part {part}");
+    let first = Arc::new(Mutex::new(None));
+    let seen = first.clone();
+    p.download(
+        &target,
+        &s(&down),
+        Some(Box::new(move |done, _| {
+            seen.lock().unwrap().get_or_insert(done);
+        })),
+    )
+    .await
+    .expect("go on");
+    assert_eq!(std::fs::read(&down).unwrap(), body);
+    let first = first.lock().unwrap().expect("progress");
+    assert!(first > part, "went on from {first}, the part held {part}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -144,7 +235,11 @@ async fn stock_openwrt_is_reached_over_scp_with_its_defaults() {
     let mut sftp = SftpProvider::new(sftp_config(None, None));
     connect(&mut sftp).await;
     assert!(sftp.in_scp_mode(), "stock OpenWrt has no SFTP");
-    assert!(sftp.server_info().await.unwrap().starts_with("SCP over SSH"));
+    assert!(sftp
+        .server_info()
+        .await
+        .unwrap()
+        .starts_with("SCP over SSH"));
     exercise(&mut sftp, &local, "sftp").await;
     sftp.disconnect().await.unwrap();
 
@@ -167,11 +262,9 @@ async fn stock_openwrt_is_reached_over_scp_with_its_defaults() {
     scp.disconnect().await.unwrap();
 
     // A root password and an authorized key, as a configured router has.
-    let key = russh::keys::PrivateKey::random(
-        &mut rand_010::rng(),
-        russh::keys::Algorithm::Ed25519,
-    )
-    .unwrap();
+    let key =
+        russh::keys::PrivateKey::random(&mut rand_010::rng(), russh::keys::Algorithm::Ed25519)
+            .unwrap();
     let key_path = root.join("id_router");
     let encrypted = key.encrypt(&mut rand_010::rng(), PASSPHRASE).unwrap();
     std::fs::write(&key_path, encrypted.to_openssh(LineEnding::LF).unwrap()).unwrap();

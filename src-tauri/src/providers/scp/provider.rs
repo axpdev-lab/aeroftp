@@ -5,8 +5,9 @@
 //! host-key trust and the order of the authentication methods are exactly
 //! those of SFTP. The operations are [`ScpSession`]'s.
 //!
-//! What SCP cannot do is answered as such, never emulated: no resume, no
-//! ranged reads, one transfer at a time on the connection's session.
+//! A download that stopped goes on from its partial, read from that offset
+//! by `dd` and `cat`; an upload goes on by appending with `cat >>`. A replace
+//! is `mv -f`, the server's `rename(2)`.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -29,6 +30,12 @@ use crate::providers::{
 /// Names per `[ -d ]` batch when a listing resolves its symlinks.
 const SYMLINK_BATCH: usize = 256;
 
+/// The most entries a search returns, as over SFTP.
+const FIND_LIMIT: usize = 500;
+
+/// The digests the server computes: algorithm, tool, hex length.
+const DIGESTS: &[(&str, &str, usize)] = &[("sha256", "sha256sum", 64), ("md5", "md5sum", 32)];
+
 /// SCP over one authenticated SSH connection.
 pub struct ScpProvider {
     /// The SFTP profile's settings: SCP profiles store exactly what SFTP
@@ -43,6 +50,10 @@ pub struct ScpProvider {
     current_dir: String,
     /// The accepted host key's SHA-256, filled during the handshake.
     host_key_sha256_hex: Arc<std::sync::OnceLock<String>>,
+    /// Transfer rates in bytes per second, 0 for no limit; kept here so a
+    /// reconnect starts its session with them.
+    upload_limit_bps: u64,
+    download_limit_bps: u64,
 }
 
 impl ScpProvider {
@@ -55,6 +66,8 @@ impl ScpProvider {
             home_dir: "/".to_string(),
             current_dir: "/".to_string(),
             host_key_sha256_hex: Arc::new(std::sync::OnceLock::new()),
+            upload_limit_bps: 0,
+            download_limit_bps: 0,
         }
     }
 
@@ -86,6 +99,7 @@ impl ScpProvider {
     /// Probe the server on `handle` and take the login directory as home.
     async fn start(&mut self, handle: SharedSshHandle) -> Result<(), ProviderError> {
         let session = ScpSession::open(handle.clone(), self.io_timeout()).await?;
+        session.set_speed_limits(self.upload_limit_bps, self.download_limit_bps);
         let home = session.probe().home.clone();
         self.home_dir = if home.starts_with('/') {
             home
@@ -153,6 +167,103 @@ impl ScpProvider {
     async fn is_directory(&self, path: &str) -> Result<bool, ProviderError> {
         let cmd = format!("[ -d {} ]", shell_quote(path)?);
         Ok(self.session()?.run(cmd.as_bytes()).await?.status == 0)
+    }
+
+    /// Whether the server has what going on from an offset takes.
+    fn can_resume(&self) -> bool {
+        ["dd", "cat", "head"].iter().all(|t| self.has(t))
+    }
+
+    /// A download into the partial SFTP keeps too (`.aerotmp`, or the file
+    /// itself in place), going on from it when it was started from the
+    /// version the server has now, by its record.
+    async fn download_resumable(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        explicit_resume: bool,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        use crate::providers::atomic_write::{ResumableFile, ResumeSource};
+        use crate::providers::multi_thread::RangeSourceFingerprint;
+
+        let full = self.normalize_path(remote_path);
+        tracing::info!("SCP: Downloading {} to {}", full, local_path);
+        let meta = self.session()?.stat_followed(&full).await?;
+        if meta.kind == Kind::Dir {
+            return Err(ProviderError::InvalidPath(format!("{full} is a directory")));
+        }
+        let total = meta.size;
+        let version =
+            RangeSourceFingerprint::of(&remote_entry(String::new(), full.clone(), &meta, false));
+        let source = ResumeSource::new(
+            "scp",
+            &format!("{}:{}", self.config.host, self.config.port),
+            &self.config.username,
+            &full,
+        );
+        let local_error = |e: std::io::Error| {
+            ProviderError::TransferFailed(format!("Failed to create local file: {e}"))
+        };
+        let mut part =
+            ResumableFile::open_for_source(local_path, &version, &source, explicit_resume)
+                .await
+                .map_err(local_error)?;
+        let mut offset = part.offset();
+        // A partial longer than the file is not a part of it.
+        if offset > total || (offset > 0 && !self.can_resume()) {
+            part.discard().await.ok();
+            part = ResumableFile::open_fresh(local_path)
+                .await
+                .map_err(local_error)?;
+            offset = 0;
+        }
+        let progress = move |done: u64, total: u64| {
+            if let Some(p) = &on_progress {
+                p(done, total);
+            }
+        };
+        let read = if offset == total && total > 0 {
+            progress(total, total);
+            Ok(())
+        } else if offset == 0 {
+            let mut progress = progress;
+            self.session()?
+                .download(&full, part.file_mut(), &mut progress)
+                .await
+                .map(drop)
+        } else {
+            tracing::info!("SCP: going on from byte {} of {}", offset, total);
+            let mut on_bytes = move |done: u64| progress(offset + done, total);
+            let session = self.session()?;
+            match session
+                .read_at(&full, offset, None, part.file_mut(), &mut on_bytes)
+                .await
+            {
+                Ok(n) if offset + n == total => Ok(()),
+                Ok(n) => Err(ProviderError::TransferFailed(format!(
+                    "{full}: {} bytes after the partial's {offset}, expected {}; the file \
+                     changed during the download",
+                    n,
+                    total - offset
+                ))),
+                Err(e) => Err(e),
+            }
+        };
+        match read {
+            Ok(()) => part.commit().await.map_err(|e| {
+                ProviderError::TransferFailed(format!("Failed to finish download: {e}"))
+            }),
+            Err(e) => {
+                // Kept for the next attempt to go on from, as SFTP keeps it.
+                if let Err(local) = part.keep_for_resume().await {
+                    return Err(ProviderError::TransferFailed(format!(
+                        "Failed to write the download: {local}"
+                    )));
+                }
+                Err(e)
+            }
+        }
     }
 }
 
@@ -314,20 +425,21 @@ impl StorageProvider for ScpProvider {
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        let full = self.normalize_path(remote_path);
-        tracing::info!("SCP: Downloading {} to {}", full, local_path);
-        let mut atomic = crate::providers::atomic_write::AtomicFile::new(local_path)
+        self.download_resumable(remote_path, local_path, false, on_progress)
             .await
-            .map_err(ProviderError::IoError)?;
-        let mut progress = move |done: u64, total: u64| {
-            if let Some(p) = &on_progress {
-                p(done, total);
-            }
-        };
-        self.session()?
-            .download(&full, atomic.file_mut(), &mut progress)
-            .await?;
-        atomic.commit().await.map_err(ProviderError::IoError)
+    }
+
+    /// As over SFTP, the offset is read off the partial itself, which the
+    /// caller measured: one source of truth.
+    async fn resume_download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        _offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        self.download_resumable(remote_path, local_path, true, on_progress)
+            .await
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
@@ -373,6 +485,83 @@ impl StorageProvider for ScpProvider {
             .await
     }
 
+    fn supports_resume(&self) -> bool {
+        self.can_resume()
+    }
+
+    fn supports_resume_upload_append(&self) -> bool {
+        self.can_resume()
+    }
+
+    /// Go on with an interrupted upload by appending the local file's tail
+    /// with `cat >>`. The tail starts where the remote file ends, never at
+    /// the caller's offset: appending to a remote shorter than that offset
+    /// would leave a hole of the wrong bytes. A remote that is not a part of
+    /// the local file by its size (missing, empty, longer) is sent whole.
+    async fn resume_upload(
+        &mut self,
+        local_path: &str,
+        remote_path: &str,
+        offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        use tokio::io::AsyncSeekExt;
+
+        let full = self.normalize_path(remote_path);
+        let local = tokio::fs::metadata(local_path).await.map_err(|e| {
+            ProviderError::TransferFailed(format!("Failed to stat local file: {e}"))
+        })?;
+        let total = local.len();
+        let remote = match self.session()?.stat_followed(&full).await {
+            Ok(meta) if meta.kind == Kind::File => Some(meta.size),
+            Ok(_) | Err(ProviderError::NotFound(_)) => None,
+            Err(e) => return Err(e),
+        };
+        let from = match remote {
+            Some(size) if offset > 0 && size > 0 && size <= total && self.can_resume() => size,
+            _ => return self.upload(local_path, remote_path, on_progress).await,
+        };
+        tracing::info!("SCP: Appending {} from byte {} of {}", full, from, total);
+        let progress = move |done: u64, total: u64| {
+            if let Some(p) = &on_progress {
+                p(done, total);
+            }
+        };
+        if from < total {
+            let mut file = tokio::fs::File::open(local_path).await.map_err(|e| {
+                ProviderError::TransferFailed(format!("Failed to open local file: {e}"))
+            })?;
+            file.seek(std::io::SeekFrom::Start(from))
+                .await
+                .map_err(ProviderError::IoError)?;
+            let mut on_bytes = move |done: u64, _: u64| progress(from + done, total);
+            self.session()?
+                .append(&full, &mut file, total - from, &mut on_bytes)
+                .await?;
+        } else {
+            progress(total, total);
+        }
+        let now = self.session()?.stat_followed(&full).await?.size;
+        if now != total {
+            return Err(ProviderError::TransferFailed(format!(
+                "{full}: {now} bytes after the append, expected {total}"
+            )));
+        }
+        // The source's time, as a whole upload stamps it.
+        if let Some(secs) = local
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+        {
+            if self.has("touch") {
+                let cmd = format!("touch -d @{secs} -- {}", shell_quote(&full)?);
+                let _ = self.session()?.run(cmd.as_bytes()).await;
+            }
+        }
+        Ok(())
+    }
+
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
         let full = self.normalize_path(path);
         self.session()?.mkdir(&full).await
@@ -396,6 +585,97 @@ impl StorageProvider for ScpProvider {
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let (from, to) = (self.normalize_path(from), self.normalize_path(to));
         self.session()?.rename(&from, &to).await
+    }
+
+    async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let (from, to) = (self.normalize_path(from), self.normalize_path(to));
+        tracing::info!("SCP: Replacing {} with {}", to, from);
+        self.session()?.replace(&from, &to).await
+    }
+
+    /// `mv -f` over a file is the server's `rename(2)`, which leaves no
+    /// moment without a file at the target when both are in one file
+    /// system; callers stage the file in the target's own folder.
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(self.has("mv"))
+    }
+
+    fn atomic_replace_capability(&self) -> crate::transfer_dag::Capability {
+        use crate::transfer_dag::Capability;
+        match &self.session {
+            None => Capability::SupportedAfterProbe,
+            Some(_) if self.has("mv") => Capability::Supported,
+            Some(_) => Capability::Unsupported,
+        }
+    }
+
+    async fn storage_info(&mut self) -> Result<crate::providers::StorageInfo, ProviderError> {
+        if !self.has("df") {
+            return Err(ProviderError::NotSupported(
+                "this server has no df, which reports the free space over SCP".to_string(),
+            ));
+        }
+        let dir = self.current_dir.clone();
+        let (total, used, free) = self.session()?.disk_space(&dir).await?;
+        Ok(crate::providers::StorageInfo {
+            used,
+            total,
+            free,
+            versioning_bytes: None,
+        })
+    }
+
+    /// `find` is one of the tools SCP mode needs, so a connected session
+    /// can always search.
+    fn supports_find(&self) -> bool {
+        self.session.is_some()
+    }
+
+    /// The entries below `path` whose name matches `pattern`, at most 500,
+    /// as SFTP's search returns them. `find` does not follow symlinks: a
+    /// link to a folder is reported, not walked.
+    async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        let root = self.normalize_path(path);
+        let session = self.session()?;
+        let mut keep = |name: &[u8]| {
+            crate::providers::matches_find_pattern(&String::from_utf8_lossy(name), pattern)
+        };
+        let paths = session.find_paths(&root, &mut keep, FIND_LIMIT).await?;
+        let entries = session.stat_many(&paths).await?;
+        Ok(entries
+            .iter()
+            .map(|e| {
+                let path = String::from_utf8_lossy(&e.name).into_owned();
+                remote_entry(
+                    last_component(&path).to_string(),
+                    path.clone(),
+                    &e.meta,
+                    e.meta.kind == Kind::Dir,
+                )
+            })
+            .collect())
+    }
+
+    async fn set_speed_limit(
+        &mut self,
+        upload_kb: u64,
+        download_kb: u64,
+    ) -> Result<(), ProviderError> {
+        self.upload_limit_bps = upload_kb * 1024;
+        self.download_limit_bps = download_kb * 1024;
+        if let Some(session) = &self.session {
+            session.set_speed_limits(self.upload_limit_bps, self.download_limit_bps);
+        }
+        tracing::info!(
+            "SCP: Speed limits set: download={}KB/s upload={}KB/s",
+            download_kb,
+            upload_kb
+        );
+        Ok(())
+    }
+
+    async fn get_speed_limit(&mut self) -> Result<(u64, u64), ProviderError> {
+        Ok((self.upload_limit_bps / 1024, self.download_limit_bps / 1024))
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -464,39 +744,49 @@ impl StorageProvider for ScpProvider {
     }
 
     fn supports_checksum(&self) -> bool {
-        self.has("sha256sum")
+        DIGESTS.iter().any(|(_, tool, _)| self.has(tool))
     }
 
+    /// The matrix's algorithms the server has a tool for.
     fn checksum_capability(&self, _path: &str) -> ChecksumCapability {
-        if self.has("sha256sum") {
-            checksum_matrix::capability(ProviderType::Scp)
-        } else {
-            ChecksumCapability::default()
+        let mut capability = checksum_matrix::capability(ProviderType::Scp);
+        capability.algorithms.retain(|algorithm| {
+            DIGESTS
+                .iter()
+                .any(|(name, tool, _)| name == algorithm && self.has(tool))
+        });
+        if capability.algorithms.is_empty() {
+            return ChecksumCapability::default();
         }
+        capability
     }
 
-    /// SHA-256 computed on the server by `sha256sum`; an empty map when the
-    /// server cannot give one, so callers omit the hash, as over SFTP.
+    /// SHA-256 and MD5 computed on the server by `sha256sum` and `md5sum`,
+    /// each when the server has it; a digest that does not come is left out
+    /// of the map, so callers omit it, as over SFTP.
     async fn checksum(&mut self, path: &str) -> Result<HashMap<String, String>, ProviderError> {
         let mut out = HashMap::new();
-        if !self.has("sha256sum") {
-            return Ok(out);
-        }
         let full = self.normalize_path(path);
-        let cmd = format!("sha256sum -- {}", shell_quote(&full)?);
-        let Ok(result) = self.session()?.run(cmd.as_bytes()).await else {
-            return Ok(out);
-        };
-        if result.status != 0 {
-            return Ok(out);
-        }
-        if let Some(token) = String::from_utf8_lossy(&result.stdout)
-            .split_whitespace()
-            .next()
-        {
-            let digest = token.to_ascii_lowercase();
-            if digest.len() == 64 && digest.bytes().all(|b| b.is_ascii_hexdigit()) {
-                out.insert("sha256".to_string(), digest);
+        let quoted = shell_quote(&full)?;
+        for (name, tool, hex_len) in DIGESTS {
+            if !self.has(tool) {
+                continue;
+            }
+            let cmd = format!("{tool} -- {quoted}");
+            let Ok(result) = self.session()?.run(cmd.as_bytes()).await else {
+                continue;
+            };
+            if result.status != 0 {
+                continue;
+            }
+            if let Some(token) = String::from_utf8_lossy(&result.stdout)
+                .split_whitespace()
+                .next()
+            {
+                let digest = token.to_ascii_lowercase();
+                if digest.len() == *hex_len && digest.bytes().all(|b| b.is_ascii_hexdigit()) {
+                    out.insert(name.to_string(), digest);
+                }
             }
         }
         Ok(out)

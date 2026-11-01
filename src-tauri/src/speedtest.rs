@@ -806,7 +806,7 @@ fn validate_size(size_bytes: u64, expert_confirmed: bool) -> Result<(), String> 
 
 fn validate_supported_protocol(protocol: &str) -> Result<(), String> {
     match protocol.to_lowercase().as_str() {
-        "ftp" | "ftps" | "sftp" | "s3" | "webdav" => Ok(()),
+        "ftp" | "ftps" | "sftp" | "scp" | "s3" | "webdav" => Ok(()),
         other => Err(format!("Speed Test is not available for {} yet", other)),
     }
 }
@@ -1222,7 +1222,7 @@ mod tests {
 
     #[test]
     fn supported_protocols() {
-        for p in ["ftp", "ftps", "sftp", "s3", "webdav", "FTP", "S3"] {
+        for p in ["ftp", "ftps", "sftp", "scp", "s3", "webdav", "FTP", "S3"] {
             assert!(
                 validate_supported_protocol(p).is_ok(),
                 "{} should be supported",

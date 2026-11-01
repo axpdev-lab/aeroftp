@@ -1,6 +1,6 @@
 import { ServerProfile } from '../types';
 
-export const SPEEDTEST_SUPPORTED_PROTOCOLS = ['ftp', 'ftps', 'sftp', 's3', 'webdav'] as const;
+export const SPEEDTEST_SUPPORTED_PROTOCOLS = ['ftp', 'ftps', 'sftp', 'scp', 's3', 'webdav'] as const;
 
 export type SpeedTestSupportedProtocol = typeof SPEEDTEST_SUPPORTED_PROTOCOLS[number];
 
