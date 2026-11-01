@@ -2689,7 +2689,9 @@ impl StorageProvider for OneDriveProvider {
             .await
             .map_err(ProviderError::IoError)?
             .len();
-        let local_date = super::local_modified_rfc3339(local_path);
+        let source = super::upload_source::UploadSource::observe(local_path).await?;
+        source.ensure_size(total_size, "OneDrive upload")?;
+        let local_date = source.modified_rfc3339();
         let mut file = tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
@@ -2755,6 +2757,15 @@ impl StorageProvider for OneDriveProvider {
             file.read_exact(&mut chunk)
                 .await
                 .map_err(ProviderError::IoError)?;
+
+            // The last chunk publishes the file: refuse a mixture of two versions,
+            // and release the session.
+            if end == total_size {
+                if let Err(error) = source.ensure_unchanged("OneDrive upload").await {
+                    let _ = self.client.delete(&session.upload_url).send().await;
+                    return Err(error);
+                }
+            }
 
             let content_range = format!("bytes {}-{}/{}", offset, end - 1, total_size);
 
@@ -3465,6 +3476,79 @@ mod tests {
             p.stat("/folder/a:b.txt").await,
             Err(ProviderError::NotFound(_))
         ));
+    }
+
+    /// Requested 114: a file rewritten while its chunks go up is not published
+    /// as a mixture of two versions. The last chunk, which commits, never leaves,
+    /// and the session is released.
+    #[tokio::test]
+    async fn a_file_rewritten_during_a_session_upload_is_not_published() {
+        use axum::{response::IntoResponse, routing::any, Json, Router};
+        use std::sync::{Arc, Mutex};
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("big.bin");
+        std::fs::write(&local, vec![b'a'; 11 * 1024 * 1024]).unwrap();
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let origin: Arc<Mutex<String>> = Arc::default();
+        let (requests, rewrite, session_origin) = (seen.clone(), local.clone(), origin.clone());
+        let app = Router::new().fallback(any(move |req: axum::extract::Request| {
+            let (requests, rewrite, origin) =
+                (requests.clone(), rewrite.clone(), session_origin.clone());
+            async move {
+                let path = req.uri().path().to_string();
+                requests
+                    .lock()
+                    .unwrap()
+                    .push(format!("{} {path}", req.method()));
+                if path.ends_with(":/createUploadSession") {
+                    let url = format!("{}/session", origin.lock().unwrap());
+                    return Json(serde_json::json!({"uploadUrl": url})).into_response();
+                }
+                if path == "/session" && req.method() == axum::http::Method::PUT {
+                    // An answer before the body is read resets the connection
+                    // on Windows.
+                    axum::body::to_bytes(req.into_body(), usize::MAX)
+                        .await
+                        .unwrap();
+                    std::fs::write(&rewrite, vec![b'b'; 11 * 1024 * 1024 + 1]).unwrap();
+                    return (
+                        axum::http::StatusCode::ACCEPTED,
+                        Json(serde_json::json!({"nextExpectedRanges": []})),
+                    )
+                        .into_response();
+                }
+                axum::http::StatusCode::NO_CONTENT.into_response()
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        *origin.lock().unwrap() = format!("http://{addr}");
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = OneDriveProvider::new(OneDriveConfig {
+            client_id: "fixture".into(),
+            client_secret: "fixture".into(),
+        });
+        p.api_origin_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("fixture".into());
+
+        let outcome = p
+            .resume_upload(local.to_str().unwrap(), "/big.bin", 0, None)
+            .await;
+        server.abort();
+        assert!(outcome.is_err(), "a file that changed is not published");
+        let requests = seen.lock().unwrap();
+        assert_eq!(
+            requests
+                .iter()
+                .filter(|r| r.as_str() == "PUT /session")
+                .count(),
+            1,
+            "{requests:?}"
+        );
+        assert!(
+            requests.iter().any(|r| r == "DELETE /session"),
+            "{requests:?}"
+        );
     }
 
     /// #368 (Ehud): a folder reached through a shortcut ("Add shortcut to My
