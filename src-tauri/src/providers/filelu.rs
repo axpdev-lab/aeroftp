@@ -2466,6 +2466,16 @@ impl StorageProvider for FileLuProvider {
             Some((parent, name)) => (parent.to_string(), name.to_string()),
             None => ("/".to_string(), norm_to.clone()),
         };
+        // A file occupant is renamed by FileLu's file rename twice, aside under
+        // a name that embeds `to_name` and back to `to_name` if the move fails,
+        // so a name that rename would change is refused before either step:
+        // checked only inside `rename`, it left the occupant under the changed
+        // name.
+        if !occupant.is_dir {
+            if let Some(refusal) = filelu_name_refusal(&to_name, NameOp::FileRename) {
+                return Err(ProviderError::InvalidPath(refusal));
+            }
+        }
         let aside = super::set_aside_name(&to_name);
         let aside_path = format!("{}/{aside}", to_parent.trim_end_matches('/'));
 
@@ -4387,5 +4397,28 @@ mod tests {
             name_missing_path(ProviderError::ServerError("denied".into()), "/x"),
             ProviderError::ServerError(_)
         ));
+    }
+
+    /// A replace renames the file at the destination aside, under a name that
+    /// embeds the destination's, before it moves the source in. A destination
+    /// name FileLu's rename would change is refused before that first step.
+    #[tokio::test]
+    async fn a_replace_onto_a_name_filelu_would_encode_changes_nothing() {
+        let (mut provider, calls) = provider_with_cached_tree(&[
+            ("/d", "7"),
+            ("/d/new.txt", "NEW"),
+            ("/d/a(1).txt", "OLD"),
+        ])
+        .await;
+        let outcome = provider.replace("/d/new.txt", "/d/a(1).txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::InvalidPath(ref m)) if m.contains("HTML entities")),
+            "{outcome:?}"
+        );
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
     }
 }
