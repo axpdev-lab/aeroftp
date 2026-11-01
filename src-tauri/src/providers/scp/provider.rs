@@ -33,11 +33,9 @@ const SYMLINK_BATCH: usize = 256;
 /// The most entries a search returns, as over SFTP.
 const FIND_LIMIT: usize = 500;
 
-/// Parallel transfers one job may run. The workers share the connection and
-/// each transfer is one exec channel; OpenSSH allows 10 sessions per
-/// connection by default (`MaxSessions`), so 8 leaves room for the listings
-/// and checks the job's own session runs meanwhile.
-const POOL_MAX_SESSIONS: u16 = 8;
+/// Parallel transfers one job may run: the workers share the connection, so
+/// as many as it runs commands at once.
+const POOL_MAX_SESSIONS: u16 = super::session::CHANNELS_PER_CONNECTION as u16;
 
 /// The largest range one read returns, as over SFTP.
 const MAX_READ_RANGE: u64 = 100 * 1024 * 1024;

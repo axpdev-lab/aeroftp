@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 
 use russh::client::{Handle, Handler};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::sync::{mpsc, oneshot, Mutex as TokioMutex};
+use tokio::sync::{mpsc, oneshot, Mutex as TokioMutex, OwnedSemaphorePermit, Semaphore};
 
 use super::codec::{self, Control, Reply};
 use super::listing::{self, Entry};
@@ -31,6 +31,11 @@ const MAX_OUTPUT: usize = 64 * 1024 * 1024;
 
 /// Chunk size for the data of an upload.
 const UPLOAD_CHUNK: usize = 32 * 1024;
+
+/// Commands one connection runs at once, whatever number of workers share
+/// it. OpenSSH allows 10 sessions per connection by default (`MaxSessions`),
+/// and a closed channel can take a moment to leave the server's count.
+pub const CHANNELS_PER_CONNECTION: usize = 8;
 
 /// What the probe found on the server.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -86,6 +91,9 @@ impl Output {
 /// SCP mode over an authenticated SSH handle.
 pub struct ScpSession<H: Handler> {
     handle: Arc<TokioMutex<Handle<H>>>,
+    /// Places for commands running at once on the connection, shared by
+    /// every [`Self::worker`] of it.
+    channels: Arc<Semaphore>,
     probe: Probe,
     /// The longest wait for the next bytes from the server.
     io_timeout: Duration,
@@ -257,6 +265,7 @@ where
     ) -> Result<Self, ProviderError> {
         let mut session = Self {
             handle,
+            channels: Arc::new(Semaphore::new(CHANNELS_PER_CONNECTION)),
             probe: Probe::default(),
             io_timeout,
             upload_limit_bps: AtomicU64::new(0),
@@ -321,10 +330,24 @@ where
         &self.probe
     }
 
-    async fn exec(&self, command: &[u8]) -> Result<ExecSession, ProviderError> {
-        ssh_exec(self.handle.clone(), command)
+    /// Start `command` on its own channel. The permit is the channel's place
+    /// among the connection's [`CHANNELS_PER_CONNECTION`]: hold it until the
+    /// command has ended. A session never starts a command while it holds
+    /// another, so waiting for a place cannot deadlock.
+    async fn exec(
+        &self,
+        command: &[u8],
+    ) -> Result<(ExecSession, OwnedSemaphorePermit), ProviderError> {
+        let place = self
+            .channels
+            .clone()
+            .acquire_owned()
             .await
-            .map_err(ProviderError::ConnectionFailed)
+            .map_err(|_| ProviderError::NotConnected)?;
+        let exec = ssh_exec(self.handle.clone(), command)
+            .await
+            .map_err(ProviderError::ConnectionFailed)?;
+        Ok((exec, place))
     }
 
     /// Run `command` under `LC_ALL=C` and collect its output. A command that
@@ -333,7 +356,7 @@ where
     pub async fn run(&self, command: &[u8]) -> Result<Output, ProviderError> {
         let mut full = b"LC_ALL=C; export LC_ALL; ".to_vec();
         full.extend_from_slice(command);
-        let exec = self.exec(&full).await?;
+        let (exec, _channel) = self.exec(&full).await?;
         self.collect(exec).await
     }
 
@@ -523,7 +546,7 @@ where
             "if [ -d {p} ]; then printf '\\001scp: Is a directory\\n'; exit 1; fi; \
              LC_ALL=C scp {flags} -- {p}"
         );
-        let mut exec = self.exec(cmd.as_bytes()).await?;
+        let (mut exec, _channel) = self.exec(cmd.as_bytes()).await?;
         let mut incoming = Incoming {
             rx: std::mem::replace(&mut exec.stdout_rx, mpsc::channel(1).1),
             buf: Vec::new(),
@@ -588,7 +611,7 @@ where
     ) -> Result<(u64, Option<u64>), ProviderError> {
         let name = basename(path)?;
         let cmd = format!("LC_ALL=C scp -p -f -- {}", shell_quote(path)?);
-        let mut exec = self.exec(cmd.as_bytes()).await?;
+        let (mut exec, _channel) = self.exec(cmd.as_bytes()).await?;
         let mut incoming = Incoming {
             rx: std::mem::replace(&mut exec.stdout_rx, mpsc::channel(1).1),
             buf: Vec::new(),
@@ -654,6 +677,7 @@ where
     pub fn worker(&self) -> Self {
         Self {
             handle: self.handle.clone(),
+            channels: self.channels.clone(),
             probe: self.probe.clone(),
             io_timeout: self.io_timeout,
             upload_limit_bps: AtomicU64::new(self.upload_limit_bps.load(Ordering::Relaxed)),
@@ -773,7 +797,7 @@ where
             "LC_ALL=C; export LC_ALL; {{ dd bs=1 skip={offset} count=0 2>/dev/null; {rest}; }} < {}",
             shell_quote(path)?
         );
-        let mut exec = self.exec(cmd.as_bytes()).await?;
+        let (mut exec, _channel) = self.exec(cmd.as_bytes()).await?;
         let io = |e: std::io::Error| ProviderError::TransferFailed(format!("{path}: {e}"));
         let limit_bps = self.download_limit_bps.load(Ordering::Relaxed);
         let start = Instant::now();
@@ -841,7 +865,7 @@ where
              [ -f {p} ] || {{ echo 'append: No such file or directory' >&2; exit 1; }}; \
              cat >> {p}"
         );
-        let mut exec = self.exec(cmd.as_bytes()).await?;
+        let (mut exec, _channel) = self.exec(cmd.as_bytes()).await?;
         let io = |e: std::io::Error| ProviderError::TransferFailed(format!("{path}: {e}"));
         let limit_bps = self.upload_limit_bps.load(Ordering::Relaxed);
         let start = Instant::now();
@@ -892,7 +916,7 @@ where
             "LC_ALL=C; export LC_ALL; find {} -mindepth 1 -print0 2>/dev/null; :",
             shell_quote(root)?
         );
-        let mut exec = self.exec(cmd.as_bytes()).await?;
+        let (mut exec, _channel) = self.exec(cmd.as_bytes()).await?;
         let mut found = Vec::new();
         let mut pending: Vec<u8> = Vec::new();
         while let Some(chunk) = tokio::time::timeout(self.io_timeout, exec.stdout_rx.recv())
