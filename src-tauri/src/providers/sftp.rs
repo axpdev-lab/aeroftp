@@ -7589,7 +7589,7 @@ mod tests {
     async fn a_replacement_between_the_stat_and_the_open_is_read_at_its_own_size() {
         let bytes = pattern(400);
         // Longer than the STAT found: cut to the old length without the handle's
-        // size. Shorter: refused as a short read of the old length.
+        // size. Shorter: read to its end, with the time of its handle.
         for (stat_size, size_hint) in [(100, None), (100, Some(100)), (900, None), (900, Some(900))]
         {
             let mut server = ReadCappingServer::new(&bytes, 100, false);
