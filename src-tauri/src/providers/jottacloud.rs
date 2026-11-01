@@ -3182,9 +3182,9 @@ impl JottacloudProvider {
         // EVENT, not the node, so an entity splits `Photos &amp; Videos` into
         // three events whose own edges carry the spaces. Trimming per event
         // welds the pieces into `Photos&Videos`.
-        // The scalars that need it (`size`, `state`, `modified`) trim
-        // themselves below, where a whitespace-only event is also harmless
-        // because it never matches their tag.
+        // The revision scalars (`size`, `state`, `modified`) arrive in pieces
+        // the same way (`1&#50;3` is three of them), so they are joined in
+        // `current_text` and applied, trimmed once, at their end tag.
         reader.config_mut().trim_text(false);
         let mut buf = Vec::new();
 
@@ -3203,6 +3203,7 @@ impl JottacloudProvider {
         let mut current_abspath = String::new();
         let mut current_state = String::new();
         let mut current_tag = String::new();
+        let mut current_text = String::new();
         let mut pending_folder_name = String::new();
         let mut pending_folder_deleted = String::new();
         let mut pending_folder_abspath = String::new();
@@ -3272,6 +3273,7 @@ impl JottacloudProvider {
                         }
                         _ => {
                             current_tag = tag;
+                            current_text.clear();
                         }
                     }
                 }
@@ -3387,10 +3389,27 @@ impl JottacloudProvider {
                         "currentRevision" => {
                             in_revision = false;
                         }
+                        // The end of a revision scalar: its pieces are all in.
+                        _ if in_revision && in_file && tag == current_tag => {
+                            let text = current_text.trim();
+                            match current_tag.as_str() {
+                                "size" => {
+                                    current_size = text.parse().unwrap_or(0);
+                                }
+                                "state" => {
+                                    current_state = text.to_string();
+                                }
+                                "modified" | "updated" if current_modified.is_empty() => {
+                                    current_modified = Self::parse_jotta_time(text);
+                                }
+                                _ => {}
+                            }
+                        }
                         _ => {}
                     }
                     depth = depth.saturating_sub(1);
                     current_tag.clear();
+                    current_text.clear();
                 }
                 Ok(Event::Text(ref e)) => {
                     if current_tag.as_str() == "abspath" {
@@ -3404,28 +3423,20 @@ impl JottacloudProvider {
                         } else if child_folder_depth == Some(depth.saturating_sub(1)) {
                             pending_folder_abspath.push_str(chunk);
                         }
-                    } else if in_revision && in_file {
-                        let text = e.as_ref().trim().to_string();
-                        match current_tag.as_str() {
-                            "size" => {
-                                current_size = text.parse().unwrap_or(0);
-                            }
-                            "state" => {
-                                current_state = text;
-                            }
-                            "modified" | "updated" if current_modified.is_empty() => {
-                                current_modified = Self::parse_jotta_time(&text);
-                            }
-                            _ => {}
-                        }
+                    } else if in_revision && in_file && !current_tag.is_empty() {
+                        current_text.push_str(e.as_ref());
                     }
                 }
-                Ok(Event::GeneralRef(ref e)) if current_tag.as_str() == "abspath" => {
+                Ok(Event::GeneralRef(ref e)) => {
                     if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
-                        if in_file && !in_revision {
-                            current_abspath.push_str(&ch);
-                        } else if child_folder_depth == Some(depth.saturating_sub(1)) {
-                            pending_folder_abspath.push_str(&ch);
+                        if current_tag.as_str() == "abspath" {
+                            if in_file && !in_revision {
+                                current_abspath.push_str(&ch);
+                            } else if child_folder_depth == Some(depth.saturating_sub(1)) {
+                                pending_folder_abspath.push_str(&ch);
+                            }
+                        } else if in_revision && in_file && !current_tag.is_empty() {
+                            current_text.push_str(&ch);
                         }
                     }
                 }
@@ -4100,6 +4111,34 @@ mod tests {
         assert_eq!(file.path, "/reports /x.txt");
     }
 
+    /// The revision scalars of a trashed file arrive in pieces around a
+    /// reference too, and each piece used to replace the value: `1&#50;3`
+    /// listed a size of 3, and the date lost everything before its `&#x5A;`.
+    #[test]
+    fn parse_trash_xml_keeps_entities_in_revision_scalars() {
+        let xml = r#"<mountPoint name="Trash">
+  <files>
+    <file name="x.txt">
+      <abspath>/user123/Jotta/Archive/reports</abspath>
+      <currentRevision>
+        <state>COMPLE&#84;ED</state>
+        <modified>2026-09-01-T10:40:48&#x5A;</modified>
+        <size> 1&#50;3 </size>
+      </currentRevision>
+    </file>
+  </files>
+</mountPoint>"#;
+        let entries = JottacloudProvider::parse_trash_xml(xml);
+        let file = entries.iter().find(|e| !e.is_dir).expect("file");
+        assert_eq!(file.size, 123);
+        assert_eq!(
+            file.modified,
+            Some(JottacloudProvider::parse_jotta_time(
+                "2026-09-01-T10:40:48Z"
+            ))
+        );
+    }
+
     #[test]
     fn parse_trash_xml_decodes_the_stored_names_of_the_parent() {
         // `reports% ` is stored as `reports％ ` and named so in `<abspath>`.
@@ -4415,7 +4454,7 @@ mod tests {
             <files>
                 <file name="notes.txt">
                     <currentRevision>
-                        <state>COMPLETED</state>
+                        <state>COMPLE&#84;ED</state>
                         <size> 12 </size>
                         <mime>text/plain; name=&quot;A &amp; B&quot;</mime>
                         <md5>0123456789abcdef0123456789abcdef</md5>

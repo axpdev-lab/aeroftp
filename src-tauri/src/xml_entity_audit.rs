@@ -22,6 +22,13 @@
 //! `1&#50;3` and a base64 secret `a&#43;b`. Four functions were first listed
 //! on that reasoning (sizes, hashes, dates, credentials) and all four turned
 //! out to read such values wrong.
+//!
+//! Empty does not mean every value is read whole. The test asks whether a
+//! text reader has a reference arm, not whether that arm covers every value
+//! the function reads from text. Seven functions keep an arm for some
+//! elements and read other values in pieces (Azure blob listings, the two S3
+//! version listings, three WebDAV parsers): Requested 141 in the 4.2.6
+//! tracker, with the value-level check that pins them.
 
 use crate::mtime_parse_audit::{
     char_literal_len, raw_string_open, rust_files, src_dir, strip_test_modules,
