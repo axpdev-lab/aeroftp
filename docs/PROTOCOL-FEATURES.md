@@ -291,7 +291,7 @@ A backend's own scheme keeps its own name. Dropbox's `content_hash` is a SHA-256
 | kDrive | - |  |
 | Jottacloud | - |  |
 | Drime | - |  |
-| FileLu | - |  |
+| FileLu | MD5 |  |
 | 4shared | - |  |
 | OpenDrive | - |  |
 | Google Photos | - |  |
