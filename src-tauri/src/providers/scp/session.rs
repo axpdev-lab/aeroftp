@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 
 use russh::client::{Handle, Handler};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::sync::{mpsc, oneshot, Mutex as TokioMutex, OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{mpsc, oneshot, Mutex as TokioMutex, Semaphore};
 
 use super::codec::{self, Control, Reply};
 use super::listing::{self, Entry};
@@ -330,24 +330,24 @@ where
         &self.probe
     }
 
-    /// Start `command` on its own channel. The permit is the channel's place
-    /// among the connection's [`CHANNELS_PER_CONNECTION`]: hold it until the
-    /// command has ended. A session never starts a command while it holds
-    /// another, so waiting for a place cannot deadlock.
-    async fn exec(
-        &self,
-        command: &[u8],
-    ) -> Result<(ExecSession, OwnedSemaphorePermit), ProviderError> {
+    /// Start `command` on its own channel. The channel holds its place among
+    /// the connection's [`CHANNELS_PER_CONNECTION`] until the session is
+    /// dropped and the channel's close has been sent, so a command abandoned
+    /// part way gives its place back only once the server lets go of it too.
+    /// A session never starts a command while it holds another, so waiting
+    /// for a place cannot deadlock.
+    async fn exec(&self, command: &[u8]) -> Result<ExecSession, ProviderError> {
         let place = self
             .channels
             .clone()
             .acquire_owned()
             .await
             .map_err(|_| ProviderError::NotConnected)?;
-        let exec = ssh_exec(self.handle.clone(), command)
+        let mut exec = ssh_exec(self.handle.clone(), command)
             .await
             .map_err(ProviderError::ConnectionFailed)?;
-        Ok((exec, place))
+        exec.hold_until_closed(place);
+        Ok(exec)
     }
 
     /// Run `command` under `LC_ALL=C` and collect its output. A command that
@@ -356,7 +356,7 @@ where
     pub async fn run(&self, command: &[u8]) -> Result<Output, ProviderError> {
         let mut full = b"LC_ALL=C; export LC_ALL; ".to_vec();
         full.extend_from_slice(command);
-        let (exec, _channel) = self.exec(&full).await?;
+        let exec = self.exec(&full).await?;
         self.collect(exec).await
     }
 
@@ -546,7 +546,7 @@ where
             "if [ -d {p} ]; then printf '\\001scp: Is a directory\\n'; exit 1; fi; \
              LC_ALL=C scp {flags} -- {p}"
         );
-        let (mut exec, _channel) = self.exec(cmd.as_bytes()).await?;
+        let mut exec = self.exec(cmd.as_bytes()).await?;
         let mut incoming = Incoming {
             rx: std::mem::replace(&mut exec.stdout_rx, mpsc::channel(1).1),
             buf: Vec::new(),
@@ -611,7 +611,7 @@ where
     ) -> Result<(u64, Option<u64>), ProviderError> {
         let name = basename(path)?;
         let cmd = format!("LC_ALL=C scp -p -f -- {}", shell_quote(path)?);
-        let (mut exec, _channel) = self.exec(cmd.as_bytes()).await?;
+        let mut exec = self.exec(cmd.as_bytes()).await?;
         let mut incoming = Incoming {
             rx: std::mem::replace(&mut exec.stdout_rx, mpsc::channel(1).1),
             buf: Vec::new(),
@@ -735,8 +735,14 @@ where
     /// file in the target's own folder): there is no moment without a file
     /// at `to`. A folder replaces only an empty folder, as `rename(2)` does,
     /// and a file only a file or a symlink ([`refuse_replace_across_types`]).
-    /// A symlink at `to` is replaced itself, never followed, so it is
-    /// removed first: the one case with a moment in which `to` is empty.
+    /// A symlink at `to` is replaced itself, never followed.
+    ///
+    /// Nothing at `to` is removed beforehand: a replace that fails (a source
+    /// gone, a folder moved into itself, a full folder) leaves `to` as it
+    /// was. Where `to` is a folder, or a link to one, plain `mv` would move
+    /// `from` inside it, so `mv -T` treats `to` as the name itself. GNU then
+    /// replaces a link to a folder; BusyBox refuses it with "is a directory"
+    /// and leaves the link (both measured).
     ///
     /// [`refuse_replace_across_types`]: crate::providers::refuse_replace_across_types
     pub async fn replace(&self, from: &str, to: &str) -> Result<(), ProviderError> {
@@ -746,10 +752,8 @@ where
              if [ -e {t} ] || [ -L {t} ]; then \
                if [ -d {t} ] && [ ! -L {t} ]; then td=1; else td=0; fi; \
                if [ \"$fd\" != \"$td\" ]; then printf '{ACROSS} %s %s\\n' \"$fd\" \"$td\" >&2; exit 3; fi; \
-               if [ \"$td\" = 1 ]; then rmdir -- {t} || exit; \
-               elif [ -L {t} ]; then rm -f -- {t} || exit; fi; \
              fi; \
-             mv -f -- {f} {t}"
+             if [ -d {t} ]; then mv -fT -- {f} {t}; else mv -f -- {f} {t}; fi"
         );
         let out = self.run(cmd.as_bytes()).await?;
         if out.status == 0 {
@@ -797,7 +801,7 @@ where
             "LC_ALL=C; export LC_ALL; {{ dd bs=1 skip={offset} count=0 2>/dev/null; {rest}; }} < {}",
             shell_quote(path)?
         );
-        let (mut exec, _channel) = self.exec(cmd.as_bytes()).await?;
+        let mut exec = self.exec(cmd.as_bytes()).await?;
         let io = |e: std::io::Error| ProviderError::TransferFailed(format!("{path}: {e}"));
         let limit_bps = self.download_limit_bps.load(Ordering::Relaxed);
         let start = Instant::now();
@@ -865,7 +869,7 @@ where
              [ -f {p} ] || {{ echo 'append: No such file or directory' >&2; exit 1; }}; \
              cat >> {p}"
         );
-        let (mut exec, _channel) = self.exec(cmd.as_bytes()).await?;
+        let mut exec = self.exec(cmd.as_bytes()).await?;
         let io = |e: std::io::Error| ProviderError::TransferFailed(format!("{path}: {e}"));
         let limit_bps = self.upload_limit_bps.load(Ordering::Relaxed);
         let start = Instant::now();
@@ -916,7 +920,7 @@ where
             "LC_ALL=C; export LC_ALL; find {} -mindepth 1 -print0 2>/dev/null; :",
             shell_quote(root)?
         );
-        let (mut exec, _channel) = self.exec(cmd.as_bytes()).await?;
+        let mut exec = self.exec(cmd.as_bytes()).await?;
         let mut found = Vec::new();
         let mut pending: Vec<u8> = Vec::new();
         while let Some(chunk) = tokio::time::timeout(self.io_timeout, exec.stdout_rx.recv())
