@@ -40,6 +40,12 @@ const POOL_MAX_SESSIONS: u16 = super::session::CHANNELS_PER_CONNECTION as u16;
 /// The largest range one read returns, as over SFTP.
 const MAX_READ_RANGE: u64 = 100 * 1024 * 1024;
 
+/// `--multi-thread-streams` for one file: at most as many windows as the
+/// connection runs commands at once, from the same smallest cutoff as SFTP.
+const MULTI_THREAD_MAX_STREAMS: usize = super::session::CHANNELS_PER_CONNECTION;
+const MULTI_THREAD_CUTOFF_FLOOR: u64 = 1024 * 1024;
+const MULTI_THREAD_CUTOFF_DEFAULT: u64 = 250 * 1024 * 1024;
+
 /// The digests the server computes: algorithm, tool, hex length.
 const DIGESTS: &[(&str, &str, usize)] = &[("sha256", "sha256sum", 64), ("md5", "md5sum", 32)];
 
@@ -61,6 +67,10 @@ pub struct ScpProvider {
     /// reconnect starts its session with them.
     upload_limit_bps: u64,
     download_limit_bps: u64,
+    /// Windows one file is read in, 1 for one stream, and the size from
+    /// which it is: set by `set_multi_thread_download`.
+    multi_thread_streams: usize,
+    multi_thread_cutoff: u64,
 }
 
 impl ScpProvider {
@@ -75,6 +85,8 @@ impl ScpProvider {
             host_key_sha256_hex: Arc::new(std::sync::OnceLock::new()),
             upload_limit_bps: 0,
             download_limit_bps: 0,
+            multi_thread_streams: 1,
+            multi_thread_cutoff: MULTI_THREAD_CUTOFF_DEFAULT,
         }
     }
 
@@ -224,6 +236,43 @@ impl ScpProvider {
                 .await
                 .map_err(local_error)?;
             offset = 0;
+        }
+        // A whole file at or above `--multi-thread-cutoff` is read in windows,
+        // each on its own exec channel of this connection, by the engine the
+        // parallel transfers use. Anything it turns down is read below on one
+        // stream: a file that moved, a window refused, a failed channel.
+        let mut on_progress = on_progress;
+        let segments = if offset == 0 && !explicit_resume && self.can_resume() {
+            self.planned_download_segments(total)
+        } else {
+            0
+        };
+        if segments >= 2 {
+            part.discard().await.ok();
+            let (attempt, fallback) =
+                crate::providers::multi_thread::share_progress(on_progress.take());
+            match crate::provider_transfer_executor::run_provider_segmented_download(
+                self,
+                remote_path,
+                local_path,
+                total,
+                segments,
+                attempt,
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .await
+            {
+                Ok(()) => return Ok(()),
+                Err(e) if e.is_cancelled() => return Err(ProviderError::Cancelled),
+                Err(e) => {
+                    tracing::warn!("SCP: {e}; downloading on one stream");
+                    e.report_fallback();
+                    on_progress = fallback;
+                    part = ResumableFile::open_fresh(local_path)
+                        .await
+                        .map_err(local_error)?;
+                }
+            }
         }
         let progress = move |done: u64, total: u64| {
             if let Some(p) = &on_progress {
@@ -814,6 +863,27 @@ impl StorageProvider for ScpProvider {
         POOL_MAX_SESSIONS
     }
 
+    /// `streams <= 1` keeps one stream; the windows need the ranged reads of
+    /// `dd`, `cat` and `head`, which `download` checks before it plans them.
+    fn set_multi_thread_download(&mut self, streams: usize, cutoff_bytes: u64) {
+        self.multi_thread_streams = streams.clamp(1, MULTI_THREAD_MAX_STREAMS);
+        self.multi_thread_cutoff = cutoff_bytes.max(MULTI_THREAD_CUTOFF_FLOOR);
+    }
+
+    fn multi_thread_cutoff_floor(&self) -> u64 {
+        MULTI_THREAD_CUTOFF_FLOOR
+    }
+
+    fn planned_download_segments(&self, file_size: u64) -> usize {
+        crate::provider_transfer_executor::plan_segment_count(
+            file_size,
+            self.multi_thread_streams,
+            MULTI_THREAD_MAX_STREAMS,
+            crate::provider_transfer_executor::SegmentCutoff::Explicit(self.multi_thread_cutoff),
+            MULTI_THREAD_CUTOFF_FLOOR,
+        )
+    }
+
     /// A worker on the same connection: no second login, no secrets copied.
     /// It never dials, reconnects or closes the connection, which stays with
     /// this provider (or with the SFTP provider that went on over SCP).
@@ -834,6 +904,9 @@ impl StorageProvider for ScpProvider {
             host_key_sha256_hex: self.host_key_sha256_hex.clone(),
             upload_limit_bps: self.upload_limit_bps,
             download_limit_bps: self.download_limit_bps,
+            // A worker reads the windows it is given, never plans its own.
+            multi_thread_streams: 1,
+            multi_thread_cutoff: self.multi_thread_cutoff,
         }))
     }
 

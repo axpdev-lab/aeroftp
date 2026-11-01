@@ -653,7 +653,9 @@ struct Cli {
     /// (rclone `--multi-thread-streams`). Default 4, applied only to files at
     /// or above `--multi-thread-cutoff` (250M), the same shape as rclone's
     /// default (4 streams above 256Mi); `1` disables. Range 1-16.
-    /// Honored by S3/Azure (native), SFTP (N independent connections) and,
+    /// Honored by S3/Azure (native), SFTP (N independent connections), SCP
+    /// (exec channels of its one connection, up to 8, when the server has
+    /// `dd`, `cat` and `head`) and,
     /// after a live strict 206 probe, by WebDAV (Basic/anonymous auth; Digest
     /// excluded) and Koofr. Any backend or server that does not prove Range
     /// honesty falls back to single-stream transparently. Reads default from

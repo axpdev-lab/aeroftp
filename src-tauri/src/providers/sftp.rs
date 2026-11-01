@@ -1522,9 +1522,11 @@ impl SftpProvider {
                 tracing::warn!("SFTP: {host} {why}; connected with SCP on the same connection");
                 self.home_dir = scp.home_dir().to_string();
                 self.current_dir = scp.current_dir().to_string();
-                // Limits set before connecting apply to SCP's transfers too.
+                // Limits and tuning set before connecting apply to SCP's
+                // transfers too.
                 scp.set_speed_limit(self.upload_limit_bps / 1024, self.download_limit_bps / 1024)
                     .await?;
+                scp.set_multi_thread_download(self.multi_thread_streams, self.multi_thread_cutoff);
                 self.ssh_handle = Some(handle);
                 self.scp = Some(Box::new(scp));
                 Ok(())
@@ -4845,6 +4847,9 @@ impl StorageProvider for SftpProvider {
     fn set_multi_thread_download(&mut self, streams: usize, cutoff_bytes: u64) {
         self.multi_thread_streams = streams.clamp(1, SFTP_MULTI_THREAD_MAX_STREAMS);
         self.multi_thread_cutoff = cutoff_bytes.max(SFTP_MULTI_THREAD_CUTOFF_FLOOR);
+        if let Some(scp) = self.scp.as_mut() {
+            scp.set_multi_thread_download(streams, cutoff_bytes);
+        }
     }
 
     fn multi_thread_cutoff_floor(&self) -> u64 {

@@ -859,3 +859,70 @@ async fn workers_share_the_connection_and_a_segmented_download_is_whole() {
     }
     p.list("").await.expect("the session is still connected");
 }
+
+/// `--multi-thread-streams` on a plain download: at or above the cutoff the
+/// file is read in windows on the one connection, both on an SCP profile
+/// tuned after connecting and on an SFTP profile tuned before it went on over
+/// SCP; with one stream it is one `scp -f`.
+#[tokio::test]
+async fn a_plain_download_above_the_cutoff_is_read_in_windows() {
+    for case in ["scp profile", "sftp profile over scp"] {
+        let fx = Fixture::new(&format!("mt-{}", case.len()));
+        let mode = if case == "scp profile" {
+            Sftp::Serve
+        } else {
+            Sftp::Refuse
+        };
+        let (port, seen) = start(fx.options(mode)).await;
+        let mut p: Box<dyn StorageProvider> = if case == "scp profile" {
+            let mut profile = scp_profile(port, &fx.remote(), &[]);
+            profile.password = Some(PASSWORD.to_string());
+            ProviderFactory::create(&profile).expect("factory")
+        } else {
+            let mut p = SftpProvider::new(config(port, &fx.remote()));
+            p.set_multi_thread_download(4, 1024 * 1024);
+            Box::new(p)
+        };
+        timed_connect(p.as_mut()).await.0.expect(case);
+        let big = pattern(3 * 1024 * 1024 + 17);
+        std::fs::write(fx.remote().join("big.bin"), &big).unwrap();
+        let len = big.len() as u64;
+
+        if case == "scp profile" {
+            let one = fx.local("one.bin");
+            let before = seen.execs();
+            p.download("big.bin", &s(&one), None).await.expect(case);
+            assert_eq!(std::fs::read(&one).unwrap(), big, "{case}");
+            assert_eq!(p.planned_download_segments(len), 0, "{case}");
+            assert_eq!(seen.execs() - before, 2, "{case}: one stream ran windows");
+            p.set_multi_thread_download(4, 1024 * 1024);
+        }
+
+        let segments = p.planned_download_segments(len);
+        assert!(segments >= 2, "{case}: {segments}");
+        let dest = fx.local("windows.bin");
+        let reached = Arc::new(Mutex::new(0u64));
+        let progress = {
+            let reached = reached.clone();
+            Box::new(move |done: u64, _total: u64| {
+                let mut r = reached.lock().unwrap();
+                *r = (*r).max(done);
+            })
+        };
+        let before = seen.execs();
+        p.download("big.bin", &s(&dest), Some(progress))
+            .await
+            .expect(case);
+        assert_eq!(std::fs::read(&dest).unwrap(), big, "{case}");
+        // The stat, then one ranged read per window at least; one stream is
+        // the stat and one `scp -f`.
+        assert!(
+            seen.execs() - before > segments,
+            "{case}: not read in windows ({} commands)",
+            seen.execs() - before
+        );
+        assert_eq!(*reached.lock().unwrap(), len, "{case}: progress");
+        assert_eq!(seen.connections(), 1, "{case}: a window dialled");
+        p.disconnect().await.unwrap();
+    }
+}
