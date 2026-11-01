@@ -17,6 +17,7 @@
 import * as React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { readSavedServerProfilesForWrite } from '../utils/serverProfileStore';
 import { pickFile, pickSave } from '../utils/pickPath';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { Lock, Unlock, Loader2, X, FileKey } from 'lucide-react';
@@ -364,6 +365,8 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
         setError(null);
         setSuccess(null);
         try {
+            // The account this migration runs under: a switch during it must not put the metadata elsewhere.
+            const accountRead = await readSavedServerProfilesForWrite().catch(() => null);
             const result = await invoke<AeroCryptMarkerMigrationResult>('aerocrypt_provider_migrate_legacy_marker', {
                 password: pw || '',
                 keyfilePath: kf || null,
@@ -394,15 +397,11 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                                 /* ignore */
                             }
                         }
-                        await invoke('store_credential', {
-                            account: `aerocrypt_overlay_config_${profileId}`,
-                            password: configJson,
-                        });
-                        if (saltB64) {
-                            await invoke('store_credential', {
-                                account: `aerocrypt_overlay_salt_${profileId}`,
-                                password: saltB64,
-                            });
+                        // A failed read gives no account to bind this to, so it is not saved here.
+                        if (accountRead) {
+                            await invoke('store_overlay_metadata', { profileId, configJson, salt: saltB64 || null, expectedUserId: accountRead.userId ?? null });
+                        } else {
+                            setError(t('aerocryptNative.overlayMetadataNotSaved'));
                         }
                         const kit = await invoke<AerocryptEmergencyKit>('aerocrypt_profile_recovery_kit', {
                             profileId,

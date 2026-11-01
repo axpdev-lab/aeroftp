@@ -8,6 +8,7 @@ import {
     ArrowRight,
     CheckCircle2,
     Copy,
+    Filter,
     RefreshCw,
     Terminal,
     FlaskConical,
@@ -49,8 +50,9 @@ import {
     AEROSYNC_DEFAULT_EXCLUDES,
     cliExcludePatterns,
     sameExcludePatterns,
+    narrowsComparison,
 } from '../../utils/aeroSyncExcludes';
-import { buildCliSyncCommand, type CliNoEquivalentReason } from '../../utils/aeroSyncCliCommand';
+import { buildCliSyncCommand, cliPreservesUpdateDestinations, type CliNoEquivalentReason } from '../../utils/aeroSyncCliCommand';
 import { SavedPresetPicker, useSavedSyncProfiles } from './SavedPresetPicker';
 import type { SyncProfile } from '../../types';
 import { buildAeroSyncTabStatePatch, parseSyncExcludePatterns } from '../../utils/syncTemplateApply';
@@ -86,6 +88,10 @@ interface PlanTabContentProps {
     compareBackupDir?: string;
     /** Re-run the compare with the exclude field and the backup folder. */
     onRescan?: (args: { userExcludes: string[]; backupDir: string }) => void;
+    /** Filter the current compare with wider settings, without a scan. */
+    onNarrowComparison?: (args: { userExcludes: string[]; backupDir: string }) => Promise<void>;
+    /** Why the settings named here could not filter the current compare. */
+    narrowRefusal?: { userExcludes: string[]; backupDir: string; message: string };
     /** True when the remote goes through the provider API rather than the FTP session. */
     isProvider?: boolean;
     /** What the command line under the plan needs to name the same run. */
@@ -206,6 +212,8 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     compareExcludes = [],
     compareBackupDir,
     onRescan,
+    onNarrowComparison,
+    narrowRefusal,
     isProvider,
     cli,
 }) => {
@@ -225,6 +233,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
         }
     }, [savedProfiles.loading, savedProfiles.error, savedProfiles.profiles, selectedSavedProfileId, setSelectedSavedProfileId]);
     const [preset, setPreset] = useStickyState<SyncPreset>('plan.preset', 'backup');
+    const [updateOnly, setUpdateOnly] = useStickyState('plan.updateOnly', false);
     const [direction, setDirection] = useStickyState<PresetDirection>('plan.direction', 'left-to-right');
     const [conflictPolicy, setConflictPolicy] = useStickyState<ConflictPolicy>('plan.conflictPolicy', 'skip');
     const [versionedBackup, setVersionedBackup] = useStickyState<VersionedBackupConfig>('plan.versionedBackup', {
@@ -286,7 +295,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
 
     React.useEffect(() => {
         setConfirmedDestructive(false);
-    }, [preset, direction, conflictPolicy, versionedBackup.enabled, versionedBackup.backupDir, selectedSavedProfileId]);
+    }, [preset, direction, conflictPolicy, updateOnly, versionedBackup.enabled, versionedBackup.backupDir, selectedSavedProfileId]);
 
     // GAP-9a: any move away from Maniac re-arms the confirmation gate, so a
     // later return to Maniac always re-prompts.
@@ -319,13 +328,22 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
         const patch = buildAeroSyncTabStatePatch({
             localPath: '', remotePath: '', direction: profile.direction,
             deleteOrphans: profile.delete_orphans, excludePatterns: profile.exclude_patterns,
+            updateOnly: profile.update_only === true,
             verifyPolicy: profile.verify_policy,
         }, (pairKind ?? null) as AeroSyncPairKind | null, versionedBackup);
         setPreset(patch['plan.preset'] as SyncPreset);
+        setUpdateOnly(patch['plan.updateOnly'] === true);
         setDirection(patch['plan.direction'] as PresetDirection);
         setExcludeText(patch['sync.exclude'] as string);
         setVerifyPolicy(patch['plan.verifyPolicy'] as AeroSyncVerifyPolicy);
         setSelectedSavedProfileId(profile.id);
+        const nextExcludes = parseSyncExcludePatterns(patch['sync.exclude'] as string);
+        const backupDir = (backupCheck?.status === 'valid' ? backupCheck.dir : versionedBackup.backupDir)
+            ?? AEROSYNC_DEFAULT_BACKUP_DIR;
+        if (result && !sameExcludePatterns(nextExcludes, compareExcludes)
+            && narrowsComparison(compareExcludes, compareBackupDir, nextExcludes, backupDir)) {
+            void onNarrowComparison?.({ userExcludes: nextExcludes, backupDir });
+        }
         setConfirmedDestructive(false);
     };
 
@@ -350,7 +368,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
         );
     }
 
-    const plan = derivePresetPlan(result, { preset, direction, conflictPolicy, versionedBackup });
+    const plan = derivePresetPlan(result, { preset, direction, conflictPolicy, versionedBackup, updateOnly });
     const bisyncMode = preset === 'bisync';
     const userExcludes = parseSyncExcludePatterns(excludeText);
     // The compare has to have applied the patterns the field shows before the
@@ -362,13 +380,30 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     const validBackupDir = backupCheck?.status === 'valid' ? backupCheck.dir : null;
     const backupStale = validBackupDir !== null && validBackupDir !== compareBackupDir;
     const compareStale = excludesStale || backupStale;
+    const nextBackupDir = validBackupDir ?? compareBackupDir ?? AEROSYNC_DEFAULT_BACKUP_DIR;
+    const narrows = compareStale
+        && narrowsComparison(compareExcludes, compareBackupDir, userExcludes, nextBackupDir);
+    // A refusal speaks for the settings it refused, not for the next ones.
+    const narrowError = narrowRefusal && narrowRefusal.backupDir === nextBackupDir
+        && sameExcludePatterns(narrowRefusal.userExcludes, userExcludes) ? narrowRefusal.message : null;
+    // Narrowing is withheld while a restore runs, and so is the Rescan button.
+    const canNarrow = narrows && !!onNarrowComparison;
+    const staleReason = narrows
+        ? (t('aerosync.narrowAfterRestore') || 'A restore is running. These settings can be applied to the comparison when it ends.')
+        : compareBackupDir === undefined
+        ? (t('aerosync.rescanFlat') || 'This comparison came from the two panel listings, not a full scan, so it cannot apply exclusions. Rescan before running.')
+        : (t('aerosync.rescanBringsBack') || 'These settings bring back files the scan left out, so it never read them. Rescan before running.');
+    const narrowComparison = () => {
+        void onNarrowComparison?.({ userExcludes, backupDir: nextBackupDir });
+    };
     const localIsLeft = pairKind !== 'remote-local';
     const writesRemote = isConnectedRemote
         && (bisyncMode || (direction === 'left-to-right') === localIsLeft);
     const writtenAncestor = backupCheck?.status === 'valid'
         ? backupCheck.ancestors.find((folder) => plan.bucketPlans.some((bp) =>
-            bp.action !== 'skip' && bp.action !== 'conflict-skip'
-            && bp.entries.some((entry) => {
+            bp.entries.some((entry, index) => {
+                const action = bp.entryActions[index];
+                if (action === 'skip' || action === 'conflict-skip') return false;
                 const path = entry.relativePath ?? entry.name;
                 return path === folder || path.startsWith(`${folder}/`);
             })))
@@ -395,6 +430,10 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
         pairKind: (pairKind ?? null) as AeroSyncPairKind | null,
         preset,
         direction,
+        updateOnly: preset === 'mirror' && updateOnly,
+        modifyWindowMs: result.appliedOptions.mtimeToleranceMs,
+        timestampsComparable: result.appliedOptions.policy !== 'size-only',
+        updateTimestampPrecisionSafe: cliPreservesUpdateDestinations(result, direction),
         profileName: cli?.profileName,
         profileInitialPath: cli?.profileInitialPath,
         localPath: cli?.localPath ?? '',
@@ -491,6 +530,16 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                     )}
                 </div>
             </div>
+
+            {preset === 'mirror' && (
+                <div className="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
+                    <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={updateOnly} onChange={event => setUpdateOnly(event.target.checked)} />
+                        {t('aerosync.updateOnly')}
+                    </label>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{t('aerosync.updateOnlyHint')}</p>
+                </div>
+            )}
 
             <div className="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
                 <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
@@ -953,8 +1002,20 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                 <div className="flex flex-wrap items-center gap-2 border-t border-amber-200 bg-amber-50 px-4 py-2 text-[11px] text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
                     <AlertTriangle size={12} className="shrink-0" />
                     <span className="flex-1">
-                        {t('aerosync.rescanNeeded') || 'The comparison was made with other exclusions or another backup folder. Rescan before running.'}
+                        {narrowError ?? (canNarrow
+                            ? (t('aerosync.narrowAvailable') || 'These settings only narrow the comparison, so it can be filtered without a rescan.')
+                            : staleReason)}
                     </span>
+                    {canNarrow && (
+                        <button
+                            type="button"
+                            onClick={narrowComparison}
+                            className="inline-flex items-center gap-1 rounded border border-amber-400 px-2 py-0.5 font-medium hover:bg-amber-100 dark:hover:bg-amber-900/50"
+                        >
+                            <Filter size={11} />
+                            {t('aerosync.narrowApply') || 'Apply to this comparison'}
+                        </button>
+                    )}
                     <button
                         type="button"
                         onClick={() => onRescan?.({
@@ -1042,7 +1103,9 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                                 : backupBlock
                                     ? backupBlock
                                 : compareStale
-                                    ? (t('aerosync.rescanNeeded') || 'The comparison was made with other exclusions or another backup folder. Rescan before running.')
+                                    ? (canNarrow
+                                        ? (t('aerosync.narrowAvailable') || 'These settings only narrow the comparison, so it can be filtered without a rescan.')
+                                        : staleReason)
                                 : !canaryMode && needsConfirm && !confirmedDestructive
                                     ? (t('aerosync.executeConfirm') || 'Confirm destructive actions to enable Execute')
                                     : (t('aerosync.executePreset') || 'Execute preset')

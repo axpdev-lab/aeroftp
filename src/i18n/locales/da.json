@@ -599,7 +599,8 @@
             "setAsPublic": "Angiv som offentlig",
             "makeAllPrivate": "Gør alle private",
             "dropboxRestoreLimit": "AeroFTP kan gendanne filversioner, der kan gendannes. Gendan mapper fra Slettede filer på dropbox.com. Et spørgsmålstegn betyder, at Dropbox ikke har identificeret elementtypen.",
-            "openWithDefaultApp": "Åbn med standardapp"
+            "openWithDefaultApp": "Åbn med standardapp",
+            "extractHereUncheckedConfirm": "Navnene i {name} kan ikke læses før udpakning, så AeroFTP kan ikke kontrollere, hvad „Udpak her“ ville overskrive i denne mappe. „Udpak til mappe“ overskriver aldrig noget."
         },
         "transfer": {
             "transferring": "Overfører...",
@@ -1371,7 +1372,8 @@
             "importJottaChainWarning": "Jottacloud fornyer sin login ved hver forbindelse, og {names} deler nu en med en anden kopi: den kopi, der forbinder først, logger den anden ud (enheden, filen kom fra, eller den profil, den blev duplikeret fra). Log den anden ind igen med et nyt Personal Login Token.",
             "importOauthAppKept": "{names} kom med en anden brugerdefineret OAuth-app end den, som denne enhed har til den udbyder. Den gemte app blev beholdt, så log ind igen, hvis disse profiler holder op med at oprette forbindelse.",
             "importTargetChanged": "{names} blev ikke overskrevet: filen peger dem på en anden server, og deres gemte adgangskoder og tokens må ikke sendes dertil. Importér med Dupliker for at tilføje kopien fra filen, eller slet profilen først.",
-            "importSharedSecretsFailed": "{names} blev importeret, men en delt hemmelighed eller session fra filen kunne ikke gemmes. Log ind på disse profiler igen, hvis de ikke forbinder."
+            "importSharedSecretsFailed": "{names} blev importeret, men en delt hemmelighed eller session fra filen kunne ikke gemmes. Log ind på disse profiler igen, hvis de ikke forbinder.",
+            "keystoreDatabasesFailed": "Importen er færdig, men disse databaser kunne ikke gendannes og beholder det, de indeholdt: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1589,7 +1591,9 @@
             "aerocloudEnabled": "AeroCloud aktiveret",
             "selectPairLocalFolder": "Vælg lokal mappe til parret",
             "secondsAgo": "{count}s siden",
-            "conflictsCount": "Konflikter, der kræver opmærksomhed: {count}"
+            "conflictsCount": "Konflikter, der kræver opmærksomhed: {count}",
+            "updateOnlyHint": "Envejsopdatering beholder nyere destinationsfiler. Når additiv sikkerhedskopiering er slået fra, slettes kun uændrede filer, der kun findes på destinationen og har en verificeret kvittering for en AeroCloud-overførsel. Andre filer bliver liggende til gennemgang i AeroSync. Konfliktpolitikken ignoreres; ukendte datoer forbliver uafklarede.",
+            "untrackedDestinationFiles": "{count} destinationsfiler blev bevaret til gennemgang: Deres overførselshistorik er ubekræftet, eller de er ændret siden den seneste AeroCloud-overførsel. Gennemgå dem i AeroSync, før du beslutter, om de skal slettes."
         },
         "statusBar": {
             "connected": "Forbundet",
@@ -2470,7 +2474,9 @@
             "flattenScanning": "Scanner undertræ...",
             "flattenTruncated": "forkortet",
             "flattenTruncatedHint": "Nåede grænsen på 5.000 poster; finjuster filteret eller gå ind i en undermappe.",
-            "local_placeholder_flatten": "Filtrer lokale filer... (* for rekursiv)"
+            "local_placeholder_flatten": "Filtrer lokale filer... (* for rekursiv)",
+            "flattenNameClash": "{names}: markeret i mere end én mappe. Placeret ét sted ville de erstatte hinanden; arbejd med én af hver ad gangen.",
+            "flattenNameClashTitle": "Samme navn i mere end én mappe"
         },
         "versions": {
             "title": "Filversioner",
@@ -4854,7 +4860,8 @@
             "relocateSuccessMove": "\"{name}\" flyttet til {user}",
             "relocateAlreadyPresent": "\"{name}\" er allerede gemt i {user}",
             "relocateError": "Serveren kunne ikke overføres: {error}",
-            "relocateWrongPassword": "Forkert adgangskode til {user}."
+            "relocateWrongPassword": "Forkert adgangskode til {user}.",
+            "relocateSecretsNotCopied": "\"{name}\" nåede frem til {user}, men den gemte adgangskode eller det gemte token kom ikke med, så der bliver spurgt efter dem igen dér."
         },
         "cyberTools": {
             "title": "Sikkerhedsværktøjer",
@@ -6311,7 +6318,12 @@
                 }
             },
             "rescan": "Scan igen",
-            "rescanNeeded": "Sammenligningen blev lavet med andre udelukkelser eller en anden sikkerhedskopimappe. Scan igen før kørsel.",
+            "rescanBringsBack": "Disse indstillinger bringer filer tilbage, som scanningen udelod, så den har aldrig læst dem. Scan igen før kørsel.",
+            "rescanFlat": "Denne sammenligning kom fra de to panelers lister, ikke fra en fuld scanning, så den kan ikke anvende udelukkelser. Scan igen før kørsel.",
+            "narrowAvailable": "Disse indstillinger indsnævrer kun sammenligningen, så den kan filtreres uden en ny scanning.",
+            "narrowApply": "Anvend på denne sammenligning",
+            "narrowedNote": "Filtreret med nye udelukkelser uden en ny scanning. Antallet af identiske er stadig det fra scanningen.",
+            "narrowAfterRestore": "En gendannelse kører. Disse indstillinger kan anvendes på sammenligningen, når gendannelsen er færdig.",
             "backup": {
                 "checking": "Tjekker hvordan denne server flytter filer...",
                 "serverCopy": "Denne server kan ikke flytte: hver bevaret kopi kopieres på serveren og slettes derefter. Det koster en fuld kopi af hver bevaret fil, i to separate trin.",
@@ -6338,7 +6350,10 @@
             "progressCopy": "[kopi]",
             "deleteCount": "Til sletning: {count}",
             "overwriteCount": "Til overskrivning: {count}",
-            "conflictCount": "Konflikter: {count}"
+            "conflictCount": "Konflikter: {count}",
+            "updateOnly": "Spring nyere destinationsfiler over (envejsopdatering)",
+            "updateOnlyHint": "Kopierer manglende eller ændrede kildefiler, beholder nyere destinationsfiler og sletter poster, der kun findes på destinationen. Filer uden sammenlignelige datoer sammenlignes efter størrelse; størrelsesforskelle overlades til gennemgang.",
+            "rescanNeeded": "Kør en ny sammenligning med de aktuelle indstillinger, før du eksporterer et opdateringsscript."
         },
         "accountLock": {
             "title": "Vælg en konto",
@@ -6582,7 +6597,8 @@
             "keyslotsSetAsideRevocation": "Den tidligere markør åbner stadig boksen med den faktor, du fjerner eller erstatter. Hver kopi, der ligger tilbage i boksens mappe, slettes efter ændringen, og en kopi, der ikke kan slettes, rapporteres som en fejl. En kopi i lagerets papirkurv eller filversioner nås ikke: at tømme dem fjerner disse kopier, men ikke en kopi, som en anden har gemt, så det fuldfører ikke tilbagekaldelsen.",
             "keyslotsSetAsideConsent": "Jeg forstår: erstat markøren på denne server ved at sætte den gamle til side",
             "keyslotsSetAsideConsentRequired": "Denne server kan kun erstatte boksens markør ved at sætte den gamle til side: bekræft det i feltet ovenfor for at fortsætte.",
-            "keyslotsMarkerReplaceUnsupported": "Denne server kan ikke erstatte boksens markør, så ændringer af slots afvises her. Åbn det samme lager via en server, der erstatter en fil i ét trin (f.eks. SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Denne server kan ikke erstatte boksens markør, så ændringer af slots afvises her. Åbn det samme lager via en server, der erstatter en fil i ét trin (f.eks. SFTP).",
+            "overlayMetadataNotSaved": "Migreringen lykkedes, men gendannelsessættet til offline brug er endnu ikke cachet. Det sker ved næste oplåsning."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",

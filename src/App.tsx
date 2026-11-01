@@ -203,7 +203,7 @@ import { usedScanBoundKey } from './utils/usedScanBound';
 import type { UpdateVerificationInfo } from './utils/updateVerification';
 import { UpdateVerificationPanel } from './components/UpdateVerificationPanel';
 import { safePickerStartDir } from './utils/safePickerDir';
-import { normCryptScope, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
+import { normCryptScope, normLandingPath, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
@@ -286,7 +286,7 @@ import CryptomatorCreateDialog from './components/CryptomatorCreateDialog';
 import { CloudPanel } from './components/CloudPanel';
 import { OverwriteDialog } from './components/OverwriteDialog';
 import { FolderOverwriteDialog, FolderMergeAction } from './components/FolderOverwriteDialog';
-import { BatchRenameDialog, BatchRenameFile } from './components/BatchRenameDialog';
+import { BatchRenameDialog, BatchRenameFile, type BatchRenameSibling } from './components/BatchRenameDialog';
 import { CyberToolsModal } from './components/CyberToolsModal';
 import { nativeDropOwnerAt } from './utils/nativeDropOwner';
 import { useLockNow } from './hooks/useLockNow';
@@ -453,7 +453,7 @@ import { useTranslation } from './i18n';
 import { ConfirmDialog, InputDialog, ArchivePasswordDialog, SyncNavDialog, PropertiesDialog, FileProperties, ChecksumAlgorithm, ChecksumCapability, MultiFilePropertiesDialog, MultiFileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
 import { TransferToastContainer, dispatchTransferToast, toggleTransferToast } from './components/Transfer/TransferToastContainer';
 import { runExtractWithToast } from './utils/extractToast';
-import { archiveStem, dispatchGeneralExtract, isWrongPasswordError, resolveUniqueExtractDir } from './utils/extractOrchestrator';
+import { aeroEntryNames, aeroVaultKind, archiveStem, dispatchAeroExtract, dispatchGeneralExtract, extractCollisionList, extractHereCollisions, isWrongPasswordError, resolveUniqueExtractDir } from './utils/extractOrchestrator';
 import { formatExtractDetails, formatCompressDetails } from './utils/archiveSizeReport';
 import { findGvfsMtpMount, isGvfsMtpPath } from './utils/gvfsMtpMount';
 import { acceptFlatpakImport, flatpakImportResultDialog, flatpakOfferHandlers } from './utils/flatpakImport';
@@ -505,7 +505,7 @@ import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 import { isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
 import { connectionNumberOf, connectionTargetKey, isSameConnection, resolveLiveConnectionParams, savedProfileIdOf } from './utils/liveConnection';
 import { remoteFolderSizes, type RemoteFolderSizes, type RemoteSizeProgress } from './utils/remoteFolderSizes';
-import { selectedLocalRows } from './utils/localSelection';
+import { asLocalFileEntry, deepestLocalRowsFirst, focusedLocalPanel, localClipboardEntries, localRowFolder, localRowFolderKey, localRowName, localRowNameClashes, localPanelShows, selectedLocalRows, selectedLocalTrees } from './utils/localSelection';
 
 // W3.1 (#270.5): marker the backend connect commands return when the user
 // aborts an in-progress connection (Esc / "still connecting" Cancel). The
@@ -653,7 +653,7 @@ const newSizeScanId = () => `${Date.now().toString(36)}-${Math.random().toString
 
 /** A local listing entry as the Properties dialogs take it. */
 const localEntryProperties = (f: LocalFile, dir: string): FileProperties => ({
-  name: f.name,
+  name: localRowName(f),
   path: f.path || `${dir}/${f.name}`,
   size: f.size,
   is_dir: f.is_dir,
@@ -1070,7 +1070,7 @@ const App: React.FC = () => {
     onCommit: (message: string) => void;
     onCancel?: () => void;
   } | null>(null);
-  const [batchRenameDialog, setBatchRenameDialog] = useState<{ files: BatchRenameFile[]; isRemote: boolean; siblings: string[] } | null>(null);
+  const [batchRenameDialog, setBatchRenameDialog] = useState<{ files: BatchRenameFile[]; isRemote: boolean; siblings: BatchRenameSibling[] } | null>(null);
   // Inline rename state: tracks which file is being renamed directly in the list
   const [inlineRename, setInlineRename] = useState<{ path: string; name: string; isRemote: boolean } | null>(null);
   const [inlineRenameValue, setInlineRenameValue] = useState('');
@@ -2635,32 +2635,53 @@ const App: React.FC = () => {
     return { active: true, residualFilter: (match[2] || '').toLowerCase() };
   }, [localSearchFilter]);
 
+  // The scan in flight and the folder the rows on screen come from: a rescan
+  // waits for the scan before it, so a folder that keeps changing (the
+  // listing reloads on every watcher event) runs one walk at a time, and only
+  // a new folder shows the scanning state.
+  const flattenScanRef = useRef<{ running: Promise<unknown> | null; path: string | null }>({ running: null, path: null });
+
   // Trigger the recursive scan whenever the user enables flatten mode or moves
   // to a different folder while flatten mode is on. The scan is debounced so
   // typing `*` and then a query character doesn't kick off two scans.
   useEffect(() => {
     if (!flattenSearchParse.active) {
+      flattenScanRef.current.path = null;
       setLocalFlattenedFiles(null);
       setLocalFlattenTruncated(false);
       setLocalFlattenScanning(false);
       return;
     }
     let cancelled = false;
-    const timer = window.setTimeout(async () => {
+    // A new folder: the rows of the last one go at once, not when the scan
+    // before it ends, and the panel shows the scan under way meanwhile.
+    if (flattenScanRef.current.path !== currentLocalPath) {
+      setLocalFlattenedFiles(null);
+      setLocalFlattenTruncated(false);
       setLocalFlattenScanning(true);
+    }
+    const timer = window.setTimeout(async () => {
+      const scan = flattenScanRef.current;
+      await scan.running?.catch(() => undefined);
+      if (cancelled) return;
+      const running = invoke<{ entries: LocalFile[]; truncated: boolean; total_scanned: number }>(
+        'flatten_local_descendants',
+        { basePath: currentLocalPath, maxEntries: 5000, showHidden: false },
+      );
+      scan.running = running;
       try {
-        const result = await invoke<{ entries: LocalFile[]; truncated: boolean; total_scanned: number }>(
-          'flatten_local_descendants',
-          { basePath: currentLocalPath, maxEntries: 5000, showHidden: false },
-        );
+        const result = await running;
         if (cancelled) return;
+        scan.path = currentLocalPath;
         setLocalFlattenedFiles(result.entries);
         setLocalFlattenTruncated(result.truncated);
       } catch {
         if (cancelled) return;
+        scan.path = currentLocalPath;
         setLocalFlattenedFiles([]);
         setLocalFlattenTruncated(false);
       } finally {
+        if (scan.running === running) scan.running = null;
         if (!cancelled) setLocalFlattenScanning(false);
       }
     }, 250);
@@ -2668,7 +2689,10 @@ const App: React.FC = () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [flattenSearchParse.active, currentLocalPath]);
+    // `localFiles`: every action that changes the tree reloads the listing,
+    // and the flattened rows have to follow, or a deleted or renamed nested
+    // entry stays on screen under its old name.
+  }, [flattenSearchParse.active, currentLocalPath, localFiles]);
 
   // Filtered files (search filter applied), memoized to avoid recomputation on unrelated renders (M25)
   const filteredLocalFiles = useMemo(() => {
@@ -2702,6 +2726,20 @@ const App: React.FC = () => {
     setTheme(order[(order.indexOf(theme) + 1) % order.length]);
   }, [theme, setTheme]);
 
+  // The local panel an action without an explicit panel acts on: never a
+  // hidden panel 2 (see focusedLocalPanel).
+  const focusedLocalPanelId = focusedLocalPanel({ isConnected, showRemotePanel, showDualLocalPanel, activeLocalPanelId });
+
+  // Refuses selected rows that one destination cannot hold together: files of
+  // different folders sharing a name (see localRowNameClashes). True when it
+  // refused, after telling the user which names.
+  const refuseLocalNameClashes = useCallback((rows: readonly Pick<LocalFile, 'name' | 'path'>[]): boolean => {
+    const clashes = localRowNameClashes(rows);
+    if (clashes.length === 0) return false;
+    notify.error(t('search.flattenNameClashTitle'), t('search.flattenNameClash', { names: clashes.join(', ') }));
+    return true;
+  }, [notify, t]);
+
   // AeroFile dual-panel state dispatcher: returns the file/selection/path/
   // setters for whichever local panel currently owns focus. Used by keyboard
   // shortcuts, context menus, and toolbar actions so panel 2 receives the same
@@ -2709,7 +2747,7 @@ const App: React.FC = () => {
   // users). The function body is evaluated lazily — any state declared later
   // in render (like sortedLocalFiles2) is fully initialised by the time a key
   // press or right-click invokes it.
-  const getActiveLocalState = (id: 'local' | 'local2' = activeLocalPanelId) => {
+  const getActiveLocalState = (id: 'local' | 'local2' = focusedLocalPanelId) => {
     if (id === 'local2') {
       return {
         id: 'local2' as const,
@@ -2790,7 +2828,7 @@ const App: React.FC = () => {
         const panel = getActiveLocalState();
         const name = Array.from(panel.selection)[0];
         if (!name) return;
-        const file = panel.sortedFiles.find(f => f.name === name) || panel.files.find(f => f.name === name);
+        const [file] = selectedLocalRows(panel.sortedFiles, panel.files, new Set([name]));
         if (file) {
           if (file.is_dir) {
             void panel.changeDir(file.path);
@@ -2841,9 +2879,8 @@ const App: React.FC = () => {
       } else if (activePanel === 'local') {
         const panel = getActiveLocalState();
         if (panel.selection.size === 1) {
-          const name = Array.from(panel.selection)[0];
-          const file = panel.files.find(f => f.name === name);
-          if (file && file.name !== '..') startInlineRename(file.path, file.name, false);
+          const [file] = selectedLocalRows(panel.sortedFiles, panel.files, panel.selection);
+          if (file && file.name !== '..') startInlineRename(file.path, localRowName(file), false);
         }
       }
     },
@@ -2865,12 +2902,12 @@ const App: React.FC = () => {
 
     // Ctrl+A: select all files
     'Ctrl+A': () => {
-      setPanelSelection(activePanel === 'remote' ? 'remote' : activeLocalPanelId, [], 'all');
+      setPanelSelection(activePanel === 'remote' ? 'remote' : focusedLocalPanelId, [], 'all');
     },
 
     // Ctrl+U: upload selected local files
     'Ctrl+U': () => {
-      if (isConnected && selectedLocalFiles.size > 0) {
+      if (isConnected && getActiveLocalState().selection.size > 0) {
         uploadMultipleFiles();
       }
     },
@@ -2906,7 +2943,7 @@ const App: React.FC = () => {
 
     // Ctrl+F: toggle search bar on the focused local panel
     'Ctrl+F': () => {
-      if (activeLocalPanelId === 'local2') setShowLocalSearchBar2(prev => !prev);
+      if (focusedLocalPanelId === 'local2') setShowLocalSearchBar2(prev => !prev);
       else setShowLocalSearchBar(prev => !prev);
     },
 
@@ -2918,8 +2955,8 @@ const App: React.FC = () => {
       } else if (activePanel === 'local') {
         const panel = getActiveLocalState();
         if (panel.selection.size > 0 && panel.currentPath) {
-          const files = panel.files.filter(f => panel.selection.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
-          clipboardCopy(files, false, panel.currentPath);
+          const files = localClipboardEntries(panel.sortedFiles, panel.files, panel.selection);
+          if (!refuseLocalNameClashes(files)) clipboardCopy(files, false, panel.currentPath);
         }
       }
     },
@@ -2932,8 +2969,8 @@ const App: React.FC = () => {
       } else if (activePanel === 'local') {
         const panel = getActiveLocalState();
         if (panel.selection.size > 0 && panel.currentPath) {
-          const files = panel.files.filter(f => panel.selection.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
-          clipboardCut(files, false, panel.currentPath);
+          const files = localClipboardEntries(panel.sortedFiles, panel.files, panel.selection);
+          if (!refuseLocalNameClashes(files)) clipboardCut(files, false, panel.currentPath);
         }
       }
     },
@@ -2982,7 +3019,7 @@ const App: React.FC = () => {
     'Alt+Enter': () => {
       if (activePanel !== 'local') return;
       const panel = getActiveLocalState();
-      const entries = selectedLocalRows(panel.sortedFiles, panel.files, panel.selection)
+      const entries = selectedLocalTrees(panel.sortedFiles, panel.files, panel.selection)
         .map(f => localEntryProperties(f, panel.currentPath));
       if (entries.length > 0) void openLocalProperties(entries);
     },
@@ -3634,11 +3671,11 @@ const App: React.FC = () => {
       if (prof) {
         quotaProfile = prof;
         profileId = prof.id;
-        if (prof.initialPath?.trim()) {
-          const resolved = resolveUsernameTemplate(prof.initialPath.trim(), cp.username);
+        if (prof.initialPath) {
+          const resolved = resolveUsernameTemplate(prof.initialPath, cp.username);
           scanRoot = usedScanRoot({
             ...scanRootArgs,
-            profileRoot: stripLegacyNextcloudWebdavRoot(resolved, prof.providerId, cp.username) || resolved || prof.initialPath.trim(),
+            profileRoot: stripLegacyNextcloudWebdavRoot(resolved, prof.providerId, cp.username) || resolved || prof.initialPath,
           });
         }
         const m = prof.options?.manualTotalBytes;
@@ -4078,9 +4115,12 @@ const App: React.FC = () => {
     setShowExportImport(true);
   }, []);
 
-  // Keep refs in sync for keyboard navigation (refs are used in useKeyboardShortcuts above)
-  sortedLocalFilesRef.current = sortedLocalFiles;
-  sortedRemoteFilesRef.current = sortedRemoteFiles;
+  // Keep refs in sync for keyboard navigation (refs are used in useKeyboardShortcuts above).
+  // Written once the render commits: a render React discards never reaches them.
+  useLayoutEffect(() => {
+    sortedLocalFilesRef.current = sortedLocalFiles;
+    sortedRemoteFilesRef.current = sortedRemoteFiles;
+  }, [sortedLocalFiles, sortedRemoteFiles]);
 
   // True when the active session tab is the one that owns the encrypted overlay
   // (or is unlocking it). Routing and the decryption animation are both gated on
@@ -4396,6 +4436,8 @@ const App: React.FC = () => {
                     );
                     return;
                   }
+                  // The account this migration runs under: a switch during it must not put the metadata elsewhere.
+                  const accountRead = await readSavedServerProfilesForWrite().catch(() => null);
                   const result = await invoke<{
                     changed: boolean;
                     legacyDeleted: boolean;
@@ -4420,19 +4462,16 @@ const App: React.FC = () => {
                         let saltB64 = '';
                         const saltLine = configJson.split('\n').find((l) => l.startsWith('salt\t'));
                         if (saltLine) saltB64 = saltLine.split('\t')[1]?.trim() || '';
-                        await invoke('store_credential', {
-                          account: `aerocrypt_overlay_config_${profileId}`,
-                          password: configJson,
-                        });
-                        if (saltB64) {
-                          await invoke('store_credential', {
-                            account: `aerocrypt_overlay_salt_${profileId}`,
-                            password: saltB64,
-                          });
+                        // A failed read gives no account to bind this to, so it is not saved here.
+                        if (accountRead) {
+                          await invoke('store_overlay_metadata', { profileId, configJson, salt: saltB64 || null, expectedUserId: accountRead.userId ?? null });
+                        } else {
+                          notify.warning(t('aerocryptNative.legacyMarkerConnectBanner'), t('aerocryptNative.overlayMetadataNotSaved'));
                         }
                       }
-                    } catch {
-                      /* kit warms on next connect */
+                    } catch (err) {
+                      // The remote marker did migrate: this only leaves the recovery kit behind.
+                      notify.warning(t('toast.saveFailed'), String(err));
                     }
                     humanLog.updateEntry(logId, {
                       status: 'success',
@@ -4738,14 +4777,15 @@ const App: React.FC = () => {
   }, [loadTrashItems]);
 
   const isDualLocalAeroFileMode = (!isConnected || !showRemotePanel) && showDualLocalPanel;
-  const sidebarTargetPanelId: 'local' | 'local2' = isDualLocalAeroFileMode ? activeLocalPanelId : 'local';
+  const sidebarTargetPanelId = focusedLocalPanelId;
+  const focusedLocalSelection = focusedLocalPanelId === 'local2' ? selectedLocalFiles2 : selectedLocalFiles;
   const sidebarCurrentPath = sidebarTargetPanelId === 'local2'
     ? (currentLocalPath2 || currentLocalPath)
     : currentLocalPath;
-  const statusBarLocalPath = isDualLocalAeroFileMode && activeLocalPanelId === 'local2'
+  const statusBarLocalPath = focusedLocalPanelId === 'local2'
     ? (currentLocalPath2 || currentLocalPath)
     : currentLocalPath;
-  const statusBarLocalFileCount = isDualLocalAeroFileMode && activeLocalPanelId === 'local2'
+  const statusBarLocalFileCount = focusedLocalPanelId === 'local2'
     ? localFiles2.length
     : localFiles.length;
   // Quick Look renders and navigates in the panel that opened it, not panel 1.
@@ -4873,7 +4913,7 @@ const App: React.FC = () => {
       // List storage roots (or profile default remote path) through provider fabric.
       let files: RemoteFile[] = [];
       let remotePath = '/';
-      const wantedRemote = profile?.initialPath?.trim();
+      const wantedRemote = profile?.initialPath;
       try {
         if (wantedRemote && wantedRemote !== '/' && wantedRemote !== '.') {
           try {
@@ -4929,7 +4969,7 @@ const App: React.FC = () => {
       // because this callback sits above loadLocalFiles in the App body.
       let resolvedLocalPath = currentLocalPath;
       let resolvedLocalFiles = localFiles;
-      const wantedLocal = profile?.localInitialPath?.trim();
+      const wantedLocal = profile?.localInitialPath;
       if (wantedLocal) {
         try {
           const listed: LocalFile[] = await connectScope.step(() => invoke('get_local_files', {
@@ -5576,19 +5616,22 @@ const App: React.FC = () => {
     }
   }, [showHiddenFiles, notify, t, setLocalFiles2, setCurrentLocalPath2, setSelectedLocalFiles2]);
 
-  const refreshLocalPanelForPath = useCallback(async (dir: string | null | undefined) => {
-    if (!dir) return;
-    const norm = (p: string) => normalizeLocalPath(p).replace(/\/+$/, '') || '/';
-    const n = norm(dir);
+  // The local panels that show `dirs` (one folder, or each folder a batch
+  // wrote to), each reloaded once however many of them it shows.
+  const refreshLocalPanelForPath = useCallback(async (dirs: string | null | undefined | readonly (string | null | undefined)[]) => {
+    const list = (typeof dirs === 'string' || dirs == null ? [dirs] : dirs).filter((dir): dir is string => !!dir);
+    if (list.length === 0) return;
     const tasks: Promise<unknown>[] = [];
-    if (currentLocalPath && norm(currentLocalPath) === n) {
+    // Panel 1 also when its flattened search lists a folder below its own:
+    // the reload rescans the flattened rows.
+    if (currentLocalPath && list.some(dir => localPanelShows(dir, currentLocalPath, flattenSearchParse.active))) {
       tasks.push(loadLocalFiles(currentLocalPath));
     }
-    if (currentLocalPath2 && norm(currentLocalPath2) === n) {
+    if (currentLocalPath2 && list.some(dir => localPanelShows(dir, currentLocalPath2, false))) {
       tasks.push(loadLocalFiles2(currentLocalPath2));
     }
     if (tasks.length > 0) await Promise.all(tasks);
-  }, [currentLocalPath, currentLocalPath2, loadLocalFiles, loadLocalFiles2]);
+  }, [currentLocalPath, currentLocalPath2, loadLocalFiles, loadLocalFiles2, flattenSearchParse.active]);
 
   const changeLocalDirectory2 = useCallback(async (path: string) => {
     return await loadLocalFiles2(path) ? path : null;
@@ -5670,27 +5713,78 @@ const App: React.FC = () => {
     ));
   }, [showDualLocalPanel, activeLocalTabId2, currentLocalPath2, setLocalTabs2]);
 
-  // AeroFile auto-refresh: watch the active local directory and reload its
-  // listing when something changes underneath. Removes the need to hit Refresh
-  // after creating/renaming/deleting files outside AeroFTP (wishlist #133).
+  // AeroFile auto-refresh: watch the folder each local panel shows and reload
+  // its listing when something changes underneath. Removes the need to hit
+  // Refresh after creating/renaming/deleting files outside AeroFTP (wishlist
+  // #133). A flattened search lists the folders below panel 1's as well: each
+  // is watched too, and a change in one reloads the listing, which rescans.
+  const localWatchDirs = useMemo(() => JSON.stringify(
+    flattenSearchParse.active && localFlattenedFiles
+      ? localFlattenedFiles.filter(f => f.is_dir).map(f => f.path)
+      : [],
+  ), [flattenSearchParse.active, localFlattenedFiles]);
+  // A panel's requests reach the backend in the order they were sent, each
+  // once the one before resolved: the commands run concurrently, and a stop
+  // that ran after the watch sent next would end it. A watch resolves once it
+  // is the panel's latest request, before its folder is stat'ed, so a hung
+  // mount holds nothing back.
+  const localWatchQueue = useRef<Record<'local' | 'local2', Promise<void>>>({ local: Promise.resolve(), local2: Promise.resolve() });
+  const requestLocalWatch = useCallback((panel: 'local' | 'local2', watch: { path: string; dirs?: string[] } | null) => {
+    const queue = localWatchQueue.current;
+    queue[panel] = queue[panel]
+      .then(() => watch ? invoke('local_panel_watch', { ...watch, panel }) : invoke('local_panel_watch_stop', { panel }))
+      .then(() => undefined, () => { /* best-effort: the panel still has Refresh */ });
+  }, []);
+  // Panel 1 keeps its watch behind the connection screen: the screen clears
+  // its selection when it opens, and not every way back lists its folder
+  // again (the command palette's does not).
   useEffect(() => {
     if (!currentLocalPath) return;
-    void invoke('local_panel_watch', { path: currentLocalPath }).catch(() => { /* dir gone or not yet ready */ });
-  }, [currentLocalPath]);
+    const dirs = JSON.parse(localWatchDirs) as string[];
+    requestLocalWatch('local', { path: currentLocalPath, dirs });
+  }, [currentLocalPath, localWatchDirs, requestLocalWatch]);
+
+  // Panel 2 while it is on screen. Hidden (a server connected with the remote
+  // panel shown, the connection screen, dual mode off), it keeps its listing
+  // and nothing watches its folder: it reloads when it comes back.
+  const localPanel2Visible = !showConnectionScreen && (!isConnected || !showRemotePanel) && showDualLocalPanel;
+  const localPanel2WasVisible = useRef(localPanel2Visible);
+  useEffect(() => {
+    const cameBack = localPanel2Visible && !localPanel2WasVisible.current;
+    localPanel2WasVisible.current = localPanel2Visible;
+    if (cameBack && currentLocalPath2) void loadLocalFiles2(currentLocalPath2);
+  }, [localPanel2Visible, currentLocalPath2, loadLocalFiles2]);
+  useEffect(() => {
+    requestLocalWatch('local2', localPanel2Visible && currentLocalPath2 ? { path: currentLocalPath2 } : null);
+  }, [localPanel2Visible, currentLocalPath2, requestLocalWatch]);
+
+  const currentLocalPath2Ref = useRef(currentLocalPath2);
+  useEffect(() => { currentLocalPath2Ref.current = currentLocalPath2; }, [currentLocalPath2]);
+  // The loaders follow `notify`, which App builds again on every render: a
+  // listener that depended on them subscribed again each time, its cleanup
+  // stopped the watch, and a reload waiting to run went with it. The
+  // listener subscribes once and reads them here.
+  const localLoadersRef = useRef({ local: loadLocalFiles, local2: loadLocalFiles2 });
+  useLayoutEffect(() => { localLoadersRef.current = { local: loadLocalFiles, local2: loadLocalFiles2 }; });
 
   useEffect(() => {
-    let pending: number | null = null;
+    const pending: Record<'local' | 'local2', number | null> = { local: null, local2: null };
     let unlistenFn: (() => void) | null = null;
     let cancelled = false;
     (async () => {
       try {
-        const fn = await listen<{ path: string }>('local-fs-changed', (event) => {
-          const expected = currentLocalPathRef.current;
+        const fn = await listen<{ panel?: 'local' | 'local2'; path: string }>('local-fs-changed', (event) => {
+          const panel = event.payload.panel === 'local2' ? 'local2' : 'local';
+          const pathRef = panel === 'local2' ? currentLocalPath2Ref : currentLocalPathRef;
+          const expected = pathRef.current;
           if (!expected || event.payload.path !== expected) return;
-          if (pending !== null) window.clearTimeout(pending);
-          pending = window.setTimeout(() => {
-            pending = null;
-            loadLocalFiles(currentLocalPathRef.current).catch(() => { /* swallowed by loader */ });
+          const waiting = pending[panel];
+          if (waiting !== null) window.clearTimeout(waiting);
+          pending[panel] = window.setTimeout(() => {
+            pending[panel] = null;
+            // The panel moved on meanwhile, and its new folder was just listed.
+            if (pathRef.current !== expected) return;
+            localLoadersRef.current[panel](expected).catch(() => { /* swallowed by loader */ });
           }, 350);
         });
         if (cancelled) fn();
@@ -5699,11 +5793,10 @@ const App: React.FC = () => {
     })();
     return () => {
       cancelled = true;
-      if (pending !== null) window.clearTimeout(pending);
+      for (const waiting of Object.values(pending)) if (waiting !== null) window.clearTimeout(waiting);
       if (unlistenFn) unlistenFn();
-      void invoke('local_panel_watch_stop').catch(() => { /* ignore */ });
     };
-  }, [loadLocalFiles]);
+  }, []);
 
   // Ehud #2: OS file/folder drag&drop from the system File Explorer onto the
   // AeroFile local panel imports the dropped items into the current local
@@ -5955,13 +6048,16 @@ const App: React.FC = () => {
     // leaves it at "/"). Callers only pass a landing path for non-empty scopes;
     // empty scope (whole-remote overlay) never reaches here and lands as today.
     if (opts && opts.initialLandingPath !== undefined) {
-      const landing = opts.initialLandingPath;
-      if (normCryptScope(landing) === '') {
+      // The Remote Path as given: not through the anchor's normCryptScope,
+      // whose trim would land `/docs ` on `/docs`.
+      const landing = normLandingPath(opts.initialLandingPath);
+      if (landing === '') {
         // Remote Path is the on-wire root.
         await invoke('provider_change_dir', { path: '/', ...(ownership ? { expectedGeneration: ownership.generation } : {}) }).catch((error) => { if (ownership && String(error).startsWith('CONNECTION_CHANGED')) throw error; });
         assertOverlayActivationCurrent(ownership);
       } else {
-        await positionWrappedProviderAtScope(landing, ownership);
+        await invoke('provider_change_dir', { path: landing, ...(ownership ? { expectedGeneration: ownership.generation } : {}) });
+        assertOverlayActivationCurrent(ownership);
       }
       return;
     }
@@ -6378,7 +6474,7 @@ const App: React.FC = () => {
     const activeSess = sessions.find((s) => s.id === activeSessionId);
     const reloadScope = activeSess?.cryptOverlay?.remoteScope || null;
     const scopeNonEmpty = normCryptScope(reloadScope) !== '';
-    const remotePath = activeSess?.serverInitialPath?.trim() || '';
+    const remotePath = activeSess?.serverInitialPath || '';
     const initialLandingOpts = scopeNonEmpty
       ? { initialLandingPath: remotePath }
       : undefined;
@@ -6683,7 +6779,7 @@ const App: React.FC = () => {
       setShowConnectionScreen(true);
     }
   }, [showConnectionScreen, isConnected, currentLocalPath, loadLocalFiles]);
-  handleToggleAeroFileRef.current = handleToggleAeroFile;
+  useLayoutEffect(() => { handleToggleAeroFileRef.current = handleToggleAeroFile; }, [handleToggleAeroFile]);
 
   // Listen for View > AeroFile menu event
   useEffect(() => {
@@ -6801,13 +6897,14 @@ const App: React.FC = () => {
   }, [showHiddenFiles]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Drag & Drop (cross-panel callback set below after upload/download are defined)
-  const crossPanelDropRef = React.useRef<((files: { name: string; path: string }[], fromRemote: boolean, targetDir: string) => Promise<void>) | null>(null);
+  const crossPanelDropRef = React.useRef<((files: { name: string; path: string }[], fromRemote: boolean, targetDir: string, sourceKey: 'remote' | 'local' | 'local2') => Promise<void>) | null>(null);
 
   const {
     dragData, dropTargetPath, crossPanelTarget,
     handleDragStart, handleDragOver, handleDrop, handleDragEnd, handleDragLeave,
     handlePanelDragOver, handlePanelDrop, handlePanelDragLeave,
   } = useDragAndDrop({
+    refuseLocalNameClashes,
     notify,
     humanLog,
     currentRemotePath,
@@ -6819,8 +6916,8 @@ const App: React.FC = () => {
     activeSessionId,
     sessions: sessions as Array<{ id: string; connectionParams?: { protocol?: string } }>,
     connectionParams: liveConnectionParams,
-    onCrossPanelDrop: async (files, fromRemote, targetDir) => {
-      await crossPanelDropRef.current?.(files, fromRemote, targetDir);
+    onCrossPanelDrop: async (files, fromRemote, targetDir, sourceKey) => {
+      await crossPanelDropRef.current?.(files, fromRemote, targetDir, sourceKey);
     },
   });
 
@@ -10011,7 +10108,7 @@ const App: React.FC = () => {
     // "Copy to other panel" header chip, and drag-and-drop.
     setActivePanel('local');
     setActiveLocalPanelId(panelId);
-    const selectedEndpoint = createRemoteEndpoint(profile, profile.initialPath?.trim() || '/');
+    const selectedEndpoint = createRemoteEndpoint(profile, profile.initialPath || '/');
 
     // Z.3.5: when the active connection is a saved profile and the user
     // already has files selected on the remote panel, route the request
@@ -10175,16 +10272,17 @@ const App: React.FC = () => {
   const checkFolderOverwrite = useCallback(async (
     folderName: string,
     direction: 'upload' | 'download',
-    queueCount: number = 0
+    queueCount: number = 0,
+    // The listing of the folder written to, when the panel lists another one.
+    destinationFiles?: readonly { name: string; is_dir: boolean }[],
   ): Promise<{ action: FolderMergeAction; applyToAll: boolean }> => {
     // If apply-to-all was set previously in this batch, reuse it
     if (folderOverwriteApplyToAll.current.enabled) {
       return { action: folderOverwriteApplyToAll.current.action, applyToAll: true };
     }
     // Check if destination folder exists
-    const exists = direction === 'upload'
-      ? remoteFiles.some(f => f.name === folderName && f.is_dir)
-      : localFiles.some(f => f.name === folderName && f.is_dir);
+    const destination = destinationFiles ?? (direction === 'upload' ? remoteFiles : localFiles);
+    const exists = destination.some(f => f.name === folderName && f.is_dir);
     if (!exists) {
       return { action: 'merge_overwrite', applyToAll: false };
     }
@@ -10458,7 +10556,11 @@ const App: React.FC = () => {
         if (!_skipConflictCheck) {
           // Check file conflict before uploading (single file transfers only)
           const destinationFiles = await getOverwriteDestination('upload', remoteBase);
-          const localFileInfo = localFiles.find(f => f.name === fileName && !f.is_dir);
+          // By path: a nested row of a flattened search goes by its own name,
+          // which an entry of the panel's directory may share. In either
+          // panel: the file can come from panel 2.
+          const localFileInfo = [...localFiles, ...sortedLocalFiles, ...localFiles2, ...sortedLocalFiles2]
+            .find(f => f.path === localFilePath && !f.is_dir);
           const overwriteResult = await checkOverwrite(
             fileName,
             fileSize || localFileInfo?.size || 0,
@@ -10555,7 +10657,7 @@ const App: React.FC = () => {
   };
 
   // Keep restore-retry callbacks pointing at the latest transfer fns.
-  transferFnsRef.current = { uploadFile, downloadFile };
+  useLayoutEffect(() => { transferFnsRef.current = { uploadFile, downloadFile }; });
 
   // TQ-7b: restore interrupted queue items from the journal on startup.
   // Does NOT auto-start or auto-reconnect; items land pending + restored.
@@ -11124,8 +11226,18 @@ const App: React.FC = () => {
     const sourceDir = sourceId === 'local2' ? currentLocalPath2 : currentLocalPath;
     const targetDir = targetId === 'local2' ? currentLocalPath2 : currentLocalPath;
     if (!targetDir || sourceSelection.size === 0) return;
-    const names = Array.from(sourceSelection);
-    const selected = sourceFiles.filter(f => names.includes(f.name) && f.name !== '..');
+    // The rows selected, nested rows of a flattened search included, each as
+    // a file of its own folder: the copy takes the file's name, not the path
+    // the search shows it under. A selected folder takes what is below it.
+    const sourceRows = sourceId === 'local2' ? sortedLocalFiles2 : sortedLocalFiles;
+    const rows = selectedLocalTrees(sourceRows, sourceFiles, sourceSelection)
+      .filter(f => f.name !== '..');
+    const clashes = localRowNameClashes(rows);
+    if (clashes.length > 0) {
+      notify.error(t('search.flattenNameClashTitle'), t('search.flattenNameClash', { names: clashes.join(', ') }));
+      return;
+    }
+    const selected = rows.map(asLocalFileEntry);
     if (selected.length === 0) return;
 
     // Data-loss guard: the backend copy/rename overwrites a same-named file in the
@@ -11206,7 +11318,7 @@ const App: React.FC = () => {
     } else if (skipped > 0) {
       notify.info(t('overwrite.title') || 'File Already Exists', `${skipped} skipped`);
     }
-  }, [activeLocalPanelId, selectedLocalFiles, selectedLocalFiles2, localFiles, localFiles2, currentLocalPath, currentLocalPath2, loadLocalFiles, loadLocalFiles2, notify, t]);
+  }, [activeLocalPanelId, selectedLocalFiles, selectedLocalFiles2, localFiles, localFiles2, sortedLocalFiles, sortedLocalFiles2, currentLocalPath, currentLocalPath2, loadLocalFiles, loadLocalFiles2, notify, t]);
   // Keep the F5/F6 forward ref pointing at the latest closure so the keyboard
   // shortcut handler always invokes the up-to-date implementation.
   React.useEffect(() => {
@@ -11218,13 +11330,22 @@ const App: React.FC = () => {
     const sourcePanel = sourceId === 'local' ? localUnifiedPanel : local2UnifiedPanel;
     const targetPanel = sourceId === 'local' ? local2UnifiedPanel : localUnifiedPanel;
     const sourceState = sourceId === 'local2'
-      ? { files: localFiles2, selected: selectedLocalFiles2 }
-      : { files: localFiles, selected: selectedLocalFiles };
+      ? { files: localFiles2, rows: sortedLocalFiles2, selected: selectedLocalFiles2 }
+      : { files: localFiles, rows: sortedLocalFiles, selected: selectedLocalFiles };
 
     if (!sourcePanel || !targetPanel) return;
-    const selectedNames = new Set(Array.from(sourceState.selected).filter(name => name !== '..'));
-    if (selectedNames.size === 0) return;
-    const selectedFiles = sourceState.files.filter(file => selectedNames.has(file.name));
+    // The rows selected, nested rows of a flattened search included, a
+    // selected folder with what is below it.
+    const selectedFiles = selectedLocalTrees(sourceState.rows, sourceState.files, sourceState.selected)
+      .filter(file => file.name !== '..');
+    if (selectedFiles.length === 0) return;
+    // Each lands under its own name in one folder: two of one name would
+    // replace each other there.
+    const clashes = localRowNameClashes(selectedFiles);
+    if (clashes.length > 0) {
+      notify.error(t('search.flattenNameClashTitle'), t('search.flattenNameClash', { names: clashes.join(', ') }));
+      return;
+    }
     const totalBytes = selectedFiles.reduce((sum, file) => sum + (file.size || 0), 0);
 
     setPendingUnifiedTransferPlan({
@@ -11244,8 +11365,12 @@ const App: React.FC = () => {
     local2UnifiedPanel,
     localFiles,
     localFiles2,
+    sortedLocalFiles,
+    sortedLocalFiles2,
     selectedLocalFiles,
     selectedLocalFiles2,
+    notify,
+    t,
   ]);
 
   React.useEffect(() => {
@@ -11599,7 +11724,7 @@ const App: React.FC = () => {
               progressId: scanProgressId,
             });
             // Both sides are local: local_info = left, remote_info = right.
-            resolved = adaptFileComparisons(report.differences, true, report.summary);
+            resolved = adaptFileComparisons(report.differences, true, report.summary, report.modify_window);
           } catch (err) {
             // Stopped from the dialog, which already shows it as stopped.
             if (isCompareCancelled(err)) return;
@@ -11721,7 +11846,7 @@ const App: React.FC = () => {
             isProviderConn ? 'provider_compare_directories' : 'compare_directories',
             compareArgs,
           );
-          resolved = adaptFileComparisons(report.differences, leftLocal, report.summary);
+          resolved = adaptFileComparisons(report.differences, leftLocal, report.summary, report.modify_window);
         } catch (err) {
           // Stopped from the dialog, which already shows it as stopped.
           if (isCompareCancelled(err)) return;
@@ -12207,7 +12332,7 @@ const App: React.FC = () => {
     });
   }, [aeroSync, runConnectedRemoteSync, runLocalLocalSync]);
 
-  const { dismissJournal: handleDismissJournal, invalidateComparison: invalidateAeroSyncComparison } =
+  const { dismissJournal: handleDismissJournal, invalidateComparison: invalidateAeroSyncComparison, narrowComparison: narrowAeroSyncComparison } =
     useAeroSyncContextActions(aeroSync, setAeroSync, aeroSyncCompareSeqRef);
 
 
@@ -12385,10 +12510,11 @@ const App: React.FC = () => {
             // The clipboard keeps name and path only; size and date come from
             // the listing, as the per-file path looks them up.
             // By path only: a same-named file of another folder would hand
-            // checkOverwrite the wrong size and date.
+            // checkOverwrite the wrong size and date. In either panel: the
+            // clipboard can hold files of panel 2.
             const listed = sourceIsRemote
               ? remoteFiles.find(f => f.path === file.path)
-              : localFiles.find(f => f.path === file.path);
+              : [...localFiles, ...sortedLocalFiles, ...localFiles2, ...sortedLocalFiles2].find(f => f.path === file.path);
             return {
               name: file.name,
               sourcePath: file.path,
@@ -12918,26 +13044,36 @@ const App: React.FC = () => {
   };
 
   // Upload files (Selected or Dialog)
-  const uploadMultipleFiles = withBatchLatch(async (filesOverride?: string[]) => {
+  const uploadMultipleFiles = withBatchLatch(async (filesOverride?: string[], localPanelId: 'local' | 'local2' = focusedLocalPanelId, remoteDir: string = currentRemotePath) => {
     if (!isConnected) return;
+    // The panel the names come from: a right-click in panel 2 uploads panel
+    // 2's files, not panel 1's of the same name.
+    const panel = getActiveLocalState(localPanelId);
 
     // Reset apply-to-all for new batch
     resetOverwriteSettings();
 
     // Use override or fallback to selected state
-    const targetNames = filesOverride || Array.from(selectedLocalFiles);
+    const targetNames = filesOverride || Array.from(panel.selection);
+
+    // A drop on a folder row writes into that folder, which the panel may
+    // not list: its own listing decides what an upload would overwrite. A
+    // listing that fails stops the upload; it never passes for an empty folder.
+    const destinationListing = async (): Promise<LocalFile[] | RemoteFile[] | undefined> =>
+      remoteDir === currentRemotePath ? undefined : await getOverwriteDestination('upload', remoteDir);
 
     // Priority 1: Upload specific target files
     if (targetNames.length > 0) {
-      let filesToUpload = targetNames.map(name => {
-        const file = localFiles.find(f => f.name === name);
-        // Use verified absolute path from backend
-        return file ? { path: file.path, file } : null;
-      }).filter(Boolean) as { path: string; file: LocalFile }[];
+      // The rows selected, nested rows of a flattened search included, each
+      // uploaded under its own name, a selected folder with what is below it.
+      // The path is the backend's, verified.
+      const rows = selectedLocalTrees(panel.sortedFiles, panel.files, new Set(targetNames));
+      if (refuseLocalNameClashes(rows)) return;
+      let filesToUpload = rows.map(file => ({ path: file.path, file: asLocalFileEntry(file) }));
 
       if (filesToUpload.length > 0) {
         const protocol = liveConnectionParams.protocol;
-        const isGitHubRepoMode = (protocol === 'github' && !currentRemotePath.startsWith('/.github-releases')) || protocol === 'gitlab';
+        const isGitHubRepoMode = (protocol === 'github' && !remoteDir.startsWith('/.github-releases')) || protocol === 'gitlab';
         let batchCommitMessage: string | undefined;
 
         if (isGitHubRepoMode) {
@@ -12947,7 +13083,7 @@ const App: React.FC = () => {
               repo_matches?: boolean;
               unpushed_count?: number;
               branch?: string;
-            }>('github_check_local_sync', { localPath: currentLocalPath });
+            }>('github_check_local_sync', { localPath: panel.currentPath });
             if (syncStatus.is_local_repo && syncStatus.repo_matches && (syncStatus.unpushed_count || 0) > 0) {
               const action = await new Promise<'push' | 'continue' | 'cancel'>((resolve) => {
                 setGitHubSyncWarning({
@@ -12960,7 +13096,7 @@ const App: React.FC = () => {
               if (action === 'cancel') return;
               if (action === 'push') {
                 try {
-                  await invoke('github_push_local', { localPath: currentLocalPath });
+                  await invoke('github_push_local', { localPath: panel.currentPath });
                   notify.success('Local commits pushed to GitHub');
                 } catch (e) {
                   notify.error('Push failed', String(e));
@@ -12975,7 +13111,7 @@ const App: React.FC = () => {
           const commitMessage = await requestGitHubBatchCommitMessage(
             filesToUpload.map(({ path: filePath, file }) => ({
               local: filePath,
-              remote: `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${file.name}`,
+              remote: `${remoteDir}${remoteDir.endsWith('/') ? '' : '/'}${file.name}`,
             })),
             'upload',
           );
@@ -12993,6 +13129,9 @@ const App: React.FC = () => {
           filesToUpload.map(entry => ({ ...entry, is_dir: entry.file.is_dir })),
           fileBatchSessionFlags('upload'),
         );
+        // Set once the file batch has run: a listing that fails after it
+        // still ends the run as the batch alone would.
+        let batchStaged: boolean | undefined;
         if (batchUploads.length > 0) {
           const outcome = await runFileBatch(
             'upload',
@@ -13002,16 +13141,17 @@ const App: React.FC = () => {
               size: file.size || 0,
               modified: file.modified || null,
             })),
-            currentRemotePath,
+            remoteDir,
           );
           if (outcome.aborted) {
             folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
             return;
           }
+          batchStaged = outcome.staged;
           // A Stop during the file batch also stops the folders after it.
           if (restUploads.length === 0 || batchCancelledRef.current) {
             folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
-            setSelectedLocalFiles(new Set());
+            panel.setSelection(new Set());
             if (!outcome.staged) loadRemoteFiles();
             return;
           }
@@ -13024,10 +13164,22 @@ const App: React.FC = () => {
         // staged executor (dispatcher fires it on staged -> pending). Legacy
         // path falls through to the overwrite + circuit-breaker for-loop;
         // staged path returns immediately after seeding the queue.
+        let destinationFiles: LocalFile[] | RemoteFile[] | undefined;
+        try {
+          destinationFiles = await destinationListing();
+        } catch (error) {
+          notify.error(t('toast.uploadFailed'), String(error));
+          if (batchStaged !== undefined) {
+            folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
+            panel.setSelection(new Set());
+            if (!batchStaged) loadRemoteFiles();
+          }
+          return;
+        }
         const stagedUploadMode = settings.autoStartTransfers === false;
         const sequentialUploadProfileId =
           sessions.find(s => s.id === activeSessionId)?.savedServerId ?? null;
-        const frozenUploadRemoteDir = currentRemotePath;
+        const frozenUploadRemoteDir = remoteDir;
         const queueItems = filesToUpload.map(({ path: filePath, file }) => {
           const fileName = filePath.split(/[/\\]/).pop() || filePath;
           const size = file?.size || 0;
@@ -13045,7 +13197,7 @@ const App: React.FC = () => {
           retryCallbacksRef.current.set(id, async () => {
             transferQueue.startTransfer(id);
             try {
-              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage);
+              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir);
               transferQueue.completeTransfer(id);
             } catch (error) {
               transferQueue.failTransfer(id, String(error));
@@ -13055,7 +13207,7 @@ const App: React.FC = () => {
         });
 
         if (stagedUploadMode) {
-          setSelectedLocalFiles(new Set());
+          panel.setSelection(new Set());
           return;
         }
 
@@ -13072,42 +13224,92 @@ const App: React.FC = () => {
           const MAX_BATCH_SIZE = 50 * 1024 * 1024; // 50 MB GraphQL limit
 
           if (totalSize <= MAX_BATCH_SIZE) {
-            try {
-              const files = nonDirItems.map(item => ({
-                localPath: item.filePath,
-                remotePath: `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${item.fileName}`,
-              }));
-              const batchCommand = protocol === 'gitlab' ? 'gitlab_batch_upload' : 'github_batch_upload';
-              const result = await invoke<{ commit_sha: string; files_count: number }>(
-                batchCommand, { files, message: batchCommitMessage }
-              );
-              // Mark all as complete
-              for (const item of nonDirItems) {
-                transferQueue.completeTransfer(item.id);
-              }
-              notify.success(
-                `Atomic commit: ${result.files_count} files`,
-                result.commit_sha.substring(0, 7)
-              );
-            } catch (error) {
-              for (const item of nonDirItems) {
-                transferQueue.failTransfer(item.id, String(error));
-              }
-              notify.error('Batch upload failed', String(error));
-            }
-            // Process remaining dir items sequentially if any
-            const dirItems = queueItems.filter(i => i.file.is_dir);
-            if (dirItems.length > 0) {
-              for (const item of dirItems) {
-                transferQueue.startTransfer(item.id);
-                try {
-                  await uploadFile(item.filePath, item.fileName, true, item.file.size || undefined, false, batchCommitMessage);
-                  transferQueue.completeTransfer(item.id);
-                } catch (error) {
-                  transferQueue.failTransfer(item.id, String(error));
+            // The commit writes every file it names at once, so each item is
+            // put to the overwrite settings first, in queue order as the
+            // sequential path below does: a skipped item stays out, a renamed
+            // file goes in under its new name, and a cancel fails that item
+            // and every item after it.
+            const kept: typeof queueItems = [];
+            let skippedInCommit = 0;
+            for (let i = 0; i < queueItems.length; i++) {
+              const item = queueItems[i];
+              const remainingInQueue = queueItems.length - i - 1;
+              let action: string;
+              if (item.file.is_dir) {
+                action = (await checkFolderOverwrite(item.fileName, 'upload', remainingInQueue, destinationFiles)).action;
+              } else {
+                const overwriteResult = await checkOverwrite(
+                  item.fileName,
+                  item.file.size || 0,
+                  item.file.modified ? new Date(item.file.modified) : undefined,
+                  false, // sourceIsRemote = false for upload
+                  remainingInQueue,
+                  destinationFiles,
+                );
+                action = overwriteResult.action;
+                if (action !== 'cancel' && action !== 'skip' && overwriteResult.newName) {
+                  item.fileName = overwriteResult.newName;
                 }
               }
+              if (action === 'cancel') {
+                for (let j = i; j < queueItems.length; j++) {
+                  transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+                }
+                break;
+              }
+              if (action === 'skip') {
+                transferQueue.completeTransfer(item.id);
+                if (!item.file.is_dir) {
+                  humanLog.logRaw('activity.upload_skipped', 'UPLOAD', { filename: item.fileName }, 'success');
+                }
+                skippedInCommit++;
+                continue;
+              }
+              kept.push(item);
             }
+
+            const keptFiles = kept.filter(i => !i.file.is_dir);
+            if (keptFiles.length > 0) {
+              try {
+                const files = keptFiles.map(item => ({
+                  localPath: item.filePath,
+                  remotePath: `${remoteDir}${remoteDir.endsWith('/') ? '' : '/'}${item.fileName}`,
+                }));
+                const batchCommand = protocol === 'gitlab' ? 'gitlab_batch_upload' : 'github_batch_upload';
+                const result = await invoke<{ commit_sha: string; files_count: number }>(
+                  batchCommand, { files, message: batchCommitMessage }
+                );
+                // Mark all as complete
+                for (const item of keptFiles) {
+                  transferQueue.completeTransfer(item.id);
+                }
+                notify.success(
+                  `Atomic commit: ${result.files_count} files`,
+                  result.commit_sha.substring(0, 7)
+                );
+              } catch (error) {
+                for (const item of keptFiles) {
+                  transferQueue.failTransfer(item.id, String(error));
+                }
+                notify.error('Batch upload failed', String(error));
+              }
+            }
+            // Process remaining dir items sequentially if any
+            for (const item of kept.filter(i => i.file.is_dir)) {
+              transferQueue.startTransfer(item.id);
+              try {
+                await uploadFile(item.filePath, item.fileName, true, item.file.size || undefined, false, batchCommitMessage, remoteDir);
+                transferQueue.completeTransfer(item.id);
+              } catch (error) {
+                transferQueue.failTransfer(item.id, String(error));
+              }
+            }
+            resetOverwriteSettings();
+            folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
+            if (skippedInCommit > 0) {
+              notify.info(t('toast.fileSkipped', { count: skippedInCommit }));
+            }
+            panel.setSelection(new Set());
             loadRemoteFiles(undefined, true);
             return;
           }
@@ -13122,7 +13324,7 @@ const App: React.FC = () => {
 
           if (item.file.is_dir) {
             // Folder: show FolderOverwriteDialog in 'ask' mode
-            const folderResult = await checkFolderOverwrite(item.fileName, 'upload', remainingInQueue);
+            const folderResult = await checkFolderOverwrite(item.fileName, 'upload', remainingInQueue, destinationFiles);
             if (folderResult.action === 'cancel') {
               transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
               for (let j = i + 1; j < queueItems.length; j++) {
@@ -13142,7 +13344,8 @@ const App: React.FC = () => {
               item.file.size || 0,
               item.file.modified ? new Date(item.file.modified) : undefined,
               false, // sourceIsRemote = false for upload
-              remainingInQueue
+              remainingInQueue,
+              destinationFiles,
             );
 
             if (overwriteResult.action === 'cancel') {
@@ -13222,7 +13425,7 @@ const App: React.FC = () => {
               transferQueue.startTransfer(item.id);
             }
             try {
-              await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined, true, batchCommitMessage);
+              await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined, true, batchCommitMessage, remoteDir);
               transferQueue.completeTransfer(item.id);
               circuitBreaker.recordSuccess();
               break;
@@ -13245,7 +13448,7 @@ const App: React.FC = () => {
         if (skippedCount > 0) {
           notify.info(t('toast.fileSkipped', { count: skippedCount }));
         }
-        setSelectedLocalFiles(new Set());
+        panel.setSelection(new Set());
         loadRemoteFiles();
         return;
       }
@@ -13273,7 +13476,7 @@ const App: React.FC = () => {
       const { batch: pickedBatch } = splitForFileBatch(picked, fileBatchSessionFlags('upload'));
       if (pickedBatch.length > 0) {
         resetOverwriteSettings();
-        const outcome = await runFileBatch('upload', pickedBatch, currentRemotePath);
+        const outcome = await runFileBatch('upload', pickedBatch, remoteDir);
         if (!outcome.aborted && !outcome.staged) loadRemoteFiles();
         return;
       }
@@ -13288,10 +13491,17 @@ const App: React.FC = () => {
 
       // TQ-4-routing: stage the dialog-selected entries. Same callback
       // is reused as the staged executor.
+      let destinationFiles: LocalFile[] | RemoteFile[] | undefined;
+      try {
+        destinationFiles = await destinationListing();
+      } catch (error) {
+        notify.error(t('toast.uploadFailed'), String(error));
+        return;
+      }
       const stagedDialogMode = settings.autoStartTransfers === false;
       const dialogUploadProfileId =
         sessions.find(s => s.id === activeSessionId)?.savedServerId ?? null;
-      const frozenDialogRemoteDir = currentRemotePath;
+      const frozenDialogRemoteDir = remoteDir;
       const queueItems = files.map(filePath => {
         const fileName = filePath.replace(/^.*[\\\/]/, '');
         const id = transferQueue.addItem(fileName, filePath, 0, 'upload', stagedDialogMode ? { staged: true } : undefined);
@@ -13307,7 +13517,7 @@ const App: React.FC = () => {
         retryCallbacksRef.current.set(id, async () => {
           transferQueue.startTransfer(id);
           try {
-            await uploadFile(filePath, fileName, false, undefined, true);
+            await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir);
             transferQueue.completeTransfer(id);
           } catch (error) {
             transferQueue.failTransfer(id, String(error));
@@ -13330,7 +13540,8 @@ const App: React.FC = () => {
           0, // Size unknown from dialog
           undefined, // Modified unknown from dialog
           false, // sourceIsRemote = false for upload
-          remainingInQueue
+          remainingInQueue,
+          destinationFiles,
         );
 
         if (overwriteResult.action === 'cancel') {
@@ -13407,7 +13618,7 @@ const App: React.FC = () => {
             transferQueue.startTransfer(item.id);
           }
           try {
-            await uploadFile(item.filePath, item.fileName, false, undefined, true);
+            await uploadFile(item.filePath, item.fileName, false, undefined, true, undefined, remoteDir);
             transferQueue.completeTransfer(item.id);
             circuitBreaker.recordSuccess();
             break;
@@ -13430,7 +13641,7 @@ const App: React.FC = () => {
   });
 
   // === Bulk Operations ===
-  const downloadMultipleFiles = withBatchLatch(async (filesOverride?: string[]) => {
+  const downloadMultipleFiles = withBatchLatch(async (filesOverride?: string[], localDir: string = currentLocalPath) => {
     if (!isConnected) return;
     const names = filesOverride || Array.from(selectedRemoteFiles);
     if (names.length === 0) return;
@@ -13438,22 +13649,32 @@ const App: React.FC = () => {
     // Reset apply-to-all for new batch
     resetOverwriteSettings();
 
+    // A drop on a folder row writes into that folder, which the panel may
+    // not list: its own listing decides what a download would overwrite. A
+    // listing that fails stops the download; it never passes for an empty folder.
+    const destinationListing = async (): Promise<LocalFile[] | RemoteFile[] | undefined> =>
+      localDir === currentLocalPath ? undefined : await getOverwriteDestination('download', localDir);
+
     let filesToDownload = names.map(n => remoteFiles.find(f => f.name === n)).filter(Boolean) as RemoteFile[];
     if (filesToDownload.length > 0) {
       // Issue #591: plain files go out as one parallel batch; folders, and a
       // lone file, keep the per-item loop below.
       const { batch: batchFiles, sequential } = splitForFileBatch(filesToDownload, fileBatchSessionFlags('download'));
+      // Set once the file batch has run: a listing that fails after it
+      // still ends the run as the batch alone would.
+      let batchStaged: boolean | undefined;
       if (batchFiles.length > 0) {
         const outcome = await runFileBatch(
           'download',
           batchFiles.map(f => ({ name: f.name, sourcePath: f.path, size: f.size || 0, modified: f.modified || null })),
-          currentLocalPath,
+          localDir,
         );
         if (outcome.aborted) return;
+        batchStaged = outcome.staged;
         // A Stop during the file batch also stops the folders after it.
         if (sequential.length === 0 || batchCancelledRef.current) {
           setSelectedRemoteFiles(new Set());
-          if (!outcome.staged) await loadLocalFiles(currentLocalPath);
+          if (!outcome.staged) await refreshLocalPanelForPath(localDir);
           return;
         }
         filesToDownload = sequential;
@@ -13464,7 +13685,18 @@ const App: React.FC = () => {
       // TQ-4-routing: stage the entries. Same retry callback reused as the
       // staged executor (dispatcher fires it on staged -> pending).
       // Freeze paths at queue time so retry callbacks don't use stale state
-      const frozenLocalPath = currentLocalPath;
+      let destinationFiles: LocalFile[] | RemoteFile[] | undefined;
+      try {
+        destinationFiles = await destinationListing();
+      } catch (error) {
+        notify.error(t('toast.downloadFailed'), String(error));
+        if (batchStaged !== undefined) {
+          setSelectedRemoteFiles(new Set());
+          if (!batchStaged) await refreshLocalPanelForPath(localDir);
+        }
+        return;
+      }
+      const frozenLocalPath = localDir;
       const stagedDownloadMode = settings.autoStartTransfers === false;
       const sequentialDownloadProfileId =
         sessions.find(s => s.id === activeSessionId)?.savedServerId ?? null;
@@ -13510,7 +13742,7 @@ const App: React.FC = () => {
 
         if (item.file.is_dir) {
           // Folder: show FolderOverwriteDialog in 'ask' mode
-          const folderResult = await checkFolderOverwrite(item.file.name, 'download', remainingInQueue);
+          const folderResult = await checkFolderOverwrite(item.file.name, 'download', remainingInQueue, destinationFiles);
           if (folderResult.action === 'cancel') {
             transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
             for (let j = i + 1; j < queueItems.length; j++) {
@@ -13530,7 +13762,8 @@ const App: React.FC = () => {
             item.file.size || 0,
             item.file.modified ? new Date(item.file.modified) : undefined,
             true, // sourceIsRemote
-            remainingInQueue
+            remainingInQueue,
+            destinationFiles,
           );
 
           if (overwriteResult.action === 'cancel') {
@@ -13610,7 +13843,7 @@ const App: React.FC = () => {
             transferQueue.startTransfer(item.id);
           }
           try {
-            await downloadFile(item.file.path, item.file.name, currentLocalPath, item.file.is_dir, item.file.size || undefined, true);
+            await downloadFile(item.file.path, item.file.name, localDir, item.file.is_dir, item.file.size || undefined, true);
             transferQueue.completeTransfer(item.id);
             circuitBreaker.recordSuccess();
             break;
@@ -13633,19 +13866,29 @@ const App: React.FC = () => {
         notify.info(t('toast.fileSkipped', { count: skippedCount }));
       }
       setSelectedRemoteFiles(new Set());
-      await loadLocalFiles(currentLocalPath);  // Refresh local panel
+      await refreshLocalPanelForPath(localDir);  // Refresh the panels that show it
     }
   });
 
   // Wire cross-panel drag & drop callback now that upload/download are defined
-  crossPanelDropRef.current = async (files, fromRemote, _targetDir) => {
-    if (!isConnected || files.length === 0) return;
-    if (fromRemote) {
-      await downloadMultipleFiles(files.map(f => f.name));
-    } else {
-      await uploadMultipleFiles(files.map(f => f.name));
-    }
-  };
+  useLayoutEffect(() => {
+    // `targetDir` is the folder row dropped on, or the panel's own folder.
+    crossPanelDropRef.current = async (files, fromRemote, targetDir, sourceKey) => {
+      if (!isConnected || files.length === 0) return;
+      if (fromRemote) {
+        await downloadMultipleFiles(files.map(f => f.name), targetDir || undefined);
+      } else {
+        // The rows dragged, found by path in the panel they came from. A drag
+        // carries each file's own name, and upload takes the panel's row keys:
+        // a nested row of a flattened search is keyed by its relative path, and
+        // its own name may be a different entry of the panel's folder.
+        const panelId = sourceKey === 'local2' ? 'local2' : 'local';
+        const dragged = new Set(files.map(f => f.path));
+        const keys = getActiveLocalState(panelId).sortedFiles.filter(r => dragged.has(r.path)).map(r => r.name);
+        if (keys.length > 0) await uploadMultipleFiles(keys, panelId, targetDir || undefined);
+      }
+    };
+  });
 
   // Build a user-friendly delete confirm message that distinguishes a single
   // file/folder from a batch, and shows separate counts when the selection
@@ -13873,7 +14116,7 @@ const App: React.FC = () => {
     isCancelled,
   });
 
-  const deleteMultipleLocalFiles = withBatchLatch((filesOverride?: string[], localPanelId: 'local' | 'local2' = activeLocalPanelId) => {
+  const deleteMultipleLocalFiles = withBatchLatch((filesOverride?: string[], localPanelId: 'local' | 'local2' = focusedLocalPanelId) => {
     const panel = getActiveLocalState(localPanelId);
     const names = filesOverride || Array.from(panel.selection);
     if (names.length === 0) return;
@@ -13893,9 +14136,9 @@ const App: React.FC = () => {
         setScanningState({ active: true, folderName: `${names.length} items`, message: t('activity.delete_scanning') || `Deleting ${names.length} items...`, operation: 'delete' });
       }
 
-      const selected = names
-        .map(name => panel.files.find(f => f.name === name))
-        .filter((file): file is NonNullable<typeof file> => Boolean(file));
+      // A selected folder takes what is below it: a flattened search can
+      // select both, and the entry would already be gone when its turn came.
+      const selected = selectedLocalTrees(panel.sortedFiles, panel.files, new Set(names));
       const outcome = await trashLocalPaths(
         selected.map(file => file.path),
         localTrashDeps(() => batchCancelledRef.current),
@@ -13914,7 +14157,10 @@ const App: React.FC = () => {
         notify.info(t('trash.keptMultiple', { count: outcome.kept.length }));
       }
       setScanningState(INITIAL_SCANNING_STATE);
-      if (panel.currentPath) await panel.load(panel.currentPath);
+      // Every panel that shows a folder an entry was deleted from: panel 2
+      // can show the same folder, or one of the folders a flattened search
+      // deleted nested rows from.
+      await refreshLocalPanelForPath([panel.currentPath, ...selected.map(f => localRowFolder(f, panel.currentPath))]);
       panel.setSelection(new Set());
       // Summary: same logic as remote (see deleteMultipleRemoteFiles)
       const loc = t('browser.local');
@@ -13937,10 +14183,10 @@ const App: React.FC = () => {
 
     // Check if confirmation is enabled
     if (confirmBeforeDelete) {
-      const entries = names
-        .map(n => panel.files.find(f => f.name === n))
-        .filter(Boolean)
-        .map(f => ({ name: f!.name, isDir: f!.is_dir }));
+      // The rows the delete takes, named as the panel shows them: a nested row
+      // by its relative path, which says which of two same-named folders goes.
+      const entries = selectedLocalTrees(panel.sortedFiles, panel.files, new Set(names))
+        .map(f => ({ name: f.name, isDir: f.is_dir }));
       setConfirmDialog({
         message: entries.length > 0
           ? buildDeleteConfirmMessage(entries)
@@ -14038,8 +14284,8 @@ const App: React.FC = () => {
         const logId = humanLog.logStart('RENAME', { oldname: currentName, newname: newName, isRemote });
         try {
           // Get parent directory from the file's path
-          const parentDir = path.substring(0, path.lastIndexOf('/'));
-          const newPath = parentDir + '/' + newName;
+          const pathParent = path.substring(0, path.lastIndexOf('/'));
+          const newPath = pathParent + '/' + newName;
 
           if (isRemote) {
             // Protocol of the live connection
@@ -14079,7 +14325,8 @@ const App: React.FC = () => {
                 throw err;
               }
             }
-            await loadLocalFiles(currentLocalPath);
+            // The panels that list the folder, panel 2 when the row is its.
+            await refreshLocalPanelForPath(parentDir(path));
           }
           humanLog.logSuccess('RENAME', { oldname: currentName, newname: newName, isRemote }, logId);
           notify.success(t('toast.renamed'), newName);
@@ -14133,8 +14380,8 @@ const App: React.FC = () => {
 
     const logId = humanLog.logStart('RENAME', { oldname: name, newname: newName, isRemote });
     try {
-      const parentDir = path.substring(0, path.lastIndexOf('/'));
-      const newPath = parentDir + '/' + newName;
+      const pathParent = path.substring(0, path.lastIndexOf('/'));
+      const newPath = pathParent + '/' + newName;
 
       if (isRemote) {
         const protocol = liveConnectionParams.protocol;
@@ -14177,22 +14424,7 @@ const App: React.FC = () => {
         // missed renames that originated in panel 2, leaving the new
         // name invisible until Ctrl+R. When both panels point at the
         // same directory (common after Tab cycling) we reload both.
-        const refreshes: Promise<unknown>[] = [];
-        if (currentLocalPath && parentDir === currentLocalPath) {
-          refreshes.push(loadLocalFiles(currentLocalPath));
-        }
-        if (currentLocalPath2 && parentDir === currentLocalPath2) {
-          refreshes.push(loadLocalFiles2(currentLocalPath2));
-        }
-        if (refreshes.length === 0 && currentLocalPath) {
-          // Path-matching missed (e.g. trailing slash mismatch): fall back
-          // to refreshing the focused panel so the rename is at least
-          // visible somewhere.
-          refreshes.push(activeLocalPanelId === 'local2' && currentLocalPath2
-            ? loadLocalFiles2(currentLocalPath2)
-            : loadLocalFiles(currentLocalPath));
-        }
-        await Promise.all(refreshes);
+        await refreshLocalPanelForPath(parentDir(path));
       }
       humanLog.logSuccess('RENAME', { oldname: name, newname: newName, isRemote }, logId);
       notify.success(t('toast.renamed'), newName);
@@ -14230,10 +14462,13 @@ const App: React.FC = () => {
     let successCount = 0;
     let errorCount = 0;
 
-    for (const [oldPath, newName] of renames) {
+    // Deepest first: a flattened search can select a folder and an entry
+    // below it, and renaming the folder first would move the entry's path.
+    const ordered = deepestLocalRowsFirst([...renames].map(([path, newName]) => ({ path, newName })));
+    for (const { path: oldPath, newName } of ordered) {
       try {
-        const parentDir = oldPath.substring(0, oldPath.lastIndexOf('/'));
-        const newPath = parentDir + '/' + newName;
+        const pathParent = oldPath.substring(0, oldPath.lastIndexOf('/'));
+        const newPath = pathParent + '/' + newName;
 
         if (isRemote) {
           const protocol = liveConnectionParams.protocol;
@@ -14265,11 +14500,12 @@ const App: React.FC = () => {
       }
     }
 
-    // Refresh file list
+    // Refresh file list: locally, the panels that show a folder a file was
+    // renamed in (panel 2 when the batch came from it).
     if (isRemote) {
       await loadRemoteFiles(undefined, true);
     } else {
-      await loadLocalFiles(currentLocalPath);
+      await refreshLocalPanelForPath([...renames.keys()].map(p => parentDir(p)));
     }
 
     // Log and notify
@@ -14290,7 +14526,7 @@ const App: React.FC = () => {
     setBatchRenameDialog(null);
   };
 
-  const createFolder = (isRemote: boolean, localPanelId: 'local' | 'local2' = activeLocalPanelId) => {
+  const createFolder = (isRemote: boolean, localPanelId: 'local' | 'local2' = focusedLocalPanelId) => {
     setInputDialog({
       title: t('dialog.newFolder'),
       defaultValue: '',
@@ -14323,11 +14559,8 @@ const App: React.FC = () => {
             const basePath = localPanelId === 'local2' ? (currentLocalPath2 || currentLocalPath) : currentLocalPath;
             const path = basePath + '/' + name;
             await invoke('create_local_folder', { path });
-            if (localPanelId === 'local2' && currentLocalPath2) {
-              await loadLocalFiles2(currentLocalPath2);
-            } else {
-              await loadLocalFiles(currentLocalPath);
-            }
+            // Both panels when they show the same folder.
+            await refreshLocalPanelForPath(basePath);
           }
           humanLog.logSuccess('MKDIR', { foldername: name, isRemote }, logId);
           notify.success(t('toast.folderCreated'), name);
@@ -15313,6 +15546,7 @@ const App: React.FC = () => {
             userPartitionsRekeyed?: number;
             userPartitionsUnreadable?: number;
             userPartitionsBackupPath?: string;
+            sqliteDbsFailed?: string[];
           }>('import_keystore', {
             password,
             filePath,
@@ -15346,7 +15580,8 @@ const App: React.FC = () => {
             !!result.requiresRestart ||
             (result.userPartitionsUnreadable ?? 0) > 0 ||
             (result.userPartitionsRekeyed ?? 0) > 0 ||
-            !!result.userPartitionsBackupPath;
+            !!result.userPartitionsBackupPath ||
+            !!result.sqliteDbsFailed?.length;
           if (needsModal) {
             setKeystoreImportResult({
               imported: result.imported,
@@ -15355,6 +15590,7 @@ const App: React.FC = () => {
               userPartitionsRekeyed: result.userPartitionsRekeyed,
               userPartitionsUnreadable: result.userPartitionsUnreadable,
               userPartitionsBackupPath: result.userPartitionsBackupPath,
+              sqliteDbsFailed: result.sqliteDbsFailed,
             });
           } else {
             notify.success(
@@ -15453,7 +15689,7 @@ const App: React.FC = () => {
     }
   }, [currentLocalPath, importAeroFtpKeystoreFile, importAeroFtpProfileFile, notify, t]);
 
-  const showLocalContextMenu = (e: React.MouseEvent, file: LocalFile, localPanelId: 'local' | 'local2' = activeLocalPanelId) => {
+  const showLocalContextMenu = (e: React.MouseEvent, file: LocalFile, localPanelId: 'local' | 'local2' = focusedLocalPanelId) => {
     e.preventDefault();
     const ctxPanel = getActiveLocalState(localPanelId);
 
@@ -15485,12 +15721,40 @@ const App: React.FC = () => {
     const filesToUpload = Array.from(selection);
     // From the rows shown: a nested row of a flattened search is not in the
     // listing.
-    const selectedEntries = () => selectedLocalRows(ctxPanel.sortedFiles, localFiles, selection)
+    const selectedEntries = () => selectedLocalTrees(ctxPanel.sortedFiles, localFiles, selection)
       .map(f => localEntryProperties(f, currentLocalPath));
 
     // Detect AeroFTP container files early for context menu ordering.
     const isAeroVaultFile = count === 1 && !file.is_dir && /\.aerovault$/i.test(file.name);
     const isAeroVaultArchiveFile = count === 1 && !file.is_dir && /\.aerozip$/i.test(file.name);
+    // The clicked row as a file of its own folder. A nested row of a flattened
+    // search is named by its relative path: extracting "here" means next to
+    // the archive, in its folder, under its own name.
+    const rowName = localRowName(file);
+    const rowFolder = localRowFolder(file, currentLocalPath);
+    // C-F03: an "Extract here" merges the archive into its folder and writes
+    // over what is there under the same name, so it asks first. The folder is
+    // listed afresh with its hidden entries, which the panel may not show; a
+    // folder that cannot be listed stops the extraction with its error.
+    const confirmExtractHere = async (entryNames: string[]): Promise<boolean> => {
+      const collisions = await extractHereCollisions(entryNames, rowFolder);
+      if (collisions.length === 0) return true;
+      return new Promise<boolean>((resolve) => {
+        setConfirmDialog({
+          message: t('contextMenu.extractOverwriteConfirm', { count: collisions.length, names: extractCollisionList(collisions) }),
+          confirmLabel: t('overwrite.overwrite'),
+          confirmColor: 'red',
+          onConfirm: () => { setConfirmDialog(null); resolve(true); },
+          onCancel: () => { setConfirmDialog(null); resolve(false); },
+        });
+      });
+    };
+    // Where a new archive or vault of the selection goes: the folder its rows
+    // are in when they share one (a nested row's own folder), else the panel's.
+    const selectionFolder = () => {
+      const folders = new Set(selectedLocalTrees(ctxPanel.sortedFiles, localFiles, selection).map(f => localRowFolder(f, currentLocalPath)));
+      return folders.size === 1 ? [...folders][0] : currentLocalPath;
+    };
     // AeroFile: is this single file a recognized third-party client config?
     const bridgeCfg = count === 1 && !file.is_dir
       ? (localPanelId === 'local2' ? bridgeConfigsLocal2 : bridgeConfigsLocal).get(file.path)
@@ -15501,7 +15765,7 @@ const App: React.FC = () => {
       {
         actionId: 'upload', label: uploadLabel,
         icon: _activeProto === 'github' ? <Github size={14} /> : _activeProto === 'gitlab' ? <GitLabLogo size={14} /> : <Cloud size={14} />,
-        action: () => uploadMultipleFiles(filesToUpload),
+        action: () => uploadMultipleFiles(filesToUpload, localPanelId),
         disabled: !isConnected
       },
       // AeroShare: share this local folder peer-to-peer (folder-context entry
@@ -15605,10 +15869,12 @@ const App: React.FC = () => {
             icon: <FolderOpen size={14} />,
             action: async () => {
               try {
-                notify.info(t('contextMenu.extracting'), file.name);
-                const { result: count } = await runExtractWithToast<number>('aerovz_extract_all', { vaultPath: file.path, destPath: currentLocalPath }, { filename: file.name, archiveBytes: file.size });
-                notify.success(t('toast.extracted'), t('vault.extractedAll', { count: String(count), path: currentLocalPath }));
-                await loadLocalFiles(currentLocalPath);
+                // An entry is written over an existing file of the same path.
+                if (!await confirmExtractHere(await aeroEntryNames('aerozip', file.path, null))) return;
+                notify.info(t('contextMenu.extracting'), rowName);
+                const { result: count } = await runExtractWithToast<number>('aerovz_extract_all', { vaultPath: file.path, destPath: rowFolder }, { filename: rowName, archiveBytes: file.size });
+                notify.success(t('toast.extracted'), t('vault.extractedAll', { count: String(count), path: rowFolder }));
+                await refreshLocalPanelForPath(rowFolder);
               } catch (err) {
                 notify.error(t('contextMenu.extractionFailed'), String(err));
               }
@@ -15618,12 +15884,14 @@ const App: React.FC = () => {
             label: t('contextMenu.extractToFolder'),
             icon: <FolderOpen size={14} />,
             action: async () => {
-              const subFolder = `${currentLocalPath}/${file.name.replace(/\.aerozip$/i, '')}`;
               try {
-                notify.info(t('contextMenu.extracting'), file.name);
-                const { result: count } = await runExtractWithToast<number>('aerovz_extract_all', { vaultPath: file.path, destPath: subFolder }, { filename: file.name, archiveBytes: file.size });
+                // A folder of its own: the archive's stem, or "stem (2)" when
+                // that is taken, never a folder that is there already.
+                const subFolder = await resolveUniqueExtractDir(rowFolder, rowName);
+                notify.info(t('contextMenu.extracting'), rowName);
+                const { result: count } = await runExtractWithToast<number>('aerovz_extract_all', { vaultPath: file.path, destPath: subFolder }, { filename: rowName, archiveBytes: file.size });
                 notify.success(t('toast.extracted'), t('vault.extractedAll', { count: String(count), path: subFolder }));
-                await loadLocalFiles(currentLocalPath);
+                await refreshLocalPanelForPath(rowFolder);
               } catch (err) {
                 notify.error(t('contextMenu.extractionFailed'), String(err));
               }
@@ -15655,10 +15923,14 @@ const App: React.FC = () => {
                   setInputDialog(null);
                   if (!password) { notify.warning(t('contextMenu.passwordRequired'), t('contextMenu.enterArchivePassword')); return; }
                   try {
-                    notify.info(t('contextMenu.extracting'), file.name);
-                    await runExtractWithToast<unknown>('vault_v2_extract_all', { vaultPath: file.path, password, destDir: currentLocalPath }, { filename: file.name, archiveBytes: file.size });
-                    notify.success(t('toast.extracted'), t('toast.extractedTo', { dest: currentLocalPath }));
-                    await loadLocalFiles(currentLocalPath);
+                    const kind = await aeroVaultKind(file.path);
+                    // A v3 vault writes an entry over an existing file of the
+                    // same path; a v2 vault refuses one before writing anything.
+                    if (kind === 'aerovault_v3' && !await confirmExtractHere(await aeroEntryNames(kind, file.path, password))) return;
+                    notify.info(t('contextMenu.extracting'), rowName);
+                    await dispatchAeroExtract({ kind, archivePath: file.path, destDir: rowFolder, password, toastOpts: { filename: rowName, archiveBytes: file.size } });
+                    notify.success(t('toast.extracted'), t('toast.extractedTo', { dest: rowFolder }));
+                    await refreshLocalPanelForPath(rowFolder);
                   } catch (err) {
                     notify.error(t('contextMenu.extractionFailed'), String(err));
                   }
@@ -15670,7 +15942,6 @@ const App: React.FC = () => {
             label: t('contextMenu.extractToFolder'),
             icon: <FolderOpen size={14} />,
             action: () => {
-              const subFolder = `${currentLocalPath}/${file.name.replace(/\.aerovault$/i, '')}`;
               setInputDialog({
                 title: t('contextMenu.passwordRequired'),
                 defaultValue: '',
@@ -15679,10 +15950,12 @@ const App: React.FC = () => {
                   setInputDialog(null);
                   if (!password) { notify.warning(t('contextMenu.passwordRequired'), t('contextMenu.enterArchivePassword')); return; }
                   try {
-                    notify.info(t('contextMenu.extracting'), file.name);
-                    await runExtractWithToast<unknown>('vault_v2_extract_all', { vaultPath: file.path, password, destDir: subFolder }, { filename: file.name, archiveBytes: file.size });
+                    // A folder of its own, never one that is there already.
+                    const subFolder = await resolveUniqueExtractDir(rowFolder, rowName);
+                    notify.info(t('contextMenu.extracting'), rowName);
+                    await dispatchAeroExtract({ kind: await aeroVaultKind(file.path), archivePath: file.path, destDir: subFolder, password, toastOpts: { filename: rowName, archiveBytes: file.size } });
                     notify.success(t('toast.extracted'), t('toast.extractedTo', { dest: subFolder }));
-                    await loadLocalFiles(currentLocalPath);
+                    await refreshLocalPanelForPath(rowFolder);
                   } catch (err) {
                     notify.error(t('contextMenu.extractionFailed'), String(err));
                   }
@@ -15696,17 +15969,24 @@ const App: React.FC = () => {
       { label: t('common.preview'), icon: <Eye size={14} />, action: () => openUniversalPreview(file, false, sortedLocalFilesRef.current), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
       // Code files use DevTools source viewer
       { label: t('contextMenu.viewSource'), icon: <Code size={14} />, action: () => openDevToolsPreview(file, false), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
-      { actionId: 'rename', label: t('common.rename'), icon: <Pencil size={14} />, action: () => renameFile(file.path, file.name, false), disabled: count > 1, shortcut: 'F2' },
+      { actionId: 'rename', label: t('common.rename'), icon: <Pencil size={14} />, action: () => renameFile(file.path, localRowName(file), false), disabled: count > 1, shortcut: 'F2' },
       ...(count > 1 ? [{
         label: t('batchRename.title') || 'Batch Rename',
         icon: <Replace size={14} />,
         action: () => {
-          const selectedFiles = localFiles
-            .filter(f => selection.has(f.name))
-            .map(f => ({ name: f.name, path: f.path, isDir: f.is_dir }));
-          // C-F02: pre-existing siblings NOT in this batch (same listing source),
-          // captured at open time for the dialog's external-collision pre-flag.
-          const siblings = localFiles.filter(f => !selection.has(f.name)).map(f => f.name);
+          // Each file under its own name, in its own folder: a flattened
+          // search can select files of several folders, and each is renamed
+          // where it is.
+          const selectedFiles = selectedLocalRows(ctxPanel.sortedFiles, localFiles, selection)
+            .map(f => ({ name: localRowName(f), path: f.path, isDir: f.is_dir, folder: localRowFolderKey(f) || undefined }));
+          // C-F02: pre-existing siblings NOT in this batch, in the folders of
+          // the batch, captured at open time for the dialog's external-collision
+          // pre-flag: the listing, and every row of a flattened search (filtered
+          // or not), which holds the nested folders' entries.
+          const known = [...localFiles, ...(ctxPanel.id === 'local' && localFlattenedFiles ? localFlattenedFiles : [])];
+          const siblings = known
+            .filter(f => !selection.has(f.name))
+            .map(f => ({ folder: localRowFolderKey(f), name: localRowName(f) }));
           setBatchRenameDialog({ files: selectedFiles, isRemote: false, siblings });
         }
       }] : []),
@@ -15714,17 +15994,17 @@ const App: React.FC = () => {
         label: t('contextMenu.properties'), icon: <Info size={14} />,
         action: () => openLocalProperties(selectedEntries()),
       },
-      { actionId: 'delete', label: t('contextMenu.delete'), icon: <Trash2 size={14} />, action: () => deleteMultipleLocalFiles(filesToUpload), danger: true, divider: true },
+      { actionId: 'delete', label: t('contextMenu.delete'), icon: <Trash2 size={14} />, action: () => deleteMultipleLocalFiles(filesToUpload, localPanelId), danger: true, divider: true },
       {
         label: t('contextMenu.cut') || 'Cut', icon: <Scissors size={14} />, action: () => {
-          const selectedFiles = localFiles.filter(f => selection.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
-          clipboardCut(selectedFiles, false, currentLocalPath);
+          const selectedFiles = localClipboardEntries(ctxPanel.sortedFiles, localFiles, selection);
+          if (!refuseLocalNameClashes(selectedFiles)) clipboardCut(selectedFiles, false, currentLocalPath);
         }
       },
       {
         label: t('contextMenu.copy') || 'Copy', icon: <Copy size={14} />, action: () => {
-          const selectedFiles = localFiles.filter(f => selection.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
-          clipboardCopy(selectedFiles, false, currentLocalPath);
+          const selectedFiles = localClipboardEntries(ctxPanel.sortedFiles, localFiles, selection);
+          if (!refuseLocalNameClashes(selectedFiles)) clipboardCopy(selectedFiles, false, currentLocalPath);
         }
       },
       {
@@ -15734,8 +16014,8 @@ const App: React.FC = () => {
         divider: true,
       },
       { label: t('contextMenu.copyPath'), icon: <Copy size={14} />, action: () => { copyText(file.path).then(() => notify.success(t('contextMenu.pathCopied')), () => notify.error(t('toast.copyFailed'))); } },
-      { label: t('contextMenu.copyName'), icon: <Clipboard size={14} />, action: () => { copyText(file.name).then(() => notify.success(t('contextMenu.nameCopied')), () => notify.error(t('toast.copyFailed'))); }, divider: true },
-      { label: t('contextMenu.openInFileManager'), icon: <ExternalLink size={14} />, action: () => openInFileManager(file.is_dir ? file.path : currentLocalPath) },
+      { label: t('contextMenu.copyName'), icon: <Clipboard size={14} />, action: () => { copyText(localRowName(file)).then(() => notify.success(t('contextMenu.nameCopied')), () => notify.error(t('toast.copyFailed'))); }, divider: true },
+      { label: t('contextMenu.openInFileManager'), icon: <ExternalLink size={14} />, action: () => openInFileManager(file.is_dir ? file.path : localRowFolder(file, currentLocalPath)) },
       // Directory-specific actions: Find Duplicates, Disk Usage. A folder's size
       // is in Properties, above.
       // Same list the empty-area and breadcrumb menus raise, so a folder answers
@@ -15743,18 +16023,20 @@ const App: React.FC = () => {
       ...(file.is_dir ? directoryActionItems(file.path || `${currentLocalPath}/${file.name}`) : []),
     ];
 
-    const baseName = count === 1 ? file.name.replace(/\.[^/.]+$/, '') : 'archive';
+    const baseName = count === 1 ? localRowName(file).replace(/\.[^/.]+$/, '') : 'archive';
 
     // Compress: opens CompressDialog with all format options
     items.push({
       label: t('contextMenu.compressSubmenu'),
       icon: <Archive size={14} />,
       action: () => {
-        const compressFiles = filesToUpload.map(name => {
-          const f = sortedLocalFiles.find(lf => lf.name === name);
-          return { name, path: f ? f.path : `${currentLocalPath}/${name}`, size: f?.size ?? 0, isDir: f?.is_dir ?? false };
-        });
-        setCompressDialogState({ files: compressFiles, defaultName: baseName, outputDir: currentLocalPath });
+        // One archive holds each file under its own name: two of one name
+        // would be two entries the extract writes over each other.
+        const compressRows = selectedLocalTrees(ctxPanel.sortedFiles, localFiles, selection);
+        if (refuseLocalNameClashes(compressRows)) return;
+        const compressFiles = compressRows
+          .map(f => ({ name: localRowName(f), path: f.path, size: f.size ?? 0, isDir: f.is_dir }));
+        setCompressDialogState({ files: compressFiles, defaultName: baseName, outputDir: selectionFolder() });
       }
     });
 
@@ -15769,62 +16051,49 @@ const App: React.FC = () => {
     const isArchive = isZipArchive || is7zArchive || isRarArchive || isTarArchive || isSingleArchive;
 
     if (isArchive && count === 1) {
-      // C-F03: top-level entry names an "Extract here" would write into the
-      // current folder, intersected with what is already there, so we can warn
-      // before silently overwriting. Best-effort: listing an encrypted-header
-      // archive needs a password we do not have yet, so any listing failure
-      // returns [] and the extraction proceeds exactly as before (no regression).
-      const detectExtractHereCollisions = async (): Promise<string[]> => {
-        const destNames = new Set(localFiles.map(f => f.name));
-        const topLevel = (entry: string): string => {
-          const norm = entry.replace(/\\/g, '/').replace(/^\/+/, '');
-          const slash = norm.indexOf('/');
-          return slash === -1 ? norm : norm.slice(0, slash);
-        };
-        const targets = new Set<string>();
+      // The entries an "Extract here" writes into the archive's folder, or
+      // null when they cannot be read: a 7z or RAR archive with encrypted
+      // names lists nothing without the password we do not have yet (a zip
+      // never encrypts its names), and a damaged archive lists nothing at all.
+      const generalEntryNames = async (): Promise<string[] | null> => {
+        // gz/xz/bz2: one output member, named by the codec-stripped stem.
+        if (isSingleArchive) return [archiveStem(rowName)];
         try {
-          if (isSingleArchive) {
-            // gz/xz/bz2: one output member, named by the codec-stripped stem.
-            targets.add(archiveStem(file.name));
-          } else {
-            let entries: Array<{ name: string }> = [];
-            if (isZipArchive) entries = await invoke('list_zip', { archivePath: file.path });
-            else if (is7zArchive) entries = await invoke('list_7z', { archivePath: file.path });
-            else if (isTarArchive) entries = await invoke('list_tar', { archivePath: file.path });
-            else if (isRarArchive) entries = await invoke('list_rar', { archivePath: file.path });
-            for (const e of entries) {
-              const tl = topLevel(e.name);
-              if (tl) targets.add(tl);
-            }
-          }
+          let entries: Array<{ name: string }> = [];
+          if (isZipArchive) entries = await invoke('list_zip', { archivePath: file.path });
+          else if (is7zArchive) entries = await invoke('list_7z', { archivePath: file.path });
+          else if (isTarArchive) entries = await invoke('list_tar', { archivePath: file.path });
+          else if (isRarArchive) entries = await invoke('list_rar', { archivePath: file.path });
+          return entries.map(e => e.name);
         } catch {
-          // Encrypted headers or a read error: skip the pre-check, do not block.
-          return [];
+          return null;
         }
-        return Array.from(targets).filter(name => destNames.has(name));
       };
 
       const doExtract = async (createSubfolder: boolean) => {
         try {
-          // C-F03: "Extract here" merges archive contents into the current folder
-          // and could silently overwrite existing files. Require confirmation on
-          // any top-level collision first. "Extract to folder" (below) is already
-          // collision-free via resolveUniqueExtractDir, so it is not pre-checked.
+          // "Extract to folder" (below) is collision-free via
+          // resolveUniqueExtractDir, so it is not pre-checked.
           if (!createSubfolder) {
-            const collisions = await detectExtractHereCollisions();
-            if (collisions.length > 0) {
-              const names = collisions.slice(0, 5).join(', ') + (collisions.length > 5 ? `, +${collisions.length - 5}` : '');
-              const proceed = await new Promise<boolean>((resolve) => {
+            const entryNames = await generalEntryNames();
+            if (entryNames === null) {
+              // What it would write over cannot be checked: say so, and offer
+              // the folder of its own. Asked before the password, whose dialog
+              // would cover this one.
+              const choice = await new Promise<'here' | 'folder' | 'cancel'>((resolve) => {
                 setConfirmDialog({
-                  message: t('contextMenu.extractOverwriteConfirm', { count: collisions.length, names }),
-                  confirmLabel: t('overwrite.overwrite'),
+                  message: t('contextMenu.extractHereUncheckedConfirm', { name: rowName }),
+                  confirmLabel: t('contextMenu.extractHere'),
                   confirmColor: 'red',
-                  onConfirm: () => { setConfirmDialog(null); resolve(true); },
-                  onCancel: () => { setConfirmDialog(null); resolve(false); },
+                  secondaryLabel: t('contextMenu.extractToFolder'),
+                  onConfirm: () => { setConfirmDialog(null); resolve('here'); },
+                  onSecondary: () => { setConfirmDialog(null); resolve('folder'); },
+                  onCancel: () => { setConfirmDialog(null); resolve('cancel'); },
                 });
               });
-              if (!proceed) return;
-            }
+              if (choice === 'cancel') return;
+              if (choice === 'folder') { await doExtract(true); return; }
+            } else if (!await confirmExtractHere(entryNames)) return;
           }
           // "Extract to folder" must never clobber: resolve a unique stem
           // subfolder (stem, stem (2), ...) up front and extract into it with
@@ -15835,9 +16104,9 @@ const App: React.FC = () => {
           // Pre-resolved: we always extract directly INTO extractOutputDir, so the
           // backend never builds its own (non-unique) subfolder.
           const extractCreateSubfolder = false;
-          let extractOutputDir = currentLocalPath;
+          let extractOutputDir = rowFolder;
           if (createSubfolder) {
-            extractOutputDir = await resolveUniqueExtractDir(currentLocalPath, file.name);
+            extractOutputDir = await resolveUniqueExtractDir(rowFolder, rowName);
           }
           // Check encryption for 7z, ZIP, and RAR archives
           const isEncrypted = is7zArchive
@@ -15856,18 +16125,18 @@ const App: React.FC = () => {
             // while verifying. onSubmit resolves on success (the modal closes) and
             // throws an Error whose message is shown inline on failure.
             setArchivePasswordDialog({
-              archiveName: file.name,
+              archiveName: rowName,
               format: archiveFormat,
               onSubmit: async (password: string) => {
-                const dest = createSubfolder ? `📁 ${file.name.replace(/\.[^.]+$/, '')}/` : currentLocalPath;
-                notify.info(t('contextMenu.extracting'), file.name);
-                const logId = activityLog.log('INFO', createSubfolder ? t('activity.extract_start_to', { filename: file.name, dest }) : t('activity.extract_start', { filename: file.name }), 'running');
-                const toastOpts = { filename: file.name, archiveBytes: file.size };
+                const dest = createSubfolder ? `📁 ${localPathBasename(extractOutputDir)}/` : rowFolder;
+                notify.info(t('contextMenu.extracting'), rowName);
+                const logId = activityLog.log('INFO', createSubfolder ? t('activity.extract_start_to', { filename: rowName, dest }) : t('activity.extract_start', { filename: rowName }), 'running');
+                const toastOpts = { filename: rowName, archiveBytes: file.size };
                 try {
                   const { extractedTotal } = await dispatchGeneralExtract({ kind: generalKind, archivePath: file.path, outputDir: extractOutputDir, createSubfolder: extractCreateSubfolder, password, toastOpts });
-                  activityLog.updateEntry(logId, { status: 'success', message: createSubfolder ? t('activity.extract_success_to', { filename: file.name, dest }) : t('activity.extract_success', { filename: file.name }), details: formatExtractDetails(file.size ?? 0, extractedTotal, t) });
+                  activityLog.updateEntry(logId, { status: 'success', message: createSubfolder ? t('activity.extract_success_to', { filename: rowName, dest }) : t('activity.extract_success', { filename: rowName }), details: formatExtractDetails(file.size ?? 0, extractedTotal, t) });
                   notify.success(t('toast.extracted'), t('toast.extractedTo', { dest }));
-                  await loadLocalFiles(currentLocalPath);
+                  await refreshLocalPanelForPath(rowFolder);
                 } catch (err) {
                   activityLog.updateEntry(logId, { status: 'error', message: t('activity.extract_error', { error: String(err) }) });
                   // Wrong password stays inline for retry; a real failure surfaces
@@ -15879,19 +16148,20 @@ const App: React.FC = () => {
             // Fill the cipher badge with the real detected algorithm (best effort:
             // no-op until the backend command exists or on any detection failure).
             void invoke<string>('detect_archive_cipher', { archivePath: file.path, kind: generalKind })
-              .then((c) => setArchivePasswordDialog((prev) => (prev && prev.archiveName === file.name ? { ...prev, cipher: c } : prev)))
+              .then((c) => setArchivePasswordDialog((prev) => (prev && prev.archiveName === rowName ? { ...prev, cipher: c } : prev)))
               .catch(() => { /* detection unavailable: format badge only */ });
             return;
           }
-          const dest = createSubfolder ? `📁 ${file.name.replace(/\.[^.]+$/, '')}/` : currentLocalPath;
-          notify.info(t('contextMenu.extracting'), file.name);
-          const logId = activityLog.log('INFO', createSubfolder ? t('activity.extract_start_to', { filename: file.name, dest }) : t('activity.extract_start', { filename: file.name }), 'running');
-          const toastOpts = { filename: file.name, archiveBytes: file.size };
+          // The folder extracted into: "stem (2)" when "stem" was taken.
+          const dest = createSubfolder ? `📁 ${localPathBasename(extractOutputDir)}/` : rowFolder;
+          notify.info(t('contextMenu.extracting'), rowName);
+          const logId = activityLog.log('INFO', createSubfolder ? t('activity.extract_start_to', { filename: rowName, dest }) : t('activity.extract_start', { filename: rowName }), 'running');
+          const toastOpts = { filename: rowName, archiveBytes: file.size };
           const generalKind = is7zArchive ? 'sevenz' : isRarArchive ? 'rar' : isTarArchive ? 'tar' : isSingleArchive ? 'single' : 'zip';
           const { extractedTotal } = await dispatchGeneralExtract({ kind: generalKind, archivePath: file.path, outputDir: extractOutputDir, createSubfolder: extractCreateSubfolder, password: null, toastOpts });
-          activityLog.updateEntry(logId, { status: 'success', message: createSubfolder ? t('activity.extract_success_to', { filename: file.name, dest }) : t('activity.extract_success', { filename: file.name }), details: formatExtractDetails(file.size ?? 0, extractedTotal, t) });
+          activityLog.updateEntry(logId, { status: 'success', message: createSubfolder ? t('activity.extract_success_to', { filename: rowName, dest }) : t('activity.extract_success', { filename: rowName }), details: formatExtractDetails(file.size ?? 0, extractedTotal, t) });
           notify.success(t('toast.extracted'), t('toast.extractedTo', { dest }));
-          await loadLocalFiles(currentLocalPath);
+          await refreshLocalPanelForPath(rowFolder);
         } catch (err) {
           activityLog.log('ERROR', t('activity.extract_error', { error: String(err) }), 'error');
           notify.error(t('contextMenu.extractionFailed'), String(err));
@@ -16005,14 +16275,11 @@ const App: React.FC = () => {
         icon: <VaultIcon size={14} />,
         action: () => {
           if (count === 1 && file.is_dir) {
-            setShowVaultPanel({ mode: 'create', folderPath: file.path, outputDir: currentLocalPath });
+            setShowVaultPanel({ mode: 'create', folderPath: file.path, outputDir: rowFolder });
             return;
           }
-          const paths = filesToUpload.map(name => {
-            const f = sortedLocalFiles.find(lf => lf.name === name);
-            return f ? f.path : `${currentLocalPath}/${name}`;
-          });
-          setShowVaultPanel({ mode: 'create', files: paths, outputDir: currentLocalPath });
+          const paths = selectedLocalTrees(ctxPanel.sortedFiles, localFiles, selection).map(f => f.path);
+          setShowVaultPanel({ mode: 'create', files: paths, outputDir: selectionFolder() });
         },
       });
 
@@ -16026,11 +16293,8 @@ const App: React.FC = () => {
             label: t('contextMenu.createCryptomator') || 'Create Cryptomator Vault...',
             icon: <Lock size={14} />,
             action: () => {
-              const paths = filesToUpload.map(name => {
-                const f = sortedLocalFiles.find(lf => lf.name === name);
-                return f ? f.path : `${currentLocalPath}/${name}`;
-              });
-              setCryptomatorCreateDialog({ outputDir: currentLocalPath, files: paths });
+              const paths = selectedLocalTrees(ctxPanel.sortedFiles, localFiles, selection).map(f => f.path);
+              setCryptomatorCreateDialog({ outputDir: selectionFolder(), files: paths });
             },
           },
         ],
@@ -16039,10 +16303,7 @@ const App: React.FC = () => {
 
     // Tags submenu: Finder-style color labels
     if (fileTags.labels.length > 0) {
-      const selectedPaths = Array.from(selection).map(name => {
-        const f = localFiles.find(lf => lf.name === name);
-        return f ? f.path : `${currentLocalPath}/${name}`;
-      });
+      const selectedPaths = selectedLocalRows(ctxPanel.sortedFiles, localFiles, selection).map(f => f.path);
 
       const tagChildren: ContextMenuItem[] = fileTags.labels.map(label => {
         // Check if ALL selected files already have this tag
@@ -16095,19 +16356,20 @@ const App: React.FC = () => {
       label: t('contextMenu.askAeroAgent'),
       icon: <Bot size={14} />,
       action: () => {
-        const fullPath = currentLocalPath.endsWith('/') ? currentLocalPath + file.name : currentLocalPath + '/' + file.name;
+        const fullPath = file.path || (currentLocalPath.endsWith('/') ? currentLocalPath + file.name : currentLocalPath + '/' + file.name);
+        const fileName = localRowName(file);
         if (!devToolsOpen) {
           setDevToolsOpen(true);
           setTimeout(() => {
             window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'agent' }));
             window.dispatchEvent(new CustomEvent('aeroagent-ask', {
-              detail: { code: '', fileName: file.name, filePath: fullPath, context: 'file' }
+              detail: { code: '', fileName, filePath: fullPath, context: 'file' }
             }));
           }, 50);
         } else {
           window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'agent' }));
           window.dispatchEvent(new CustomEvent('aeroagent-ask', {
-            detail: { code: '', fileName: file.name, filePath: fullPath, context: 'file' }
+            detail: { code: '', fileName, filePath: fullPath, context: 'file' }
           }));
         }
       },
@@ -16308,7 +16570,7 @@ const App: React.FC = () => {
 
   // Empty-area context menu for local panel (right-click on background).
   // Dual-panel aware: targets the panel that received the click.
-  const showLocalEmptyContextMenu = (e: React.MouseEvent, localPanelId: 'local' | 'local2' = activeLocalPanelId) => {
+  const showLocalEmptyContextMenu = (e: React.MouseEvent, localPanelId: 'local' | 'local2' = focusedLocalPanelId) => {
     e.preventDefault();
     e.stopPropagation();
     const ctxPanel = getActiveLocalState(localPanelId);
@@ -16378,7 +16640,7 @@ const App: React.FC = () => {
         openUniversalPreview(file, false, sortedLocalFilesRef.current);
       }
     } else if (isConnected) {
-      uploadFile(file.path, file.name, false);
+      uploadFile(file.path, localRowName(file), false);
     } else {
       await openInFileManager(file.path);
     }
@@ -16430,7 +16692,7 @@ const App: React.FC = () => {
       notify.info(t('toast.navSyncDisabled'));
       humanLog.logRaw('activity.nav_sync_disabled', 'NAVIGATE', {}, undefined);
     }
-    const panelId: 'local' | 'local2' = showDualLocalPanel ? activeLocalPanelId : 'local';
+    const panelId = focusedLocalPanelId;
     const tabs = panelId === 'local2' ? localTabs2 : localTabs;
     const setTabs = panelId === 'local2' ? setLocalTabs2 : setLocalTabs;
     const now = Date.now();
@@ -16696,7 +16958,7 @@ const App: React.FC = () => {
   }, (intent, ok, owner) => activityLog.log(ok ? 'INFO' : 'ERROR',
     `${t('guiController.banner', { agent: owner })}: ${intent === 'stop' ? t('guiController.stopped') : t(intent === 'tools_open' ? 'common.open' : intent === 'tools_close' ? 'common.close' : intent === 'tools_read' ? 'guiController.actions.state' : intent === 'connect' ? 'common.connect' : `guiController.actions.${intent}`)}`,
     ok ? 'success' : 'error'), settings.guiPresentation);
-  lockControllerInterrupt.current = guiController.interrupt;
+  useLayoutEffect(() => { lockControllerInterrupt.current = guiController.interrupt; }, [guiController.interrupt]);
 
   return (
     <>
@@ -16816,48 +17078,54 @@ const App: React.FC = () => {
               const name = Array.from(selectedRemoteFiles)[0];
               const file = remoteFiles.find(f => f.name === name);
               if (file) startInlineRename(file.path, file.name, true);
-            } else if (activePanel === 'local' && selectedLocalFiles.size === 1) {
-              const name = Array.from(selectedLocalFiles)[0];
-              const file = localFiles.find(f => f.name === name);
-              if (file) startInlineRename(file.path, file.name, false);
+            } else if (activePanel === 'local') {
+              const panel = getActiveLocalState();
+              const [file] = panel.selection.size === 1 ? selectedLocalRows(panel.sortedFiles, panel.files, panel.selection) : [];
+              if (file) startInlineRename(file.path, localRowName(file), false);
             }
           }}
           onDelete={() => {
             if (activePanel === 'remote' && selectedRemoteFiles.size > 0) {
               deleteMultipleRemoteFiles(Array.from(selectedRemoteFiles));
-            } else if (activePanel === 'local' && selectedLocalFiles.size > 0) {
-              deleteMultipleLocalFiles(Array.from(selectedLocalFiles));
+            } else if (activePanel === 'local') {
+              // The focused panel's own selection: the names of one panel
+              // resolved in the other would pick that panel's same-named files.
+              const panel = getActiveLocalState();
+              if (panel.selection.size > 0) deleteMultipleLocalFiles(Array.from(panel.selection), panel.id);
             }
           }}
           onSelectAll={() => {
-            setPanelSelection(activePanel === 'remote' ? 'remote' : activeLocalPanelId, [], 'all');
+            setPanelSelection(activePanel === 'remote' ? 'remote' : focusedLocalPanelId, [], 'all');
           }}
           onCut={() => {
             if (activePanel === 'remote' && selectedRemoteFiles.size > 0) {
               const files = remoteFiles.filter(f => selectedRemoteFiles.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
               clipboardCut(files, true, currentRemotePath);
-            } else if (activePanel === 'local' && selectedLocalFiles.size > 0) {
-              const files = localFiles.filter(f => selectedLocalFiles.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
-              clipboardCut(files, false, currentLocalPath);
+            } else if (activePanel === 'local') {
+              const panel = getActiveLocalState();
+              const files = localClipboardEntries(panel.sortedFiles, panel.files, panel.selection);
+              if (files.length > 0 && !refuseLocalNameClashes(files)) clipboardCut(files, false, panel.currentPath);
             }
           }}
           onCopy={() => {
             if (activePanel === 'remote' && selectedRemoteFiles.size > 0) {
               const files = remoteFiles.filter(f => selectedRemoteFiles.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
               clipboardCopy(files, true, currentRemotePath);
-            } else if (activePanel === 'local' && selectedLocalFiles.size > 0) {
-              const files = localFiles.filter(f => selectedLocalFiles.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
-              clipboardCopy(files, false, currentLocalPath);
+            } else if (activePanel === 'local') {
+              const panel = getActiveLocalState();
+              const files = localClipboardEntries(panel.sortedFiles, panel.files, panel.selection);
+              if (files.length > 0 && !refuseLocalNameClashes(files)) clipboardCopy(files, false, panel.currentPath);
             }
           }}
           onPaste={() => {
             if (activePanel === 'remote') {
               clipboardPaste(true, currentRemotePath);
             } else {
-              clipboardPaste(false, currentLocalPath);
+              const panel = getActiveLocalState();
+              if (panel.currentPath) clipboardPaste(false, panel.currentPath);
             }
           }}
-          hasSelection={selectedRemoteFiles.size > 0 || selectedLocalFiles.size > 0}
+          hasSelection={selectedRemoteFiles.size > 0 || focusedLocalSelection.size > 0}
           hasClipboard={hasClipboard}
           onToggleEditor={() => { setDevToolsOpen(true); window.dispatchEvent(new CustomEvent('devtools-panel-solo', { detail: 'editor' })); }}
           onToggleTerminal={() => { setDevToolsOpen(true); window.dispatchEvent(new CustomEvent('devtools-panel-solo', { detail: 'terminal' })); }}
@@ -17167,6 +17435,7 @@ const App: React.FC = () => {
             onDismissJournal={handleDismissJournal}
             onInvalidateComparison={invalidateAeroSyncComparison}
             onRescan={({ userExcludes, backupDir }) => openAeroSync('plan', userExcludes, backupDir, true)}
+            onNarrowComparison={({ userExcludes, backupDir }) => narrowAeroSyncComparison(userExcludes, backupDir)}
             onStartCompare={() => openAeroSync(
               aeroSync.initialTab,
               aeroSync.context.compareExcludes ?? [],
@@ -17539,7 +17808,8 @@ const App: React.FC = () => {
               if (outcome.kept.length > 0) {
                 notify.info(t('trash.keptMultiple', { count: outcome.kept.length }));
               }
-              loadLocalFiles(currentLocalPath);
+              // The panels that show a folder a duplicate was deleted from.
+              await refreshLocalPanelForPath(paths.map(p => parentDir(p)));
             }}
           />
         )}
@@ -17827,9 +18097,7 @@ const App: React.FC = () => {
         {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} initialContainerKind={showVaultPanel.containerKind} initialPath={showVaultPanel.path} initialFiles={showVaultPanel.files} initialFolderPath={showVaultPanel.folderPath} initialOutputDir={showVaultPanel.outputDir} isConnected={isConnected} iconProvider={iconProvider} onOverlaySessionChange={handleAeroVaultOverlaySessionChange} onVaultCreated={(dir) => {
           // Refresh whichever local panel is showing the folder the new vault was
           // written into, so it appears without a manual refresh (Compressor parity).
-          const norm = (p: string) => p.replace(/[\\/]+$/, '');
-          if (norm(dir) === norm(currentLocalPath)) void loadLocalFiles(currentLocalPath);
-          if (currentLocalPath2 && norm(dir) === norm(currentLocalPath2)) void loadLocalFiles2(currentLocalPath2);
+          void refreshLocalPanelForPath(dir);
         }} />}
         {showCryptomatorBrowser && <CryptomatorBrowser initialVaultPath={showCryptomatorBrowser.initialVaultPath} onClose={() => setShowCryptomatorBrowser(false)} />}
         {showRcloneCryptUnlock && (
@@ -18297,7 +18565,9 @@ const App: React.FC = () => {
                 const suffix = opts.password ? ' (AES-256)' : '';
                 activityLog.updateEntry(logId, { status: 'success', message: t('toast.compressedDesc', { name: `${opts.archiveName}${ext}${suffix}` }), details: formatCompressDetails(inputBytes, outputBytes, t) });
                 notify.success(t('toast.compressed'), t('toast.compressedDesc', { name: `${opts.archiveName}${ext}${suffix}` }));
-                await loadLocalFiles(currentLocalPath);
+                // The panels that show the folder the archive is in: panel 2
+                // when the selection came from it.
+                await refreshLocalPanelForPath(compressDialogState.outputDir);
                 // Keep the dialog open so it can present the completion stats
                 // (ratio, bytes saved, before/after bars); the user closes it.
                 return { inputBytes, outputBytes };
@@ -18315,7 +18585,7 @@ const App: React.FC = () => {
             outputDir={cryptomatorCreateDialog.outputDir}
             files={cryptomatorCreateDialog.files}
             onClose={() => setCryptomatorCreateDialog(null)}
-            onCreated={() => loadLocalFiles(currentLocalPath)}
+            onCreated={() => refreshLocalPanelForPath(cryptomatorCreateDialog.outputDir)}
           />
         )}
 
@@ -18915,12 +19185,14 @@ const App: React.FC = () => {
                     onClick={() => {
                       if (activePanel === 'remote' && selectedRemoteFiles.size > 0) {
                         deleteMultipleRemoteFiles(Array.from(selectedRemoteFiles));
-                      } else if (activePanel === 'local' && selectedLocalFiles.size > 0) {
-                        deleteMultipleLocalFiles(Array.from(selectedLocalFiles));
+                      } else if (activePanel === 'local') {
+                        // The focused panel's selection, resolved in that panel.
+                        const panel = getActiveLocalState();
+                        if (panel.selection.size > 0) deleteMultipleLocalFiles(Array.from(panel.selection), panel.id);
                       }
                     }}
-                    disabled={(activePanel === 'remote' ? selectedRemoteFiles.size : selectedLocalFiles.size) === 0 || scanningState.active}
-                    className={`relative px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${(activePanel === 'remote' ? selectedRemoteFiles.size : selectedLocalFiles.size) > 0 && !scanningState.active
+                    disabled={(activePanel === 'remote' ? selectedRemoteFiles.size : focusedLocalSelection.size) === 0 || scanningState.active}
+                    className={`relative px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${(activePanel === 'remote' ? selectedRemoteFiles.size : focusedLocalSelection.size) > 0 && !scanningState.active
                       ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm hover:shadow-md'
                       : 'bg-gray-200 dark:bg-gray-600 text-gray-400 dark:text-gray-500 cursor-not-allowed'
                       }`}
@@ -18929,7 +19201,7 @@ const App: React.FC = () => {
                   >
                     <Trash2 size={16} />
                     {(() => {
-                      const count = activePanel === 'remote' ? selectedRemoteFiles.size : selectedLocalFiles.size;
+                      const count = activePanel === 'remote' ? selectedRemoteFiles.size : focusedLocalSelection.size;
                       return count > 1 ? (
                         <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-white text-red-600 text-[10px] font-bold shadow-sm border border-red-300">
                           {count}
@@ -20457,7 +20729,7 @@ const App: React.FC = () => {
                 await invoke('save_local_file', { path: file.path, content });
                 humanLog.logRaw('activity.upload_success', 'INFO', { filename: file.name, size: formatBytes(content.length), location: 'Local', time: '' }, 'success');
                 notify.success(t('toast.fileSaved'), t('toast.fileSavedLocal', { name: file.name }));
-                await loadLocalFiles(currentLocalPath);
+                await refreshLocalPanelForPath(parentDir(file.path));
               }
             } catch (error) {
               humanLog.logError('UPLOAD', { filename: file.name }, logId);

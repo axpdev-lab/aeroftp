@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import React, { useState, useEffect, useRef, useCallback, useMemo, type MutableRefObject } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, type MutableRefObject, useLayoutEffect } from 'react';
 import { Search, ChevronUp, ChevronDown, X } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 
@@ -38,9 +38,9 @@ const ChatSearchOverlayImpl: React.FC<ChatSearchOverlayProps> = ({
     const [roleFilter, setRoleFilter] = useState<'all' | 'user' | 'assistant'>('all');
     const inputRef = useRef<HTMLInputElement>(null);
     const onSearchResultsRef = useRef(onSearchResults);
-    onSearchResultsRef.current = onSearchResults;
+    useLayoutEffect(() => { onSearchResultsRef.current = onSearchResults; }, [onSearchResults]);
     const onHighlightMessageRef = useRef(onHighlightMessage);
-    onHighlightMessageRef.current = onHighlightMessage;
+    useLayoutEffect(() => { onHighlightMessageRef.current = onHighlightMessage; }, [onHighlightMessage]);
 
     // Auto-focus on show
     useEffect(() => {

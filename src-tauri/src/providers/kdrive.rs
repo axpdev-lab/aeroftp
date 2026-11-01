@@ -555,32 +555,33 @@ impl KDriveProvider {
     }
 
     fn normalize_path(path: &str) -> String {
-        let trimmed = path.trim().replace('\\', "/");
-        if trimmed.is_empty() || trimmed == "/" {
+        // Spaces are part of a name: ` a` and `a ` are not `a`.
+        let path = path.replace('\\', "/");
+        if path.is_empty() || path == "/" {
             return "/".to_string();
         }
-        let p = if trimmed.starts_with('/') {
-            trimmed
+        let p = if path.starts_with('/') {
+            path
         } else {
-            format!("/{}", trimmed)
+            format!("/{}", path)
         };
         p.trim_end_matches('/').to_string()
     }
 
     fn resolve_path(&self, path: &str) -> String {
-        let trimmed = path.trim();
         // "." or empty means current directory
-        if trimmed.is_empty() || trimmed == "." {
+        if path.is_empty() || path == "." {
             return self.current_path.clone();
         }
         // Check leading slash on the raw input before normalizing -
         // normalize_path unconditionally prepends "/", which would otherwise
         // make every relative input appear absolute and skip the current_path join.
-        if trimmed.starts_with('/') {
-            return Self::normalize_path(trimmed);
+        // `normalize_path` takes `\` for a separator: a leading one is the root too.
+        if path.starts_with(['/', '\\']) {
+            return Self::normalize_path(path);
         }
         let base = self.current_path.trim_end_matches('/');
-        Self::normalize_path(&format!("{}/{}", base, trimmed))
+        Self::normalize_path(&format!("{}/{}", base, path))
     }
 
     fn split_path(path: &str) -> (&str, &str) {
@@ -900,7 +901,8 @@ impl StorageProvider for KDriveProvider {
 
         // Navigate to initial path if specified
         if let Some(ref initial) = self.config.initial_path {
-            let initial = initial.trim().to_string();
+            // As given: a name may begin or end with a space.
+            let initial = initial.to_string();
             if !initial.is_empty() && initial != "/" {
                 let normalized = Self::normalize_path(&initial);
                 kdrive_log(&format!("Navigating to initial path: {}", normalized));
@@ -1060,10 +1062,8 @@ impl StorageProvider for KDriveProvider {
             cursor = next_cursor;
         }
 
-        // Update current position
-        self.current_path = resolved;
-        self.current_file_id = folder_id;
-
+        // A listing does not move the current folder: `cd` does. Moved, a
+        // relative path listed twice reached `docs/docs`.
         Ok(entries)
     }
 
@@ -2487,6 +2487,22 @@ mod tests {
             text.len(),
             short.len()
         );
+    }
+
+    #[test]
+    fn a_name_keeps_its_leading_and_trailing_spaces() {
+        // A name with a leading or trailing space is a name of its own, and a
+        // name of spaces only is not the current folder.
+        assert_eq!(KDriveProvider::normalize_path("/ a"), "/ a");
+        assert_eq!(KDriveProvider::normalize_path("/a /b "), "/a /b ");
+        let mut p = test_provider();
+        p.current_path = "/Cloud".to_string();
+        assert_eq!(p.resolve_path("   "), "/Cloud/   ");
+        assert_eq!(p.resolve_path(" a"), "/Cloud/ a");
+        assert_eq!(p.resolve_path("/a "), "/a ");
+        // A leading backslash is the root, as normalize_path reads it.
+        assert_eq!(p.resolve_path("\\docs\\a "), "/docs/a ");
+        assert_eq!(p.resolve_path("sub\\a"), "/Cloud/sub/a");
     }
 
     fn test_provider() -> KDriveProvider {

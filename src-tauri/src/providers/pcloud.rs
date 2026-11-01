@@ -330,6 +330,9 @@ struct PCloudMultipartMeta {
     name: String,
     total: u64,
     part: u64,
+    /// The local file's date, in seconds, kept at `upload_save`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mtime: Option<i64>,
 }
 
 impl PCloudMultipartMeta {
@@ -1165,10 +1168,13 @@ impl StorageProvider for PCloudProvider {
             );
 
         let url = format!(
-            "{}/uploadfile?path={}&filename={}&nopartial=1",
+            "{}/uploadfile?path={}&filename={}&nopartial=1{}",
             self.api_base(),
             urlencoding::encode(dir_path),
-            urlencoding::encode(file_name)
+            urlencoding::encode(file_name),
+            super::local_modified(local_path)
+                .map(|date| format!("&mtime={}", date.timestamp()))
+                .unwrap_or_default()
         );
 
         // Note: multipart uploads cannot use send_with_retry because the stream body
@@ -2029,7 +2035,7 @@ impl StorageProvider for PCloudProvider {
         remote_path: &str,
         total_size: u64,
         _content_type: Option<&str>,
-        _local_source_path: Option<&str>,
+        local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -2062,6 +2068,9 @@ impl StorageProvider for PCloudProvider {
             name: file_name,
             total: total_size,
             part: pcloud_runner_part_size(total_size),
+            mtime: local_source_path
+                .and_then(super::local_modified)
+                .map(|date| date.timestamp()),
         };
         Ok(MultipartHandle {
             upload_id: meta.encode(),
@@ -2204,11 +2213,14 @@ impl StorageProvider for PCloudProvider {
         }
 
         let url = format!(
-            "{}/upload_save?uploadid={}&folderid={}&name={}",
+            "{}/upload_save?uploadid={}&folderid={}&name={}{}",
             self.api_base(),
             meta.uploadid,
             meta.folderid,
-            urlencoding::encode(&meta.name)
+            urlencoding::encode(&meta.name),
+            meta.mtime
+                .map(|mtime| format!("&mtime={mtime}"))
+                .unwrap_or_default()
         );
         let auth = self.auth_header().await?;
         let resp: PCloudResponse = self
@@ -2533,6 +2545,7 @@ mod tests {
             name: "file with spaces & symbols.bin".to_string(),
             total: 1024 * 1024 * 1024,
             part: 4 * 1024 * 1024,
+            mtime: None,
         };
         let encoded = meta.encode();
         let decoded = PCloudMultipartMeta::decode(&encoded).expect("decode roundtrip");
@@ -3030,6 +3043,7 @@ mod tests {
             name: "t.bin".into(),
             total: 64,
             part: 64,
+            mtime: None,
         };
         let handle = MultipartHandle {
             upload_id: meta.encode(),
@@ -3086,6 +3100,7 @@ mod tests {
             name: "t.bin".into(),
             total: 64,
             part: 64,
+            mtime: None,
         };
         let handle = MultipartHandle {
             upload_id: meta.encode(),
@@ -3145,6 +3160,7 @@ mod tests {
             name: "t.bin".into(),
             total: 64,
             part: 64,
+            mtime: None,
         };
         let handle = MultipartHandle {
             upload_id: meta.encode(),

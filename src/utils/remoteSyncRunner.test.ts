@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
     readEmptyDirAnswer,
     runRemoteSync,
@@ -1146,6 +1146,28 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
         expect(savedIndex).not.toHaveProperty('profile_id');
     });
 
+    it('dates an upload in the index at its own end, not at the end of the run', async () => {
+        vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-01-01T00:00:00.000Z') });
+        try {
+            let savedIndex: { files: Record<string, { uploaded_at?: string }> } | undefined;
+            const oneMinuteLater = () => { vi.setSystemTime(Date.now() + 60_000); };
+            const { invoke } = makeInvoke({
+                upload_file: oneMinuteLater,
+                provider_upload_file: oneMinuteLater,
+                save_sync_index_cmd: (args) => {
+                    savedIndex = args?.index as typeof savedIndex;
+                },
+            });
+            await runRemoteSync([file('a.txt', 'upload'), file('b.txt', 'upload')], noDirs, baseConfig(), {}, noWaitDeps(invoke, { writeIndex: true }));
+            const first = new Date(savedIndex!.files['a.txt'].uploaded_at!).getTime();
+            const second = new Date(savedIndex!.files['b.txt'].uploaded_at!).getTime();
+            expect(first).toBeGreaterThanOrEqual(new Date('2026-01-01T00:01:00.000Z').getTime());
+            expect(second - first).toBeGreaterThanOrEqual(60_000);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('does not touch the index when writeIndex is unset', async () => {
         const { invoke, calls } = makeInvoke();
         await runRemoteSync([file('a.txt', 'upload')], noDirs, baseConfig(), {}, noWaitDeps(invoke));
@@ -1387,6 +1409,35 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
         const files = (savedIndex?.files ?? {}) as Record<string, { size: number; modified: string | null }>;
         expect(files['next.txt']).toMatchObject({ size: 7, modified: '2026-09-26T10:00:00Z' });
         expect(files['done.txt']).toMatchObject({ size: 5, modified: '2026-09-26T09:04:00Z' });
+    });
+
+    it('keeps the end of an upload across a resumed run', async () => {
+        let savedIndex: { files: Record<string, { uploaded_at?: string }> } | undefined;
+        const journals: SyncJournal[] = [];
+        const { invoke } = makeInvoke({
+            save_sync_index_cmd: (args) => {
+                savedIndex = args?.index as typeof savedIndex;
+            },
+            save_sync_journal_cmd: (args) => {
+                journals.push(JSON.parse(JSON.stringify(args?.journal)) as SyncJournal);
+            },
+        });
+        await runRemoteSync(
+            [file('done.txt', 'upload', { size: 5 }), file('next.txt', 'upload', { size: 7 })],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke, {
+                writeIndex: true,
+                resumeJournal: resumeOf([
+                    { relative_path: 'done.txt', action: 'upload', status: 'completed', attempts: 1, last_error: null, verified: true, bytes_transferred: 5, uploaded_at: '2026-09-26T09:05:00.000Z' },
+                    { relative_path: 'next.txt', action: 'upload', status: 'pending', attempts: 0, last_error: null, verified: null, bytes_transferred: 0 },
+                ]),
+            }),
+        );
+        expect(savedIndex?.files['done.txt'].uploaded_at).toBe('2026-09-26T09:05:00.000Z');
+        const next = journals[journals.length - 1]?.entries.find((e) => e.relative_path === 'next.txt');
+        expect(next?.uploaded_at).toBe(savedIndex?.files['next.txt'].uploaded_at);
     });
 
     // Minor 4 (verification of the fifth round): a completed transfer keeps

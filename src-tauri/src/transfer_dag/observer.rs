@@ -391,6 +391,7 @@ mod tests {
             ec_status: None,
             local_size: None,
             local_modified: None,
+            uploaded_at: None,
         });
         journal.entries.push(SyncJournalEntry {
             baseline_key: None,
@@ -405,6 +406,7 @@ mod tests {
             ec_status: None,
             local_size: None,
             local_modified: None,
+            uploaded_at: None,
         });
         journal
     }

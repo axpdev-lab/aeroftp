@@ -188,9 +188,9 @@ export const ProfileRail: React.FC<ProfileRailProps> = ({
                                     </span>
                                     {renderBadges?.(profile)}
                                 </div>
-                                {profile.initialPath?.trim() && (
+                                {profile.initialPath && (
                                     <div className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
-                                        {profile.initialPath.trim()}
+                                        {profile.initialPath}
                                     </div>
                                 )}
                             </div>

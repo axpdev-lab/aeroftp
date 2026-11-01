@@ -1360,6 +1360,7 @@ impl FtpProvider {
                     .map(|p| p.to_string_lossy().to_string())
                     .unwrap_or_else(|| "/".to_string());
                 if let Some(mut entry) = self.parse_mlsd_entry(mlst_line.trim(), &parent) {
+                    super::ftp_listing::name_as_asked(&mut entry, path);
                     // Facts without a size, which RFC 3659 allows: ask SIZE,
                     // as below for a LIST row.
                     if !entry.is_dir && super::ftp_listing::size_is_unreadable(&entry) {

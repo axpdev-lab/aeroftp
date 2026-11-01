@@ -432,14 +432,14 @@ pub async fn aerocrypt_provider_create_remote(
         )?
     };
     let config = overlay::parse_config(&config_json)?;
-    let root = overlay_create_root(&base_path, target_subpath.as_deref());
+    let root = overlay_create_root(&base_path, target_subpath.as_deref())?;
 
     let mut provider_lock = provider_state.provider.lock().await;
     let provider = provider_lock
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     log::debug!("[aerocrypt][create_remote] root={:?}", root);
-    if root != base_path.trim() {
+    if root != base_path {
         let _ = provider.mkdir(&root).await; // idempotent
     }
     write_new_overlay_config(provider.as_mut(), &root, &config_json, force).await?;
@@ -536,16 +536,29 @@ pub struct AeroCryptCreatedVault {
 /// absolute folder the dialog was opened on), or `subpath` under it. The
 /// subpath is always relative to `base`, its slashes trimmed, so `/x` typed in
 /// the field does not escape to the remote root.
-pub(crate) fn overlay_create_root(base: &str, subpath: Option<&str>) -> String {
-    let base = base.trim();
+///
+/// The folder is taken as given (`/reports ` is not `/reports`), but the
+/// overlay anchor trims the ends of its folder (`norm_anchor`, and
+/// `normCryptScope` in the app): a vault at `/reports ` would sit outside its
+/// own anchor `/reports`, and the raw write guard
+/// (`path_is_outside_crypt_scope`) would take `/reports /a.txt` for a folder
+/// outside the vault and let it be written in clear. Such a root is refused; a
+/// folder below it (`/reports /New`) is anchored as created.
+pub(crate) fn overlay_create_root(base: &str, subpath: Option<&str>) -> Result<String, String> {
     let base = if base.is_empty() { "/" } else { base };
-    match subpath
+    let root = match subpath
         .map(|s| s.trim().trim_matches('/'))
         .filter(|s| !s.is_empty())
     {
         Some(sub) => join_remote_path(base, sub),
         None => base.to_string(),
+    };
+    if root.trim() != root {
+        return Err(format!(
+            "An encrypted folder cannot begin or end with a space: '{root}'. Create the vault in a folder below it, or rename the folder."
+        ));
     }
+    Ok(root)
 }
 
 /// Build and return the mandatory Emergency Kit from a (persisted) config JSON.
@@ -1689,14 +1702,42 @@ mod tests {
     /// it, never at the provider's pwd, and a typed `/x` stays under it.
     #[test]
     fn dialog_create_roots_the_vault_at_or_under_its_folder() {
-        assert_eq!(overlay_create_root("/home/u", None), "/home/u");
-        assert_eq!(overlay_create_root("/home/u", Some("  ")), "/home/u");
-        assert_eq!(overlay_create_root("/home/u", Some("New")), "/home/u/New");
-        assert_eq!(overlay_create_root("/home/u", Some("/New/")), "/home/u/New");
-        assert_eq!(overlay_create_root("/home/u/", Some("a/b")), "/home/u/a/b");
-        assert_eq!(overlay_create_root("/", Some("New")), "/New");
-        assert_eq!(overlay_create_root("", Some("New")), "/New");
-        assert_eq!(overlay_create_root("", None), "/");
+        let root = |base, subpath| overlay_create_root(base, subpath).expect("a root");
+        assert_eq!(root("/home/u", None), "/home/u");
+        assert_eq!(root("/home/u", Some("  ")), "/home/u");
+        assert_eq!(root("/home/u", Some("New")), "/home/u/New");
+        assert_eq!(root("/home/u", Some("/New/")), "/home/u/New");
+        assert_eq!(root("/home/u/", Some("a/b")), "/home/u/a/b");
+        assert_eq!(root("/", Some("New")), "/New");
+        assert_eq!(root("", Some("New")), "/New");
+        assert_eq!(root("/reports ", Some("New")), "/reports /New");
+        assert_eq!(root("", None), "/");
+    }
+
+    /// The anchor of a vault is its root with the ends trimmed: a root that
+    /// begins or ends with a space is refused, since the vault would sit
+    /// outside its anchor. A root whose spaced name is not at an end is
+    /// anchored as created.
+    #[test]
+    fn a_vault_root_the_anchor_would_change_is_refused() {
+        for (base, subpath) in [
+            ("/reports ", None),
+            (" /reports", None),
+            ("/home/u/ ", None),
+        ] {
+            let refused = overlay_create_root(base, subpath).expect_err(base);
+            assert!(
+                refused.contains("cannot begin or end with a space"),
+                "{refused}"
+            );
+        }
+        for (base, subpath) in [("/reports ", Some("New")), ("/reports /", None)] {
+            let root = overlay_create_root(base, subpath).expect("a root");
+            assert_eq!(
+                crate::crypt_overlay_provider::norm_anchor(&root),
+                root.trim_end_matches('/')
+            );
+        }
     }
 
     /// A backend that cannot put one marker over another refuses the slot

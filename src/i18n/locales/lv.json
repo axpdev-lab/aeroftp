@@ -599,7 +599,8 @@
             "setAsPublic": "Iestatīt kā publisku",
             "makeAllPrivate": "Padarīt visus privātus",
             "dropboxRestoreLimit": "AeroFTP var atjaunot atjaunojamās failu versijas. Mapes atjaunojiet vietnes dropbox.com sadaļā Dzēstie faili. Jautājuma zīme nozīmē, ka Dropbox nav noteicis vienuma veidu.",
-            "openWithDefaultApp": "Atvērt ar noklusējuma lietotni"
+            "openWithDefaultApp": "Atvērt ar noklusējuma lietotni",
+            "extractHereUncheckedConfirm": "Nosaukumus arhīvā {name} nevar nolasīt pirms izvilkšanas, tāpēc AeroFTP nevar pārbaudīt, ko „Izvilkt šeit“ pārrakstītu šajā mapē. „Izvilkt mapē“ nekad neko nepārraksta."
         },
         "transfer": {
             "transferring": "Pārsūta...",
@@ -1371,7 +1372,8 @@
             "importJottaChainWarning": "Jottacloud atjauno pieteikšanos katrā savienojumā, un {names} tagad dala vienu ar citu kopiju: kopija, kas savienojas pirmā, izraksta otru (ierīci, no kuras nācis fails, vai profilu, no kura tas dublēts). Piesakieties otrā vēlreiz ar jaunu Personal Login Token.",
             "importOauthAppKept": "{names} atnāca ar citu pielāgotu OAuth lietotni nekā tā, kas šai ierīcei ir šim pakalpojumu sniedzējam. Saglabātā lietotne tika paturēta, tāpēc piesakieties vēlreiz, ja šie profili pārstāj savienoties.",
             "importTargetChanged": "{names} netika pārrakstīti: fails tos virza uz citu serveri, un to saglabātās paroles un pilnvaras nedrīkst nonākt tur. Importējiet ar Dublēt, lai pievienotu kopiju no faila, vai vispirms dzēsiet profilu.",
-            "importSharedSecretsFailed": "{names} tika importēti, taču no faila nevarēja saglabāt kopīgu noslēpumu vai sesiju. Ja šie profili neizveido savienojumu, pierakstieties tajos vēlreiz."
+            "importSharedSecretsFailed": "{names} tika importēti, taču no faila nevarēja saglabāt kopīgu noslēpumu vai sesiju. Ja šie profili neizveido savienojumu, pierakstieties tajos vēlreiz.",
+            "keystoreDatabasesFailed": "Importēšana ir pabeigta, bet šīs datubāzes neizdevās atjaunot, un tajās saglabājies iepriekšējais saturs: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1589,7 +1591,9 @@
             "aerocloudEnabled": "AeroCloud iespējots",
             "selectPairLocalFolder": "Atlasiet lokālo mapi pārim",
             "secondsAgo": "pirms {count}s",
-            "conflictsCount": "Konflikti, kam nepieciešama uzmanība: {count}"
+            "conflictsCount": "Konflikti, kam nepieciešama uzmanība: {count}",
+            "updateOnlyHint": "Vienvirziena atjaunināšana saglabā jaunākus mērķa failus. Ja papildinošā dublēšana ir izslēgta, tiek dzēsti tikai nemainīti faili, kas atrodas vienīgi mērķī un kuriem ir pārbaudīta AeroCloud pārsūtīšanas kvīts. Pārējie faili paliek pārskatīšanai AeroSync. Konfliktu politika tiek ignorēta; nezināmi datumi paliek neatrisināti.",
+            "untrackedDestinationFiles": "{count} mērķa faili tika saglabāti pārskatīšanai: to pārsūtīšanas vēsture nav pārbaudīta vai tie ir mainīti pēc pēdējās AeroCloud pārsūtīšanas. Pārskatiet tos AeroSync, pirms izlemjat par dzēšanu."
         },
         "statusBar": {
             "connected": "Savienots",
@@ -2470,7 +2474,9 @@
             "flattenScanning": "Skenē apakškoku...",
             "flattenTruncated": "saīsināts",
             "flattenTruncatedHint": "Sasniegts 5 000 ierakstu limits; precizējiet filtru vai ieejiet apakšmapē.",
-            "local_placeholder_flatten": "Filtrēt lokālos failus... (* rekursīvam)"
+            "local_placeholder_flatten": "Filtrēt lokālos failus... (* rekursīvam)",
+            "flattenNameClash": "{names}: atlasīts vairākās mapēs. Ievietoti vienā vietā, tie aizstātu cits citu; darbojieties ar vienu no katra vienlaikus.",
+            "flattenNameClashTitle": "Viens un tas pats nosaukums vairākās mapēs"
         },
         "versions": {
             "title": "Failu versijas",
@@ -4854,7 +4860,8 @@
             "relocateSuccessMove": "“{name}” pārvietots uz {user}",
             "relocateAlreadyPresent": "“{name}” jau ir saglabāts kontā {user}",
             "relocateError": "Neizdevās pārsūtīt serveri: {error}",
-            "relocateWrongPassword": "Nepareiza {user} parole."
+            "relocateWrongPassword": "Nepareiza {user} parole.",
+            "relocateSecretsNotCopied": "“{name}” sasniedza {user}, taču tā saglabātā parole vai atslēga nesasniedza, tāpēc tur tās tiks pieprasītas vēlreiz."
         },
         "cyberTools": {
             "title": "Drošības rīki",
@@ -6129,7 +6136,7 @@
             "compareUnavailable": "Atveriet otru paneli vai attālu savienojumu, lai salīdzinātu.",
             "planUnavailable": "Pirms iepriekšējā iestatījuma izvēles ir nepieciešams salīdzināšanas rezultāts. Vispirms atveriet cilni Salīdzināt.",
             "totalEntries": "Kopā ierakstu",
-            "differences": "Atskiribas",
+            "differences": "Atšķirības",
             "totalBytes": "Kopā baitu",
             "mirrorHint": "Spogula pogas pārsūta atbilstošos ierakstus. Tās tos neliek rindā pārbaudei.",
             "exportFailed": "Neizdevās ierakstīt eksportu: {error}",
@@ -6311,7 +6318,12 @@
                 }
             },
             "rescan": "Skenēt vēlreiz",
-            "rescanNeeded": "Salīdzināšana veikta ar citiem izslēgumiem vai citu dublējumu mapi. Pirms palaišanas skenējiet vēlreiz.",
+            "rescanBringsBack": "Šie iestatījumi atgriež failus, ko skenēšana izlaida, tāpēc tā tos nekad nav lasījusi. Pirms palaišanas skenējiet vēlreiz.",
+            "rescanFlat": "Šis salīdzinājums radies no abu paneļu sarakstiem, nevis no pilnas skenēšanas, tāpēc tas nevar lietot izslēgumus. Pirms palaišanas skenējiet vēlreiz.",
+            "narrowAvailable": "Šie iestatījumi tikai sašaurina salīdzinājumu, tāpēc to var filtrēt bez atkārtotas skenēšanas.",
+            "narrowApply": "Lietot šim salīdzinājumam",
+            "narrowedNote": "Filtrēts ar jauniem izslēgumiem bez atkārtotas skenēšanas. Identisko skaits joprojām ir no skenēšanas.",
+            "narrowAfterRestore": "Notiek atjaunošana. Šos iestatījumus var lietot salīdzinājumam, kad atjaunošana beigsies.",
             "backup": {
                 "checking": "Pārbauda, kā šis serveris pārvieto failus...",
                 "serverCopy": "Šis serveris nevar pārvietot: katra saglabājamā kopija tiek nokopēta serverī un pēc tam izdzēsta. Tas maksā pilnu katra saglabātā faila kopiju, divos atsevišķos soļos.",
@@ -6338,7 +6350,10 @@
             "progressCopy": "[kopija]",
             "deleteCount": "Dzēšamie: {count}",
             "overwriteCount": "Pārrakstāmie: {count}",
-            "conflictCount": "Konflikti: {count}"
+            "conflictCount": "Konflikti: {count}",
+            "updateOnly": "Izlaist jaunākus mērķa failus (vienvirziena atjaunināšana)",
+            "updateOnlyHint": "Kopē trūkstošos vai izmainītos avota failus, saglabā jaunākos galamērķa failus un dzēš ierakstus, kas ir tikai galamērķī. Failus bez salīdzināmiem datumiem salīdzina pēc lieluma; lieluma atšķirības atstāj pārskatīšanai.",
+            "rescanNeeded": "Pirms atjaunināšanas skripta eksportēšanas veiciet jaunu salīdzināšanu ar pašreizējiem iestatījumiem."
         },
         "accountLock": {
             "title": "Izvēlieties kontu",
@@ -6582,7 +6597,8 @@
             "keyslotsSetAsideRevocation": "Iepriekšējais marķieris joprojām atver seifu ar faktoru, ko noņemat vai aizstājat. Katra seifa mapē palikusī kopija pēc izmaiņām tiek dzēsta, un kopija, ko nevar izdzēst, tiek ziņota kā kļūda. Kopija krātuves atkritnē vai failu versijās netiek aizsniegta: to iztukšošana noņem šīs kopijas, bet ne to, ko paturējis kāds cits, tāpēc atsaukšana netiek pabeigta.",
             "keyslotsSetAsideConsent": "Es saprotu: aizstāt marķieri šajā serverī, pārdēvējot veco un noliekot to malā",
             "keyslotsSetAsideConsentRequired": "Šis serveris var aizstāt seifa marķieri tikai, pārdēvējot veco un noliekot to malā: apstipriniet to lodziņā iepriekš, lai turpinātu.",
-            "keyslotsMarkerReplaceUnsupported": "Šis serveris nevar aizstāt seifa marķieri, tāpēc slotu izmaiņas šeit tiek noraidītas. Atveriet to pašu krātuvi caur serveri, kas aizstāj failu vienā solī (piemēram, SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Šis serveris nevar aizstāt seifa marķieri, tāpēc slotu izmaiņas šeit tiek noraidītas. Atveriet to pašu krātuvi caur serveri, kas aizstāj failu vienā solī (piemēram, SFTP).",
+            "overlayMetadataNotSaved": "Migrācija izdevās, bet bezsaistes atkopšanas komplekts vēl nav saglabāts kešatmiņā. Tas tiks saglabāts nākamajā atslēgšanas reizē."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifrēšana)",

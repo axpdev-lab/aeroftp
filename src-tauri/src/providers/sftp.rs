@@ -770,27 +770,6 @@ fn classify_sftp_status_err(e: russh_sftp::client::error::Error, context: &str) 
 /// (exec, direct-tcpip) without re-authenticating.
 pub type SharedSshHandle = Arc<TokioMutex<Handle<SshHandler>>>;
 
-/// POSIX single-quote a string for safe interpolation into a remote shell
-/// command. The whole value is wrapped in `'...'` (everything literal inside
-/// single quotes) and every embedded `'` is emitted as `'\''` (close quote,
-/// escaped literal quote, reopen quote). This neutralises `$()`, backticks,
-/// `;`, `&&`, newlines and spaces: there is no shell metacharacter that
-/// survives single-quoting. Used by [`SftpProvider::checksum`] before passing
-/// a listing-derived path to `sha256sum` over an exec channel.
-fn shell_single_quote(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('\'');
-    for ch in s.chars() {
-        if ch == '\'' {
-            out.push_str("'\\''");
-        } else {
-            out.push(ch);
-        }
-    }
-    out.push('\'');
-    out
-}
-
 /// SSH Client Handler for server key verification.
 ///
 /// Exposed as `pub` because [`SharedSshHandle`] (a public type alias in the same
@@ -2438,8 +2417,21 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: SSH connection established, authenticating...");
 
-        // Authenticate
-        let authenticated = if self.config.private_key_path.is_some() {
+        // Authenticate. The `none` method goes first, as OpenSSH, PuTTY and
+        // WinSCP send it (RFC 4252 section 5.2): a server that lets the
+        // account in with no credential accepts it, every other server
+        // refuses it and the configured credential follows. OpenWrt's
+        // Dropbear is the case that needs it: for a root with no password
+        // set it accepts only `none` and refuses the password method
+        // outright, so without this the device cannot be reached at all.
+        let none_result = handle
+            .authenticate_none(&self.config.username)
+            .await
+            .map_err(|e| ProviderError::AuthenticationFailed(format!("SSH auth failed: {}", e)))?;
+        let authenticated = if matches!(none_result, AuthResult::Success) {
+            tracing::info!("SFTP: Server accepted the account with no credential");
+            true
+        } else if self.config.private_key_path.is_some() {
             // Try key-based authentication
             self.authenticate_with_key(&mut handle).await?
         } else if let Some(password) = &self.config.password {
@@ -2488,7 +2480,7 @@ impl StorageProvider for SftpProvider {
             }
         } else {
             return Err(ProviderError::AuthenticationFailed(
-                "No authentication method provided (need password or private key)".to_string(),
+                "The server requires a password or a private key, and neither is set".to_string(),
             ));
         };
 
@@ -4120,8 +4112,11 @@ impl StorageProvider for SftpProvider {
         let full_path = self.normalize_path(path);
         // `--` ends option parsing; the path is fully single-quoted so no
         // shell metacharacter (`$()`, backtick, `;`, space, newline) in a
-        // listing-derived name can break out. See `shell_single_quote`.
-        let cmd = format!("sha256sum -- {}", shell_single_quote(&full_path));
+        // listing-derived name can break out. See `shell_quote`.
+        let cmd = format!(
+            "sha256sum -- {}",
+            crate::providers::shell_quote::shell_quote(&full_path)?
+        );
 
         let (stdout, _stderr, _exit) = match ssh_exec_collect(handle, &cmd, 4096).await {
             Ok(v) => v,
@@ -6586,31 +6581,6 @@ mod tests {
         assert!(sftp_strict_short_read_check(0, 4096, 4096, 0).is_ok());
         // Zero read past the length (defensive) is likewise not an error.
         assert!(sftp_strict_short_read_check(0, 5000, 4096, 0).is_ok());
-    }
-
-    #[test]
-    fn shell_single_quote_neutralises_injection() {
-        // Plain path: just wrapped.
-        assert_eq!(shell_single_quote("/srv/file.txt"), "'/srv/file.txt'");
-        // Spaces stay literal.
-        assert_eq!(shell_single_quote("/a b/c"), "'/a b/c'");
-        // Embedded single quote: close, escaped quote, reopen.
-        assert_eq!(shell_single_quote("a'b"), "'a'\\''b'");
-        // Command substitution / backticks are inert inside single quotes.
-        assert_eq!(shell_single_quote("$(rm -rf /)"), "'$(rm -rf /)'");
-        assert_eq!(shell_single_quote("`id`"), "'`id`'");
-        // Separators and logical operators cannot break out.
-        assert_eq!(shell_single_quote("x; rm -rf /"), "'x; rm -rf /'");
-        assert_eq!(shell_single_quote("a && b"), "'a && b'");
-        // Newline injection stays inside the quotes.
-        assert_eq!(shell_single_quote("a\nrm -rf /"), "'a\nrm -rf /'");
-        // The classic break-out attempt: '; rm -rf / ; echo '
-        let evil = "'; rm -rf / ; echo '";
-        let q = shell_single_quote(evil);
-        assert!(q.starts_with('\'') && q.ends_with('\''));
-        // Every original `'` became the 4-char `'\''` sequence; there is no
-        // bare unescaped quote that could terminate the literal early.
-        assert_eq!(q, "''\\''; rm -rf / ; echo '\\'''");
     }
 
     #[test]

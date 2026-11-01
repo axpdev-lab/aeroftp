@@ -1327,6 +1327,7 @@ impl GoogleDriveProvider {
         remote_path: &str,
         total_size: u64,
         content_type: Option<&str>,
+        local_source_path: Option<&str>,
     ) -> Result<String, ProviderError> {
         let path_is_absolute = remote_path.starts_with('/');
         let path = remote_path.trim_matches('/');
@@ -1344,7 +1345,7 @@ impl GoogleDriveProvider {
             .filter(|f| f.mime_type != "application/vnd.google-apps.folder")
             .map(|f| f.id);
 
-        let metadata = if existing_file_id.is_some() {
+        let mut metadata = if existing_file_id.is_some() {
             serde_json::json!({ "name": file_name })
         } else {
             serde_json::json!({
@@ -1352,6 +1353,9 @@ impl GoogleDriveProvider {
                 "parents": [parent_id]
             })
         };
+        if let Some(date) = local_source_path.and_then(super::local_modified_rfc3339) {
+            metadata["modifiedTime"] = serde_json::json!(date);
+        }
 
         let init_url = if let Some(ref fid) = existing_file_id {
             format!("{}/files/{}?uploadType=resumable", self.upload_api(), fid)
@@ -1717,7 +1721,7 @@ impl StorageProvider for GoogleDriveProvider {
 
         if total_size > RESUMABLE_THRESHOLD {
             // Resumable upload for large files: stream from file handle
-            let metadata = if existing_file_id.is_some() {
+            let mut metadata = if existing_file_id.is_some() {
                 // Update: only send name, no parents (already in correct folder)
                 serde_json::json!({ "name": file_name })
             } else {
@@ -1726,6 +1730,9 @@ impl StorageProvider for GoogleDriveProvider {
                     "parents": [parent_id]
                 })
             };
+            if let Some(date) = super::local_modified_rfc3339(local_path) {
+                metadata["modifiedTime"] = serde_json::json!(date);
+            }
 
             // Step 1: Initiate resumable upload session
             let init_url = if let Some(ref fid) = existing_file_id {
@@ -1818,7 +1825,7 @@ impl StorageProvider for GoogleDriveProvider {
                 .await
                 .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
 
-            let metadata = if existing_file_id.is_some() {
+            let mut metadata = if existing_file_id.is_some() {
                 serde_json::json!({ "name": file_name })
             } else {
                 serde_json::json!({
@@ -1826,6 +1833,9 @@ impl StorageProvider for GoogleDriveProvider {
                     "parents": [parent_id]
                 })
             };
+            if let Some(date) = super::local_modified_rfc3339(local_path) {
+                metadata["modifiedTime"] = serde_json::json!(date);
+            }
 
             let boundary = "aeroftp_boundary";
             let mut head = Vec::new();
@@ -3017,7 +3027,7 @@ impl StorageProvider for GoogleDriveProvider {
         remote_path: &str,
         total_size: u64,
         content_type: Option<&str>,
-        _local_source_path: Option<&str>,
+        local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -3028,7 +3038,7 @@ impl StorageProvider for GoogleDriveProvider {
             ));
         }
         let session_url = self
-            .open_resumable_session(remote_path, total_size, content_type)
+            .open_resumable_session(remote_path, total_size, content_type, local_source_path)
             .await?;
         let meta = GDriveMultipartMeta {
             url: session_url,

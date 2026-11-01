@@ -717,7 +717,7 @@ pub fn failures_with_tally_gap(
 /// plan. Copying that plan writes ciphertext and reports success.
 pub fn plan_includes_raw_crypt_marker(entries: &[CrossProfileTransferEntry]) -> bool {
     entries.iter().any(|entry| {
-        entry.display_name.trim() == ".aerocrypt.tsv"
+        entry.display_name == ".aerocrypt.tsv"
             || entry.source_path == ".aerocrypt.tsv"
             || entry.source_path.ends_with("/.aerocrypt.tsv")
     })
@@ -732,21 +732,23 @@ fn normalize_dir(path: &str) -> String {
     }
 }
 
+/// The provider's root as a plan names it. A path of spaces is a folder of
+/// that name, not the root.
 fn is_virtual_root_path(path: &str) -> bool {
-    let trimmed = path.trim();
-    trimmed.is_empty() || trimmed == "/" || trimmed == "."
+    path.is_empty() || path == "/" || path == "."
 }
 
+/// The name a plan shows for an entry: its own, as given, or the last
+/// segment of its path when it has none.
 fn fallback_display_name(name: &str, path: &str) -> String {
-    let trimmed = name.trim();
-    if !trimmed.is_empty() {
-        return trimmed.to_string();
+    if !name.is_empty() {
+        return name.to_string();
     }
 
     Path::new(path)
         .file_name()
         .map(|segment| segment.to_string_lossy().to_string())
-        .filter(|segment| !segment.trim().is_empty())
+        .filter(|segment| !segment.is_empty())
         .unwrap_or_else(|| path.trim_matches('/').to_string())
 }
 
@@ -783,7 +785,7 @@ async fn effective_root_stat(
     }
 
     let stat = stat_for_plan(source, source_path).await?;
-    if stat.name.trim().is_empty() && is_virtual_root_path(&stat.path) {
+    if stat.name.is_empty() && is_virtual_root_path(&stat.path) {
         Ok(crate::providers::types::RemoteEntry {
             name: "/".to_string(),
             path: source_path.to_string(),
@@ -859,6 +861,33 @@ fn source_root_candidates(request_path: &str, provider_root: &str) -> Vec<String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A name keeps its spaces in a plan: ` a` was shown as `a`, a path of
+    /// spaces was taken for the provider's root, and ` .aerocrypt.tsv`, a
+    /// file of its own, for the vault marker.
+    #[test]
+    fn a_plan_keeps_the_spaces_of_a_name() {
+        assert_eq!(super::fallback_display_name(" a ", "/x/ a "), " a ");
+        assert_eq!(super::fallback_display_name("", "/x/  "), "  ");
+        assert!(!super::is_virtual_root_path("   "));
+        assert!(super::is_virtual_root_path("/") && super::is_virtual_root_path(""));
+        let entry = |display: &str, source: &str| super::CrossProfileTransferEntry {
+            source_path: source.into(),
+            dest_path: String::new(),
+            display_name: display.into(),
+            size: 0,
+            modified: None,
+            is_dir: false,
+        };
+        assert!(!super::plan_includes_raw_crypt_marker(&[entry(
+            " .aerocrypt.tsv",
+            "/v/ .aerocrypt.tsv"
+        )]));
+        assert!(super::plan_includes_raw_crypt_marker(&[entry(
+            ".aerocrypt.tsv",
+            "/v/.aerocrypt.tsv"
+        )]));
+    }
 
     #[tokio::test]
     async fn recursive_plan_never_walks_or_recreates_symlinked_directories() {

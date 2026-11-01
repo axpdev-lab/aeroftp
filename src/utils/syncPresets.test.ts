@@ -39,6 +39,31 @@ const buildFixture = () => {
     return compareEntries(left, right);
 };
 
+describe('Mirror with one-way Update (Requested 100)', () => {
+    it.each(['left-to-right', 'right-to-left'] as const)('keeps newer destinations and deletes destination-only files: %s', (direction) => {
+        const plan = derivePresetPlan(buildFixture(), { preset: 'mirror', direction, updateOnly: true });
+        const actions = Object.fromEntries(plan.bucketPlans.map(bp => [bp.bucket, bp.entryActions[0]]));
+        const forward = direction === 'left-to-right';
+        expect(actions[forward ? 'newer-right' : 'newer-left']).toBe('skip');
+        expect(actions[forward ? 'newer-left' : 'newer-right']).toBe(forward ? 'overwrite-right' : 'overwrite-left');
+        expect(actions[forward ? 'only-right' : 'only-left']).toBe(forward ? 'delete-right' : 'delete-left');
+        expect(actions.conflict).toBe(forward ? 'overwrite-right' : 'overwrite-left');
+        expect(plan.hasDeletes).toBe(true);
+        expect(plan.hasOverwritesNewer).toBe(false);
+    });
+
+    it('does not let a conflict policy write back to the source or guess an unknown date', () => {
+        const input = compareEntries(
+            [{ name: 'unknown', isDir: false, size: 10 }],
+            [{ name: 'unknown', isDir: false, size: 99 }],
+        );
+        const plan = derivePresetPlan(input, { preset: 'mirror', updateOnly: true, conflictPolicy: 'larger-wins' });
+        expect(plan.totals.actionable).toBe(0);
+        expect(plan.totals.conflicts).toBe(1);
+        expect(plan.bucketPlans.find(bp => bp.bucket === 'conflict')?.entryActions).toEqual(['conflict-skip']);
+    });
+});
+
 describe('derivePresetPlan — bucket mappings', () => {
     it('mirror left→right copies new + overwrites + deletes extras + force-overwrites newer-right and conflict', () => {
         const plan = derivePresetPlan(buildFixture(), { preset: 'mirror' });
@@ -361,4 +386,26 @@ describe('preset descriptors', () => {
         expect(describePreset('bisync').safe).toBe(false);
     });
 
+});
+
+
+describe('One-way Update retains millisecond boundary precision', () => {
+    for (const direction of ['left-to-right','right-to-left'] as const) {
+        it.each([
+            [100000,102500,2000,'skip'],
+            [100000,102000,2000,'overwrite'],
+            [100000,102001,2000,'skip'],
+            [100500,102500,2000,'overwrite'],
+            [100000,160000,60000,'overwrite'],
+            [100000,160001,60000,'skip'],
+        ] as const)(`${direction} source%s destination%s window%s`, (source,destination,tolerance,wanted) => {
+            const left=direction==='left-to-right'?source:destination;
+            const right=direction==='left-to-right'?destination:source;
+            const result=compareEntries([{name:'file',size:3,isDir:false,mtimeMs:left}],
+                [{name:'file',size:7,isDir:false,mtimeMs:right}],{mtimeToleranceMs:tolerance});
+            const plan=derivePresetPlan(result,{preset:'mirror',direction,updateOnly:true});
+            const actions=plan.bucketPlans.flatMap(bucket=>bucket.entryActions);
+            expect(actions).toEqual([wanted==='skip'?'skip':direction==='left-to-right'?'overwrite-right':'overwrite-left']);
+        });
+    }
 });
