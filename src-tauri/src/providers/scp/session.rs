@@ -648,6 +648,19 @@ where
             .store(download_bps, Ordering::Relaxed);
     }
 
+    /// A second session on the same connection, for a parallel transfer:
+    /// every command opens its own exec channel, so sessions that share a
+    /// handle run side by side. It keeps this session's probe and rates.
+    pub fn worker(&self) -> Self {
+        Self {
+            handle: self.handle.clone(),
+            probe: self.probe.clone(),
+            io_timeout: self.io_timeout,
+            upload_limit_bps: AtomicU64::new(self.upload_limit_bps.load(Ordering::Relaxed)),
+            download_limit_bps: AtomicU64::new(self.download_limit_bps.load(Ordering::Relaxed)),
+        }
+    }
+
     /// The metadata of what `path` names, a symlink followed.
     pub async fn stat_followed(&self, path: &str) -> Result<listing::Meta, ProviderError> {
         let name = path.as_bytes().to_vec();
