@@ -41,7 +41,7 @@ export function useAeroSyncContextActions(
                 || previous.context.initialDestination !== context.initialDestination) return previous;
             return { ...previous, context: { ...previous.context,
                 compareResult: null, compareLoading: false, compareIdle: true,
-                compareStopped: false, compareRefused: undefined, scanProgressId: undefined,
+                compareStopped: false, compareRefused: undefined, compareFailed: undefined, scanProgressId: undefined,
             } };
         });
     }, [context, setState, compareSequence]);
