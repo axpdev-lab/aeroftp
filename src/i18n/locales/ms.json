@@ -4185,7 +4185,10 @@
             "drivesLeftPanel": "Pemacu panel kiri",
             "drivesRightPanel": "Pemacu panel kanan",
             "modeGroupLabel": "Mod bar sisi",
-            "placesSidebarLabel": "Bar sisi lokasi"
+            "placesSidebarLabel": "Bar sisi lokasi",
+            "mountFailed": "Gagal melekapkan",
+            "partitions_need_udisks2": "Dalam snap, partisyen yang tidak dilekapkan muncul, dan boleh dilekapkan serta dikeluarkan, setelah kebenaran udisks2 disambungkan. Jalankan ini dalam terminal, kemudian kembali ke AeroFTP:",
+            "volume_action_needs_udisks2": "Dalam snap, melekapkan dan mengeluarkan memerlukan kebenaran udisks2. Jalankan ini dalam terminal, kemudian cuba lagi: {command}"
         },
         "viewMode": {
             "list": "Senarai",

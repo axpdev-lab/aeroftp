@@ -4149,7 +4149,10 @@
             "drivesLeftPanel": "左パネルのドライブ",
             "drivesRightPanel": "右パネルのドライブ",
             "modeGroupLabel": "サイドバーモード",
-            "placesSidebarLabel": "場所のサイドバー"
+            "placesSidebarLabel": "場所のサイドバー",
+            "mountFailed": "マウントに失敗しました",
+            "partitions_need_udisks2": "snap では、udisks2 権限を接続すると、未マウントのパーティションが表示され、マウントと取り出しができます。ターミナルで次を実行し、AeroFTP に戻ってください：",
+            "volume_action_needs_udisks2": "snap でマウントや取り出しを行うには、udisks2 権限が必要です。ターミナルで次を実行してから、もう一度お試しください：{command}"
         },
         "viewMode": {
             "list": "リスト",

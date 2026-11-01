@@ -12,6 +12,43 @@ export const MOUNT_OBSERVE_NOT_CONNECTED = 'MOUNT_OBSERVE_NOT_CONNECTED';
 /** Connects the plug snapd never connects on its own (snap/snapcraft.yaml). */
 export const SNAP_CONNECT_MOUNT_OBSERVE = 'sudo snap connect aeroftp:mount-observe';
 
+/**
+ * What the partition list, a mount or an eject puts first in its error when the
+ * snap may not reach UDisks2 (`UDISKS2_NOT_CONNECTED` in filesystem.rs).
+ */
+export const UDISKS2_NOT_CONNECTED = 'UDISKS2_NOT_CONNECTED';
+
+/** Connects the other plug snapd never connects on its own. */
+export const SNAP_CONNECT_UDISKS2 = 'sudo snap connect aeroftp:udisks2';
+
+/** What a local listing says when the snap may not read a mount location. */
+export const SNAP_CONNECT_REMOVABLE_MEDIA = 'sudo snap connect aeroftp:removable-media';
+
+/** Whether a failed local listing is the one the user can fix by connecting the plug. */
+export const needsRemovableMediaPlug = (err: unknown): boolean => String(err).includes(SNAP_CONNECT_REMOVABLE_MEDIA);
+
+/** Whether `err` is the snap's refusal to reach UDisks2. */
+export const needsUdisks2Plug = (err: unknown): boolean => String(err).startsWith(UDISKS2_NOT_CONNECTED);
+
+/** The toast text for a failed mount or eject: the plug when the snap refused it, else the error. */
+export function volumeActionError(
+  err: unknown,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string {
+  return needsUdisks2Plug(err)
+    ? t('sidebar.volume_action_needs_udisks2', { command: SNAP_CONNECT_UDISKS2 })
+    : String(err);
+}
+
+/** Reads the unmounted partitions: no rows on any failure, and whether the plug is the cause. */
+export async function readUnmountedPartitions<P>(read: () => Promise<P[]>): Promise<{ partitions: P[]; needsPlug: boolean }> {
+  try {
+    return { partitions: await read(), needsPlug: false };
+  } catch (err) {
+    return { partitions: [], needsPlug: needsUdisks2Plug(err) };
+  }
+}
+
 export type VolumesUnavailableReason = 'snap-mount-observe' | 'failed';
 
 /** Why the volume list could not be read, from the error of `list_mounted_volumes`. */
@@ -38,6 +75,39 @@ export async function readVolumes<V, P>(read: () => Promise<[V[], P[]]>): Promis
   } catch (err) {
     return { volumes: [], unmounted: [], unavailable: volumesUnavailableReason(err) };
   }
+}
+
+/**
+ * Reads the volumes and the unmounted partitions together. The partition read always
+ * finishes first in the answer: in a snap with neither plug connected the volume read
+ * fails at once and UDisks2 answers later, and that later answer decides the hint.
+ * The partitions do not depend on the volume read: UDisks2 lists them without
+ * mount-observe, so a failed volume read keeps them.
+ */
+export async function readVolumesAndPartitions<V, P>(
+  readMounted: () => Promise<V[]>,
+  readPartitions: () => Promise<P[]>,
+): Promise<VolumesRead<V, P> & { partitionsNeedPlug: boolean }> {
+  const partitionsRead = readUnmountedPartitions(readPartitions);
+  const volumes = await readVolumes(async (): Promise<[V[], P[]]> => [await readMounted(), []]);
+  const { partitions, needsPlug } = await partitionsRead;
+  return { ...volumes, unmounted: partitions, partitionsNeedPlug: needsPlug };
+}
+
+/** Says why the unmounted partitions are missing in a snap, with the command that brings them. */
+export function PartitionsNeedUdisks2({
+  t,
+}: {
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) {
+  return (
+    <div className="px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400">
+      <p>{t('sidebar.partitions_need_udisks2')}</p>
+      <code className="mt-1 block select-all break-all rounded bg-gray-100 px-1.5 py-1 font-mono text-[10px] text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+        {SNAP_CONNECT_UDISKS2}
+      </code>
+    </div>
+  );
 }
 
 /** Says why the volume list is empty instead of leaving the section blank. */

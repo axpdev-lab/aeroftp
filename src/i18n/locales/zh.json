@@ -4185,7 +4185,10 @@
             "drivesLeftPanel": "左侧面板驱动器",
             "drivesRightPanel": "右侧面板驱动器",
             "modeGroupLabel": "侧边栏模式",
-            "placesSidebarLabel": "位置侧边栏"
+            "placesSidebarLabel": "位置侧边栏",
+            "mountFailed": "挂载失败",
+            "partitions_need_udisks2": "在 snap 中，连接 udisks2 权限后，未挂载的分区才会显示，并可挂载和弹出。请在终端中运行以下命令，然后返回 AeroFTP：",
+            "volume_action_needs_udisks2": "在 snap 中，挂载和弹出需要 udisks2 权限。请在终端中运行以下命令，然后重试：{command}"
         },
         "viewMode": {
             "list": "列表",

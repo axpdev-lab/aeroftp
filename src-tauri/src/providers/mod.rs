@@ -1059,6 +1059,29 @@ pub trait StorageProvider: Send + Sync {
         self.download(remote_path, local_path, on_progress).await
     }
 
+    /// The caller saw a refusal and the next `download` reads a moved object. A
+    /// provider that has no time in its response (FTP, Koofr) reads it around the
+    /// transfer then; the others hand over the time their response carried.
+    fn expect_moved_source(&mut self) {}
+
+    /// The provider's own parallel path was refused in the download that just
+    /// ended. A caller that retries the entry says so with
+    /// [`Self::expect_moved_source`]: a new download forgets it, and would read
+    /// the moved object in windows that carry no time.
+    fn download_was_refused(&self) -> bool {
+        false
+    }
+
+    /// The modification time for the file the last `download` wrote, when a
+    /// refusal shows the listing's may describe another object: the provider's
+    /// own (it refused its parallel path) or the caller's (`source_refused`).
+    /// Taken once. `None` keeps the time the caller has: a plain download, or a
+    /// protocol whose transfer carries no time.
+    fn take_download_time(&mut self, source_refused: bool) -> Option<String> {
+        let _ = source_refused;
+        None
+    }
+
     /// Download a file to memory (returns bytes)
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError>;
 

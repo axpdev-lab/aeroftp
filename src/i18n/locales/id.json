@@ -4185,7 +4185,10 @@
             "drivesLeftPanel": "Drive panel kiri",
             "drivesRightPanel": "Drive panel kanan",
             "modeGroupLabel": "Mode bilah sisi",
-            "placesSidebarLabel": "Bilah sisi lokasi"
+            "placesSidebarLabel": "Bilah sisi lokasi",
+            "mountFailed": "Gagal memasang",
+            "partitions_need_udisks2": "Di snap, partisi yang belum dipasang muncul, dan dapat dipasang serta dikeluarkan, setelah izin udisks2 terhubung. Jalankan ini di terminal, lalu kembali ke AeroFTP:",
+            "volume_action_needs_udisks2": "Di snap, memasang dan mengeluarkan memerlukan izin udisks2. Jalankan ini di terminal, lalu coba lagi: {command}"
         },
         "viewMode": {
             "list": "Daftar",

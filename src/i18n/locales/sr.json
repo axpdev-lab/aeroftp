@@ -4185,7 +4185,10 @@
             "drivesLeftPanel": "Дискови левог панела",
             "drivesRightPanel": "Дискови десног панела",
             "modeGroupLabel": "Режим бочне траке",
-            "placesSidebarLabel": "Бочна трака места"
+            "placesSidebarLabel": "Бочна трака места",
+            "mountFailed": "Монтирање није успело",
+            "partitions_need_udisks2": "У snap-у се немонтиране партиције појављују и могу се монтирати и избацити када се повеже дозвола udisks2. Покрените ово у терминалу, а затим се вратите у AeroFTP:",
+            "volume_action_needs_udisks2": "У snap-у монтирање и избацивање захтевају дозволу udisks2. Покрените ово у терминалу, а затим покушајте поново: {command}"
         },
         "viewMode": {
             "list": "Листа",

@@ -4178,7 +4178,10 @@
             "drivesLeftPanel": "Ձախ վահանակի սկավառակներ",
             "drivesRightPanel": "Աջ վահանակի սկավառակներ",
             "modeGroupLabel": "Կողագոտու ռեժիմ",
-            "placesSidebarLabel": "Վայրերի կողագոտի"
+            "placesSidebarLabel": "Վայրերի կողագոտի",
+            "mountFailed": "Մոնտավորումը ձախողվեց",
+            "partitions_need_udisks2": "Snap-ում չմոնտավորված բաժինները երևում են և կարող են մոնտավորվել ու արտամղվել, երբ udisks2 թույլտվությունը միացվի։ Գործարկեք սա տերմինալում և վերադարձեք AeroFTP:",
+            "volume_action_needs_udisks2": "Snap-ում մոնտավորման և արտամղման համար անհրաժեշտ է udisks2 թույլտվությունը։ Գործարկեք սա տերմինալում և նորից փորձեք: {command}"
         },
         "viewMode": {
             "list": "Ցուցակ",

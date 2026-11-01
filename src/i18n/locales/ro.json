@@ -4185,7 +4185,10 @@
             "drivesLeftPanel": "Unitățile panoului stâng",
             "drivesRightPanel": "Unitățile panoului drept",
             "modeGroupLabel": "Modul barei laterale",
-            "placesSidebarLabel": "Bara laterală cu locații"
+            "placesSidebarLabel": "Bara laterală cu locații",
+            "mountFailed": "Montarea a eșuat",
+            "partitions_need_udisks2": "În snap, partițiile nemontate apar și pot fi montate și scoase după ce permisiunea udisks2 este conectată. Rulați aceasta într-un terminal, apoi reveniți la AeroFTP:",
+            "volume_action_needs_udisks2": "În snap, montarea și scoaterea necesită permisiunea udisks2. Rulați aceasta într-un terminal, apoi încercați din nou: {command}"
         },
         "viewMode": {
             "list": "Listă",

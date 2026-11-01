@@ -4185,7 +4185,10 @@
             "drivesLeftPanel": "Hifadhi za paneli ya kushoto",
             "drivesRightPanel": "Hifadhi za paneli ya kulia",
             "modeGroupLabel": "Hali ya utepe wa kando",
-            "placesSidebarLabel": "Utepe wa kando wa maeneo"
+            "placesSidebarLabel": "Utepe wa kando wa maeneo",
+            "mountFailed": "Kupachika kumeshindwa",
+            "partitions_need_udisks2": "Katika snap, partisheni ambazo hazijapachikwa huonekana, na zinaweza kupachikwa na kutolewa, ruhusa ya udisks2 ikishaunganishwa. Endesha hii kwenye terminal, kisha rudi kwenye AeroFTP:",
+            "volume_action_needs_udisks2": "Katika snap, kupachika na kutoa kunahitaji ruhusa ya udisks2. Endesha hii kwenye terminal, kisha jaribu tena: {command}"
         },
         "viewMode": {
             "list": "Orodha",

@@ -4185,7 +4185,10 @@
             "drivesLeftPanel": "Mga drive sa kaliwang panel",
             "drivesRightPanel": "Mga drive sa kanang panel",
             "modeGroupLabel": "Mode ng sidebar",
-            "placesSidebarLabel": "Sidebar ng mga lugar"
+            "placesSidebarLabel": "Sidebar ng mga lugar",
+            "mountFailed": "Nabigo ang pag-mount",
+            "partitions_need_udisks2": "Sa snap, lumalabas ang mga hindi naka-mount na partition, at maaaring i-mount at i-eject, kapag nakakonekta na ang pahintulot na udisks2. Patakbuhin ito sa terminal, pagkatapos ay bumalik sa AeroFTP:",
+            "volume_action_needs_udisks2": "Sa snap, kailangan ang pahintulot na udisks2 para mag-mount at mag-eject. Patakbuhin ito sa terminal, pagkatapos ay subukan muli: {command}"
         },
         "viewMode": {
             "list": "Listahan",

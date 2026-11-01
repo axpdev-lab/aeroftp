@@ -23,7 +23,7 @@ function closure(name: string, endMarker: string) {
 const { code } = await transformWithOxc(
   (app.includes('const getOverwriteDestination =') ? closure('getOverwriteDestination', '\n  // Helper: check folder overwrite') : '')
   + closure('downloadFile', '\n  const uploadFile =')
-  + closure('uploadFile', '\n  // Keep restore-retry')
+  + closure('uploadFile', '\n  // The retry of an item restored from the journal')
   + closure('runFileBatch', '\n  const uploadMultipleFiles ='),
   'overwrite-wiring.ts',
 );
@@ -97,6 +97,8 @@ function fixture(options: { direction: Direction; policy?: Policy; destination?:
     downloadSegments: 0, sftpDownloadPreset: 'balanced', supportsFtpTransferPresets: false,
     buildSftpDownloadPresetPayload: () => ({}), resolveFtpDownloadSegments: () => 0,
     formatBytes: (size: number) => String(size), t: (key: string) => key, notify,
+    // Outside React, a function from useLatestCallback is the function itself.
+    useLatestCallback: <F,>(fn: F) => fn,
   };
   const runtime = new Function(...Object.keys(context), `${code}; return { downloadFile, uploadFile, runFileBatch };`)(...Object.values(context));
   const writers = () => invoke.mock.calls.filter(([name]) => /provider_(upload|download)_(file|files_batch|folder)$/.test(name));
