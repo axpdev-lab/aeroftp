@@ -62,6 +62,11 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
                     await committed(); return result;
                 },
                 refresh: async panel => { await current.current.handlers.refresh(panel); await committed(); },
+                // The window may be open already: the Compare is read once its scan state is the new one.
+                aeroSyncCompare: async () => {
+                    if (!current.current.handlers.aeroSyncCompare) throw new GuiError('action_failed');
+                    await current.current.handlers.aeroSyncCompare(); await committed();
+                },
                 settingsOpen: async (area, scope) => {
                     if (!current.current.handlers.settingsOpen) throw new GuiError('blocked');
                     requestedSettingsArea.current = area;

@@ -31,7 +31,7 @@ export interface GuiSource {
     settings?: GuiSettingsProjection;
     tools?: GuiToolsProjection;
     /** The AeroSync window: a scan under way, and the entries of its result. */
-    aerosync?: { open: boolean; scanning: boolean; entries: number | null };
+    aerosync?: { open: boolean; scanning: boolean; entries: number | null; busy: boolean; scan_failed: boolean };
 }
 export interface GuiSnapshot {
     schema_version: 1; state_revision: number; version: string; locked: boolean; blocked: boolean;
@@ -42,7 +42,7 @@ export interface GuiSnapshot {
     queue: { active: number; pending: number; failed: number };
     settings?: GuiSettingsProjection;
     tools?: GuiToolsProjection;
-    aerosync?: { open: boolean; scanning: boolean; entries: number | null };
+    aerosync?: { open: boolean; scanning: boolean; entries: number | null; busy: boolean; scan_failed: boolean };
     control?: GuiControl;
 }
 const boundedText = (value: string) => value.slice(0, 4096);
@@ -75,7 +75,7 @@ export function buildGuiSnapshot(source: GuiSource, revision = 0): GuiSnapshot {
     if (source.settings) result.settings = buildSettingsProjection(source.settings);
     if (source.tools) result.tools = buildToolsProjection(source.tools);
     if (source.aerosync) {
-        result.aerosync = { open: source.aerosync.open, scanning: source.aerosync.scanning, entries: source.aerosync.entries };
+        result.aerosync = { open: source.aerosync.open, scanning: source.aerosync.scanning, entries: source.aerosync.entries, busy: source.aerosync.busy, scan_failed: source.aerosync.scan_failed };
     }
     return result;
 }
@@ -97,7 +97,7 @@ export interface GuiHandlers {
     toolsClose?(scope: ConnectScope): Promise<void>;
     aeroSyncOpen?(): void;
     /** Open the window and start a Compare of the two panels. */
-    aeroSyncCompare?(): void;
+    aeroSyncCompare?(): void | Promise<void>;
     aeroSyncClose?(): void;
 }
 export interface GuiRequest {
@@ -327,6 +327,8 @@ export class GuiController {
             if (intent !== 'tools_read' && (TOOLS_INTENTS as readonly string[]).includes(intent) && snapshot.tools?.protected) throw new GuiError('blocked');
             // The AeroSync window covers the panels: only its own intents run while it is open.
             if (snapshot.aerosync?.open && !(AEROSYNC_INTENTS as readonly string[]).includes(intent)) throw new GuiError('blocked');
+            // A sync or a restore runs inside the window: closing it or starting a scan would leave it with no progress and no Stop.
+            if (snapshot.aerosync?.busy && (AEROSYNC_INTENTS as readonly string[]).includes(intent)) throw new GuiError('busy');
             if (this.busy || (this.lease && this.lease.owner.id !== owner.id)) throw new GuiError('busy');
             if ((intent === 'navigate' || intent === 'refresh' || intent === 'select') &&
                 (!snapshot.panels[panelArg(args)] || snapshot.panels[panelArg(args)]?.loading)) throw new GuiError('blocked');
@@ -387,7 +389,7 @@ export class GuiController {
                     case 'aerosync_open': case 'aerosync_compare': case 'aerosync_close': {
                         const run = intent === 'aerosync_open' ? h.aeroSyncOpen : intent === 'aerosync_compare' ? h.aeroSyncCompare : h.aeroSyncClose;
                         if (!run) throw new GuiError('action_failed');
-                        run();
+                        await run();
                         break;
                     }
                     case 'navigate': navigationPath = await h.navigate(panelArg(args), args.path as string); break;
@@ -471,6 +473,7 @@ export class GuiController {
                 if (intent === 'connect' && this.state().blocked) throw new GuiError('pending_human');
                 await this.delay(25, epoch, deadline);
             }
+            if (intent === 'aerosync_compare' && this.state().aerosync?.scan_failed) throw new GuiError('action_failed', 'the scan failed: its result is not a comparison');
             if (intent === 'navigate') {
                 const panel = panelArg(args);
                 const before = snapshot.panels[panel]?.path;

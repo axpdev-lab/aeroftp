@@ -332,9 +332,9 @@ it('returns the detail of a refused request, not only its code', async () => {
 
 describe('the AeroSync intents', () => {
     beforeEach(() => {
-        source.aerosync = { open: false, scanning: false, entries: null };
-        handlers.aeroSyncOpen = vi.fn(() => { source.aerosync = { open: true, scanning: false, entries: null }; });
-        handlers.aeroSyncClose = vi.fn(() => { source.aerosync = { open: false, scanning: false, entries: null }; });
+        source.aerosync = { open: false, scanning: false, entries: null, busy: false, scan_failed: false };
+        handlers.aeroSyncOpen = vi.fn(() => { source.aerosync = { open: true, scanning: false, entries: null, busy: false, scan_failed: false }; });
+        handlers.aeroSyncClose = vi.fn(() => { source.aerosync = { open: false, scanning: false, entries: null, busy: false, scan_failed: false }; });
     });
 
     it('opens and closes the window, and reports it in the state', async () => {
@@ -344,15 +344,49 @@ describe('the AeroSync intents', () => {
 
     it('waits for the Compare to have a result, not only to start', async () => {
         handlers.aeroSyncCompare = vi.fn(() => {
-            source.aerosync = { open: true, scanning: true, entries: null };
-            setTimeout(() => { source.aerosync = { open: true, scanning: false, entries: 3 }; }, 300);
+            source.aerosync = { open: true, scanning: true, entries: null, busy: false, scan_failed: false };
+            setTimeout(() => { source.aerosync = { open: true, scanning: false, entries: 3, busy: false, scan_failed: false }; }, 300);
         });
         const reply = await controller.run({ name: 'aerosync_compare', timeout_ms: 5000 });
         expect(reply).toMatchObject({ ok: true, snapshot: { aerosync: { scanning: false, entries: 3 } } });
     });
 
+    it('waits for the new result when the window already holds one', async () => {
+        source.aerosync = { open: true, scanning: false, entries: 1, busy: false, scan_failed: false };
+        handlers.aeroSyncCompare = vi.fn(async () => {
+            source.aerosync = { open: true, scanning: true, entries: 1, busy: false, scan_failed: false };
+            setTimeout(() => { source.aerosync = { open: true, scanning: false, entries: 3, busy: false, scan_failed: false }; }, 300);
+        });
+        const reply = await controller.run({ name: 'aerosync_compare', timeout_ms: 5000 });
+        expect(reply).toMatchObject({ ok: true, snapshot: { aerosync: { scanning: false, entries: 3 } } });
+    });
+
+    it('reports a failed scan as an error, not as a Compare with no differences', async () => {
+        handlers.aeroSyncCompare = vi.fn(() => {
+            source.aerosync = { open: true, scanning: true, entries: null, busy: false, scan_failed: false };
+            setTimeout(() => { source.aerosync = { open: true, scanning: false, entries: 0, busy: false, scan_failed: true }; }, 100);
+        });
+        const reply = await controller.run({ name: 'aerosync_compare', timeout_ms: 5000 });
+        expect(reply).toMatchObject({ ok: false, error: 'action_failed', snapshot: { aerosync: { scan_failed: true } } });
+    });
+
+    it('refuses a Compare with no second side at once', async () => {
+        handlers.aeroSyncCompare = vi.fn(() => { throw new GuiError('blocked', 'needs a connected server or the second local panel'); });
+        const reply = await controller.run({ name: 'aerosync_compare', timeout_ms: 5000 });
+        expect(reply).toMatchObject({ ok: false, error: 'blocked' });
+    });
+
+    it('refuses to close the window or scan while a sync or a restore runs in it', async () => {
+        source.aerosync = { open: true, scanning: false, entries: 1, busy: true, scan_failed: false };
+        for (const name of ['aerosync_close', 'aerosync_compare', 'aerosync_open'] as const) {
+            expect(await controller.run({ name })).toMatchObject({ ok: false, error: 'busy' });
+        }
+        expect(handlers.aeroSyncClose).not.toHaveBeenCalled();
+        expect(source.aerosync.open).toBe(true);
+    });
+
     it('blocks the panels while the window is open', async () => {
-        source.aerosync = { open: true, scanning: false, entries: 1 };
+        source.aerosync = { open: true, scanning: false, entries: 1, busy: false, scan_failed: false };
         expect(await controller.run({ name: 'refresh', args: { panel: 'local' } })).toMatchObject({ ok: false, error: 'blocked' });
         expect(handlers.refresh).not.toHaveBeenCalled();
         expect((await controller.run({ name: 'state' })).ok).toBe(true);

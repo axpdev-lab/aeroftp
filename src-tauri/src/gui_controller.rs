@@ -382,13 +382,16 @@ fn valid_settings_view(settings: &SettingsView) -> bool {
     }
     true
 }
-/// The AeroSync window: open, a scan under way, and the entries of its result.
+/// The AeroSync window: open, a scan under way, the entries of its result, a sync
+/// or restore running inside it, and whether the last scan failed.
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct AeroSyncView {
     open: bool,
     scanning: bool,
     entries: Option<u64>,
+    busy: bool,
+    scan_failed: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -958,15 +961,14 @@ mod tests {
     #[test]
     fn a_reply_may_carry_the_aerosync_window_and_a_detail() {
         let mut value = unlocked_reply_with_settings();
-        value["snapshot"]["aerosync"] = json!({ "open": true, "scanning": false, "entries": 3 });
+        value["snapshot"]["aerosync"] = json!({ "open": true, "scanning": false, "entries": 3, "busy": false, "scan_failed": false });
         value["detail"] = json!("timeout_ms must be an integer from 100 to 30000");
         let reply = parse_reply(value, true).unwrap();
         assert_eq!(reply.snapshot.aerosync.unwrap().entries, Some(3));
         assert!(reply.detail.is_some());
 
         let mut locked = locked_reply();
-        locked["snapshot"]["aerosync"] =
-            json!({ "open": false, "scanning": false, "entries": null });
+        locked["snapshot"]["aerosync"] = json!({ "open": false, "scanning": false, "entries": null, "busy": false, "scan_failed": false });
         assert!(parse_reply(locked, false).is_err());
     }
 

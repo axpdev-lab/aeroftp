@@ -46,8 +46,8 @@ The current closed action catalog is:
 |--------|------------------------|------------|
 | `show_view` | `view`: `servers` or `files` | Requested view is committed |
 | `aerosync_open` | none | The AeroSync window is open, with no scan started |
-| `aerosync_compare` | none | The window is open and a Compare of the two panels has a result, in `aerosync.entries` of the state. Metadata only: nothing is transferred. Raise `timeout_ms` for a large tree |
-| `aerosync_close` | none | The window is closed |
+| `aerosync_compare` | none | The window is open and a Compare of the two panels has a result, in `aerosync.entries` of the state. Metadata only: nothing is transferred. Raise `timeout_ms` for a large tree. A scan that fails is `action_failed`, with no second side `blocked`, and `busy` while a sync or a restore runs in the window |
+| `aerosync_close` | none | The window is closed; `busy` while a sync or a restore runs in it |
 | `connect` | `profile_id`: exact saved profile ID | Requested active session is connected with a usable idle remote panel |
 | `navigate` | `panel`, `path` | Requested panel has committed the canonical path and is idle |
 | `refresh` | `panel` | Fresh listing is committed and idle |

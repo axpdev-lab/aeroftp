@@ -33,6 +33,7 @@ import { limitsFromHints, type ProviderFileLimits } from '../../utils/providerFi
 export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     isOpen,
     onClose,
+    onBusyChange,
     initialTab = 'compare',
     context,
     onApplyMirrorLeftToRight,
@@ -68,6 +69,9 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
             setVisitedTools(previous => previous.includes(activeTab as AeroSyncToolTab) ? previous : [...previous, activeTab as AeroSyncToolTab]);
         }
     }, [isOpen, activeTab]);
+
+    React.useEffect(() => { onBusyChange?.(syncRunning || restoreRunning); }, [onBusyChange, syncRunning, restoreRunning]);
+    React.useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
 
     const cancelSync = React.useCallback(() => {
         invoke('local_sync_cancel').catch(() => { /* no run in flight */ });
