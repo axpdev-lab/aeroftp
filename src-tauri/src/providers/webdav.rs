@@ -1556,38 +1556,11 @@ impl WebDavProvider {
             }
         };
 
-        // Host-specific User-Agent workaround for FileLu WebDAV.
-        //
-        // FileLu's WebDAV frontend (`webdav.filelu.com`, fronted by
-        // Cloudflare) returns `500 Internal Server Error` on GET
-        // requests whose User-Agent does not match a small allow-list.
-        // Empirically (2026-05-26, FileLu PRO account, AeroFTP v4.0.0):
-        //
-        //   `AeroFTP/4`                                   → 500 ISE
-        //   `WebDAV-Client/4.0 (compatible; AeroFTP)`     → 500 ISE
-        //   `curl/8.0.0`                                  → 500 ISE
-        //   `rclone/v1.74.0`                              → 200 OK
-        //
-        // PROPFIND/PUT/DELETE/MKCOL accept every UA on that list; only
-        // GET enforces the filter, so the issue is invisible until the
-        // first download attempt against `webdav.filelu.com`. The
-        // discriminator is not a simple keyword block (`curl` also
-        // fails); the most plausible cause is a Cloudflare WAF rule
-        // whitelisting a small set of known WebDAV clients on that
-        // hostname. We send `rclone/v1.74.0` here as a per-host
-        // workaround so FileLu downloads work for our users today;
-        // FileLu engineering has been briefed and asked to whitelist
-        // the real `AeroFTP/<n>` UA on their WAF. The override is
-        // host-scoped (`filelu.com`) so the standard AeroFTP UA stays
-        // in place for every other WebDAV server — notably pCloud,
-        // which relies on the major-version-pinned UA for honest
-        // device tracking.
-        let host_lower = self.config.url.to_ascii_lowercase();
-        let user_agent_override: Option<&'static str> = if host_lower.contains("filelu.com") {
-            Some("rclone/v1.74.0")
-        } else {
-            None
-        };
+        // FileLu's WebDAV frontend used to refuse GET with a 500 to every
+        // User-Agent but a few known clients, and this call sent rclone's for
+        // `filelu.com`. FileLu now accepts AeroFTP's own (checked 2026-11-01:
+        // GET 200, ranges 206, PUT, MOVE, COPY, DELETE), and rclone's is
+        // answered 206 on a plain GET. Every server gets the AeroFTP agent.
 
         // A rotated Digest nonce is replayed at most once per call, tracked
         // here rather than by attempt number: the 425 loop may already have
@@ -1611,9 +1584,6 @@ impl WebDavProvider {
             let mut req = self.request(method.clone(), path);
             if let Some(ref r) = referer {
                 req = req.header("Referer", r);
-            }
-            if let Some(ua) = user_agent_override {
-                req = req.header("User-Agent", ua);
             }
             let response = req.send().await.map_err(send_error)?;
 
