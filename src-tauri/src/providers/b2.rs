@@ -793,11 +793,13 @@ impl B2Provider {
             .body(body.to_string())
             .build()
             .map_err(|e| ProviderError::ConnectionFailed(format!("list_buckets build: {}", e)))?;
-        let resp = send_with_retry(&self.client, req, &self.retry_config)
-            .await
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("list_buckets send: {}", e))
-            })?;
+        let resp = send_with_retry(
+            &self.client,
+            req,
+            &self.retry_config.clone().for_safe_operation(),
+        )
+        .await
+        .map_http_err(|e| ProviderError::ConnectionFailed(format!("list_buckets send: {}", e)))?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -1035,11 +1037,15 @@ impl B2Provider {
             .map_err(|e| {
                 ProviderError::ConnectionFailed(format!("list_file_names build: {}", e))
             })?;
-        let resp = send_with_retry(&self.client, req, &self.retry_config)
-            .await
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("list_file_names send: {}", e))
-            })?;
+        let resp = send_with_retry(
+            &self.client,
+            req,
+            &self.retry_config.clone().for_safe_operation(),
+        )
+        .await
+        .map_http_err(|e| {
+            ProviderError::ConnectionFailed(format!("list_file_names send: {}", e))
+        })?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -1074,11 +1080,13 @@ impl B2Provider {
             .body(body.to_string())
             .build()
             .map_err(|e| ProviderError::ConnectionFailed(format!("get_upload_url build: {}", e)))?;
-        let resp = send_with_retry(&self.client, req, &self.retry_config)
-            .await
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("get_upload_url send: {}", e))
-            })?;
+        let resp = send_with_retry(
+            &self.client,
+            req,
+            &self.retry_config.clone().for_safe_operation(),
+        )
+        .await
+        .map_http_err(|e| ProviderError::ConnectionFailed(format!("get_upload_url send: {}", e)))?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -2362,11 +2370,15 @@ impl B2Provider {
             .map_err(|e| {
                 ProviderError::ConnectionFailed(format!("list_file_versions build: {}", e))
             })?;
-        let resp = send_with_retry(&self.client, req, &self.retry_config)
-            .await
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("list_file_versions send: {}", e))
-            })?;
+        let resp = send_with_retry(
+            &self.client,
+            req,
+            &self.retry_config.clone().for_safe_operation(),
+        )
+        .await
+        .map_http_err(|e| {
+            ProviderError::ConnectionFailed(format!("list_file_versions send: {}", e))
+        })?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -2465,11 +2477,15 @@ impl B2Provider {
             .map_err(|e| {
                 ProviderError::ConnectionFailed(format!("get_download_authorization build: {}", e))
             })?;
-        let resp = send_with_retry(&self.client, req, &self.retry_config)
-            .await
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("get_download_authorization send: {}", e))
-            })?;
+        let resp = send_with_retry(
+            &self.client,
+            req,
+            &self.retry_config.clone().for_safe_operation(),
+        )
+        .await
+        .map_http_err(|e| {
+            ProviderError::ConnectionFailed(format!("get_download_authorization send: {}", e))
+        })?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -2511,11 +2527,15 @@ impl B2Provider {
             .map_err(|e| {
                 ProviderError::ConnectionFailed(format!("list_unfinished build: {}", e))
             })?;
-        let resp = send_with_retry(&self.client, req, &self.retry_config)
-            .await
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("list_unfinished send: {}", e))
-            })?;
+        let resp = send_with_retry(
+            &self.client,
+            req,
+            &self.retry_config.clone().for_safe_operation(),
+        )
+        .await
+        .map_http_err(|e| {
+            ProviderError::ConnectionFailed(format!("list_unfinished send: {}", e))
+        })?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -5429,6 +5449,7 @@ mod tests {
             base_delay_ms: 1,
             max_delay_ms: 2,
             backoff_multiplier: 1.0,
+            ..Default::default()
         };
         (provider, seen, server)
     }

@@ -969,7 +969,7 @@ pub trait StorageProvider: Send + Sync {
     /// Executors must not wrap it in whole-file retries: those multiply the
     /// budget and may duplicate versions after an ambiguous upload response.
     fn manages_upload_retries(&self) -> bool {
-        false
+        http_retry::manages_upload_retries_for(self.provider_type())
     }
 
     /// Get display name for this provider instance

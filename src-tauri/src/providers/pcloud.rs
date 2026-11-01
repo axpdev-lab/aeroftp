@@ -492,6 +492,28 @@ impl PCloudProvider {
         url: &str,
         auth: &str,
     ) -> Result<reqwest::Response, ProviderError> {
+        self.get_with_policy(url, auth, HttpRetryConfig::default())
+            .await
+    }
+
+    /// pCloud's create/copy/upload-save commands are GET RPCs, not reads.
+    async fn get_after_refusal(
+        &self,
+        url: &str,
+        auth: &str,
+    ) -> Result<reqwest::Response, ProviderError> {
+        let response = self
+            .get_with_policy(url, auth, HttpRetryConfig::default().refused_only())
+            .await?;
+        Self::check_ambiguous_write(response)
+    }
+
+    async fn get_with_policy(
+        &self,
+        url: &str,
+        auth: &str,
+        config: HttpRetryConfig,
+    ) -> Result<reqwest::Response, ProviderError> {
         let request = self
             .client
             .get(url)
@@ -499,7 +521,7 @@ impl PCloudProvider {
             .build()
             .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
 
-        send_with_retry(&self.client, request, &HttpRetryConfig::default())
+        send_with_retry(&self.client, request, &config)
             .await
             .map_http_err(|e| ProviderError::NetworkError(e.to_string()))
     }
@@ -509,6 +531,36 @@ impl PCloudProvider {
     async fn get_with_token_param(
         &self,
         base_url: &str,
+    ) -> Result<reqwest::Response, ProviderError> {
+        self.get_with_token_policy(base_url, HttpRetryConfig::default())
+            .await
+    }
+
+    async fn get_after_refusal_with_token_param(
+        &self,
+        url: &str,
+    ) -> Result<reqwest::Response, ProviderError> {
+        let response = self
+            .get_with_token_policy(url, HttpRetryConfig::default().refused_only())
+            .await?;
+        Self::check_ambiguous_write(response)
+    }
+
+    fn check_ambiguous_write(
+        response: reqwest::Response,
+    ) -> Result<reqwest::Response, ProviderError> {
+        if response.status().is_server_error() {
+            return Err(ProviderError::ServerError(format!(
+                "pCloud operation returned {}; it may have completed. Check the remote state before retrying.", response.status()
+            )));
+        }
+        Ok(response)
+    }
+
+    async fn get_with_token_policy(
+        &self,
+        base_url: &str,
+        config: HttpRetryConfig,
     ) -> Result<reqwest::Response, ProviderError> {
         use secrecy::ExposeSecret;
         #[cfg(test)]
@@ -544,7 +596,7 @@ impl PCloudProvider {
                 ProviderError::NetworkError(format!("Failed to build request: {}", e))
             })?;
 
-        send_with_retry(&self.client, request, &HttpRetryConfig::default())
+        send_with_retry(&self.client, request, &config)
             .await
             .map_http_err(|e| ProviderError::NetworkError(e.to_string()))
     }
@@ -595,7 +647,7 @@ impl PCloudProvider {
         let auth = self.auth_header().await?;
         let delete_url = format!("{}/deletepublink?linkid={}", self.api_base(), link_id);
         let resp: PCloudResponse = self
-            .get_with_retry(&delete_url, &auth)
+            .get_after_refusal(&delete_url, &auth)
             .await?
             .json()
             .await
@@ -623,7 +675,7 @@ impl PCloudProvider {
 
         let auth = self.auth_header().await?;
         let resp: PCloudResponse = self
-            .get_with_retry(&url, &auth)
+            .get_after_refusal(&url, &auth)
             .await?
             .json()
             .await
@@ -650,7 +702,7 @@ impl PCloudProvider {
             urlencoding::encode(to)
         );
         let resp: PCloudResponse = self
-            .get_with_retry(&url, &auth)
+            .get_after_refusal(&url, &auth)
             .await?
             .json()
             .await
@@ -729,7 +781,7 @@ impl PCloudProvider {
         let url = format!("{}/upload_create", self.api_base());
         let auth = self.auth_header().await?;
         let resp: PCloudUploadCreateResponse = self
-            .get_with_retry(&url, &auth)
+            .get_after_refusal(&url, &auth)
             .await?
             .json()
             .await
@@ -1212,7 +1264,7 @@ impl StorageProvider for PCloudProvider {
 
         let auth = self.auth_header().await?;
         let resp: PCloudResponse = self
-            .get_with_retry(&url, &auth)
+            .get_after_refusal(&url, &auth)
             .await?
             .json()
             .await
@@ -1234,7 +1286,7 @@ impl StorageProvider for PCloudProvider {
         );
 
         let resp: PCloudResponse = self
-            .get_with_retry(&url, &auth)
+            .get_after_refusal(&url, &auth)
             .await?
             .json()
             .await
@@ -1252,7 +1304,7 @@ impl StorageProvider for PCloudProvider {
         );
 
         let resp: PCloudResponse = self
-            .get_with_retry(&url, &auth)
+            .get_after_refusal(&url, &auth)
             .await?
             .json()
             .await
@@ -1520,7 +1572,7 @@ impl StorageProvider for PCloudProvider {
 
         let auth = self.auth_header().await?;
         let resp: PCloudPubLink = self
-            .get_with_retry(&url, &auth)
+            .get_after_refusal(&url, &auth)
             .await?
             .json()
             .await
@@ -1690,7 +1742,7 @@ impl StorageProvider for PCloudProvider {
         );
 
         let resp: PCloudResponse = self
-            .get_with_retry(&url, &auth)
+            .get_after_refusal(&url, &auth)
             .await?
             .json()
             .await
@@ -1709,7 +1761,7 @@ impl StorageProvider for PCloudProvider {
         );
 
         let resp: PCloudResponse = self
-            .get_with_retry(&url, &auth)
+            .get_after_refusal(&url, &auth)
             .await?
             .json()
             .await
@@ -1936,7 +1988,7 @@ impl StorageProvider for PCloudProvider {
 
         let auth = self.auth_header().await?;
         let resp: PCloudResponse = self
-            .get_with_retry(&api_url, &auth)
+            .get_after_refusal(&api_url, &auth)
             .await?
             .json()
             .await
@@ -2205,7 +2257,7 @@ impl StorageProvider for PCloudProvider {
         );
         let auth = self.auth_header().await?;
         let resp: PCloudResponse = self
-            .get_with_retry(&url, &auth)
+            .get_after_refusal(&url, &auth)
             .await?
             .json()
             .await
@@ -2317,7 +2369,7 @@ impl PCloudProvider {
         let param = if is_folder { "folderid" } else { "fileid" };
         let url = format!("{}/trash_restore?{}={}", self.api_base(), param, id);
         let resp: PCloudSimpleResponse = self
-            .get_with_token_param(&url)
+            .get_after_refusal_with_token_param(&url)
             .await?
             .json()
             .await
@@ -2342,7 +2394,7 @@ impl PCloudProvider {
     pub async fn empty_trash(&self) -> Result<(), ProviderError> {
         let url = format!("{}/trash_clear", self.api_base());
         let resp: PCloudSimpleResponse = self
-            .get_with_token_param(&url)
+            .get_after_refusal_with_token_param(&url)
             .await?
             .json()
             .await
@@ -2371,7 +2423,7 @@ impl PCloudProvider {
         let param = if is_folder { "folderid" } else { "fileid" };
         let url = format!("{}/trash_clear?{}={}", self.api_base(), param, id);
         let resp: PCloudSimpleResponse = self
-            .get_with_token_param(&url)
+            .get_after_refusal_with_token_param(&url)
             .await?
             .json()
             .await
@@ -2396,6 +2448,48 @@ impl PCloudProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_folder_create_committed_before_503_is_sent_once() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let created = Arc::new(AtomicUsize::new(0));
+        let seen = created.clone();
+        let app = axum::Router::new().route(
+            "/createfolder",
+            axum::routing::get(move || {
+                let ordinal = seen.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if ordinal == 0 {
+                        (
+                            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                            r#"{"result":5000}"#,
+                        )
+                    } else {
+                        (axum::http::StatusCode::OK, r#"{"result":0}"#)
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = fixture_connected();
+        p.api_base_override = Some(format!("http://{addr}"));
+        let outcome = p.mkdir("/new").await;
+        server.abort();
+        assert!(
+            matches!(&outcome, Err(ProviderError::ServerError(message)) if message.contains("may have completed")),
+            "{outcome:?}"
+        );
+        assert_eq!(
+            created.load(Ordering::SeqCst),
+            1,
+            "a GET RPC can commit a create too"
+        );
+    }
 
     fn test_provider() -> PCloudProvider {
         PCloudProvider::new(PCloudConfig::new("client-id", "client-secret", "eu"))

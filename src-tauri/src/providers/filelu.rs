@@ -506,13 +506,35 @@ impl FileLuProvider {
     }
 
     async fn get_with_retry(&self, url: &str) -> Result<reqwest::Response, ProviderError> {
+        self.get_with_policy(url, HttpRetryConfig::default()).await
+    }
+
+    /// These RPCs mutate even though FileLu exposes them as GET. A 5xx may
+    /// follow a committed create/clone: return it without sending it again.
+    async fn get_after_refusal(&self, url: &str) -> Result<reqwest::Response, ProviderError> {
+        let response = self
+            .get_with_policy(url, HttpRetryConfig::default().refused_only())
+            .await?;
+        if response.status().is_server_error() {
+            return Err(ProviderError::ServerError(format!(
+                "FileLu operation returned {}; it may have completed. Check the remote state before retrying.", response.status()
+            )));
+        }
+        Ok(response)
+    }
+
+    async fn get_with_policy(
+        &self,
+        url: &str,
+        config: HttpRetryConfig,
+    ) -> Result<reqwest::Response, ProviderError> {
         let request = self.client.get(url).build().map_err(|e| {
             ProviderError::ConnectionFailed(format!(
                 "Build GET failed: {}",
                 redact_key(&e.to_string())
             ))
         })?;
-        send_with_retry(&self.client, request, &HttpRetryConfig::default())
+        send_with_retry(&self.client, request, &config)
             .await
             .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!(
@@ -543,14 +565,17 @@ impl FileLuProvider {
                     redact_key(&e.to_string())
                 ))
             })?;
-        send_with_retry(&self.client, request, &HttpRetryConfig::default())
-            .await
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!(
-                    "POST failed: {}",
-                    redact_key(&e.to_string())
-                ))
-            })
+        // The only caller asks for a direct download URL, not an upload or
+        // a new stored item, despite using a form POST.
+        send_with_retry(
+            &self.client,
+            request,
+            &HttpRetryConfig::default().for_safe_operation(),
+        )
+        .await
+        .map_http_err(|e| {
+            ProviderError::ConnectionFailed(format!("POST failed: {}", redact_key(&e.to_string())))
+        })
     }
 
     async fn parse_api<T: for<'de> serde::Deserialize<'de>>(
@@ -1319,7 +1344,7 @@ impl FileLuProvider {
                 ],
             )
         };
-        let resp = self.get_with_retry(&url).await?;
+        let resp = self.get_after_refusal(&url).await?;
         Self::ensure_api_ok(resp).await
     }
 
@@ -1350,7 +1375,7 @@ impl FileLuProvider {
                 &[("file_path", current_path), ("name", new_name)],
             )
         };
-        let resp = self.get_with_retry(&url).await?;
+        let resp = self.get_after_refusal(&url).await?;
         Self::ensure_api_ok(resp).await
     }
 
@@ -1404,7 +1429,7 @@ impl FileLuProvider {
             "file/set_password",
             &[("file_code", &file_code), ("file_password", password)],
         );
-        self.get_with_retry(&url).await?;
+        self.get_after_refusal(&url).await?;
         Ok(())
     }
 
@@ -1424,7 +1449,7 @@ impl FileLuProvider {
             "file/only_me",
             &[("file_code", &file_code), ("only_me", flag)],
         );
-        self.get_with_retry(&url).await?;
+        self.get_after_refusal(&url).await?;
         Ok(())
     }
 
@@ -1445,7 +1470,7 @@ impl FileLuProvider {
         let source_parent_fld_id = self.resolve_fld_id(&source_parent).await?;
 
         let url = self.api_url_with("file/clone", &[("file_code", &file_code)]);
-        let resp = self.get_with_retry(&url).await?;
+        let resp = self.get_after_refusal(&url).await?;
         let status = resp.status();
         let body = resp.text().await.map_http_err(|e| {
             ProviderError::NetworkError(format!(
@@ -1507,7 +1532,7 @@ impl FileLuProvider {
                 "file/set_folder",
                 &[("file_code", &new_code), ("fld_id", &fld_id_str)],
             );
-            let set_folder_resp = self.get_with_retry(&set_folder_url).await?;
+            let set_folder_resp = self.get_after_refusal(&set_folder_url).await?;
             Self::ensure_api_ok(set_folder_resp).await?;
             self.invalidate_cache_under(&source_parent);
         }
@@ -1520,7 +1545,7 @@ impl FileLuProvider {
                     "file/rename",
                     &[("file_code", &new_code), ("name", &candidate_name)],
                 );
-                let rename_resp = self.get_with_retry(&rename_url).await?;
+                let rename_resp = self.get_after_refusal(&rename_url).await?;
                 if Self::ensure_api_ok(rename_resp).await.is_ok() {
                     self.invalidate_cache_under(&source_parent);
                     break;
@@ -1560,7 +1585,7 @@ impl FileLuProvider {
             "folder/set_password",
             &[("fld_token", &token), ("fld_password", password)],
         );
-        self.get_with_retry(&url).await?;
+        self.get_after_refusal(&url).await?;
         Ok(())
     }
 
@@ -1586,7 +1611,7 @@ impl FileLuProvider {
                 ("fld_public", pub_),
             ],
         );
-        self.get_with_retry(&url).await?;
+        self.get_after_refusal(&url).await?;
         Ok(())
     }
 
@@ -1610,7 +1635,7 @@ impl FileLuProvider {
             "file/restore",
             &[("file_code", file_code), ("restore", "1")],
         );
-        self.get_with_retry(&url).await?;
+        self.get_after_refusal(&url).await?;
         Ok(())
     }
 
@@ -1631,7 +1656,7 @@ impl FileLuProvider {
             "upload/url",
             &[("url", remote_url), ("fld_id", &fld_id.to_string())],
         );
-        let resp = self.get_with_retry(&url).await?;
+        let resp = self.get_after_refusal(&url).await?;
         // Response is an array: [{"file_code":"..."}]
         let text = resp.text().await.map_http_err(|e| {
             ProviderError::NetworkError(format!(
@@ -1661,7 +1686,7 @@ impl FileLuProvider {
             return Err(ProviderError::NotConnected);
         }
         let url = self.api_url_with("file/permanent_delete", &[("file_code", file_code)]);
-        let resp = self.get_with_retry(&url).await?;
+        let resp = self.get_after_refusal(&url).await?;
         Self::ensure_api_ok(resp).await
     }
 }
@@ -1920,7 +1945,7 @@ impl StorageProvider for FileLuProvider {
                     "file/remove",
                     &[("file_code", &existing.file_code), ("remove", "1")],
                 );
-                let _ = self.get_with_retry(&del_url).await;
+                let _ = self.get_after_refusal(&del_url).await;
                 self.invalidate_cache_under(&dest_dir);
             }
         }
@@ -1929,6 +1954,7 @@ impl StorageProvider for FileLuProvider {
         // FileLu response: { status, sess_id, result: "<upload_url>", msg }
         // sess_id is at root (NOT inside result), result is a plain URL string.
         let server_url = self.api_url_with("upload/server", &[("fld_id", &fld_id.to_string())]);
+        // This only obtains an upload endpoint; no stored file is created.
         let resp = self.get_with_retry(&server_url).await?;
         let text = resp.text().await.map_http_err(|e| {
             ProviderError::NetworkError(format!(
@@ -1977,7 +2003,7 @@ impl StorageProvider for FileLuProvider {
 
         // Step 3: Upload via multipart with a streaming body. The request is
         // built again for every attempt over a freshly opened file, so a
-        // retry (a 503 from the upload server) sends the whole file again,
+        // retry after an explicit 429 refusal sends the whole file again,
         // and the bar holds where the failed attempt stopped until the new
         // one passes it.
         let local = Path::new(local_path);
@@ -2056,7 +2082,7 @@ impl StorageProvider for FileLuProvider {
                 "file/set_folder",
                 &[("file_code", &uploaded_file_code), ("fld_id", &fld_id_str)],
             );
-            let set_folder_resp = self.get_with_retry(&set_folder_url).await?;
+            let set_folder_resp = self.get_after_refusal(&set_folder_url).await?;
             Self::ensure_api_ok(set_folder_resp).await?;
         }
 
@@ -2101,7 +2127,7 @@ impl StorageProvider for FileLuProvider {
                 ("name", &folder_name),
             ],
         );
-        let resp = self.get_with_retry(&url).await?;
+        let resp = self.get_after_refusal(&url).await?;
         let result = Self::parse_api::<FolderCreateResult>(resp).await?;
         let new_fld_id = result
             .fld_id
@@ -2423,7 +2449,7 @@ impl StorageProvider for FileLuProvider {
             "file/only_me",
             &[("file_code", &file_code), ("only_me", "0")],
         );
-        self.get_with_retry(&url).await?;
+        self.get_after_refusal(&url).await?;
         Ok(ShareLinkResult {
             url: format!("https://filelu.com/{}", file_code),
             password: None,
@@ -2473,7 +2499,7 @@ impl StorageProvider for FileLuProvider {
         let norm_from = self.resolve_path(from);
         let file_code = self.resolve_file_code(&norm_from).await?;
         let clone_url = self.api_url_with("file/clone", &[("file_code", &file_code)]);
-        let resp = self.get_with_retry(&clone_url).await?;
+        let resp = self.get_after_refusal(&clone_url).await?;
         let body: serde_json::Value = resp.json().await.map_http_err(|e| {
             ProviderError::ParseError(format!("clone response: {}", redact_key(&e.to_string())))
         })?;
@@ -2500,7 +2526,7 @@ impl StorageProvider for FileLuProvider {
                     "file/set_folder",
                     &[("file_code", cloned), ("fld_id", &fld_id_str)],
                 );
-                let move_resp = self.get_with_retry(&move_url).await?;
+                let move_resp = self.get_after_refusal(&move_url).await?;
                 Self::ensure_api_ok(move_resp).await?;
 
                 // Rename if destination filename differs from source
@@ -2510,7 +2536,7 @@ impl StorageProvider for FileLuProvider {
                         "file/rename",
                         &[("file_code", cloned), ("name", &dest_name)],
                     );
-                    let rename_resp = self.get_with_retry(&rename_url).await?;
+                    let rename_resp = self.get_after_refusal(&rename_url).await?;
                     Self::ensure_api_ok(rename_resp).await?;
                 }
             }
@@ -2580,6 +2606,60 @@ fn mime_from_ext(ext: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn a_folder_create_committed_before_503_is_sent_once() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let created = Arc::new(AtomicUsize::new(0));
+        let seen = created.clone();
+        let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
+            let seen = seen.clone();
+            async move {
+                if uri.path().ends_with("/folder/create") {
+                    let ordinal = seen.fetch_add(1, Ordering::SeqCst);
+                    if ordinal == 0 {
+                        return (
+                            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                            axum::Json(serde_json::json!({"status":503})),
+                        );
+                    }
+                    return (
+                        axum::http::StatusCode::OK,
+                        axum::Json(serde_json::json!({"status":200,"result":{"fld_id":2}})),
+                    );
+                }
+                (
+                    axum::http::StatusCode::OK,
+                    axum::Json(
+                        serde_json::json!({"status":200,"result":{"files":[],"folders":[]}}),
+                    ),
+                )
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = FileLuProvider::new(FileLuConfig {
+            api_key: secrecy::SecretString::from("fixture-key".to_string()),
+            initial_path: None,
+        });
+        p.connected = true;
+        p.api_origin_override = Some(format!("http://{addr}"));
+        let outcome = p.mkdir("/new").await;
+        server.abort();
+        assert!(
+            matches!(&outcome, Err(ProviderError::ServerError(message)) if message.contains("may have completed")),
+            "{outcome:?}"
+        );
+        assert_eq!(
+            created.load(Ordering::SeqCst),
+            1,
+            "the gateway error must not create a second folder"
+        );
+    }
+
     #[test]
     fn sync_account_identity_never_uses_the_random_resume_fallback() {
         let mut provider = FileLuProvider::new(FileLuConfig {
@@ -3469,6 +3549,18 @@ mod tests {
         Vec<(u64, u64)>,
         crate::providers::upload_progress::fixture::Received,
     ) {
+        upload_against_fixture_mode(upload_body, busy_first, false).await
+    }
+
+    async fn upload_against_fixture_mode(
+        upload_body: &'static str,
+        busy_first: bool,
+        batch: bool,
+    ) -> (
+        Result<(), ProviderError>,
+        Vec<(u64, u64)>,
+        crate::providers::upload_progress::fixture::Received,
+    ) {
         use crate::providers::upload_progress::fixture::{
             recorder, serve_logged, temp_file, Route,
         };
@@ -3500,25 +3592,67 @@ mod tests {
         provider.api_origin_override = Some(origin);
         let file = temp_file(300 * 1024);
         let (callback, updates) = recorder();
-        let outcome = provider
-            .upload(file.path().to_str().unwrap(), "/f.bin", Some(callback))
-            .await;
+        let outcome = if batch {
+            use crate::provider_transfer_executor::{
+                ProviderExecutorSessionModel, ProviderUploadExecutor,
+            };
+            use crate::transfer_orchestrator::TransferExecutor;
+            let executor = ProviderUploadExecutor::new(
+                std::sync::Arc::new(crate::transfer_event_sink::NoopTransferSink),
+                std::sync::Arc::new(tokio::sync::Mutex::new(Some(Box::new(provider)))),
+                crate::transfer_settings::ResolvedTransferSettings {
+                    requested_max_concurrent: 1,
+                    max_concurrent: 1,
+                    retry_count: 2,
+                    timeout_seconds: 30,
+                    download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(
+                        1,
+                    ),
+                    sftp_download_preset: None,
+                },
+                None,
+                tokio_util::sync::CancellationToken::new(),
+                ProviderExecutorSessionModel::LockedSingle {
+                    provider_type: Some(ProviderType::FileLu),
+                },
+                crate::transfer_dag::TransferCapabilities::default(),
+            );
+            let result = executor
+                .execute(crate::transfer_domain::TransferEntry {
+                    id: "uncertain-filelu".into(),
+                    display_name: "f.bin".into(),
+                    remote_path: "/f.bin".into(),
+                    local_path: file.path().to_string_lossy().into_owned(),
+                    size: 300 * 1024,
+                    modified: None,
+                })
+                .await;
+            assert_eq!(executor.take_transfer_attempts("uncertain-filelu"), Some(1));
+            assert!(
+                matches!(result, crate::transfer_domain::TransferOutcome::Failed(_)),
+                "{result:?}"
+            );
+            Err(ProviderError::TransferFailed(
+                "uncertain batch fixture".into(),
+            ))
+        } else {
+            provider
+                .upload(file.path().to_str().unwrap(), "/f.bin", Some(callback))
+                .await
+        };
         server.abort();
         let updates = updates.lock().unwrap().clone();
         (outcome, updates, received)
     }
 
-    /// A 503 from the upload server is retried with the whole file: the
-    /// request is built again over a reopened file. The retry used to go out
-    /// with the multipart headers and no body. The bar never goes back while
-    /// the second attempt resends what the first had sent, and reaches 100
-    /// once, at the end.
+    /// A gateway can return 503 after consuming and committing the upload.
+    /// Do not create another file, and do not announce completion without ACK.
     #[tokio::test]
-    async fn a_busy_upload_server_gets_the_whole_file_again() {
+    async fn an_ambiguous_upload_is_sent_once_with_its_whole_body() {
         let (outcome, updates, received) =
             upload_against_fixture_logged(r#"[{"file_code":"abc","file_status":"OK"}]"#, true)
                 .await;
-        assert!(outcome.is_ok(), "{outcome:?}");
+        assert!(outcome.is_err(), "{outcome:?}");
         let uploads: Vec<usize> = received
             .lock()
             .unwrap()
@@ -3526,15 +3660,38 @@ mod tests {
             .filter(|(path, _)| *path == "/up")
             .map(|&(_, len)| len)
             .collect();
-        assert_eq!(uploads.len(), 2, "{uploads:?}");
-        assert!(uploads[0] > 300 * 1024, "{uploads:?}");
-        assert_eq!(uploads[0], uploads[1], "the retry carried a different body");
-        let total = 300 * 1024;
-        crate::providers::upload_progress::fixture::assert_real_progress(&updates, total, true);
-        assert_eq!(
-            updates.iter().filter(|&&(sent, _)| sent == total).count(),
-            1
+        assert_eq!(uploads.len(), 1, "{uploads:?}");
+        assert!(
+            uploads[0] > 300 * 1024,
+            "the first attempt must retain the multipart body: {uploads:?}"
         );
+        let total = 300 * 1024;
+        crate::providers::upload_progress::fixture::assert_real_progress(&updates, total, false);
+        assert!(
+            !updates.iter().any(|&(sent, _)| sent == total),
+            "no acknowledgement, no 100 percent"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_batch_does_not_recreate_an_ambiguous_filelu_upload() {
+        let (outcome, _, received) =
+            upload_against_fixture_mode(r#"[{"file_code":"abc","file_status":"OK"}]"#, true, true)
+                .await;
+        assert!(outcome.is_err());
+        let uploads: Vec<_> = received
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(path, _)| *path == "/up")
+            .map(|(_, len)| *len)
+            .collect();
+        assert_eq!(
+            uploads.len(),
+            1,
+            "the executor must respect the transport's replay policy"
+        );
+        assert!(uploads[0] > 300 * 1024);
     }
 
     /// The multipart upload streams the file: the bar follows the bytes going
