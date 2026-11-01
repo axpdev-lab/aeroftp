@@ -19518,6 +19518,27 @@ mod folder_download_live_tests {
         ));
     }
 
+    /// A walk that outlasts its budget stops with an error and starts no further
+    /// listing, so the commands behind it can have the provider.
+    #[tokio::test]
+    async fn a_walked_search_stops_at_its_budget() {
+        let (mut tree, state) = FolderTree::new(&["a.txt", "sub/a.txt"]);
+        let outcome = crate::providers::find_by_walk_within(
+            &mut tree,
+            "/r",
+            "a.txt",
+            std::time::Duration::ZERO,
+        )
+        .await;
+        assert!(
+            outcome
+                .as_ref()
+                .is_err_and(|error| error.to_string().contains("search a smaller folder")),
+            "{outcome:?}"
+        );
+        assert!(state.lock().unwrap().listed.is_empty());
+    }
+
     /// A provider's own search with more hits than the limit returns as many
     /// as the walk does: its callers read that many as a search cut short, and
     /// they say "the first 500" of what they show.

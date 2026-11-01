@@ -4224,7 +4224,9 @@ impl StorageProvider for SftpProvider {
                 // be read either.
                 Err(e) => match classify_sftp_list_err(e) {
                     SftpListFailure::Decided(
-                        lost @ (ProviderError::ConnectionLost(_) | ProviderError::NotConnected),
+                        lost @ (ProviderError::ConnectionLost(_)
+                        | ProviderError::NotConnected
+                        | ProviderError::Timeout),
                     ) => return Err(lost),
                     // The folder searched itself is not an empty result, and
                     // it fails as `list` of that folder fails.

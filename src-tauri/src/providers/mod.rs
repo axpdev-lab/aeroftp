@@ -197,6 +197,11 @@ pub const FIND_RESULT_LIMIT: usize = 500;
 /// walks, and a search with few matches would otherwise read a whole account.
 const FIND_FOLDER_LIMIT: usize = 20_000;
 
+/// How long a walk goes on starting new listings. The provider is held while it
+/// walks, so the commands behind it wait. Checked between listings: a listing cut
+/// halfway could leave a session unusable, and each is bounded by its provider.
+const FIND_WALK_BUDGET: std::time::Duration = std::time::Duration::from_secs(600);
+
 /// One absolute root for the walk and the listing, with `.` and `..` resolved.
 fn search_root(start: &str, path: &str) -> String {
     let joined = if path.starts_with('/') {
@@ -244,6 +249,18 @@ pub(crate) async fn find_by_walk<P>(
 where
     P: StorageProvider + ?Sized,
 {
+    find_by_walk_within(provider, path, pattern, FIND_WALK_BUDGET).await
+}
+
+pub(crate) async fn find_by_walk_within<P>(
+    provider: &mut P,
+    path: &str,
+    pattern: &str,
+    budget: std::time::Duration,
+) -> Result<Vec<RemoteEntry>, ProviderError>
+where
+    P: StorageProvider + ?Sized,
+{
     // A listing may answer from what it kept: without a session that would read
     // as a search that found nothing.
     if !provider.is_connected() {
@@ -252,7 +269,7 @@ where
     // Some providers move their current folder as they list: a search must not
     // leave a later relative upload or delete in the last folder it walked.
     let start = provider.pwd().await?;
-    let found = walk_for_find(provider, path, pattern, &start).await;
+    let found = walk_for_find(provider, path, pattern, &start, budget).await;
     if provider.pwd().await.ok().as_deref() != Some(start.as_str()) {
         provider.cd(&start).await?;
     }
@@ -264,6 +281,7 @@ async fn walk_for_find<P>(
     path: &str,
     pattern: &str,
     start: &str,
+    budget: std::time::Duration,
 ) -> Result<Vec<RemoteEntry>, ProviderError>
 where
     P: StorageProvider + ?Sized,
@@ -273,11 +291,18 @@ where
     let mut folders = vec![root.clone()];
     let mut listed = 0;
     let mut results = Vec::new();
+    let started = std::time::Instant::now();
     while let Some(folder) = folders.pop() {
         listed += 1;
         if listed > FIND_FOLDER_LIMIT {
             return Err(ProviderError::Other(format!(
                 "Search stopped after {FIND_FOLDER_LIMIT} folders under {root}: search a smaller folder"
+            )));
+        }
+        if started.elapsed() >= budget {
+            return Err(ProviderError::Other(format!(
+                "Search stopped after {} s under {root}: search a smaller folder",
+                budget.as_secs()
             )));
         }
         let entries = match provider.list(&folder).await {

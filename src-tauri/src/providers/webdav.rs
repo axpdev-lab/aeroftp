@@ -4305,6 +4305,7 @@ impl StorageProvider for WebDavProvider {
                     "Session expired".to_string(),
                 ))
             }
+            StatusCode::FORBIDDEN => Err(ProviderError::PermissionDenied(list_path)),
             status => {
                 tracing::error!("[WebDAV] Server error: {}", status);
                 Err(ProviderError::ServerError(format!(
@@ -9837,6 +9838,12 @@ mod walk_scope_tests {
                         .body(axum::body::Body::empty())
                         .unwrap();
                 }
+                if path.ends_with("/refused") {
+                    return axum::response::Response::builder()
+                        .status(403)
+                        .body(axum::body::Body::empty())
+                        .unwrap();
+                }
                 let Some((_, names)) = listings.iter().find(|(folder, _)| *folder == path) else {
                     return axum::response::Response::builder()
                         .status(404)
@@ -9916,12 +9923,12 @@ mod walk_scope_tests {
         ],
     ];
 
-    /// A collection under the one searched that is gone leaves the rest of the
+    /// A collection under the one searched that is gone or refused leaves the rest of the
     /// search. A sign-in that ended under it fails the search: the folders
     /// after it could not be read either.
     #[tokio::test]
     async fn a_find_skips_a_gone_collection_and_fails_on_an_ended_session() {
-        const GONE: Listings = &[("/x", &["a.txt", "gone/"])];
+        const GONE: Listings = &[("/x", &["a.txt", "gone/", "refused/"])];
         let mut provider = provider_on_listings(GONE).await;
         let found = provider.find("/x", "*.txt").await.unwrap();
         assert_eq!(found.len(), 1, "{found:?}");
