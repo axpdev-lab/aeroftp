@@ -3071,14 +3071,21 @@ impl StorageProvider for SftpProvider {
     }
 
     fn download_was_refused(&self) -> bool {
+        in_scp_mode!(self.download_was_refused());
         self.download_time.is_refused()
     }
 
     fn take_download_time(&mut self, source_refused: bool) -> Option<String> {
+        if let Some(scp) = self.scp.as_mut() {
+            return scp.take_download_time(source_refused);
+        }
         self.download_time.take(source_refused)
     }
 
     fn expect_moved_source(&mut self) {
+        if let Some(scp) = self.scp.as_mut() {
+            return scp.expect_moved_source();
+        }
         self.download_time.expect_moved();
     }
 
