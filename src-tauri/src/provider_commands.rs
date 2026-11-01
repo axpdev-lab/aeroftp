@@ -2732,23 +2732,29 @@ async fn run_dag_download_leaf(
             "Download routed to Legacy engine: {} ({})",
             filename, decision.reason
         );
-        let result = {
+        // The time is taken under the same lock: another transfer on this session
+        // would start a record of its own.
+        let (result, read_time) = {
             let mut guard = provider.lock().await;
             match guard.as_mut() {
                 Some(p) => {
-                    let dl = async { p.download(&remote_path, &local_path, progress_cb).await };
-                    match &cancel_token {
-                        Some(tok) => tokio::select! {
-                            biased;
-                            _ = tok.cancelled() => Err(ProviderError::TransferFailed(
-                                "Transfer cancelled by user".to_string(),
-                            )),
-                            r = dl => r,
-                        },
-                        None => dl.await,
-                    }
+                    let result = {
+                        let dl = async { p.download(&remote_path, &local_path, progress_cb).await };
+                        match &cancel_token {
+                            Some(tok) => tokio::select! {
+                                biased;
+                                _ = tok.cancelled() => Err(ProviderError::TransferFailed(
+                                    "Transfer cancelled by user".to_string(),
+                                )),
+                                r = dl => r,
+                            },
+                            None => dl.await,
+                        }
+                    };
+                    let read_time = p.take_download_time(false);
+                    (result, read_time)
                 }
-                None => Err(ProviderError::NotConnected),
+                None => (Err(ProviderError::NotConnected), None),
             }
         };
         return match result {
@@ -2759,7 +2765,10 @@ async fn run_dag_download_leaf(
                 // (breaking overwrite-if-newer sync) and never finished the
                 // progress bar (audit W1.2, the prerequisite for any future
                 // download->Legacy routing carve-out).
-                crate::preserve_remote_mtime(&local_path, modified.as_deref());
+                crate::preserve_remote_mtime(
+                    &local_path,
+                    read_time.as_deref().or(modified.as_deref()),
+                );
                 let actual_size = tokio::fs::metadata(&local_path)
                     .await
                     .map(|m| m.len())
@@ -3604,6 +3613,7 @@ pub async fn provider_download_file(
     // goes on through the legacy resume, which the segmented engine (writing
     // its own pre-sized `.aerosegtmp`) would start over. On hard failure we fall
     // through to the legacy single-stream branch below.
+    let mut source_refused = false;
     let mut segmented_result: Option<Result<(), String>> = None;
     // Auto and SFTP presets retain the GUI's 250 MiB fan-out cutoff. An
     // explicit segment count is user intent, so it takes the explicit rule:
@@ -3652,6 +3662,7 @@ pub async fn provider_download_file(
                 // stands: an old time only makes the next sync download again.
                 // A Stop during the reading ends in the branch below.
                 if e.refused_by_the_source() {
+                    source_refused = true;
                     let reading = tokio::select! {
                         biased;
                         _ = session_cancel.cancelled() => None,
@@ -3790,6 +3801,9 @@ pub async fn provider_download_file(
         .cancel_flag
         .store(false, std::sync::atomic::Ordering::Relaxed);
     let dl_cancel = state.cancel_flag.clone();
+    if source_refused {
+        provider.expect_moved_source();
+    }
     let result = {
         let work = async {
             if let Some(Ok(())) = &segmented_result {
@@ -3845,7 +3859,15 @@ pub async fn provider_download_file(
 
     match &result {
         Ok(()) => {
-            // Preserve remote mtime on the local file
+            // Preserve remote mtime on the local file: what carried the bytes
+            // knows it best, after a refusal.
+            // Windows that published read no stream: the provider's record is
+            // not about this file.
+            if !matches!(segmented_result, Some(Ok(()))) {
+                if let Some(time) = provider.take_download_time(source_refused) {
+                    modified = Some(time);
+                }
+            }
             crate::preserve_remote_mtime(&local_path, modified.as_deref());
             let actual_size = tokio::fs::metadata(&local_path)
                 .await

@@ -200,7 +200,7 @@ describe('runFileBatch keeps one writer per destination', () => {
     // The destination is where the file lands: the local path of a download,
     // the remote path of an upload. Without the claim, two picked files with
     // one name from different folders shared a batch and one destination.
-    const start = APP.indexOf('const runFileBatch = async (');
+    const start = APP.indexOf('const runFileBatch = useLatestCallback(async (');
     const end = APP.indexOf('const launchBatch = async', start);
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
@@ -219,7 +219,7 @@ describe('a cut on a legacy session keeps per-file calls', () => {
   });
 
   it('fileBatchSessionFlags marks a cut on a session that is not a provider session', () => {
-    const start = APP.indexOf('const fileBatchSessionFlags = (');
+    const start = APP.indexOf('const fileBatchSessionFlags = useLatestCallback((');
     const body = APP.slice(start, APP.indexOf('};', start));
     expect(body).toMatch(/legacyCut: !!options\.cut && !usesProviderApi\(protocol\)/);
   });

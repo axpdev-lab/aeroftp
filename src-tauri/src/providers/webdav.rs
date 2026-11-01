@@ -578,6 +578,8 @@ pub struct WebDavProvider {
     /// Multi-thread concurrent-Range download (rclone `--multi-thread-streams`).
     /// `1` = disabled (default). Set via `set_multi_thread_download`.
     multi_thread_streams: usize,
+    /// What the last `download` read, see `DownloadTime`.
+    download_time: super::multi_thread::DownloadTime,
     /// Files at or above this size use the concurrent-Range path when
     /// `multi_thread_streams >= 2`.
     multi_thread_cutoff: u64,
@@ -1056,6 +1058,7 @@ impl WebDavProvider {
             connected: false,
             digest_auth: None,
             server_root: None,
+            download_time: Default::default(),
             multi_thread_streams: 1,
             multi_thread_cutoff: 8 * 1024 * 1024,
             single_file_mode: None,
@@ -1356,17 +1359,34 @@ impl WebDavProvider {
                         _ => {}
                     }
                 }
+                // Every piece goes in, whitespace included: an ETag arrives as
+                // `&quot;abc&quot;` from SabreDAV (Nextcloud, ownCloud), so it
+                // is Text pieces around GeneralRef ones, and a space between
+                // two references is part of the value. Scalars are trimmed
+                // once below.
                 Ok(Event::Text(ref t)) => {
                     if let Some(tag) = current_tag.as_deref() {
-                        let text = t.as_ref().to_string();
-                        if !text.trim().is_empty() {
-                            match tag {
-                                "getcontentlength" => size_text.push_str(&text),
-                                "getlastmodified" => modified_text.push_str(&text),
-                                "getcontenttype" => content_type_text.push_str(&text),
-                                "getetag" => etag_text.push_str(&text),
-                                _ => {}
-                            }
+                        let text = t.as_ref();
+                        match tag {
+                            "getcontentlength" => size_text.push_str(text),
+                            "getlastmodified" => modified_text.push_str(text),
+                            "getcontenttype" => content_type_text.push_str(text),
+                            "getetag" => etag_text.push_str(text),
+                            _ => {}
+                        }
+                    }
+                }
+                Ok(Event::GeneralRef(ref reference)) => {
+                    if let (Some(tag), Some(expanded)) = (
+                        current_tag.as_deref(),
+                        super::xml_text::xml_entity_to_str(reference.as_ref()),
+                    ) {
+                        match tag {
+                            "getcontentlength" => size_text.push_str(&expanded),
+                            "getlastmodified" => modified_text.push_str(&expanded),
+                            "getcontenttype" => content_type_text.push_str(&expanded),
+                            "getetag" => etag_text.push_str(&expanded),
+                            _ => {}
                         }
                     }
                 }
@@ -4488,6 +4508,18 @@ impl StorageProvider for WebDavProvider {
         Ok(())
     }
 
+    fn download_was_refused(&self) -> bool {
+        self.download_time.is_refused()
+    }
+
+    fn take_download_time(&mut self, source_refused: bool) -> Option<String> {
+        self.download_time.take(source_refused)
+    }
+
+    fn expect_moved_source(&mut self) {
+        self.download_time.expect_moved();
+    }
+
     async fn download(
         &mut self,
         remote_path: &str,
@@ -4508,6 +4540,7 @@ impl StorageProvider for WebDavProvider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        self.download_time.begin();
 
         let mut on_progress = on_progress;
 
@@ -4517,6 +4550,7 @@ impl StorageProvider for WebDavProvider {
         // The probe + closure go through the live reqwest client with a
         // precomputed Basic header; no credential is reconstructed.
         if self.multi_thread_streams >= 2
+            && !self.download_time.is_refused()
             && self.digest_auth.is_none()
             && !super::multi_thread::size_hint_rules_out_ranges(size_hint, self.multi_thread_cutoff)
         {
@@ -4554,6 +4588,10 @@ impl StorageProvider for WebDavProvider {
                 super::multi_thread::HttpRangeAttempt::Completed => return Ok(()),
                 super::multi_thread::HttpRangeAttempt::Failed(e) => return Err(e),
                 super::multi_thread::HttpRangeAttempt::Fallback(p) => on_progress = p,
+                super::multi_thread::HttpRangeAttempt::Refused(p) => {
+                    self.download_time.refused();
+                    on_progress = p;
+                }
             }
         }
 
@@ -4576,6 +4614,7 @@ impl StorageProvider for WebDavProvider {
                 let total_size = full_object_total
                     .or_else(|| response.content_length())
                     .unwrap_or(0);
+                let read_time = super::multi_thread::response_time(response.headers());
                 let mut stream = response.bytes_stream();
                 let mut atomic = super::atomic_write::AtomicFile::new(local_path)
                     .await
@@ -4633,6 +4672,7 @@ impl StorageProvider for WebDavProvider {
                 }
                 atomic.commit().await.map_err(ProviderError::IoError)?;
 
+                self.download_time.read(read_time);
                 Ok(())
             }
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(remote_path.to_string())),
@@ -5941,6 +5981,7 @@ impl StorageProvider for WebDavProvider {
         _offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.download_time.begin();
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -6652,6 +6693,26 @@ mod tests {
         outcome.unwrap();
         assert_eq!(*received.lock().unwrap(), [("/up", 1024 * 1024)]);
         assert_real_progress(&updates.lock().unwrap(), 1024 * 1024, true);
+    }
+
+    #[tokio::test]
+    async fn a_refused_download_reports_the_time_of_what_carried_its_bytes() {
+        use super::super::multi_thread::pin_server::{start, PinMode, WHOLE_READ_TIME};
+        let server = start(PinMode::RefusedReplaced).await;
+        let mut provider =
+            WebDavProvider::new(test_config(&format!("http://{}/", server.addr))).unwrap();
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("big.bin");
+        provider
+            .download("/big.bin", out.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!(
+            provider.take_download_time(false).as_deref(),
+            Some(WHOLE_READ_TIME)
+        );
     }
 
     #[tokio::test]
@@ -8588,6 +8649,40 @@ mod tests {
         let entry = WebDavProvider::extract_single_file_entry(xml, "/AbCd/my%20file.txt").unwrap();
         assert_eq!(entry.name, "my file.txt");
         assert_eq!(entry.path, "/my file.txt");
+    }
+
+    /// SabreDAV (Nextcloud, ownCloud) writes the quotes of an ETag as
+    /// `&quot;`. Without the reference arm the quotes were dropped, and a
+    /// single-file entry carried no quotes where the listing carries them.
+    /// The raw space between two references arrives as a whitespace-only
+    /// piece and belongs to the value as much as `&#32;` does.
+    #[test]
+    fn extract_single_file_entry_keeps_entities_in_the_props() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+            <d:multistatus xmlns:d="DAV:">
+                <d:response>
+                    <d:href>/s/AbCd</d:href>
+                    <d:propstat>
+                        <d:prop>
+                            <d:resourcetype/>
+                            <d:getcontentlength>10</d:getcontentlength>
+                            <d:getcontenttype>text/plain; charset=&quot;utf-8&quot;</d:getcontenttype>
+                            <d:getetag>&quot;a&amp; &amp;b&#32;1&quot;</d:getetag>
+                        </d:prop>
+                        <d:status>HTTP/1.1 200 OK</d:status>
+                    </d:propstat>
+                </d:response>
+            </d:multistatus>"#;
+
+        let entry = WebDavProvider::extract_single_file_entry(xml, "/s/AbCd/notes.txt").unwrap();
+        assert_eq!(
+            entry.metadata.get("etag").map(String::as_str),
+            Some("\"a& &b 1\"")
+        );
+        assert_eq!(
+            entry.mime_type.as_deref(),
+            Some("text/plain; charset=\"utf-8\"")
+        );
     }
 
     /// Issue #264 — when single-file mode is active, `build_url` must return

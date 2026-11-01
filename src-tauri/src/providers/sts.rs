@@ -480,7 +480,11 @@ fn parse_sts_error(xml: &str) -> (Option<String>, Option<String>) {
 /// Parse the `<Credentials>` block of a successful `AssumeRole` response.
 fn parse_assume_role_response(xml: &str) -> Result<TempCredentials, ProviderError> {
     let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(true);
+    // The values are base64, a JWT and an RFC 3339 time, but XML lets any
+    // character arrive as a reference, and quick-xml then hands the value
+    // over in pieces around it. The pieces are joined per field and trimmed
+    // once at the end, as in `parse_error_response` above.
+    reader.config_mut().trim_text(false);
 
     let mut in_credentials = false;
     let mut cur: Option<&'static str> = None;
@@ -502,16 +506,34 @@ fn parse_assume_role_response(xml: &str) -> Result<TempCredentials, ProviderErro
             },
             Ok(Event::Text(t)) => {
                 if let Some(field) = cur {
-                    // AWS credential values are base64 (no XML-special chars),
-                    // so the raw bytes are byte-exact; matches the rest of the
-                    // S3 XML parsing in this crate.
-                    let text = t.as_ref().to_string();
+                    let text = t.as_ref();
                     match field {
-                        "akid" => access_key_id = Some(text),
-                        "secret" => secret_access_key = Some(text),
-                        "token" => session_token = Some(text),
-                        "expiry" => expiration_raw = Some(text),
+                        "akid" => access_key_id.get_or_insert_with(String::new).push_str(text),
+                        "secret" => secret_access_key
+                            .get_or_insert_with(String::new)
+                            .push_str(text),
+                        "token" => session_token.get_or_insert_with(String::new).push_str(text),
+                        "expiry" => expiration_raw
+                            .get_or_insert_with(String::new)
+                            .push_str(text),
                         _ => {}
+                    }
+                }
+            }
+            Ok(Event::GeneralRef(e)) => {
+                if let Some(field) = cur {
+                    if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
+                        match field {
+                            "akid" => access_key_id.get_or_insert_with(String::new).push_str(&ch),
+                            "secret" => secret_access_key
+                                .get_or_insert_with(String::new)
+                                .push_str(&ch),
+                            "token" => session_token.get_or_insert_with(String::new).push_str(&ch),
+                            "expiry" => {
+                                expiration_raw.get_or_insert_with(String::new).push_str(&ch)
+                            }
+                            _ => {}
+                        }
                     }
                 }
             }
@@ -527,16 +549,21 @@ fn parse_assume_role_response(xml: &str) -> Result<TempCredentials, ProviderErro
         buf.clear();
     }
 
-    let access_key_id = access_key_id
+    let trimmed = |value: Option<String>| value.map(|s| s.trim().to_string());
+    let access_key_id = trimmed(access_key_id)
         .filter(|s| !s.is_empty())
         .ok_or_else(|| ProviderError::ParseError("STS response missing AccessKeyId".to_string()))?;
-    let secret_access_key = secret_access_key.filter(|s| !s.is_empty()).ok_or_else(|| {
-        ProviderError::ParseError("STS response missing SecretAccessKey".to_string())
-    })?;
-    let session_token = session_token.filter(|s| !s.is_empty()).ok_or_else(|| {
-        ProviderError::ParseError("STS response missing SessionToken".to_string())
-    })?;
-    let expiration = expiration_raw.and_then(|s| {
+    let secret_access_key = trimmed(secret_access_key)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            ProviderError::ParseError("STS response missing SecretAccessKey".to_string())
+        })?;
+    let session_token = trimmed(session_token)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            ProviderError::ParseError("STS response missing SessionToken".to_string())
+        })?;
+    let expiration = trimmed(expiration_raw).and_then(|s| {
         DateTime::parse_from_rfc3339(&s)
             .ok()
             .map(|dt| dt.with_timezone(&Utc))
@@ -746,6 +773,31 @@ mod tests {
             creds.session_token.expose_secret(),
             "FQoGZXIvYXdzEXAMPLETOKEN"
         );
+        assert_eq!(
+            creds.expiration,
+            Some(Utc.with_ymd_and_hms(2026, 6, 3, 18, 30, 0).unwrap())
+        );
+    }
+
+    /// XML lets any character arrive as a reference, and quick-xml hands the
+    /// value over in pieces around it: a credential kept only its last piece.
+    #[test]
+    fn assume_role_values_keep_their_entity_references() {
+        let xml = r#"<AssumeRoleResponse><AssumeRoleResult><Credentials>
+            <AccessKeyId>ASIA&#69;XAMPLE</AccessKeyId>
+            <SecretAccessKey>secret&#43;key/EXAMPLE</SecretAccessKey>
+            <SessionToken>
+                FQoG&#x5A;XIv
+            </SessionToken>
+            <Expiration>2026-06-03T18:30:00Z</Expiration>
+        </Credentials></AssumeRoleResult></AssumeRoleResponse>"#;
+        let creds = parse_assume_role_response(xml).expect("parse ok");
+        assert_eq!(creds.access_key_id, "ASIAEXAMPLE");
+        assert_eq!(
+            creds.secret_access_key.expose_secret(),
+            "secret+key/EXAMPLE"
+        );
+        assert_eq!(creds.session_token.expose_secret(), "FQoGZXIv");
         assert_eq!(
             creds.expiration,
             Some(Utc.with_ymd_and_hms(2026, 6, 3, 18, 30, 0).unwrap())

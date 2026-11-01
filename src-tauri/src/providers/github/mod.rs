@@ -2035,28 +2035,27 @@ mod tests {
     /// paths the listing gives, from any current folder.
     #[tokio::test]
     async fn a_walked_search_follows_the_listing_from_the_current_folder() {
-        let entry = |name: &str, path: &str, kind: &str| {
-            serde_json::json!({"name": name, "path": path, "type": kind, "sha": "s", "size": 1})
-        };
-        let src = serde_json::json!([entry("a.txt", "src/a.txt", "file"), entry("docs", "src/docs", "dir")]);
+        let entry = |name: &str, path: &str, kind: &str| serde_json::json!({"name": name, "path": path, "type": kind, "sha": "s", "size": 1});
+        let src = serde_json::json!([
+            entry("a.txt", "src/a.txt", "file"),
+            entry("docs", "src/docs", "dir")
+        ]);
         let docs = serde_json::json!([entry("a.txt", "src/docs/a.txt", "file")]);
-        let app = axum::Router::new().fallback(axum::routing::get(
-            move |uri: axum::http::Uri| {
-                let (src, docs) = (src.clone(), docs.clone());
-                async move {
-                    use axum::response::IntoResponse;
-                    if uri.path().contains("/git/trees/") {
-                        axum::Json(serde_json::json!({"tree": [], "truncated": true})).into_response()
-                    } else if uri.path().ends_with("/contents/src") {
-                        axum::Json(src).into_response()
-                    } else if uri.path().ends_with("/contents/src/docs") {
-                        axum::Json(docs).into_response()
-                    } else {
-                        axum::http::StatusCode::NOT_FOUND.into_response()
-                    }
+        let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
+            let (src, docs) = (src.clone(), docs.clone());
+            async move {
+                use axum::response::IntoResponse;
+                if uri.path().contains("/git/trees/") {
+                    axum::Json(serde_json::json!({"tree": [], "truncated": true})).into_response()
+                } else if uri.path().ends_with("/contents/src") {
+                    axum::Json(src).into_response()
+                } else if uri.path().ends_with("/contents/src/docs") {
+                    axum::Json(docs).into_response()
+                } else {
+                    axum::http::StatusCode::NOT_FOUND.into_response()
                 }
-            },
-        ));
+            }
+        }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });

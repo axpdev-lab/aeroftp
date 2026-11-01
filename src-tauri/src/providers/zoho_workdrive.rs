@@ -230,11 +230,7 @@ fn large_upload_host(config: &ZohoWorkdriveConfig, size: u64) -> Option<&'static
 
 /// A folder Zoho says is not there is that folder's failure. Anything else, a 403
 /// included, may speak of the whole session, and stays a failure a search stops on.
-fn list_folder_failure(
-    status: reqwest::StatusCode,
-    folder_id: &str,
-    body: &str,
-) -> ProviderError {
+fn list_folder_failure(status: reqwest::StatusCode, folder_id: &str, body: &str) -> ProviderError {
     let message = format!(
         "List files error {} (folder_id={}): {}",
         status,
@@ -3504,7 +3500,10 @@ mod tests {
             reqwest::StatusCode::UNAUTHORIZED,
             reqwest::StatusCode::TOO_MANY_REQUESTS,
         ] {
-            assert!(matches!(failure(status), ProviderError::Other(_)), "{status}");
+            assert!(
+                matches!(failure(status), ProviderError::Other(_)),
+                "{status}"
+            );
         }
     }
 

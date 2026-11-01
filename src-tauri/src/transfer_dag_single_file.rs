@@ -956,6 +956,7 @@ pub async fn execute_single_file_dag_with(
         let progress_slot = Arc::clone(&progress_slot);
         let first_error = Arc::clone(&first_error);
         let report_size = Arc::clone(&report_size);
+        let carried_time = Arc::new(std::sync::Mutex::new(None::<String>));
         let multipart_state = multipart_state.clone();
         let durable_checkpoint = durable_checkpoint.clone();
         let part_progress = part_progress.clone();
@@ -970,6 +971,7 @@ pub async fn execute_single_file_dag_with(
             let progress_slot = Arc::clone(&progress_slot);
             let first_error = Arc::clone(&first_error);
             let report_size = Arc::clone(&report_size);
+            let carried_time = Arc::clone(&carried_time);
             let multipart_state = multipart_state.clone();
             let durable_checkpoint = durable_checkpoint.clone();
             let part_progress = part_progress.clone();
@@ -1016,6 +1018,11 @@ pub async fn execute_single_file_dag_with(
                                     bytes_total.store(meta.len(), Ordering::SeqCst);
                                     wire_bytes_total.store(meta.len(), Ordering::SeqCst);
                                 }
+                                // A fallback inside the provider read its own
+                                // object. Taken under this lock: another transfer
+                                // on the session would start a record of its own.
+                                *carried_time.lock().expect("carried time poisoned") =
+                                    p.take_download_time(false);
                                 NodeOutcome::Completed
                             }
                             Err(e) => record_failure(&first_error, e, FailureScope::File),
@@ -1426,7 +1433,12 @@ pub async fn execute_single_file_dag_with(
                     }
                     TransferNodeKind::PreserveMetadata => {
                         if direction == TransferDirection::Download {
-                            crate::preserve_remote_mtime(&local, modified.as_deref());
+                            let read_time =
+                                carried_time.lock().expect("carried time poisoned").take();
+                            crate::preserve_remote_mtime(
+                                &local,
+                                read_time.as_deref().or(modified.as_deref()),
+                            );
                         }
                         NodeOutcome::Completed
                     }
@@ -3606,6 +3618,8 @@ mod tests {
     /// first-byte sample and the executor folds it at the single finalize.
     struct HttpFixtureMockProvider {
         addr: std::net::SocketAddr,
+        /// What a fallback inside the provider would have read.
+        carried_time: Option<String>,
     }
 
     impl HttpFixtureMockProvider {
@@ -3634,6 +3648,9 @@ mod tests {
     impl crate::providers::StorageProvider for HttpFixtureMockProvider {
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
             self
+        }
+        fn take_download_time(&mut self, _source_refused: bool) -> Option<String> {
+            self.carried_time.take()
         }
         fn provider_type(&self) -> crate::providers::ProviderType {
             crate::providers::ProviderType::WebDav
@@ -3774,6 +3791,61 @@ mod tests {
         }
     }
 
+    /// A fallback inside the provider read another object than the listing saw,
+    /// so its time goes on the file. A caller that gave no time, as `get` does,
+    /// sets one after the run: the node leaves the provider's reading for it.
+    #[tokio::test]
+    async fn the_metadata_node_uses_the_time_a_provider_fallback_read() {
+        use crate::transfer_dag::ttfb::test_fixture::{
+            spawn_delayed_http_fixture, FixtureResponse,
+        };
+        const LISTED: &str = "2000-01-01T00:00:00Z";
+        const CARRIED: &str = "2026-10-21T07:28:00Z";
+        for given in [Some(LISTED.to_string()), None] {
+            let addr =
+                spawn_delayed_http_fixture(std::time::Duration::from_millis(1), 1, |_headers| {
+                    FixtureResponse::ok("payload")
+                })
+                .await;
+            let dir = tempfile::tempdir().expect("tempdir");
+            let local = dir.path().join("out.bin");
+            let arc: SharedProvider =
+                Arc::new(Mutex::new(Some(Box::new(HttpFixtureMockProvider {
+                    addr,
+                    carried_time: Some(CARRIED.to_string()),
+                })
+                    as Box<dyn crate::providers::StorageProvider>)));
+            let caps = TransferCapabilities::default();
+            let built = TransferDagBuilder::shaped_file(TransferDirection::Download, &caps, 7);
+            let res = execute_single_file_dag(
+                &built,
+                Arc::clone(&arc),
+                "/remote.bin".to_string(),
+                local.to_string_lossy().to_string(),
+                given.clone(),
+                None,
+                Arc::new(crate::transfer_dag::NoopDagObserver),
+                Arc::new(AtomicU64::new(7)),
+                7,
+                Some(CancellationToken::new()),
+                test_checkpoint_store(dir.path()),
+            )
+            .await;
+            assert!(res.is_ok(), "fixture download completes: {res:?}");
+            let left = arc
+                .lock()
+                .await
+                .as_mut()
+                .and_then(|provider| provider.take_download_time(false));
+            let written = filetime::FileTime::from_last_modification_time(
+                &std::fs::metadata(&local).unwrap(),
+            )
+            .unix_seconds();
+            assert_eq!(written, crate::parse_remote_mtime(CARRIED).unwrap());
+            assert_eq!(left, None, "taken by the node");
+        }
+    }
+
     /// DAG-P2-07 (block C): the whole-file single GET runner is honestly
     /// measurable through the shared choke point: one download request
     /// reaching headers folds exactly one first-byte sample into the run
@@ -3791,9 +3863,11 @@ mod tests {
 
         let dir = tempfile::tempdir().expect("tempdir");
         let local = dir.path().join("out.bin");
-        let arc: SharedProvider =
-            Arc::new(Mutex::new(Some(Box::new(HttpFixtureMockProvider { addr })
-                as Box<dyn crate::providers::StorageProvider>)));
+        let arc: SharedProvider = Arc::new(Mutex::new(Some(Box::new(HttpFixtureMockProvider {
+            addr,
+            carried_time: None,
+        })
+            as Box<dyn crate::providers::StorageProvider>)));
         let caps = TransferCapabilities::default();
         let built = TransferDagBuilder::shaped_file(TransferDirection::Download, &caps, 7);
         let report = Arc::new(AtomicU64::new(7));
@@ -3846,9 +3920,11 @@ mod tests {
         let local = dir.path().join("source.bin");
         std::fs::write(&local, b"0123456789abcdefghij").expect("write source"); // 20 bytes
 
-        let arc: SharedProvider =
-            Arc::new(Mutex::new(Some(Box::new(HttpFixtureMockProvider { addr })
-                as Box<dyn crate::providers::StorageProvider>)));
+        let arc: SharedProvider = Arc::new(Mutex::new(Some(Box::new(HttpFixtureMockProvider {
+            addr,
+            carried_time: None,
+        })
+            as Box<dyn crate::providers::StorageProvider>)));
         let caps = TransferCapabilities {
             multipart_upload: Capability::Supported,
             preferred_chunk_size: Some(10),

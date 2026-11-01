@@ -11248,7 +11248,11 @@ async fn download_transfer_on(
     // (same as the shared executor and the GUI).
     let mut landed = None;
     if result.is_ok() {
-        ftp_client_gui_lib::preserve_remote_mtime(&local_path, remote_modified.as_deref());
+        let read_time = provider.take_download_time(false);
+        ftp_client_gui_lib::preserve_remote_mtime(
+            &local_path,
+            read_time.as_deref().or(remote_modified.as_deref()),
+        );
         let bytes = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
         session_transfer_add(bytes);
         // What the download left, read as it ends: an edit made later is a
@@ -36031,7 +36035,11 @@ async fn cmd_get(
 
     match dl_result {
         Ok(()) => {
-            ftp_client_gui_lib::preserve_remote_mtime(local_path, remote_modified.as_deref());
+            let read_time = provider.take_download_time(false);
+            ftp_client_gui_lib::preserve_remote_mtime(
+                local_path,
+                read_time.as_deref().or(remote_modified.as_deref()),
+            );
             let elapsed = start.elapsed();
             let file_size = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
             session_transfer_add(file_size);
@@ -36204,6 +36212,7 @@ async fn pget_segmented_download(
             format,
             &cancelled,
             listed_time,
+            false,
         )
         .await;
     }
@@ -36313,6 +36322,7 @@ async fn pget_segmented_download(
                 format,
                 &cancelled,
                 listed_time,
+                false,
             )
             .await
         }
@@ -36551,6 +36561,7 @@ async fn pget_segmented_download(
                     format,
                     &cancelled,
                     listed_time,
+                    true,
                 )
                 .await;
             }
@@ -36606,6 +36617,7 @@ async fn pget_segmented_download(
                 format,
                 &cancelled,
                 listed_time,
+                false,
             )
             .await
         }
@@ -36659,13 +36671,15 @@ async fn pget_segmented_download(
                 format,
                 &cancelled,
                 listed_time,
+                true,
             )
             .await
         }
         Err(e) => {
             // The engine's RAII guard already removed the temp. Honest
             // single-stream fallback rather than overclaim parallelism.
-            report_download_fallback(if matches!(e, ProviderError::ParallelRefused(_)) {
+            let refused = matches!(e, ProviderError::ParallelRefused(_));
+            report_download_fallback(if refused {
                 "pget: a ranged response or its version check was refused"
             } else {
                 "pget: a segmented range transfer failed"
@@ -36678,6 +36692,7 @@ async fn pget_segmented_download(
                 format,
                 &cancelled,
                 listed_time,
+                refused,
             )
             .await
         }
@@ -36711,7 +36726,23 @@ async fn pget_read_again(
     }
 }
 
+/// The time for the file a `pget` fallback wrote. With no refusal the listing
+/// stands, the time a sync compares it with; the reading only fills in for it.
+fn pget_fallback_time<'a>(
+    source_refused: bool,
+    carried: Option<&'a str>,
+    read: Option<&'a str>,
+    listed: Option<&'a str>,
+) -> Option<&'a str> {
+    if source_refused {
+        carried.or(read).or(listed)
+    } else {
+        carried.or(listed).or(read)
+    }
+}
+
 /// Fallback to a normal single-stream download (used when pget degrades)
+#[allow(clippy::too_many_arguments)]
 async fn pget_fallback_single(
     url: &str,
     remote_path: &str,
@@ -36720,6 +36751,7 @@ async fn pget_fallback_single(
     format: OutputFormat,
     cancelled: &AtomicBool,
     listed_time: Option<&str>,
+    source_refused: bool,
 ) -> i32 {
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
     if !quiet {
@@ -36735,11 +36767,11 @@ async fn pget_fallback_single(
         };
 
     let filename = remote_path.rsplit('/').next().unwrap_or("download");
-    // The stream may read another object than the listing saw: this reading is
-    // the one its size and its time come from. If it fails the listing's time
+    // After a refusal the stream may read another object than the listing saw:
+    // this reading is the one its size and its time come from, until the response
+    // that carries the bytes reports its own. If it fails the listing's time
     // stands, and the size is asked on its own: no time would leave the local
-    // write time, which reads newer still. The exact time is the one of the
-    // response carrying the bytes (Requested 129).
+    // write time, which reads newer still.
     let probed = run_until_interrupted(cancelled, async {
         match provider.stat(remote_path).await {
             Ok(entry) => (
@@ -36774,6 +36806,9 @@ async fn pget_fallback_single(
         }) as Box<dyn Fn(u64, u64) + Send>
     });
 
+    if source_refused {
+        provider.expect_moved_source();
+    }
     let before = local_file_state(local_path);
     let result = run_until_interrupted(
         cancelled,
@@ -36806,9 +36841,15 @@ async fn pget_fallback_single(
     }
     match result {
         Ok(()) => {
+            let carried_time = provider.take_download_time(source_refused);
             ftp_client_gui_lib::preserve_remote_mtime(
                 local_path,
-                read_time.as_deref().or(listed_time),
+                pget_fallback_time(
+                    source_refused,
+                    carried_time.as_deref(),
+                    read_time.as_deref(),
+                    listed_time,
+                ),
             );
             let elapsed = start.elapsed();
             let file_size = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
@@ -91409,6 +91450,17 @@ mod tests {
         assert_eq!(code, 130, "-1 means the put was still waiting on the check");
     }
 
+    #[test]
+    fn a_pget_fallback_changes_the_listed_time_only_after_a_refusal() {
+        let (carried, read, listed) = (Some("carried"), Some("read"), Some("listed"));
+        assert_eq!(pget_fallback_time(false, None, read, listed), listed);
+        assert_eq!(pget_fallback_time(false, carried, read, listed), carried);
+        assert_eq!(pget_fallback_time(false, None, read, None), read);
+        assert_eq!(pget_fallback_time(true, None, read, listed), read);
+        assert_eq!(pget_fallback_time(true, carried, read, listed), carried);
+        assert_eq!(pget_fallback_time(true, None, None, listed), listed);
+    }
+
     /// M2 (review of #951): the single stream `pget` falls back to read no
     /// flag either.
     #[test]
@@ -91425,6 +91477,7 @@ mod tests {
                 OutputFormat::Json,
                 &cancelled,
                 None,
+                false,
             )
             .await
         });
@@ -91566,6 +91619,7 @@ mod tests {
                     OutputFormat::Json,
                     &never,
                     None,
+                    false,
                 )
                 .await
             });

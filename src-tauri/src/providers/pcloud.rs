@@ -24,18 +24,19 @@ use super::{
 
 /// pCloud chunked-upload size threshold (S3-T01).
 ///
-/// Below this size the runner uses the legacy single-shot `uploadfile`
-/// multipart-form path; at or above, it switches to the
-/// `upload_create`/`upload_write`/`upload_save` session API so the DAG
-/// shaped-graph can dispatch chunks and benefit from per-chunk retry.
-const PCLOUD_MULTIPART_THRESHOLD: u64 = 4 * 1024 * 1024;
+/// Below this size the runner uses the single-shot `uploadfile` path, as
+/// rclone does for every size; at or above, it switches to the
+/// `upload_create`/`upload_write`/`upload_save` session API, so a failure costs
+/// one part and not a file this large. The session takes about twice as long:
+/// 75 s against 44 s (rclone 34 s) for 320 MiB, and the server closes the
+/// connection after each request (Requested 123).
+const PCLOUD_MULTIPART_THRESHOLD: u64 = 4 * 1024 * 1024 * 1024;
 
 /// pCloud chunked-upload preferred part size (S3-T01).
 ///
-/// pCloud's `upload_write` accepts any byte-aligned chunk; 4 MiB matches
-/// the threshold and keeps the per-chunk HTTP round-trip cost amortized
-/// against pCloud's ~30 ms RTT on the EU/US APIs.
-const PCLOUD_MULTIPART_PART_SIZE: u64 = 4 * 1024 * 1024;
+/// pCloud's `upload_write` accepts any byte-aligned chunk. A part is what a
+/// failure costs; each one also pays for a new connection.
+const PCLOUD_MULTIPART_PART_SIZE: u64 = 64 * 1024 * 1024;
 
 /// pCloud JSON result code for throttle (often inside HTTP 200).
 const PCLOUD_RESULT_THROTTLE: u32 = 4006;
@@ -131,10 +132,10 @@ fn trash_refused_to_oauth() -> ProviderError {
 pub(crate) const PCLOUD_TRASH_NOT_PURGED: &str =
     "pCloud keeps deleted items in its trash and an OAuth login cannot empty it; empty the Trash on pcloud.com to free the space";
 
-/// Live DAG-P1-05C blocker: concurrent `upload_write` on one `uploadid`
-/// returns result `2068` ("Error writing to upload"). Serial multipart still
-/// works (with occasional retry). Promotion to `HttpClonePool` is therefore
-/// withheld; executor stays `LockedSingle`.
+/// `upload_write` on one `uploadid` answers result `2068` ("Error writing to
+/// upload") when parts do not arrive one after the other (Requested 123), so a
+/// file takes one chunk slot, which chains its parts in order. Promotion to
+/// `HttpClonePool` is withheld for the same reason; executor stays `LockedSingle`.
 #[allow(dead_code)]
 const PCLOUD_RESULT_WRITE_ERROR: u32 = 2068;
 
@@ -1999,14 +2000,10 @@ impl StorageProvider for PCloudProvider {
             supports_multipart: true,
             multipart_threshold: PCLOUD_MULTIPART_THRESHOLD,
             multipart_part_size: PCLOUD_MULTIPART_PART_SIZE,
-            // pCloud's free tier is rate-limited around 2 API calls/sec per
-            // IP. Keeping the fan-out at 2 leaves slack for the runner's
-            // commit + abort calls without tripping `4006 Throttle limit
-            // reached`.
-            // Hints still advertise fan-out 2 for future promotion, but the
-            // executor stays LockedSingle after live DAG-P1-05C evidence that
-            // concurrent upload_write on one uploadid returns result 2068.
-            multipart_max_parallel: 2,
+            // One slot chains the parts in order. With two, the graph may
+            // dispatch any ready part and `upload_write` answers 2068: 4 failed
+            // attempts in 8 uploads of 10 parts, against none in 24 chained.
+            multipart_max_parallel: 1,
             supports_resume_download: true,
             supports_resume_upload: true,
             ..Default::default()
@@ -2021,10 +2018,9 @@ impl StorageProvider for PCloudProvider {
     //      parent + `name` + `total` + `part` so subsequent calls don't
     //      need to re-resolve the path.
     //   2. `upload_write?uploadid=N&uploadoffset=M` PUT with the raw chunk
-    //      body. Offsets are handle-derived. Live evidence (DAG-P1-05C)
-    //      shows concurrent writes on the same uploadid return result
-    //      2068, so the executor remains LockedSingle even though hints
-    //      advertise multipart_max_parallel=2.
+    //      body. Offsets are handle-derived. Parts out of order on one
+    //      uploadid return result 2068, so the hints advertise one chunk
+    //      slot and the executor remains LockedSingle.
     //   3. `upload_save?uploadid=N&folderid=Y&name=Z` finalises and atomically
     //      moves the staged bytes into place. Idempotent: a repeated call
     //      on the same uploadid returns the same fileid.
@@ -2133,8 +2129,8 @@ impl StorageProvider for PCloudProvider {
 
         // Contract: `uploadid` + immutable handle-derived `uploadoffset`.
         // Live DAG-P1-05C tried adding `uploadsize=data.len()`; concurrent
-        // writes still returned 2068 and serial demoted runs did not improve,
-        // so the unverified parameter is not sent (baton: no blind add).
+        // writes still returned 2068, so the unverified parameter is not sent
+        // (baton: no blind add).
         let url = format!(
             "{}/upload_write?uploadid={}&uploadoffset={}",
             self.api_base(),
@@ -2584,10 +2580,32 @@ mod tests {
         assert!(hints.supports_multipart);
         assert_eq!(hints.multipart_threshold, PCLOUD_MULTIPART_THRESHOLD);
         assert_eq!(hints.multipart_part_size, PCLOUD_MULTIPART_PART_SIZE);
-        // Hints keep fan-out 2 for future promotion; executor remains LockedSingle.
-        assert_eq!(hints.multipart_max_parallel, 2);
+        // Requested 123: two slots send parts out of order and pCloud answers 2068.
+        assert_eq!(hints.multipart_max_parallel, 1);
+        // Requested 123: an ordinary file goes in one request, as with rclone.
+        assert_eq!(hints.multipart_threshold, 4 * 1024 * 1024 * 1024);
         assert!(hints.supports_resume_download);
         assert!(hints.supports_resume_upload);
+    }
+
+    /// Requested 123, through the hints to the plan: a file below the threshold
+    /// goes in one request, not in parts.
+    #[test]
+    fn a_file_below_the_threshold_is_planned_as_one_request() {
+        use crate::transfer_dag::builder::{TransferDagBuilder, TransferDirection};
+        use crate::transfer_dag::capabilities::TransferCapabilities;
+        use crate::transfer_dag::graph::TransferNodeKind;
+        let hints = test_provider().transfer_optimization_hints();
+        let caps = TransferCapabilities::from_provider_hints(ProviderType::PCloud, &hints, false);
+        assert_eq!(caps.multipart_threshold, 4 * 1024 * 1024 * 1024);
+        let built =
+            TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 100 * 1024 * 1024);
+        assert_eq!(built.profile.upload_parts, 1);
+        assert_eq!(built.transfer.len(), 1);
+        assert_eq!(
+            built.dag.nodes()[built.transfer[0]].kind,
+            TransferNodeKind::UploadFile
+        );
     }
 
     // ---- DAG-P1-05C: evidence-backed LockedSingle retention ----
@@ -2982,11 +3000,11 @@ mod tests {
             p.transfer_executor_kind(),
             can_clone,
         );
-        // LockedSingle keeps file/session serial even when multipart hints say 2.
+        // LockedSingle keeps file/session serial, and one chunk slot chains parts.
         assert_eq!(caps.file_parallel, Capability::Unsupported);
         assert_eq!(caps.session_pool, Capability::Unsupported);
         assert_eq!(caps.max_file_slots, Some(1));
-        assert_eq!(caps.max_chunk_slots, Some(2));
+        assert_eq!(caps.max_chunk_slots, Some(1));
         assert_eq!(caps.rate_limited_api, Capability::Supported);
 
         let model = resolve_session_model(

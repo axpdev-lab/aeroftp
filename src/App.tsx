@@ -146,6 +146,14 @@ type MountManagerOpenOptions = {
   remotePath?: string;
 };
 
+/**
+ * What uploadFile and downloadFile do with an error: show it and answer false
+ * (`notify`), or hand it to the caller (`throw`). A queue row needs the error:
+ * false also means a skip, which completes the row, and the circuit breaker
+ * and the per-file retry only see a failure that is thrown.
+ */
+type TransferErrorMode = 'notify' | 'throw';
+
 import { SessionTabs } from './components/SessionTabs';
 import { PermissionsDialog } from './components/PermissionsDialog';
 import { SiteCommandDialog } from './components/SiteCommand/SiteCommandDialog';
@@ -175,11 +183,13 @@ import {
   buildJournalEntries,
   displayPathForRestore,
   groupIdsByProfileId,
+  isCancelledTransferError,
   isRestorableJournalEntry,
   joinRemotePath,
   parentDir,
   type JournalDescriptorFields,
   type TransferQueueJournalDto,
+  type TransferQueueJournalEntryDto,
 } from './utils/transferQueueJournal';
 import { copyText } from './utils/clipboard';
 import { nativeMenuLabels } from './utils/nativeMenuLabels';
@@ -456,13 +466,13 @@ import { runExtractWithToast } from './utils/extractToast';
 import { aeroEntryNames, aeroVaultKind, archiveStem, dispatchAeroExtract, dispatchGeneralExtract, extractCollisionList, extractHereCollisions, isWrongPasswordError, resolveUniqueExtractDir } from './utils/extractOrchestrator';
 import { formatExtractDetails, formatCompressDetails } from './utils/archiveSizeReport';
 import { findGvfsMtpMount, isGvfsMtpPath } from './utils/gvfsMtpMount';
-import { acceptFlatpakImport, flatpakImportResultDialog, flatpakOfferHandlers } from './utils/flatpakImport';
+import { acceptFlatpakImport, flatpakImportResultDialog, flatpakOfferHandlers, type FlatpakImportOutcome } from './utils/flatpakImport';
 import { GlobalTooltip } from './components/GlobalTooltip';
 import { TransferProgressBar } from './components/TransferProgressBar';
 import { ImageThumbnail } from './components/ImageThumbnail';
 import { signatureOf } from './utils/thumbnailCache';
 import { loadOverwriteDestination } from './utils/overwriteDestination';
-import { fileBatchCommand, folderTransferIsComplete, keepsSingleFilePath, splitForFileBatch } from './utils/fileBatchRouting';
+import { FolderTransferFailedError, fileBatchCommand, folderTransferFailure, folderTransferIsComplete, keepsSingleFilePath, splitForFileBatch } from './utils/fileBatchRouting';
 import type { FileBatchDirection, FileBatchSessionFlags, FolderTransferOutcome } from './utils/fileBatchRouting';
 import type { SortField, SortOrder } from './components/SortableHeader';
 import { FeatureBadge } from './components/FeatureBadge';
@@ -485,6 +495,7 @@ import { usePanelSplit, dualLocalFlexToPercent, percentToDualLocalFlex } from '.
 import { StopCancelSpinner } from './components/StopCancelSpinner';
 import { markProfileHealthy } from './hooks/useProviderHealth';
 import { useHumanizedLog } from './hooks/useHumanizedLog';
+import { useLatestCallback } from './hooks/useLatestCallback';
 import { useSettings } from './hooks/useSettings';
 import { useFontSizeShortcuts, FontSizeIndicator } from './hooks/useFontSizeShortcuts';
 import { useMouseBackButton } from './hooks/useMouseBackButton';
@@ -816,12 +827,7 @@ const App: React.FC = () => {
   }, []);
 
   const [isConnected, setIsConnected] = useState(false);
-  // A6-01: Refs for menu-event listener to avoid stale closures
-  const isConnectedRef = useRef(false);
-  const canSendSiteCommandRef = useRef(false);
   const currentLocalPathRef = useRef('');
-  const themeRef = useRef<Theme>('dark');
-  const debugModeRef = useRef(false);
   const [showRemotePanel, setShowRemotePanel] = useState(true);
   const [previewPanelWidth, setPreviewPanelWidth] = useState(280);
   const previewResizing = useRef(false);
@@ -1042,6 +1048,8 @@ const App: React.FC = () => {
     initialTab: AeroSyncTab;
     context: AeroSyncContext;
   } | null>(null);
+  // A sync or a restore runs inside the window, which owns their state.
+  const [aeroSyncBusy, setAeroSyncBusy] = useState(false);
   // CO-5: SFTP delta eligibility prompt. When the unified runner is
   // about to execute a connected-SFTP preset, we run
   // `sftp_probe_delta_eligibility`; if the verdict is "not eligible",
@@ -1694,6 +1702,9 @@ const App: React.FC = () => {
   const retryCallbacksRef = React.useRef<Map<string, () => void>>(new Map());
   const batchCancelledRef = React.useRef(false);
   const cancelLevelRef = React.useRef(0); // 0=none, 1=soft, 2=hard
+  // Every Stop, counted. The flag above stays set after a stopped batch; a
+  // run that does not reset it tells a Stop of its own by this count.
+  const stopCountRef = React.useRef(0);
 
   // TQ-7b: side map of re-executable descriptors (local/remote/profile).
   // TransferItem has a single `path` and cannot reconstruct a journal entry alone.
@@ -1701,26 +1712,6 @@ const App: React.FC = () => {
   // Do not persist until the startup restore pass finishes (avoids wiping the journal on first paint).
   const journalHydratedRef = React.useRef(false);
   const journalPersistTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Latest transfer fns for restored-item retry callbacks registered at mount.
-  const transferFnsRef = React.useRef<{
-    uploadFile: (
-      localFilePath: string,
-      fileName: string,
-      isDir?: boolean,
-      fileSize?: number,
-      skipConflictCheck?: boolean,
-      commitMessage?: string,
-      explicitRemoteDir?: string,
-    ) => Promise<boolean>;
-    downloadFile: (
-      remoteFilePath: string,
-      fileName: string,
-      destinationPath?: string,
-      isDir?: boolean,
-      fileSize?: number,
-      skipConflictCheck?: boolean,
-    ) => Promise<boolean>;
-  } | null>(null);
 
   const recordQueueDescriptor = React.useCallback((id: string, fields: JournalDescriptorFields) => {
     journalDescriptorsRef.current.set(id, fields);
@@ -2066,6 +2057,39 @@ const App: React.FC = () => {
   // servers encrypted under it stay behind, and the result dialog says so.
   // `flatpakImportOfferedRef` guards StrictMode.
   const flatpakImportOfferedRef = useRef(false);
+  // The offer is shown once the status call returns, and its result once the
+  // user has answered: each in the language of then.
+  const showFlatpakImportOutcome = useLatestCallback((outcome: FlatpakImportOutcome) => {
+    const result = flatpakImportResultDialog(outcome, t);
+    setConfirmDialog({
+      message: result.message,
+      confirmLabel: result.confirmLabel,
+      confirmColor: 'blue',
+      onConfirm: result.restart ? () => { invoke('restart_app'); } : () => setConfirmDialog(null),
+      onCancel: () => setConfirmDialog(null),
+      // Nothing to decide without a restart: OK only.
+      informational: !result.restart,
+    });
+  });
+  const offerFlatpakImport = useLatestCallback(() => {
+    const offer = flatpakOfferHandlers({
+      accept: acceptFlatpakImport,
+      decline: async () => {
+        try { await invoke('flatpak_config_import_apply', { accept: false }); } catch { /* ignore */ }
+      },
+      // A dialog, not a toast: toasts can be switched off, and the user
+      // just made a decision whose result they must see.
+      showOutcome: showFlatpakImportOutcome,
+      close: () => setConfirmDialog(null),
+    });
+    setConfirmDialog({
+      message: t('flatpak.importBody'),
+      confirmLabel: t('flatpak.importAccept'),
+      confirmColor: 'blue',
+      onConfirm: offer.onConfirm,
+      onCancel: offer.onCancel,
+    });
+  });
   useEffect(() => {
     if (!vaultBootComplete || isAppLocked || showMasterPasswordSetup) return;
     if (flatpakImportOfferedRef.current) return;
@@ -2075,41 +2099,12 @@ const App: React.FC = () => {
         const st = await invoke<{ available: boolean; source: string | null }>(
           'flatpak_config_import_status'
         );
-        if (!st?.available) return;
-        const offer = flatpakOfferHandlers({
-          accept: acceptFlatpakImport,
-          decline: async () => {
-            try { await invoke('flatpak_config_import_apply', { accept: false }); } catch { /* ignore */ }
-          },
-          // A dialog, not a toast: toasts can be switched off, and the user
-          // just made a decision whose result they must see.
-          showOutcome: (outcome) => {
-            const result = flatpakImportResultDialog(outcome, t);
-            setConfirmDialog({
-              message: result.message,
-              confirmLabel: result.confirmLabel,
-              confirmColor: 'blue',
-              onConfirm: result.restart ? () => { invoke('restart_app'); } : () => setConfirmDialog(null),
-              onCancel: () => setConfirmDialog(null),
-              // Nothing to decide without a restart: OK only.
-              informational: !result.restart,
-            });
-          },
-          close: () => setConfirmDialog(null),
-        });
-        setConfirmDialog({
-          message: t('flatpak.importBody'),
-          confirmLabel: t('flatpak.importAccept'),
-          confirmColor: 'blue',
-          onConfirm: offer.onConfirm,
-          onCancel: offer.onCancel,
-        });
+        if (st?.available) offerFlatpakImport();
       } catch {
         // Not in a Flatpak, or backend not ready: silently ignore.
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vaultBootComplete, isAppLocked, showMasterPasswordSetup]);
+  }, [vaultBootComplete, isAppLocked, showMasterPasswordSetup, offerFlatpakImport]);
 
   // Keystore Migration Wizard: auto-trigger if legacy localStorage data exists
   useEffect(() => {
@@ -2251,6 +2246,14 @@ const App: React.FC = () => {
   const aeroShareEnabled = useAeroShareEnabled();
   const humanLog = useHumanizedLog();
   const activityLog = useActivityLog();
+  // These functions keep their identity, while `toast` changes with the list
+  // of toasts and `activityLog` with every entry: callbacks and effects depend
+  // on the functions they call.
+  const {
+    success: toastSuccess, error: toastError, info: toastInfo, warning: toastWarning,
+    addToast, addToastWithAction, removeToast,
+  } = toast;
+  const logActivity = activityLog.log;
 
   // Published UI token overrides (docs/UI-TOKENS.md): loaded once at startup
   // from <config_dir>/ui-tokens.json. Deliberately NOT inside the theme effect
@@ -2313,7 +2316,7 @@ const App: React.FC = () => {
     const insecureEnabled = isFtpFamily && liveConnectionParams.options?.verifyCert === false;
 
     if (insecureEnabled && !insecureCertPreviouslyEnabledRef.current) {
-      activityLog.log(
+      logActivity(
         'INFO',
         t('activity.insecure_cert_enabled', {
           protocol: (protocol || 'ftp').toUpperCase(),
@@ -2324,7 +2327,7 @@ const App: React.FC = () => {
     }
 
     insecureCertPreviouslyEnabledRef.current = insecureEnabled;
-  }, [liveConnectionParams.protocol, liveConnectionParams.options?.verifyCert, liveConnectionParams.server, activityLog, t]);
+  }, [liveConnectionParams.protocol, liveConnectionParams.options?.verifyCert, liveConnectionParams.server, logActivity, t]);
 
   // Auto-Update: handled by useAutoUpdate hook
   const { updateAvailable, checkForUpdate } = useAutoUpdate({ activityLog, disabled: disableUpdateChecks });
@@ -2396,26 +2399,28 @@ const App: React.FC = () => {
   // showToastNotifications provided by useSettings
 
   // Wrapper: ActivityLog gets clean messages, Debug Panel gets full details via console
+  // Built from functions that keep their identity, so `notify` changes only
+  // with the toast setting: about 50 callbacks and effects of App depend on it.
   const notify = React.useMemo(() => ({
     success: (title: string, message?: string): string | null => {
-      activityLog.log('INFO', message ? `${title}: ${message}` : title, 'success');
-      return showToastNotifications ? toast.success(title, message) : null;
+      logActivity('INFO', message ? `${title}: ${message}` : title, 'success');
+      return showToastNotifications ? toastSuccess(title, message) : null;
     },
     error: (title: string, message?: string): string | null => {
       // Activity log: short title only. Debug panel: full details via console.error
-      activityLog.log('INFO', message ? `${title}: ${message}` : title, 'error');
+      logActivity('INFO', message ? `${title}: ${message}` : title, 'error');
       if (message) console.error(`[ERROR] ${title}: ${message}`);
-      return showToastNotifications ? toast.error(title, message) : null;
+      return showToastNotifications ? toastError(title, message) : null;
     },
     info: (title: string, message?: string): string | null => {
-      activityLog.log('INFO', message ? `${title}: ${message}` : title, 'success');
-      return showToastNotifications ? toast.info(title, message) : null;
+      logActivity('INFO', message ? `${title}: ${message}` : title, 'success');
+      return showToastNotifications ? toastInfo(title, message) : null;
     },
     warning: (title: string, message?: string): string | null => {
-      activityLog.log('INFO', message ? `${title}: ${message}` : title, 'success');
-      return showToastNotifications ? toast.warning(title, message) : null;
+      logActivity('INFO', message ? `${title}: ${message}` : title, 'success');
+      return showToastNotifications ? toastWarning(title, message) : null;
     }
-  }), [showToastNotifications, toast, activityLog]);
+  }), [showToastNotifications, toastSuccess, toastError, toastInfo, toastWarning, logActivity]);
 
   // ── W3 (#270.5 / #275.9): cancellable connect + "still connecting" modal ──
   // A connect is a single awaited invoke with no abort path. These refs/state
@@ -2580,7 +2585,7 @@ const App: React.FC = () => {
       if (!showToastNotifications && !detail.important) return;
       const type = detail.type || 'info';
       if (detail.action) {
-        toast.addToastWithAction(
+        addToastWithAction(
           type,
           detail.title,
           detail.message,
@@ -2588,12 +2593,12 @@ const App: React.FC = () => {
           detail.duration ?? 10000,
         );
       } else {
-        toast.addToast(type, detail.title, detail.message, detail.duration);
+        addToast(type, detail.title, detail.message, detail.duration);
       }
     };
     window.addEventListener('aeroftp-toast', handler as EventListener);
     return () => window.removeEventListener('aeroftp-toast', handler as EventListener);
-  }, [toast, showToastNotifications]);
+  }, [addToast, addToastWithAction, showToastNotifications]);
 
   // Action of the "app keys missing" toast (notifyOAuthKeysUnavailable): open
   // Settings on the tab where the user's own OAuth app keys are entered.
@@ -3993,55 +3998,58 @@ const App: React.FC = () => {
 
   // Keep-Alive: Send periodic pings to prevent connection timeout
   // FTP uses NOOP, providers use provider_keep_alive
+  // One ping, and the reconnect when an FTP one fails. The interval below
+  // lives for the whole connection; the tick reads the toast setting and the
+  // language of now, not those of the render that started it.
+  const keepAliveTick = useLatestCallback(async () => {
+    const isProvider = usesProviderApi(liveConnectionParams.protocol);
+    try {
+      if (isProvider) {
+        await invoke('provider_keep_alive');
+      } else {
+        await invoke('ftp_noop');
+      }
+    } catch (error) {
+      if (isProvider) {
+        // Provider keep-alive failed - HTTP-based providers are stateless,
+        // connection will be re-established on next operation
+        console.warn('Provider keep-alive failed (will retry on next operation):', error);
+        return;
+      }
+
+      console.warn('Keep-alive NOOP failed, attempting reconnect...', error);
+
+      // FTP connection lost - attempt auto-reconnect
+      humanLog.logRaw('activity.disconnect_start', 'DISCONNECT', {}, 'error');
+      notify.info(t('toast.reconnecting'), t('toast.connectionLost'));
+
+      try {
+        await invoke('reconnect_ftp');
+        humanLog.logRaw('activity.reconnect_success', 'CONNECT', { server: liveConnectionParams.server }, 'success');
+        notify.success(t('toast.reconnected'), t('toast.ftpRestored'));
+        const response = await invoke<{ files: RemoteFile[]; current_path: string }>('list_files');
+        setRemoteFiles(response.files);
+        setCurrentRemotePath(response.current_path);
+        setSelectedRemoteFiles(new Set());
+      } catch (reconnectError) {
+        console.error('Auto-reconnect failed:', reconnectError);
+        humanLog.logRaw('activity.reconnect_error', 'DISCONNECT', {}, 'error');
+        notify.error(t('toast.connectionLostTitle'), t('toast.connectionLostManual'));
+        setIsConnected(false);
+      }
+    }
+  });
+
   useEffect(() => {
     if (!isConnected) return;
 
-    const protocol = liveConnectionParams.protocol;
-    const isProvider = usesProviderApi(protocol);
-
     const KEEP_ALIVE_INTERVAL = 60000; // 60 seconds
 
-    const keepAliveInterval = setInterval(async () => {
-      try {
-        if (isProvider) {
-          await invoke('provider_keep_alive');
-        } else {
-          await invoke('ftp_noop');
-        }
-      } catch (error) {
-        if (isProvider) {
-          // Provider keep-alive failed - HTTP-based providers are stateless,
-          // connection will be re-established on next operation
-          console.warn('Provider keep-alive failed (will retry on next operation):', error);
-          return;
-        }
-
-        console.warn('Keep-alive NOOP failed, attempting reconnect...', error);
-
-        // FTP connection lost - attempt auto-reconnect
-        humanLog.logRaw('activity.disconnect_start', 'DISCONNECT', {}, 'error');
-        notify.info(t('toast.reconnecting'), t('toast.connectionLost'));
-
-        try {
-          await invoke('reconnect_ftp');
-          humanLog.logRaw('activity.reconnect_success', 'CONNECT', { server: liveConnectionParams.server }, 'success');
-          notify.success(t('toast.reconnected'), t('toast.ftpRestored'));
-          const response = await invoke<{ files: RemoteFile[]; current_path: string }>('list_files');
-          setRemoteFiles(response.files);
-          setCurrentRemotePath(response.current_path);
-          setSelectedRemoteFiles(new Set());
-        } catch (reconnectError) {
-          console.error('Auto-reconnect failed:', reconnectError);
-          humanLog.logRaw('activity.reconnect_error', 'DISCONNECT', {}, 'error');
-          notify.error(t('toast.connectionLostTitle'), t('toast.connectionLostManual'));
-          setIsConnected(false);
-        }
-      }
-    }, KEEP_ALIVE_INTERVAL);
+    const keepAliveInterval = setInterval(() => { void keepAliveTick(); }, KEEP_ALIVE_INTERVAL);
 
     return () => clearInterval(keepAliveInterval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConnected, liveConnectionParams.server, liveConnectionParams.protocol, activeSessionId]);
+    // A new server or session starts the minute again.
+  }, [isConnected, liveConnectionParams.server, liveConnectionParams.protocol, activeSessionId, keepAliveTick]);
 
   // Display file name (strip extension when setting is off)
   const displayName = (name: string, isDir: boolean) => {
@@ -4627,7 +4635,7 @@ const App: React.FC = () => {
         setSelectedLocalFiles(new Set(taken.select));
       });
     }
-  }, [activeLocalTabId, currentLocalPath, localTabs]);
+  }, [activeLocalTabId, currentLocalPath, localTabs, fileTags.setActiveTagFilter]);
 
   const closeLocalTab = useCallback((tabId: string) => {
     setLocalTabs(prev => {
@@ -4653,44 +4661,11 @@ const App: React.FC = () => {
   // offered on a connected FTP/FTPS session only. Computed here, ahead of the
   // command palette that lists it.
   const canSendSiteCommand = siteCommandAvailable(isConnected, liveConnectionParams.protocol);
-  // The native-menu handler reads the committed value: a render React
-  // discards must not move it.
-  useLayoutEffect(() => { canSendSiteCommandRef.current = canSendSiteCommand; }, [canSendSiteCommand]);
   // The native menu (macOS menu bar, optional on Linux/Windows) follows the
   // same rule: Connection > SITE Command is off unless this is true.
   useEffect(() => {
     invoke('set_site_command_menu_enabled', { enabled: canSendSiteCommand }).catch(() => { /* no native menu: nothing to update */ });
   }, [canSendSiteCommand]);
-
-  // Command palette items
-  const commandPaletteItems: CommandItem[] = useMemo(() => [
-    // Navigation
-    { id: 'nav-aerofile', label: t('statusBar.aerofile'), category: 'navigation' as CommandCategory, icon: <FolderOpen size={14} />, action: () => { setShowConnectionScreen(false); setActivePanel('local'); }, keywords: ['local', 'file', 'manager'] },
-    { id: 'nav-connect', label: t('connection.quickConnect'), category: 'navigation' as CommandCategory, icon: <Globe size={14} />, action: () => setShowConnectionScreen(true), keywords: ['connection', 'server', 'ftp', 'sftp'] },
-    { id: 'nav-settings', label: t('settings.title'), category: 'navigation' as CommandCategory, icon: <Settings size={14} />, action: () => setShowSettingsPanel(true), shortcut: 'Ctrl+,', keywords: ['preferences', 'config'] },
-    // File
-    { id: 'file-newfolder', label: t('contextMenu.newFolder'), category: 'file' as CommandCategory, icon: <FolderPlus size={14} />, action: () => createFolder(activePanel !== 'remote'), keywords: ['create', 'directory', 'mkdir'] },
-    { id: 'file-refresh', label: t('contextMenu.refresh'), category: 'file' as CommandCategory, icon: <RefreshCw size={14} />, action: () => { if (activePanel === 'remote') loadRemoteFiles(); else loadLocalFiles(currentLocalPath); }, keywords: ['reload'] },
-    ...(canSendSiteCommand ? [{ id: 'connection-site-command', label: t('menu.siteCommand'), category: 'navigation' as CommandCategory, icon: <Terminal size={14} />, action: () => setShowSiteCommand(true), keywords: ['site', 'ftp', 'raw', 'quote', 'command', 'glftpd'] }] : []),
-    // AI
-    { id: 'ai-agent', label: 'AeroAgent', category: 'ai' as CommandCategory, icon: <Bot size={14} />, action: () => window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'agent' })), keywords: ['chat', 'assistant', 'ai'] },
-    // Tools
-    { id: 'tools-editor', label: t('devtools.codeEditor'), category: 'tools' as CommandCategory, icon: <Code size={14} />, action: () => window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'editor' })), keywords: ['code', 'monaco', 'edit'] },
-    { id: 'tools-terminal', label: t('devtools.sshTerminal'), category: 'tools' as CommandCategory, icon: <Terminal size={14} />, action: () => window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'terminal' })), keywords: ['ssh', 'shell', 'console'] },
-    // Sync
-    { id: 'aerosync', label: t('aerosync.title') || 'AeroSync', category: 'sync' as CommandCategory, icon: <FolderSync size={14} />, action: () => openAeroSync('sync'), keywords: ['synchronize', 'aerosync', 'aerofile', 'compare', 'plan', 'delta', 'aerorsync'] },
-    // AeroVault overlay
-    {
-      id: 'tools-aerovault-overlay',
-      label: aeroVaultOverlaySession
-        ? (t('commandPalette.aerovaultOverlayLock') || 'Lock AeroVault Overlay')
-        : (t('commandPalette.aerovaultOverlayOpen') || 'Open AeroVault Overlay'),
-      category: 'tools' as CommandCategory,
-      icon: aeroVaultOverlaySession ? <Lock size={14} /> : <Shield size={14} />,
-      action: () => window.dispatchEvent(new CustomEvent('aerovault-overlay-toggle')),
-      keywords: ['vault', 'aerovault', 'overlay', 'crypt', 'lock', 'unlock', 'encrypt'],
-    },
-  ], [t, activePanel, currentLocalPath, aeroVaultOverlaySession, canSendSiteCommand]);
 
   // Sync active tab path when navigating: only in AeroFile mode
   useEffect(() => {
@@ -4948,7 +4923,7 @@ const App: React.FC = () => {
         setRemoteFiles([]);
         setCurrentRemotePath('/');
         setCurrentRemoteDisplayPath('/');
-        activityLog.log(
+        logActivity(
           'ERROR',
           `${t('sidebar.portable_open_failed')}: ${displayName}`,
           'error',
@@ -5042,7 +5017,7 @@ const App: React.FC = () => {
       const errorMessage = typeof err === 'string' ? err : String(err);
       const deviceName = profile?.name || device.displayName || device.deviceId;
       if (profile?.id) void recordProfileConnectFailure(profile.id, err);
-      activityLog.log(
+      logActivity(
         'CONNECT',
         `${t('sidebar.portable_open_failed')}: ${deviceName}`,
         'error',
@@ -5060,7 +5035,7 @@ const App: React.FC = () => {
       }));
       throw err;
     }
-  }, [notify, t, currentLocalPath, localFiles, showHiddenFiles, activityLog]);
+  }, [notify, t, currentLocalPath, localFiles, showHiddenFiles, logActivity]);
 
   /** PLACES portable row: open without a saved profile. */
   const handleOpenPortableDevice = useCallback(async (device: MtpDeviceInfo) => {
@@ -5093,7 +5068,7 @@ const App: React.FC = () => {
       // sentence.
       humanLog.logRaw('sidebar.portable_disconnected', 'DISCONNECT', { name }, 'error');
       if (showToastNotifications) {
-        toast.info(t('sidebar.portable_devices'), t('sidebar.portable_disconnected', { name }));
+        toastInfo(t('sidebar.portable_devices'), t('sidebar.portable_disconnected', { name }));
       }
     }
   }, [
@@ -5101,7 +5076,7 @@ const App: React.FC = () => {
     liveConnectionParams.server,
     humanLog,
     showToastNotifications,
-    toast,
+    toastInfo,
     t,
   ]);
 
@@ -5192,7 +5167,7 @@ const App: React.FC = () => {
   }, [notify, t]);
 
   // One walk of a local folder, with its progress, for calculateFolderSize.
-  const countLocalFolder = async (path: string, key: string) => {
+  const countLocalFolder = useLatestCallback(async (path: string, key: string) => {
     const scanId = newSizeScanId();
     const current = () => localSizeScanRef.current.get(key) === scanId;
     localSizeScanRef.current.set(key, scanId);
@@ -5227,7 +5202,7 @@ const App: React.FC = () => {
         setFolderSizeCalculating(new Set(folderSizeCalculatingRef.current));
       }
     }
-  };
+  });
 
   // Stops the local walks of `paths`, whose dialog closed, and drops what they
   // had counted: a half-counted total is not the folder's size.
@@ -5355,9 +5330,8 @@ const App: React.FC = () => {
   // 2.4 Post-Restart Confirmation
   const postUpdateMarkerChecked = useRef(false);
   useEffect(() => {
-    // Run at most once per session: this effect's deps (t/toast/activityLog) can
-    // change identity on re-render, and we must not re-show the toast for the
-    // same marker.
+    // Run at most once per session: `t` changes with the language, and we must
+    // not re-show the toast for the same marker.
     if (postUpdateMarkerChecked.current) return;
     postUpdateMarkerChecked.current = true;
 
@@ -5382,13 +5356,13 @@ const App: React.FC = () => {
 
         // Show green success toast (5s): current version IS the updated version after restart
         const currentVersion = await getVersion().catch(() => '');
-        toast.addToast('success',
+        addToast('success',
           t('ui.updateSuccess'),
           `AeroFTP v${currentVersion}`,
           5000
         );
 
-        activityLog.log('INFO',
+        logActivity('INFO',
             `Post-restart check: Update completed via .${data.install_format}${data.verified ? ' (Verified)' : ''}`,
             'success'
         );
@@ -5397,7 +5371,7 @@ const App: React.FC = () => {
       }
     };
     checkPostUpdateMarker();
-  }, [t, activityLog, toast]);
+  }, [t, logActivity, addToast]);
 
   // Start update download
   const startUpdateDownload = useCallback(async () => {
@@ -5413,7 +5387,7 @@ const App: React.FC = () => {
     });
     try {
       const resp = await invoke<{ path: string; verification: UpdateVerificationInfo }>('download_update', { url: updateAvailable.download_url });
-      activityLog.log('INFO', `Update downloaded: ${resp.path} (Mode: ${resp.verification.mode})`, 'success');
+      logActivity('INFO', `Update downloaded: ${resp.path} (Mode: ${resp.verification.mode})`, 'success');
 
       const showResult = () => {
         updateCompleteTimerRef.current = null;
@@ -5437,73 +5411,66 @@ const App: React.FC = () => {
         updateCompleteTimerRef.current = null;
       }
       setUpdateDownload(prev => prev ? { ...prev, downloading: false, error: String(error) } : null);
-      activityLog.log('ERROR', `Update download failed: ${error}`, 'error');
+      logActivity('ERROR', `Update download failed: ${error}`, 'error');
     }
-  }, [updateAvailable, activityLog]);
+  }, [updateAvailable, logActivity]);
 
-  // A6-01: Keep refs in sync for menu-event listener (avoids stale closures)
-  useEffect(() => { isConnectedRef.current = isConnected; }, [isConnected]);
+  // The folder panel 1 shows, for listeners that subscribe once.
   useEffect(() => { currentLocalPathRef.current = currentLocalPath; }, [currentLocalPath]);
-  useEffect(() => { themeRef.current = theme; }, [theme]);
-  useEffect(() => { debugModeRef.current = debugMode; }, [debugMode]);
 
-  // Menu events from native menu: registered once, reads from refs to avoid stale closures.
-  // Keeps `listen()` directly (not the hook) because the handler mutates refs the hook
-  // doesn't know about; the import of guardedUnlisten covers the late-resolution race.
-  useEffect(() => {
-    const unlistenPromise = listen<string>('menu-event', (event) => {
-      const id = event.payload;
-      switch (id) {
-        case 'about': setShowAboutDialog(true); break;
-        case 'support': setShowSupportDialog(true); break;
-        case 'shortcuts': setShowShortcutsDialog(true); break;
-        case 'settings': setShowSettingsPanel(true); break;
-        case 'site_command': if (canSendSiteCommandRef.current) setShowSiteCommand(true); break;
-        case 'refresh':
-          if (isConnectedRef.current) loadRemoteFiles();
-          loadLocalFiles(currentLocalPathRef.current);
-          break;
-        case 'toggle_theme': {
-          const order: Theme[] = ['light', 'dark', 'truedark', 'tokyo', 'cyber', 'green', 'ice', 'redhorse'];
-          const nextTheme = order[(order.indexOf(themeRef.current) + 1) % order.length];
-          setTheme(nextTheme);
-          // Icon defaults follow the resolved theme; explicit overrides are retained
-          break;
-        }
-        case 'new_folder':
-          if (isConnectedRef.current) createFolder(true);
-          break;
-        case 'toggle_devtools':
-          setDevToolsOpen(prev => !prev);
-          break;
-        case 'toggle_debug_mode':
-          // L53: In production, debug mode is only auto-enabled by Cyber theme
-          if (import.meta.env.DEV) setDebugMode(prev => !prev);
-          break;
-        case 'show_dependencies':
-          setShowDependenciesPanel(true);
-          break;
-        case 'toggle_editor':
-        case 'toggle_terminal':
-        case 'toggle_agent':
-          // Emit event for DevToolsV2 to handle
-          window.dispatchEvent(new CustomEvent('devtools-panel-toggle', { detail: id.replace('toggle_', '') }));
-          break;
-        case 'toggle_aerofile':
-          // Dispatch to StatusBar's AeroFile button handler
-          window.dispatchEvent(new CustomEvent('toggle-aerofile'));
-          break;
-        case 'check_update':
-          checkForUpdate(true);
-          break;
-        case 'quit':
-          // Will be handled by Tauri
-          break;
+  // Menu events from the native menu: registered once, and the handler runs
+  // with the state of now (the refresh lists with the hidden-files setting of
+  // now, the site command follows the connection of now).
+  useTauriListener<string>('menu-event', (event) => {
+    const id = event.payload;
+    switch (id) {
+      case 'about': setShowAboutDialog(true); break;
+      case 'support': setShowSupportDialog(true); break;
+      case 'shortcuts': setShowShortcutsDialog(true); break;
+      case 'settings': setShowSettingsPanel(true); break;
+      case 'site_command': if (canSendSiteCommand) setShowSiteCommand(true); break;
+      case 'refresh':
+        if (isConnected) loadRemoteFiles();
+        loadLocalFiles(currentLocalPath);
+        break;
+      case 'toggle_theme': {
+        const order: Theme[] = ['light', 'dark', 'truedark', 'tokyo', 'cyber', 'green', 'ice', 'redhorse'];
+        const nextTheme = order[(order.indexOf(theme) + 1) % order.length];
+        setTheme(nextTheme);
+        // Icon defaults follow the resolved theme; explicit overrides are retained
+        break;
       }
-    });
-    return guardedUnlisten(unlistenPromise);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+      case 'new_folder':
+        if (isConnected) createFolder(true);
+        break;
+      case 'toggle_devtools':
+        setDevToolsOpen(prev => !prev);
+        break;
+      case 'toggle_debug_mode':
+        // L53: In production, debug mode is only auto-enabled by Cyber theme
+        if (import.meta.env.DEV) setDebugMode(prev => !prev);
+        break;
+      case 'show_dependencies':
+        setShowDependenciesPanel(true);
+        break;
+      case 'toggle_editor':
+      case 'toggle_terminal':
+      case 'toggle_agent':
+        // Emit event for DevToolsV2 to handle
+        window.dispatchEvent(new CustomEvent('devtools-panel-toggle', { detail: id.replace('toggle_', '') }));
+        break;
+      case 'toggle_aerofile':
+        // Dispatch to StatusBar's AeroFile button handler
+        window.dispatchEvent(new CustomEvent('toggle-aerofile'));
+        break;
+      case 'check_update':
+        checkForUpdate(true);
+        break;
+      case 'quit':
+        // Will be handled by Tauri
+        break;
+    }
+  });
 
   // AeroAgent app tool events: theme switching + sync control
   useTauriListener<{ theme: string }>('ai-set-theme', (event) => {
@@ -5615,6 +5582,36 @@ const App: React.FC = () => {
       return false;
     }
   }, [showHiddenFiles, notify, t, setLocalFiles2, setCurrentLocalPath2, setSelectedLocalFiles2]);
+
+  // Command palette items (below the loaders it lists)
+  const commandPaletteItems: CommandItem[] = useMemo(() => [
+    // Navigation
+    { id: 'nav-aerofile', label: t('statusBar.aerofile'), category: 'navigation' as CommandCategory, icon: <FolderOpen size={14} />, action: () => { setShowConnectionScreen(false); setActivePanel('local'); }, keywords: ['local', 'file', 'manager'] },
+    { id: 'nav-connect', label: t('connection.quickConnect'), category: 'navigation' as CommandCategory, icon: <Globe size={14} />, action: () => setShowConnectionScreen(true), keywords: ['connection', 'server', 'ftp', 'sftp'] },
+    { id: 'nav-settings', label: t('settings.title'), category: 'navigation' as CommandCategory, icon: <Settings size={14} />, action: () => setShowSettingsPanel(true), shortcut: 'Ctrl+,', keywords: ['preferences', 'config'] },
+    // File
+    { id: 'file-newfolder', label: t('contextMenu.newFolder'), category: 'file' as CommandCategory, icon: <FolderPlus size={14} />, action: () => createFolder(activePanel === 'remote'), keywords: ['create', 'directory', 'mkdir'] },
+    { id: 'file-refresh', label: t('contextMenu.refresh'), category: 'file' as CommandCategory, icon: <RefreshCw size={14} />, action: () => { if (activePanel === 'remote') loadRemoteFiles(); else loadLocalFiles(currentLocalPath); }, keywords: ['reload'] },
+    ...(canSendSiteCommand ? [{ id: 'connection-site-command', label: t('menu.siteCommand'), category: 'navigation' as CommandCategory, icon: <Terminal size={14} />, action: () => setShowSiteCommand(true), keywords: ['site', 'ftp', 'raw', 'quote', 'command', 'glftpd'] }] : []),
+    // AI
+    { id: 'ai-agent', label: 'AeroAgent', category: 'ai' as CommandCategory, icon: <Bot size={14} />, action: () => window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'agent' })), keywords: ['chat', 'assistant', 'ai'] },
+    // Tools
+    { id: 'tools-editor', label: t('devtools.codeEditor'), category: 'tools' as CommandCategory, icon: <Code size={14} />, action: () => window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'editor' })), keywords: ['code', 'monaco', 'edit'] },
+    { id: 'tools-terminal', label: t('devtools.sshTerminal'), category: 'tools' as CommandCategory, icon: <Terminal size={14} />, action: () => window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'terminal' })), keywords: ['ssh', 'shell', 'console'] },
+    // Sync
+    { id: 'aerosync', label: t('aerosync.title') || 'AeroSync', category: 'sync' as CommandCategory, icon: <FolderSync size={14} />, action: () => openAeroSync('sync'), keywords: ['synchronize', 'aerosync', 'aerofile', 'compare', 'plan', 'delta', 'aerorsync'] },
+    // AeroVault overlay
+    {
+      id: 'tools-aerovault-overlay',
+      label: aeroVaultOverlaySession
+        ? (t('commandPalette.aerovaultOverlayLock') || 'Lock AeroVault Overlay')
+        : (t('commandPalette.aerovaultOverlayOpen') || 'Open AeroVault Overlay'),
+      category: 'tools' as CommandCategory,
+      icon: aeroVaultOverlaySession ? <Lock size={14} /> : <Shield size={14} />,
+      action: () => window.dispatchEvent(new CustomEvent('aerovault-overlay-toggle')),
+      keywords: ['vault', 'aerovault', 'overlay', 'crypt', 'lock', 'unlock', 'encrypt'],
+    },
+  ], [t, activePanel, currentLocalPath, aeroVaultOverlaySession, canSendSiteCommand, loadLocalFiles]);
 
   // The local panels that show `dirs` (one folder, or each folder a batch
   // wrote to), each reloaded once however many of them it shows.
@@ -5760,12 +5757,11 @@ const App: React.FC = () => {
 
   const currentLocalPath2Ref = useRef(currentLocalPath2);
   useEffect(() => { currentLocalPath2Ref.current = currentLocalPath2; }, [currentLocalPath2]);
-  // The loaders follow `notify`, which App builds again on every render: a
-  // listener that depended on them subscribed again each time, its cleanup
-  // stopped the watch, and a reload waiting to run went with it. The
-  // listener subscribes once and reads them here.
-  const localLoadersRef = useRef({ local: loadLocalFiles, local2: loadLocalFiles2 });
-  useLayoutEffect(() => { localLoadersRef.current = { local: loadLocalFiles, local2: loadLocalFiles2 }; });
+  // The listener subscribes once: a new subscription drops the reload waiting
+  // to run. The reload runs with the loaders of now (they follow the
+  // hidden-files setting).
+  const reloadLocalPanel = useLatestCallback((panel: 'local' | 'local2', path: string) =>
+    (panel === 'local2' ? loadLocalFiles2 : loadLocalFiles)(path));
 
   useEffect(() => {
     const pending: Record<'local' | 'local2', number | null> = { local: null, local2: null };
@@ -5784,7 +5780,7 @@ const App: React.FC = () => {
             pending[panel] = null;
             // The panel moved on meanwhile, and its new folder was just listed.
             if (pathRef.current !== expected) return;
-            localLoadersRef.current[panel](expected).catch(() => { /* swallowed by loader */ });
+            reloadLocalPanel(panel, expected).catch(() => { /* swallowed by loader */ });
           }, 350);
         });
         if (cancelled) fn();
@@ -5796,7 +5792,7 @@ const App: React.FC = () => {
       for (const waiting of Object.values(pending)) if (waiting !== null) window.clearTimeout(waiting);
       if (unlistenFn) unlistenFn();
     };
-  }, []);
+  }, [reloadLocalPanel]);
 
   // Ehud #2: OS file/folder drag&drop from the system File Explorer onto the
   // AeroFile local panel imports the dropped items into the current local
@@ -5855,11 +5851,11 @@ const App: React.FC = () => {
           if (kind === 'reconnecting') {
             pendingId = notify.info(t('reconnect.toastTitle'), t('reconnect.reconnecting'));
           } else if (kind === 'reconnected') {
-            if (pendingId) toast.removeToast(pendingId);
+            if (pendingId) removeToast(pendingId);
             pendingId = null;
             notify.success(t('reconnect.toastTitle'), t('reconnect.reconnected'));
           } else if (kind === 'reconnect-failed') {
-            if (pendingId) toast.removeToast(pendingId);
+            if (pendingId) removeToast(pendingId);
             pendingId = null;
             notify.error(t('reconnect.toastTitle'), t('reconnect.reconnectFailed'));
           }
@@ -5874,7 +5870,7 @@ const App: React.FC = () => {
       cancelled = true;
       if (unlistenFn) unlistenFn();
     };
-  }, [notify, toast, t]);
+  }, [notify, removeToast, t]);
 
   const applyRemoteFileList = (response: FileListResponse & { display_current_path?: string }) => {
     setRemoteFiles(response.files);
@@ -6252,7 +6248,7 @@ const App: React.FC = () => {
   // Returns the activated overlay's vault id + provider prefix, or null when no
   // overlay was activated. The vault info lets callers (switchSession recovery)
   // list through it immediately without waiting for async state to settle.
-  const maybeAutoUnlockProfileOverlay = async (
+  const maybeAutoUnlockProfileOverlay = useLatestCallback(async (
     savedServerId?: string,
     isCurrent?: () => boolean,
   ): Promise<{ vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider'; generation?: number; openingLogId?: string | null } | null> => {
@@ -6358,7 +6354,7 @@ const App: React.FC = () => {
       }
     }
     return null;
-  };
+  });
 
   // P3.3 (phase 1): once a profile with an overlay binding has connected (state
   // settled), unlock it. maybeAutoUnlockProfileOverlay() calls setAeroCryptVaultId,
@@ -6444,6 +6440,35 @@ const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, activeSessionId, pendingOverlayUnlock, aeroCryptVaultId, rcloneCryptVaultId]);
 
+  // Once the decrypted reload of the overlay effect below has landed (or not):
+  // its log lines are settled with the language of then.
+  const settleOverlayReloadLog = useLatestCallback((reloaded: FileListResponse | null) => {
+    // Rewrite the connect-time listing line to the overlay-anchored display
+    // path (what the path-bar shows), now that the decrypted reload landed.
+    // The connect-time log fired with the raw provider path ("/") before the
+    // deferred unlock knew the anchor; this realigns the log with the UI.
+    if (reloaded) {
+      const anchored = (reloaded as FileListResponse & { display_current_path?: string }).display_current_path || reloaded.current_path;
+      const count = String(reloaded.files?.length ?? 0);
+      if (connectListingLogIdRef.current) {
+        humanLog.updateEntry(connectListingLogIdRef.current, {
+          status: 'success',
+          message: t('activity.listing_complete', { path: anchored, count }),
+        });
+      } else if (overlaySuppressedRef.current) {
+        // The connect-time listing was suppressed: emit it now, correct.
+        logListingComplete(anchored, reloaded.files?.length ?? 0);
+      }
+    }
+    connectListingLogIdRef.current = null;
+    overlaySuppressedRef.current = false;
+    // T3: settle the live overlay entry to green once decrypted names land.
+    if (overlayLogIdRef.current) {
+      humanLog.updateEntry(overlayLogIdRef.current, { status: 'success', message: t('activity.overlay_unlocked') });
+      overlayLogIdRef.current = null;
+    }
+  });
+
   // P3.3 (phase 2): the overlay marker is now active in state and the provider is
   // wrapped. Reload like the manual Refresh (no `silent`, so the
   // reconnect path runs) so the dual-panel renders decrypted names; one retry covers
@@ -6491,30 +6516,7 @@ const App: React.FC = () => {
           await smartReanchorOverlay(reloadScope, initialLandingOpts);
           reloaded = await loadRemoteFiles(undefined, undefined, null);
         }
-        // Rewrite the connect-time listing line to the overlay-anchored display
-        // path (what the path-bar shows), now that the decrypted reload landed.
-        // The connect-time log fired with the raw provider path ("/") before the
-        // deferred unlock knew the anchor; this realigns the log with the UI.
-        if (reloaded) {
-          const anchored = (reloaded as FileListResponse & { display_current_path?: string }).display_current_path || reloaded.current_path;
-          const count = String(reloaded.files?.length ?? 0);
-          if (connectListingLogIdRef.current) {
-            humanLog.updateEntry(connectListingLogIdRef.current, {
-              status: 'success',
-              message: t('activity.listing_complete', { path: anchored, count }),
-            });
-          } else if (overlaySuppressedRef.current) {
-            // The connect-time listing was suppressed: emit it now, correct.
-            logListingComplete(anchored, reloaded.files?.length ?? 0);
-          }
-        }
-        connectListingLogIdRef.current = null;
-        overlaySuppressedRef.current = false;
-        // T3: settle the live overlay entry to green once decrypted names land.
-        if (overlayLogIdRef.current) {
-          humanLog.updateEntry(overlayLogIdRef.current, { status: 'success', message: t('activity.overlay_unlocked') });
-          overlayLogIdRef.current = null;
-        }
+        settleOverlayReloadLog(reloaded);
         // LT2b: vault armed successfully, clear any prior locked affordance.
         setLockedOverlayProfile(null);
       } finally {
@@ -6587,13 +6589,13 @@ const App: React.FC = () => {
   // One phrasing for every foreground listing, so connect, refresh and drill-in
   // all read the same. Falls back to the generic line when the target path is
   // not known yet (a connect that has not resolved its initial directory).
-  const listingReason = (path?: string | null): string =>
-    path ? t('browser.listingPath', { path }) : t('browser.listingDirectory');
+  const listingReason = useLatestCallback((path?: string | null): string =>
+    path ? t('browser.listingPath', { path }) : t('browser.listingDirectory'));
 
   // When the last remote listing started: a finished upload's own refresh
   // stands down if one started after it (see utils/deferredRefresh).
   const remoteRefreshStartedAtRef = useRef(0);
-  const loadRemoteFiles = async (overrideProtocol?: string, silent?: boolean, overrideScopePath?: string | null): Promise<FileListResponse | null> => {
+  const loadRemoteFiles = useLatestCallback(async (overrideProtocol?: string, silent?: boolean, overrideScopePath?: string | null): Promise<FileListResponse | null> => {
     remoteRefreshStartedAtRef.current = Date.now();
     // Cover every FOREGROUND listing (connect, manual refresh, provider re-list)
     // with the same spinner + freeze the drill-in navigation already uses, so a
@@ -6736,7 +6738,7 @@ const App: React.FC = () => {
         setRemoteListReason(null);
       }
     }
-  };
+  });
 
   // Transfer events (backend progress updates) - handles downloads, uploads, and deletes
   // Real aggregate byte snapshot for the active folder/batch transfer, so the
@@ -6823,7 +6825,7 @@ const App: React.FC = () => {
   };
 
   // Check provider capabilities after connection (for context menu features)
-  const refreshProviderCaps = async () => {
+  const refreshProviderCaps = useLatestCallback(async () => {
     const protocol = liveConnectionParams.protocol;
     if (!protocol || ['ftp', 'ftps', 'sftp'].includes(protocol)) {
       // FTP/SFTP don't use provider_* capability commands
@@ -6841,7 +6843,7 @@ const App: React.FC = () => {
     } catch {
       setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: false });
     }
-  };
+  });
 
   useEffect(() => {
     // Guard: only run once: loadLocalFiles deps (notify, t) may change after
@@ -7183,7 +7185,7 @@ const App: React.FC = () => {
     supportsSftpTransferPresets,
   ]);
 
-  const buildProviderParams = async (params: ConnectionParams, initialPath: string | null, connectScope = new ConnectScope()) => {
+  const buildProviderParams = useLatestCallback(async (params: ConnectionParams, initialPath: string | null, connectScope: ConnectScope = new ConnectScope()) => {
     const scopedInvoke = <T,>(command: string, args?: Record<string, unknown>) => connectScope.step(() => invoke<T>(command, args));
     connectScope.assert();
     let effectiveParams = normalizeProviderConnectionParams(params);
@@ -7421,7 +7423,7 @@ const App: React.FC = () => {
     };
 
     return { effectiveParams, providerParams };
-  };
+  });
 
   const refreshGitHubContext = useCallback(async (refreshBranches = false) => {
     const protocol = getActiveProviderProtocol();
@@ -7480,8 +7482,7 @@ const App: React.FC = () => {
       setHasGitHubPages(false);
       setHasActiveGitHubActions(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSessionId, liveConnectionParams.protocol, isConnected]);
+  }, [activeSessionId, getActiveProviderProtocol, isConnected]);
 
   // Poll GitHub Actions status every 60s when connected to GitHub
   useEffect(() => {
@@ -7554,7 +7555,7 @@ const App: React.FC = () => {
       if (phaseVersion === remoteConnectPhaseVersionRef.current) remoteConnectPhaseRef.current = false;
       setLoading(false);
     }
-  }, [activeSessionId, liveConnectionParams, currentRemotePath, notify, refreshGitHubContext, t]);
+  }, [activeSessionId, liveConnectionParams, currentRemotePath, notify, refreshGitHubContext, runConnect, t]);
 
   const requestGitHubBatchCommitMessage = useCallback((
     files: { local: string; remote: string }[],
@@ -7594,8 +7595,7 @@ const App: React.FC = () => {
     }
 
     void refreshGitHubContext(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSessionId, liveConnectionParams.protocol, isConnected, refreshGitHubContext]);
+  }, [activeSessionId, getActiveProviderProtocol, isConnected, refreshGitHubContext]);
 
   const logConnectionSteps = async (
     server: string,
@@ -7647,8 +7647,8 @@ const App: React.FC = () => {
     }
   };
 
-  const logListingComplete = (path: string, count: number): string =>
-    humanLog.logRaw('activity.listing_complete', 'INFO', { path, count: String(count) }, 'success');
+  const logListingComplete = useLatestCallback((path: string, count: number): string =>
+    humanLog.logRaw('activity.listing_complete', 'INFO', { path, count: String(count) }, 'success'));
 
   // SEC-P1-06: TOFU host key check: returns true if key is accepted or already known
   const checkSftpHostKey = async (host: string, port: number, connectScope?: ConnectScope): Promise<boolean> => {
@@ -8505,7 +8505,7 @@ const App: React.FC = () => {
   // A connect owns the remote panel from its first byte to its last setState, so
   // the spinner's Cancel knows that aborting its listing must tear the session
   // down rather than leave it half-open.
-  const connectToFtp = asConnectPhase(connectToFtpImpl);
+  const connectToFtp = useLatestCallback(asConnectPhase(connectToFtpImpl));
 
   // Ehud #347 (18352684) follow-up, raised in review: the AeroSync dialog owns a
   // Compare scan of one specific remote session, and no teardown path closed it.
@@ -9147,7 +9147,7 @@ const App: React.FC = () => {
     return true;
   };
 
-  const closeSession = async (sessionId: string) => {
+  const closeSession = useLatestCallback(async (sessionId: string) => {
     const session = sessions.find(s => s.id === sessionId);
     if (!session) return;
     forgetSiteSession(sessionId);
@@ -9168,7 +9168,7 @@ const App: React.FC = () => {
     }
 
     setSessions(prev => prev.filter(s => s.id !== sessionId));
-  };
+  });
 
   // Issue #222: close every open session whose savedServerId matches the
   // given profile id. Reached from the server card context menu when the
@@ -9958,7 +9958,7 @@ const App: React.FC = () => {
   // mirror. A file the OS opened is not a step inside the paired tree.
   // `waitMs` makes the navigation wait for a listing still loading instead of
   // being refused, and `onBusy` runs when it still cannot start.
-  const changeLocalDirectory = async (
+  const changeLocalDirectory = useLatestCallback(async (
     path: string,
     opts: { localOnly?: boolean; waitMs?: number; onBusy?: () => void } = {},
   ) => {
@@ -10074,7 +10074,7 @@ const App: React.FC = () => {
       }
     }
     return path;
-  };
+  });
 
   const chooseEndpointLocalFolder = useCallback(async (panelId: 'local' | 'local2') => {
     try {
@@ -10308,7 +10308,7 @@ const App: React.FC = () => {
     });
   }, [localFiles, remoteFiles, fileExistsAction]);
 
-  const downloadFile = async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false): Promise<boolean> => {
+  const downloadFile = useLatestCallback(async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false, onError: TransferErrorMode = 'notify'): Promise<boolean> => {
     const logId = humanLog.logStart('DOWNLOAD', { filename: fileName });
     pendingFileLogIds.current.set(fileName, logId); // Dedup
     const startTime = Date.now();
@@ -10357,13 +10357,17 @@ const App: React.FC = () => {
             };
             folderResult = await invoke<FolderTransferOutcome>('download_folder', { params });
           }
-          // Don't log success if the transfer was cancelled
-          if (!folderResult.cancelled) {
+          // Don't log success if the transfer was cancelled or a file failed:
+          // the backend's event for the folder has logged that.
+          if (!folderResult.cancelled && folderResult.failed === 0) {
             const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
             humanLog.updateEntry(logId, { status: 'success', message: t('activity.download_folder_success', { path: folderPath, seconds: elapsed }) });
           }
           // A folder with failed files is not done: a "cut" keeps its source.
           completed = folderTransferIsComplete(folderResult);
+          // Nor is its queue row, which the caller completes on a return.
+          const failure = onError === 'throw' ? folderTransferFailure(folderResult) : null;
+          if (failure) throw failure;
         } else {
           humanLog.logError('DOWNLOAD', { filename: fileName }, logId);
         }
@@ -10449,18 +10453,19 @@ const App: React.FC = () => {
         }
       }
       humanLog.logError('DOWNLOAD', { filename: fileName }, logId);
+      if (onError === 'throw') throw error;
       // Don't spam toasts when batch was cancelled: one summary toast is enough
       if (!batchCancelledRef.current) {
         notify.error(t('toast.downloadFailed'), String(error));
       }
     }
     return completed;
-  };
+  });
 
   // TQ-7b: optional explicitRemoteDir lets restore re-run an upload to the
   // journaled remote directory without depending on currentRemotePath.
   // All existing callers leave it undefined (legacy path unchanged).
-  const uploadFile = async (
+  const uploadFile = useLatestCallback(async (
     localFilePath: string,
     fileName: string,
     isDir: boolean = false,
@@ -10468,6 +10473,7 @@ const App: React.FC = () => {
     _skipConflictCheck: boolean = false,
     commitMessage?: string,
     explicitRemoteDir?: string,
+    onError: TransferErrorMode = 'notify',
   ): Promise<boolean> => {
     const startTime = Date.now();
     // True only when the file or folder actually landed (see downloadFile).
@@ -10490,9 +10496,10 @@ const App: React.FC = () => {
         if (isProvider) {
           const remoteRootForFolder = joinRemotePath(remoteBase, fileName);
           setScanningState({ active: true, folderName: fileName, message: t('activity.upload_start', { filename: fileName }) || `Uploading ${fileName}...`, operation: 'upload' });
+          let providerFolderResult: FolderTransferOutcome;
           try {
             const folderAction2 = fileExistsAction === 'ask' ? '' : fileExistsAction;
-            const providerFolderResult = await invoke<FolderTransferOutcome>('provider_upload_folder', {
+            providerFolderResult = await invoke<FolderTransferOutcome>('provider_upload_folder', {
               localPath: localFilePath,
               remotePath: remoteRootForFolder,
               fileExistsAction: folderAction2 || null,
@@ -10520,10 +10527,16 @@ const App: React.FC = () => {
             setScanningState(INITIAL_SCANNING_STATE);
           }
 
-          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-          const details = `(${elapsed}s)`;
-          const msg = t('activity.upload_success', { filename: remoteRootForFolder, details });
-          humanLog.updateEntry(logId, { message: msg });
+          // Don't log success if the transfer was cancelled or a file failed:
+          // the backend's event for the folder has logged that.
+          if (!providerFolderResult.cancelled && providerFolderResult.failed === 0) {
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+            const details = `(${elapsed}s)`;
+            const msg = t('activity.upload_success', { filename: remoteRootForFolder, details });
+            humanLog.updateEntry(logId, { message: msg });
+          }
+          const failure = onError === 'throw' ? folderTransferFailure(providerFolderResult) : null;
+          if (failure) throw failure;
           // pwd is restored by the backend (provider_upload_folder saves/restores pwd)
           // loadRemoteFiles() is called by the transfer event handler on 'complete'
           return completed;
@@ -10539,14 +10552,17 @@ const App: React.FC = () => {
           timeout_seconds: timeoutSeconds,
         };
         const uploadResult = await invoke<FolderTransferOutcome>('upload_folder', { params });
-        // Don't log success if the transfer was cancelled
-        if (!uploadResult.cancelled) {
+        // Don't log success if the transfer was cancelled or a file failed:
+        // the backend's event for the folder has logged that.
+        if (!uploadResult.cancelled && uploadResult.failed === 0) {
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
           const details = `(${elapsed}s)`;
           const msg = t('activity.upload_success', { filename: remotePath, details });
           humanLog.updateEntry(logId, { status: 'success', message: msg });
         }
         completed = folderTransferIsComplete(uploadResult);
+        const failure = onError === 'throw' ? folderTransferFailure(uploadResult) : null;
+        if (failure) throw failure;
       } else {
         let targetName = fileName;
         // Continue an interrupted upload from the remote partial instead of
@@ -10649,15 +10665,89 @@ const App: React.FC = () => {
         }
       }
       humanLog.logRaw('activity.upload_error', 'UPLOAD', { filename: fileName }, 'error');
+      if (onError === 'throw') throw error;
       if (!batchCancelledRef.current) {
         notify.error(t('toast.uploadFailed'), String(error));
       }
     }
     return completed;
-  };
+  });
 
-  // Keep restore-retry callbacks pointing at the latest transfer fns.
-  useLayoutEffect(() => { transferFnsRef.current = { uploadFile, downloadFile }; });
+  // The retry of an item restored from the journal, which the user starts long
+  // after the restore: it runs with the queue and the transfers of now.
+  const retryRestoredEntry = useLatestCallback(async (id: string, entry: TransferQueueJournalEntryDto) => {
+    const direction = entry.direction === 'upload' ? 'upload' : 'download';
+    transferQueue.startTransfer(id);
+    try {
+      if (direction === 'download') {
+        await downloadFile(
+          entry.remote_path,
+          entry.filename,
+          parentDir(entry.local_path) || undefined,
+          !!entry.is_folder,
+          Number(entry.size) || undefined,
+          false,
+          'throw',
+        );
+      } else {
+        // Option (a): explicit remote dir from the journal.
+        await uploadFile(
+          entry.local_path,
+          entry.filename,
+          !!entry.is_folder,
+          Number(entry.size) || undefined,
+          false,
+          undefined,
+          parentDir(entry.remote_path, 'remote') || undefined,
+          'throw',
+        );
+      }
+      transferQueue.completeTransfer(id);
+    } catch (error) {
+      // Stopped during this Retry: the file reads as cancelled and the
+      // stop is not shown as a failure. The flag also stays set after an
+      // earlier stopped batch, so it takes a cancel error to say so.
+      if (batchCancelledRef.current && isCancelledTransferError(String(error))) {
+        transferQueue.failTransfer(id, t('transfer.cancelledByUser'));
+      } else {
+        transferQueue.failTransfer(id, String(error));
+        notify.error(t(direction === 'download' ? 'toast.downloadFailed' : 'toast.uploadFailed'), String(error));
+      }
+    }
+  });
+
+  // Queues the restorable entries of the journal read at startup.
+  const restoreJournalEntries = useLatestCallback((entries: TransferQueueJournalEntryDto[]) => {
+    for (const entry of entries) {
+      if (!isRestorableJournalEntry(entry)) continue;
+      const direction = entry.direction === 'upload' ? 'upload' : 'download';
+      const displayPath = displayPathForRestore(
+        direction,
+        entry.local_path,
+        entry.remote_path,
+      );
+      const id = transferQueue.addItem(
+        entry.filename,
+        displayPath,
+        Number(entry.size) || 0,
+        direction,
+        {
+          restored: true,
+          isFolder: !!entry.is_folder,
+        },
+      );
+      recordQueueDescriptor(id, {
+        direction,
+        local_path: entry.local_path,
+        remote_path: entry.remote_path,
+        profile_id: entry.profile_id ?? null,
+        filename: entry.filename,
+        size: Number(entry.size) || 0,
+        is_folder: !!entry.is_folder,
+      });
+      retryCallbacksRef.current.set(id, () => retryRestoredEntry(id, entry));
+    }
+  });
 
   // TQ-7b: restore interrupted queue items from the journal on startup.
   // Does NOT auto-start or auto-reconnect; items land pending + restored.
@@ -10669,69 +10759,7 @@ const App: React.FC = () => {
           'load_transfer_queue_journal_cmd',
         );
         if (cancelled) return;
-        const entries = journal?.entries ?? [];
-        for (const entry of entries) {
-          if (!isRestorableJournalEntry(entry)) continue;
-          const direction = entry.direction === 'upload' ? 'upload' : 'download';
-          const displayPath = displayPathForRestore(
-            direction,
-            entry.local_path,
-            entry.remote_path,
-          );
-          const id = transferQueue.addItem(
-            entry.filename,
-            displayPath,
-            Number(entry.size) || 0,
-            direction,
-            {
-              restored: true,
-              isFolder: !!entry.is_folder,
-            },
-          );
-          recordQueueDescriptor(id, {
-            direction,
-            local_path: entry.local_path,
-            remote_path: entry.remote_path,
-            profile_id: entry.profile_id ?? null,
-            filename: entry.filename,
-            size: Number(entry.size) || 0,
-            is_folder: !!entry.is_folder,
-          });
-          const remoteDir = parentDir(entry.remote_path, 'remote');
-          const localDir = parentDir(entry.local_path);
-          retryCallbacksRef.current.set(id, async () => {
-            transferQueue.startTransfer(id);
-            try {
-              const fns = transferFnsRef.current;
-              if (!fns) {
-                throw new Error('Transfer functions not ready');
-              }
-              if (direction === 'download') {
-                await fns.downloadFile(
-                  entry.remote_path,
-                  entry.filename,
-                  localDir || undefined,
-                  !!entry.is_folder,
-                  Number(entry.size) || undefined,
-                );
-              } else {
-                // Option (a): explicit remote dir from the journal.
-                await fns.uploadFile(
-                  entry.local_path,
-                  entry.filename,
-                  !!entry.is_folder,
-                  Number(entry.size) || undefined,
-                  false,
-                  undefined,
-                  remoteDir || undefined,
-                );
-              }
-              transferQueue.completeTransfer(id);
-            } catch (error) {
-              transferQueue.failTransfer(id, String(error));
-            }
-          });
-        }
+        restoreJournalEntries(journal?.entries ?? []);
       } catch (e) {
         logger.warn('[TQ-7b] failed to load transfer queue journal', e);
       } finally {
@@ -10743,9 +10771,7 @@ const App: React.FC = () => {
     return () => {
       cancelled = true;
     };
-    // Mount-only: transferQueue.addItem is stable enough (functional setState).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [restoreJournalEntries]);
 
   // TQ-7c smart resume: ensure the journal profile is live (auto-connect with
   // confirm when needed), then fire the stored retry callbacks. Never starts a
@@ -11064,6 +11090,7 @@ const App: React.FC = () => {
 
   // Two-level cancel: Stop (finish current file) → Force Stop (interrupt immediately)
   const cancelTransfer = async () => {
+    stopCountRef.current += 1;
     // If batch is paused by circuit breaker, resolve the pause promise
     if (batchResumeResolverRef.current) {
       batchResumeResolverRef.current('cancel');
@@ -11188,8 +11215,11 @@ const App: React.FC = () => {
   // Retry all failed items in queue
   const retryAllFailedItems = async () => {
     const failedIds = transferQueue.retryAllFailed();
+    // A Stop during these retries ends them. The flag of a batch stopped
+    // before stays set, and would end them before the first.
+    const stops = stopCountRef.current;
     for (const id of failedIds) {
-      if (batchCancelledRef.current) break;
+      if (stopCountRef.current !== stops) break;
       const cb = retryCallbacksRef.current.get(id);
       if (cb) await cb();
     }
@@ -11377,7 +11407,7 @@ const App: React.FC = () => {
     planLocalSelectionAcrossPanelsRef.current = planLocalSelectionAcrossPanels;
   }, [planLocalSelectionAcrossPanels]);
 
-  const executeUnifiedTransferPlan = useCallback(async () => {
+  const executeUnifiedTransferPlan = useLatestCallback(async () => {
     if (!pendingUnifiedTransferPlan) return;
     const { plan, sourceLocalPanelId } = pendingUnifiedTransferPlan;
     setUnifiedTransferExecuting(true);
@@ -11636,7 +11666,7 @@ const App: React.FC = () => {
     } finally {
       setUnifiedTransferExecuting(false);
     }
-  }, [pendingUnifiedTransferPlan, transferLocalSelectionAcrossPanels, notify, t]);
+  });
 
   // AeroFile Sync: unified opener for Compare + Plan + Sync tabs. Computes
   // pairKind, labels, and the compare result. local-local stays a flat
@@ -11653,14 +11683,14 @@ const App: React.FC = () => {
    * out on both sides; the Plan's Rescan calls this again with the edited
    * values, and the result records which ones it was computed with.
    */
-  const openAeroSync = useCallback((
+  const openAeroSync = useLatestCallback((
     initialTab: AeroSyncTab = 'compare',
     userExcludes: string[] = [],
     backupDir: string = AEROSYNC_DEFAULT_BACKUP_DIR,
     // A recursive compare reads both trees in full, so opening AeroSync never
     // starts one: the Compare and Plan tabs offer it, and Start and Rescan
     // pass true here.
-    startScan = false,
+    startScan: boolean = false,
   ) => {
     // Bump the compare token: any recursive scan still in flight from a
     // previous open is now stale and will discard its own result.
@@ -11716,6 +11746,7 @@ const App: React.FC = () => {
           // having applied them: the Plan then blocks Execute until a rescan
           // works, rather than let Mirror delete what the compare never hid.
           let applied = appliedCompareFilters('recursive', userExcludes, backupDir);
+          let compareFailed = false;
           try {
             const report = await invoke<CompareReport>('compare_local_directories', {
               leftPath,
@@ -11728,6 +11759,7 @@ const App: React.FC = () => {
           } catch (err) {
             // Stopped from the dialog, which already shows it as stopped.
             if (isCompareCancelled(err)) return;
+            compareFailed = true;
             if (isScanIncompleteError(err)) {
               // CLAUDE-AV-B3-13: one of the two local walks did not see its
               // whole tree. A dual-local pair deletes in BOTH directions, so
@@ -11750,7 +11782,7 @@ const App: React.FC = () => {
           if (aeroSyncCompareSeqRef.current !== mySeq) return;
           setAeroSync((prev) =>
             prev
-              ? { ...prev, context: { ...prev.context, compareResult: resolved, compareLoading: false, ...applied } }
+              ? { ...prev, context: { ...prev.context, compareResult: resolved, compareLoading: false, compareFailed, ...applied } }
               : prev,
           );
         })();
@@ -11830,6 +11862,7 @@ const App: React.FC = () => {
         let resolved: CompareResult;
         // See the local-local branch: the flat fallback applies no exclusions.
         let applied = appliedCompareFilters('recursive', userExcludes, backupDir);
+        let compareFailed = false;
         try {
           const compareArgs: Record<string, unknown> = {
             localPath: currentLocalPath,
@@ -11850,6 +11883,7 @@ const App: React.FC = () => {
         } catch (err) {
           // Stopped from the dialog, which already shows it as stopped.
           if (isCompareCancelled(err)) return;
+          compareFailed = true;
           if (isProviderConn && cryptCompareActive) {
             // Crypt overlay active: the backend failed closed (vault missing,
             // wrong overlay key, or zero rows decrypted). Do NOT fall back to a
@@ -11886,7 +11920,7 @@ const App: React.FC = () => {
         if (aeroSyncCompareSeqRef.current !== mySeq) return;
         setAeroSync((prev) =>
           prev
-            ? { ...prev, context: { ...prev.context, compareResult: resolved, compareLoading: false, ...applied } }
+            ? { ...prev, context: { ...prev.context, compareResult: resolved, compareLoading: false, compareFailed, ...applied } }
             : prev,
         );
       })();
@@ -11924,23 +11958,7 @@ const App: React.FC = () => {
         initialDestination: '',
       },
     });
-  }, [
-    showDualLocalPanel,
-    showRemotePanel,
-    isConnected,
-    swapPanels,
-    localFiles,
-    localFiles2,
-    remoteFiles,
-    currentLocalPath,
-    currentLocalPath2,
-    currentRemotePath,
-    activeUnifiedRemoteProfile,
-    overlayInScope,
-    overlayVaultLit,
-    notify,
-    t,
-  ]);
+  });
 
   // The compare the dialog is waiting for is stopped as soon as it is not
   // waited for any more (Stop, close, a new open, a session teardown): see
@@ -11953,7 +11971,7 @@ const App: React.FC = () => {
   // panels. Both the Plan tab preset executor and the Compare-tab mirror
   // buttons go through this so deletes / overwrites / verify / retry /
   // resumable journal all execute on a full recursive tree.
-  const runConnectedRemoteSync = useCallback((
+  const runConnectedRemoteSync = useLatestCallback((
     runFiles: SyncRunFile[],
     runDirs: SyncRunDirs,
     opts: ConnectedRemoteRunOptions,
@@ -12051,8 +12069,8 @@ const App: React.FC = () => {
               isCancelled: () => batchCancelledRef.current,
               // #364: each file shows as a Transfer Queue row while it runs.
               // The queue's methods only queue functional state updates, so
-              // the older `transferQueue` this memoized callback may hold
-              // still drives the live list.
+              // the `transferQueue` of the render that started the run still
+              // drives the live list.
               onFileStatus: syncRunQueueBridge(runFiles, transferQueue, opts.resumeJournal),
             },
             { invoke, deltaStats, resumeJournal: opts.resumeJournal, writeIndex: true },
@@ -12117,16 +12135,7 @@ const App: React.FC = () => {
         launchRun();
       }
     })();
-  }, [
-    activeUnifiedRemoteProfile,
-    currentLocalPath,
-    currentRemotePath,
-    overlayInScope,
-    overlayVaultLit,
-    notify,
-    t,
-    debugMode,
-  ]);
+  });
 
   // GAP-10: shared local-local sync launcher. A dual-local AeroFile pair has
   // no protocol and no SFTP probe, so this is the trimmed sibling of
@@ -12137,7 +12146,7 @@ const App: React.FC = () => {
   // buttons and the journal-resume banner all route through it, so deletes /
   // overwrites / verify / retry / resumable journal execute on the full
   // recursive tree. `localRoot` = the left panel, `remoteRoot` = the right.
-  const runLocalLocalSync = useCallback((
+  const runLocalLocalSync = useLatestCallback((
     runFiles: SyncRunFile[],
     runDirs: SyncRunDirs,
     opts: LocalLocalRunOptions,
@@ -12221,14 +12230,7 @@ const App: React.FC = () => {
         setSyncCancelling(false);
       }
     })();
-  }, [
-    currentLocalPath,
-    currentLocalPath2,
-    loadLocalFiles,
-    loadLocalFiles2,
-    notify,
-    t,
-  ]);
+  });
 
   const handleCompareMirrorLeftToRight = useCallback((entries: CompareResultEntry[]) => {
     const context = aeroSync?.context;
@@ -12749,7 +12751,7 @@ const App: React.FC = () => {
     succeededSources: string[];
   };
 
-  const fileBatchSessionFlags = (
+  const fileBatchSessionFlags = useLatestCallback((
     direction: FileBatchDirection,
     options: { cut?: boolean } = {},
   ): FileBatchSessionFlags => {
@@ -12759,9 +12761,9 @@ const App: React.FC = () => {
       gitHostUpload: direction === 'upload' && (protocol === 'github' || protocol === 'gitlab'),
       legacyCut: !!options.cut && !usesProviderApi(protocol),
     };
-  };
+  });
 
-  const runFileBatch = async (
+  const runFileBatch = useLatestCallback(async (
     direction: FileBatchDirection,
     items: FileBatchItem[],
     targetDir: string,
@@ -13041,7 +13043,7 @@ const App: React.FC = () => {
     await batchDispatcher.launchAll();
     await singleDispatcher.launchAll();
     return result;
-  };
+  });
 
   // Upload files (Selected or Dialog)
   const uploadMultipleFiles = withBatchLatch(async (filesOverride?: string[], localPanelId: 'local' | 'local2' = focusedLocalPanelId, remoteDir: string = currentRemotePath) => {
@@ -13197,10 +13199,18 @@ const App: React.FC = () => {
           retryCallbacksRef.current.set(id, async () => {
             transferQueue.startTransfer(id);
             try {
-              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir);
+              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir, 'throw');
               transferQueue.completeTransfer(id);
             } catch (error) {
-              transferQueue.failTransfer(id, String(error));
+              // Stopped during this Retry: the file reads as cancelled and the
+              // stop is not shown as a failure. The flag also stays set after an
+              // earlier stopped batch, so it takes a cancel error to say so.
+              if (batchCancelledRef.current && isCancelledTransferError(String(error))) {
+                transferQueue.failTransfer(id, t('transfer.cancelledByUser'));
+              } else {
+                transferQueue.failTransfer(id, String(error));
+                notify.error(t('toast.uploadFailed'), String(error));
+              }
             }
           });
           return { id, filePath, fileName, file };
@@ -13298,10 +13308,11 @@ const App: React.FC = () => {
             for (const item of kept.filter(i => i.file.is_dir)) {
               transferQueue.startTransfer(item.id);
               try {
-                await uploadFile(item.filePath, item.fileName, true, item.file.size || undefined, false, batchCommitMessage, remoteDir);
+                await uploadFile(item.filePath, item.fileName, true, item.file.size || undefined, false, batchCommitMessage, remoteDir, 'throw');
                 transferQueue.completeTransfer(item.id);
               } catch (error) {
                 transferQueue.failTransfer(item.id, String(error));
+                if (!batchCancelledRef.current) notify.error(t('toast.uploadFailed'), String(error));
               }
             }
             resetOverwriteSettings();
@@ -13422,17 +13433,33 @@ const App: React.FC = () => {
           for (let attempt = 0; attempt <= circuitBreaker.config.maxRetriesPerFile; attempt++) {
             if (attempt > 0) {
               await new Promise(r => setTimeout(r, circuitBreaker.getRetryDelay(attempt)));
+              // A Stop during the wait: the file is cancelled, not retried.
+              if (batchCancelledRef.current) {
+                transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+                break;
+              }
+              // The error event of the attempt before may have settled the row.
+              transferQueue.retryItem(item.id);
               transferQueue.startTransfer(item.id);
             }
             try {
-              await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined, true, batchCommitMessage, remoteDir);
+              await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined, true, batchCommitMessage, remoteDir, 'throw');
+              if (attempt > 0) transferQueue.retryItem(item.id);
               transferQueue.completeTransfer(item.id);
               circuitBreaker.recordSuccess();
               break;
             } catch (error) {
-              const result = circuitBreaker.recordFailure(String(error));
-              if (result.isFatal || !result.retryable || result.shouldPause || attempt >= circuitBreaker.config.maxRetriesPerFile) {
+              // A cancelled batch stops here: the file is cancelled, not retried.
+              if (batchCancelledRef.current) {
+                transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+                break;
+              }
+              // A folder with failed files is not sent again, nor counted
+              // toward the pause: its command has retried each file.
+              const result = error instanceof FolderTransferFailedError ? null : circuitBreaker.recordFailure(String(error));
+              if (!result || result.isFatal || !result.retryable || result.shouldPause || attempt >= circuitBreaker.config.maxRetriesPerFile) {
                 transferQueue.failTransfer(item.id, String(error));
+                notify.error(t('toast.uploadFailed'), String(error));
                 break;
               }
             }
@@ -13517,10 +13544,18 @@ const App: React.FC = () => {
         retryCallbacksRef.current.set(id, async () => {
           transferQueue.startTransfer(id);
           try {
-            await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir);
+            await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir, 'throw');
             transferQueue.completeTransfer(id);
           } catch (error) {
-            transferQueue.failTransfer(id, String(error));
+            // Stopped during this Retry: the file reads as cancelled and the
+            // stop is not shown as a failure. The flag also stays set after an
+            // earlier stopped batch, so it takes a cancel error to say so.
+            if (batchCancelledRef.current && isCancelledTransferError(String(error))) {
+              transferQueue.failTransfer(id, t('transfer.cancelledByUser'));
+            } else {
+              transferQueue.failTransfer(id, String(error));
+              notify.error(t('toast.uploadFailed'), String(error));
+            }
           }
         });
         return { id, filePath, fileName };
@@ -13615,17 +13650,31 @@ const App: React.FC = () => {
         for (let attempt = 0; attempt <= circuitBreaker.config.maxRetriesPerFile; attempt++) {
           if (attempt > 0) {
             await new Promise(r => setTimeout(r, circuitBreaker.getRetryDelay(attempt)));
+            // A Stop during the wait: the file is cancelled, not retried.
+            if (batchCancelledRef.current) {
+              transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+              break;
+            }
+            // The error event of the attempt before may have settled the row.
+            transferQueue.retryItem(item.id);
             transferQueue.startTransfer(item.id);
           }
           try {
-            await uploadFile(item.filePath, item.fileName, false, undefined, true, undefined, remoteDir);
+            await uploadFile(item.filePath, item.fileName, false, undefined, true, undefined, remoteDir, 'throw');
+            if (attempt > 0) transferQueue.retryItem(item.id);
             transferQueue.completeTransfer(item.id);
             circuitBreaker.recordSuccess();
             break;
           } catch (error) {
+            // A cancelled batch stops here: the file is cancelled, not retried.
+            if (batchCancelledRef.current) {
+              transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+              break;
+            }
             const result = circuitBreaker.recordFailure(String(error));
             if (result.isFatal || !result.retryable || result.shouldPause || attempt >= circuitBreaker.config.maxRetriesPerFile) {
               transferQueue.failTransfer(item.id, String(error));
+              notify.error(t('toast.uploadFailed'), String(error));
               break;
             }
           }
@@ -13714,10 +13763,18 @@ const App: React.FC = () => {
         retryCallbacksRef.current.set(id, async () => {
           transferQueue.startTransfer(id);
           try {
-            await downloadFile(file.path, file.name, frozenLocalPath, file.is_dir, file.size || undefined);
+            await downloadFile(file.path, file.name, frozenLocalPath, file.is_dir, file.size || undefined, false, 'throw');
             transferQueue.completeTransfer(id);
           } catch (error) {
-            transferQueue.failTransfer(id, String(error));
+            // Stopped during this Retry: the file reads as cancelled and the
+            // stop is not shown as a failure. The flag also stays set after an
+            // earlier stopped batch, so it takes a cancel error to say so.
+            if (batchCancelledRef.current && isCancelledTransferError(String(error))) {
+              transferQueue.failTransfer(id, t('transfer.cancelledByUser'));
+            } else {
+              transferQueue.failTransfer(id, String(error));
+              notify.error(t('toast.downloadFailed'), String(error));
+            }
           }
         });
         return { id, file };
@@ -13840,17 +13897,33 @@ const App: React.FC = () => {
         for (let attempt = 0; attempt <= circuitBreaker.config.maxRetriesPerFile; attempt++) {
           if (attempt > 0) {
             await new Promise(r => setTimeout(r, circuitBreaker.getRetryDelay(attempt)));
+            // A Stop during the wait: the file is cancelled, not retried.
+            if (batchCancelledRef.current) {
+              transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+              break;
+            }
+            // The error event of the attempt before may have settled the row.
+            transferQueue.retryItem(item.id);
             transferQueue.startTransfer(item.id);
           }
           try {
-            await downloadFile(item.file.path, item.file.name, localDir, item.file.is_dir, item.file.size || undefined, true);
+            await downloadFile(item.file.path, item.file.name, localDir, item.file.is_dir, item.file.size || undefined, true, 'throw');
+            if (attempt > 0) transferQueue.retryItem(item.id);
             transferQueue.completeTransfer(item.id);
             circuitBreaker.recordSuccess();
             break;
           } catch (error) {
-            const result = circuitBreaker.recordFailure(String(error));
-            if (result.isFatal || !result.retryable || result.shouldPause || attempt >= circuitBreaker.config.maxRetriesPerFile) {
+            // A cancelled batch stops here: the file is cancelled, not retried.
+            if (batchCancelledRef.current) {
+              transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+              break;
+            }
+            // A folder with failed files is not downloaded again, nor counted
+            // toward the pause: its command has retried each file.
+            const result = error instanceof FolderTransferFailedError ? null : circuitBreaker.recordFailure(String(error));
+            if (!result || result.isFatal || !result.retryable || result.shouldPause || attempt >= circuitBreaker.config.maxRetriesPerFile) {
               transferQueue.failTransfer(item.id, String(error));
+              notify.error(t('toast.downloadFailed'), String(error));
               break;
             }
           }
@@ -14526,7 +14599,7 @@ const App: React.FC = () => {
     setBatchRenameDialog(null);
   };
 
-  const createFolder = (isRemote: boolean, localPanelId: 'local' | 'local2' = focusedLocalPanelId) => {
+  const createFolder = useLatestCallback((isRemote: boolean, localPanelId: 'local' | 'local2' = focusedLocalPanelId) => {
     setInputDialog({
       title: t('dialog.newFolder'),
       defaultValue: '',
@@ -14573,7 +14646,7 @@ const App: React.FC = () => {
         }
       }
     });
-  };
+  });
 
   const showRemoteContextMenu = (e: React.MouseEvent, file: RemoteFile) => {
     e.preventDefault();
@@ -16893,8 +16966,22 @@ const App: React.FC = () => {
       ai: aiPublicSettings,
     },
     tools: guiToolsState,
+    aerosync: {
+      open: !!aeroSync,
+      scanning: !!aeroSync?.context.compareLoading,
+      entries: aeroSync?.context.compareResult ? aeroSync.context.compareResult.entries.length : null,
+      busy: aeroSyncBusy,
+      scan_failed: !!aeroSync?.context.compareFailed,
+    },
   }, {
     showView: view => setShowConnectionScreen(view === 'servers'),
+    aeroSyncOpen: () => openAeroSync('compare'),
+    aeroSyncCompare: () => {
+      // With one side alone the window opens with nothing to scan, and the caller would wait for a result that never comes.
+      if (!showDualLocalPanel && !(isConnected && showRemotePanel)) throw new GuiError('blocked', 'needs a connected server or the second local panel');
+      openAeroSync('compare', [], AEROSYNC_DEFAULT_BACKUP_DIR, true);
+    },
+    aeroSyncClose: () => setAeroSync(null),
     navigate: async (panel, path) => {
       const target = panel === 'remote' ? await changeRemoteDirectory(path, undefined, !!(rcloneCryptVaultId || aeroCryptVaultId))
         : panel === 'local2' ? await changeLocalDirectory2(path) : await changeLocalDirectory(path);
@@ -17145,7 +17232,7 @@ const App: React.FC = () => {
             dialog + session inbox + its own toasts. Mounted only while the flag
             is on; unmount stops the receive loop. */}
         {aeroShareEnabled && <AeroShareHub />}
-        <ScanningToast state={scanningState} t={t} onCancel={() => { batchCancelledRef.current = true; }} />
+        <ScanningToast state={scanningState} t={t} onCancel={() => { stopCountRef.current += 1; batchCancelledRef.current = true; }} />
         <FontSizeIndicator indicator={fontSizeIndicator} />
 
         {/* Update Available Toast with inline download */}
@@ -17428,6 +17515,7 @@ const App: React.FC = () => {
             initialTab={aeroSync.initialTab}
             context={aeroSync.context}
             onClose={() => setAeroSync(null)}
+            onBusyChange={setAeroSyncBusy}
             onApplyMirrorLeftToRight={handleCompareMirrorLeftToRight}
             onApplyMirrorRightToLeft={handleCompareMirrorRightToLeft}
             onExecutePreset={executeSyncPresetPlan}
@@ -19223,6 +19311,7 @@ const App: React.FC = () => {
                             ? 'bg-blue-500 hover:bg-blue-600 text-white shadow-sm'
                             : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200'
                         }`}
+                        data-testid="aerosync.open"
                         title={t('aerosync.toolbarButton') || t('statusBar.syncFiles')}
                         aria-label={t('aerosync.toolbarButton') || t('statusBar.syncFiles')}
                       >
