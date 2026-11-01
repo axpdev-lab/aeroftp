@@ -15040,7 +15040,8 @@ const App: React.FC = () => {
 
     // Copy FTP/SFTP/SCP URL: only for traditional protocols
     if (currentProtocol && (currentProtocol === 'ftp' || currentProtocol === 'ftps' || isSshProtocol(currentProtocol))) {
-      const scheme = isSshProtocol(currentProtocol) ? currentProtocol : 'ftp';
+      // An SFTP connection that went on over SCP copies `scp://`: the server has no SFTP.
+      const scheme = isSshProtocol(currentProtocol) ? (shownProtocol ?? currentProtocol) : 'ftp';
       items.push({
         label: t('contextMenu.copyUrl', { scheme: scheme.toUpperCase() }), icon: <Link2 size={14} />, action: () => {
           const url = `${scheme}://${currentUsername}@${currentServer}${file.path}`;

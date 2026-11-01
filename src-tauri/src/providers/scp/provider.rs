@@ -523,12 +523,33 @@ impl StorageProvider for ScpProvider {
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+        self.download_to_bytes_capped(remote_path, crate::providers::MAX_DOWNLOAD_TO_BYTES)
+            .await
+    }
+
+    /// As SFTP: a file the server says is larger than `max_bytes` is refused
+    /// before anything is read, and a server that says less than it sends is
+    /// stopped by the buffer, which refuses the write that would cross the cap.
+    async fn download_to_bytes_capped(
+        &mut self,
+        remote_path: &str,
+        max_bytes: u64,
+    ) -> Result<Vec<u8>, ProviderError> {
         let full = self.normalize_path(remote_path);
-        let mut data = Vec::new();
-        self.session()?
-            .download(&full, &mut data, &mut |_, _| {})
-            .await?;
-        Ok(data)
+        let size = self.session()?.stat_followed(&full).await?.size;
+        if size > max_bytes {
+            return Err(too_large_for_memory(size, max_bytes));
+        }
+        let mut sink = CappedBuffer::new(max_bytes);
+        let read = self
+            .session()?
+            .download(&full, &mut sink, &mut |_, _| {})
+            .await;
+        if sink.refused {
+            return Err(too_large_for_memory(sink.wanted, max_bytes));
+        }
+        read?;
+        Ok(sink.data)
     }
 
     async fn upload(
@@ -774,9 +795,11 @@ impl StorageProvider for ScpProvider {
         ))
     }
 
+    /// The size of what the path names: a symlink is followed, as SFTP's
+    /// `stat` does, so a link to a file reports the file and not the link.
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
         let full = self.normalize_path(path);
-        Ok(self.session()?.stat(&full).await?.size)
+        Ok(self.session()?.stat_followed(&full).await?.size)
     }
 
     async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
@@ -988,6 +1011,67 @@ impl StorageProvider for ScpProvider {
     }
 }
 
+fn too_large_for_memory(size: u64, max_bytes: u64) -> ProviderError {
+    ProviderError::TransferFailed(format!(
+        "File too large for in-memory download ({:.1} MB). Cap is {:.0} MB.",
+        size as f64 / 1_048_576.0,
+        max_bytes as f64 / 1_048_576.0,
+    ))
+}
+
+/// An in-memory sink that refuses the write that would take it past `cap`,
+/// so a body larger than the server announced is never held whole.
+struct CappedBuffer {
+    data: Vec<u8>,
+    cap: u64,
+    refused: bool,
+    wanted: u64,
+}
+
+impl CappedBuffer {
+    fn new(cap: u64) -> Self {
+        Self {
+            data: Vec::new(),
+            cap,
+            refused: false,
+            wanted: 0,
+        }
+    }
+}
+
+impl tokio::io::AsyncWrite for CappedBuffer {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        let wanted = self.data.len() as u64 + buf.len() as u64;
+        if wanted > self.cap {
+            self.refused = true;
+            self.wanted = wanted;
+            return std::task::Poll::Ready(Err(std::io::Error::other(
+                "in-memory download cap reached",
+            )));
+        }
+        self.data.extend_from_slice(buf);
+        std::task::Poll::Ready(Ok(buf.len()))
+    }
+
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::task::Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::task::Poll::Ready(Ok(()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1014,5 +1098,17 @@ mod tests {
         assert!(entry.is_dir && entry.is_symlink);
         assert_eq!(entry.modified.as_deref(), Some("2023-11-14 22:13:20Z"));
         assert_eq!(entry.permissions.as_deref(), Some("drwxrwxrwx"));
+    }
+
+    #[tokio::test]
+    async fn the_in_memory_buffer_refuses_the_write_that_crosses_its_cap() {
+        use tokio::io::AsyncWriteExt;
+        let mut sink = CappedBuffer::new(10);
+        sink.write_all(b"12345678").await.expect("under the cap");
+        sink.write_all(b"90").await.expect("up to the cap");
+        assert!(sink.write_all(b"x").await.is_err());
+        assert!(sink.refused);
+        assert_eq!(sink.wanted, 11);
+        assert_eq!(sink.data, b"1234567890", "nothing past the cap is kept");
     }
 }

@@ -290,7 +290,7 @@ pub fn capabilities_for_protocol(protocol: &str) -> Vec<&'static str> {
         "ftp" | "ftps" => vec!["resume", "find"],
         "local" => vec!["resume", "server_copy", "checksum"],
         "sftp" => vec!["resume", "find", "chmod", "symlinks", "permissions"],
-        "scp" => vec!["chmod", "symlinks", "permissions"],
+        "scp" => vec!["resume", "find", "chmod", "symlinks", "permissions"],
         "webdav" => vec!["server_copy", "find"],
         "s3" => vec!["server_copy", "checksum"],
         "azure" => vec!["server_copy", "checksum"],

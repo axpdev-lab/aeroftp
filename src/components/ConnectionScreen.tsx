@@ -49,6 +49,7 @@ import { loadFourSharedCredentials } from '../utils/fourSharedCredentials';
 import { OAuthConnect } from './OAuthConnect';
 import { AlertDialog } from './Dialogs';
 import { IconPickerDialog } from './IconPickerDialog';
+import { optionsAcrossSshSwitch, presetFitsProtocol } from '../utils/protocolSwitch';
 import { getProviderById, resolveS3Endpoint, resolveProfileS3Location, presetDefaultS3Region, parseS3EndpointParams, ProviderConfig } from '../providers';
 import { isBlompAuthUrl, swiftOptionsForAuthUrl } from './swiftAuthUrl';
 import { getProviderDocsUrl, PROVIDER_DOCS_INDEX } from '../providers/docsLinks';
@@ -2505,20 +2506,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             && SWITCHABLE_PROTOCOLS.includes(newProtocol)
             && SWITCHABLE_PROTOCOLS.includes(protocol as ProviderType)
         ) {
-            // SFTP and SCP are the same SSH server: the port, the key and the
-            // timeout carry over; the SFTP-only SCP fallback option does not.
+            // SFTP and SCP are the same SSH server: the port, the key, the
+            // timeout and an SFTP-only choice carry over.
             const sameSshServer = isSshProtocol(newProtocol) && isSshProtocol(protocol);
+            // A preset of another protocol (SourceForge is SFTP) goes with the
+            // switch, or the saved profile reopens as the preset's protocol.
+            const presetId = selectedProviderId || connectionParams.providerId;
+            const presetFits = presetFitsProtocol(presetId ? getProviderById(presetId)?.protocol : undefined, newProtocol);
+            if (!presetFits) setSelectedProviderId(null);
             onConnectionParamsChange({
                 ...connectionParams,
+                ...(presetFits ? {} : { providerId: undefined }),
                 protocol: newProtocol,
                 port: sameSshServer ? connectionParams.port || getDefaultPort(newProtocol) : getDefaultPort(newProtocol),
-                options: sameSshServer
-                    ? {
-                        private_key_path: connectionParams.options?.private_key_path,
-                        key_passphrase: connectionParams.options?.key_passphrase,
-                        timeout: connectionParams.options?.timeout,
-                    }
-                    : {},
+                options: sameSshServer ? optionsAcrossSshSwitch(connectionParams.options) : {},
             });
             return;
         }

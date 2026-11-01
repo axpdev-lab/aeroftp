@@ -566,6 +566,37 @@ async fn a_replace_puts_a_file_in_place_and_refuses_across_kinds() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_symlink_reports_its_file_and_a_read_to_memory_keeps_its_cap() {
+    let fx = Fixture::new("scp-size-cap");
+    let (port, seen) = start(fx.options(Sftp::Serve)).await;
+    let mut profile = scp_profile(port, &fx.remote(), &[]);
+    profile.password = Some(PASSWORD.to_string());
+    let mut p = ProviderFactory::create(&profile).expect("factory");
+    timed_connect(p.as_mut()).await.0.expect("connect");
+    let r = fx.remote();
+
+    // `size` follows a link, as SFTP's stat does: the file, not the link.
+    std::fs::write(r.join("target it's.bin"), pattern(12_345)).unwrap();
+    std::os::unix::fs::symlink("target it's.bin", r.join("link")).unwrap();
+    assert_eq!(p.size("link").await.unwrap(), 12_345);
+
+    // Under the cap the file comes back whole, through the link too.
+    assert_eq!(
+        p.download_to_bytes_capped("link", 12_345).await.unwrap(),
+        pattern(12_345)
+    );
+    // Over it, the size is refused before any transfer: one command (the
+    // stat), no `scp -f`, and nothing read into memory.
+    let before = seen.execs();
+    let refused = p.download_to_bytes_capped("link", 12_344).await;
+    assert!(
+        matches!(&refused, Err(ProviderError::TransferFailed(m)) if m.contains("too large")),
+        "{refused:?}"
+    );
+    assert_eq!(seen.execs() - before, 1, "only the stat ran");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn free_space_digests_and_search_come_from_the_server() {
     use md5::Md5;
     use sha2::{Digest, Sha256};
