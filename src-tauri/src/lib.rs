@@ -5904,7 +5904,7 @@ async fn get_local_files(
     let path = PathBuf::from(&path);
     let show_hidden = show_hidden.unwrap_or(true); // Developer-first: show all files by default
 
-    match std::fs::metadata(&path) {
+    match tokio::fs::metadata(&path).await {
         Ok(_) => {}
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
             return Err(filesystem::local_path_refused(&path, &e));

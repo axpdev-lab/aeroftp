@@ -5583,6 +5583,7 @@ const App: React.FC = () => {
       // A click on a mounted volume that only opens the Activity Log looks like nothing
       // happened, and the plug is something the user can fix: it must surface.
       if (needsRemovableMediaPlug(error)) {
+        activityLog.log('INFO', `Failed to list local files: ${error}`, 'error');
         window.dispatchEvent(new CustomEvent('aeroftp-toast', {
           detail: { type: 'error', title: t('common.error'), message: String(error), important: true },
         }));
@@ -5591,7 +5592,7 @@ const App: React.FC = () => {
       }
       return false;
     }
-  }, [showHiddenFiles, notify, t]);
+  }, [showHiddenFiles, notify, t, activityLog]);
 
   const loadLocalFiles2 = useCallback(async (path: string): Promise<boolean> => {
     if (!path) return false; // defence in depth: see loadLocalFiles above
@@ -5621,6 +5622,7 @@ const App: React.FC = () => {
       // A click on a mounted volume that only opens the Activity Log looks like nothing
       // happened, and the plug is something the user can fix: it must surface.
       if (needsRemovableMediaPlug(error)) {
+        activityLog.log('INFO', `Failed to list local files: ${error}`, 'error');
         window.dispatchEvent(new CustomEvent('aeroftp-toast', {
           detail: { type: 'error', title: t('common.error'), message: String(error), important: true },
         }));
@@ -5629,7 +5631,7 @@ const App: React.FC = () => {
       }
       return false;
     }
-  }, [showHiddenFiles, notify, t, setLocalFiles2, setCurrentLocalPath2, setSelectedLocalFiles2]);
+  }, [showHiddenFiles, notify, t, activityLog, setLocalFiles2, setCurrentLocalPath2, setSelectedLocalFiles2]);
 
   // The local panels that show `dirs` (one folder, or each folder a batch
   // wrote to), each reloaded once however many of them it shows.

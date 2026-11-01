@@ -83,6 +83,7 @@ describe('volumes the snap may not read', () => {
         expect(sidebarSource.match(/message: volumeActionError\(err, t\)/g)).toHaveLength(2);
         expect(sidebarSource).toContain('readVolumesAndPartitions(');
         expect(sidebarSource).toContain('setPartitionsNeedUdisks2(value.partitionsNeedPlug)');
+        expect(sidebarSource).toContain('setUnmountedPartitions(value.unmounted)');
     });
 
     it('shows both hints when the volume read fails before UDisks2 answers, as on a fresh snap', async () => {
@@ -104,6 +105,14 @@ describe('volumes the snap may not read', () => {
         expect(needsRemovableMediaPlug(`cannot read /run/media/u/D (Permission denied); in the snap, connect the plug with \`${SNAP_CONNECT_REMOVABLE_MEDIA}\``)).toBe(true);
         expect(needsRemovableMediaPlug('Failed to read directory: Permission denied')).toBe(false);
         expect(appSource.match(/needsRemovableMediaPlug\(error\)/g)).toHaveLength(2);
+        expect(appSource.match(/needsRemovableMediaPlug\(error\)\) \{\n\s+activityLog\.log\(/g)).toHaveLength(2);
+    });
+
+    it('keeps the partitions when only the volume read is refused, as with udisks2 alone', async () => {
+        await expect(readVolumesAndPartitions<string, string>(
+            async () => { throw `${MOUNT_OBSERVE_NOT_CONNECTED}: cannot read /proc/mounts (Permission denied)`; },
+            async () => ['sdb1'],
+        )).resolves.toEqual({ volumes: [], unmounted: ['sdb1'], unavailable: 'snap-mount-observe', partitionsNeedPlug: false });
     });
 
     it('keeps the volumes when only the partitions are refused', async () => {

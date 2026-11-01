@@ -81,14 +81,17 @@ export async function readVolumes<V, P>(read: () => Promise<[V[], P[]]>): Promis
  * Reads the volumes and the unmounted partitions together. The partition read always
  * finishes first in the answer: in a snap with neither plug connected the volume read
  * fails at once and UDisks2 answers later, and that later answer decides the hint.
+ * The partitions do not depend on the volume read: UDisks2 lists them without
+ * mount-observe, so a failed volume read keeps them.
  */
 export async function readVolumesAndPartitions<V, P>(
   readMounted: () => Promise<V[]>,
   readPartitions: () => Promise<P[]>,
 ): Promise<VolumesRead<V, P> & { partitionsNeedPlug: boolean }> {
-  const partitions = readUnmountedPartitions(readPartitions);
-  const volumes = await readVolumes(async (): Promise<[V[], P[]]> => [await readMounted(), (await partitions).partitions]);
-  return { ...volumes, partitionsNeedPlug: (await partitions).needsPlug };
+  const partitionsRead = readUnmountedPartitions(readPartitions);
+  const volumes = await readVolumes(async (): Promise<[V[], P[]]> => [await readMounted(), []]);
+  const { partitions, needsPlug } = await partitionsRead;
+  return { ...volumes, unmounted: partitions, partitionsNeedPlug: needsPlug };
 }
 
 /** Says why the unmounted partitions are missing in a snap, with the command that brings them. */

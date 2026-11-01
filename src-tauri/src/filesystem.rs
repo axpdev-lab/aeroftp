@@ -256,7 +256,7 @@ fn refused_message(path: &Path, err: &std::io::Error, in_snap: bool) -> String {
         .any(|root| path.starts_with(root));
     if in_snap && removable && err.kind() == std::io::ErrorKind::PermissionDenied {
         format!(
-            "cannot read {} ({err}); in the snap, connect the plug with `sudo snap connect aeroftp:removable-media`",
+            "cannot read {} ({err}); in the snap, connect the plug with `sudo snap connect aeroftp:removable-media`. If it is already connected, check the directory permissions",
             path.display()
         )
     } else {
@@ -1346,6 +1346,7 @@ fn listable_partition(
 mod udisks {
     use super::{listable_partition, UnmountedPartition, UDISKS2_NOT_CONNECTED};
     use std::collections::HashMap;
+    use zbus::blocking::connection::Builder;
     use zbus::blocking::Connection;
     use zbus::zvariant::{Array, OwnedObjectPath, OwnedValue, Value};
 
@@ -1354,6 +1355,7 @@ mod udisks {
     const FILESYSTEM: &str = "org.freedesktop.UDisks2.Filesystem";
     const PARTITION: &str = "org.freedesktop.UDisks2.Partition";
     const ACCESS_DENIED: &str = "org.freedesktop.DBus.Error.AccessDenied";
+    const LIST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
     type Interfaces = HashMap<String, HashMap<String, OwnedValue>>;
     type Objects = HashMap<OwnedObjectPath, Interfaces>;
@@ -1398,6 +1400,15 @@ mod udisks {
 
     fn system_bus() -> Result<Connection, String> {
         Connection::system().map_err(|e| connect_failed(&e))
+    }
+
+    /// The connection for the partition list. A service that does not answer must not
+    /// keep the sidebar loading. Mount and unmount have no such limit: they can wait
+    /// for the user at an authorization prompt.
+    fn listing_bus() -> Result<Connection, String> {
+        Builder::system()
+            .and_then(|builder| builder.method_timeout(LIST_TIMEOUT).build())
+            .map_err(|e| connect_failed(&e))
     }
 
     fn string_of(properties: &HashMap<String, OwnedValue>, key: &str) -> String {
@@ -1450,7 +1461,7 @@ mod udisks {
     }
 
     pub(super) fn unmounted_partitions() -> Result<Vec<UnmountedPartition>, String> {
-        let bus = system_bus()?;
+        let bus = listing_bus()?;
         let reply = bus
             .call_method(
                 Some(SERVICE),
@@ -1735,7 +1746,6 @@ mod udisks {
 
         #[test]
         fn mount_and_unmount_speak_to_the_service_as_it_expects() {
-            use zbus::blocking::connection::Builder;
             let (ours, theirs) = std::os::unix::net::UnixStream::pair().unwrap();
             let options = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
             let seen = options.clone();
@@ -3654,6 +3664,10 @@ mod local_path_refused_tests {
             let message = refused_message(Path::new(path), &denied, true);
             assert!(
                 message.contains("snap connect aeroftp:removable-media"),
+                "{message}"
+            );
+            assert!(
+                message.contains("check the directory permissions"),
                 "{message}"
             );
         }
