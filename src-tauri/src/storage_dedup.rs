@@ -76,7 +76,8 @@ pub fn classify(protocol: &str) -> ProtocolClass {
         "webdav" => ProtocolClass::WebDav,
         "ftps" => ProtocolClass::Ftps,
         "ftp" => ProtocolClass::Ftp,
-        "sftp" => ProtocolClass::Sftp,
+        // The same SSH server whichever of the two reaches it.
+        "sftp" | "scp" => ProtocolClass::Sftp,
         "s3" => ProtocolClass::S3,
         "azure" => ProtocolClass::Azure,
         _ => ProtocolClass::Api,
@@ -342,14 +343,16 @@ pub fn dedup_key(profile: &ProfileView<'_>) -> String {
         return format!("api:proton:{}", user_or_id());
     }
 
-    if matches!(proto, "ftp" | "ftps" | "sftp") {
+    if matches!(proto, "ftp" | "ftps" | "sftp" | "scp") {
         let host = normalize_host(profile.host);
         let port = if profile.port == 0 {
             default_port(proto)
         } else {
             profile.port
         };
-        return format!("host:{}:{}:{}:{}", proto, host, port, user_or_id());
+        // An SCP profile reaches the same SSH account as an SFTP one.
+        let family = if proto == "scp" { "sftp" } else { proto };
+        return format!("host:{}:{}:{}:{}", family, host, port, user_or_id());
     }
 
     format!("id:{}", profile.id)
@@ -358,7 +361,7 @@ pub fn dedup_key(profile: &ProfileView<'_>) -> String {
 fn default_port(proto: &str) -> u64 {
     match proto {
         "ftp" | "ftps" => 21,
-        "sftp" => 22,
+        "sftp" | "scp" => 22,
         "webdav" => 443,
         _ => 0,
     }

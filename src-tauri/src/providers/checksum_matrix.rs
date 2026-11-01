@@ -112,7 +112,8 @@ pub fn capability(kind: ProviderType) -> ChecksumCapability {
             &["md5", "sha1", "sha256", "sha512", "crc32"],
             FTP_NEGOTIATED,
         ),
-        ProviderType::Sftp => cap(&["sha256"], Some(SFTP_SHA256SUM)),
+        // `sha256sum` over an exec channel, the same command for both.
+        ProviderType::Sftp | ProviderType::Scp => cap(&["sha256"], Some(SFTP_SHA256SUM)),
         ProviderType::WebDav => negotiated(&["sha1", "md5", "adler32"], WEBDAV_OC),
         ProviderType::S3 => cap(&["md5"], Some(S3_ETAG)),
 
@@ -171,6 +172,7 @@ const DOC_ORDER: &[ProviderType] = &[
     ProviderType::Ftp,
     ProviderType::Ftps,
     ProviderType::Sftp,
+    ProviderType::Scp,
     ProviderType::WebDav,
     ProviderType::S3,
     ProviderType::Azure,

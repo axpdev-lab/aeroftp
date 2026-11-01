@@ -3562,7 +3562,7 @@ fn local_basename(path: &str) -> String {
 /// which the connect path resolves from its own defaults.
 fn default_port_for(protocol: &str) -> u16 {
     match protocol {
-        "sftp" => 22,
+        "sftp" | "scp" => 22,
         "ftp" | "ftps" => 21,
         "webdav" | "s3" => 443,
         _ => 0,

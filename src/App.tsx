@@ -34,7 +34,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
   LocalFile, TransferEvent, TransferProgress, RemoteFile, FtpSession, ServerProfile,
-  ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, usesProviderApi, isFtpProtocol, providerSupportsCryptOverlay, connectionSupportsStorageQuota, supportsNativeShareLink,
+  ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, usesProviderApi, isFtpProtocol, isSshProtocol, providerSupportsCryptOverlay, connectionSupportsStorageQuota, supportsNativeShareLink,
   resolveEffectiveQuota, effectiveManualCap,
   AeroVaultOverlaySession,
   DeltaEligibilityProbeResult,
@@ -230,6 +230,7 @@ import {
   getSftpDownloadPresetDefinition,
   nextSftpDownloadPreset,
 } from './utils/sftpDownloadPresets';
+import { scpFallbackConnectParam } from './utils/scpFallback';
 import {
   TRANSFER_SPEED_PRESETS,
   deriveTransferSpeedPreset,
@@ -5889,6 +5890,9 @@ const App: React.FC = () => {
             if (pendingId) removeToast(pendingId);
             pendingId = null;
             notify.error(t('reconnect.toastTitle'), t('reconnect.reconnectFailed'));
+          } else if (kind === 'scp-mode') {
+            // An SFTP connection whose server has no SFTP went on over SCP.
+            notify.info(t('toast.scpModeTitle'), t('toast.scpModeBody', { host: event.payload?.detail || '' }));
           }
           // 'lost' is intentionally silent: showing it would briefly flash
           // a scary message before 'reconnecting' replaces it.
@@ -6873,8 +6877,8 @@ const App: React.FC = () => {
   // Check provider capabilities after connection (for context menu features)
   const refreshProviderCaps = useLatestCallback(async () => {
     const protocol = liveConnectionParams.protocol;
-    if (!protocol || ['ftp', 'ftps', 'sftp'].includes(protocol)) {
-      // FTP/SFTP don't use provider_* capability commands
+    if (!protocol || ['ftp', 'ftps'].includes(protocol) || isSshProtocol(protocol)) {
+      // FTP/SFTP/SCP don't use provider_* capability commands
       setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: protocol === 'webdav' });
       return;
     }
@@ -7442,6 +7446,7 @@ const App: React.FC = () => {
       private_key_path: effectiveParams.options?.private_key_path || null,
       key_passphrase: effectiveParams.options?.key_passphrase || null,
       timeout: effectiveParams.options?.timeout || 30,
+      ...scpFallbackConnectParam(protocol, effectiveParams.options),
       tls_mode: protocol === 'webdav'
         ? effectiveParams.options?.webdavScheme
         : effectiveParams.options?.tlsMode || effectiveParams.options?.ftpsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
@@ -7688,7 +7693,7 @@ const App: React.FC = () => {
     username: string,
     options?: { tlsMode?: string; private_key_path?: string }
   ) => {
-    if (protocol === 'sftp') {
+    if (isSshProtocol(protocol)) {
       humanLog.logRaw('activity.ssh_established', 'CONNECT', {}, 'success');
     } else if (protocol === 'ftps') {
       const mode = options?.tlsMode || 'explicit';
@@ -7696,7 +7701,7 @@ const App: React.FC = () => {
     } else if (['webdav', 's3', 'filen'].includes(protocol)) {
       humanLog.logRaw('activity.https_established', 'CONNECT', {}, 'success');
     }
-    if (protocol === 'sftp' && options?.private_key_path) {
+    if (isSshProtocol(protocol) && options?.private_key_path) {
       humanLog.logRaw('activity.auth_method_key', 'CONNECT', { username: maskCredential(username) }, 'success');
     } else if (username) {
       humanLog.logRaw('activity.auth_success', 'CONNECT', { username: maskCredential(username) }, 'success');
@@ -8306,8 +8311,8 @@ const App: React.FC = () => {
 
 
         logger.debug('[connectToFtp] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
-        // SEC-P1-06: TOFU host key check for SFTP
-        if (protocol === 'sftp') {
+        // SEC-P1-06: TOFU host key check for SFTP and SCP (one known_hosts)
+        if (isSshProtocol(protocol)) {
           const accepted = await checkSftpHostKey(effectiveParams.server, effectiveParams.port || 22);
           if (!accepted) { setLoading(false); return; }
         }
@@ -8976,8 +8981,8 @@ const App: React.FC = () => {
         const providerParams = providerPayload.providerParams;
 
         logger.debug('[switchSession] provider protocol:', providerParams.protocol);
-        // SEC-P1-06: TOFU host key check for SFTP
-        if (protocol === 'sftp') {
+        // SEC-P1-06: TOFU host key check for SFTP and SCP (one known_hosts)
+        if (isSshProtocol(protocol)) {
           const accepted = await connectScope.step(() => checkSftpHostKey(connectParams.server, connectParams.port || 22, connectScope));
           if (!accepted) throw new Error('Host key rejected by user');
         }
@@ -9466,6 +9471,7 @@ const App: React.FC = () => {
             private_key_path: cloudServer.options?.private_key_path || null,
             key_passphrase: cloudServer.options?.key_passphrase || null,
             timeout: cloudServer.options?.timeout || 30,
+            ...scpFallbackConnectParam(protocol, cloudServer.options),
             tls_mode: cloudServer.options?.tlsMode || cloudServer.options?.ftpsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
             verify_cert: cloudServer.options?.verifyCert !== undefined ? cloudServer.options.verifyCert : true,
             allow_cleartext_storage: cloudServer.options?.allowCleartextStorage === true,
@@ -14773,7 +14779,7 @@ const App: React.FC = () => {
           setBatchRenameDialog({ files: selectedFiles, isRemote: true, siblings });
         }
       }] : []),
-      ...(!currentProtocol || !isNonFtpProvider(currentProtocol) || currentProtocol === 'sftp' ? [{ label: t('contextMenu.permissions'), icon: <Shield size={14} />, action: async () => {
+      ...(!currentProtocol || !isNonFtpProvider(currentProtocol) || isSshProtocol(currentProtocol) ? [{ label: t('contextMenu.permissions'), icon: <Shield size={14} />, action: async () => {
         // The backend connection this listing came from; provider_chmod refuses
         // to act once another connection has taken the slot.
         const sessionId = activeSessionId;
@@ -15073,9 +15079,9 @@ const App: React.FC = () => {
       { label: t('contextMenu.copyName'), icon: <Clipboard size={14} />, action: () => { copyText(file.name).then(() => notify.success(t('contextMenu.nameCopied')), () => notify.error(t('toast.copyFailed'))); } },
     ];
 
-    // Copy FTP/SFTP URL: only for traditional protocols
-    if (currentProtocol && (currentProtocol === 'ftp' || currentProtocol === 'ftps' || currentProtocol === 'sftp')) {
-      const scheme = currentProtocol === 'sftp' ? 'sftp' : 'ftp';
+    // Copy FTP/SFTP/SCP URL: only for traditional protocols
+    if (currentProtocol && (currentProtocol === 'ftp' || currentProtocol === 'ftps' || isSshProtocol(currentProtocol))) {
+      const scheme = isSshProtocol(currentProtocol) ? currentProtocol : 'ftp';
       items.push({
         label: t('contextMenu.copyUrl', { scheme: scheme.toUpperCase() }), icon: <Link2 size={14} />, action: () => {
           const url = `${scheme}://${currentUsername}@${currentServer}${file.path}`;
@@ -15119,7 +15125,7 @@ const App: React.FC = () => {
     const hasConfiguredServerShareLink = !!sessionPublicUrl
       && count === 1
       && !!currentProtocol
-      && ['ftp', 'ftps', 'sftp', 'webdav'].includes(currentProtocol);
+      && (['ftp', 'ftps', 'webdav'].includes(currentProtocol) || isSshProtocol(currentProtocol));
     if (hasConfiguredServerShareLink) {
       items.push({
         label: t('contextMenu.copyShareLink'),
@@ -18964,8 +18970,8 @@ const App: React.FC = () => {
                     const providerParams = providerPayload.providerParams;
 
                     logger.debug('[onSavedServerConnect] provider protocol:', providerParams.protocol);
-                    // SEC-P1-06: TOFU host key check for SFTP
-                    if (normalizedParams.protocol === 'sftp') {
+                    // SEC-P1-06: TOFU host key check for SFTP and SCP (one known_hosts)
+                    if (isSshProtocol(normalizedParams.protocol)) {
                       const accepted = await connectScope.step(() => checkSftpHostKey(normalizedParams.server, normalizedParams.port || 22, connectScope));
                       if (!accepted) return 'pending_human' as const;
                     }
@@ -19582,7 +19588,8 @@ const App: React.FC = () => {
                           switch (protocol) {
                             case 's3': return <Cloud size={14} />;
                             case 'webdav': return <Server size={14} />;
-                            case 'sftp': return <Lock size={14} />;
+                            case 'sftp':
+                            case 'scp': return <Lock size={14} />;
                             case 'ftps': return <Shield size={14} />;
                             case 'googledrive': return <Cloud size={14} />;
                             case 'dropbox': return <Archive size={14} />;
@@ -20850,7 +20857,7 @@ const App: React.FC = () => {
           serverUser={liveConnectionParams.username}
           activeFilePanel={activePanel}
           isCloudConnection={isCloudActive}
-          sshConnection={isConnected && liveConnectionParams.protocol === 'sftp' ? {
+          sshConnection={isConnected && isSshProtocol(liveConnectionParams.protocol) ? {
             host: liveConnectionParams.server.split(':')[0],
             port: liveConnectionParams.port || 22,
             username: liveConnectionParams.username,
@@ -20938,7 +20945,7 @@ const App: React.FC = () => {
                 return 'TLS';
               }
               if (protocol === 'ftps') return 'TLS';
-              if (protocol === 'sftp') return 'SSH';
+              if (isSshProtocol(protocol)) return 'SSH';
               if (protocol === 'filen' || protocol === 'mega') return 'E2EE';
               return 'HTTPS';
             })() : undefined}

@@ -42,8 +42,10 @@ describe('connection methods are ordered and named the same everywhere (#347)', 
     });
 
     it('ranks the wire protocols in the agreed sequence', () => {
-        expect([...PROTOCOL_BADGE_ORDER]).toEqual(['webdav', 'sftp', 'ftps', 'ftp', 's3']);
-        const ranks = ['webdav', 'sftp', 'ftps', 'ftp', 's3'].map(protocolBadgeRank);
+        // SCP joined after SFTP, the same SSH server reached without SFTP;
+        // the agreed order of the others is unchanged.
+        expect([...PROTOCOL_BADGE_ORDER]).toEqual(['webdav', 'sftp', 'scp', 'ftps', 'ftp', 's3']);
+        const ranks = ['webdav', 'sftp', 'scp', 'ftps', 'ftp', 's3'].map(protocolBadgeRank);
         expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
     });
 

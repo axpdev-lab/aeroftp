@@ -23,6 +23,8 @@ on:
       # misleading "clean bisects" that blamed the triggering commit.
       - 'src-tauri/src/aerorsync/**'
       - 'src-tauri/src/providers/sftp.rs'
+      - 'src-tauri/src/providers/scp/**'
+      - 'src-tauri/tests/scp_openwrt.rs'
       - 'src-tauri/Cargo.lock'
       - 'src-tauri/tests/fixtures/sftp-rsync/**'
       - 'src-tauri/tests/integration_delta_sync.rs'
@@ -40,6 +42,8 @@ on:
       - 'src-tauri/src/delta_sync_rsync.rs'
       - 'src-tauri/src/aerorsync/**'
       - 'src-tauri/src/providers/sftp.rs'
+      - 'src-tauri/src/providers/scp/**'
+      - 'src-tauri/tests/scp_openwrt.rs'
       - 'src-tauri/Cargo.lock'
       - 'src-tauri/tests/fixtures/sftp-rsync/**'
       - 'src-tauri/tests/integration_delta_sync.rs'
@@ -443,3 +447,89 @@ jobs:
         if: always()
         working-directory: src-tauri/tests/fixtures/sftp-rsync
         run: docker compose -f docker-compose.password.yml down -v
+
+  scp-openwrt-fixture:
+    # SFTP going on over SCP against the router it was built for: the
+    # official OpenWrt image, Dropbear and BusyBox, a blank root password and
+    # no sftp-server. The test signs in as shipped, then with a password and
+    # with a key it sets through `docker exec`.
+    name: SCP fallback on stock OpenWrt
+    runs-on: ubuntu-latest
+    # Compiles the lib like the fallback-fixture job, under the same budget.
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Free disk space
+        timeout-minutes: 6
+        continue-on-error: true
+        run: |
+          echo "Before:"; df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost || true
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          echo "After:"; df -h /
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: 1.97.1
+
+      - name: Rust cache
+        timeout-minutes: 15
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        with:
+          workspaces: './src-tauri -> target'
+          shared-key: linux-dev
+          save-if: false
+
+      - name: Install system dependencies
+        timeout-minutes: 13
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
+            openssh-client libacl1-dev
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev
+
+      # 24.10.4, pinned by digest: the release measured in
+      # docs/dev/roadmap/APPENDIX-SCP-PROTOCOL (no stat, BusyBox ls).
+      - name: Start OpenWrt
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          docker run -d --name aeroftp-openwrt -p 127.0.0.1:2231:22 \
+            openwrt/rootfs@sha256:1310ccbd24f30b3df6e210a48dbd0fb902445ee80e21ffc8b8e882b94987a411 \
+            /sbin/init
+          for i in $(seq 1 30); do
+            if ssh-keyscan -p 2231 127.0.0.1 2>/dev/null | grep -q ssh-; then
+              echo "Dropbear ready after $((i * 2))s"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Dropbear did not come up within 60s" >&2
+          docker logs aeroftp-openwrt >&2 || true
+          exit 1
+
+      - name: "SCP fallback test: stock OpenWrt"
+        timeout-minutes: 25
+        working-directory: src-tauri
+        env:
+          AEROFTP_OPENWRT_PORT: '2231'
+          AEROFTP_OPENWRT_CONTAINER: aeroftp-openwrt
+        run: |
+          set -o pipefail
+          cargo test --test scp_openwrt -- --ignored --nocapture \
+            | tee /tmp/scp-openwrt.log
+          ../scripts/assert-tests-ran.sh /tmp/scp-openwrt.log =1 \
+            "SCP fallback on stock OpenWrt"
+
+      - name: Dump router log on failure
+        if: failure()
+        run: docker exec aeroftp-openwrt logread || true
+
+      - name: Teardown OpenWrt
+        if: always()
+        run: docker rm -f aeroftp-openwrt || true

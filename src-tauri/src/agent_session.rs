@@ -290,6 +290,7 @@ pub fn capabilities_for_protocol(protocol: &str) -> Vec<&'static str> {
         "ftp" | "ftps" => vec!["resume", "find"],
         "local" => vec!["resume", "server_copy", "checksum"],
         "sftp" => vec!["resume", "find", "chmod", "symlinks", "permissions"],
+        "scp" => vec!["chmod", "symlinks", "permissions"],
         "webdav" => vec!["server_copy", "find"],
         "s3" => vec!["server_copy", "checksum"],
         "azure" => vec!["server_copy", "checksum"],
@@ -342,6 +343,7 @@ pub fn provider_type_for_transfer_capabilities(protocol: &str) -> Option<Provide
         "ftp" => Some(ProviderType::Ftp),
         "ftps" => Some(ProviderType::Ftps),
         "sftp" => Some(ProviderType::Sftp),
+        "scp" => Some(ProviderType::Scp),
         "webdav" | "webdavs" | "web_dav" => Some(ProviderType::WebDav),
         "s3" => Some(ProviderType::S3),
         "aerocloud" | "aero_cloud" => Some(ProviderType::AeroCloud),
@@ -400,6 +402,8 @@ pub fn default_transfer_optimization_hints_for_provider(
             supports_resume_upload: false,
             ..Default::default()
         },
+        // `scp -t`/`scp -f` move whole files: no ranges, no resume, no delta.
+        ProviderType::Scp => TransferOptimizationHints::default(),
         ProviderType::Ftp | ProviderType::Ftps => TransferOptimizationHints {
             supports_resume_download: true,
             supports_resume_upload: true,
@@ -905,6 +909,7 @@ fn resolve_provider_type(protocol: &str) -> Option<ProviderType> {
         "FTP" => Some(ProviderType::Ftp),
         "FTPS" => Some(ProviderType::Ftps),
         "SFTP" => Some(ProviderType::Sftp),
+        "SCP" => Some(ProviderType::Scp),
         "WEBDAV" | "WEBDAVS" => Some(ProviderType::WebDav),
         "S3" => Some(ProviderType::S3),
         "GITHUB" => Some(ProviderType::GitHub),

@@ -134,12 +134,13 @@ impl Incoming {
         }
     }
 
-    /// Exactly `n` bytes into `sink`, calling `progress` with the running total.
+    /// Exactly `n` bytes into `sink`, calling `progress` with the bytes so far
+    /// and `n`.
     async fn copy_to<W: AsyncWrite + Unpin>(
         &mut self,
         n: u64,
         sink: &mut W,
-        progress: &mut dyn FnMut(u64),
+        progress: &mut (dyn FnMut(u64, u64) + Send),
     ) -> Result<(), ProviderError> {
         let mut done = 0u64;
         while done < n {
@@ -151,7 +152,7 @@ impl Incoming {
                 .map_err(|e| ProviderError::TransferFailed(format!("writing the download: {e}")))?;
             self.pos += take;
             done += take as u64;
-            progress(done);
+            progress(done, n);
         }
         Ok(())
     }
@@ -271,6 +272,23 @@ where
             } else if let Some(v) = record.strip_prefix("has=") {
                 session.probe.tools.push(v.to_string());
             }
+        }
+        // A restricted account (`ForceCommand`, rssh, scponly, a menu shell)
+        // runs nothing of the probe: say so, with the server's own words.
+        if session.probe.system.is_empty() && session.probe.tools.is_empty() {
+            let said = out.stderr_text();
+            let said = said.lines().next().unwrap_or("").chars().take(200);
+            let said: String = said.collect();
+            return Err(ProviderError::NotSupported(if said.is_empty() {
+                "the server ran no shell command for this account (a restricted shell or a \
+                 forced command), so SCP mode cannot work"
+                    .to_string()
+            } else {
+                format!(
+                    "the server ran no shell command for this account (a restricted shell or \
+                     a forced command), so SCP mode cannot work; it said: {said}"
+                )
+            }));
         }
         // `find` alone is not enough: the listing needs its `-mindepth`,
         // `-maxdepth` and `-print0`, which a minimal BusyBox may leave out.
@@ -468,7 +486,7 @@ where
 
     /// Write `size` bytes from `src` to the file `path` with `scp -t`,
     /// stamping `mtime` (seconds) when given. `progress` gets the bytes sent
-    /// so far.
+    /// so far and `size`.
     pub async fn upload<R: AsyncRead + Unpin>(
         &self,
         path: &str,
@@ -476,7 +494,7 @@ where
         size: u64,
         mode: u32,
         mtime: Option<u64>,
-        progress: &mut dyn FnMut(u64),
+        progress: &mut (dyn FnMut(u64, u64) + Send),
     ) -> Result<(), ProviderError> {
         let name = basename(path)?;
         let flags = if mtime.is_some() { "-p -t" } else { "-t" };
@@ -524,7 +542,7 @@ where
             }
             exec.stdin.write_all(&buf[..n]).await.map_err(io)?;
             sent += n as u64;
-            progress(sent);
+            progress(sent, size);
         }
         exec.stdin.write_all(&[0]).await.map_err(io)?;
         reply_ok(incoming.reply().await?, path)?;
@@ -539,13 +557,14 @@ where
     }
 
     /// Read the file `path` into `sink` with `scp -f`. Returns its size and
-    /// the mtime the server sent. The server's `C` line must name the file
-    /// that was asked for (CVE-2019-6111).
+    /// the mtime the server sent; `progress` gets the bytes received and the
+    /// size. The server's `C` line must name the file that was asked for
+    /// (CVE-2019-6111).
     pub async fn download<W: AsyncWrite + Unpin>(
         &self,
         path: &str,
         sink: &mut W,
-        progress: &mut dyn FnMut(u64),
+        progress: &mut (dyn FnMut(u64, u64) + Send),
     ) -> Result<(u64, Option<u64>), ProviderError> {
         let name = basename(path)?;
         let cmd = format!("LC_ALL=C scp -p -f -- {}", shell_quote(path)?);

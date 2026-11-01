@@ -42,6 +42,18 @@
       "devOnly": false
     },
     {
+      "token": "scp",
+      "backend": "scp",
+      "aliases": [],
+      "credentialKind": "server",
+      "defaultPort": 22,
+      "creation": "profile",
+      "frontend": true,
+      "defaultOptions": {},
+      "requiredOptions": [],
+      "devOnly": false
+    },
+    {
       "token": "webdav",
       "backend": "webdav",
       "aliases": [

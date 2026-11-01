@@ -13,7 +13,7 @@ import { ProtonModeSwitchDialog } from './ProtonModeSwitchDialog';
 import { protonModeOf, runProtonModeSwitch, type ProtonSwitchPlan } from '../utils/protonModeSwitch';
 import { pickFile, pickSave } from '../utils/pickPath';
 import { FolderOpen, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft, RefreshCw, Usb } from 'lucide-react';
-import { ConnectionParams, ProviderType, ProviderOptions, DeviceFingerprint, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, providerServesQuota, providerSupportsCryptOverlay, ServerProfile } from '../types';
+import { ConnectionParams, ProviderType, ProviderOptions, DeviceFingerprint, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, isSshProtocol, providerServesQuota, providerSupportsCryptOverlay, ServerProfile } from '../types';
 import type { CryptSecretForm } from '../types';
 import { cryptSecretForms, hydratedSecretForms, secretFormsHalfRecorded } from '../utils/cryptSecretForm';
 import { CryptSecretFormChoice } from './CryptSecretFormChoice';
@@ -68,12 +68,13 @@ import { isProtonNative, useProtonNativeAvailable } from '../utils/protonNative'
 import { useProtonSignIn } from '../hooks/useProtonSignIn';
 
 // Protocols that can be switched between when editing a saved connection
-const SWITCHABLE_PROTOCOLS: ProviderType[] = ['ftp', 'ftps', 'sftp'];
+const SWITCHABLE_PROTOCOLS: ProviderType[] = ['ftp', 'ftps', 'sftp', 'scp'];
 
 const PROTOCOL_COLORS: Record<string, string> = {
     ftp: 'from-blue-500 to-cyan-400',
     ftps: 'from-green-500 to-emerald-400',
     sftp: 'from-purple-500 to-violet-400',
+    scp: 'from-purple-500 to-violet-400',
     webdav: 'from-orange-500 to-amber-400',
     s3: 'from-amber-500 to-yellow-400',
     aerocloud: 'from-sky-400 to-blue-500',
@@ -2498,17 +2499,26 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     const handleProtocolChange = (newProtocol: ProviderType, providerId?: string) => {
-        // When editing a saved connection and switching between compatible protocols (FTP/FTPS/SFTP),
+        // When editing a saved connection and switching between compatible protocols (FTP/FTPS/SFTP/SCP),
         // keep edit mode and only update protocol + port.
         if (editingProfileId
             && SWITCHABLE_PROTOCOLS.includes(newProtocol)
             && SWITCHABLE_PROTOCOLS.includes(protocol as ProviderType)
         ) {
+            // SFTP and SCP are the same SSH server: the port, the key and the
+            // timeout carry over; the SFTP-only SCP fallback option does not.
+            const sameSshServer = isSshProtocol(newProtocol) && isSshProtocol(protocol);
             onConnectionParamsChange({
                 ...connectionParams,
                 protocol: newProtocol,
-                port: getDefaultPort(newProtocol),
-                options: {},
+                port: sameSshServer ? connectionParams.port || getDefaultPort(newProtocol) : getDefaultPort(newProtocol),
+                options: sameSshServer
+                    ? {
+                        private_key_path: connectionParams.options?.private_key_path,
+                        key_passphrase: connectionParams.options?.key_passphrase,
+                        timeout: connectionParams.options?.timeout,
+                    }
+                    : {},
             });
             return;
         }
@@ -3692,7 +3702,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     // Card width: wider for 2-column protocols, narrower for single-column providers
-    const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'twake', 'imagekit', 'uploadcare', 'cloudinary', 'filelu', 'drime', 'jottacloud', 'backblaze',
+    const twoColProtocols = ['ftp', 'ftps', 'sftp', 'scp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'twake', 'imagekit', 'uploadcare', 'cloudinary', 'filelu', 'drime', 'jottacloud', 'backblaze',
         // #215 harmonization: OAuth clouds are now two-column too, so they get the
         // same wide card (max-w-4xl) as the rest instead of the narrow single-column one.
         'googledrive', 'googlephotos', 'dropbox', 'onedrive', 'box', 'pcloud', 'zohoworkdrive', 'yandexdisk', 'fourshared', 'swift',
@@ -3837,7 +3847,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 </p>
                             </div>
                         )}
-                        {/* Protocol Selector: only while editing a switchable protocol (FTP/FTPS/SFTP) */}
+                        {/* Protocol Selector: only while editing a switchable protocol (FTP/FTPS/SFTP/SCP) */}
                         {(editingProfileId && SWITCHABLE_PROTOCOLS.includes(protocol as ProviderType)) && (
                         <ProtocolSelector
                             value={protocol}
@@ -6355,7 +6365,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             options={connectionParams.options || {}}
                                             onChange={(options) => onConnectionParamsChange({ ...connectionParams, options })}
                                             disabled={loading}
-                                            onBrowseKeyFile={protocol === 'sftp' ? handleBrowseSshKey : undefined}
+                                            onBrowseKeyFile={isSshProtocol(protocol) ? handleBrowseSshKey : undefined}
                                             selectedProviderId={selectedProviderId}
                                             isEditing={!!editingProfileId}
                                             presetUnlocked={presetUnlocked}
@@ -6524,7 +6534,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         // has a live connection: otherwise it returns null.
                         const proto = connectionParams.protocol || 'ftp';
                         const SERVER_PROTOCOLS = new Set(['ftp', 'ftps']);
-                        const PROVIDER_PROTOCOLS = new Set(['sftp', 's3', 'webdav']);
+                        const PROVIDER_PROTOCOLS = new Set(['sftp', 'scp', 's3', 'webdav']);
                         if (!SERVER_PROTOCOLS.has(proto) && !PROVIDER_PROTOCOLS.has(proto)) return null;
                         const command = PROVIDER_PROTOCOLS.has(proto) ? 'detect_provider_favicon' : 'detect_server_favicon';
                         const searchPaths: string[] = [];

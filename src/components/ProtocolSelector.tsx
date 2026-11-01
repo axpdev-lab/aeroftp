@@ -27,7 +27,8 @@ import {
     Smartphone,
     Container,
 } from 'lucide-react';
-import { ProviderType, FtpTlsMode } from '../types';
+import { ProviderType, FtpTlsMode, isSshProtocol } from '../types';
+import { scpFallbackAllowed, withScpFallback } from '../utils/scpFallback';
 import { useTranslation } from '../i18n';
 import { getProviderById, resolveS3Endpoint, jurisdictionSegment, s3TemplateParams, endpointNeedsCleartextConsent } from '../providers';
 import { CopyLinkButton } from './common/CopyLinkButton';
@@ -134,6 +135,15 @@ const getProtocols = (t: (key: string, params?: Record<string, string>) => strin
         badge: 'SSH',
         color: 'text-emerald-500',
         tooltip: t('protocol.sftpTooltip'),
+    },
+    {
+        type: 'scp',
+        name: 'SCP',
+        icon: <Lock size={16} />,
+        description: t('protocol.scpDesc'),
+        badge: 'SSH',
+        color: 'text-emerald-500',
+        tooltip: t('protocol.scpTooltip'),
     },
     {
         type: 'webdav',
@@ -454,6 +464,7 @@ const PROTOCOLS_FALLBACK: ProtocolFallbackInfo[] = withConnectionDefaults<Omit<P
     { type: 'gitlab', name: 'GitLab', icon: <GitLabLogo size={18} />, badge: 'API', color: 'text-orange-500', isCloudStorage: true },
     { type: 'ftp', name: 'FTP', icon: <Server size={16} />, badge: 'TLS', color: 'text-blue-500' },
     { type: 'sftp', name: 'SFTP', icon: <Lock size={16} />, badge: 'SSH', color: 'text-emerald-500' },
+    { type: 'scp', name: 'SCP', icon: <Lock size={16} />, badge: 'SSH', color: 'text-emerald-500' },
     { type: 'webdav', name: 'WebDAV', icon: <Cloud size={16} />, badge: 'TLS', color: 'text-orange-500' },
     { type: 's3', name: 'S3', icon: <AwsS3Logo size={18} />, badge: 'HMAC', color: 'text-amber-600' },
     { type: 'azure', name: 'Azure Blob', icon: <AzureLogo size={18} />, badge: 'HMAC', color: 'text-blue-500', isCloudStorage: true },
@@ -714,10 +725,11 @@ interface ProtocolFieldsProps {
         roleDurationSeconds?: number;
         roleMfaSerial?: string;
         roleMfaTokenCode?: string;
-        // SFTP-specific
+        // SFTP-specific (SCP uses the first three)
         private_key_path?: string;
         key_passphrase?: string;
         timeout?: number;
+        allowScpFallback?: boolean;
         // FTP/FTPS-specific
         tlsMode?: FtpTlsMode;
         verifyCert?: boolean;
@@ -758,19 +770,26 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
     const [showS3AdvancedWarning, setShowS3AdvancedWarning] = useState(false);
     const [showS3SessionToken, setShowS3SessionToken] = useState(false);
     // SSH auth section open state. Must stay at the top level (not inside the
-    // `protocol === 'sftp'` branch) so the hook count is stable when the user
+    // SFTP/SCP branch) so the hook count is stable when the user
     // edits a saved profile and switches protocol, otherwise React throws
     // "Rendered fewer hooks than expected" (minified error #300). See #336.
     const [sshOpen, setSshOpen] = useState(
         !!(options.private_key_path || options.key_passphrase) || selectedProviderId === 'sourceforge'
     );
 
-    if (protocol === 'sftp') {
+    if (isSshProtocol(protocol)) {
+        const isScp = protocol === 'scp';
         const isSourceForge = selectedProviderId === 'sourceforge';
         const [sfKeyBefore, sfKeyRest = ''] = t('protocol.sourceforgeSshKeyHelp', { cmd: '{cmd}', link: '{link}' }).split('{cmd}');
         const [sfKeyMiddle, sfKeyAfter = ''] = sfKeyRest.split('{link}');
         return (
             <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
+                {isScp && (
+                    <p className="flex items-start gap-1.5 text-xs text-gray-500">
+                        <Info size={13} className="shrink-0 mt-0.5" />
+                        {t('protocol.scpOnlyNote')}
+                    </p>
+                )}
                 {/* Collapsible SSH Auth header */}
                 <button
                     type="button"
@@ -857,6 +876,17 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         className="w-24 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
                     />
                 </div>
+                {!isScp && (
+                    <div>
+                        <Checkbox
+                            checked={scpFallbackAllowed(options)}
+                            onChange={(allowed) => onChange(withScpFallback(options, allowed))}
+                            disabled={disabled}
+                            label={<span className="text-sm">{t('protocol.allowScpFallback')}</span>}
+                        />
+                        <p className="mt-1 text-xs text-gray-500">{t('protocol.allowScpFallbackHint')}</p>
+                    </div>
+                )}
             </div>
         );
     }
@@ -1679,6 +1709,7 @@ export const ProtocolBadge: React.FC<{ protocol?: ProviderType; className?: stri
         ftp: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
         ftps: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
         sftp: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
+        scp: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
         webdav: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300',
         s3: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300',
         aerocloud: 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300',

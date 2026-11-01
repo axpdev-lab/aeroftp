@@ -199,7 +199,8 @@ impl TransferCapabilities {
                 caps.max_file_slots = Some(1);
                 caps.max_checker_slots = Some(4);
             }
-            ProviderType::Sftp => {
+            // SCP has no ranges at all and runs one transfer at a time.
+            ProviderType::Sftp | ProviderType::Scp => {
                 // SFTP has range primitives, but until the shared SFTP pool
                 // lands, provider-generic GUI transfers are a single lease.
                 caps.session_pool = Capability::Unsupported;
