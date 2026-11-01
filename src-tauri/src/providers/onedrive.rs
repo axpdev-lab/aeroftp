@@ -147,6 +147,15 @@ fn recycle_bin_not_exposed(
 /// shortcuts must not wait for them one by one.
 const SHORTCUT_PROBES: usize = 8;
 
+/// How long a listing waits for one such ask. A target that stalls stays a
+/// folder, and a walk that lists it reports what it finds: one slow shortcut
+/// does not hold up the listing of its parent.
+const SHORTCUT_PROBE_TIMEOUT: std::time::Duration = if cfg!(test) {
+    std::time::Duration::from_millis(300)
+} else {
+    std::time::Duration::from_secs(5)
+};
+
 /// The answer Graph gives for the children of a Personal Vault. Recognised on
 /// the code and the message: another 400 is a failure, and a walk must not skip
 /// a folder for it.
@@ -1563,7 +1572,12 @@ impl StorageProvider for OneDriveProvider {
             .iter()
             .map(|item| async move {
                 let mut entry = this.to_remote_entry(item, parent);
-                entry.is_symlink = this.is_unreachable_shortcut(item, &entry.path).await;
+                entry.is_symlink = tokio::time::timeout(
+                    SHORTCUT_PROBE_TIMEOUT,
+                    this.is_unreachable_shortcut(item, &entry.path),
+                )
+                .await
+                .unwrap_or(false);
                 entry
             })
             .collect();
@@ -3603,6 +3617,48 @@ mod tests {
         let asked = requests.lock().unwrap();
         assert!(!asked.iter().any(|p| p.contains("/FULL/")), "{asked:?}");
         server.abort();
+    }
+
+    /// A shortcut whose target stalls stays a folder and does not hold up the
+    /// listing of its parent.
+    #[tokio::test]
+    async fn a_stalled_shortcut_stays_a_folder() {
+        use axum::{http::StatusCode, routing::any, Json, Router};
+        use serde_json::json;
+        let listing = json!({"value": [{
+            "id": "SLOW", "name": "Slow", "size": 0,
+            "remoteItem": {"id": "SLOW", "folder": {"childCount": 0}, "parentReference": {"driveId": "drv2"}}
+        }]});
+        let app = Router::new().fallback(any(move |request: axum::extract::Request| {
+            let listing = listing.clone();
+            async move {
+                if request.uri().path() == "/v1.0/me/drive/root/children" {
+                    return (StatusCode::OK, Json(listing));
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                (StatusCode::OK, Json(json!({"value": []})))
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut p = OneDriveProvider::new(OneDriveConfig {
+            client_id: "fixture".into(),
+            client_secret: "fixture".into(),
+        });
+        p.api_origin_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("fixture".into());
+        p.current_item_id = "root".into();
+        p.current_path = "/".into();
+
+        let started = std::time::Instant::now();
+        let listed = p.list(".").await.unwrap();
+        server.abort();
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+        assert_eq!(listed.len(), 1);
+        assert!(listed[0].is_dir && !listed[0].is_symlink);
     }
 
     /// A folder of many empty shortcuts asks them side by side, within the
