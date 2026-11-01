@@ -316,7 +316,7 @@ pub(crate) fn parse_unix_listing(
     now: NaiveDateTime,
 ) -> Option<RemoteEntry> {
     let parts: Vec<&str> = line.split_whitespace().collect();
-    if parts.len() < 9 {
+    if parts.len() < 8 {
         return None;
     }
 
@@ -329,7 +329,16 @@ pub(crate) fn parse_unix_listing(
 
     // Sliced from the original line rather than rejoined from tokens, so a
     // name containing runs of spaces keeps them.
-    let name = field_tail(line, 8)?.to_string();
+    let name = match field_tail(line, 8) {
+        Some(name) => name.to_string(),
+        // Only spaces after the date: a name of spaces, which begins one
+        // separator after the time or the year, as `ls -l` writes the row.
+        // The date has to read as one, or this is another row.
+        None if unix_list_date(parts[5], parts[6], parts[7], now).is_some() => {
+            name_of_spaces(line)?
+        }
+        None => return None,
+    };
 
     // Handle symlinks (name -> target)
     let (actual_name, link_target) = if is_symlink && name.contains(" -> ") {
@@ -369,6 +378,18 @@ pub(crate) fn parse_unix_listing(
     };
     mark_size_unreadable(&mut entry, size_read);
     Some(entry)
+}
+
+/// The name of spaces that ends a Unix row after its eighth field: what follows
+/// the one separator after the time or the year.
+fn name_of_spaces(line: &str) -> Option<String> {
+    let start = field_start(line, 7)?;
+    let end = line[start..]
+        .find(char::is_whitespace)
+        .map_or(line.len(), |len| start + len);
+    let mut rest = line[end..].trim_end_matches(['\r', '\n']).chars();
+    rest.next()?;
+    Some(rest.as_str().to_string()).filter(|name| !name.is_empty())
 }
 
 /// Parse DOS-style listing (Windows FTP servers)
@@ -542,12 +563,39 @@ fn dos_list_date(date: &str, time: &str) -> Option<String> {
     ))
 }
 
+/// suppaftp trims the MLST reply line, and with it the spaces a name ends
+/// with: the reply about `/a ` names `/a`, another file. The entry is the
+/// one asked for, so it takes back the name asked when that is all it lost.
+/// A name of spaces is lost whole, and the reply about `/x/   ` names `/x/`,
+/// its folder: the entry takes the name and the path asked.
+pub(crate) fn name_as_asked(entry: &mut RemoteEntry, asked: &str) {
+    let asked = asked.trim_end_matches('/');
+    let Some(asked_name) = asked.rsplit('/').next() else {
+        return;
+    };
+    if asked_name == entry.name {
+        return;
+    }
+    if asked_name.trim_end() == entry.name {
+        if let Some(parent) = entry.path.strip_suffix(entry.name.as_str()) {
+            entry.path = format!("{parent}{asked_name}");
+            entry.name = asked_name.to_string();
+        }
+    } else if !asked_name.is_empty() && asked_name.trim().is_empty() {
+        let parent = &asked[..asked.len() - asked_name.len()];
+        entry.path = join_remote_path(parent, asked_name);
+        entry.name = asked_name.to_string();
+    }
+}
+
 /// Parse MLSD/MLST line (RFC 3659 machine-readable format)
 /// Format: "fact1=val1;fact2=val2; filename"
 pub(crate) fn parse_mlsd_entry(line: &str, base_path: &str) -> Option<RemoteEntry> {
     // Split on first space after semicolons to get facts and filename
     let (facts_str, name) = line.split_once(' ')?;
-    let raw_name = name.trim();
+    // The name is all that follows that one space (RFC 3659 7.2), its own
+    // spaces included; suppaftp hands the line without its CRLF.
+    let raw_name = name;
     let name = normalize_mlsd_name(raw_name);
 
     if name == "." || name == ".." {
@@ -855,6 +903,77 @@ mod tests {
     /// its size, and the 0 it leaves is marked like an unreadable one: the
     /// CLI's `--immutable` trusted it as exact and refused every complete file
     /// on such a server as a partial. A directory needs no size.
+    /// The name is what follows the one space after the facts: trimmed,
+    /// ` a.txt ` was listed as `a.txt`, another file.
+    #[test]
+    fn an_mlsd_name_keeps_its_spaces() {
+        let entry = parse_mlsd_entry("type=file;size=1;  a.txt ", "/d").expect("a file");
+        assert_eq!(
+            (entry.name.as_str(), entry.path.as_str()),
+            (" a.txt ", "/d/ a.txt ")
+        );
+        let entry = parse_mlsd_entry("type=dir;   ", "/d").expect("a folder");
+        assert_eq!((entry.name.as_str(), entry.path.as_str()), ("  ", "/d/  "));
+    }
+
+    /// suppaftp trims the MLST line: the entry asked as `/x/a ` comes back
+    /// as `a`, and gets its name back. Any other difference is the server's.
+    #[test]
+    fn an_mlst_entry_takes_back_the_spaces_its_name_ended_with() {
+        let mut entry = parse_mlsd_entry("type=file;size=3; /x/a", "/x").expect("a file");
+        name_as_asked(&mut entry, "/x/a  ");
+        assert_eq!(
+            (entry.name.as_str(), entry.path.as_str()),
+            ("a  ", "/x/a  ")
+        );
+        let mut entry = parse_mlsd_entry("type=file;size=3; /x/A.TXT", "/x").expect("a file");
+        name_as_asked(&mut entry, "/x/a.txt");
+        assert_eq!(
+            (entry.name.as_str(), entry.path.as_str()),
+            ("A.TXT", "/x/A.TXT")
+        );
+    }
+
+    /// A name of spaces is lost whole from the trimmed MLST line, which then
+    /// names the folder: `stat` of `/x/   ` answered with an entry `x`.
+    #[test]
+    fn an_mlst_entry_named_with_spaces_only_takes_back_its_name() {
+        for (line, base, asked, path) in [
+            ("type=file;size=3; /x/", "/x", "/x/   ", "/x/   "),
+            ("type=dir; /", "/", "/  ", "/  "),
+            ("type=file;size=3; /x/", "/x", "/x/ /", "/x/ "),
+        ] {
+            let mut entry = parse_mlsd_entry(line, base).expect("an entry");
+            name_as_asked(&mut entry, asked);
+            let name = path.rsplit('/').next().unwrap();
+            assert_eq!((entry.name.as_str(), entry.path.as_str()), (name, path));
+        }
+    }
+
+    /// A LIST row whose name is only spaces has eight fields: it was dropped,
+    /// so `stat` of that file, which falls back to LIST without MLST, read it
+    /// as missing. The name begins one separator after the time or the year.
+    #[test]
+    fn a_unix_row_named_with_spaces_only_is_listed() {
+        let now = at("2026-10-31 12:00");
+        for (row, name) in [
+            ("-rw-r--r--    1 user  group   3 Oct 30 09:15    ", "   "),
+            ("drwxr-xr-x    2 user  group 4096 Jan  5  2024  \r\n", " "),
+        ] {
+            let entry = parse_unix_listing(row, "/x", now).expect("an entry");
+            assert_eq!(entry.name, name);
+            assert_eq!(entry.path, format!("/x/{name}"));
+        }
+        // Eight fields and no name, or a row that is not one with a date.
+        for row in [
+            "-rw-r--r--    1 user  group   3 Oct 30 09:15",
+            "-rw-r--r--    1 user  group   3 Oct 30 09:15 \r\n",
+            "-rw-r--r--    1 user  3 Oct 30 09:15 f.txt   ",
+        ] {
+            assert!(parse_unix_listing(row, "/x", now).is_none(), "{row:?}");
+        }
+    }
+
     #[test]
     fn an_mlsd_file_without_a_size_fact_is_marked() {
         let file = parse_mlsd_entry("type=file;modify=20240101000000; a.txt", "/").expect("a file");

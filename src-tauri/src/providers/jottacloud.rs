@@ -881,24 +881,25 @@ impl JottacloudProvider {
     }
 
     fn normalize_path(path: &str) -> String {
-        let trimmed = path.trim().replace('\\', "/");
-        if trimmed.is_empty() || trimmed == "/" {
+        // Spaces are part of a name: ` a` and `a ` are not `a`.
+        let path = path.replace('\\', "/");
+        if path.is_empty() || path == "/" {
             return "/".to_string();
         }
-        let p = if trimmed.starts_with('/') {
-            trimmed
+        let p = if path.starts_with('/') {
+            path
         } else {
-            format!("/{}", trimmed)
+            format!("/{}", path)
         };
         p.trim_end_matches('/').to_string()
     }
 
     fn resolve_path(&self, path: &str) -> String {
-        let path = path.trim();
         if path.is_empty() || path == "." {
             return self.current_path.clone();
         }
-        if path.starts_with('/') {
+        // `normalize_path` takes `\` for a separator: a leading one is the root too.
+        if path.starts_with(['/', '\\']) {
             return Self::normalize_path(path);
         }
         let base = self.current_path.trim_end_matches('/');
@@ -1544,7 +1545,8 @@ impl StorageProvider for JottacloudProvider {
         // Step 6: Navigate to initial path
         self.current_path = "/".to_string();
         if let Some(ref initial) = self.config.initial_path {
-            let initial = initial.trim().to_string();
+            // As given: a name may begin or end with a space.
+            let initial = initial.to_string();
             if !initial.is_empty() && initial != "/" {
                 self.current_path = Self::normalize_path(&initial);
             }
@@ -2360,6 +2362,9 @@ impl JottacloudProvider {
     /// Relative path under the live mountpoint: strip
     /// `/{user}/{device}/{mount}` from the trash `<abspath>` (the original
     /// parent) and append the entry name. Root-level items stay `/{name}`.
+    /// The parent's names are the stored ones, `reports％` for `reports%`:
+    /// each is decoded like a listed name, since `jfs_url` encodes the path
+    /// again and an encoded name would reach another folder.
     fn trash_relative_path(abspath: &str, name: &str) -> String {
         let parts: Vec<&str> = abspath
             .trim_matches('/')
@@ -2368,7 +2373,11 @@ impl JottacloudProvider {
             .collect();
         // 0 user, 1 device, 2 mountpoint, 3… original parent under that mount.
         let parent = if parts.len() > 3 {
-            parts[3..].join("/")
+            parts[3..]
+                .iter()
+                .map(|s| crate::restricted_chars::decode_leaf(ProviderType::Jottacloud, s))
+                .collect::<Vec<_>>()
+                .join("/")
         } else {
             String::new()
         };
@@ -3166,13 +3175,13 @@ impl JottacloudProvider {
         let mut entries = Vec::new();
         let mut reader = Reader::from_str(xml);
         // Names arrive as attributes. `<abspath>` is Text + GeneralRef and
-        // is accumulated (then trimmed once) rather than assigned per chunk.
+        // is accumulated, as given, rather than assigned per chunk: a folder
+        // name may end with a space.
         //
         // Trimming is left OFF here on purpose: quick-xml trims every Text
         // EVENT, not the node, so an entity splits `Photos &amp; Videos` into
         // three events whose own edges carry the spaces. Trimming per event
-        // welds the pieces into `Photos&Videos`, and the single trim applied
-        // when the path is derived cannot put back what was already dropped.
+        // welds the pieces into `Photos&Videos`.
         // The scalars that need it (`size`, `state`, `modified`) trim
         // themselves below, where a whitespace-only event is also harmless
         // because it never matches their tag.
@@ -3320,7 +3329,7 @@ impl JottacloudProvider {
                                 entries.push(RemoteEntry {
                                     name: pending_folder_name.clone(),
                                     path: Self::trash_relative_path(
-                                        pending_folder_abspath.trim(),
+                                        &pending_folder_abspath,
                                         &pending_folder_name,
                                     ),
                                     is_dir: true,
@@ -3359,7 +3368,7 @@ impl JottacloudProvider {
                                 entries.push(RemoteEntry {
                                     name: current_name.clone(),
                                     path: Self::trash_relative_path(
-                                        current_abspath.trim(),
+                                        &current_abspath,
                                         &current_name,
                                     ),
                                     is_dir: false,
@@ -3789,6 +3798,22 @@ mod tests {
         assert_real_progress(&updates, 300 * 1024, false);
     }
 
+    #[test]
+    fn a_name_keeps_its_leading_and_trailing_spaces() {
+        // A name with a leading or trailing space is a name of its own, and a
+        // name of spaces only is not the current folder.
+        assert_eq!(JottacloudProvider::normalize_path("/ a"), "/ a");
+        assert_eq!(JottacloudProvider::normalize_path("/a /b "), "/a /b ");
+        let mut p = test_provider();
+        p.current_path = "/Cloud".to_string();
+        assert_eq!(p.resolve_path("   "), "/Cloud/   ");
+        assert_eq!(p.resolve_path(" a"), "/Cloud/ a");
+        assert_eq!(p.resolve_path("/a "), "/a ");
+        // A leading backslash is the root, as normalize_path reads it.
+        assert_eq!(p.resolve_path("\\docs\\a "), "/docs/a ");
+        assert_eq!(p.resolve_path("sub\\a"), "/Cloud/sub/a");
+    }
+
     fn test_provider() -> JottacloudProvider {
         let config = JottacloudConfig {
             login_token: SecretString::from("test-token".to_string()),
@@ -3815,7 +3840,7 @@ mod tests {
     fn normalize_path_trims_and_normalizes_separators() {
         assert_eq!(JottacloudProvider::normalize_path(""), "/");
         assert_eq!(JottacloudProvider::normalize_path("/"), "/");
-        assert_eq!(JottacloudProvider::normalize_path("   "), "/");
+        assert_eq!(JottacloudProvider::normalize_path("   "), "/   ");
         assert_eq!(JottacloudProvider::normalize_path("foo"), "/foo");
         assert_eq!(JottacloudProvider::normalize_path("/foo/bar/"), "/foo/bar");
         assert_eq!(JottacloudProvider::normalize_path(r"\foo\bar"), "/foo/bar");
@@ -4048,6 +4073,62 @@ mod tests {
         let entries = JottacloudProvider::parse_trash_xml(xml);
         let file = entries.iter().find(|e| !e.is_dir).expect("file");
         assert_eq!(file.path, "/Photos & Videos/x.txt");
+    }
+
+    #[test]
+    fn parse_trash_xml_keeps_a_parent_name_that_ends_with_a_space() {
+        // `reports ` and `reports` are two folders. The parent taken from
+        // `<abspath>` was trimmed, so an entry deleted from `reports ` would
+        // be restored to `reports`.
+        let xml = r#"<mountPoint name="Trash">
+  <folders>
+    <folder name="q3">
+      <abspath>/user123/Jotta/Archive/reports </abspath>
+    </folder>
+  </folders>
+  <files>
+    <file name="x.txt">
+      <abspath>/user123/Jotta/Archive/reports </abspath>
+      <currentRevision><size>1</size></currentRevision>
+    </file>
+  </files>
+</mountPoint>"#;
+        let entries = JottacloudProvider::parse_trash_xml(xml);
+        let folder = entries.iter().find(|e| e.is_dir).expect("folder");
+        assert_eq!(folder.path, "/reports /q3");
+        let file = entries.iter().find(|e| !e.is_dir).expect("file");
+        assert_eq!(file.path, "/reports /x.txt");
+    }
+
+    #[test]
+    fn parse_trash_xml_decodes_the_stored_names_of_the_parent() {
+        // `reports% ` is stored as `reports％ ` and named so in `<abspath>`.
+        // Kept encoded, the path was encoded again by `jfs_url`, and restore
+        // or purge reached `reports‛％ `, another name.
+        let xml = r#"<mountPoint name="Trash">
+  <folders>
+    <folder name="q3">
+      <abspath>/user123/Jotta/Archive/reports％ /a：b</abspath>
+    </folder>
+  </folders>
+  <files>
+    <file name="x％.txt">
+      <abspath>/user123/Jotta/Archive/reports％ </abspath>
+      <currentRevision><size>1</size></currentRevision>
+    </file>
+  </files>
+</mountPoint>"#;
+        let entries = JottacloudProvider::parse_trash_xml(xml);
+        let folder = entries.iter().find(|e| e.is_dir).expect("folder");
+        assert_eq!(folder.path, "/reports% /a:b/q3");
+        let file = entries.iter().find(|e| !e.is_dir).expect("file");
+        assert_eq!(file.path, "/reports% /x%.txt");
+        // Back to the stored names once, as the listing writes them.
+        let url = test_provider().jfs_url(&file.path);
+        assert!(
+            url.ends_with("/reports%EF%BC%85%20/x%EF%BC%85.txt"),
+            "{url}"
+        );
     }
 
     #[test]

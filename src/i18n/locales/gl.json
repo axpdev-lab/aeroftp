@@ -598,7 +598,8 @@
             "setAsPublic": "Establecer como público",
             "makeAllPrivate": "Facer todo privado",
             "dropboxRestoreLimit": "AeroFTP pode restaurar versións recuperables de ficheiros. Restaura os cartafoles desde Ficheiros eliminados en dropbox.com. Un signo de interrogación indica que Dropbox non identificou o tipo de elemento.",
-            "openWithDefaultApp": "Abrir coa aplicación predeterminada"
+            "openWithDefaultApp": "Abrir coa aplicación predeterminada",
+            "extractHereUncheckedConfirm": "Os nomes dentro de {name} non se poden ler antes de extraer, así que AeroFTP non pode comprobar o que sobrescribiría «Extraer aquí» neste cartafol. «Extraer nun cartafol» nunca sobrescribe."
         },
         "transfer": {
             "transferring": "Transferindo...",
@@ -2469,7 +2470,9 @@
             "flattenScanning": "Escaneando subárbore...",
             "flattenTruncated": "truncado",
             "flattenTruncatedHint": "Acadouse o límite de 5.000 entradas; refina o filtro ou entra nunha subcarpeta.",
-            "local_placeholder_flatten": "Filtrar ficheiros locais... (* para recursivo)"
+            "local_placeholder_flatten": "Filtrar ficheiros locais... (* para recursivo)",
+            "flattenNameClash": "{names}: seleccionados en máis dun cartafol. Postos nun só lugar, substituiríanse entre si; actúa sobre un de cada nome á vez.",
+            "flattenNameClashTitle": "O mesmo nome en máis dun cartafol"
         },
         "versions": {
             "title": "Versións de ficheiro",

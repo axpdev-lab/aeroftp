@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { transformWithOxc } from 'vite';
 import app from '../App.tsx?raw';
-import { normCryptScope } from './cryptScope';
+import { normCryptScope, normLandingPath } from './cryptScope';
 import { assertOverlayActivationCurrent } from './profileOverlayUnlock';
 
 // Execute the real re-anchor and activation handlers, including their catches
@@ -29,7 +29,7 @@ async function handlers(error: unknown, owned: boolean, staleAfterNavigation = f
   });
   const bindSessionCryptOverlay = vi.fn();
   const context = {
-    invoke, normCryptScope, assertOverlayActivationCurrent,
+    invoke, normCryptScope, normLandingPath, assertOverlayActivationCurrent,
     positionWrappedProviderAtScope: vi.fn().mockResolvedValue(undefined),
     applyProviderCryptOverlay: vi.fn().mockResolvedValue(''),
     cryptOverlaySentinel: () => 'rclone_crypt_provider',

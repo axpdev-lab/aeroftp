@@ -3305,17 +3305,31 @@ impl WebDavProvider {
                             // ...) the input has no percent-encoding and decode is a
                             // no-op; on the Filen bridge it un-mangles the name. Issue
                             // #128.
-                            let name = if !displayname.trim().is_empty() {
-                                urlencoding::decode(displayname.trim())
-                                    .unwrap_or_else(|_| displayname.trim().into())
-                                    .into_owned()
+                            // The spaces around a name are part of it: ` a`
+                            // and `a ` are two other files than `a`, and a
+                            // name of spaces is a name. The href names the
+                            // resource, so a displayname that says its name
+                            // with other spaces around it takes the href's:
+                            // the entry's path must reach that resource. A
+                            // displayname that names something else (a
+                            // server whose href is not the name) is the name.
+                            let leaf = decoded_href
+                                .trim_end_matches('/')
+                                .rsplit('/')
+                                .next()
+                                .unwrap_or("")
+                                .to_string();
+                            let name = if displayname.is_empty() {
+                                leaf
                             } else {
-                                decoded_href
-                                    .trim_end_matches('/')
-                                    .rsplit('/')
-                                    .next()
-                                    .unwrap_or("")
-                                    .to_string()
+                                let shown = urlencoding::decode(&displayname)
+                                    .unwrap_or_else(|_| displayname.as_str().into())
+                                    .into_owned();
+                                if shown.trim() == leaf.trim() {
+                                    leaf
+                                } else {
+                                    shown
+                                }
                             };
 
                             if name.is_empty() || name == "." || name == ".." {
@@ -3407,11 +3421,14 @@ impl WebDavProvider {
 
                 Ok(Event::CData(ref e)) => {
                     if let Some(ref tag) = current_tag {
-                        let text = e.as_ref().trim().to_string();
-                        if !text.is_empty() {
+                        // As in the text arm, the name is read as given:
+                        // `<![CDATA[ a.txt ]]>` names ` a.txt `.
+                        let raw = e.as_ref().to_string();
+                        let text = raw.trim().to_string();
+                        if !text.is_empty() || (tag == "displayname" && !raw.is_empty()) {
                             match tag.as_str() {
                                 "href" => href = text,
-                                "displayname" => displayname = text,
+                                "displayname" => displayname.push_str(&raw),
                                 "getcontentlength" => getcontentlength = text,
                                 "getlastmodified" => getlastmodified = text,
                                 "getcontenttype" => getcontenttype = text,
@@ -4158,12 +4175,12 @@ impl StorageProvider for WebDavProvider {
                             self.connected = true;
                             // Issue #175: server_root is the auto-detected path.
                             // current_path defaults to it; if the user supplied
-                            // a relative initial_path, append it under the root.
+                            // a relative initial_path, append it under the root,
+                            // as given: `reports ` is its own folder.
                             let user_initial = self
                                 .config
                                 .initial_path
                                 .as_deref()
-                                .map(str::trim)
                                 .filter(|p| !p.is_empty() && *p != "/");
                             let starting_path = match user_initial {
                                 Some(rel) => {
@@ -6575,6 +6592,33 @@ mod tests {
         assert!(!local.exists(), "a stalled download leaves no file behind");
     }
 
+    /// Nextcloud and ownCloud refuse a PROPFIND on `/`; the root found under
+    /// `/remote.php/dav/files/<user>/` takes the initial folder as given.
+    #[tokio::test]
+    async fn a_discovered_nextcloud_root_keeps_the_spaces_of_the_initial_folder() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |req: axum::extract::Request| async move {
+                if req.method().as_str() == "PROPFIND"
+                    && req.uri().path() == "/remote.php/dav/files/user/"
+                {
+                    axum::http::StatusCode::MULTI_STATUS
+                } else {
+                    axum::http::StatusCode::METHOD_NOT_ALLOWED
+                }
+            },
+        ));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut config = test_config(&base);
+        config.initial_path = Some("reports ".to_string());
+        let mut provider = WebDavProvider::new(config).expect("provider");
+        let outcome = provider.connect().await;
+        server.abort();
+        outcome.expect("connect");
+        assert_eq!(provider.current_path, "/remote.php/dav/files/user/reports ");
+    }
+
     fn test_config(url: &str) -> WebDavConfig {
         WebDavConfig {
             url: url.to_string(),
@@ -7157,6 +7201,115 @@ mod tests {
         assert_eq!(entries[0].size, 65536);
         // No displayname: falls back to the (decoded) href leaf.
         assert_eq!(entries[1].name, "a & b.txt");
+    }
+
+    /// A displayname that begins or ends with a space names that file, in a
+    /// text node or in a CDATA section: it was trimmed, so ` a.txt ` was
+    /// listed as `a.txt` at `/dav/a.txt`, and every operation on it reached
+    /// another file or none. The href names the resource: a displayname that
+    /// says the href's name with other spaces around it (` b.txt ` for
+    /// `/dav/b.txt`) takes the href's, so the entry's path reaches the file.
+    /// A displayname that names something else than the href is the name.
+    #[test]
+    fn parse_propfind_keeps_the_spaces_around_a_displayname() {
+        let provider = WebDavProvider::new(test_config("https://example.com/dav"))
+            .expect("Failed to create WebDavProvider");
+
+        let xml = r#"<?xml version="1.0"?>
+        <d:multistatus xmlns:d="DAV:">
+            <d:response>
+                <d:href>/dav/%20a.txt%20</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname> a.txt </d:displayname>
+                        <d:resourcetype/>
+                        <d:getcontentlength>3</d:getcontentlength>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/%20%20/</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname>  </d:displayname>
+                        <d:resourcetype><d:collection/></d:resourcetype>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/%20c.txt%20</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname><![CDATA[ c.txt ]]></d:displayname>
+                        <d:resourcetype/>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/%20%20%20/</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname><![CDATA[   ]]></d:displayname>
+                        <d:resourcetype><d:collection/></d:resourcetype>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/b.txt</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname> b.txt </d:displayname>
+                        <d:resourcetype/>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/d.txt</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname><![CDATA[  d.txt]]></d:displayname>
+                        <d:resourcetype/>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/%20/</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname>    </d:displayname>
+                        <d:resourcetype><d:collection/></d:resourcetype>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/e7</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname> e.txt</d:displayname>
+                        <d:resourcetype/>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+        </d:multistatus>"#;
+
+        let entries = provider.parse_propfind_response(xml, "/dav").unwrap();
+        let named: Vec<(&str, &str)> = entries
+            .iter()
+            .map(|e| (e.name.as_str(), e.path.as_str()))
+            .collect();
+        assert_eq!(
+            named,
+            [
+                (" a.txt ", "/dav/ a.txt "),
+                ("  ", "/dav/  "),
+                (" c.txt ", "/dav/ c.txt "),
+                ("   ", "/dav/   "),
+                ("b.txt", "/dav/b.txt"),
+                ("d.txt", "/dav/d.txt"),
+                (" ", "/dav/ "),
+                (" e.txt", "/dav/ e.txt"),
+            ]
+        );
     }
 
     /// CR-536 regression: a whitespace-ONLY Text fragment between two entity
