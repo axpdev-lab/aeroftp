@@ -349,22 +349,30 @@ describe('every transfer that completes a queue row passes its error on', () => 
     expect(calls).toHaveLength(9);
   });
 
-  /** The catch of each Retry callback, up to the failure it shows. */
+  /** The catch block of each Retry callback, whole. */
   function retryCatches(source: string) {
     return [...source.matchAll(/transferQueue\.completeTransfer\(id\);\s*\} catch \(error\) \{/g)].map(match => {
       const start = match.index + match[0].length;
-      return source.slice(start, source.indexOf('notify.error(', start));
+      let depth = 1;
+      let end = start;
+      for (; end < source.length && depth > 0; end++) {
+        if (source[end] === '{') depth++;
+        if (source[end] === '}') depth--;
+      }
+      return source.slice(start, end - 1);
     });
   }
 
   // The flag stays set after a stopped batch, so a Retry tells its own Stop
   // by the cancel error. The cases above run the drop's two; the dialog's
   // and the journal's are read here.
-  it('each Retry callback takes a Stop during it for a cancel before it shows a failure', () => {
-    expect(retryCatches('transferQueue.completeTransfer(id);\n } catch (error) {\n x();\n notify.error(a);')).toEqual(['\n x();\n ']);
+  it('each Retry callback takes a Stop during it for a cancel, and shows any other failure', () => {
+    expect(retryCatches('transferQueue.completeTransfer(id);\n } catch (error) {\n if (a) { x(); } else { notify.error(a); }\n }\n y();'))
+      .toEqual(['\n if (a) { x(); } else { notify.error(a); }\n ']);
     const catches = retryCatches(app);
     expect(catches).toHaveLength(4);
     expect(catches.filter(text => !text.includes('batchCancelledRef.current && isCancelledTransferError(String(error))'))).toEqual([]);
+    expect(catches.filter(text => !/transferQueue\.failTransfer\(id, String\(error\)\);\s*notify\.error\(/.test(text))).toEqual([]);
   });
 
   // The cases run the drop's two loops; the dialog's is read here.
