@@ -4186,7 +4186,10 @@
             "drivesLeftPanel": "ไดรฟ์แผงซ้าย",
             "drivesRightPanel": "ไดรฟ์แผงขวา",
             "modeGroupLabel": "โหมดแถบด้านข้าง",
-            "placesSidebarLabel": "แถบด้านข้างตำแหน่ง"
+            "placesSidebarLabel": "แถบด้านข้างตำแหน่ง",
+            "mountFailed": "การเมานต์ล้มเหลว",
+            "partitions_need_udisks2": "ใน snap พาร์ติชันที่ยังไม่ได้เมานต์จะปรากฏ และสามารถเมานต์และนำออกได้ หลังจากเชื่อมต่อสิทธิ์ udisks2 แล้ว เรียกใช้คำสั่งนี้ในเทอร์มินัล จากนั้นกลับมาที่ AeroFTP:",
+            "volume_action_needs_udisks2": "ใน snap การเมานต์และการนำออกต้องใช้สิทธิ์ udisks2 เรียกใช้คำสั่งนี้ในเทอร์มินัล จากนั้นลองอีกครั้ง: {command}"
         },
         "viewMode": {
             "list": "รายการ",

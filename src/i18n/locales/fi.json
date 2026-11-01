@@ -4186,7 +4186,10 @@
             "drivesLeftPanel": "Vasemman paneelin asemat",
             "drivesRightPanel": "Oikean paneelin asemat",
             "modeGroupLabel": "Sivupalkin tila",
-            "placesSidebarLabel": "Sijaintien sivupalkki"
+            "placesSidebarLabel": "Sijaintien sivupalkki",
+            "mountFailed": "Liittäminen epäonnistui",
+            "partitions_need_udisks2": "Snapissa liittämättömät osiot näkyvät, ja ne voi liittää ja poistaa, kun udisks2-oikeus on yhdistetty. Suorita tämä päätteessä ja palaa sitten AeroFTP:hen:",
+            "volume_action_needs_udisks2": "Snapissa liittäminen ja poistaminen vaativat udisks2-oikeuden. Suorita tämä päätteessä ja yritä sitten uudelleen: {command}"
         },
         "viewMode": {
             "list": "Lista",

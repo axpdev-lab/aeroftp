@@ -4186,7 +4186,10 @@
             "drivesLeftPanel": "Drif í vinstri glugga",
             "drivesRightPanel": "Drif í hægri glugga",
             "modeGroupLabel": "Hamur hliðarstiku",
-            "placesSidebarLabel": "Hliðarstika staða"
+            "placesSidebarLabel": "Hliðarstika staða",
+            "mountFailed": "Tenging mistókst",
+            "partitions_need_udisks2": "Í snap birtast ótengdar disksneiðar og hægt er að tengja þær og kasta þeim út þegar udisks2 heimildin er tengd. Keyrðu þetta í skipanalínu og farðu svo aftur í AeroFTP:",
+            "volume_action_needs_udisks2": "Í snap þarf udisks2 heimildina til að tengja og kasta út. Keyrðu þetta í skipanalínu og reyndu aftur: {command}"
         },
         "viewMode": {
             "list": "Listi",

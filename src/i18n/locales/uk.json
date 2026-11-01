@@ -4186,7 +4186,10 @@
             "drivesLeftPanel": "Диски лівої панелі",
             "drivesRightPanel": "Диски правої панелі",
             "modeGroupLabel": "Режим бічної панелі",
-            "placesSidebarLabel": "Бічна панель місць"
+            "placesSidebarLabel": "Бічна панель місць",
+            "mountFailed": "Не вдалося змонтувати",
+            "partitions_need_udisks2": "У snap розмонтовані розділи з'являються і їх можна змонтувати та витягти після підключення дозволу udisks2. Виконайте це в терміналі, а потім поверніться до AeroFTP:",
+            "volume_action_needs_udisks2": "У snap для монтування та витягання потрібен дозвіл udisks2. Виконайте це в терміналі, а потім повторіть спробу: {command}"
         },
         "viewMode": {
             "list": "Список",

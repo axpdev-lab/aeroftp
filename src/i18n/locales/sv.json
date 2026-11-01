@@ -4186,7 +4186,10 @@
             "drivesLeftPanel": "Enheter i vänster panel",
             "drivesRightPanel": "Enheter i höger panel",
             "modeGroupLabel": "Sidofältsläge",
-            "placesSidebarLabel": "Sidofält med platser"
+            "placesSidebarLabel": "Sidofält med platser",
+            "mountFailed": "Montering misslyckades",
+            "partitions_need_udisks2": "I snap visas omonterade partitioner, och de kan monteras och matas ut, när behörigheten udisks2 är ansluten. Kör detta i en terminal och gå sedan tillbaka till AeroFTP:",
+            "volume_action_needs_udisks2": "I snap kräver montering och utmatning behörigheten udisks2. Kör detta i en terminal och försök sedan igen: {command}"
         },
         "viewMode": {
             "list": "Lista",

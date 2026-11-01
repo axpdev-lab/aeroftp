@@ -4186,7 +4186,10 @@
             "drivesLeftPanel": "Vasaku paneeli kettad",
             "drivesRightPanel": "Parema paneeli kettad",
             "modeGroupLabel": "Külgriba režiim",
-            "placesSidebarLabel": "Asukohtade külgriba"
+            "placesSidebarLabel": "Asukohtade külgriba",
+            "mountFailed": "Haakimine ebaõnnestus",
+            "partitions_need_udisks2": "Snapis ilmuvad haakimata partitsioonid, mida saab haakida ja väljastada, pärast udisks2 loa ühendamist. Käivitage see terminalis ja naaske seejärel AeroFTP-sse:",
+            "volume_action_needs_udisks2": "Snapis vajavad haakimine ja väljastamine udisks2 luba. Käivitage see terminalis ja proovige seejärel uuesti: {command}"
         },
         "viewMode": {
             "list": "Loend",

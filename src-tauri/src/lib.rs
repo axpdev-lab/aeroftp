@@ -5907,8 +5907,12 @@ async fn get_local_files(
     let path = PathBuf::from(&path);
     let show_hidden = show_hidden.unwrap_or(true); // Developer-first: show all files by default
 
-    if !path.exists() {
-        return Err(format!("Path does not exist: {}", path.display()));
+    match tokio::fs::metadata(&path).await {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            return Err(filesystem::local_path_refused(&path, &e));
+        }
+        Err(_) => return Err(format!("Path does not exist: {}", path.display())),
     }
 
     let mut files = Vec::new();
@@ -5917,7 +5921,7 @@ async fn get_local_files(
 
     let mut entries = tokio::fs::read_dir(&path)
         .await
-        .map_err(|e| format!("Failed to read directory: {}", e))?;
+        .map_err(|e| filesystem::local_path_refused(&path, &e))?;
 
     while let Some(entry) = entries.next_entry().await.map_err(|e| e.to_string())? {
         let metadata = entry.metadata().await.ok();

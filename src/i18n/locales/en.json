@@ -4547,7 +4547,10 @@
             "drivesLeftPanel": "Drives left panel",
             "drivesRightPanel": "Drives right panel",
             "modeGroupLabel": "Sidebar mode",
-            "placesSidebarLabel": "Places sidebar"
+            "placesSidebarLabel": "Places sidebar",
+            "mountFailed": "Mount failed",
+            "partitions_need_udisks2": "In the snap, unmounted partitions appear, and can be mounted and ejected, once its udisks2 permission is connected. Run this in a terminal, then return to AeroFTP:",
+            "volume_action_needs_udisks2": "In the snap, mounting and ejecting need its udisks2 permission. Run this in a terminal, then try again: {command}"
         },
         "statusbar": {
             "activityLog": "Activity Log",

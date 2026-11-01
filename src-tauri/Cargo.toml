@@ -386,6 +386,9 @@ winreg = "0.56"
 #   were already in the tree through reqwest; only features are added here.
 # - fuser: FUSE virtual filesystem mount (macOS requires macFUSE installed by user)
 [target.'cfg(target_os = "linux")'.dependencies]
+# The snap's partition list, mount and unmount go to UDisks2 over D-Bus. Already
+# in the tree through tauri-plugin-notification and single-instance.
+zbus = "5"
 hyper = { version = "1", features = ["server", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"
@@ -419,6 +422,10 @@ webkit2gtk = { version = "=2.0.2", features = ["v2_20"] }
 # not link libacl. Do not use path-following helpers (exacl, getfacl/setfacl).
 posix-acl = { version = "1.2.0", optional = true }
 acl-sys = { version = "1.2.2", optional = true }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+# A stand-in UDisks2 service over a socket pair, for the snap's D-Bus calls.
+zbus = { version = "5", features = ["p2p"] }
 
 [dev-dependencies]
 rcgen = "0.14"                                                       # Self-signed certificates for the loopback TLS tests

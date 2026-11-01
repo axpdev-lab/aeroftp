@@ -4186,7 +4186,10 @@
             "drivesLeftPanel": "Kairiojo skydelio diskai",
             "drivesRightPanel": "Dešiniojo skydelio diskai",
             "modeGroupLabel": "Šoninės juostos režimas",
-            "placesSidebarLabel": "Vietų šoninė juosta"
+            "placesSidebarLabel": "Vietų šoninė juosta",
+            "mountFailed": "Nepavyko prijungti",
+            "partitions_need_udisks2": "Snap pakete neprijungti skaidiniai rodomi, ir juos galima prijungti bei išstumti, kai prijungiamas udisks2 leidimas. Paleiskite tai terminale, tada grįžkite į AeroFTP:",
+            "volume_action_needs_udisks2": "Snap pakete prijungimui ir išstūmimui reikia udisks2 leidimo. Paleiskite tai terminale, tada bandykite dar kartą: {command}"
         },
         "viewMode": {
             "list": "Sąrašas",

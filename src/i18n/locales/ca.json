@@ -4186,7 +4186,10 @@
             "drivesLeftPanel": "Unitats del panell esquerre",
             "drivesRightPanel": "Unitats del panell dret",
             "modeGroupLabel": "Mode de la barra lateral",
-            "placesSidebarLabel": "Barra lateral de llocs"
+            "placesSidebarLabel": "Barra lateral de llocs",
+            "mountFailed": "Ha fallat el muntatge",
+            "partitions_need_udisks2": "Al snap, les particions desmuntades apareixen, i es poden muntar i expulsar, quan es connecta el permís udisks2. Executa això en un terminal i torna a AeroFTP:",
+            "volume_action_needs_udisks2": "Al snap, muntar i expulsar requereixen el permís udisks2. Executa això en un terminal i torna-ho a provar: {command}"
         },
         "viewMode": {
             "list": "Llista",

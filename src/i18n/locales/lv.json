@@ -4186,7 +4186,10 @@
             "drivesLeftPanel": "Kreisā paneļa diski",
             "drivesRightPanel": "Labā paneļa diski",
             "modeGroupLabel": "Sānjoslas režīms",
-            "placesSidebarLabel": "Vietu sānjosla"
+            "placesSidebarLabel": "Vietu sānjosla",
+            "mountFailed": "Neizdevās montēt",
+            "partitions_need_udisks2": "Snap pakotnē nemontētie nodalījumi parādās, un tos var montēt un izstumt, kad ir pievienota udisks2 atļauja. Palaidiet to terminālī un pēc tam atgriezieties AeroFTP:",
+            "volume_action_needs_udisks2": "Snap pakotnē montēšanai un izstumšanai ir nepieciešama udisks2 atļauja. Palaidiet to terminālī un pēc tam mēģiniet vēlreiz: {command}"
         },
         "viewMode": {
             "list": "Saraksts",

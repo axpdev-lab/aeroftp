@@ -4186,7 +4186,10 @@
             "drivesLeftPanel": "Sol panel sürücüleri",
             "drivesRightPanel": "Sağ panel sürücüleri",
             "modeGroupLabel": "Kenar çubuğu modu",
-            "placesSidebarLabel": "Konumlar kenar çubuğu"
+            "placesSidebarLabel": "Konumlar kenar çubuğu",
+            "mountFailed": "Bağlama başarısız",
+            "partitions_need_udisks2": "Snap içinde bağlanmamış bölümler, udisks2 izni bağlandığında görünür ve bağlanıp çıkarılabilir. Bunu bir terminalde çalıştırın, ardından AeroFTP'ye dönün:",
+            "volume_action_needs_udisks2": "Snap içinde bağlama ve çıkarma için udisks2 izni gerekir. Bunu bir terminalde çalıştırın, ardından tekrar deneyin: {command}"
         },
         "viewMode": {
             "list": "Liste",

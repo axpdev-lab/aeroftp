@@ -4186,7 +4186,10 @@
             "drivesLeftPanel": "Ezkerreko paneleko unitateak",
             "drivesRightPanel": "Eskuineko paneleko unitateak",
             "modeGroupLabel": "Alboko barraren modua",
-            "placesSidebarLabel": "Lekuen alboko barra"
+            "placesSidebarLabel": "Lekuen alboko barra",
+            "mountFailed": "Muntatzeak huts egin du",
+            "partitions_need_udisks2": "Snap-ean, muntatu gabeko partizioak agertzen dira, eta muntatu eta kanporatu daitezke, udisks2 baimena konektatzen denean. Exekutatu hau terminal batean eta itzuli AeroFTP-ra:",
+            "volume_action_needs_udisks2": "Snap-ean, muntatzeko eta kanporatzeko udisks2 baimena behar da. Exekutatu hau terminal batean eta saiatu berriro: {command}"
         },
         "viewMode": {
             "list": "Zerrenda",
