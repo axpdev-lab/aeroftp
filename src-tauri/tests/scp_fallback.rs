@@ -1,0 +1,457 @@
+//! SCP as a protocol, and SFTP going on over SCP when its server has no SFTP,
+//! against a russh server whose exec channels run this machine's `sh`, `ls`,
+//! `find` and OpenSSH `scp` (`support/ssh_exec_server.rs`).
+//!
+//! The server without SFTP comes in the two shapes measured on real ones: the
+//! subsystem refused (OpenSSH with no `Subsystem sftp` line), and accepted
+//! then ended with exit status 127 (OpenWrt's Dropbear, whose
+//! `/usr/libexec/sftp-server` the stock image lacks). Before the fallback the
+//! second one hung 10 s and failed with "Timeout".
+//!
+//! Linux only: the listing needs an `ls` with `--full-time` (GNU, BusyBox,
+//! uutils), which macOS does not ship; and `HOME` is redirected so an accepted
+//! host key cannot reach the real `known_hosts`.
+#![cfg(target_os = "linux")]
+
+#[path = "support/scoped_env.rs"]
+mod scoped_env;
+#[path = "support/ssh_exec_server.rs"]
+mod ssh_exec_server;
+
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use ftp_client_gui_lib::providers::sftp::SftpProvider;
+use ftp_client_gui_lib::providers::types::SftpConfig;
+use ftp_client_gui_lib::providers::{
+    ProviderConfig, ProviderError, ProviderFactory, ProviderType, StorageProvider,
+};
+use russh::keys::ssh_key::LineEnding;
+use scoped_env::ScopedEnv;
+use ssh_exec_server::{ed25519, start, Options, Sftp};
+
+/// `HOME` is process-wide: one test at a time changes it.
+static HOME_LOCK: Mutex<()> = Mutex::new(());
+
+const PASSWORD: &str = "pw-7f3a-not-in-any-log";
+const PASSPHRASE: &str = "pp-91c2-not-in-any-log";
+
+struct Fixture {
+    root: PathBuf,
+    _home: ScopedEnv,
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+impl Fixture {
+    fn new(tag: &str) -> Self {
+        let lock = HOME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let root = std::env::temp_dir().join(format!("scp-fallback-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("home/.ssh")).unwrap();
+        std::fs::create_dir_all(root.join("remote")).unwrap();
+        std::fs::create_dir_all(root.join("local")).unwrap();
+        let home = ScopedEnv::set("HOME", root.join("home"));
+        Self {
+            root,
+            _home: home,
+            _lock: lock,
+        }
+    }
+
+    fn remote(&self) -> PathBuf {
+        self.root.join("remote")
+    }
+
+    fn local(&self, name: &str) -> PathBuf {
+        self.root.join("local").join(name)
+    }
+
+    fn options(&self, sftp: Sftp) -> Options {
+        Options {
+            cwd: self.remote(),
+            path: std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".to_string()),
+            sftp,
+            accept_none: false,
+            password: Some(PASSWORD.to_string()),
+            key: None,
+            host_key: ed25519(),
+            restricted: None,
+        }
+    }
+}
+
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
+fn s(p: &Path) -> String {
+    p.to_str().unwrap().to_string()
+}
+
+fn config(port: u16, root: &Path) -> SftpConfig {
+    SftpConfig {
+        host: "127.0.0.1".to_string(),
+        port,
+        username: "root".to_string(),
+        password: Some(secrecy::SecretString::from(PASSWORD.to_string())),
+        private_key_path: None,
+        key_passphrase: None,
+        initial_path: Some(s(root)),
+        timeout_secs: 20,
+        trust_unknown_hosts: true,
+    }
+}
+
+/// `connect`, with a cap so a hang fails the test; returns the time it took.
+async fn timed_connect(p: &mut dyn StorageProvider) -> (Result<(), ProviderError>, Duration) {
+    let started = Instant::now();
+    let result = tokio::time::timeout(Duration::from_secs(30), p.connect())
+        .await
+        .expect("connect hung");
+    (result, started.elapsed())
+}
+
+/// Names a shell would split, expand or take for options.
+const HOSTILE: &[&str] = &[
+    "a b.txt",
+    "it's.txt",
+    "-dash.txt",
+    "$(touch pwned).txt",
+    "back`tick`.txt",
+    "semi;colon & amp.txt",
+    "ünïcödé €.txt",
+];
+
+/// List, upload, download, rename and delete under hostile names, through
+/// whatever the provider speaks, and check the remote folder on disk.
+async fn exercise(p: &mut dyn StorageProvider, fx: &Fixture) {
+    let remote = fx.remote();
+    p.mkdir("dir with space").await.expect("mkdir");
+    assert!(remote.join("dir with space").is_dir());
+    for (i, name) in HOSTILE.iter().enumerate() {
+        let local = fx.local(&format!("up-{i}"));
+        let body = format!("{i}:{name}").repeat(100 + i);
+        std::fs::write(&local, &body).unwrap();
+        let target = format!("dir with space/{name}");
+        let progress = Arc::new(Mutex::new(Vec::new()));
+        let seen = progress.clone();
+        p.upload(
+            &s(&local),
+            &target,
+            Some(Box::new(move |done, total| {
+                seen.lock().unwrap().push((done, total))
+            })),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("upload {name}: {e}"));
+        assert_eq!(
+            std::fs::read_to_string(remote.join(&target)).unwrap(),
+            body,
+            "{name}"
+        );
+        let last = *progress.lock().unwrap().last().expect("progress reported");
+        assert_eq!(last, (body.len() as u64, body.len() as u64), "{name}");
+
+        let back = fx.local(&format!("down-{i}"));
+        p.download(&target, &s(&back), None)
+            .await
+            .unwrap_or_else(|e| panic!("download {name}: {e}"));
+        assert_eq!(std::fs::read_to_string(&back).unwrap(), body, "{name}");
+        assert_eq!(p.size(&target).await.unwrap(), body.len() as u64);
+    }
+    let listed = p.list("dir with space").await.expect("list");
+    let mut names: Vec<&str> = listed.iter().map(|e| e.name.as_str()).collect();
+    names.sort_unstable();
+    let mut want = HOSTILE.to_vec();
+    want.sort_unstable();
+    assert_eq!(names, want);
+    assert!(listed.iter().all(|e| !e.is_dir && e.size > 0));
+
+    p.rename("dir with space/a b.txt", "dir with space/renamed it's.txt")
+        .await
+        .expect("rename");
+    assert!(remote.join("dir with space/renamed it's.txt").is_file());
+    assert!(!remote.join("dir with space/a b.txt").exists());
+    // A rename onto an existing name is refused, as over SFTP.
+    assert!(p
+        .rename("dir with space/it's.txt", "dir with space/-dash.txt")
+        .await
+        .is_err());
+    p.delete("dir with space/-dash.txt").await.expect("delete");
+    assert!(!remote.join("dir with space/-dash.txt").exists());
+    assert!(!p.exists("dir with space/-dash.txt").await.unwrap());
+    p.rmdir_recursive("dir with space").await.expect("rmdir -r");
+    assert!(!remote.join("dir with space").exists());
+    assert!(
+        !remote.join("pwned").exists() && !fx.root.join("pwned").exists(),
+        "a name ran as a command"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_sftp_profile_reaches_a_server_without_sftp_over_scp() {
+    for mode in [Sftp::Refuse, Sftp::EndAtOnce] {
+        let fx = Fixture::new(&format!("fallback-{mode:?}"));
+        let (port, seen) = start(fx.options(mode)).await;
+        let mut p = SftpProvider::new(config(port, &fx.remote()));
+        let (result, took) = timed_connect(&mut p).await;
+        result.unwrap_or_else(|e| panic!("{mode:?}: {e}"));
+        assert!(p.in_scp_mode(), "{mode:?}");
+        assert!(took < Duration::from_secs(5), "{mode:?} took {took:?}");
+        assert_eq!(seen.subsystems(), 1, "SFTP asked once");
+        assert_eq!(p.provider_type(), ProviderType::Sftp);
+        assert!(p.server_info().await.unwrap().starts_with("SCP over SSH"));
+        assert_eq!(p.pwd().await.unwrap(), s(&fx.remote()));
+        // SCP mode offers nothing it cannot do.
+        assert!(!p.supports_resume());
+        assert!(!p.transfer_optimization_hints().supports_range_download);
+        assert!(!p.supports_delta_sync());
+        exercise(&mut p, &fx).await;
+        p.disconnect().await.unwrap();
+        assert!(!p.is_connected());
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn with_the_fallback_off_the_error_names_the_cause_at_once() {
+    for mode in [Sftp::Refuse, Sftp::EndAtOnce] {
+        let fx = Fixture::new(&format!("off-{mode:?}"));
+        let (port, seen) = start(fx.options(mode)).await;
+        let mut p = SftpProvider::new(config(port, &fx.remote()));
+        p.set_scp_fallback(false);
+        let (result, took) = timed_connect(&mut p).await;
+        match result {
+            Err(ProviderError::NotSupported(why)) => {
+                assert!(why.contains("openssh-sftp-server"), "{why}");
+                assert!(why.contains("SCP fallback"), "{why}");
+                let cause = match mode {
+                    Sftp::Refuse => "refused the SFTP subsystem",
+                    _ => "has no SFTP server program",
+                };
+                assert!(why.contains(cause), "{why}");
+            }
+            other => panic!("{mode:?}: {other:?}"),
+        }
+        assert!(took < Duration::from_secs(5), "{mode:?} took {took:?}");
+        assert_eq!(seen.execs(), 0, "nothing ran on the server");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_server_with_sftp_stays_on_sftp() {
+    let fx = Fixture::new("serve");
+    let (port, seen) = start(fx.options(Sftp::Serve)).await;
+    let mut p = SftpProvider::new(config(port, &fx.remote()));
+    let (result, _) = timed_connect(&mut p).await;
+    result.expect("connect");
+    assert!(!p.in_scp_mode());
+    assert_eq!(seen.execs(), 0, "no SCP probe on an SFTP server");
+    assert!(p.server_info().await.unwrap().starts_with("SFTP Server"));
+}
+
+fn scp_profile(port: u16, root: &Path, extra: &[(&str, String)]) -> ProviderConfig {
+    ProviderConfig {
+        name: "router".to_string(),
+        provider_type: ProviderType::Scp,
+        host: "127.0.0.1".to_string(),
+        port: Some(port),
+        username: Some("root".to_string()),
+        password: None,
+        initial_path: Some(s(root)),
+        extra: extra
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.clone()))
+            .chain([("trust_unknown_hosts".to_string(), "true".to_string())])
+            .collect(),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_scp_protocol_logs_in_with_a_password_and_with_a_key() {
+    // Password, through the factory as the GUI, CLI and MCP build it.
+    let fx = Fixture::new("scp-password");
+    let (port, seen) = start(fx.options(Sftp::Serve)).await;
+    let mut profile = scp_profile(port, &fx.remote(), &[]);
+    profile.password = Some(PASSWORD.to_string());
+    let mut p = ProviderFactory::create(&profile).expect("factory");
+    assert_eq!(p.provider_type(), ProviderType::Scp);
+    let (result, _) = timed_connect(p.as_mut()).await;
+    result.expect("connect with a password");
+    assert_eq!(seen.subsystems(), 0, "SCP never asks for SFTP");
+    exercise(p.as_mut(), &fx).await;
+    drop(fx);
+
+    // An encrypted key, and no password at all.
+    let fx = Fixture::new("scp-key");
+    let client = ed25519();
+    let key_path = fx.root.join("home/.ssh/id_test");
+    let encrypted = client
+        .encrypt(&mut rand_010::rng(), PASSPHRASE)
+        .expect("encrypt key");
+    std::fs::write(&key_path, encrypted.to_openssh(LineEnding::LF).unwrap()).unwrap();
+    let mut options = fx.options(Sftp::Refuse);
+    options.password = None;
+    options.key = Some(client.public_key().clone());
+    let (port, _) = start(options).await;
+    let profile = scp_profile(
+        port,
+        &fx.remote(),
+        &[
+            ("private_key_path", s(&key_path)),
+            ("key_passphrase", PASSPHRASE.to_string()),
+        ],
+    );
+    let mut p = ProviderFactory::create(&profile).expect("factory");
+    let (result, _) = timed_connect(p.as_mut()).await;
+    result.expect("connect with a key");
+    exercise(p.as_mut(), &fx).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn scp_checks_the_host_key_as_sftp_does() {
+    let fx = Fixture::new("hostkey");
+    let host_key = ed25519();
+    let mut options = fx.options(Sftp::Refuse);
+    options.host_key = host_key.clone();
+    let (port, seen) = start(options).await;
+
+    // Unknown key, not trusted: refused before any login.
+    let mut profile = scp_profile(port, &fx.remote(), &[]);
+    profile.password = Some(PASSWORD.to_string());
+    profile.extra.remove("trust_unknown_hosts");
+    let mut p = ProviderFactory::create(&profile).unwrap();
+    match timed_connect(p.as_mut()).await.0 {
+        Err(ProviderError::HostKeyRejected(why)) => {
+            assert!(why.contains("has no key saved"), "{why}")
+        }
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(seen.execs(), 0);
+
+    // A different key saved for this host and port: refused, and the saved
+    // key is left as it was.
+    let other = ed25519();
+    let known_hosts = fx.root.join("home/.ssh/known_hosts");
+    let saved = format!(
+        "[127.0.0.1]:{port} {}\n",
+        other.public_key().to_openssh().unwrap()
+    );
+    std::fs::write(&known_hosts, &saved).unwrap();
+    profile
+        .extra
+        .insert("trust_unknown_hosts".to_string(), "true".to_string());
+    let mut p = ProviderFactory::create(&profile).unwrap();
+    match timed_connect(p.as_mut()).await.0 {
+        Err(ProviderError::HostKeyRejected(why)) => assert!(why.contains("different key"), "{why}"),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(std::fs::read_to_string(&known_hosts).unwrap(), saved);
+    assert_eq!(seen.execs(), 0);
+
+    // The same refusal on the fallback path: SCP mode starts only after the
+    // host key and the login were accepted.
+    let mut sftp = SftpProvider::new(config(port, &fx.remote()));
+    match timed_connect(&mut sftp).await.0 {
+        Err(ProviderError::HostKeyRejected(why)) => assert!(why.contains("different key"), "{why}"),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(seen.execs(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_restricted_account_is_refused_with_a_clear_error() {
+    let fx = Fixture::new("restricted");
+    let mut options = fx.options(Sftp::Refuse);
+    options.restricted = Some("This account is restricted by rssh.".to_string());
+    let (port, _) = start(options).await;
+
+    let mut profile = scp_profile(port, &fx.remote(), &[]);
+    profile.password = Some(PASSWORD.to_string());
+    let mut p = ProviderFactory::create(&profile).unwrap();
+    match timed_connect(p.as_mut()).await.0 {
+        Err(ProviderError::NotSupported(why)) => {
+            assert!(why.contains("restricted shell"), "{why}");
+            assert!(why.contains("restricted by rssh"), "{why}");
+        }
+        other => panic!("{other:?}"),
+    }
+
+    let mut sftp = SftpProvider::new(config(port, &fx.remote()));
+    match timed_connect(&mut sftp).await.0 {
+        Err(ProviderError::NotSupported(why)) => {
+            assert!(why.contains("refused the SFTP subsystem"), "{why}");
+            assert!(why.contains("SCP cannot work there either"), "{why}");
+            assert!(why.contains("restricted shell"), "{why}");
+        }
+        other => panic!("{other:?}"),
+    }
+    assert!(!sftp.is_connected());
+}
+
+#[derive(Clone, Default)]
+struct Capture(Arc<Mutex<Vec<u8>>>);
+
+impl std::io::Write for Capture {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for Capture {
+    type Writer = Capture;
+    fn make_writer(&'writer self) -> Self::Writer {
+        self.clone()
+    }
+}
+
+/// Current-thread runtime: the subscriber is this thread's, and every task
+/// of the provider and of the server runs on it.
+#[tokio::test]
+async fn no_secret_reaches_the_log() {
+    let capture = Capture::default();
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::TRACE)
+        .with_ansi(false)
+        .with_writer(capture.clone())
+        .finish();
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let fx = Fixture::new("logs");
+    let (port, _) = start(fx.options(Sftp::EndAtOnce)).await;
+    let mut p = SftpProvider::new(config(port, &fx.remote()));
+    p.connect().await.expect("connect");
+    assert!(p.in_scp_mode());
+    exercise(&mut p, &fx).await;
+
+    let client = ed25519();
+    let key_path = fx.root.join("home/.ssh/id_log");
+    let encrypted = client.encrypt(&mut rand_010::rng(), PASSPHRASE).unwrap();
+    std::fs::write(&key_path, encrypted.to_openssh(LineEnding::LF).unwrap()).unwrap();
+    let mut options = fx.options(Sftp::Refuse);
+    options.password = None;
+    options.key = Some(client.public_key().clone());
+    let (port, _) = start(options).await;
+    let profile = scp_profile(
+        port,
+        &fx.remote(),
+        &[
+            ("private_key_path", s(&key_path)),
+            ("key_passphrase", PASSPHRASE.to_string()),
+        ],
+    );
+    let mut p = ProviderFactory::create(&profile).unwrap();
+    p.connect().await.expect("connect with a key");
+    p.list("").await.expect("list");
+
+    let log = String::from_utf8_lossy(&capture.0.lock().unwrap()).into_owned();
+    assert!(log.contains("SCP"), "the capture saw the provider: {log}");
+    assert!(!log.contains(PASSWORD), "password in the log");
+    assert!(!log.contains(PASSPHRASE), "passphrase in the log");
+}

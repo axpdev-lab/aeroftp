@@ -113,6 +113,20 @@ describe('storageDedup', () => {
         expect(summary.uniqueCount).toBe(2);
     });
 
+    it('SFTP and SCP to the same SSH server are one storage, counted under SFTP', () => {
+        const profiles = [
+            make({ id: 's1', protocol: 'sftp', host: 'router.lan', port: 22, username: 'root', used: 10, total: 100 }),
+            make({ id: 'c1', protocol: 'scp', host: 'router.lan', username: 'root', used: 10, total: 100 }),
+            make({ id: 'c2', protocol: 'scp', host: 'router.lan', port: 2222, username: 'root' }),
+        ];
+        const summary = aggregateByDedupKey(profiles);
+        // Port 0 means the default, 22, so c1 is s1's server; c2 is another port.
+        expect(summary.uniqueCount).toBe(2);
+        expect(summary.totalTotal).toBe(100);
+        expect(summary.byProtocolClass.map(r => r.protocolClass)).toEqual(['SFTP']);
+        expect(summary.byProtocolClass[0].profiles).toBe(3);
+    });
+
     it('case 4: Wasabi with the same access key dedups to one', () => {
         const profiles = [
             make({

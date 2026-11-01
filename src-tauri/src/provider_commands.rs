@@ -805,6 +805,9 @@ enum SessionEventKind {
     Reconnected,
     /// Reconnect itself failed: the original error stands.
     ReconnectFailed,
+    /// An SFTP connection whose server has no SFTP went on over SCP; the
+    /// detail is the host.
+    ScpMode,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -936,6 +939,10 @@ pub struct ProviderConnectionParams {
     pub key_passphrase: Option<String>,
     /// SFTP: Connection timeout in seconds
     pub timeout: Option<u64>,
+    /// SFTP: reach a server that has no SFTP over SCP on the same connection.
+    /// Absent means allowed, WinSCP's default.
+    #[serde(default)]
+    pub allow_scp_fallback: Option<bool>,
     /// FTP/FTPS: TLS mode ("none", "explicit", "implicit", "explicit_if_available")
     pub tls_mode: Option<String>,
     /// FTP/FTPS: Accept invalid/self-signed certificates
@@ -1000,6 +1007,7 @@ impl ProviderConnectionParams {
             "ftp" => ProviderType::Ftp,
             "ftps" => ProviderType::Ftps,
             "sftp" => ProviderType::Sftp,
+            "scp" => ProviderType::Scp,
             "webdav" => ProviderType::WebDav,
             "s3" => ProviderType::S3,
             "mega" => ProviderType::Mega,
@@ -1440,8 +1448,8 @@ impl ProviderConnectionParams {
             }
         }
 
-        // Add SFTP-specific options
-        if provider_type == ProviderType::Sftp {
+        // Add SFTP-specific options; an SCP profile stores what SFTP stores.
+        if matches!(provider_type, ProviderType::Sftp | ProviderType::Scp) {
             if let Some(ref key_path) = self.private_key_path {
                 if !key_path.is_empty() {
                     extra.insert("private_key_path".to_string(), key_path.clone());
@@ -1454,6 +1462,9 @@ impl ProviderConnectionParams {
             }
             if let Some(timeout) = self.timeout {
                 extra.insert("timeout".to_string(), timeout.to_string());
+            }
+            if provider_type == ProviderType::Sftp && self.allow_scp_fallback == Some(false) {
+                extra.insert("allow_scp_fallback".to_string(), "false".to_string());
             }
         }
 
@@ -1756,7 +1767,15 @@ async fn provider_connect_inner(
     connect_outcome?;
 
     let display_name = provider.display_name();
-    let protocol = format!("{:?}", provider.provider_type());
+    let mut protocol = format!("{:?}", provider.provider_type());
+    if provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::sftp::SftpProvider>()
+        .is_some_and(|sftp| sftp.in_scp_mode())
+    {
+        protocol = "Scp (the server has no SFTP)".to_string();
+        emit_session_event(&app, SessionEventKind::ScpMode, params.server.clone());
+    }
 
     // Store provider and config. If a previous provider is still held here
     // (reconnect-without-disconnect, user swapping servers from the UI, etc.),
@@ -15778,6 +15797,7 @@ mod tests {
             logout_on_disconnect: None,
             private_key_path: None,
             key_passphrase: None,
+            allow_scp_fallback: None,
             timeout: None,
             tls_mode: None,
             verify_cert: None,

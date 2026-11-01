@@ -176,7 +176,7 @@ pub(crate) fn default_port_for(protocol: &str) -> u32 {
     match protocol {
         "ftp" => 21,
         "ftps" => 990,
-        "sftp" => 22,
+        "sftp" | "scp" => 22,
         // s3 / webdav / https endpoints all default to TLS 443
         _ => 443,
     }

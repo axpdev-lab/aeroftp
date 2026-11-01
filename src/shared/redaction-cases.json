@@ -262,5 +262,15 @@
     "name": "a redacted secret stays as it is",
     "input": "password: ***REDACTED***",
     "expected": "password: ***REDACTED***"
+  },
+  {
+    "name": "sftp url credential",
+    "input": "connect sftp://admin:hunter2@host/path",
+    "expected": "connect sftp://admin:***REDACTED***@host/path"
+  },
+  {
+    "name": "scp url credential",
+    "input": "connect scp://root:hunter2@router.lan:22/",
+    "expected": "connect scp://root:***REDACTED***@router.lan:22/"
   }
 ]

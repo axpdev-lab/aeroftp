@@ -85,6 +85,24 @@ open still fails, re-toggle File Transfer on the phone and retry.
 
 ---
 
+## SCP: SSH servers without SFTP
+
+Some SSH servers have no SFTP: a stock OpenWrt router runs Dropbear without `sftp-server`, and an OpenSSH server can have its `Subsystem sftp` line removed. AeroFTP reaches them in two ways, both on the connection SFTP would use (same host-key check, same login order: `none`, then the password or the key):
+
+- **SFTP with SCP fallback (default).** An SFTP profile whose server refuses the SFTP subsystem, or accepts it and ends it at once, goes on over SCP on the same connection, as WinSCP does by default. The GUI shows a notice and the CLI prints one on stderr. The fallback never starts on a timeout, a transport error or a refused login. It can be turned off per profile ("Allow SCP fallback") or with `--no-scp-fallback`; the error then names the cause and the remedies.
+- **SCP as a protocol.** `scp://user@host/path` in the CLI, the SCP entry in the connection form, and WinSCP sessions imported with protocol "SCP". It never asks for SFTP.
+
+| | SCP |
+|---|---|
+| List, stat, mkdir, delete, rename, chmod | Yes, as POSIX shell commands with every path single-quoted (`ls --full-time` and `find -print0` for listings) |
+| Upload and download with progress | Yes; an upload keeps the file's time |
+| Resume, ranged reads, segmented downloads, delta sync | No: SCP moves whole files |
+| Parallel transfers | No: one transfer at a time on the connection |
+| Server-side SHA-256 | When the server has `sha256sum` |
+| Rename onto an existing name | Refused, as over SFTP |
+
+The server needs a POSIX shell with `scp`, an `ls` that takes `--full-time` and a `find` with `-print0` (BusyBox, GNU and uutils all qualify); a restricted account (rssh, scponly, a forced command) is refused with the reason. WinSCP sessions map as WinSCP defines them: 0 is SCP, 1 is SFTP with the fallback on, 2 is SFTP with it off, and export writes them back the same way.
+
 ## Protocol Security Matrix
 
 ### Connection Security by Protocol
@@ -94,6 +112,7 @@ open still fails, re-toggle File Transfer on the phone and retry.
 | **FTP** | None | Password | Universal Vault | N/A |
 | **FTPS** | TLS/SSL (Explicit/Implicit) | Password | Universal Vault | TLS Certificate |
 | **SFTP** | SSH (russh + russh-sftp; delta has separate SSH transport adapters) | Password / SSH Key | Universal Vault | TOFU + known_hosts |
+| **SCP** | SSH (russh, the same login as SFTP; transfers with `scp -t`/`scp -f`, other operations with POSIX shell commands) | Password / SSH Key | Universal Vault | TOFU + known_hosts, the SFTP check |
 | **WebDAV** | HTTPS, or unencrypted HTTP when configured | Password (Basic + Digest RFC 2617) | Universal Vault | TLS Certificate |
 | **S3** | HTTPS (plain HTTP to an endpoint off this machine only with the profile's explicit consent) | Access Key + Secret | Universal Vault | TLS Certificate |
 | **Google Drive** | HTTPS | OAuth2 PKCE | Universal Vault | TLS + CSRF State |
@@ -267,6 +286,7 @@ A backend's own scheme keeps its own name. Dropbox's `content_hash` is a SHA-256
 | FTP | MD5, SHA-1, SHA-256, SHA-512, CRC32 (negotiated) | Depends on what the server advertises in FEAT: `HASH` (algorithm selected per request with `OPTS HASH`, from the list the server gives), or the older `XMD5` / `XSHA1` / `XCRC`. A server advertising none offers no digest. |
 | FTPS | MD5, SHA-1, SHA-256, SHA-512, CRC32 (negotiated) | Depends on what the server advertises in FEAT: `HASH` (algorithm selected per request with `OPTS HASH`, from the list the server gives), or the older `XMD5` / `XSHA1` / `XCRC`. A server advertising none offers no digest. |
 | SFTP | SHA-256 | Computed by the remote host with `sha256sum` over an SSH exec channel: the bytes are read on the server, never sent to us. Omitted if the host has no `sha256sum`. |
+| SCP | SHA-256 | Computed by the remote host with `sha256sum` over an SSH exec channel: the bytes are read on the server, never sent to us. Omitted if the host has no `sha256sum`. |
 | WebDAV | SHA-1, MD5, Adler-32 (negotiated) | Only ownCloud and Nextcloud publish the `oc:checksums` property, and only for files uploaded by a client that sent one. Every other WebDAV server omits it. |
 | S3 | MD5 | The ETag is the object MD5 only for single-part plaintext or SSE-S3 objects. The checksum query uses HEAD: multipart ETags do not yield an MD5; stat metadata still retains the raw ETag. Response headers identifying SSE-KMS (including DSSE) or SSE-C suppress MD5 even when the ETag has 32 hex characters. |
 | Azure Blob | - |  |

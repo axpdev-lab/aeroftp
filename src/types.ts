@@ -24,6 +24,8 @@ export type ProviderType =
   | "ftp"
   | "ftps"
   | "sftp"
+  /** SCP over SSH, for servers that have no SFTP subsystem. */
+  | "scp"
   | "webdav"
   | "s3"
   | "aerocloud"
@@ -88,11 +90,18 @@ export const isAeroCloudProvider = (type: ProviderType): boolean => {
   return type === "aerocloud";
 };
 
-// Protocol class label shown on My Servers tiles (OAuth / API / WebDAV / E2E / FTP / SFTP / S3 / Azure / MTP)
+// SFTP and SCP: one SSH connection, signed in the same way (password or key,
+// the same known_hosts), so the host-key prompt, the key file and the SSH
+// badges apply to both. What SFTP adds on top (resume, ranges, delta sync,
+// parallel transfers) stays keyed on "sftp" alone.
+export const isSshProtocol = (protocol?: string | null): boolean =>
+  protocol === "sftp" || protocol === "scp";
+
+// Protocol class label shown on My Servers tiles (OAuth / API / WebDAV / E2E / FTP / SFTP / SCP / S3 / Azure / MTP)
 // "Crypt" is a profile-level class (not a transport): a saved profile with an
 // enabled crypt overlay reads as "Crypt" regardless of its backend. See
 // getProfileProtocolClass.
-export type ProtocolClass = "OAuth" | "API" | "WebDAV" | "E2E" | "FTP" | "FTPS" | "SFTP" | "S3" | "Azure" | "AeroCloud" | "Crypt" | "MTP";
+export type ProtocolClass = "OAuth" | "API" | "WebDAV" | "E2E" | "FTP" | "FTPS" | "SFTP" | "SCP" | "S3" | "Azure" | "AeroCloud" | "Crypt" | "MTP";
 
 export const getProtocolClass = (type: ProviderType): ProtocolClass => {
   if (isOAuthProvider(type) || isFourSharedProvider(type)) return "OAuth";
@@ -105,6 +114,7 @@ export const getProtocolClass = (type: ProviderType): ProtocolClass => {
   if (type === "ftps") return "FTPS";
   if (type === "ftp") return "FTP";
   if (type === "sftp") return "SFTP";
+  if (type === "scp") return "SCP";
   if (type === "s3") return "S3";
   if (type === "azure") return "Azure";
   // Portable USB MTP/WPD (not an HTTP "API" cloud).
@@ -142,6 +152,7 @@ export const isNonFtpProvider = (type: ProviderType): boolean => {
     "mega",
     "proton",
     "sftp",
+    "scp",
     "box",
     "pcloud",
     "azure",
@@ -415,10 +426,14 @@ export interface ProviderOptions {
   // "http"/"https" force the scheme regardless of port.
   webdavScheme?: 'http' | 'https' | 'auto';
 
-  // SFTP-specific
+  // SFTP-specific (SCP profiles store the first three)
   private_key_path?: string; // Path to SSH private key
   key_passphrase?: string; // Passphrase for encrypted keys
   timeout?: number; // Connection timeout in seconds
+  /** SFTP only. `false` when the user turned off the SCP fallback (WinSCP's
+   *  "SFTP only"); absent means a server with no SFTP is reached over SCP on
+   *  the same connection, WinSCP's default. Never stored as `true`. */
+  allowScpFallback?: boolean;
 
   // OAuth-specific (for Google Drive, Dropbox, OneDrive)
   clientId?: string;

@@ -34,7 +34,7 @@ describe('one glyph per connection method (#347)', () => {
         // The collision that mattered: a reader cannot tell API from S3 when the
         // shape is identical and only the tint differs.
         const shapes = Object.entries(CONNECTION_METHOD_GLYPH)
-            .filter(([m]) => m !== 'Crypt' && m !== 'FTPS' && m !== 'CLI');
+            .filter(([m]) => m !== 'Crypt' && m !== 'FTPS' && m !== 'CLI' && m !== 'SCP');
         const seen = new Map<unknown, string>();
         for (const [method, glyph] of shapes) {
             const clash = seen.get(glyph);
@@ -44,9 +44,11 @@ describe('one glyph per connection method (#347)', () => {
     });
 
     it('keeps the two deliberate aliases explicit', () => {
-        // FTPS is FTP over TLS and Crypt is an E2E overlay: sharing a shape with
-        // their family is the intent, not a leftover.
+        // FTPS is FTP over TLS, SCP runs on SFTP's SSH connection and Crypt is
+        // an E2E overlay: sharing a shape with their family is the intent, not
+        // a leftover.
         expect(CONNECTION_METHOD_GLYPH.FTPS).toBe(CONNECTION_METHOD_GLYPH.FTP);
+        expect(CONNECTION_METHOD_GLYPH.SCP).toBe(CONNECTION_METHOD_GLYPH.SFTP);
         expect(CONNECTION_METHOD_GLYPH.Crypt).toBe(CONNECTION_METHOD_GLYPH.E2E);
         expect(CONNECTION_METHOD_GLYPH.CLI).toBe(CONNECTION_METHOD_GLYPH.MEGAcmd);
     });

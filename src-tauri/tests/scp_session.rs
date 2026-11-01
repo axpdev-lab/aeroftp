@@ -319,7 +319,7 @@ async fn a_file_goes_up_and_comes_back_byte_exact_with_its_mtime() {
         data.len() as u64,
         0o640,
         Some(1_700_000_000),
-        &mut |n| sent = n,
+        &mut |n, _| sent = n,
     )
     .await
     .expect("upload");
@@ -330,7 +330,7 @@ async fn a_file_goes_up_and_comes_back_byte_exact_with_its_mtime() {
 
     let mut back = Vec::new();
     let (size, mtime) = scp
-        .download(&path, &mut back, &mut |_| {})
+        .download(&path, &mut back, &mut |_, _| {})
         .await
         .expect("download");
     assert_eq!((size, mtime), (data.len() as u64, Some(1_700_000_000)));
@@ -339,14 +339,14 @@ async fn a_file_goes_up_and_comes_back_byte_exact_with_its_mtime() {
     // A source that ends early is an error, not a short file reported done.
     let short = s(&root.join("short"));
     let err = scp
-        .upload(&short, &mut &data[..10], 100, 0o644, None, &mut |_| {})
+        .upload(&short, &mut &data[..10], 100, 0o644, None, &mut |_, _| {})
         .await
         .expect_err("short source");
     assert!(err.to_string().contains("10 of 100"), "{err}");
 
     let missing = s(&root.join("missing"));
     let err = scp
-        .download(&missing, &mut Vec::new(), &mut |_| {})
+        .download(&missing, &mut Vec::new(), &mut |_, _| {})
         .await
         .expect_err("missing");
     assert!(matches!(err, ProviderError::NotFound(_)), "{err:?}");
@@ -356,7 +356,14 @@ async fn a_file_goes_up_and_comes_back_byte_exact_with_its_mtime() {
     let folder = root.join("folder");
     std::fs::create_dir(&folder).unwrap();
     let err = scp
-        .upload(&s(&folder), &mut &data[..10], 10, 0o644, None, &mut |_| {})
+        .upload(
+            &s(&folder),
+            &mut &data[..10],
+            10,
+            0o644,
+            None,
+            &mut |_, _| {},
+        )
         .await
         .expect_err("folder target");
     assert!(matches!(err, ProviderError::InvalidPath(_)), "{err:?}");
@@ -380,7 +387,7 @@ async fn a_download_refuses_a_file_the_server_renamed() {
         .expect("probe");
     let mut sink = Vec::new();
     let err = scp
-        .download(&s(&root.join("wanted.txt")), &mut sink, &mut |_| {})
+        .download(&s(&root.join("wanted.txt")), &mut sink, &mut |_, _| {})
         .await
         .expect_err("renamed file");
     assert!(err.to_string().contains("not the file asked for"), "{err}");
@@ -414,7 +421,7 @@ async fn a_stalled_download_holds_the_server_back() {
     let (mut sink, mut drain) = tokio::io::duplex(64 * 1024);
     let big = s(&root.join("big"));
     let sent = root.join("sent");
-    let mut progress = |_| {};
+    let mut progress = |_, _| {};
     let (result, (held, got)) = tokio::join!(scp.download(&big, &mut sink, &mut progress), async {
         tokio::time::sleep(Duration::from_secs(3)).await;
         let held = !sent.exists();

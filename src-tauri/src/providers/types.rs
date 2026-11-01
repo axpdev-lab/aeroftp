@@ -20,6 +20,10 @@ pub enum ProviderType {
     Ftps,
     /// SSH File Transfer Protocol
     Sftp,
+    /// SCP over SSH, for servers without an SFTP subsystem (OpenWrt's
+    /// Dropbear): transfers with `scp -t`/`scp -f`, everything else with
+    /// POSIX shell commands. See `providers::scp`.
+    Scp,
     /// WebDAV (Web Distributed Authoring and Versioning)
     WebDav,
     /// Amazon S3 and S3-compatible storage
@@ -112,6 +116,7 @@ impl fmt::Display for ProviderType {
             ProviderType::Ftp => write!(f, "FTP"),
             ProviderType::Ftps => write!(f, "FTPS"),
             ProviderType::Sftp => write!(f, "SFTP"),
+            ProviderType::Scp => write!(f, "SCP"),
             ProviderType::WebDav => write!(f, "WebDAV"),
             ProviderType::S3 => write!(f, "S3"),
             ProviderType::AeroCloud => write!(f, "AeroCloud"),
@@ -170,6 +175,7 @@ impl ProviderType {
             self,
             ProviderType::Ftps |
             ProviderType::Sftp |
+            ProviderType::Scp |
             ProviderType::WebDav |
             ProviderType::S3 |
             ProviderType::AeroCloud |  // AeroCloud recommends FTPS
@@ -245,6 +251,7 @@ impl ProviderType {
             ProviderType::Ftp => "FTP",
             ProviderType::Ftps => "FTPS",
             ProviderType::Sftp => "SFTP",
+            ProviderType::Scp => "SCP",
             ProviderType::WebDav => "WebDAV",
             ProviderType::S3 => "S3",
             ProviderType::Azure => "Azure Blob",

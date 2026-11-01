@@ -296,8 +296,10 @@ fn map_session(name: &str, fields: &WinScpSession) -> Option<MappedProfile> {
         .cloned();
 
     let (protocol, default_port) = match (fs_protocol, ftps) {
-        // SCP, SFTP (all SSH-based)
-        (0, _) | (1, _) | (2, _) => ("sftp", 22u32),
+        // WinSCP's 0 is SCP only, 1 SFTP with SCP fallback (its default)
+        // and 2 SFTP only: SCP, and SFTP with the fallback on or off.
+        (0, _) => ("scp", 22u32),
+        (1, _) | (2, _) => ("sftp", 22),
         // FTP
         (5, 0) => ("ftp", 21),
         // FTPS implicit (port 990)
@@ -347,6 +349,12 @@ fn map_session(name: &str, fields: &WinScpSession) -> Option<MappedProfile> {
                     serde_json::Value::String("explicit".to_string()),
                 );
             }
+        }
+        "sftp" if fs_protocol == 2 => {
+            options.insert(
+                "allowScpFallback".to_string(),
+                serde_json::Value::Bool(false),
+            );
         }
         "s3" => {
             if let Some(region) = fields.get("S3DefaultRegion").filter(|r| !r.is_empty()) {
@@ -581,7 +589,16 @@ pub fn export_winscp(
         // requires TLS rather than export a session that sends the password
         // in clear where AeroFTP would have encrypted it.
         let (fs_protocol, ftps) = match protocol {
-            "sftp" => (2u32, 0u32),
+            "scp" => (0u32, 0u32),
+            "sftp" => {
+                let fallback_off = server
+                    .options
+                    .as_ref()
+                    .and_then(|o| o.get("allowScpFallback"))
+                    .and_then(|v| v.as_bool())
+                    == Some(false);
+                (if fallback_off { 2 } else { 1 }, 0)
+            }
             "ftp" | "ftps" => match crate::bridge_shared::ftp_tls_mode_for_export(
                 protocol,
                 server.options.as_ref(),
@@ -859,6 +876,71 @@ FSProtocol=1
         let mapped = map_session("test", &fields).unwrap();
         assert_eq!(mapped.protocol, "sftp");
         assert_eq!(mapped.port, 22);
+    }
+
+    /// WinSCP's 0 is SCP only, 1 SFTP with SCP fallback (its default) and 2
+    /// SFTP only; export writes each back as it came.
+    #[test]
+    fn winscp_scp_and_sftp_fallback_modes_round_trip() {
+        let mapped = |fs: &str| {
+            let mut fields = HashMap::new();
+            fields.insert("HostName".to_string(), "router.lan".to_string());
+            fields.insert("UserName".to_string(), "root".to_string());
+            if !fs.is_empty() {
+                fields.insert("FSProtocol".to_string(), fs.to_string());
+            }
+            map_session("s", &fields).unwrap()
+        };
+        let fallback = |m: &MappedProfile| {
+            m.options
+                .as_ref()
+                .and_then(|o| o.get("allowScpFallback"))
+                .and_then(|v| v.as_bool())
+        };
+        let scp = mapped("0");
+        assert_eq!((scp.protocol.as_str(), scp.port), ("scp", 22));
+        let with_fallback = mapped("1");
+        assert_eq!(with_fallback.protocol, "sftp");
+        assert_eq!(fallback(&with_fallback), None, "on is the default");
+        assert_eq!(fallback(&mapped("")), None, "an absent FSProtocol is 1");
+        let only = mapped("2");
+        assert_eq!(only.protocol, "sftp");
+        assert_eq!(fallback(&only), Some(false));
+
+        let server = |protocol: &str, options: Option<serde_json::Value>| WinScpExportServer {
+            id: format!("id-{protocol}-{}", options.is_some()),
+            name: format!("{protocol} {}", options.is_some()),
+            host: "router.lan".to_string(),
+            port: 22,
+            username: "root".to_string(),
+            protocol: Some(protocol.to_string()),
+            options,
+            initial_path: None,
+        };
+        let servers = vec![
+            server("scp", None),
+            server("sftp", None),
+            server(
+                "sftp",
+                Some(serde_json::json!({ "allowScpFallback": false })),
+            ),
+        ];
+        let out = std::env::temp_dir().join(format!(
+            "aeroftp-winscp-scp-{}.ini",
+            crate::bridge_shared::uuid_v4()
+        ));
+        assert_eq!(export_winscp(&servers, &HashMap::new(), &out).unwrap(), 3);
+        let ini = std::fs::read_to_string(&out).unwrap();
+        std::fs::remove_file(&out).ok();
+        let protocols: Vec<&str> = ini
+            .lines()
+            .filter(|l| l.starts_with("FSProtocol="))
+            .collect();
+        assert_eq!(
+            protocols,
+            ["FSProtocol=0", "FSProtocol=1", "FSProtocol=2"],
+            "{ini}"
+        );
     }
 
     #[test]

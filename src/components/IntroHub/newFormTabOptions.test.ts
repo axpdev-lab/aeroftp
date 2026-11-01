@@ -14,7 +14,7 @@ describe('Add Service: the form a pick opens', () => {
     });
 
     it('starts every protocol from its manifest defaults', () => {
-        for (const protocol of ['ftp', 'ftps', 'mega', 'sftp', 'webdav', 's3']) {
+        for (const protocol of ['ftp', 'ftps', 'mega', 'sftp', 'scp', 'webdav', 's3']) {
             expect(newFormTabOptions(protocol), protocol).toMatchObject(connectionProfileDefaults(protocol).options);
         }
     });

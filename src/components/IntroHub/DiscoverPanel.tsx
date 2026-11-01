@@ -64,6 +64,7 @@ function resolveCompanyHealthUrl(c: CatalogCompany): string | undefined {
 const CUSTOM_PROFILE_ENTRIES: { labelKey: string; protocol: ProviderType; method: ConnectionMethod; providerId?: string; categories: CatalogCategoryId[] }[] = [
     { labelKey: 'introHub.list.customFtp', protocol: 'ftp', method: 'FTP', categories: ['protocols'] },
     { labelKey: 'introHub.list.customSftp', protocol: 'sftp', method: 'SFTP', categories: ['protocols'] },
+    { labelKey: 'introHub.list.customScp', protocol: 'scp', method: 'SCP', categories: ['protocols'] },
     { labelKey: 'introHub.list.customS3', protocol: 's3', method: 'S3', providerId: 'custom-s3', categories: ['object-storage'] },
     { labelKey: 'introHub.list.customWebdav', protocol: 'webdav', method: 'WebDAV', providerId: 'custom-webdav', categories: ['webdav'] },
 ];

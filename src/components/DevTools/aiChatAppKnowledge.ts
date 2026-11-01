@@ -28,7 +28,7 @@ export const APP_KNOWLEDGE: KBSection[] = [
         title: 'Connection & Server Setup',
         keywords: [
             'connect', 'connection', 'server', 'login', 'host', 'port', 'protocol',
-            'ftp', 'ftps', 'sftp', 'webdav', 's3', 'ssh', 'saved', 'bookmark',
+            'ftp', 'ftps', 'sftp', 'scp', 'webdav', 's3', 'ssh', 'saved', 'bookmark',
             'add server', 'new server', 'configure', 'setup', 'endpoint', 'bucket',
             'password', 'key', 'certificate', 'tls', 'ssl', 'oauth', 'credential',
         ],
@@ -37,7 +37,7 @@ export const APP_KNOWLEDGE: KBSection[] = [
 
 1. **Connection Screen**: The main screen shows a connection form. Select a protocol from the dropdown (14 available).
 2. **Fill in fields**: Each protocol has different required fields:
-   - FTP, FTPS, SFTP: Host, Port, Username, Password (or SSH key for SFTP)
+   - FTP, FTPS, SFTP, SCP: Host, Port, Username, Password (or SSH key for SFTP and SCP). SCP is for servers without SFTP; an SFTP profile falls back to it on its own unless "Allow SCP fallback" is off
    - S3: Endpoint URL, Access Key, Secret Key, Bucket, Region
    - WebDAV: Full URL (e.g. https://cloud.example.com/remote.php/dav/files/user/)
    - Cloud providers (GDrive, Dropbox, OneDrive, Box, pCloud): Click "Connect" to start OAuth flow in browser

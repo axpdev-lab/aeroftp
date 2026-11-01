@@ -130,6 +130,7 @@ const SUPPORTED_URL_SCHEMES: &[&str] = &[
     "ftp",
     "ftps",
     "sftp",
+    "scp",
     "webdav",
     "webdavs",
     "s3",
@@ -284,6 +285,16 @@ struct Cli {
         help_heading = "Connection options"
     )]
     trust_host_key: bool,
+
+    /// SFTP: refuse a server that has no SFTP instead of continuing over SCP
+    /// on the same connection
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Connection options"
+    )]
+    no_scp_fallback: bool,
 
     /// 2FA code (Filen, Internxt)
     #[arg(
@@ -6072,6 +6083,9 @@ struct CliConnectResult {
     username: String,
     server_info: Option<String>,
     elapsed_ms: u64,
+    /// SFTP went on over SCP: the server has no SFTP.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    scp_fallback: bool,
 }
 
 #[derive(Serialize)]
@@ -12959,7 +12973,7 @@ fn resolve_password(
     // 3. Environment variable (protocol-specific, then generic)
     let env_vars = match provider_type {
         ProviderType::Ftp | ProviderType::Ftps => vec!["FTP_PASSWORD", "AEROFTP_PASSWORD"],
-        ProviderType::Sftp => vec!["SFTP_PASSWORD", "AEROFTP_PASSWORD"],
+        ProviderType::Sftp | ProviderType::Scp => vec!["SFTP_PASSWORD", "AEROFTP_PASSWORD"],
         ProviderType::WebDav => vec!["WEBDAV_PASSWORD", "AEROFTP_PASSWORD"],
         ProviderType::S3 => vec!["AWS_SECRET_ACCESS_KEY", "AEROFTP_PASSWORD"],
         _ => vec!["AEROFTP_PASSWORD"],
@@ -13114,6 +13128,7 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
         "ftp" => (ProviderType::Ftp, host_str.clone()),
         "ftps" => (ProviderType::Ftps, host_str.clone()),
         "sftp" | "ssh" => (ProviderType::Sftp, host_str.clone()),
+        "scp" => (ProviderType::Scp, host_str.clone()),
         "webdav" | "http" => {
             let port_str = url_obj
                 .port()
@@ -13311,6 +13326,9 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
     }
     if cli.trust_host_key {
         extra.insert("trust_unknown_hosts".to_string(), "true".to_string());
+    }
+    if cli.no_scp_fallback {
+        extra.insert("allow_scp_fallback".to_string(), "false".to_string());
     }
 
     // Warn about secrets on command line (visible in process list)
@@ -26809,7 +26827,7 @@ fn persist_new_profile_entry(
 fn protocol_needs_network_fields(protocol: &str) -> bool {
     matches!(
         protocol,
-        "ftp" | "ftps" | "sftp" | "webdav" | "webdavs" | "s3" | "swift"
+        "ftp" | "ftps" | "sftp" | "scp" | "webdav" | "webdavs" | "s3" | "swift"
     )
 }
 
@@ -31296,6 +31314,9 @@ fn profile_value_to_provider_config(
     if cli.trust_host_key {
         extra.insert("trust_unknown_hosts".to_string(), "true".to_string());
     }
+    if cli.no_scp_fallback {
+        extra.insert("allow_scp_fallback".to_string(), "false".to_string());
+    }
     if let Some(ref tls) = cli.tls {
         extra.insert("tls_mode".to_string(), tls.clone());
     }
@@ -31967,6 +31988,19 @@ async fn connect_with_base_path(
         let code = provider_error_to_exit_code(&e);
         print_error(format, &connect_failure_message(&e), code);
         return Err(code);
+    }
+    // A server with no SFTP went on over SCP: said once, on stderr, where it
+    // mixes with no listing and no JSON.
+    if !cli.quiet
+        && provider
+            .as_any_mut()
+            .downcast_mut::<ftp_client_gui_lib::providers::sftp::SftpProvider>()
+            .is_some_and(|sftp| sftp.in_scp_mode())
+    {
+        eprintln!(
+            "Note: {} has no SFTP; connected with SCP on the same connection (transfers cannot resume).",
+            provider.display_name()
+        );
     }
 
     // Apply speed limit if set
@@ -35401,6 +35435,10 @@ async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
     let elapsed = start.elapsed();
     let server_info = provider.server_info().await.ok();
     let pt = provider.provider_type();
+    let scp_fallback = provider
+        .as_any_mut()
+        .downcast_mut::<ftp_client_gui_lib::providers::sftp::SftpProvider>()
+        .is_some_and(|sftp| sftp.in_scp_mode());
 
     if let Some(sp) = spinner {
         sp.finish_and_clear();
@@ -35411,7 +35449,11 @@ async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
             eprintln!("Connected to {} ({})", metadata.host, pt);
             eprintln!("  User:     {}", metadata.username);
             eprintln!("  Port:     {}", metadata.port);
-            eprintln!("  Protocol: {}", pt);
+            if scp_fallback {
+                eprintln!("  Protocol: {} over SCP (the server has no SFTP)", pt);
+            } else {
+                eprintln!("  Protocol: {}", pt);
+            }
             if let Some(ref info) = server_info {
                 if !info.is_empty() {
                     eprintln!("  Server:   {}", info);
@@ -35441,6 +35483,7 @@ async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
                 username: metadata.username,
                 server_info,
                 elapsed_ms: elapsed.as_millis() as u64,
+                scp_fallback,
             });
         }
     }
@@ -83895,6 +83938,7 @@ mod tests {
             tls: None,
             insecure: false,
             trust_host_key: false,
+            no_scp_fallback: false,
             two_factor: None,
             no_crypt: false,
             profile: None,
