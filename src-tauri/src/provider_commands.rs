@@ -4610,6 +4610,7 @@ async fn take_download_listing(
 ) -> Result<DownloadListing, String> {
     use crate::sync_core::WalkStep;
     let mut staged = Vec::new();
+    let mut links = Vec::new();
     let mut listing_scope = crate::sync_core::WalkScope::new(remote_folder);
     listing_scope.learn_root_listing(&files);
     for file in files {
@@ -4629,6 +4630,14 @@ async fn take_download_listing(
         } else {
             format!("{}/{}", remote_folder, file.name)
         };
+        // A link to a folder is reported, never followed or written: where its
+        // name points and which local name it would take do not matter.
+        if file.is_dir && file.is_symlink {
+            if !links.contains(&remote_file_path) {
+                links.push(remote_file_path);
+            }
+            continue;
+        }
         let step = if file.is_dir {
             walk.scope.admit(remote_folder, &remote_file_path)
         } else {
@@ -4665,15 +4674,13 @@ async fn take_download_listing(
     let mut listed = DownloadListing {
         folders: Vec::new(),
         files: Vec::new(),
-        links: Vec::new(),
+        links,
     };
     for (file, safe_name, remote_file_path, local_path, follow) in staged {
         if !follow {
             continue;
         }
-        if file.is_dir && file.is_symlink {
-            listed.links.push(remote_file_path);
-        } else if file.is_dir {
+        if file.is_dir {
             tokio::fs::create_dir_all(&local_path)
                 .await
                 .map_err(|e| format!("Failed to create folder {}: {}", local_path.display(), e))?;
@@ -19519,6 +19526,31 @@ mod folder_download_live_tests {
     /// A link is not walked, whether it can be listed (it can lead back into
     /// the folder) or not (a OneDrive Personal Vault): the rest of the folder
     /// downloads and the link is reported as skipped.
+    /// A link to a folder is only reported: a name pointing outside the folder, or
+    /// one that shares a local name with a file, does not stop the download.
+    #[tokio::test]
+    async fn a_link_neither_leaves_the_folder_nor_claims_a_local_name() {
+        let local = tempfile::tempdir().unwrap();
+        let mut walk = DownloadWalk::new("/root");
+        let mut link = RemoteEntry::directory("../outside".into(), "/outside".into());
+        link.is_symlink = true;
+        let listed = take_download_listing(
+            &mut walk,
+            "/root",
+            local.path().to_str().unwrap(),
+            local.path(),
+            vec![
+                link,
+                RemoteEntry::file("outside".into(), "/root/outside".into(), 1),
+            ],
+        )
+        .await
+        .expect("the file downloads");
+        assert_eq!(listed.links, ["/root/../outside"]);
+        assert_eq!(listed.files.len(), 1);
+        assert!(listed.folders.is_empty());
+    }
+
     #[tokio::test]
     async fn folder_download_skips_a_link() {
         let (tree, state) = FolderTree::new(&["a.txt", "vault/x.txt", "link/y.txt"]);
