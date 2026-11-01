@@ -483,7 +483,11 @@ mod tests {
             problems.iter().map(|p| p.path.as_str()).collect::<Vec<_>>(),
             ["docs/foo.txt"]
         );
-        assert!(problems[0].reason.contains("Foo.txt"), "{}", problems[0].reason);
+        assert!(
+            problems[0].reason.contains("Foo.txt"),
+            "{}",
+            problems[0].reason
+        );
         let keeps = DestinationRules {
             fold_case: false,
             fold_normalization: false,

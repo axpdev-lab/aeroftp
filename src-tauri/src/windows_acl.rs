@@ -425,7 +425,11 @@ mod win {
 pub fn check_windows_reserved(filename: &str) -> Option<&'static str> {
     let stem = filename.split('.').next().unwrap_or(filename);
     // Windows reserves `COM¹` and `LPT³` as it does `COM1` and `LPT3`.
-    let upper = stem.to_uppercase().replace('¹', "1").replace('²', "2").replace('³', "3");
+    let upper = stem
+        .to_uppercase()
+        .replace('¹', "1")
+        .replace('²', "2")
+        .replace('³', "3");
     match upper.as_str() {
         "CON" => Some("CON"),
         "PRN" => Some("PRN"),
