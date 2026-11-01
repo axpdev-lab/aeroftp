@@ -209,7 +209,7 @@ describe('local actions on the rows of a flattened search', () => {
         // Upload takes row keys: the drag's own names resolved a nested row to
         // the entry of the panel's folder with that name, or to nothing.
         expect(appRaw).not.toMatch(/uploadMultipleFiles\(files\.map\(f => f\.name\)\)/);
-        expect(appRaw).toMatch(/const keys = getActiveLocalState\(panelId\)\.sortedFiles\.filter\(r => dragged\.has\(r\.path\)\)\.map\(r => r\.name\);\s*if \(keys\.length > 0\) await uploadMultipleFiles\(keys, panelId\);/);
+        expect(appRaw).toMatch(/const keys = getActiveLocalState\(panelId\)\.sortedFiles\.filter\(r => dragged\.has\(r\.path\)\)\.map\(r => r\.name\);\s*if \(keys\.length > 0\) await uploadMultipleFiles\(keys, panelId, targetDir \|\| undefined\);/);
         expect(count(dragRaw, /onCrossPanelDrop\?\.\(fileData, sourceIsRemote, target(Path|Dir), sourceKey\)/g)).toBe(2);
     });
 
@@ -225,8 +225,9 @@ describe('local actions on the rows of a flattened search', () => {
     it('reloads every panel that shows a folder an action wrote to', () => {
         // Panel 1 also when its flattened search lists a folder below its own.
         const refresh = body('refreshLocalPanelForPath');
-        expect(refresh).toMatch(/list\.some\(dir => localPanelShows\(dir, currentLocalPath, flattenSearchParse\.active\)\)/);
-        expect(refresh).toMatch(/list\.some\(dir => localPanelShows\(dir, currentLocalPath2, false\)\)/);
+        // Each condition with the reload it decides.
+        expect(refresh).toMatch(/list\.some\(dir => localPanelShows\(dir, currentLocalPath, flattenSearchParse\.active\)\)\) \{\s*tasks\.push\(loadLocalFiles\(currentLocalPath\)\);/);
+        expect(refresh).toMatch(/list\.some\(dir => localPanelShows\(dir, currentLocalPath2, false\)\)\) \{\s*tasks\.push\(loadLocalFiles2\(currentLocalPath2\)\);/);
         // A batch passes its folders at once: each panel reloads once, not
         // once per folder it shows.
         expect(appRaw).not.toMatch(/\.map\(dir => refreshLocalPanelForPath\(dir\)\)/);
