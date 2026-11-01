@@ -19,7 +19,7 @@
  * mode without applying (#1075).
  */
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
 import { CropRect } from '../types';
 import { useI18n } from '../../../i18n';
 
@@ -81,7 +81,7 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio,
     const [crop, setCrop] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
     const dragMode = useRef<DragMode>({ kind: 'none' });
     const cropRef = useRef(crop);
-    cropRef.current = crop;
+    useLayoutEffect(() => { cropRef.current = crop; }, [crop]);
     const overlayRef = useRef<HTMLDivElement>(null);
     // Bumped when the image box changes size, so the frame is placed again.
     const [, setLayout] = useState(0);

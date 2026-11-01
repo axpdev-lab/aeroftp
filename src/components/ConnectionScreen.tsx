@@ -7,7 +7,7 @@
  */
 
 import { presetConnectionOptions, connectionProfileDefaults } from '../providers/connectionManifest';
-import React, { useState, useEffect, useRef, useMemo, useId } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useId, useLayoutEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ProtonModeSwitchDialog } from './ProtonModeSwitchDialog';
 import { protonModeOf, runProtonModeSwitch, type ProtonSwitchPlan } from '../utils/protonModeSwitch';
@@ -314,7 +314,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const [connectionName, setConnectionName] = useState('');
     // Stable ref for onTabLabelChange to avoid re-render loops from unstable arrow functions
     const onTabLabelChangeRef = useRef(onTabLabelChange);
-    onTabLabelChangeRef.current = onTabLabelChange;
+    useLayoutEffect(() => { onTabLabelChangeRef.current = onTabLabelChange; }, [onTabLabelChange]);
     // Notify IntroHub when the user types a connection name (or clears it)
     useEffect(() => {
         onTabLabelChangeRef.current?.(connectionName.trim());

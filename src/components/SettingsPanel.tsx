@@ -3,7 +3,7 @@
 
 import { TID } from '../utils/testIds';
 import * as React from 'react';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { pickFile, pickSave } from '../utils/pickPath';
 import { sendNotification } from '@tauri-apps/plugin-notification';
@@ -389,9 +389,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [settings, setSettings] = useState<AppSettings>(defaultSettings);
     const settingsBase = useRef<AppSettings>(defaultSettings);
     const settingsDraft = useRef<AppSettings>(defaultSettings);
-    settingsDraft.current = settings;
+    useLayoutEffect(() => { settingsDraft.current = settings; }, [settings]);
     const panelOpen = useRef(isOpen);
-    panelOpen.current = isOpen;
+    useLayoutEffect(() => { panelOpen.current = isOpen; }, [isOpen]);
     const settingsLoadRevision = useRef(0);
     const [portableMode, setPortableMode] = useState<boolean | null>(null);
     const autostartAtOpen = useRef<boolean | null>(null);

@@ -56,8 +56,6 @@ export function useDeviceAttachState(
 ): UseDeviceAttachStateResult {
   const [liveDevices, setLiveDevices] = useState<MtpDeviceInfo[]>([]);
   const mountedRef = useRef(true);
-  const profilesRef = useRef(profiles);
-  profilesRef.current = profiles;
 
   useEffect(() => {
     mountedRef.current = true;
