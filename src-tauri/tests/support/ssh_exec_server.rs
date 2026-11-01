@@ -50,6 +50,7 @@ pub struct Options {
 pub struct Seen {
     pub execs: AtomicUsize,
     pub subsystems: AtomicUsize,
+    pub connections: AtomicUsize,
 }
 
 #[allow(dead_code)]
@@ -60,6 +61,10 @@ impl Seen {
 
     pub fn subsystems(&self) -> usize {
         self.subsystems.load(Ordering::SeqCst)
+    }
+
+    pub fn connections(&self) -> usize {
+        self.connections.load(Ordering::SeqCst)
     }
 }
 
@@ -303,6 +308,7 @@ pub async fn start(opts: Options) -> (u16, Arc<Seen>) {
     let seen_out = seen.clone();
     tokio::spawn(async move {
         while let Ok((stream, _)) = listener.accept().await {
+            seen.connections.fetch_add(1, Ordering::SeqCst);
             let handler = Conn {
                 opts: opts.clone(),
                 seen: seen.clone(),

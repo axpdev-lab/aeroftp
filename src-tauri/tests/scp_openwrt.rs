@@ -218,6 +218,63 @@ async fn operations(p: &mut dyn StorageProvider, local: &Path, dir: &str) {
     assert_eq!(std::fs::read(&down).unwrap(), body);
     let first = first.lock().unwrap().expect("progress");
     assert!(first > part, "went on from {first}, the part held {part}");
+
+    parallel(p, local, dir, &target, &body).await;
+}
+
+/// Four workers on Dropbear's one connection, then a segmented download.
+async fn parallel(p: &mut dyn StorageProvider, local: &Path, dir: &str, target: &str, body: &[u8]) {
+    use ftp_client_gui_lib::provider_transfer_executor::{
+        provider_segmented_download_eligible, run_provider_segmented_download, SegmentCutoff,
+    };
+
+    let mut workers: Vec<_> = (0..4)
+        .map(|_| p.clone_for_transfer().expect("worker"))
+        .collect();
+    let jobs = workers.iter_mut().enumerate().map(|(i, w)| {
+        let dest = local.join(format!("parallel-{i}"));
+        async move { w.download(target, &s(&dest), None).await.map(|()| dest) }
+    });
+    for done in futures_util::future::join_all(jobs).await {
+        assert_eq!(
+            std::fs::read(done.expect("parallel download")).unwrap(),
+            body
+        );
+    }
+    assert_eq!(
+        workers[0].read_range(target, 4097, 300).await.unwrap(),
+        body[4097..4397]
+    );
+    drop(workers);
+
+    // Windows are at least 1 MiB, so the segmented file is larger.
+    let big: Vec<u8> = (0..3 * 1024 * 1024 + 17)
+        .map(|i| (i * 13 + i / 509) as u8)
+        .collect();
+    let source = local.join("big-source");
+    std::fs::write(&source, &big).unwrap();
+    let remote = format!("{dir}/big file.bin");
+    p.upload(&s(&source), &remote, None)
+        .await
+        .expect("upload big");
+    let len = big.len() as u64;
+    let segments =
+        provider_segmented_download_eligible(&*p, len, 4, 4, SegmentCutoff::Explicit(256 * 1024))
+            .expect("eligible for a segmented download");
+    let dest = local.join("segmented");
+    run_provider_segmented_download(
+        p,
+        &remote,
+        &s(&dest),
+        len,
+        segments,
+        None,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .expect("segmented download");
+    assert_eq!(std::fs::read(&dest).unwrap(), big);
+    p.delete(&remote).await.expect("delete big");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

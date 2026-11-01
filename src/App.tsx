@@ -7139,7 +7139,7 @@ const App: React.FC = () => {
   // WebDAV, Backblaze B2, Koofr); every other provider degrades to no badge.
   // Gated on a lock-bearing surface being visible so the plain list costs nothing.
   const remoteArchiveCapable = !!activeTransferProtocol
-    && ['sftp', 'ftp', 'ftps', 's3', 'webdav', 'backblaze', 'koofr'].includes(activeTransferProtocol);
+    && ['sftp', 'scp', 'ftp', 'ftps', 's3', 'webdav', 'backblaze', 'koofr'].includes(activeTransferProtocol);
   const remoteArchiveMetaEnabled = remoteArchiveCapable && !!(
     remoteColumns.config.visibility.type ||
     remoteColumns.config.visibility.encryption ||

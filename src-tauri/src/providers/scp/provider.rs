@@ -23,8 +23,8 @@ use crate::providers::sftp::{
 };
 use crate::providers::shell_quote::{shell_quote, shell_quote_bytes};
 use crate::providers::{
-    checksum_matrix, ChecksumCapability, ProviderError, ProviderType, RemoteEntry, SftpConfig,
-    StorageProvider,
+    checksum_matrix, ChecksumCapability, ProviderError, ProviderTransferExecutorKind, ProviderType,
+    RemoteEntry, SftpConfig, StorageProvider,
 };
 
 /// Names per `[ -d ]` batch when a listing resolves its symlinks.
@@ -32,6 +32,15 @@ const SYMLINK_BATCH: usize = 256;
 
 /// The most entries a search returns, as over SFTP.
 const FIND_LIMIT: usize = 500;
+
+/// Parallel transfers one job may run. The workers share the connection and
+/// each transfer is one exec channel; OpenSSH allows 10 sessions per
+/// connection by default (`MaxSessions`), so 8 leaves room for the listings
+/// and checks the job's own session runs meanwhile.
+const POOL_MAX_SESSIONS: u16 = 8;
+
+/// The largest range one read returns, as over SFTP.
+const MAX_READ_RANGE: u64 = 100 * 1024 * 1024;
 
 /// The digests the server computes: algorithm, tool, hex length.
 const DIGESTS: &[(&str, &str, usize)] = &[("sha256", "sha256sum", 64), ("md5", "md5sum", 32)];
@@ -792,11 +801,78 @@ impl StorageProvider for ScpProvider {
         Ok(out)
     }
 
+    /// Parallel transfers and segmented downloads need ranged reads, which
+    /// need `dd`, `cat` and `head` on the server; without them the job runs
+    /// one transfer at a time on the session itself.
+    fn transfer_executor_kind(&self) -> ProviderTransferExecutorKind {
+        if self.session.is_some() && self.can_resume() {
+            ProviderTransferExecutorKind::SftpConnectionPool
+        } else {
+            ProviderTransferExecutorKind::LockedSingle
+        }
+    }
+
+    fn transfer_executor_max_sessions(&self) -> u16 {
+        POOL_MAX_SESSIONS
+    }
+
+    /// A worker on the same connection: no second login, no secrets copied.
+    /// It never dials, reconnects or closes the connection, which stays with
+    /// this provider (or with the SFTP provider that went on over SCP).
+    fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        let (Some(handle), Some(session)) = (&self.handle, &self.session) else {
+            return Err(ProviderError::NotConnected);
+        };
+        let mut config = self.config.clone();
+        config.password = None;
+        config.key_passphrase = None;
+        Ok(Box::new(Self {
+            config,
+            handle: Some(handle.clone()),
+            session: Some(session.worker()),
+            owns_connection: false,
+            home_dir: self.home_dir.clone(),
+            current_dir: self.current_dir.clone(),
+            host_key_sha256_hex: self.host_key_sha256_hex.clone(),
+            upload_limit_bps: self.upload_limit_bps,
+            download_limit_bps: self.download_limit_bps,
+        }))
+    }
+
+    /// `len` bytes from `offset`, fewer at the end of the file, as over SFTP.
+    async fn read_range(
+        &mut self,
+        path: &str,
+        offset: u64,
+        len: u64,
+    ) -> Result<Vec<u8>, ProviderError> {
+        if len > MAX_READ_RANGE {
+            return Err(ProviderError::Other(format!(
+                "Read range size {len} exceeds maximum {MAX_READ_RANGE} bytes"
+            )));
+        }
+        if !self.can_resume() {
+            return Err(ProviderError::NotSupported(format!(
+                "{} has no dd, cat and head, which a ranged read over SCP needs",
+                self.config.host
+            )));
+        }
+        let full = self.normalize_path(path);
+        let mut data = Vec::with_capacity(len as usize);
+        if len > 0 {
+            self.session()?
+                .read_at(&full, offset, Some(len), &mut data, &mut |_| {})
+                .await?;
+        }
+        Ok(data)
+    }
+
     fn transfer_optimization_hints(&self) -> crate::providers::TransferOptimizationHints {
         crate::providers::TransferOptimizationHints {
+            // Resume goes through `supports_resume` and its methods, as SFTP.
             supports_resume_download: false,
             supports_resume_upload: false,
-            supports_range_download: false,
+            supports_range_download: self.can_resume(),
             supports_compression: false,
             supports_delta_sync: false,
             ..Default::default()

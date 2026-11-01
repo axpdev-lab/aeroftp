@@ -426,7 +426,7 @@ function buildCompactProtocolExpertise(activeProvider?: string): string {
     const sections: Record<string, string> = {
         ftp: '### FTP / FTPS\n- **Port**: 21 (FTP), 21 or 990 (FTPS)\n- **TLS**: explicit/implicit. Passive mode enabled by default.',
         sftp: '### SFTP\n- **Port**: 22 (SSH)\n- **Auth**: password or SSH key. Key passphrase supported.\n- **No SFTP on the server**: continues over SCP on the same connection unless the profile turned the SCP fallback off.',
-        scp: '### SCP\n- **Port**: 22 (SSH)\n- **Auth**: as SFTP (password or SSH key).\n- **Use**: only for servers without SFTP (e.g. OpenWrt routers). No resume, one transfer at a time.',
+        scp: '### SCP\n- **Port**: 22 (SSH)\n- **Auth**: as SFTP (password or SSH key).\n- **Use**: only for servers without SFTP (e.g. OpenWrt routers). Resume, parallel transfers and segmented downloads work when the server has dd, cat and head (BusyBox and GNU do); no delta sync.',
         s3: '### S3\n- **Required**: Endpoint URL, Access Key, Secret Key, Bucket, Region.\n- **Compatible**: MinIO, B2, Wasabi, DO Spaces, Cloudflare R2.',
         webdav: '### WebDAV\n- **URL format**: full URL including path. Basic or Digest auth. HTTPS recommended.\n- **CloudMe**: `webdav.cloudme.com/{user}` (3 GB free, EU).\n- **4shared**: Now uses native REST API (OAuth 1.0): select "4shared" protocol directly.',
         googledrive: '### Google Drive\n- **Auth**: OAuth 2.0 with PKCE.',

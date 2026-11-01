@@ -97,8 +97,9 @@ Some SSH servers have no SFTP: a stock OpenWrt router runs Dropbear without `sft
 | List, stat, mkdir, delete, rename, chmod | Yes, as POSIX shell commands with every path single-quoted (`ls --full-time` and `find -print0` for listings) |
 | Upload and download with progress | Yes; an upload keeps the file's time, and the speed limit applies both ways |
 | Resume | Yes: a download goes on from its partial file (the server seeks with `dd`), an upload goes on by appending to the remote file; the final size is checked |
-| Ranged reads, segmented downloads, delta sync | No |
-| Parallel transfers | No: one transfer at a time on the connection |
+| Parallel transfers | Yes: up to 8 at once, each on its own exec channel of the one connection (no second login) |
+| Ranged reads and segmented downloads | Yes, with the same `dd` seek; archive badges read the file's head and tail this way |
+| Delta sync | No |
 | Replace an existing file | Yes, with `mv -f`; a folder is never replaced by a file, nor a file by a folder |
 | Free space | From `df -Pk` |
 | Search | With `find` on the server |
@@ -106,7 +107,7 @@ Some SSH servers have no SFTP: a stock OpenWrt router runs Dropbear without `sft
 | Speed test | Yes |
 | Rename onto an existing name | Refused, as over SFTP |
 
-The server needs a POSIX shell with `scp`, an `ls` that takes `--full-time` and a `find` with `-print0` (BusyBox, GNU and uutils all qualify); resume also needs `dd`, `cat` and `head`, which the same three provide; a restricted account (rssh, scponly, a forced command) is refused with the reason. WinSCP sessions map as WinSCP defines them: 0 is SCP, 1 is SFTP with the fallback on, 2 is SFTP with it off, and export writes them back the same way.
+The server needs a POSIX shell with `scp`, an `ls` that takes `--full-time` and a `find` with `-print0` (BusyBox, GNU and uutils all qualify); resume, ranged reads and parallel transfers also need `dd`, `cat` and `head`, which the same three provide (without them transfers run one at a time); a restricted account (rssh, scponly, a forced command) is refused with the reason. WinSCP sessions map as WinSCP defines them: 0 is SCP, 1 is SFTP with the fallback on, 2 is SFTP with it off, and export writes them back the same way.
 
 ## Protocol Security Matrix
 

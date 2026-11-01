@@ -25,7 +25,8 @@ use std::time::{Duration, Instant};
 use ftp_client_gui_lib::providers::sftp::SftpProvider;
 use ftp_client_gui_lib::providers::types::SftpConfig;
 use ftp_client_gui_lib::providers::{
-    ProviderConfig, ProviderError, ProviderFactory, ProviderType, StorageProvider,
+    ProviderConfig, ProviderError, ProviderFactory, ProviderTransferExecutorKind, ProviderType,
+    StorageProvider,
 };
 use russh::keys::ssh_key::LineEnding;
 use scoped_env::ScopedEnv;
@@ -206,10 +207,11 @@ async fn an_sftp_profile_reaches_a_server_without_sftp_over_scp() {
         assert!(p.server_info().await.unwrap().starts_with("SCP over SSH"));
         assert_eq!(p.pwd().await.unwrap(), s(&fx.remote()));
         // SCP mode offers what its delegate does, and nothing it cannot
-        // do: it goes on with transfers, it has no delta sync and no ranges
-        // the transfer planner could split a file into.
+        // do: it goes on with transfers and reads ranges (the server has
+        // `dd`, `cat` and `head`), and it has no delta sync.
         assert!(p.supports_resume() && p.supports_resume_upload_append());
-        assert!(!p.transfer_optimization_hints().supports_range_download);
+        assert!(p.transfer_optimization_hints().supports_range_download);
+        assert!(!p.transfer_optimization_hints().supports_delta_sync);
         assert!(!p.supports_delta_sync());
         exercise(&mut p, &fx).await;
         p.disconnect().await.unwrap();
@@ -501,11 +503,11 @@ async fn scp_session(fx: &Fixture) -> Box<dyn StorageProvider> {
     p
 }
 
+type Progress = Option<Box<dyn Fn(u64, u64) + Send>>;
+type Calls = Arc<Mutex<Vec<(u64, u64)>>>;
+
 /// A progress callback and what it was called with.
-fn recorder() -> (
-    Option<Box<dyn Fn(u64, u64) + Send>>,
-    Arc<Mutex<Vec<(u64, u64)>>>,
-) {
+fn recorder() -> (Progress, Calls) {
     let calls = Arc::new(Mutex::new(Vec::new()));
     let seen = calls.clone();
     (
@@ -722,7 +724,7 @@ async fn an_interrupted_upload_goes_on_by_appending_and_the_limit_paces_it() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn sftp_in_scp_mode_keeps_its_speed_limit_and_offers_the_same_operations() {
     let fx = Fixture::new("fallback-ops");
-    let (port, _) = start(fx.options(Sftp::Refuse)).await;
+    let (port, seen) = start(fx.options(Sftp::Refuse)).await;
     let mut p = SftpProvider::new(config(port, &fx.remote()));
     // Set before connecting, as the GUI does from a saved profile.
     p.set_speed_limit(256, 0).await.unwrap();
@@ -745,4 +747,115 @@ async fn sftp_in_scp_mode_keeps_its_speed_limit_and_offers_the_same_operations()
         std::fs::read(fx.remote().join("paced.bin")).unwrap().len(),
         512 * 1024
     );
+
+    // Its parallel workers ride the connection the fallback went on with.
+    assert_eq!(
+        p.transfer_executor_kind(),
+        ProviderTransferExecutorKind::SftpConnectionPool
+    );
+    let mut worker = p.clone_for_transfer().expect("worker");
+    assert_eq!(
+        worker.read_range("paced.bin", 1000, 64).await.unwrap(),
+        pattern(512 * 1024)[1000..1064]
+    );
+    assert_eq!(seen.connections(), 1, "a worker dialled");
+}
+
+/// Workers for parallel transfers share the one connection, a ranged read
+/// returns exactly its window, and a segmented download comes back whole.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn workers_share_the_connection_and_a_segmented_download_is_whole() {
+    use ftp_client_gui_lib::provider_transfer_executor::{
+        provider_segmented_download_eligible, run_provider_segmented_download, SegmentCutoff,
+    };
+    use ftp_client_gui_lib::transfer_dag::Capability;
+
+    let fx = Fixture::new("pool");
+    let (port, seen) = start(fx.options(Sftp::Serve)).await;
+    let mut profile = scp_profile(port, &fx.remote(), &[]);
+    profile.password = Some(PASSWORD.to_string());
+    let mut p = ProviderFactory::create(&profile).expect("factory");
+    timed_connect(p.as_mut()).await.0.expect("connect");
+
+    let caps = p.transfer_capabilities();
+    assert_eq!(caps.file_parallel, Capability::Supported);
+    assert_eq!(caps.session_pool, Capability::Supported);
+    assert_eq!(caps.strict_concurrent_range_download, Capability::Supported);
+    assert_eq!(caps.max_file_slots, Some(8));
+
+    let big = pattern(3 * 1024 * 1024 + 17);
+    std::fs::write(fx.remote().join("big.bin"), &big).unwrap();
+    for i in 0..4 {
+        std::fs::write(fx.remote().join(format!("f{i}.bin")), pattern(100_000 + i)).unwrap();
+    }
+
+    // Four downloads side by side, one worker each.
+    let mut workers: Vec<_> = (0..4)
+        .map(|_| p.clone_for_transfer().expect("worker"))
+        .collect();
+    let jobs = workers.iter_mut().enumerate().map(|(i, w)| {
+        let dest = fx.local(&format!("f{i}.bin"));
+        async move {
+            w.download(&format!("f{i}.bin"), &s(&dest), None)
+                .await
+                .map(|()| dest)
+        }
+    });
+    for (i, done) in futures_util::future::join_all(jobs)
+        .await
+        .into_iter()
+        .enumerate()
+    {
+        let dest = done.expect("parallel download");
+        assert_eq!(std::fs::read(dest).unwrap(), pattern(100_000 + i));
+    }
+
+    let w = &mut workers[0];
+    assert_eq!(
+        w.read_range("big.bin", 1000, 5000).await.unwrap(),
+        big[1000..6000]
+    );
+    let len = big.len() as u64;
+    assert_eq!(
+        w.read_range("big.bin", len - 10, 100).await.unwrap(),
+        big[big.len() - 10..]
+    );
+    assert!(w
+        .read_range("big.bin", len + 5, 100)
+        .await
+        .unwrap()
+        .is_empty());
+
+    let segments = provider_segmented_download_eligible(
+        p.as_ref(),
+        len,
+        4,
+        4,
+        SegmentCutoff::Explicit(1024 * 1024),
+    )
+    .expect("eligible for a segmented download");
+    assert!(segments >= 2, "{segments}");
+    let dest = fx.local("big.bin");
+    let execs = seen.execs();
+    run_provider_segmented_download(
+        p.as_mut(),
+        "big.bin",
+        &s(&dest),
+        len,
+        segments,
+        None,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .expect("segmented download");
+    assert_eq!(std::fs::read(&dest).unwrap(), big);
+    // One ranged read per window at least: a single stream would be one scp.
+    assert!(seen.execs() - execs >= segments, "not read in windows");
+
+    assert_eq!(seen.connections(), 1, "a worker dialled");
+    // A worker that ends leaves the connection to its owner.
+    for mut w in workers {
+        w.disconnect().await.unwrap();
+    }
+    p.list("").await.expect("the session is still connected");
 }

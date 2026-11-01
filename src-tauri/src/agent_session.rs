@@ -402,8 +402,13 @@ pub fn default_transfer_optimization_hints_for_provider(
             supports_resume_upload: false,
             ..Default::default()
         },
-        // `scp -t`/`scp -f` move whole files: no ranges, no resume, no delta.
-        ProviderType::Scp => TransferOptimizationHints::default(),
+        // Matches ScpProvider on a server with `dd`, `cat` and `head`: ranged
+        // reads yes; resume flags false as for SFTP (it resumes through its
+        // own methods); no delta.
+        ProviderType::Scp => TransferOptimizationHints {
+            supports_range_download: true,
+            ..Default::default()
+        },
         ProviderType::Ftp | ProviderType::Ftps => TransferOptimizationHints {
             supports_resume_download: true,
             supports_resume_upload: true,
