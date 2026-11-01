@@ -674,6 +674,9 @@ mod engine_runs {
         /// A folder three levels deep is refused, as FileLu refused the run
         /// folder under a prefix folder it had just created.
         refuse_deep_mkdir: bool,
+        /// Every folder is refused, as OneDrive refused the scratch folder
+        /// (#368).
+        refuse_mkdir: bool,
         /// The folder `pwd` reports, `/` when unset.
         cwd: Option<String>,
         /// `pwd` never answers, as an FTP server that stopped.
@@ -790,6 +793,9 @@ mod engine_runs {
         }
         async fn mkdir(&mut self, p: &str) -> Result<(), ProviderError> {
             self.0.lock().unwrap().mkdirs.push(p.into());
+            if self.0.lock().unwrap().refuse_mkdir {
+                return Err(ProviderError::ServerError("Folder not found".into()));
+            }
             if self.0.lock().unwrap().refuse_deep_mkdir && p.matches('/').count() >= 3 {
                 return Err(ProviderError::ServerError("Folder not found".into()));
             }
@@ -926,6 +932,64 @@ mod engine_runs {
         };
         assert!(error.contains("Folder not found"), "{error}");
         let r = state.lock().unwrap();
+        assert_eq!(r.dirs, BTreeSet::from(["/data".to_string()]));
+    }
+
+    /// A refused scratch folder under a relative start folder names that
+    /// folder as the profile has it: `team ` and a name of spaces are folders
+    /// of their own, not `team` and the root.
+    #[tokio::test]
+    async fn a_refused_scratch_folder_names_the_start_folder_as_given() {
+        for start in ["team ", "   "] {
+            let (state, provider) = remote();
+            state.lock().unwrap().refuse_mkdir = true;
+            let opts = options(BenchmarkLevel::Quick, "1K", None);
+            let error = match run(provider, start, opts, &Silent).await {
+                Err(error) => error,
+                Ok(_) => panic!("the scratch folder was refused"),
+            };
+            assert!(
+                error.contains(&format!("scratch folder '{start}/aeroftp-bench/"))
+                    && error.contains(&format!("in the profile's start folder '{start}':")),
+                "{start:?}: {error}"
+            );
+        }
+    }
+
+    /// `--test-root-prefix` reaches the remote as given. The folders the run
+    /// made are gone by its end, so what it asked for is the evidence: with
+    /// `/data ` trimmed, the run worked in `/data`.
+    #[tokio::test]
+    async fn a_test_root_prefix_with_edge_spaces_reaches_the_remote_as_given() {
+        let (state, provider) = remote();
+        let mut opts = options(BenchmarkLevel::Quick, "1K", None);
+        opts.test_root_prefix = Some("/data ".into());
+        let outcome = run(provider, "/data", opts, &Silent).await.unwrap();
+        assert!(
+            outcome.report.summary.errors.is_empty(),
+            "{:?}",
+            outcome.report.summary.errors
+        );
+        let r = state.lock().unwrap();
+        // The prefix folder, then the scratch folder below it.
+        assert_eq!(
+            r.mkdirs.first().map(String::as_str),
+            Some("/data "),
+            "{:?}",
+            r.mkdirs
+        );
+        assert!(
+            r.mkdirs
+                .iter()
+                .all(|dir| dir == "/data " || dir.starts_with("/data /")),
+            "{:?}",
+            r.mkdirs
+        );
+        assert!(
+            r.mkdirs.iter().any(|dir| dir.starts_with("/data /")),
+            "{:?}",
+            r.mkdirs
+        );
         assert_eq!(r.dirs, BTreeSet::from(["/data".to_string()]));
     }
 
