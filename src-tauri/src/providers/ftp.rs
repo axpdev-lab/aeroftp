@@ -1744,6 +1744,10 @@ impl StorageProvider for FtpProvider {
         Ok(())
     }
 
+    fn download_was_refused(&self) -> bool {
+        self.download_time.is_refused()
+    }
+
     fn take_download_time(&mut self, source_refused: bool) -> Option<String> {
         self.download_time.take(source_refused)
     }

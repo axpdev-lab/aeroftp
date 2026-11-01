@@ -1132,6 +1132,10 @@ impl StorageProvider for CryptOverlayProvider {
         self.inner.cd_up().await
     }
 
+    fn download_was_refused(&self) -> bool {
+        self.inner.download_was_refused()
+    }
+
     fn take_download_time(&mut self, source_refused: bool) -> Option<String> {
         self.inner.take_download_time(source_refused)
     }

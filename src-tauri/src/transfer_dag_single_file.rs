@@ -956,6 +956,7 @@ pub async fn execute_single_file_dag_with(
         let progress_slot = Arc::clone(&progress_slot);
         let first_error = Arc::clone(&first_error);
         let report_size = Arc::clone(&report_size);
+        let carried_time = Arc::new(std::sync::Mutex::new(None::<String>));
         let multipart_state = multipart_state.clone();
         let durable_checkpoint = durable_checkpoint.clone();
         let part_progress = part_progress.clone();
@@ -970,6 +971,7 @@ pub async fn execute_single_file_dag_with(
             let progress_slot = Arc::clone(&progress_slot);
             let first_error = Arc::clone(&first_error);
             let report_size = Arc::clone(&report_size);
+            let carried_time = Arc::clone(&carried_time);
             let multipart_state = multipart_state.clone();
             let durable_checkpoint = durable_checkpoint.clone();
             let part_progress = part_progress.clone();
@@ -1016,6 +1018,11 @@ pub async fn execute_single_file_dag_with(
                                     bytes_total.store(meta.len(), Ordering::SeqCst);
                                     wire_bytes_total.store(meta.len(), Ordering::SeqCst);
                                 }
+                                // A fallback inside the provider read its own
+                                // object. Taken under this lock: another transfer
+                                // on the session would start a record of its own.
+                                *carried_time.lock().expect("carried time poisoned") =
+                                    p.take_download_time(false);
                                 NodeOutcome::Completed
                             }
                             Err(e) => record_failure(&first_error, e, FailureScope::File),
@@ -1426,17 +1433,8 @@ pub async fn execute_single_file_dag_with(
                     }
                     TransferNodeKind::PreserveMetadata => {
                         if direction == TransferDirection::Download {
-                            // A fallback inside the provider read its own object.
-                            // With no time given the caller sets one after the
-                            // run, and the provider's reading stays for it.
-                            let read_time = match modified {
-                                Some(_) => provider
-                                    .lock()
-                                    .await
-                                    .as_mut()
-                                    .and_then(|provider| provider.take_download_time(false)),
-                                None => None,
-                            };
+                            let read_time =
+                                carried_time.lock().expect("carried time poisoned").take();
                             crate::preserve_remote_mtime(
                                 &local,
                                 read_time.as_deref().or(modified.as_deref()),
@@ -3843,12 +3841,8 @@ mod tests {
                 &std::fs::metadata(&local).unwrap(),
             )
             .unix_seconds();
-            if given.is_some() {
-                assert_eq!(written, crate::parse_remote_mtime(CARRIED).unwrap());
-                assert_eq!(left, None, "taken by the node");
-            } else {
-                assert_eq!(left.as_deref(), Some(CARRIED), "left for the caller");
-            }
+            assert_eq!(written, crate::parse_remote_mtime(CARRIED).unwrap());
+            assert_eq!(left, None, "taken by the node");
         }
     }
 

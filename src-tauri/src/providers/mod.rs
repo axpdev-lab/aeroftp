@@ -1044,6 +1044,14 @@ pub trait StorageProvider: Send + Sync {
     /// transfer then; the others hand over the time their response carried.
     fn expect_moved_source(&mut self) {}
 
+    /// The provider's own parallel path was refused in the download that just
+    /// ended. A caller that retries the entry says so with
+    /// [`Self::expect_moved_source`]: a new download forgets it, and would read
+    /// the moved object in windows that carry no time.
+    fn download_was_refused(&self) -> bool {
+        false
+    }
+
     /// The modification time for the file the last `download` wrote, when a
     /// refusal shows the listing's may describe another object: the provider's
     /// own (it refused its parallel path) or the caller's (`source_refused`).

@@ -2809,6 +2809,10 @@ impl StorageProvider for SftpProvider {
         self.cd("..").await
     }
 
+    fn download_was_refused(&self) -> bool {
+        self.download_time.is_refused()
+    }
+
     fn take_download_time(&mut self, source_refused: bool) -> Option<String> {
         self.download_time.take(source_refused)
     }
@@ -3154,8 +3158,13 @@ impl StorageProvider for SftpProvider {
         match until_sftp_ends(&sftp.ended, remote_file.metadata()).await {
             Ok(attributes) => {
                 let handle = Self::metadata_to_entry(String::new(), full_path.clone(), &attributes);
-                let size_differs = attributes.size.is_some_and(|size| size != total_size);
-                if size_differs {
+                // Another time and no size: another object, of a length not known.
+                // Size 0 reads it to its end and no part of the old one is kept.
+                let another_object = match attributes.size {
+                    Some(size) => size != total_size,
+                    None => handle.modified.is_some() && handle.modified != read_time,
+                };
+                if another_object {
                     tracing::warn!(
                         "SFTP: {} is {} bytes on its handle and was {}, the download uses the size of the handle",
                         full_path,
@@ -3164,7 +3173,7 @@ impl StorageProvider for SftpProvider {
                     );
                     total_size = handle.size;
                 }
-                if size_differs || (attributes.size.is_some() && handle.modified.is_some()) {
+                if another_object || (attributes.size.is_some() && handle.modified.is_some()) {
                     source = RangeSourceFingerprint::of(&handle);
                 }
                 if source_is_moving || handle.modified.is_some() {
@@ -7612,6 +7621,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_handle_with_another_time_and_no_size_is_read_to_its_end() {
+        let bytes = pattern(400);
+        let mut server = ReadCappingServer::new(&bytes, 100, false);
+        server.stat_size = Some(100);
+        server.mtime = Some(1_600_000_000);
+        server.handle_mtime = Some(1_700_000_000);
+        server.handle_without_size = true;
+        let mut provider = server.serve().await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("target");
+        provider
+            .download("/down.bin", out.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(&out).unwrap(), bytes);
+    }
+
+    #[tokio::test]
     async fn a_refused_sftp_parallel_plan_reports_a_safe_terminal_notice() {
         let provider =
             provider_on_a_server_that_goes_away(GoAwayAt::Write(usize::MAX), vec![7u8; 3]).await;
@@ -8543,6 +8570,8 @@ mod tests {
         mtime: Option<u32>,
         /// The modification time FSTAT reports on an open handle.
         handle_mtime: Option<u32>,
+        /// FSTAT reports no size.
+        handle_without_size: bool,
         first_cap: Option<usize>,
         /// Malformed DATA replies, including the first READ or a later chunk.
         oversize_from: Option<u64>,
@@ -8566,6 +8595,7 @@ mod tests {
                 stat_size: None,
                 mtime: None,
                 handle_mtime: None,
+                handle_without_size: false,
                 first_cap: None,
                 oversize_from: None,
                 read_error_at: None,
@@ -8720,7 +8750,7 @@ mod tests {
             Ok(russh_sftp::protocol::Attrs {
                 id,
                 attrs: russh_sftp::protocol::FileAttributes {
-                    size: Some(self.data.len() as u64),
+                    size: (!self.handle_without_size).then_some(self.data.len() as u64),
                     permissions: Some(0o100644),
                     atime: self.handle_mtime,
                     mtime: self.handle_mtime,

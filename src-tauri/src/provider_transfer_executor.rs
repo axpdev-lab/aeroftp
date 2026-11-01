@@ -1364,6 +1364,8 @@ impl ProviderDownloadExecutor {
                 }
                 Err(error) => {
                     last_error = error;
+                    // The next attempt forgets a refusal inside the provider.
+                    source_refused |= provider.download_was_refused();
                     if attempt_is_over(self.cancel_token.is_cancelled(), &last_error) {
                         break;
                     }
@@ -3505,6 +3507,7 @@ mod tests {
         carried_time: Option<String>,
         stat_reading: StatReading,
         moved_source_expected: bool,
+        native_refusal: bool,
     }
 
     /// What the fake's `stat` does when it has no scripted ranges.
@@ -3529,6 +3532,7 @@ mod tests {
                 carried_time: None,
                 stat_reading: StatReading::default(),
                 moved_source_expected: false,
+                native_refusal: false,
             }
         }
 
@@ -3568,6 +3572,9 @@ mod tests {
         }
         fn expect_moved_source(&mut self) {
             self.moved_source_expected = true;
+        }
+        fn download_was_refused(&self) -> bool {
+            self.native_refusal
         }
         fn transfer_executor_kind(&self) -> ProviderTransferExecutorKind {
             if self.ranges.is_some() {
@@ -4564,6 +4571,27 @@ mod tests {
             None,
             "consumed once, never double counted"
         );
+    }
+
+    /// A refusal inside the provider is gone when the retry begins: the executor
+    /// carries it, or the retry reads the moved object and keeps the listed time.
+    #[tokio::test]
+    async fn a_retry_after_a_refusal_inside_the_provider_takes_its_time() {
+        const CARRIED: &str = "2026-10-21T07:28:00Z";
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut provider = FlakyDownloadProvider::fail_first(1);
+        provider.native_refusal = true;
+        provider.carried_time = Some(CARRIED.to_string());
+        let executor = retry_download_executor(provider, 2, CancellationToken::new());
+        let mut entry = retry_entry(dir.path());
+        entry.modified = Some("2000-01-01T00:00:00Z".to_string());
+        let local = entry.local_path.clone();
+        let outcome = executor.execute(entry).await;
+        assert!(matches!(outcome, TransferOutcome::Success), "{outcome:?}");
+        let written =
+            filetime::FileTime::from_last_modification_time(&std::fs::metadata(&local).unwrap())
+                .unix_seconds();
+        assert_eq!(written, crate::parse_remote_mtime(CARRIED).unwrap());
     }
 
     /// CodeRabbit on #1350: a create-only upload whose first attempt lost
