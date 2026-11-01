@@ -25,6 +25,8 @@ on:
       - 'src-tauri/src/providers/sftp.rs'
       - 'src-tauri/src/providers/scp/**'
       - 'src-tauri/tests/scp_openwrt.rs'
+      - 'src-tauri/tests/live_scp_channels.rs'
+      - 'src-tauri/tests/live_sftp_replace.rs'
       - 'src-tauri/Cargo.lock'
       - 'src-tauri/tests/fixtures/sftp-rsync/**'
       - 'src-tauri/tests/integration_delta_sync.rs'
@@ -44,6 +46,8 @@ on:
       - 'src-tauri/src/providers/sftp.rs'
       - 'src-tauri/src/providers/scp/**'
       - 'src-tauri/tests/scp_openwrt.rs'
+      - 'src-tauri/tests/live_scp_channels.rs'
+      - 'src-tauri/tests/live_sftp_replace.rs'
       - 'src-tauri/Cargo.lock'
       - 'src-tauri/tests/fixtures/sftp-rsync/**'
       - 'src-tauri/tests/integration_delta_sync.rs'
@@ -271,6 +275,28 @@ jobs:
             | tee /tmp/sftp-replace.log
           ../scripts/assert-tests-ran.sh /tmp/sftp-replace.log =1 \
             "replace a file in place over SFTP"
+
+      # The same server over SCP: 16 workers on one connection read a file at
+      # once. OpenSSH refuses a channel past MaxSessions (10 by default); the
+      # provider runs at most 8 commands per connection, so all 16 must read
+      # their bytes whole. Measured without that limit: 6 of 16 refused.
+      - name: More SCP workers than one connection allows, against a real OpenSSH server
+        timeout-minutes: 15
+        working-directory: src-tauri
+        env:
+          HOME: ${{ runner.temp }}/scp-channels-home
+          AEROFTP_LIVE_SFTP_HOST: 127.0.0.1
+          AEROFTP_LIVE_SFTP_PORT: "2222"
+          AEROFTP_LIVE_SFTP_USER: testuser
+          AEROFTP_LIVE_SFTP_KEY: ${{ github.workspace }}/src-tauri/tests/fixtures/sftp-rsync/ssh_key
+          AEROFTP_LIVE_SFTP_DIR: /home/testuser
+        run: |
+          set -o pipefail
+          mkdir -p "$HOME"
+          cargo test --test live_scp_channels -- --ignored --nocapture \
+            | tee /tmp/scp-channels.log
+          ../scripts/assert-tests-ran.sh /tmp/scp-channels.log =1 \
+            "SCP workers beyond the channel limit"
 
       - name: Dump fixture logs on failure
         if: failure()
