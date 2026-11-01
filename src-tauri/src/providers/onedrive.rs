@@ -3615,7 +3615,9 @@ mod tests {
         use std::sync::Arc;
         let running = Arc::new(AtomicUsize::new(0));
         let peak = Arc::new(AtomicUsize::new(0));
-        let (seen_running, seen_peak) = (running.clone(), peak.clone());
+        let probes: Arc<std::sync::Mutex<Vec<String>>> = Arc::default();
+        let (seen_running, seen_peak, seen_probes) =
+            (running.clone(), peak.clone(), probes.clone());
         let names: Vec<String> = (0..20).map(|i| format!("S{i:02}")).collect();
         let listing = json!({"value": names.iter().map(|name| json!({
             "id": name, "name": name, "size": 0,
@@ -3625,14 +3627,24 @@ mod tests {
             let listing = listing.clone();
             let running = seen_running.clone();
             let peak = seen_peak.clone();
+            let probes = seen_probes.clone();
             async move {
-                if request.uri().path() == "/v1.0/me/drive/root/children" {
+                let path = request.uri().path().to_string();
+                if path == "/v1.0/me/drive/root/children" {
                     return (StatusCode::OK, Json(listing));
                 }
+                probes.lock().unwrap().push(path.clone());
                 let now = running.fetch_add(1, Ordering::SeqCst) + 1;
                 peak.fetch_max(now, Ordering::SeqCst);
                 tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                 running.fetch_sub(1, Ordering::SeqCst);
+                // One past the first batch cannot be read.
+                if path.contains("/S12/") {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({"error": {"code": "invalidRequest", "message": "ObjectHandle is Invalid"}})),
+                    );
+                }
                 (StatusCode::OK, Json(json!({"value": []})))
             }
         }));
@@ -3655,7 +3667,17 @@ mod tests {
             listed.iter().map(|e| e.name.clone()).collect::<Vec<_>>(),
             names
         );
-        assert!(listed.iter().all(|e| e.is_dir && !e.is_symlink));
+        for entry in &listed {
+            assert!(entry.is_dir, "{}", entry.name);
+            assert_eq!(entry.is_symlink, entry.name == "S12", "{}", entry.name);
+        }
+        let mut asked = probes.lock().unwrap().clone();
+        asked.sort();
+        let expected: Vec<String> = names
+            .iter()
+            .map(|name| format!("/v1.0/drives/drv2/items/{name}/children"))
+            .collect();
+        assert_eq!(asked, expected, "each shortcut asked once");
         let peak = peak.load(Ordering::SeqCst);
         assert!((2..=SHORTCUT_PROBES).contains(&peak), "{peak}");
         server.abort();
