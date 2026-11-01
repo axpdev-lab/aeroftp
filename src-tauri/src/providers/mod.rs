@@ -189,6 +189,170 @@ pub fn matches_find_pattern(name: &str, pattern: &str) -> bool {
     }
 }
 
+/// Results a search returns, as the providers that walk their own tree do. A
+/// caller that gets this many cannot tell whether there are more, and says so.
+pub const FIND_RESULT_LIMIT: usize = 500;
+
+/// Folders a search lists before it gives up. The provider is held while it
+/// walks, and a search with few matches would otherwise read a whole account.
+const FIND_FOLDER_LIMIT: usize = 20_000;
+
+/// How long a walk goes on starting new listings. The provider is held while it
+/// walks, so the commands behind it wait. Checked between listings: a listing cut
+/// halfway could leave a session unusable, and each is bounded by its provider.
+const FIND_WALK_BUDGET: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// One absolute root for the walk and the listing, with `.` and `..` resolved.
+fn search_root(start: &str, path: &str) -> String {
+    let joined = if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("{start}/{path}")
+    };
+    let mut segments: Vec<&str> = Vec::new();
+    for segment in joined.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                segments.pop();
+            }
+            segment => segments.push(segment),
+        }
+    }
+    format!("/{}", segments.join("/"))
+}
+
+/// Whether a failed listing speaks about that folder alone. Anything else would
+/// fail the folders after it too, and a partial result would read as a complete
+/// one: a lost connection or expired sign-in, and a server or generic error, the
+/// variants several providers give to a 401 or a 429.
+fn listing_failure_is_the_folders(error: &ProviderError) -> bool {
+    matches!(
+        error,
+        ProviderError::NotFound(_)
+            | ProviderError::PermissionDenied(_)
+            | ProviderError::InvalidPath(_)
+            | ProviderError::ParseError(_)
+    )
+}
+
+/// Search under `path` by walking its listings, so every hit is under `path`
+/// and carries the path `list` gives it, which a caller may go on to delete.
+/// The folder searched failing, or a failure that is not about one folder, is
+/// an error, not an empty or partial result. A subfolder that cannot be listed
+/// is skipped with a warning, and a link is not followed.
+pub(crate) async fn find_by_walk<P>(
+    provider: &mut P,
+    path: &str,
+    pattern: &str,
+) -> Result<Vec<RemoteEntry>, ProviderError>
+where
+    P: StorageProvider + ?Sized,
+{
+    find_by_walk_within(provider, path, pattern, FIND_WALK_BUDGET).await
+}
+
+pub(crate) async fn find_by_walk_within<P>(
+    provider: &mut P,
+    path: &str,
+    pattern: &str,
+    budget: std::time::Duration,
+) -> Result<Vec<RemoteEntry>, ProviderError>
+where
+    P: StorageProvider + ?Sized,
+{
+    // A listing may answer from what it kept: without a session that would read
+    // as a search that found nothing.
+    if !provider.is_connected() {
+        return Err(ProviderError::NotConnected);
+    }
+    // Some providers move their current folder as they list: a search must not
+    // leave a later relative upload or delete in the last folder it walked.
+    let start = provider.pwd().await?;
+    let found = walk_for_find(provider, path, pattern, &start, budget).await;
+    if provider.pwd().await.ok().as_deref() != Some(start.as_str()) {
+        provider.cd(&start).await?;
+    }
+    found
+}
+
+async fn walk_for_find<P>(
+    provider: &mut P,
+    path: &str,
+    pattern: &str,
+    start: &str,
+    budget: std::time::Duration,
+) -> Result<Vec<RemoteEntry>, ProviderError>
+where
+    P: StorageProvider + ?Sized,
+{
+    let root = search_root(start, path);
+    let mut walk = crate::sync_core::FindWalk::new(&root);
+    let mut folders = vec![root.clone()];
+    let mut listed = 0;
+    let mut results = Vec::new();
+    let started = std::time::Instant::now();
+    while let Some(folder) = folders.pop() {
+        listed += 1;
+        if listed > FIND_FOLDER_LIMIT {
+            return Err(ProviderError::Other(format!(
+                "Search stopped after {FIND_FOLDER_LIMIT} folders under {root}: search a smaller folder"
+            )));
+        }
+        if started.elapsed() >= budget {
+            return Err(ProviderError::Other(format!(
+                "Search stopped after {} s under {root}: search a smaller folder",
+                budget.as_secs()
+            )));
+        }
+        let entries = match provider.list(&folder).await {
+            Ok(entries) => entries,
+            Err(error) if folder == root || !listing_failure_is_the_folders(&error) => {
+                return Err(error)
+            }
+            Err(error) => {
+                tracing::warn!("find: skipping {folder:?}: {error}");
+                continue;
+            }
+        };
+        let sorted = walk.sort(&folder, entries);
+        for (path, step) in &sorted.refused {
+            tracing::warn!(
+                "find: skipping {path:?}, named in {folder}: {}",
+                step.reason()
+            );
+        }
+        folders.extend(sorted.follow);
+        for entry in sorted.entries {
+            if matches_find_pattern(&entry.name, pattern) {
+                results.push(entry);
+                if results.len() >= FIND_RESULT_LIMIT {
+                    return Ok(results);
+                }
+            }
+        }
+    }
+    Ok(results)
+}
+
+/// The provider's own search, or a walk where it has none, never more than
+/// [`FIND_RESULT_LIMIT`]: a caller reads that many as a search cut short.
+pub(crate) async fn find_or_walk<P>(
+    provider: &mut P,
+    path: &str,
+    pattern: &str,
+) -> Result<Vec<RemoteEntry>, ProviderError>
+where
+    P: StorageProvider + ?Sized,
+{
+    let mut found = match provider.find(path, pattern).await {
+        Err(ProviderError::NotSupported(_)) => find_by_walk(provider, path, pattern).await,
+        found => found,
+    }?;
+    found.truncate(FIND_RESULT_LIMIT);
+    Ok(found)
+}
+
 /// A local file's modification time in whole seconds, for a provider to keep on
 /// an upload. Without it the server stamps the time of the upload, and a Compare
 /// afterwards reads identical files as newer on that side (Requested 125).

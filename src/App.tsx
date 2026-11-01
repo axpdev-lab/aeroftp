@@ -547,6 +547,8 @@ function makeConnectToken(): string {
 // Delay before the "still connecting..." modal appears on a slow connect
 // (W3.2 #275.9). Covers MEGAcmd cold-daemon warmup and pCloud-WebDAV hosts
 // unreachable until the email-confirmation step.
+/** `FIND_RESULT_LIMIT` in the backend: a search stops at this many matches. */
+const REMOTE_SEARCH_RESULT_LIMIT = 500;
 const STILL_CONNECTING_DELAY_MS = 8000;
 // IPC panic safety net (v4.1.3). A Tauri command that dies by panic never sends
 // an IPC response (tauri has no catch_unwind on the resolver), so the connect
@@ -6844,8 +6846,13 @@ const App: React.FC = () => {
         pattern: `*${query.trim()}*`,
       });
       setRemoteSearchResults(results);
-    } catch {
+      if (results.length >= REMOTE_SEARCH_RESULT_LIMIT) {
+        notify.warning(t('common.warning'), t('common.searchLimited', { count: REMOTE_SEARCH_RESULT_LIMIT }) || `Showing the first ${REMOTE_SEARCH_RESULT_LIMIT} matches. Search a smaller folder to see the rest.`);
+      }
+    } catch (error) {
+      // An empty list would read as "nothing matches".
       setRemoteSearchResults([]);
+      notify.error(t('common.error'), String(error));
     } finally {
       setRemoteSearching(false);
     }

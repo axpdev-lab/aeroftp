@@ -228,6 +228,22 @@ fn large_upload_host(config: &ZohoWorkdriveConfig, size: u64) -> Option<&'static
     config.upload_domain()
 }
 
+/// A folder Zoho says is not there is that folder's failure. Anything else, a 403
+/// included, may speak of the whole session, and stays a failure a search stops on.
+fn list_folder_failure(status: reqwest::StatusCode, folder_id: &str, body: &str) -> ProviderError {
+    let message = format!(
+        "List files error {} (folder_id={}): {}",
+        status,
+        folder_id,
+        sanitize_api_error(body)
+    );
+    if status == reqwest::StatusCode::NOT_FOUND {
+        ProviderError::NotFound(message)
+    } else {
+        ProviderError::Other(message)
+    }
+}
+
 /// Whether a stream upload response reports `file_name` as stored. The API
 /// answers with the files it stored, `{"data":[{"attributes":{"file_name":
 /// ...}}]}` (observed live on 2026-09-24), and leaves failed ones out, so an
@@ -1694,12 +1710,7 @@ impl ZohoWorkdriveProvider {
                     status,
                     log_preview(&body_text, 300)
                 );
-                return Err(ProviderError::Other(format!(
-                    "List files error {} (folder_id={}): {}",
-                    status,
-                    folder_id,
-                    sanitize_api_error(&body_text)
-                )));
+                return Err(list_folder_failure(status, folder_id, &body_text));
             }
 
             debug!(
@@ -3266,88 +3277,10 @@ impl StorageProvider for ZohoWorkdriveProvider {
         true
     }
 
-    async fn find(
-        &mut self,
-        _path: &str,
-        pattern: &str,
-    ) -> Result<Vec<RemoteEntry>, ProviderError> {
-        // /files/search is team scoped: personal accounts have no team id, so
-        // remote search is unavailable there (listing and transfers still work).
-        let team_id = self.team_id.as_ref().cloned().ok_or_else(|| {
-            ProviderError::NotSupported(
-                "remote search on a Zoho WorkDrive personal account (no team)".to_string(),
-            )
-        })?;
-
-        // Zoho /files/search?search_string= is substring on filename and
-        // ignores glob metacharacters. Strip glob chars for the broad server
-        // prefilter, then apply the precise filter client-side via
-        // matches_find_pattern.
-        let literal: String = pattern
-            .chars()
-            .filter(|c| !matches!(c, '*' | '?' | '[' | ']'))
-            .collect();
-        let server_query = if literal.is_empty() {
-            ".".to_string()
-        } else {
-            literal
-        };
-
-        let encoded = urlencoding::encode(&server_query);
-        let url = format!(
-            "{}/files/search?search_string={}&team_id={}",
-            self.api_base(),
-            encoded,
-            team_id
-        );
-        info!("Zoho WorkDrive find: GET {}", url);
-
-        let resp = self
-            .client
-            .get(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-
-        if !status.is_success() {
-            return Err(ProviderError::Other(format!(
-                "Search failed ({}): {}",
-                status,
-                sanitize_api_error(&body)
-            )));
-        }
-
-        debug!(
-            "Zoho WorkDrive find response ({} bytes): {}",
-            body.len(),
-            log_preview(&body, 500)
-        );
-
-        let list: JsonApiListResponse<FileResource> = serde_json::from_str(&body).map_err(|e| {
-            ProviderError::ParseError(format!(
-                "Parse search results: {}: body: {}",
-                e,
-                sanitize_api_error(&body)
-            ))
-        })?;
-
-        let entries: Vec<RemoteEntry> = list
-            .data
-            .iter()
-            .map(|f| self.to_remote_entry(f, "/"))
-            .filter(|e| super::matches_find_pattern(&e.name, pattern))
-            .collect();
-
-        info!(
-            "Zoho WorkDrive find '{}': {} results",
-            pattern,
-            entries.len()
-        );
-        Ok(entries)
+    async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        // The search API answers outside the folder or without the hit's real
+        // path, and a caller acts on that path.
+        super::find_by_walk(self, path, pattern).await
     }
 
     // ── Versioning ────────────────────────────────────────────────────────
@@ -3552,6 +3485,27 @@ impl StorageProvider for ZohoWorkdriveProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A search skips a folder that is gone and stops on what may speak of the
+    /// session, and a 403 is not told apart from that here.
+    #[test]
+    fn a_failed_listing_is_the_folders_only_when_zoho_says_it_is_not_there() {
+        let failure = |status| list_folder_failure(status, "id", "{}");
+        assert!(matches!(
+            failure(reqwest::StatusCode::NOT_FOUND),
+            ProviderError::NotFound(_)
+        ));
+        for status in [
+            reqwest::StatusCode::FORBIDDEN,
+            reqwest::StatusCode::UNAUTHORIZED,
+            reqwest::StatusCode::TOO_MANY_REQUESTS,
+        ] {
+            assert!(
+                matches!(failure(status), ProviderError::Other(_)),
+                "{status}"
+            );
+        }
+    }
 
     #[tokio::test]
     async fn probe_contract_zoho_root_is_not_a_missing_child() {

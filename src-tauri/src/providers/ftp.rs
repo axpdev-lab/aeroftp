@@ -2199,6 +2199,7 @@ impl StorageProvider for FtpProvider {
             path.to_string()
         };
         let mut walk = crate::sync_core::FindWalk::new(&search_path);
+        let root = search_path.clone();
         let mut dirs_to_scan = vec![search_path];
 
         while let Some(dir) = dirs_to_scan.pop() {
@@ -2207,6 +2208,11 @@ impl StorageProvider for FtpProvider {
             self.current_path = dir.clone();
             let entries = match self.list(&dir).await {
                 Ok(e) => e,
+                // A folder searched that cannot be read is not an empty result.
+                Err(e) if dir == root => {
+                    self.current_path = saved;
+                    return Err(e);
+                }
                 Err(_) => {
                     self.current_path = saved;
                     continue;
