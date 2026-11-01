@@ -9671,6 +9671,10 @@ struct CliBase {
     path: String,
     /// Proton Drive's start folder; `None` for every other provider.
     start_folder: Option<String>,
+    /// What a URL named below its folder when that is not a folder: a file,
+    /// or a name not there yet. A command given no path acts on it, never on
+    /// the folder that holds it (`rm sftp://host/a/b -r` removed all of `/a`).
+    url_target: Option<String>,
 }
 
 impl CliBase {
@@ -9678,7 +9682,19 @@ impl CliBase {
         Self {
             path: path.into(),
             start_folder,
+            url_target: None,
         }
+    }
+
+    fn with_url_target(mut self, url_target: Option<String>) -> Self {
+        self.url_target = url_target;
+        self
+    }
+
+    /// The path a command given no path of its own works on: the URL's
+    /// target when it named one, otherwise the base.
+    fn own_path(&self) -> &str {
+        self.url_target.as_deref().unwrap_or(&self.path)
     }
 
     /// The base of a connected provider: Proton Drive's start folder is where
@@ -9729,6 +9745,9 @@ trait RemoteBase {
     fn start_folder(&self) -> Option<&str> {
         None
     }
+    fn url_target(&self) -> Option<&str> {
+        None
+    }
 }
 
 impl RemoteBase for str {
@@ -9749,6 +9768,9 @@ impl RemoteBase for CliBase {
     }
     fn start_folder(&self) -> Option<&str> {
         self.start_folder.as_deref()
+    }
+    fn url_target(&self) -> Option<&str> {
+        self.url_target.as_deref()
     }
 }
 
@@ -13247,10 +13269,11 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
     let url_path = match provider_type {
         ProviderType::WebDav | ProviderType::GitHub | ProviderType::GitLab => "/".to_string(),
         _ => {
-            if url_obj.path().is_empty() || url_obj.path() == "/" {
+            let path = url_path_decoded(&url_obj);
+            if path.is_empty() || path == "/" {
                 "/".to_string()
             } else {
-                url_obj.path().to_string()
+                path
             }
         }
     };
@@ -13269,11 +13292,16 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
     //    exists (a single leading segment like `/dir` is still ambiguous
     //    but we keep it as-is to avoid regressing `ls ftp://host/dir`)
     //
-    // The full URL path is stashed under `extra["url_target"]` so
-    // single-target commands can surface it when no explicit path arg
-    // was provided.
-    let (initial_path, url_target_hint) = {
-        let trimmed = url_path.trim();
+    // The full URL path is stashed under `extra["url_target"]`.
+    // `connect_with_base_path` stats it once connected: a folder becomes the
+    // base, and anything else is what a command given no path acts on.
+    let (initial_path, url_target_hint) = if provider_type == ProviderType::WebDav {
+        // The folder of the URL went into the base URL above; its last name,
+        // when the URL does not end with `/`, is the target.
+        ("/".to_string(), webdav_url_target(&url_obj))
+    } else {
+        // Not trimmed: a decoded name may begin or end with a space.
+        let trimmed = url_path.as_str();
         if trimmed.is_empty() || trimmed == "/" {
             ("/".to_string(), None)
         } else if trimmed.ends_with('/') {
@@ -13372,6 +13400,26 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
     };
 
     Ok((config, initial_path))
+}
+
+/// The path of a URL as the user named it. `Url` keeps it percent-encoded,
+/// so `a%20b` stayed `a%20b` and `mkdir sftp://host/a%20b` made a folder of
+/// that name. A `%` not followed by two hex digits (`100% done` typed as is)
+/// stays a `%`; bytes that do not decode to UTF-8 keep the encoded form.
+fn url_path_decoded(url_obj: &url::Url) -> String {
+    let raw = url_obj.path();
+    percent_encoding::percent_decode_str(raw)
+        .decode_utf8()
+        .map(|path| path.into_owned())
+        .unwrap_or_else(|_| raw.to_string())
+}
+
+/// What a WebDAV URL names below the base URL `url_to_provider_config`
+/// builds from it: `/name` for `.../folder/name`, nothing for `.../folder/`.
+fn webdav_url_target(url_obj: &url::Url) -> Option<String> {
+    let path = url_path_decoded(url_obj);
+    let name = path.rsplit('/').next().filter(|name| !name.is_empty())?;
+    Some(format!("/{name}"))
 }
 
 fn parse_github_target(url_obj: &url::Url) -> Result<(String, Option<String>), String> {
@@ -31741,7 +31789,7 @@ async fn create_and_connect_with(
     apply_overlay: bool,
     synth_profile: Option<&serde_json::Value>,
 ) -> Result<(Box<dyn StorageProvider>, CliBase, ConnectMetadata), i32> {
-    let (provider, path, metadata) = connect_with_base_path(
+    let (provider, path, url_target, metadata) = connect_with_base_path(
         url,
         cli,
         profile_override,
@@ -31751,7 +31799,9 @@ async fn create_and_connect_with(
     )
     .await?;
     let mut provider = provider;
-    let base = CliBase::for_provider(path, provider.as_mut()).await;
+    let base = CliBase::for_provider(path, provider.as_mut())
+        .await
+        .with_url_target(url_target);
     Ok((provider, base, metadata))
 }
 
@@ -31763,7 +31813,15 @@ async fn connect_with_base_path(
     format: OutputFormat,
     apply_overlay: bool,
     synth_profile: Option<&serde_json::Value>,
-) -> Result<(Box<dyn StorageProvider>, String, ConnectMetadata), i32> {
+) -> Result<
+    (
+        Box<dyn StorageProvider>,
+        String,
+        Option<String>,
+        ConnectMetadata,
+    ),
+    i32,
+> {
     // Check if the selected profile points to an OAuth provider - handle separately
     // Uses the same strict matching as profile_to_provider_config (exact → ID → disambiguated substring)
     if let Some(profile_name) = profile_override {
@@ -31828,7 +31886,7 @@ async fn connect_with_base_path(
                             } else {
                                 provider
                             };
-                            return Ok((provider, path, metadata));
+                            return Ok((provider, path, None, metadata));
                         }
                         let initial_path = profile
                             .get("initialPath")
@@ -31885,7 +31943,7 @@ async fn connect_with_base_path(
                             } else {
                                 p
                             };
-                            return Ok((p, path, metadata));
+                            return Ok((p, path, None, metadata));
                         }
                     }
                 }
@@ -31921,6 +31979,7 @@ async fn connect_with_base_path(
         None => resolve_url_or_profile_with(url, cli, profile_override, format)?,
     };
     let metadata = ConnectMetadata::from_config(&config);
+    let url_target = config.extra.get("url_target").cloned();
 
     dump_connection_info(cli, &config);
 
@@ -32064,13 +32123,46 @@ async fn connect_with_base_path(
     // callers fall back to whole-file paths. Fail-closed on a bound profile.
     // Skipped (raw provider) for the standalone `crypt` commands, which are the
     // crypt layer themselves and would otherwise double-encrypt (F4).
-    let provider = if apply_overlay {
+    let mut provider = if apply_overlay {
         cli_apply_crypt_overlay(provider, cli, profile_override, format).await?
     } else {
         provider
     };
 
-    Ok((provider, path, metadata))
+    // The URL named something inside the folder the session entered (see
+    // `url_to_provider_config`). A folder becomes the base, so `rm URL -r`
+    // and `rm URL name` stay inside it; a file, or a name not there yet, is
+    // what a command given no path acts on. A folder an object store cannot
+    // stat (a prefix with no marker) still lists its contents. Any other
+    // failure leaves the name's kind unknown, and guessing it would send a
+    // path given beside the URL to the wrong folder.
+    let (path, url_target) = match url_target {
+        Some(target) => match provider.stat(&target).await {
+            Ok(entry) if entry.is_dir => (target, None),
+            Ok(_) => (path, Some(target)),
+            Err(e) if is_not_found_error(&e) => match provider.list(&target).await {
+                Ok(entries) if !entries.is_empty() => (target, None),
+                _ => (path, Some(target)),
+            },
+            Err(e) => {
+                let code = provider_error_to_exit_code(&e);
+                print_error(
+                    format,
+                    &format!(
+                        "Cannot tell whether '{}' is a file or a folder: {}",
+                        sanitize_filename(&target),
+                        e
+                    ),
+                    code,
+                );
+                let _ = provider.disconnect().await;
+                return Err(code);
+            }
+        },
+        None => (path, None),
+    };
+
+    Ok((provider, path, url_target, metadata))
 }
 
 // ── Command Handlers ───────────────────────────────────────────────
@@ -32556,6 +32648,17 @@ fn resolve_cli_remote_path_unchecked_with_note<B: RemoteBase + ?Sized>(
     user_path: &str,
     emit_resolution_note: bool,
 ) -> String {
+    if user_path.is_empty() {
+        if let Some(target) = initial_path.url_target() {
+            if emit_resolution_note && !JSON_MODE.load(Ordering::Relaxed) {
+                eprintln!(
+                    "Note: no path given; using the one in the URL, '{}'",
+                    sanitize_filename(target)
+                );
+            }
+            return target.to_string();
+        }
+    }
     resolve_cli_remote_path_in(
         initial_path.base_path(),
         user_path,
@@ -33078,7 +33181,7 @@ async fn cmd_serve_http(
     };
     let (auth_token, generated_auth_token) = resolve_service_auth_token(auth_token, bind_addr);
 
-    let base_path = match serve_effective_base_path(path, &url_path) {
+    let base_path = match serve_effective_base_path(path, url_path.own_path()) {
         Ok(value) => value,
         Err(error) => {
             // `provider` is immutable here (moved into the serve state below) and
@@ -33675,7 +33778,7 @@ async fn cmd_serve_webdav(
     };
     let (auth_token, generated_auth_token) = resolve_service_auth_token(auth_token, bind_addr);
 
-    let base_path = match serve_effective_base_path(path, &url_path) {
+    let base_path = match serve_effective_base_path(path, url_path.own_path()) {
         Ok(value) => value,
         Err(error) => {
             // `provider` is immutable here (moved into the serve state below) and
@@ -34132,7 +34235,7 @@ async fn cmd_serve_ftp(
         Err(code) => return code,
     };
 
-    let base_path = match serve_effective_base_path(path, &url_path) {
+    let base_path = match serve_effective_base_path(path, url_path.own_path()) {
         Ok(value) => value,
         Err(error) => {
             // `provider` is immutable here (moved into the serve state below) and
@@ -35311,7 +35414,7 @@ async fn cmd_serve_sftp(
         Err(code) => return code,
     };
 
-    let base_path = match serve_effective_base_path(path, &url_path) {
+    let base_path = match serve_effective_base_path(path, url_path.own_path()) {
         Ok(value) => value,
         Err(error) => {
             // `provider` is immutable here (moved into the serve state below) and
@@ -46367,10 +46470,10 @@ async fn cmd_df(url: &str, scan: bool, full: bool, cli: &Cli, format: OutputForm
     };
 
     if scan {
-        let root = if full || resolved_path.trim().is_empty() {
+        let root = if full || resolved_path.own_path().trim().is_empty() {
             "/".to_string()
         } else {
-            resolved_path.to_string()
+            resolved_path.own_path().to_string()
         };
 
         // An API total still wins for the cap even in scan mode; the scan
@@ -50115,7 +50218,8 @@ async fn cmd_benchmark(
         cancel: Some(cancel_token.clone()),
     };
     let observer = CliBenchmarkObserver::new(show);
-    let outcome = community_benchmark::run(provider, &initial_path, options, &observer).await;
+    let outcome =
+        community_benchmark::run(provider, initial_path.own_path(), options, &observer).await;
     ctrl_c_watcher.abort();
     let outcome = match outcome {
         Ok(outcome) => outcome,
@@ -54851,6 +54955,32 @@ fn plan_sync_orphan_deletes<'a>(
 /// along unless the first is a real URL or the `_` placeholder. The AeroSync
 /// Plan tab builds its command line for this rule; see
 /// `aerosync_plan_cli_line_tests`.
+/// The URL and path of a deleting command (`rm`, `purge`, `rmdir`, `rmdirs`).
+/// With `--profile` the URL slot carries the path, so a value left in the
+/// path slot is one argument too many: `rm --profile P /a/b c -r --force`
+/// removed all of `/a/b` and dropped `c` without a word. It is refused.
+fn delete_positionals<'a>(
+    cli: &Cli,
+    url: &'a str,
+    path: &'a str,
+    format: OutputFormat,
+) -> Result<(&'a str, &'a str), i32> {
+    if !profile_shifts_positionals(cli.profile.is_some(), url) {
+        return Ok((url, path));
+    }
+    if !path.is_empty() {
+        print_error(
+            format,
+            &format!(
+                "unexpected argument '{path}': with --profile, give only the remote path ('{url}' here)"
+            ),
+            2,
+        );
+        return Err(2);
+    }
+    Ok(("_", url))
+}
+
 fn profile_shifts_positionals(has_profile: bool, url: &str) -> bool {
     has_profile && !url.contains("://") && url != "_"
 }
@@ -76931,14 +77061,10 @@ async fn main() {
             recursive,
             force,
             dry_run,
-        } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
-            cmd_rm(u, p, *recursive, *force, *dry_run, &cli, format).await
-        }
+        } => match delete_positionals(&cli, url, path, format) {
+            Ok((u, p)) => cmd_rm(u, p, *recursive, *force, *dry_run, &cli, format).await,
+            Err(code) => code,
+        },
         Commands::Mv { url, from, to } => {
             let (u, f, t) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), from.as_str())
@@ -77381,31 +77507,23 @@ async fn main() {
             force,
             dry_run,
         } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
             // rclone `purge`: recursive delete of the path and everything
             // under it. Routes through cmd_rm so the root guard, the
             // confirmation prompt and the error/exit mapping stay shared.
-            cmd_rm(u, p, true, *force, *dry_run, &cli, format).await
+            match delete_positionals(&cli, url, path, format) {
+                Ok((u, p)) => cmd_rm(u, p, true, *force, *dry_run, &cli, format).await,
+                Err(code) => code,
+            }
         }
-        Commands::Rmdir { url, path } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
-            cmd_rmdir(u, p, &cli, format).await
-        }
+        Commands::Rmdir { url, path } => match delete_positionals(&cli, url, path, format) {
+            Ok((u, p)) => cmd_rmdir(u, p, &cli, format).await,
+            Err(code) => code,
+        },
         Commands::Rmdirs { url, path, force } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
-            cmd_rmdirs(u, p, *force, &cli, format).await
+            match delete_positionals(&cli, url, path, format) {
+                Ok((u, p)) => cmd_rmdirs(u, p, *force, &cli, format).await,
+                Err(code) => code,
+            }
         }
         Commands::Tree { url, path, depth } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
