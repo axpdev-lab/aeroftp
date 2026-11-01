@@ -1566,6 +1566,23 @@ impl FileLuProvider {
             .ok_or_else(|| ProviderError::TransferFailed("No download URL returned".to_string()))
     }
 
+    /// A direct link answered with an error status serves an error page, not
+    /// the file, and reqwest returns it like any other response.
+    async fn download_response(
+        resp: reqwest::Response,
+    ) -> Result<reqwest::Response, ProviderError> {
+        let status = resp.status();
+        if status.is_success() {
+            return Ok(resp);
+        }
+        let body = resp.text().await.unwrap_or_default();
+        let excerpt: String = body.trim().chars().take(200).collect();
+        Err(ProviderError::TransferFailed(format!(
+            "Download HTTP {status}: {}",
+            redact_key(&excerpt)
+        )))
+    }
+
     /// Write what `url` serves to `local_path`, replacing it only once the
     /// whole body has arrived.
     async fn fetch_to_file(
@@ -1574,7 +1591,7 @@ impl FileLuProvider {
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        let resp = self.get_with_retry(url).await?;
+        let resp = Self::download_response(self.get_with_retry(url).await?).await?;
         let total_size = resp.content_length().unwrap_or(0);
         let mut atomic = super::atomic_write::AtomicFile::new(local_path)
             .await
@@ -2188,7 +2205,7 @@ impl StorageProvider for FileLuProvider {
         let norm = self.resolve_path(remote_path);
         let direct_url = self.get_direct_url_v2(&norm).await?;
 
-        let resp = self.get_with_retry(&direct_url).await?;
+        let resp = Self::download_response(self.get_with_retry(&direct_url).await?).await?;
 
         if let Some(cl) = resp.content_length() {
             if cl > super::MAX_DOWNLOAD_TO_BYTES {
@@ -4147,8 +4164,17 @@ mod tests {
                     seen.lock().unwrap().push(line);
                 }
                 let text = respond(&base, uri.path(), &query);
+                // "!404 body" answers with that status.
+                let (status, text) = match text.strip_prefix('!').and_then(|t| t.split_once(' ')) {
+                    Some((code, rest)) => (
+                        axum::http::StatusCode::from_u16(code.parse().unwrap()).unwrap(),
+                        rest.to_string(),
+                    ),
+                    None => (axum::http::StatusCode::OK, text),
+                };
                 async move {
                     (
+                        status,
                         [(axum::http::header::CONTENT_TYPE, "application/json")],
                         text,
                     )
@@ -4803,6 +4829,11 @@ mod tests {
                     query.get("file_code").cloned().unwrap_or_default()
                 ),
                 "/blob/V1" => "VERSION-1".to_string(),
+                "/apiv2/file/direct_link" => {
+                    format!(r#"{{"status":200,"result":{{"url":"{origin}/blob/CUR"}}}}"#)
+                }
+                "/blob/CUR" => "!404 gone".to_string(),
+                "/blob/V2" => "!403 denied".to_string(),
                 "/api/file/version_delete" => {
                     if !deletes_nothing {
                         let code = query.get("version_code").cloned().unwrap_or_default();
@@ -4831,6 +4862,34 @@ mod tests {
                 ("V2", Some("2026-11-01 11:31:52"), 9),
                 ("V1", Some("2026-11-01 11:31:51"), 9)
             ]
+        );
+    }
+
+    /// A direct link answered with an error status fails the download, and
+    /// the error page is not written as the file.
+    #[tokio::test]
+    async fn a_download_answered_with_an_http_error_fails_and_writes_nothing() {
+        let (mut provider, _) = provider_with_versions(false).await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("f.txt");
+        let local = out.to_str().unwrap();
+
+        let outcome = provider.download("/d/f.txt", local, None).await;
+        assert!(
+            matches!(outcome, Err(ProviderError::TransferFailed(ref m)) if m.contains("404")),
+            "{outcome:?}"
+        );
+        let outcome = provider.download_version("/d/f.txt", "V2", local).await;
+        assert!(
+            matches!(outcome, Err(ProviderError::TransferFailed(ref m)) if m.contains("403")),
+            "{outcome:?}"
+        );
+        assert!(!out.exists());
+
+        let outcome = provider.download_to_bytes("/d/f.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::TransferFailed(ref m)) if m.contains("404")),
+            "{outcome:?}"
         );
     }
 
