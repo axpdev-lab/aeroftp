@@ -49,6 +49,11 @@ const MULTI_THREAD_CUTOFF_DEFAULT: u64 = 250 * 1024 * 1024;
 /// The digests the server computes: algorithm, tool, hex length.
 const DIGESTS: &[(&str, &str, usize)] = &[("sha256", "sha256sum", 64), ("md5", "md5sum", 32)];
 
+/// A time in seconds as the listings show it.
+fn mtime_string(secs: i64) -> Option<String> {
+    chrono::DateTime::from_timestamp(secs, 0).map(|dt| dt.format("%Y-%m-%d %H:%M:%SZ").to_string())
+}
+
 /// SCP over one authenticated SSH connection.
 pub struct ScpProvider {
     /// The SFTP profile's settings: SCP profiles store exactly what SFTP
@@ -71,6 +76,9 @@ pub struct ScpProvider {
     /// which it is: set by `set_multi_thread_download`.
     multi_thread_streams: usize,
     multi_thread_cutoff: u64,
+    /// The time of what the last download read, for a caller that saw the
+    /// object move (see `take_download_time`).
+    download_time: crate::providers::multi_thread::DownloadTime,
 }
 
 impl ScpProvider {
@@ -87,6 +95,7 @@ impl ScpProvider {
             download_limit_bps: 0,
             multi_thread_streams: 1,
             multi_thread_cutoff: MULTI_THREAD_CUTOFF_DEFAULT,
+            download_time: Default::default(),
         }
     }
 
@@ -208,6 +217,7 @@ impl ScpProvider {
 
         let full = self.normalize_path(remote_path);
         tracing::info!("SCP: Downloading {} to {}", full, local_path);
+        self.download_time.begin();
         let meta = self.session()?.stat_followed(&full).await?;
         if meta.kind == Kind::Dir {
             return Err(ProviderError::InvalidPath(format!("{full} is a directory")));
@@ -242,7 +252,10 @@ impl ScpProvider {
         // parallel transfers use. Anything it turns down is read below on one
         // stream: a file that moved, a window refused, a failed channel.
         let mut on_progress = on_progress;
-        let segments = if offset == 0 && !explicit_resume && self.can_resume() {
+        // After a refusal the object is moving: one stream reads one view of
+        // it, with the time that goes with it.
+        let moving = self.download_time.is_refused();
+        let segments = if offset == 0 && !explicit_resume && !moving && self.can_resume() {
             self.planned_download_segments(total)
         } else {
             0
@@ -266,6 +279,9 @@ impl ScpProvider {
                 Err(e) if e.is_cancelled() => return Err(ProviderError::Cancelled),
                 Err(e) => {
                     tracing::warn!("SCP: {e}; downloading on one stream");
+                    if e.refused_by_the_source() {
+                        self.download_time.refused();
+                    }
                     e.report_fallback();
                     on_progress = fallback;
                     part = ResumableFile::open_fresh(local_path)
@@ -279,15 +295,20 @@ impl ScpProvider {
                 p(done, total);
             }
         };
+        // The time of what carried the bytes: the one `scp -p` sends with
+        // them, else the reading above.
         let read = if offset == total && total > 0 {
             progress(total, total);
-            Ok(())
+            Ok(meta.mtime)
         } else if offset == 0 {
             let mut progress = progress;
             self.session()?
                 .download(&full, part.file_mut(), &mut progress)
                 .await
-                .map(drop)
+                .map(|(_, sent)| {
+                    sent.and_then(|t| i64::try_from(t).ok())
+                        .unwrap_or(meta.mtime)
+                })
         } else {
             tracing::info!("SCP: going on from byte {} of {}", offset, total);
             let mut on_bytes = move |done: u64| progress(offset + done, total);
@@ -296,7 +317,7 @@ impl ScpProvider {
                 .read_at(&full, offset, None, part.file_mut(), &mut on_bytes)
                 .await
             {
-                Ok(n) if offset + n == total => Ok(()),
+                Ok(n) if offset + n == total => Ok(meta.mtime),
                 Ok(n) => Err(ProviderError::TransferFailed(format!(
                     "{full}: {} bytes after the partial's {offset}, expected {}; the file \
                      changed during the download",
@@ -307,9 +328,13 @@ impl ScpProvider {
             }
         };
         match read {
-            Ok(()) => part.commit().await.map_err(|e| {
-                ProviderError::TransferFailed(format!("Failed to finish download: {e}"))
-            }),
+            Ok(time) => {
+                part.commit().await.map_err(|e| {
+                    ProviderError::TransferFailed(format!("Failed to finish download: {e}"))
+                })?;
+                self.download_time.read(mtime_string(time));
+                Ok(())
+            }
             Err(e) => {
                 // Kept for the next attempt to go on from, as SFTP keeps it.
                 if let Err(local) = part.keep_for_resume().await {
@@ -341,8 +366,7 @@ fn last_component(path: &str) -> &str {
 
 /// The entry callers see, in the shape SFTP gives it.
 fn remote_entry(name: String, path: String, meta: &Meta, is_dir: bool) -> RemoteEntry {
-    let modified = chrono::DateTime::from_timestamp(meta.mtime, 0)
-        .map(|dt| dt.format("%Y-%m-%d %H:%M:%SZ").to_string());
+    let modified = mtime_string(meta.mtime);
     RemoteEntry {
         name,
         path,
@@ -874,6 +898,18 @@ impl StorageProvider for ScpProvider {
         MULTI_THREAD_CUTOFF_FLOOR
     }
 
+    fn download_was_refused(&self) -> bool {
+        self.download_time.is_refused()
+    }
+
+    fn take_download_time(&mut self, source_refused: bool) -> Option<String> {
+        self.download_time.take(source_refused)
+    }
+
+    fn expect_moved_source(&mut self) {
+        self.download_time.expect_moved();
+    }
+
     fn planned_download_segments(&self, file_size: u64) -> usize {
         crate::provider_transfer_executor::plan_segment_count(
             file_size,
@@ -907,6 +943,7 @@ impl StorageProvider for ScpProvider {
             // A worker reads the windows it is given, never plans its own.
             multi_thread_streams: 1,
             multi_thread_cutoff: self.multi_thread_cutoff,
+            download_time: Default::default(),
         }))
     }
 

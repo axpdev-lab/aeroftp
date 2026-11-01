@@ -926,3 +926,65 @@ async fn a_plain_download_above_the_cutoff_is_read_in_windows() {
         p.disconnect().await.unwrap();
     }
 }
+
+/// A caller that saw the object move asks for the time of what the next
+/// download read, so the local file does not take a listing that described
+/// another object: `scp -p` sends that time with the bytes. A plain download
+/// keeps the caller's; after `expect_moved_source` the download reads one
+/// stream, even with windows asked for, and hands its time over. On an SCP
+/// profile and on an SFTP profile over SCP.
+#[tokio::test]
+async fn a_download_after_a_refusal_hands_over_the_time_it_read() {
+    for case in ["scp profile", "sftp profile over scp"] {
+        let fx = Fixture::new(&format!("time-{}", case.len()));
+        let mode = if case == "scp profile" {
+            Sftp::Serve
+        } else {
+            Sftp::Refuse
+        };
+        let (port, seen) = start(fx.options(mode)).await;
+        let mut p: Box<dyn StorageProvider> = if case == "scp profile" {
+            let mut profile = scp_profile(port, &fx.remote(), &[]);
+            profile.password = Some(PASSWORD.to_string());
+            ProviderFactory::create(&profile).expect("factory")
+        } else {
+            Box::new(SftpProvider::new(config(port, &fx.remote())))
+        };
+        timed_connect(p.as_mut()).await.0.expect(case);
+        let big = pattern(3 * 1024 * 1024 + 17);
+        let file = fx.remote().join("big.bin");
+        std::fs::write(&file, &big).unwrap();
+        // 2021-01-02 03:04:05 UTC
+        let when = std::time::UNIX_EPOCH + Duration::from_secs(1_609_556_645);
+        std::fs::File::options()
+            .write(true)
+            .open(&file)
+            .unwrap()
+            .set_modified(when)
+            .unwrap();
+        let sent = Some("2021-01-02 03:04:05Z");
+
+        p.download("big.bin", &s(&fx.local("plain.bin")), None)
+            .await
+            .expect(case);
+        assert!(!p.download_was_refused(), "{case}");
+        assert_eq!(
+            p.take_download_time(false),
+            None,
+            "{case}: a plain download"
+        );
+        assert_eq!(p.take_download_time(true).as_deref(), sent, "{case}");
+
+        p.set_multi_thread_download(4, 1024 * 1024);
+        p.expect_moved_source();
+        let dest = fx.local("moved.bin");
+        let before = seen.execs();
+        p.download("big.bin", &s(&dest), None).await.expect(case);
+        assert_eq!(std::fs::read(&dest).unwrap(), big, "{case}");
+        assert!(p.download_was_refused(), "{case}");
+        assert_eq!(seen.execs() - before, 2, "{case}: windows after a refusal");
+        assert_eq!(p.take_download_time(false).as_deref(), sent, "{case}");
+        assert_eq!(p.take_download_time(false), None, "{case}: taken once");
+        p.disconnect().await.unwrap();
+    }
+}
