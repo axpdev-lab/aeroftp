@@ -13298,7 +13298,7 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
     let (initial_path, url_target_hint) = if provider_type == ProviderType::WebDav {
         // The folder of the URL went into the base URL above; its last name,
         // when the URL does not end with `/`, is the target.
-        ("/".to_string(), webdav_url_target(&url_obj))
+        ("/".to_string(), webdav_url_target(&url_obj)?)
     } else {
         // Not trimmed: a decoded name may begin or end with a space.
         let trimmed = url_path.as_str();
@@ -13322,6 +13322,12 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
             }
         }
     };
+    // A decoded URL path can hold what a positional path may not (`%2E%2E`
+    // is `..`), and either part can become what a command acts on.
+    check_remote_path_safe(&initial_path).map_err(|e| e.to_string())?;
+    if let Some(target) = url_target_hint.as_deref() {
+        check_remote_path_safe(target).map_err(|e| e.to_string())?;
+    }
 
     // Build extra HashMap from CLI flags
     let mut extra = HashMap::new();
@@ -13416,10 +13422,25 @@ fn url_path_decoded(url_obj: &url::Url) -> String {
 
 /// What a WebDAV URL names below the base URL `url_to_provider_config`
 /// builds from it: `/name` for `.../folder/name`, nothing for `.../folder/`.
-fn webdav_url_target(url_obj: &url::Url) -> Option<String> {
-    let path = url_path_decoded(url_obj);
-    let name = path.rsplit('/').next().filter(|name| !name.is_empty())?;
-    Some(format!("/{name}"))
+/// A last name that encodes a `/` (`a%2Fb`) is refused: decoded, it would
+/// name `b` beside the folder, and kept encoded it reaches the server as
+/// `a%252Fb`, another name again.
+fn webdav_url_target(url_obj: &url::Url) -> Result<Option<String>, String> {
+    let raw = url_obj.path().rsplit('/').next().unwrap_or("");
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    let name = percent_encoding::percent_decode_str(raw)
+        .decode_utf8()
+        .map(|name| name.into_owned())
+        .unwrap_or_else(|_| raw.to_string());
+    if name.contains('/') {
+        return Err(
+            "The last name in the URL encodes a '/' (%2F), which no WebDAV name can hold"
+                .to_string(),
+        );
+    }
+    Ok(Some(format!("/{name}")))
 }
 
 fn parse_github_target(url_obj: &url::Url) -> Result<(String, Option<String>), String> {
@@ -32247,6 +32268,21 @@ enum ToolExposureKind {
     Execution,
 }
 
+/// The folder `serve` publishes. A URL that names a file, or a name not
+/// there yet, is refused: as the root it lists nothing and every request
+/// below it misses.
+fn serve_root(path: &str, url_path: &CliBase) -> Result<String, String> {
+    if path == "/" {
+        if let Some(target) = url_path.url_target.as_deref() {
+            return Err(format!(
+                "Cannot serve '{}': it is not a folder",
+                sanitize_filename(target)
+            ));
+        }
+    }
+    serve_effective_base_path(path, url_path.own_path()).map_err(|e| e.to_string())
+}
+
 fn serve_effective_base_path(path: &str, url_path: &str) -> Result<String, RemotePathError> {
     if path == "/" && url_path != "/" {
         // `url_path` is the connection's initial directory (profile/URL), the
@@ -33181,7 +33217,7 @@ async fn cmd_serve_http(
     };
     let (auth_token, generated_auth_token) = resolve_service_auth_token(auth_token, bind_addr);
 
-    let base_path = match serve_effective_base_path(path, url_path.own_path()) {
+    let base_path = match serve_root(path, &url_path) {
         Ok(value) => value,
         Err(error) => {
             // `provider` is immutable here (moved into the serve state below) and
@@ -33778,7 +33814,7 @@ async fn cmd_serve_webdav(
     };
     let (auth_token, generated_auth_token) = resolve_service_auth_token(auth_token, bind_addr);
 
-    let base_path = match serve_effective_base_path(path, url_path.own_path()) {
+    let base_path = match serve_root(path, &url_path) {
         Ok(value) => value,
         Err(error) => {
             // `provider` is immutable here (moved into the serve state below) and
@@ -34235,7 +34271,7 @@ async fn cmd_serve_ftp(
         Err(code) => return code,
     };
 
-    let base_path = match serve_effective_base_path(path, url_path.own_path()) {
+    let base_path = match serve_root(path, &url_path) {
         Ok(value) => value,
         Err(error) => {
             // `provider` is immutable here (moved into the serve state below) and
@@ -35414,7 +35450,7 @@ async fn cmd_serve_sftp(
         Err(code) => return code,
     };
 
-    let base_path = match serve_effective_base_path(path, url_path.own_path()) {
+    let base_path = match serve_root(path, &url_path) {
         Ok(value) => value,
         Err(error) => {
             // `provider` is immutable here (moved into the serve state below) and

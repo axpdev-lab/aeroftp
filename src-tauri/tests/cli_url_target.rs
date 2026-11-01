@@ -303,8 +303,10 @@ fn purge_removes_the_folder_the_url_names_and_nothing_beside_it() {
 fn rmdirs_scans_the_folder_the_url_names_and_not_its_parent() {
     for &proto in PROTOS {
         let server = Server::start(proto);
-        // `full` holds a file and no empty folder: nothing to remove there.
-        // Its parent holds `empty`, which a scan of the parent removed.
+        // `full` holds a file and the empty folder `hollow`, which the scan
+        // removes. Its parent holds `empty`, which a scan of the parent
+        // removed.
+        std::fs::create_dir(server.path("c/d/full/hollow")).unwrap();
         let out = server.run(&["rmdirs", &server.url("/c/d/full"), "--force"]);
         ok(&out, &format!("{proto:?} rmdirs"));
         assert_eq!(server.tree(), all_but(&[]), "{proto:?}");
@@ -374,6 +376,60 @@ fn a_name_the_url_gives_is_decoded_and_created_as_named() {
         // No folder spelled with its escapes.
         assert!(!server.path("c/a%20b").exists(), "{proto:?}");
     }
+}
+
+/// A URL whose decoded path climbs out (`d%2F..%2Fsib.txt` is
+/// `d/../sib.txt`) is refused as a positional `..` is, and a WebDAV URL whose
+/// last name encodes a `/` is refused rather than read as the name after it
+/// (`x%2Fd` acted on `c/d`).
+#[test]
+fn a_url_that_encodes_a_parent_or_a_slash_is_refused_and_nothing_moves() {
+    for &proto in PROTOS {
+        let server = Server::start(proto);
+        for path in ["/c/d%2F..%2Fsib.txt", "/c/x%2Fd"] {
+            let out = server.run(&["rm", &server.url(path), "-r", "--force"]);
+            // Over FTP and SFTP `x%2Fd` is `x/d`, absent: nothing to do.
+            if path.contains("..") || matches!(proto, Proto::WebDav) {
+                assert!(
+                    !out.status.success(),
+                    "{proto:?} rm {path} succeeded: {}",
+                    String::from_utf8_lossy(&out.stderr)
+                );
+            }
+            assert_eq!(server.tree(), all_but(&[]), "{proto:?} rm {path}");
+        }
+    }
+}
+
+/// `serve` of a URL that names a file stops at once: as the root, a file
+/// lists nothing and every request below it misses.
+#[test]
+fn serve_refuses_a_url_that_names_a_file() {
+    let server = Server::start(Proto::Ftp);
+    let mut child = isolated_cli::command(cli(), server.config.path())
+        .args(["serve", "webdav", &server.url("/c/sib.txt")])
+        .args(["--addr", &format!("127.0.0.1:{}", free_port())])
+        .env("AEROFTP_PASSWORD", &server.password)
+        .env("AEROFTP_SERVE_USER", USER)
+        .env("AEROFTP_SERVE_PASSWORD", &server.password)
+        .env("AEROFTP_SERVE_AUTH_TOKEN", &server.password)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn serve");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while child.try_wait().expect("serve").is_none() {
+        if std::time::Instant::now() > deadline {
+            let _ = child.kill();
+            panic!("serve started with a file as its root");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let out = child.wait_with_output().expect("serve");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(5), "{stderr}");
+    assert!(stderr.contains("not a folder"), "{stderr}");
 }
 
 /// With `--profile` the path goes in the URL slot; a second one was dropped
