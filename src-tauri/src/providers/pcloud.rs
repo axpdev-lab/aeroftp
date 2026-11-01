@@ -2543,6 +2543,26 @@ mod tests {
         assert!(hints.supports_resume_upload);
     }
 
+    /// Requested 123, through the hints to the plan: a file below the threshold
+    /// goes in one request, not in parts.
+    #[test]
+    fn a_file_below_the_threshold_is_planned_as_one_request() {
+        use crate::transfer_dag::builder::{TransferDagBuilder, TransferDirection};
+        use crate::transfer_dag::capabilities::TransferCapabilities;
+        use crate::transfer_dag::graph::TransferNodeKind;
+        let hints = test_provider().transfer_optimization_hints();
+        let caps = TransferCapabilities::from_provider_hints(ProviderType::PCloud, &hints, false);
+        assert_eq!(caps.multipart_threshold, 4 * 1024 * 1024 * 1024);
+        let built =
+            TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 100 * 1024 * 1024);
+        assert_eq!(built.profile.upload_parts, 1);
+        assert_eq!(built.transfer.len(), 1);
+        assert_eq!(
+            built.dag.nodes()[built.transfer[0]].kind,
+            TransferNodeKind::UploadFile
+        );
+    }
+
     // ---- DAG-P1-05C: evidence-backed LockedSingle retention ----
 
     fn demo_cfg() -> PCloudConfig {
