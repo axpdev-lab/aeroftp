@@ -67911,7 +67911,8 @@ mod hashsum_digest_tests {
     /// at the first version, 7 as 4 with the first HEAD after a refusal
     /// answered `404`, 8 as 4 with the entity tag the MD5 of the content, 9 as
     /// 8 with the unpinned ranges, untagged, coming from a replacement, 10 as 4
-    /// with the pinned range at byte 0 served and the later ones refused.
+    /// with the pinned range at byte 0 served and the later ones refused, 11 as
+    /// 8 with every range served, untagged, from a replacement.
     pub(super) async fn range_hash_fixture(
         size: usize,
         body_delta: isize,
@@ -67976,7 +67977,7 @@ mod hashsum_digest_tests {
                                     || (range_mode == 5 && refused.load(Ordering::SeqCst) > 0)
                                 {
                                     "\"changed-version\"".to_string()
-                                } else if matches!(range_mode, 8 | 9) {
+                                } else if matches!(range_mode, 8 | 9 | 11) {
                                     format!(
                                         "\"{:x}\"",
                                         <md5::Md5 as md5::Digest>::digest(served.as_slice())
@@ -68009,7 +68010,7 @@ mod hashsum_digest_tests {
                                 .body(Body::empty())
                                 .unwrap();
                         }
-                        if range_mode == 9 {
+                        if matches!(range_mode, 9 | 11) {
                             let (start, end) = range
                                 .to_str()
                                 .unwrap()
@@ -90986,6 +90987,36 @@ mod tests {
                 "mode {mode}: {warnings:?}"
             );
         }
+    }
+
+    /// Segments that do not hash to what the server publishes may come from an
+    /// object that moved: the single stream after them keeps the time of its own
+    /// reading, not the listing's.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn pget_takes_the_time_of_its_own_reading_after_a_hash_that_differs() {
+        let size = 8 * 1024 * 1024 + 31;
+        let fixture = super::hashsum_digest_tests::range_hash_fixture(size, 0, 11).await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("f.bin");
+        let (code, warnings) = pget_against(
+            fixture.provider.clone(),
+            size as u64,
+            out.to_string_lossy().into_owned(),
+        )
+        .await;
+        assert_eq!(code, 0, "{warnings:?}");
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("the assembled file does not match the hash")),
+            "{warnings:?}"
+        );
+        assert_eq!(std::fs::read(&out).unwrap(), fixture.body);
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            local_time(&out),
+            ftp_client_gui_lib::parse_remote_mtime("Wed, 21 Oct 2026 07:28:00 GMT").unwrap()
+        );
     }
 
     /// A 412 on an object that did change: no unpinned retry, the fallback
