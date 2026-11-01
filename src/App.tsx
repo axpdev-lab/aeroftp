@@ -5586,7 +5586,7 @@ const App: React.FC = () => {
     { id: 'nav-connect', label: t('connection.quickConnect'), category: 'navigation' as CommandCategory, icon: <Globe size={14} />, action: () => setShowConnectionScreen(true), keywords: ['connection', 'server', 'ftp', 'sftp'] },
     { id: 'nav-settings', label: t('settings.title'), category: 'navigation' as CommandCategory, icon: <Settings size={14} />, action: () => setShowSettingsPanel(true), shortcut: 'Ctrl+,', keywords: ['preferences', 'config'] },
     // File
-    { id: 'file-newfolder', label: t('contextMenu.newFolder'), category: 'file' as CommandCategory, icon: <FolderPlus size={14} />, action: () => createFolder(activePanel !== 'remote'), keywords: ['create', 'directory', 'mkdir'] },
+    { id: 'file-newfolder', label: t('contextMenu.newFolder'), category: 'file' as CommandCategory, icon: <FolderPlus size={14} />, action: () => createFolder(activePanel === 'remote'), keywords: ['create', 'directory', 'mkdir'] },
     { id: 'file-refresh', label: t('contextMenu.refresh'), category: 'file' as CommandCategory, icon: <RefreshCw size={14} />, action: () => { if (activePanel === 'remote') loadRemoteFiles(); else loadLocalFiles(currentLocalPath); }, keywords: ['reload'] },
     ...(canSendSiteCommand ? [{ id: 'connection-site-command', label: t('menu.siteCommand'), category: 'navigation' as CommandCategory, icon: <Terminal size={14} />, action: () => setShowSiteCommand(true), keywords: ['site', 'ftp', 'raw', 'quote', 'command', 'glftpd'] }] : []),
     // AI

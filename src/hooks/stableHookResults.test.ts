@@ -17,13 +17,16 @@ vi.mock('../i18n', () => ({
 }));
 
 import { useToast } from '../components/Toast';
-import { ActivityLogProvider } from './useActivityLog';
+import { ActivityLogProvider, useActivityLog } from './useActivityLog';
 import { useHumanizedLog } from './useHumanizedLog';
 
+const keyAsText = i18n.t;
 let root: Root | null = null;
 afterEach(async () => {
     await act(async () => root?.unmount());
     root = null;
+    i18n.t = keyAsText;
+    i18n.context = { language: 'en' };
 });
 
 const mount = async (element: ReturnType<typeof createElement>) => {
@@ -72,5 +75,37 @@ describe('hook results that callbacks depend on keep their identity', () => {
         // Each entry renders the log's consumers again.
         expect(seen.length).toBeGreaterThan(2);
         for (const humanLog of seen) expect(humanLog).toBe(seen[0]);
+    });
+
+    it('useHumanizedLog: a new object when the language or its texts change, and it writes them', async () => {
+        const seen: Array<ReturnType<typeof useHumanizedLog>> = [];
+        let messages: string[] = [];
+        const Probe = () => {
+            seen.push(useHumanizedLog());
+            messages = useActivityLog().entries.map(entry => entry.message);
+            return null;
+        };
+        const tree = () => createElement(ActivityLogProvider, null, createElement(Probe));
+        await mount(tree());
+        const english = seen[seen.length - 1];
+
+        // The language alone: logNavigate words a step into a subfolder by it
+        // (in English "entered", elsewhere the plain line).
+        i18n.context = { language: 'de' };
+        await act(async () => root!.render(tree()));
+        const german = seen[seen.length - 1];
+        expect(german).not.toBe(english);
+        await act(async () => { german.logNavigate('/a', true); });
+        await act(async () => { german.logNavigate('/a/b', true); });
+        expect(messages).toHaveLength(2);
+        expect(new Set(messages)).toEqual(new Set(['activity.navigate_success']));
+
+        // The texts alone.
+        i18n.t = (key: string) => `de:${key}`;
+        await act(async () => root!.render(tree()));
+        const translated = seen[seen.length - 1];
+        expect(translated).not.toBe(german);
+        await act(async () => { translated.logRaw('activity.disconnect_start', 'DISCONNECT', {}, 'error'); });
+        expect(messages).toContain('de:activity.disconnect_start');
     });
 });
