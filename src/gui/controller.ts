@@ -12,7 +12,8 @@ import {
 
 export { GuiError, type GuiErrorCode };
 
-export const GUI_INTENTS = ['state', 'wait', 'show_view', 'navigate', 'refresh', 'select', 'connect', 'disconnect', 'stop', ...SETTINGS_INTENTS, ...TOOLS_INTENTS] as const;
+export const AEROSYNC_INTENTS = ['aerosync_open', 'aerosync_compare', 'aerosync_close'] as const;
+export const GUI_INTENTS = ['state', 'wait', 'show_view', 'navigate', 'refresh', 'select', 'connect', 'disconnect', 'stop', ...SETTINGS_INTENTS, ...TOOLS_INTENTS, ...AEROSYNC_INTENTS] as const;
 export type GuiIntent = typeof GUI_INTENTS[number];
 export type GuiPanel = 'remote' | 'local' | 'local2';
 export type GuiView = 'servers' | 'files' | 'other';
@@ -29,6 +30,8 @@ export interface GuiSource {
     /** Safe Settings projection: allowlisted public values only, never secrets. */
     settings?: GuiSettingsProjection;
     tools?: GuiToolsProjection;
+    /** The AeroSync window: a scan under way, and the entries of its result. */
+    aerosync?: { open: boolean; scanning: boolean; entries: number | null; busy: boolean; scan_failed: boolean };
 }
 export interface GuiSnapshot {
     schema_version: 1; state_revision: number; version: string; locked: boolean; blocked: boolean;
@@ -39,6 +42,7 @@ export interface GuiSnapshot {
     queue: { active: number; pending: number; failed: number };
     settings?: GuiSettingsProjection;
     tools?: GuiToolsProjection;
+    aerosync?: { open: boolean; scanning: boolean; entries: number | null; busy: boolean; scan_failed: boolean };
     control?: GuiControl;
 }
 const boundedText = (value: string) => value.slice(0, 4096);
@@ -70,6 +74,9 @@ export function buildGuiSnapshot(source: GuiSource, revision = 0): GuiSnapshot {
     result.queue = { active: source.queue.active, pending: source.queue.pending, failed: source.queue.failed };
     if (source.settings) result.settings = buildSettingsProjection(source.settings);
     if (source.tools) result.tools = buildToolsProjection(source.tools);
+    if (source.aerosync) {
+        result.aerosync = { open: source.aerosync.open, scanning: source.aerosync.scanning, entries: source.aerosync.entries, busy: source.aerosync.busy, scan_failed: source.aerosync.scan_failed };
+    }
     return result;
 }
 
@@ -88,12 +95,16 @@ export interface GuiHandlers {
     toolsOpen?(tool: ToolPanel | undefined, scope: ConnectScope): Promise<void>;
     toolsRead?(scope: ConnectScope): Promise<void>;
     toolsClose?(scope: ConnectScope): Promise<void>;
+    aeroSyncOpen?(): void;
+    /** Open the window and start a Compare of the two panels. */
+    aeroSyncCompare?(): void | Promise<void>;
+    aeroSyncClose?(): void;
 }
 export interface GuiRequest {
     name: string; args?: Record<string, unknown>; timeout_ms?: number;
     if_revision?: number; pace?: 'watch' | 'fast'; speed_percent?: number;
 }
-export interface GuiReply { ok: boolean; error: GuiErrorCode | null; snapshot: GuiSnapshot; }
+export interface GuiReply { ok: boolean; error: GuiErrorCode | null; detail?: string; snapshot: GuiSnapshot; }
 export interface GuiActor { readonly id: string; readonly kind: 'aeroagent' | 'dev' | 'external'; readonly label: string; }
 export const LOCAL_GUI_ACTOR: GuiActor = { id: 'aeroagent:local', kind: 'aeroagent', label: 'AeroAgent' };
 export function validateGuiActor(actor: GuiActor): void {
@@ -110,7 +121,11 @@ function record(value: unknown): asserts value is Record<string, unknown> {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new GuiError('invalid_args');
 }
 function keys(args: Record<string, unknown>, allowed: string[]) {
-    if (Object.keys(args).some(key => !allowed.includes(key))) throw new GuiError('invalid_args');
+    // The name of a field a caller sent is not a value, but it is the caller's text.
+    const unknown = Object.keys(args).find(key => !allowed.includes(key));
+    if (unknown !== undefined) {
+        throw new GuiError('invalid_args', `unknown field ${JSON.stringify(unknown.slice(0, 64))}; allowed: ${allowed.join(', ') || 'none'}`);
+    }
 }
 function panelArg(args: Record<string, unknown>): GuiPanel {
     if (typeof args.panel !== 'string' || !['remote', 'local', 'local2'].includes(args.panel)) throw new GuiError('invalid_args');
@@ -119,13 +134,15 @@ function panelArg(args: Record<string, unknown>): GuiPanel {
 export function validateGuiRequest(request: GuiRequest): GuiIntent {
     record(request); keys(request as unknown as Record<string, unknown>, ['name', 'args', 'timeout_ms', 'if_revision', 'pace', 'speed_percent']);
     if (!GUI_INTENTS.includes(request.name as GuiIntent)) throw new GuiError('unsupported_intent');
-    if (request.timeout_ms !== undefined && (!Number.isInteger(request.timeout_ms) || request.timeout_ms < 100 || request.timeout_ms > 30000)) throw new GuiError('invalid_args');
+    if (request.timeout_ms !== undefined && (!Number.isInteger(request.timeout_ms) || request.timeout_ms < 100 || request.timeout_ms > 30000)) {
+        throw new GuiError('invalid_args', 'timeout_ms must be an integer from 100 to 30000');
+    }
     if (request.if_revision !== undefined && (!Number.isSafeInteger(request.if_revision) || request.if_revision < 0)) throw new GuiError('invalid_args');
     if (request.pace !== undefined && request.pace !== 'watch' && request.pace !== 'fast') throw new GuiError('invalid_args');
     if (request.speed_percent !== undefined && (!isGuiSpeed(request.speed_percent) || ['state', 'wait', 'settings_read', 'tools_read', 'stop'].includes(request.name))) throw new GuiError('invalid_args');
     const args = request.args === undefined ? {} : request.args; record(args);
     switch (request.name) {
-        case 'state': case 'stop': case 'disconnect': keys(args, []); break;
+        case 'state': case 'stop': case 'disconnect': case 'aerosync_open': case 'aerosync_compare': case 'aerosync_close': keys(args, []); break;
         case 'connect':
             keys(args, ['profile_id']);
             if (typeof args.profile_id !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(args.profile_id)) throw new GuiError('invalid_args'); break;
@@ -308,6 +325,10 @@ export class GuiController {
             // own typed operations run; every other mutation stays blocked.
             if (snapshot.settings?.open && !(SETTINGS_INTENTS as readonly string[]).includes(intent)) throw new GuiError('blocked');
             if (intent !== 'tools_read' && (TOOLS_INTENTS as readonly string[]).includes(intent) && snapshot.tools?.protected) throw new GuiError('blocked');
+            // The AeroSync window covers the panels: only its own intents run while it is open.
+            if (snapshot.aerosync?.open && !(AEROSYNC_INTENTS as readonly string[]).includes(intent)) throw new GuiError('blocked');
+            // A sync or a restore runs inside the window: closing it or starting a scan would leave it with no progress and no Stop.
+            if (snapshot.aerosync?.busy && (AEROSYNC_INTENTS as readonly string[]).includes(intent)) throw new GuiError('busy');
             if (this.busy || (this.lease && this.lease.owner.id !== owner.id)) throw new GuiError('busy');
             if ((intent === 'navigate' || intent === 'refresh' || intent === 'select') &&
                 (!snapshot.panels[panelArg(args)] || snapshot.panels[panelArg(args)]?.loading)) throw new GuiError('blocked');
@@ -365,6 +386,12 @@ export class GuiController {
                         if (connectOutcome !== 'connected') throw new GuiError('action_failed');
                         break;
                     case 'show_view': await h.showView(args.view as 'servers' | 'files'); break;
+                    case 'aerosync_open': case 'aerosync_compare': case 'aerosync_close': {
+                        const run = intent === 'aerosync_open' ? h.aeroSyncOpen : intent === 'aerosync_compare' ? h.aeroSyncCompare : h.aeroSyncClose;
+                        if (!run) throw new GuiError('action_failed');
+                        await run();
+                        break;
+                    }
                     case 'navigate': navigationPath = await h.navigate(panelArg(args), args.path as string); break;
                     case 'refresh': await h.refresh(panelArg(args)); break;
                     case 'select': h.select(panelArg(args), (args.names ?? []) as string[], (args.mode ?? 'names') as 'names' | 'all' | 'none'); break;
@@ -415,6 +442,9 @@ export class GuiController {
                     return !!p && !p.loading && (typeof navigationPath !== 'string' || p.path === boundedText(navigationPath));
                 }
                 if (intent === 'show_view') return state.view === args.view;
+                if (intent === 'aerosync_open') return !!state.aerosync?.open;
+                if (intent === 'aerosync_close') return !state.aerosync?.open;
+                if (intent === 'aerosync_compare') return !!state.aerosync?.open && !state.aerosync.scanning && state.aerosync.entries !== null;
                 if (intent === 'disconnect') return !state.connected;
                 if (intent === 'settings_open') return state.settings?.open === args.area;
                 if (intent === 'tools_open') return !!state.tools?.open && (args.tool === undefined || state.tools.visible_panels.includes(args.tool as ToolPanel));
@@ -443,6 +473,7 @@ export class GuiController {
                 if (intent === 'connect' && this.state().blocked) throw new GuiError('pending_human');
                 await this.delay(25, epoch, deadline);
             }
+            if (intent === 'aerosync_compare' && this.state().aerosync?.scan_failed) throw new GuiError('action_failed', 'the scan failed: its result is not a comparison');
             if (intent === 'navigate') {
                 const panel = panelArg(args);
                 const before = snapshot.panels[panel]?.path;
@@ -477,7 +508,7 @@ export class GuiController {
                     this.lease = { owner, intent: null }; this.publish(); this.retain();
                 } else this.interrupt();
             }
-            return { ok: false, error: error instanceof GuiError ? error.code : 'action_failed', snapshot: this.state() };
+            return { ok: false, error: error instanceof GuiError ? error.code : 'action_failed', ...(error instanceof GuiError && error.detail ? { detail: error.detail } : {}), snapshot: this.state() };
         } finally {
             if (this.settingsScope === settingsScope) this.settingsScope = null;
             returned = true;

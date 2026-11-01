@@ -1046,6 +1046,8 @@ const App: React.FC = () => {
     initialTab: AeroSyncTab;
     context: AeroSyncContext;
   } | null>(null);
+  // A sync or a restore runs inside the window, which owns their state.
+  const [aeroSyncBusy, setAeroSyncBusy] = useState(false);
   // CO-5: SFTP delta eligibility prompt. When the unified runner is
   // about to execute a connected-SFTP preset, we run
   // `sftp_probe_delta_eligibility`; if the verdict is "not eligible",
@@ -11737,6 +11739,7 @@ const App: React.FC = () => {
           // having applied them: the Plan then blocks Execute until a rescan
           // works, rather than let Mirror delete what the compare never hid.
           let applied = appliedCompareFilters('recursive', userExcludes, backupDir);
+          let compareFailed = false;
           try {
             const report = await invoke<CompareReport>('compare_local_directories', {
               leftPath,
@@ -11749,6 +11752,7 @@ const App: React.FC = () => {
           } catch (err) {
             // Stopped from the dialog, which already shows it as stopped.
             if (isCompareCancelled(err)) return;
+            compareFailed = true;
             if (isScanIncompleteError(err)) {
               // CLAUDE-AV-B3-13: one of the two local walks did not see its
               // whole tree. A dual-local pair deletes in BOTH directions, so
@@ -11771,7 +11775,7 @@ const App: React.FC = () => {
           if (aeroSyncCompareSeqRef.current !== mySeq) return;
           setAeroSync((prev) =>
             prev
-              ? { ...prev, context: { ...prev.context, compareResult: resolved, compareLoading: false, ...applied } }
+              ? { ...prev, context: { ...prev.context, compareResult: resolved, compareLoading: false, compareFailed, ...applied } }
               : prev,
           );
         })();
@@ -11851,6 +11855,7 @@ const App: React.FC = () => {
         let resolved: CompareResult;
         // See the local-local branch: the flat fallback applies no exclusions.
         let applied = appliedCompareFilters('recursive', userExcludes, backupDir);
+        let compareFailed = false;
         try {
           const compareArgs: Record<string, unknown> = {
             localPath: currentLocalPath,
@@ -11871,6 +11876,7 @@ const App: React.FC = () => {
         } catch (err) {
           // Stopped from the dialog, which already shows it as stopped.
           if (isCompareCancelled(err)) return;
+          compareFailed = true;
           if (isProviderConn && cryptCompareActive) {
             // Crypt overlay active: the backend failed closed (vault missing,
             // wrong overlay key, or zero rows decrypted). Do NOT fall back to a
@@ -11907,7 +11913,7 @@ const App: React.FC = () => {
         if (aeroSyncCompareSeqRef.current !== mySeq) return;
         setAeroSync((prev) =>
           prev
-            ? { ...prev, context: { ...prev.context, compareResult: resolved, compareLoading: false, ...applied } }
+            ? { ...prev, context: { ...prev.context, compareResult: resolved, compareLoading: false, compareFailed, ...applied } }
             : prev,
         );
       })();
@@ -16953,8 +16959,22 @@ const App: React.FC = () => {
       ai: aiPublicSettings,
     },
     tools: guiToolsState,
+    aerosync: {
+      open: !!aeroSync,
+      scanning: !!aeroSync?.context.compareLoading,
+      entries: aeroSync?.context.compareResult ? aeroSync.context.compareResult.entries.length : null,
+      busy: aeroSyncBusy,
+      scan_failed: !!aeroSync?.context.compareFailed,
+    },
   }, {
     showView: view => setShowConnectionScreen(view === 'servers'),
+    aeroSyncOpen: () => openAeroSync('compare'),
+    aeroSyncCompare: () => {
+      // With one side alone the window opens with nothing to scan, and the caller would wait for a result that never comes.
+      if (!showDualLocalPanel && !(isConnected && showRemotePanel)) throw new GuiError('blocked', 'needs a connected server or the second local panel');
+      openAeroSync('compare', [], AEROSYNC_DEFAULT_BACKUP_DIR, true);
+    },
+    aeroSyncClose: () => setAeroSync(null),
     navigate: async (panel, path) => {
       const target = panel === 'remote' ? await changeRemoteDirectory(path, undefined, !!(rcloneCryptVaultId || aeroCryptVaultId))
         : panel === 'local2' ? await changeLocalDirectory2(path) : await changeLocalDirectory(path);
@@ -17488,6 +17508,7 @@ const App: React.FC = () => {
             initialTab={aeroSync.initialTab}
             context={aeroSync.context}
             onClose={() => setAeroSync(null)}
+            onBusyChange={setAeroSyncBusy}
             onApplyMirrorLeftToRight={handleCompareMirrorLeftToRight}
             onApplyMirrorRightToLeft={handleCompareMirrorRightToLeft}
             onExecutePreset={executeSyncPresetPlan}
@@ -19283,6 +19304,7 @@ const App: React.FC = () => {
                             ? 'bg-blue-500 hover:bg-blue-600 text-white shadow-sm'
                             : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200'
                         }`}
+                        data-testid="aerosync.open"
                         title={t('aerosync.toolbarButton') || t('statusBar.syncFiles')}
                         aria-label={t('aerosync.toolbarButton') || t('statusBar.syncFiles')}
                       >
