@@ -767,7 +767,8 @@ pub fn benchmark_remote_roots(initial_path: &str, report_id: &str) -> (String, S
     // Drop the leading dot: dot-prefixed folders (`.aeroftp-bench`) are rejected by
     // some providers (Internxt, certain WebDAV servers) that treat them as hidden
     // or invalid names. Plain `aeroftp-bench` is portable across all 22 backends.
-    let base = initial_path.trim().trim_end_matches('/');
+    // As given: `/srv/data ` is its own folder, and the run starts in it.
+    let base = initial_path.trim_end_matches('/');
     let bench_base = if base.is_empty() {
         "aeroftp-bench".to_string()
     } else {

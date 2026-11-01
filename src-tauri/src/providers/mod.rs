@@ -76,10 +76,12 @@ pub mod s3;
 pub(crate) mod s3_delta;
 pub mod s3_delta_baseline;
 pub mod s3_delta_plan;
+pub mod scp;
 pub mod served_file;
 pub mod sftp;
 #[cfg(test)]
 mod share_link_capability_guard;
+pub mod shell_quote;
 pub mod sts;
 pub mod swift;
 pub mod totp_helper;

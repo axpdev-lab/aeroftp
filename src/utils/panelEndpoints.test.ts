@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, expect, it } from 'vitest';
-import { createLocalEndpoint, createRemoteEndpoint, getEndpointCapabilities, getPanelPairKind } from './panelEndpoints';
+import { createLocalEndpoint, createOverlayEndpoint, createRemoteEndpoint, getEndpointCapabilities, getPanelPairKind } from './panelEndpoints';
 import type { ServerProfile } from '../types';
 
 const profile = (id: string, protocol: ServerProfile['protocol']): ServerProfile => ({
@@ -36,5 +36,19 @@ describe('panel endpoint helpers', () => {
         expect(sftpCaps.canDeltaSync).toBe(true);
         expect(driveCaps.canDeltaSync).toBe(false);
         expect(driveCaps.canServerSideCopy).toBe(true);
+    });
+
+    it('keeps a path as given, spaces included: only an empty one takes the fallback', () => {
+        // `/reports ` is its own folder: a transfer planned on `/reports`
+        // would reach another one.
+        const sftp = profile('prod', 'sftp');
+        expect(createRemoteEndpoint(sftp, '/reports ').path).toBe('/reports ');
+        expect(createRemoteEndpoint({ ...sftp, initialPath: '/reports ' }).path).toBe('/reports ');
+        expect(createRemoteEndpoint({ ...sftp, initialPath: '   ' }, '').path).toBe('   ');
+        expect(createRemoteEndpoint({ ...sftp, initialPath: '' }).path).toBe('/');
+        expect(createLocalEndpoint('local', ' /home/u/a ').path).toBe(' /home/u/a ');
+        expect(createLocalEndpoint('local', '').path).toBe('');
+        const overlay = createOverlayEndpoint({ sessionId: 's1', vaultPath: '/v.aerovault', source: 'local', path: ' a' });
+        expect(overlay.path).toBe(' a');
     });
 });

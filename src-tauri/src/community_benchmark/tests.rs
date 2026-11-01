@@ -537,8 +537,9 @@ fn the_scratch_base_joins_the_start_path_on_a_folder_boundary() {
     // and dropped it.
     let (base, _) = benchmark_remote_roots("aero", "rid");
     assert_eq!(base, "aero/aeroftp-bench");
-    let (base, _) = benchmark_remote_roots(" /srv/data/ ", "rid");
-    assert_eq!(base, "/srv/data/aeroftp-bench");
+    // A start path whose name ends in a space is that folder, not another.
+    let (base, _) = benchmark_remote_roots("/srv/data ", "rid");
+    assert_eq!(base, "/srv/data /aeroftp-bench");
 }
 
 #[test]
@@ -630,6 +631,14 @@ mod engine_runs {
         /// A folder three levels deep is refused, as FileLu refused the run
         /// folder under a prefix folder it had just created.
         refuse_deep_mkdir: bool,
+        /// The folder `pwd` reports, `/` when unset.
+        cwd: Option<String>,
+        /// `pwd` never answers, as an FTP server that stopped.
+        hang_pwd: bool,
+        /// The provider it passes for, SFTP when unset.
+        kind: Option<ProviderType>,
+        /// Every folder asked for, in order.
+        mkdirs: Vec<String>,
     }
 
     struct MemRemote(Arc<Mutex<Remote>>);
@@ -644,7 +653,7 @@ mod engine_runs {
             self
         }
         fn provider_type(&self) -> ProviderType {
-            ProviderType::Sftp
+            self.0.lock().unwrap().kind.unwrap_or(ProviderType::Sftp)
         }
         fn display_name(&self) -> String {
             "mem".into()
@@ -676,7 +685,16 @@ mod engine_runs {
             Ok(out)
         }
         async fn pwd(&mut self) -> Result<String, ProviderError> {
-            Ok("/".into())
+            if self.0.lock().unwrap().hang_pwd {
+                std::future::pending::<()>().await;
+            }
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .cwd
+                .clone()
+                .unwrap_or_else(|| "/".into()))
         }
         async fn cd(&mut self, _p: &str) -> Result<(), ProviderError> {
             Ok(())
@@ -728,6 +746,7 @@ mod engine_runs {
             Ok(())
         }
         async fn mkdir(&mut self, p: &str) -> Result<(), ProviderError> {
+            self.0.lock().unwrap().mkdirs.push(p.into());
             if self.0.lock().unwrap().refuse_deep_mkdir && p.matches('/').count() >= 3 {
                 return Err(ProviderError::ServerError("Folder not found".into()));
             }
@@ -891,6 +910,87 @@ mod engine_runs {
         remote.dirs.insert("/data".into());
         let state = Arc::new(Mutex::new(remote));
         (state.clone(), Box::new(MemRemote(state)))
+    }
+
+    /// A relative start path is the folder connect entered, which the
+    /// session stands in: the scratch folder joined to it again was created
+    /// in `team /team /aeroftp-bench`, or not at all. A `..` in it is taken
+    /// with the folder before it: `docs/../team ` stood in `/home/u/team `
+    /// unseen, and the scratch folder went to `docs/../team /aeroftp-bench`
+    /// under it, which a provider that keeps `..` as a name cannot create.
+    #[tokio::test]
+    async fn a_relative_start_path_is_applied_once() {
+        for start in ["team ", "docs/../team ", "./docs/../team /"] {
+            let (state, provider) = remote();
+            let home = ["/data", "/home", "/home/u", "/home/u/team "].map(String::from);
+            {
+                let mut r = state.lock().unwrap();
+                r.cwd = Some("/home/u/team ".into());
+                r.dirs.extend(home.clone());
+            }
+            let opts = options(BenchmarkLevel::Quick, "1K", None);
+            let outcome = run(provider, start, opts, &Silent).await.unwrap();
+            assert!(
+                outcome.report.summary.errors.is_empty(),
+                "{start:?}: {:?}",
+                outcome.report.summary.errors
+            );
+            let r = state.lock().unwrap();
+            // Every folder asked for is where the session stands, none
+            // relative.
+            assert_eq!(r.mkdirs[0], "/home/u/team /aeroftp-bench", "{start:?}");
+            assert!(
+                r.mkdirs
+                    .iter()
+                    .all(|dir| dir.starts_with('/') && !dir.contains("team /team ")),
+                "{start:?}: {:?}",
+                r.mkdirs
+            );
+            assert!(
+                r.mkdirs
+                    .iter()
+                    .any(|dir| dir.starts_with("/home/u/team /aeroftp-bench/")),
+                "{start:?}: {:?}",
+                r.mkdirs
+            );
+            assert!(r.files.is_empty(), "{start:?}: {:?}", r.files.keys());
+            assert_eq!(r.dirs, BTreeSet::from(home), "{start:?}");
+        }
+    }
+
+    /// The run asks where the session stands before its scratch folder: for
+    /// a relative start path, and on Proton Drive for a relative prefix. A
+    /// `pwd` that never answers, as from an FTP server that stopped, held the
+    /// run past its profile timeout and its cancel; it ends at the timeout.
+    #[tokio::test]
+    async fn a_pwd_that_never_answers_ends_at_the_profile_timeout() {
+        for (kind, prefix) in [
+            (ProviderType::Sftp, None),
+            (ProviderType::Proton, Some("live-tests")),
+        ] {
+            let (state, provider) = remote();
+            {
+                let mut r = state.lock().unwrap();
+                r.hang_pwd = true;
+                r.kind = Some(kind);
+            }
+            let mut opts = options(BenchmarkLevel::Quick, "1K", None);
+            opts.profile_timeout_secs = 1;
+            opts.test_root_prefix = prefix.map(str::to_string);
+            let outcome = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                run(provider, "team", opts, &Silent),
+            )
+            .await
+            .unwrap_or_else(|_| panic!("{kind:?}: the run waited on pwd past its timeout"));
+            let error = match outcome {
+                Err(error) => error,
+                Ok(_) => panic!("{kind:?}: the run stopped before its scratch folder"),
+            };
+            assert!(error.contains("timed out"), "{kind:?}: {error}");
+            let r = state.lock().unwrap();
+            assert_eq!(r.dirs, BTreeSet::from(["/data".to_string()]), "{kind:?}");
+        }
     }
 
     #[tokio::test]

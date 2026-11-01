@@ -9682,8 +9682,12 @@ impl CliBase {
     }
 
     /// The base of a connected provider: Proton Drive's start folder is where
-    /// its session stands right after connecting.
+    /// its session stands right after connecting, and a relative initial
+    /// folder is the folder the session entered (`util::start_folder`): a
+    /// base left relative was applied twice and `a.txt` reached
+    /// `docs/docs/a.txt`.
     async fn for_provider(path: impl Into<String>, provider: &mut dyn StorageProvider) -> Self {
+        let path = ftp_client_gui_lib::util::start_folder::as_entered(&path.into(), provider).await;
         let start_folder = if provider.provider_type() == ProviderType::Proton {
             Some(provider.pwd().await.unwrap_or_else(|_| "/".to_string()))
         } else {
@@ -30978,7 +30982,7 @@ async fn connect_mtp_device_profile(
 
     // GUI parity: land on saved remote path when set. Absolute path resolution
     // still works if cd fails; warn and keep listing via initialPath join.
-    if !initial_path.trim().is_empty() && initial_path.trim() != "/" {
+    if !initial_path.is_empty() && initial_path != "/" {
         if let Err(e) = mtp.cd(&initial_path).await {
             if !cli.quiet {
                 eprintln!(
@@ -30989,7 +30993,7 @@ async fn connect_mtp_device_profile(
         }
     }
 
-    let path_out = if initial_path.trim().is_empty() {
+    let path_out = if initial_path.is_empty() {
         "/".to_string()
     } else {
         initial_path
@@ -31035,7 +31039,7 @@ async fn connect_mtp_device_profile_agent(
         .await
         .map_err(|e| format!("Failed to open MTP device: {}", e))?;
 
-    if !initial_path.trim().is_empty() && initial_path.trim() != "/" {
+    if !initial_path.is_empty() && initial_path != "/" {
         if let Err(e) = mtp.cd(&initial_path).await {
             // Soft: agent list/get still resolve absolute paths from initial_path.
             eprintln!(
@@ -31045,7 +31049,7 @@ async fn connect_mtp_device_profile_agent(
         }
     }
 
-    let path_out = if initial_path.trim().is_empty() {
+    let path_out = if initial_path.is_empty() {
         "/".to_string()
     } else {
         initial_path
@@ -32551,7 +32555,8 @@ fn resolve_cli_remote_path_in(
     emit_resolution_note: bool,
     start_folder: Option<&str>,
 ) -> String {
-    let base = initial_path.trim();
+    // As given: a folder name may begin or end with a space.
+    let base = initial_path;
     // No meaningful initial_path: pass user_path through with minimal
     // rewriting:
     //   - empty user_path -> "" so the provider applies its canonical
@@ -35701,7 +35706,7 @@ async fn cmd_get(
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
 ) -> i32 {
-    if remote.trim().is_empty() {
+    if remote.is_empty() {
         print_error(format, "Missing remote path for get", 5);
         return 5;
     }
@@ -38025,7 +38030,7 @@ async fn cmd_put(
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
 ) -> i32 {
-    if local.trim().is_empty() {
+    if local.is_empty() {
         print_error(format, "Missing local path for put", 5);
         return 5;
     }
@@ -40482,7 +40487,7 @@ fn print_versions(versions: &[FileVersion], path: &str, format: OutputFormat) {
 
 /// `versions list`: list previous versions of a remote file.
 async fn cmd_versions_list(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32 {
-    if path.trim().is_empty() {
+    if path.is_empty() {
         print_error(format, "Missing remote file path for 'versions list'", 5);
         return 5;
     }
@@ -40522,7 +40527,7 @@ async fn cmd_versions_get(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
-    if path.trim().is_empty() {
+    if path.is_empty() {
         print_error(format, "Missing remote file path for 'versions get'", 5);
         return 5;
     }
@@ -40534,7 +40539,7 @@ async fn cmd_versions_get(
         );
         return 5;
     }
-    if local.trim().is_empty() {
+    if local.is_empty() {
         print_error(
             format,
             "Missing local destination path for 'versions get'",
@@ -40606,7 +40611,7 @@ async fn cmd_versions_restore(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
-    if path.trim().is_empty() {
+    if path.is_empty() {
         print_error(format, "Missing remote file path for 'versions restore'", 5);
         return 5;
     }
@@ -40662,7 +40667,7 @@ async fn cmd_versions_purge(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
-    if path.trim().is_empty() {
+    if path.is_empty() {
         print_error(format, "Missing remote file path for 'versions purge'", 5);
         return 5;
     }
@@ -41039,8 +41044,24 @@ fn rcat_staging_file() -> Result<tempfile::NamedTempFile, String> {
     tempfile::NamedTempFile::new_in(&dir).map_err(|e| e.to_string())
 }
 
+#[cfg(test)]
+thread_local! {
+    /// What `rcat` reads instead of stdin, put there by a test: a test reading
+    /// the real stdin would wait on the terminal it runs in.
+    static TEST_RCAT_STDIN: std::cell::RefCell<Option<Vec<u8>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// What `rcat` uploads: stdin.
+fn rcat_input() -> Box<dyn Read> {
+    #[cfg(test)]
+    if let Some(bytes) = TEST_RCAT_STDIN.with(|slot| slot.borrow_mut().take()) {
+        return Box::new(io::Cursor::new(bytes));
+    }
+    Box::new(io::stdin().lock())
+}
+
 async fn cmd_rcat(url: &str, remote: &str, cli: &Cli, format: OutputFormat) -> i32 {
-    if remote.trim().is_empty() {
+    if remote.is_empty() {
         print_error(format, "Missing remote path for rcat", 5);
         return 5;
     }
@@ -41065,7 +41086,7 @@ async fn cmd_rcat(url: &str, remote: &str, cli: &Cli, format: OutputFormat) -> i
         }
     };
 
-    let bytes = match io::copy(&mut io::stdin().lock(), &mut temp) {
+    let bytes = match io::copy(&mut rcat_input(), &mut temp) {
         Ok(bytes) => bytes,
         Err(e) => {
             print_error(format, &format!("Cannot read stdin: {}", e), 2);
@@ -86886,6 +86907,21 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_cli_remote_path_keeps_the_spaces_of_the_base() {
+        // `/reports ` and `/reports` are two folders: the profile's base is
+        // joined as given.
+        assert_eq!(
+            resolve_cli_remote_path("/reports ", "a.txt"),
+            "/reports /a.txt"
+        );
+        assert_eq!(
+            resolve_cli_remote_path("/reports ", "/a.txt"),
+            "/reports /a.txt"
+        );
+        assert_eq!(resolve_cli_remote_path("/ reports", ""), "/ reports");
+    }
+
+    #[test]
     fn test_resolve_cli_remote_path_user_already_includes_base() {
         assert_eq!(
             resolve_cli_remote_path("/www.example.com", "/www.example.com/app"),
@@ -89654,6 +89690,10 @@ mod tests {
         /// Opt-in: `stat` answers for a listed directory, and for a file as a
         /// listing names it, instead of not found.
         stat_listed: bool,
+        /// Opt-in: the folder the session stands in, which `pwd` answers. A
+        /// relative path is listed under it, as FTP, SFTP and the cloud
+        /// providers that keep a current folder resolve one.
+        cwd: Option<String>,
     }
 
     impl MemTreeProvider {
@@ -89721,16 +89761,22 @@ mod tests {
             true
         }
         async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            let path = match &self.cwd {
+                Some(cwd) if !path.starts_with('/') => {
+                    format!("{}/{}", cwd.trim_end_matches('/'), path)
+                }
+                _ => path.to_string(),
+            };
             let mut listing = self
                 .dirs
-                .get(path)
+                .get(&path)
                 .cloned()
-                .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+                .ok_or_else(|| ProviderError::NotFound(path.clone()))?;
             listing.retain(|entry| !self.hidden.contains(&entry.path));
             Ok(listing)
         }
         async fn pwd(&mut self) -> Result<String, ProviderError> {
-            Ok("/".to_string())
+            Ok(self.cwd.clone().unwrap_or_else(|| "/".to_string()))
         }
         async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
             Ok(())
@@ -89937,6 +89983,14 @@ mod tests {
         finish_download: bool,
         /// Refuses ranged hashing before the ordinary download stalls.
         refuse_hash_ranges: bool,
+        /// Keeps file versions: each version call answers, none are listed.
+        versions: bool,
+        /// Completes an upload instead of stalling.
+        finish_upload: bool,
+        /// The remote paths `stat`, an upload and the version calls were
+        /// asked for, and the local path a version was downloaded to, across
+        /// the clones.
+        asked: Arc<std::sync::Mutex<Vec<String>>>,
     }
 
     impl StallingProvider {
@@ -90078,10 +90132,48 @@ mod tests {
         async fn upload(
             &mut self,
             _local_path: &str,
-            _remote_path: &str,
+            remote_path: &str,
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
+            self.asked.lock().unwrap().push(remote_path.to_string());
+            if self.finish_upload {
+                return Ok(());
+            }
             std::future::pending().await
+        }
+        fn supports_versions(&self) -> bool {
+            self.versions
+        }
+        async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
+            self.asked.lock().unwrap().push(path.to_string());
+            Ok(Vec::new())
+        }
+        async fn download_version(
+            &mut self,
+            path: &str,
+            _version_id: &str,
+            local_path: &str,
+        ) -> Result<(), ProviderError> {
+            let mut asked = self.asked.lock().unwrap();
+            asked.push(path.to_string());
+            asked.push(local_path.to_string());
+            Ok(())
+        }
+        async fn restore_version(
+            &mut self,
+            path: &str,
+            _version_id: &str,
+        ) -> Result<(), ProviderError> {
+            self.asked.lock().unwrap().push(path.to_string());
+            Ok(())
+        }
+        async fn delete_version(
+            &mut self,
+            path: &str,
+            _version_id: &str,
+        ) -> Result<(), ProviderError> {
+            self.asked.lock().unwrap().push(path.to_string());
+            Ok(())
         }
         async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
             Ok(())
@@ -90102,6 +90194,7 @@ mod tests {
             Err(ProviderError::NotSupported("rename".to_string()))
         }
         async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            self.asked.lock().unwrap().push(path.to_string());
             if self.stat_stalls {
                 std::future::pending::<()>().await;
             }
@@ -90333,6 +90426,142 @@ mod tests {
             .await
         });
         assert_eq!(code, 130, "-1 means the put was still running");
+    }
+
+    /// A remote name of spaces only is a name: `versions` list, get, restore
+    /// and purge, `get` and `rcat` refused it as a missing argument (exit 5)
+    /// before connecting.
+    #[test]
+    fn a_remote_name_of_spaces_is_not_a_missing_path() {
+        // Each reaches the provider with the name as given: a trim after the
+        // argument check would keep these exit codes and lose the name.
+        let spaces = || "   ".to_string();
+        assert_eq!(
+            asked_of(|_| async {
+                cmd_versions_list("memory://", "   ", &quiet_cli(), OutputFormat::Json).await
+            }),
+            (0, vec![spaces()])
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin").to_string_lossy().into_owned();
+        assert_eq!(
+            asked_of(|_| async {
+                cmd_versions_get(
+                    "memory://",
+                    "   ",
+                    "v1",
+                    &local,
+                    &quiet_cli(),
+                    OutputFormat::Json,
+                )
+                .await
+            }),
+            (0, vec![spaces(), local.clone()])
+        );
+        assert_eq!(
+            asked_of(|_| async {
+                cmd_versions_restore("memory://", "   ", "v1", &quiet_cli(), OutputFormat::Json)
+                    .await
+            }),
+            (0, vec![spaces()])
+        );
+        assert_eq!(
+            asked_of(|_| async {
+                cmd_versions_purge(
+                    "memory://",
+                    "   ",
+                    "v1",
+                    true,
+                    &quiet_cli(),
+                    OutputFormat::Json,
+                )
+                .await
+            }),
+            (0, vec![spaces()])
+        );
+        assert_eq!(
+            asked_of(|_| async {
+                TEST_RCAT_STDIN.with(|slot| *slot.borrow_mut() = Some(b"x".to_vec()));
+                cmd_rcat("memory://", "   ", &quiet_cli(), OutputFormat::Json).await
+            }),
+            (0, vec![spaces()])
+        );
+
+        // The get of `   ` asks the provider for `   `, starts, and is stopped.
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let (code, asked) = asked_of(|cancelled| async move {
+            cmd_get(
+                "memory://",
+                "   ",
+                Some(local.as_str()),
+                false,
+                1,
+                false,
+                &cli,
+                OutputFormat::Json,
+                cancelled,
+            )
+            .await
+        });
+        assert_eq!(code, 130, "the get of `   ` started and was stopped");
+        assert!(asked.contains(&spaces()), "{asked:?}");
+    }
+
+    /// So is a local name: `put` and `versions get` refused it the same way.
+    #[test]
+    fn a_local_name_of_spaces_is_not_a_missing_path() {
+        // A version is downloaded to `   ` as given.
+        assert_eq!(
+            asked_of(|_| async {
+                cmd_versions_get(
+                    "memory://",
+                    "/f.bin",
+                    "v1",
+                    "   ",
+                    &quiet_cli(),
+                    OutputFormat::Json,
+                )
+                .await
+            }),
+            (0, vec!["/f.bin".to_string(), "   ".to_string()])
+        );
+        // `put` looks `   ` up as a local file: none is there, so it stops at
+        // that (exit 2), past the check for a missing argument (exit 5).
+        let code = against_stalling(StallingProvider::default(), |cancelled| async move {
+            cmd_put(
+                "memory://",
+                "   ",
+                Some("/f.bin"),
+                false,
+                false,
+                false,
+                None,
+                &quiet_cli(),
+                OutputFormat::Json,
+                cancelled,
+            )
+            .await
+        });
+        assert_eq!(code, 2);
+    }
+
+    /// The exit code of `command` against a provider that keeps versions and
+    /// completes uploads, and the paths it was asked for.
+    fn asked_of<F: std::future::Future<Output = i32>>(
+        command: impl FnOnce(Arc<AtomicBool>) -> F + Send,
+    ) -> (i32, Vec<String>) {
+        let provider = StallingProvider {
+            versions: true,
+            finish_upload: true,
+            ..StallingProvider::default()
+        };
+        let asked = Arc::clone(&provider.asked);
+        let code = against_stalling(provider, command);
+        let asked = asked.lock().unwrap().clone();
+        (code, asked)
     }
 
     /// `get` of `/f.bin` into a local file that already holds "keep me", with
@@ -97360,6 +97589,89 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         let root = listed(collect_cli_list_entries(&mut other, &base, &options("/"), &cli).await);
         assert_eq!(omitted, root);
         assert_eq!(omitted.1, vec!["home.txt".to_string()]);
+    }
+
+    /// A relative initial folder is where connect put the session, and the
+    /// provider resolves a relative path against it. The base was left
+    /// relative, so `ls` with the profile's `root` asked for `root`, which the
+    /// provider standing in `/root` listed as `/root/root`: the folder once,
+    /// not twice.
+    #[tokio::test]
+    async fn a_relative_initial_folder_is_applied_once() {
+        let cli = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| Cli::try_parse_from(["aeroftp-cli", "ls", "_"]).expect("ls parses"))
+            .expect("parse thread")
+            .join()
+            .expect("parse thread finished");
+        let options = |path| CliListOptions {
+            path,
+            sort: "name",
+            reverse: false,
+            all: true,
+            limit: None,
+            files_only: false,
+            dirs_only: false,
+            emit_resolution_note: false,
+        };
+        let names = |list: Result<CliListEntries, CliListError>| match list {
+            Ok(list) => list.entries.into_iter().map(|e| e.name).collect::<Vec<_>>(),
+            Err(_) => panic!("listing failed"),
+        };
+        let mut provider = MemTreeProvider {
+            cwd: Some("/root".to_string()),
+            ..MemTreeProvider::tree(&[("a.txt", 1), ("sub/b.txt", 1)])
+        };
+        let base = CliBase::for_provider("root", &mut provider).await;
+        assert_eq!(base.path, "/root");
+        assert_eq!(
+            names(collect_cli_list_entries(&mut provider, &base, &options(""), &cli).await),
+            ["sub", "a.txt"]
+        );
+        assert_eq!(
+            names(collect_cli_list_entries(&mut provider, &base, &options("sub"), &cli).await),
+            ["b.txt"]
+        );
+        // The login home's folder on FTP and SFTP, and a base written with a
+        // trailing slash or a trailing space.
+        for (cwd, initial) in [
+            ("/home/u/root", "root/"),
+            ("/home/u/re ports ", "re ports "),
+        ] {
+            let mut home = MemTreeProvider {
+                cwd: Some(cwd.to_string()),
+                ..Default::default()
+            };
+            assert_eq!(CliBase::for_provider(initial, &mut home).await.path, cwd);
+        }
+    }
+
+    /// A provider that keeps the folder as a prefix of its own (S3's
+    /// `bucket/backups/`) stands at its root: the base stays as given. So does
+    /// a relative base the session does not stand in, and an absolute one.
+    #[tokio::test]
+    async fn a_base_the_session_does_not_stand_in_is_kept() {
+        let mut root = MemTreeProvider::default();
+        assert_eq!(
+            CliBase::for_provider("bucket/backups/", &mut root)
+                .await
+                .path,
+            "bucket/backups/"
+        );
+        let mut elsewhere = MemTreeProvider {
+            cwd: Some("/mydocs".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            CliBase::for_provider("docs", &mut elsewhere).await.path,
+            "docs"
+        );
+        assert_eq!(
+            CliBase::for_provider("/reports ", &mut elsewhere)
+                .await
+                .path,
+            "/reports "
+        );
     }
 
     /// The TUI size of a folder counted what a looping listing sent it

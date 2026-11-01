@@ -2410,8 +2410,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 && !profile.aeroCryptOverlay && !profile.password).map(profile => ({
                 id: profile.id,
                 name: profile.name,
-                root: profile.initialPath?.trim()
-                    ? `/${profile.initialPath.trim().replace(/^\/+|\/+$/g, '')}` : '/',
+                root: profile.initialPath
+                    ? `/${profile.initialPath.replace(/^\/+|\/+$/g, '')}` : '/',
             })).filter(profile => profile.id && profile.root.split('/').every(part => part !== '.' && part !== '..'));
             setRemoteWorkerProfiles(eligible);
             setSelectedRemoteWorkerIds(previous => previous.filter(id => eligible.some(profile => profile.id === id)));

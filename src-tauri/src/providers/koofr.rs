@@ -530,30 +530,32 @@ impl KoofrProvider {
     }
 
     fn normalize_path(path: &str) -> String {
-        let trimmed = path.trim().replace('\\', "/");
-        if trimmed.is_empty() || trimmed == "/" {
+        // Spaces are part of a name: ` a` and `a ` are not `a`.
+        let path = path.replace('\\', "/");
+        if path.is_empty() || path == "/" {
             return "/".into();
         }
-        let p = if trimmed.starts_with('/') {
-            trimmed
+        let p = if path.starts_with('/') {
+            path
         } else {
-            format!("/{}", trimmed)
+            format!("/{}", path)
         };
         p.trim_end_matches('/').to_string()
     }
 
     fn resolve_path(&self, path: &str) -> String {
-        let trimmed = path.trim();
-        if trimmed.is_empty() || trimmed == "." {
+        if path.is_empty() || path == "." {
             return self.current_path.clone();
         }
-        let normalized = Self::normalize_path(trimmed);
-        if normalized.starts_with('/') {
-            normalized
-        } else {
-            let base = self.current_path.trim_end_matches('/');
-            format!("{}/{}", base, normalized)
+        // The input's leading slash decides: normalize_path always prepends
+        // one, so its result made every relative path absolute and skipped
+        // the current_path join. It takes `\` for a separator, so a leading
+        // one is the root too.
+        if path.starts_with(['/', '\\']) {
+            return Self::normalize_path(path);
         }
+        let base = self.current_path.trim_end_matches('/');
+        Self::normalize_path(&format!("{}/{}", base, path))
     }
 
     /// Split "/a/b/file.txt" → ("/a/b", "file.txt")
@@ -816,8 +818,8 @@ impl StorageProvider for KoofrProvider {
             .map(|f| self.file_to_entry(f, &resolved))
             .collect();
 
-        // Update current_path on successful listing
-        self.current_path = resolved;
+        // A listing does not move the current folder: `cd` does. Moved, a
+        // relative path listed twice reached `docs/docs`.
         Ok(entries)
     }
 
@@ -2123,6 +2125,28 @@ pub async fn koofr_empty_trash(
 #[cfg(test)]
 mod tests {
     #[test]
+    fn a_name_keeps_its_leading_and_trailing_spaces() {
+        // A name with a leading or trailing space is a name of its own, and a
+        // name of spaces only is not the current folder.
+        assert_eq!(super::KoofrProvider::normalize_path("/ a"), "/ a");
+        assert_eq!(super::KoofrProvider::normalize_path("/a /b "), "/a /b ");
+        let mut p = super::KoofrProvider::new(super::KoofrConfig {
+            email: "user@example.com".to_string(),
+            password: secrecy::SecretString::from("pass".to_string()),
+            initial_path: None,
+        });
+        p.current_path = "/Cloud".to_string();
+        assert_eq!(p.resolve_path("   "), "/Cloud/   ");
+        assert_eq!(p.resolve_path(" a"), "/Cloud/ a");
+        assert_eq!(p.resolve_path("/a "), "/a ");
+        // A leading backslash is the root, as normalize_path reads it.
+        assert_eq!(p.resolve_path("\\docs\\a "), "/docs/a ");
+        assert_eq!(p.resolve_path("sub\\a"), "/Cloud/sub/a");
+        // A relative path joins the current folder.
+        assert_eq!(p.resolve_path("child"), "/Cloud/child");
+    }
+
+    #[test]
     fn probe_contract_koofr_does_not_erase_http_failures() {
         let body = r#"{"error":{"code":"NotFound","message":"missing"}}"#;
         for status in [403, 429, 500] {
@@ -2306,6 +2330,49 @@ mod tests {
 
     /// A rename onto its own path is a no-op everywhere else; Koofr refused
     /// it (live on 2026-09-26). Nothing is sent.
+    /// A listing does not move the current folder: `cd` does. Koofr's
+    /// listing moved it, and with a relative path joined to the current
+    /// folder, a relative path listed twice (the CLI's sync doctor lists the
+    /// root it was given, then walks it) reached `/docs/docs`.
+    #[tokio::test]
+    async fn a_listing_leaves_the_current_folder_where_it_is() {
+        use std::sync::{Arc, Mutex};
+        let listed: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&listed);
+        let app = axum::Router::new().route(
+            "/mounts/M/files/list",
+            axum::routing::get(move |uri: axum::http::Uri| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let url = reqwest::Url::parse(&format!("http://h{uri}")).unwrap();
+                    let path = url
+                        .query_pairs()
+                        .find(|(k, _)| k == "path")
+                        .map(|(_, v)| v.to_string())
+                        .unwrap_or_default();
+                    seen.lock().unwrap().push(path);
+                    axum::Json(serde_json::json!({ "files": [] }))
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = KoofrProvider::new(KoofrConfig {
+            email: "u@example.com".to_string(),
+            password: secrecy::SecretString::from("p".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.mount_id = "M".to_string();
+        provider.api_base_override = Some(format!("http://{addr}"));
+
+        provider.list("docs").await.expect("first listing");
+        provider.list("docs").await.expect("second listing");
+        assert_eq!(*listed.lock().unwrap(), ["/docs", "/docs"]);
+        assert_eq!(provider.pwd().await.unwrap(), "/");
+    }
+
     #[tokio::test]
     async fn a_rename_onto_its_own_path_sends_nothing() {
         let (mut provider, calls) = provider_on_refusing_koofr().await;

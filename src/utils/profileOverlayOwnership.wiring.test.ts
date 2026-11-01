@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { transformWithOxc } from 'vite';
 import app from '../App.tsx?raw';
 import { assertOverlayActivationCurrent, profileOverlayApplyParams } from './profileOverlayUnlock';
-import { normCryptScope, resolveUsernameTemplate } from './cryptScope';
+import { normCryptScope, normLandingPath, resolveUsernameTemplate } from './cryptScope';
 
 function block(start: string, end: string): string {
   const a = app.indexOf(start);
@@ -41,7 +41,7 @@ async function activation(hold?: string, setup?: 'generation-error' | 'missing-u
   }
   const context = {
     crypto: setup === 'missing-uuid' ? {} : setup === 'uuid-error' ? { randomUUID: () => { throw new Error('synthetic UUID failure'); } } : crypto,
-    assertOverlayActivationCurrent, normCryptScope, resolveUsernameTemplate, profileOverlayApplyParams,
+    assertOverlayActivationCurrent, normCryptScope, normLandingPath, resolveUsernameTemplate, profileOverlayApplyParams,
     loadSavedServerProfiles: () => stage('profiles', [{
       id: 'old_profile', initialPath: '/', username: 'test',
       aeroCryptOverlay: { enabled: true, kind, remoteScope: '/Crypt' },

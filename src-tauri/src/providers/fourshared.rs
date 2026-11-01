@@ -427,11 +427,11 @@ impl FourSharedProvider {
 
     /// Normalize an absolute path (ensure starts with /, no trailing slash)
     fn normalize_path(path: &str) -> String {
-        let trimmed = path.trim();
-        if trimmed.is_empty() || trimmed == "/" || trimmed == "." || trimmed == "./" {
+        // Spaces are part of a name: ` a` and `a ` are not `a`.
+        if path.is_empty() || path == "/" || path == "." || path == "./" {
             return "/".to_string();
         }
-        let parts: Vec<&str> = trimmed
+        let parts: Vec<&str> = path
             .split('/')
             .filter(|s| !s.is_empty() && *s != "." && *s != "..")
             .collect();
@@ -447,12 +447,11 @@ impl FourSharedProvider {
     /// - "/Cloud" → "/Cloud" (absolute, as-is)
     /// - "Cloud" → current_path + "/Cloud" (relative)
     fn resolve_path(&self, path: &str) -> String {
-        let trimmed = path.trim();
-        if trimmed.is_empty() || trimmed == "." || trimmed == "./" {
+        if path.is_empty() || path == "." || path == "./" {
             return self.current_path.clone();
         }
-        if trimmed.starts_with('/') {
-            return Self::normalize_path(trimmed);
+        if path.starts_with('/') {
+            return Self::normalize_path(path);
         }
         // Relative path: join with current_path
         let base = if self.current_path == "/" {
@@ -460,7 +459,7 @@ impl FourSharedProvider {
         } else {
             self.current_path.clone()
         };
-        Self::normalize_path(&format!("{}/{}", base, trimmed))
+        Self::normalize_path(&format!("{}/{}", base, path))
     }
 
     /// Move the file or folder `id` (`kind` is `files` or `folders`) into
@@ -1313,9 +1312,8 @@ impl StorageProvider for FourSharedProvider {
             offset += page_count;
         }
 
-        self.current_path = normalized;
-        self.current_folder_id = folder_id;
-
+        // A listing does not move the current folder: `cd` does. Moved, a
+        // relative path listed twice reached `docs/docs`.
         Ok(entries)
     }
 
@@ -1985,6 +1983,19 @@ fn refused_lookup(status: reqwest::StatusCode, body: &str, path: &str) -> Provid
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_name_keeps_its_leading_and_trailing_spaces() {
+        // A name with a leading or trailing space is a name of its own, and a
+        // name of spaces only is not the current folder.
+        assert_eq!(FourSharedProvider::normalize_path("/ a"), "/ a");
+        assert_eq!(FourSharedProvider::normalize_path("/a /b "), "/a /b ");
+        let mut p = test_provider();
+        p.current_path = "/Cloud".to_string();
+        assert_eq!(p.resolve_path("   "), "/Cloud/   ");
+        assert_eq!(p.resolve_path(" a"), "/Cloud/ a");
+        assert_eq!(p.resolve_path("/a "), "/a ");
+    }
 
     fn test_provider() -> FourSharedProvider {
         let config = FourSharedConfig {
