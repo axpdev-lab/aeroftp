@@ -7,6 +7,8 @@ import type { ProviderType } from '../types';
 import {
   canRunFileBatch,
   fileBatchCommand,
+  FolderTransferFailedError,
+  folderTransferFailure,
   folderTransferIsComplete,
   keepsSingleFilePath,
   splitForFileBatch,
@@ -124,6 +126,27 @@ describe('folderTransferIsComplete', () => {
   it('a missing answer is incomplete', () => {
     expect(folderTransferIsComplete(undefined)).toBe(false);
     expect(folderTransferIsComplete(null)).toBe(false);
+  });
+});
+
+describe('folderTransferFailure', () => {
+  const outcome = (completed: number, skipped: number, failed: number, cancelled = false) =>
+    ({ completed, skipped, failed, cancelled, message: `Uploaded ${completed} files, ${skipped} skipped, ${failed} errors` });
+
+  it('a folder with a failed file fails, with the command\'s line', () => {
+    const failure = folderTransferFailure(outcome(4, 0, 1));
+    expect(failure).toBeInstanceOf(FolderTransferFailedError);
+    expect(String(failure)).toBe('Uploaded 4 files, 0 skipped, 1 errors');
+    expect(failure?.outcome.failed).toBe(1);
+  });
+
+  it('a stopped folder fails', () => {
+    expect(folderTransferFailure(outcome(2, 0, 0, true))).toBeInstanceOf(FolderTransferFailedError);
+  });
+
+  it('skipped files do not fail it: the overwrite setting chose them', () => {
+    expect(folderTransferFailure(outcome(0, 5, 0))).toBeNull();
+    expect(folderTransferFailure(outcome(5, 0, 0))).toBeNull();
   });
 });
 

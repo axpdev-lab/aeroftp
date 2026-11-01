@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import app from '../App.tsx?raw';
 import { DEFAULT_CONFIG, useCircuitBreaker } from '../hooks/useCircuitBreaker';
-import { LOCAL, REMOTE, SUB, fixture, local, remote, type Options } from './appTransfers.testkit';
+import { INBOX, LOCAL, REMOTE, SUB, fixture, folder, local, remote, type Options } from './appTransfers.testkit';
 
 // The circuit breaker keeps its state in refs: outside React, one call of the
 // hook is one breaker.
@@ -51,11 +51,14 @@ describe('a failed file is seen by its queue row, the retry and the circuit brea
   });
 
   it('a file that keeps failing is retried twice, then its row fails with the error, shown once', async () => {
-    const f = await upload({ fail: () => 'Operation timed out' });
+    const circuit = breaker();
+    const f = await upload({ breaker: circuit, fail: () => 'Operation timed out' });
     expect(attempts(f, UPLOAD)).toBe(3);
     expect(f.row('q0')).toMatchObject({ status: 'error', error: 'Operation timed out' });
     expect(f.transferQueue.completeTransfer).not.toHaveBeenCalled();
     expect(f.notify.error).toHaveBeenCalledTimes(1);
+    // Three errors in a row: the breaker has them all.
+    expect(circuit.stateRef.current).toBe('open');
   });
 
   it('an error that a retry cannot fix fails the row at once', async () => {
@@ -99,6 +102,43 @@ describe('a failed file is seen by its queue row, the retry and the circuit brea
     expect(f.notify.error).not.toHaveBeenCalled();
   });
 
+  // Two plain files go out as one batch; a file and a folder keep the loop.
+  it('a cancel during a file also stops the folder after it in the same drop', async () => {
+    let f: ReturnType<typeof fixture>;
+    const fail = () => {
+      f.batchCancelledRef.current = true;
+      return 'Transfer cancelled';
+    };
+    const items = [local('up.txt'), folder(local('Sub'))];
+    f = fixture({ folders: { [LOCAL]: items }, breaker: breaker(), fail });
+    await f.drop(items, false, REMOTE, 'local');
+    expect(attempts(f, UPLOAD)).toBe(1);
+    expect(attempts(f, 'provider_upload_folder')).toBe(0);
+    expect(f.row('q1')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser' });
+  });
+
+  it.each([['upload', UPLOAD], ['download', DOWNLOAD]] as const)('a Stop during the wait before a retry cancels the file instead of retrying it (%s)', async (direction, command) => {
+    let f: ReturnType<typeof fixture>;
+    const circuit = breaker();
+    const delay = circuit.getRetryDelay;
+    // The wait starts: the Stop lands during it.
+    circuit.getRetryDelay = (attempt: number) => {
+      f.batchCancelledRef.current = true;
+      return delay(attempt);
+    };
+    const fail = (_command: string, call: number) => (call === 1 ? 'Operation timed out' : undefined);
+    if (direction === 'upload') {
+      f = fixture({ folders: { [LOCAL]: [local('up.txt')] }, breaker: circuit, fail });
+      await f.drop([local('up.txt')], false, REMOTE, 'local');
+    } else {
+      f = fixture({ folders: { [REMOTE]: [remote('a.txt')] }, breaker: circuit, fail });
+      await f.drop([remote('a.txt')], true, SUB);
+    }
+    expect(attempts(f, command)).toBe(1);
+    expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser' });
+    expect(f.transferQueue.completeTransfer).not.toHaveBeenCalled();
+  });
+
   it('a download that fails fails its row', async () => {
     const f = fixture({ folders: { [REMOTE]: [remote('a.txt')] }, breaker: breaker(), fail: () => 'No such file or directory' });
     await f.drop([remote('a.txt')], true, SUB);
@@ -115,6 +155,155 @@ describe('a failed file is seen by its queue row, the retry and the circuit brea
     expect(attempts(f, UPLOAD)).toBe(2);
     expect(f.row('q0')).toMatchObject({ status: 'error', error: 'No such file or directory' });
     expect(f.notify.error).toHaveBeenCalledTimes(2);
+  });
+
+  it('Retry from the queue completes the row when the file lands', async () => {
+    const f = await upload({ fail: (_command, call) => (call === 1 ? 'No such file or directory' : undefined) });
+    const [retry] = [...f.retryCallbacksRef.current.values()];
+    f.transferQueue.retryItem('q0');
+    await retry();
+    expect(attempts(f, UPLOAD)).toBe(2);
+    expect(f.row('q0')).toMatchObject({ status: 'completed' });
+    expect(f.notify.error).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['upload', 'download'] as const)('a Stop during a Retry cancels its file and shows no failure (%s)', async direction => {
+    let f: ReturnType<typeof fixture>;
+    const fail = (_command: string, call: number) => {
+      if (call === 1) return 'No such file or directory';
+      f.batchCancelledRef.current = true;
+      return 'Transfer cancelled by user';
+    };
+    if (direction === 'upload') {
+      f = fixture({ folders: { [LOCAL]: [local('up.txt')] }, breaker: breaker(), fail });
+      await f.drop([local('up.txt')], false, REMOTE, 'local');
+    } else {
+      f = fixture({ folders: { [REMOTE]: [remote('a.txt')] }, breaker: breaker(), fail });
+      await f.drop([remote('a.txt')], true, SUB);
+    }
+    const [retry] = [...f.retryCallbacksRef.current.values()];
+    f.transferQueue.retryItem('q0');
+    await retry();
+    expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser' });
+    // The first attempt's error only.
+    expect(f.notify.error).toHaveBeenCalledTimes(1);
+  });
+
+  // The flag of a stopped batch stays set until the next batch starts.
+  it('a Retry after a stopped batch still shows its own error', async () => {
+    let f: ReturnType<typeof fixture>;
+    const fail = (_command: string, call: number) => {
+      if (call === 1) f.batchCancelledRef.current = true;
+      return call === 1 ? 'Transfer cancelled' : 'No such file or directory';
+    };
+    f = fixture({ folders: { [LOCAL]: [local('up.txt')] }, breaker: breaker(), fail });
+    await f.drop([local('up.txt')], false, REMOTE, 'local');
+    expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser' });
+    const [retry] = [...f.retryCallbacksRef.current.values()];
+    f.transferQueue.retryItem('q0');
+    await retry();
+    expect(f.row('q0')).toMatchObject({ status: 'error', error: 'No such file or directory' });
+    expect(f.notify.error).toHaveBeenCalledTimes(1);
+  });
+
+  it('Retry All Failed after a stopped batch retries the failed rows', async () => {
+    const f = await upload({ fail: (_command, call) => (call === 1 ? 'No such file or directory' : undefined) });
+    f.batchCancelledRef.current = true;
+    await f.retryAllFailedItems();
+    expect(attempts(f, UPLOAD)).toBe(2);
+    expect(f.row('q0')).toMatchObject({ status: 'completed' });
+  });
+
+  it('a Stop during Retry All Failed retries no further row', async () => {
+    let f: ReturnType<typeof fixture>;
+    const fail = (_command: string, call: number) => {
+      // The Stop lands during the first retry, which still fails.
+      if (call === 3) f.stopCountRef.current += 1;
+      return 'No such file or directory';
+    };
+    f = fixture({ folders: { [LOCAL]: [local('up.txt')] }, breaker: breaker(), fail });
+    await f.drop([local('up.txt')], false, REMOTE, 'local');
+    await f.drop([local('up.txt')], false, REMOTE, 'local');
+    expect(attempts(f, UPLOAD)).toBe(2);
+    await f.retryAllFailedItems();
+    expect(attempts(f, UPLOAD)).toBe(3);
+    expect(f.row('q1')).toMatchObject({ status: 'pending' });
+  });
+});
+
+/**
+ * A folder answers with counts, not an error: the row of a folder whose files
+ * failed was completed. It now fails with the command's line; skipped files
+ * are the overwrite setting at work and do not fail it.
+ */
+describe('a folder whose files failed fails its queue row', () => {
+  const failedFolder = () => ({ completed: 3, failed: 2, message: 'Uploaded 3 files, 0 skipped, 2 errors' });
+
+  it.each([['webdav', 'provider_upload_folder'], ['', 'upload_folder']] as const)(
+    'an upload (%j): the row fails with the line, shown once, the folder sent once and not counted toward the pause',
+    async (protocol, command) => {
+      const circuit = breaker();
+      const recordFailure = vi.spyOn(circuit, 'recordFailure');
+      const sub = folder(local('Sub'));
+      const f = fixture({ protocol, folders: { [LOCAL]: [sub] }, breaker: circuit, folderOutcome: failedFolder });
+      await f.drop([sub], false, REMOTE, 'local');
+      expect(attempts(f, command)).toBe(1);
+      expect(f.row('q0')).toMatchObject({ status: 'error', error: 'Uploaded 3 files, 0 skipped, 2 errors' });
+      expect(f.notify.error).toHaveBeenCalledTimes(1);
+      expect(recordFailure).not.toHaveBeenCalled();
+      // The activity line is not turned into a success.
+      expect(f.humanLog.updateEntry.mock.calls.some(([, entry]) => entry.message === 'activity.upload_success')).toBe(false);
+    },
+  );
+
+  it.each([['webdav', 'provider_download_folder'], ['', 'download_folder']] as const)('a download (%j): the row fails with the line', async (protocol, command) => {
+    const circuit = breaker();
+    const recordFailure = vi.spyOn(circuit, 'recordFailure');
+    const pics = folder(remote('pics'));
+    const f = fixture({
+      protocol, folders: { [REMOTE]: [pics] }, breaker: circuit,
+      folderOutcome: () => ({ completed: 1, failed: 1, message: 'Downloaded 1 files, 0 skipped, 1 errors' }),
+    });
+    await f.drop([pics], true, SUB);
+    expect(attempts(f, command)).toBe(1);
+    expect(recordFailure).not.toHaveBeenCalled();
+    expect(f.row('q0')).toMatchObject({ status: 'error', error: 'Downloaded 1 files, 0 skipped, 1 errors' });
+    expect(f.notify.error).toHaveBeenCalledTimes(1);
+    expect(f.humanLog.updateEntry.mock.calls.some(([, entry]) => entry.status === 'success')).toBe(false);
+  });
+
+  it('a folder whose files were only skipped completes its row', async () => {
+    const sub = folder(local('Sub'));
+    const f = fixture({ folders: { [LOCAL]: [sub] }, breaker: breaker(), folderOutcome: () => ({ completed: 0, skipped: 4 }) });
+    await f.drop([sub], false, REMOTE, 'local');
+    expect(f.row('q0')).toMatchObject({ status: 'completed' });
+    expect(f.notify.error).not.toHaveBeenCalled();
+  });
+
+  it('a folder stopped by the user reads as cancelled, with no failure shown', async () => {
+    let f: ReturnType<typeof fixture>;
+    const folderOutcome = () => {
+      f.batchCancelledRef.current = true;
+      return { completed: 2, cancelled: true, message: 'Upload cancelled after 2 files' };
+    };
+    const sub = folder(local('Sub'));
+    f = fixture({ folders: { [LOCAL]: [sub] }, breaker: breaker(), folderOutcome });
+    await f.drop([sub], false, REMOTE, 'local');
+    expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser' });
+    expect(f.notify.error).not.toHaveBeenCalled();
+  });
+
+  // After a GitHub commit the folders go one by one, without a retry.
+  it.each([
+    ['whose upload is refused', { fail: (command: string) => (command === 'provider_upload_folder' ? 'Not connected' : undefined) }, 'Not connected'],
+    ['whose files failed', { folderOutcome: failedFolder }, 'Uploaded 3 files, 0 skipped, 2 errors'],
+  ] as const)('a folder after a GitHub commit %s fails its row', async (_what, options, error) => {
+    const pics = folder(local('pics'));
+    const f = fixture({ protocol: 'github', folders: { [LOCAL]: [local('up.txt'), pics] }, ...options });
+    await f.drop([local('up.txt'), pics], false, INBOX, 'local');
+    expect(f.commits()).toEqual([[`${INBOX}/up.txt`]]);
+    expect(f.row('q1')).toMatchObject({ status: 'error', error });
+    expect(f.notify.error).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -158,6 +347,48 @@ describe('every transfer that completes a queue row passes its error on', () => 
     expect(calls.filter(c => !c.throws)).toEqual([]);
     // Nine calls: the Retry of a restored row has one for each direction.
     expect(calls).toHaveLength(9);
+  });
+
+  /** The catch of each Retry callback, up to the failure it shows. */
+  function retryCatches(source: string) {
+    return [...source.matchAll(/transferQueue\.completeTransfer\(id\);\s*\} catch \(error\) \{/g)].map(match => {
+      const start = match.index + match[0].length;
+      return source.slice(start, source.indexOf('notify.error(', start));
+    });
+  }
+
+  // The flag stays set after a stopped batch, so a Retry tells its own Stop
+  // by the cancel error. The cases above run the drop's two; the dialog's
+  // and the journal's are read here.
+  it('each Retry callback takes a Stop during it for a cancel before it shows a failure', () => {
+    expect(retryCatches('transferQueue.completeTransfer(id);\n } catch (error) {\n x();\n notify.error(a);')).toEqual(['\n x();\n ']);
+    const catches = retryCatches(app);
+    expect(catches).toHaveLength(4);
+    expect(catches.filter(text => !text.includes('batchCancelledRef.current && isCancelledTransferError(String(error))'))).toEqual([]);
+  });
+
+  // The cases run the drop's two loops; the dialog's is read here.
+  it('each loop checks for a Stop after the wait before a retry', () => {
+    const waits = [...app.matchAll(/await new Promise\(r => setTimeout\(r, circuitBreaker\.getRetryDelay\(attempt\)\)\);/g)]
+      .map(({ index }) => app.slice(index, app.indexOf('transferQueue.retryItem(item.id);', index)));
+    expect(waits).toHaveLength(3);
+    const stops = /if \(batchCancelledRef\.current\) \{\s*transferQueue\.failTransfer\(item\.id, t\('transfer\.cancelledByUser'\)\);\s*break;/;
+    expect(waits.filter(text => !stops.test(text))).toEqual([]);
+  });
+
+  // Retry All tells a Stop during it by the count, since the flag can be left
+  // set: every place a Stop sets the flag counts it, in Stop's handler (which
+  // counts first) or on the same line.
+  it('every Stop that sets the flag is counted', () => {
+    const start = app.indexOf('const cancelTransfer = async () => {');
+    const end = app.indexOf('\n  };\n', start);
+    expect(app.slice(start, end)).toMatch(/^const cancelTransfer = async \(\) => \{\n\s*stopCountRef\.current \+= 1;/);
+    const uncounted = [...app.matchAll(/batchCancelledRef\.current = true/g)].filter(({ index }) => {
+      if (index > start && index < end) return false;
+      const line = app.slice(app.lastIndexOf('\n', index), app.indexOf('\n', index));
+      return !line.includes('stopCountRef.current += 1');
+    });
+    expect(uncounted).toEqual([]);
   });
 });
 

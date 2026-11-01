@@ -7,10 +7,12 @@ import overwriteHook from '../hooks/useOverwriteCheck.ts?raw';
 import { vi } from 'vitest';
 import { usesProviderApi, type LocalFile, type RemoteFile } from '../types';
 import { loadOverwriteDestination } from '../utils/overwriteDestination';
-import { fileBatchCommand, folderTransferIsComplete, keepsSingleFilePath, splitForFileBatch } from '../utils/fileBatchRouting';
+import { FolderTransferFailedError, fileBatchCommand, folderTransferFailure, folderTransferIsComplete, keepsSingleFilePath, splitForFileBatch } from '../utils/fileBatchRouting';
+import type { FolderTransferOutcome } from '../utils/fileBatchRouting';
 import { asLocalFileEntry, localRowNameClashes, selectedLocalTrees } from '../utils/localSelection';
 import { isSafeRemoteDownloadName, remoteDownloadTarget } from '../utils/localPath';
 import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from '../utils/transferErrorClassifier';
+import { isCancelledTransferError } from '../utils/transferQueueJournal';
 import { withTransferRun } from '../utils/transferRun';
 import { createFileBatchDispatcher, rearmedOnUserAction, updateTransferStatus } from './transferQueueActions';
 import type { TransferItem } from './TransferQueue';
@@ -18,9 +20,9 @@ import { INITIAL_SCANNING_STATE } from './ScanningToast';
 
 /**
  * App's transfer closures, run with the IPC mocked: uploadFile, downloadFile,
- * the two multi-file transfers and the cross-panel drop, from App's own
- * source. The tests that use it check the paths the backend is asked to write
- * and what becomes of each queue row.
+ * the two multi-file transfers, the cross-panel drop and the queue's Retry
+ * All, from App's own source. The tests that use it check the paths the
+ * backend is asked to write and what becomes of each queue row.
  *
  * Not a test file: the tests import it (`*.test.ts` are the tests).
  */
@@ -43,7 +45,9 @@ const { code } = await transformWithOxc(
   + closure('withBatchLatch', '\n  const uploadMultipleFiles =')
   + closure('uploadMultipleFiles', '\n  // === Bulk Operations ===')
   + closure('downloadMultipleFiles', '\n  // Wire cross-panel drag & drop callback')
-  + app.slice(dropStart, dropEnd),
+  + app.slice(dropStart, dropEnd)
+  + closure('retryAllFailedItems', '\n  // ======== File Clipboard')
+  + '\nreturn { retryAllFailedItems };',
   'drop-on-folder-row.ts',
 );
 const { code: overwriteCode } = await transformWithOxc(
@@ -85,10 +89,14 @@ export type Options = {
   policy?: 'skip' | 'overwrite' | 'rename';
   /** What the folder question answers. */
   folderAction?: 'merge_overwrite' | 'skip';
-  protocol?: 'webdav' | 'github';
-  /** The error a single-file write answers with, by command and call number
-   *  (1 for the first); none means it lands. */
+  /** '' is a session without a protocol: the legacy folder commands. */
+  protocol?: 'webdav' | 'github' | '';
+  /** The error a single-file or folder write answers with, by command and
+   *  call number (1 for the first); none means it lands. */
   fail?: (command: string, call: number) => string | undefined;
+  /** What a folder write that lands answers, by command and call number:
+   *  by default every file landed. */
+  folderOutcome?: (command: string, call: number) => Partial<FolderTransferOutcome>;
   /** App's circuit breaker; by default one that never retries. */
   breaker?: Breaker;
 };
@@ -116,11 +124,16 @@ export function fixture(options: Options = {}) {
       calls[command] = (calls[command] ?? 0) + 1;
       const error = options.fail?.(command, calls[command]);
       // The backend answers a failed command with its message, a string.
-      if (error) throw error;
+      if (error !== undefined) throw error;
       return undefined;
     }
     if (command === 'reset_cancel_flag') return undefined;
-    if (command === 'provider_upload_folder' || command === 'provider_download_folder') return { cancelled: false, failed: 0, skipped: 0 };
+    if (['provider_upload_folder', 'provider_download_folder', 'upload_folder', 'download_folder'].includes(command)) {
+      calls[command] = (calls[command] ?? 0) + 1;
+      const error = options.fail?.(command, calls[command]);
+      if (error !== undefined) throw error;
+      return { completed: 1, skipped: 0, failed: 0, cancelled: false, message: 'Done', ...options.folderOutcome?.(command, calls[command]) };
+    }
     if (command === 'github_check_local_sync') return { is_local_repo: false };
     if (command === 'github_batch_upload') return { commit_sha: 'abcdef1234', files_count: args!.files.length };
     throw new Error(`Unexpected IPC: ${command}`);
@@ -144,6 +157,9 @@ export function fixture(options: Options = {}) {
   const settle = (id: string, status: TransferItem['status'], error?: string) => {
     queueItemsRef.current = updateTransferStatus(queueItemsRef.current, id, status, undefined, error);
   };
+  const reopen = (id: string) => {
+    queueItemsRef.current = queueItemsRef.current.map(item => (item.id === id ? { ...item, status: 'pending', error: undefined } : item));
+  };
   const transferQueue = {
     addItem: vi.fn(() => {
       const id = `q${queueItemsRef.current.length}`;
@@ -153,14 +169,22 @@ export function fixture(options: Options = {}) {
     startTransfer: vi.fn((id: string) => settle(id, 'transferring')),
     completeTransfer: vi.fn((id: string) => settle(id, 'completed')),
     failTransfer: vi.fn((id: string, error: string) => settle(id, 'error', error)),
-    retryItem: vi.fn((id: string) => {
-      queueItemsRef.current = queueItemsRef.current.map(item => (item.id === id ? { ...item, status: 'pending', error: undefined } : item));
+    retryItem: vi.fn(reopen),
+    // The queue's own filter: a failed row, not a stopped one.
+    retryAllFailed: vi.fn(() => {
+      const ids = queueItemsRef.current
+        .filter(item => item.status === 'error' && item.error && !item.error.includes('cancelled') && !item.error.includes('Stopped by user'))
+        .map(item => item.id);
+      ids.forEach(reopen);
+      return ids;
     }),
   };
   const row = (id: string) => queueItemsRef.current.find(item => item.id === id);
   const batchCancelledRef = { current: false };
+  const stopCountRef = { current: 0 };
   const retryCallbacksRef = { current: new Map<string, () => Promise<void>>() };
   const notify = { info: vi.fn(), error: vi.fn(), success: vi.fn() };
+  const humanLog = { logStart: () => 'log', logRaw: vi.fn(), log: vi.fn(), logError: vi.fn(), updateEntry: vi.fn() };
   const checkFolderOverwrite = vi.fn(async (..._args: unknown[]) => ({ action: options.folderAction ?? 'merge_overwrite', applyToAll: false }));
   const refreshLocalPanelForPath = vi.fn(async () => undefined);
   const loadRemoteFiles = vi.fn(async () => null);
@@ -181,8 +205,7 @@ export function fixture(options: Options = {}) {
     liveConnectionParams: { protocol }, aeroVaultOverlaySession: null, isConnected: true,
     currentRemotePath: REMOTE, currentLocalPath: LOCAL, localFiles, localFiles2, sortedLocalFiles: localFiles, sortedLocalFiles2: localFiles2, remoteFiles,
     selectedRemoteFiles: new Set<string>(), setSelectedRemoteFiles: vi.fn(),
-    humanLog: { logStart: () => 'log', logRaw: vi.fn(), log: vi.fn(), logError: vi.fn(), updateEntry: vi.fn() },
-    pendingFileLogIds: { current: new Map() }, batchCancelledRef, cancelLevelRef: { current: 0 },
+    humanLog, pendingFileLogIds: { current: new Map() }, batchCancelledRef, stopCountRef, cancelLevelRef: { current: 0 },
     batchOpInFlightRef: { current: false }, folderOverwriteApplyToAll: { current: { action: 'merge_overwrite', enabled: false } },
     circuitBreaker: options.breaker ?? {
       reset: vi.fn(), recordSuccess: vi.fn(), recordFailure: () => ({ isFatal: false, retryable: false, shouldPause: false }),
@@ -191,7 +214,8 @@ export function fixture(options: Options = {}) {
     },
     RECONNECT_ERROR_KINDS, getErrorKindI18nKey, attemptBatchReconnect: vi.fn(), waitForBatchResume: vi.fn(),
     retryCallbacksRef, queueItemsRef, transferQueue, recordQueueDescriptor: vi.fn(), registerFileBatchRows: vi.fn(), withTransferRun,
-    fileBatchCommand, keepsSingleFilePath, folderTransferIsComplete, createFileBatchDispatcher, rearmedOnUserAction,
+    fileBatchCommand, keepsSingleFilePath, folderTransferIsComplete, folderTransferFailure, FolderTransferFailedError,
+    isCancelledTransferError, createFileBatchDispatcher, rearmedOnUserAction,
     joinRemotePath: (dir: string, name: string) => `${dir}${dir.endsWith('/') ? '' : '/'}${name}`,
     settings: { autoStartTransfers: true }, fileExistsAction: options.policy ?? 'skip',
     effectiveMaxConcurrentTransfers: 4, retryCount: 1, timeoutSeconds: 30,
@@ -201,7 +225,7 @@ export function fixture(options: Options = {}) {
     refreshLocalPanelForPath, loadRemoteFiles, loadLocalFiles, crossPanelDropRef, setScanningState: vi.fn(), INITIAL_SCANNING_STATE,
     requestGitHubBatchCommitMessage, setGitHubSyncWarning: vi.fn(),
   };
-  new Function(...Object.keys(context), code)(...Object.values(context));
+  const { retryAllFailedItems } = new Function(...Object.keys(context), code)(...Object.values(context)) as { retryAllFailedItems: () => Promise<void> };
 
   /** Where each write lands: the backend path of every single and batch write. */
   const written = () => invoke.mock.calls.flatMap(([command, args]) => {
@@ -214,5 +238,5 @@ export function fixture(options: Options = {}) {
   });
   const drop = (...args: Parameters<NonNullable<typeof crossPanelDropRef.current>>) => crossPanelDropRef.current!(...args);
   const commits = () => invoke.mock.calls.filter(([command]) => command === 'github_batch_upload').map(([, args]) => args!.files.map((f: any) => f.remotePath));
-  return { drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, transferQueue, row, batchCancelledRef, retryCallbacksRef, refreshLocalPanelForPath, loadRemoteFiles };
+  return { drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
 }

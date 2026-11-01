@@ -183,6 +183,7 @@ import {
   buildJournalEntries,
   displayPathForRestore,
   groupIdsByProfileId,
+  isCancelledTransferError,
   isRestorableJournalEntry,
   joinRemotePath,
   parentDir,
@@ -470,7 +471,7 @@ import { TransferProgressBar } from './components/TransferProgressBar';
 import { ImageThumbnail } from './components/ImageThumbnail';
 import { signatureOf } from './utils/thumbnailCache';
 import { loadOverwriteDestination } from './utils/overwriteDestination';
-import { fileBatchCommand, folderTransferIsComplete, keepsSingleFilePath, splitForFileBatch } from './utils/fileBatchRouting';
+import { FolderTransferFailedError, fileBatchCommand, folderTransferFailure, folderTransferIsComplete, keepsSingleFilePath, splitForFileBatch } from './utils/fileBatchRouting';
 import type { FileBatchDirection, FileBatchSessionFlags, FolderTransferOutcome } from './utils/fileBatchRouting';
 import type { SortField, SortOrder } from './components/SortableHeader';
 import { FeatureBadge } from './components/FeatureBadge';
@@ -1700,6 +1701,9 @@ const App: React.FC = () => {
   const retryCallbacksRef = React.useRef<Map<string, () => void>>(new Map());
   const batchCancelledRef = React.useRef(false);
   const cancelLevelRef = React.useRef(0); // 0=none, 1=soft, 2=hard
+  // Every Stop, counted. The flag above stays set after a stopped batch; a
+  // run that does not reset it tells a Stop of its own by this count.
+  const stopCountRef = React.useRef(0);
 
   // TQ-7b: side map of re-executable descriptors (local/remote/profile).
   // TransferItem has a single `path` and cannot reconstruct a journal entry alone.
@@ -10323,13 +10327,17 @@ const App: React.FC = () => {
             };
             folderResult = await invoke<FolderTransferOutcome>('download_folder', { params });
           }
-          // Don't log success if the transfer was cancelled
-          if (!folderResult.cancelled) {
+          // Don't log success if the transfer was cancelled or a file failed:
+          // the backend's event for the folder has logged that.
+          if (!folderResult.cancelled && folderResult.failed === 0) {
             const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
             humanLog.updateEntry(logId, { status: 'success', message: t('activity.download_folder_success', { path: folderPath, seconds: elapsed }) });
           }
           // A folder with failed files is not done: a "cut" keeps its source.
           completed = folderTransferIsComplete(folderResult);
+          // Nor is its queue row, which the caller completes on a return.
+          const failure = onError === 'throw' ? folderTransferFailure(folderResult) : null;
+          if (failure) throw failure;
         } else {
           humanLog.logError('DOWNLOAD', { filename: fileName }, logId);
         }
@@ -10458,9 +10466,10 @@ const App: React.FC = () => {
         if (isProvider) {
           const remoteRootForFolder = joinRemotePath(remoteBase, fileName);
           setScanningState({ active: true, folderName: fileName, message: t('activity.upload_start', { filename: fileName }) || `Uploading ${fileName}...`, operation: 'upload' });
+          let providerFolderResult: FolderTransferOutcome;
           try {
             const folderAction2 = fileExistsAction === 'ask' ? '' : fileExistsAction;
-            const providerFolderResult = await invoke<FolderTransferOutcome>('provider_upload_folder', {
+            providerFolderResult = await invoke<FolderTransferOutcome>('provider_upload_folder', {
               localPath: localFilePath,
               remotePath: remoteRootForFolder,
               fileExistsAction: folderAction2 || null,
@@ -10488,10 +10497,16 @@ const App: React.FC = () => {
             setScanningState(INITIAL_SCANNING_STATE);
           }
 
-          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-          const details = `(${elapsed}s)`;
-          const msg = t('activity.upload_success', { filename: remoteRootForFolder, details });
-          humanLog.updateEntry(logId, { message: msg });
+          // Don't log success if the transfer was cancelled or a file failed:
+          // the backend's event for the folder has logged that.
+          if (!providerFolderResult.cancelled && providerFolderResult.failed === 0) {
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+            const details = `(${elapsed}s)`;
+            const msg = t('activity.upload_success', { filename: remoteRootForFolder, details });
+            humanLog.updateEntry(logId, { message: msg });
+          }
+          const failure = onError === 'throw' ? folderTransferFailure(providerFolderResult) : null;
+          if (failure) throw failure;
           // pwd is restored by the backend (provider_upload_folder saves/restores pwd)
           // loadRemoteFiles() is called by the transfer event handler on 'complete'
           return completed;
@@ -10507,14 +10522,17 @@ const App: React.FC = () => {
           timeout_seconds: timeoutSeconds,
         };
         const uploadResult = await invoke<FolderTransferOutcome>('upload_folder', { params });
-        // Don't log success if the transfer was cancelled
-        if (!uploadResult.cancelled) {
+        // Don't log success if the transfer was cancelled or a file failed:
+        // the backend's event for the folder has logged that.
+        if (!uploadResult.cancelled && uploadResult.failed === 0) {
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
           const details = `(${elapsed}s)`;
           const msg = t('activity.upload_success', { filename: remotePath, details });
           humanLog.updateEntry(logId, { status: 'success', message: msg });
         }
         completed = folderTransferIsComplete(uploadResult);
+        const failure = onError === 'throw' ? folderTransferFailure(uploadResult) : null;
+        if (failure) throw failure;
       } else {
         let targetName = fileName;
         // Continue an interrupted upload from the remote partial instead of
@@ -10700,8 +10718,15 @@ const App: React.FC = () => {
               }
               transferQueue.completeTransfer(id);
             } catch (error) {
-              transferQueue.failTransfer(id, String(error));
-              notify.error(t(direction === 'download' ? 'toast.downloadFailed' : 'toast.uploadFailed'), String(error));
+              // Stopped during this Retry: the file reads as cancelled and the
+              // stop is not shown as a failure. The flag also stays set after an
+              // earlier stopped batch, so it takes a cancel error to say so.
+              if (batchCancelledRef.current && isCancelledTransferError(String(error))) {
+                transferQueue.failTransfer(id, t('transfer.cancelledByUser'));
+              } else {
+                transferQueue.failTransfer(id, String(error));
+                notify.error(t(direction === 'download' ? 'toast.downloadFailed' : 'toast.uploadFailed'), String(error));
+              }
             }
           });
         }
@@ -11037,6 +11062,7 @@ const App: React.FC = () => {
 
   // Two-level cancel: Stop (finish current file) → Force Stop (interrupt immediately)
   const cancelTransfer = async () => {
+    stopCountRef.current += 1;
     // If batch is paused by circuit breaker, resolve the pause promise
     if (batchResumeResolverRef.current) {
       batchResumeResolverRef.current('cancel');
@@ -11161,8 +11187,11 @@ const App: React.FC = () => {
   // Retry all failed items in queue
   const retryAllFailedItems = async () => {
     const failedIds = transferQueue.retryAllFailed();
+    // A Stop during these retries ends them. The flag of a batch stopped
+    // before stays set, and would end them before the first.
+    const stops = stopCountRef.current;
     for (const id of failedIds) {
-      if (batchCancelledRef.current) break;
+      if (stopCountRef.current !== stops) break;
       const cb = retryCallbacksRef.current.get(id);
       if (cb) await cb();
     }
@@ -13173,8 +13202,15 @@ const App: React.FC = () => {
               await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir, 'throw');
               transferQueue.completeTransfer(id);
             } catch (error) {
-              transferQueue.failTransfer(id, String(error));
-              notify.error(t('toast.uploadFailed'), String(error));
+              // Stopped during this Retry: the file reads as cancelled and the
+              // stop is not shown as a failure. The flag also stays set after an
+              // earlier stopped batch, so it takes a cancel error to say so.
+              if (batchCancelledRef.current && isCancelledTransferError(String(error))) {
+                transferQueue.failTransfer(id, t('transfer.cancelledByUser'));
+              } else {
+                transferQueue.failTransfer(id, String(error));
+                notify.error(t('toast.uploadFailed'), String(error));
+              }
             }
           });
           return { id, filePath, fileName, file };
@@ -13397,6 +13433,11 @@ const App: React.FC = () => {
           for (let attempt = 0; attempt <= circuitBreaker.config.maxRetriesPerFile; attempt++) {
             if (attempt > 0) {
               await new Promise(r => setTimeout(r, circuitBreaker.getRetryDelay(attempt)));
+              // A Stop during the wait: the file is cancelled, not retried.
+              if (batchCancelledRef.current) {
+                transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+                break;
+              }
               // The error event of the attempt before may have settled the row.
               transferQueue.retryItem(item.id);
               transferQueue.startTransfer(item.id);
@@ -13413,8 +13454,10 @@ const App: React.FC = () => {
                 transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
                 break;
               }
-              const result = circuitBreaker.recordFailure(String(error));
-              if (result.isFatal || !result.retryable || result.shouldPause || attempt >= circuitBreaker.config.maxRetriesPerFile) {
+              // A folder with failed files is not sent again, nor counted
+              // toward the pause: its command has retried each file.
+              const result = error instanceof FolderTransferFailedError ? null : circuitBreaker.recordFailure(String(error));
+              if (!result || result.isFatal || !result.retryable || result.shouldPause || attempt >= circuitBreaker.config.maxRetriesPerFile) {
                 transferQueue.failTransfer(item.id, String(error));
                 notify.error(t('toast.uploadFailed'), String(error));
                 break;
@@ -13504,8 +13547,15 @@ const App: React.FC = () => {
             await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir, 'throw');
             transferQueue.completeTransfer(id);
           } catch (error) {
-            transferQueue.failTransfer(id, String(error));
-            notify.error(t('toast.uploadFailed'), String(error));
+            // Stopped during this Retry: the file reads as cancelled and the
+            // stop is not shown as a failure. The flag also stays set after an
+            // earlier stopped batch, so it takes a cancel error to say so.
+            if (batchCancelledRef.current && isCancelledTransferError(String(error))) {
+              transferQueue.failTransfer(id, t('transfer.cancelledByUser'));
+            } else {
+              transferQueue.failTransfer(id, String(error));
+              notify.error(t('toast.uploadFailed'), String(error));
+            }
           }
         });
         return { id, filePath, fileName };
@@ -13600,6 +13650,11 @@ const App: React.FC = () => {
         for (let attempt = 0; attempt <= circuitBreaker.config.maxRetriesPerFile; attempt++) {
           if (attempt > 0) {
             await new Promise(r => setTimeout(r, circuitBreaker.getRetryDelay(attempt)));
+            // A Stop during the wait: the file is cancelled, not retried.
+            if (batchCancelledRef.current) {
+              transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+              break;
+            }
             // The error event of the attempt before may have settled the row.
             transferQueue.retryItem(item.id);
             transferQueue.startTransfer(item.id);
@@ -13711,8 +13766,15 @@ const App: React.FC = () => {
             await downloadFile(file.path, file.name, frozenLocalPath, file.is_dir, file.size || undefined, false, 'throw');
             transferQueue.completeTransfer(id);
           } catch (error) {
-            transferQueue.failTransfer(id, String(error));
-            notify.error(t('toast.downloadFailed'), String(error));
+            // Stopped during this Retry: the file reads as cancelled and the
+            // stop is not shown as a failure. The flag also stays set after an
+            // earlier stopped batch, so it takes a cancel error to say so.
+            if (batchCancelledRef.current && isCancelledTransferError(String(error))) {
+              transferQueue.failTransfer(id, t('transfer.cancelledByUser'));
+            } else {
+              transferQueue.failTransfer(id, String(error));
+              notify.error(t('toast.downloadFailed'), String(error));
+            }
           }
         });
         return { id, file };
@@ -13835,6 +13897,11 @@ const App: React.FC = () => {
         for (let attempt = 0; attempt <= circuitBreaker.config.maxRetriesPerFile; attempt++) {
           if (attempt > 0) {
             await new Promise(r => setTimeout(r, circuitBreaker.getRetryDelay(attempt)));
+            // A Stop during the wait: the file is cancelled, not retried.
+            if (batchCancelledRef.current) {
+              transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+              break;
+            }
             // The error event of the attempt before may have settled the row.
             transferQueue.retryItem(item.id);
             transferQueue.startTransfer(item.id);
@@ -13851,8 +13918,10 @@ const App: React.FC = () => {
               transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
               break;
             }
-            const result = circuitBreaker.recordFailure(String(error));
-            if (result.isFatal || !result.retryable || result.shouldPause || attempt >= circuitBreaker.config.maxRetriesPerFile) {
+            // A folder with failed files is not downloaded again, nor counted
+            // toward the pause: its command has retried each file.
+            const result = error instanceof FolderTransferFailedError ? null : circuitBreaker.recordFailure(String(error));
+            if (!result || result.isFatal || !result.retryable || result.shouldPause || attempt >= circuitBreaker.config.maxRetriesPerFile) {
               transferQueue.failTransfer(item.id, String(error));
               notify.error(t('toast.downloadFailed'), String(error));
               break;
@@ -17146,7 +17215,7 @@ const App: React.FC = () => {
             dialog + session inbox + its own toasts. Mounted only while the flag
             is on; unmount stops the receive loop. */}
         {aeroShareEnabled && <AeroShareHub />}
-        <ScanningToast state={scanningState} t={t} onCancel={() => { batchCancelledRef.current = true; }} />
+        <ScanningToast state={scanningState} t={t} onCancel={() => { stopCountRef.current += 1; batchCancelledRef.current = true; }} />
         <FontSizeIndicator indicator={fontSizeIndicator} />
 
         {/* Update Available Toast with inline download */}

@@ -128,3 +128,28 @@ export interface FolderTransferOutcome {
 export function folderTransferIsComplete(outcome: FolderTransferOutcome | null | undefined): boolean {
   return !!outcome && !outcome.cancelled && outcome.failed === 0 && outcome.skipped === 0;
 }
+
+/**
+ * A folder transfer that ended with failed files, or that was stopped. The
+ * folder commands answer with counts, not with an error, so a caller that
+ * completes the folder's queue row when the transfer returns needs this to
+ * fail the row instead. Skipped files do not fail it: the overwrite setting
+ * chose them. The command has retried each file already.
+ */
+export class FolderTransferFailedError extends Error {
+  constructor(public readonly outcome: FolderTransferOutcome) {
+    super(outcome.message);
+    this.name = 'FolderTransferFailedError';
+  }
+
+  /** The command's own line ("Uploaded 3 files, 0 skipped, 2 errors"), which
+   *  the row and the toast show as they show a command's error. */
+  override toString(): string {
+    return this.message;
+  }
+}
+
+/** The error of a folder transfer that failed files or was stopped, or null. */
+export function folderTransferFailure(outcome: FolderTransferOutcome): FolderTransferFailedError | null {
+  return outcome.cancelled || outcome.failed > 0 ? new FolderTransferFailedError(outcome) : null;
+}
