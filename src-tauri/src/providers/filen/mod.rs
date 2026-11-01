@@ -672,8 +672,8 @@ impl FilenProvider {
         Some(resp.data?.versioned_storage)
     }
 
-    /// Send a request with automatic retry on 429/5xx errors.
-    /// F-ERR-01/F-ERR-02: Integrates send_with_retry for automatic rate-limit and server error handling.
+    /// Shared refusal retries, plus server-error recovery for safe HTTP reads.
+    /// POST mutations must not be repeated after an ambiguous failure.
     async fn send_retry(
         &self,
         request: reqwest::Request,
@@ -681,6 +681,21 @@ impl FilenProvider {
         send_with_retry(&self.client, request, &self.retry_config)
             .await
             .map_http_err(|e| ProviderError::NetworkError(e.to_string()))
+    }
+
+    /// Filen exposes directory and revision queries as POST. These are
+    /// reads, so preserve server-error recovery without opting writes in.
+    async fn send_read_query(
+        &self,
+        request: reqwest::Request,
+    ) -> Result<reqwest::Response, ProviderError> {
+        send_with_retry(
+            &self.client,
+            request,
+            &self.retry_config.clone().for_safe_operation(),
+        )
+        .await
+        .map_http_err(|e| ProviderError::NetworkError(e.to_string()))
     }
 
     /// Derive password hash and master key for authentication.
@@ -1450,7 +1465,7 @@ impl FilenProvider {
             .json(&serde_json::json!({"uuid": folder_uuid}))
             .build()
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        let resp = self.send_retry(request).await?;
+        let resp = self.send_read_query(request).await?;
 
         let resp_text = resp
             .text()
@@ -1618,7 +1633,7 @@ impl FilenProvider {
                 .json(&serde_json::json!({"uuid": current_uuid}))
                 .build()
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-            let resp = self.send_retry(request).await?;
+            let resp = self.send_read_query(request).await?;
 
             let content: DirContentResponse = resp
                 .json()
@@ -1715,7 +1730,7 @@ impl FilenProvider {
             .build()
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp: FileVersionsResponse = self
-            .send_retry(request)
+            .send_read_query(request)
             .await?
             .json()
             .await
@@ -3621,6 +3636,43 @@ impl ChunkError {
 
 #[cfg(test)]
 mod tests {
+
+    #[tokio::test]
+    async fn a_read_only_post_listing_still_recovers_from_503() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen = calls.clone();
+        let app = axum::Router::new().route(
+            "/v3/dir/content",
+            axum::routing::post(move || {
+                let ordinal = seen.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if ordinal == 0 {
+                        (axum::http::StatusCode::SERVICE_UNAVAILABLE, "busy")
+                    } else {
+                        (
+                            axum::http::StatusCode::OK,
+                            r#"{"status":true,"data":{"folders":[],"uploads":[]}}"#,
+                        )
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = FilenProvider::connected_for_test(demo_cfg());
+        provider.gateway_base_override = Some(format!("http://{addr}"));
+        provider.retry_config.base_delay_ms = 1;
+        provider.retry_config.max_delay_ms = 5;
+        let result = provider.read_listing(".").await;
+        server.abort();
+        assert!(result.is_ok());
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
 
     #[tokio::test]
     async fn share_link_creation_fails_closed_without_requests() {

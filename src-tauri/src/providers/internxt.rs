@@ -2070,7 +2070,6 @@ impl StorageProvider for InternxtProvider {
         // Single-shard upload supports files up to ~5GB on current Internxt plans.
         // For larger files, multi-shard upload with multiparts=N would be needed.
         // TODO: Multi-shard upload for files exceeding single-shard limit
-        // Retry with exponential backoff (gateway can return 500 timeout)
         let start_url = format!("/v2/buckets/{}/files/start?multiparts=1", self.bucket);
         let start_body = serde_json::json!({
             "uploads": [{ "index": 0, "size": plain_size }]
@@ -2082,100 +2081,15 @@ impl StorageProvider for InternxtProvider {
             full_start_url, plain_size
         ));
 
-        let mut start_data: Option<StartUploadResp> = None;
-        let mut last_error = String::new();
-        // Whether the last attempt got no answer: then the upload failed on a
-        // timeout, whatever the earlier attempts said.
-        let mut last_timed_out = false;
-        for attempt in 0..3 {
-            last_timed_out = false;
-            if attempt > 0 {
-                let delay = std::time::Duration::from_millis(1000 * (1 << attempt));
-                internxt_log(&format!(
-                    "[UPLOAD] Retry attempt {} after {:?}...",
-                    attempt + 1,
-                    delay
-                ));
-                tokio::time::sleep(delay).await;
-            }
-
-            let resp = self
-                .send_with_reauth(|this| {
-                    this.network_request(reqwest::Method::POST, &start_url)
-                        .header(CONTENT_TYPE, "application/json; charset=utf-8")
-                        .json(&start_body)
-                })
-                .await;
-
-            let resp = match resp {
-                Ok(r) => r,
-                Err(e) => {
-                    last_timed_out = matches!(e, ProviderError::Timeout);
-                    last_error = format!("Request failed: {}", e);
-                    internxt_log(&format!(
-                        "[UPLOAD] Attempt {} failed: {}",
-                        attempt + 1,
-                        last_error
-                    ));
-                    continue;
-                }
-            };
-
-            let status = resp.status();
-            internxt_log(&format!(
-                "[UPLOAD] Attempt {} status: {}",
-                attempt + 1,
-                status
-            ));
-
-            if status.as_u16() == 500 || status.as_u16() == 502 || status.as_u16() == 503 {
-                let body = resp.text().await.unwrap_or_default();
-                last_error = format!(
-                    "Server error ({}): {}",
-                    status,
-                    &body[..body.floor_char_boundary(200)]
-                );
-                internxt_log(&format!(
-                    "[UPLOAD] Attempt {} server error, retrying: {}",
-                    attempt + 1,
-                    last_error
-                ));
-                continue;
-            }
-
-            if !status.is_success() {
-                let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!(
-                    "Start upload failed ({}): {}",
-                    status,
-                    super::sanitize_api_error(&body)
-                )));
-            }
-
-            let raw = resp.text().await.map_http_err(|e| {
-                ProviderError::ServerError(format!("Failed to read start upload response: {}", e))
-            })?;
-            tracing::debug!(target: "internxt", "[UPLOAD] Start response ({} bytes): {}", raw.len(), &raw[..raw.floor_char_boundary(200)]);
-
-            match serde_json::from_str::<StartUploadResp>(&raw) {
-                Ok(data) => {
-                    start_data = Some(data);
-                    break;
-                }
-                Err(e) => {
-                    last_error = format!(
-                        "Parse error: {} | Response: {}",
-                        e,
-                        &raw[..raw.floor_char_boundary(200)]
-                    );
-                    internxt_log(&format!("[UPLOAD] {}", last_error));
-                    continue;
-                }
-            }
-        }
-
-        let start_data =
-            start_data.ok_or_else(|| start_upload_failure(last_timed_out, &last_error))?;
+        // A failed response can follow a committed session allocation. Only
+        // explicit refusals may be retried by the transport/auth layers.
+        let start_data = self
+            .start_upload_session(|this| {
+                this.network_request(reqwest::Method::POST, &start_url)
+                    .header(CONTENT_TYPE, "application/json; charset=utf-8")
+                    .json(&start_body)
+            })
+            .await?;
 
         if start_data.uploads.is_empty() {
             return Err(ProviderError::ServerError(
@@ -2790,10 +2704,18 @@ impl InternxtProvider {
         &self,
         rb: reqwest::RequestBuilder,
     ) -> Result<reqwest::Response, ProviderError> {
+        self.send_with_policy(rb, &self.retry_config).await
+    }
+
+    async fn send_with_policy(
+        &self,
+        rb: reqwest::RequestBuilder,
+        config: &HttpRetryConfig,
+    ) -> Result<reqwest::Response, ProviderError> {
         let request = rb
             .build()
             .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
-        send_with_retry(&self.client, request, &self.retry_config)
+        send_with_retry(&self.client, request, config)
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
     }
@@ -2845,9 +2767,33 @@ impl InternxtProvider {
         .await
     }
 
+    /// Allocate at most one session after an ambiguous response. A 5xx,
+    /// truncated response or malformed JSON does not prove allocation failed.
+    async fn start_upload_session<F>(&mut self, build: F) -> Result<StartUploadResp, ProviderError>
+    where
+        F: FnMut(&Self) -> reqwest::RequestBuilder,
+    {
+        let resp = self.send_with_reauth(build).await?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(ProviderError::ServerError(format!(
+                "Start upload returned {status}; it may have completed. Check remote state before retrying."
+            )));
+        }
+        resp.json::<StartUploadResp>().await.map_http_err(|_| {
+            ProviderError::ServerError(
+                "Could not read the allocated upload session; it may have completed. Check remote state before retrying.".into()
+            )
+        })
+    }
+
     async fn refresh_token_once(&mut self) -> Result<(), ProviderError> {
         let resp = self
-            .send_retryable(self.drive_request(reqwest::Method::GET, "/users/refresh"))
+            // This GET rotates credentials, so it is not a read-only query.
+            .send_with_policy(
+                self.drive_request(reqwest::Method::GET, "/users/refresh"),
+                &self.retry_config.clone().refused_only(),
+            )
             .await?;
 
         if !resp.status().is_success() {
@@ -3068,21 +3014,6 @@ fn rename_refused(what: &str, status: reqwest::StatusCode, body: &str, to: &str)
     ))
 }
 
-/// The error of an upload whose start request failed every attempt. A last
-/// attempt that got no answer is a timeout (the exit code and the transfer
-/// engine's retry read it as one); anything else is the server's failure,
-/// with the last reason.
-fn start_upload_failure(last_timed_out: bool, last_error: &str) -> ProviderError {
-    if last_timed_out {
-        ProviderError::Timeout
-    } else {
-        ProviderError::ServerError(format!(
-            "Start upload failed after 3 attempts: {}",
-            last_error
-        ))
-    }
-}
-
 /// Private staging for decrypted bytes: a directory only the owner can enter
 /// (`0o700` on Unix; `tempfile` would otherwise follow the umask), removed with
 /// its contents when dropped, on success and on every error path.
@@ -3154,18 +3085,80 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn a_start_upload_whose_last_attempt_timed_out_is_a_timeout() {
-        assert!(matches!(
-            start_upload_failure(true, "Request failed: Timeout"),
-            ProviderError::Timeout
-        ));
-        match start_upload_failure(false, "HTTP 500") {
-            ProviderError::ServerError(message) => {
-                assert_eq!(message, "Start upload failed after 3 attempts: HTTP 500")
-            }
-            other => panic!("expected ServerError, got {other:?}"),
+    #[tokio::test]
+    async fn an_upload_start_is_not_repeated_after_503_or_a_broken_success() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        for status in [
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            axum::http::StatusCode::OK,
+        ] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let seen = calls.clone();
+            let app = axum::Router::new().route(
+                "/start",
+                axum::routing::post(move || {
+                    seen.fetch_add(1, Ordering::SeqCst);
+                    async move { (status, "broken response") }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let url = format!("http://{}/start", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut p = test_provider();
+            let outcome = p
+                .start_upload_session(|this| {
+                    this.client
+                        .post(&url)
+                        .json(&serde_json::json!({"uploads":[{"index":0,"size":4}]}))
+                })
+                .await;
+            server.abort();
+            assert!(
+                outcome.is_err(),
+                "an uncertain create cannot be reported as success"
+            );
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
         }
+    }
+
+    #[tokio::test]
+    async fn a_timed_out_upload_session_is_not_allocated_again() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen = calls.clone();
+        let app = axum::Router::new().route(
+            "/start",
+            axum::routing::post(move || {
+                seen.fetch_add(1, Ordering::SeqCst);
+                async {
+                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                    "{}"
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/start", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = test_provider();
+        let outcome = p
+            .start_upload_session(|this| {
+                this.client
+                    .post(&url)
+                    .timeout(std::time::Duration::from_millis(50))
+            })
+            .await;
+        server.abort();
+        assert!(
+            matches!(outcome, Err(ProviderError::Timeout)),
+            "{outcome:?}"
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
     /// Internxt refuses a taken name and has no overwrite on rename or move, so

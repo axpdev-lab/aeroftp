@@ -1,7 +1,7 @@
 //! GAP-A01: Shared HTTP retry wrapper with 429/5xx handling and Retry-After support.
 //!
 //! Provides `send_with_retry()` as a drop-in replacement for `request.send()` that adds:
-//! - Exponential backoff with jitter on 429 (Too Many Requests) and 5xx errors
+//! - Exponential backoff on 429, and on 5xx only when replay is safe
 //! - Retry-After header parsing (both seconds and HTTP-date formats)
 //! - Configurable max retries and delay bounds
 //! - Transparent passthrough for non-retryable status codes (4xx except 429)
@@ -11,6 +11,48 @@
 
 use reqwest::{Client, Request, Response};
 use std::time::Duration;
+
+/// A replayable body is not proof that repeating the operation is safe: a
+/// gateway may return 5xx after the service committed a create. RPC-style
+/// APIs can mutate through GET, while a POST can also be a read-only query.
+#[derive(Debug, Clone, Copy, Default)]
+pub enum ServerErrorRetries {
+    /// Conservative default for ordinary HTTP APIs. Writes need an explicit
+    /// operation-level decision, even PUT (which can create another revision).
+    #[default]
+    SafeMethods,
+    /// The caller has established that repeating this operation is safe.
+    SafeOperation,
+    /// Only a refusal (429) may be retried, regardless of the HTTP method.
+    Never,
+}
+
+/// The audited shared-HTTP providers own request replay decisions. A batch
+/// executor must not start the entire upload again after an uncertain write,
+/// including a timeout or a malformed acknowledgement. Overlays forward this
+/// policy to the underlying provider. Protocol-specific recovery stays there.
+pub(super) fn manages_upload_retries_for(provider: super::ProviderType) -> bool {
+    use super::ProviderType;
+    matches!(
+        provider,
+        ProviderType::S3
+            | ProviderType::Azure
+            | ProviderType::Swift
+            | ProviderType::Backblaze
+            | ProviderType::FileLu
+            | ProviderType::PCloud
+            | ProviderType::FourShared
+            | ProviderType::Jottacloud
+            | ProviderType::KDrive
+            | ProviderType::Koofr
+            | ProviderType::Internxt
+            | ProviderType::Twake
+            | ProviderType::GitLab
+            | ProviderType::Filen
+            | ProviderType::ZohoWorkdrive
+            | ProviderType::WebDav
+    )
+}
 
 /// Configuration for HTTP retry behavior
 #[derive(Debug, Clone)]
@@ -23,6 +65,9 @@ pub struct HttpRetryConfig {
     pub max_delay_ms: u64,
     /// Backoff multiplier (default: 2.0)
     pub backoff_multiplier: f64,
+    /// Whether a server error permits repeating the operation. This never
+    /// overrides the requirement that the request body can actually be replayed.
+    pub server_error_retries: ServerErrorRetries,
 }
 
 impl Default for HttpRetryConfig {
@@ -32,13 +77,48 @@ impl Default for HttpRetryConfig {
             base_delay_ms: 1000,
             max_delay_ms: 30_000,
             backoff_multiplier: 2.0,
+            server_error_retries: ServerErrorRetries::SafeMethods,
         }
+    }
+}
+
+impl HttpRetryConfig {
+    /// Opt in only for a read-only or otherwise proven safe operation, not
+    /// merely because its request body can be rebuilt.
+    pub fn for_safe_operation(mut self) -> Self {
+        self.server_error_retries = ServerErrorRetries::SafeOperation;
+        self
+    }
+
+    /// Use for state-changing RPCs sent as GET and other ambiguous writes.
+    pub fn refused_only(mut self) -> Self {
+        self.server_error_retries = ServerErrorRetries::Never;
+        self
     }
 }
 
 /// Determine if a status code is retryable
 fn is_retryable_status(status: u16) -> bool {
     matches!(status, 429 | 500 | 502 | 503 | 504)
+}
+
+fn can_retry_response(status: u16, method: &reqwest::Method, config: &HttpRetryConfig) -> bool {
+    if !is_retryable_status(status) {
+        return false;
+    }
+    if status == 429 {
+        return true;
+    }
+    match config.server_error_retries {
+        ServerErrorRetries::SafeMethods => {
+            matches!(
+                *method,
+                reqwest::Method::GET | reqwest::Method::HEAD | reqwest::Method::OPTIONS
+            )
+        }
+        ServerErrorRetries::SafeOperation => true,
+        ServerErrorRetries::Never => false,
+    }
 }
 
 /// Parse Retry-After header value (supports both seconds and HTTP-date)
@@ -85,7 +165,9 @@ fn record_headers_received(start: std::time::Instant) {
     crate::transfer_dag::ttfb::record_sample(nanos);
 }
 
-/// Send an HTTP request with automatic retry on 429/5xx.
+/// Send a replayable request with retries on refusals and safe server errors.
+/// A 5xx on a write is returned unchanged by default: it may have committed.
+/// The caller can reconcile it, but the transport must not blindly repeat it.
 ///
 /// This clones the request for each retry attempt. The original request builder
 /// pattern is preserved: callers build a `Request` via `client.get(url)...build()`.
@@ -178,8 +260,13 @@ where
 
     // The TTFB timer starts at the actual send, after the rate-limit toll:
     // a proactive throttle wait is not part of the server's first-byte time.
+    // Keep the builder's own client, including its transport settings. A
+    // built request also exposes the actual method without cloning a stream.
+    let (attempt_client, request) = build().build_split();
+    let request = request?;
+    let mut method = request.method().clone();
     let attempt_start = std::time::Instant::now();
-    let mut last_response = match build().send().await {
+    let mut last_response = match attempt_client.execute(request).await {
         Ok(response) => {
             record_headers_received(attempt_start);
             response
@@ -188,7 +275,11 @@ where
     };
 
     for attempt in 0..config.max_retries {
-        if !is_retryable_status(last_response.status().as_u16()) {
+        if !can_retry_response(last_response.status().as_u16(), &method, config) {
+            if is_retryable_status(last_response.status().as_u16()) {
+                tracing::warn!(method = %method, status = %last_response.status(),
+                    "Not repeating an operation after an ambiguous server error; it may have completed. Check remote state before retrying.");
+            }
             return Ok(last_response);
         }
 
@@ -198,7 +289,7 @@ where
 
         tracing::debug!(
             "HTTP {} returned {}. Retry {}/{} after {:?}",
-            last_response.url(),
+            method,
             last_response.status(),
             attempt + 1,
             config.max_retries,
@@ -214,8 +305,11 @@ where
         super::tpslimit::maybe_acquire().await;
         // Each retried attempt that reaches headers is its own honest
         // first-byte sample; retries never double-count a single attempt.
+        let (attempt_client, request) = build().build_split();
+        let request = request?;
+        method = request.method().clone();
         let attempt_start = std::time::Instant::now();
-        last_response = match build().send().await {
+        last_response = match attempt_client.execute(request).await {
             Ok(response) => {
                 record_headers_received(attempt_start);
                 response
@@ -348,6 +442,7 @@ mod tests {
             base_delay_ms: 1,
             max_delay_ms: 5,
             backoff_multiplier: 1.0,
+            ..Default::default()
         };
         let client = Client::new();
         let request = client
@@ -400,12 +495,18 @@ mod tests {
     /// first request and 200 to the others, and records the body length of
     /// each request it received.
     async fn busy_once_server() -> (String, std::sync::Arc<std::sync::Mutex<Vec<usize>>>) {
+        refusal_once_server(axum::http::StatusCode::SERVICE_UNAVAILABLE).await
+    }
+
+    async fn refusal_once_server(
+        first_status: axum::http::StatusCode,
+    ) -> (String, std::sync::Arc<std::sync::Mutex<Vec<usize>>>) {
         use futures_util::StreamExt;
         let seen: std::sync::Arc<std::sync::Mutex<Vec<usize>>> = Default::default();
         let recorded = std::sync::Arc::clone(&seen);
         let app = axum::Router::new().route(
             "/up",
-            axum::routing::post(move |body: axum::body::Body| {
+            axum::routing::any(move |body: axum::body::Body| {
                 let recorded = std::sync::Arc::clone(&recorded);
                 async move {
                     let mut stream = body.into_data_stream();
@@ -416,7 +517,7 @@ mod tests {
                     let mut seen = recorded.lock().unwrap();
                     seen.push(len);
                     if seen.len() == 1 {
-                        axum::http::StatusCode::SERVICE_UNAVAILABLE
+                        first_status
                     } else {
                         axum::http::StatusCode::OK
                     }
@@ -435,6 +536,7 @@ mod tests {
             base_delay_ms: 1,
             max_delay_ms: 5,
             backoff_multiplier: 1.0,
+            ..Default::default()
         }
     }
 
@@ -466,9 +568,10 @@ mod tests {
         assert_eq!(response.status(), 503);
     }
 
-    /// Positive control: a body held as bytes is still retried, whole.
+    /// A replayable body does not authorize creating another item after a
+    /// server error: the first response may follow a committed write.
     #[tokio::test]
-    async fn a_bytes_body_is_retried_with_its_payload() {
+    async fn a_bytes_create_is_not_retried_after_a_server_error() {
         let (url, seen) = busy_once_server().await;
         let client = Client::new();
         let request = client.post(&url).body("payload").build().unwrap();
@@ -477,9 +580,110 @@ mod tests {
             .unwrap();
         assert_eq!(
             *seen.lock().unwrap(),
-            [7, 7],
+            [7],
             "requests and their body lengths"
         );
+        assert_eq!(response.status(), 503);
+    }
+
+    #[tokio::test]
+    async fn an_explicitly_safe_post_keeps_its_payload_when_retried() {
+        let (url, seen) = busy_once_server().await;
+        let client = Client::new();
+        let request = client.post(&url).body("query").build().unwrap();
+        let response = send_with_retry(&client, request, &fast_retries().for_safe_operation())
+            .await
+            .unwrap();
         assert_eq!(response.status(), 200);
+        assert_eq!(*seen.lock().unwrap(), [5, 5]);
+    }
+
+    #[tokio::test]
+    async fn a_rebuilt_create_is_not_retried_after_it_may_have_committed() {
+        let (url, seen) = busy_once_server().await;
+        let client = Client::new();
+        let response = send_with_retry_replayable(
+            &client,
+            || client.post(&url).body("create"),
+            &fast_retries(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), 503);
+        assert_eq!(*seen.lock().unwrap(), [6]);
+    }
+
+    #[tokio::test]
+    async fn a_refused_create_can_retry_but_a_get_rpc_cannot_replay_a_server_error() {
+        let client = Client::new();
+        let (url, seen) = refusal_once_server(axum::http::StatusCode::TOO_MANY_REQUESTS).await;
+        let request = client.post(&url).body("create").build().unwrap();
+        let response = send_with_retry(&client, request, &fast_retries().refused_only())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+        assert_eq!(*seen.lock().unwrap(), [6, 6]);
+
+        let (url, seen) = busy_once_server().await;
+        let request = client.get(&url).build().unwrap();
+        let response = send_with_retry(&client, request, &fast_retries().refused_only())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 503);
+        assert_eq!(*seen.lock().unwrap(), [0]);
+    }
+
+    #[tokio::test]
+    async fn a_rebuilt_stream_is_whole_on_each_explicit_refusal_attempt() {
+        let client = Client::new();
+        let (url, seen) = refusal_once_server(axum::http::StatusCode::TOO_MANY_REQUESTS).await;
+        let response = send_with_retry_replayable(
+            &client,
+            || {
+                let stream = futures_util::stream::once(async {
+                    Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"entire-payload"))
+                });
+                client.post(&url).body(reqwest::Body::wrap_stream(stream))
+            },
+            &fast_retries().refused_only(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), 200);
+        assert_eq!(*seen.lock().unwrap(), [14, 14]);
+    }
+
+    #[test]
+    fn replay_decision_is_about_the_operation_and_the_response() {
+        use reqwest::Method;
+        let defaults = fast_retries();
+        for status in [500, 502, 503, 504] {
+            for method in [Method::POST, Method::PUT, Method::PATCH, Method::DELETE] {
+                assert!(!can_retry_response(status, &method, &defaults));
+                assert!(can_retry_response(
+                    status,
+                    &method,
+                    &defaults.clone().for_safe_operation()
+                ));
+            }
+            assert!(can_retry_response(status, &Method::GET, &defaults));
+            assert!(!can_retry_response(
+                status,
+                &Method::GET,
+                &defaults.clone().refused_only()
+            ));
+        }
+        assert!(can_retry_response(
+            429,
+            &Method::POST,
+            &defaults.clone().refused_only()
+        ));
+        for status in [200, 400, 401, 403, 404, 409] {
+            assert!(!can_retry_response(
+                status,
+                &Method::POST,
+                &defaults.clone().for_safe_operation()
+            ));
+        }
     }
 }

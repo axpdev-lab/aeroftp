@@ -293,6 +293,7 @@ impl FourSharedProvider {
             base_delay_ms: 1000,
             max_delay_ms: 15_000,
             backoff_multiplier: 2.0,
+            ..Default::default()
         }
     }
 
