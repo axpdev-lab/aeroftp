@@ -1371,7 +1371,7 @@ impl StorageProvider for DropboxProvider {
                     "session_id": session.session_id,
                     "offset": file_size
                 },
-                "commit": commit_arg(&path, super::local_modified_rfc3339(local_path).as_deref())
+                "commit": commit_arg(&path, source.modified_rfc3339().as_deref())
             });
 
             let finish_resp = self
@@ -1403,7 +1403,7 @@ impl StorageProvider for DropboxProvider {
                 .map_err(|e| ProviderError::Other(format!("Open error: {}", e)))?;
             let body = progress.file_body(file);
 
-            let arg = commit_arg(&path, super::local_modified_rfc3339(local_path).as_deref());
+            let arg = commit_arg(&path, source.modified_rfc3339().as_deref());
 
             let url = format!("{}/files/upload", self.content_api_base());
 

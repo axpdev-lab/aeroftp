@@ -682,6 +682,10 @@ export const runRemoteSync = async (
     // this run knows no time of (a remote that lists none, a run resumed from
     // its journal): read when a download completed, and before an upload.
     const landedStates = new Map<string, { size: number | null; modified: string | null }>();
+    // When each upload ended. The index reads a remote date up to this moment as
+    // the stamp of our own upload, so a remote edit made later in the run stays
+    // an edit. A resumed run did not see the upload and records none.
+    const uploadsEnded = new Map<string, string>();
     const readLocalState = async (path: string) => {
         const props = await invoke<{ size?: number; modified: string | null } | undefined>(
             'get_file_properties',
@@ -1022,6 +1026,7 @@ export const runRemoteSync = async (
             if (result.success) {
                 didTransfer = true;
                 uploaded++;
+                uploadsEnded.set(item.relativePath, new Date().toISOString());
                 totalBytes += item.size;
                 if (journalEntry) {
                     journalEntry.status = 'completed';
@@ -1417,7 +1422,7 @@ export const runRemoteSync = async (
                         size,
                         modified,
                         is_dir: false,
-                        ...(f.action === 'upload' ? { uploaded_at: new Date().toISOString() } : {}),
+                        ...(uploadsEnded.has(f.relativePath) ? { uploaded_at: uploadsEnded.get(f.relativePath) } : {}),
                     };
                     // Upload: relativePath is the remote spelling. Download:
                     // sourcePath is. Keep-both fails the NFC test above, so

@@ -490,14 +490,14 @@ async fn only_a_claimed_size_tells_a_proton_file_from_what_was_sent() {
                     stamped, sent_time,
                     "bulk {bulk}: a different claimed size is another write"
                 );
-                assert_eq!(landed.modified, sent_time);
+                assert_eq!(landed.0.modified, sent_time);
             } else {
                 assert_eq!(
                     stamped,
                     server_time(),
                     "bulk {bulk}: a storage size is no evidence"
                 );
-                assert_eq!(landed.modified, server_time());
+                assert_eq!(landed.0.modified, server_time());
             }
         }
     }

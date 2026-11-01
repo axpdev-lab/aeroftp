@@ -1778,6 +1778,9 @@ impl StorageProvider for OneDriveProvider {
                 .resume_upload(local_path, remote_path, 0, on_progress)
                 .await;
         }
+        // Read before the bytes: a rewrite during the upload must not put the
+        // new file's date on them.
+        let local_date = super::local_modified_rfc3339(local_path);
 
         let file = tokio::fs::File::open(local_path)
             .await
@@ -1814,7 +1817,7 @@ impl StorageProvider for OneDriveProvider {
         // delete all non-current versions. Failures are logged but the
         // upload is still reported as success.
         // Before the sweep: setting the date can add a version.
-        if let Some(date) = super::local_modified_rfc3339(local_path) {
+        if let Some(date) = local_date {
             self.keep_local_date(&path, &date).await;
         }
         if self.no_versions {
@@ -2735,6 +2738,7 @@ impl StorageProvider for OneDriveProvider {
             .await
             .map_err(ProviderError::IoError)?
             .len();
+        let local_date = super::local_modified_rfc3339(local_path);
         let mut file = tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
@@ -2832,7 +2836,7 @@ impl StorageProvider for OneDriveProvider {
         info!("Resumable upload completed: {}", path);
 
         // As on the small-file path, before the sweep.
-        if let Some(date) = super::local_modified_rfc3339(local_path) {
+        if let Some(date) = local_date {
             self.keep_local_date(&path, &date).await;
         }
 
@@ -3679,6 +3683,75 @@ mod tests {
 
     /// Learning the shortcuts costs one lookup per folder per session: a
     /// folder already known as a plain one costs no request more.
+    #[tokio::test]
+    async fn an_upload_sends_the_date_its_bytes_had() {
+        use axum::{response::IntoResponse, routing::any, Json, Router};
+        use std::sync::{Arc, Mutex};
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("f");
+        std::fs::write(&local, b"f").unwrap();
+        let dated = |secs: u64| std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs);
+        let set_date = |path: &std::path::Path, secs: u64| {
+            std::fs::File::options()
+                .write(true)
+                .open(path)
+                .unwrap()
+                .set_modified(dated(secs))
+                .unwrap();
+        };
+        // 2021-03-04T05:06:07Z
+        set_date(&local, 1_614_834_367);
+        let patches: Arc<Mutex<Vec<serde_json::Value>>> = Arc::default();
+        let (seen, rewrite) = (patches.clone(), local.clone());
+        let app = Router::new().fallback(any(move |req: axum::extract::Request| {
+            let (seen, rewrite) = (seen.clone(), rewrite.clone());
+            async move {
+                let method = req.method().clone();
+                let body = axum::body::to_bytes(req.into_body(), usize::MAX)
+                    .await
+                    .unwrap();
+                if method == axum::http::Method::PATCH {
+                    seen.lock()
+                        .unwrap()
+                        .push(serde_json::from_slice(&body).unwrap());
+                } else if method == axum::http::Method::PUT {
+                    // A rewrite after the bytes left.
+                    std::fs::File::options()
+                        .write(true)
+                        .open(&rewrite)
+                        .unwrap()
+                        .set_modified(
+                            std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000),
+                        )
+                        .unwrap();
+                }
+                Json(serde_json::json!({"id": "F", "name": "f", "size": 1, "file": {}}))
+                    .into_response()
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = OneDriveProvider::new(OneDriveConfig {
+            client_id: "fixture".into(),
+            client_secret: "fixture".into(),
+        });
+        p.api_origin_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("fixture".into());
+
+        p.upload(local.to_str().unwrap(), "/f", None)
+            .await
+            .expect("upload");
+        server.abort();
+
+        let patches = patches.lock().unwrap();
+        assert_eq!(patches.len(), 1, "{patches:?}");
+        assert_eq!(
+            patches[0]["fileSystemInfo"]["lastModifiedDateTime"],
+            "2021-03-04T05:06:07Z"
+        );
+    }
+
     #[tokio::test]
     async fn a_known_plain_folder_costs_no_extra_lookup_before_an_upload() {
         use axum::http::{Method, StatusCode};

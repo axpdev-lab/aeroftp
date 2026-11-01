@@ -254,7 +254,7 @@ pub struct CloudService {
     app_handle: Option<AppHandle>,
     /// What each transfer of the running cycle left (relative path), for the
     /// baseline.
-    landed: Arc<std::sync::Mutex<HashMap<String, Landed>>>,
+    landed: Arc<std::sync::Mutex<LandedFiles>>,
     /// Files of the running cycle that kept changing while they uploaded
     /// (relative path): the cycle reports them once its baseline is saved.
     unsettled: Arc<std::sync::Mutex<Vec<String>>>,
@@ -275,6 +275,9 @@ struct Landed {
     size: Option<u64>,
     modified: DateTime<Utc>,
 }
+
+/// What each transfer left, and when it ended.
+type LandedFiles = HashMap<String, (Landed, DateTime<Utc>)>;
 
 /// A local file's state as an upload reads it (see
 /// `CloudService::local_file_state`).
@@ -369,7 +372,7 @@ impl CloudService {
     /// reading the disk again.
     fn note_landed_as(&self, relative_path: &str, what: Landed) {
         if let Ok(mut landed) = self.landed.lock() {
-            landed.insert(relative_path.to_string(), what);
+            landed.insert(relative_path.to_string(), (what, Utc::now()));
         }
     }
 
@@ -884,7 +887,7 @@ impl CloudService {
                     SyncAction::Upload | SyncAction::Download | SyncAction::KeepBoth
                 ) && !c.is_dir
                 {
-                    if let Some(landed) = self
+                    if let Some((landed, at)) = self
                         .landed
                         .lock()
                         .ok()
@@ -893,6 +896,11 @@ impl CloudService {
                         entry.modified = Some(landed.modified);
                         if let Some(size) = landed.size {
                             entry.size = size;
+                        }
+                        // When this upload ended, not now: a remote edit made
+                        // later in the cycle must stay an edit.
+                        if matches!(action, SyncAction::Upload) {
+                            entry.uploaded_at = Some(at);
                         }
                     }
                 }
@@ -956,7 +964,7 @@ impl CloudService {
                 size: fi.size,
                 modified: fi.modified,
                 is_dir,
-                uploaded_at: matches!(action, SyncAction::Upload).then(chrono::Utc::now),
+                uploaded_at: None,
             }),
             // A kept directory carries no size/mtime but must stay tracked so it
             // is not treated as new (and re-created) every cycle.
@@ -3166,11 +3174,19 @@ mod baseline_tests {
         );
         config.local_folder = root.path().to_path_buf();
         let svc = CloudService::new();
+        let before = Utc::now();
         svc.note_landed(&config, "f.txt");
+        let after = Utc::now();
         stamp(&file, 1_850_000_000);
+        std::thread::sleep(std::time::Duration::from_millis(5));
         let files = svc.post_sync_baseline(&[uploaded], &config, None);
         let entry = files.get("f.txt").expect("the upload is recorded");
         assert_eq!(entry.size, 7);
+        let ended = entry.uploaded_at.expect("an upload is dated");
+        assert!(
+            before <= ended && ended <= after,
+            "dated when the upload ended, not when the index is written"
+        );
         assert_eq!(
             entry.modified,
             DateTime::<Utc>::from_timestamp(1_800_000_000, 0),
