@@ -1,0 +1,2 @@
+ls (GNU coreutils) 9.4
+Linux 9f1c920449fb 6.17.0-1032-oem #32-Ubuntu SMP PREEMPT_DYNAMIC Fri Jul 24 05:46:26 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux

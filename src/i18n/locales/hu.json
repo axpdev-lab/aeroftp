@@ -598,7 +598,8 @@
             "setAsPublic": "Beállítás nyilvánosra",
             "makeAllPrivate": "Összes priváttá tétele",
             "dropboxRestoreLimit": "Az AeroFTP vissza tudja állítani a helyreállítható fájlverziókat. A mappákat a dropbox.com Törölt fájlok részéből állíthatja vissza. A kérdőjel azt jelenti, hogy a Dropbox nem azonosította az elem típusát.",
-            "openWithDefaultApp": "Megnyitás az alapértelmezett alkalmazással"
+            "openWithDefaultApp": "Megnyitás az alapértelmezett alkalmazással",
+            "extractHereUncheckedConfirm": "A(z) {name} belsejében lévő nevek kibontás előtt nem olvashatók, ezért az AeroFTP nem tudja ellenőrizni, mit írna felül a „Kibontás ide” művelet ebben a mappában. A „Kibontás mappába” művelet soha nem ír felül semmit."
         },
         "transfer": {
             "transferring": "Átvitel...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud engedélyezve",
             "selectPairLocalFolder": "Helyi mappa kiválasztása a párhoz",
             "secondsAgo": "{count} mp-e",
-            "conflictsCount": "{count} ütközés figyelmet igényel"
+            "conflictsCount": "{count} ütközés figyelmet igényel",
+            "updateOnlyHint": "Az egyirányú frissítés megtartja az újabb célfájlokat. Ha a hozzáadó biztonsági mentés ki van kapcsolva, csak azok a változatlan, kizárólag a célhelyen lévő fájlok törlődnek, amelyekhez ellenőrzött AeroCloud-átviteli bizonylat tartozik. A többi fájl megmarad az AeroSyncben történő ellenőrzéshez. Az ütközési szabály figyelmen kívül marad; az ismeretlen dátumok megoldatlanok maradnak.",
+            "untrackedDestinationFiles": "{count} célfájl megmaradt ellenőrzésre: az átviteli előzményeik nincsenek igazolva, vagy megváltoztak az utolsó AeroCloud-átvitel óta. Ellenőrizze őket az AeroSyncben, mielőtt a törlésükről dönt."
         },
         "statusBar": {
             "connected": "Csatlakozva",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Részfa beolvasása...",
             "flattenTruncated": "csonkítva",
             "flattenTruncatedHint": "Elérte az 5 000 bejegyzéses korlátot; finomítsa a szűrőt, vagy lépjen be egy almappába.",
-            "local_placeholder_flatten": "Helyi fájlok szűrése... (* rekurzívhoz)"
+            "local_placeholder_flatten": "Helyi fájlok szűrése... (* rekurzívhoz)",
+            "flattenNameClash": "{names}: több mappában is kijelölve. Egy helyre téve felülírnák egymást; egyszerre mindegyikből csak egyen végezzen műveletet.",
+            "flattenNameClashTitle": "Azonos név több mappában"
         },
         "versions": {
             "title": "Fájlverziók",
@@ -6309,7 +6314,12 @@
                 }
             },
             "rescan": "Újraszkennelés",
-            "rescanNeeded": "Az összehasonlítás más kizárásokkal vagy másik biztonsági mentési mappával készült. Futtatás előtt szkenneld újra.",
+            "rescanBringsBack": "Ezek a beállítások olyan fájlokat hoznak vissza, amelyeket a szkennelés kihagyott, így soha nem olvasta be őket. Futtatás előtt szkenneld újra.",
+            "rescanFlat": "Ez az összehasonlítás a két panel listájából készült, nem teljes szkennelésből, így nem tud kizárásokat alkalmazni. Futtatás előtt szkenneld újra.",
+            "narrowAvailable": "Ezek a beállítások csak szűkítik az összehasonlítást, így újraszkennelés nélkül szűrhető.",
+            "narrowApply": "Alkalmazás erre az összehasonlításra",
+            "narrowedNote": "Új kizárásokkal szűrve, újraszkennelés nélkül. Az azonosak száma még mindig a szkennelésből származik.",
+            "narrowAfterRestore": "Egy visszaállítás fut. Ezeket a beállításokat az összehasonlításra a visszaállítás befejezése után lehet alkalmazni.",
             "backup": {
                 "checking": "Annak ellenőrzése, hogyan helyez át fájlokat ez a szerver...",
                 "serverCopy": "Ez a szerver nem tud áthelyezni: minden megőrzött példányt a szerveren lemásol, majd töröl. Ez minden megőrzött fájl teljes másolatába kerül, két külön lépésben.",
@@ -6336,7 +6346,10 @@
             "progressCopy": "[másolat]",
             "deleteCount": "Törlendő: {count}",
             "overwriteCount": "Felülírandó: {count}",
-            "conflictCount": "{count} ütközés"
+            "conflictCount": "{count} ütközés",
+            "updateOnly": "Újabb célfájlok kihagyása (egyirányú frissítés)",
+            "updateOnlyHint": "Átmásolja a hiányzó vagy módosult forrásfájlokat, megtartja a célhely újabb fájljait, és törli a csak a célhelyen található bejegyzéseket. Az összehasonlítható dátummal nem rendelkező fájlokat méret alapján hasonlítja össze; a méretkülönbségeket felülvizsgálatra hagyja.",
+            "rescanNeeded": "Frissítési szkript exportálása előtt futtass új összehasonlítást a jelenlegi beállításokkal."
         },
         "accountLock": {
             "title": "Válasszon fiókot",

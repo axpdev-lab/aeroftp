@@ -598,7 +598,8 @@
             "setAsPublic": "Nastavit jako veřejný",
             "makeAllPrivate": "Nastavit vše jako soukromé",
             "dropboxRestoreLimit": "AeroFTP může obnovit obnovitelné verze souborů. Složky obnovte v části Smazané soubory na dropbox.com. Otazník znamená, že Dropbox nerozpoznal typ položky.",
-            "openWithDefaultApp": "Otevřít ve výchozí aplikaci"
+            "openWithDefaultApp": "Otevřít ve výchozí aplikaci",
+            "extractHereUncheckedConfirm": "Názvy souborů uvnitř {name} nelze před rozbalením přečíst, takže AeroFTP nemůže zkontrolovat, co by „Rozbalit zde“ v této složce přepsalo. „Rozbalit do složky“ nikdy nic nepřepisuje."
         },
         "transfer": {
             "transferring": "Přenášení...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud povoleno",
             "selectPairLocalFolder": "Vyberte místní složku pro pár",
             "secondsAgo": "před {count}s",
-            "conflictsCount": "Konflikty vyžadující pozornost: {count}"
+            "conflictsCount": "Konflikty vyžadující pozornost: {count}",
+            "updateOnlyHint": "Jednosměrná aktualizace zachovává novější soubory v cíli. Při vypnutém přírůstkovém zálohování se odstraní pouze nezměněné soubory existující jen v cíli s ověřeným dokladem o přenosu přes AeroCloud. Ostatní soubory zůstanou ke kontrole v AeroSync. Zásady řešení konfliktů se ignorují; neznámá data zůstávají nevyřešena.",
+            "untrackedDestinationFiles": "{count} cílových souborů bylo zachováno ke kontrole: jejich historie přenosů není ověřena nebo se změnily od posledního přenosu přes AeroCloud. Než rozhodnete o odstranění, zkontrolujte je v AeroSync."
         },
         "statusBar": {
             "connected": "Připojeno",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Skenování podstromu...",
             "flattenTruncated": "zkráceno",
             "flattenTruncatedHint": "Dosažen limit 5 000 položek; upřesněte filtr nebo přejděte do podsložky.",
-            "local_placeholder_flatten": "Filtrovat místní soubory... (* pro rekurzi)"
+            "local_placeholder_flatten": "Filtrovat místní soubory... (* pro rekurzi)",
+            "flattenNameClash": "{names}: vybráno ve více složkách. Po vložení na jedno místo by se navzájem přepsaly; pracujte vždy s jedním z každého.",
+            "flattenNameClashTitle": "Stejný název ve více složkách"
         },
         "versions": {
             "title": "Verze souborů",
@@ -6309,7 +6314,12 @@
                 }
             },
             "rescan": "Znovu prohledat",
-            "rescanNeeded": "Porovnání bylo provedeno s jinými vyloučeními nebo jinou složkou záloh. Před spuštěním znovu prohledejte.",
+            "rescanBringsBack": "Tato nastavení vracejí soubory, které prohledání vynechalo, takže je nikdy nečetlo. Před spuštěním znovu prohledejte.",
+            "rescanFlat": "Toto porovnání vzniklo ze seznamů obou panelů, ne z úplného prohledání, takže nemůže použít vyloučení. Před spuštěním znovu prohledejte.",
+            "narrowAvailable": "Tato nastavení jen zužují porovnání, takže ho lze filtrovat bez nového prohledání.",
+            "narrowApply": "Použít na toto porovnání",
+            "narrowedNote": "Filtrováno s novými vyloučeními bez nového prohledání. Počet shodných je stále ten z prohledání.",
+            "narrowAfterRestore": "Probíhá obnovení. Tato nastavení lze použít na porovnání po skončení obnovení.",
             "backup": {
                 "checking": "Zjišťuji, jak tento server přesouvá soubory...",
                 "serverCopy": "Tento server neumí přesun: každá uchovaná kopie se zkopíruje na serveru a pak smaže. To stojí úplnou kopii každého uchovaného souboru, ve dvou samostatných krocích.",
@@ -6336,7 +6346,10 @@
             "progressCopy": "[kopie]",
             "deleteCount": "Ke smazání: {count}",
             "overwriteCount": "K přepsání: {count}",
-            "conflictCount": "Konflikty: {count}"
+            "conflictCount": "Konflikty: {count}",
+            "updateOnly": "Přeskočit novější soubory v cíli (jednosměrná aktualizace)",
+            "updateOnlyHint": "Zkopíruje chybějící nebo změněné zdrojové soubory, zachová novější soubory v cíli a odstraní položky, které jsou pouze v cíli. Soubory bez porovnatelných dat se porovnají podle velikosti; rozdíly ve velikosti zůstanou k posouzení.",
+            "rescanNeeded": "Před exportem aktualizačního skriptu spusťte nové porovnání s aktuálním nastavením."
         },
         "accountLock": {
             "title": "Vyberte účet",

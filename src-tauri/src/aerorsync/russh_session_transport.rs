@@ -150,6 +150,24 @@ impl Handler for RusshHandler {
     }
 }
 
+/// Send `userauth none` over the russh handle, as OpenSSH does before any
+/// credential (RFC 4252 section 5.2). `Ok(true)` when the server lets the
+/// account in with no credential, which is the only way into OpenWrt's
+/// Dropbear for a root with no password set; `Ok(false)` everywhere else,
+/// and the caller goes on with the profile's credential.
+async fn authenticate_none(
+    handle: &mut Handle<RusshHandler>,
+    username: &str,
+) -> Result<bool, AerorsyncError> {
+    match handle.authenticate_none(username).await {
+        Ok(AuthResult::Success) => Ok(true),
+        Ok(AuthResult::Failure { .. }) => Ok(false),
+        Err(e) => Err(AerorsyncError::transport(format!(
+            "russh none auth {username} transport error: {e}"
+        ))),
+    }
+}
+
 /// Z.4.5 R1: send `userauth password` over the russh handle.
 ///
 /// The password is taken from the [`SshTransportConfig::auth_password`]
@@ -313,6 +331,10 @@ async fn authenticate_agent(
 }
 
 impl RusshSessionTransport {
+    /// Dial `config.host:config.port`, check the host key against
+    /// `config.host_key_policy` and authenticate: `none` first, then exactly
+    /// one configured credential (password, else agent, else key file).
+    /// Returns a transport whose `handshake_count` is 1.
     pub async fn connect(config: SshTransportConfig) -> Result<Self, AerorsyncError> {
         let cancel_flag = Arc::new(AtomicBool::new(false));
         let handshake_count = Arc::new(AtomicU32::new(0));
@@ -364,7 +386,12 @@ impl RusshSessionTransport {
         // should not silently retry one after the other (it would mask
         // which credential the server actually accepted, complicating
         // audit). The caller picks one via the profile's auth method.
-        if let Some(password) = config.usable_password() {
+        // `none` goes before all three: it sends no credential, so it
+        // blurs nothing, and an account the server lets in with no
+        // credential is reachable only through it.
+        if authenticate_none(&mut handle, &config.username).await? {
+            tracing::info!("aerorsync: server accepted the account with no credential");
+        } else if let Some(password) = config.usable_password() {
             authenticate_password(&mut handle, &config.username, password).await?;
         } else if config.auth_agent {
             authenticate_agent(&mut handle, &config.username).await?;
@@ -1309,5 +1336,125 @@ mod tests {
             Err(_) => {}
             Ok(_) => panic!("exec should fail when handle is None"),
         }
+    }
+
+    /// Lets the account in through `none` or refuses it, as OpenWrt's
+    /// Dropbear does for a root with no password set or with one, accepts
+    /// `password` when one is set, and counts the attempts of both methods.
+    /// Every other method is refused.
+    struct NoneServer {
+        accept_none: bool,
+        password: Option<&'static str>,
+        nones: Arc<AtomicU32>,
+        passwords: Arc<AtomicU32>,
+    }
+
+    impl russh::server::Handler for NoneServer {
+        type Error = russh::Error;
+
+        async fn auth_none(&mut self, _user: &str) -> Result<russh::server::Auth, Self::Error> {
+            self.nones.fetch_add(1, Ordering::SeqCst);
+            Ok(if self.accept_none {
+                russh::server::Auth::Accept
+            } else {
+                russh::server::Auth::reject()
+            })
+        }
+
+        async fn auth_password(
+            &mut self,
+            _user: &str,
+            password: &str,
+        ) -> Result<russh::server::Auth, Self::Error> {
+            self.passwords.fetch_add(1, Ordering::SeqCst);
+            Ok(if self.password == Some(password) {
+                russh::server::Auth::Accept
+            } else {
+                russh::server::Auth::reject()
+            })
+        }
+    }
+
+    /// Start a [`NoneServer`] on loopback; returns its port and the `none`
+    /// and password attempt counters.
+    async fn start_none_server(
+        accept_none: bool,
+        password: Option<&'static str>,
+    ) -> (u16, Arc<AtomicU32>, Arc<AtomicU32>) {
+        let nones = Arc::new(AtomicU32::new(0));
+        let passwords = Arc::new(AtomicU32::new(0));
+        let key =
+            russh::keys::PrivateKey::random(&mut rand_010::rng(), russh::keys::Algorithm::Ed25519)
+                .expect("ed25519 key");
+        let config = Arc::new(russh::server::Config {
+            auth_rejection_time_initial: Some(Duration::ZERO),
+            keys: vec![key],
+            ..Default::default()
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (none_counter, password_counter) = (nones.clone(), passwords.clone());
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                let handler = NoneServer {
+                    accept_none,
+                    password,
+                    nones: none_counter.clone(),
+                    passwords: password_counter.clone(),
+                };
+                let cfg = config.clone();
+                tokio::spawn(async move {
+                    let _ = russh::server::run_stream(cfg, stream, handler).await;
+                });
+            }
+        });
+        (port, nones, passwords)
+    }
+
+    #[tokio::test]
+    async fn connect_gets_in_through_none_with_no_credential() {
+        // `dummy_config()` has no password and a key path that cannot load
+        // (`/dev/null`): without `none` this connect failed at the key.
+        let (port, nones, passwords) = start_none_server(true, None).await;
+        let transport = RusshSessionTransport::connect(SshTransportConfig {
+            port,
+            ..dummy_config()
+        })
+        .await
+        .expect("in through none");
+        assert_eq!(transport.handshake_count(), 1);
+        assert_eq!(nones.load(Ordering::SeqCst), 1);
+        assert_eq!(passwords.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn connect_sends_the_password_when_none_is_refused() {
+        let (port, nones, passwords) = start_none_server(false, Some("testpass")).await;
+        let transport = RusshSessionTransport::connect(SshTransportConfig {
+            port,
+            auth_password: Some(SecretString::from("testpass".to_string())),
+            ..dummy_config()
+        })
+        .await
+        .expect("in through the password after a refused none");
+        assert_eq!(transport.handshake_count(), 1);
+        assert_eq!(nones.load(Ordering::SeqCst), 1);
+        // The way in was the password, not some path that skipped it.
+        assert_eq!(passwords.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn connect_goes_on_to_the_key_when_none_is_refused_and_no_password_is_set() {
+        let (port, nones, passwords) = start_none_server(false, None).await;
+        let err = RusshSessionTransport::connect(SshTransportConfig {
+            port,
+            ..dummy_config()
+        })
+        .await
+        .err()
+        .expect("a refused none and a key that cannot load leave no way in");
+        assert!(err.to_string().contains("load private key"), "{err}");
+        assert_eq!(nones.load(Ordering::SeqCst), 1);
+        assert_eq!(passwords.load(Ordering::SeqCst), 0);
     }
 }

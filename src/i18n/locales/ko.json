@@ -598,7 +598,8 @@
             "setAsPublic": "공개로 설정",
             "makeAllPrivate": "모두 비공개로 설정",
             "dropboxRestoreLimit": "AeroFTP는 복구 가능한 파일 버전을 복원할 수 있습니다. 폴더는 dropbox.com의 삭제된 파일에서 복원하세요. 물음표는 Dropbox가 항목 유형을 식별하지 못했음을 의미합니다.",
-            "openWithDefaultApp": "기본 앱으로 열기"
+            "openWithDefaultApp": "기본 앱으로 열기",
+            "extractHereUncheckedConfirm": "{name} 안의 이름은 압축을 풀기 전에는 읽을 수 없으므로, AeroFTP는 “여기에 압축 해제”가 이 폴더에서 무엇을 덮어쓸지 확인할 수 없습니다. “폴더에 압축 해제”는 아무것도 덮어쓰지 않습니다."
         },
         "transfer": {
             "transferring": "전송 중...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud 활성화됨",
             "selectPairLocalFolder": "페어의 로컬 폴더 선택",
             "secondsAgo": "{count}초 전",
-            "conflictsCount": "주의가 필요한 충돌 {count}개"
+            "conflictsCount": "주의가 필요한 충돌 {count}개",
+            "updateOnlyHint": "단방향 업데이트는 대상의 더 최신 파일을 유지합니다. 추가 백업을 끄면 대상에만 있는 파일 중 변경되지 않았으며 검증된 AeroCloud 전송 확인서가 있는 파일만 삭제됩니다. 다른 파일은 AeroSync에서 검토할 수 있도록 남습니다. 충돌 정책은 무시되며 알 수 없는 날짜는 미해결 상태로 남습니다.",
+            "untrackedDestinationFiles": "대상 파일 {count}개가 검토를 위해 유지되었습니다. 전송 기록이 확인되지 않았거나 마지막 AeroCloud 전송 이후 변경되었습니다. 삭제 여부를 결정하기 전에 AeroSync에서 검토하세요."
         },
         "statusBar": {
             "connected": "연결됨",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "하위 트리 스캔 중...",
             "flattenTruncated": "잘림",
             "flattenTruncatedHint": "5,000개 항목 한도에 도달했습니다. 필터를 세분화하거나 하위 폴더로 이동하세요.",
-            "local_placeholder_flatten": "로컬 파일 필터링... (재귀의 경우 *)"
+            "local_placeholder_flatten": "로컬 파일 필터링... (재귀의 경우 *)",
+            "flattenNameClash": "{names}: 둘 이상의 폴더에서 선택되었습니다. 한 곳에 두면 서로 덮어쓰게 됩니다. 같은 이름은 한 번에 하나씩 작업하세요.",
+            "flattenNameClashTitle": "여러 폴더에 같은 이름이 있습니다"
         },
         "versions": {
             "title": "파일 버전",
@@ -6309,7 +6314,12 @@
                 }
             },
             "rescan": "다시 스캔",
-            "rescanNeeded": "비교가 다른 제외 설정 또는 다른 백업 폴더로 수행되었습니다. 실행하기 전에 다시 스캔하세요.",
+            "rescanBringsBack": "이 설정은 스캔에서 빠진 파일을 다시 포함하므로 스캔이 해당 파일을 읽은 적이 없습니다. 실행하기 전에 다시 스캔하세요.",
+            "rescanFlat": "이 비교는 전체 스캔이 아니라 두 패널의 목록에서 만들어졌으므로 제외 설정을 적용할 수 없습니다. 실행하기 전에 다시 스캔하세요.",
+            "narrowAvailable": "이 설정은 비교를 좁히기만 하므로 다시 스캔하지 않고도 필터링할 수 있습니다.",
+            "narrowApply": "이 비교에 적용",
+            "narrowedNote": "다시 스캔하지 않고 새 제외 설정으로 필터링했습니다. 동일 항목 수는 여전히 스캔 때의 값입니다.",
+            "narrowAfterRestore": "복원이 실행 중입니다. 복원이 끝나면 이 설정을 비교에 적용할 수 있습니다.",
             "backup": {
                 "checking": "이 서버가 파일을 이동하는 방식을 확인하는 중...",
                 "serverCopy": "이 서버에는 이동 기능이 없습니다. 보관할 각 사본은 서버에서 복사된 후 삭제됩니다. 보관하는 파일마다 전체 복사가 한 번씩 발생하며, 두 개의 개별 단계로 진행됩니다.",
@@ -6336,7 +6346,10 @@
             "progressCopy": "[복사]",
             "deleteCount": "{count}개 삭제 예정",
             "overwriteCount": "{count}개 덮어쓰기 예정",
-            "conflictCount": "충돌 {count}개"
+            "conflictCount": "충돌 {count}개",
+            "updateOnly": "대상의 더 최신 파일 건너뛰기 (단방향 업데이트)",
+            "updateOnlyHint": "누락되었거나 변경된 소스 파일을 복사하고, 대상에 있는 더 새로운 파일은 유지하며, 대상에만 있는 항목은 삭제합니다. 비교 가능한 날짜가 없는 파일은 크기로 비교하며, 크기 차이는 검토할 수 있도록 남겨 둡니다.",
+            "rescanNeeded": "업데이트 스크립트를 내보내기 전에 현재 설정으로 새 비교를 실행하세요."
         },
         "accountLock": {
             "title": "계정 선택",

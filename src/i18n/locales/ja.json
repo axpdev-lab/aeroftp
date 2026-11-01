@@ -598,7 +598,8 @@
             "setAsPublic": "公開に設定",
             "makeAllPrivate": "すべて非公開にする",
             "dropboxRestoreLimit": "AeroFTP は復元可能なファイルのバージョンを復元できます。フォルダーは dropbox.com の「削除したファイル」から復元してください。疑問符は、Dropbox が項目の種類を識別できなかったことを示します。",
-            "openWithDefaultApp": "既定のアプリで開く"
+            "openWithDefaultApp": "既定のアプリで開く",
+            "extractHereUncheckedConfirm": "{name} 内のファイル名は展開前に読み取れないため、AeroFTP は「ここに展開」がこのフォルダ内の何を上書きするか確認できません。「フォルダに展開」は何も上書きしません。"
         },
         "transfer": {
             "transferring": "転送中...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud 有効",
             "selectPairLocalFolder": "ペアのローカルフォルダーを選択",
             "secondsAgo": "{count}秒前",
-            "conflictsCount": "{count} 件の競合に対応が必要"
+            "conflictsCount": "{count} 件の競合に対応が必要",
+            "updateOnlyHint": "一方向更新ではコピー先の新しいファイルを保持します。追加バックアップがオフの場合、コピー先にのみ存在し、変更されておらず、検証済みのAeroCloud転送証明があるファイルだけを削除します。その他のファイルはAeroSyncで確認できるよう保持します。競合ポリシーは無視され、日時が不明な場合は未解決のままになります。",
+            "untrackedDestinationFiles": "コピー先の{count}個のファイルを確認用に保持しました。転送履歴が未確認か、最後のAeroCloud転送後に変更されています。削除を決める前に、AeroSyncで確認してください。"
         },
         "statusBar": {
             "connected": "接続済み",
@@ -2433,7 +2436,9 @@
             "flattenScanning": "サブツリーをスキャン中...",
             "flattenTruncated": "切り捨て",
             "flattenTruncatedHint": "5,000エントリの上限に達しました。フィルターを絞り込むか、サブフォルダに移動してください。",
-            "local_placeholder_flatten": "ローカルファイルをフィルター... (再帰の場合は *)"
+            "local_placeholder_flatten": "ローカルファイルをフィルター... (再帰の場合は *)",
+            "flattenNameClash": "{names}: 複数のフォルダで選択されています。1か所にまとめると互いに上書きされます。同じ名前のものは一度に1つずつ操作してください。",
+            "flattenNameClashTitle": "複数のフォルダに同じ名前があります"
         },
         "versions": {
             "title": "ファイルのバージョン",
@@ -6309,7 +6314,12 @@
                 }
             },
             "rescan": "再スキャン",
-            "rescanNeeded": "比較は別の除外設定または別のバックアップフォルダで行われました。実行前に再スキャンしてください。",
+            "rescanBringsBack": "この設定は、スキャンで除外されたファイルを戻すため、スキャンはそれらを一度も読み取っていません。実行前に再スキャンしてください。",
+            "rescanFlat": "この比較は完全なスキャンではなく、2つのパネルの一覧から作成されたため、除外設定を適用できません。実行前に再スキャンしてください。",
+            "narrowAvailable": "この設定は比較を絞り込むだけなので、再スキャンせずにフィルターできます。",
+            "narrowApply": "この比較に適用",
+            "narrowedNote": "再スキャンせずに、新しい除外設定で絞り込みました。同一の件数は、引き続きスキャン時のものです。",
+            "narrowAfterRestore": "復元を実行中です。復元が終わると、この設定を比較に適用できます。",
             "backup": {
                 "checking": "このサーバーのファイル移動方法を確認しています...",
                 "serverCopy": "このサーバーには移動機能がありません。保持する各ファイルはサーバー上でバックアップフォルダにコピーされ、その後、元の場所のファイルが削除されます。保持するファイルごとに完全なコピーが発生し、2つの別々の手順で行われます。",
@@ -6336,7 +6346,10 @@
             "progressCopy": "[コピー]",
             "deleteCount": "{count} 件を削除予定",
             "overwriteCount": "{count} 件を上書き予定",
-            "conflictCount": "{count} 件の競合"
+            "conflictCount": "{count} 件の競合",
+            "updateOnly": "コピー先の新しいファイルをスキップ（一方向更新）",
+            "updateOnlyHint": "不足しているまたは変更されたソースファイルをコピーし、宛先のより新しいファイルを保持して、宛先にのみ存在するエントリを削除します。日付を比較できないファイルはサイズで比較し、サイズの差異はレビュー用に残します。",
+            "rescanNeeded": "更新スクリプトをエクスポートする前に、現在の設定で新しい比較を実行してください。"
         },
         "accountLock": {
             "title": "アカウントを選択",

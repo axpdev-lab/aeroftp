@@ -598,7 +598,8 @@
             "setAsPublic": "Đặt làm công khai",
             "makeAllPrivate": "Đặt tất cả ở chế độ riêng tư",
             "dropboxRestoreLimit": "AeroFTP có thể khôi phục các phiên bản tệp còn khôi phục được. Khôi phục thư mục từ mục Tệp đã xóa trên dropbox.com. Dấu hỏi có nghĩa là Dropbox chưa xác định được loại mục.",
-            "openWithDefaultApp": "Mở bằng ứng dụng mặc định"
+            "openWithDefaultApp": "Mở bằng ứng dụng mặc định",
+            "extractHereUncheckedConfirm": "Không thể đọc tên bên trong {name} trước khi giải nén, nên AeroFTP không thể kiểm tra “Giải nén tại đây” sẽ ghi đè lên những gì trong thư mục này. “Giải nén vào thư mục” không bao giờ ghi đè."
         },
         "transfer": {
             "transferring": "Đang truyền...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "Đã bật AeroCloud",
             "selectPairLocalFolder": "Chọn thư mục cục bộ cho cặp",
             "secondsAgo": "{count} giây trước",
-            "conflictsCount": "{count} xung đột cần xử lý"
+            "conflictsCount": "{count} xung đột cần xử lý",
+            "updateOnlyHint": "Cập nhật một chiều giữ lại các tệp đích mới hơn. Khi tắt sao lưu bổ sung, chỉ những tệp không thay đổi, chỉ có ở đích và có biên nhận truyền AeroCloud đã được xác minh mới bị xóa. Các tệp khác được giữ lại để xem xét trong AeroSync. Chính sách xung đột bị bỏ qua; các ngày không xác định vẫn chưa được giải quyết.",
+            "untrackedDestinationFiles": "{count} tệp đích đã được giữ lại để xem xét: lịch sử truyền của chúng chưa được xác minh hoặc chúng đã thay đổi sau lần truyền AeroCloud gần nhất. Hãy xem xét chúng trong AeroSync trước khi quyết định xóa."
         },
         "statusBar": {
             "connected": "Đã kết nối",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Đang quét cây con...",
             "flattenTruncated": "đã cắt bớt",
             "flattenTruncatedHint": "Đã đạt giới hạn 5.000 mục; tinh chỉnh bộ lọc của bạn hoặc đi vào thư mục con.",
-            "local_placeholder_flatten": "Lọc tệp cục bộ... (* cho đệ quy)"
+            "local_placeholder_flatten": "Lọc tệp cục bộ... (* cho đệ quy)",
+            "flattenNameClash": "{names}: được chọn ở nhiều thư mục. Nếu đặt vào cùng một nơi, chúng sẽ ghi đè lên nhau; hãy thao tác với từng tệp một cho mỗi tên.",
+            "flattenNameClashTitle": "Cùng một tên trong nhiều thư mục"
         },
         "versions": {
             "title": "Phiên bản tệp",
@@ -6309,7 +6314,12 @@
                 }
             },
             "rescan": "Quét lại",
-            "rescanNeeded": "Việc so sánh được thực hiện với các loại trừ khác hoặc thư mục sao lưu khác. Hãy quét lại trước khi chạy.",
+            "rescanBringsBack": "Các cài đặt này đưa trở lại những tệp mà lần quét đã bỏ qua, nên chưa từng đọc chúng. Hãy quét lại trước khi chạy.",
+            "rescanFlat": "Phép so sánh này đến từ danh sách của hai bảng, không phải từ lần quét đầy đủ, nên không thể áp dụng loại trừ. Hãy quét lại trước khi chạy.",
+            "narrowAvailable": "Các cài đặt này chỉ thu hẹp phép so sánh, nên có thể lọc mà không cần quét lại.",
+            "narrowApply": "Áp dụng cho phép so sánh này",
+            "narrowedNote": "Đã lọc với các loại trừ mới mà không quét lại. Số lượng giống hệt vẫn là số từ lần quét.",
+            "narrowAfterRestore": "Một quá trình khôi phục đang chạy. Các cài đặt này có thể áp dụng cho phép so sánh khi quá trình đó kết thúc.",
             "backup": {
                 "checking": "Đang kiểm tra cách máy chủ này di chuyển tệp...",
                 "serverCopy": "Máy chủ này không thể di chuyển: mỗi bản sao được giữ lại sẽ được sao chép trên máy chủ rồi xóa. Việc đó tốn một bản sao đầy đủ của mỗi tệp được giữ lại, qua hai bước riêng biệt.",
@@ -6336,7 +6346,10 @@
             "progressCopy": "[bản sao]",
             "deleteCount": "Sẽ bị xóa: {count}",
             "overwriteCount": "Sẽ bị ghi đè: {count}",
-            "conflictCount": "{count} xung đột"
+            "conflictCount": "{count} xung đột",
+            "updateOnly": "Bỏ qua tệp đích mới hơn (cập nhật một chiều)",
+            "updateOnlyHint": "Sao chép các tệp nguồn bị thiếu hoặc đã thay đổi, giữ lại các tệp mới hơn ở đích và xóa các mục chỉ có ở đích. Các tệp không có ngày so sánh được sẽ được so sánh theo kích thước; những chênh lệch kích thước sẽ được giữ lại để xem xét.",
+            "rescanNeeded": "Chạy phép so sánh mới với cài đặt hiện tại trước khi xuất tập lệnh cập nhật."
         },
         "accountLock": {
             "title": "Chọn tài khoản",

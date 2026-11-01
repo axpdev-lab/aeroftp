@@ -598,7 +598,8 @@
             "setAsPublic": "Angi som offentlig",
             "makeAllPrivate": "Gjør alle private",
             "dropboxRestoreLimit": "AeroFTP kan gjenopprette filversjoner som kan gjenopprettes. Gjenopprett mapper fra Slettede filer på dropbox.com. Et spørsmålstegn betyr at Dropbox ikke har identifisert elementtypen.",
-            "openWithDefaultApp": "Åpne med standardapp"
+            "openWithDefaultApp": "Åpne med standardapp",
+            "extractHereUncheckedConfirm": "Navnene inni {name} kan ikke leses før utpakking, så AeroFTP kan ikke sjekke hva «Pakk ut her» ville overskrive i denne mappen. «Pakk ut til mappe» overskriver aldri noe."
         },
         "transfer": {
             "transferring": "Overfører...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud aktivert",
             "selectPairLocalFolder": "Velg lokal mappe for paret",
             "secondsAgo": "{count}s siden",
-            "conflictsCount": "Konflikter som krever oppmerksomhet: {count}"
+            "conflictsCount": "Konflikter som krever oppmerksomhet: {count}",
+            "updateOnlyHint": "Enveisoppdatering beholder nyere målfiler. Når additiv sikkerhetskopiering er slått av, slettes bare uendrede filer som kun finnes på målet og har en bekreftet kvittering for en AeroCloud-overføring. Andre filer blir liggende til gjennomgang i AeroSync. Konfliktregelen ignoreres; ukjente datoer forblir uavklarte.",
+            "untrackedDestinationFiles": "{count} målfiler ble beholdt for gjennomgang: Overføringshistorikken er ikke bekreftet, eller de er endret etter den siste AeroCloud-overføringen. Gå gjennom dem i AeroSync før du avgjør om de skal slettes."
         },
         "statusBar": {
             "connected": "Tilkoblet",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Skanner undertre...",
             "flattenTruncated": "avkortet",
             "flattenTruncatedHint": "Nådde grensen på 5 000 oppføringer; forbedre filteret eller gå inn i en undermappe.",
-            "local_placeholder_flatten": "Filtrer lokale filer... (* for rekursiv)"
+            "local_placeholder_flatten": "Filtrer lokale filer... (* for rekursiv)",
+            "flattenNameClash": "{names}: valgt i mer enn én mappe. Plassert på ett sted ville de erstatte hverandre; arbeid med én av hver om gangen.",
+            "flattenNameClashTitle": "Samme navn i mer enn én mappe"
         },
         "versions": {
             "title": "Filversjoner",
@@ -6328,7 +6333,12 @@
                 }
             },
             "rescan": "Skann på nytt",
-            "rescanNeeded": "Sammenligningen ble gjort med andre ekskluderinger eller en annen sikkerhetskopimappe. Skann på nytt før kjøring.",
+            "rescanBringsBack": "Disse innstillingene tar tilbake filer som skanningen utelot, så den har aldri lest dem. Skann på nytt før kjøring.",
+            "rescanFlat": "Denne sammenligningen kom fra listene til de to panelene, ikke fra en full skanning, så den kan ikke bruke ekskluderinger. Skann på nytt før kjøring.",
+            "narrowAvailable": "Disse innstillingene begrenser bare sammenligningen, så den kan filtreres uten ny skanning.",
+            "narrowApply": "Bruk på denne sammenligningen",
+            "narrowedNote": "Filtrert med nye ekskluderinger uten ny skanning. Antallet identiske er fortsatt det fra skanningen.",
+            "narrowAfterRestore": "En gjenoppretting pågår. Disse innstillingene kan brukes på sammenligningen når gjenopprettingen er ferdig.",
             "backup": {
                 "checking": "Sjekker hvordan denne serveren flytter filer...",
                 "serverCopy": "Denne serveren kan ikke flytte: hver bevarte kopi kopieres på serveren og slettes deretter. Det koster en full kopi av hver bevarte fil, i to separate trinn.",
@@ -6355,7 +6365,10 @@
             "progressCopy": "[kopi]",
             "deleteCount": "Til sletting: {count}",
             "overwriteCount": "Til overskriving: {count}",
-            "conflictCount": "Konflikter: {count}"
+            "conflictCount": "Konflikter: {count}",
+            "updateOnly": "Hopp over nyere målfiler (enveisoppdatering)",
+            "updateOnlyHint": "Kopierer manglende eller endrede kildefiler, beholder nyere målfiler og sletter oppføringer som bare finnes på målet. Filer uten sammenlignbare datoer sammenlignes etter størrelse; størrelsesforskjeller blir liggende til gjennomgang.",
+            "rescanNeeded": "Kjør en ny sammenligning med gjeldende innstillinger før du eksporterer et oppdateringsskript."
         },
         "accountLock": {
             "title": "Velg en konto",

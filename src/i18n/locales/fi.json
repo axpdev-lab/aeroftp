@@ -598,7 +598,8 @@
             "setAsPublic": "Aseta julkiseksi",
             "makeAllPrivate": "Aseta kaikki yksityisiksi",
             "dropboxRestoreLimit": "AeroFTP voi palauttaa palautettavissa olevia tiedostoversioita. Palauta kansiot dropbox.com-sivuston Poistetut tiedostot -osiosta. Kysymysmerkki tarkoittaa, ettei Dropbox tunnistanut kohteen tyyppiä.",
-            "openWithDefaultApp": "Avaa oletussovelluksella"
+            "openWithDefaultApp": "Avaa oletussovelluksella",
+            "extractHereUncheckedConfirm": "Tiedoston {name} sisällä olevia nimiä ei voi lukea ennen purkamista, joten AeroFTP ei voi tarkistaa, mitä ”Pura tähän” ylikirjoittaisi tässä kansiossa. ”Pura kansioon” ei koskaan ylikirjoita mitään."
         },
         "transfer": {
             "transferring": "Siirretään...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud käytössä",
             "selectPairLocalFolder": "Valitse paikallinen kansio parille",
             "secondsAgo": "{count}s sitten",
-            "conflictsCount": "Huomiota vaativat ristiriidat: {count}"
+            "conflictsCount": "Huomiota vaativat ristiriidat: {count}",
+            "updateOnlyHint": "Yksisuuntainen päivitys säilyttää uudemmat kohdetiedostot. Kun lisäävä varmuuskopiointi on pois käytöstä, vain muuttumattomat, pelkästään kohteessa olevat tiedostot, joilla on vahvistettu AeroCloud-siirtokuitti, poistetaan. Muut tiedostot jäävät tarkistettaviksi AeroSyncissä. Ristiriitakäytäntö ohitetaan; tuntemattomat päivämäärät jäävät ratkaisematta.",
+            "untrackedDestinationFiles": "{count} kohdetiedostoa säilytettiin tarkistettaviksi: niiden siirtohistoriaa ei ole vahvistettu tai niitä on muutettu viimeisimmän AeroCloud-siirron jälkeen. Tarkista ne AeroSyncissä ennen kuin päätät poistamisesta."
         },
         "statusBar": {
             "connected": "Yhdistetty",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Skannataan alipuuta...",
             "flattenTruncated": "katkaistu",
             "flattenTruncatedHint": "Saavutettu 5 000 merkinnän raja; tarkenna suodatinta tai siirry alikansioon.",
-            "local_placeholder_flatten": "Suodata paikallisia tiedostoja... (* rekursiiviseen)"
+            "local_placeholder_flatten": "Suodata paikallisia tiedostoja... (* rekursiiviseen)",
+            "flattenNameClash": "{names}: valittu useammassa kuin yhdessä kansiossa. Samaan paikkaan laitettuina ne korvaisivat toisensa; käsittele kerrallaan yksi kustakin.",
+            "flattenNameClashTitle": "Sama nimi useammassa kansiossa"
         },
         "versions": {
             "title": "Tiedostoversiot",
@@ -6309,7 +6314,12 @@
                 }
             },
             "rescan": "Skannaa uudelleen",
-            "rescanNeeded": "Vertailu tehtiin muilla poissulkemisilla tai toisella varmuuskopiokansiolla. Skannaa uudelleen ennen ajoa.",
+            "rescanBringsBack": "Nämä asetukset tuovat takaisin tiedostot, jotka skannaus jätti pois, joten se ei lukenut niitä koskaan. Skannaa uudelleen ennen ajoa.",
+            "rescanFlat": "Tämä vertailu tuli kahden paneelin luetteloista, ei täydestä skannauksesta, joten se ei voi käyttää poissulkemisia. Skannaa uudelleen ennen ajoa.",
+            "narrowAvailable": "Nämä asetukset vain rajaavat vertailua, joten se voidaan suodattaa ilman uutta skannausta.",
+            "narrowApply": "Käytä tähän vertailuun",
+            "narrowedNote": "Suodatettu uusilla poissulkemisilla ilman uutta skannausta. Identtisten määrä on edelleen skannauksesta.",
+            "narrowAfterRestore": "Palautus on käynnissä. Nämä asetukset voi ottaa käyttöön vertailussa, kun palautus päättyy.",
             "backup": {
                 "checking": "Tarkistetaan, miten tämä palvelin siirtää tiedostoja...",
                 "serverCopy": "Tämä palvelin ei osaa siirtää: jokainen säilytettävä kopio kopioidaan palvelimella ja poistetaan sitten. Se maksaa täyden kopion jokaisesta säilytettävästä tiedostosta, kahdessa erillisessä vaiheessa.",
@@ -6336,7 +6346,10 @@
             "progressCopy": "[kopio]",
             "deleteCount": "Poistettavat: {count}",
             "overwriteCount": "Korvattavat: {count}",
-            "conflictCount": "Ristiriidat: {count}"
+            "conflictCount": "Ristiriidat: {count}",
+            "updateOnly": "Ohita uudemmat kohdetiedostot (yksisuuntainen päivitys)",
+            "updateOnlyHint": "Kopioi puuttuvat tai muuttuneet lähdetiedostot, säilyttää kohteen uudemmat tiedostot ja poistaa vain kohteessa olevat merkinnät. Tiedostoja, joilla ei ole vertailukelpoisia päivämääriä, verrataan koon perusteella; kokoerot jätetään tarkistettavaksi.",
+            "rescanNeeded": "Suorita uusi vertailu nykyisillä asetuksilla ennen päivitysskriptin vientiä."
         },
         "accountLock": {
             "title": "Valitse tili",

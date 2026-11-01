@@ -598,7 +598,8 @@
             "setAsPublic": "Establecer como público",
             "makeAllPrivate": "Hacer todo privado",
             "dropboxRestoreLimit": "AeroFTP puede restaurar versiones recuperables de archivos. Restaura las carpetas desde Archivos eliminados en dropbox.com. Un signo de interrogación indica que Dropbox no ha identificado el tipo de elemento.",
-            "openWithDefaultApp": "Abrir con la aplicación predeterminada"
+            "openWithDefaultApp": "Abrir con la aplicación predeterminada",
+            "extractHereUncheckedConfirm": "Los nombres dentro de {name} no se pueden leer antes de extraer, así que AeroFTP no puede comprobar qué sobrescribiría «Extraer aquí» en esta carpeta. «Extraer a carpeta» nunca sobrescribe."
         },
         "transfer": {
             "transferring": "Transfiriendo...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud activado",
             "selectPairLocalFolder": "Seleccionar carpeta local para el par",
             "secondsAgo": "Hace {count}s",
-            "conflictsCount": "Conflictos por revisar: {count}"
+            "conflictsCount": "Conflictos por revisar: {count}",
+            "updateOnlyHint": "La actualización unidireccional conserva los archivos de destino más recientes. Con la copia de seguridad aditiva desactivada, solo se eliminan los archivos exclusivos del destino que no han cambiado y tienen un comprobante de transferencia de AeroCloud verificado. Los demás archivos quedan para revisarlos en AeroSync. Se ignora la política de conflictos; las fechas desconocidas quedan sin resolver.",
+            "untrackedDestinationFiles": "Se han conservado {count} archivos de destino para revisarlos: su historial de transferencias no está verificado o han cambiado desde la última transferencia de AeroCloud. Revísalos en AeroSync antes de decidir si quieres eliminarlos."
         },
         "statusBar": {
             "connected": "Conectado",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Escaneando subárbol...",
             "flattenTruncated": "truncado",
             "flattenTruncatedHint": "Alcanzado el límite de 5.000 entradas; refina el filtro o entra en una subcarpeta.",
-            "local_placeholder_flatten": "Filtrar archivos locales... (* para recursivo)"
+            "local_placeholder_flatten": "Filtrar archivos locales... (* para recursivo)",
+            "flattenNameClash": "{names}: seleccionados en más de una carpeta. Colocados en un solo lugar, se sustituirían entre sí; trabaja con uno de cada nombre a la vez.",
+            "flattenNameClashTitle": "El mismo nombre en más de una carpeta"
         },
         "versions": {
             "title": "Versiones de archivo",
@@ -6309,7 +6314,12 @@
                 }
             },
             "rescan": "Volver a escanear",
-            "rescanNeeded": "La comparación se hizo con otras exclusiones u otra carpeta de copia de seguridad. Vuelve a escanear antes de ejecutar.",
+            "rescanBringsBack": "Estos ajustes recuperan archivos que el escaneo dejó fuera, así que nunca los leyó. Vuelve a escanear antes de ejecutar.",
+            "rescanFlat": "Esta comparación salió de los listados de los dos paneles, no de un escaneo completo, así que no puede aplicar exclusiones. Vuelve a escanear antes de ejecutar.",
+            "narrowAvailable": "Estos ajustes solo reducen la comparación, así que se puede filtrar sin volver a escanear.",
+            "narrowApply": "Aplicar a esta comparación",
+            "narrowedNote": "Filtrada con nuevas exclusiones sin volver a escanear. El recuento de idénticos sigue siendo el del escaneo.",
+            "narrowAfterRestore": "Hay una restauración en curso. Estos ajustes se pueden aplicar a la comparación cuando termine.",
             "backup": {
                 "checking": "Comprobando cómo mueve los archivos este servidor...",
                 "serverCopy": "Este servidor no puede mover: cada copia conservada se copia en el servidor y después se elimina. Eso cuesta una copia completa de cada archivo conservado, en dos pasos separados.",
@@ -6336,7 +6346,10 @@
             "progressCopy": "[copia]",
             "deleteCount": "{count} por eliminar",
             "overwriteCount": "{count} por sobrescribir",
-            "conflictCount": "Conflictos: {count}"
+            "conflictCount": "Conflictos: {count}",
+            "updateOnly": "Omitir archivos de destino más recientes (actualización unidireccional)",
+            "updateOnlyHint": "Copia los archivos de origen ausentes o modificados, conserva los archivos más recientes del destino y elimina las entradas que solo existen en el destino. Los archivos sin fechas comparables se comparan por tamaño; las diferencias de tamaño quedan pendientes de revisión.",
+            "rescanNeeded": "Ejecuta una nueva comparación con la configuración actual antes de exportar un script de actualización."
         },
         "accountLock": {
             "title": "Elige una cuenta",

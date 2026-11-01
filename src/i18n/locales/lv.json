@@ -598,7 +598,8 @@
             "setAsPublic": "Iestatīt kā publisku",
             "makeAllPrivate": "Padarīt visus privātus",
             "dropboxRestoreLimit": "AeroFTP var atjaunot atjaunojamās failu versijas. Mapes atjaunojiet vietnes dropbox.com sadaļā Dzēstie faili. Jautājuma zīme nozīmē, ka Dropbox nav noteicis vienuma veidu.",
-            "openWithDefaultApp": "Atvērt ar noklusējuma lietotni"
+            "openWithDefaultApp": "Atvērt ar noklusējuma lietotni",
+            "extractHereUncheckedConfirm": "Nosaukumus arhīvā {name} nevar nolasīt pirms izvilkšanas, tāpēc AeroFTP nevar pārbaudīt, ko „Izvilkt šeit“ pārrakstītu šajā mapē. „Izvilkt mapē“ nekad neko nepārraksta."
         },
         "transfer": {
             "transferring": "Pārsūta...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud iespējots",
             "selectPairLocalFolder": "Atlasiet lokālo mapi pārim",
             "secondsAgo": "pirms {count}s",
-            "conflictsCount": "Konflikti, kam nepieciešama uzmanība: {count}"
+            "conflictsCount": "Konflikti, kam nepieciešama uzmanība: {count}",
+            "updateOnlyHint": "Vienvirziena atjaunināšana saglabā jaunākus mērķa failus. Ja papildinošā dublēšana ir izslēgta, tiek dzēsti tikai nemainīti faili, kas atrodas vienīgi mērķī un kuriem ir pārbaudīta AeroCloud pārsūtīšanas kvīts. Pārējie faili paliek pārskatīšanai AeroSync. Konfliktu politika tiek ignorēta; nezināmi datumi paliek neatrisināti.",
+            "untrackedDestinationFiles": "{count} mērķa faili tika saglabāti pārskatīšanai: to pārsūtīšanas vēsture nav pārbaudīta vai tie ir mainīti pēc pēdējās AeroCloud pārsūtīšanas. Pārskatiet tos AeroSync, pirms izlemjat par dzēšanu."
         },
         "statusBar": {
             "connected": "Savienots",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Skenē apakškoku...",
             "flattenTruncated": "saīsināts",
             "flattenTruncatedHint": "Sasniegts 5 000 ierakstu limits; precizējiet filtru vai ieejiet apakšmapē.",
-            "local_placeholder_flatten": "Filtrēt lokālos failus... (* rekursīvam)"
+            "local_placeholder_flatten": "Filtrēt lokālos failus... (* rekursīvam)",
+            "flattenNameClash": "{names}: atlasīts vairākās mapēs. Ievietoti vienā vietā, tie aizstātu cits citu; darbojieties ar vienu no katra vienlaikus.",
+            "flattenNameClashTitle": "Viens un tas pats nosaukums vairākās mapēs"
         },
         "versions": {
             "title": "Failu versijas",
@@ -6128,7 +6133,7 @@
             "compareUnavailable": "Atveriet otru paneli vai attālu savienojumu, lai salīdzinātu.",
             "planUnavailable": "Pirms iepriekšējā iestatījuma izvēles ir nepieciešams salīdzināšanas rezultāts. Vispirms atveriet cilni Salīdzināt.",
             "totalEntries": "Kopā ierakstu",
-            "differences": "Atskiribas",
+            "differences": "Atšķirības",
             "totalBytes": "Kopā baitu",
             "mirrorHint": "Spogula pogas sagatavo atbilstošos ierakstus apvienota pārsūtīšanas plānošanas rīku pārskatīšanai.",
             "mirrorLeftToRight": "Spogulot no kreisas uz labo",
@@ -6309,7 +6314,12 @@
                 }
             },
             "rescan": "Skenēt vēlreiz",
-            "rescanNeeded": "Salīdzināšana veikta ar citiem izslēgumiem vai citu dublējumu mapi. Pirms palaišanas skenējiet vēlreiz.",
+            "rescanBringsBack": "Šie iestatījumi atgriež failus, ko skenēšana izlaida, tāpēc tā tos nekad nav lasījusi. Pirms palaišanas skenējiet vēlreiz.",
+            "rescanFlat": "Šis salīdzinājums radies no abu paneļu sarakstiem, nevis no pilnas skenēšanas, tāpēc tas nevar lietot izslēgumus. Pirms palaišanas skenējiet vēlreiz.",
+            "narrowAvailable": "Šie iestatījumi tikai sašaurina salīdzinājumu, tāpēc to var filtrēt bez atkārtotas skenēšanas.",
+            "narrowApply": "Lietot šim salīdzinājumam",
+            "narrowedNote": "Filtrēts ar jauniem izslēgumiem bez atkārtotas skenēšanas. Identisko skaits joprojām ir no skenēšanas.",
+            "narrowAfterRestore": "Notiek atjaunošana. Šos iestatījumus var lietot salīdzinājumam, kad atjaunošana beigsies.",
             "backup": {
                 "checking": "Pārbauda, kā šis serveris pārvieto failus...",
                 "serverCopy": "Šis serveris nevar pārvietot: katra saglabājamā kopija tiek nokopēta serverī un pēc tam izdzēsta. Tas maksā pilnu katra saglabātā faila kopiju, divos atsevišķos soļos.",
@@ -6336,7 +6346,10 @@
             "progressCopy": "[kopija]",
             "deleteCount": "Dzēšamie: {count}",
             "overwriteCount": "Pārrakstāmie: {count}",
-            "conflictCount": "Konflikti: {count}"
+            "conflictCount": "Konflikti: {count}",
+            "updateOnly": "Izlaist jaunākus mērķa failus (vienvirziena atjaunināšana)",
+            "updateOnlyHint": "Kopē trūkstošos vai izmainītos avota failus, saglabā jaunākos galamērķa failus un dzēš ierakstus, kas ir tikai galamērķī. Failus bez salīdzināmiem datumiem salīdzina pēc lieluma; lieluma atšķirības atstāj pārskatīšanai.",
+            "rescanNeeded": "Pirms atjaunināšanas skripta eksportēšanas veiciet jaunu salīdzināšanu ar pašreizējiem iestatījumiem."
         },
         "accountLock": {
             "title": "Izvēlieties kontu",

@@ -76,6 +76,25 @@ export function sameExcludePatterns(a: readonly string[], b: readonly string[]):
 }
 
 /**
+ * True when new settings only add to what a finished compare left out, so the
+ * compare can be filtered instead of run again: everything it hid stays
+ * hidden. A pattern or backup folder that goes away brings back files the scan
+ * never read, and a compare of the two panel listings
+ * ([`appliedCompareFilters`], no backup folder) applied nothing to build on.
+ */
+export function narrowsComparison(
+    compareExcludes: readonly string[],
+    compareBackupDir: string | undefined,
+    userPatterns: readonly string[],
+    backupDir: string,
+): boolean {
+    if (compareBackupDir === undefined) return false;
+    const next = cliExcludePatterns(userPatterns, backupDir);
+    return [...compareExcludes, compareBackupDir.trim().replace(/^\/+|\/+$/g, '')]
+        .every((pattern) => next.includes(pattern));
+}
+
+/**
  * The `options` every AeroSync compare sends to the backend, local or remote.
  * The Rust compare drops an excluded path from both sides before classifying
  * it (`classify_with_summary`), so an excluded file is never copied, and a

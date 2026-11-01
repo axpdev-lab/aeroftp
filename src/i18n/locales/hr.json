@@ -598,7 +598,8 @@
             "setAsPublic": "Postavi kao javno",
             "makeAllPrivate": "Postavi sve kao privatno",
             "dropboxRestoreLimit": "AeroFTP može vratiti verzije datoteka koje je moguće oporaviti. Mape vratite iz odjeljka Izbrisane datoteke na dropbox.com. Upitnik znači da Dropbox nije prepoznao vrstu stavke.",
-            "openWithDefaultApp": "Otvori zadanom aplikacijom"
+            "openWithDefaultApp": "Otvori zadanom aplikacijom",
+            "extractHereUncheckedConfirm": "Imena unutar {name} ne mogu se pročitati prije izdvajanja, pa AeroFTP ne može provjeriti što bi „Izdvoji ovdje” prepisalo u ovoj mapi. „Izdvoji u mapu” nikada ništa ne prepisuje."
         },
         "transfer": {
             "transferring": "Prijenos...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud omogućen",
             "selectPairLocalFolder": "Odaberite lokalnu mapu za par",
             "secondsAgo": "{count}s prije",
-            "conflictsCount": "Sukobi koji traže pozornost: {count}"
+            "conflictsCount": "Sukobi koji traže pozornost: {count}",
+            "updateOnlyHint": "Jednosmjerno ažuriranje zadržava novije odredišne datoteke. Kada je aditivna sigurnosna kopija isključena, brišu se samo neizmijenjene datoteke koje postoje samo na odredištu i imaju provjerenu potvrdu prijenosa putem AeroCloud. Ostale datoteke ostaju za pregled u AeroSync. Pravilo sukoba se zanemaruje; nepoznati datumi ostaju neriješeni.",
+            "untrackedDestinationFiles": "{count} odredišnih datoteka zadržano je za pregled: njihova povijest prijenosa nije potvrđena ili su promijenjene nakon posljednjeg prijenosa putem AeroCloud. Pregledajte ih u AeroSync prije odluke o brisanju."
         },
         "statusBar": {
             "connected": "Povezano",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Skeniranje podstabla...",
             "flattenTruncated": "skraćeno",
             "flattenTruncatedHint": "Dosegnut limit od 5.000 unosa; precizirajte filtar ili uđite u podmapu.",
-            "local_placeholder_flatten": "Filtriraj lokalne datoteke... (* za rekurzivno)"
+            "local_placeholder_flatten": "Filtriraj lokalne datoteke... (* za rekurzivno)",
+            "flattenNameClash": "{names}: odabrano u više mapa. Stavljene na isto mjesto, zamijenile bi jedna drugu; radite s jednom od svake odjednom.",
+            "flattenNameClashTitle": "Isti naziv u više mapa"
         },
         "versions": {
             "title": "Verzije datoteke",
@@ -6309,7 +6314,12 @@
                 }
             },
             "rescan": "Ponovno skeniraj",
-            "rescanNeeded": "Usporedba je napravljena s drugim isključenjima ili drugom mapom sigurnosnih kopija. Ponovno skenirajte prije pokretanja.",
+            "rescanBringsBack": "Ove postavke vraćaju datoteke koje je skeniranje izostavilo, pa ih nikada nije pročitalo. Ponovno skenirajte prije pokretanja.",
+            "rescanFlat": "Ova usporedba potječe iz popisa dvaju panela, a ne iz potpunog skeniranja, pa ne može primijeniti isključenja. Ponovno skenirajte prije pokretanja.",
+            "narrowAvailable": "Ove postavke samo sužavaju usporedbu, pa se može filtrirati bez ponovnog skeniranja.",
+            "narrowApply": "Primijeni na ovu usporedbu",
+            "narrowedNote": "Filtrirano s novim isključenjima bez ponovnog skeniranja. Broj identičnih i dalje je onaj iz skeniranja.",
+            "narrowAfterRestore": "Vraćanje je u tijeku. Ove se postavke mogu primijeniti na usporedbu kad završi.",
             "backup": {
                 "checking": "Provjera kako ovaj poslužitelj premješta datoteke...",
                 "serverCopy": "Ovaj poslužitelj ne može premještati: svaka sačuvana kopija kopira se na poslužitelju, a zatim briše. To stoji punu kopiju svake sačuvane datoteke, u dva odvojena koraka.",
@@ -6336,7 +6346,10 @@
             "progressCopy": "[kopija]",
             "deleteCount": "Za brisanje: {count}",
             "overwriteCount": "Za prepisivanje: {count}",
-            "conflictCount": "Sukobi: {count}"
+            "conflictCount": "Sukobi: {count}",
+            "updateOnly": "Preskoči novije datoteke na odredištu (jednosmjerno ažuriranje)",
+            "updateOnlyHint": "Kopira nedostajuće ili izmijenjene izvorne datoteke, zadržava novije odredišne datoteke i briše stavke koje postoje samo na odredištu. Datoteke bez usporedivih datuma uspoređuju se prema veličini; razlike u veličini ostavljaju se za pregled.",
+            "rescanNeeded": "Pokrenite novu usporedbu s trenutačnim postavkama prije izvoza skripte za ažuriranje."
         },
         "accountLock": {
             "title": "Odaberite račun",

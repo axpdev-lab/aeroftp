@@ -598,7 +598,8 @@
             "setAsPublic": "Ange som offentlig",
             "makeAllPrivate": "Gör alla privata",
             "dropboxRestoreLimit": "AeroFTP kan återställa återställningsbara filversioner. Återställ mappar från Raderade filer på dropbox.com. Ett frågetecken betyder att Dropbox inte har identifierat objekttypen.",
-            "openWithDefaultApp": "Öppna med standardapp"
+            "openWithDefaultApp": "Öppna med standardapp",
+            "extractHereUncheckedConfirm": "Namnen i {name} kan inte läsas före extrahering, så AeroFTP kan inte kontrollera vad ”Extrahera här” skulle skriva över i den här mappen. ”Extrahera till mapp” skriver aldrig över något."
         },
         "transfer": {
             "transferring": "Överför...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud aktiverat",
             "selectPairLocalFolder": "Välj lokal mapp för paret",
             "secondsAgo": "{count}s sedan",
-            "conflictsCount": "Konflikter som kräver åtgärd: {count}"
+            "conflictsCount": "Konflikter som kräver åtgärd: {count}",
+            "updateOnlyHint": "Envägsuppdatering behåller nyare målfiler. När additiv säkerhetskopiering är avstängd tas bara oförändrade filer som enbart finns på målet och har ett verifierat AeroCloud-överföringskvitto bort. Andra filer ligger kvar för granskning i AeroSync. Konfliktpolicyn ignoreras; okända datum förblir olösta.",
+            "untrackedDestinationFiles": "{count} målfiler behölls för granskning: deras överföringshistorik är inte verifierad eller så har de ändrats sedan den senaste AeroCloud-överföringen. Granska dem i AeroSync innan du beslutar om borttagning."
         },
         "statusBar": {
             "connected": "Ansluten",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Söker igenom underträd...",
             "flattenTruncated": "avkortat",
             "flattenTruncatedHint": "Nådde gränsen på 5 000 poster; förfina filtret eller gå in i en undermapp.",
-            "local_placeholder_flatten": "Filtrera lokala filer... (* för rekursiv)"
+            "local_placeholder_flatten": "Filtrera lokala filer... (* för rekursiv)",
+            "flattenNameClash": "{names}: markerade i fler än en mapp. Placerade på ett ställe skulle de ersätta varandra; arbeta med en av varje åt gången.",
+            "flattenNameClashTitle": "Samma namn i fler än en mapp"
         },
         "versions": {
             "title": "Filversioner",
@@ -6309,7 +6314,12 @@
                 }
             },
             "rescan": "Skanna om",
-            "rescanNeeded": "Jämförelsen gjordes med andra exkluderingar eller en annan säkerhetskopieringsmapp. Skanna om innan körning.",
+            "rescanBringsBack": "De här inställningarna tar tillbaka filer som skanningen utelämnade, så den har aldrig läst dem. Skanna om innan körning.",
+            "rescanFlat": "Den här jämförelsen kom från listorna för de två panelerna, inte från en full skanning, så den kan inte tillämpa exkluderingar. Skanna om innan körning.",
+            "narrowAvailable": "De här inställningarna begränsar bara jämförelsen, så den kan filtreras utan ny skanning.",
+            "narrowApply": "Tillämpa på den här jämförelsen",
+            "narrowedNote": "Filtrerad med nya exkluderingar utan ny skanning. Antalet identiska är fortfarande det från skanningen.",
+            "narrowAfterRestore": "En återställning pågår. De här inställningarna kan tillämpas på jämförelsen när återställningen är klar.",
             "backup": {
                 "checking": "Kontrollerar hur den här servern flyttar filer...",
                 "serverCopy": "Den här servern kan inte flytta: varje bevarad kopia kopieras på servern och raderas sedan. Det kostar en fullständig kopia av varje bevarad fil, i två separata steg.",
@@ -6336,7 +6346,10 @@
             "progressCopy": "[kopia]",
             "deleteCount": "{count} att radera",
             "overwriteCount": "{count} att skriva över",
-            "conflictCount": "Konflikter: {count}"
+            "conflictCount": "Konflikter: {count}",
+            "updateOnly": "Hoppa över nyare målfiler (envägsuppdatering)",
+            "updateOnlyHint": "Kopierar saknade eller ändrade källfiler, behåller nyare målfiler och tar bort poster som endast finns på målet. Filer utan jämförbara datum jämförs efter storlek; storleksskillnader lämnas för granskning.",
+            "rescanNeeded": "Kör en ny jämförelse med de aktuella inställningarna innan du exporterar ett uppdateringsskript."
         },
         "accountLock": {
             "title": "Välj ett konto",

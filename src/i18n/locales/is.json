@@ -598,7 +598,8 @@
             "setAsPublic": "Stilla sem opinbert",
             "makeAllPrivate": "Gera allt einkamál",
             "dropboxRestoreLimit": "AeroFTP getur endurheimt endurheimtanlegar útgáfur skráa. Endurheimtu möppur úr Eyddum skrám á dropbox.com. Spurningarmerki þýðir að Dropbox hefur ekki greint gerð atriðisins.",
-            "openWithDefaultApp": "Opna með sjálfgefnu forriti"
+            "openWithDefaultApp": "Opna með sjálfgefnu forriti",
+            "extractHereUncheckedConfirm": "Ekki er hægt að lesa nöfnin í {name} áður en afþjappað er, svo AeroFTP getur ekki athugað hverju „Afþjappa hér“ myndi skrifa yfir í þessari möppu. „Afþjappa í möppu“ skrifar aldrei yfir neitt."
         },
         "transfer": {
             "transferring": "Flytur...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud virkt",
             "selectPairLocalFolder": "Veldu staðbundna möppu fyrir parið",
             "secondsAgo": "fyrir {count}sek",
-            "conflictsCount": "Árekstrar sem þarfnast athygli: {count}"
+            "conflictsCount": "Árekstrar sem þarfnast athygli: {count}",
+            "updateOnlyHint": "Einstefnuuppfærsla heldur nýrri skrám á áfangastað. Þegar slökkt er á viðbótarafritun er aðeins eytt óbreyttum skrám sem eru eingöngu á áfangastað og hafa staðfesta AeroCloud-flutningskvittun. Aðrar skrár bíða yfirferðar í AeroSync. Árekstrareglan er hunsuð; óþekktar dagsetningar eru áfram óleystar.",
+            "untrackedDestinationFiles": "{count} skrár á áfangastað voru varðveittar til yfirferðar: flutningssaga þeirra er óstaðfest eða þær hafa breyst frá síðasta AeroCloud-flutningi. Farðu yfir þær í AeroSync áður en þú ákveður hvort eyða eigi þeim."
         },
         "statusBar": {
             "connected": "Tengt",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Skanna undirtré...",
             "flattenTruncated": "stytt",
             "flattenTruncatedHint": "Náði hámarki 5.000 færslur; betrumbættu síuna eða farðu í undirmöppu.",
-            "local_placeholder_flatten": "Sía staðbundnar skrár... (* fyrir endurkvæmt)"
+            "local_placeholder_flatten": "Sía staðbundnar skrár... (* fyrir endurkvæmt)",
+            "flattenNameClash": "{names}: valið í fleiri en einni möppu. Ef þau væru sett á einn stað myndu þau skipta hvert annað út; framkvæmdu aðgerð á einu af hverju í einu.",
+            "flattenNameClashTitle": "Sama nafn í fleiri en einni möppu"
         },
         "versions": {
             "title": "Skráarútgáfur",
@@ -6328,7 +6333,12 @@
                 }
             },
             "rescan": "Skanna aftur",
-            "rescanNeeded": "Samanburðurinn var gerður með öðrum útilokunum eða annarri afritunarmöppu. Skannaðu aftur áður en þú keyrir.",
+            "rescanBringsBack": "Þessar stillingar koma með skrár til baka sem skönnunin sleppti, svo hún las þær aldrei. Skannaðu aftur áður en þú keyrir.",
+            "rescanFlat": "Þessi samanburður kom úr listum beggja spjaldanna, ekki úr fullri skönnun, svo hann getur ekki beitt útilokunum. Skannaðu aftur áður en þú keyrir.",
+            "narrowAvailable": "Þessar stillingar þrengja aðeins samanburðinn, svo hægt er að sía hann án nýrrar skönnunar.",
+            "narrowApply": "Nota á þennan samanburð",
+            "narrowedNote": "Síað með nýjum útilokunum án nýrrar skönnunar. Fjöldi eins skráa er enn sá úr skönnuninni.",
+            "narrowAfterRestore": "Endurheimt er í gangi. Hægt er að beita þessum stillingum á samanburðinn þegar henni lýkur.",
             "backup": {
                 "checking": "Athuga hvernig þessi þjónn færir skrár...",
                 "serverCopy": "Þessi þjónn getur ekki fært: hvert varðveitt afrit er afritað á þjóninum og síðan eytt. Það kostar fullt afrit af hverri varðveittri skrá, í tveimur aðskildum skrefum.",
@@ -6355,7 +6365,10 @@
             "progressCopy": "[afrit]",
             "deleteCount": "Til eyðingar: {count}",
             "overwriteCount": "Til yfirskriftar: {count}",
-            "conflictCount": "Árekstrar: {count}"
+            "conflictCount": "Árekstrar: {count}",
+            "updateOnly": "Sleppa nýrri skrám á áfangastað (einstefnuuppfærsla)",
+            "updateOnlyHint": "Afritar upprunaskrár sem vantar eða hafa breyst, heldur nýrri skrám á áfangastað og eyðir færslum sem eru aðeins á áfangastað. Skrár án samanburðarhæfra dagsetninga eru bornar saman eftir stærð; stærðarmismunur er skilinn eftir til yfirferðar.",
+            "rescanNeeded": "Keyrðu nýjan samanburð með núverandi stillingum áður en þú flytur út uppfærsluskriftu."
         },
         "accountLock": {
             "title": "Veldu reikning",

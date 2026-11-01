@@ -18,6 +18,7 @@ use crate::sync_core::mtime::ModifyWindow;
 use crate::sync_core::scan::{
     scan_local_tree_checked, scan_remote_tree_checked, ScanCompleteness, ScanOptions,
 };
+use crate::sync_script::UNATTENDED_MAX_DELETE;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -132,7 +133,7 @@ pub struct CompareReport {
     pub summary: CompareSummary,
     /// How modification times were compared: within a window, or not at all
     /// (size only, with the reason), for a frontend to state the size-only
-    /// case. The Compare and Plan views do not show it yet.
+    /// case and preserve the effective policy in Plan and CLI export.
     pub modify_window: ModifyWindow,
     /// Identical files whose two sides spell the name differently. They are
     /// not difference rows. The baseline still has to remember them, or the
@@ -283,6 +284,14 @@ pub struct CompareOptions {
     pub modify_window: ModifyWindow,
 }
 
+/// A row of a finished compare, as [`CompareOptions::paths_left_out`] reads it.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ComparedPath {
+    pub local_path: String,
+    pub remote_path: String,
+    pub is_dir: bool,
+}
+
 impl CompareOptions {
     /// The backup folder, validated. The compare commands call this first,
     /// so an invalid folder is an error to the caller, not a folder that is
@@ -308,6 +317,51 @@ impl CompareOptions {
             Some(rules) => rules.should_exclude(path, is_dir, excludes),
             None => excludes.is_excluded(path),
         }
+    }
+
+    /// Whether a compare leaves this pair out: excluded, or inside the backup
+    /// folder, under either side's spelling.
+    fn leaves_out(
+        &self,
+        excludes: &crate::sync_exclude::ExcludeMatcher,
+        backup_dir: Option<&crate::sync_backup::BackupDir>,
+        local_path: &str,
+        remote_path: &str,
+        is_dir: bool,
+    ) -> bool {
+        if self.excludes_path(excludes, local_path, is_dir)
+            || self.excludes_path(excludes, remote_path, is_dir)
+        {
+            return true;
+        }
+        backup_dir.is_some_and(|dir| {
+            [local_path, remote_path].iter().any(|p| {
+                crate::sync_backup::is_backup_path(p, dir)
+                    || (is_dir && crate::sync_backup::is_backup_ancestor(p, dir))
+            })
+        })
+    }
+
+    /// For each path of a finished compare, whether these options would have
+    /// left it out, so a compare can be narrowed by the rule that built it. An
+    /// invalid pattern or backup folder is an error, never a narrower answer.
+    pub fn paths_left_out(&self, paths: &[ComparedPath]) -> Result<Vec<bool>, String> {
+        let mut options = self.clone();
+        apply_error_correction_excludes(&mut options);
+        let excludes = compile_excludes(&options.exclude_patterns)?;
+        let backup_dir = options.parsed_backup_dir().map_err(|e| e.to_string())?;
+        Ok(paths
+            .iter()
+            .map(|p| {
+                options.leaves_out(
+                    &excludes,
+                    backup_dir.as_ref(),
+                    &p.local_path,
+                    &p.remote_path,
+                    p.is_dir,
+                )
+            })
+            .collect())
     }
 
     /// The compiled exclude list for a comparison builder, which cannot return
@@ -3226,6 +3280,27 @@ fn migrate_sync_index(index: &mut SyncIndex) {
     index.version = SYNC_INDEX_VERSION;
 }
 
+/// Proof of a stabilized AeroCloud transfer, separate from comparison bookkeeping.
+/// The exact local key is the map key; remote identity and destination side cannot be borrowed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudTransferReceipt {
+    pub scope: String,
+    pub remote_key: String,
+    pub destination_side: CompareDirection,
+    pub destination: SyncIndexEntry,
+}
+
+/// Verified LIST-to-STAT clock conversion, never evidence of a transfer.
+/// Reusable only for the same connection scope and exact listed file snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudRemoteObservation {
+    pub scope: String,
+    pub listed: FileInfo,
+    pub logical: FileInfo,
+    pub local_key: String,
+    pub local: SyncIndexEntry,
+}
+
 /// Persistent index storing the state of files after a successful sync.
 /// Used to detect true conflicts (both sides changed since last sync)
 /// and to skip unchanged files for faster re-scans.
@@ -3248,6 +3323,13 @@ pub struct SyncIndex {
     /// path used one spelling, and on indexes written before pairing.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub remote_spellings: HashMap<String, String>,
+    /// Only AeroCloud transfers mint these proofs. Old indices and foreground
+    /// saves default to none; Skip/Identical bookkeeping is never evidence.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub cloud_receipts: HashMap<String, CloudTransferReceipt>,
+    /// Background metadata cache; legacy/foreground saves default to empty.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub cloud_remote_metadata: HashMap<String, CloudRemoteObservation>,
     /// Keys the version 2 migration rewrote from the native separator, whose
     /// presence does not prove the file was synced **at that path**. Never
     /// persisted: it is rebuilt on every load that migrates, and a save writes
@@ -3268,6 +3350,8 @@ impl SyncIndex {
             profile_id: None,
             files: HashMap::new(),
             remote_spellings: Default::default(),
+            cloud_receipts: Default::default(),
+            cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
         }
     }
@@ -3956,17 +4040,13 @@ pub fn classify_with_summary(
         let remote = pair.remote.as_ref().and_then(|p| remote_files.get(p));
 
         let is_dir = local.or(remote).is_some_and(|f| f.is_dir);
-        if options.excludes_path(&excludes, &path, is_dir)
-            || options.excludes_path(&excludes, &pair.remote_path, is_dir)
-        {
-            continue;
-        }
-        if backup_dir.as_ref().is_some_and(|dir| {
-            [&path, &pair.remote_path].iter().any(|p| {
-                crate::sync_backup::is_backup_path(p, dir)
-                    || (is_dir && crate::sync_backup::is_backup_ancestor(p, dir))
-            })
-        }) {
+        if options.leaves_out(
+            &excludes,
+            backup_dir.as_ref(),
+            &path,
+            &pair.remote_path,
+            is_dir,
+        ) {
             continue;
         }
 
@@ -5250,6 +5330,9 @@ pub struct SyncProfile {
     pub retry_policy: RetryPolicy,
     pub verify_policy: VerifyPolicy,
     pub delete_orphans: bool,
+    /// One-way transfers preserve a newer destination; orphan deletion stays independent.
+    #[serde(default)]
+    pub update_only: bool,
     /// Number of parallel transfer streams (1-8, default: 1 = sequential)
     #[serde(default = "default_parallel_streams")]
     pub parallel_streams: u8,
@@ -5284,6 +5367,7 @@ impl SyncProfile {
             retry_policy: RetryPolicy::default(),
             verify_policy: VerifyPolicy::SizeOnly,
             delete_orphans: true,
+            update_only: false,
             parallel_streams: 3,
             compression_mode: crate::transfer_pool::CompressionMode::Off,
         }
@@ -5310,6 +5394,7 @@ impl SyncProfile {
             retry_policy: RetryPolicy::default(),
             verify_policy: VerifyPolicy::SizeOnly,
             delete_orphans: false,
+            update_only: false,
             parallel_streams: 3,
             compression_mode: crate::transfer_pool::CompressionMode::Off,
         }
@@ -5339,6 +5424,7 @@ impl SyncProfile {
             },
             verify_policy: VerifyPolicy::Full,
             delete_orphans: false,
+            update_only: false,
             parallel_streams: 1,
             compression_mode: crate::transfer_pool::CompressionMode::Off,
         }
@@ -5365,6 +5451,7 @@ impl SyncProfile {
             retry_policy: RetryPolicy::default(),
             verify_policy: VerifyPolicy::SizeOnly,
             delete_orphans: true,
+            update_only: false,
             parallel_streams: 3,
             compression_mode: crate::transfer_pool::CompressionMode::Off,
         }
@@ -5394,6 +5481,7 @@ impl SyncProfile {
             },
             verify_policy: VerifyPolicy::Full,
             delete_orphans: false,
+            update_only: false,
             parallel_streams: 1,
             compression_mode: crate::transfer_pool::CompressionMode::Off,
         }
@@ -5642,6 +5730,9 @@ pub struct SyncTemplateProfile {
     pub compare_size: bool,
     pub compare_checksum: bool,
     pub delete_orphans: bool,
+    /// Mirror can preserve newer destination files (absent on older templates).
+    #[serde(default)]
+    pub update_only: bool,
     #[serde(default = "default_parallel_streams")]
     pub parallel_streams: u8,
     #[serde(default)]
@@ -5713,6 +5804,7 @@ pub fn export_sync_template(
             compare_size: profile.compare_size,
             compare_checksum: profile.compare_checksum,
             delete_orphans: profile.delete_orphans,
+            update_only: profile.update_only,
             // Written neutral: an AeroSync run transfers one file at a time
             // and does not compress, so a template must not promise either.
             // The fields stay for the versions that read them; an import
@@ -5798,6 +5890,10 @@ pub struct SyncScriptMeta {
     pub remote_path: String,
     pub direction: CompareDirection,
     pub delete_orphans: bool,
+    #[serde(default)]
+    pub update_only: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modify_window: Option<u64>,
     pub exclude_patterns: Vec<String>,
     #[serde(default)]
     pub retries: Option<u32>,
@@ -5823,6 +5919,7 @@ pub struct SyncScriptExportOptions<'a> {
     pub remote_path: &'a str,
     pub exclude_patterns: &'a [String],
     pub backup_dir: Option<&'a str>,
+    pub modify_window: Option<u64>,
     pub format: SyncScriptFormat,
 }
 
@@ -5879,6 +5976,7 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
         remote_path,
         exclude_patterns,
         backup_dir,
+        modify_window,
         format,
     } = opts;
     let (max_retries, retries_sleep) = retry_overrides(&profile.retry_policy);
@@ -5891,6 +5989,8 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
         remote_path: remote_path.to_string(),
         direction: profile.direction,
         delete_orphans: profile.delete_orphans,
+        update_only: profile.update_only,
+        modify_window,
         exclude_patterns: exclude_patterns.to_vec(),
         retries: max_retries,
         retries_sleep: retries_sleep.clone(),
@@ -5939,6 +6039,13 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
             out.push_str(&format!("  --direction {} \\\n", direction));
             if profile.delete_orphans {
                 out.push_str("  --delete \\\n");
+                out.push_str(&format!("  --max-delete {} \\\n", UNATTENDED_MAX_DELETE));
+            }
+            if profile.update_only && profile.direction != CompareDirection::Bidirectional {
+                out.push_str("  --update \\\n");
+                if let Some(secs) = modify_window {
+                    out.push_str(&format!("  --modify-window {} \\\n", secs));
+                }
             }
             for pattern in exclude_patterns {
                 out.push_str(&format!("  --exclude {} \\\n", shell_quote_bash(pattern)));
@@ -5994,6 +6101,13 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
             out.push_str(&format!("  --direction {} `\n", direction));
             if profile.delete_orphans {
                 out.push_str("  --delete `\n");
+                out.push_str(&format!("  --max-delete {} `\n", UNATTENDED_MAX_DELETE));
+            }
+            if profile.update_only && profile.direction != CompareDirection::Bidirectional {
+                out.push_str("  --update `\n");
+                if let Some(secs) = modify_window {
+                    out.push_str(&format!("  --modify-window {} `\n", secs));
+                }
             }
             for pattern in exclude_patterns {
                 out.push_str(&format!("  --exclude {} `\n", shell_quote_pwsh(pattern)));
@@ -6100,11 +6214,79 @@ mod sync_script_tests {
                 remote_path: "/backups/proj",
                 exclude_patterns: &profile.exclude_patterns,
                 backup_dir: Some("history/versions"),
+                modify_window: None,
                 format,
             })
             .unwrap();
             let meta = import_sync_script(&script).unwrap();
             assert_eq!(meta.backup_dir.as_deref(), Some("history/versions"));
+        }
+    }
+
+    #[test]
+    fn shell_exports_include_update_modify_window() {
+        let mut profile = sample_profile();
+        profile.update_only = true;
+        for window in [Some(60), Some(0), None] {
+            for format in [SyncScriptFormat::Bash, SyncScriptFormat::PowerShell] {
+                let script = export_sync_script(SyncScriptExportOptions {
+                    profile: &profile,
+                    profile_display_name: "My Server",
+                    template_name: "Daily Backup",
+                    template_description: "Nightly mirror",
+                    local_path: "/home/me/proj",
+                    remote_path: "/backups/proj",
+                    exclude_patterns: &profile.exclude_patterns,
+                    backup_dir: None,
+                    modify_window: window,
+                    format,
+                })
+                .unwrap();
+                if let Some(secs) = window {
+                    let expected = match format {
+                        SyncScriptFormat::Bash => {
+                            format!("  --update \\\n  --modify-window {secs} \\\n")
+                        }
+                        SyncScriptFormat::PowerShell => {
+                            format!("  --update `\n  --modify-window {secs} `\n")
+                        }
+                    };
+                    assert!(script.contains(&expected), "{script}");
+                } else {
+                    assert!(!script.contains("--modify-window"), "{script}");
+                }
+                assert_eq!(import_sync_script(&script).unwrap().modify_window, window);
+            }
+        }
+    }
+
+    #[test]
+    fn shell_exports_cap_unattended_deletes() {
+        let profile = sample_profile();
+        for format in [SyncScriptFormat::Bash, SyncScriptFormat::PowerShell] {
+            let script = export_sync_script(SyncScriptExportOptions {
+                profile: &profile,
+                profile_display_name: "My Server",
+                template_name: "Daily Backup",
+                template_description: "Nightly mirror",
+                local_path: "/home/me/proj",
+                remote_path: "/backups/proj",
+                exclude_patterns: &profile.exclude_patterns,
+                backup_dir: None,
+                modify_window: None,
+                format,
+            })
+            .unwrap();
+            let expected = match format {
+                SyncScriptFormat::Bash => format!(
+                    "  --delete \\\n  --max-delete {} \\\n",
+                    UNATTENDED_MAX_DELETE
+                ),
+                SyncScriptFormat::PowerShell => {
+                    format!("  --delete `\n  --max-delete {} `\n", UNATTENDED_MAX_DELETE)
+                }
+            };
+            assert!(script.contains(&expected), "{script}");
         }
     }
 
@@ -6120,6 +6302,7 @@ mod sync_script_tests {
             remote_path: "/backups/proj",
             exclude_patterns: &profile.exclude_patterns,
             backup_dir: None,
+            modify_window: None,
             format: SyncScriptFormat::Bash,
         })
         .unwrap();
@@ -6151,6 +6334,7 @@ mod sync_script_tests {
             remote_path: "/backups/proj",
             exclude_patterns: &profile.exclude_patterns,
             backup_dir: None,
+            modify_window: None,
             format: SyncScriptFormat::PowerShell,
         })
         .unwrap();
@@ -6575,6 +6759,83 @@ pub(crate) fn verify_journal_signature_in(
             .zip(b.iter())
             .fold(0u8, |acc, (x, y)| acc | (x ^ y))
             == 0)
+}
+
+#[cfg(test)]
+mod narrow_tests {
+    use super::*;
+
+    fn row(path: &str, is_dir: bool) -> ComparedPath {
+        ComparedPath {
+            local_path: path.into(),
+            remote_path: path.into(),
+            is_dir,
+        }
+    }
+
+    fn file(path: &str) -> FileInfo {
+        FileInfo {
+            name: path.rsplit('/').next().unwrap().into(),
+            path: path.into(),
+            size: 1,
+            modified: None,
+            is_dir: false,
+            checksum: None,
+            checksum_alg: None,
+        }
+    }
+
+    /// Requested 116: filtering a finished compare must give what a scan with
+    /// the wider list gives, or the plan would differ from the rescan's.
+    #[test]
+    fn narrowing_leaves_out_what_a_compare_leaves_out() {
+        let paths = [
+            "keep.txt",
+            ".stfolder/marker",
+            "sub/.stfolder/marker",
+            "sub/keep.txt",
+            "backup/old.txt",
+            "a.LOG",
+        ];
+        let options = CompareOptions {
+            exclude_patterns: vec![".stfolder".into(), "*.log".into()],
+            backup_dir: Some("backup".into()),
+            ..CompareOptions::default()
+        };
+        let local: HashMap<String, FileInfo> =
+            paths.iter().map(|p| (p.to_string(), file(p))).collect();
+        let report = classify_with_summary(local, HashMap::new(), &options, None);
+        let compared: std::collections::HashSet<String> = report
+            .differences
+            .iter()
+            .map(|d| d.relative_path.clone())
+            .collect();
+        let rows: Vec<ComparedPath> = paths.iter().map(|p| row(p, false)).collect();
+        let left_out = options.paths_left_out(&rows).unwrap();
+        for (path, out) in paths.iter().zip(left_out) {
+            assert_eq!(out, !compared.contains(*path), "{path}");
+        }
+        assert_eq!(compared.len(), 2);
+    }
+
+    #[test]
+    fn narrowing_reads_both_spellings_and_refuses_a_bad_pattern() {
+        let options = CompareOptions {
+            exclude_patterns: vec!["secret".into()],
+            ..CompareOptions::default()
+        };
+        let rows = [ComparedPath {
+            local_path: "open".into(),
+            remote_path: "secret".into(),
+            is_dir: false,
+        }];
+        assert_eq!(options.paths_left_out(&rows).unwrap(), vec![true]);
+        let bad = CompareOptions {
+            exclude_patterns: vec!["[".into()],
+            ..CompareOptions::default()
+        };
+        assert!(bad.paths_left_out(&rows).is_err());
+    }
 }
 
 #[cfg(test)]
@@ -8233,6 +8494,8 @@ mod tests {
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
             remote_spellings: Default::default(),
+            cloud_receipts: Default::default(),
+            cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
         };
         index.files.insert(
@@ -8270,6 +8533,8 @@ mod tests {
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
             remote_spellings: Default::default(),
+            cloud_receipts: Default::default(),
+            cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
         };
         // Sizes differ so "which one survived" is observable.
@@ -8381,6 +8646,8 @@ mod tests {
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
             remote_spellings: Default::default(),
+            cloud_receipts: Default::default(),
+            cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
         };
         index.files.insert(
@@ -8458,6 +8725,8 @@ mod tests {
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
             remote_spellings: Default::default(),
+            cloud_receipts: Default::default(),
+            cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
         };
         index.files.insert(
@@ -8495,6 +8764,8 @@ mod tests {
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
             remote_spellings: Default::default(),
+            cloud_receipts: Default::default(),
+            cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
         };
         // A key that a rewrite would change, so "untouched" is observable.
@@ -8526,6 +8797,8 @@ mod tests {
             remote_path: "/remote".to_string(),
             files: HashMap::new(),
             remote_spellings: Default::default(),
+            cloud_receipts: Default::default(),
+            cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
         };
         index.files.insert(

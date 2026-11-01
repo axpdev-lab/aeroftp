@@ -984,9 +984,14 @@ export interface CompareSummary {
 }
 
 /** A recursive compare answer: difference rows plus the summary above. */
+export type ModifyWindow =
+  | { kind: 'seconds'; secs: number }
+  | { kind: 'size_only'; reason: 'ftp_list_dates' | 'no_comparable_time' };
+
 export interface CompareReport {
   differences: FileComparison[];
   summary: CompareSummary;
+  modify_window: ModifyWindow;
 }
 
 export type ConflictStrategy =
@@ -1085,6 +1090,7 @@ export interface SyncProfile {
   retry_policy: RetryPolicy;
   verify_policy: VerifyPolicy;
   delete_orphans: boolean;
+  update_only?: boolean;
   parallel_streams: number;
   compression_mode: CompressionMode;
 }
@@ -1105,6 +1111,7 @@ export interface AerosyncScriptProfile {
   skip_matching: boolean;
   resync: boolean;
   watch: boolean;
+  modify_window?: number;
   /** The Plan's versioned-backup folder at export time (#979). */
   backup_dir?: string | null;
 }
@@ -1283,6 +1290,7 @@ export interface CloudPathPair {
   connection_params: Record<string, unknown>;
   sync_direction: CloudSyncDirection;
   preserve_remote_deletes: boolean;
+  update_only?: boolean;
   compress_enabled: boolean;
   compress_level: number;
   conflict_strategy: string;
@@ -1312,6 +1320,8 @@ export interface SyncScriptMeta {
   remote_path: string;
   direction: SyncDirection;
   delete_orphans: boolean;
+  update_only?: boolean;
+  modify_window?: number;
   exclude_patterns: string[];
   retries: number | null;
   retries_sleep: string | null;
@@ -1332,6 +1342,7 @@ export interface SyncTemplate {
     compare_size: boolean;
     compare_checksum: boolean;
     delete_orphans: boolean;
+    update_only?: boolean;
     parallel_streams: number;
     compression_mode: CompressionMode;
     /** Explicit Plan mode. Older files derive Backup, Mirror or Two-way from direction and deletes. */

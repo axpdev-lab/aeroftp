@@ -1465,8 +1465,8 @@ async fn rclone_crypt_provider_create_remote(
     // Same rule as the AeroCrypt create: the folder is absolute, taken from
     // the dialog, never from the provider's pwd, which the overlay is then
     // applied at by the caller. rclone crypt has no marker to write.
-    let root = aerocrypt_provider::overlay_create_root(&base_path, target_subpath.as_deref());
-    if root != base_path.trim() {
+    let root = aerocrypt_provider::overlay_create_root(&base_path, target_subpath.as_deref())?;
+    if root != base_path {
         let mut provider_lock = provider_state.provider.lock().await;
         let provider = provider_lock
             .as_mut()
@@ -12746,6 +12746,14 @@ fn classify_walked_pair(
 /// The `left` directory maps onto `local_info`, `right` onto `remote_info`;
 /// the frontend adapts the result with `leftIsLocal = true`.
 #[tauri::command]
+async fn compare_paths_left_out(
+    options: CompareOptions,
+    paths: Vec<sync::ComparedPath>,
+) -> Result<Vec<bool>, String> {
+    options.paths_left_out(&paths)
+}
+
+#[tauri::command]
 async fn compare_local_directories(
     app: AppHandle,
     left_path: String,
@@ -14088,8 +14096,32 @@ fn import_sync_template_cmd_blocking(json_content: String) -> Result<sync::SyncT
     Ok(template)
 }
 
+/// Live one-way Plan controls override the saved preset at export time.
+#[derive(Default, serde::Deserialize)]
+struct SyncExportPlanOverrides {
+    update_only: Option<bool>,
+    direction: Option<sync::CompareDirection>,
+    delete_orphans: Option<bool>,
+}
+
+impl SyncExportPlanOverrides {
+    fn apply(&self, profile: &mut sync::SyncProfile) {
+        if let Some(direction) = self.direction {
+            profile.direction = direction;
+        }
+        if let Some(delete) = self.delete_orphans {
+            profile.delete_orphans = delete;
+        }
+        if let Some(update) = self.update_only {
+            profile.update_only = update;
+        }
+    }
+}
+
 #[derive(serde::Deserialize)]
 struct SyncScriptExportArgs {
+    #[serde(flatten)]
+    plan: SyncExportPlanOverrides,
     profile_id: String,
     profile_display_name: String,
     template_name: String,
@@ -14101,6 +14133,8 @@ struct SyncScriptExportArgs {
     exclude_patterns: Option<Vec<String>>,
     #[serde(default)]
     backup_dir: Option<String>,
+    #[serde(default)]
+    modify_window: Option<u64>,
     format: String,
 }
 
@@ -14116,13 +14150,15 @@ fn export_sync_script_cmd_blocking(args: SyncScriptExportArgs) -> Result<String,
     let format = sync::SyncScriptFormat::parse(&args.format)
         .ok_or_else(|| format!("Unsupported script format: {}", args.format))?;
     let profiles = sync::load_sync_profiles()?;
-    let profile = profiles
+    let mut profile = profiles
         .iter()
         .find(|p| p.id == args.profile_id)
+        .cloned()
         .ok_or_else(|| format!("Profile '{}' not found", args.profile_id))?;
+    args.plan.apply(&mut profile);
     let excludes = sync::resolve_exclude_patterns(args.exclude_patterns, &profile.exclude_patterns);
     sync::export_sync_script(sync::SyncScriptExportOptions {
-        profile,
+        profile: &profile,
         profile_display_name: &args.profile_display_name,
         template_name: &args.template_name,
         template_description: &args.template_description,
@@ -14130,6 +14166,7 @@ fn export_sync_script_cmd_blocking(args: SyncScriptExportArgs) -> Result<String,
         remote_path: &args.remote_path,
         exclude_patterns: &excludes,
         backup_dir: args.backup_dir.as_deref(),
+        modify_window: args.modify_window,
         format,
     })
 }
@@ -14150,6 +14187,8 @@ fn import_sync_script_cmd_blocking(script_content: String) -> Result<sync::SyncS
 // ======================
 #[derive(serde::Deserialize)]
 struct AerosyncExportScriptArgs {
+    #[serde(flatten)]
+    plan: SyncExportPlanOverrides,
     profile_id: String,
     profile_display_name: Option<String>,
     local_path: String,
@@ -14169,6 +14208,8 @@ struct AerosyncExportScriptArgs {
     watch: bool,
     #[serde(default)]
     backup_dir: Option<String>,
+    #[serde(default)]
+    modify_window: Option<u64>,
     output_path: String,
     #[serde(default)]
     also_generate_wrapper: bool,
@@ -14201,6 +14242,7 @@ fn aerosync_export_script_cmd_blocking(
         .ok_or_else(|| format!("Profile '{}' not found", args.profile_id))?;
 
     let mut profile = base_profile;
+    args.plan.apply(&mut profile);
     if let Some(name) = args.profile_display_name.as_deref() {
         if !name.is_empty() {
             profile.name = name.to_string();
@@ -14241,6 +14283,7 @@ fn aerosync_export_script_cmd_blocking(
         skip_matching: args.skip_matching,
         resync: args.resync,
         watch: args.watch,
+        modify_window: args.modify_window,
         backup_dir: args.backup_dir.clone().filter(|dir| !dir.is_empty()),
     };
 
@@ -21172,6 +21215,7 @@ pub fn run() {
             rebuild_menu,
             set_site_command_menu_enabled,
             compare_directories,
+            compare_paths_left_out,
             compare_local_directories,
             cancel_compare,
             proton_mode_switch::proton_mode_switch_plan,

@@ -1067,7 +1067,8 @@
             "setAsPublic": "Rendi Pubblico",
             "makeAllPrivate": "Rendi tutto privato",
             "dropboxRestoreLimit": "AeroFTP può ripristinare le versioni recuperabili dei file. Ripristina le cartelle da File eliminati su dropbox.com. Un punto interrogativo indica che Dropbox non ha identificato il tipo di elemento.",
-            "openWithDefaultApp": "Apri con l'app predefinita"
+            "openWithDefaultApp": "Apri con l'app predefinita",
+            "extractHereUncheckedConfirm": "I nomi dentro {name} non si possono leggere prima dell'estrazione, quindi AeroFTP non può verificare cosa sovrascriverebbe Estrai qui in questa cartella. Estrai nella cartella non sovrascrive mai."
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",
@@ -2077,7 +2078,9 @@
             "aerocloudEnabled": "AeroCloud attivato",
             "selectPairLocalFolder": "Seleziona cartella locale per la coppia",
             "secondsAgo": "{count}s fa",
-            "conflictsCount": "Conflitti da risolvere: {count}"
+            "conflictsCount": "Conflitti da risolvere: {count}",
+            "updateOnlyHint": "L’aggiornamento unidirezionale conserva i file di destinazione più recenti. Con il backup additivo disattivato, vengono eliminati solo i file invariati presenti esclusivamente nella destinazione e con una ricevuta di trasferimento AeroCloud verificata. Gli altri file restano da esaminare in AeroSync. La politica dei conflitti viene ignorata; le date sconosciute restano irrisolte.",
+            "untrackedDestinationFiles": "{count} file di destinazione sono stati conservati per la revisione: la cronologia dei trasferimenti non è verificata oppure sono stati modificati dopo l’ultimo trasferimento AeroCloud. Esaminali in AeroSync prima di decidere se eliminarli."
         },
         "statusBar": {
             "connected": "Connesso",
@@ -2694,6 +2697,8 @@
             "search_files": "Cerca file",
             "clear": "Cancella ricerca",
             "resultsCount": "{count} risultati",
+            "flattenNameClash": "{names}: selezionati in più di una cartella. Messi in un solo posto si sostituirebbero a vicenda; agisci su uno per volta.",
+            "flattenNameClashTitle": "Stesso nome in più cartelle",
             "flattenRecursive": "Ricorsivo",
             "flattenScanning": "Scansione sottoalbero...",
             "flattenTruncated": "troncato",
@@ -6562,7 +6567,12 @@
                 }
             },
             "rescan": "Riscansiona",
-            "rescanNeeded": "Il confronto è stato fatto con altre esclusioni o con un'altra cartella di backup. Riscansiona prima di eseguire.",
+            "rescanBringsBack": "Queste impostazioni riportano file che la scansione aveva escluso, quindi non li ha mai letti. Riscansiona prima di eseguire.",
+            "rescanFlat": "Questo confronto viene dagli elenchi dei due pannelli, non da una scansione completa, quindi non può applicare esclusioni. Riscansiona prima di eseguire.",
+            "narrowAvailable": "Queste impostazioni restringono solo il confronto, quindi si può filtrare senza riscansionare.",
+            "narrowApply": "Applica a questo confronto",
+            "narrowedNote": "Filtrato con nuove esclusioni senza riscansionare. Il conteggio degli identici è ancora quello della scansione.",
+            "narrowAfterRestore": "È in corso un ripristino. Queste impostazioni possono essere applicate al confronto quando termina.",
             "backup": {
                 "checking": "Verifica di come questo server sposta i file...",
                 "serverCopy": "Questo server non ha lo spostamento: ogni copia conservata viene copiata sul server e poi eliminata. Costa una copia intera di ogni file conservato, in due passaggi separati.",
@@ -6589,7 +6599,10 @@
             "progressCopy": "[copia]",
             "deleteCount": "Da eliminare: {count}",
             "overwriteCount": "Da sovrascrivere: {count}",
-            "conflictCount": "Conflitti: {count}"
+            "conflictCount": "Conflitti: {count}",
+            "updateOnly": "Salta i file di destinazione più recenti (aggiornamento unidirezionale)",
+            "updateOnlyHint": "Copia i file di origine mancanti o modificati, conserva i file di destinazione più recenti ed elimina le voci presenti solo nella destinazione. I file senza date confrontabili vengono confrontati in base alla dimensione; le differenze di dimensione restano in attesa di revisione.",
+            "rescanNeeded": "Esegui un nuovo confronto con le impostazioni attuali prima di esportare uno script di aggiornamento."
         },
         "aerocryptProfile": {
             "overlaysSection": "Wrapper / Overlay",

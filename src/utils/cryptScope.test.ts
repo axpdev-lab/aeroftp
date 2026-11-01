@@ -1,7 +1,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, it, expect } from 'vitest';
-import { normCryptScope, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './cryptScope';
+import { normCryptScope, normLandingPath, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './cryptScope';
 
 describe('normCryptScope', () => {
   it('collapses the empty scope and the root onto "whole remote"', () => {
@@ -19,6 +19,16 @@ describe('normCryptScope', () => {
   });
 });
 
+describe('normLandingPath', () => {
+  it('keeps the spaces of the Remote Path and normalizes only its slashes', () => {
+    for (const root of [undefined, null, '', '/', '//']) expect(normLandingPath(root)).toBe('');
+    expect(normLandingPath('/docs ')).toBe('/docs ');
+    expect(normLandingPath(' docs/')).toBe('/ docs');
+    expect(normLandingPath('   ')).toBe('/   ');
+    expect(normLandingPath('docs//')).toBe('/docs');
+  });
+});
+
 describe('connectLandsOutsideOverlay', () => {
   it('opens a root Remote Path outside a subfolder island', () => {
     expect(connectLandsOutsideOverlay('/', '/Crypt')).toBe(true);
@@ -31,6 +41,16 @@ describe('connectLandsOutsideOverlay', () => {
     expect(connectLandsOutsideOverlay('/Crypt', '/Crypt')).toBe(false);
     expect(connectLandsOutsideOverlay('/Crypt/sub', '/Crypt')).toBe(false);
     expect(connectLandsOutsideOverlay('/Crypt/', '/Crypt')).toBe(false);
+  });
+
+  // The landing is the folder navigation opens (normLandingPath), spaces
+  // included: read with the anchor's trim, `/Crypt ` was inside `/Crypt` and
+  // the overlay unlocked on a folder outside it.
+  it('opens outside the island when the Remote Path is another folder by its spaces', () => {
+    expect(connectLandsOutsideOverlay('/Crypt ', '/Crypt')).toBe(true);
+    expect(connectLandsOutsideOverlay(' /Crypt', '/Crypt')).toBe(true);
+    expect(connectLandsOutsideOverlay('/Crypt /sub', '/Crypt')).toBe(true);
+    expect(connectLandsOutsideOverlay('/Crypt /sub', '/Crypt ')).toBe(true);
   });
 
   it('treats an empty Overlays Path as the Remote Path itself', () => {
