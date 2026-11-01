@@ -13082,6 +13082,9 @@ const App: React.FC = () => {
           filesToUpload.map(entry => ({ ...entry, is_dir: entry.file.is_dir })),
           fileBatchSessionFlags('upload'),
         );
+        // Set once the file batch has run: a listing that fails after it
+        // still ends the run as the batch alone would.
+        let batchStaged: boolean | undefined;
         if (batchUploads.length > 0) {
           const outcome = await runFileBatch(
             'upload',
@@ -13097,6 +13100,7 @@ const App: React.FC = () => {
             folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
             return;
           }
+          batchStaged = outcome.staged;
           // A Stop during the file batch also stops the folders after it.
           if (restUploads.length === 0 || batchCancelledRef.current) {
             folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
@@ -13118,6 +13122,11 @@ const App: React.FC = () => {
           destinationFiles = await destinationListing();
         } catch (error) {
           notify.error(t('toast.uploadFailed'), String(error));
+          if (batchStaged !== undefined) {
+            folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
+            panel.setSelection(new Set());
+            if (!batchStaged) loadRemoteFiles();
+          }
           return;
         }
         const stagedUploadMode = settings.autoStartTransfers === false;
@@ -13168,42 +13177,92 @@ const App: React.FC = () => {
           const MAX_BATCH_SIZE = 50 * 1024 * 1024; // 50 MB GraphQL limit
 
           if (totalSize <= MAX_BATCH_SIZE) {
-            try {
-              const files = nonDirItems.map(item => ({
-                localPath: item.filePath,
-                remotePath: `${remoteDir}${remoteDir.endsWith('/') ? '' : '/'}${item.fileName}`,
-              }));
-              const batchCommand = protocol === 'gitlab' ? 'gitlab_batch_upload' : 'github_batch_upload';
-              const result = await invoke<{ commit_sha: string; files_count: number }>(
-                batchCommand, { files, message: batchCommitMessage }
-              );
-              // Mark all as complete
-              for (const item of nonDirItems) {
-                transferQueue.completeTransfer(item.id);
-              }
-              notify.success(
-                `Atomic commit: ${result.files_count} files`,
-                result.commit_sha.substring(0, 7)
-              );
-            } catch (error) {
-              for (const item of nonDirItems) {
-                transferQueue.failTransfer(item.id, String(error));
-              }
-              notify.error('Batch upload failed', String(error));
-            }
-            // Process remaining dir items sequentially if any
-            const dirItems = queueItems.filter(i => i.file.is_dir);
-            if (dirItems.length > 0) {
-              for (const item of dirItems) {
-                transferQueue.startTransfer(item.id);
-                try {
-                  await uploadFile(item.filePath, item.fileName, true, item.file.size || undefined, false, batchCommitMessage, remoteDir);
-                  transferQueue.completeTransfer(item.id);
-                } catch (error) {
-                  transferQueue.failTransfer(item.id, String(error));
+            // The commit writes every file it names at once, so each item is
+            // put to the overwrite settings first, in queue order as the
+            // sequential path below does: a skipped item stays out, a renamed
+            // file goes in under its new name, and a cancel fails that item
+            // and every item after it.
+            const kept: typeof queueItems = [];
+            let skippedInCommit = 0;
+            for (let i = 0; i < queueItems.length; i++) {
+              const item = queueItems[i];
+              const remainingInQueue = queueItems.length - i - 1;
+              let action: string;
+              if (item.file.is_dir) {
+                action = (await checkFolderOverwrite(item.fileName, 'upload', remainingInQueue, destinationFiles)).action;
+              } else {
+                const overwriteResult = await checkOverwrite(
+                  item.fileName,
+                  item.file.size || 0,
+                  item.file.modified ? new Date(item.file.modified) : undefined,
+                  false, // sourceIsRemote = false for upload
+                  remainingInQueue,
+                  destinationFiles,
+                );
+                action = overwriteResult.action;
+                if (action !== 'cancel' && action !== 'skip' && overwriteResult.newName) {
+                  item.fileName = overwriteResult.newName;
                 }
               }
+              if (action === 'cancel') {
+                for (let j = i; j < queueItems.length; j++) {
+                  transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+                }
+                break;
+              }
+              if (action === 'skip') {
+                transferQueue.completeTransfer(item.id);
+                if (!item.file.is_dir) {
+                  humanLog.logRaw('activity.upload_skipped', 'UPLOAD', { filename: item.fileName }, 'success');
+                }
+                skippedInCommit++;
+                continue;
+              }
+              kept.push(item);
             }
+
+            const keptFiles = kept.filter(i => !i.file.is_dir);
+            if (keptFiles.length > 0) {
+              try {
+                const files = keptFiles.map(item => ({
+                  localPath: item.filePath,
+                  remotePath: `${remoteDir}${remoteDir.endsWith('/') ? '' : '/'}${item.fileName}`,
+                }));
+                const batchCommand = protocol === 'gitlab' ? 'gitlab_batch_upload' : 'github_batch_upload';
+                const result = await invoke<{ commit_sha: string; files_count: number }>(
+                  batchCommand, { files, message: batchCommitMessage }
+                );
+                // Mark all as complete
+                for (const item of keptFiles) {
+                  transferQueue.completeTransfer(item.id);
+                }
+                notify.success(
+                  `Atomic commit: ${result.files_count} files`,
+                  result.commit_sha.substring(0, 7)
+                );
+              } catch (error) {
+                for (const item of keptFiles) {
+                  transferQueue.failTransfer(item.id, String(error));
+                }
+                notify.error('Batch upload failed', String(error));
+              }
+            }
+            // Process remaining dir items sequentially if any
+            for (const item of kept.filter(i => i.file.is_dir)) {
+              transferQueue.startTransfer(item.id);
+              try {
+                await uploadFile(item.filePath, item.fileName, true, item.file.size || undefined, false, batchCommitMessage, remoteDir);
+                transferQueue.completeTransfer(item.id);
+              } catch (error) {
+                transferQueue.failTransfer(item.id, String(error));
+              }
+            }
+            resetOverwriteSettings();
+            folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
+            if (skippedInCommit > 0) {
+              notify.info(t('toast.fileSkipped', { count: skippedInCommit }));
+            }
+            panel.setSelection(new Set());
             loadRemoteFiles(undefined, true);
             return;
           }
@@ -13554,6 +13613,9 @@ const App: React.FC = () => {
       // Issue #591: plain files go out as one parallel batch; folders, and a
       // lone file, keep the per-item loop below.
       const { batch: batchFiles, sequential } = splitForFileBatch(filesToDownload, fileBatchSessionFlags('download'));
+      // Set once the file batch has run: a listing that fails after it
+      // still ends the run as the batch alone would.
+      let batchStaged: boolean | undefined;
       if (batchFiles.length > 0) {
         const outcome = await runFileBatch(
           'download',
@@ -13561,6 +13623,7 @@ const App: React.FC = () => {
           localDir,
         );
         if (outcome.aborted) return;
+        batchStaged = outcome.staged;
         // A Stop during the file batch also stops the folders after it.
         if (sequential.length === 0 || batchCancelledRef.current) {
           setSelectedRemoteFiles(new Set());
@@ -13580,6 +13643,10 @@ const App: React.FC = () => {
         destinationFiles = await destinationListing();
       } catch (error) {
         notify.error(t('toast.downloadFailed'), String(error));
+        if (batchStaged !== undefined) {
+          setSelectedRemoteFiles(new Set());
+          if (!batchStaged) await refreshLocalPanelForPath(localDir);
+        }
         return;
       }
       const frozenLocalPath = localDir;
