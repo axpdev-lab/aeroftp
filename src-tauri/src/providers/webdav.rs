@@ -4325,6 +4325,7 @@ impl StorageProvider for WebDavProvider {
                     "Session expired".to_string(),
                 ))
             }
+            StatusCode::FORBIDDEN => Err(ProviderError::PermissionDenied(list_path)),
             status => {
                 tracing::error!("[WebDAV] Server error: {}", status);
                 Err(ProviderError::ServerError(format!(
@@ -5350,6 +5351,11 @@ impl StorageProvider for WebDavProvider {
         while let Some(dir) = dirs_to_scan.pop() {
             let entries = match self.list(&dir).await {
                 Ok(e) => e,
+                // A folder searched that cannot be read is not an empty result,
+                // and a failure that is not about one folder fails the search.
+                Err(e) if dir == path || !super::listing_failure_is_the_folders(&e) => {
+                    return Err(e)
+                }
                 Err(_) => continue,
             };
 
@@ -9921,6 +9927,18 @@ mod walk_scope_tests {
                 let path = urlencoding::decode(req.uri().path())
                     .map(|p| crate::sync_core::walk_path_key(&p))
                     .unwrap_or_default();
+                if path.ends_with("/signed-out") {
+                    return axum::response::Response::builder()
+                        .status(401)
+                        .body(axum::body::Body::empty())
+                        .unwrap();
+                }
+                if path.ends_with("/refused") {
+                    return axum::response::Response::builder()
+                        .status(403)
+                        .body(axum::body::Body::empty())
+                        .unwrap();
+                }
                 let Some((_, names)) = listings.iter().find(|(folder, _)| *folder == path) else {
                     return axum::response::Response::builder()
                         .status(404)
@@ -9999,6 +10017,22 @@ mod walk_scope_tests {
             ("/y", &["y.txt"]),
         ],
     ];
+
+    /// A collection under the one searched that is gone or refused leaves the rest of the
+    /// search. A sign-in that ended under it fails the search: the folders
+    /// after it could not be read either.
+    #[tokio::test]
+    async fn a_find_skips_a_gone_collection_and_fails_on_an_ended_session() {
+        const GONE: Listings = &[("/x", &["a.txt", "gone/", "refused/"])];
+        let mut provider = provider_on_listings(GONE).await;
+        let found = provider.find("/x", "*.txt").await.unwrap();
+        assert_eq!(found.len(), 1, "{found:?}");
+
+        const SIGNED_OUT: Listings = &[("/x", &["a.txt", "signed-out/"])];
+        let mut provider = provider_on_listings(SIGNED_OUT).await;
+        let outcome = provider.find("/x", "*.txt").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+    }
 
     /// A search follows only collections inside the one searched, once each.
     #[tokio::test]
