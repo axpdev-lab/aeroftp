@@ -4411,6 +4411,9 @@ enum VaultCommands {
         password: Option<String>,
         /// Destination directory (created if needed)
         dest: String,
+        /// Replace files that already exist in the destination
+        #[arg(long)]
+        overwrite: bool,
         /// Vault format: auto (detect from file) | v2 | v3
         #[arg(long = "vault-version", short = 'V', default_value = "auto")]
         vault_version: String,
@@ -39375,6 +39378,136 @@ enum DryRunOutcome {
 /// Only the provider's typed absence permits force-delete to ignore a failure
 /// or a caller-named speed test to write. Error details can mention a missing
 /// service, credentials or metadata without saying this path is absent.
+/// Move what a vault extracted into `staging` to `dest`. Nothing moves when a
+/// file would replace one already there, unless `overwrite` says so.
+fn publish_extracted(
+    staging: &std::path::Path,
+    dest: &std::path::Path,
+    overwrite: bool,
+) -> Result<(), String> {
+    let mut files = Vec::new();
+    let mut folders = Vec::new();
+    for entry in walkdir::WalkDir::new(staging)
+        .min_depth(1)
+        .follow_links(false)
+    {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let relative = entry
+            .path()
+            .strip_prefix(staging)
+            .map_err(|e| e.to_string())?
+            .to_path_buf();
+        if entry.file_type().is_dir() {
+            folders.push(relative);
+        } else {
+            files.push(relative);
+        }
+    }
+    // A link in the way would carry the extract outside the destination.
+    for relative in folders.iter().chain(&files) {
+        let mut under = dest.to_path_buf();
+        let parents: Vec<_> = relative
+            .parent()
+            .into_iter()
+            .flat_map(|p| p.components())
+            .collect();
+        for part in parents {
+            under.push(part);
+            if under
+                .symlink_metadata()
+                .is_ok_and(|meta| meta.file_type().is_symlink())
+            {
+                return Err(format!(
+                    "{} is a link, so {} would be written outside {}. Nothing was written",
+                    under.display(),
+                    relative.display(),
+                    dest.display()
+                ));
+            }
+        }
+    }
+    if !overwrite {
+        // A dangling link is a file there too, which `exists` does not see.
+        let existing: Vec<_> = files
+            .iter()
+            .filter(|file| dest.join(file).symlink_metadata().is_ok())
+            .collect();
+        if let Some(first) = existing.first() {
+            return Err(format!(
+                "{} file(s) already exist in {}, such as {}. Nothing was replaced: use --overwrite to replace them",
+                existing.len(),
+                dest.display(),
+                first.display()
+            ));
+        }
+    }
+    // A rename cannot replace a folder, and would stop with files already moved.
+    if let Some(file) = files.iter().find(|file| {
+        dest.join(file)
+            .symlink_metadata()
+            .is_ok_and(|meta| meta.is_dir())
+    }) {
+        return Err(format!(
+            "{} is a folder in {}, and the vault holds a file there. Nothing was replaced",
+            file.display(),
+            dest.display()
+        ));
+    }
+    for folder in &folders {
+        std::fs::create_dir_all(dest.join(folder)).map_err(|e| e.to_string())?;
+    }
+    for (moved, file) in files.iter().enumerate() {
+        let (from, to) = (staging.join(file), dest.join(file));
+        if overwrite {
+            std::fs::rename(&from, &to)
+        } else {
+            move_without_replacing(&from, &to)
+        }
+        .map_err(|e| {
+            format!(
+                "Failed to write {}: {e}. {moved} of {} files are already in {}",
+                file.display(),
+                files.len(),
+                dest.display()
+            )
+        })?;
+    }
+    Ok(())
+}
+
+/// Move a file only if nothing is at `to`, also if something appears there
+/// after a check. A rename would replace it; a hard link cannot. A filesystem
+/// without hard links gets an exclusive create.
+fn move_without_replacing(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    match std::fs::hard_link(from, to) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => return Err(e),
+        Err(_) => copy_without_replacing(from, to)?,
+    }
+    std::fs::remove_file(from)
+}
+
+/// An exclusive create with the mode of `from`: a v3 extract is 0600, and the
+/// default mode would open it to others.
+fn copy_without_replacing(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    let mut target = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(to)?;
+    // Created here, so it is ours to remove: a partial file would read as an
+    // extract, and refuse the retry.
+    let copied = std::fs::File::open(from).and_then(|mut source| {
+        target.set_permissions(source.metadata()?.permissions())?;
+        std::io::copy(&mut source, &mut target)
+    });
+    if let Err(e) = copied {
+        drop(target);
+        let _ = std::fs::remove_file(to);
+        return Err(e);
+    }
+    Ok(())
+}
+
 fn is_not_found_error(e: &ProviderError) -> bool {
     matches!(e, ProviderError::NotFound(_))
 }
@@ -39736,7 +39869,10 @@ async fn run_rm_dry_run(
             // `--force` makes the real delete idempotent over a missing path;
             // the dry-run reports the same non-failure.
             if force && is_not_found_error(&e) {
-                let message = format!("Would delete: {} (not found, ignored with --force)", path);
+                let message = format!(
+                    "Nothing to delete: {} (not found, ignored with --force)",
+                    path
+                );
                 match format {
                     OutputFormat::Text => {
                         if !cli.quiet {
@@ -39853,7 +39989,10 @@ async fn run_filtered_rm(
         Err(e) => {
             // `--force` keeps the delete idempotent over a missing path.
             if force && is_not_found_error(&e) {
-                let message = format!("Deleted: {} (not found, ignored with --force)", path);
+                let message = format!(
+                    "Nothing to delete: {} (not found, ignored with --force)",
+                    path
+                );
                 match format {
                     OutputFormat::Text => {
                         if !cli.quiet {
@@ -40050,12 +40189,18 @@ async fn cmd_rm(
                 match format {
                     OutputFormat::Text => {
                         if !cli.quiet {
-                            eprintln!("Deleted: {} (not found, ignored with --force)", path);
+                            eprintln!(
+                                "Nothing to delete: {} (not found, ignored with --force)",
+                                path
+                            );
                         }
                     }
                     OutputFormat::Json => print_json(&CliOk {
                         status: "ok",
-                        message: format!("Deleted: {} (not found, ignored with --force)", path),
+                        message: format!(
+                            "Nothing to delete: {} (not found, ignored with --force)",
+                            path
+                        ),
                     }),
                 }
                 let _ = provider.disconnect().await;
@@ -78996,6 +79141,7 @@ async fn main() {
                     path,
                     password,
                     dest,
+                    overwrite,
                     vault_version,
                 } => {
                     let pw = resolve_pw(password);
@@ -79004,21 +79150,52 @@ async fn main() {
                     } else {
                         resolve_ver(vault_version)
                     };
-                    let res: Result<u64, String> = if ver == "v3" {
-                        aerovault_v3::vault_v3_extract_all_impl(
-                            path.clone(),
-                            pw,
-                            dest.clone(),
-                            None,
-                        )
-                        .await
-                    } else if ver == "v2" {
-                        aerovault_v2::vault_v2_extract_all(path.clone(), pw, dest.clone())
-                            .await
-                            .map(|v| v["extracted"].as_u64().unwrap_or(0))
+                    let dest_was_there = std::path::Path::new(dest.as_str()).exists();
+                    // Every format extracts into a staging folder first: v2 refused
+                    // an existing file halfway through, and v3 replaced it.
+                    let staging = if ver == "v3" || ver == "v2" {
+                        std::fs::create_dir_all(dest.as_str())
+                            .and_then(|()| {
+                                tempfile::Builder::new()
+                                    .prefix(".aerovault_extract_")
+                                    .tempdir_in(dest.as_str())
+                            })
+                            .map_err(|e| format!("Failed to prepare {dest}: {e}"))
                     } else {
                         Err("extract-all is only supported for v2/v3 vaults".to_string())
                     };
+                    let res: Result<u64, String> = match staging {
+                        Err(e) => Err(e),
+                        Ok(staging) => {
+                            let target = staging.path().to_string_lossy().into_owned();
+                            let extracted = if ver == "v3" {
+                                aerovault_v3::vault_v3_extract_all_impl(
+                                    path.clone(),
+                                    pw,
+                                    target,
+                                    None,
+                                )
+                                .await
+                            } else {
+                                aerovault_v2::vault_v2_extract_all(path.clone(), pw, target)
+                                    .await
+                                    .map(|v| v["extracted"].as_u64().unwrap_or(0))
+                            };
+                            extracted.and_then(|n| {
+                                publish_extracted(
+                                    staging.path(),
+                                    std::path::Path::new(dest.as_str()),
+                                    *overwrite,
+                                )?;
+                                Ok(n)
+                            })
+                        }
+                    };
+                    // A wrong password leaves no empty folder behind. Fails, as
+                    // it should, on a folder that holds something by now.
+                    if res.is_err() && !dest_was_there {
+                        let _ = std::fs::remove_dir(dest.as_str());
+                    }
                     match res {
                         Ok(n) => {
                             match format {
@@ -98281,6 +98458,103 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
     /// looping listing, and searched the account root through a folder
     /// listed as `/`. It reports each path under the root once, and names
     /// each folder it did not search.
+    /// `--overwrite` cannot put a file where a folder stands: it says so before
+    /// the first file moves.
+    #[test]
+    fn extracted_files_refuse_a_folder_in_the_way_before_any_moves() {
+        let root = tempfile::tempdir().unwrap();
+        let (staging, dest) = (root.path().join("staging"), root.path().join("dest"));
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(staging.join("first.txt"), "vault").unwrap();
+        std::fs::write(staging.join("taken"), "vault").unwrap();
+        std::fs::create_dir_all(dest.join("taken")).unwrap();
+        let refused = publish_extracted(&staging, &dest, true).unwrap_err();
+        assert!(refused.contains("is a folder"), "{refused}");
+        assert!(!dest.join("first.txt").exists());
+    }
+
+    /// With no hard links the copy keeps the staged mode: a v3 extract is 0600.
+    #[cfg(unix)]
+    #[test]
+    fn the_copy_fallback_keeps_the_mode_of_the_staged_file() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let (from, to) = (root.path().join("from"), root.path().join("to"));
+        std::fs::write(&from, "vault").unwrap();
+        std::fs::set_permissions(&from, std::fs::Permissions::from_mode(0o600)).unwrap();
+        copy_without_replacing(&from, &to).unwrap();
+        assert_eq!(std::fs::read_to_string(&to).unwrap(), "vault");
+        assert_eq!(
+            std::fs::metadata(&to).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert!(copy_without_replacing(&from, &to).is_err());
+        assert_eq!(std::fs::read_to_string(&to).unwrap(), "vault");
+    }
+
+    #[test]
+    fn extracted_files_replace_nothing_without_overwrite() {
+        let root = tempfile::tempdir().unwrap();
+        let staging = root.path().join("staging");
+        let dest = root.path().join("dest");
+        std::fs::create_dir_all(staging.join("sub")).unwrap();
+        std::fs::create_dir_all(&dest).unwrap();
+        std::fs::write(staging.join("new.txt"), "new").unwrap();
+        std::fs::write(staging.join("sub/kept.txt"), "vault").unwrap();
+        std::fs::create_dir_all(dest.join("sub")).unwrap();
+        std::fs::write(dest.join("sub/kept.txt"), "mine").unwrap();
+
+        let refused = publish_extracted(&staging, &dest, false).unwrap_err();
+        assert!(refused.contains("--overwrite"), "{refused}");
+        assert_eq!(
+            std::fs::read_to_string(dest.join("sub/kept.txt")).unwrap(),
+            "mine"
+        );
+        assert!(
+            !dest.join("new.txt").exists(),
+            "nothing moves when it refuses"
+        );
+
+        // The move itself refuses a file already at the target, with no check of
+        // its own before it: a rename here would replace `late`.
+        std::fs::write(root.path().join("late"), "late").unwrap();
+        let moved = root.path().join("moved");
+        std::fs::write(&moved, "vault").unwrap();
+        let late = root.path().join("late");
+        assert!(move_without_replacing(&moved, &late).is_err());
+        assert_eq!(std::fs::read_to_string(&late).unwrap(), "late");
+
+        #[cfg(unix)]
+        {
+            // A link among the parents would carry the extract outside.
+            let outside = root.path().join("outside");
+            std::fs::create_dir_all(&outside).unwrap();
+            let linked = root.path().join("linked");
+            std::fs::create_dir_all(&linked).unwrap();
+            std::os::unix::fs::symlink(&outside, linked.join("sub")).unwrap();
+            let refused = publish_extracted(&staging, &linked, true).unwrap_err();
+            assert!(refused.contains("is a link"), "{refused}");
+            assert!(!outside.join("kept.txt").exists());
+
+            std::os::unix::fs::symlink(root.path().join("gone"), dest.join("new.txt")).unwrap();
+            assert!(
+                publish_extracted(&staging, &dest, false).is_err(),
+                "a dangling link is a file"
+            );
+            std::fs::remove_file(dest.join("new.txt")).unwrap();
+        }
+
+        publish_extracted(&staging, &dest, true).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dest.join("sub/kept.txt")).unwrap(),
+            "vault"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dest.join("new.txt")).unwrap(),
+            "new"
+        );
+    }
+
     #[tokio::test]
     async fn find_by_listing_reports_each_path_under_the_root_once() {
         let everything = globset::Glob::new("*").unwrap().compile_matcher();
