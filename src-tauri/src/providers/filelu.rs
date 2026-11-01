@@ -23,8 +23,9 @@ use std::path::Path;
 use tracing::info;
 
 use super::{
-    send_with_retry, send_with_retry_replayable, FileLuConfig, HttpRetryConfig, ProviderError,
-    ProviderType, RemoteEntry, ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider,
+    send_with_retry, send_with_retry_replayable, FileLuConfig, FileVersion, HttpRetryConfig,
+    ProviderError, ProviderType, RemoteEntry, ShareLinkOptions, ShareLinkResult, StorageInfo,
+    StorageProvider,
 };
 
 const API_BASE: &str = "https://filelu.com/api";
@@ -232,6 +233,27 @@ struct UploadResultEntry {
 #[derive(Debug, Deserialize)]
 struct DirectLinkResult {
     url: Option<String>,
+}
+
+/// `file/versions?file_code=`: the earlier versions of a file, newest first.
+/// The current one is not among them. Measured 2026-11-01 (undocumented).
+#[derive(Debug, Deserialize)]
+struct VersionsResult {
+    #[serde(default)]
+    versions: Vec<VersionEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct VersionEntry {
+    /// A file code of its own: `file/direct_link` downloads the version by
+    /// it, `file/version_restore` and `file/version_delete` take it as
+    /// `version_code`.
+    code: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_size")]
+    size: u64,
+    /// When this content was uploaded (`replaced` is when a newer one took
+    /// its place).
+    uploaded: Option<String>,
 }
 
 /// Folder create response. FileLu inconsistently returns `fld_id` either as a
@@ -611,37 +633,6 @@ impl FileLuProvider {
             .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!(
                     "GET failed: {}",
-                    redact_key(&e.to_string())
-                ))
-            })
-    }
-
-    #[allow(dead_code)]
-    async fn post_form_with_retry(
-        &self,
-        url: &str,
-        body: String,
-    ) -> Result<reqwest::Response, ProviderError> {
-        let request = self
-            .client
-            .post(url)
-            .header(
-                reqwest::header::CONTENT_TYPE,
-                "application/x-www-form-urlencoded",
-            )
-            .body(body)
-            .build()
-            .map_err(|e| {
-                ProviderError::ConnectionFailed(format!(
-                    "Build POST failed: {}",
-                    redact_key(&e.to_string())
-                ))
-            })?;
-        send_with_retry(&self.client, request, &HttpRetryConfig::default())
-            .await
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!(
-                    "POST failed: {}",
                     redact_key(&e.to_string())
                 ))
             })
@@ -1563,16 +1554,97 @@ impl FileLuProvider {
             .ok_or_else(|| ProviderError::TransferFailed("No download URL returned".to_string()))
     }
 
-    /// Legacy v1 get direct URL by file_code: kept for trash operations
-    #[allow(dead_code)]
-    async fn get_direct_url(&mut self, file_code: &str) -> Result<String, ProviderError> {
-        let body = format!("file_code={}&key={}", file_code, self.api_key());
-        let url = format!("{}/file/direct_link", self.api_base(API_BASE));
-        let resp = self.post_form_with_retry(&url, body).await?;
+    /// Direct download URL of the item with this file code: a file, or one
+    /// of its earlier versions, which have codes of their own (v1
+    /// `file/direct_link`, measured 2026-11-01).
+    async fn direct_url_by_code(&self, file_code: &str) -> Result<String, ProviderError> {
+        let url = self.api_url_with("file/direct_link", &[("file_code", file_code)]);
+        let resp = self.get_with_retry(&url).await?;
         let result = Self::parse_api::<DirectLinkResult>(resp).await?;
         result
             .url
             .ok_or_else(|| ProviderError::TransferFailed("No download URL returned".to_string()))
+    }
+
+    /// Write what `url` serves to `local_path`, replacing it only once the
+    /// whole body has arrived.
+    async fn fetch_to_file(
+        &self,
+        url: &str,
+        local_path: &str,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let resp = self.get_with_retry(url).await?;
+        let total_size = resp.content_length().unwrap_or(0);
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+
+        use futures_util::StreamExt;
+        let mut downloaded: u64 = 0;
+        let mut stream = resp.bytes_stream();
+
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_http_err(|e| {
+                ProviderError::TransferFailed(format!(
+                    "Download chunk error: {}",
+                    redact_key(&e.to_string())
+                ))
+            })?;
+            atomic
+                .write_all(&chunk)
+                .await
+                .map_err(ProviderError::IoError)?;
+            downloaded += chunk.len() as u64;
+            if let Some(ref cb) = on_progress {
+                cb(downloaded, total_size);
+            }
+        }
+        atomic.commit().await.map_err(ProviderError::IoError)?;
+        Ok(())
+    }
+
+    /// The file at `path` and its earlier versions. A version code is only
+    /// ever used after it was found here, for this file: `file/version_delete`
+    /// takes the code alone, and any other code (the current file's, another
+    /// file's) would name something else.
+    async fn versions_of(
+        &mut self,
+        path: &str,
+    ) -> Result<(String, CacheEntry, Vec<VersionEntry>), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let norm = self.resolve_path(path);
+        let entry = self.resolve_path_entry_mode(&norm, true).await?;
+        if entry.is_dir || entry.file_code.is_empty() {
+            return Err(ProviderError::InvalidPath(format!(
+                "{norm} is not a file: only files have versions"
+            )));
+        }
+        let url = self.api_url_with("file/versions", &[("file_code", &entry.file_code)]);
+        let resp = self.get_with_retry(&url).await?;
+        let result = Self::parse_api::<VersionsResult>(resp).await?;
+        Ok((norm, entry, result.versions))
+    }
+
+    /// [`versions_of`](Self::versions_of), and the one named `version_id`.
+    async fn version_of(
+        &mut self,
+        path: &str,
+        version_id: &str,
+    ) -> Result<(String, CacheEntry), ProviderError> {
+        let (norm, entry, versions) = self.versions_of(path).await?;
+        if versions
+            .iter()
+            .any(|v| v.code.as_deref() == Some(version_id))
+        {
+            Ok((norm, entry))
+        } else {
+            Err(ProviderError::NotFound(format!(
+                "version {version_id} of {norm}"
+            )))
+        }
     }
 
     // ─── FileLu-Specific Public Methods ──────────────────────────────────
@@ -1997,34 +2069,76 @@ impl StorageProvider for FileLuProvider {
         // v2: download by path: no file_code resolution needed
         let norm = self.resolve_path(remote_path);
         let direct_url = self.get_direct_url_v2(&norm).await?;
-
-        let resp = self.get_with_retry(&direct_url).await?;
-        let total_size = resp.content_length().unwrap_or(0);
-        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
+        self.fetch_to_file(&direct_url, local_path, on_progress)
             .await
-            .map_err(ProviderError::IoError)?;
+    }
 
-        use futures_util::StreamExt;
-        let mut downloaded: u64 = 0;
-        let mut stream = resp.bytes_stream();
+    /// FileLu keeps earlier versions of a file (10 for 30 days by default),
+    /// reachable through the undocumented `file/versions` family measured on
+    /// 2026-11-01.
+    fn supports_versions(&self) -> bool {
+        true
+    }
 
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_http_err(|e| {
-                ProviderError::TransferFailed(format!(
-                    "Download chunk error: {}",
-                    redact_key(&e.to_string())
-                ))
-            })?;
-            atomic
-                .write_all(&chunk)
-                .await
-                .map_err(ProviderError::IoError)?;
-            downloaded += chunk.len() as u64;
-            if let Some(ref cb) = on_progress {
-                cb(downloaded, total_size);
-            }
+    /// The earlier versions, newest first; the current content is the file
+    /// itself and is not listed.
+    async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
+        let (_, _, versions) = self.versions_of(path).await?;
+        Ok(versions
+            .into_iter()
+            .filter_map(|v| {
+                Some(FileVersion {
+                    id: v.code?,
+                    modified: v.uploaded,
+                    size: v.size,
+                    modified_by: None,
+                })
+            })
+            .collect())
+    }
+
+    async fn download_version(
+        &mut self,
+        path: &str,
+        version_id: &str,
+        local_path: &str,
+    ) -> Result<(), ProviderError> {
+        self.version_of(path, version_id).await?;
+        let url = self.direct_url_by_code(version_id).await?;
+        self.fetch_to_file(&url, local_path, None).await
+    }
+
+    /// The version becomes the current file, under its own file code, and the
+    /// content it replaces becomes a version.
+    async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        let (norm, entry) = self.version_of(path, version_id).await?;
+        let url = self.api_url_with(
+            "file/version_restore",
+            &[
+                ("file_code", &entry.file_code),
+                ("version_code", version_id),
+            ],
+        );
+        let resp = self.get_with_retry(&url).await;
+        // The file's code changes on success; the cache would keep the old one.
+        self.path_cache.remove(&norm);
+        Self::ensure_api_ok(resp?).await
+    }
+
+    /// Deletes one earlier version for good. The endpoint is undocumented and
+    /// takes the code alone, so the versions are read again to confirm the
+    /// deletion rather than trusting the OK.
+    async fn delete_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        self.version_of(path, version_id).await?;
+        let url = self.api_url_with("file/version_delete", &[("version_code", version_id)]);
+        let resp = self.get_with_retry(&url).await?;
+        Self::ensure_api_ok(resp).await?;
+        let (norm, _, left) = self.versions_of(path).await?;
+        if left.iter().any(|v| v.code.as_deref() == Some(version_id)) {
+            return Err(ProviderError::ServerError(format!(
+                "FileLu accepted the deletion of version {version_id} of {norm}, but still lists it"
+            )));
         }
-        atomic.commit().await.map_err(ProviderError::IoError)?;
         Ok(())
     }
 
@@ -4638,6 +4752,219 @@ mod tests {
                 .iter()
                 .any(|w| w.contains("/d/f.txt") && w.contains("could not be read back")),
             "{reported:?}"
+        );
+    }
+
+    /// `/d/f.txt` (current code `CUR`) with the earlier versions `V2` and
+    /// `V1`, as `file/versions` listed them on 2026-11-01. `version_delete`
+    /// removes the version it names unless `deletes_nothing`. Returns the
+    /// provider and the calls, as [`provider_against`] records them.
+    async fn provider_with_versions(
+        deletes_nothing: bool,
+    ) -> (
+        FileLuProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        let versions = std::sync::Arc::new(std::sync::Mutex::new(vec!["V2", "V1"]));
+        provider_against(move |origin, path, query| {
+            let root = query.get("folder_path").map(String::as_str) == Some("/");
+            let page_one = query.get("page").is_none_or(|p| p == "1");
+            match path {
+                "/apiv2/folder/list" if !page_one => {
+                    r#"{"status":200,"result":{"files":[],"folders":[]}}"#.to_string()
+                }
+                "/apiv2/folder/list" if root => {
+                    r#"{"status":200,"result":{"files":[],"folders":[{"name":"d","fld_id":7}]}}"#
+                        .to_string()
+                }
+                "/apiv2/folder/list" => {
+                    r#"{"status":200,"result":{"files":[{"name":"f.txt","file_code":"CUR","size":9}],"folders":[]}}"#
+                        .to_string()
+                }
+                "/api/file/versions" if query.get("file_code").map(String::as_str) == Some("CUR") => {
+                    let listed: Vec<_> = versions
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .map(|code| {
+                            let n = &code[1..];
+                            serde_json::json!({"code": code, "version": n.parse::<u32>().unwrap(),
+                                "size": 9, "source": "API",
+                                "uploaded": format!("2026-11-01 11:31:5{n}"),
+                                "replaced": "2026-11-01 11:32:01"})
+                        })
+                        .collect();
+                    serde_json::json!({"status":200,"msg":"OK","result":{"versions":listed,
+                        "file_code":"CUR","keep":10,"days":30}})
+                    .to_string()
+                }
+                "/api/file/direct_link" => format!(
+                    r#"{{"status":200,"result":{{"url":"{origin}/blob/{}"}}}}"#,
+                    query.get("file_code").cloned().unwrap_or_default()
+                ),
+                "/blob/V1" => "VERSION-1".to_string(),
+                "/api/file/version_delete" => {
+                    if !deletes_nothing {
+                        let code = query.get("version_code").cloned().unwrap_or_default();
+                        versions.lock().unwrap().retain(|v| *v != code);
+                    }
+                    r#"{"status":200,"msg":"OK"}"#.to_string()
+                }
+                _ => r#"{"status":200,"msg":"OK"}"#.to_string(),
+            }
+        })
+        .await
+    }
+
+    #[tokio::test]
+    async fn versions_are_listed_newest_first_by_their_own_codes() {
+        let (mut provider, _) = provider_with_versions(false).await;
+        assert!(provider.supports_versions());
+        let versions = provider.list_versions("/d/f.txt").await.unwrap();
+        let listed: Vec<(&str, Option<&str>, u64)> = versions
+            .iter()
+            .map(|v| (v.id.as_str(), v.modified.as_deref(), v.size))
+            .collect();
+        assert_eq!(
+            listed,
+            [
+                ("V2", Some("2026-11-01 11:31:52"), 9),
+                ("V1", Some("2026-11-01 11:31:51"), 9)
+            ]
+        );
+    }
+
+    /// Only files have versions: a folder is refused before FileLu is asked.
+    #[tokio::test]
+    async fn a_folder_has_no_versions_to_ask_for() {
+        let (mut provider, calls) = provider_with_versions(false).await;
+        let outcome = provider.list_versions("/d").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::InvalidPath(_))),
+            "{outcome:?}"
+        );
+        let calls = calls.lock().unwrap();
+        assert!(
+            !calls.iter().any(|c| c.contains("file/versions")),
+            "{calls:?}"
+        );
+    }
+
+    /// A version is downloaded by its own code, and only a code listed as a
+    /// version of that file is used.
+    #[tokio::test]
+    async fn a_version_is_downloaded_by_its_code_and_only_if_listed() {
+        let (mut provider, calls) = provider_with_versions(false).await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("v1.txt");
+        provider
+            .download_version("/d/f.txt", "V1", out.to_str().unwrap())
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "VERSION-1");
+        assert!(
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|c| c == "/api/file/direct_link?file_code=V1"),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+
+        let (mut provider, calls) = provider_with_versions(false).await;
+        let outcome = provider
+            .download_version("/d/f.txt", "OTHER", out.to_str().unwrap())
+            .await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|c| !c.contains("direct_link")),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+    }
+
+    /// The restore names the current file and the version; the file's code
+    /// changes, so its cache entry goes.
+    #[tokio::test]
+    async fn a_restore_names_the_current_file_and_the_version() {
+        let (mut provider, calls) = provider_with_versions(false).await;
+        provider.restore_version("/d/f.txt", "V1").await.unwrap();
+        assert!(
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|c| c == "/api/file/version_restore?file_code=CUR&version_code=V1"),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+        assert!(!provider.path_cache.contains_key("/d/f.txt"));
+
+        let (mut provider, calls) = provider_with_versions(false).await;
+        let outcome = provider.restore_version("/d/f.txt", "CUR").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|c| !c.contains("version_restore")),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+    }
+
+    /// `version_delete` takes the code alone, so a code that is not one of
+    /// this file's versions (the current file's own code among them) is never
+    /// sent: it would delete something else.
+    #[tokio::test]
+    async fn only_a_listed_version_is_deleted_and_the_deletion_is_checked() {
+        let (mut provider, calls) = provider_with_versions(false).await;
+        provider.delete_version("/d/f.txt", "V1").await.unwrap();
+        assert!(
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|c| c == "/api/file/version_delete?version_code=V1"),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+
+        for code in ["CUR", "OTHER"] {
+            let (mut provider, calls) = provider_with_versions(false).await;
+            let outcome = provider.delete_version("/d/f.txt", code).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::NotFound(_))),
+                "{outcome:?}"
+            );
+            assert!(
+                calls
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .all(|c| !c.contains("version_delete")),
+                "{code}: {:?}",
+                calls.lock().unwrap()
+            );
+        }
+
+        let (mut provider, _) = provider_with_versions(true).await;
+        let outcome = provider.delete_version("/d/f.txt", "V1").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("still lists it")),
+            "{outcome:?}"
         );
     }
 }
