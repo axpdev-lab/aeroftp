@@ -598,7 +598,8 @@
             "setAsPublic": "Définir comme public",
             "makeAllPrivate": "Tout rendre privé",
             "dropboxRestoreLimit": "AeroFTP peut restaurer les versions récupérables des fichiers. Restaurez les dossiers depuis Fichiers supprimés sur dropbox.com. Un point d’interrogation signifie que Dropbox n’a pas identifié le type d’élément.",
-            "openWithDefaultApp": "Ouvrir avec l'application par défaut"
+            "openWithDefaultApp": "Ouvrir avec l'application par défaut",
+            "extractHereUncheckedConfirm": "Les noms à l'intérieur de {name} ne peuvent pas être lus avant l'extraction, donc AeroFTP ne peut pas vérifier ce que « Extraire ici » écraserait dans ce dossier. « Extraire dans un dossier » n'écrase jamais rien."
         },
         "transfer": {
             "transferring": "Transfert en cours...",
@@ -1370,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud renouvelle sa connexion à chaque session, et {names} en partage désormais une avec une autre copie : la copie qui se connecte en premier déconnecte l'autre (l'appareil d'où vient le fichier, ou le profil dont elle a été dupliquée). Reconnectez l'autre avec un nouveau Personal Login Token.",
             "importOauthAppKept": "{names} sont arrivés avec une app OAuth personnalisée différente de celle que cet appareil possède pour ce fournisseur. L'app enregistrée a été conservée, reconnectez-vous donc si ces profils n'arrivent plus à se connecter.",
             "importTargetChanged": "{names} n'ont pas été écrasés : le fichier les fait pointer vers un autre serveur, et leurs mots de passe et jetons enregistrés ne doivent pas y aller. Importez avec Dupliquer pour ajouter la copie du fichier, ou supprimez d'abord le profil.",
-            "importSharedSecretsFailed": "{names} ont été importés, mais un secret partagé ou une session du fichier n'a pas pu être enregistré. Reconnectez-vous à ces profils s'ils ne se connectent pas."
+            "importSharedSecretsFailed": "{names} ont été importés, mais un secret partagé ou une session du fichier n'a pas pu être enregistré. Reconnectez-vous à ces profils s'ils ne se connectent pas.",
+            "keystoreDatabasesFailed": "L'importation est terminée, mais ces bases de données n'ont pas pu être restaurées et conservent leur contenu : {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1588,7 +1590,9 @@
             "aerocloudEnabled": "AeroCloud activé",
             "selectPairLocalFolder": "Sélectionner le dossier local de la paire",
             "secondsAgo": "Il y a {count}s",
-            "conflictsCount": "Conflits à traiter : {count}"
+            "conflictsCount": "Conflits à traiter : {count}",
+            "updateOnlyHint": "La mise à jour unidirectionnelle conserve les fichiers de destination plus récents. Lorsque la sauvegarde additive est désactivée, seuls les fichiers inchangés, présents uniquement à destination et disposant d’un reçu de transfert AeroCloud vérifié sont supprimés. Les autres fichiers restent à examiner dans AeroSync. La politique de conflit est ignorée ; les dates inconnues restent non résolues.",
+            "untrackedDestinationFiles": "{count} fichiers de destination ont été conservés pour examen : leur historique de transfert n’est pas vérifié ou ils ont été modifiés depuis le dernier transfert AeroCloud. Examinez-les dans AeroSync avant de décider de leur suppression."
         },
         "statusBar": {
             "connected": "Connecté",
@@ -2469,7 +2473,9 @@
             "flattenScanning": "Analyse du sous-arbre...",
             "flattenTruncated": "tronqué",
             "flattenTruncatedHint": "Limite de 5 000 entrées atteinte ; affinez votre filtre ou descendez dans un sous-dossier.",
-            "local_placeholder_flatten": "Filtrer les fichiers locaux... (* pour récursif)"
+            "local_placeholder_flatten": "Filtrer les fichiers locaux... (* pour récursif)",
+            "flattenNameClash": "{names} : sélectionnés dans plusieurs dossiers. Placés au même endroit, ils se remplaceraient mutuellement ; agissez sur un seul de chaque nom à la fois.",
+            "flattenNameClashTitle": "Même nom dans plusieurs dossiers"
         },
         "versions": {
             "title": "Versions du fichier",
@@ -4853,7 +4859,8 @@
             "relocateSuccessMove": "« {name} » déplacé vers {user}",
             "relocateAlreadyPresent": "« {name} » est déjà enregistré dans {user}",
             "relocateError": "Impossible de transférer le serveur : {error}",
-            "relocateWrongPassword": "Mot de passe incorrect pour {user}."
+            "relocateWrongPassword": "Mot de passe incorrect pour {user}.",
+            "relocateSecretsNotCopied": "« {name} » a atteint {user}, mais le mot de passe ou le token enregistré n'a pas suivi, il sera donc redemandé là-bas."
         },
         "cyberTools": {
             "title": "Outils de sécurité",
@@ -6309,7 +6316,12 @@
                 }
             },
             "rescan": "Réanalyser",
-            "rescanNeeded": "La comparaison a été faite avec d'autres exclusions ou un autre dossier de sauvegarde. Réanalysez avant d'exécuter.",
+            "rescanBringsBack": "Ces réglages ramènent des fichiers que l'analyse a laissés de côté, elle ne les a donc jamais lus. Réanalysez avant d'exécuter.",
+            "rescanFlat": "Cette comparaison provient des listes des deux panneaux, et non d'une analyse complète, elle ne peut donc pas appliquer d'exclusions. Réanalysez avant d'exécuter.",
+            "narrowAvailable": "Ces réglages ne font que restreindre la comparaison, elle peut donc être filtrée sans nouvelle analyse.",
+            "narrowApply": "Appliquer à cette comparaison",
+            "narrowedNote": "Filtrée avec de nouvelles exclusions sans nouvelle analyse. Le nombre d'identiques reste celui de l'analyse.",
+            "narrowAfterRestore": "Une restauration est en cours. Ces réglages pourront être appliqués à la comparaison une fois la restauration terminée.",
             "backup": {
                 "checking": "Vérification de la façon dont ce serveur déplace les fichiers...",
                 "serverCopy": "Ce serveur ne sait pas déplacer : chaque copie conservée est copiée sur le serveur puis supprimée. Cela coûte une copie complète de chaque fichier conservé, en deux étapes distinctes.",
@@ -6336,7 +6348,10 @@
             "progressCopy": "[copie]",
             "deleteCount": "{count} à supprimer",
             "overwriteCount": "{count} à écraser",
-            "conflictCount": "Conflits : {count}"
+            "conflictCount": "Conflits : {count}",
+            "updateOnly": "Ignorer les fichiers de destination plus récents (mise à jour unidirectionnelle)",
+            "updateOnlyHint": "Copie les fichiers source manquants ou modifiés, conserve les fichiers plus récents de la destination et supprime les entrées présentes uniquement dans la destination. Les fichiers sans dates comparables sont comparés par taille ; les différences de taille restent à vérifier.",
+            "rescanNeeded": "Lancez une nouvelle comparaison avec les paramètres actuels avant d’exporter un script de mise à jour."
         },
         "accountLock": {
             "title": "Choisissez un compte",
@@ -6580,7 +6595,8 @@
             "keyslotsSetAsideRevocation": "L'ancien marqueur ouvre encore le coffre avec le facteur que vous retirez ou remplacez. Chaque copie restée dans le dossier du coffre est supprimée après la modification, et une copie qui ne peut pas être supprimée est signalée comme une erreur. Une copie dans la corbeille ou les versions de fichiers du stockage n'est pas atteinte : les vider supprime ces copies, mais pas celle qu'une autre personne a conservée, donc cela n'achève pas la révocation.",
             "keyslotsSetAsideConsent": "J'ai compris : remplacer le marqueur sur ce serveur en renommant l'ancien à part",
             "keyslotsSetAsideConsentRequired": "Ce serveur ne peut remplacer le marqueur du coffre qu'en renommant l'ancien à part : confirmez dans la case ci-dessus pour continuer.",
-            "keyslotsMarkerReplaceUnsupported": "Ce serveur ne peut pas remplacer le marqueur du coffre, les modifications d'emplacements sont donc refusées ici. Ouvrez le même stockage via un serveur qui remplace un fichier en une seule étape (SFTP, par exemple)."
+            "keyslotsMarkerReplaceUnsupported": "Ce serveur ne peut pas remplacer le marqueur du coffre, les modifications d'emplacements sont donc refusées ici. Ouvrez le même stockage via un serveur qui remplace un fichier en une seule étape (SFTP, par exemple).",
+            "overlayMetadataNotSaved": "La migration a réussi, mais le kit de récupération hors ligne n'est pas encore mis en cache. Il le sera au prochain déverrouillage."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Chiffrement)",

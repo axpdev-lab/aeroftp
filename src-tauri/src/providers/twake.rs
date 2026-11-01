@@ -816,7 +816,8 @@ impl TwakeProvider {
     // ─── Paths ───
 
     fn normalize_path(path: &str) -> String {
-        let replaced = path.trim().replace('\\', "/");
+        // Spaces are part of a name: ` a` and `a ` are not `a`.
+        let replaced = path.replace('\\', "/");
         let mut parts: Vec<&str> = Vec::new();
         for seg in replaced.split('/') {
             match seg {
@@ -835,14 +836,14 @@ impl TwakeProvider {
     }
 
     fn resolve_path(&self, path: &str) -> String {
-        let trimmed = path.trim();
-        if trimmed.is_empty() || trimmed == "." {
+        if path.is_empty() || path == "." {
             return self.current_path.clone();
         }
-        if trimmed.starts_with('/') {
-            Self::normalize_path(trimmed)
+        // `normalize_path` takes `\` for a separator: a leading one is the root too.
+        if path.starts_with(['/', '\\']) {
+            Self::normalize_path(path)
         } else {
-            Self::normalize_path(&format!("{}/{}", self.current_path, trimmed))
+            Self::normalize_path(&format!("{}/{}", self.current_path, path))
         }
     }
 
@@ -1022,6 +1023,16 @@ fn local_mtime_rfc3339(local_path: &str) -> Option<String> {
 
 #[async_trait]
 impl StorageProvider for TwakeProvider {
+    fn sync_namespace_identity(&self) -> Option<String> {
+        self.connected.then(|| {
+            serde_json::json!([
+                self.config.credentials.instance,
+                self.config.credentials.client_id
+            ])
+            .to_string()
+        })
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
@@ -1048,7 +1059,8 @@ impl StorageProvider for TwakeProvider {
         self.connected = true;
         self.current_path = "/".into();
         if let Some(initial) = self.config.initial_path.clone() {
-            if !initial.trim().is_empty() && initial.trim() != "/" {
+            // As given: a name of spaces is a folder too.
+            if !initial.is_empty() && initial != "/" {
                 self.cd(&initial).await?;
             }
         }
@@ -1607,6 +1619,55 @@ impl StorageProvider for TwakeProvider {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sync_namespace_identity_tracks_authenticated_instance_and_client() {
+        let mut provider = TwakeProvider::new(TwakeConfig {
+            credentials: TwakeCredentials {
+                instance: "https://one.twake.app".into(),
+                client_id: "first".into(),
+                client_secret: "secret".into(),
+                registration_access_token: "registration".into(),
+                refresh_token: "refresh".into(),
+            },
+            initial_path: None,
+        });
+        assert!(provider.sync_namespace_identity().is_none());
+        provider.connected = true;
+        let initial = provider.sync_namespace_identity().unwrap();
+        assert!(!initial.contains("secret"));
+        assert!(!initial.contains("refresh"));
+        provider.config.credentials.instance = "https://other.twake.app".into();
+        assert_ne!(provider.sync_namespace_identity().unwrap(), initial);
+        provider.config.credentials.instance = "https://one.twake.app".into();
+        provider.config.credentials.client_id = "other-client".into();
+        assert_ne!(provider.sync_namespace_identity().unwrap(), initial);
+    }
+
+    #[test]
+    fn a_name_keeps_its_leading_and_trailing_spaces() {
+        // A name with a leading or trailing space is a name of its own, and a
+        // name of spaces only is not the current folder.
+        assert_eq!(super::TwakeProvider::normalize_path("/ a"), "/ a");
+        assert_eq!(super::TwakeProvider::normalize_path("/a /b "), "/a /b ");
+        let mut p = super::TwakeProvider::new(super::TwakeConfig {
+            credentials: super::TwakeCredentials {
+                instance: "https://example.test".into(),
+                client_id: "cid".into(),
+                client_secret: "s".into(),
+                registration_access_token: "r".into(),
+                refresh_token: "t".into(),
+            },
+            initial_path: None,
+        });
+        p.current_path = "/Cloud".to_string();
+        assert_eq!(p.resolve_path("   "), "/Cloud/   ");
+        assert_eq!(p.resolve_path(" a"), "/Cloud/ a");
+        assert_eq!(p.resolve_path("/a "), "/a ");
+        // A leading backslash is the root, as normalize_path reads it.
+        assert_eq!(p.resolve_path("\\docs\\a "), "/docs/a ");
+        assert_eq!(p.resolve_path("sub\\a"), "/Cloud/sub/a");
+    }
+
     use super::*;
 
     #[test]

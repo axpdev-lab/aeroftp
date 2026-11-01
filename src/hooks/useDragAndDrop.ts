@@ -15,6 +15,8 @@ import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { isNonFtpProvider, ProviderType } from '../types';
 import type { HumanizedOperationType, HumanizedLogParams } from './useHumanizedLog';
+import { dropsIntoItself, localRowName, outermostLocalRows } from '../utils/localSelection';
+import { normalizeLocalPath } from '../utils/localPath';
 
 export type PanelKey = 'remote' | 'local' | 'local2';
 
@@ -28,6 +30,12 @@ interface DragData {
 }
 
 interface UseDragAndDropParams {
+    /**
+     * Refuses local rows that one folder cannot hold together (files of two
+     * folders sharing a name, from a flattened search) and tells the user.
+     * True when it refused.
+     */
+    refuseLocalNameClashes?: (rows: readonly { name: string; path: string }[]) => boolean;
     notify: {
         success: (title: string, message?: string) => string | null;
         error: (title: string, message?: string) => string | null;
@@ -48,10 +56,11 @@ interface UseDragAndDropParams {
     activeSessionId?: string | null;
     sessions?: Array<{ id: string; connectionParams?: { protocol?: string } }>;
     connectionParams?: { protocol?: string };
-    onCrossPanelDrop?: (files: { name: string; path: string }[], fromRemote: boolean, targetDir: string) => Promise<void>;
+    onCrossPanelDrop?: (files: { name: string; path: string }[], fromRemote: boolean, targetDir: string, sourceKey: PanelKey) => Promise<void>;
 }
 
 export function useDragAndDrop({
+    refuseLocalNameClashes,
     notify,
     humanLog,
     currentRemotePath,
@@ -108,21 +117,34 @@ export function useDragAndDrop({
         file: { name: string; path: string; is_dir: boolean },
         panelKey: PanelKey,
         allSelected: Set<string>,
-        allFiles: { name: string; path: string }[]
+        allFiles: { name: string; path: string; is_dir: boolean }[]
     ) => {
         if (file.name === '..') {
             e.preventDefault();
             return;
         }
 
-        const filesToDrag = allSelected.has(file.name)
+        const selectedRows = allSelected.has(file.name)
             ? allFiles.filter(f => allSelected.has(f.name))
             : [file];
+        // A selected folder takes what is below it: a flattened search can
+        // select both, and the entry would land twice, or be refused as a
+        // clash with the folder that holds it.
+        const filesToDrag = isLocalPanel(panelKey) ? outermostLocalRows(selectedRows) : selectedRows;
+
+        // Dropped into one folder, two files of one name would replace each other.
+        if (isLocalPanel(panelKey) && refuseLocalNameClashes?.(filesToDrag)) {
+            e.preventDefault();
+            return;
+        }
 
         const sourceDir = sourceDirFor(panelKey);
 
         setDragData({
-            files: filesToDrag.map(f => f.name),
+            // The name each file lands under. A nested row of a local
+            // flattened search is named by its relative path; the drop gives
+            // the file its own name, as a copy or move would.
+            files: filesToDrag.map(f => (isLocalPanel(panelKey) ? localRowName(f) : f.name)),
             sourcePaths: filesToDrag.map(f => f.path),
             panelKey,
             sourceDir,
@@ -140,7 +162,7 @@ export function useDragAndDrop({
         } else {
             e.dataTransfer.setData('text/plain', filesToDrag.map(f => f.name).join(', '));
         }
-    }, [sourceDirFor]);
+    }, [sourceDirFor, refuseLocalNameClashes]);
 
     /**
      * Allow dropping on files/folders within a panel
@@ -174,7 +196,8 @@ export function useDragAndDrop({
                 setDropTargetPath(null);
                 return;
             }
-            if (dragData.sourcePaths.includes(targetPath)) {
+            // A dragged folder, or a folder below one: never into itself.
+            if (dropsIntoItself(targetPath, dragData.sourcePaths)) {
                 e.dataTransfer.dropEffect = 'none';
                 setDropTargetPath(null);
                 return;
@@ -191,6 +214,13 @@ export function useDragAndDrop({
 
         // local-to-local: Ctrl = copy, default = move
         if (localToLocal) {
+            // The other panel can show a dragged folder, or a folder below it.
+            if (isFolder && dropsIntoItself(targetPath, dragData.sourcePaths)) {
+                e.dataTransfer.dropEffect = 'none';
+                setDropTargetPath(null);
+                setCrossPanelTarget(null);
+                return;
+            }
             if (isFolder && targetPath.split('/').pop() !== '..') {
                 e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
                 setDropTargetPath(targetPath);
@@ -228,19 +258,25 @@ export function useDragAndDrop({
         sourceKey: PanelKey,
         targetKey: PanelKey
     ) => {
+        // Refused while dragging (no drop effect); a drop that gets here anyway
+        // does nothing rather than move or copy a folder into itself.
+        if (dropsIntoItself(targetDir, sourcePaths)) return;
         for (let i = 0; i < files.length; i++) {
             const fileName = files[i];
             const sourcePath = sourcePaths[i];
             const sep = targetDir.includes('\\') && !targetDir.includes('/') ? '\\' : '/';
             const destPath = `${targetDir}${targetDir.endsWith(sep) ? '' : sep}${fileName}`;
-
-            if (destPath === sourcePath) continue;
+            // Already there. The two panels can write one Windows folder with
+            // `\` and with `/`.
+            if (normalizeLocalPath(destPath) === normalizeLocalPath(sourcePath)) continue;
 
             const logId = humanLog.logStart(isCopy ? 'COPY' : 'MOVE', { isRemote: false, filename: fileName });
             try {
+                // Never over an existing entry: a drop asks nothing first.
                 await invoke(isCopy ? 'copy_local_file' : 'rename_local_file', {
                     from: sourcePath,
                     to: destPath,
+                    overwrite: false,
                 });
                 humanLog.logSuccess(isCopy ? 'COPY' : 'MOVE', { isRemote: false, filename: fileName, destination: targetDir }, logId);
                 notify.success(isCopy ? `Copied ${fileName}` : `Moved ${fileName}`, `→ ${targetDir}`);
@@ -283,7 +319,7 @@ export function useDragAndDrop({
         // local↔remote cross-panel: upload/download via callback
         if (sourceIsRemote !== targetIsRemote) {
             const fileData = files.map((name, i) => ({ name, path: sourcePaths[i] }));
-            await onCrossPanelDrop?.(fileData, sourceIsRemote, targetPath);
+            await onCrossPanelDrop?.(fileData, sourceIsRemote, targetPath, sourceKey);
             return;
         }
 
@@ -293,13 +329,20 @@ export function useDragAndDrop({
             return;
         }
 
-        // Same-panel move (rename into another folder)
+        // Same-panel move (rename into another folder), never into itself.
+        if (dropsIntoItself(targetPath, sourcePaths)) return;
         const useProviderCmd = isProvider();
 
         for (let i = 0; i < files.length; i++) {
             const fileName = files[i];
             const sourcePath = sourcePaths[i];
             const destPath = `${targetPath}/${fileName}`;
+            // A nested row dropped on the folder it is already in. `destPath`
+            // joins with `/`, and a Windows row path has `\`.
+            const alreadyThere = sourceIsRemote
+                ? destPath === sourcePath
+                : normalizeLocalPath(destPath) === normalizeLocalPath(sourcePath);
+            if (alreadyThere) continue;
 
             const logId = humanLog.logStart('MOVE', { isRemote: sourceIsRemote, filename: fileName });
             try {
@@ -310,7 +353,8 @@ export function useDragAndDrop({
                         await invoke('rename_remote_file', { from: sourcePath, to: destPath });
                     }
                 } else {
-                    await invoke('rename_local_file', { from: sourcePath, to: destPath });
+                    // Never over an existing entry: a drop asks nothing first.
+                    await invoke('rename_local_file', { from: sourcePath, to: destPath, overwrite: false });
                 }
                 humanLog.logSuccess('MOVE', { isRemote: sourceIsRemote, filename: fileName, destination: targetPath }, logId);
                 notify.success(`Moved ${fileName}`, `→ ${targetPath}`);
@@ -339,13 +383,20 @@ export function useDragAndDrop({
         const sourceIsRemote = dragData.panelKey === 'remote';
         const targetIsRemote = targetPanelKey === 'remote';
         if (sourceIsRemote === targetIsRemote) {
-            // local-to-local cross panel
+            // local-to-local cross panel, into the other panel's folder: not
+            // when that folder is a dragged one or below one.
+            const targetDir = targetPanelKey === 'local2' ? (currentLocalPath2 || currentLocalPath) : currentLocalPath;
+            if (dropsIntoItself(targetDir, dragData.sourcePaths)) {
+                e.dataTransfer.dropEffect = 'none';
+                setCrossPanelTarget(null);
+                return;
+            }
             e.dataTransfer.dropEffect = e.ctrlKey ? 'copy' : 'move';
         } else {
             e.dataTransfer.dropEffect = 'copy';
         }
         setCrossPanelTarget(targetPanelKey);
-    }, [dragData]);
+    }, [dragData, currentLocalPath, currentLocalPath2]);
 
     /**
      * Panel-level drop (cross-panel drop on empty space → use current directory)
@@ -379,7 +430,7 @@ export function useDragAndDrop({
 
         if (sourceIsRemote !== targetIsRemote) {
             const fileData = files.map((name, i) => ({ name, path: sourcePaths[i] }));
-            await onCrossPanelDrop?.(fileData, sourceIsRemote, targetDir);
+            await onCrossPanelDrop?.(fileData, sourceIsRemote, targetDir, sourceKey);
             return;
         }
 

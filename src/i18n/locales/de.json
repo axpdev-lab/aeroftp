@@ -598,7 +598,8 @@
             "setAsPublic": "Als öffentlich festlegen",
             "makeAllPrivate": "Alle auf privat setzen",
             "dropboxRestoreLimit": "AeroFTP kann wiederherstellbare Dateiversionen wiederherstellen. Stellen Sie Ordner unter „Gelöschte Dateien“ auf dropbox.com wieder her. Ein Fragezeichen bedeutet, dass Dropbox den Elementtyp nicht erkannt hat.",
-            "openWithDefaultApp": "Mit Standard-App öffnen"
+            "openWithDefaultApp": "Mit Standard-App öffnen",
+            "extractHereUncheckedConfirm": "Die Namen in {name} können vor dem Entpacken nicht gelesen werden, daher kann AeroFTP nicht prüfen, was „Hier entpacken“ in diesem Ordner überschreiben würde. „In Ordner entpacken“ überschreibt nie etwas."
         },
         "transfer": {
             "transferring": "Übertragung...",
@@ -1370,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud erneuert die Anmeldung bei jeder Verbindung, und {names} teilt sich jetzt eine mit einer anderen Kopie: Die Kopie, die sich zuerst verbindet, meldet die andere ab (das Gerät, von dem die Datei stammt, oder das Profil, von dem dupliziert wurde). Melden Sie die andere mit einem neuen Personal Login Token erneut an.",
             "importOauthAppKept": "{names} kamen mit einer anderen benutzerdefinierten OAuth-App als die, die dieses Gerät für diesen Anbieter hat. Die gespeicherte App wurde beibehalten. Melden Sie sich erneut an, falls diese Profile keine Verbindung mehr herstellen.",
             "importTargetChanged": "{names} wurden nicht überschrieben: Die Datei verweist sie auf einen anderen Server, und ihre gespeicherten Passwörter und Tokens dürfen nicht dorthin gelangen. Importieren Sie mit Duplizieren, um die Kopie aus der Datei hinzuzufügen, oder löschen Sie zuerst das Profil.",
-            "importSharedSecretsFailed": "{names} wurden importiert, aber ein geteiltes Geheimnis oder eine Sitzung aus der Datei konnte nicht gespeichert werden. Melden Sie sich bei diesen Profilen erneut an, wenn sie keine Verbindung herstellen."
+            "importSharedSecretsFailed": "{names} wurden importiert, aber ein geteiltes Geheimnis oder eine Sitzung aus der Datei konnte nicht gespeichert werden. Melden Sie sich bei diesen Profilen erneut an, wenn sie keine Verbindung herstellen.",
+            "keystoreDatabasesFailed": "Der Import ist abgeschlossen, aber diese Datenbanken konnten nicht wiederhergestellt werden und behalten ihren bisherigen Inhalt: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1588,7 +1590,9 @@
             "aerocloudEnabled": "AeroCloud aktiviert",
             "selectPairLocalFolder": "Lokalen Ordner für Paar auswählen",
             "secondsAgo": "vor {count}s",
-            "conflictsCount": "Zu prüfende Konflikte: {count}"
+            "conflictsCount": "Zu prüfende Konflikte: {count}",
+            "updateOnlyHint": "Die Einweg-Aktualisierung behält neuere Zieldateien bei. Bei deaktivierter additiver Sicherung werden nur unveränderte Dateien gelöscht, die ausschließlich im Ziel vorhanden sind und einen verifizierten AeroCloud-Übertragungsbeleg haben. Andere Dateien bleiben zur Prüfung in AeroSync erhalten. Die Konfliktrichtlinie wird ignoriert; unbekannte Datumsangaben bleiben ungeklärt.",
+            "untrackedDestinationFiles": "{count} Zieldateien wurden zur Prüfung beibehalten: Ihr Übertragungsverlauf ist unbestätigt oder sie wurden seit der letzten AeroCloud-Übertragung geändert. Prüfen Sie sie in AeroSync, bevor Sie über eine Löschung entscheiden."
         },
         "statusBar": {
             "connected": "Verbunden",
@@ -2469,7 +2473,9 @@
             "flattenScanning": "Unterbaum wird gescannt...",
             "flattenTruncated": "gekürzt",
             "flattenTruncatedHint": "Limit von 5.000 Einträgen erreicht; verfeinern Sie den Filter oder steigen Sie in einen Unterordner ab.",
-            "local_placeholder_flatten": "Lokale Dateien filtern... (* für rekursiv)"
+            "local_placeholder_flatten": "Lokale Dateien filtern... (* für rekursiv)",
+            "flattenNameClash": "{names}: in mehr als einem Ordner ausgewählt. An einem Ort abgelegt, würden sie sich gegenseitig ersetzen; bearbeiten Sie jeweils nur eine Datei pro Name.",
+            "flattenNameClashTitle": "Gleicher Name in mehr als einem Ordner"
         },
         "versions": {
             "title": "Dateiversionen",
@@ -4853,7 +4859,8 @@
             "relocateSuccessMove": "„{name}“ nach {user} verschoben",
             "relocateAlreadyPresent": "„{name}“ ist bereits in {user} gespeichert",
             "relocateError": "Server konnte nicht übertragen werden: {error}",
-            "relocateWrongPassword": "Falsches Passwort für {user}."
+            "relocateWrongPassword": "Falsches Passwort für {user}.",
+            "relocateSecretsNotCopied": "„{name}“ ist bei {user} angekommen, das gespeicherte Passwort oder Token jedoch nicht, daher wird dort erneut danach gefragt."
         },
         "cyberTools": {
             "title": "Sicherheitstools",
@@ -6309,7 +6316,12 @@
                 }
             },
             "rescan": "Neu scannen",
-            "rescanNeeded": "Der Vergleich wurde mit anderen Ausschlüssen oder einem anderen Backup-Ordner erstellt. Vor dem Ausführen neu scannen.",
+            "rescanBringsBack": "Diese Einstellungen bringen Dateien zurück, die der Scan ausgelassen hat, also nie gelesen wurden. Vor dem Ausführen neu scannen.",
+            "rescanFlat": "Dieser Vergleich stammt aus den Listen der beiden Panels, nicht aus einem vollständigen Scan, daher kann er keine Ausschlüsse anwenden. Vor dem Ausführen neu scannen.",
+            "narrowAvailable": "Diese Einstellungen schränken den Vergleich nur ein, daher kann er ohne neuen Scan gefiltert werden.",
+            "narrowApply": "Auf diesen Vergleich anwenden",
+            "narrowedNote": "Mit neuen Ausschlüssen gefiltert, ohne neu zu scannen. Die Anzahl identischer Dateien stammt weiterhin aus dem Scan.",
+            "narrowAfterRestore": "Eine Wiederherstellung läuft. Diese Einstellungen können auf den Vergleich angewendet werden, sobald sie beendet ist.",
             "backup": {
                 "checking": "Prüfe, wie dieser Server Dateien verschiebt...",
                 "serverCopy": "Dieser Server kann nicht verschieben: Jede aufbewahrte Kopie wird auf dem Server kopiert und dann gelöscht. Das kostet eine vollständige Kopie jeder aufbewahrten Datei, in zwei getrennten Schritten.",
@@ -6336,7 +6348,10 @@
             "progressCopy": "[Kopie]",
             "deleteCount": "{count} zu löschen",
             "overwriteCount": "{count} zu überschreiben",
-            "conflictCount": "Konflikte: {count}"
+            "conflictCount": "Konflikte: {count}",
+            "updateOnly": "Neuere Zieldateien überspringen (Einweg-Aktualisierung)",
+            "updateOnlyHint": "Kopiert fehlende oder geänderte Quelldateien, behält neuere Dateien am Ziel und löscht Einträge, die nur am Ziel vorhanden sind. Dateien ohne vergleichbare Datumsangaben werden nach Größe verglichen; Größenunterschiede bleiben zur Überprüfung bestehen.",
+            "rescanNeeded": "Führe einen neuen Vergleich mit den aktuellen Einstellungen durch, bevor du ein Aktualisierungsskript exportierst."
         },
         "accountLock": {
             "title": "Konto auswählen",
@@ -6580,7 +6595,8 @@
             "keyslotsSetAsideRevocation": "Die vorherige Markierungsdatei öffnet den Tresor weiterhin mit dem Faktor, den Sie entfernen oder ersetzen. Jede im Tresorordner verbliebene Kopie wird nach der Änderung gelöscht, und eine Kopie, die sich nicht löschen lässt, wird als Fehler gemeldet. Eine Kopie im Papierkorb oder in den Dateiversionen des Speichers wird nicht erreicht: Das Leeren entfernt diese Kopien, nicht aber eine, die jemand anderes aufbewahrt hat, und schließt den Widerruf daher nicht ab.",
             "keyslotsSetAsideConsent": "Ich habe verstanden: Markierungsdatei auf diesem Server ersetzen, indem die alte zur Seite umbenannt wird",
             "keyslotsSetAsideConsentRequired": "Dieser Server kann die Markierungsdatei des Tresors nur ersetzen, indem die alte zur Seite umbenannt wird: Bestätigen Sie dies im Feld oben, um fortzufahren.",
-            "keyslotsMarkerReplaceUnsupported": "Dieser Server kann die Markierungsdatei des Tresors nicht ersetzen, daher werden Slot-Änderungen hier abgelehnt. Öffnen Sie denselben Speicher über einen Server, der eine Datei in einem Schritt ersetzt (z. B. SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Dieser Server kann die Markierungsdatei des Tresors nicht ersetzen, daher werden Slot-Änderungen hier abgelehnt. Öffnen Sie denselben Speicher über einen Server, der eine Datei in einem Schritt ersetzt (z. B. SFTP).",
+            "overlayMetadataNotSaved": "Die Migration war erfolgreich, aber das Offline-Wiederherstellungskit ist noch nicht zwischengespeichert. Das geschieht beim nächsten Entsperren."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Verschlüsselung)",

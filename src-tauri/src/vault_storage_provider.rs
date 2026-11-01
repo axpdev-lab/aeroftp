@@ -280,7 +280,11 @@ impl StorageProvider for VaultStorageProvider {
     }
 
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let rel = to_rel(path);
+        let rel = if path == "." {
+            String::new()
+        } else {
+            to_rel(path)
+        };
         // Root and known directories list their prebuilt children.
         if rel.is_empty() || matches!(self.lookup(&rel), Some(m) if m.is_dir) {
             return Ok(self.children.get(&rel).cloned().unwrap_or_default());
@@ -561,6 +565,7 @@ mod tests {
         let mut p = provider(true);
         let root = p.list("/").await.unwrap();
         let names: Vec<_> = root.iter().map(|e| e.name.clone()).collect();
+        assert_eq!(p.list(".").await.unwrap().len(), root.len());
         assert!(names.contains(&"a".to_string()));
         assert!(names.contains(&"top.bin".to_string()));
         let sub = p.list("/a").await.unwrap();

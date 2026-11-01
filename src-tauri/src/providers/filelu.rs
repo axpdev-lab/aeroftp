@@ -338,6 +338,7 @@ pub struct FileLuProvider {
     /// Account-info email, retained for durable download provenance. Until a
     /// server identifies its account, only this provider instance can resume.
     resume_account: String,
+    authenticated_account: Option<String>,
     client: reqwest::Client,
     connected: bool,
     /// Current working directory (virtual path, e.g. "/Work/Projects")
@@ -368,6 +369,7 @@ impl FileLuProvider {
         Self {
             config,
             resume_account: uuid::Uuid::new_v4().to_string(),
+            authenticated_account: None,
             client,
             connected: false,
             current_path: "/".to_string(),
@@ -469,7 +471,8 @@ impl FileLuProvider {
     }
 
     fn normalize_path(path: &str) -> String {
-        let normalized = path.trim().replace('\\', "/");
+        // Spaces are part of a name: ` a` and `a ` are not `a`.
+        let normalized = path.replace('\\', "/");
         if normalized.is_empty() {
             return "/".to_string();
         }
@@ -493,7 +496,8 @@ impl FileLuProvider {
     }
 
     fn resolve_path(&self, path: &str) -> String {
-        if path.starts_with('/') {
+        // `normalize_path` takes `\` for a separator: a leading one is the root too.
+        if path.starts_with(['/', '\\']) {
             Self::normalize_path(path)
         } else {
             let base = self.current_path.trim_end_matches('/').to_string();
@@ -1666,6 +1670,12 @@ impl FileLuProvider {
 
 #[async_trait]
 impl StorageProvider for FileLuProvider {
+    fn account_email(&self) -> Option<String> {
+        self.connected
+            .then(|| self.authenticated_account.clone())
+            .flatten()
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
@@ -1684,7 +1694,8 @@ impl StorageProvider for FileLuProvider {
         let resp = self.get_with_retry(&url).await?;
         let info = Self::parse_api::<AccountInfo>(resp).await?;
 
-        if let Some(email) = info.email.as_deref().filter(|email| !email.is_empty()) {
+        self.authenticated_account = info.email.clone().filter(|email| !email.trim().is_empty());
+        if let Some(email) = self.authenticated_account.as_deref() {
             self.resume_account = email.to_string();
         }
         let email = info.email.unwrap_or_else(|| "FileLu user".to_string());
@@ -2569,6 +2580,41 @@ fn mime_from_ext(ext: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sync_account_identity_never_uses_the_random_resume_fallback() {
+        let mut provider = FileLuProvider::new(FileLuConfig {
+            api_key: secrecy::SecretString::from("test-key".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        assert!(provider.account_email().is_none());
+        provider.authenticated_account = Some("actual@example.test".into());
+        assert_eq!(
+            provider.account_email().as_deref(),
+            Some("actual@example.test")
+        );
+        provider.connected = false;
+        assert!(provider.account_email().is_none());
+    }
+
+    #[test]
+    fn a_name_keeps_its_leading_and_trailing_spaces() {
+        // A name with a leading or trailing space is a name of its own, and a
+        // name of spaces only is not the current folder.
+        assert_eq!(super::FileLuProvider::normalize_path("/ a"), "/ a");
+        assert_eq!(super::FileLuProvider::normalize_path("/a /b "), "/a /b ");
+        let mut p = super::FileLuProvider::new(super::FileLuConfig {
+            api_key: secrecy::SecretString::from("k".to_string()),
+            initial_path: None,
+        });
+        p.current_path = "/Cloud".to_string();
+        assert_eq!(p.resolve_path("   "), "/Cloud/   ");
+        assert_eq!(p.resolve_path(" a"), "/Cloud/ a");
+        assert_eq!(p.resolve_path("/a "), "/a ");
+        // A leading backslash is the root, as normalize_path reads it.
+        assert_eq!(p.resolve_path("\\docs\\a "), "/docs/a ");
+        assert_eq!(p.resolve_path("sub\\a"), "/Cloud/sub/a");
+    }
 
     struct CapFixture {
         provider: FileLuProvider,

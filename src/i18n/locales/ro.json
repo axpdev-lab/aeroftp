@@ -598,7 +598,8 @@
             "setAsPublic": "Setați ca public",
             "makeAllPrivate": "Fă totul privat",
             "dropboxRestoreLimit": "AeroFTP poate restaura versiunile recuperabile ale fișierelor. Restaurați dosarele din Fișiere șterse pe dropbox.com. Un semn de întrebare înseamnă că Dropbox nu a identificat tipul elementului.",
-            "openWithDefaultApp": "Deschide cu aplicația implicită"
+            "openWithDefaultApp": "Deschide cu aplicația implicită",
+            "extractHereUncheckedConfirm": "Numele din {name} nu pot fi citite înainte de extragere, deci AeroFTP nu poate verifica ce ar suprascrie opțiunea „Extrage aici” în acest dosar. Opțiunea „Extrage în dosar” nu suprascrie niciodată nimic."
         },
         "transfer": {
             "transferring": "Se transferă...",
@@ -1370,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud își reînnoiește autentificarea la fiecare conectare, iar {names} împarte acum una cu altă copie: copia care se conectează prima o deconectează pe cealaltă (dispozitivul de la care provine fișierul sau profilul din care a fost duplicată). Autentificați din nou cealaltă copie cu un nou Personal Login Token.",
             "importOauthAppKept": "{names} au venit cu o aplicație OAuth personalizată diferită de cea pe care acest dispozitiv o are pentru furnizorul respectiv. Aplicația stocată a fost păstrată, așa că autentificați-vă din nou dacă aceste profiluri nu se mai conectează.",
             "importTargetChanged": "{names} nu au fost suprascrise: fișierul le îndreaptă către alt server, iar parolele și token-urile lor salvate nu trebuie să ajungă acolo. Importați cu Duplică pentru a adăuga copia din fișier sau ștergeți mai întâi profilul.",
-            "importSharedSecretsFailed": "{names} au fost importate, dar un secret partajat sau o sesiune din fișier nu a putut fi stocat. Autentificați-vă din nou în aceste profiluri dacă nu se conectează."
+            "importSharedSecretsFailed": "{names} au fost importate, dar un secret partajat sau o sesiune din fișier nu a putut fi stocat. Autentificați-vă din nou în aceste profiluri dacă nu se conectează.",
+            "keystoreDatabasesFailed": "Importul s-a încheiat, dar aceste baze de date nu au putut fi restaurate și păstrează ce conțineau: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1588,7 +1590,9 @@
             "aerocloudEnabled": "AeroCloud activat",
             "selectPairLocalFolder": "Selectați folderul local pentru pereche",
             "secondsAgo": "acum {count}s",
-            "conflictsCount": "Conflicte care necesită atenție: {count}"
+            "conflictsCount": "Conflicte care necesită atenție: {count}",
+            "updateOnlyHint": "Actualizarea unidirecțională păstrează fișierele mai noi de la destinație. Când backupul aditiv este dezactivat, sunt șterse doar fișierele nemodificate care există exclusiv la destinație și au o confirmare verificată a transferului AeroCloud. Celelalte fișiere rămân pentru verificare în AeroSync. Politica de conflicte este ignorată; datele necunoscute rămân nerezolvate.",
+            "untrackedDestinationFiles": "{count} fișiere de la destinație au fost păstrate pentru verificare: istoricul transferurilor nu este verificat sau au fost modificate după ultimul transfer AeroCloud. Verificați-le în AeroSync înainte de a decide dacă le ștergeți."
         },
         "statusBar": {
             "connected": "Conectat",
@@ -2469,7 +2473,9 @@
             "flattenScanning": "Se scanează subarborele...",
             "flattenTruncated": "trunchiat",
             "flattenTruncatedHint": "A fost atinsă limita de 5.000 de intrări; rafinați filtrul sau coborâți într-un subfolder.",
-            "local_placeholder_flatten": "Filtrează fișiere locale... (* pentru recursiv)"
+            "local_placeholder_flatten": "Filtrează fișiere locale... (* pentru recursiv)",
+            "flattenNameClash": "{names}: selectate în mai multe dosare. Puse într-un singur loc, s-ar înlocui reciproc; acționați asupra unuia din fiecare, pe rând.",
+            "flattenNameClashTitle": "Același nume în mai multe dosare"
         },
         "versions": {
             "title": "Versiuni fișier",
@@ -4853,7 +4859,8 @@
             "relocateSuccessMove": "„{name}” mutat în {user}",
             "relocateAlreadyPresent": "„{name}” este deja salvat în {user}",
             "relocateError": "Serverul nu a putut fi transferat: {error}",
-            "relocateWrongPassword": "Parolă greșită pentru {user}."
+            "relocateWrongPassword": "Parolă greșită pentru {user}.",
+            "relocateSecretsNotCopied": "„{name}” a ajuns la {user}, dar parola sau tokenul salvate nu, așa că le va cere din nou acolo."
         },
         "cyberTools": {
             "title": "Instrumente de Securitate",
@@ -6309,7 +6316,12 @@
                 }
             },
             "rescan": "Rescanează",
-            "rescanNeeded": "Compararea a fost făcută cu alte excluderi sau alt folder de backup. Rescanează înainte de rulare.",
+            "rescanBringsBack": "Aceste setări readuc fișiere pe care scanarea le-a lăsat deoparte, deci nu le-a citit niciodată. Rescanează înainte de rulare.",
+            "rescanFlat": "Această comparare provine din listele celor două panouri, nu dintr-o scanare completă, deci nu poate aplica excluderi. Rescanează înainte de rulare.",
+            "narrowAvailable": "Aceste setări doar restrâng compararea, deci poate fi filtrată fără o nouă scanare.",
+            "narrowApply": "Aplică la această comparare",
+            "narrowedNote": "Filtrată cu excluderi noi fără o nouă scanare. Numărul de identice este în continuare cel din scanare.",
+            "narrowAfterRestore": "O restaurare este în curs. Aceste setări pot fi aplicate comparării când se termină restaurarea.",
             "backup": {
                 "checking": "Se verifică modul în care acest server mută fișierele...",
                 "serverCopy": "Acest server nu poate muta: fiecare copie păstrată este copiată pe server și apoi ștearsă. Asta costă o copie completă a fiecărui fișier păstrat, în doi pași separați.",
@@ -6336,7 +6348,10 @@
             "progressCopy": "[copie]",
             "deleteCount": "De șters: {count}",
             "overwriteCount": "De suprascris: {count}",
-            "conflictCount": "Conflicte: {count}"
+            "conflictCount": "Conflicte: {count}",
+            "updateOnly": "Omite fișierele mai noi de la destinație (actualizare unidirecțională)",
+            "updateOnlyHint": "Copiază fișierele sursă lipsă sau modificate, păstrează fișierele mai noi din destinație și șterge intrările care există doar în destinație. Fișierele fără date calendaristice comparabile sunt comparate după dimensiune; diferențele de dimensiune rămân pentru verificare.",
+            "rescanNeeded": "Rulează o nouă comparație cu setările actuale înainte de a exporta un script de actualizare."
         },
         "accountLock": {
             "title": "Alegeți un cont",
@@ -6580,7 +6595,8 @@
             "keyslotsSetAsideRevocation": "Markerul anterior încă deschide seiful cu factorul pe care îl eliminați sau îl înlocuiți. Fiecare copie rămasă în folderul seifului este ștearsă după modificare, iar o copie care nu poate fi ștearsă este raportată ca eroare. O copie din coșul de gunoi sau din versiunile de fișiere ale spațiului de stocare nu este atinsă: golirea lor elimină acele copii, dar nu una păstrată de altcineva, deci nu finalizează revocarea.",
             "keyslotsSetAsideConsent": "Am înțeles: înlocuiește markerul pe acest server redenumind cel vechi și punându-l deoparte",
             "keyslotsSetAsideConsentRequired": "Acest server poate înlocui markerul seifului doar redenumind cel vechi și punându-l deoparte: confirmați în caseta de mai sus pentru a continua.",
-            "keyslotsMarkerReplaceUnsupported": "Acest server nu poate înlocui markerul seifului, deci modificările de sloturi sunt refuzate aici. Deschideți același spațiu de stocare printr-un server care înlocuiește un fișier într-un singur pas (de exemplu SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Acest server nu poate înlocui markerul seifului, deci modificările de sloturi sunt refuzate aici. Deschideți același spațiu de stocare printr-un server care înlocuiește un fișier într-un singur pas (de exemplu SFTP).",
+            "overlayMetadataNotSaved": "Migrarea a reușit, dar kitul de recuperare offline nu este încă salvat în cache. Va fi salvat la următoarea deblocare."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Criptare)",

@@ -2527,8 +2527,9 @@ impl AppState {
             host: host.clone(),
             port,
             username: form.username.trim().to_string(),
-            initial_path: form.initial_path.trim().to_string(),
-            local_initial_path: form.local_path.trim().to_string(),
+            // As typed, as the GUI saves them: `/reports ` is its own folder.
+            initial_path: form.initial_path.clone(),
+            local_initial_path: form.local_path.clone(),
         };
 
         // The secret only crosses the channel when the field was actually
@@ -5052,6 +5053,37 @@ mod tests {
         assert_eq!(app.context.users[0].profiles[0].name, "NAS");
         assert_eq!(app.context.users[0].profiles[0].selector, "1");
         assert!(!app.overlay_active());
+    }
+
+    /// The folders are saved as typed, as the GUI saves them: `/reports `
+    /// and `/reports` are two folders.
+    #[test]
+    fn profile_form_saves_the_folders_as_typed() {
+        let mut app = AppState::new_live(introhub_context());
+        app.apply_action(TuiAction::AddProfile);
+        let type_text = |app: &mut AppState, text: &str| {
+            for c in text.chars() {
+                app.handle_overlay_key(OverlayKey::Char(c));
+            }
+        };
+        type_text(&mut app, "NAS");
+        app.handle_overlay_key(OverlayKey::Tab); // -> Protocol
+        app.handle_overlay_key(OverlayKey::Tab); // -> Host
+        type_text(&mut app, "nas.local");
+        app.handle_overlay_key(OverlayKey::Tab); // -> Port
+        app.handle_overlay_key(OverlayKey::Tab); // -> Username
+        app.handle_overlay_key(OverlayKey::Tab); // -> Initial path
+        type_text(&mut app, "/reports ");
+        app.handle_overlay_key(OverlayKey::Tab); // -> Local path
+        type_text(&mut app, "/home/u/ out");
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+        match &commands[..] {
+            [WorkerCommand::SaveProfile { draft, .. }] => {
+                assert_eq!(draft.initial_path, "/reports ");
+                assert_eq!(draft.local_initial_path, "/home/u/ out");
+            }
+            other => panic!("expected SaveProfile, got {:?}", other),
+        }
     }
 
     #[test]

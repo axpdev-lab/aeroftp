@@ -598,7 +598,8 @@
             "setAsPublic": "Nustatyti kaip viešą",
             "makeAllPrivate": "Padaryti visus privačius",
             "dropboxRestoreLimit": "AeroFTP gali atkurti atkuriamas failų versijas. Aplankus atkurkite dropbox.com skiltyje „Ištrinti failai“. Klaustukas reiškia, kad Dropbox neatpažino elemento tipo.",
-            "openWithDefaultApp": "Atidaryti numatytąja programa"
+            "openWithDefaultApp": "Atidaryti numatytąja programa",
+            "extractHereUncheckedConfirm": "Pavadinimų archyve {name} negalima perskaityti prieš išskleidžiant, todėl AeroFTP negali patikrinti, ką „Išskleisti čia“ perrašytų šiame aplanke. „Išskleisti į aplanką“ niekada nieko neperrašo."
         },
         "transfer": {
             "transferring": "Perduodama...",
@@ -1370,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud atnaujina prisijungimą kiekvieną kartą jungiantis, o {names} dabar dalijasi vienu su kita kopija: pirmoji prisijungianti kopija atjungia kitą (įrenginį, iš kurio atkeliavo failas, arba profilį, iš kurio jis buvo sudubliuotas). Prisijunkite prie kitos iš naujo su nauju Personal Login Token.",
             "importOauthAppKept": "{names} atkeliavo su kita pasirinktine OAuth programa nei ta, kurią šis įrenginys turi tam teikėjui. Išsaugota programa buvo palikta, todėl prisijunkite iš naujo, jei šie profiliai nustos jungtis.",
             "importTargetChanged": "{names} nebuvo perrašyti: failas nukreipia juos į kitą serverį, o jų išsaugoti slaptažodžiai ir žetonai neturi ten patekti. Importuokite su Dubliuoti, kad pridėtumėte failo kopiją, arba pirmiausia ištrinkite profilį.",
-            "importSharedSecretsFailed": "{names} importuoti, bet nepavyko išsaugoti bendros paslapties ar seanso iš failo. Jei šie profiliai neprisijungia, prisijunkite prie jų iš naujo."
+            "importSharedSecretsFailed": "{names} importuoti, bet nepavyko išsaugoti bendros paslapties ar seanso iš failo. Jei šie profiliai neprisijungia, prisijunkite prie jų iš naujo.",
+            "keystoreDatabasesFailed": "Importavimas baigtas, bet šių duomenų bazių nepavyko atkurti, todėl jose išliko ankstesnis turinys: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1588,7 +1590,9 @@
             "aerocloudEnabled": "AeroCloud įjungta",
             "selectPairLocalFolder": "Pasirinkite vietinį aplanką porai",
             "secondsAgo": "prieš {count}s",
-            "conflictsCount": "Konfliktai, kuriems reikia dėmesio: {count}"
+            "conflictsCount": "Konfliktai, kuriems reikia dėmesio: {count}",
+            "updateOnlyHint": "Vienkryptis atnaujinimas išsaugo naujesnius paskirties failus. Kai papildomasis atsarginis kopijavimas išjungtas, pašalinami tik nepakeisti failai, esantys vien paskirties vietoje ir turintys patikrintą AeroCloud perdavimo patvirtinimą. Kiti failai lieka peržiūrai programoje AeroSync. Konfliktų politika nepaisoma; nežinomos datos lieka neišspręstos.",
+            "untrackedDestinationFiles": "{count} paskirties failų išsaugota peržiūrai: jų perdavimo istorija nepatvirtinta arba jie pakeisti po paskutinio AeroCloud perdavimo. Prieš nuspręsdami dėl pašalinimo, peržiūrėkite juos programoje AeroSync."
         },
         "statusBar": {
             "connected": "Prisijungta",
@@ -2469,7 +2473,9 @@
             "flattenScanning": "Skenuojamas pomedis...",
             "flattenTruncated": "sutrumpinta",
             "flattenTruncatedHint": "Pasiekta 5 000 įrašų riba; patikslinkite filtrą arba įeikite į poaplankį.",
-            "local_placeholder_flatten": "Filtruoti vietinius failus... (* rekursiniam)"
+            "local_placeholder_flatten": "Filtruoti vietinius failus... (* rekursiniam)",
+            "flattenNameClash": "{names}: pasirinkta keliuose aplankuose. Padėti į vieną vietą, jie pakeistų vienas kitą; veikite su vienu iš kiekvieno vienu metu.",
+            "flattenNameClashTitle": "Tas pats pavadinimas keliuose aplankuose"
         },
         "versions": {
             "title": "Failų versijos",
@@ -4853,7 +4859,8 @@
             "relocateSuccessMove": "„{name}“ perkelta į {user}",
             "relocateAlreadyPresent": "„{name}“ jau išsaugota paskyroje {user}",
             "relocateError": "Nepavyko perkelti serverio: {error}",
-            "relocateWrongPassword": "Neteisingas {user} slaptažodis."
+            "relocateWrongPassword": "Neteisingas {user} slaptažodis.",
+            "relocateSecretsNotCopied": "„{name}“ pasiekė {user}, bet jo išsaugotas slaptažodis ar prieigos raktas nepasiekė, todėl ten jų bus paprašyta dar kartą."
         },
         "cyberTools": {
             "title": "Saugumo įrankiai",
@@ -6309,7 +6316,12 @@
                 }
             },
             "rescan": "Nuskaityti iš naujo",
-            "rescanNeeded": "Palyginimas atliktas su kitais išskyrimais arba kitu atsarginių kopijų aplanku. Prieš paleisdami nuskaitykite iš naujo.",
+            "rescanBringsBack": "Šie nustatymai grąžina failus, kuriuos nuskaitymas praleido, todėl jų niekada neperskaitė. Prieš paleisdami nuskaitykite iš naujo.",
+            "rescanFlat": "Šis palyginimas gautas iš dviejų skydelių sąrašų, o ne iš viso nuskaitymo, todėl negali taikyti išskyrimų. Prieš paleisdami nuskaitykite iš naujo.",
+            "narrowAvailable": "Šie nustatymai tik susiaurina palyginimą, todėl jį galima filtruoti nenuskaitant iš naujo.",
+            "narrowApply": "Taikyti šiam palyginimui",
+            "narrowedNote": "Filtruota su naujais išskyrimais nenuskaitant iš naujo. Identiškų failų skaičius vis dar yra iš nuskaitymo.",
+            "narrowAfterRestore": "Vyksta atkūrimas. Šiuos nustatymus galima taikyti palyginimui, kai atkūrimas baigsis.",
             "backup": {
                 "checking": "Tikrinama, kaip šis serveris perkelia failus...",
                 "serverCopy": "Šis serveris negali perkelti: kiekviena saugoma kopija nukopijuojama serveryje ir tada ištrinama. Tai kainuoja visą kiekvieno saugomo failo kopiją, dviem atskirais žingsniais.",
@@ -6336,7 +6348,10 @@
             "progressCopy": "[kopija]",
             "deleteCount": "Bus ištrinta: {count}",
             "overwriteCount": "Bus perrašyta: {count}",
-            "conflictCount": "Konfliktai: {count}"
+            "conflictCount": "Konfliktai: {count}",
+            "updateOnly": "Praleisti naujesnius paskirties failus (vienkryptis atnaujinimas)",
+            "updateOnlyHint": "Nukopijuoja trūkstamus arba pakeistus šaltinio failus, išsaugo naujesnius paskirties failus ir ištrina įrašus, esančius tik paskirtyje. Failai, neturintys palyginamų datų, lyginami pagal dydį; dydžio skirtumai paliekami peržiūrai.",
+            "rescanNeeded": "Prieš eksportuodami atnaujinimo scenarijų, atlikite naują palyginimą naudodami dabartinius nustatymus."
         },
         "accountLock": {
             "title": "Pasirinkite paskyrą",
@@ -6580,7 +6595,8 @@
             "keyslotsSetAsideRevocation": "Ankstesnis žymeklis vis dar atidaro seifą su veiksniu, kurį šalinate ar keičiate. Kiekviena seifo aplanke likusi kopija po pakeitimo ištrinama, o kopija, kurios ištrinti nepavyksta, pranešama kaip klaida. Kopija atminties šiukšlinėje ar failų versijose nepasiekiama: jų ištuštinimas pašalina tas kopijas, bet ne tą, kurią pasilaikė kas nors kitas, todėl atšaukimo nebaigia.",
             "keyslotsSetAsideConsent": "Suprantu: pakeisti žymeklį šiame serveryje pervadinant seną į šalį",
             "keyslotsSetAsideConsentRequired": "Šis serveris gali pakeisti seifo žymeklį tik pervadindamas seną į šalį: patvirtinkite aukščiau esančiame langelyje, kad tęstumėte.",
-            "keyslotsMarkerReplaceUnsupported": "Šis serveris negali pakeisti seifo žymeklio, todėl lizdų pakeitimai čia atmetami. Atidarykite tą pačią atmintį per serverį, kuris pakeičia failą vienu žingsniu (pavyzdžiui, SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Šis serveris negali pakeisti seifo žymeklio, todėl lizdų pakeitimai čia atmetami. Atidarykite tą pačią atmintį per serverį, kuris pakeičia failą vienu žingsniu (pavyzdžiui, SFTP).",
+            "overlayMetadataNotSaved": "Perkėlimas pavyko, bet neprisijungus naudojamas atkūrimo rinkinys dar neįrašytas į talpyklą. Tai bus padaryta kitą kartą atrakinus."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifravimas)",

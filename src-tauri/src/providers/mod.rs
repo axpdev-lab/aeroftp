@@ -76,10 +76,12 @@ pub mod s3;
 pub(crate) mod s3_delta;
 pub mod s3_delta_baseline;
 pub mod s3_delta_plan;
+pub mod scp;
 pub mod served_file;
 pub mod sftp;
 #[cfg(test)]
 mod share_link_capability_guard;
+pub mod shell_quote;
 pub mod sts;
 pub mod swift;
 pub mod totp_helper;
@@ -185,6 +187,20 @@ pub fn matches_find_pattern(name: &str, pattern: &str) -> bool {
     } else {
         name.to_lowercase().contains(&pattern.to_lowercase())
     }
+}
+
+/// A local file's modification time in whole seconds, for a provider to keep on
+/// an upload. Without it the server stamps the time of the upload, and a Compare
+/// afterwards reads identical files as newer on that side (Requested 125).
+pub(crate) fn local_modified(path: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    use chrono::Timelike;
+    let modified = std::fs::metadata(path).ok()?.modified().ok()?;
+    chrono::DateTime::<chrono::Utc>::from(modified).with_nanosecond(0)
+}
+
+/// [`local_modified`] as RFC 3339, the form Drive, OneDrive and Dropbox take.
+pub(crate) fn local_modified_rfc3339(path: &str) -> Option<String> {
+    local_modified(path).map(|date| date.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
 }
 
 /// H2: Maximum size for download_to_bytes operations (500 MB).
@@ -969,6 +985,12 @@ pub trait StorageProvider: Send + Sync {
 
     /// Get the authenticated account email/username (if available after connect)
     fn account_email(&self) -> Option<String> {
+        None
+    }
+
+    /// Non-secret authenticated namespace for persistent sync authority, when an
+    /// account label alone omits the actual device, mount or client namespace.
+    fn sync_namespace_identity(&self) -> Option<String> {
         None
     }
 
@@ -4224,6 +4246,30 @@ mod http_resume_tests {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_local_date_reads_in_whole_seconds_in_rfc3339() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.bin");
+        let file = std::fs::File::create(&path).unwrap();
+        let date = std::time::UNIX_EPOCH + std::time::Duration::new(1_614_834_367, 500_000_000);
+        file.set_modified(date).unwrap();
+        drop(file);
+        assert_eq!(
+            local_modified_rfc3339(path.to_str().unwrap()).as_deref(),
+            Some("2021-03-04T05:06:07Z")
+        );
+        assert_eq!(local_modified_rfc3339("/no/such/file"), None);
+
+        let file = std::fs::File::options().write(true).open(&path).unwrap();
+        file.set_modified(std::time::UNIX_EPOCH - std::time::Duration::from_secs(86_400))
+            .unwrap();
+        drop(file);
+        assert_eq!(
+            local_modified_rfc3339(path.to_str().unwrap()).as_deref(),
+            Some("1969-12-31T00:00:00Z")
+        );
+    }
+
     use super::*;
 
     #[test]

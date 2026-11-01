@@ -598,7 +598,8 @@
             "setAsPublic": "Stilla sem opinbert",
             "makeAllPrivate": "Gera allt einkamál",
             "dropboxRestoreLimit": "AeroFTP getur endurheimt endurheimtanlegar útgáfur skráa. Endurheimtu möppur úr Eyddum skrám á dropbox.com. Spurningarmerki þýðir að Dropbox hefur ekki greint gerð atriðisins.",
-            "openWithDefaultApp": "Opna með sjálfgefnu forriti"
+            "openWithDefaultApp": "Opna með sjálfgefnu forriti",
+            "extractHereUncheckedConfirm": "Ekki er hægt að lesa nöfnin í {name} áður en afþjappað er, svo AeroFTP getur ekki athugað hverju „Afþjappa hér“ myndi skrifa yfir í þessari möppu. „Afþjappa í möppu“ skrifar aldrei yfir neitt."
         },
         "transfer": {
             "transferring": "Flytur...",
@@ -1370,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud endurnýjar innskráningu sína við hverja tengingu og {names} deilir nú einni með öðru afriti: afritið sem tengist fyrst skráir hitt út (tækið sem skráin kom frá, eða prófílinn sem það var afritað úr). Skráðu hitt inn aftur með nýju Personal Login Token.",
             "importOauthAppKept": "{names} komu með annað sérsniðið OAuth-forrit en það sem þetta tæki hefur fyrir þann þjónustuaðila. Vistaða forritið var varðveitt, svo skráðu þig inn aftur ef þessi snið hætta að tengjast.",
             "importTargetChanged": "{names} voru ekki skrifuð yfir: skráin beinir þeim á annan netþjón og vistuð lykilorð þeirra og tókenar mega ekki fara þangað. Fluttu inn með Afrita til að bæta við afritinu úr skránni, eða eyddu sniðinu fyrst.",
-            "importSharedSecretsFailed": "{names} voru flutt inn, en ekki tókst að vista sameiginlegt leyndarmál eða lotu úr skránni. Skráðu þig aftur inn á þessi snið ef þau tengjast ekki."
+            "importSharedSecretsFailed": "{names} voru flutt inn, en ekki tókst að vista sameiginlegt leyndarmál eða lotu úr skránni. Skráðu þig aftur inn á þessi snið ef þau tengjast ekki.",
+            "keystoreDatabasesFailed": "Innflutningi er lokið, en ekki tókst að endurheimta þessa gagnagrunna og þeir halda því sem þeir höfðu að geyma: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1588,7 +1590,9 @@
             "aerocloudEnabled": "AeroCloud virkt",
             "selectPairLocalFolder": "Veldu staðbundna möppu fyrir parið",
             "secondsAgo": "fyrir {count}sek",
-            "conflictsCount": "Árekstrar sem þarfnast athygli: {count}"
+            "conflictsCount": "Árekstrar sem þarfnast athygli: {count}",
+            "updateOnlyHint": "Einstefnuuppfærsla heldur nýrri skrám á áfangastað. Þegar slökkt er á viðbótarafritun er aðeins eytt óbreyttum skrám sem eru eingöngu á áfangastað og hafa staðfesta AeroCloud-flutningskvittun. Aðrar skrár bíða yfirferðar í AeroSync. Árekstrareglan er hunsuð; óþekktar dagsetningar eru áfram óleystar.",
+            "untrackedDestinationFiles": "{count} skrár á áfangastað voru varðveittar til yfirferðar: flutningssaga þeirra er óstaðfest eða þær hafa breyst frá síðasta AeroCloud-flutningi. Farðu yfir þær í AeroSync áður en þú ákveður hvort eyða eigi þeim."
         },
         "statusBar": {
             "connected": "Tengt",
@@ -2469,7 +2473,9 @@
             "flattenScanning": "Skanna undirtré...",
             "flattenTruncated": "stytt",
             "flattenTruncatedHint": "Náði hámarki 5.000 færslur; betrumbættu síuna eða farðu í undirmöppu.",
-            "local_placeholder_flatten": "Sía staðbundnar skrár... (* fyrir endurkvæmt)"
+            "local_placeholder_flatten": "Sía staðbundnar skrár... (* fyrir endurkvæmt)",
+            "flattenNameClash": "{names}: valið í fleiri en einni möppu. Ef þau væru sett á einn stað myndu þau skipta hvert annað út; framkvæmdu aðgerð á einu af hverju í einu.",
+            "flattenNameClashTitle": "Sama nafn í fleiri en einni möppu"
         },
         "versions": {
             "title": "Skráarútgáfur",
@@ -4853,7 +4859,8 @@
             "relocateSuccessMove": "„{name}“ fært á {user}",
             "relocateAlreadyPresent": "„{name}“ er þegar vistað á {user}",
             "relocateError": "Ekki tókst að flytja þjóninn: {error}",
-            "relocateWrongPassword": "Rangt lykilorð fyrir {user}."
+            "relocateWrongPassword": "Rangt lykilorð fyrir {user}.",
+            "relocateSecretsNotCopied": "„{name}“ komst á {user}, en vistað lykilorð eða token fylgdu ekki með, svo beðið verður um þau aftur þar."
         },
         "cyberTools": {
             "title": "Öryggistæki",
@@ -6328,7 +6335,12 @@
                 }
             },
             "rescan": "Skanna aftur",
-            "rescanNeeded": "Samanburðurinn var gerður með öðrum útilokunum eða annarri afritunarmöppu. Skannaðu aftur áður en þú keyrir.",
+            "rescanBringsBack": "Þessar stillingar koma með skrár til baka sem skönnunin sleppti, svo hún las þær aldrei. Skannaðu aftur áður en þú keyrir.",
+            "rescanFlat": "Þessi samanburður kom úr listum beggja spjaldanna, ekki úr fullri skönnun, svo hann getur ekki beitt útilokunum. Skannaðu aftur áður en þú keyrir.",
+            "narrowAvailable": "Þessar stillingar þrengja aðeins samanburðinn, svo hægt er að sía hann án nýrrar skönnunar.",
+            "narrowApply": "Nota á þennan samanburð",
+            "narrowedNote": "Síað með nýjum útilokunum án nýrrar skönnunar. Fjöldi eins skráa er enn sá úr skönnuninni.",
+            "narrowAfterRestore": "Endurheimt er í gangi. Hægt er að beita þessum stillingum á samanburðinn þegar henni lýkur.",
             "backup": {
                 "checking": "Athuga hvernig þessi þjónn færir skrár...",
                 "serverCopy": "Þessi þjónn getur ekki fært: hvert varðveitt afrit er afritað á þjóninum og síðan eytt. Það kostar fullt afrit af hverri varðveittri skrá, í tveimur aðskildum skrefum.",
@@ -6355,7 +6367,10 @@
             "progressCopy": "[afrit]",
             "deleteCount": "Til eyðingar: {count}",
             "overwriteCount": "Til yfirskriftar: {count}",
-            "conflictCount": "Árekstrar: {count}"
+            "conflictCount": "Árekstrar: {count}",
+            "updateOnly": "Sleppa nýrri skrám á áfangastað (einstefnuuppfærsla)",
+            "updateOnlyHint": "Afritar upprunaskrár sem vantar eða hafa breyst, heldur nýrri skrám á áfangastað og eyðir færslum sem eru aðeins á áfangastað. Skrár án samanburðarhæfra dagsetninga eru bornar saman eftir stærð; stærðarmismunur er skilinn eftir til yfirferðar.",
+            "rescanNeeded": "Keyrðu nýjan samanburð með núverandi stillingum áður en þú flytur út uppfærsluskriftu."
         },
         "accountLock": {
             "title": "Veldu reikning",
@@ -6599,7 +6614,8 @@
             "keyslotsSetAsideRevocation": "Fyrri merkisskráin opnar enn hvelfinguna með þættinum sem þú ert að fjarlægja eða skipta út. Öllum afritum sem eru eftir í möppu hvelfingarinnar er eytt eftir breytinguna og afrit sem ekki er hægt að eyða er tilkynnt sem villa. Afrit í rusli geymslunnar eða skráarútgáfum næst ekki: að tæma þau fjarlægir þessi afrit en ekki afrit sem einhver annar geymdi, svo það lýkur ekki afturkölluninni.",
             "keyslotsSetAsideConsent": "Ég skil: skipta um merkisskrá á þessum þjóni með því að leggja þá gömlu til hliðar",
             "keyslotsSetAsideConsentRequired": "Þessi þjónn getur aðeins skipt um merkisskrá hvelfingarinnar með því að leggja þá gömlu til hliðar: staðfestu í reitnum hér að ofan til að halda áfram.",
-            "keyslotsMarkerReplaceUnsupported": "Þessi þjónn getur ekki skipt um merkisskrá hvelfingarinnar, svo breytingum á raufum er hafnað hér. Opnaðu sömu geymslu í gegnum þjón sem skiptir um skrá í einu skrefi (til dæmis SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Þessi þjónn getur ekki skipt um merkisskrá hvelfingarinnar, svo breytingum á raufum er hafnað hér. Opnaðu sömu geymslu í gegnum þjón sem skiptir um skrá í einu skrefi (til dæmis SFTP).",
+            "overlayMetadataNotSaved": "Flutningurinn tókst, en endurheimtarsettið án nettengingar er ekki enn í skyndiminni. Það verður vistað við næstu opnun."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Dulkóðun)",

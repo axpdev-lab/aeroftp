@@ -18,7 +18,7 @@
  *   is_beat     - 1 on onset frame, 0 otherwise
  */
 
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useCallback, useState, useLayoutEffect } from 'react';
 import { VERTEX_SHADER, SHADERS, WebGLShaderName } from './shaders';
 import { useI18n } from '../../../i18n';
 
@@ -113,7 +113,7 @@ export const WebGLVisualizer: React.FC<WebGLVisualizerProps> = ({
     const { t } = useI18n();
     // The mount-once WebGL effect reads the current translator through a ref.
     const tRef = useRef(t);
-    tRef.current = t;
+    useLayoutEffect(() => { tRef.current = t; }, [t]);
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
     // WebGL object refs (survive across renders, cleaned up on unmount)

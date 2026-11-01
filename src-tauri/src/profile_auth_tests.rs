@@ -879,7 +879,7 @@ async fn durable_profile_auth_lifecycle(
             .unwrap();
         let refused = apply_secret_writes(
             &FailingAt {
-                slots: crate::OAuthAppSlots { store },
+                slots: crate::VaultOnlySlots { store },
                 key: "oauth_rollback_region",
             },
             vec![
@@ -895,6 +895,185 @@ async fn durable_profile_auth_lifecycle(
         assert!(store.get("oauth_rollback_client_secret").is_err());
         assert!(store.get("oauth_rollback_region").is_err());
         store.delete("oauth_rollback_client_id").unwrap();
+
+        // The rest of the app's writes are all or none through the same call, and a
+        // name that could reach another key is refused.
+        assert!(crate::write_oauth_app(
+            &crate::VaultOnlySlots { store },
+            "../server_x",
+            [
+                ("client_id", Some("x")),
+                ("client_secret", None),
+                ("region", None)
+            ],
+        )
+        .is_err());
+        crate::write_oauth_app(
+            &crate::VaultOnlySlots { store },
+            "rollback_app",
+            [
+                ("client_id", Some("id")),
+                ("client_secret", None),
+                ("region", None),
+            ],
+        )
+        .unwrap();
+        assert_eq!(store.get("oauth_rollback_app_client_id").unwrap(), "id");
+        assert!(store.get("oauth_rollback_app_client_secret").is_err());
+        crate::write_oauth_app(
+            &crate::VaultOnlySlots { store },
+            "rollback_app",
+            [
+                ("client_id", None),
+                ("client_secret", Some("kept-secret")),
+                ("region", None),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            store.get("oauth_rollback_app_client_secret").unwrap(),
+            "kept-secret"
+        );
+        store.delete("oauth_rollback_app_client_secret").unwrap();
+        // An emptied field is stored empty, and goes back whole if a later key fails.
+        crate::write_oauth_app(
+            &crate::VaultOnlySlots { store },
+            "rollback_app",
+            [
+                ("client_id", Some("")),
+                ("client_secret", None),
+                ("region", None),
+            ],
+        )
+        .unwrap();
+        assert_eq!(store.get("oauth_rollback_app_client_id").unwrap(), "");
+        assert!(crate::vault_value(store, "oauth_rollback_app_client_id")
+            .unwrap()
+            .is_none());
+        store.store("oauth_rollback_app_client_id", "id").unwrap();
+        crate::write_oauth_app(
+            &FailingAt {
+                slots: crate::VaultOnlySlots { store },
+                key: "oauth_rollback_app_region",
+            },
+            "rollback_app",
+            [
+                ("client_id", Some("")),
+                ("client_secret", None),
+                ("region", Some("x")),
+            ],
+        )
+        .unwrap_err();
+        assert_eq!(store.get("oauth_rollback_app_client_id").unwrap(), "id");
+        store.delete("oauth_rollback_app_client_id").unwrap();
+
+        // An ordinary save that does not reach the row a reader prefers is an error
+        // that names the key, and never its value. The vault keeps the new value.
+        let conn = users::open_or_init_cli().unwrap();
+        users::store_credential_for_user_dual(store, active_id, "server_dual-save", "old").unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER refuse_save BEFORE UPDATE ON user_credentials
+             WHEN NEW.credential_id = 'server_dual-save'
+             BEGIN SELECT RAISE(ABORT, 'injected'); END;",
+        )
+        .unwrap();
+        let refused = users::store_credential_for_user_dual(
+            store,
+            active_id,
+            "server_dual-save",
+            "new-value",
+        )
+        .unwrap_err();
+        conn.execute_batch("DROP TRIGGER refuse_save;").unwrap();
+        // What a reader gets is the row, not the vault: the reason for the error.
+        assert_eq!(
+            users::resolve_credential_for_user(store, active_id, "server_dual-save")
+                .unwrap()
+                .unwrap()
+                .as_str(),
+            "old"
+        );
+        assert!(refused.contains("server_dual-save"), "{refused}");
+        assert!(!refused.contains("new-value"), "{refused}");
+        assert_eq!(store.get("server_dual-save").unwrap(), "new-value");
+
+        // An app kept in the legacy settings blob counts as stored: a config with
+        // another app must not put it in front of the one existing profiles use.
+        store
+            .store(
+                "config_oauth_clients",
+                r#"{"legacyapp":{"clientId":"legacy-id","clientSecret":"legacy-secret"}}"#,
+            )
+            .unwrap();
+        assert!(
+            crate::fill_oauth_app(store, "legacyapp", Some("other-id"), Some("other-secret"))
+                .unwrap()
+        );
+        assert!(store.get("oauth_legacyapp_client_id").is_err());
+        assert!(store.get("oauth_legacyapp_client_secret").is_err());
+        // A blob that cannot be parsed stops the write: it may hold the app in use.
+        store.store("config_oauth_clients", "not json").unwrap();
+        assert!(crate::fill_oauth_app(store, "legacyapp", Some("other-id"), None).is_err());
+        assert!(store.get("oauth_legacyapp_client_id").is_err());
+        store.delete("config_oauth_clients").unwrap();
+
+        // A profile's token goes to the account holding it, not the active one, and a
+        // sign-out removes that row too.
+        let root = store.derive_user_partition_wrapping_key();
+        users::set_user_credential_for(&conn, &root, other_id, "oauth_box_owned", "oauth", "old")
+            .unwrap();
+        users::store_profile_credential(store, "owned", "oauth_box_owned", Some("oauth"), "new")
+            .unwrap();
+        let row = |user: i64| {
+            users::get_user_credential_for(&conn, &root, user, "oauth_box_owned")
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        assert_eq!(row(other_id).as_deref(), Some("new"));
+        assert_eq!(row(active_id), None);
+        // Another account's profile is not signed out from here; its own account can.
+        let refused =
+            users::delete_profile_credential(store, "owned", "oauth_box_owned").unwrap_err();
+        assert!(refused.starts_with(users::ACCOUNT_CHANGED), "{refused}");
+        assert_eq!(row(other_id).as_deref(), Some("new"));
+        users::set_user_credential_for(&conn, &root, active_id, "oauth_box_owned", "oauth", "own")
+            .unwrap();
+        users::delete_profile_credential(store, "owned", "oauth_box_owned").unwrap();
+        assert_eq!(row(other_id), None);
+        assert_eq!(row(active_id), None);
+        assert!(store.get("oauth_box_owned").is_err());
+
+        // A key outside the typed set follows its row, as a relocation leaves one.
+        let root = store.derive_user_partition_wrapping_key();
+        users::set_user_credential_for(
+            &conn,
+            &root,
+            active_id,
+            "custom_relocated",
+            "custom",
+            "old",
+        )
+        .unwrap();
+        users::store_credential_for_user_dual(store, active_id, "custom_relocated", "new").unwrap();
+        assert_eq!(
+            users::get_user_credential_for(&conn, &root, active_id, "custom_relocated")
+                .unwrap()
+                .unwrap()
+                .as_str(),
+            "new"
+        );
+        // One with no row stays in the vault alone.
+        users::store_credential_for_user_dual(store, active_id, "custom_vault_only", "v").unwrap();
+        assert!(
+            users::get_user_credential_for(&conn, &root, active_id, "custom_vault_only")
+                .unwrap()
+                .is_none()
+        );
+        store.delete("custom_vault_only").unwrap();
+        store.delete("custom_relocated").unwrap();
+        users::delete_user_credential_for(&conn, active_id, "custom_relocated").unwrap();
+        users::delete_user_credential_for(&conn, active_id, "server_dual-save").unwrap();
+        store.delete("server_dual-save").unwrap();
 
         // Undoing a write ends with both places agreeing, whatever fails. Partition
         // step: the vault was never touched. Commit: the vault goes back to match.
