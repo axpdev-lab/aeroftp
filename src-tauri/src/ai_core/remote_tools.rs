@@ -752,6 +752,8 @@ async fn search_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
         "offset": opts.offset,
         "limit": opts.limit,
         "truncated": opts.offset + returned < total_matched,
+        // The search stops at this many: there may be more than `total` says.
+        "search_limit_reached": total_unfiltered >= crate::providers::FIND_RESULT_LIMIT,
     }))
 }
 
@@ -4747,6 +4749,8 @@ mod tests {
         modes: Mutex<std::collections::HashMap<String, u32>>,
         /// What `supports_chmod` answers.
         chmod_supported: bool,
+        /// `search` answers with this many hits, and unused when none.
+        search_hits: usize,
         /// When set, `chmod` fails with this message.
         chmod_fails_with: Option<String>,
         /// Runs at every `upload`, before it fails as unused: a test flips a
@@ -4825,6 +4829,7 @@ mod tests {
                 modes: Mutex::new(std::collections::HashMap::new()),
                 chmod_supported: false,
                 chmod_fails_with: None,
+                search_hits: 0,
                 on_upload: None,
                 list_calls: Mutex::new(Vec::new()),
                 stat_calls: Mutex::new(Vec::new()),
@@ -5061,7 +5066,12 @@ mod tests {
             Ok(())
         }
         async fn search(&self, _path: &str, _pattern: &str) -> Result<Vec<RemoteEntry>, String> {
-            Err("unused".into())
+            if self.search_hits == 0 {
+                return Err("unused".into());
+            }
+            Ok((0..self.search_hits)
+                .map(|i| entry(&format!("/root/{i}.txt"), false, 1))
+                .collect())
         }
         async fn storage_info(&self) -> Result<StorageQuota, String> {
             Err("unused".into())
@@ -5138,6 +5148,34 @@ mod tests {
         fn cancel_token(&self) -> Option<&tokio_util::sync::CancellationToken> {
             self.cancel.as_ref()
         }
+    }
+
+    /// The search says when it stopped at its limit. A listing has no such
+    /// limit, so it does not carry the flag, however long the folder.
+    #[tokio::test]
+    async fn a_search_says_it_reached_the_limit_and_a_listing_does_not() {
+        let limit = crate::providers::FIND_RESULT_LIMIT;
+        let search = |search_hits| {
+            let backend = Arc::new(FakeBackend {
+                search_hits,
+                ..FakeBackend::sample()
+            });
+            async move {
+                search_files(
+                    &test_ctx(backend),
+                    &json!({"server": "srv", "path": "/root", "pattern": "*"}),
+                )
+                .await
+                .unwrap()
+            }
+        };
+        assert_eq!(search(limit).await["search_limit_reached"], true);
+        assert_eq!(search(limit - 1).await["search_limit_reached"], false);
+        let ctx = test_ctx(Arc::new(FakeBackend::sample()));
+        let listing = list_files(&ctx, &json!({"server": "srv", "path": "/root"}))
+            .await
+            .unwrap();
+        assert!(listing.get("search_limit_reached").is_none(), "{listing}");
     }
 
     /// M9 (4.2.1 review): Stop reached the chat request and the stream, and a

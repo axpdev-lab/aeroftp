@@ -128,6 +128,7 @@ pub fn capability(kind: ProviderType) -> ChecksumCapability {
         ProviderType::GitHub => cap(&["git-sha1"], Some(GITHUB_BLOB)),
         ProviderType::Immich => cap(&["sha1"], Some(IMMICH_ASSET)),
         ProviderType::Twake => cap(&["md5"], None),
+        ProviderType::FileLu => cap(&["md5"], None),
 
         // ── Backends with no server-side digest ──────────────────────────
         // Not "not implemented yet" in every case: Azure publishes
@@ -147,7 +148,6 @@ pub fn capability(kind: ProviderType) -> ChecksumCapability {
         | ProviderType::KDrive
         | ProviderType::Jottacloud
         | ProviderType::DrimeCloud
-        | ProviderType::FileLu
         | ProviderType::OpenDrive
         | ProviderType::GitLab
         | ProviderType::Swift

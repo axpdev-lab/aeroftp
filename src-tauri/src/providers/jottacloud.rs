@@ -1976,36 +1976,9 @@ impl StorageProvider for JottacloudProvider {
     }
 
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let resolved = self.resolve_path(path);
-        // Use recursive listing and filter by pattern
-        let url = format!("{}?mode=list", self.jfs_url(&resolved));
-
-        let resp = self.get_with_retry(&url).await?;
-
-        let status = resp.status();
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            let detail = format!(
-                "Find {resolved} failed ({status}): {}",
-                sanitize_api_error(&body)
-            );
-            return Err(match status.as_u16() {
-                401 => ProviderError::AuthenticationFailed(detail),
-                403 => ProviderError::PermissionDenied(detail),
-                404 => ProviderError::NotFound(resolved),
-                _ => ProviderError::ServerError(detail),
-            });
-        }
-
-        let xml = resp.text().await.map_http_err(|e| {
-            ProviderError::ParseError(format!("Could not read Jottacloud find response: {e}"))
-        })?;
-        let all_entries = Self::parse_folder_xml(&xml, &resolved);
-
-        Ok(all_entries
-            .into_iter()
-            .filter(|e| super::matches_find_pattern(&e.name, pattern))
-            .collect())
+        // The search API answers outside the folder or without the hit's real
+        // path, and a caller acts on that path.
+        super::find_by_walk(self, path, pattern).await
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {

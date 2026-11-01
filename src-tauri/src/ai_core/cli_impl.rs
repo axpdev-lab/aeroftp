@@ -507,7 +507,9 @@ impl RemoteBackend for CliRemoteBackend {
     async fn search(&self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, String> {
         let mut guard = self.provider.lock().await;
         let p = guard.as_mut().ok_or("Not connected")?;
-        p.find(path, pattern).await.map_err(|e| e.to_string())
+        crate::providers::find_or_walk(p.as_mut(), path, pattern)
+            .await
+            .map_err(|e| e.to_string())
     }
 
     async fn storage_info(&self) -> Result<StorageQuota, String> {

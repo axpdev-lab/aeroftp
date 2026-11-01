@@ -2380,76 +2380,9 @@ impl StorageProvider for GoogleDriveProvider {
     }
 
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        // Drive API `name contains 'X'` is a case-insensitive substring match
-        // and ignores glob metacharacters. Strategy: strip glob chars from
-        // the pattern for a broad server-side prefilter, then apply a precise
-        // match client-side via the shared `matches_find_pattern` helper
-        // (glob via globset for `*?[]`, substring fallback for plain text).
-        let literal: String = pattern
-            .chars()
-            .filter(|c| !matches!(c, '*' | '?' | '[' | ']'))
-            .collect();
-
-        let trashed_clause = "trashed=false";
-        let query = if literal.is_empty() {
-            trashed_clause.to_string()
-        } else {
-            let escaped = literal.replace('\'', "\\'");
-            format!(
-                "(name contains '{}' or fullText contains '{}') and {}",
-                escaped, escaped, trashed_clause
-            )
-        };
-
-        let mut all_entries = Vec::new();
-        let mut page_token: Option<String> = None;
-
-        loop {
-            let mut url = format!(
-                "{}/files?q={}&fields=files(id,name,mimeType,size,modifiedTime,parents),nextPageToken,incompleteSearch&pageSize=200",
-                self.drive_api(), urlencoding::encode(&query)
-            );
-
-            if let Some(ref token) = page_token {
-                url.push_str(&format!("&pageToken={}", token));
-            }
-
-            let response = self
-                .client
-                .get(&url)
-                .header(AUTHORIZATION, self.auth_header().await?)
-                .send()
-                .await
-                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-            if !response.status().is_success() {
-                let text = response.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!(
-                    "Search failed: {}",
-                    sanitize_api_error(&text)
-                )));
-            }
-
-            let list: DriveFileList = response
-                .json()
-                .await
-                .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
-            list.require_complete()?;
-
-            for file in &list.files {
-                if !super::matches_find_pattern(&file.name, pattern) {
-                    continue;
-                }
-                all_entries.push(self.to_remote_entry(file, path));
-            }
-
-            match list.next_page_token {
-                Some(token) if all_entries.len() < 500 => page_token = Some(token),
-                _ => break,
-            }
-        }
-
-        Ok(all_entries)
+        // The search API answers outside the folder or without the hit's real
+        // path, and a caller acts on that path.
+        super::find_by_walk(self, path, pattern).await
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
@@ -3335,6 +3268,63 @@ mod tests {
                 "{response}"
             );
         }
+    }
+
+    /// Requested 126: a search stays under its folder and reports real paths.
+    /// It used to ask the whole account, and to label a hit anywhere as
+    /// `<folder>/<name>`, which a caller could then delete.
+    #[tokio::test]
+    async fn find_stays_under_its_folder_with_real_paths() {
+        use serde_json::json;
+        const FOLDER: &str = "application/vnd.google-apps.folder";
+        let tree = [
+            ("D", "root", "docs", FOLDER),
+            ("O", "root", "other", FOLDER),
+            ("A", "D", "a.txt", "text/plain"),
+            ("S", "D", "sub", FOLDER),
+            ("B", "S", "a.txt", "text/plain"),
+            ("C", "O", "a.txt", "text/plain"),
+        ];
+        let app = axum::Router::new().fallback(axum::routing::get(
+            move |req: axum::extract::Request| async move {
+                let url = reqwest::Url::parse(&format!("http://fixture{}", req.uri())).unwrap();
+                let q = url
+                    .query_pairs()
+                    .find(|(key, _)| key == "q")
+                    .map(|(_, value)| value.into_owned())
+                    .unwrap_or_default();
+                assert!(!q.contains("fullText"), "an account-wide search: {q}");
+                let files: Vec<_> = tree
+                    .iter()
+                    .filter(|(_, parent, name, _)| {
+                        q.contains(&format!("'{parent}' in parents"))
+                            && (!q.contains("name='") || q.contains(&format!("name='{name}'")))
+                    })
+                    .map(|(id, _, name, mime)| {
+                        json!({"id": id, "name": name, "mimeType": mime, "parents": []})
+                    })
+                    .collect();
+                axum::Json(json!({"files": files, "incompleteSearch": false}))
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("t".into());
+
+        let mut found: Vec<String> = provider
+            .find("/docs", "a.txt")
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|entry| entry.path)
+            .collect();
+        found.sort();
+        server.abort();
+        assert_eq!(found, ["/docs/a.txt", "/docs/sub/a.txt"]);
     }
 
     /// Requested 114: a file rewritten while its chunks go up is not published
