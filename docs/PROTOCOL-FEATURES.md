@@ -98,7 +98,7 @@ Some SSH servers have no SFTP: a stock OpenWrt router runs Dropbear without `sft
 | Upload and download with progress | Yes; an upload keeps the file's time, and the speed limit applies both ways |
 | Resume | Yes: a download goes on from its partial file (the server seeks with `dd`), an upload goes on by appending to the remote file; the final size is checked |
 | Parallel transfers | Yes: up to 8 at once, each on its own exec channel of the one connection (no second login) |
-| Ranged reads and segmented downloads | Yes, with the same `dd` seek; archive badges read the file's head and tail this way |
+| Ranged reads and segmented downloads | Yes, with the same `dd` seek, up to 8 windows per file on the one connection (the CLI's `--multi-thread-streams` too); archive badges read the file's head and tail this way |
 | Delta sync | No |
 | Replace an existing file | Yes, with `mv -f`; a folder is never replaced by a file, nor a file by a folder |
 | Free space | From `df -Pk` |
