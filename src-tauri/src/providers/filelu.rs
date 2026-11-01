@@ -64,6 +64,14 @@ fn filelu_log(msg: &str) {
     info!("[FILELU] {}", msg);
 }
 
+/// A warning a successful call cannot return: to the log, which is what the
+/// GUI shows, and to the pending warnings the CLI and MCP render
+/// ([`super::take_warnings`]). Either alone misses one of them.
+fn warn_user(message: String) {
+    tracing::warn!("{message}");
+    super::report_warning(message);
+}
+
 /// Redact the FileLu API key from any text that may embed it. The key travels
 /// as a `key=` query parameter, and `reqwest::Error`'s `Display` appends
 /// `for url (...)` including the full query string, so the value must be
@@ -1467,7 +1475,7 @@ impl FileLuProvider {
         let listing = match self.list_folder_v2(dest_dir).await {
             Ok(listing) => listing,
             Err(e) => {
-                super::report_warning(format!(
+                warn_user(format!(
                     "FileLu: {target} was uploaded, but its folder could not be read back to check \
                      the stored name{}: {e}",
                     if replaced_code.is_some() {
@@ -1514,7 +1522,7 @@ impl FileLuProvider {
                     Err(e) => Err(e),
                 };
                 if let Err(e) = removed {
-                    super::report_warning(format!(
+                    warn_user(format!(
                         "FileLu: {target} was uploaded, but the file it replaces is still there \
                          under the same name: {e}"
                     ));
@@ -2373,7 +2381,7 @@ impl StorageProvider for FileLuProvider {
                 match (named.next(), named.next()) {
                     (Some(only), None) => Some(only),
                     (Some(_), Some(_)) => {
-                        super::report_warning(format!(
+                        warn_user(format!(
                             "FileLu: the trash holds several files named '{basename}' and does not \
                              say which folder each came from; {norm} was not purged"
                         ));
@@ -4485,5 +4493,80 @@ mod tests {
             .insert("/d/a.txt".to_string(), "MINE".to_string());
         assert!(!provider.delete_permanent("/d/a.txt").await.unwrap());
         assert!(!provider.trashed_codes.contains_key("/d/a.txt"));
+    }
+
+    struct LogSink(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for LogSink {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// An upload whose folder cannot be read back afterwards succeeded: the
+    /// file is stored, and an error would make a retry upload it again. What
+    /// is left unchecked is said where every front end looks: in the log,
+    /// which the GUI shows, and in the call's warnings, which the CLI and MCP
+    /// show. Only the second was written.
+    #[tokio::test]
+    async fn an_upload_whose_folder_cannot_be_read_back_warns_in_the_log_too() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let arrived = std::sync::Arc::new(AtomicBool::new(false));
+        let (mut provider, _) = provider_against(move |origin, path, query| {
+            let root = query.get("folder_path").map(String::as_str) == Some("/");
+            match path {
+                "/apiv2/folder/list" if root => {
+                    r#"{"status":200,"result":{"files":[],"folders":[{"name":"d","fld_id":7}]}}"#
+                        .to_string()
+                }
+                "/apiv2/folder/list" if arrived.load(Ordering::SeqCst) => {
+                    r#"{"status":500,"msg":"denied"}"#.to_string()
+                }
+                "/apiv2/folder/list" => {
+                    r#"{"status":200,"result":{"files":[{"name":"f.txt","file_code":"OLD"}],"folders":[]}}"#
+                        .to_string()
+                }
+                "/api/upload/server" => {
+                    format!(r#"{{"status":200,"sess_id":"s1","result":"{origin}/up"}}"#)
+                }
+                "/up" => {
+                    arrived.store(true, Ordering::SeqCst);
+                    r#"[{"file_code":"NEW","file_status":"OK"}]"#.to_string()
+                }
+                _ => r#"{"status":200,"msg":"OK"}"#.to_string(),
+            }
+        })
+        .await;
+        let local = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(local.path(), b"x").unwrap();
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = std::sync::Arc::clone(&buf);
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::WARN)
+            .with_ansi(false)
+            .with_writer(move || LogSink(std::sync::Arc::clone(&sink)))
+            .finish();
+        let warnings = super::super::CallWarnings::default();
+        let outcome = {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            warnings
+                .scope(provider.upload(&local.path().to_string_lossy(), "/d/f.txt", None))
+                .await
+        };
+        assert!(outcome.is_ok(), "{outcome:?}");
+        let log = String::from_utf8(buf.lock().unwrap().clone()).unwrap();
+        assert!(
+            log.contains("/d/f.txt") && log.contains("could not be read back"),
+            "{log:?}"
+        );
+        let reported = warnings.take();
+        assert!(
+            reported.iter().any(|w| w.contains("/d/f.txt")),
+            "{reported:?}"
+        );
     }
 }
