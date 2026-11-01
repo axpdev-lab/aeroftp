@@ -1360,7 +1360,7 @@
             "oauthTokensCount": "OAuth-token: {count}",
             "configEntriesCount": "Konfigurationsposter: {count}",
             "verifyDownloadHash": "Kontrollera nedladdningar mot serverns hash",
-            "verifyDownloadHashHelp": "Efter en nedladdning jämförs filen med den hash som servern publicerar, och den behålls inte om de skiljer sig. Filer på servrar utan hash kontrolleras bara på storlek.",
+            "verifyDownloadHashHelp": "Efter en nedladdning jämförs filen med den hash som servern publicerar, och den behålls inte om de skiljer sig. Där ingen hash används, som vid FTP, kontrolleras filer bara på storlek.",
             "importExistingLabel": "Om en profil redan finns",
             "importExistingSkip": "Hoppa över",
             "importExistingOverwrite": "Skriv över",

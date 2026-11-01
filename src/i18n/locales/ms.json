@@ -1360,7 +1360,7 @@
             "oauthTokensCount": "{count} token OAuth",
             "configEntriesCount": "{count} entri konfigurasi",
             "verifyDownloadHash": "Semak muat turun dengan hash pelayan",
-            "verifyDownloadHashHelp": "Selepas muat turun, fail dibandingkan dengan hash yang diterbitkan pelayan dan tidak disimpan jika berbeza. Fail pada pelayan tanpa hash hanya disemak mengikut saiz.",
+            "verifyDownloadHashHelp": "Selepas muat turun, fail dibandingkan dengan hash yang diterbitkan pelayan dan tidak disimpan jika berbeza. Jika hash tidak digunakan, seperti pada FTP, fail hanya disemak mengikut saiz.",
             "importExistingLabel": "Jika profil sudah wujud",
             "importExistingSkip": "Langkau",
             "importExistingOverwrite": "Tulis ganti",

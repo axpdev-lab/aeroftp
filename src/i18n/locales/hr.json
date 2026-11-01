@@ -1360,7 +1360,7 @@
             "oauthTokensCount": "OAuth tokeni: {count}",
             "configEntriesCount": "Unosi konfiguracije: {count}",
             "verifyDownloadHash": "Provjeri preuzimanja prema hashu poslužitelja",
-            "verifyDownloadHashHelp": "Nakon preuzimanja datoteka se uspoređuje s hashom koji objavljuje poslužitelj i ne zadržava se ako se razlikuju. Datoteke s poslužitelja bez hasha provjeravaju se samo po veličini.",
+            "verifyDownloadHashHelp": "Nakon preuzimanja datoteka se uspoređuje s hashom koji objavljuje poslužitelj i ne zadržava se ako se razlikuju. Gdje se hash ne koristi, kao kod FTP-a, datoteke se provjeravaju samo po veličini.",
             "importExistingLabel": "Ako profil već postoji",
             "importExistingSkip": "Preskoči",
             "importExistingOverwrite": "Prepiši",

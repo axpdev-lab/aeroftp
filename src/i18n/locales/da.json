@@ -1360,7 +1360,7 @@
             "oauthTokensCount": "OAuth-tokens: {count}",
             "configEntriesCount": "Konfigurationsposter: {count}",
             "verifyDownloadHash": "Kontroller downloads mod serverens hash",
-            "verifyDownloadHashHelp": "Efter en download sammenlignes filen med den hash, serveren udgiver, og den beholdes ikke, hvis de er forskellige. Filer på servere uden hash kontrolleres kun på størrelse.",
+            "verifyDownloadHashHelp": "Efter en download sammenlignes filen med den hash, serveren udgiver, og den beholdes ikke, hvis de er forskellige. Hvor der ikke bruges hash, som ved FTP, kontrolleres filer kun på størrelse.",
             "importExistingLabel": "Hvis en profil allerede findes",
             "importExistingSkip": "Spring over",
             "importExistingOverwrite": "Overskriv",

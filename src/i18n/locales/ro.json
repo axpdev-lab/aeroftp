@@ -1360,7 +1360,7 @@
             "oauthTokensCount": "Tokenuri OAuth: {count}",
             "configEntriesCount": "Intrări de configurare: {count}",
             "verifyDownloadHash": "Verifică descărcările cu hash-ul serverului",
-            "verifyDownloadHashHelp": "După o descărcare, fișierul este comparat cu hash-ul publicat de server și nu este păstrat dacă diferă. Fișierele de pe serverele fără hash sunt verificate doar după dimensiune.",
+            "verifyDownloadHashHelp": "După o descărcare, fișierul este comparat cu hash-ul publicat de server și nu este păstrat dacă diferă. Acolo unde nu se folosește hash, ca în cazul FTP, fișierele sunt verificate doar după dimensiune.",
             "importExistingLabel": "Dacă un profil există deja",
             "importExistingSkip": "Omite",
             "importExistingOverwrite": "Suprascrie",

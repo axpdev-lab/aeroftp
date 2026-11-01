@@ -1360,7 +1360,7 @@
             "oauthTokensCount": "OAuth-Token: {count}",
             "configEntriesCount": "Konfigurationseinträge: {count}",
             "verifyDownloadHash": "Downloads mit dem Hash des Servers prüfen",
-            "verifyDownloadHashHelp": "Nach einem Download wird die Datei mit dem vom Server veröffentlichten Hash verglichen und nicht behalten, wenn sie abweicht. Dateien auf Servern ohne Hash werden nur anhand der Größe geprüft.",
+            "verifyDownloadHashHelp": "Nach einem Download wird die Datei mit dem vom Server veröffentlichten Hash verglichen und nicht behalten, wenn sie abweicht. Wo kein Hash verwendet wird, etwa bei FTP, werden Dateien nur anhand der Größe geprüft.",
             "importExistingLabel": "Wenn ein Profil bereits existiert",
             "importExistingSkip": "Überspringen",
             "importExistingOverwrite": "Überschreiben",

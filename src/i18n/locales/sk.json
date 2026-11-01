@@ -1360,7 +1360,7 @@
             "oauthTokensCount": "Tokeny OAuth: {count}",
             "configEntriesCount": "Položky konfigurácie: {count}",
             "verifyDownloadHash": "Overovať stiahnuté súbory podľa hashu servera",
-            "verifyDownloadHashHelp": "Po stiahnutí sa súbor porovná s hashom, ktorý server zverejňuje, a ak sa líšia, neponechá sa. Súbory zo serverov bez hashu sa kontrolujú iba podľa veľkosti.",
+            "verifyDownloadHashHelp": "Po stiahnutí sa súbor porovná s hashom, ktorý server zverejňuje, a ak sa líšia, neponechá sa. Tam, kde sa hash nepoužíva, napríklad pri FTP, sa súbory kontrolujú iba podľa veľkosti.",
             "importExistingLabel": "Ak profil už existuje",
             "importExistingSkip": "Preskočiť",
             "importExistingOverwrite": "Prepísať",

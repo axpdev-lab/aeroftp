@@ -1360,7 +1360,7 @@
             "oauthTokensCount": "Tokeni za OAuth: {count}",
             "configEntriesCount": "Maingizo ya usanidi: {count}",
             "verifyDownloadHash": "Kagua vipakuliwa kwa hash ya seva",
-            "verifyDownloadHashHelp": "Baada ya kupakua, faili linalinganishwa na hash inayochapishwa na seva, na halihifadhiwi ikiwa zinatofautiana. Faili kwenye seva zisizo na hash hukaguliwa kwa ukubwa pekee.",
+            "verifyDownloadHashHelp": "Baada ya kupakua, faili linalinganishwa na hash inayochapishwa na seva, na halihifadhiwi ikiwa zinatofautiana. Pale hash haitumiki, kama kwenye FTP, faili hukaguliwa kwa ukubwa pekee.",
             "importExistingLabel": "Ikiwa wasifu tayari upo",
             "importExistingSkip": "Ruka",
             "importExistingOverwrite": "Andika juu",

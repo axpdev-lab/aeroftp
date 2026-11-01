@@ -1360,7 +1360,7 @@
             "oauthTokensCount": "OAuth marķieri: {count}",
             "configEntriesCount": "Konfigurācijas ieraksti: {count}",
             "verifyDownloadHash": "Pārbaudīt lejupielādes ar servera jaucējkodu",
-            "verifyDownloadHashHelp": "Pēc lejupielādes fails tiek salīdzināts ar servera publicēto jaucējkodu un netiek paturēts, ja tie atšķiras. Faili serveros bez jaucējkoda tiek pārbaudīti tikai pēc izmēra.",
+            "verifyDownloadHashHelp": "Pēc lejupielādes fails tiek salīdzināts ar servera publicēto jaucējkodu un netiek paturēts, ja tie atšķiras. Kur jaucējkods netiek izmantots, kā FTP gadījumā, faili tiek pārbaudīti tikai pēc izmēra.",
             "importExistingLabel": "Ja profils jau pastāv",
             "importExistingSkip": "Izlaist",
             "importExistingOverwrite": "Pārrakstīt",
