@@ -598,7 +598,8 @@
             "setAsPublic": "Jadikan Publik",
             "makeAllPrivate": "Jadikan semua privat",
             "dropboxRestoreLimit": "AeroFTP dapat memulihkan revisi file yang masih dapat dipulihkan. Pulihkan folder dari File yang dihapus di dropbox.com. Tanda tanya berarti Dropbox tidak mengidentifikasi jenis item.",
-            "openWithDefaultApp": "Buka dengan aplikasi default"
+            "openWithDefaultApp": "Buka dengan aplikasi default",
+            "extractHereUncheckedConfirm": "Nama di dalam {name} tidak dapat dibaca sebelum diekstrak, sehingga AeroFTP tidak dapat memeriksa apa yang akan ditimpa oleh “Ekstrak Di Sini” di folder ini. “Ekstrak ke Folder” tidak pernah menimpa apa pun."
         },
         "transfer": {
             "transferring": "Mentransfer...",
@@ -1370,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud memperbarui login-nya pada setiap koneksi, dan {names} kini berbagi satu dengan salinan lain: salinan yang terhubung lebih dulu akan mengeluarkan yang lain (perangkat asal file, atau profil tempat salinan ini diduplikasi). Masuk lagi ke yang lain dengan Personal Login Token baru.",
             "importOauthAppKept": "{names} datang dengan aplikasi OAuth kustom yang berbeda dari yang dimiliki perangkat ini untuk penyedia tersebut. Aplikasi yang tersimpan dipertahankan, jadi masuk lagi jika profil ini berhenti terhubung.",
             "importTargetChanged": "{names} tidak ditimpa: berkas mengarahkannya ke server lain, dan kata sandi serta token tersimpannya tidak boleh dikirim ke sana. Impor dengan Duplikat untuk menambahkan salinan dari berkas, atau hapus profil terlebih dahulu.",
-            "importSharedSecretsFailed": "{names} berhasil diimpor, tetapi rahasia bersama atau sesi dari file tidak dapat disimpan. Masuk lagi ke profil ini jika tidak terhubung."
+            "importSharedSecretsFailed": "{names} berhasil diimpor, tetapi rahasia bersama atau sesi dari file tidak dapat disimpan. Masuk lagi ke profil ini jika tidak terhubung.",
+            "keystoreDatabasesFailed": "Impor selesai, tetapi basis data ini tidak dapat dipulihkan dan tetap berisi data sebelumnya: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1588,7 +1590,9 @@
             "aerocloudEnabled": "AeroCloud diaktifkan",
             "selectPairLocalFolder": "Pilih folder lokal untuk pasangan",
             "secondsAgo": "{count}d lalu",
-            "conflictsCount": "{count} konflik perlu perhatian"
+            "conflictsCount": "{count} konflik perlu perhatian",
+            "updateOnlyHint": "Pembaruan Satu Arah mempertahankan file tujuan yang lebih baru. Saat pencadangan aditif dimatikan, hanya file yang tidak berubah, ada di tujuan saja, dan memiliki bukti transfer AeroCloud terverifikasi yang dihapus. File lain tetap tersedia untuk ditinjau di AeroSync. Kebijakan konflik diabaikan; tanggal yang tidak diketahui tetap belum terselesaikan.",
+            "untrackedDestinationFiles": "{count} file tujuan dipertahankan untuk ditinjau: riwayat transfernya belum terverifikasi atau file telah berubah sejak transfer AeroCloud terakhir. Tinjau file tersebut di AeroSync sebelum memutuskan untuk menghapusnya."
         },
         "statusBar": {
             "connected": "Terhubung",
@@ -2469,7 +2473,9 @@
             "flattenScanning": "Memindai subpohon...",
             "flattenTruncated": "dipotong",
             "flattenTruncatedHint": "Mencapai batas 5.000 entri; perbaiki filter Anda atau masuk ke subfolder.",
-            "local_placeholder_flatten": "Filter file lokal... (* untuk rekursif)"
+            "local_placeholder_flatten": "Filter file lokal... (* untuk rekursif)",
+            "flattenNameClash": "{names}: dipilih di lebih dari satu folder. Jika diletakkan di satu tempat, file-file itu akan saling menimpa; proses satu dari tiap nama dalam satu waktu.",
+            "flattenNameClashTitle": "Nama sama di lebih dari satu folder"
         },
         "versions": {
             "title": "Versi File",
@@ -4853,7 +4859,8 @@
             "relocateSuccessMove": "\"{name}\" dipindahkan ke {user}",
             "relocateAlreadyPresent": "\"{name}\" sudah tersimpan di {user}",
             "relocateError": "Server tidak dapat ditransfer: {error}",
-            "relocateWrongPassword": "Kata sandi salah untuk {user}."
+            "relocateWrongPassword": "Kata sandi salah untuk {user}.",
+            "relocateSecretsNotCopied": "\"{name}\" sudah sampai ke {user}, tetapi kata sandi atau token yang tersimpan tidak ikut sampai, sehingga akan diminta lagi di sana."
         },
         "cyberTools": {
             "title": "Alat Keamanan",
@@ -6341,7 +6348,10 @@
             "progressCopy": "[salinan]",
             "deleteCount": "Akan dihapus: {count}",
             "overwriteCount": "Akan ditimpa: {count}",
-            "conflictCount": "{count} konflik"
+            "conflictCount": "{count} konflik",
+            "updateOnly": "Lewati file tujuan yang lebih baru (Pembaruan Satu Arah)",
+            "updateOnlyHint": "Menyalin file sumber yang belum ada atau telah berubah, mempertahankan file tujuan yang lebih baru, dan menghapus entri yang hanya ada di tujuan. File tanpa tanggal yang dapat dibandingkan akan dibandingkan berdasarkan ukuran; perbedaan ukuran dibiarkan untuk ditinjau.",
+            "rescanNeeded": "Jalankan perbandingan baru dengan pengaturan saat ini sebelum mengekspor skrip pembaruan."
         },
         "accountLock": {
             "title": "Pilih akun",
@@ -6585,7 +6595,8 @@
             "keyslotsSetAsideRevocation": "Penanda sebelumnya masih membuka vault dengan faktor yang Anda hapus atau ganti. Setiap salinan yang tertinggal di folder vault dihapus setelah perubahan, dan salinan yang tidak dapat dihapus dilaporkan sebagai kesalahan. Salinan di tempat sampah atau versi file penyimpanan tidak terjangkau: mengosongkan keduanya menghapus salinan tersebut, tetapi tidak salinan yang disimpan orang lain, sehingga tidak menyelesaikan pencabutan.",
             "keyslotsSetAsideConsent": "Saya mengerti: ganti penanda di server ini dengan menyisihkan yang lama lewat penggantian nama",
             "keyslotsSetAsideConsentRequired": "Server ini hanya dapat mengganti penanda vault dengan menyisihkan yang lama lewat penggantian nama: konfirmasi di kotak di atas untuk melanjutkan.",
-            "keyslotsMarkerReplaceUnsupported": "Server ini tidak dapat mengganti penanda vault, sehingga perubahan slot ditolak di sini. Buka penyimpanan yang sama melalui server yang mengganti file dalam satu langkah (misalnya SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Server ini tidak dapat mengganti penanda vault, sehingga perubahan slot ditolak di sini. Buka penyimpanan yang sama melalui server yang mengganti file dalam satu langkah (misalnya SFTP).",
+            "overlayMetadataNotSaved": "Migrasi berhasil, tetapi kit pemulihan offline belum disimpan ke cache. Kit akan disimpan saat pembukaan kunci berikutnya."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Enkripsi)",

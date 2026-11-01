@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useLayoutEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { FtpSession } from '../types';
 import { loadSavedServerProfiles } from '../utils/serverProfileStore';
@@ -24,9 +24,9 @@ export function useFaviconDetection(
 ) {
   const checkedRef = useRef<Set<string>>(new Set());
   const sessionsRef = useRef(sessions);
-  sessionsRef.current = sessions;
+  useLayoutEffect(() => { sessionsRef.current = sessions; }, [sessions]);
   const callbackRef = useRef(onFaviconDetected);
-  callbackRef.current = onFaviconDetected;
+  useLayoutEffect(() => { callbackRef.current = onFaviconDetected; }, [onFaviconDetected]);
 
   // Track status of the active session so the effect re-runs when it transitions
   // (e.g. connecting → connected). Previously the effect only depended on

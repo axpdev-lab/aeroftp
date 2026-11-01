@@ -1,20 +1,27 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-//! Lightweight non-recursive filesystem watcher for the AeroFile / local panel.
+//! Lightweight filesystem watcher for the AeroFile / local panels.
 //!
 //! Distinct from `file_watcher.rs` (which serves AeroSync with debouncing,
 //! rename tracking, recursive walks, health heartbeats, etc.). This module
-//! is intentionally minimal: it watches one directory non-recursively and
-//! emits a single `local-fs-changed` Tauri event when its contents change.
+//! is intentionally minimal: it watches the folder each local panel shows,
+//! non-recursively, and emits a single `local-fs-changed` Tauri event, naming
+//! the panel and its folder, when the contents change. A flattened search
+//! lists the folders below the panel's folder too; the frontend hands those
+//! over, and each is watched the same way, so a change in one of them reloads
+//! the panel. The list is bounded by the search's own entry cap: a recursive
+//! watch would register every folder of the tree, the ones the search never
+//! listed included (`/` holds hundreds of thousands).
 //!
-//! The frontend swaps the watched path when the user navigates to a new
-//! folder; the watcher is cheap to recreate, so a ready replacement atomically
-//! takes the old one's slot.
+//! The frontend swaps the watched folders when the user navigates or the
+//! search's folders change; the watcher is cheap to recreate, so a ready
+//! replacement atomically takes the old one's slot. The old one reports until
+//! then, and goes on reporting when its replacement fails.
 
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use serde::Serialize;
-use std::path::PathBuf;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc, Mutex,
@@ -27,45 +34,66 @@ use tauri::{AppHandle, Emitter, State};
 /// completes a batch.
 const COALESCE_MS: u64 = 250;
 
-/// Event payload sent to the frontend.
-#[derive(Clone, Debug, Serialize)]
+/// The most folders one panel watches: the panel's own and the folders a
+/// flattened search lists, which lists at most 20,000 entries
+/// (`flatten_local_descendants`' ceiling).
+const MAX_WATCHED_DIRS: usize = 20_001;
+
+/// The local panel a watch serves.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LocalPanel {
+    Local,
+    Local2,
+}
+
+/// Event payload sent to the frontend: the panel and the folder it showed
+/// when the watch started, exactly as the frontend passed it.
+#[derive(Clone, Debug, PartialEq, Serialize)]
 struct LocalFsChanged {
+    panel: LocalPanel,
     path: String,
 }
+
+type Emit = Arc<dyn Fn(LocalFsChanged) + Send + Sync>;
 
 struct WatcherSlot {
     /// Held for its `Drop` side effect: letting it fall out of scope tears
     /// down the inotify/FSEvents/RDCW handle. Reads are intentional no-ops.
     #[allow(dead_code)]
     watcher: RecommendedWatcher,
-    path: PathBuf,
+    /// The folders watched, the panel's own first. A later request for the
+    /// same folders adopts the watcher instead of replacing it.
+    dirs: Vec<PathBuf>,
+    /// The panel's folder as the latest request that the watcher serves spells
+    /// it, which its events name: the frontend matches them against the
+    /// spelling it sent, and the same folders can be asked for as `/photos/`
+    /// after `/photos`.
+    path: Arc<Mutex<String>>,
 }
 
-/// Tauri-managed state. Holds at most one active watcher.
+/// One panel's watcher, the generation of its latest request, and the request
+/// whose watcher is installed.
 ///
 /// The mutex is behind an `Arc` so a command can clone a `'static` handle out
 /// of `State<'_, LocalPanelWatcherState>` and hand it to `spawn_blocking`;
 /// `State` borrows the app and cannot cross that boundary itself.
-pub struct LocalPanelWatcherState {
+#[derive(Clone)]
+struct PanelWatch {
     inner: Arc<Mutex<Option<WatcherSlot>>>,
     generation: Arc<AtomicU64>,
+    /// The request whose watcher is in the slot, 0 when the slot is empty
+    /// (requests count from 1).
+    installed: Arc<AtomicU64>,
 }
 
-impl LocalPanelWatcherState {
-    pub fn new() -> Self {
+impl PanelWatch {
+    fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(None)),
             generation: Arc::new(AtomicU64::new(0)),
+            installed: Arc::new(AtomicU64::new(0)),
         }
-    }
-
-    /// A `'static` handle to the slot, for use off the main thread.
-    fn handle(&self) -> Arc<Mutex<Option<WatcherSlot>>> {
-        Arc::clone(&self.inner)
-    }
-
-    fn generation_handle(&self) -> Arc<AtomicU64> {
-        Arc::clone(&self.generation)
     }
 
     fn begin_request(&self) -> Result<u64, String> {
@@ -81,6 +109,41 @@ impl LocalPanelWatcherState {
             .fetch_add(1, Ordering::SeqCst)
             .wrapping_add(1))
     }
+
+    fn stop(&self) -> Result<(), String> {
+        let mut slot = self
+            .inner
+            .lock()
+            .map_err(|_| "watcher state poisoned".to_string())?;
+        // Invalidation and clearing are one critical section shared with both
+        // request creation and watcher installation.
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        self.installed.store(0, Ordering::SeqCst);
+        *slot = None;
+        Ok(())
+    }
+}
+
+/// Tauri-managed state. Holds at most one active watcher per local panel.
+pub struct LocalPanelWatcherState {
+    local: PanelWatch,
+    local2: PanelWatch,
+}
+
+impl LocalPanelWatcherState {
+    pub fn new() -> Self {
+        Self {
+            local: PanelWatch::new(),
+            local2: PanelWatch::new(),
+        }
+    }
+
+    fn panel(&self, panel: LocalPanel) -> &PanelWatch {
+        match panel {
+            LocalPanel::Local => &self.local,
+            LocalPanel::Local2 => &self.local2,
+        }
+    }
 }
 
 impl Default for LocalPanelWatcherState {
@@ -89,50 +152,114 @@ impl Default for LocalPanelWatcherState {
     }
 }
 
-/// Start watching `path` non-recursively. A successfully prepared watcher
-/// replaces the previous one. Idempotent: passing the same path again is a no-op.
+/// The folders to watch for `root`: `root` first, then each of `below` that is
+/// inside it, once. A folder outside `root` is left out: the rows of the last
+/// folder can still be on screen while the panel moves to the next one.
+fn watched_dirs(root: &Path, below: Vec<String>) -> Vec<PathBuf> {
+    let mut dirs = vec![root.to_path_buf()];
+    let mut seen = std::collections::HashSet::new();
+    for dir in below.into_iter().map(PathBuf::from) {
+        if dir.starts_with(root) && dir != root && seen.insert(dir.clone()) {
+            dirs.push(dir);
+        }
+    }
+    if dirs.len() > MAX_WATCHED_DIRS {
+        log::warn!(
+            "local panel watcher: {} folders below {}, watching the first {}",
+            dirs.len() - 1,
+            root.display(),
+            MAX_WATCHED_DIRS - 1
+        );
+        dirs.truncate(MAX_WATCHED_DIRS);
+    }
+    dirs
+}
+
+/// Start watching `path` for `panel` (panel 1 when omitted), non-recursively,
+/// and each of `dirs` below it (a flattened search's folders). A successfully
+/// prepared watcher replaces the panel's previous one. Idempotent: the same
+/// folders again keep the watcher there.
 ///
-/// `async`: `path` comes from the frontend, and `is_dir()` on it is a `stat(2)`
-/// that blocks for the mount's own timeout when that mount is a network share
-/// whose server has gone. Registering the inotify/FSEvents/RDCW watch is a
-/// syscall against the same path. A synchronous command would do both on the
-/// main thread, which on Linux is the GTK thread.
+/// Resolves once the request is the panel's latest; the watch is prepared on
+/// a blocking thread, and a failure there is logged. The frontend sends a
+/// panel's requests one after another, each once the one before resolved:
+/// commands run concurrently, and a stop sent before a watch could otherwise
+/// take effect after it and end it. Resolving when the watch is in place
+/// would hold the next request back behind a hung mount: `path` comes from
+/// the frontend, `is_dir()` on it is a `stat(2)` that blocks for the mount's
+/// own timeout when the mount is a network share whose server has gone, and
+/// registering the inotify/FSEvents/RDCW watch is a syscall against the same
+/// path. `async` keeps the request itself off the main thread, which on Linux
+/// is the GTK thread.
 #[tauri::command]
 pub async fn local_panel_watch(
     path: String,
+    panel: Option<LocalPanel>,
+    dirs: Option<Vec<String>>,
     app: AppHandle,
     state: State<'_, LocalPanelWatcherState>,
 ) -> Result<(), String> {
-    let slot = state.handle();
-    let generation = state.generation_handle();
-    let request = state.begin_request()?;
+    let panel = panel.unwrap_or(LocalPanel::Local);
+    let watch = state.panel(panel).clone();
+    let request = watch.begin_request()?;
+    let emit: Emit = Arc::new(move |payload| {
+        // Best-effort emit; swallow errors (frontend may be unmounted).
+        let _ = app.emit("local-fs-changed", payload);
+    });
     tokio::task::spawn_blocking(move || {
-        local_panel_watch_blocking(path, app, &slot, &generation, request)
-    })
-    .await
-    .unwrap_or_else(|err| Err(format!("Watcher start task failed: {err}")))
+        if let Err(err) =
+            local_panel_watch_blocking(panel, path, dirs.unwrap_or_default(), emit, &watch, request)
+        {
+            log::warn!("local panel watcher: {err}");
+        }
+    });
+    Ok(())
 }
 
 fn local_panel_watch_blocking(
+    panel: LocalPanel,
     path: String,
-    app: AppHandle,
-    state: &Mutex<Option<WatcherSlot>>,
-    generation: &Arc<AtomicU64>,
+    below: Vec<String>,
+    emit: Emit,
+    watch: &PanelWatch,
     request: u64,
 ) -> Result<(), String> {
-    let new_path = PathBuf::from(&path);
-    if !new_path.is_dir() {
+    let root = PathBuf::from(&path);
+    if !root.is_dir() {
         return Err(format!("not a directory: {}", path));
     }
+    let dirs = watched_dirs(&root, below);
 
-    let app_for_cb = app.clone();
-    let watch_root = new_path.clone();
-    let callback_generation = Arc::clone(generation);
-    let last_emit = std::sync::Arc::new(Mutex::new(Instant::now() - Duration::from_secs(60)));
+    // The same folders: the watcher there serves this request from now on,
+    // under this request's spelling of the folder.
+    {
+        let slot = watch
+            .inner
+            .lock()
+            .map_err(|_| "watcher state poisoned".to_string())?;
+        if watch.generation.load(Ordering::SeqCst) != request {
+            return Ok(());
+        }
+        if let Some(existing) = slot.as_ref().filter(|existing| existing.dirs == dirs) {
+            *existing
+                .path
+                .lock()
+                .map_err(|_| "watcher state poisoned".to_string())? = path;
+            return Ok(());
+        }
+    }
+
+    let callback_installed = Arc::clone(&watch.installed);
+    let path = Arc::new(Mutex::new(path));
+    let callback_path = Arc::clone(&path);
+    let last_emit = Arc::new(Mutex::new(Instant::now() - Duration::from_secs(60)));
 
     let mut watcher: RecommendedWatcher =
         notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
-            if callback_generation.load(Ordering::SeqCst) != request {
+            // The watcher in the panel's slot reports, and only that one: the
+            // one before goes on until this one takes its place.
+            let current = || callback_installed.load(Ordering::SeqCst) == request;
+            if !current() {
                 return;
             }
             let event = match res {
@@ -153,71 +280,101 @@ fn local_panel_watch_blocking(
                 return;
             }
             *last = now;
-            let payload = LocalFsChanged {
-                path: watch_root.display().to_string(),
-            };
-            if callback_generation.load(Ordering::SeqCst) != request {
+            if !current() {
                 return;
             }
-            // Best-effort emit; swallow errors (frontend may be unmounted).
-            let _ = app_for_cb.emit("local-fs-changed", payload);
+            let path = match callback_path.lock() {
+                Ok(path) => path.clone(),
+                Err(_) => return,
+            };
+            emit(LocalFsChanged { panel, path });
         })
         .map_err(|e| format!("watcher init failed: {}", e))?;
 
     watcher
-        .watch(&new_path, RecursiveMode::NonRecursive)
+        .watch(&root, RecursiveMode::NonRecursive)
         .map_err(|e| format!("watch start failed: {}", e))?;
+    // A folder below that cannot be watched any more was removed or made
+    // unreadable since the search listed it: the watch of the folder above it
+    // reports that, and the search lists the folders again. Running out of
+    // watches is different: a change there would go unnoticed, so it is
+    // logged.
+    let Some((unwatched, last_error)) = watch_each(
+        &dirs[1..],
+        |dir| watcher.watch(dir, RecursiveMode::NonRecursive),
+        || watch.generation.load(Ordering::SeqCst) == request,
+    ) else {
+        return Ok(());
+    };
+    if let Some(err) = last_error {
+        log::warn!(
+            "local panel watcher: {unwatched} of {} folders below {} not watched (last error: {err})",
+            dirs.len() - 1,
+            root.display()
+        );
+    }
 
     // `stat` and watcher creation may block on a remote mount. A newer request
     // (or stop) must win even if this older call completes last.
-    if generation.load(Ordering::SeqCst) != request {
-        return Ok(());
-    }
-
-    let mut slot = state
+    let mut slot = watch
+        .inner
         .lock()
         .map_err(|_| "watcher state poisoned".to_string())?;
-    if generation.load(Ordering::SeqCst) != request {
+    if watch.generation.load(Ordering::SeqCst) != request {
         return Ok(());
     }
-    if slot
-        .as_ref()
-        .is_some_and(|existing| existing.path == new_path)
-    {
-        return Ok(());
-    }
-
+    watch.installed.store(request, Ordering::SeqCst);
     *slot = Some(WatcherSlot {
         watcher,
-        path: new_path,
+        dirs,
+        path,
     });
     Ok(())
 }
 
-/// Stop the active watcher (if any). Safe to call when nothing is watching.
+/// Watches each of `dirs` while `wanted` holds, and counts the folders it
+/// could not watch, with the last error. `None` once `wanted` fails: a request
+/// that a newer one or a stop replaced would go on taking the watches the
+/// kernel bounds (`max_user_watches` on Linux), thousands of them for a
+/// flattened search, for a watcher that is dropped.
+fn watch_each<E>(
+    dirs: &[PathBuf],
+    mut watch: impl FnMut(&Path) -> Result<(), E>,
+    wanted: impl Fn() -> bool,
+) -> Option<(usize, Option<E>)> {
+    let mut unwatched = 0usize;
+    let mut last_error = None;
+    for dir in dirs {
+        if !wanted() {
+            return None;
+        }
+        if let Err(err) = watch(dir) {
+            unwatched += 1;
+            last_error = Some(err);
+        }
+    }
+    Some((unwatched, last_error))
+}
+
+/// Stop the watcher of `panel`, or of both panels when omitted. Safe to call
+/// when nothing is watching.
 ///
-/// `async` for two reasons: dropping the slot tears down the platform watch
-/// handle, and it takes the same lock `local_panel_watch` holds while it stats
-/// a frontend-supplied path. Leaving this one synchronous would keep the freeze
-/// reachable by navigating away from a hung mount.
+/// `async`: dropping the slot tears down the platform watch handle, one call
+/// per folder watched (thousands for a flattened search), and that stays off
+/// the main thread. It resolves once the watch is gone, which is what the
+/// frontend's next request for the panel waits for.
 #[tauri::command]
 pub async fn local_panel_watch_stop(
+    panel: Option<LocalPanel>,
     state: State<'_, LocalPanelWatcherState>,
 ) -> Result<(), String> {
-    let slot = state.handle();
-    let generation = state.generation_handle();
-    tokio::task::spawn_blocking(move || {
-        let mut slot = slot
-            .lock()
-            .map_err(|_| "watcher state poisoned".to_string())?;
-        // Invalidation and clearing are one critical section shared with both
-        // request creation and watcher installation.
-        generation.fetch_add(1, Ordering::SeqCst);
-        *slot = None;
-        Ok(())
-    })
-    .await
-    .unwrap_or_else(|err| Err(format!("Watcher stop task failed: {err}")))
+    let watches: Vec<PanelWatch> = match panel {
+        Some(panel) => vec![state.panel(panel).clone()],
+        None => vec![state.local.clone(), state.local2.clone()],
+    };
+    tokio::task::spawn_blocking(move || watches.iter().try_for_each(PanelWatch::stop))
+        .await
+        .unwrap_or_else(|err| Err(format!("Watcher stop task failed: {err}")))
 }
 
 #[cfg(test)]
@@ -227,16 +384,277 @@ mod tests {
     #[test]
     fn only_the_latest_watch_generation_can_install() {
         let state = LocalPanelWatcherState::new();
-        let first = state.begin_request().unwrap();
-        let second = state.begin_request().unwrap();
+        let watch = state.panel(LocalPanel::Local);
+        let first = watch.begin_request().unwrap();
+        let second = watch.begin_request().unwrap();
 
-        assert_ne!(state.generation.load(Ordering::SeqCst), first);
-        assert_eq!(state.generation.load(Ordering::SeqCst), second);
+        assert_ne!(watch.generation.load(Ordering::SeqCst), first);
+        assert_eq!(watch.generation.load(Ordering::SeqCst), second);
 
         {
-            let _slot = state.inner.lock().unwrap();
-            state.generation.fetch_add(1, Ordering::SeqCst);
+            let _slot = watch.inner.lock().unwrap();
+            watch.generation.fetch_add(1, Ordering::SeqCst);
         }
-        assert_ne!(state.generation.load(Ordering::SeqCst), second);
+        assert_ne!(watch.generation.load(Ordering::SeqCst), second);
+    }
+
+    #[test]
+    fn a_panel_s_request_leaves_the_other_panel_s_watch_alone() {
+        let state = LocalPanelWatcherState::new();
+        let local = state.panel(LocalPanel::Local).begin_request().unwrap();
+        state.panel(LocalPanel::Local2).begin_request().unwrap();
+        state.panel(LocalPanel::Local2).stop().unwrap();
+        assert_eq!(
+            state
+                .panel(LocalPanel::Local)
+                .generation
+                .load(Ordering::SeqCst),
+            local
+        );
+    }
+
+    #[test]
+    fn the_panel_names_are_the_frontend_s() {
+        assert_eq!(
+            serde_json::from_str::<LocalPanel>("\"local2\"").unwrap(),
+            LocalPanel::Local2
+        );
+        assert_eq!(
+            serde_json::to_value(LocalFsChanged {
+                panel: LocalPanel::Local,
+                path: "/a".into(),
+            })
+            .unwrap(),
+            serde_json::json!({ "panel": "local", "path": "/a" })
+        );
+    }
+
+    #[test]
+    fn watches_the_folder_and_the_folders_below_it_once() {
+        let root = Path::new("/data/photos");
+        let dirs = watched_dirs(
+            root,
+            vec![
+                "/data/photos/2026".into(),
+                "/data/photos".into(),
+                "/data/photos/2026".into(),
+                "/data/photos-old".into(),
+                "/data/other/2026".into(),
+                "/data/photos/2026/summer".into(),
+            ],
+        );
+        assert_eq!(
+            dirs,
+            [
+                "/data/photos",
+                "/data/photos/2026",
+                "/data/photos/2026/summer"
+            ]
+            .map(PathBuf::from)
+        );
+    }
+
+    #[test]
+    fn watches_a_bounded_number_of_folders_and_always_the_panel_s_own() {
+        let root = Path::new("/r");
+        let below = (0..MAX_WATCHED_DIRS + 5)
+            .map(|i| format!("/r/{i}"))
+            .collect();
+        let dirs = watched_dirs(root, below);
+        assert_eq!(dirs.len(), MAX_WATCHED_DIRS);
+        assert_eq!(dirs[0], root);
+    }
+
+    #[test]
+    fn a_request_a_newer_one_replaced_stops_registering_folders() {
+        let dirs: Vec<PathBuf> = (0..10).map(|i| PathBuf::from(format!("/r/{i}"))).collect();
+        let checks = std::cell::Cell::new(0);
+        let mut watched = Vec::new();
+        let outcome = watch_each(
+            &dirs,
+            |dir| {
+                watched.push(dir.to_path_buf());
+                Ok::<(), ()>(())
+            },
+            || {
+                checks.set(checks.get() + 1);
+                checks.get() <= 3
+            },
+        );
+        assert!(outcome.is_none());
+        assert_eq!(watched, dirs[..3]);
+    }
+
+    #[test]
+    fn counts_the_folders_it_could_not_watch() {
+        let dirs: Vec<PathBuf> = (0..4).map(|i| PathBuf::from(format!("/r/{i}"))).collect();
+        let outcome = watch_each(
+            &dirs,
+            |dir| {
+                if dir.ends_with("0") {
+                    Ok(())
+                } else {
+                    Err(dir.to_path_buf())
+                }
+            },
+            || true,
+        );
+        assert_eq!(outcome, Some((3, Some(PathBuf::from("/r/3")))));
+    }
+
+    /// The watch itself, on inotify: macOS and Windows deliver events with
+    /// their own latency and are left to the logic tests above.
+    #[cfg(target_os = "linux")]
+    mod live {
+        use super::*;
+        use std::sync::mpsc;
+
+        fn start(
+            watch: &PanelWatch,
+            panel: LocalPanel,
+            root: &Path,
+            below: &[&Path],
+        ) -> mpsc::Receiver<LocalFsChanged> {
+            let (tx, rx) = mpsc::channel();
+            let tx = Mutex::new(tx);
+            let emit: Emit = Arc::new(move |payload| {
+                let _ = tx.lock().unwrap().send(payload);
+            });
+            let request = watch.begin_request().unwrap();
+            local_panel_watch_blocking(
+                panel,
+                root.to_string_lossy().into_owned(),
+                below
+                    .iter()
+                    .map(|d| d.to_string_lossy().into_owned())
+                    .collect(),
+                emit,
+                watch,
+                request,
+            )
+            .unwrap();
+            rx
+        }
+
+        fn first_event(rx: &mpsc::Receiver<LocalFsChanged>) -> Option<LocalFsChanged> {
+            rx.recv_timeout(Duration::from_secs(5)).ok()
+        }
+
+        #[test]
+        fn a_change_in_a_folder_the_search_lists_reloads_the_panel() {
+            let tmp = tempfile::tempdir().unwrap();
+            let nested = tmp.path().join("2026").join("summer");
+            std::fs::create_dir_all(&nested).unwrap();
+            let watch = PanelWatch::new();
+            let rx = start(&watch, LocalPanel::Local, tmp.path(), &[&nested]);
+
+            std::fs::write(nested.join("new.jpg"), b"x").unwrap();
+            assert_eq!(
+                first_event(&rx),
+                Some(LocalFsChanged {
+                    panel: LocalPanel::Local,
+                    path: tmp.path().to_string_lossy().into_owned(),
+                })
+            );
+        }
+
+        #[test]
+        fn panel_2_s_watch_names_panel_2() {
+            let tmp = tempfile::tempdir().unwrap();
+            let state = LocalPanelWatcherState::new();
+            let rx = start(
+                state.panel(LocalPanel::Local2),
+                LocalPanel::Local2,
+                tmp.path(),
+                &[],
+            );
+
+            std::fs::write(tmp.path().join("new.txt"), b"x").unwrap();
+            assert_eq!(first_event(&rx).map(|e| e.panel), Some(LocalPanel::Local2));
+        }
+
+        #[test]
+        fn stopping_one_panel_keeps_the_other_panel_watching() {
+            let first_dir = tempfile::tempdir().unwrap();
+            let second_dir = tempfile::tempdir().unwrap();
+            let state = LocalPanelWatcherState::new();
+            let first = start(
+                state.panel(LocalPanel::Local),
+                LocalPanel::Local,
+                first_dir.path(),
+                &[],
+            );
+            let _second = start(
+                state.panel(LocalPanel::Local2),
+                LocalPanel::Local2,
+                second_dir.path(),
+                &[],
+            );
+            state.panel(LocalPanel::Local2).stop().unwrap();
+
+            std::fs::write(first_dir.path().join("new.txt"), b"x").unwrap();
+            assert_eq!(
+                first_event(&first).map(|e| e.panel),
+                Some(LocalPanel::Local)
+            );
+        }
+
+        #[test]
+        fn a_replacement_that_fails_leaves_the_watch_there_reporting() {
+            // The folder went before its watch could start. The panel still
+            // shows the one it watched, and a change there reloads it.
+            let tmp = tempfile::tempdir().unwrap();
+            let watch = PanelWatch::new();
+            let rx = start(&watch, LocalPanel::Local, tmp.path(), &[]);
+            let request = watch.begin_request().unwrap();
+            let gone = tmp.path().join("gone");
+            assert!(local_panel_watch_blocking(
+                LocalPanel::Local,
+                gone.to_string_lossy().into_owned(),
+                Vec::new(),
+                Arc::new(|_| {}),
+                &watch,
+                request,
+            )
+            .is_err());
+
+            std::fs::write(tmp.path().join("new.txt"), b"x").unwrap();
+            assert_eq!(
+                first_event(&rx).map(|e| e.path),
+                Some(tmp.path().to_string_lossy().into_owned())
+            );
+        }
+
+        #[test]
+        fn the_same_folder_spelled_another_way_reports_under_the_new_spelling() {
+            // The panel matches an event against the folder as it asked for
+            // it. `/photos/` and `/photos` are the same folders to watch, and
+            // the watcher there serves the second request.
+            let tmp = tempfile::tempdir().unwrap();
+            let watch = PanelWatch::new();
+            let rx = start(&watch, LocalPanel::Local, tmp.path(), &[]);
+            let spelled = format!("{}/", tmp.path().to_string_lossy());
+            let _adopted = start(&watch, LocalPanel::Local, Path::new(&spelled), &[]);
+
+            std::fs::write(tmp.path().join("new.txt"), b"x").unwrap();
+            assert_eq!(first_event(&rx).map(|e| e.path), Some(spelled));
+        }
+
+        #[test]
+        fn the_same_folders_again_keep_the_watch_alive() {
+            // React runs an effect twice in development, and the panel asks
+            // again for the folders it watches. The watcher there kept serving
+            // the first request, now stale, and emitted nothing more.
+            let tmp = tempfile::tempdir().unwrap();
+            let watch = PanelWatch::new();
+            let first = start(&watch, LocalPanel::Local, tmp.path(), &[]);
+            let second = start(&watch, LocalPanel::Local, tmp.path(), &[]);
+
+            std::fs::write(tmp.path().join("new.txt"), b"x").unwrap();
+            // The first request's watcher, adopted by the second, reports to
+            // the first's channel; the second's watcher was never built.
+            assert!(first_event(&first).is_some());
+            assert!(second.try_recv().is_err());
+        }
     }
 }

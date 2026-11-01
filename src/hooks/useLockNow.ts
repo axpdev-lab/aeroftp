@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useLayoutEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { createLockNow, isLockNowShortcut, type LockScope } from '../utils/lockNow';
 import { getUnlockStatus, listUsers, lockUserSession, dispatchAccountLockScreenRequested, ACCOUNT_LOCK_SCREEN_REQUESTED_EVENT } from '../utils/userPartitions';
@@ -15,7 +15,7 @@ interface LockNowOptions {
 }
 export function useLockNow(options: LockNowOptions) {
     const current = useRef(options);
-    current.current = options;
+    useLayoutEffect(() => { current.current = options; });
     const version = useRef(0);
     const mounted = useRef(true);
     const [error, setError] = useState<'failed' | 'unavailable' | 'stale' | null>(null);

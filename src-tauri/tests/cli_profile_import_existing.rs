@@ -501,6 +501,73 @@ fn an_unreadable_account_store_refuses_the_import_and_says_what_to_do() {
 /// An rclone import writes a crypt remote's secrets before the list transaction,
 /// so they also reach the partition row the connect path reads first: written
 /// inside it, the row was refused as busy and lost, silently.
+/// A token is worth nothing on a fresh device without the app it refreshes with,
+/// and two remotes with different apps must not leave the id of one with the
+/// secret of the other.
+#[test]
+fn an_rclone_import_keeps_one_whole_oauth_app() {
+    let config = tempfile::tempdir().unwrap();
+    let config = config.path();
+    let conf = config.join("rclone.conf");
+    let token = r#"{"access_token":"a","token_type":"Bearer","refresh_token":"r","expiry":"2030-01-01T00:00:00Z"}"#;
+    std::fs::write(
+        &conf,
+        format!(
+            "[one]\ntype = drive\nclient_id = app-one\nclient_secret = secret-one\ntoken = {token}\n\n\
+             [two]\ntype = drive\nclient_id = app-two\nclient_secret = secret-two\ntoken = {token}\n"
+        ),
+    )
+    .unwrap();
+    json(&cli(
+        config,
+        &[
+            "import",
+            "rclone",
+            conf.to_str().unwrap(),
+            "--apply",
+            "--json",
+        ],
+    ));
+
+    let check = config.join("apps.aeroftp");
+    let exported = cli(
+        config,
+        &[
+            "profile-export",
+            "-o",
+            check.to_str().unwrap(),
+            "--password",
+            PASSWORD,
+            "--include-credentials",
+        ],
+    );
+    assert!(exported.status.success(), "{}", describe(&exported));
+    let (servers, secrets, _) =
+        ftp_client_gui_lib::profile_export::import_profiles(&check, PASSWORD).unwrap();
+    assert_eq!(servers.len(), 2);
+    let mut apps = std::collections::HashSet::new();
+    for server in &servers {
+        let app = secrets.get(&server.id).expect("the exported secrets");
+        let pair = (
+            app.oauth_client_id.as_deref(),
+            app.oauth_client_secret.as_deref(),
+        );
+        // The first remote the import met holds the provider's one app.
+        assert!(
+            pair == (Some("app-one"), Some("secret-one"))
+                || pair == (Some("app-two"), Some("secret-two")),
+            "a mixed or missing app for {}: {pair:?}",
+            server.name
+        );
+        apps.insert(pair);
+    }
+    assert_eq!(
+        apps.len(),
+        1,
+        "two apps for one provider singleton: {apps:?}"
+    );
+}
+
 #[test]
 fn an_rclone_crypt_import_stores_its_secrets_in_the_partition() {
     let config = tempfile::tempdir().unwrap();

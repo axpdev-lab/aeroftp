@@ -598,7 +598,8 @@
             "setAsPublic": "Tetapkan sebagai Awam",
             "makeAllPrivate": "Jadikan semua peribadi",
             "dropboxRestoreLimit": "AeroFTP boleh memulihkan versi fail yang masih boleh dipulihkan. Pulihkan folder daripada Fail dipadam di dropbox.com. Tanda soal bermaksud Dropbox tidak mengenal pasti jenis item.",
-            "openWithDefaultApp": "Buka dengan apl lalai"
+            "openWithDefaultApp": "Buka dengan apl lalai",
+            "extractHereUncheckedConfirm": "Nama di dalam {name} tidak boleh dibaca sebelum pengekstrakan, jadi AeroFTP tidak dapat menyemak apa yang akan ditulis ganti oleh “Ekstrak Di Sini” dalam folder ini. “Ekstrak ke Folder” tidak pernah menulis ganti apa-apa."
         },
         "transfer": {
             "transferring": "Memindahkan...",
@@ -1370,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud memperbaharui log masuknya pada setiap sambungan, dan {names} kini berkongsi satu dengan salinan lain: salinan yang bersambung dahulu akan melog keluar yang satu lagi (peranti asal fail, atau profil tempat ia digandakan). Log masuk semula yang satu lagi dengan Personal Login Token baharu.",
             "importOauthAppKept": "{names} datang dengan apl OAuth tersuai yang berbeza daripada yang ada pada peranti ini untuk penyedia itu. Apl yang disimpan dikekalkan, jadi log masuk semula jika profil ini tidak lagi bersambung.",
             "importTargetChanged": "{names} tidak ditimpa: fail itu mengarahkannya ke pelayan lain, dan kata laluan serta token yang disimpan tidak boleh dihantar ke sana. Import dengan Gandakan untuk menambah salinan daripada fail, atau padam profil dahulu.",
-            "importSharedSecretsFailed": "{names} telah diimport, tetapi rahsia kongsi atau sesi daripada fail tidak dapat disimpan. Log masuk semula ke profil ini jika tidak dapat disambungkan."
+            "importSharedSecretsFailed": "{names} telah diimport, tetapi rahsia kongsi atau sesi daripada fail tidak dapat disimpan. Log masuk semula ke profil ini jika tidak dapat disambungkan.",
+            "keystoreDatabasesFailed": "Import selesai, tetapi pangkalan data ini tidak dapat dipulihkan dan kekal dengan kandungan asalnya: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1588,7 +1590,9 @@
             "aerocloudEnabled": "AeroCloud didayakan",
             "selectPairLocalFolder": "Pilih folder setempat untuk pasangan",
             "secondsAgo": "{count}s lalu",
-            "conflictsCount": "{count} konflik memerlukan perhatian"
+            "conflictsCount": "{count} konflik memerlukan perhatian",
+            "updateOnlyHint": "Kemas Kini Sehala mengekalkan fail destinasi yang lebih baharu. Apabila sandaran aditif dimatikan, hanya fail yang tidak berubah, ada di destinasi sahaja dan mempunyai resit pemindahan AeroCloud yang disahkan akan dipadam. Fail lain kekal untuk semakan dalam AeroSync. Dasar konflik diabaikan; tarikh yang tidak diketahui kekal belum diselesaikan.",
+            "untrackedDestinationFiles": "{count} fail destinasi dikekalkan untuk semakan: sejarah pemindahannya belum disahkan atau fail telah berubah selepas pemindahan AeroCloud terakhir. Semak fail tersebut dalam AeroSync sebelum memutuskan untuk memadamnya."
         },
         "statusBar": {
             "connected": "Disambung",
@@ -2469,7 +2473,9 @@
             "flattenScanning": "Mengimbas subpokok...",
             "flattenTruncated": "dipotong",
             "flattenTruncatedHint": "Mencapai had 5,000 entri; perhalusi penapis anda atau masuk ke subfolder.",
-            "local_placeholder_flatten": "Tapis fail tempatan... (* untuk rekursif)"
+            "local_placeholder_flatten": "Tapis fail tempatan... (* untuk rekursif)",
+            "flattenNameClash": "{names}: dipilih dalam lebih daripada satu folder. Jika diletakkan di satu tempat, fail-fail itu akan menggantikan satu sama lain; bertindak pada satu bagi setiap nama pada satu masa.",
+            "flattenNameClashTitle": "Nama sama dalam lebih daripada satu folder"
         },
         "versions": {
             "title": "Versi Fail",
@@ -4853,7 +4859,8 @@
             "relocateSuccessMove": "\"{name}\" dialih ke {user}",
             "relocateAlreadyPresent": "\"{name}\" sudah disimpan dalam {user}",
             "relocateError": "Pelayan tidak dapat dipindahkan: {error}",
-            "relocateWrongPassword": "Kata laluan salah untuk {user}."
+            "relocateWrongPassword": "Kata laluan salah untuk {user}.",
+            "relocateSecretsNotCopied": "\"{name}\" telah sampai ke {user}, tetapi kata laluan atau token yang disimpan tidak sampai, jadi ia akan memintanya semula di sana."
         },
         "cyberTools": {
             "title": "Alatan Keselamatan",
@@ -6341,7 +6348,10 @@
             "progressCopy": "[salinan]",
             "deleteCount": "Untuk dipadam: {count}",
             "overwriteCount": "Untuk ditulis ganti: {count}",
-            "conflictCount": "{count} konflik"
+            "conflictCount": "{count} konflik",
+            "updateOnly": "Langkau fail destinasi yang lebih baharu (Kemas Kini Sehala)",
+            "updateOnlyHint": "Menyalin fail sumber yang belum ada atau telah berubah, mengekalkan fail destinasi yang lebih baharu dan memadam entri yang hanya ada di destinasi. Fail tanpa tarikh yang boleh dibandingkan dibandingkan mengikut saiz; perbezaan saiz dibiarkan untuk semakan.",
+            "rescanNeeded": "Jalankan perbandingan baharu dengan tetapan semasa sebelum mengeksport skrip kemas kini."
         },
         "accountLock": {
             "title": "Pilih akaun",
@@ -6585,7 +6595,8 @@
             "keyslotsSetAsideRevocation": "Penanda sebelumnya masih membuka peti besi dengan faktor yang anda alih keluar atau gantikan. Setiap salinan yang tertinggal dalam folder peti besi dipadam selepas perubahan, dan salinan yang tidak dapat dipadam dilaporkan sebagai ralat. Salinan dalam tong sampah atau versi fail storan tidak dicapai: mengosongkan kedua-duanya membuang salinan tersebut, tetapi bukan salinan yang disimpan orang lain, jadi ia tidak melengkapkan pembatalan.",
             "keyslotsSetAsideConsent": "Saya faham: gantikan penanda pada pelayan ini dengan mengetepikan yang lama melalui penamaan semula",
             "keyslotsSetAsideConsentRequired": "Pelayan ini hanya boleh menggantikan penanda peti besi dengan mengetepikan yang lama melalui penamaan semula: sahkan dalam kotak di atas untuk meneruskan.",
-            "keyslotsMarkerReplaceUnsupported": "Pelayan ini tidak dapat menggantikan penanda peti besi, jadi perubahan slot ditolak di sini. Buka storan yang sama melalui pelayan yang menggantikan fail dalam satu langkah (contohnya SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Pelayan ini tidak dapat menggantikan penanda peti besi, jadi perubahan slot ditolak di sini. Buka storan yang sama melalui pelayan yang menggantikan fail dalam satu langkah (contohnya SFTP).",
+            "overlayMetadataNotSaved": "Migrasi berjaya, tetapi kit pemulihan luar talian belum disimpan dalam cache. Ia akan disimpan pada pembukaan kunci seterusnya."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Penyulitan)",

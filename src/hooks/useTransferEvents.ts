@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useLayoutEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { guardedUnlisten } from './useTauriListener';
 import { TransferEvent, TransferProgress } from '../types';
@@ -97,7 +97,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
   // The event listener subscribes once ([] deps) and always reads fresh values via ref.
   // This eliminates the micro-gap where events could be lost during re-subscription.
   const optRef = useRef(options);
-  optRef.current = options;
+  useLayoutEffect(() => { optRef.current = options; });
   const remoteRefreshAfterUpload = useRef(createDeferredRefresh(
     () => { optRef.current.loadRemoteFiles(); },
     () => optRef.current.remoteRefreshStartedAt?.() ?? 0,

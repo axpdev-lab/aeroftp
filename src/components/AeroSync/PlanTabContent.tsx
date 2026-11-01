@@ -52,7 +52,7 @@ import {
     sameExcludePatterns,
     narrowsComparison,
 } from '../../utils/aeroSyncExcludes';
-import { buildCliSyncCommand, type CliNoEquivalentReason } from '../../utils/aeroSyncCliCommand';
+import { buildCliSyncCommand, cliPreservesUpdateDestinations, type CliNoEquivalentReason } from '../../utils/aeroSyncCliCommand';
 import { SavedPresetPicker, useSavedSyncProfiles } from './SavedPresetPicker';
 import type { SyncProfile } from '../../types';
 import { buildAeroSyncTabStatePatch, parseSyncExcludePatterns } from '../../utils/syncTemplateApply';
@@ -233,6 +233,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
         }
     }, [savedProfiles.loading, savedProfiles.error, savedProfiles.profiles, selectedSavedProfileId, setSelectedSavedProfileId]);
     const [preset, setPreset] = useStickyState<SyncPreset>('plan.preset', 'backup');
+    const [updateOnly, setUpdateOnly] = useStickyState('plan.updateOnly', false);
     const [direction, setDirection] = useStickyState<PresetDirection>('plan.direction', 'left-to-right');
     const [conflictPolicy, setConflictPolicy] = useStickyState<ConflictPolicy>('plan.conflictPolicy', 'skip');
     const [versionedBackup, setVersionedBackup] = useStickyState<VersionedBackupConfig>('plan.versionedBackup', {
@@ -294,7 +295,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
 
     React.useEffect(() => {
         setConfirmedDestructive(false);
-    }, [preset, direction, conflictPolicy, versionedBackup.enabled, versionedBackup.backupDir, selectedSavedProfileId]);
+    }, [preset, direction, conflictPolicy, updateOnly, versionedBackup.enabled, versionedBackup.backupDir, selectedSavedProfileId]);
 
     // GAP-9a: any move away from Maniac re-arms the confirmation gate, so a
     // later return to Maniac always re-prompts.
@@ -327,9 +328,11 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
         const patch = buildAeroSyncTabStatePatch({
             localPath: '', remotePath: '', direction: profile.direction,
             deleteOrphans: profile.delete_orphans, excludePatterns: profile.exclude_patterns,
+            updateOnly: profile.update_only === true,
             verifyPolicy: profile.verify_policy,
         }, (pairKind ?? null) as AeroSyncPairKind | null, versionedBackup);
         setPreset(patch['plan.preset'] as SyncPreset);
+        setUpdateOnly(patch['plan.updateOnly'] === true);
         setDirection(patch['plan.direction'] as PresetDirection);
         setExcludeText(patch['sync.exclude'] as string);
         setVerifyPolicy(patch['plan.verifyPolicy'] as AeroSyncVerifyPolicy);
@@ -365,7 +368,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
         );
     }
 
-    const plan = derivePresetPlan(result, { preset, direction, conflictPolicy, versionedBackup });
+    const plan = derivePresetPlan(result, { preset, direction, conflictPolicy, versionedBackup, updateOnly });
     const bisyncMode = preset === 'bisync';
     const userExcludes = parseSyncExcludePatterns(excludeText);
     // The compare has to have applied the patterns the field shows before the
@@ -398,8 +401,9 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
         && (bisyncMode || (direction === 'left-to-right') === localIsLeft);
     const writtenAncestor = backupCheck?.status === 'valid'
         ? backupCheck.ancestors.find((folder) => plan.bucketPlans.some((bp) =>
-            bp.action !== 'skip' && bp.action !== 'conflict-skip'
-            && bp.entries.some((entry) => {
+            bp.entries.some((entry, index) => {
+                const action = bp.entryActions[index];
+                if (action === 'skip' || action === 'conflict-skip') return false;
                 const path = entry.relativePath ?? entry.name;
                 return path === folder || path.startsWith(`${folder}/`);
             })))
@@ -426,6 +430,10 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
         pairKind: (pairKind ?? null) as AeroSyncPairKind | null,
         preset,
         direction,
+        updateOnly: preset === 'mirror' && updateOnly,
+        modifyWindowMs: result.appliedOptions.mtimeToleranceMs,
+        timestampsComparable: result.appliedOptions.policy !== 'size-only',
+        updateTimestampPrecisionSafe: cliPreservesUpdateDestinations(result, direction),
         profileName: cli?.profileName,
         profileInitialPath: cli?.profileInitialPath,
         localPath: cli?.localPath ?? '',
@@ -522,6 +530,16 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                     )}
                 </div>
             </div>
+
+            {preset === 'mirror' && (
+                <div className="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
+                    <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={updateOnly} onChange={event => setUpdateOnly(event.target.checked)} />
+                        {t('aerosync.updateOnly')}
+                    </label>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{t('aerosync.updateOnlyHint')}</p>
+                </div>
+            )}
 
             <div className="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
                 <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">

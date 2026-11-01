@@ -598,7 +598,8 @@
             "setAsPublic": "Instellen als openbaar",
             "makeAllPrivate": "Alles privé maken",
             "dropboxRestoreLimit": "AeroFTP kan herstelbare bestandsversies terugzetten. Zet mappen terug via Verwijderde bestanden op dropbox.com. Een vraagteken betekent dat Dropbox het itemtype niet heeft herkend.",
-            "openWithDefaultApp": "Openen met standaardapp"
+            "openWithDefaultApp": "Openen met standaardapp",
+            "extractHereUncheckedConfirm": "De namen in {name} kunnen niet worden gelezen vóór het uitpakken, dus AeroFTP kan niet controleren wat “Hier uitpakken” in deze map zou overschrijven. “Uitpakken naar map” overschrijft nooit iets."
         },
         "transfer": {
             "transferring": "Overdragen...",
@@ -1370,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud vernieuwt zijn aanmelding bij elke verbinding en {names} deelt er nu een met een andere kopie: de kopie die het eerst verbindt, meldt de andere af (het apparaat waar het bestand vandaan komt, of het profiel waarvan het is gedupliceerd). Meld de andere opnieuw aan met een nieuw Personal Login Token.",
             "importOauthAppKept": "{names} kwamen mee met een andere aangepaste OAuth-app dan die dit apparaat voor die provider heeft. De opgeslagen app is behouden, dus log opnieuw in als deze profielen niet meer verbinden.",
             "importTargetChanged": "{names} zijn niet overschreven: het bestand laat ze naar een andere server wijzen, en hun opgeslagen wachtwoorden en tokens mogen daar niet naartoe. Importeer met Dupliceren om de kopie uit het bestand toe te voegen, of verwijder eerst het profiel.",
-            "importSharedSecretsFailed": "{names} zijn geïmporteerd, maar een gedeeld geheim of een sessie uit het bestand kon niet worden opgeslagen. Meld u opnieuw aan bij deze profielen als ze geen verbinding maken."
+            "importSharedSecretsFailed": "{names} zijn geïmporteerd, maar een gedeeld geheim of een sessie uit het bestand kon niet worden opgeslagen. Meld u opnieuw aan bij deze profielen als ze geen verbinding maken.",
+            "keystoreDatabasesFailed": "De import is voltooid, maar deze databases konden niet worden hersteld en behouden hun inhoud: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1588,7 +1590,9 @@
             "aerocloudEnabled": "AeroCloud ingeschakeld",
             "selectPairLocalFolder": "Lokale map voor paar selecteren",
             "secondsAgo": "{count}s geleden",
-            "conflictsCount": "Conflicten die aandacht vereisen: {count}"
+            "conflictsCount": "Conflicten die aandacht vereisen: {count}",
+            "updateOnlyHint": "Eenrichtingsupdate behoudt nieuwere doelbestanden. Als additieve back-up uitstaat, worden alleen ongewijzigde bestanden verwijderd die uitsluitend op de bestemming bestaan en een geverifieerd AeroCloud-overdrachtsbewijs hebben. Andere bestanden blijven ter beoordeling in AeroSync staan. Het conflictbeleid wordt genegeerd; onbekende datums blijven onopgelost.",
+            "untrackedDestinationFiles": "{count} doelbestanden zijn bewaard voor beoordeling: hun overdrachtsgeschiedenis is niet geverifieerd of ze zijn gewijzigd sinds de laatste AeroCloud-overdracht. Bekijk ze in AeroSync voordat je besluit over verwijdering."
         },
         "statusBar": {
             "connected": "Verbonden",
@@ -2469,7 +2473,9 @@
             "flattenScanning": "Subboom scannen...",
             "flattenTruncated": "afgekapt",
             "flattenTruncatedHint": "Limiet van 5.000 vermeldingen bereikt; verfijn uw filter of ga naar een submap.",
-            "local_placeholder_flatten": "Lokale bestanden filteren... (* voor recursief)"
+            "local_placeholder_flatten": "Lokale bestanden filteren... (* voor recursief)",
+            "flattenNameClash": "{names}: geselecteerd in meer dan één map. Op één plek geplaatst zouden ze elkaar vervangen; werk met één van elk per keer.",
+            "flattenNameClashTitle": "Dezelfde naam in meer dan één map"
         },
         "versions": {
             "title": "Bestandsversies",
@@ -4853,7 +4859,8 @@
             "relocateSuccessMove": "\"{name}\" verplaatst naar {user}",
             "relocateAlreadyPresent": "\"{name}\" is al opgeslagen in {user}",
             "relocateError": "Kan de server niet overdragen: {error}",
-            "relocateWrongPassword": "Onjuist wachtwoord voor {user}."
+            "relocateWrongPassword": "Onjuist wachtwoord voor {user}.",
+            "relocateSecretsNotCopied": "\"{name}\" is bij {user} aangekomen, maar het opgeslagen wachtwoord of token niet, dus er wordt daar opnieuw naar gevraagd."
         },
         "cyberTools": {
             "title": "Beveiligingstools",
@@ -6341,7 +6348,10 @@
             "progressCopy": "[kopie]",
             "deleteCount": "{count} te verwijderen",
             "overwriteCount": "{count} te overschrijven",
-            "conflictCount": "Conflicten: {count}"
+            "conflictCount": "Conflicten: {count}",
+            "updateOnly": "Nieuwere doelbestanden overslaan (eenrichtingsupdate)",
+            "updateOnlyHint": "Kopieert ontbrekende of gewijzigde bronbestanden, behoudt nieuwere bestemmingsbestanden en verwijdert items die alleen op de bestemming aanwezig zijn. Bestanden zonder vergelijkbare datums worden op grootte vergeleken; grootteverschillen blijven ter controle staan.",
+            "rescanNeeded": "Voer een nieuwe vergelijking uit met de huidige instellingen voordat je een updatescript exporteert."
         },
         "accountLock": {
             "title": "Kies een account",
@@ -6585,7 +6595,8 @@
             "keyslotsSetAsideRevocation": "De vorige markering opent de kluis nog steeds met de factor die je verwijdert of vervangt. Elke kopie die in de kluismap achterblijft, wordt na de wijziging verwijderd, en een kopie die niet kan worden verwijderd, wordt als fout gemeld. Een kopie in de prullenbak of de bestandsversies van de opslag wordt niet bereikt: als je die leegt, verdwijnen die kopieën, maar niet een kopie die iemand anders heeft bewaard, dus de intrekking is daarmee niet voltooid.",
             "keyslotsSetAsideConsent": "Ik begrijp het: vervang de markering op deze server door de oude opzij te hernoemen",
             "keyslotsSetAsideConsentRequired": "Deze server kan de markering van de kluis alleen vervangen door de oude opzij te hernoemen: bevestig dit in het vakje hierboven om door te gaan.",
-            "keyslotsMarkerReplaceUnsupported": "Deze server kan de markering van de kluis niet vervangen, dus slotwijzigingen worden hier geweigerd. Open dezelfde opslag via een server die een bestand in één stap vervangt (bijvoorbeeld SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Deze server kan de markering van de kluis niet vervangen, dus slotwijzigingen worden hier geweigerd. Open dezelfde opslag via een server die een bestand in één stap vervangt (bijvoorbeeld SFTP).",
+            "overlayMetadataNotSaved": "De migratie is gelukt, maar de offline herstelkit staat nog niet in de cache. Dat gebeurt bij de volgende ontgrendeling."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Versleuteling)",

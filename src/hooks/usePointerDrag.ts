@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useLayoutEffect } from 'react';
 
 /**
  * Pointer-based drag handler with guaranteed cleanup on unmount.
@@ -22,7 +22,7 @@ export interface PointerDragHandlers {
 
 export function usePointerDrag(handlers: PointerDragHandlers) {
     const handlersRef = useRef(handlers);
-    handlersRef.current = handlers;
+    useLayoutEffect(() => { handlersRef.current = handlers; });
 
     // Tracks the active capture so unmount during drag can release it.
     const captureRef = useRef<{ element: HTMLElement; pointerId: number } | null>(null);

@@ -598,7 +598,8 @@
             "setAsPublic": "Postavi kao javno",
             "makeAllPrivate": "Postavi sve kao privatno",
             "dropboxRestoreLimit": "AeroFTP može vratiti verzije datoteka koje je moguće oporaviti. Mape vratite iz odjeljka Izbrisane datoteke na dropbox.com. Upitnik znači da Dropbox nije prepoznao vrstu stavke.",
-            "openWithDefaultApp": "Otvori zadanom aplikacijom"
+            "openWithDefaultApp": "Otvori zadanom aplikacijom",
+            "extractHereUncheckedConfirm": "Imena unutar {name} ne mogu se pročitati prije izdvajanja, pa AeroFTP ne može provjeriti što bi „Izdvoji ovdje” prepisalo u ovoj mapi. „Izdvoji u mapu” nikada ništa ne prepisuje."
         },
         "transfer": {
             "transferring": "Prijenos...",
@@ -1370,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud obnavlja prijavu pri svakom povezivanju, a {names} sada dijeli jednu s drugom kopijom: kopija koja se prva poveže odjavljuje drugu (uređaj s kojeg datoteka dolazi ili profil iz kojeg je dupliciran). Ponovno prijavite drugu novim Personal Login Tokenom.",
             "importOauthAppKept": "{names} stigli su s drugom prilagođenom OAuth aplikacijom od one koju ovaj uređaj ima za tog pružatelja. Spremljena aplikacija je zadržana, pa se ponovno prijavite ako se ti profili prestanu povezivati.",
             "importTargetChanged": "{names} nisu prepisani: datoteka ih usmjerava na drugi poslužitelj, a njihove spremljene lozinke i tokeni ne smiju ići tamo. Uvezite s Dupliciraj da dodate kopiju iz datoteke ili prvo izbrišite profil.",
-            "importSharedSecretsFailed": "{names} su uvezeni, ali zajednička tajna ili sesija iz datoteke nije mogla biti spremljena. Ponovno se prijavite u te profile ako se ne povežu."
+            "importSharedSecretsFailed": "{names} su uvezeni, ali zajednička tajna ili sesija iz datoteke nije mogla biti spremljena. Ponovno se prijavite u te profile ako se ne povežu.",
+            "keystoreDatabasesFailed": "Uvoz je završen, ali ove baze podataka nije bilo moguće vratiti i zadržavaju svoj sadržaj: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1588,7 +1590,9 @@
             "aerocloudEnabled": "AeroCloud omogućen",
             "selectPairLocalFolder": "Odaberite lokalnu mapu za par",
             "secondsAgo": "{count}s prije",
-            "conflictsCount": "Sukobi koji traže pozornost: {count}"
+            "conflictsCount": "Sukobi koji traže pozornost: {count}",
+            "updateOnlyHint": "Jednosmjerno ažuriranje zadržava novije odredišne datoteke. Kada je aditivna sigurnosna kopija isključena, brišu se samo neizmijenjene datoteke koje postoje samo na odredištu i imaju provjerenu potvrdu prijenosa putem AeroCloud. Ostale datoteke ostaju za pregled u AeroSync. Pravilo sukoba se zanemaruje; nepoznati datumi ostaju neriješeni.",
+            "untrackedDestinationFiles": "{count} odredišnih datoteka zadržano je za pregled: njihova povijest prijenosa nije potvrđena ili su promijenjene nakon posljednjeg prijenosa putem AeroCloud. Pregledajte ih u AeroSync prije odluke o brisanju."
         },
         "statusBar": {
             "connected": "Povezano",
@@ -2469,7 +2473,9 @@
             "flattenScanning": "Skeniranje podstabla...",
             "flattenTruncated": "skraćeno",
             "flattenTruncatedHint": "Dosegnut limit od 5.000 unosa; precizirajte filtar ili uđite u podmapu.",
-            "local_placeholder_flatten": "Filtriraj lokalne datoteke... (* za rekurzivno)"
+            "local_placeholder_flatten": "Filtriraj lokalne datoteke... (* za rekurzivno)",
+            "flattenNameClash": "{names}: odabrano u više mapa. Stavljene na isto mjesto, zamijenile bi jedna drugu; radite s jednom od svake odjednom.",
+            "flattenNameClashTitle": "Isti naziv u više mapa"
         },
         "versions": {
             "title": "Verzije datoteke",
@@ -4853,7 +4859,8 @@
             "relocateSuccessMove": "„{name}“ premješten na {user}",
             "relocateAlreadyPresent": "„{name}“ je već spremljen u {user}",
             "relocateError": "Poslužitelj nije moguće prenijeti: {error}",
-            "relocateWrongPassword": "Pogrešna lozinka za {user}."
+            "relocateWrongPassword": "Pogrešna lozinka za {user}.",
+            "relocateSecretsNotCopied": "„{name}“ je stigao do {user}, ali spremljena lozinka ili token nisu, pa će ih ondje ponovno zatražiti."
         },
         "cyberTools": {
             "title": "Sigurnosni alati",
@@ -6341,7 +6348,10 @@
             "progressCopy": "[kopija]",
             "deleteCount": "Za brisanje: {count}",
             "overwriteCount": "Za prepisivanje: {count}",
-            "conflictCount": "Sukobi: {count}"
+            "conflictCount": "Sukobi: {count}",
+            "updateOnly": "Preskoči novije datoteke na odredištu (jednosmjerno ažuriranje)",
+            "updateOnlyHint": "Kopira nedostajuće ili izmijenjene izvorne datoteke, zadržava novije odredišne datoteke i briše stavke koje postoje samo na odredištu. Datoteke bez usporedivih datuma uspoređuju se prema veličini; razlike u veličini ostavljaju se za pregled.",
+            "rescanNeeded": "Pokrenite novu usporedbu s trenutačnim postavkama prije izvoza skripte za ažuriranje."
         },
         "accountLock": {
             "title": "Odaberite račun",
@@ -6585,7 +6595,8 @@
             "keyslotsSetAsideRevocation": "Prethodni marker i dalje otvara trezor faktorom koji uklanjate ili zamjenjujete. Svaka kopija ostavljena u mapi trezora briše se nakon promjene, a kopija koja se ne može izbrisati prijavljuje se kao pogreška. Kopija u smeću pohrane ili u verzijama datoteka ne dohvaća se: pražnjenje uklanja te kopije, ali ne i onu koju je zadržao netko drugi, pa ne dovršava opoziv.",
             "keyslotsSetAsideConsent": "Razumijem: zamijeni marker na ovom poslužitelju preimenovanjem starog sa strane",
             "keyslotsSetAsideConsentRequired": "Ovaj poslužitelj može zamijeniti marker trezora samo preimenovanjem starog sa strane: potvrdite u gornjem okviru za nastavak.",
-            "keyslotsMarkerReplaceUnsupported": "Ovaj poslužitelj ne može zamijeniti marker trezora pa se promjene utora ovdje odbijaju. Otvorite istu pohranu preko poslužitelja koji zamjenjuje datoteku u jednom koraku (primjerice SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Ovaj poslužitelj ne može zamijeniti marker trezora pa se promjene utora ovdje odbijaju. Otvorite istu pohranu preko poslužitelja koji zamjenjuje datoteku u jednom koraku (primjerice SFTP).",
+            "overlayMetadataNotSaved": "Migracija je uspjela, ali komplet za oporavak izvan mreže još nije spremljen u predmemoriju. To će se dogoditi pri sljedećem otključavanju."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifriranje)",
