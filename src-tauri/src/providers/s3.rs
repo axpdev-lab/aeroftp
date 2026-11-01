@@ -2344,6 +2344,7 @@ impl S3Provider {
     /// all, so a directory that exists only as a marker would vanish, and a walk
     /// that stops at it under a depth limit would name a directory the flat
     /// listing cannot.
+    #[cfg(test)]
     fn parse_list_response(
         &self,
         xml_str: &str,
