@@ -548,7 +548,7 @@ fn path_violates_root(path: &str, boundary: Option<&str>) -> bool {
         return false;
     }
     let path_trimmed = path.trim_end_matches('/');
-    !path_trimmed.starts_with(root_trimmed) && path_trimmed != root_trimmed
+    path_trimmed != root_trimmed && !path_trimmed.starts_with(&format!("{root_trimmed}/"))
 }
 
 /// WebDAV Storage Provider
@@ -4331,6 +4331,13 @@ impl StorageProvider for WebDavProvider {
             .server_root
             .as_deref()
             .or(self.config.initial_path.as_deref());
+        // `/` is the top of this connection, as `list` reads it. A server whose
+        // files live under a root (Nextcloud) would refuse it as above that root.
+        let root = boundary
+            .filter(|root| !root.is_empty())
+            .unwrap_or("/")
+            .to_string();
+        let path = if path == "/" { root.as_str() } else { path };
         if path_violates_root(path, boundary) {
             return Err(ProviderError::InvalidPath(format!(
                 "Cannot navigate above WebDAV root: {}",
@@ -7520,6 +7527,11 @@ mod tests {
         // Completely off-tree
         assert!(path_violates_root("/", root));
         assert!(path_violates_root("/etc/passwd", root));
+        // A name that only starts like the root is another folder.
+        assert!(path_violates_root(
+            "/remote.php/dav/files/testuser2/Docs",
+            root
+        ));
     }
 
     #[tokio::test]
@@ -9458,6 +9470,22 @@ mod collection_redirect_tests {
         assert_eq!(provider.current_path, "/dir");
         assert_eq!(seen(&stub), vec!["PROPFIND /dir/"]);
         assert_eq!(stub.downgraded_hits.load(Ordering::SeqCst), 0);
+    }
+
+    /// #1457: `/` is the top of the connection. On a server whose files live
+    /// under a root, `cd("/")` was refused as above that root, so the root
+    /// button and a typed `/` failed with an error.
+    #[tokio::test]
+    async fn cd_to_the_slash_goes_to_the_server_root() {
+        let stub = spawn_downgrading_server(collection_answer).await;
+        let mut provider = provider(&stub.base);
+        provider.server_root = Some("/remote.php/dav/files/u/".to_string());
+        provider.current_path = "/remote.php/dav/files/u/Docs".to_string();
+
+        provider.cd("/").await.expect("the root of the connection");
+
+        assert_eq!(provider.current_path, "/remote.php/dav/files/u/");
+        assert_eq!(seen(&stub), vec!["PROPFIND /remote.php/dav/files/u/"]);
     }
 
     /// The quota PROPFIND asks about the current directory, a collection.
