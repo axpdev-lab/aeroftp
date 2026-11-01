@@ -179,11 +179,14 @@ describe('no ref is written during render', () => {
         expect(Object.keys(SOURCES)).toContain('/src/App.tsx');
     });
 
+    // Parsing every source file takes up to a few seconds alone, and under
+    // the load of a full run it went past vitest's default 5 s.
     it('writes no ref during render', () => {
         const writes = Object.entries(SOURCES).flatMap(([file, source]) => renderTimeRefWrites(file, source));
         expect(writes).toEqual([]);
-    });
+    }, 30_000);
 
+    // Parses App and the files listed above: the same budget.
     it('writes each latest-value ref in a layout effect', () => {
         const missing = Object.entries(LATEST_VALUE_REFS).flatMap(([file, refs]) => {
             expect(SOURCES[file], file).toBeDefined();
@@ -191,7 +194,7 @@ describe('no ref is written during render', () => {
             return refs.filter(ref => !synced.has(ref)).map(ref => `${file} ${ref}`);
         });
         expect(missing).toEqual([]);
-    });
+    }, 30_000);
 
     it('finds a write during render, and leaves callbacks, effects and lazy initialisation alone', () => {
         const source = [
