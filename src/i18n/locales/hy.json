@@ -1740,7 +1740,9 @@
             "transferComplete": "Պատճենվեց {count} ֆայլ",
             "permissionsSessionChanged": "Կապը փոխվել է այս երկխոսության բացվելուց հետո, ուստի ոչինչ չի փոխվել։ Նորից բացեք Թույլտվությունները ընթացիկ կապի վրա։",
             "createFailed": "Ստեղծումը ձախողվեց",
-            "unknownServer": "Անհայտ"
+            "unknownServer": "Անհայտ",
+            "scpModeTitle": "Միացված է SCP-ով",
+            "scpModeBody": "{host}-ը SFTP չունի, ուստի AeroFTP-ն օգտագործում է SCP նույն կապով։"
         },
         "about": {
             "tagline": "Ավելին քան FTP: Ամբողջական գործիքակազմ մշակողների համար:",
@@ -2341,7 +2343,13 @@
             "imagekitDesc": "Մեդիա CDN + պահեստ (20 GB անվճար)",
             "uploadcareDesc": "ԵՄ մեդիա CDN (3 GB անվճար)",
             "cloudinaryDesc": "Մեդիա CDN (ամսական 25 կրեդիտ անվճար)",
-            "backblazeDesc": "Backblaze B2 բնիկ API v4"
+            "backblazeDesc": "Backblaze B2 բնիկ API v4",
+            "scpDesc": "Ֆայլերի պատճենում SSH-ով",
+            "scpTooltip": "SCP SSH-ով, SFTP չունեցող սերվերների համար։",
+            "scpOnlyNote": "Օգտագործեք SCP միայն SFTP չունեցող սերվերների համար, օրինակ՝ OpenWrt երթուղիչների։",
+            "allowScpFallback": "Թույլատրել SCP-ի պահուստային տարբերակը",
+            "allowScpFallbackHint": "Եթե սերվերը SFTP չունի, կապը շարունակվում է SCP-ով, ինչպես անում է WinSCP-ն։",
+            "discoverScp": "Ֆայլերի պատճենում SSH-ով SFTP չունեցող սերվերների համար"
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",
@@ -4310,7 +4318,8 @@
                 "koofr-proprietary": "Koofr-ի սեփական հեշը։ Այն համեմատվում է միայն Koofr-ի մեկ այլ հեշի հետ։",
                 "github-blob-sha": "git blob-ի SHA-1-ը, որը հաշվարկվում է git վերնագրի և բովանդակության հիման վրա, ուստի այն չի համընկնում նույն ֆայլի սովորական SHA-1-ի հետ։",
                 "immich-asset-checksum": "Այն մեդիաֆայլի ստուգիչ գումարը, որը Immich-ը գրանցում է վերբեռնման պահին։",
-                "crypt-overlay-ciphertext": "Հեշը վերաբերում է սերվերում պահվող գաղտնագրված բայթերին։"
+                "crypt-overlay-ciphertext": "Հեշը վերաբերում է սերվերում պահվող գաղտնագրված բայթերին։",
+                "scp-shell-digests": "Հաշվում է հեռավոր հանգույցը sha256sum-ով կամ md5sum-ով SSH ալիքի վրայով. բայթերը կարդացվում են սերվերում և երբեք չեն ուղարկվում ձեզ։ Յուրաքանչյուր ամփոփում առաջարկվում է միայն այն դեպքում, երբ հանգույցն ունի համապատասխան գործիքը։"
             },
             "readOnlyIsLinkTarget": "Սա խորհրդանշական հղում է. թույլտվությունները պատկանում են այն ֆայլին, որին այն ցույց է տալիս։ Դրանք փոխելու համար բացեք այդ ֆայլի հատկությունները։",
             "exactBytes": "({bytes} բայթ)"
@@ -5329,7 +5338,7 @@
             "runAgain": "Գործարկել կրկին",
             "copyResult": "Պատճենել արդյունքը",
             "copied": "Պատճենված է",
-            "unsupportedProvider": "Speed Test-ը այս թողարկումում հասանելի է FTP, FTPS, SFTP, S3 և WebDAV-ի համար։",
+            "unsupportedProvider": "Speed Test-ը այս թողարկումում հասանելի է FTP, FTPS, SFTP, SCP, S3 և WebDAV-ի համար։",
             "noSupportedServers": "Ոչ մի պահպանված սերվեր դեռ չի աջակցում Speed Test-ին",
             "errorReadOnly": "Սերվերը չի թույլատրում գրառում",
             "errorNotSupported": "Speed Test-ը հասանելի չէ այս տեսակի մատակարարի համար",
@@ -5767,7 +5776,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Ընկերություն"
+                "parentCompany": "Ընկերություն",
+                "customScp": "SCP"
             },
             "healthCheck": "Հասանելիության ստուգում",
             "storageVersioning": "Ֆայլի տարբերակներ՝ {size}",

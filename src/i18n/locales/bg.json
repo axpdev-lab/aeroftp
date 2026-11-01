@@ -1747,7 +1747,9 @@
             "transferComplete": "{count} копирани файла",
             "permissionsSessionChanged": "Връзката се е променила, откакто този диалог беше отворен, затова нищо не беше променено. Отворете отново Права на текущата връзка.",
             "createFailed": "Създаването е неуспешно",
-            "unknownServer": "неизвестен сървър"
+            "unknownServer": "неизвестен сървър",
+            "scpModeTitle": "Свързано чрез SCP",
+            "scpModeBody": "{host} няма SFTP, затова AeroFTP използва SCP по същата връзка."
         },
         "about": {
             "tagline": "Повече от FTP. Пълен набор инструменти за разработчици.",
@@ -2348,7 +2350,13 @@
             "imagekitDesc": "Медиен CDN + хранилище (20 GB безплатно)",
             "uploadcareDesc": "Медиен CDN в ЕС (3 GB безплатно)",
             "cloudinaryDesc": "Медиен CDN (25 кредита/месец безплатно)",
-            "backblazeDesc": "Собствен API на Backblaze B2 v4"
+            "backblazeDesc": "Собствен API на Backblaze B2 v4",
+            "scpDesc": "Копиране на файлове през SSH",
+            "scpTooltip": "SCP през SSH, за сървъри без SFTP.",
+            "scpOnlyNote": "Използвайте SCP само за сървъри без SFTP, например рутери с OpenWrt.",
+            "allowScpFallback": "Разрешаване на резервен преход към SCP",
+            "allowScpFallbackHint": "Ако сървърът няма SFTP, продължава през SCP по същата връзка, както прави WinSCP.",
+            "discoverScp": "Копиране на файлове през SSH за сървъри без SFTP"
         },
         "shortcuts": {
             "title": "Клавишни комбинации",
@@ -4317,7 +4325,8 @@
                 "koofr-proprietary": "Собственият хеш на Koofr. Сравнява се само с друг хеш на Koofr.",
                 "github-blob-sha": "SHA-1 на git блоба, изчислена върху git заглавка плюс съдържанието, затова не съвпада с обикновена SHA-1 на същия файл.",
                 "immich-asset-checksum": "Контролната сума на ресурса, която Immich записва при качването.",
-                "crypt-overlay-ciphertext": "Контролната сума покрива шифрованите байтове, съхранени на сървъра."
+                "crypt-overlay-ciphertext": "Контролната сума покрива шифрованите байтове, съхранени на сървъра.",
+                "scp-shell-digests": "Изчислена от отдалечения хост със sha256sum или md5sum през SSH канал: байтовете се четат на сървъра и никога не се изпращат към вас. Всяка контролна сума се предлага само когато хостът разполага със съответния инструмент."
             },
             "readOnlyIsLinkTarget": "Това е символна връзка: правата принадлежат на файла, към който сочи. Отворете свойствата на този файл, за да ги промените.",
             "exactBytes": "({bytes} байта)"
@@ -5329,7 +5338,7 @@
             "runAgain": "Стартирай отново",
             "copyResult": "Копирай резултата",
             "copied": "Копирано",
-            "unsupportedProvider": "Speed Test е достъпен за FTP, FTPS, SFTP, S3 и WebDAV в тази версия.",
+            "unsupportedProvider": "Speed Test е достъпен за FTP, FTPS, SFTP, SCP, S3 и WebDAV в тази версия.",
             "noSupportedServers": "Все още няма запазени сървъри, които поддържат Speed Test",
             "errorReadOnly": "Сървърът не позволява запис",
             "errorNotSupported": "Speed Test не е достъпен за този тип доставчик",
@@ -5767,7 +5776,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Компания"
+                "parentCompany": "Компания",
+                "customScp": "SCP"
             },
             "healthCheck": "Проверка на достъпност",
             "storageVersioning": "Версии на файлове: {size}",

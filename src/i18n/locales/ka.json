@@ -1747,7 +1747,9 @@
             "transferComplete": "დაკოპირდა {count} ფაილი",
             "permissionsSessionChanged": "კავშირი შეიცვალა ამ დიალოგის გახსნის შემდეგ, ამიტომ არაფერი შეცვლილა. გახსენით უფლებები ხელახლა მიმდინარე კავშირზე.",
             "createFailed": "შექმნა ვერ მოხერხდა",
-            "unknownServer": "უცნობი"
+            "unknownServer": "უცნობი",
+            "scpModeTitle": "დაკავშირებულია SCP-ით",
+            "scpModeBody": "{host}-ს SFTP არ აქვს, ამიტომ AeroFTP იყენებს SCP-ს იმავე კავშირზე."
         },
         "about": {
             "tagline": "მეტი ვიდრე FTP. სრული დეველოპერის ინსტრუმენტარიუმი.",
@@ -2348,7 +2350,13 @@
             "imagekitDesc": "მედია CDN + საცავი (20 GB უფასოდ)",
             "uploadcareDesc": "ევროკავშირის მედია CDN (3 GB უფასოდ)",
             "cloudinaryDesc": "მედია CDN (თვეში 25 კრედიტი უფასოდ)",
-            "backblazeDesc": "Backblaze B2-ის მშობლიური API v4"
+            "backblazeDesc": "Backblaze B2-ის მშობლიური API v4",
+            "scpDesc": "ფაილების კოპირება SSH-ით",
+            "scpTooltip": "SCP SSH-ით, სერვერებისთვის, რომლებსაც SFTP არ აქვთ.",
+            "scpOnlyNote": "გამოიყენეთ SCP მხოლოდ SFTP-ის გარეშე სერვერებისთვის, მაგალითად OpenWrt როუტერებისთვის.",
+            "allowScpFallback": "SCP-ზე სარეზერვო გადასვლის დაშვება",
+            "allowScpFallbackHint": "თუ სერვერს SFTP არ აქვს, კავშირი SCP-ით გრძელდება, როგორც ამას WinSCP აკეთებს.",
+            "discoverScp": "ფაილების კოპირება SSH-ით SFTP-ის გარეშე სერვერებისთვის"
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",
@@ -4317,7 +4325,8 @@
                 "koofr-proprietary": "Koofr-ის საკუთარი ჰეში. ის მხოლოდ Koofr-ის სხვა ჰეშს ედრება.",
                 "github-blob-sha": "git blob-ის SHA-1, გამოთვლილი git-ის თავსართსა და შიგთავსზე, ამიტომ იგივე ფაილის ჩვეულებრივ SHA-1-ს არ ემთხვევა.",
                 "immich-asset-checksum": "მედიაფაილის საკონტროლო ჯამი, რომელსაც Immich ატვირთვისას იწერს.",
-                "crypt-overlay-ciphertext": "ჰეში სერვერზე შენახულ დაშიფრულ ბაიტებს ეხება."
+                "crypt-overlay-ciphertext": "ჰეში სერვერზე შენახულ დაშიფრულ ბაიტებს ეხება.",
+                "scp-shell-digests": "გამოთვლის დაშორებული ჰოსტი sha256sum-ით ან md5sum-ით SSH არხზე: ბაიტები სერვერზე იკითხება და თქვენთან არასდროს იგზავნება. თითოეული ჰეში ნაჩვენებია მხოლოდ მაშინ, თუ ჰოსტს შესაბამისი ხელსაწყო აქვს."
             },
             "readOnlyIsLinkTarget": "ეს არის სიმბოლური ბმული: ნებართვები ეკუთვნის ფაილს, რომელზეც ის მიუთითებს. მათ შესაცვლელად გახსენით იმ ფაილის თვისებები.",
             "exactBytes": "({bytes} ბაიტი)"
@@ -5329,7 +5338,7 @@
             "runAgain": "ხელახლა გაშვება",
             "copyResult": "შედეგის დაკოპირება",
             "copied": "დაკოპირდა",
-            "unsupportedProvider": "Speed Test ამ გამოშვებაში ხელმისაწვდომია FTP, FTPS, SFTP, S3 და WebDAV-ისთვის.",
+            "unsupportedProvider": "Speed Test ამ გამოშვებაში ხელმისაწვდომია FTP, FTPS, SFTP, SCP, S3 და WebDAV-ისთვის.",
             "noSupportedServers": "არცერთ შენახულ სერვერს ჯერ არ აქვს Speed Test-ის მხარდაჭერა",
             "errorReadOnly": "სერვერი არ უშვებს ჩაწერას",
             "errorNotSupported": "Speed Test ამ ტიპის მომწოდებლისთვის ხელმისაწვდომი არ არის",
@@ -5767,7 +5776,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "კომპანია"
+                "parentCompany": "კომპანია",
+                "customScp": "SCP"
             },
             "healthCheck": "ხელმისაწვდომობის შემოწმება",
             "storageVersioning": "ფაილის ვერსიები: {size}",

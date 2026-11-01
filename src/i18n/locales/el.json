@@ -1747,7 +1747,9 @@
             "transferComplete": "Αντιγράφηκαν {count} αρχεία",
             "permissionsSessionChanged": "Η σύνδεση άλλαξε από τότε που άνοιξε αυτό το παράθυρο διαλόγου, οπότε δεν άλλαξε τίποτα. Ανοίξτε ξανά τα Δικαιώματα στην τρέχουσα σύνδεση.",
             "createFailed": "Η δημιουργία απέτυχε",
-            "unknownServer": "Άγνωστο"
+            "unknownServer": "Άγνωστο",
+            "scpModeTitle": "Συνδέθηκε με SCP",
+            "scpModeBody": "Ο {host} δεν έχει SFTP, οπότε το AeroFTP χρησιμοποιεί SCP στην ίδια σύνδεση."
         },
         "about": {
             "tagline": "Περισσότερο από FTP. Πλήρης εργαλειοθήκη προγραμματιστή.",
@@ -2348,7 +2350,13 @@
             "imagekitDesc": "CDN πολυμέσων + αποθήκευση (20 GB δωρεάν)",
             "uploadcareDesc": "CDN πολυμέσων ΕΕ (3 GB δωρεάν)",
             "cloudinaryDesc": "CDN πολυμέσων (25 μονάδες/μήνα δωρεάν)",
-            "backblazeDesc": "Εγγενές API Backblaze B2 v4"
+            "backblazeDesc": "Εγγενές API Backblaze B2 v4",
+            "scpDesc": "Αντιγραφή αρχείων μέσω SSH",
+            "scpTooltip": "SCP μέσω SSH, για διακομιστές χωρίς SFTP.",
+            "scpOnlyNote": "Χρησιμοποιήστε SCP μόνο για διακομιστές χωρίς SFTP, για παράδειγμα δρομολογητές OpenWrt.",
+            "allowScpFallback": "Να επιτρέπεται η εναλλακτική χρήση SCP",
+            "allowScpFallbackHint": "Αν ο διακομιστής δεν έχει SFTP, η σύνδεση συνεχίζει μέσω SCP, όπως κάνει το WinSCP.",
+            "discoverScp": "Αντιγραφή αρχείων μέσω SSH για διακομιστές χωρίς SFTP"
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",
@@ -4317,7 +4325,8 @@
                 "koofr-proprietary": "Το ιδιόκτητο hash του Koofr. Συγκρίνεται μόνο με άλλο hash του Koofr.",
                 "github-blob-sha": "Το SHA-1 του git blob, υπολογισμένο επί μιας κεφαλίδας git μαζί με το περιεχόμενο, γι' αυτό δεν ταιριάζει με ένα απλό SHA-1 του ίδιου αρχείου.",
                 "immich-asset-checksum": "Το άθροισμα ελέγχου του στοιχείου που καταγράφει το Immich κατά τη μεταφόρτωση.",
-                "crypt-overlay-ciphertext": "Το hash καλύπτει τα κρυπτογραφημένα byte που είναι αποθηκευμένα στον διακομιστή."
+                "crypt-overlay-ciphertext": "Το hash καλύπτει τα κρυπτογραφημένα byte που είναι αποθηκευμένα στον διακομιστή.",
+                "scp-shell-digests": "Υπολογίζεται από τον απομακρυσμένο υπολογιστή με sha256sum ή md5sum μέσω καναλιού SSH: τα byte διαβάζονται στον διακομιστή και δεν σας αποστέλλονται ποτέ. Κάθε σύνοψη προσφέρεται μόνο όταν ο υπολογιστής διαθέτει το αντίστοιχο εργαλείο."
             },
             "readOnlyIsLinkTarget": "Αυτός είναι συμβολικός σύνδεσμος: τα δικαιώματα ανήκουν στο αρχείο στο οποίο δείχνει. Ανοίξτε τις ιδιότητες εκείνου του αρχείου για να τα αλλάξετε.",
             "exactBytes": "({bytes} byte)"
@@ -5329,7 +5338,7 @@
             "runAgain": "Εκτέλεση ξανά",
             "copyResult": "Αντιγραφή αποτελέσματος",
             "copied": "Αντιγράφηκε",
-            "unsupportedProvider": "Σε αυτήν την έκδοση το Speed Test είναι διαθέσιμο για FTP, FTPS, SFTP, S3 και WebDAV.",
+            "unsupportedProvider": "Σε αυτήν την έκδοση το Speed Test είναι διαθέσιμο για FTP, FTPS, SFTP, SCP, S3 και WebDAV.",
             "noSupportedServers": "Κανένας αποθηκευμένος διακομιστής δεν υποστηρίζει ακόμη το Speed Test",
             "errorReadOnly": "Ο διακομιστής δεν επιτρέπει εγγραφές",
             "errorNotSupported": "Το Speed Test δεν είναι διαθέσιμο για αυτόν τον τύπο παρόχου",
@@ -5767,7 +5776,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Εταιρεία"
+                "parentCompany": "Εταιρεία",
+                "customScp": "SCP"
             },
             "healthCheck": "Έλεγχος διαθεσιμότητας",
             "storageVersioning": "Εκδόσεις αρχείου: {size}",

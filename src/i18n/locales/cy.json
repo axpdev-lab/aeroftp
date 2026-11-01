@@ -1747,7 +1747,9 @@
             "transferComplete": "Copïwyd {count} ffeil",
             "permissionsSessionChanged": "Mae'r cysylltiad wedi newid ers agor y deialog hwn, felly ni newidiwyd dim. Agorwch Caniatadau eto ar y cysylltiad cyfredol.",
             "createFailed": "Methodd y creu",
-            "unknownServer": "Anhysbys"
+            "unknownServer": "Anhysbys",
+            "scpModeTitle": "Wedi cysylltu gydag SCP",
+            "scpModeBody": "Does gan {host} ddim SFTP, felly mae AeroFTP yn defnyddio SCP ar yr un cysylltiad."
         },
         "about": {
             "tagline": "Mwy na FTP. Pecyn datblygu cyflawn.",
@@ -2348,7 +2350,13 @@
             "imagekitDesc": "CDN cyfryngau + storfa (20 GB am ddim)",
             "uploadcareDesc": "CDN cyfryngau'r UE (3 GB am ddim)",
             "cloudinaryDesc": "CDN cyfryngau (25 credyd y mis am ddim)",
-            "backblazeDesc": "API brodorol Backblaze B2 v4"
+            "backblazeDesc": "API brodorol Backblaze B2 v4",
+            "scpDesc": "Copïo ffeiliau dros SSH",
+            "scpTooltip": "SCP dros SSH, ar gyfer gweinyddion heb SFTP.",
+            "scpOnlyNote": "Defnyddiwch SCP dim ond ar gyfer gweinyddion heb SFTP, er enghraifft llwybryddion OpenWrt.",
+            "allowScpFallback": "Caniatáu SCP wrth gefn",
+            "allowScpFallbackHint": "Os nad oes gan y gweinydd SFTP, parhau dros SCP ar yr un cysylltiad, fel y mae WinSCP yn ei wneud.",
+            "discoverScp": "Copïo ffeiliau dros SSH ar gyfer gweinyddion heb SFTP"
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",
@@ -4317,7 +4325,8 @@
                 "koofr-proprietary": "Hash Koofr ei hun. Dim ond â hash Koofr arall y mae'n cymharu.",
                 "github-blob-sha": "SHA-1 blob git, wedi'i gyfrifo ar sail pennawd git ynghyd â'r cynnwys, felly nid yw'n cyfateb i SHA-1 syml yr un ffeil.",
                 "immich-asset-checksum": "Y swm gwirio ar gyfer yr eitem y mae Immich yn ei gofnodi adeg ei lwytho.",
-                "crypt-overlay-ciphertext": "Mae'r crynodeb yn cwmpasu'r beitiau wedi'u hamgryptio sydd wedi'u cadw ar y gweinydd."
+                "crypt-overlay-ciphertext": "Mae'r crynodeb yn cwmpasu'r beitiau wedi'u hamgryptio sydd wedi'u cadw ar y gweinydd.",
+                "scp-shell-digests": "Caiff ei gyfrifo gan y gwesteiwr pell â sha256sum neu md5sum dros sianel SSH: darllenir y beitiau ar y gweinydd, ac ni chânt byth eu hanfon atoch. Cynigir pob crynodeb dim ond pan fydd gan y gwesteiwr yr offeryn cyfatebol."
             },
             "readOnlyIsLinkTarget": "Dolen symbolaidd yw hon: mae'r caniatadau'n perthyn i'r ffeil y mae'n pwyntio ati. Agorwch briodweddau'r ffeil honno i'w newid.",
             "exactBytes": "({bytes} beit)"
@@ -5348,7 +5357,7 @@
             "runAgain": "Rhedeg eto",
             "copyResult": "Copïo canlyniad",
             "copied": "Wedi'i gopïo",
-            "unsupportedProvider": "Mae Speed Test ar gael ar gyfer FTP, FTPS, SFTP, S3 a WebDAV yn y rhyddhad hwn.",
+            "unsupportedProvider": "Mae Speed Test ar gael ar gyfer FTP, FTPS, SFTP, SCP, S3 a WebDAV yn y rhyddhad hwn.",
             "noSupportedServers": "Nid oes unrhyw weinyddion wedi'u cadw yn cefnogi Speed Test eto",
             "errorReadOnly": "Nid yw'r gweinydd yn caniatáu ysgrifennu",
             "errorNotSupported": "Nid yw Speed Test ar gael ar gyfer y math hwn o ddarparwr",
@@ -5786,7 +5795,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Cwmni"
+                "parentCompany": "Cwmni",
+                "customScp": "SCP"
             },
             "healthCheck": "Gwiriad iechyd",
             "storageVersioning": "Fersiynau ffeil: {size}",

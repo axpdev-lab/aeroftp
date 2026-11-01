@@ -1747,7 +1747,9 @@
             "transferComplete": "Nukopijuota failų: {count}",
             "permissionsSessionChanged": "Ryšys pasikeitė nuo šio dialogo atidarymo, todėl niekas nebuvo pakeista. Atidarykite Teises dar kartą dabartiniame ryšyje.",
             "createFailed": "Sukurti nepavyko",
-            "unknownServer": "nežinomo serverio"
+            "unknownServer": "nežinomo serverio",
+            "scpModeTitle": "Prisijungta per SCP",
+            "scpModeBody": "{host} neturi SFTP, todėl AeroFTP naudoja SCP tuo pačiu ryšiu."
         },
         "about": {
             "tagline": "Daugiau nei FTP. Pilnas kūrėjų įrankių rinkinys.",
@@ -2348,7 +2350,13 @@
             "imagekitDesc": "Medijos CDN + saugykla (20 GB nemokamai)",
             "uploadcareDesc": "ES medijos CDN (3 GB nemokamai)",
             "cloudinaryDesc": "Medijos CDN (25 kreditai/mėn. nemokamai)",
-            "backblazeDesc": "Backblaze B2 vietinė API v4"
+            "backblazeDesc": "Backblaze B2 vietinė API v4",
+            "scpDesc": "Failų kopijavimas per SSH",
+            "scpTooltip": "SCP per SSH, serveriams be SFTP.",
+            "scpOnlyNote": "SCP naudokite tik serveriams be SFTP, pavyzdžiui, OpenWrt maršrutizatoriams.",
+            "allowScpFallback": "Leisti atsarginį SCP",
+            "allowScpFallbackHint": "Jei serveris neturi SFTP, ryšys tęsiamas per SCP, kaip tai daro WinSCP.",
+            "discoverScp": "Failų kopijavimas per SSH serveriams be SFTP"
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",
@@ -4317,7 +4325,8 @@
                 "koofr-proprietary": "Nuosava Koofr maiša. Ji lyginama tik su kita Koofr maiša.",
                 "github-blob-sha": "git blobo SHA-1, apskaičiuota nuo git antraštės ir turinio, todėl ji nesutampa su paprasta to paties failo SHA-1.",
                 "immich-asset-checksum": "Elemento kontrolinė suma, kurią Immich užfiksuoja įkėlimo metu.",
-                "crypt-overlay-ciphertext": "Maiša apima serveryje saugomus užšifruotus baitus."
+                "crypt-overlay-ciphertext": "Maiša apima serveryje saugomus užšifruotus baitus.",
+                "scp-shell-digests": "Apskaičiuoja nuotolinis kompiuteris komanda sha256sum arba md5sum per SSH kanalą: baitai skaitomi serveryje ir niekada jums nesiunčiami. Kiekviena kontrolinė suma pateikiama tik tada, kai kompiuteryje yra atitinkama priemonė."
             },
             "readOnlyIsLinkTarget": "Tai simbolinė nuoroda: leidimai priklauso failui, į kurį ji rodo. Norėdami juos pakeisti, atverkite to failo savybes.",
             "exactBytes": "(baitų: {bytes})"
@@ -5329,7 +5338,7 @@
             "runAgain": "Paleisti dar kartą",
             "copyResult": "Kopijuoti rezultatą",
             "copied": "Nukopijuota",
-            "unsupportedProvider": "Šioje versijoje Speed Test galimas FTP, FTPS, SFTP, S3 ir WebDAV.",
+            "unsupportedProvider": "Šioje versijoje Speed Test galimas FTP, FTPS, SFTP, SCP, S3 ir WebDAV.",
             "noSupportedServers": "Joks išsaugotas serveris dar nepalaiko Speed Test",
             "errorReadOnly": "Serveris neleidžia rašyti",
             "errorNotSupported": "Speed Test šio tipo tiekėjui negalimas",
@@ -5767,7 +5776,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Įmonė"
+                "parentCompany": "Įmonė",
+                "customScp": "SCP"
             },
             "healthCheck": "Pasiekiamumo tikrinimas",
             "storageVersioning": "Failų versijos: {size}",

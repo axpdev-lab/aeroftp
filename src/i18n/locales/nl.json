@@ -1747,7 +1747,9 @@
             "transferComplete": "{count} bestand(en) gekopieerd",
             "permissionsSessionChanged": "De verbinding is gewijzigd sinds dit dialoogvenster werd geopend, dus er is niets gewijzigd. Open Rechten opnieuw op de huidige verbinding.",
             "createFailed": "Aanmaken mislukt",
-            "unknownServer": "Onbekend"
+            "unknownServer": "Onbekend",
+            "scpModeTitle": "Verbonden met SCP",
+            "scpModeBody": "{host} heeft geen SFTP, dus AeroFTP gebruikt SCP op dezelfde verbinding."
         },
         "about": {
             "tagline": "Meer dan FTP. Een complete ontwikkelaarstoolkit.",
@@ -2348,7 +2350,13 @@
             "imagekitDesc": "Media-CDN + opslag (20 GB gratis)",
             "uploadcareDesc": "EU-media-CDN (3 GB gratis)",
             "cloudinaryDesc": "Media-CDN (25 tegoedpunten/maand gratis)",
-            "backblazeDesc": "Native Backblaze B2-API v4"
+            "backblazeDesc": "Native Backblaze B2-API v4",
+            "scpDesc": "Bestanden kopiëren via SSH",
+            "scpTooltip": "SCP via SSH, voor servers zonder SFTP.",
+            "scpOnlyNote": "Gebruik SCP alleen voor servers zonder SFTP, bijvoorbeeld OpenWrt-routers.",
+            "allowScpFallback": "SCP als terugvaloptie toestaan",
+            "allowScpFallbackHint": "Als de server geen SFTP heeft, gaat de verbinding verder via SCP, zoals WinSCP doet.",
+            "discoverScp": "Bestanden kopiëren via SSH voor servers zonder SFTP"
         },
         "shortcuts": {
             "title": "Sneltoetsen",
@@ -4317,7 +4325,8 @@
                 "koofr-proprietary": "Koofrs eigen hash. Hij is alleen te vergelijken met een andere Koofr-hash.",
                 "github-blob-sha": "De SHA-1 van de git-blob, berekend over een git-header plus de inhoud, en dus niet gelijk aan een gewone SHA-1 van hetzelfde bestand.",
                 "immich-asset-checksum": "De controlesom van het item die Immich bij het uploaden vastlegt.",
-                "crypt-overlay-ciphertext": "De hash dekt de versleutelde bytes die op de server staan."
+                "crypt-overlay-ciphertext": "De hash dekt de versleutelde bytes die op de server staan.",
+                "scp-shell-digests": "Berekend door de externe host met sha256sum of md5sum via een SSH-kanaal: de bytes worden op de server gelezen en nooit naar u gestuurd. Elke controlesom wordt alleen aangeboden als de host het bijbehorende hulpprogramma heeft."
             },
             "readOnlyIsLinkTarget": "Dit is een symbolische koppeling: de rechten horen bij het bestand waarnaar deze verwijst. Open de eigenschappen van dat bestand om ze te wijzigen.",
             "exactBytes": "({bytes} bytes)"
@@ -5329,7 +5338,7 @@
             "runAgain": "Opnieuw uitvoeren",
             "copyResult": "Resultaat kopiëren",
             "copied": "Gekopieerd",
-            "unsupportedProvider": "Speed Test is in deze release beschikbaar voor FTP, FTPS, SFTP, S3 en WebDAV.",
+            "unsupportedProvider": "Speed Test is in deze release beschikbaar voor FTP, FTPS, SFTP, SCP, S3 en WebDAV.",
             "noSupportedServers": "Geen opgeslagen servers ondersteunen Speed Test nog",
             "errorReadOnly": "Server staat geen schrijfbewerkingen toe",
             "errorNotSupported": "Speed Test is niet beschikbaar voor dit providertype",
@@ -5767,7 +5776,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Bedrijf"
+                "parentCompany": "Bedrijf",
+                "customScp": "SCP"
             },
             "healthCheck": "Beschikbaarheidscontrole",
             "storageVersioning": "Bestandsversies: {size}",

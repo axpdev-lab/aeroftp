@@ -1747,7 +1747,9 @@
             "transferComplete": "{count} tiedostoa kopioitu",
             "permissionsSessionChanged": "Yhteys on muuttunut tämän valintaikkunan avaamisen jälkeen, joten mitään ei muutettu. Avaa Oikeudet uudelleen nykyisellä yhteydellä.",
             "createFailed": "Luonti epäonnistui",
-            "unknownServer": "Tuntematon"
+            "unknownServer": "Tuntematon",
+            "scpModeTitle": "Yhdistetty SCP:llä",
+            "scpModeBody": "Palvelimella {host} ei ole SFTP:tä, joten AeroFTP käyttää SCP:tä samassa yhteydessä."
         },
         "about": {
             "tagline": "Enemmän kuin FTP. Täydellinen kehittäjän työkalupakki.",
@@ -2348,7 +2350,13 @@
             "imagekitDesc": "Media-CDN + tallennustila (20 Gt ilmaiseksi)",
             "uploadcareDesc": "EU:n media-CDN (3 Gt ilmaiseksi)",
             "cloudinaryDesc": "Media-CDN (25 krediittiä/kk ilmaiseksi)",
-            "backblazeDesc": "Backblaze B2:n natiivi API v4"
+            "backblazeDesc": "Backblaze B2:n natiivi API v4",
+            "scpDesc": "Tiedostojen kopiointi SSH:n kautta",
+            "scpTooltip": "SCP SSH:n kautta palvelimille, joissa ei ole SFTP:tä.",
+            "scpOnlyNote": "Käytä SCP:tä vain palvelimille, joissa ei ole SFTP:tä, esimerkiksi OpenWrt-reitittimille.",
+            "allowScpFallback": "Salli SCP-varatoiminto",
+            "allowScpFallbackHint": "Jos palvelimella ei ole SFTP:tä, jatketaan SCP:llä samassa yhteydessä, kuten WinSCP tekee.",
+            "discoverScp": "Tiedostojen kopiointi SSH:n kautta palvelimille, joissa ei ole SFTP:tä"
         },
         "shortcuts": {
             "title": "Pikanäppäimet",
@@ -4317,7 +4325,8 @@
                 "koofr-proprietary": "Koofrin oma tiiviste. Sitä voi verrata vain toiseen Koofr-tiivisteeseen.",
                 "github-blob-sha": "git-blobin SHA-1, joka lasketaan git-otsakkeesta ja sisällöstä, joten se ei täsmää saman tiedoston tavallisen SHA-1:n kanssa.",
                 "immich-asset-checksum": "Kohteen tarkistussumma, jonka Immich kirjaa lähetyshetkellä.",
-                "crypt-overlay-ciphertext": "Tiiviste kattaa palvelimelle tallennetut salatut tavut."
+                "crypt-overlay-ciphertext": "Tiiviste kattaa palvelimelle tallennetut salatut tavut.",
+                "scp-shell-digests": "Etäkone laskee sen sha256sum- tai md5sum-komennolla SSH-kanavan yli: tavut luetaan palvelimella eikä niitä koskaan lähetetä sinulle. Kukin tiiviste tarjotaan vain, jos koneessa on vastaava komento."
             },
             "readOnlyIsLinkTarget": "Tämä on symbolinen linkki: käyttöoikeudet kuuluvat tiedostolle, johon se osoittaa. Muuta niitä avaamalla kyseisen tiedoston ominaisuudet.",
             "exactBytes": "({bytes} tavua)"
@@ -5329,7 +5338,7 @@
             "runAgain": "Suorita uudelleen",
             "copyResult": "Kopioi tulos",
             "copied": "Kopioitu",
-            "unsupportedProvider": "Speed Test on tässä versiossa saatavilla FTP-, FTPS-, SFTP-, S3- ja WebDAV-yhteyksille.",
+            "unsupportedProvider": "Speed Test on tässä versiossa saatavilla FTP-, FTPS-, SFTP-, SCP-, S3- ja WebDAV-yhteyksille.",
             "noSupportedServers": "Yksikään tallennettu palvelin ei vielä tue Speed Testiä",
             "errorReadOnly": "Palvelin ei salli kirjoitusta",
             "errorNotSupported": "Speed Test ei ole saatavilla tälle palveluntarjoajatyypille",
@@ -5767,7 +5776,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Emoyhtiö"
+                "parentCompany": "Emoyhtiö",
+                "customScp": "SCP"
             },
             "healthCheck": "Saatavuuden tarkistus",
             "storageVersioning": "Tiedostoversiot: {size}",

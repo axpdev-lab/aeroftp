@@ -1747,7 +1747,9 @@
             "transferComplete": "{count}টি ফাইল কপি করা হয়েছে",
             "permissionsSessionChanged": "এই ডায়ালগ খোলার পর সংযোগ পরিবর্তিত হয়েছে, তাই কিছুই পরিবর্তন করা হয়নি। বর্তমান সংযোগে আবার অনুমতি খুলুন।",
             "createFailed": "তৈরি করা ব্যর্থ হয়েছে",
-            "unknownServer": "অজানা"
+            "unknownServer": "অজানা",
+            "scpModeTitle": "SCP দিয়ে সংযুক্ত",
+            "scpModeBody": "{host}-এ SFTP নেই, তাই AeroFTP একই সংযোগে SCP ব্যবহার করছে।"
         },
         "about": {
             "tagline": "FTP এর চেয়েও বেশি। একটি সম্পূর্ণ ডেভেলপার টুলকিট।",
@@ -2348,7 +2350,13 @@
             "imagekitDesc": "মিডিয়া CDN + স্টোরেজ (20 GB বিনামূল্যে)",
             "uploadcareDesc": "ইইউ মিডিয়া CDN (3 GB বিনামূল্যে)",
             "cloudinaryDesc": "মিডিয়া CDN (মাসে 25 ক্রেডিট বিনামূল্যে)",
-            "backblazeDesc": "Backblaze B2 নেটিভ API v4"
+            "backblazeDesc": "Backblaze B2 নেটিভ API v4",
+            "scpDesc": "SSH-এর মাধ্যমে ফাইল কপি",
+            "scpTooltip": "SSH-এর মাধ্যমে SCP, যেসব সার্ভারে SFTP নেই সেগুলোর জন্য।",
+            "scpOnlyNote": "শুধুমাত্র SFTP ছাড়া সার্ভারের জন্য SCP ব্যবহার করুন, যেমন OpenWrt রাউটার।",
+            "allowScpFallback": "SCP ফলব্যাকের অনুমতি দিন",
+            "allowScpFallbackHint": "সার্ভারে SFTP না থাকলে, WinSCP-এর মতো একই সংযোগে SCP দিয়ে চালিয়ে যান।",
+            "discoverScp": "SFTP ছাড়া সার্ভারের জন্য SSH-এর মাধ্যমে ফাইল কপি"
         },
         "shortcuts": {
             "title": "কীবোর্ড শর্টকাট",
@@ -4317,7 +4325,8 @@
                 "koofr-proprietary": "Koofr-এর নিজস্ব হ্যাশ। এটি কেবল আরেকটি Koofr হ্যাশের সঙ্গেই তুলনীয়।",
                 "github-blob-sha": "git blob-এর SHA-1, যা একটি git হেডার ও বিষয়বস্তুর উপর হিসাব করা হয়, তাই এটি একই ফাইলের সাধারণ SHA-1-এর সঙ্গে মেলে না।",
                 "immich-asset-checksum": "Immich আপলোডের সময় যে অ্যাসেট চেকসাম নথিভুক্ত করে।",
-                "crypt-overlay-ciphertext": "ডাইজেস্টটি সার্ভারে সংরক্ষিত এনক্রিপ্ট করা বাইটের উপর গণনা করা হয়।"
+                "crypt-overlay-ciphertext": "ডাইজেস্টটি সার্ভারে সংরক্ষিত এনক্রিপ্ট করা বাইটের উপর গণনা করা হয়।",
+                "scp-shell-digests": "দূরবর্তী হোস্ট SSH চ্যানেলের উপর sha256sum বা md5sum দিয়ে এটি হিসাব করে: বাইটগুলি সার্ভারেই পড়া হয়, কখনও আপনার কাছে পাঠানো হয় না। প্রতিটি ডাইজেস্ট কেবল তখনই দেওয়া হয় যখন হোস্টে সংশ্লিষ্ট টুল থাকে।"
             },
             "readOnlyIsLinkTarget": "এটি একটি সিম্বলিক লিঙ্ক: অনুমতিগুলি সেই ফাইলের, যেটির দিকে এটি নির্দেশ করে। সেগুলি পরিবর্তন করতে ওই ফাইলের বৈশিষ্ট্য খুলুন।",
             "exactBytes": "({bytes} বাইট)"
@@ -5329,7 +5338,7 @@
             "runAgain": "আবার চালান",
             "copyResult": "ফলাফল কপি করুন",
             "copied": "কপি হয়েছে",
-            "unsupportedProvider": "এই রিলিজে Speed Test FTP, FTPS, SFTP, S3 এবং WebDAV-এর জন্য উপলব্ধ।",
+            "unsupportedProvider": "এই রিলিজে Speed Test FTP, FTPS, SFTP, SCP, S3 এবং WebDAV-এর জন্য উপলব্ধ।",
             "noSupportedServers": "এখনো কোনো সংরক্ষিত সার্ভার Speed Test সমর্থন করে না",
             "errorReadOnly": "সার্ভার লেখার অনুমতি দেয় না",
             "errorNotSupported": "এই প্রদানকারীর প্রকারের জন্য Speed Test উপলব্ধ নয়",
@@ -5767,7 +5776,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "কোম্পানি"
+                "parentCompany": "কোম্পানি",
+                "customScp": "SCP"
             },
             "healthCheck": "হেলথ চেক",
             "storageVersioning": "ফাইল সংস্করণ: {size}",

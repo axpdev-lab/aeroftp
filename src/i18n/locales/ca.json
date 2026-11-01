@@ -1747,7 +1747,9 @@
             "transferComplete": "{count} fitxers copiats",
             "permissionsSessionChanged": "La connexió ha canviat des que es va obrir aquest diàleg, així que no s'ha canviat res. Torna a obrir Permisos a la connexió actual.",
             "createFailed": "Ha fallat la creació",
-            "unknownServer": "Desconegut"
+            "unknownServer": "Desconegut",
+            "scpModeTitle": "Connectat amb SCP",
+            "scpModeBody": "{host} no té SFTP, així que AeroFTP fa servir SCP a la mateixa connexió."
         },
         "about": {
             "tagline": "Més que FTP. Un conjunt complet d'eines per a desenvolupadors.",
@@ -2348,7 +2350,13 @@
             "imagekitDesc": "CDN multimèdia + emmagatzematge (20 GB gratuïts)",
             "uploadcareDesc": "CDN multimèdia de la UE (3 GB gratuïts)",
             "cloudinaryDesc": "CDN multimèdia (25 crèdits/mes gratuïts)",
-            "backblazeDesc": "API nativa de Backblaze B2 v4"
+            "backblazeDesc": "API nativa de Backblaze B2 v4",
+            "scpDesc": "Còpia de fitxers per SSH",
+            "scpTooltip": "SCP sobre SSH, per a servidors sense SFTP.",
+            "scpOnlyNote": "Feu servir SCP només per a servidors sense SFTP, per exemple encaminadors OpenWrt.",
+            "allowScpFallback": "Permet recórrer a SCP",
+            "allowScpFallbackHint": "Si el servidor no té SFTP, continua per SCP a la mateixa connexió, com fa WinSCP.",
+            "discoverScp": "Còpia de fitxers per SSH per a servidors sense SFTP"
         },
         "shortcuts": {
             "title": "Dreceres de Teclat",
@@ -4317,7 +4325,8 @@
                 "koofr-proprietary": "El hash propi de Koofr. Només es compara amb un altre hash de Koofr.",
                 "github-blob-sha": "L'SHA-1 del blob de git, calculat sobre una capçalera git més el contingut, de manera que no coincideix amb un SHA-1 simple del mateix fitxer.",
                 "immich-asset-checksum": "La suma de verificació de l'element que Immich registra en pujar-lo.",
-                "crypt-overlay-ciphertext": "El hash cobreix els bytes xifrats desats al servidor."
+                "crypt-overlay-ciphertext": "El hash cobreix els bytes xifrats desats al servidor.",
+                "scp-shell-digests": "El calcula el host remot amb sha256sum o md5sum a través d'un canal SSH: els bytes es llegeixen al servidor i no se us envien mai. Cada resum només s'ofereix quan el host té l'eina corresponent."
             },
             "readOnlyIsLinkTarget": "Això és un enllaç simbòlic: els permisos pertanyen al fitxer al qual apunta. Obriu les propietats d'aquest fitxer per canviar-los.",
             "exactBytes": "({bytes} bytes)"
@@ -5348,7 +5357,7 @@
             "runAgain": "Executa de nou",
             "copyResult": "Copia resultat",
             "copied": "Copiat",
-            "unsupportedProvider": "En aquesta versió Speed Test està disponible per a FTP, FTPS, SFTP, S3 i WebDAV.",
+            "unsupportedProvider": "En aquesta versió Speed Test està disponible per a FTP, FTPS, SFTP, SCP, S3 i WebDAV.",
             "noSupportedServers": "Encara cap servidor desat suporta Speed Test",
             "errorReadOnly": "El servidor no permet escriptura",
             "errorNotSupported": "Speed Test no està disponible per a aquest tipus de proveïdor",
@@ -5786,7 +5795,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Empresa"
+                "parentCompany": "Empresa",
+                "customScp": "SCP"
             },
             "healthCheck": "Comprovació de disponibilitat",
             "storageVersioning": "Versions del fitxer: {size}",

@@ -1747,7 +1747,9 @@
             "transferComplete": "{count} berkas disalin",
             "permissionsSessionChanged": "Koneksi berubah sejak dialog ini dibuka, jadi tidak ada yang diubah. Buka Izin lagi pada koneksi saat ini.",
             "createFailed": "Gagal membuat",
-            "unknownServer": "Tidak diketahui"
+            "unknownServer": "Tidak diketahui",
+            "scpModeTitle": "Terhubung dengan SCP",
+            "scpModeBody": "{host} tidak memiliki SFTP, jadi AeroFTP menggunakan SCP pada koneksi yang sama."
         },
         "about": {
             "tagline": "Lebih dari FTP. Perangkat lengkap untuk pengembang.",
@@ -2348,7 +2350,13 @@
             "imagekitDesc": "CDN media + penyimpanan (gratis 20 GB)",
             "uploadcareDesc": "CDN media UE (gratis 3 GB)",
             "cloudinaryDesc": "CDN media (gratis 25 kredit/bulan)",
-            "backblazeDesc": "API bawaan Backblaze B2 v4"
+            "backblazeDesc": "API bawaan Backblaze B2 v4",
+            "scpDesc": "Salin file melalui SSH",
+            "scpTooltip": "SCP melalui SSH, untuk server tanpa SFTP.",
+            "scpOnlyNote": "Gunakan SCP hanya untuk server tanpa SFTP, misalnya router OpenWrt.",
+            "allowScpFallback": "Izinkan SCP sebagai cadangan",
+            "allowScpFallbackHint": "Jika server tidak memiliki SFTP, lanjutkan melalui SCP pada koneksi yang sama, seperti yang dilakukan WinSCP.",
+            "discoverScp": "Salin file melalui SSH untuk server tanpa SFTP"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",
@@ -4317,7 +4325,8 @@
                 "koofr-proprietary": "Hash milik Koofr sendiri. Ia hanya bisa dibandingkan dengan hash Koofr lainnya.",
                 "github-blob-sha": "SHA-1 blob git, dihitung atas header git ditambah isinya, sehingga tidak cocok dengan SHA-1 biasa dari berkas yang sama.",
                 "immich-asset-checksum": "Checksum aset yang dicatat Immich pada saat unggah.",
-                "crypt-overlay-ciphertext": "Hash mencakup bita terenkripsi yang tersimpan di server."
+                "crypt-overlay-ciphertext": "Hash mencakup bita terenkripsi yang tersimpan di server.",
+                "scp-shell-digests": "Dihitung oleh host jarak jauh dengan sha256sum atau md5sum melalui kanal SSH: bita dibaca di server dan tidak pernah dikirimkan kepada Anda. Setiap digest hanya ditawarkan jika host memiliki alat yang sesuai."
             },
             "readOnlyIsLinkTarget": "Ini adalah tautan simbolik: izin dimiliki oleh berkas yang ditunjuknya. Buka properti berkas tersebut untuk mengubahnya.",
             "exactBytes": "({bytes} byte)"
@@ -5329,7 +5338,7 @@
             "runAgain": "Jalankan lagi",
             "copyResult": "Salin hasil",
             "copied": "Tersalin",
-            "unsupportedProvider": "Speed Test tersedia untuk FTP, FTPS, SFTP, S3, dan WebDAV pada rilis ini.",
+            "unsupportedProvider": "Speed Test tersedia untuk FTP, FTPS, SFTP, SCP, S3, dan WebDAV pada rilis ini.",
             "noSupportedServers": "Belum ada server tersimpan yang mendukung Speed Test",
             "errorReadOnly": "Server tidak mengizinkan tulis",
             "errorNotSupported": "Speed Test tidak tersedia untuk jenis penyedia ini",
@@ -5767,7 +5776,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Perusahaan"
+                "parentCompany": "Perusahaan",
+                "customScp": "SCP"
             },
             "healthCheck": "Pemeriksaan ketersediaan",
             "storageVersioning": "Versi file: {size}",

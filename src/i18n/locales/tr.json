@@ -1747,7 +1747,9 @@
             "transferComplete": "{count} dosya kopyalandı",
             "permissionsSessionChanged": "Bu iletişim kutusu açıldığından beri bağlantı değişti, bu yüzden hiçbir şey değiştirilmedi. İzinler'i geçerli bağlantıda yeniden açın.",
             "createFailed": "Oluşturma başarısız",
-            "unknownServer": "Bilinmeyen"
+            "unknownServer": "Bilinmeyen",
+            "scpModeTitle": "SCP ile bağlandı",
+            "scpModeBody": "{host} sunucusunda SFTP yok, bu yüzden AeroFTP aynı bağlantıda SCP kullanıyor."
         },
         "about": {
             "tagline": "FTP'den fazlası. Tam bir geliştirici araç seti.",
@@ -2348,7 +2350,13 @@
             "imagekitDesc": "Medya CDN + depolama (20 GB ücretsiz)",
             "uploadcareDesc": "AB medya CDN (3 GB ücretsiz)",
             "cloudinaryDesc": "Medya CDN (aylık 25 kredi ücretsiz)",
-            "backblazeDesc": "Backblaze B2 yerel API v4"
+            "backblazeDesc": "Backblaze B2 yerel API v4",
+            "scpDesc": "SSH üzerinden dosya kopyalama",
+            "scpTooltip": "SSH üzerinden SCP, SFTP'si olmayan sunucular için.",
+            "scpOnlyNote": "SCP'yi yalnızca SFTP'si olmayan sunucular için kullanın, örneğin OpenWrt yönlendiriciler.",
+            "allowScpFallback": "SCP'ye geri dönüşe izin ver",
+            "allowScpFallbackHint": "Sunucuda SFTP yoksa, WinSCP'nin yaptığı gibi aynı bağlantıda SCP ile devam edilir.",
+            "discoverScp": "SFTP'si olmayan sunucular için SSH üzerinden dosya kopyalama"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",
@@ -4317,7 +4325,8 @@
                 "koofr-proprietary": "Koofr'un kendi karması. Yalnızca başka bir Koofr karmasıyla karşılaştırılır.",
                 "github-blob-sha": "git blob SHA-1'i, bir git başlığı ile içeriğin üzerinden hesaplanır, bu yüzden aynı dosyanın düz SHA-1'iyle eşleşmez.",
                 "immich-asset-checksum": "Immich'in yükleme sırasında kaydettiği öğe sağlama toplamı.",
-                "crypt-overlay-ciphertext": "Karma, sunucuda saklanan şifreli baytları kapsar."
+                "crypt-overlay-ciphertext": "Karma, sunucuda saklanan şifreli baytları kapsar.",
+                "scp-shell-digests": "Uzak makine tarafından bir SSH kanalı üzerinden sha256sum veya md5sum ile hesaplanır: baytlar sunucuda okunur, size hiç gönderilmez. Her özet yalnızca makinede ilgili araç varsa sunulur."
             },
             "readOnlyIsLinkTarget": "Bu bir sembolik bağlantıdır: izinler, bağlantının işaret ettiği dosyaya aittir. Bunları değiştirmek için o dosyanın özelliklerini açın.",
             "exactBytes": "({bytes} bayt)"
@@ -5329,7 +5338,7 @@
             "runAgain": "Tekrar çalıştır",
             "copyResult": "Sonucu kopyala",
             "copied": "Kopyalandı",
-            "unsupportedProvider": "Speed Test bu sürümde FTP, FTPS, SFTP, S3 ve WebDAV için kullanılabilir.",
+            "unsupportedProvider": "Speed Test bu sürümde FTP, FTPS, SFTP, SCP, S3 ve WebDAV için kullanılabilir.",
             "noSupportedServers": "Henüz Speed Test'i destekleyen kayıtlı sunucu yok",
             "errorReadOnly": "Sunucu yazmaya izin vermiyor",
             "errorNotSupported": "Speed Test bu sağlayıcı türü için kullanılamaz",
@@ -5767,7 +5776,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Ana şirket"
+                "parentCompany": "Ana şirket",
+                "customScp": "SCP"
             },
             "healthCheck": "Sağlık kontrolü",
             "storageVersioning": "Dosya sürümleri: {size}",

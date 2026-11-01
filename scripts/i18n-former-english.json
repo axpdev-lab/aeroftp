@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "ae72d00df8e9e3c5a3efe1558e040f48ab1fe7c982755b12a6e99344e3149b88",
+    "enHash": "5c2e2467784b615b10140a83330d862f83c6b65a4d5be7251b911093806f2ddc",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -787,6 +787,9 @@
         ],
         "speedTest.compareDisclaimer": [
             "Running this on {count} servers transfers about {total} ({size} per server, upload + download) and uses up to {total} of local temp storage in parallel. Provider request and egress costs may apply."
+        ],
+        "speedTest.unsupportedProvider": [
+            "Speed Test is available for FTP, FTPS, SFTP, S3, and WebDAV in this release."
         ],
         "statusBar.devTools": [
             "DevTools"

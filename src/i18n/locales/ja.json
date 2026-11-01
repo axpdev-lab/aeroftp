@@ -1747,7 +1747,9 @@
             "transferComplete": "{count} 個のファイルをコピーしました",
             "permissionsSessionChanged": "このダイアログを開いてから接続が変更されたため、何も変更されませんでした。現在の接続で「権限」をもう一度開いてください。",
             "createFailed": "作成に失敗しました",
-            "unknownServer": "不明なサーバー"
+            "unknownServer": "不明なサーバー",
+            "scpModeTitle": "SCPで接続しました",
+            "scpModeBody": "{host} にはSFTPがないため、AeroFTPは同じ接続でSCPを使用しています。"
         },
         "about": {
             "tagline": "FTPを超えて。完全な開発者ツールキット。",
@@ -2348,7 +2350,13 @@
             "imagekitDesc": "メディア CDN + ストレージ (20 GB 無料)",
             "uploadcareDesc": "EU のメディア CDN (3 GB 無料)",
             "cloudinaryDesc": "メディア CDN (月 25 クレジット無料)",
-            "backblazeDesc": "Backblaze B2 ネイティブ API v4"
+            "backblazeDesc": "Backblaze B2 ネイティブ API v4",
+            "scpDesc": "SSH経由のファイルコピー",
+            "scpTooltip": "SSH経由のSCP。SFTPのないサーバー向けです。",
+            "scpOnlyNote": "SCPはSFTPのないサーバー（OpenWrtルーターなど）にのみ使用してください。",
+            "allowScpFallback": "SCPへのフォールバックを許可",
+            "allowScpFallbackHint": "サーバーにSFTPがない場合、WinSCPと同様に同じ接続のままSCPで続行します。",
+            "discoverScp": "SFTPのないサーバー向けのSSH経由ファイルコピー"
         },
         "shortcuts": {
             "title": "キーボードショートカット",
@@ -4281,7 +4289,8 @@
                 "koofr-proprietary": "Koofr 独自のハッシュです。別の Koofr ハッシュとしか比較できません。",
                 "github-blob-sha": "git blob の SHA-1 で、git ヘッダーと内容の両方から計算されるため、同じファイルの単純な SHA-1 とは一致しません。",
                 "immich-asset-checksum": "Immich がアップロード時に記録するアセットのチェックサムです。",
-                "crypt-overlay-ciphertext": "ダイジェストはサーバーに保存された暗号化済みのバイト列を対象とします。"
+                "crypt-overlay-ciphertext": "ダイジェストはサーバーに保存された暗号化済みのバイト列を対象とします。",
+                "scp-shell-digests": "リモートホストが SSH チャネル経由で sha256sum または md5sum を使って計算します。バイト列はサーバー上で読み取られ、こちらに送られることはありません。各ダイジェストは、ホストに対応するツールがある場合にのみ提供されます。"
             },
             "readOnlyIsLinkTarget": "これはシンボリックリンクです。アクセス権はリンク先のファイルに属します。変更するには、そのファイルのプロパティを開いてください。",
             "exactBytes": "({bytes} バイト)"
@@ -5329,7 +5338,7 @@
             "runAgain": "再実行",
             "copyResult": "結果をコピー",
             "copied": "コピーしました",
-            "unsupportedProvider": "このリリースでは Speed Test は FTP、FTPS、SFTP、S3、WebDAV で利用できます。",
+            "unsupportedProvider": "このリリースでは Speed Test は FTP、FTPS、SFTP、SCP、S3、WebDAV で利用できます。",
             "noSupportedServers": "Speed Test に対応する保存済みサーバーはまだありません",
             "errorReadOnly": "サーバーは書き込みを許可していません",
             "errorNotSupported": "このプロバイダー種別では Speed Test は利用できません",
@@ -5767,7 +5776,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "親会社"
+                "parentCompany": "親会社",
+                "customScp": "SCP"
             },
             "healthCheck": "ヘルスチェック",
             "storageVersioning": "ファイルのバージョン: {size}",
