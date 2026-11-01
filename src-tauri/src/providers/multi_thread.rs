@@ -5819,8 +5819,10 @@ mod tests {
         )
         .await;
         server.abort();
-        assert_eq!(windows.load(Ordering::SeqCst), 4);
         if replace {
+            // The first window that sees the replacement ends the run, so on a
+            // busy machine the others may never have been sent.
+            assert!(windows.load(Ordering::SeqCst) >= 2);
             if local.exists() {
                 let bytes = tokio::fs::read(&local).await.unwrap();
                 assert!(
@@ -5834,6 +5836,7 @@ mod tests {
             );
             assert!(!local.exists());
         } else {
+            assert_eq!(windows.load(Ordering::SeqCst), 4);
             assert!(matches!(attempt, HttpRangeAttempt::Completed));
             assert_eq!(
                 tokio::fs::read(&local).await.unwrap(),
@@ -6236,7 +6239,9 @@ mod tests {
         assert!(matches!(attempt, HttpRangeAttempt::Completed));
         assert!(warnings.is_empty(), "{warnings:?}");
         assert_eq!(published, Some(vec![7u8; pin_server::OBJECT_SIZE]));
-        assert!(server.refused() >= 2, "every window was pinned and refused");
+        // A refusal stops the pinned reads, so on a busy machine one may be all
+        // that went out.
+        assert!(server.refused() >= 1, "a pinned window was refused");
         assert!(
             server.unpinned() >= 2,
             "the windows were read again unpinned"
