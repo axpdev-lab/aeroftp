@@ -425,7 +425,11 @@ pub(crate) async fn execute_provider_bulk(
         settled[index] = Some(match result {
             Some(Ok(())) => {
                 if !upload {
-                    crate::preserve_remote_mtime(&entry.local_path, entry.modified.as_deref());
+                    let read_time = provider.take_download_time(false);
+                    crate::preserve_remote_mtime(
+                        &entry.local_path,
+                        read_time.as_deref().or(entry.modified.as_deref()),
+                    );
                 }
                 emit_event(sink.as_ref(), entry, upload, "file_complete", None);
                 TransferOutcome::Success

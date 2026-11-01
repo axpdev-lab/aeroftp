@@ -389,13 +389,18 @@ pub async fn run(
 
     let report_id = uuid::Uuid::new_v4().to_string();
     // A relative prefix on Proton Drive lands where the session starts (see
-    // `benchmark_effective_prefix`); without a prefix the roots are relative
-    // and the provider resolves them there already.
+    // `benchmark_effective_prefix`); without a prefix the roots are under the
+    // start path. The folder the session stands in is asked under the stop
+    // signal too: a `pwd` that never answers ends at the cancel or the
+    // timeout, and the scratch folder below reports the stop.
     let prefix = match opts.test_root_prefix.as_deref() {
         Some(prefix) => {
             let kind = provider.provider_type();
             let start = if kind == ProviderType::Proton {
-                provider.pwd().await.unwrap_or_else(|_| "/".to_string())
+                until_stopped(&stop, provider.pwd())
+                    .await
+                    .and_then(Result::ok)
+                    .unwrap_or_else(|| "/".to_string())
             } else {
                 String::new()
             };
@@ -405,7 +410,17 @@ pub async fn run(
     };
     let (bench_base, test_root) = match prefix.as_deref() {
         Some(prefix) => benchmark_remote_roots_from_prefix(prefix, &report_id),
-        None => benchmark_remote_roots(initial_path, &report_id),
+        // A relative start path is the folder the session entered: joined to
+        // it again, `team` put the scratch folder in `team/team`.
+        None => {
+            let entered = until_stopped(
+                &stop,
+                crate::util::start_folder::as_entered(initial_path, &mut *provider),
+            )
+            .await
+            .unwrap_or_else(|| initial_path.to_string());
+            benchmark_remote_roots(&entered, &report_id)
+        }
     };
     // Create the scratch directory tree before any upload. `bench_base` may
     // already exist from a prior run (`AlreadyExists` is fine), but `test_root`
@@ -1135,10 +1150,12 @@ pub(super) fn scratch_dir_error(
     start_folder: &str,
     error: &ProviderError,
 ) -> String {
-    let start = if start_folder.trim().is_empty() {
+    // As given: a start folder `team ` is not `team`. Only an empty one is
+    // the root the session starts in.
+    let start = if start_folder.is_empty() {
         "/"
     } else {
-        start_folder.trim()
+        start_folder
     };
     let place = if test_root.starts_with('/') {
         String::new()

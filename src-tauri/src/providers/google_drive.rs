@@ -1327,6 +1327,7 @@ impl GoogleDriveProvider {
         remote_path: &str,
         total_size: u64,
         content_type: Option<&str>,
+        local_source_path: Option<&str>,
     ) -> Result<String, ProviderError> {
         let path_is_absolute = remote_path.starts_with('/');
         let path = remote_path.trim_matches('/');
@@ -1344,7 +1345,7 @@ impl GoogleDriveProvider {
             .filter(|f| f.mime_type != "application/vnd.google-apps.folder")
             .map(|f| f.id);
 
-        let metadata = if existing_file_id.is_some() {
+        let mut metadata = if existing_file_id.is_some() {
             serde_json::json!({ "name": file_name })
         } else {
             serde_json::json!({
@@ -1352,6 +1353,9 @@ impl GoogleDriveProvider {
                 "parents": [parent_id]
             })
         };
+        if let Some(date) = local_source_path.and_then(super::local_modified_rfc3339) {
+            metadata["modifiedTime"] = serde_json::json!(date);
+        }
 
         let init_url = if let Some(ref fid) = existing_file_id {
             format!("{}/files/{}?uploadType=resumable", self.upload_api(), fid)
@@ -1716,8 +1720,11 @@ impl StorageProvider for GoogleDriveProvider {
         const RESUMABLE_THRESHOLD: u64 = 5 * 1024 * 1024; // 5MB
 
         if total_size > RESUMABLE_THRESHOLD {
-            // Resumable upload for large files: stream from file handle
-            let metadata = if existing_file_id.is_some() {
+            // Resumable upload for large files: stream from file handle.
+            // Checked before the session opens, so a refusal leaves none behind.
+            let source = super::upload_source::UploadSource::observe(local_path).await?;
+            source.ensure_size(total_size, "Google Drive upload")?;
+            let mut metadata = if existing_file_id.is_some() {
                 // Update: only send name, no parents (already in correct folder)
                 serde_json::json!({ "name": file_name })
             } else {
@@ -1726,6 +1733,9 @@ impl StorageProvider for GoogleDriveProvider {
                     "parents": [parent_id]
                 })
             };
+            if let Some(date) = super::local_modified_rfc3339(local_path) {
+                metadata["modifiedTime"] = serde_json::json!(date);
+            }
 
             // Step 1: Initiate resumable upload session
             let init_url = if let Some(ref fid) = existing_file_id {
@@ -1781,6 +1791,13 @@ impl StorageProvider for GoogleDriveProvider {
                     .map_err(|e| ProviderError::Other(format!("Read chunk error: {}", e)))?;
 
                 let end = offset + this_chunk as u64;
+                // The last chunk publishes the file: refuse a mixture of two versions.
+                if end == total_size {
+                    if let Err(error) = source.ensure_unchanged("Google Drive upload").await {
+                        let _ = self.client.delete(&session_uri).send().await;
+                        return Err(error);
+                    }
+                }
                 let range = format!("bytes {}-{}/{}", offset, end - 1, total_size);
 
                 let chunk_response = self
@@ -1818,7 +1835,7 @@ impl StorageProvider for GoogleDriveProvider {
                 .await
                 .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
 
-            let metadata = if existing_file_id.is_some() {
+            let mut metadata = if existing_file_id.is_some() {
                 serde_json::json!({ "name": file_name })
             } else {
                 serde_json::json!({
@@ -1826,6 +1843,9 @@ impl StorageProvider for GoogleDriveProvider {
                     "parents": [parent_id]
                 })
             };
+            if let Some(date) = super::local_modified_rfc3339(local_path) {
+                metadata["modifiedTime"] = serde_json::json!(date);
+            }
 
             let boundary = "aeroftp_boundary";
             let mut head = Vec::new();
@@ -2360,76 +2380,9 @@ impl StorageProvider for GoogleDriveProvider {
     }
 
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        // Drive API `name contains 'X'` is a case-insensitive substring match
-        // and ignores glob metacharacters. Strategy: strip glob chars from
-        // the pattern for a broad server-side prefilter, then apply a precise
-        // match client-side via the shared `matches_find_pattern` helper
-        // (glob via globset for `*?[]`, substring fallback for plain text).
-        let literal: String = pattern
-            .chars()
-            .filter(|c| !matches!(c, '*' | '?' | '[' | ']'))
-            .collect();
-
-        let trashed_clause = "trashed=false";
-        let query = if literal.is_empty() {
-            trashed_clause.to_string()
-        } else {
-            let escaped = literal.replace('\'', "\\'");
-            format!(
-                "(name contains '{}' or fullText contains '{}') and {}",
-                escaped, escaped, trashed_clause
-            )
-        };
-
-        let mut all_entries = Vec::new();
-        let mut page_token: Option<String> = None;
-
-        loop {
-            let mut url = format!(
-                "{}/files?q={}&fields=files(id,name,mimeType,size,modifiedTime,parents),nextPageToken,incompleteSearch&pageSize=200",
-                self.drive_api(), urlencoding::encode(&query)
-            );
-
-            if let Some(ref token) = page_token {
-                url.push_str(&format!("&pageToken={}", token));
-            }
-
-            let response = self
-                .client
-                .get(&url)
-                .header(AUTHORIZATION, self.auth_header().await?)
-                .send()
-                .await
-                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-            if !response.status().is_success() {
-                let text = response.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!(
-                    "Search failed: {}",
-                    sanitize_api_error(&text)
-                )));
-            }
-
-            let list: DriveFileList = response
-                .json()
-                .await
-                .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
-            list.require_complete()?;
-
-            for file in &list.files {
-                if !super::matches_find_pattern(&file.name, pattern) {
-                    continue;
-                }
-                all_entries.push(self.to_remote_entry(file, path));
-            }
-
-            match list.next_page_token {
-                Some(token) if all_entries.len() < 500 => page_token = Some(token),
-                _ => break,
-            }
-        }
-
-        Ok(all_entries)
+        // The search API answers outside the folder or without the hit's real
+        // path, and a caller acts on that path.
+        super::find_by_walk(self, path, pattern).await
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
@@ -3084,7 +3037,7 @@ impl StorageProvider for GoogleDriveProvider {
         remote_path: &str,
         total_size: u64,
         content_type: Option<&str>,
-        _local_source_path: Option<&str>,
+        local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -3095,7 +3048,7 @@ impl StorageProvider for GoogleDriveProvider {
             ));
         }
         let session_url = self
-            .open_resumable_session(remote_path, total_size, content_type)
+            .open_resumable_session(remote_path, total_size, content_type, local_source_path)
             .await?;
         let meta = GDriveMultipartMeta {
             url: session_url,
@@ -3315,6 +3268,147 @@ mod tests {
                 "{response}"
             );
         }
+    }
+
+    /// Requested 126: a search stays under its folder and reports real paths.
+    /// It used to ask the whole account, and to label a hit anywhere as
+    /// `<folder>/<name>`, which a caller could then delete.
+    #[tokio::test]
+    async fn find_stays_under_its_folder_with_real_paths() {
+        use serde_json::json;
+        const FOLDER: &str = "application/vnd.google-apps.folder";
+        let tree = [
+            ("D", "root", "docs", FOLDER),
+            ("O", "root", "other", FOLDER),
+            ("A", "D", "a.txt", "text/plain"),
+            ("S", "D", "sub", FOLDER),
+            ("B", "S", "a.txt", "text/plain"),
+            ("C", "O", "a.txt", "text/plain"),
+        ];
+        let app = axum::Router::new().fallback(axum::routing::get(
+            move |req: axum::extract::Request| async move {
+                let url = reqwest::Url::parse(&format!("http://fixture{}", req.uri())).unwrap();
+                let q = url
+                    .query_pairs()
+                    .find(|(key, _)| key == "q")
+                    .map(|(_, value)| value.into_owned())
+                    .unwrap_or_default();
+                assert!(!q.contains("fullText"), "an account-wide search: {q}");
+                let files: Vec<_> = tree
+                    .iter()
+                    .filter(|(_, parent, name, _)| {
+                        q.contains(&format!("'{parent}' in parents"))
+                            && (!q.contains("name='") || q.contains(&format!("name='{name}'")))
+                    })
+                    .map(|(id, _, name, mime)| {
+                        json!({"id": id, "name": name, "mimeType": mime, "parents": []})
+                    })
+                    .collect();
+                axum::Json(json!({"files": files, "incompleteSearch": false}))
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("t".into());
+
+        let mut found: Vec<String> = provider
+            .find("/docs", "a.txt")
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|entry| entry.path)
+            .collect();
+        found.sort();
+        server.abort();
+        assert_eq!(found, ["/docs/a.txt", "/docs/sub/a.txt"]);
+    }
+
+    /// Requested 114: a file rewritten while its chunks go up is not published
+    /// as a mixture of two versions: the last chunk, which commits, never leaves.
+    #[tokio::test]
+    async fn a_file_rewritten_during_a_resumable_upload_is_not_published() {
+        use std::sync::{Arc, Mutex};
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("big.bin");
+        std::fs::write(&local, vec![b'a'; 11 * 1024 * 1024]).unwrap();
+        let chunks: Arc<Mutex<Vec<String>>> = Arc::default();
+        let cancels: Arc<Mutex<u32>> = Arc::default();
+        let (seen, path, cancelled) = (chunks.clone(), local.clone(), cancels.clone());
+        let origin: Arc<Mutex<String>> = Arc::default();
+        let session_origin = origin.clone();
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (seen, path, origin, cancelled) = (
+                    seen.clone(),
+                    path.clone(),
+                    session_origin.clone(),
+                    cancelled.clone(),
+                );
+                async move {
+                    use axum::response::IntoResponse;
+                    if req.method() == axum::http::Method::DELETE && req.uri().path() == "/session"
+                    {
+                        *cancelled.lock().unwrap() += 1;
+                        return axum::http::StatusCode::NO_CONTENT.into_response();
+                    }
+                    let range = req
+                        .headers()
+                        .get("content-range")
+                        .map(|v| v.to_str().unwrap().to_string());
+                    if let Some(range) = range {
+                        // An answer before the body is read resets the
+                        // connection on Windows.
+                        axum::body::to_bytes(req.into_body(), usize::MAX)
+                            .await
+                            .unwrap();
+                        seen.lock().unwrap().push(range);
+                        std::fs::write(&path, vec![b'b'; 11 * 1024 * 1024 + 1]).unwrap();
+                        return axum::http::StatusCode::PERMANENT_REDIRECT.into_response();
+                    }
+                    if req
+                        .uri()
+                        .query()
+                        .unwrap_or("")
+                        .contains("uploadType=resumable")
+                    {
+                        let location = format!("{}/session", origin.lock().unwrap());
+                        return (axum::http::StatusCode::OK, [("location", location)])
+                            .into_response();
+                    }
+                    axum::Json(serde_json::json!({"files": [], "incompleteSearch": false}))
+                        .into_response()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        *origin.lock().unwrap() = format!("http://{addr}");
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("t".into());
+
+        let outcome = provider
+            .upload(local.to_str().unwrap(), "/big.bin", None)
+            .await;
+        server.abort();
+        let error = outcome
+            .expect_err("a file that changed is not published")
+            .to_string();
+        assert!(
+            error.contains("changed") || error.contains("became"),
+            "{error}"
+        );
+        assert_eq!(
+            chunks.lock().unwrap().len(),
+            1,
+            "the committing chunk must not leave"
+        );
+        assert_eq!(*cancels.lock().unwrap(), 1, "the session is cancelled");
     }
 
     /// Exercise the actual purge path with Drive search pages that may omit

@@ -18,6 +18,7 @@
             "loading": "Nalaganje...",
             "error": "Napaka",
             "success": "Uspeh",
+            "searchLimited": "Prikazanih je prvih {count} zadetkov. Iščite v manjši mapi, da vidite preostale.",
             "warning": "Opozorilo",
             "info": "Informacije",
             "confirm": "Potrdi",
@@ -598,7 +599,8 @@
             "setAsPublic": "Nastavi kot javno",
             "makeAllPrivate": "Nastavi vse kot zasebno",
             "dropboxRestoreLimit": "AeroFTP lahko obnovi obnovljive različice datotek. Mape obnovite v razdelku Izbrisane datoteke na dropbox.com. Vprašaj pomeni, da Dropbox ni prepoznal vrste elementa.",
-            "openWithDefaultApp": "Odpri s privzeto aplikacijo"
+            "openWithDefaultApp": "Odpri s privzeto aplikacijo",
+            "extractHereUncheckedConfirm": "Imen znotraj {name} ni mogoče prebrati pred razširjanjem, zato AeroFTP ne more preveriti, kaj bi „Razširi sem“ prepisalo v tej mapi. „Razširi v mapo“ nikoli ničesar ne prepiše."
         },
         "transfer": {
             "transferring": "Prenašanje...",
@@ -1370,7 +1372,8 @@
             "importJottaChainWarning": "Jottacloud ob vsaki povezavi obnovi prijavo, {names} pa zdaj deli eno z drugo kopijo: kopija, ki se poveže prva, odjavi drugo (napravo, od koder izvira datoteka, ali profil, iz katerega je bila podvojena). Drugo znova prijavite z novim Personal Login Token.",
             "importOauthAppKept": "{names} so prišli z drugačno aplikacijo OAuth po meri, kot jo ima ta naprava za tega ponudnika. Shranjena aplikacija je bila ohranjena, zato se znova prijavite, če se ti profili prenehajo povezovati.",
             "importTargetChanged": "{names} niso bili prepisani: datoteka jih usmerja na drug strežnik, njihova shranjena gesla in žetoni pa tja ne smejo. Uvozite z Podvoji, da dodate kopijo iz datoteke, ali pa najprej izbrišite profil.",
-            "importSharedSecretsFailed": "{names} so bili uvoženi, vendar skupne skrivnosti ali seje iz datoteke ni bilo mogoče shraniti. Če se ti profili ne povežejo, se vanje znova prijavite."
+            "importSharedSecretsFailed": "{names} so bili uvoženi, vendar skupne skrivnosti ali seje iz datoteke ni bilo mogoče shraniti. Če se ti profili ne povežejo, se vanje znova prijavite.",
+            "keystoreDatabasesFailed": "Uvoz je končan, vendar teh podatkovnih zbirk ni bilo mogoče obnoviti in ohranjajo prejšnjo vsebino: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1588,7 +1591,9 @@
             "aerocloudEnabled": "AeroCloud omogočen",
             "selectPairLocalFolder": "Izberite lokalno mapo za par",
             "secondsAgo": "pred {count}s",
-            "conflictsCount": "Spori, ki zahtevajo pozornost: {count}"
+            "conflictsCount": "Spori, ki zahtevajo pozornost: {count}",
+            "updateOnlyHint": "Enosmerno posodabljanje ohrani novejše ciljne datoteke. Ko je dodajalno varnostno kopiranje izklopljeno, se izbrišejo le nespremenjene datoteke, ki obstajajo izključno na cilju in imajo preverjeno potrdilo o prenosu prek AeroCloud. Druge datoteke ostanejo za pregled v AeroSync. Pravilnik o sporih se prezre; neznani datumi ostanejo nerazrešeni.",
+            "untrackedDestinationFiles": "{count} ciljnih datotek je bilo ohranjenih za pregled: njihova zgodovina prenosov ni preverjena ali pa so bile spremenjene po zadnjem prenosu prek AeroCloud. Pred odločitvijo o izbrisu jih preglejte v AeroSync."
         },
         "statusBar": {
             "connected": "Povezano",
@@ -2469,7 +2474,9 @@
             "flattenScanning": "Pregledovanje poddrevesa...",
             "flattenTruncated": "skrajšano",
             "flattenTruncatedHint": "Dosežena omejitev 5.000 vnosov; izboljšajte filter ali se spustite v podmapo.",
-            "local_placeholder_flatten": "Filtriraj lokalne datoteke... (* za rekurzivno)"
+            "local_placeholder_flatten": "Filtriraj lokalne datoteke... (* za rekurzivno)",
+            "flattenNameClash": "{names}: izbrano v več kot eni mapi. Če bi jih dali na isto mesto, bi se prepisali; delajte z enim od vsakega naenkrat.",
+            "flattenNameClashTitle": "Isto ime v več mapah"
         },
         "versions": {
             "title": "Različice datotek",
@@ -4179,7 +4186,10 @@
             "drivesLeftPanel": "Pogoni levega podokna",
             "drivesRightPanel": "Pogoni desnega podokna",
             "modeGroupLabel": "Način stranske vrstice",
-            "placesSidebarLabel": "Stranska vrstica mest"
+            "placesSidebarLabel": "Stranska vrstica mest",
+            "mountFailed": "Priklop ni uspel",
+            "partitions_need_udisks2": "V snapu se nepriklopljene particije prikažejo in jih je mogoče priklopiti ter izvreči, ko je dovoljenje udisks2 povezano. To zaženite v terminalu in se nato vrnite v AeroFTP:",
+            "volume_action_needs_udisks2": "V snapu priklop in izvrženje zahtevata dovoljenje udisks2. To zaženite v terminalu in poskusite znova: {command}"
         },
         "viewMode": {
             "list": "Seznam",
@@ -4853,7 +4863,8 @@
             "relocateSuccessMove": "»{name}« premaknjen v {user}",
             "relocateAlreadyPresent": "»{name}« je že shranjen v {user}",
             "relocateError": "Strežnika ni bilo mogoče prenesti: {error}",
-            "relocateWrongPassword": "Napačno geslo za {user}."
+            "relocateWrongPassword": "Napačno geslo za {user}.",
+            "relocateSecretsNotCopied": "»{name}« je prispel v {user}, vendar shranjeno geslo ali žeton nista, zato bo tam znova zahteval vnos."
         },
         "cyberTools": {
             "title": "Varnostna orodja",
@@ -6130,7 +6141,8 @@
             "totalEntries": "Skupno število vnosov",
             "differences": "Razlike",
             "totalBytes": "Skupno bajtov",
-            "mirrorHint": "Gumbi za zrcaljenje uvrstijo ujemajoče se vnose v enoten načrtovalnik prenosov za pregled.",
+            "mirrorHint": "Gumbi za zrcaljenje prenašajo ujemajoče se vnose. Ne pripravljajo jih za pregled.",
+            "exportFailed": "Izvoza ni bilo mogoče zapisati: {error}",
             "mirrorLeftToRight": "Zrcali z leve na desno",
             "mirrorRightToLeft": "Zrcali z desne na levo",
             "directionLeftRight": "Z leve na desno",
@@ -6309,7 +6321,12 @@
                 }
             },
             "rescan": "Ponovno preglej",
-            "rescanNeeded": "Primerjava je bila narejena z drugimi izključitvami ali drugo mapo varnostnih kopij. Pred zagonom ponovno preglejte.",
+            "rescanBringsBack": "Te nastavitve vrnejo datoteke, ki jih je pregled izpustil, zato jih nikoli ni prebral. Pred zagonom ponovno preglejte.",
+            "rescanFlat": "Ta primerjava izvira iz seznamov obeh plošč, ne iz popolnega pregleda, zato ne more uporabiti izključitev. Pred zagonom ponovno preglejte.",
+            "narrowAvailable": "Te nastavitve samo zožujejo primerjavo, zato jo je mogoče filtrirati brez ponovnega pregleda.",
+            "narrowApply": "Uporabi za to primerjavo",
+            "narrowedNote": "Filtrirano z novimi izključitvami brez ponovnega pregleda. Število enakih je še vedno iz pregleda.",
+            "narrowAfterRestore": "Poteka obnovitev. Te nastavitve je mogoče uporabiti za primerjavo, ko se obnovitev konča.",
             "backup": {
                 "checking": "Preverjanje, kako ta strežnik premika datoteke...",
                 "serverCopy": "Ta strežnik ne podpira premikanja: vsaka ohranjena kopija se kopira na strežniku in nato izbriše. To stane celotno kopijo vsake ohranjene datoteke, v dveh ločenih korakih.",
@@ -6336,7 +6353,10 @@
             "progressCopy": "[kopija]",
             "deleteCount": "Za brisanje: {count}",
             "overwriteCount": "Za prepis: {count}",
-            "conflictCount": "Spori: {count}"
+            "conflictCount": "Spori: {count}",
+            "updateOnly": "Preskoči novejše ciljne datoteke (enosmerno posodabljanje)",
+            "updateOnlyHint": "Kopira manjkajoče ali spremenjene izvorne datoteke, ohrani novejše ciljne datoteke in izbriše vnose, ki so samo na cilju. Datoteke brez primerljivih datumov se primerjajo po velikosti; razlike v velikosti ostanejo za pregled.",
+            "rescanNeeded": "Pred izvozom skripta za posodabljanje zaženite novo primerjavo s trenutnimi nastavitvami."
         },
         "accountLock": {
             "title": "Izberite račun",
@@ -6580,7 +6600,8 @@
             "keyslotsSetAsideRevocation": "Prejšnja oznaka še vedno odpre trezor s faktorjem, ki ga odstranjujete ali zamenjujete. Vsaka kopija, ki ostane v mapi trezorja, se po spremembi izbriše, kopija, ki je ni mogoče izbrisati, pa se prijavi kot napaka. Kopija v košu shrambe ali v različicah datotek ni dosegljiva: njuno praznjenje odstrani te kopije, ne pa kopije, ki jo je obdržal nekdo drug, zato preklica ne dokonča.",
             "keyslotsSetAsideConsent": "Razumem: zamenjaj oznako na tem strežniku s preimenovanjem stare na stran",
             "keyslotsSetAsideConsentRequired": "Ta strežnik lahko zamenja oznako trezorja samo s preimenovanjem stare na stran: za nadaljevanje potrdite v polju zgoraj.",
-            "keyslotsMarkerReplaceUnsupported": "Ta strežnik ne more zamenjati oznake trezorja, zato so spremembe rež tukaj zavrnjene. Odprite isto shrambo prek strežnika, ki zamenja datoteko v enem koraku (na primer SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Ta strežnik ne more zamenjati oznake trezorja, zato so spremembe rež tukaj zavrnjene. Odprite isto shrambo prek strežnika, ki zamenja datoteko v enem koraku (na primer SFTP).",
+            "overlayMetadataNotSaved": "Selitev je uspela, vendar komplet za obnovitev brez povezave še ni shranjen v predpomnilnik. To se bo zgodilo ob naslednjem odklepu."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifriranje)",

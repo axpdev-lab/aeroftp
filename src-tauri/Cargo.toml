@@ -242,7 +242,7 @@ mime_guess = "2"
 
 # SFTP Support (Sprint 3 - v1.3.0)
 # SFTP channel writes: see sftp-upload-0byte-bug.md in memory
-russh = { version = "0.64.1", features = ["ring"] }
+russh = { version = "0.65.0", features = ["ring"] }
 russh-sftp = "2.1"
 ssh2 = { version = "0.9.5", features = ["vendored-openssl", "openssl-on-win32"] }
 
@@ -386,6 +386,9 @@ winreg = "0.56"
 #   were already in the tree through reqwest; only features are added here.
 # - fuser: FUSE virtual filesystem mount (macOS requires macFUSE installed by user)
 [target.'cfg(target_os = "linux")'.dependencies]
+# The snap's partition list, mount and unmount go to UDisks2 over D-Bus. Already
+# in the tree through tauri-plugin-notification and single-instance.
+zbus = "5"
 hyper = { version = "1", features = ["server", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"
@@ -419,6 +422,10 @@ webkit2gtk = { version = "=2.0.2", features = ["v2_20"] }
 # not link libacl. Do not use path-following helpers (exacl, getfacl/setfacl).
 posix-acl = { version = "1.2.0", optional = true }
 acl-sys = { version = "1.2.2", optional = true }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+# A stand-in UDisks2 service over a socket pair, for the snap's D-Bus calls.
+zbus = { version = "5", features = ["p2p"] }
 
 [dev-dependencies]
 rcgen = "0.14"                                                       # Self-signed certificates for the loopback TLS tests
@@ -495,6 +502,15 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 # 2026-10-11. The client-side fixes in 0.64.0 are ours: rekey read and time
 # limits enforced, `partial_success` no longer clobbered during auth. 0.64.0
 # drops the `legacy-ed25519-pkcs8-parser` feature, which was never enabled here.
+#
+# 0.65.0 closes two more that are ours, both CLIENT-side: GHSA-4p9f-7p9m-5vfg
+# (a server can grow memory without bound through EXT_INFO messages) and
+# GHSA-fw5c-8223-6h42 (a peer that declares a zero maximum packet size stalls
+# channel writes for good). GHSA-9wfm-jcj8-jfv9 is the agent SERVER again, not
+# reachable here. pageant 0.2.5 closes GHSA-662x-8wvj-2276 (unbounded buffering
+# on a peer-controlled frame length), on the Windows agent path. The handler
+# API change of 0.65.0 touches only publickey auth on a server, which
+# `aeroftp-cli serve sftp` does not implement.
 #
 # There is no backport on the 0.62 line, and that is arithmetic rather than a
 # reading of a changelog: 0.62.7 was published 2026-08-17, four days BEFORE

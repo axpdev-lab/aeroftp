@@ -218,6 +218,10 @@ pub struct FtpProvider {
     /// independent connections. Set via `set_multi_thread_download`
     /// (CLI `--multi-thread-streams`).
     multi_thread_streams: usize,
+    /// What the last `download` read, see `DownloadTime`.
+    download_time: super::multi_thread::DownloadTime,
+    /// The caller saw a refusal: the next `download` reads a moved object.
+    expects_moved_source: bool,
     /// File size at/above which intra-file parallelism engages.
     multi_thread_cutoff: u64,
     /// Whether this provider ever had a session. A redial by
@@ -248,6 +252,8 @@ impl FtpProvider {
             tls_downgraded: false,
             buffer_size: FTP_DOWNLOAD_BUFFER_DEFAULT,
             connection_spec: None,
+            download_time: Default::default(),
+            expects_moved_source: false,
             multi_thread_streams: 1,
             multi_thread_cutoff: FTP_MULTI_THREAD_CUTOFF_DEFAULT,
             has_dialled: false,
@@ -1360,6 +1366,7 @@ impl FtpProvider {
                     .map(|p| p.to_string_lossy().to_string())
                     .unwrap_or_else(|| "/".to_string());
                 if let Some(mut entry) = self.parse_mlsd_entry(mlst_line.trim(), &parent) {
+                    super::ftp_listing::name_as_asked(&mut entry, path);
                     // Facts without a size, which RFC 3659 allows: ask SIZE,
                     // as below for a LIST row.
                     if !entry.is_dir && super::ftp_listing::size_is_unreadable(&entry) {
@@ -1737,12 +1744,27 @@ impl StorageProvider for FtpProvider {
         Ok(())
     }
 
+    fn download_was_refused(&self) -> bool {
+        self.download_time.is_refused()
+    }
+
+    fn take_download_time(&mut self, source_refused: bool) -> Option<String> {
+        self.download_time.take(source_refused)
+    }
+
+    fn expect_moved_source(&mut self) {
+        self.expects_moved_source = true;
+    }
+
     async fn download(
         &mut self,
         remote_path: &str,
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.download_time.begin();
+        // Used up here: an early return must not leave it for the next file.
+        let mut source_refused = std::mem::take(&mut self.expects_moved_source);
         Self::refuse_line_breaks("downloading", remote_path)?;
         self.redial_if_a_reply_is_pending().await?;
         // No-op when the provider is already connected (CLI path); connects
@@ -1792,7 +1814,11 @@ impl StorageProvider for FtpProvider {
         // provider floor via the setter, 16 clamp, 1 MiB minimum window), so
         // the single-file path agrees with batch and pget.
         let planned_mt = self.planned_download_segments(total_size);
-        if planned_mt >= 2 && self.connection_spec.is_some() && !self.restart_unsupported {
+        if planned_mt >= 2
+            && !source_refused
+            && self.connection_spec.is_some()
+            && !self.restart_unsupported
+        {
             let (attempt_progress, fallback_progress) =
                 super::multi_thread::share_progress(on_progress.take());
             on_progress = fallback_progress;
@@ -1810,7 +1836,7 @@ impl StorageProvider for FtpProvider {
                 // the object, which is what the parallel path could not
                 // promise here, and it reports through the half of the
                 // progress callback that stayed here.
-                Ok(false) => {}
+                Ok(false) => source_refused = true,
                 // Every window past byte 0 opens with REST, and a server
                 // without restart support refuses all of them; one stream
                 // from byte 0 needs no REST at all. Not a failure of the
@@ -1826,33 +1852,12 @@ impl StorageProvider for FtpProvider {
             }
         }
 
-        // Single-stream download with one reconnect-and-retry on a desynced
-        // control connection. A reused FTP session (the interactive TUI after
-        // navigation) can leave the control stream misaligned so the TYPE/RETR
-        // reply fails to parse; reconnecting a clean session recovers it. A
-        // fresh single-shot CLI connection never hits this, so the retry is a
-        // no-op there.
-        match self
-            .download_single(remote_path, local_path, total_size, on_progress)
-            .await
-        {
-            Ok(()) => Ok(()),
-            Err(err) if Self::is_stale_data_connection_error(&err) => {
-                self.reconnect_after_data_error("RETR", remote_path, &err)
-                    .await?;
-                let total_size = {
-                    let stream = self.stream_mut()?;
-                    stream
-                        .size(remote_path)
-                        .await
-                        .unwrap_or(total_size as usize) as u64
-                };
-                // Progress is dropped on the first attempt; the rare retry runs
-                // without it (the transfer still completes).
-                self.download_single(remote_path, local_path, total_size, None)
-                    .await
-            }
-            Err(err) => Err(err),
+        if source_refused {
+            self.download_after_refusal(remote_path, local_path, total_size, on_progress)
+                .await
+        } else {
+            self.download_single_reconnecting(remote_path, local_path, total_size, on_progress)
+                .await
         }
     }
 
@@ -2194,6 +2199,7 @@ impl StorageProvider for FtpProvider {
             path.to_string()
         };
         let mut walk = crate::sync_core::FindWalk::new(&search_path);
+        let root = search_path.clone();
         let mut dirs_to_scan = vec![search_path];
 
         while let Some(dir) = dirs_to_scan.pop() {
@@ -2202,6 +2208,11 @@ impl StorageProvider for FtpProvider {
             self.current_path = dir.clone();
             let entries = match self.list(&dir).await {
                 Ok(e) => e,
+                // A folder searched that cannot be read is not an empty result.
+                Err(e) if dir == root => {
+                    self.current_path = saved;
+                    return Err(e);
+                }
                 Err(_) => {
                     self.current_path = saved;
                     continue;
@@ -2244,6 +2255,7 @@ impl StorageProvider for FtpProvider {
         offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.download_time.begin();
         // Out of place this provider keeps no part: its downloads write
         // through `AtomicFile`, which removes its temporary when it fails. An
         // offset handed in out of place was measured on someone else's part
@@ -4359,6 +4371,88 @@ impl FtpProvider {
         }
     }
 
+    /// One stream after the parallel path was refused. RETR carries no time, so
+    /// two readings around the transfer stand in for it: if they agree, that is
+    /// the object it read. If not the listing's time stands, which only makes the
+    /// next sync download again.
+    async fn download_after_refusal(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        total_size: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        // First: a stream that fails leaves it for the retry of this entry.
+        self.download_time.refused();
+        let time_before = self.time_reading(remote_path).await;
+        // A reading that ran out gave up the session.
+        self.ensure_connected().await?;
+        self.download_single_reconnecting(remote_path, local_path, total_size, on_progress)
+            .await?;
+        if time_before.is_some() {
+            let time_after = self.time_reading(remote_path).await;
+            if time_after == time_before {
+                self.download_time.read(time_after);
+            }
+        }
+        Ok(())
+    }
+
+    /// One reading for [`Self::download_after_refusal`]. Only MLST states an
+    /// instant, a `LIST` date is dropped anyway, so nothing else is asked. Bounded:
+    /// the second reading runs on a file already published, which a server that
+    /// stopped answering must not turn into a failed transfer. The session goes
+    /// with a reading that ran out: its reply is still owed, and the next command
+    /// would read it as its own answer.
+    async fn time_reading(&mut self, path: &str) -> Option<String> {
+        if !self.mlsd_supported || !self.mlst_supported {
+            return None;
+        }
+        match tokio::time::timeout(std::time::Duration::from_secs(30), self.stat(path)).await {
+            Ok(reading) => reading.ok()?.modified,
+            Err(_) => {
+                self.stream = None;
+                None
+            }
+        }
+    }
+
+    /// Single-stream download with one reconnect-and-retry on a desynced
+    /// control connection. A reused FTP session (the interactive TUI after
+    /// navigation) can leave the control stream misaligned so the TYPE/RETR
+    /// reply fails to parse; reconnecting a clean session recovers it. A fresh
+    /// single-shot CLI connection never hits this, so the retry is a no-op there.
+    async fn download_single_reconnecting(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        total_size: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        match self
+            .download_single(remote_path, local_path, total_size, on_progress)
+            .await
+        {
+            Ok(()) => Ok(()),
+            Err(err) if Self::is_stale_data_connection_error(&err) => {
+                self.reconnect_after_data_error("RETR", remote_path, &err)
+                    .await?;
+                let total_size = {
+                    let stream = self.stream_mut()?;
+                    stream
+                        .size(remote_path)
+                        .await
+                        .unwrap_or(total_size as usize) as u64
+                };
+                // Progress is dropped on the first attempt; the rare retry runs
+                // without it (the transfer still completes).
+                self.download_single(remote_path, local_path, total_size, None)
+                    .await
+            }
+            Err(err) => Err(err),
+        }
+    }
+
     /// One single-stream RETR attempt. Factored out of the trait `download` so
     /// it can be retried once after reconnecting a clean control session
     /// (reused-session recovery). `on_progress` is owned; the retry passes
@@ -5157,6 +5251,16 @@ mod restart_contract_tests {
     async fn no_restart_server(
         content: Arc<Vec<u8>>,
     ) -> (FtpConfig, CommandLog, tokio::task::JoinHandle<()>) {
+        no_restart_server_with(content, false).await
+    }
+
+    /// [`no_restart_server`] whose object, with `time_moves`, is another one at
+    /// every MLST.
+    async fn no_restart_server_with(
+        content: Arc<Vec<u8>>,
+        time_moves: bool,
+    ) -> (FtpConfig, CommandLog, tokio::task::JoinHandle<()>) {
+        let mlst_readings = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let log: CommandLog = Arc::new(Mutex::new(Vec::new()));
@@ -5167,6 +5271,7 @@ mod restart_contract_tests {
                 connection += 1;
                 let commands = Arc::clone(&commands);
                 let content = Arc::clone(&content);
+                let mlst_readings = Arc::clone(&mlst_readings);
                 tokio::spawn(async move {
                     let (read, mut write) = socket.into_split();
                     let mut lines = BufReader::new(read).lines();
@@ -5187,10 +5292,15 @@ mod restart_contract_tests {
                             "FEAT" => "211-Features\r\n MLST size*;modify*;type*;\r\n211 End\r\n"
                                 .to_string(),
                             "SIZE" => format!("213 {}\r\n", content.len()),
-                            "MLST" => format!(
-                                "250-Listing /f.bin\r\n type=file;size={};modify=20260101000000; /f.bin\r\n250 End\r\n",
-                                content.len()
-                            ),
+                            "MLST" => {
+                                let reading =
+                                    mlst_readings.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                                let second = if time_moves { reading } else { 0 };
+                                format!(
+                                    "250-Listing /f.bin\r\n type=file;size={};modify=202601010000{second:02}; /f.bin\r\n250 End\r\n",
+                                    content.len()
+                                )
+                            }
                             "PASV" | "EPSV" => {
                                 let data = TcpListener::bind("127.0.0.1:0").await.unwrap();
                                 let data_port = data.local_addr().unwrap().port();
@@ -5246,6 +5356,149 @@ mod restart_contract_tests {
             initial_path: None,
         };
         (config, log, server)
+    }
+
+    /// The executor asks after a failed attempt, to tell the retry of this entry.
+    #[tokio::test]
+    async fn a_refusal_stands_when_the_stream_after_it_fails() {
+        let (config, _log, server) = no_restart_server(Arc::new(vec![7u8; 64])).await;
+        let mut provider = FtpProvider::new(config);
+        let directory = tempfile::tempdir().unwrap();
+        let out = directory.path().join("f.bin");
+        assert!(provider
+            .download_after_refusal("/f.bin", out.to_str().unwrap(), 64, None)
+            .await
+            .is_err());
+        assert!(provider.download_was_refused());
+        server.abort();
+    }
+
+    /// RETR carries no time: after a refusal two readings around the transfer
+    /// stand in for it, handed over once.
+    #[tokio::test]
+    async fn a_download_after_a_refusal_keeps_the_time_both_readings_agree_on() {
+        let (config, log, server) = no_restart_server(Arc::new(vec![7u8; 64])).await;
+        let mut provider = FtpProvider::new(config);
+        provider.connect().await.unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let out = directory.path().join("f.bin");
+        provider
+            .download_after_refusal("/f.bin", out.to_str().unwrap(), 64, None)
+            .await
+            .unwrap();
+        let time = provider.take_download_time(false).expect("the MLST time");
+        assert!(crate::parse_remote_mtime(&time).is_some(), "{time}");
+        assert_eq!(provider.take_download_time(true), None, "taken once");
+        let readings = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|line| line.contains("MLST"))
+            .count();
+        assert_eq!(readings, 2, "one reading on each side of the transfer");
+        let _ = provider.disconnect().await;
+        server.abort();
+
+        let (config, _, server) = no_restart_server_with(Arc::new(vec![7u8; 64]), true).await;
+        let mut provider = FtpProvider::new(config);
+        provider.connect().await.unwrap();
+        provider
+            .download_after_refusal("/f.bin", out.to_str().unwrap(), 64, None)
+            .await
+            .unwrap();
+        assert_eq!(
+            provider.take_download_time(false),
+            None,
+            "two readings that differ say nothing about what RETR read"
+        );
+        let _ = provider.disconnect().await;
+        server.abort();
+    }
+
+    /// A reading that ran out leaves no session behind to read its late reply.
+    #[tokio::test]
+    async fn a_time_reading_that_runs_out_gives_up_the_session() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let (read, mut write) = socket.into_split();
+            let mut lines = BufReader::new(read).lines();
+            write.write_all(b"220 ready\r\n").await.unwrap();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let verb = line.split_whitespace().next().unwrap_or("").to_string();
+                let reply = match verb.as_str() {
+                    "USER" => "331 password please\r\n",
+                    "PASS" => "230 logged in\r\n",
+                    "PWD" => "257 \"/\" is current\r\n",
+                    "FEAT" => "211-Features\r\n MLST size*;modify*;type*;\r\n211 End\r\n",
+                    "MLST" => continue,
+                    _ => "200 ok\r\n",
+                };
+                if write.write_all(reply.as_bytes()).await.is_err() {
+                    return;
+                }
+            }
+        });
+        let config = FtpConfig {
+            host: "127.0.0.1".to_string(),
+            port,
+            ..no_restart_server(Arc::new(vec![])).await.0
+        };
+        let mut provider = FtpProvider::new(config);
+        provider.connect().await.unwrap();
+        assert!(provider.mlst_supported);
+
+        tokio::time::pause();
+        assert_eq!(provider.time_reading("/f.bin").await, None);
+        assert!(provider.stream.is_none());
+    }
+
+    /// A refusal the caller saw reaches the plain `download`, once.
+    #[tokio::test]
+    async fn a_download_after_the_callers_refusal_reads_the_time_around_it() {
+        let (config, log, server) = no_restart_server(Arc::new(vec![7u8; 64])).await;
+        let mut provider = FtpProvider::new(config);
+        provider.connect().await.unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let out = directory.path().join("f.bin");
+        let readings = |log: &CommandLog| {
+            log.lock()
+                .unwrap()
+                .iter()
+                .filter(|line| line.contains("MLST"))
+                .count()
+        };
+
+        let plain = readings(&log);
+        provider
+            .download("/f.bin", out.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        let plain = readings(&log) - plain;
+        assert_eq!(
+            provider.take_download_time(true),
+            None,
+            "no reading was asked"
+        );
+
+        provider.expect_moved_source();
+        let refused = readings(&log);
+        provider
+            .download("/f.bin", out.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!(readings(&log) - refused, plain + 2, "one on each side");
+        assert!(provider.take_download_time(true).is_some());
+
+        let again = readings(&log);
+        provider
+            .download("/f.bin", out.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!(readings(&log) - again, plain, "the expectation is used up");
+        let _ = provider.disconnect().await;
+        server.abort();
     }
 
     /// A parallel download against a server without restart support: the

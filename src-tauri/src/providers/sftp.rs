@@ -770,27 +770,6 @@ fn classify_sftp_status_err(e: russh_sftp::client::error::Error, context: &str) 
 /// (exec, direct-tcpip) without re-authenticating.
 pub type SharedSshHandle = Arc<TokioMutex<Handle<SshHandler>>>;
 
-/// POSIX single-quote a string for safe interpolation into a remote shell
-/// command. The whole value is wrapped in `'...'` (everything literal inside
-/// single quotes) and every embedded `'` is emitted as `'\''` (close quote,
-/// escaped literal quote, reopen quote). This neutralises `$()`, backticks,
-/// `;`, `&&`, newlines and spaces: there is no shell metacharacter that
-/// survives single-quoting. Used by [`SftpProvider::checksum`] before passing
-/// a listing-derived path to `sha256sum` over an exec channel.
-fn shell_single_quote(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('\'');
-    for ch in s.chars() {
-        if ch == '\'' {
-            out.push_str("'\\''");
-        } else {
-            out.push(ch);
-        }
-    }
-    out.push('\'');
-    out
-}
-
 /// SSH Client Handler for server key verification.
 ///
 /// Exposed as `pub` because [`SharedSshHandle`] (a public type alias in the same
@@ -1306,6 +1285,8 @@ pub struct SftpProvider {
     /// at/above `multi_thread_cutoff`. Set via `set_multi_thread_download`
     /// (CLI `--multi-thread-streams`).
     multi_thread_streams: usize,
+    /// What the last `download` read, see `DownloadTime`.
+    download_time: super::multi_thread::DownloadTime,
     /// File size at/above which intra-file parallelism engages.
     multi_thread_cutoff: u64,
     /// Per-provider read-ahead selection. The legacy environment is consulted
@@ -1363,6 +1344,7 @@ impl SftpProvider {
             buffer_size: 256 * 1024,
             host_key_sha256_hex: Arc::new(std::sync::OnceLock::new()),
             connection_spec: None,
+            download_time: Default::default(),
             multi_thread_streams: 1,
             multi_thread_cutoff: SFTP_MULTI_THREAD_CUTOFF_DEFAULT,
             sftp_readahead: SftpReadaheadSetting::LegacyEnvironment,
@@ -2438,8 +2420,21 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: SSH connection established, authenticating...");
 
-        // Authenticate
-        let authenticated = if self.config.private_key_path.is_some() {
+        // Authenticate. The `none` method goes first, as OpenSSH, PuTTY and
+        // WinSCP send it (RFC 4252 section 5.2): a server that lets the
+        // account in with no credential accepts it, every other server
+        // refuses it and the configured credential follows. OpenWrt's
+        // Dropbear is the case that needs it: for a root with no password
+        // set it accepts only `none` and refuses the password method
+        // outright, so without this the device cannot be reached at all.
+        let none_result = handle
+            .authenticate_none(&self.config.username)
+            .await
+            .map_err(|e| ProviderError::AuthenticationFailed(format!("SSH auth failed: {}", e)))?;
+        let authenticated = if matches!(none_result, AuthResult::Success) {
+            tracing::info!("SFTP: Server accepted the account with no credential");
+            true
+        } else if self.config.private_key_path.is_some() {
             // Try key-based authentication
             self.authenticate_with_key(&mut handle).await?
         } else if let Some(password) = &self.config.password {
@@ -2488,7 +2483,7 @@ impl StorageProvider for SftpProvider {
             }
         } else {
             return Err(ProviderError::AuthenticationFailed(
-                "No authentication method provided (need password or private key)".to_string(),
+                "The server requires a password or a private key, and neither is set".to_string(),
             ));
         };
 
@@ -2814,6 +2809,18 @@ impl StorageProvider for SftpProvider {
         self.cd("..").await
     }
 
+    fn download_was_refused(&self) -> bool {
+        self.download_time.is_refused()
+    }
+
+    fn take_download_time(&mut self, source_refused: bool) -> Option<String> {
+        self.download_time.take(source_refused)
+    }
+
+    fn expect_moved_source(&mut self) {
+        self.download_time.expect_moved();
+    }
+
     async fn download(
         &mut self,
         remote_path: &str,
@@ -2833,6 +2840,7 @@ impl StorageProvider for SftpProvider {
     ) -> Result<(), ProviderError> {
         let resume_in_place = std::mem::take(&mut self.resume_in_place);
         self.ensure_connected().await?;
+        self.download_time.begin();
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(remote_path);
 
@@ -2871,6 +2879,10 @@ impl StorageProvider for SftpProvider {
                 );
             }
         };
+        // SFTP answers no time with the data: the reading of the open handle
+        // below is the closest to it, and this one stands in when it has none.
+        let mut read_time =
+            Self::metadata_to_entry(String::new(), String::new(), &metadata).modified;
         let mut total_size = metadata.size.unwrap_or(0);
         // The version a part resumed below must have been started from.
         let mut source = RangeSourceFingerprint::of(&Self::metadata_to_entry(
@@ -2931,12 +2943,17 @@ impl StorageProvider for SftpProvider {
         // pipelined paths below open several handles to the same path, a few
         // milliseconds apart, and a replacement inside that burst would put
         // the fallback back in the hole the refusal just avoided.
-        let mut source_is_moving = false;
+        let mut source_is_moving = self.download_time.is_refused();
+        if source_is_moving {
+            // The handle must come after the size read below, or its bytes can
+            // be of the old object and their bound of the new one.
+            close_preopened!();
+        }
         // R21: the provider gate method (shared planner: explicit cutoff +
         // provider floor via the setter, 16 clamp, 1 MiB minimum window), so
         // the single-file path agrees with batch and pget.
         let planned_mt = self.planned_download_segments(total_size);
-        if planned_mt >= 2 && self.connection_spec.is_some() {
+        if planned_mt >= 2 && !source_is_moving && self.connection_spec.is_some() {
             close_preopened!();
             // Half of the callback goes with the attempt and half stays, so
             // the path a refusal falls back to keeps reporting.
@@ -2959,7 +2976,10 @@ impl StorageProvider for SftpProvider {
                 // exactly what the parallel path could not promise, so take
                 // the path below instead of failing a download that has a
                 // correct way to finish.
-                Ok(false) => source_is_moving = true,
+                Ok(false) => {
+                    source_is_moving = true;
+                    self.download_time.refused();
+                }
                 Err(e) => return Err(e),
             }
         }
@@ -3010,7 +3030,10 @@ impl StorageProvider for SftpProvider {
                     )
                     .await
                     {
-                        Ok(()) => return Ok(()),
+                        Ok(()) => {
+                            self.download_time.read(read_time);
+                            return Ok(());
+                        }
                         Err(e @ ProviderError::ParallelRefused(_)) => {
                             // Read on several handles and the object moved
                             // between the opens, or it is not the object the
@@ -3021,6 +3044,7 @@ impl StorageProvider for SftpProvider {
                                 "SFTP: concurrent reads could not verify one source version",
                             );
                             source_is_moving = true;
+                            self.download_time.refused();
                         }
                         Err(e) => return Err(e),
                     }
@@ -3074,6 +3098,7 @@ impl StorageProvider for SftpProvider {
                             window,
                             total_size
                         );
+                        self.download_time.read(read_time);
                         return Ok(());
                     }
                     // Read on several handles and the object moved under
@@ -3085,6 +3110,7 @@ impl StorageProvider for SftpProvider {
                             "SFTP: concurrent reads could not verify one source version",
                         );
                         source_is_moving = true;
+                        self.download_time.refused();
                     }
                     Err(e) => return Err(e),
                 }
@@ -3123,6 +3149,40 @@ impl StorageProvider for SftpProvider {
                     })
                 })?,
         };
+
+        // The handle is the object the bytes come from, and the STAT above can
+        // be of the one before it: read to the STAT's size, a replacement
+        // between the two is published cut to a length that was never its own.
+        // A server that does not answer leaves the STAT's values, except for the
+        // time after a refusal: that reading is of the object that moved.
+        match until_sftp_ends(&sftp.ended, remote_file.metadata()).await {
+            Ok(attributes) => {
+                let handle = Self::metadata_to_entry(String::new(), full_path.clone(), &attributes);
+                // Another time and no size: another object, of a length not known.
+                // Size 0 reads it to its end and no part of the old one is kept.
+                let another_object = match attributes.size {
+                    Some(size) => size != total_size,
+                    None => handle.modified.is_some() && handle.modified != read_time,
+                };
+                if another_object {
+                    tracing::warn!(
+                        "SFTP: {} is {} bytes on its handle and was {}, the download uses the size of the handle",
+                        full_path,
+                        handle.size,
+                        total_size
+                    );
+                    total_size = handle.size;
+                }
+                if another_object || (attributes.size.is_some() && handle.modified.is_some()) {
+                    source = RangeSourceFingerprint::of(&handle);
+                }
+                if source_is_moving || handle.modified.is_some() {
+                    read_time = handle.modified;
+                }
+            }
+            Err(_) if source_is_moving => read_time = None,
+            Err(_) => {}
+        }
 
         // Everything that can fail once the handle is open runs inside this
         // block, so the handle is closed, awaited, on every exit and not only
@@ -3299,6 +3359,7 @@ impl StorageProvider for SftpProvider {
             Err(error) => return super::keep_failed_download(part, error).await,
         };
         part.commit().await.map_err(ProviderError::IoError)?;
+        self.download_time.read(read_time);
 
         if from_partial {
             tracing::info!(
@@ -3567,6 +3628,7 @@ impl StorageProvider for SftpProvider {
         _offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.download_time.begin();
         self.resume_in_place = true;
         self.download(remote_path, local_path, on_progress).await
     }
@@ -4120,8 +4182,11 @@ impl StorageProvider for SftpProvider {
         let full_path = self.normalize_path(path);
         // `--` ends option parsing; the path is fully single-quoted so no
         // shell metacharacter (`$()`, backtick, `;`, space, newline) in a
-        // listing-derived name can break out. See `shell_single_quote`.
-        let cmd = format!("sha256sum -- {}", shell_single_quote(&full_path));
+        // listing-derived name can break out. See `shell_quote`.
+        let cmd = format!(
+            "sha256sum -- {}",
+            crate::providers::shell_quote::shell_quote(&full_path)?
+        );
 
         let (stdout, _stderr, _exit) = match ssh_exec_collect(handle, &cmd, 4096).await {
             Ok(v) => v,
@@ -4219,7 +4284,7 @@ impl StorageProvider for SftpProvider {
         let root = self.normalize_path(path);
         let mut results = Vec::new();
         let mut walk = crate::sync_core::FindWalk::new(&root);
-        let mut dirs_to_scan = vec![root];
+        let mut dirs_to_scan = vec![root.clone()];
 
         while let Some(dir) = dirs_to_scan.pop() {
             let entries = match until_sftp_ends(&sftp.ended, sftp.read_dir(&dir)).await {
@@ -4227,8 +4292,23 @@ impl StorageProvider for SftpProvider {
                 // A folder that cannot be read is skipped; a connection that
                 // ended is not a folder, and the rest of the walk could not
                 // be read either.
-                Err(e) => match classify_russh_err(e, ProviderError::ServerError) {
-                    lost @ ProviderError::ConnectionLost(_) => return Err(lost),
+                Err(e) => match classify_sftp_list_err(e) {
+                    SftpListFailure::Decided(
+                        lost @ (ProviderError::ConnectionLost(_)
+                        | ProviderError::NotConnected
+                        | ProviderError::Timeout),
+                    ) => return Err(lost),
+                    // The folder searched itself is not an empty result, and
+                    // it fails as `list` of that folder fails.
+                    SftpListFailure::Decided(error) if dir == root => return Err(error),
+                    SftpListFailure::Ambiguous(message) if dir == root => {
+                        return Err(resolve_ambiguous_list_failure(
+                            message,
+                            map_sftp_try_exists(
+                                until_sftp_ends(&sftp.ended, sftp.try_exists(&dir)).await,
+                            ),
+                        ))
+                    }
                     _ => continue,
                 },
             };
@@ -6587,31 +6667,6 @@ mod tests {
     }
 
     #[test]
-    fn shell_single_quote_neutralises_injection() {
-        // Plain path: just wrapped.
-        assert_eq!(shell_single_quote("/srv/file.txt"), "'/srv/file.txt'");
-        // Spaces stay literal.
-        assert_eq!(shell_single_quote("/a b/c"), "'/a b/c'");
-        // Embedded single quote: close, escaped quote, reopen.
-        assert_eq!(shell_single_quote("a'b"), "'a'\\''b'");
-        // Command substitution / backticks are inert inside single quotes.
-        assert_eq!(shell_single_quote("$(rm -rf /)"), "'$(rm -rf /)'");
-        assert_eq!(shell_single_quote("`id`"), "'`id`'");
-        // Separators and logical operators cannot break out.
-        assert_eq!(shell_single_quote("x; rm -rf /"), "'x; rm -rf /'");
-        assert_eq!(shell_single_quote("a && b"), "'a && b'");
-        // Newline injection stays inside the quotes.
-        assert_eq!(shell_single_quote("a\nrm -rf /"), "'a\nrm -rf /'");
-        // The classic break-out attempt: '; rm -rf / ; echo '
-        let evil = "'; rm -rf / ; echo '";
-        let q = shell_single_quote(evil);
-        assert!(q.starts_with('\'') && q.ends_with('\''));
-        // Every original `'` became the 4-char `'\''` sequence; there is no
-        // bare unescaped quote that could terminate the literal early.
-        assert_eq!(q, "''\\''; rm -rf / ; echo '\\'''");
-    }
-
-    #[test]
     fn sftp_scans_in_parallel_only_once_a_connection_spec_exists() {
         let config = SftpConfig {
             host: "example.com".to_string(),
@@ -7509,6 +7564,95 @@ mod tests {
         provider
     }
 
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_download_keeps_the_time_it_read_for_a_caller_that_saw_a_refusal() {
+        let bytes = pattern(400);
+        let mut server = ReadCappingServer::new(&bytes, 100, false);
+        server.mtime = Some(1_700_000_000);
+        let mut provider = server.serve().await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("target");
+        provider
+            .download("/down.bin", out.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!(provider.take_download_time(false), None, "a plain download");
+        assert_eq!(
+            provider.take_download_time(true).as_deref(),
+            Some("2023-11-14 22:13:20Z")
+        );
+    }
+
+    /// After a refusal the path may name another object by now: the time is the
+    /// open handle's, and that handle is opened after the size read, even when a
+    /// small hint had already opened one.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_download_after_a_refusal_takes_the_time_of_its_handle() {
+        let bytes = pattern(400);
+        for size_hint in [None, Some(400)] {
+            let mut server = ReadCappingServer::new(&bytes, 100, false);
+            server.mtime = Some(1_600_000_000);
+            server.handle_mtime = Some(1_700_000_000);
+            let mut provider = server.serve().await;
+            let dir = tempfile::tempdir().unwrap();
+            let out = dir.path().join("target");
+            provider.expect_moved_source();
+            provider
+                .download_with_size_hint("/down.bin", out.to_str().unwrap(), size_hint, None)
+                .await
+                .unwrap();
+            assert_eq!(std::fs::read(&out).unwrap(), bytes);
+            assert_eq!(
+                provider.take_download_time(false).as_deref(),
+                Some("2023-11-14 22:13:20Z")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_replacement_between_the_stat_and_the_open_is_read_at_its_own_size() {
+        let bytes = pattern(400);
+        // Longer than the STAT found: cut to the old length without the handle's
+        // size. Shorter: read to its end, with the time of its handle.
+        for (stat_size, size_hint) in [(100, None), (100, Some(100)), (900, None), (900, Some(900))]
+        {
+            let mut server = ReadCappingServer::new(&bytes, 100, false);
+            server.stat_size = Some(stat_size);
+            server.mtime = Some(1_600_000_000);
+            server.handle_mtime = Some(1_700_000_000);
+            let mut provider = server.serve().await;
+            let dir = tempfile::tempdir().unwrap();
+            let out = dir.path().join("target");
+            provider
+                .download_with_size_hint("/down.bin", out.to_str().unwrap(), size_hint, None)
+                .await
+                .unwrap();
+            assert_eq!(std::fs::read(&out).unwrap(), bytes);
+            assert_eq!(
+                provider.take_download_time(true).as_deref(),
+                Some("2023-11-14 22:13:20Z")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_handle_with_another_time_and_no_size_is_read_to_its_end() {
+        let bytes = pattern(400);
+        let mut server = ReadCappingServer::new(&bytes, 100, false);
+        server.stat_size = Some(100);
+        server.mtime = Some(1_600_000_000);
+        server.handle_mtime = Some(1_700_000_000);
+        server.handle_without_size = true;
+        let mut provider = server.serve().await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("target");
+        provider
+            .download("/down.bin", out.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(&out).unwrap(), bytes);
+    }
+
     #[tokio::test]
     async fn a_refused_sftp_parallel_plan_reports_a_safe_terminal_notice() {
         let provider =
@@ -8333,6 +8477,21 @@ mod tests {
         }
     }
 
+    /// The folder searched fails as a listing of it fails. A folder under it
+    /// that is gone leaves the rest of the search.
+    #[tokio::test]
+    async fn a_find_fails_as_a_listing_of_its_own_folder() {
+        const LISTINGS: Listings = &[("/x", &["a.txt", "gone/"])];
+        let (mut provider, _) = provider_on_a_tree_server(LISTINGS).await;
+        let outcome = provider.find("/missing", "*.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+        let found = provider.find("/x", "*.txt").await.unwrap();
+        assert_eq!(found.len(), 1, "{found:?}");
+    }
+
     /// A search follows only folders inside the one searched, once each.
     #[tokio::test]
     async fn a_find_never_leaves_its_folder() {
@@ -8435,8 +8594,14 @@ mod tests {
         data: Arc<Vec<u8>>,
         cap: usize,
         announce: bool,
+        /// The size STAT reports when it is of an object the handle is not.
+        stat_size: Option<u64>,
         /// The modification time STAT reports, when it reports one.
         mtime: Option<u32>,
+        /// The modification time FSTAT reports on an open handle.
+        handle_mtime: Option<u32>,
+        /// FSTAT reports no size.
+        handle_without_size: bool,
         first_cap: Option<usize>,
         /// Malformed DATA replies, including the first READ or a later chunk.
         oversize_from: Option<u64>,
@@ -8457,7 +8622,10 @@ mod tests {
                 data: Arc::new(data.to_vec()),
                 cap,
                 announce,
+                stat_size: None,
                 mtime: None,
+                handle_mtime: None,
+                handle_without_size: false,
                 first_cap: None,
                 oversize_from: None,
                 read_error_at: None,
@@ -8595,10 +8763,27 @@ mod tests {
             Ok(russh_sftp::protocol::Attrs {
                 id,
                 attrs: russh_sftp::protocol::FileAttributes {
-                    size: Some(self.data.len() as u64),
+                    size: Some(self.stat_size.unwrap_or(self.data.len() as u64)),
                     permissions: Some(0o100644),
                     atime: self.mtime,
                     mtime: self.mtime,
+                    ..Default::default()
+                },
+            })
+        }
+
+        async fn fstat(
+            &mut self,
+            id: u32,
+            _handle: String,
+        ) -> Result<russh_sftp::protocol::Attrs, Self::Error> {
+            Ok(russh_sftp::protocol::Attrs {
+                id,
+                attrs: russh_sftp::protocol::FileAttributes {
+                    size: (!self.handle_without_size).then_some(self.data.len() as u64),
+                    permissions: Some(0o100644),
+                    atime: self.handle_mtime,
+                    mtime: self.handle_mtime,
                     ..Default::default()
                 },
             })

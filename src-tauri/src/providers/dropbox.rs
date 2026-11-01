@@ -45,12 +45,47 @@ const DROPBOX_TRANSFER_MAX_SESSIONS: u16 = 4;
 /// `total_size` / `part_size` (so `upload_part` rebuilds the byte offset
 /// from `part_number` alone) and the normalised destination path needed by
 /// the `upload_session/finish` commit body.
+/// What a failed upload session says: Dropbox's summary of the error, or the
+/// body without any session id, which must not reach a message or a log.
+fn session_error_text(body: &str) -> String {
+    let summary = serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|json| json.get("error_summary")?.as_str().map(str::to_string));
+    let text = summary.unwrap_or_else(|| {
+        static SESSION_ID: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+            regex::Regex::new(r#""[a-z_]*session_id"\s*:\s*"[^"]*""#).expect("a valid pattern")
+        });
+        SESSION_ID
+            .replace_all(body, r#""session_id":"***""#)
+            .into_owned()
+    });
+    sanitize_api_error(&text)
+}
+
+/// The `CommitInfo` of an upload, with the file's date when it is known:
+/// otherwise Dropbox dates it when it stored it.
+fn commit_arg(path: &str, client_modified: Option<&str>) -> serde_json::Value {
+    let mut commit = serde_json::json!({
+        "path": path,
+        "mode": "overwrite",
+        "autorename": false,
+        "mute": false
+    });
+    if let Some(date) = client_modified {
+        commit["client_modified"] = serde_json::json!(date);
+    }
+    commit
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
 struct DropboxMultipartMeta {
     session_id: String,
     total: u64,
     part: u64,
     path: String,
+    /// The local file's date, kept at the commit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    client_modified: Option<String>,
 }
 
 impl DropboxMultipartMeta {
@@ -497,7 +532,12 @@ impl DropboxProvider {
             path,
             is_dir,
             size: meta.size,
-            modified: meta.server_modified.clone(),
+            // The file's own date, which an upload sets; the server's is when
+            // Dropbox stored it.
+            modified: meta
+                .client_modified
+                .clone()
+                .or_else(|| meta.server_modified.clone()),
             permissions: None,
             owner: None,
             group: None,
@@ -1278,7 +1318,7 @@ impl StorageProvider for DropboxProvider {
                 let text = start_resp.text().await.unwrap_or_default();
                 return Err(ProviderError::Other(format!(
                     "Upload session start failed: {}",
-                    sanitize_api_error(&text)
+                    session_error_text(&text)
                 )));
             }
 
@@ -1328,7 +1368,7 @@ impl StorageProvider for DropboxProvider {
                     let text = append_resp.text().await.unwrap_or_default();
                     return Err(ProviderError::Other(format!(
                         "Upload session append failed: {}",
-                        sanitize_api_error(&text)
+                        session_error_text(&text)
                     )));
                 }
 
@@ -1348,12 +1388,7 @@ impl StorageProvider for DropboxProvider {
                     "session_id": session.session_id,
                     "offset": file_size
                 },
-                "commit": {
-                    "path": path,
-                    "mode": "overwrite",
-                    "autorename": false,
-                    "mute": false
-                }
+                "commit": commit_arg(&path, source.modified_rfc3339().as_deref())
             });
 
             let finish_resp = self
@@ -1370,7 +1405,7 @@ impl StorageProvider for DropboxProvider {
                 let text = finish_resp.text().await.unwrap_or_default();
                 return Err(ProviderError::Other(format!(
                     "Upload session finish failed: {}",
-                    sanitize_api_error(&text)
+                    session_error_text(&text)
                 )));
             }
             progress.complete();
@@ -1385,12 +1420,7 @@ impl StorageProvider for DropboxProvider {
                 .map_err(|e| ProviderError::Other(format!("Open error: {}", e)))?;
             let body = progress.file_body(file);
 
-            let arg = serde_json::json!({
-                "path": path,
-                "mode": "overwrite",
-                "autorename": false,
-                "mute": false
-            });
+            let arg = commit_arg(&path, source.modified_rfc3339().as_deref());
 
             let url = format!("{}/files/upload", self.content_api_base());
 
@@ -1633,75 +1663,9 @@ impl StorageProvider for DropboxProvider {
     }
 
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let search_path = self.normalize_path(path);
-
-        // Dropbox search_v2 treats the query as a substring on filename.content,
-        // so glob metacharacters confuse it. Send the literal core to the
-        // server for a broad prefilter and apply the precise match client-side
-        // via matches_find_pattern (glob via globset, substring fallback).
-        let literal: String = pattern
-            .chars()
-            .filter(|c| !matches!(c, '*' | '?' | '[' | ']'))
-            .collect();
-        let server_query = if literal.is_empty() {
-            ".".to_string() // any character, broadest possible prefilter
-        } else {
-            literal
-        };
-
-        let body = serde_json::json!({
-            "query": server_query,
-            "options": {
-                "path": if search_path.is_empty() { "" } else { search_path.as_str() },
-                "max_results": 200,
-                "file_status": "active"
-            }
-        });
-
-        let url = format!("{}/files/search_v2", API_BASE);
-
-        let response = self
-            .client
-            .post(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, "application/json")
-            .body(body.to_string())
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Search failed: {}",
-                sanitize_api_error(&text)
-            )));
-        }
-
-        #[derive(Deserialize)]
-        struct MatchMetadata {
-            metadata: DropboxMetadata,
-        }
-        #[derive(Deserialize)]
-        struct SearchMatch {
-            metadata: MatchMetadata,
-        }
-        #[derive(Deserialize)]
-        struct SearchResult {
-            matches: Vec<SearchMatch>,
-        }
-
-        let result: SearchResult = response
-            .json()
-            .await
-            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
-
-        Ok(result
-            .matches
-            .iter()
-            .map(|m| self.to_remote_entry(&m.metadata.metadata))
-            .filter(|e| super::matches_find_pattern(&e.name, pattern))
-            .collect())
+        // The search API answers outside the folder or without the hit's real
+        // path, and a caller acts on that path.
+        super::find_by_walk(self, path, pattern).await
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
@@ -2416,7 +2380,7 @@ impl StorageProvider for DropboxProvider {
         remote_path: &str,
         total_size: u64,
         _content_type: Option<&str>,
-        _local_source_path: Option<&str>,
+        local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -2459,7 +2423,7 @@ impl StorageProvider for DropboxProvider {
             let mut msg = format!(
                 "Dropbox upload_session/start failed (HTTP {}): {}",
                 status,
-                sanitize_api_error(&text)
+                session_error_text(&text)
             );
             if let Some(tail) =
                 dropbox_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref())
@@ -2483,6 +2447,7 @@ impl StorageProvider for DropboxProvider {
             total: total_size,
             part: dropbox_runner_part_size(total_size),
             path: normalised,
+            client_modified: local_source_path.and_then(super::local_modified_rfc3339),
         };
         Ok(MultipartHandle {
             upload_id: meta.encode(),
@@ -2579,7 +2544,7 @@ impl StorageProvider for DropboxProvider {
                 "Dropbox upload_part {} failed (HTTP {}): {}",
                 part_number,
                 status,
-                sanitize_api_error(&text)
+                session_error_text(&text)
             );
             if let Some(tail) =
                 dropbox_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref())
@@ -2648,7 +2613,7 @@ impl StorageProvider for DropboxProvider {
             let mut msg = format!(
                 "Dropbox upload_session/append_v2 close=true failed (HTTP {}): {}",
                 status,
-                sanitize_api_error(&text)
+                session_error_text(&text)
             );
             if let Some(tail) =
                 dropbox_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref())
@@ -2664,12 +2629,7 @@ impl StorageProvider for DropboxProvider {
                 "session_id": meta.session_id,
                 "offset": meta.total
             },
-            "commit": {
-                "path": meta.path,
-                "mode": "overwrite",
-                "autorename": false,
-                "mute": false
-            }
+            "commit": commit_arg(&meta.path, meta.client_modified.as_deref())
         });
 
         let auth = self.auth_header().await?;
@@ -2695,7 +2655,7 @@ impl StorageProvider for DropboxProvider {
             let mut msg = format!(
                 "Dropbox upload_session/finish failed (HTTP {}): {}",
                 status,
-                sanitize_api_error(&text)
+                session_error_text(&text)
             );
             if let Some(tail) =
                 dropbox_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref())
@@ -2721,6 +2681,25 @@ impl StorageProvider for DropboxProvider {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_failed_session_keeps_its_id_out_of_the_message() {
+        let body = r#"{"error_summary":"path/disallowed_name/.","error":{".tag":"path"},"upload_session_id":"AAAAsecret"}"#;
+        assert_eq!(session_error_text(body), "path/disallowed_name/.");
+        assert_eq!(session_error_text("gateway down"), "gateway down");
+        let no_summary = session_error_text(r#"{"error":"x","upload_session_id":"AAAAsecret"}"#);
+        assert!(!no_summary.contains("AAAAsecret"), "{no_summary}");
+        let plain_id = session_error_text(r#"{"error":"x","session_id":"AAAAsecret"}"#);
+        assert!(!plain_id.contains("AAAAsecret"), "{plain_id}");
+    }
+
+    #[test]
+    fn a_commit_carries_the_file_date_when_it_is_known() {
+        let commit = commit_arg("/a.txt", Some("2021-03-04T05:06:07Z"));
+        assert_eq!(commit["client_modified"], "2021-03-04T05:06:07Z");
+        assert_eq!(commit["mode"], "overwrite");
+        assert!(commit_arg("/a.txt", None).get("client_modified").is_none());
+    }
+
     #[tokio::test]
     async fn probe_contract_dropbox_root_uses_a_supported_probe() {
         use axum::response::IntoResponse;
@@ -2931,6 +2910,7 @@ mod tests {
             total: 524_288_000,
             part: 8_323_073,
             path: "/aeroftp-test/sample.bin".to_string(),
+            client_modified: None,
         };
         let encoded = meta.encode();
         let decoded = DropboxMultipartMeta::decode(&encoded).expect("decode");
@@ -4008,6 +3988,7 @@ mod tests {
             total: 4 * 1024,
             part: 1024,
             path: "/f.bin".to_string(),
+            client_modified: None,
         };
         let handle = MultipartHandle {
             upload_id: meta.encode(),
@@ -4094,6 +4075,7 @@ mod tests {
             total: 4096,
             part: 1024,
             path: "/f.bin".to_string(),
+            client_modified: None,
         };
         let handle = MultipartHandle {
             upload_id: meta.encode(),
@@ -4395,6 +4377,7 @@ mod tests {
             total: 2048,
             part: 1024,
             path: "/f.bin".to_string(),
+            client_modified: None,
         };
         let handle = MultipartHandle {
             upload_id: meta.encode(),

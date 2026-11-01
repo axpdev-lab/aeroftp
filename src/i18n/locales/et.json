@@ -18,6 +18,7 @@
             "loading": "Laadimine...",
             "error": "Viga",
             "success": "Õnnestus",
+            "searchLimited": "Kuvatakse esimesed {count} vastet. Otsi väiksemast kaustast, et näha ülejäänuid.",
             "warning": "Hoiatus",
             "info": "Info",
             "confirm": "Kinnita",
@@ -598,7 +599,8 @@
             "setAsPublic": "Määra avalikuks",
             "makeAllPrivate": "Muuda kõik privaatseks",
             "dropboxRestoreLimit": "AeroFTP saab taastada taastatavaid failiversioone. Taasta kaustad lehel dropbox.com jaotises Kustutatud failid. Küsimärk tähendab, et Dropbox ei tuvastanud üksuse tüüpi.",
-            "openWithDefaultApp": "Ava vaikerakendusega"
+            "openWithDefaultApp": "Ava vaikerakendusega",
+            "extractHereUncheckedConfirm": "Arhiivi {name} sees olevaid nimesid ei saa enne lahtipakkimist lugeda, seega ei saa AeroFTP kontrollida, mida „Paki siia lahti“ selles kaustas üle kirjutaks. „Paki kausta lahti“ ei kirjuta kunagi midagi üle."
         },
         "transfer": {
             "transferring": "Ülekanne...",
@@ -1370,7 +1372,8 @@
             "importJottaChainWarning": "Jottacloud uuendab oma sisselogimist igal ühendumisel ja {names} jagab nüüd ühte teise koopiaga: koopia, mis ühendub esimesena, logib teise välja (seade, kust fail pärineb, või profiil, millest see dubleeriti). Logige teine uuesti sisse uue Personal Login Tokeniga.",
             "importOauthAppKept": "{names} tulid teistsuguse kohandatud OAuth-rakendusega kui see, mis sellel seadmel selle pakkuja jaoks on. Salvestatud rakendus jäeti alles, nii et logige uuesti sisse, kui need profiilid enam ühendust ei loo.",
             "importTargetChanged": "{names} ei kirjutatud üle: fail suunab need teisele serverile ja nende salvestatud paroole ja tokeneid ei tohi sinna saata. Importige valikuga Dubleeri, et lisada faili koopia, või kustutage esmalt profiil.",
-            "importSharedSecretsFailed": "{names} imporditi, kuid failist ei õnnestunud salvestada jagatud saladust ega seanssi. Logige nendesse profiilidesse uuesti sisse, kui need ei ühendu."
+            "importSharedSecretsFailed": "{names} imporditi, kuid failist ei õnnestunud salvestada jagatud saladust ega seanssi. Logige nendesse profiilidesse uuesti sisse, kui need ei ühendu.",
+            "keystoreDatabasesFailed": "Import lõppes, kuid neid andmebaase ei õnnestunud taastada ja need säilitavad oma senise sisu: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1588,7 +1591,9 @@
             "aerocloudEnabled": "AeroCloud lubatud",
             "selectPairLocalFolder": "Vali paari jaoks kohalik kaust",
             "secondsAgo": "{count}s tagasi",
-            "conflictsCount": "Tähelepanu vajavad konfliktid: {count}"
+            "conflictsCount": "Tähelepanu vajavad konfliktid: {count}",
+            "updateOnlyHint": "Ühesuunaline uuendamine säilitab uuemad sihtfailid. Kui lisav varundamine on välja lülitatud, kustutatakse ainult muutmata failid, mis asuvad üksnes sihtkohas ja millel on kinnitatud AeroCloudi edastuskviitung. Muud failid jäävad AeroSyncis ülevaatamiseks. Konfliktireeglit eiratakse; tundmatud kuupäevad jäävad lahendamata.",
+            "untrackedDestinationFiles": "{count} sihtfaili säilitati ülevaatamiseks: nende edastusajalugu on kinnitamata või on neid pärast viimast AeroCloudi edastust muudetud. Vaata need AeroSyncis üle, enne kui otsustad kustutamise üle."
         },
         "statusBar": {
             "connected": "Ühendatud",
@@ -2469,7 +2474,9 @@
             "flattenScanning": "Alampuu skannimine...",
             "flattenTruncated": "lühendatud",
             "flattenTruncatedHint": "Saavutati 5000 kirje piirang; täpsustage filtrit või laskuge alamkausta.",
-            "local_placeholder_flatten": "Filtreeri kohalikke faile... (* rekursiivseks)"
+            "local_placeholder_flatten": "Filtreeri kohalikke faile... (* rekursiivseks)",
+            "flattenNameClash": "{names}: valitud rohkem kui ühes kaustas. Ühte kohta pandult asendaksid nad teineteist; tegutse korraga ühega igast nimest.",
+            "flattenNameClashTitle": "Sama nimi mitmes kaustas"
         },
         "versions": {
             "title": "Failiversioonid",
@@ -4179,7 +4186,10 @@
             "drivesLeftPanel": "Vasaku paneeli kettad",
             "drivesRightPanel": "Parema paneeli kettad",
             "modeGroupLabel": "Külgriba režiim",
-            "placesSidebarLabel": "Asukohtade külgriba"
+            "placesSidebarLabel": "Asukohtade külgriba",
+            "mountFailed": "Haakimine ebaõnnestus",
+            "partitions_need_udisks2": "Snapis ilmuvad haakimata partitsioonid, mida saab haakida ja väljastada, pärast udisks2 loa ühendamist. Käivitage see terminalis ja naaske seejärel AeroFTP-sse:",
+            "volume_action_needs_udisks2": "Snapis vajavad haakimine ja väljastamine udisks2 luba. Käivitage see terminalis ja proovige seejärel uuesti: {command}"
         },
         "viewMode": {
             "list": "Loend",
@@ -4853,7 +4863,8 @@
             "relocateSuccessMove": "„{name}“ teisaldati kontole {user}",
             "relocateAlreadyPresent": "„{name}“ on juba salvestatud kontole {user}",
             "relocateError": "Serverit ei õnnestunud üle kanda: {error}",
-            "relocateWrongPassword": "Vale parool kontole {user}."
+            "relocateWrongPassword": "Vale parool kontole {user}.",
+            "relocateSecretsNotCopied": "„{name}“ jõudis kontole {user}, aga salvestatud parool või token mitte, seega küsib see neid seal uuesti."
         },
         "cyberTools": {
             "title": "Turvalisuse tööriistad",
@@ -6130,7 +6141,8 @@
             "totalEntries": "Kirjeid kokku",
             "differences": "Erinevused",
             "totalBytes": "Baite kokku",
-            "mirrorHint": "Peegelnupud seavad vastavad kirjed ülevaatuseks ühtsesse ülekande planeerijasse.",
+            "mirrorHint": "Peegelnupud kannavad vastavad kirjed üle. Need ei pane neid ülevaatamiseks ootele.",
+            "exportFailed": "Eksporti ei saanud kirjutada: {error}",
             "mirrorLeftToRight": "Peegelda vasakult paremale",
             "mirrorRightToLeft": "Peegelda paremalt vasakule",
             "directionLeftRight": "Vasakult Paremale",
@@ -6309,7 +6321,12 @@
                 }
             },
             "rescan": "Skanni uuesti",
-            "rescanNeeded": "Võrdlus tehti teiste välistuste või teise varukoopiakaustaga. Skanni enne käivitamist uuesti.",
+            "rescanBringsBack": "Need sätted toovad tagasi failid, mille skannimine välja jättis, seega ei lugenud see neid kunagi. Skanni enne käivitamist uuesti.",
+            "rescanFlat": "See võrdlus pärines kahe paneeli loenditest, mitte täielikust skannimisest, seega ei saa see välistusi rakendada. Skanni enne käivitamist uuesti.",
+            "narrowAvailable": "Need sätted ainult kitsendavad võrdlust, nii et seda saab filtreerida ilma uuesti skannimata.",
+            "narrowApply": "Rakenda sellele võrdlusele",
+            "narrowedNote": "Filtreeritud uute välistustega ilma uuesti skannimata. Identsete arv on endiselt skannimisest.",
+            "narrowAfterRestore": "Käimas on taastamine. Neid sätteid saab võrdlusele rakendada, kui taastamine lõpeb.",
             "backup": {
                 "checking": "Kontrollin, kuidas see server faile teisaldab...",
                 "serverCopy": "See server ei oska teisaldada: iga säilitatav koopia kopeeritakse serveris ja seejärel kustutatakse. See maksab iga säilitatava faili täieliku koopia, kahes eraldi etapis.",
@@ -6336,7 +6353,10 @@
             "progressCopy": "[koopia]",
             "deleteCount": "{count} kustutamiseks",
             "overwriteCount": "{count} ülekirjutamiseks",
-            "conflictCount": "Konfliktid: {count}"
+            "conflictCount": "Konfliktid: {count}",
+            "updateOnly": "Jäta uuemad sihtfailid vahele (ühesuunaline uuendamine)",
+            "updateOnlyHint": "Kopeerib puuduvad või muudetud lähtefailid, säilitab sihtkoha uuemad failid ja kustutab ainult sihtkohas olevad kirjed. Faile, millel puuduvad võrreldavad kuupäevad, võrreldakse suuruse järgi; suuruse erinevused jäetakse läbivaatamiseks.",
+            "rescanNeeded": "Enne uuendamisskripti eksportimist käivita uus võrdlus praeguste sätetega."
         },
         "accountLock": {
             "title": "Vali konto",
@@ -6580,7 +6600,8 @@
             "keyslotsSetAsideRevocation": "Eelmine marker avab hoidla endiselt teguriga, mille eemaldate või asendate. Iga hoidla kausta jäänud koopia kustutatakse pärast muudatust ja koopia, mida ei saa kustutada, esitatakse veana. Salvestusruumi prügikasti või failiversioonide koopiani ei jõuta: nende tühjendamine eemaldab need koopiad, kuid mitte koopiat, mille keegi teine on alles hoidnud, seega ei vii see tühistamist lõpule.",
             "keyslotsSetAsideConsent": "Saan aru: asenda marker sellel serveril, nimetades vana kõrvale ümber",
             "keyslotsSetAsideConsentRequired": "See server saab hoidla markeri asendada ainult vana kõrvale ümber nimetades: jätkamiseks kinnitage see ülalolevas ruudus.",
-            "keyslotsMarkerReplaceUnsupported": "See server ei saa hoidla markerit asendada, seega lükatakse pesamuudatused siin tagasi. Avage sama salvestusruum serveri kaudu, mis asendab faili ühe sammuga (näiteks SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "See server ei saa hoidla markerit asendada, seega lükatakse pesamuudatused siin tagasi. Avage sama salvestusruum serveri kaudu, mis asendab faili ühe sammuga (näiteks SFTP).",
+            "overlayMetadataNotSaved": "Migreerimine õnnestus, kuid võrguühenduseta taastekomplekt pole veel vahemällu salvestatud. See tehakse järgmisel avamisel."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Krüptimine)",

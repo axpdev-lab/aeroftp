@@ -67,7 +67,8 @@ pub(crate) fn confined_s3_list_path(root: &str, relative: &str) -> Result<String
 }
 
 pub(crate) fn saved_s3_root(initial_path: Option<&str>) -> Result<String, String> {
-    let path = initial_path.unwrap_or("").trim().trim_matches('/');
+    // As given, as the app lists it: `team ` is its own prefix.
+    let path = initial_path.unwrap_or("").trim_matches('/');
     let root = if path.is_empty() {
         "/".to_string()
     } else {
@@ -239,6 +240,7 @@ mod tests {
         assert_eq!(confined_s3_list_path("/team/a", "").unwrap(), "/team/a");
         assert_eq!(confined_s3_list_path("/", "").unwrap(), "/");
         assert_eq!(saved_s3_root(Some("/team/a/")).unwrap(), "/team/a");
+        assert_eq!(saved_s3_root(Some("/team/a ")).unwrap(), "/team/a ");
         assert_eq!(saved_s3_root(None).unwrap(), "/");
         assert!(saved_s3_root(Some("../other")).is_err());
         for path in [

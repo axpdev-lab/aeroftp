@@ -18,6 +18,7 @@
             "loading": "Yn llwytho...",
             "error": "Gwall",
             "success": "Llwyddiant",
+            "searchLimited": "Yn dangos y {count} cyfatebiaeth gyntaf. Chwiliwch mewn ffolder lai i weld y gweddill.",
             "warning": "Rhybudd",
             "info": "Gwybodaeth",
             "confirm": "Cadarnhau",
@@ -598,7 +599,8 @@
             "setAsPublic": "Gosod fel Cyhoeddus",
             "makeAllPrivate": "Gwneud pob un yn breifat",
             "dropboxRestoreLimit": "Gall AeroFTP adfer fersiynau o ffeiliau y gellir eu hadfer. Adferwch ffolderi o Ffeiliau wedi'u dileu ar dropbox.com. Mae marc cwestiwn yn golygu nad yw Dropbox wedi adnabod math yr eitem.",
-            "openWithDefaultApp": "Agor gyda'r ap rhagosodedig"
+            "openWithDefaultApp": "Agor gyda'r ap rhagosodedig",
+            "extractHereUncheckedConfirm": "Ni ellir darllen yr enwau y tu mewn i {name} cyn echdynnu, felly ni all AeroFTP wirio beth fyddai “Echdynnu Yma” yn ei drosysgrifennu yn y ffolder hon. Nid yw “Echdynnu i Ffolder” byth yn trosysgrifennu."
         },
         "transfer": {
             "transferring": "Yn trosglwyddo...",
@@ -1370,7 +1372,8 @@
             "importJottaChainWarning": "Mae Jottacloud yn adnewyddu ei fewngofnodi ar bob cysylltiad, ac mae {names} bellach yn rhannu un gyda chopi arall: mae'r copi sy'n cysylltu gyntaf yn allgofnodi'r llall (y ddyfais y daeth y ffeil ohoni, neu'r proffil y cafodd ei ddyblygu ohono). Mewngofnodwch y llall eto gyda Personal Login Token newydd.",
             "importOauthAppKept": "Daeth {names} gydag ap OAuth personol gwahanol i'r un sydd gan y ddyfais hon ar gyfer y darparwr hwnnw. Cadwyd yr ap sydd wedi'i storio, felly mewngofnodwch eto os bydd y proffiliau hyn yn rhoi'r gorau i gysylltu.",
             "importTargetChanged": "Ni chafodd {names} eu trosysgrifo: mae'r ffeil yn eu pwyntio at weinydd arall, ac ni ddylai eu cyfrineiriau a'u tocynnau storiedig fynd yno. Mewnforiwch gyda Dyblygu i ychwanegu'r copi o'r ffeil, neu dilëwch y proffil yn gyntaf.",
-            "importSharedSecretsFailed": "Mewnforiwyd {names}, ond ni ellid storio cyfrinach a rennir neu sesiwn o'r ffeil. Mewngofnodwch i'r proffiliau hyn eto os nad ydynt yn cysylltu."
+            "importSharedSecretsFailed": "Mewnforiwyd {names}, ond ni ellid storio cyfrinach a rennir neu sesiwn o'r ffeil. Mewngofnodwch i'r proffiliau hyn eto os nad ydynt yn cysylltu.",
+            "keystoreDatabasesFailed": "Mae'r mewnforio wedi gorffen, ond nid oedd modd adfer y cronfeydd data hyn ac maent yn cadw'r hyn oedd ynddynt: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1588,7 +1591,9 @@
             "aerocloudEnabled": "AeroCloud wedi'i alluogi",
             "selectPairLocalFolder": "Dewiswch ffolder lleol ar gyfer y pâr",
             "secondsAgo": "{count}e yn ôl",
-            "conflictsCount": "{count} gwrthdaro angen sylw"
+            "conflictsCount": "{count} gwrthdaro angen sylw",
+            "updateOnlyHint": "Mae diweddaru unffordd yn cadw ffeiliau mwy newydd yn y gyrchfan. Pan fydd copïo wrth gefn ychwanegol wedi’i ddiffodd, dim ond ffeiliau sydd yn y gyrchfan yn unig, sydd heb newid ac sydd â derbynneb trosglwyddo AeroCloud wedi’i dilysu sy’n cael eu dileu. Mae ffeiliau eraill yn aros i’w hadolygu yn AeroSync. Anwybyddir y polisi gwrthdaro; mae dyddiadau anhysbys yn aros heb eu datrys.",
+            "untrackedDestinationFiles": "Cadwyd {count} o ffeiliau yn y gyrchfan i’w hadolygu: nid yw eu hanes trosglwyddo wedi’i ddilysu neu maent wedi newid ers y trosglwyddiad AeroCloud diwethaf. Adolygwch nhw yn AeroSync cyn penderfynu a ddylid eu dileu."
         },
         "statusBar": {
             "connected": "Wedi cysylltu",
@@ -2469,7 +2474,9 @@
             "flattenScanning": "Yn sganio is-goeden...",
             "flattenTruncated": "wedi'i docio",
             "flattenTruncatedHint": "Wedi cyrraedd y terfyn o 5,000 cofnod; mireinio'ch hidlydd neu ewch i is-ffolder.",
-            "local_placeholder_flatten": "Hidlo ffeiliau lleol... (* ar gyfer ailadrodd)"
+            "local_placeholder_flatten": "Hidlo ffeiliau lleol... (* ar gyfer ailadrodd)",
+            "flattenNameClash": "{names}: wedi'u dewis mewn mwy nag un ffolder. Os cânt eu rhoi mewn un lle, byddent yn disodli ei gilydd; gweithredwch ar un o bob un ar y tro.",
+            "flattenNameClashTitle": "Yr un enw mewn mwy nag un ffolder"
         },
         "versions": {
             "title": "Fersiynau Ffeiliau",
@@ -4179,7 +4186,10 @@
             "drivesLeftPanel": "Gyriannau'r panel chwith",
             "drivesRightPanel": "Gyriannau'r panel de",
             "modeGroupLabel": "Modd y bar ochr",
-            "placesSidebarLabel": "Bar ochr lleoedd"
+            "placesSidebarLabel": "Bar ochr lleoedd",
+            "mountFailed": "Methodd y mowntio",
+            "partitions_need_udisks2": "Yn y snap, mae rhaniadau heb eu mowntio'n ymddangos, a gellir eu mowntio a'u diarddel, unwaith y bydd y caniatâd udisks2 wedi'i gysylltu. Rhedwch hyn mewn terfynell, yna dychwelwch i AeroFTP:",
+            "volume_action_needs_udisks2": "Yn y snap, mae mowntio a diarddel angen y caniatâd udisks2. Rhedwch hyn mewn terfynell, yna rhowch gynnig arall arni: {command}"
         },
         "viewMode": {
             "list": "Rhestr",
@@ -4853,7 +4863,8 @@
             "relocateSuccessMove": "Symudwyd \"{name}\" i {user}",
             "relocateAlreadyPresent": "Mae \"{name}\" eisoes wedi'i gadw yn {user}",
             "relocateError": "Methu trosglwyddo'r gweinydd: {error}",
-            "relocateWrongPassword": "Cyfrinair anghywir ar gyfer {user}."
+            "relocateWrongPassword": "Cyfrinair anghywir ar gyfer {user}.",
+            "relocateSecretsNotCopied": "Cyrhaeddodd \"{name}\" {user}, ond ni chyrhaeddodd y cyfrinair neu'r token a gadwyd, felly bydd yn gofyn amdanynt eto yno."
         },
         "cyberTools": {
             "title": "Offer diogelwch",
@@ -6149,7 +6160,8 @@
             "totalEntries": "Cyfanswm cofnodion",
             "differences": "Gwahaniaethau",
             "totalBytes": "Cyfanswm beit",
-            "mirrorHint": "Mae botymau drych yn ciwio'r cofnodion cyfatebol yn y cynlluniwr trosglwyddo unedig i'w hadolygu.",
+            "mirrorHint": "Mae botymau drych yn trosglwyddo'r cofnodion cyfatebol. Dydyn nhw ddim yn eu cadw i'w hadolygu gyntaf.",
+            "exportFailed": "Methwyd ysgrifennu'r allforio: {error}",
             "mirrorLeftToRight": "Drych o'r chwith i'r dde",
             "mirrorRightToLeft": "Drych o'r dde i'r chwith",
             "directionLeftRight": "Chwith i'r Dde",
@@ -6328,7 +6340,12 @@
                 }
             },
             "rescan": "Ailsganio",
-            "rescanNeeded": "Gwnaed y gymhariaeth gydag eithriadau eraill neu ffolder wrth gefn arall. Ailsganiwch cyn rhedeg.",
+            "rescanBringsBack": "Mae'r gosodiadau hyn yn dod â ffeiliau yn ôl a adawodd y sgan allan, felly ni wnaeth eu darllen erioed. Ailsganiwch cyn rhedeg.",
+            "rescanFlat": "Daeth y gymhariaeth hon o restrau'r ddau banel, nid o sgan llawn, felly ni all gymhwyso eithriadau. Ailsganiwch cyn rhedeg.",
+            "narrowAvailable": "Mae'r gosodiadau hyn yn culhau'r gymhariaeth yn unig, felly gellir ei hidlo heb ailsganio.",
+            "narrowApply": "Cymhwyso i'r gymhariaeth hon",
+            "narrowedNote": "Wedi'i hidlo gydag eithriadau newydd heb ailsganio. Y cyfrif union yr un fath yw'r un o'r sgan o hyd.",
+            "narrowAfterRestore": "Mae adfer ar y gweill. Gellir cymhwyso'r gosodiadau hyn i'r gymhariaeth pan fydd wedi gorffen.",
             "backup": {
                 "checking": "Yn gwirio sut mae'r gweinydd hwn yn symud ffeiliau...",
                 "serverCopy": "Ni all y gweinydd hwn symud: mae pob copi a gedwir yn cael ei gopïo ar y gweinydd ac yna'i ddileu. Mae hynny'n costio copi llawn o bob ffeil a gedwir, mewn dau gam ar wahân.",
@@ -6355,7 +6372,10 @@
             "progressCopy": "[copi]",
             "deleteCount": "I'w dileu: {count}",
             "overwriteCount": "I'w trosysgrifo: {count}",
-            "conflictCount": "{count} gwrthdaro"
+            "conflictCount": "{count} gwrthdaro",
+            "updateOnly": "Hepgor ffeiliau mwy newydd yn y gyrchfan (diweddaru unffordd)",
+            "updateOnlyHint": "Copïwch ffeiliau ffynhonnell sydd ar goll neu wedi newid, cadwch ffeiliau diweddarach yn y cyrchfan, a dilëwch gofnodion sydd yn y cyrchfan yn unig. Cymharir ffeiliau heb ddyddiadau cymaradwy yn ôl maint; gadewir gwahaniaethau maint i’w hadolygu.",
+            "rescanNeeded": "Rhedwch gymhariaeth newydd gyda’r gosodiadau cyfredol cyn allforio sgript ddiweddaru."
         },
         "accountLock": {
             "title": "Dewiswch gyfrif",
@@ -6599,7 +6619,8 @@
             "keyslotsSetAsideRevocation": "Mae'r marciwr blaenorol yn dal i agor y gladdgell gyda'r ffactor rydych yn ei dynnu neu'n ei ddisodli. Caiff pob copi sydd ar ôl ym mhlygell y gladdgell ei ddileu ar ôl y newid, a chaiff copi na ellir ei ddileu ei adrodd fel gwall. Ni cheir at gopi yn sbwriel y storfa na'i fersiynau ffeil: mae eu gwagio yn dileu'r copïau hynny, ond nid copi y mae rhywun arall wedi'i gadw, felly nid yw'n cwblhau'r diddymu.",
             "keyslotsSetAsideConsent": "Rwy'n deall: disodli'r marciwr drwy roi'r hen un o'r neilltu ar y gweinydd hwn",
             "keyslotsSetAsideConsentRequired": "Dim ond drwy roi'r hen farciwr o'r neilltu y gall y gweinydd hwn ddisodli marciwr y gladdgell: cadarnhewch yn y blwch uchod i barhau.",
-            "keyslotsMarkerReplaceUnsupported": "Ni all y gweinydd hwn ddisodli marciwr y gladdgell, felly mae newidiadau i slotiau yn cael eu gwrthod yma. Agorwch yr un storfa drwy weinydd sy'n disodli ffeil mewn un cam (SFTP, er enghraifft)."
+            "keyslotsMarkerReplaceUnsupported": "Ni all y gweinydd hwn ddisodli marciwr y gladdgell, felly mae newidiadau i slotiau yn cael eu gwrthod yma. Agorwch yr un storfa drwy weinydd sy'n disodli ffeil mewn un cam (SFTP, er enghraifft).",
+            "overlayMetadataNotSaved": "Llwyddodd y mudo, ond nid yw'r pecyn adfer all-lein wedi'i storio yn y storfa dros dro eto. Bydd yn cael ei storio ar y datgloi nesaf."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Amgryptio)",

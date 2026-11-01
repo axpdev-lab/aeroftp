@@ -23,7 +23,8 @@ import { SyncTemplateDialog } from '../Sync/SyncTemplateDialog';
 import { MultiPathEditor } from '../Sync/MultiPathEditor';
 import { RollbackDialog } from '../Sync/RollbackDialog';
 import { TabStateStoreContext, createTabStateStore } from './tabStateStore';
-import { buildAeroSyncTabStatePatch, type ImportedSyncSettings } from '../../utils/syncTemplateApply';
+import { buildAeroSyncTabStatePatch, parseSyncExcludePatterns, type ImportedSyncSettings } from '../../utils/syncTemplateApply';
+import { AEROSYNC_DEFAULT_BACKUP_DIR, narrowsComparison, sameExcludePatterns } from '../../utils/aeroSyncExcludes';
 import type { VersionedBackupConfig } from '../../utils/syncPresets';
 import { AERO_SYNC_TOOL_TABS, aeroSyncTabsFor, effectiveAeroSyncTab, type AeroSyncDialogProps, type AeroSyncTab, type AeroSyncToolTab } from './types';
 import type { TransferOptimizationHints } from '../../types';
@@ -32,6 +33,7 @@ import { limitsFromHints, type ProviderFileLimits } from '../../utils/providerFi
 export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     isOpen,
     onClose,
+    onBusyChange,
     initialTab = 'compare',
     context,
     onApplyMirrorLeftToRight,
@@ -41,6 +43,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     onDismissJournal,
     onInvalidateComparison,
     onRescan,
+    onNarrowComparison,
     onStartCompare,
     onStopCompare,
 }) => {
@@ -66,6 +69,9 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
             setVisitedTools(previous => previous.includes(activeTab as AeroSyncToolTab) ? previous : [...previous, activeTab as AeroSyncToolTab]);
         }
     }, [isOpen, activeTab]);
+
+    React.useEffect(() => { onBusyChange?.(syncRunning || restoreRunning); }, [onBusyChange, syncRunning, restoreRunning]);
+    React.useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
 
     const cancelSync = React.useCallback(() => {
         invoke('local_sync_cancel').catch(() => { /* no run in flight */ });
@@ -97,11 +103,22 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
             tabState.get<VersionedBackupConfig | undefined>('plan.versionedBackup', undefined),
         );
         Object.entries(patch).forEach(([key, value]) => tabState.set(key, value));
+        // Requested 116: settings that only narrow the comparison filter it, so
+        // choosing a template does not cost a scan of the same two paths.
+        const userExcludes = parseSyncExcludePatterns(patch['sync.exclude'] as string);
+        const backupDir = tabState.get<VersionedBackupConfig | undefined>('plan.versionedBackup', undefined)?.backupDir
+            ?? AEROSYNC_DEFAULT_BACKUP_DIR;
+        const compareExcludes = context.compareExcludes ?? [];
+        const unchanged = sameExcludePatterns(userExcludes, compareExcludes) && backupDir === context.compareBackupDir;
+        if (context.compareResult && !context.compareLoading && !unchanged
+            && narrowsComparison(compareExcludes, context.compareBackupDir, userExcludes, backupDir)) {
+            void onNarrowComparison?.({ userExcludes, backupDir });
+        }
         // Plan summarizes the imported direction/preset. Sync is populated in
         // the same store and shows the imported paths when the user opens it.
         setActiveTab('plan');
         document.getElementById(`${tabId}-tab-plan`)?.focus();
-    }, [context.pairKind, tabState, tabId]);
+    }, [context.pairKind, context.compareResult, context.compareLoading, context.compareExcludes, context.compareBackupDir, onNarrowComparison, tabState, tabId]);
     React.useEffect(() => {
         if (!isOpen) {
             tabState.reset();
@@ -166,6 +183,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
             className="fixed inset-0 z-[9998] flex items-start justify-center pt-[5vh] bg-black/50 animate-scale-in"
             role="dialog"
             aria-modal="true"
+            data-gui-owned="aerosync"
             aria-label={t('aerosync.title') || 'AeroSync'}
             onClick={(e) => {
                 if (e.target === e.currentTarget) guarded.requestBackdropClose();
@@ -303,6 +321,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                     {activeTab === 'compare' && (
                         <CompareTabContent
                             result={context.compareResult}
+                            narrowed={context.compareNarrowed}
                             loading={context.compareLoading}
                             scanProgressId={context.scanProgressId}
                             stopped={context.compareStopped}
@@ -337,6 +356,8 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                             compareExcludes={context.compareExcludes ?? []}
                             compareBackupDir={context.compareBackupDir}
                             onRescan={restoreRunning ? undefined : onRescan}
+                            onNarrowComparison={restoreRunning ? undefined : onNarrowComparison}
+                            narrowRefusal={context.compareNarrowRefusal}
                             isProvider={context.isProvider}
                             cli={{
                                 profileName: context.activeProfileSaved ? context.activeProfileName : null,
@@ -361,7 +382,9 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                             <div key={`${context.activeProfileId}:${localPath}:${remotePath}:${tool}`} hidden={activeTab !== tool}>
                                 {tool === 'templates' && <SyncTemplateDialog embedded isOpen onClose={() => selectTab('plan')}
                                     localPath={localPath} remotePath={remotePath} serverProfileName={serverProfileName}
-                                    excludePatterns={excludePatterns} pairKind={context.pairKind} onApplyImport={applyImportedSettings} />}
+                                    excludePatterns={excludePatterns} pairKind={context.pairKind} compareResult={context.compareResult}
+                                    compareLoading={context.compareLoading} compareExcludes={context.compareExcludes} compareBackupDir={context.compareBackupDir}
+                                    onApplyImport={applyImportedSettings} />}
                                 {tool === 'multiPath' && <MultiPathEditor embedded isOpen onClose={() => selectTab('plan')}
                                     localPath={localPath} remotePath={remotePath} />}
                                 {tool === 'rollback' && <RollbackDialog embedded isOpen onClose={() => selectTab('plan')}

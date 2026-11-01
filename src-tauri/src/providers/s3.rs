@@ -459,6 +459,8 @@ pub struct S3Provider {
     /// Number of concurrent Range streams for multi-thread download (1 = disabled).
     /// Used by `download_multi_thread`. Set via `set_multi_thread_download`.
     multi_thread_streams: usize,
+    /// What the last `download` read, see `DownloadTime`.
+    download_time: super::multi_thread::DownloadTime,
     /// Minimum file size (bytes) above which multi-thread download is engaged.
     /// Below this threshold, the standard single-stream path is always used.
     multi_thread_cutoff: u64,
@@ -545,7 +547,7 @@ impl S3Provider {
                 "Bounded worker S3 listing".into(),
             ));
         }
-        let prefix = path.trim_matches('/');
+        let prefix = self.prefix_of(path);
         let prefix_with_slash = if prefix.is_empty() {
             String::new()
         } else {
@@ -581,7 +583,7 @@ impl S3Provider {
         }
         let xml = String::from_utf8(bytes)
             .map_err(|_| ProviderError::ParseError("Worker S3 list is not UTF-8".into()))?;
-        let (entries, next) = self.parse_list_response(&xml, false)?;
+        let (entries, next) = self.parse_listing_of(&xml, false, &prefix)?;
         if entries.iter().any(|entry| {
             !entry
                 .path
@@ -691,6 +693,7 @@ impl S3Provider {
             baseline_test_path: None,
             clock_offset_secs: 0,
             upload_chunk_override: None,
+            download_time: Default::default(),
             multi_thread_streams: 1,
             multi_thread_cutoff: Self::MULTI_THREAD_CUTOFF_DEFAULT,
             range_validator: None,
@@ -1235,6 +1238,23 @@ impl S3Provider {
         }
     }
 
+    /// The bucket as URL path data, for path-style URLs and
+    /// `x-amz-copy-source`. S3-compatible gateways accept names AWS refuses
+    /// (#1461: "KDE's Kate Settings"), and there a raw `#` would cut the path,
+    /// a `?` would start the query and a `%` would read as an escape. Encoded
+    /// like a key, so a `/` stays a separator: path-style accepts
+    /// `legacy/bucket`.
+    fn bucket_path(&self) -> String {
+        encode_s3_key_path(&self.config.bucket)
+    }
+
+    /// `x-amz-copy-source` for `key` in this bucket, `/<bucket>/<key>` with
+    /// both parts encoded as [`Self::build_url`] encodes them: the header
+    /// names the same object the URL would.
+    fn copy_source(&self, key: &str) -> String {
+        format!("/{}/{}", self.bucket_path(), encode_s3_key_path(key))
+    }
+
     /// Build URL for S3 operations
     fn build_url(&self, key: &str) -> String {
         let endpoint = self.endpoint();
@@ -1247,10 +1267,11 @@ impl S3Provider {
             // when the bucket-only URL is sent without a trailing slash. AWS, MinIO,
             // Wasabi all accept both forms, so adding the trailing slash for
             // bucket-only requests is universally safe.
+            let bucket = self.bucket_path();
             if encoded_key.is_empty() {
-                format!("{}/{}/", endpoint, self.config.bucket)
+                format!("{}/{}/", endpoint, bucket)
             } else {
-                format!("{}/{}/{}", endpoint, self.config.bucket, encoded_key)
+                format!("{}/{}/{}", endpoint, bucket, encoded_key)
             }
         } else {
             // Virtual-hosted style: https://bucket.endpoint/key
@@ -1322,6 +1343,31 @@ impl S3Provider {
             &[("prefix", "")]
         };
         self.s3_request(Method::GET, "", Some(params), None).await
+    }
+
+    /// The prefix an absolute `path` names. `/` is the top of this profile,
+    /// whatever folder it has navigated to: its configured prefix if it has one,
+    /// as a remote with a path has that path for its root, else the bucket.
+    fn prefix_of(&self, path: &str) -> String {
+        if path == "/" {
+            self.config
+                .prefix
+                .as_deref()
+                .unwrap_or("")
+                .trim_matches('/')
+                .to_string()
+        } else {
+            path.trim_matches('/').to_string()
+        }
+    }
+
+    /// The prefix a listing of `path` reads: [`Self::prefix_of`], where `.` is
+    /// the current folder.
+    fn listing_prefix(&self, path: &str) -> String {
+        match path {
+            "" | "." => self.current_prefix.clone(),
+            _ => self.prefix_of(path),
+        }
     }
 
     fn is_filen_s3_endpoint(&self) -> bool {
@@ -2273,28 +2319,44 @@ impl S3Provider {
 
     fn parse_bucket_names(xml: &str) -> Result<Vec<String>, ProviderError> {
         let mut reader = Reader::from_str(xml);
-        reader.config_mut().trim_text(true);
+        // A name with an entity in it arrives in pieces: `KDE&apos;s Kate
+        // Settings` is Text("KDE") + GeneralRef("apos") + Text("s Kate
+        // Settings"). Each piece used to become a bucket of its own (#1461),
+        // so the pieces are joined until `</Name>`. No trim_text either: it
+        // trims every piece, and `a &amp; b` would lose its spaces.
+        reader.config_mut().trim_text(false);
         let mut buf = Vec::new();
         let mut in_bucket = false;
-        let mut in_name = false;
+        let mut name: Option<String> = None;
         let mut buckets = Vec::new();
 
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(event)) => match event.name().as_ref() {
                     "Bucket" => in_bucket = true,
-                    "Name" if in_bucket => in_name = true,
+                    "Name" if in_bucket => name = Some(String::new()),
                     _ => {}
                 },
                 Ok(Event::End(event)) => match event.name().as_ref() {
-                    "Name" => in_name = false,
+                    "Name" => {
+                        if let Some(value) = name.take().filter(|value| !value.is_empty()) {
+                            buckets.push(value);
+                        }
+                    }
                     "Bucket" => in_bucket = false,
                     _ => {}
                 },
-                Ok(Event::Text(text)) if in_bucket && in_name => {
-                    let value = text.as_ref().trim().to_string();
-                    if !value.is_empty() {
-                        buckets.push(value);
+                Ok(Event::Text(text)) => {
+                    if let Some(value) = name.as_mut() {
+                        value.push_str(text.as_ref());
+                    }
+                }
+                Ok(Event::GeneralRef(reference)) => {
+                    if let (Some(value), Some(expanded)) = (
+                        name.as_mut(),
+                        super::xml_text::xml_entity_to_str(reference.as_ref()),
+                    ) {
+                        value.push_str(&expanded);
                     }
                 }
                 Ok(Event::Eof) => break,
@@ -2319,10 +2381,23 @@ impl S3Provider {
     /// all, so a directory that exists only as a marker would vanish, and a walk
     /// that stops at it under a depth limit would name a directory the flat
     /// listing cannot.
+    #[cfg(test)]
     fn parse_list_response(
         &self,
         xml_str: &str,
         keep_markers: bool,
+    ) -> Result<(Vec<RemoteEntry>, Option<String>), ProviderError> {
+        self.parse_listing_of(xml_str, keep_markers, &self.current_prefix)
+    }
+
+    /// [`Self::parse_list_response`] for a listing of `listed_prefix`, the only
+    /// folder whose own marker the listing leaves out. Another folder's marker
+    /// is an entry, the current folder's among them.
+    fn parse_listing_of(
+        &self,
+        xml_str: &str,
+        keep_markers: bool,
+        listed_prefix: &str,
     ) -> Result<(Vec<RemoteEntry>, Option<String>), ProviderError> {
         let mut entries = Vec::new();
 
@@ -2528,9 +2603,9 @@ impl S3Provider {
                                 // whether this listing has a use for it.
                                 if !key.ends_with('/') {
                                     // Skip if key equals current prefix
-                                    let dominated = key == self.current_prefix
+                                    let dominated = key == listed_prefix
                                         || key.trim_start_matches('/')
-                                            == self.current_prefix.trim_start_matches('/');
+                                            == listed_prefix.trim_start_matches('/');
                                     if !dominated {
                                         let name =
                                             key.rsplit('/').next().unwrap_or(key).to_string();
@@ -2587,7 +2662,7 @@ impl S3Provider {
                                     // consumer counts the same components the
                                     // walk would.
                                     let trimmed = key.trim_end_matches('/');
-                                    let prefix = self.current_prefix.trim_end_matches('/');
+                                    let prefix = listed_prefix.trim_end_matches('/');
                                     let dominated = trimmed == prefix
                                         || trimmed.trim_start_matches('/')
                                             == prefix.trim_start_matches('/');
@@ -2726,6 +2801,18 @@ impl S3Provider {
         }
     }
 
+    /// An object's modification time in the headers of a HEAD or GET. The source
+    /// mtime travels as `x-amz-meta-mtime` (written by AeroFTP and by rclone);
+    /// `Last-Modified` is only the upload time and is the fallback for objects
+    /// written by neither.
+    fn object_time(headers: &reqwest::header::HeaderMap) -> Option<String> {
+        headers
+            .get(Self::MTIME_METADATA_HEADER)
+            .and_then(|v| v.to_str().ok())
+            .and_then(Self::parse_mtime_metadata)
+            .or_else(|| super::multi_thread::response_time(headers))
+    }
+
     /// Parse an `x-amz-meta-mtime` value (integer or fractional unix seconds,
     /// the forms rclone writes) into an RFC 3339 timestamp, or `None` when it
     /// is not a timestamp.
@@ -2754,11 +2841,8 @@ impl S3Provider {
         };
         // A negative value applies to the whole number (`-1.5` is one and a
         // half seconds before the epoch), so normalise after applying the sign.
-        let total_nanos = if negative {
-            -(secs * 1_000_000_000 + nanos)
-        } else {
-            secs * 1_000_000_000 + nanos
-        };
+        let magnitude = secs.checked_mul(1_000_000_000)?.checked_add(nanos)?;
+        let total_nanos = if negative { -magnitude } else { magnitude };
         let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(
             i64::try_from(total_nanos.div_euclid(1_000_000_000)).ok()?,
             u32::try_from(total_nanos.rem_euclid(1_000_000_000)).ok()?,
@@ -3372,7 +3456,7 @@ impl S3Provider {
         to_key: &str,
     ) -> Result<(), ProviderError> {
         self.ensure_fresh_credentials().await?;
-        let copy_source = format!("/{}/{}", self.config.bucket, encode_s3_key_path(from_key));
+        let copy_source = self.copy_source(from_key);
 
         let url = self.build_url(to_key);
 
@@ -3468,7 +3552,7 @@ impl S3Provider {
         content_type: Option<&str>,
         source_mtime: Option<String>,
     ) -> Result<(), ProviderError> {
-        let copy_source = format!("/{}/{}", self.config.bucket, encode_s3_key_path(from_key));
+        let copy_source = self.copy_source(from_key);
 
         let part_size = Self::COPY_MULTIPART_PART_SIZE;
         let planned = plan_copy_parts(source_size, part_size)?;
@@ -3717,7 +3801,7 @@ impl S3Provider {
         // CompleteMultipartUpload (see `UploadProgress`).
         let progress = super::upload_progress::UploadProgress::new(on_progress, total_wire);
 
-        let copy_source = format!("/{}/{}", self.config.bucket, encode_s3_key_path(key));
+        let copy_source = self.copy_source(key);
 
         // This create is the first request after the baseline traffic that
         // produced the match list, and a pooled keep-alive connection the
@@ -4874,11 +4958,7 @@ impl StorageProvider for S3Provider {
             return Err(ProviderError::NotConnected);
         }
 
-        let prefix = if path.is_empty() || path == "/" || path == "." {
-            self.current_prefix.clone()
-        } else {
-            path.trim_matches('/').to_string()
-        };
+        let prefix = self.listing_prefix(path);
 
         let prefix_with_slash = if prefix.is_empty() {
             String::new()
@@ -4944,7 +5024,7 @@ impl StorageProvider for S3Provider {
                         return Err(error);
                     }
 
-                    let (entries, next_token) = self.parse_list_response(&xml, false)?;
+                    let (entries, next_token) = self.parse_listing_of(&xml, false, &prefix)?;
                     info!("S3 LIST parsed {} entries from response", entries.len());
                     all_entries.extend(entries);
 
@@ -5092,7 +5172,9 @@ impl StorageProvider for S3Provider {
             return Err(ProviderError::NotConnected);
         }
 
-        let new_prefix = if path == "/" || path.is_empty() {
+        let new_prefix = if path == "/" {
+            self.prefix_of(path)
+        } else if path.is_empty() {
             String::new()
         } else if path == ".." {
             // Go up one level
@@ -5115,18 +5197,17 @@ impl StorageProvider for S3Provider {
             format!("{}/", new_prefix)
         };
 
-        let response = self
-            .s3_request(
-                Method::GET,
-                "",
-                Some(&[
-                    ("list-type", "2"),
-                    ("prefix", &prefix_check),
-                    ("max-keys", "1"),
-                ]),
-                None,
-            )
-            .await?;
+        // Filen takes `prefix` and `delimiter` only, as in `list`.
+        let probe: &[(&str, &str)] = if self.is_filen_s3_endpoint() {
+            &[("delimiter", "/"), ("prefix", &prefix_check)]
+        } else {
+            &[
+                ("list-type", "2"),
+                ("prefix", &prefix_check),
+                ("max-keys", "1"),
+            ]
+        };
+        let response = self.s3_request(Method::GET, "", Some(probe), None).await?;
 
         if response.status() == StatusCode::OK {
             self.current_prefix = new_prefix;
@@ -5169,6 +5250,18 @@ impl StorageProvider for S3Provider {
             .then_some(super::FILEN_DESKTOP_BRIDGE_NOTE)
     }
 
+    fn download_was_refused(&self) -> bool {
+        self.download_time.is_refused()
+    }
+
+    fn take_download_time(&mut self, source_refused: bool) -> Option<String> {
+        self.download_time.take(source_refused)
+    }
+
+    fn expect_moved_source(&mut self) {
+        self.download_time.expect_moved();
+    }
+
     async fn download(
         &mut self,
         remote_path: &str,
@@ -5190,6 +5283,7 @@ impl StorageProvider for S3Provider {
             return Err(ProviderError::NotConnected);
         }
 
+        self.download_time.begin();
         let key = remote_path.trim_start_matches('/');
 
         // U-13 Phase 1: multi-thread chunk-parallel download.
@@ -5202,6 +5296,7 @@ impl StorageProvider for S3Provider {
         // On any HEAD-side problem we fall through to the single-stream path so
         // a one-off mismatch never fails an otherwise downloadable transfer.
         let on_progress = if self.multi_thread_streams >= 2
+            && !self.download_time.is_refused()
             && !super::multi_thread::size_hint_rules_out_ranges(size_hint, self.multi_thread_cutoff)
         {
             match self.s3_request(Method::HEAD, key, None, None).await {
@@ -5310,7 +5405,8 @@ impl StorageProvider for S3Provider {
                                         // and the credentials.
                                         let mut single = self.clone();
                                         single.multi_thread_streams = 1;
-                                        return single
+                                        single.download_time = self.download_time.share();
+                                        let result = single
                                             .download_with_size_hint(
                                                 remote_path,
                                                 local_path,
@@ -5318,6 +5414,8 @@ impl StorageProvider for S3Provider {
                                                 fallback_progress,
                                             )
                                             .await;
+                                        self.download_time.refused();
+                                        return result;
                                     }
                                     Err(e) => return Err(e),
                                 }
@@ -5379,6 +5477,7 @@ impl StorageProvider for S3Provider {
                 let total_size = response.content_length().unwrap_or(0);
 
                 // H-01: Streaming download: write chunks as they arrive (atomic)
+                let read_time = Self::object_time(response.headers());
                 let mut stream = response.bytes_stream();
                 let mut atomic = super::atomic_write::AtomicFile::new(local_path)
                     .await
@@ -5406,6 +5505,7 @@ impl StorageProvider for S3Provider {
                     ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
                 })?;
 
+                self.download_time.read(read_time);
                 Ok(())
             }
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(remote_path.to_string())),
@@ -5427,6 +5527,7 @@ impl StorageProvider for S3Provider {
         _offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.download_time.begin();
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -5800,21 +5901,7 @@ impl StorageProvider for S3Provider {
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(0);
 
-                // The source mtime travels as `x-amz-meta-mtime` (written by
-                // AeroFTP and by rclone); `Last-Modified` is only the upload
-                // time and is the fallback for objects written by neither.
-                let modified = response
-                    .headers()
-                    .get(Self::MTIME_METADATA_HEADER)
-                    .and_then(|v| v.to_str().ok())
-                    .and_then(Self::parse_mtime_metadata)
-                    .or_else(|| {
-                        response
-                            .headers()
-                            .get("last-modified")
-                            .and_then(|v| v.to_str().ok())
-                            .map(|s| s.to_string())
-                    });
+                let modified = Self::object_time(response.headers());
 
                 let content_type = response
                     .headers()
@@ -6126,7 +6213,7 @@ impl StorageProvider for S3Provider {
             return Err(ProviderError::NotConnected);
         }
 
-        let prefix = path.trim_matches('/');
+        let prefix = self.prefix_of(path);
         let prefix_with_slash = if prefix.is_empty() {
             String::new()
         } else {
@@ -7074,9 +7161,8 @@ impl StorageProvider for S3Provider {
         // canonicalisation that strict S3 bridges (Filen Desktop local
         // bridge, in particular) perform during SigV4 verification.
         let copy_source = format!(
-            "/{}/{}?versionId={}",
-            self.config.bucket,
-            encode_s3_key_path(key),
+            "{}?versionId={}",
+            self.copy_source(key),
             urlencoding::encode(version_id)
         );
 
@@ -7411,7 +7497,7 @@ impl S3Provider {
         let key = path.trim_start_matches('/');
         // Slashes preserved via encode_s3_key_path; see server_copy /
         // restore_version for the same rationale.
-        let copy_source = format!("/{}/{}", self.config.bucket, encode_s3_key_path(key));
+        let copy_source = self.copy_source(key);
         let url = self.build_url(key);
 
         use sha2::{Digest, Sha256};
@@ -7803,11 +7889,7 @@ impl S3Provider {
             return Err(ProviderError::NotConnected);
         }
 
-        let prefix = if path.is_empty() || path == "/" || path == "." {
-            self.current_prefix.clone()
-        } else {
-            path.trim_matches('/').to_string()
-        };
+        let prefix = self.listing_prefix(path);
 
         let prefix_with_slash = if prefix.is_empty() {
             String::new()
@@ -7848,7 +7930,7 @@ impl S3Provider {
                         return Err(error);
                     }
 
-                    let (entries, next_token) = self.parse_list_response(&xml, true)?;
+                    let (entries, next_token) = self.parse_listing_of(&xml, true, &prefix)?;
 
                     // Bound memory on a huge or hostile bucket: keep at most the
                     // cap and stop paginating once it is reached. A page can
@@ -8483,6 +8565,80 @@ fn parse_object_versions_page(xml_str: &str) -> Result<VersionsPage, ProviderErr
 
 #[cfg(test)]
 mod tests {
+    /// A double that answers every request with an empty listing and records
+    /// each decoded query.
+    async fn s3_recording_queries() -> (
+        std::net::SocketAddr,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        let queries: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
+        let seen = queries.clone();
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = seen.clone();
+                async move {
+                    let query = urlencoding::decode(req.uri().query().unwrap_or(""))
+                        .unwrap()
+                        .to_string();
+                    seen.lock().unwrap().push(query);
+                    "<ListBucketResult></ListBucketResult>"
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (addr, queries, server)
+    }
+
+    /// #1457: a listing of `/` is the top of the profile from any folder. The
+    /// subfolder menu of the root button listed the current folder instead.
+    #[tokio::test]
+    async fn a_listing_of_the_root_leaves_the_folder_and_keeps_the_configured_prefix() {
+        let (addr, queries, server) = s3_recording_queries().await;
+        let mut p = make_provider(Some(&format!("http://{addr}")));
+        p.connected = true;
+        p.current_prefix = "a/b".to_string();
+        p.list("/").await.expect("the bucket");
+        p.list(".").await.expect("the folder");
+        p.config.prefix = Some("/top/".to_string());
+        p.list("/").await.expect("the configured prefix");
+        p.find("/", "*").await.expect("a search of the prefix");
+        p.list_worker_capped("/", 10)
+            .await
+            .expect("a worker listing");
+        p.cd("/").await.expect("the top of the profile");
+        server.abort();
+        assert_eq!(p.current_prefix, "top");
+        let queries = queries.lock().unwrap();
+        assert!(!queries[0].contains("a/b"), "{queries:?}");
+        assert!(queries[1].contains("prefix=a/b/"), "{queries:?}");
+        for query in &queries[2..] {
+            assert!(query.contains("prefix=top/"), "{query}");
+        }
+    }
+
+    /// A folder change on the Filen gateway probes with what that gateway
+    /// accepts: it rejects `list-type` and `max-keys`.
+    #[tokio::test]
+    async fn a_folder_change_on_filen_probes_with_the_parameters_it_accepts() {
+        let (addr, queries, server) = s3_recording_queries().await;
+        let mut p = make_provider(Some(&format!("http://{addr}")));
+        p.config.region = "filen".to_string();
+        p.connected = true;
+        assert!(p.is_filen_s3_endpoint());
+        p.cd("/d").await.expect("the folder");
+        p.cd("/").await.expect("the root");
+        server.abort();
+        assert_eq!(p.current_prefix, "");
+        for query in queries.lock().unwrap().iter() {
+            assert!(
+                !query.contains("list-type") && !query.contains("max-keys"),
+                "{query}"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn probe_contract_s3_requires_an_explicit_missing_answer() {
         for status in [403, 404] {
@@ -8725,6 +8881,85 @@ mod tests {
         assert_eq!(
             S3Provider::parse_bucket_names(xml).unwrap(),
             vec!["alpha", "zeta"]
+        );
+    }
+
+    /// #1461: quick-xml hands a name with an entity in it over in pieces, so
+    /// `KDE&apos;s Kate Settings` arrives as Text("KDE"), GeneralRef("apos")
+    /// and Text("s Kate Settings"). Each piece used to become a bucket of its
+    /// own, and the apostrophe was lost: the picker showed "KDE" and
+    /// "s Kate Settings", neither of which exists.
+    #[test]
+    fn list_buckets_parser_keeps_a_name_split_by_an_entity_whole() {
+        for (escaped, expected) in [
+            ("KDE&apos;s Kate Settings", "KDE's Kate Settings"),
+            // Storj's gateway writes the apostrophe as a numeric reference.
+            ("KDE&#39;s Kate Settings", "KDE's Kate Settings"),
+            ("KDE&#x27;s Kate Settings", "KDE's Kate Settings"),
+            // The spaces next to an entity belong to the name.
+            ("a &amp; b", "a & b"),
+            ("&lt;x&gt; &quot;y&quot;", "<x> \"y\""),
+            ("&amp;&amp;", "&&"),
+        ] {
+            let xml = format!(
+                "<ListAllMyBucketsResult><Buckets>\
+                 <Bucket><Name>{escaped}</Name><CreationDate>2026-01-01T00:00:00Z</CreationDate></Bucket>\
+                 </Buckets></ListAllMyBucketsResult>"
+            );
+            assert_eq!(
+                S3Provider::parse_bucket_names(&xml).unwrap(),
+                vec![expected.to_string()],
+                "{escaped}"
+            );
+        }
+    }
+
+    #[test]
+    fn list_buckets_parser_lists_entity_names_beside_plain_ones() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+            <ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+              <Owner><ID>abc</ID><DisplayName>O&apos;Brien</DisplayName></Owner>
+              <Buckets>
+                <Bucket><Name>photos</Name><CreationDate>2026-01-01T00:00:00Z</CreationDate></Bucket>
+                <Bucket><Name>KDE&#39;s Kate Settings</Name><CreationDate>2026-01-02T00:00:00Z</CreationDate></Bucket>
+                <Bucket><Name>KDE</Name><CreationDate>2026-01-03T00:00:00Z</CreationDate></Bucket>
+              </Buckets>
+            </ListAllMyBucketsResult>"#;
+        assert_eq!(
+            S3Provider::parse_bucket_names(xml).unwrap(),
+            vec!["KDE", "KDE's Kate Settings", "photos"]
+        );
+    }
+
+    /// The ListBuckets body `rclone serve s3` (GoFakeS3) sent for three
+    /// folders, captured on the wire: Go's encoder writes the apostrophe as
+    /// `&#39;`, like the Storj gateway, and indents every element.
+    #[test]
+    fn list_buckets_parser_reads_a_captured_gateway_response() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Owner>
+    <ID>fe7272ea58be830e56fe1663b10fafef</ID>
+    <DisplayName>GoFakeS3</DisplayName>
+  </Owner>
+  <Buckets>
+    <Bucket>
+      <Name>KDE&#39;s Kate Settings</Name>
+      <CreationDate>2026-10-31T21:46:03.56Z</CreationDate>
+    </Bucket>
+    <Bucket>
+      <Name>a &amp; b</Name>
+      <CreationDate>2026-10-31T21:46:03.56Z</CreationDate>
+    </Bucket>
+    <Bucket>
+      <Name>photos</Name>
+      <CreationDate>2026-10-31T21:46:03.56Z</CreationDate>
+    </Bucket>
+  </Buckets>
+</ListAllMyBucketsResult>"#;
+        assert_eq!(
+            S3Provider::parse_bucket_names(xml).unwrap(),
+            vec!["KDE's Kate Settings", "a & b", "photos"]
         );
     }
 
@@ -9350,6 +9585,41 @@ mod tests {
             provider.build_url("path/to/file.txt"),
             "http://localhost:9000/test-bucket/path/to/file.txt"
         );
+    }
+
+    /// Path-style URLs and `x-amz-copy-source` carry the bucket as path data.
+    /// A gateway bucket named with `#`, `?` or `%` (the #1461 class: names AWS
+    /// refuses and S3-compatible servers accept) must neither cut the path nor
+    /// start a query, and must read back as exactly itself.
+    #[test]
+    fn path_style_bucket_names_reach_the_wire_whole() {
+        for bucket in [
+            "KDE's Kate Settings",
+            "a & b",
+            "notes #1",
+            "what?",
+            "100%",
+            "%41 is not A",
+            "legacy/bucket",
+        ] {
+            let mut provider = cleartext_test_provider("http://localhost:9000", false, None);
+            provider.config.bucket = bucket.to_string();
+            for key in ["", "dir/a b.txt"] {
+                let url = url::Url::parse(&provider.build_url(key)).expect("valid URL");
+                assert_eq!(
+                    (url.query(), url.fragment()),
+                    (None, None),
+                    "{bucket:?} {key:?}"
+                );
+                let path = urlencoding::decode(url.path()).expect("UTF-8 path");
+                assert_eq!(path, format!("/{bucket}/{key}"), "{bucket:?} {key:?}");
+            }
+            let source = provider.copy_source("dir/a b.txt");
+            assert_eq!(
+                urlencoding::decode(&source).expect("UTF-8 copy source"),
+                format!("/{bucket}/dir/a b.txt")
+            );
+        }
     }
 
     #[test]
@@ -10659,6 +10929,64 @@ mod tests {
                 .any(|entry| entry.is_dir && entry.path.contains("d1/d2")),
             "the only thing this bucket holds is the marker, and the listing dropped it: {entries:?}"
         );
+    }
+
+    /// A worker listing leaves out only the listed folder too: an object named
+    /// like the current folder is an entry of the folder above it.
+    #[tokio::test]
+    async fn a_worker_listing_above_the_current_folder_keeps_an_object_named_like_it() {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |_req: axum::extract::Request| async move {
+                axum::http::Response::new(axum::body::Body::from(
+                    "<ListBucketResult><Contents><Key>top/sub</Key><Size>1</Size></Contents></ListBucketResult>",
+                ))
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.config.prefix = Some("top".to_string());
+        provider.current_prefix = "top/sub".to_string();
+        let (entries, _) = provider
+            .list_worker_capped("/", 10)
+            .await
+            .expect("the listing answers");
+        server.abort();
+        assert_eq!(entries.len(), 1, "{entries:?}");
+        assert_eq!(entries[0].path, "/top/sub");
+    }
+
+    /// The marker left out is the listed folder's. After a `cd`, a listing of
+    /// the top of the profile keeps the current folder, which is an entry there.
+    #[tokio::test]
+    async fn a_listing_above_the_current_folder_keeps_its_marker() {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |_req: axum::extract::Request| async move {
+                axum::http::Response::new(axum::body::Body::from(
+                    "<ListBucketResult><Contents><Key>top/</Key><Size>0</Size></Contents><Contents><Key>top/sub/</Key><Size>0</Size></Contents></ListBucketResult>",
+                ))
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.config.prefix = Some("top".to_string());
+        provider.current_prefix = "top/sub".to_string();
+        let (entries, _) = provider
+            .list_recursive("/")
+            .await
+            .expect("the listing answers");
+        server.abort();
+        let paths: Vec<&str> = entries.iter().map(|entry| entry.path.as_str()).collect();
+        assert_eq!(paths, ["/top/sub"], "{entries:?}");
     }
 
     #[tokio::test]
@@ -12136,7 +12464,16 @@ mod tests {
             S3Provider::parse_mtime_metadata("-2.500000000").as_deref(),
             Some("1969-12-31T23:59:57.500Z")
         );
-        for bad in ["", "yesterday", "1725600000.12x", "1e9", "-", "--1", "-x.5"] {
+        for bad in [
+            "",
+            "yesterday",
+            "1725600000.12x",
+            "1e9",
+            "-",
+            "--1",
+            "-x.5",
+            "99999999999999999999999999999999999",
+        ] {
             assert!(
                 S3Provider::parse_mtime_metadata(bad).is_none(),
                 "{bad:?} is not a timestamp"
@@ -12423,6 +12760,94 @@ mod tests {
         );
     }
 
+    /// Found on a live MinIO: a stat reads the source time from the metadata and
+    /// the GET read the upload time, so a refused download took another clock than
+    /// every listing-free comparison.
+    #[tokio::test]
+    async fn a_download_reads_the_time_a_stat_reads() {
+        let app = axum::Router::new().fallback(axum::routing::any(|| async {
+            axum::response::Response::builder()
+                .header("last-modified", "Wed, 21 Oct 2026 07:28:00 GMT")
+                .header("x-amz-meta-mtime", "1600000000")
+                .body(axum::body::Body::from(vec![7u8; 16]))
+                .unwrap()
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("x");
+        provider
+            .download("/x", out.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        let carried = provider.take_download_time(true).expect("a time");
+        let stat = provider.stat("/x").await.unwrap().modified.expect("a time");
+        assert_eq!(carried, stat);
+        assert_eq!(crate::parse_remote_mtime(&carried), Some(1_600_000_000));
+    }
+
+    /// After a refusal the caller saw, the provider's own windows are not tried
+    /// again: one stream reads the object and carries its time.
+    #[tokio::test]
+    async fn a_download_after_a_refusal_reads_one_stream() {
+        use super::super::multi_thread::pin_server::{self, PinMode, OBJECT_SIZE};
+        let server = pin_server::start(PinMode::Honoured).await;
+        let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+
+        provider.expect_moved_source();
+        provider
+            .download("big.bin", out.to_str().unwrap(), None)
+            .await
+            .unwrap();
+
+        // The fixture's windows serve 7s, its whole read 9s.
+        assert_eq!(std::fs::read(&out).unwrap(), vec![9u8; OBJECT_SIZE]);
+        assert_eq!(
+            provider.take_download_time(false).as_deref(),
+            Some(pin_server::WHOLE_READ_TIME)
+        );
+    }
+
+    /// The single stream after a refusal may read another object than any
+    /// listing saw: the time goes with the response that carried its bytes. A
+    /// plain download, and windows published from an unchanged object, keep the
+    /// listing's time unless the caller saw a refusal itself.
+    #[tokio::test]
+    async fn a_refused_download_reports_the_time_of_what_carried_its_bytes() {
+        use super::super::multi_thread::pin_server::{start, PinMode, WHOLE_READ_TIME as SERVED};
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("big.bin");
+        let out = out.to_str().unwrap();
+
+        let server = start(PinMode::RefusedReplaced).await;
+        let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        provider.download("/big.bin", out, None).await.unwrap();
+        assert_eq!(provider.take_download_time(false).as_deref(), Some(SERVED));
+        assert_eq!(provider.take_download_time(true), None, "taken once");
+
+        let server = start(PinMode::RefusedUnchanged).await;
+        let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        provider.download("/big.bin", out, None).await.unwrap();
+        assert_eq!(provider.take_download_time(false), None, "no refusal stood");
+
+        let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+        provider.connected = true;
+        provider.download("/big.bin", out, None).await.unwrap();
+        assert_eq!(provider.take_download_time(false), None, "a plain download");
+        assert_eq!(provider.take_download_time(true).as_deref(), Some(SERVED));
+    }
+
     /// A gateway that answers 412 to every pinned window of an object that did
     /// not change refuses If-Match; it saw no replacement. The windows are
     /// read once more without the pin and the HEAD after them decides, as for
@@ -12657,7 +13082,7 @@ mod tests {
                 filetime::FileTime::from_last_modification_time(&std::fs::metadata(&out).unwrap());
             assert_eq!(
                 Some(time.unix_seconds()),
-                crate::parse_remote_mtime("Wed, 21 Oct 2026 07:28:00 GMT"),
+                crate::parse_remote_mtime(pin_server::WHOLE_READ_TIME),
                 "{mode:?}"
             );
         }

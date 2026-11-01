@@ -109,7 +109,8 @@ export const CompareScanState: React.FC<CompareScanStateProps> = ({
             <span className="max-w-md text-xs text-gray-400 dark:text-gray-500">
                 {t('aerosync.compareStartHint') || 'The compare reads both folders and every folder under them. On a large tree it can take a while, and you can stop it.'}
             </span>
-            <button type="button" onClick={onStart} className={`${buttonCls} bg-blue-500 hover:bg-blue-600`}>
+            <button
+                data-testid="aerosync.compare.start" type="button" onClick={onStart} className={`${buttonCls} bg-blue-500 hover:bg-blue-600`}>
                 <Play size={12} />
                 {t('aerosync.startCompare') || 'Start compare'}
             </button>

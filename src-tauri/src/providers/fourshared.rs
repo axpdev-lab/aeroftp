@@ -227,6 +227,16 @@ pub struct FourSharedProvider {
     api_base_override: Option<String>,
 }
 
+/// A listing the server refused, as an error a caller can read.
+fn listing_refused(what: &str, status: reqwest::StatusCode) -> ProviderError {
+    match status.as_u16() {
+        401 => ProviderError::AuthenticationFailed(format!("4shared refused the {what} listing")),
+        403 => ProviderError::PermissionDenied(format!("4shared refused the {what} listing")),
+        404 => ProviderError::NotFound(format!("4shared has no such folder ({what} listing)")),
+        _ => ProviderError::ServerError(format!("4shared {what} listing failed: HTTP {status}")),
+    }
+}
+
 impl FourSharedProvider {
     /// Build the provider and its HTTP client, with the limits of [`crate::providers::http_limits`].
     /// Nothing is sent until the first request.
@@ -427,11 +437,11 @@ impl FourSharedProvider {
 
     /// Normalize an absolute path (ensure starts with /, no trailing slash)
     fn normalize_path(path: &str) -> String {
-        let trimmed = path.trim();
-        if trimmed.is_empty() || trimmed == "/" || trimmed == "." || trimmed == "./" {
+        // Spaces are part of a name: ` a` and `a ` are not `a`.
+        if path.is_empty() || path == "/" || path == "." || path == "./" {
             return "/".to_string();
         }
-        let parts: Vec<&str> = trimmed
+        let parts: Vec<&str> = path
             .split('/')
             .filter(|s| !s.is_empty() && *s != "." && *s != "..")
             .collect();
@@ -447,12 +457,11 @@ impl FourSharedProvider {
     /// - "/Cloud" → "/Cloud" (absolute, as-is)
     /// - "Cloud" → current_path + "/Cloud" (relative)
     fn resolve_path(&self, path: &str) -> String {
-        let trimmed = path.trim();
-        if trimmed.is_empty() || trimmed == "." || trimmed == "./" {
+        if path.is_empty() || path == "." || path == "./" {
             return self.current_path.clone();
         }
-        if trimmed.starts_with('/') {
-            return Self::normalize_path(trimmed);
+        if path.starts_with('/') {
+            return Self::normalize_path(path);
         }
         // Relative path: join with current_path
         let base = if self.current_path == "/" {
@@ -460,7 +469,7 @@ impl FourSharedProvider {
         } else {
             self.current_path.clone()
         };
-        Self::normalize_path(&format!("{}/{}", base, trimmed))
+        Self::normalize_path(&format!("{}/{}", base, path))
     }
 
     /// Move the file or folder `id` (`kind` is `files` or `folders`) into
@@ -1152,7 +1161,9 @@ impl StorageProvider for FourSharedProvider {
                     status,
                     &body[..body.floor_char_boundary(300)]
                 );
-                break;
+                // A failed listing is not an empty folder: a search or a sync
+                // would read everything in it as gone.
+                return Err(listing_refused("folders", status));
             }
 
             let body = resp
@@ -1240,7 +1251,7 @@ impl StorageProvider for FourSharedProvider {
                     fstatus,
                     &body[..body.floor_char_boundary(300)]
                 );
-                break;
+                return Err(listing_refused("files", fstatus));
             }
 
             let body = resp
@@ -1313,9 +1324,8 @@ impl StorageProvider for FourSharedProvider {
             offset += page_count;
         }
 
-        self.current_path = normalized;
-        self.current_folder_id = folder_id;
-
+        // A listing does not move the current folder: `cd` does. Moved, a
+        // relative path listed twice reached `docs/docs`.
         Ok(entries)
     }
 
@@ -1839,92 +1849,9 @@ impl StorageProvider for FourSharedProvider {
     }
 
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        // FS-005: Apply resolve_path to the search path parameter
-        let _resolved = self.resolve_path(path);
-        info!(
-            "4shared find: searching for '{}' (scope: {})",
-            pattern, _resolved
-        );
-
-        // FS-009: Use signed_get with retry for the search request.
-        // The 4shared search API requires OAuth-signed query parameters.
-        let base_url = format!("{}/files", self.api_base());
-        let extra = [("searchName", pattern)];
-        let auth = oauth1::authorization_header("GET", &base_url, &self.credentials(), &extra);
-
-        // Build full URL with query parameter
-        let url = format!(
-            "{}/files?searchName={}",
-            self.api_base(),
-            oauth1::percent_encode(pattern)
-        );
-
-        let request = self
-            .client
-            .get(&url)
-            .header("Authorization", &auth)
-            .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-        let resp = send_with_retry(&self.client, request, &Self::retry_config())
-            .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Search failed ({}): {}",
-                status,
-                &body[..body.floor_char_boundary(300)]
-            )));
-        }
-
-        let body = resp
-            .text()
-            .await
-            .map_http_err(|e| ProviderError::ParseError(format!("Read search body: {}", e)))?;
-        let files = Self::parse_file_list(&body);
-
-        let entries = files
-            .iter()
-            .filter(|f| {
-                !matches!(
-                    f.status.as_deref(),
-                    Some("deleted") | Some("trashed") | Some("incomplete")
-                )
-            })
-            .filter_map(|f| {
-                let name = f.name.as_ref()?;
-                if name.is_empty() {
-                    return None;
-                }
-                Some(RemoteEntry {
-                    name: name.clone(),
-                    path: String::new(), // Search results don't have reliable full paths
-                    is_dir: false,
-                    size: f.size.unwrap_or(0) as u64,
-                    modified: f.modified.clone(),
-                    permissions: None,
-                    owner: None,
-                    group: None,
-                    is_symlink: false,
-                    link_target: None,
-                    // FS-011: Populate MIME type from API response
-                    mime_type: f.mime_type.clone(),
-                    metadata: {
-                        let mut m = std::collections::HashMap::new();
-                        if let Some(ref id) = f.id {
-                            m.insert("id".to_string(), id.clone());
-                        }
-                        m
-                    },
-                })
-            })
-            .collect::<Vec<_>>();
-
-        info!("4shared find '{}': {} results", pattern, entries.len());
-        Ok(entries)
+        // The search API answers outside the folder or without the hit's real
+        // path, and a caller acts on that path.
+        super::find_by_walk(self, path, pattern).await
     }
 
     // FS-012: TODO: 4shared supports file share links via GET /v1_2/files/{id}/download
@@ -1985,6 +1912,19 @@ fn refused_lookup(status: reqwest::StatusCode, body: &str, path: &str) -> Provid
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_name_keeps_its_leading_and_trailing_spaces() {
+        // A name with a leading or trailing space is a name of its own, and a
+        // name of spaces only is not the current folder.
+        assert_eq!(FourSharedProvider::normalize_path("/ a"), "/ a");
+        assert_eq!(FourSharedProvider::normalize_path("/a /b "), "/a /b ");
+        let mut p = test_provider();
+        p.current_path = "/Cloud".to_string();
+        assert_eq!(p.resolve_path("   "), "/Cloud/   ");
+        assert_eq!(p.resolve_path(" a"), "/Cloud/ a");
+        assert_eq!(p.resolve_path("/a "), "/a ");
+    }
 
     fn test_provider() -> FourSharedProvider {
         let config = FourSharedConfig {

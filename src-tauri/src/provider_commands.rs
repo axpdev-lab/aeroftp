@@ -2732,23 +2732,29 @@ async fn run_dag_download_leaf(
             "Download routed to Legacy engine: {} ({})",
             filename, decision.reason
         );
-        let result = {
+        // The time is taken under the same lock: another transfer on this session
+        // would start a record of its own.
+        let (result, read_time) = {
             let mut guard = provider.lock().await;
             match guard.as_mut() {
                 Some(p) => {
-                    let dl = async { p.download(&remote_path, &local_path, progress_cb).await };
-                    match &cancel_token {
-                        Some(tok) => tokio::select! {
-                            biased;
-                            _ = tok.cancelled() => Err(ProviderError::TransferFailed(
-                                "Transfer cancelled by user".to_string(),
-                            )),
-                            r = dl => r,
-                        },
-                        None => dl.await,
-                    }
+                    let result = {
+                        let dl = async { p.download(&remote_path, &local_path, progress_cb).await };
+                        match &cancel_token {
+                            Some(tok) => tokio::select! {
+                                biased;
+                                _ = tok.cancelled() => Err(ProviderError::TransferFailed(
+                                    "Transfer cancelled by user".to_string(),
+                                )),
+                                r = dl => r,
+                            },
+                            None => dl.await,
+                        }
+                    };
+                    let read_time = p.take_download_time(false);
+                    (result, read_time)
                 }
-                None => Err(ProviderError::NotConnected),
+                None => (Err(ProviderError::NotConnected), None),
             }
         };
         return match result {
@@ -2759,7 +2765,10 @@ async fn run_dag_download_leaf(
                 // (breaking overwrite-if-newer sync) and never finished the
                 // progress bar (audit W1.2, the prerequisite for any future
                 // download->Legacy routing carve-out).
-                crate::preserve_remote_mtime(&local_path, modified.as_deref());
+                crate::preserve_remote_mtime(
+                    &local_path,
+                    read_time.as_deref().or(modified.as_deref()),
+                );
                 let actual_size = tokio::fs::metadata(&local_path)
                     .await
                     .map(|m| m.len())
@@ -3604,6 +3613,7 @@ pub async fn provider_download_file(
     // goes on through the legacy resume, which the segmented engine (writing
     // its own pre-sized `.aerosegtmp`) would start over. On hard failure we fall
     // through to the legacy single-stream branch below.
+    let mut source_refused = false;
     let mut segmented_result: Option<Result<(), String>> = None;
     // Auto and SFTP presets retain the GUI's 250 MiB fan-out cutoff. An
     // explicit segment count is user intent, so it takes the explicit rule:
@@ -3652,6 +3662,7 @@ pub async fn provider_download_file(
                 // stands: an old time only makes the next sync download again.
                 // A Stop during the reading ends in the branch below.
                 if e.refused_by_the_source() {
+                    source_refused = true;
                     let reading = tokio::select! {
                         biased;
                         _ = session_cancel.cancelled() => None,
@@ -3790,6 +3801,9 @@ pub async fn provider_download_file(
         .cancel_flag
         .store(false, std::sync::atomic::Ordering::Relaxed);
     let dl_cancel = state.cancel_flag.clone();
+    if source_refused {
+        provider.expect_moved_source();
+    }
     let result = {
         let work = async {
             if let Some(Ok(())) = &segmented_result {
@@ -3845,7 +3859,15 @@ pub async fn provider_download_file(
 
     match &result {
         Ok(()) => {
-            // Preserve remote mtime on the local file
+            // Preserve remote mtime on the local file: what carried the bytes
+            // knows it best, after a refusal.
+            // Windows that published read no stream: the provider's record is
+            // not about this file.
+            if !matches!(segmented_result, Some(Ok(()))) {
+                if let Some(time) = provider.take_download_time(source_refused) {
+                    modified = Some(time);
+                }
+            }
             crate::preserve_remote_mtime(&local_path, modified.as_deref());
             let actual_size = tokio::fs::metadata(&local_path)
                 .await
@@ -7641,7 +7663,10 @@ async fn pcloud_exchange_code(
             "us"
         };
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            let _ = store.store("oauth_pcloud_region", region);
+            // The wrong region sends every later request to the wrong API.
+            store
+                .store("oauth_pcloud_region", region)
+                .map_err(|e| ProviderError::Other(format!("Failed to store pCloud region: {e}")))?;
         }
 
         info!(
@@ -7906,15 +7931,7 @@ pub async fn provider_find(
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    if !provider.supports_find() {
-        return Err(format!(
-            "{} does not support remote search",
-            provider.provider_type()
-        ));
-    }
-
-    provider
-        .find(&path, &pattern)
+    crate::providers::find_or_walk(provider.as_mut(), &path, &pattern)
         .await
         .map_err(|e| format!("Search failed: {}", e))
 }
@@ -8786,7 +8803,12 @@ pub async fn provider_compare_directories(
     let report = classify_with_summary(local_files, remote_files, &options, index.as_ref());
     info!(
         "Provider compare complete: {} differences out of {} examined (index: {})",
-        report.differences.len(),
+        // A row for a folder on both sides is not a difference to the window.
+        report
+            .differences
+            .iter()
+            .filter(|row| row.status != crate::sync::SyncStatus::Identical)
+            .count(),
         report.summary.examined_count,
         if index.is_some() { "used" } else { "none" }
     );
@@ -8840,18 +8862,29 @@ fn store_fourshared_tokens(
 
     // Try vault first
     if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-        store
-            .store(&key, &token_data)
-            .map_err(|e| format!("Failed to store tokens: {}", e))?;
+        // Through the row a reader prefers: an imported or moved profile has one.
+        crate::user_partitions::store_profile_credential(
+            &store,
+            profile_id,
+            &key,
+            Some("oauth"),
+            &token_data,
+        )
+        .map_err(|e| format!("Failed to store tokens: {}", e))?;
         return Ok(());
     }
 
     // Try auto-init vault
     if crate::credential_store::CredentialStore::init().is_ok() {
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            store
-                .store(&key, &token_data)
-                .map_err(|e| format!("Failed to store tokens: {}", e))?;
+            crate::user_partitions::store_profile_credential(
+                &store,
+                profile_id,
+                &key,
+                Some("oauth"),
+                &token_data,
+            )
+            .map_err(|e| format!("Failed to store tokens: {}", e))?;
             return Ok(());
         }
     }
@@ -10424,9 +10457,11 @@ pub async fn fourshared_has_tokens(profile_id: Option<String>) -> Result<bool, S
 #[tauri::command]
 pub async fn fourshared_logout(profile_id: Option<String>) -> Result<(), String> {
     if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-        let _ = store.delete(&fourshared_token_key(
-            profile_id.as_deref().unwrap_or_default(),
-        ));
+        let profile_id = profile_id.as_deref().unwrap_or_default();
+        let key = fourshared_token_key(profile_id);
+        // Readers prefer the partition: a row left there would keep the account
+        // signed in, so a failure here is one the user must see.
+        crate::user_partitions::delete_profile_credential(&store, profile_id, &key)?;
     }
     info!("Logged out from 4shared");
     Ok(())
@@ -19138,6 +19173,18 @@ mod folder_download_live_tests {
         failing: std::collections::HashSet<String>,
         /// Folders listed as links.
         links: std::collections::HashSet<String>,
+        /// A listing of this folder is refused, which speaks of that folder alone.
+        refused: std::collections::HashSet<String>,
+        /// The session is gone, while `list` would still answer.
+        disconnected: bool,
+        /// `find` answers with this many hits: the provider has its own search.
+        native_hits: Option<usize>,
+        /// A listing moves the current folder, as on kDrive.
+        list_moves_cwd: bool,
+        /// `cd` fails.
+        cd_fails: bool,
+        /// The path a listing gives a file, where it differs from folder plus name.
+        canonical: HashMap<String, String>,
         /// Raised when a download starts, as the first Stop raises it.
         stop_on_download: Option<Arc<AtomicBool>>,
     }
@@ -19220,7 +19267,19 @@ mod folder_download_live_tests {
             Ok(())
         }
         fn is_connected(&self) -> bool {
-            true
+            !self.state.lock().unwrap().disconnected
+        }
+        async fn find(
+            &mut self,
+            _path: &str,
+            _pattern: &str,
+        ) -> Result<Vec<RemoteEntry>, ProviderError> {
+            match self.state.lock().unwrap().native_hits {
+                Some(hits) => Ok((0..hits)
+                    .map(|i| RemoteEntry::file(format!("{i}.txt"), format!("/r/{i}.txt"), 4))
+                    .collect()),
+                None => Err(ProviderError::NotSupported("find".to_string())),
+            }
         }
         async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
             let path = if path == "." {
@@ -19237,17 +19296,27 @@ mod folder_download_live_tests {
                 let mut st = self.state.lock().unwrap();
                 st.served_at_held = Some(st.served.len());
             }
+            if self.state.lock().unwrap().list_moves_cwd {
+                self.cwd = path.clone();
+            }
             let mut st = self.state.lock().unwrap();
             st.listed.push(path.clone());
             if st.failing.contains(&path) {
                 return Err(ProviderError::Other(format!("cannot list {path}")));
             }
+            if st.refused.contains(&path) {
+                return Err(ProviderError::PermissionDenied(format!(
+                    "cannot read {path}"
+                )));
+            }
             let (files, folders) = st.dirs.get(&path).cloned().unwrap_or_default();
             let links = st.links.clone();
+            let canonical = st.canonical.clone();
             Ok(files
                 .into_iter()
                 .map(|(name, size)| {
                     let full = format!("{path}/{name}");
+                    let full = canonical.get(&full).cloned().unwrap_or(full);
                     RemoteEntry::file(name, full, size)
                 })
                 .chain(folders.into_iter().map(|name| {
@@ -19262,6 +19331,9 @@ mod folder_download_live_tests {
             Ok(self.cwd.clone())
         }
         async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
+            if self.state.lock().unwrap().cd_fails {
+                return Err(ProviderError::Other("cd refused".to_string()));
+            }
             self.cwd = path.to_string();
             Ok(())
         }
@@ -19474,6 +19546,156 @@ mod folder_download_live_tests {
             !listed.iter().any(|dir| dir == "/r/link"),
             "a link is not listed: {listed:?}"
         );
+    }
+
+    /// A search reports what `list` reports under the folder searched, at any
+    /// depth, with its real path: a caller may go on to delete it.
+    #[tokio::test]
+    async fn a_walked_search_stays_under_its_folder_with_real_paths() {
+        let (mut tree, state) =
+            FolderTree::new(&["a.txt", "sub/deep/a.txt", "sub/b.bin", "other/a.txt"]);
+        state.lock().unwrap().dirs.remove("/r/other");
+        state
+            .lock()
+            .unwrap()
+            .dirs
+            .insert("/elsewhere".into(), (vec![("a.txt".into(), 4)], vec![]));
+        let mut found: Vec<String> = crate::providers::find_by_walk(&mut tree, "/r/sub", "a.txt")
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|entry| entry.path)
+            .collect();
+        found.sort();
+        assert_eq!(found, ["/r/sub/deep/a.txt"]);
+    }
+
+    /// A hit carries the path the listing gave it, not one rebuilt from the
+    /// folder and the name: a provider can spell it differently.
+    #[tokio::test]
+    async fn a_walked_search_keeps_the_path_the_listing_gave() {
+        let (mut tree, state) = FolderTree::new(&["sub/Canonical/a.txt"]);
+        state.lock().unwrap().canonical.insert(
+            "/r/sub/Canonical/a.txt".to_string(),
+            "/r/sub/canonical/a.txt".to_string(),
+        );
+        let found = crate::providers::find_by_walk(&mut tree, "/r/sub", "a.txt")
+            .await
+            .unwrap();
+        assert_eq!(found[0].path, "/r/sub/canonical/a.txt");
+    }
+
+    /// A provider that moves its current folder as it lists is back where it
+    /// was after a search, so a later relative upload lands where it should.
+    #[tokio::test]
+    async fn a_walked_search_leaves_the_current_folder_alone() {
+        let (mut tree, state) = FolderTree::new(&["a.txt", "sub/a.txt"]);
+        state.lock().unwrap().list_moves_cwd = true;
+        tree.cwd = "/r".to_string();
+        crate::providers::find_by_walk(&mut tree, "/r/sub", "a.txt")
+            .await
+            .unwrap();
+        assert_eq!(tree.cwd, "/r");
+        // A relative folder is read from the current one.
+        let found = crate::providers::find_by_walk(&mut tree, "sub", "a.txt")
+            .await
+            .unwrap();
+        assert_eq!(
+            found.iter().map(|e| e.path.as_str()).collect::<Vec<_>>(),
+            ["/r/sub/a.txt"]
+        );
+        assert_eq!(tree.cwd, "/r");
+    }
+
+    /// A search that cannot return to its folder fails, or a later relative
+    /// upload would land in the last folder it walked. A `..` in the folder is
+    /// resolved before it is listed.
+    #[tokio::test]
+    async fn a_walked_search_resolves_its_root_and_reports_a_lost_position() {
+        let (mut tree, state) = FolderTree::new(&["a.txt", "sub/a.txt"]);
+        tree.cwd = "/r".to_string();
+        let found = crate::providers::find_by_walk(&mut tree, "/r/sub/../sub", "a.txt")
+            .await
+            .unwrap();
+        assert_eq!(found.len(), 1);
+        state.lock().unwrap().list_moves_cwd = true;
+        state.lock().unwrap().cd_fails = true;
+        assert!(crate::providers::find_by_walk(&mut tree, "/r/sub", "a.txt")
+            .await
+            .is_err());
+    }
+
+    /// The folder searched that cannot be read is an error, not an empty
+    /// result; a subfolder refused leaves the rest of the search.
+    #[tokio::test]
+    async fn a_walked_search_fails_only_on_its_own_folder() {
+        let (mut tree, state) = FolderTree::new(&["a.txt", "sub/a.txt", "lost/a.txt"]);
+        state.lock().unwrap().refused.insert("/r/lost".to_string());
+        let found = crate::providers::find_by_walk(&mut tree, "/r", "a.txt")
+            .await
+            .unwrap();
+        assert_eq!(found.len(), 2);
+        state.lock().unwrap().refused.insert("/r".to_string());
+        assert!(crate::providers::find_by_walk(&mut tree, "/r", "a.txt")
+            .await
+            .is_err());
+    }
+
+    /// Box and Dropbox give a 401 or a 429 the generic variants: a subfolder
+    /// failing that way fails the search, or a partial result reads as complete.
+    #[tokio::test]
+    async fn a_walked_search_fails_on_a_failure_that_may_not_be_the_folders() {
+        let (mut tree, state) = FolderTree::new(&["a.txt", "sub/a.txt"]);
+        state.lock().unwrap().failing.insert("/r/sub".to_string());
+        assert!(crate::providers::find_by_walk(&mut tree, "/r", "a.txt")
+            .await
+            .is_err());
+    }
+
+    /// A listing that answers from what it kept does not read as nothing found
+    /// once the session is gone.
+    #[tokio::test]
+    async fn a_walked_search_needs_a_session() {
+        let (mut tree, state) = FolderTree::new(&["a.txt"]);
+        state.lock().unwrap().disconnected = true;
+        assert!(matches!(
+            crate::providers::find_by_walk(&mut tree, "/r", "a.txt").await,
+            Err(ProviderError::NotConnected)
+        ));
+    }
+
+    /// A walk that outlasts its budget stops with an error and starts no further
+    /// listing, so the commands behind it can have the provider.
+    #[tokio::test]
+    async fn a_walked_search_stops_at_its_budget() {
+        let (mut tree, state) = FolderTree::new(&["a.txt", "sub/a.txt"]);
+        let outcome = crate::providers::find_by_walk_within(
+            &mut tree,
+            "/r",
+            "a.txt",
+            std::time::Duration::ZERO,
+        )
+        .await;
+        assert!(
+            outcome
+                .as_ref()
+                .is_err_and(|error| error.to_string().contains("search a smaller folder")),
+            "{outcome:?}"
+        );
+        assert!(state.lock().unwrap().listed.is_empty());
+    }
+
+    /// A provider's own search with more hits than the limit returns as many
+    /// as the walk does: its callers read that many as a search cut short, and
+    /// they say "the first 500" of what they show.
+    #[tokio::test]
+    async fn a_native_search_keeps_the_limit_of_a_walk() {
+        let (mut tree, state) = FolderTree::new(&[]);
+        state.lock().unwrap().native_hits = Some(crate::providers::FIND_RESULT_LIMIT + 7);
+        let found = crate::providers::find_or_walk(&mut tree, "/r", "a.txt")
+            .await
+            .unwrap();
+        assert_eq!(found.len(), crate::providers::FIND_RESULT_LIMIT);
     }
 
     /// The first Stop while the scan runs ends the scan too: no further

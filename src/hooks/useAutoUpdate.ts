@@ -15,7 +15,7 @@
  * Returns: updateAvailable (UpdateInfo | null), setUpdateAvailable, checkForUpdate
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useLayoutEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { sendNotification } from '@tauri-apps/plugin-notification';
 import type { OperationType, OperationStatus } from './useActivityLog';
@@ -51,7 +51,7 @@ export const useAutoUpdate = ({ activityLog, disabled = false }: UseAutoUpdatePr
 
   // Ref to always access latest activityLog without re-creating callbacks
   const activityLogRef = useRef(activityLog);
-  activityLogRef.current = activityLog;
+  useLayoutEffect(() => { activityLogRef.current = activityLog; }, [activityLog]);
 
   const sendSystemNotification = useCallback(async (title: string, body: string) => {
     try {

@@ -92,6 +92,15 @@ plugs:
     target: $SNAP/graphics
     default-provider: mesa-core22
 
+# tauri-plugin-single-instance asks for this name on the session bus. Without the slot
+# AppArmor denies it, every launch is a new instance and a second launch stays
+# running with no window because the UI port is taken.
+slots:
+  single-instance:
+    interface: dbus
+    bus: session
+    name: app.aeroftp.AeroFTP.SingleInstance
+
 layout:
   /usr/share/libdrm:
     bind: $SNAP/graphics/libdrm
@@ -131,6 +140,11 @@ apps:
       # `snap connect aeroftp:mount-observe` the sidebar says how to connect
       # it instead of listing volumes (MOUNT_OBSERVE_NOT_CONNECTED).
       - mount-observe
+      # Unmounted partitions, mount and eject go to the UDisks2 service over
+      # D-Bus. snapd never connects this on its own either, so without
+      # `snap connect aeroftp:udisks2` the sidebar says how to connect it
+      # (UDISKS2_NOT_CONNECTED).
+      - udisks2
       - network
       - network-bind
       # The UI loads from http://127.0.0.1, and inside a snap GLib asks the

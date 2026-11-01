@@ -18,6 +18,7 @@
             "loading": "Ladataan...",
             "error": "Virhe",
             "success": "Onnistui",
+            "searchLimited": "Näytetään ensimmäiset {count} osumaa. Hae pienemmästä kansiosta nähdäksesi loput.",
             "warning": "Varoitus",
             "info": "Tiedot",
             "confirm": "Vahvista",
@@ -598,7 +599,8 @@
             "setAsPublic": "Aseta julkiseksi",
             "makeAllPrivate": "Aseta kaikki yksityisiksi",
             "dropboxRestoreLimit": "AeroFTP voi palauttaa palautettavissa olevia tiedostoversioita. Palauta kansiot dropbox.com-sivuston Poistetut tiedostot -osiosta. Kysymysmerkki tarkoittaa, ettei Dropbox tunnistanut kohteen tyyppiä.",
-            "openWithDefaultApp": "Avaa oletussovelluksella"
+            "openWithDefaultApp": "Avaa oletussovelluksella",
+            "extractHereUncheckedConfirm": "Tiedoston {name} sisällä olevia nimiä ei voi lukea ennen purkamista, joten AeroFTP ei voi tarkistaa, mitä ”Pura tähän” ylikirjoittaisi tässä kansiossa. ”Pura kansioon” ei koskaan ylikirjoita mitään."
         },
         "transfer": {
             "transferring": "Siirretään...",
@@ -1370,7 +1372,8 @@
             "importJottaChainWarning": "Jottacloud uusii kirjautumisensa jokaisella yhteydellä, ja {names} jakaa nyt sellaisen toisen kopion kanssa: ensin yhdistävä kopio kirjaa toisen ulos (laite, josta tiedosto tuli, tai profiili, josta se monistettiin). Kirjaa toinen uudelleen sisään uudella Personal Login Tokenilla.",
             "importOauthAppKept": "{names} tuli mukana eri mukautetun OAuth-sovelluksen kanssa kuin mikä tällä laitteella on kyseiselle palveluntarjoajalle. Tallennettu sovellus säilytettiin, joten kirjaudu uudelleen, jos nämä profiilit lakkaavat yhdistämästä.",
             "importTargetChanged": "{names} ei korvattu: tiedosto ohjaa ne toiselle palvelimelle, eikä niiden tallennettuja salasanoja ja tokeneita saa lähettää sinne. Tuo Monista-valinnalla lisätäksesi tiedoston kopion tai poista profiili ensin.",
-            "importSharedSecretsFailed": "{names} tuotiin, mutta tiedoston jaettua salaisuutta tai istuntoa ei voitu tallentaa. Kirjaudu näihin profiileihin uudelleen, jos ne eivät yhdistä."
+            "importSharedSecretsFailed": "{names} tuotiin, mutta tiedoston jaettua salaisuutta tai istuntoa ei voitu tallentaa. Kirjaudu näihin profiileihin uudelleen, jos ne eivät yhdistä.",
+            "keystoreDatabasesFailed": "Tuonti valmistui, mutta näitä tietokantoja ei voitu palauttaa, ja ne säilyttävät aiemman sisältönsä: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1588,7 +1591,9 @@
             "aerocloudEnabled": "AeroCloud käytössä",
             "selectPairLocalFolder": "Valitse paikallinen kansio parille",
             "secondsAgo": "{count}s sitten",
-            "conflictsCount": "Huomiota vaativat ristiriidat: {count}"
+            "conflictsCount": "Huomiota vaativat ristiriidat: {count}",
+            "updateOnlyHint": "Yksisuuntainen päivitys säilyttää uudemmat kohdetiedostot. Kun lisäävä varmuuskopiointi on pois käytöstä, vain muuttumattomat, pelkästään kohteessa olevat tiedostot, joilla on vahvistettu AeroCloud-siirtokuitti, poistetaan. Muut tiedostot jäävät tarkistettaviksi AeroSyncissä. Ristiriitakäytäntö ohitetaan; tuntemattomat päivämäärät jäävät ratkaisematta.",
+            "untrackedDestinationFiles": "{count} kohdetiedostoa säilytettiin tarkistettaviksi: niiden siirtohistoriaa ei ole vahvistettu tai niitä on muutettu viimeisimmän AeroCloud-siirron jälkeen. Tarkista ne AeroSyncissä ennen kuin päätät poistamisesta."
         },
         "statusBar": {
             "connected": "Yhdistetty",
@@ -2469,7 +2474,9 @@
             "flattenScanning": "Skannataan alipuuta...",
             "flattenTruncated": "katkaistu",
             "flattenTruncatedHint": "Saavutettu 5 000 merkinnän raja; tarkenna suodatinta tai siirry alikansioon.",
-            "local_placeholder_flatten": "Suodata paikallisia tiedostoja... (* rekursiiviseen)"
+            "local_placeholder_flatten": "Suodata paikallisia tiedostoja... (* rekursiiviseen)",
+            "flattenNameClash": "{names}: valittu useammassa kuin yhdessä kansiossa. Samaan paikkaan laitettuina ne korvaisivat toisensa; käsittele kerrallaan yksi kustakin.",
+            "flattenNameClashTitle": "Sama nimi useammassa kansiossa"
         },
         "versions": {
             "title": "Tiedostoversiot",
@@ -4179,7 +4186,10 @@
             "drivesLeftPanel": "Vasemman paneelin asemat",
             "drivesRightPanel": "Oikean paneelin asemat",
             "modeGroupLabel": "Sivupalkin tila",
-            "placesSidebarLabel": "Sijaintien sivupalkki"
+            "placesSidebarLabel": "Sijaintien sivupalkki",
+            "mountFailed": "Liittäminen epäonnistui",
+            "partitions_need_udisks2": "Snapissa liittämättömät osiot näkyvät, ja ne voi liittää ja poistaa, kun udisks2-oikeus on yhdistetty. Suorita tämä päätteessä ja palaa sitten AeroFTP:hen:",
+            "volume_action_needs_udisks2": "Snapissa liittäminen ja poistaminen vaativat udisks2-oikeuden. Suorita tämä päätteessä ja yritä sitten uudelleen: {command}"
         },
         "viewMode": {
             "list": "Lista",
@@ -4853,7 +4863,8 @@
             "relocateSuccessMove": "”{name}” siirretty tilille {user}",
             "relocateAlreadyPresent": "”{name}” on jo tallennettu tilille {user}",
             "relocateError": "Palvelinta ei voitu siirtää: {error}",
-            "relocateWrongPassword": "Väärä salasana tilille {user}."
+            "relocateWrongPassword": "Väärä salasana tilille {user}.",
+            "relocateSecretsNotCopied": "”{name}” pääsi tilille {user}, mutta sen tallennettu salasana tai avain ei päässyt, joten se kysyy ne siellä uudelleen."
         },
         "cyberTools": {
             "title": "Turvallisuustyö­kalut",
@@ -6130,7 +6141,8 @@
             "totalEntries": "Merkintöjä yhteensä",
             "differences": "Eroavaisuudet",
             "totalBytes": "Tavuja yhteensä",
-            "mirrorHint": "Peilauspainikkeet asettavat vastaavat merkinnät yhtenäiseen siirtosuunnittelijaan tarkistettavaksi.",
+            "mirrorHint": "Peilauspainikkeet siirtävät vastaavat merkinnät. Ne eivät jätä niitä odottamaan tarkistusta.",
+            "exportFailed": "Vientiä ei voitu kirjoittaa: {error}",
             "mirrorLeftToRight": "Peilaa vasemmalta oikealle",
             "mirrorRightToLeft": "Peilaa oikealta vasemmalle",
             "directionLeftRight": "Vasemmalta Oikealle",
@@ -6309,7 +6321,12 @@
                 }
             },
             "rescan": "Skannaa uudelleen",
-            "rescanNeeded": "Vertailu tehtiin muilla poissulkemisilla tai toisella varmuuskopiokansiolla. Skannaa uudelleen ennen ajoa.",
+            "rescanBringsBack": "Nämä asetukset tuovat takaisin tiedostot, jotka skannaus jätti pois, joten se ei lukenut niitä koskaan. Skannaa uudelleen ennen ajoa.",
+            "rescanFlat": "Tämä vertailu tuli kahden paneelin luetteloista, ei täydestä skannauksesta, joten se ei voi käyttää poissulkemisia. Skannaa uudelleen ennen ajoa.",
+            "narrowAvailable": "Nämä asetukset vain rajaavat vertailua, joten se voidaan suodattaa ilman uutta skannausta.",
+            "narrowApply": "Käytä tähän vertailuun",
+            "narrowedNote": "Suodatettu uusilla poissulkemisilla ilman uutta skannausta. Identtisten määrä on edelleen skannauksesta.",
+            "narrowAfterRestore": "Palautus on käynnissä. Nämä asetukset voi ottaa käyttöön vertailussa, kun palautus päättyy.",
             "backup": {
                 "checking": "Tarkistetaan, miten tämä palvelin siirtää tiedostoja...",
                 "serverCopy": "Tämä palvelin ei osaa siirtää: jokainen säilytettävä kopio kopioidaan palvelimella ja poistetaan sitten. Se maksaa täyden kopion jokaisesta säilytettävästä tiedostosta, kahdessa erillisessä vaiheessa.",
@@ -6336,7 +6353,10 @@
             "progressCopy": "[kopio]",
             "deleteCount": "Poistettavat: {count}",
             "overwriteCount": "Korvattavat: {count}",
-            "conflictCount": "Ristiriidat: {count}"
+            "conflictCount": "Ristiriidat: {count}",
+            "updateOnly": "Ohita uudemmat kohdetiedostot (yksisuuntainen päivitys)",
+            "updateOnlyHint": "Kopioi puuttuvat tai muuttuneet lähdetiedostot, säilyttää kohteen uudemmat tiedostot ja poistaa vain kohteessa olevat merkinnät. Tiedostoja, joilla ei ole vertailukelpoisia päivämääriä, verrataan koon perusteella; kokoerot jätetään tarkistettavaksi.",
+            "rescanNeeded": "Suorita uusi vertailu nykyisillä asetuksilla ennen päivitysskriptin vientiä."
         },
         "accountLock": {
             "title": "Valitse tili",
@@ -6580,7 +6600,8 @@
             "keyslotsSetAsideRevocation": "Edellinen merkkitiedosto avaa holvin edelleen tekijällä, jonka poistat tai korvaat. Jokainen holvin kansioon jäänyt kopio poistetaan muutoksen jälkeen, ja kopio, jota ei voi poistaa, ilmoitetaan virheenä. Tallennustilan roskakorissa tai tiedostoversioissa olevaa kopiota ei tavoiteta: niiden tyhjentäminen poistaa nämä kopiot mutta ei kopiota, jonka joku muu on säilyttänyt, joten se ei viimeistele peruutusta.",
             "keyslotsSetAsideConsent": "Ymmärrän: korvaa merkkitiedosto tällä palvelimella nimeämällä vanha sivuun",
             "keyslotsSetAsideConsentRequired": "Tämä palvelin voi korvata holvin merkkitiedoston vain nimeämällä vanhan sivuun: vahvista se yllä olevasta ruudusta jatkaaksesi.",
-            "keyslotsMarkerReplaceUnsupported": "Tämä palvelin ei voi korvata holvin merkkitiedostoa, joten paikkamuutokset hylätään tässä. Avaa sama tallennustila palvelimen kautta, joka korvaa tiedoston yhdellä askeleella (esimerkiksi SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Tämä palvelin ei voi korvata holvin merkkitiedostoa, joten paikkamuutokset hylätään tässä. Avaa sama tallennustila palvelimen kautta, joka korvaa tiedoston yhdellä askeleella (esimerkiksi SFTP).",
+            "overlayMetadataNotSaved": "Siirto onnistui, mutta offline-palautuspakettia ei ole vielä tallennettu välimuistiin. Se tallennetaan seuraavan avauksen yhteydessä."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Salaus)",

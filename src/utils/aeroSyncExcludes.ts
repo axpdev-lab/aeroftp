@@ -12,7 +12,7 @@
 export const AEROSYNC_DEFAULT_EXCLUDES: readonly string[] = [
     'node_modules', '.git', '.DS_Store', 'Thumbs.db',
     '__pycache__', '*.pyc', '.env', 'target',
-    '*.aerocorrect',
+    '*.aerocorrect', '*.aerotmp',
 ];
 
 /**
@@ -73,6 +73,25 @@ export function sameExcludePatterns(a: readonly string[], b: readonly string[]):
     if (left.size !== right.size) return false;
     for (const pattern of left) if (!right.has(pattern)) return false;
     return true;
+}
+
+/**
+ * True when new settings only add to what a finished compare left out, so the
+ * compare can be filtered instead of run again: everything it hid stays
+ * hidden. A pattern or backup folder that goes away brings back files the scan
+ * never read, and a compare of the two panel listings
+ * ([`appliedCompareFilters`], no backup folder) applied nothing to build on.
+ */
+export function narrowsComparison(
+    compareExcludes: readonly string[],
+    compareBackupDir: string | undefined,
+    userPatterns: readonly string[],
+    backupDir: string,
+): boolean {
+    if (compareBackupDir === undefined) return false;
+    const next = cliExcludePatterns(userPatterns, backupDir);
+    return [...compareExcludes, compareBackupDir.trim().replace(/^\/+|\/+$/g, '')]
+        .every((pattern) => next.includes(pattern));
 }
 
 /**

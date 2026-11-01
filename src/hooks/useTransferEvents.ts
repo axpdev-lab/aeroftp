@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useLayoutEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { guardedUnlisten } from './useTauriListener';
 import { TransferEvent, TransferProgress } from '../types';
@@ -11,6 +11,7 @@ import { READ_ONLY_ERROR_PREFIX } from '../utils/aeroShare';
 import { createDeferredRefresh } from '../utils/deferredRefresh';
 import { rowForFileStart } from '../components/transferQueueActions';
 import { emptySpeedProfile, recordProgress, type SpeedProfile } from '../utils/speedProfile';
+import { currentTransferRun } from '../utils/transferRun';
 import type { TransferToastLane, TransferToastState } from '../components/Transfer';
 import type { ActivityLogContextValue } from './useActivityLog';
 import type { useHumanizedLog } from './useHumanizedLog';
@@ -96,7 +97,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
   // The event listener subscribes once ([] deps) and always reads fresh values via ref.
   // This eliminates the micro-gap where events could be lost during re-subscription.
   const optRef = useRef(options);
-  optRef.current = options;
+  useLayoutEffect(() => { optRef.current = options; });
   const remoteRefreshAfterUpload = useRef(createDeferredRefresh(
     () => { optRef.current.loadRemoteFiles(); },
     () => optRef.current.remoteRefreshStartedAt?.() ?? 0,
@@ -119,6 +120,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
   // Tracks whether a streaming scan is still discovering directories (don't dismiss toast on file_start)
   const streamingScanActive = useRef(false);
   const activeToastBatchId = useRef<string | null>(null);
+  const toastRun = useRef<{ transferId: string; run: string } | null>(null);
   const toastSummaryRef = useRef<TransferProgress | null>(null);
   const toastLaneAssignments = useRef<Map<string, number>>(new Map());
   const toastLanesRef = useRef<Map<string, TransferToastLane>>(new Map());
@@ -254,8 +256,14 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       const lanes = Array.from(toastLanesRef.current.values())
         .sort((a, b) => (toastLaneAssignments.current.get(a.id) ?? 0) - (toastLaneAssignments.current.get(b.id) ?? 0));
 
+      // Read once per transfer: its last events can arrive after its run ended.
+      const transferId = toastSummaryRef.current.transfer_id;
+      if (toastRun.current?.transferId !== transferId) {
+        toastRun.current = { transferId, run: currentTransferRun() ?? transferId };
+      }
       const toastState: TransferToastState = {
         summary: toastSummaryRef.current,
+        run: toastRun.current.run,
         lanes,
         reservedLaneSlots: toastReservedLaneSlots.current,
         maxChannels: optRef.current.maxChannels,

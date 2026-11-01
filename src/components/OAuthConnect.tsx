@@ -110,6 +110,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [credentialError, setCredentialError] = useState<string | null>(null);
+  const [appSaveError, setAppSaveError] = useState<string | null>(null);
   const credentialEdits = useRef({ clientId: false, clientSecret: false, region: false });
   const [showSecret, setShowSecret] = useState(false);
   const [zohoRegion, setZohoRegion] = useState('us');
@@ -172,13 +173,19 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
 
   const handleSignIn = async () => {
     if (!clientId || !clientSecret) return;
-    await Promise.all([
-      invoke('store_credential', { account: `oauth_${credentialProvider}_client_id`, password: clientId }),
-      invoke('store_credential', { account: `oauth_${credentialProvider}_client_secret`, password: clientSecret }),
-      ...(isZoho
-        ? [invoke('store_credential', { account: `oauth_${provider}_region`, password: zohoRegion })]
-        : []),
-    ]);
+    setAppSaveError(null);
+    // One call: an import or another window must not see half of the pair.
+    try {
+      await invoke('store_oauth_app', {
+        provider: credentialProvider,
+        clientId,
+        clientSecret,
+        ...(isZoho ? { region: zohoRegion } : {}),
+      });
+    } catch (reason) {
+      setAppSaveError(String(reason));
+      return;
+    }
     localStorage.removeItem(`oauth_${provider}_client_id`);
     localStorage.removeItem(`oauth_${provider}_client_secret`);
 
@@ -217,11 +224,11 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
   return (
     <div className="grid md:grid-cols-2 gap-6 items-start">
       <div className="space-y-4 min-w-0">
-        {(error || credentialError) && (
+        {(error || appSaveError || credentialError) && (
           <div className="p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg">
             <div className="flex items-start gap-2 text-red-700 dark:text-red-300">
               <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-              <span className="text-sm">{error || t('connection.oauthKeysReadFailed', { provider: providerNames[provider], error: credentialError || '' })}</span>
+              <span className="text-sm">{error || appSaveError || t('connection.oauthKeysReadFailed', { provider: providerNames[provider], error: credentialError || '' })}</span>
             </div>
           </div>
         )}

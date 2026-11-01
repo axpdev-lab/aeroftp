@@ -393,31 +393,32 @@ impl DrimeCloudProvider {
     }
 
     fn normalize_path(path: &str) -> String {
-        let trimmed = path.trim().replace('\\', "/");
-        if trimmed.is_empty() || trimmed == "/" {
+        // Spaces are part of a name: ` a` and `a ` are not `a`.
+        let path = path.replace('\\', "/");
+        if path.is_empty() || path == "/" {
             return "/".to_string();
         }
-        let p = if trimmed.starts_with('/') {
-            trimmed
+        let p = if path.starts_with('/') {
+            path
         } else {
-            format!("/{}", trimmed)
+            format!("/{}", path)
         };
         p.trim_end_matches('/').to_string()
     }
 
     fn resolve_path(&self, path: &str) -> String {
-        let trimmed = path.trim();
-        if trimmed.is_empty() || trimmed == "." {
+        if path.is_empty() || path == "." {
             return self.current_path.clone();
         }
         // Check leading slash on the raw input before normalizing -
         // normalize_path unconditionally prepends "/", which would otherwise
         // make every relative input appear absolute and skip the current_path join.
-        if trimmed.starts_with('/') {
-            return Self::normalize_path(trimmed);
+        // `normalize_path` takes `\` for a separator: a leading one is the root too.
+        if path.starts_with(['/', '\\']) {
+            return Self::normalize_path(path);
         }
         let base = self.current_path.trim_end_matches('/');
-        Self::normalize_path(&format!("{}/{}", base, trimmed))
+        Self::normalize_path(&format!("{}/{}", base, path))
     }
 
     fn split_path(path: &str) -> (&str, &str) {
@@ -1226,7 +1227,8 @@ impl StorageProvider for DrimeCloudProvider {
 
         // Navigate to initial path if specified
         if let Some(ref initial) = self.config.initial_path {
-            let initial = initial.trim().to_string();
+            // As given: a name may begin or end with a space.
+            let initial = initial.to_string();
             if !initial.is_empty() && initial != "/" {
                 let normalized = Self::normalize_path(&initial);
                 drime_log(&format!("Navigating to initial path: {}", normalized));
@@ -2164,102 +2166,10 @@ impl StorageProvider for DrimeCloudProvider {
         true
     }
 
-    async fn find(
-        &mut self,
-        _path: &str,
-        pattern: &str,
-    ) -> Result<Vec<RemoteEntry>, ProviderError> {
-        drime_log(&format!("Searching for '{}'", pattern));
-
-        // Drime /drive/file-entries?query= is substring on filename and
-        // ignores glob metacharacters. Strip glob chars for the broad server
-        // prefilter, then apply the precise filter client-side.
-        let literal: String = pattern
-            .chars()
-            .filter(|c| !matches!(c, '*' | '?' | '[' | ']'))
-            .collect();
-        let server_query = if literal.is_empty() {
-            ".".to_string()
-        } else {
-            literal
-        };
-
-        let mut entries = Vec::new();
-        let mut page = 1u32;
-
-        loop {
-            let url = format!(
-                "{}?workspaceId=0&query={}&page={}&perPage=50",
-                Self::api_url("/drive/file-entries"),
-                urlencoding::encode(&server_query),
-                page
-            );
-
-            let auth = self.auth_header()?;
-            let resp = self
-                .request_with_retry(|| self.client.get(&url).header(AUTHORIZATION, auth.clone()))
-                .await?;
-
-            if !resp.status().is_success() {
-                let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!(
-                    "Search failed: {}",
-                    sanitize_api_error(&body)
-                )));
-            }
-
-            let list_resp: DrimeListResponse = resp.json().await.map_http_err(|e| {
-                ProviderError::ServerError(format!("Parse search response: {}", e))
-            })?;
-
-            let files = list_resp.data.ok_or_else(|| {
-                ProviderError::ParseError("Drime listing omitted its data array".into())
-            })?;
-            if files.iter().any(|file| {
-                file.name.as_ref().is_none_or(String::is_empty)
-                    || file.id_str().is_none_or(|id| id.is_empty())
-            }) {
-                return Err(ProviderError::ParseError(
-                    "Drime listing omitted an item name or ID".into(),
-                ));
-            }
-            let last_page = list_resp.last_page.unwrap_or(1);
-
-            for file in files {
-                let name = file.name.clone().unwrap_or_default();
-                if !super::matches_find_pattern(&name, pattern) {
-                    continue;
-                }
-                let is_dir = file.file_type.as_deref() == Some("folder");
-
-                entries.push(RemoteEntry {
-                    name: name.clone(),
-                    path: format!("/{}", name), // search results don't include full path
-                    is_dir,
-                    size: file.size.unwrap_or(0),
-                    modified: file.updated_at.as_deref().and_then(Self::parse_date),
-                    permissions: None,
-                    owner: None,
-                    group: None,
-                    is_symlink: false,
-                    link_target: None,
-                    metadata: HashMap::new(),
-                    mime_type: file.mime_type,
-                });
-            }
-
-            if page >= last_page {
-                break;
-            }
-            page += 1;
-        }
-
-        drime_log(&format!(
-            "Search '{}' found {} results",
-            pattern,
-            entries.len()
-        ));
-        Ok(entries)
+    async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        // The search API answers outside the folder or without the hit's real
+        // path, and a caller acts on that path.
+        super::find_by_walk(self, path, pattern).await
     }
 
     // ─── Share Links ────────────────────────────────────────────────────
@@ -2962,6 +2872,22 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_name_keeps_its_leading_and_trailing_spaces() {
+        // A name with a leading or trailing space is a name of its own, and a
+        // name of spaces only is not the current folder.
+        assert_eq!(DrimeCloudProvider::normalize_path("/ a"), "/ a");
+        assert_eq!(DrimeCloudProvider::normalize_path("/a /b "), "/a /b ");
+        let mut p = test_provider();
+        p.current_path = "/Cloud".to_string();
+        assert_eq!(p.resolve_path("   "), "/Cloud/   ");
+        assert_eq!(p.resolve_path(" a"), "/Cloud/ a");
+        assert_eq!(p.resolve_path("/a "), "/a ");
+        // A leading backslash is the root, as normalize_path reads it.
+        assert_eq!(p.resolve_path("\\docs\\a "), "/docs/a ");
+        assert_eq!(p.resolve_path("sub\\a"), "/Cloud/sub/a");
+    }
 
     fn test_provider() -> DrimeCloudProvider {
         let config = DrimeCloudConfig {
@@ -3723,7 +3649,7 @@ mod tests {
     fn normalize_path_preserves_root_and_trims_trailing_slash() {
         assert_eq!(DrimeCloudProvider::normalize_path(""), "/");
         assert_eq!(DrimeCloudProvider::normalize_path("/"), "/");
-        assert_eq!(DrimeCloudProvider::normalize_path("   "), "/");
+        assert_eq!(DrimeCloudProvider::normalize_path("   "), "/   ");
         assert_eq!(DrimeCloudProvider::normalize_path("foo"), "/foo");
         assert_eq!(DrimeCloudProvider::normalize_path("/foo"), "/foo");
         assert_eq!(DrimeCloudProvider::normalize_path("/foo/"), "/foo");

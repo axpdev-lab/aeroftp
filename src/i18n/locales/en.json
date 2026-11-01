@@ -1622,7 +1622,9 @@
             "aerocloudEnabled": "AeroCloud enabled",
             "selectPairLocalFolder": "Select local folder for pair",
             "secondsAgo": "{count}s ago",
-            "conflictsCount": "Conflicts needing attention: {count}"
+            "conflictsCount": "Conflicts needing attention: {count}",
+            "updateOnlyHint": "One-way Update keeps newer destination files. With additive backup off, only unchanged destination-only files with a verified AeroCloud transfer receipt are deleted. Other files stay for review in AeroSync. The conflict policy is ignored; unknown dates stay unresolved.",
+            "untrackedDestinationFiles": "{count} destination files were kept for review: their transfer history is unverified or they changed after the last AeroCloud transfer. Review them in AeroSync before deciding on deletion."
         },
         "common": {
             "about": "About",
@@ -1685,6 +1687,7 @@
             "up": "Up",
             "upload": "Upload",
             "version": "Version",
+            "searchLimited": "Showing the first {count} matches. Search a smaller folder to see the rest.",
             "warning": "Warning",
             "yes": "Yes",
             "goToActiveSession": "Go to active session",
@@ -2130,6 +2133,7 @@
             "extract": "Extract",
             "extract7zHere": "Extract 7z Here",
             "extractHere": "Extract Here",
+            "extractHereUncheckedConfirm": "The names inside {name} cannot be read before extracting, so AeroFTP cannot check what Extract Here would overwrite in this folder. Extract to Folder never overwrites.",
             "extracting": "Extracting...",
             "extractionFailed": "Extraction failed",
             "extractOverwriteConfirm": "Extracting here will overwrite {count} existing item(s): {names}. Continue?",
@@ -2390,7 +2394,8 @@
             "keyslotsRecoveryAutoOffered": "A recovery slot was auto-added because this vault would have been keyfile-only. Save the recovery code below.",
             "keyslotsRecoverySaveOnce": "Save this recovery code now (shown once):",
             "keyslotsRecoveryCopy": "Copy code",
-            "keyslotsUnlockWithRecovery": "You can also unlock with a recovery code (paste it as the password)."
+            "keyslotsUnlockWithRecovery": "You can also unlock with a recovery code (paste it as the password).",
+            "overlayMetadataNotSaved": "The migration succeeded, but the offline recovery kit is not cached yet. It will be at the next unlock."
         },
         "cryptomator": {
             "confirmPassword": "Confirm Password",
@@ -3791,10 +3796,13 @@
             "relocateSuccessMove": "Moved \"{name}\" to {user}",
             "relocateAlreadyPresent": "\"{name}\" is already saved in {user}",
             "relocateError": "Could not transfer the server: {error}",
-            "relocateWrongPassword": "Wrong password for {user}."
+            "relocateWrongPassword": "Wrong password for {user}.",
+            "relocateSecretsNotCopied": "{name} reached {user}, but its saved password or token did not, so it will ask for them again there."
         },
         "search": {
             "clear": "Clear search",
+            "flattenNameClash": "{names}: selected in more than one folder. Put in one place, they would replace each other; act on one of each at a time.",
+            "flattenNameClashTitle": "Same name in more than one folder",
             "flattenRecursive": "Recursive",
             "flattenScanning": "Scanning subtree...",
             "flattenTruncated": "truncated",
@@ -4430,7 +4438,8 @@
             "serverProfilesCount": "{count} server profiles",
             "aiKeysCount": "{count} AI keys",
             "oauthTokensCount": "{count} OAuth tokens",
-            "configEntriesCount": "{count} config entries"
+            "configEntriesCount": "{count} config entries",
+            "keystoreDatabasesFailed": "The import finished, but these databases could not be restored and keep what they held: {names}."
         },
         "sharing": {
             "add": "Add",
@@ -4538,7 +4547,10 @@
             "drivesLeftPanel": "Drives left panel",
             "drivesRightPanel": "Drives right panel",
             "modeGroupLabel": "Sidebar mode",
-            "placesSidebarLabel": "Places sidebar"
+            "placesSidebarLabel": "Places sidebar",
+            "mountFailed": "Mount failed",
+            "partitions_need_udisks2": "In the snap, unmounted partitions appear, and can be mounted and ejected, once its udisks2 permission is connected. Run this in a terminal, then return to AeroFTP:",
+            "volume_action_needs_udisks2": "In the snap, mounting and ejecting need its udisks2 permission. Run this in a terminal, then try again: {command}"
         },
         "statusbar": {
             "activityLog": "Activity Log",
@@ -6420,7 +6432,8 @@
             "totalBytes": "Total bytes",
             "outOfSyncItemsPct": "Items out of sync",
             "outOfSyncBytesPct": "Bytes out of sync",
-            "mirrorHint": "Mirror buttons stage the matching entries in the unified transfer planner for review.",
+            "mirrorHint": "Mirror buttons transfer the matching entries. They do not stage them for review.",
+            "exportFailed": "Could not write the export: {error}",
             "mirrorLeftToRight": "Mirror left to right",
             "mirrorRightToLeft": "Mirror right to left",
             "directionLeftRight": "Left to Right",
@@ -6597,7 +6610,12 @@
                 }
             },
             "rescan": "Rescan",
-            "rescanNeeded": "The comparison was made with other exclusions or another backup folder. Rescan before running.",
+            "rescanBringsBack": "These settings bring back files the scan left out, so it never read them. Rescan before running.",
+            "rescanFlat": "This comparison came from the two panel listings, not a full scan, so it cannot apply exclusions. Rescan before running.",
+            "narrowAvailable": "These settings only narrow the comparison, so it can be filtered without a rescan.",
+            "narrowApply": "Apply to this comparison",
+            "narrowedNote": "Filtered with new exclusions without a rescan. The identical count is still the one from the scan.",
+            "narrowAfterRestore": "A restore is running. These settings can be applied to the comparison when it ends.",
             "backup": {
                 "checking": "Checking how this server moves files...",
                 "serverCopy": "This server has no move: each kept copy is copied on the server and then deleted. That costs a full copy of every file kept, in two separate steps.",
@@ -6624,7 +6642,10 @@
             "progressCopy": "[copy]",
             "deleteCount": "{count} to delete",
             "overwriteCount": "{count} to overwrite",
-            "conflictCount": "Conflicts: {count}"
+            "conflictCount": "Conflicts: {count}",
+            "updateOnly": "Skip newer destination files (One-way Update)",
+            "updateOnlyHint": "Copy missing or changed source files, keep newer destination files, and delete destination-only entries. Files without comparable dates are compared by size; size differences are left for review.",
+            "rescanNeeded": "Run a new comparison with the current settings before exporting an Update script."
         },
         "aerocryptProfile": {
             "overlaysSection": "Wrappers / Overlays",

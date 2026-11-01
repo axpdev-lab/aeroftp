@@ -40,6 +40,8 @@ import {
 
 interface CompareTabContentProps {
     result: CompareResult | null;
+    /** The result was filtered after its scan: the identical count is the scan's. */
+    narrowed?: boolean;
     /** GAP-5: true while the recursive connected-remote scan is running. */
     loading?: boolean;
     scanProgressId?: string;
@@ -211,10 +213,10 @@ const BucketSection: React.FC<BucketSectionProps> = ({ bucket, entries, count, b
                                                 {entry.relativePath ?? entry.name}
                                             </td>
                                             <td className="px-2 py-1 text-right text-gray-600 dark:text-gray-300">
-                                                {entry.leftIsDir ? (t('aerosync.compareTable.folder') || 'folder') : formatSize(entry.leftSize)}
+                                                {entry.bucket === 'only-right' ? '-' : entry.leftIsDir ? (t('aerosync.compareTable.folder') || 'folder') : formatSize(entry.leftSize)}
                                             </td>
                                             <td className="px-2 py-1 text-right text-gray-600 dark:text-gray-300">
-                                                {entry.rightIsDir ? (t('aerosync.compareTable.folder') || 'folder') : formatSize(entry.rightSize)}
+                                                {entry.bucket === 'only-left' ? '-' : entry.rightIsDir ? (t('aerosync.compareTable.folder') || 'folder') : formatSize(entry.rightSize)}
                                             </td>
                                             <td className="px-2 py-1 text-gray-500 dark:text-gray-400">
                                                 {formatTimestamp(entry.leftMtimeMs)}
@@ -246,6 +248,7 @@ const BucketSection: React.FC<BucketSectionProps> = ({ bucket, entries, count, b
 
 export const CompareTabContent: React.FC<CompareTabContentProps> = ({
     result,
+    narrowed,
     loading,
     scanProgressId,
     stopped,
@@ -291,42 +294,30 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
     // legacy SyncPanel). The unified compare carries a recursive
     // `relativePath`, so the export covers nested entries the legacy flat
     // export missed.
-    const handleExportJson = async (): Promise<void> => {
-        if (!result || result.entries.length === 0) return;
+    const [exportError, setExportError] = React.useState<string | null>(null);
+    // A second click while the save dialog is open must not open another one.
+    const exporting = React.useRef(false);
+    const runExport = async (format: 'json' | 'csv'): Promise<void> => {
+        if (!result || result.entries.length === 0 || exporting.current) return;
+        exporting.current = true;
+        setExportError(null);
         try {
             const filePath = await pickSave({
-                defaultPath: compareExportFilename('json'),
-                filters: [{ name: 'JSON', extensions: ['json'] }],
+                defaultPath: compareExportFilename(format),
+                filters: format === 'json'
+                    ? [{ name: 'JSON', extensions: ['json'] }]
+                    : [{ name: 'CSV', extensions: ['csv'] }],
             });
             if (filePath) {
-                await writeTextFile(
-                    filePath,
-                    compareRowsToJson(buildCompareExportRows(result)),
-                );
+                const rows = buildCompareExportRows(result);
+                await writeTextFile(filePath, format === 'json' ? compareRowsToJson(rows) : compareRowsToCsv(rows));
             }
-        } catch {
-            /* dialog cancelled or write error */
+        } catch (error) {
+            setExportError(String(error));
+        } finally {
+            exporting.current = false;
         }
     };
-
-    const handleExportCsv = async (): Promise<void> => {
-        if (!result || result.entries.length === 0) return;
-        try {
-            const filePath = await pickSave({
-                defaultPath: compareExportFilename('csv'),
-                filters: [{ name: 'CSV', extensions: ['csv'] }],
-            });
-            if (filePath) {
-                await writeTextFile(
-                    filePath,
-                    compareRowsToCsv(buildCompareExportRows(result)),
-                );
-            }
-        } catch {
-            /* dialog cancelled or write error */
-        }
-    };
-
     if (!result) {
         if (loading || onStartCompare) {
             return (
@@ -351,6 +342,11 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
 
     return (
         <div className="flex flex-col">
+            {narrowed && (
+                <p className="border-b border-gray-200 px-4 py-2 text-[11px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                    {t('aerosync.narrowedNote') || 'Filtered with new exclusions without a rescan. The identical count is still the one from the scan.'}
+                </p>
+            )}
             <div className="grid gap-3 px-4 py-3 sm:grid-cols-3">
                 <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-900/40">
                     <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
@@ -450,12 +446,17 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
 
             <div className="flex flex-col gap-2 border-t border-gray-200 px-4 py-3 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                    {t('aerosync.mirrorHint') || 'Mirror buttons stage the matching entries in the unified transfer planner for review.'}
+                    {t('aerosync.mirrorHint') || 'Mirror buttons transfer the matching entries. They do not stage them for review.'}
+                    {exportError && (
+                        <span role="alert" className="mt-1 block text-red-600 dark:text-red-400">
+                            {t('aerosync.exportFailed', { error: exportError }) || `Could not write the export: ${exportError}`}
+                        </span>
+                    )}
                 </p>
                 <div className="flex flex-wrap justify-end gap-2">
                     <button
                         type="button"
-                        onClick={handleExportJson}
+                        onClick={() => void runExport('json')}
                         disabled={result.entries.length === 0}
                         className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
                     >
@@ -464,7 +465,7 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
                     </button>
                     <button
                         type="button"
-                        onClick={handleExportCsv}
+                        onClick={() => void runExport('csv')}
                         disabled={result.entries.length === 0}
                         className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
                     >

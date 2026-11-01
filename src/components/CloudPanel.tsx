@@ -21,6 +21,7 @@ import { WatcherStatus } from './WatcherStatus';
 import { SelectiveSyncTree } from './Sync/SelectiveSyncTree';
 import { VersionBrowser } from './Sync/VersionBrowser';
 import { CloudPairsEditor } from './CloudPairsEditor';
+import { CloudReviewNotice, type CloudSkippedEntry } from './CloudReviewNotice';
 import { ConfirmOverlay } from './common/ConfirmOverlay';
 import { MODAL_Z } from '../utils/modalLayers';
 import { useTranslation } from '../i18n';
@@ -54,6 +55,7 @@ export interface CloudConfig {
     // Send-only / receive-only additive backup: when true (default) deletes on
     // the read side are not mirrored to the write side.
     preserve_remote_deletes?: boolean;
+    update_only?: boolean;
     // Real-time watcher tuning (item 1). Debounce quiet period in ms (default
     // 1500) and cooldown between watcher-triggered syncs in seconds (default 30).
     watcher_debounce_ms?: number;
@@ -132,6 +134,9 @@ interface SyncResult {
     downloaded: number;
     deleted: number;
     skipped: number;
+    skipped_details?: CloudSkippedEntry[];
+    review_scope?: string;
+    review_inventory_complete?: boolean;
     conflicts: number;
     errors: string[];
     duration_secs: number;
@@ -354,6 +359,12 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     const [showCloudPairs, setShowCloudPairs] = useState(false);
     const [pendingDisableConfirm, setPendingDisableConfirm] = useState(false);
     const [reauthRequired, setReauthRequired] = useState<{ provider: string; message: string } | null>(null);
+    const [reviewByScope, setReviewByScope] = useState<Record<string, CloudSkippedEntry[]>>({});
+    const reviewFiles = Object.values(reviewByScope).flat();
+    const [errorsByScope, setErrorsByScope] = useState<Record<string, string[]>>({});
+    const [workerErrors, setWorkerErrors] = useState<string[]>([]);
+    const cycleErrors = [...new Set([...Object.values(errorsByScope).flat(), ...workerErrors])];
+    const [hasCloudPairs, setHasCloudPairs] = useState<boolean | null>(null);
 
     // Use modular tray sync hook. Pause/Resume/Disable now go through the
     // dedicated aerocloud commands (pause_aerocloud/resume_aerocloud/disable_aerocloud)
@@ -375,6 +386,25 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
 
     useTauriListener<SyncResult>('cloud_sync_complete', (event) => {
         const result = event.payload;
+        // Only a complete, successful inventory can retire a pair's warnings.
+        // Aggregated worker events carry no scope and must not duplicate them.
+        if (result.review_scope !== undefined) {
+            const scope = result.review_scope;
+            setReviewByScope(previous => {
+                const incoming = (result.skipped_details ?? []).filter(entry => entry.needs_review);
+                const kept = result.review_inventory_complete ? [] : (previous[scope] ?? []);
+                const byPath = new Map(kept.map(entry => [entry.path, entry]));
+                incoming.forEach(entry => byPath.set(entry.path, entry));
+                return { ...previous, [scope]: [...byPath.values()] };
+            });
+        }
+        if (result.review_scope !== undefined) {
+            const scope = result.review_scope;
+            setErrorsByScope(previous => ({ ...previous, [scope]: result.review_inventory_complete
+                ? result.errors : [...new Set([...(previous[scope] ?? []), ...result.errors])] }));
+        } else {
+            setWorkerErrors(result.errors);
+        }
         if (result.errors.length > 0) {
             logger.debug(`Sync completed with ${result.errors.length} errors`);
         } else {
@@ -393,6 +423,10 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
         try {
             const cfg = await invoke<CloudConfig>('get_cloud_config');
             setConfig(cfg);
+            // Pair-specific settings own Update whenever pairs exist. Failure
+            // to read them must not expose an ineffective legacy checkbox.
+            const pairs = await invoke<{ pairs: unknown[] }>('get_cloud_pairs_config').catch(() => null);
+            setHasCloudPairs(pairs ? pairs.pairs.length > 0 : null);
 
             if (cfg.enabled) {
                 const sts = await invoke<CloudSyncStatus>('get_cloud_status');
@@ -700,6 +734,12 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                                             {t('cloud.preserveRemoteDeletes')}
                                         </label>
                                         <p className="text-xs text-gray-400 mt-1">{t('cloud.preserveRemoteDeletesDesc')}</p>
+                                        {hasCloudPairs === false && <><label className="flex items-center gap-2 mt-2 text-sm">
+                                            <input type="checkbox" checked={config.update_only === true}
+                                                onChange={event => setConfig(prev => prev ? { ...prev, update_only: event.target.checked } : null)} />
+                                            {t('aerosync.updateOnly')}
+                                        </label>
+                                        <p className="text-xs text-gray-400 mt-1">{t('cloud.updateOnlyHint')}</p></>}
                                     </>
                                 )}
                             </div>
@@ -820,6 +860,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                         </button>
                     </div>
                 )}
+                <CloudReviewNotice entries={reviewFiles} errors={cycleErrors} />
                 <CloudDashboard
                     config={config}
                     status={status}
@@ -837,7 +878,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
             )}
             <CloudPairsEditor
                 isOpen={showCloudPairs}
-                onClose={() => setShowCloudPairs(false)}
+                onClose={() => { setShowCloudPairs(false); void loadConfig(); }}
             />
             {pendingDisableConfirm && (
                 <ConfirmOverlay

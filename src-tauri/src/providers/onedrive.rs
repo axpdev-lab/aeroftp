@@ -45,6 +45,13 @@ struct OneDriveMultipartMeta {
     url: String,
     total: u64,
     part: u64,
+    /// The local file's date, set when the session completes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    modified: Option<String>,
+    /// The session's destination, resolved when it opened: the current folder
+    /// can change before it completes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    destination: Option<String>,
 }
 
 impl OneDriveMultipartMeta {
@@ -209,6 +216,12 @@ async fn onedrive_error_from_response(
 /// OneDrive item metadata (fields needed for API response deserialization)
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct FileSystemInfo {
+    last_modified_date_time: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
 struct DriveItem {
     id: String,
@@ -216,6 +229,10 @@ struct DriveItem {
     #[serde(default)]
     size: u64,
     last_modified_date_time: Option<String>,
+    /// The date of the file itself, which an upload can set. The item's own
+    /// date above is when OneDrive stored it.
+    #[serde(default)]
+    file_system_info: Option<FileSystemInfo>,
     #[serde(default)]
     folder: Option<FolderFacet>,
     #[serde(default)]
@@ -370,6 +387,9 @@ pub struct OneDriveProvider {
     #[cfg(test)]
     test_access_token: Option<String>,
 }
+
+/// Characters a OneDrive name cannot hold.
+const RESERVED_NAME_CHARS: &[char] = &['"', '*', ':', '<', '>', '?', '\\', '|'];
 
 impl OneDriveProvider {
     /// Build the provider and its HTTP client, with the limits of [`crate::providers::http_limits`].
@@ -786,7 +806,11 @@ impl OneDriveProvider {
             path,
             is_dir,
             size: item.size,
-            modified: item.last_modified_date_time.clone(),
+            modified: item
+                .file_system_info
+                .as_ref()
+                .and_then(|info| info.last_modified_date_time.clone())
+                .or_else(|| item.last_modified_date_time.clone()),
             permissions: None,
             owner: None,
             group: None,
@@ -799,6 +823,14 @@ impl OneDriveProvider {
 
     /// Get item by path
     async fn get_item(&self, path: &str) -> Result<DriveItem, ProviderError> {
+        // Such a name cannot exist on OneDrive, and Graph answers it with a 400:
+        // to a caller it is a path that is not there.
+        if path
+            .split('/')
+            .any(|name| name.contains(RESERVED_NAME_CHARS))
+        {
+            return Err(ProviderError::NotFound(path.to_string()));
+        }
         match self.fetch_item(path).await {
             // Graph does not follow a path through a shortcut: find the
             // shortcuts among its parents, then address it through them. A
@@ -1398,6 +1430,39 @@ impl OneDriveProvider {
         Ok(())
     }
 
+    /// Give an uploaded file its local date. The upload has already succeeded,
+    /// so a refusal costs only the date: the Compare reads the file as newer
+    /// here, and the sync index still recognises it.
+    async fn keep_local_date(&self, path: &str, date: &str) {
+        let body = serde_json::json!({"fileSystemInfo": {"lastModifiedDateTime": date}});
+        let request = match self.auth_header().await {
+            Ok(auth) => self
+                .client
+                .patch(self.api_path(path))
+                .header(AUTHORIZATION, auth)
+                .header(CONTENT_TYPE, "application/json")
+                .body(body.to_string()),
+            Err(error) => {
+                tracing::warn!("OneDrive: could not keep the date of {path}: {error}");
+                return;
+            }
+        };
+        let answer = request
+            .send()
+            .await
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()));
+        match answer {
+            Ok(response) if response.status().is_success() => {}
+            Ok(response) => {
+                tracing::warn!(
+                    "OneDrive: could not keep the date of {path}: HTTP {}",
+                    response.status()
+                );
+            }
+            Err(error) => tracing::warn!("OneDrive: could not keep the date of {path}: {error}"),
+        }
+    }
+
     /// Resolve `remote_path` against the current directory and POST
     /// `<its address>:/createUploadSession`, returning the per-session
     /// `uploadUrl`. Used by the multipart trait; `resume_upload` opens its
@@ -1507,16 +1572,17 @@ impl StorageProvider for OneDriveProvider {
                     if let Some(drive_id) =
                         body["id"].as_str().map(str::trim).filter(|s| !s.is_empty())
                     {
-                        let _ = store
-                            .store(&format!("onedrive_drive_id_{}", self.profile_id), drive_id);
+                        keep_drive_hint(&store, "onedrive_drive_id", &self.profile_id, drive_id);
                     }
                     if let Some(drive_type) = body["driveType"]
                         .as_str()
                         .map(str::trim)
                         .filter(|s| !s.is_empty())
                     {
-                        let _ = store.store(
-                            &format!("onedrive_drive_type_{}", self.profile_id),
+                        keep_drive_hint(
+                            &store,
+                            "onedrive_drive_type",
+                            &self.profile_id,
                             drive_type,
                         );
                     }
@@ -1813,6 +1879,9 @@ impl StorageProvider for OneDriveProvider {
                 .resume_upload(local_path, remote_path, 0, on_progress)
                 .await;
         }
+        // Read before the bytes: a rewrite during the upload must not put the
+        // new file's date on them.
+        let local_date = super::local_modified_rfc3339(local_path);
 
         let file = tokio::fs::File::open(local_path)
             .await
@@ -1848,6 +1917,10 @@ impl StorageProvider for OneDriveProvider {
         // KE-B3.1: post-upload version sweep. Resolve path → item_id and
         // delete all non-current versions. Failures are logged but the
         // upload is still reported as success.
+        // Before the sweep: setting the date can add a version.
+        if let Some(date) = local_date {
+            self.keep_local_date(&path, &date).await;
+        }
         if self.no_versions {
             self.purge_versions_after_upload(&path, "post-upload").await;
         }
@@ -2341,70 +2414,9 @@ impl StorageProvider for OneDriveProvider {
     }
 
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let item_id = if path == "/" || path.is_empty() {
-            "root".to_string()
-        } else {
-            self.resolve_container(path).await?
-        };
-
-        // Graph search(q=...) is a substring match on filename and ignores
-        // glob metacharacters. Strip glob chars for the server query, then
-        // apply the precise match client-side.
-        let literal: String = pattern
-            .chars()
-            .filter(|c| !matches!(c, '*' | '?' | '[' | ']'))
-            .collect();
-        let server_query = if literal.is_empty() {
-            ".".to_string()
-        } else {
-            literal
-        };
-
-        let url = format!(
-            "{}/search(q='{}')",
-            self.api_item(&item_id),
-            urlencoding::encode(&server_query)
-        );
-
-        let mut all_entries = Vec::new();
-        let mut current_url = url;
-
-        loop {
-            let response = self
-                .client
-                .get(&current_url)
-                .header(AUTHORIZATION, self.auth_header().await?)
-                .send()
-                .await
-                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-            if !response.status().is_success() {
-                let text = response.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!(
-                    "Search failed: {}",
-                    sanitize_api_error(&text)
-                )));
-            }
-
-            let result: ChildrenResponse = response
-                .json()
-                .await
-                .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
-
-            for item in &result.value {
-                let entry = self.to_remote_entry(item, path);
-                if super::matches_find_pattern(&entry.name, pattern) {
-                    all_entries.push(entry);
-                }
-            }
-
-            match result.next_link {
-                Some(next) if all_entries.len() < 500 => current_url = next,
-                _ => break,
-            }
-        }
-
-        Ok(all_entries)
+        // The search API answers outside the folder or without the hit's real
+        // path, and a caller acts on that path.
+        super::find_by_walk(self, path, pattern).await
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
@@ -2766,6 +2778,9 @@ impl StorageProvider for OneDriveProvider {
             .await
             .map_err(ProviderError::IoError)?
             .len();
+        let source = super::upload_source::UploadSource::observe(local_path).await?;
+        source.ensure_size(total_size, "OneDrive upload")?;
+        let local_date = source.modified_rfc3339();
         let mut file = tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
@@ -2832,6 +2847,15 @@ impl StorageProvider for OneDriveProvider {
                 .await
                 .map_err(ProviderError::IoError)?;
 
+            // The last chunk publishes the file: refuse a mixture of two versions,
+            // and release the session.
+            if end == total_size {
+                if let Err(error) = source.ensure_unchanged("OneDrive upload").await {
+                    let _ = self.client.delete(&session.upload_url).send().await;
+                    return Err(error);
+                }
+            }
+
             let content_range = format!("bytes {}-{}/{}", offset, end - 1, total_size);
 
             let resp = self
@@ -2861,6 +2885,11 @@ impl StorageProvider for OneDriveProvider {
         }
 
         info!("Resumable upload completed: {}", path);
+
+        // As on the small-file path, before the sweep.
+        if let Some(date) = local_date {
+            self.keep_local_date(&path, &date).await;
+        }
 
         // KE-B3.1: post-upload version sweep mirrors the small-file path, on
         // the path the session was created for.
@@ -2908,7 +2937,7 @@ impl StorageProvider for OneDriveProvider {
         remote_path: &str,
         total_size: u64,
         _content_type: Option<&str>,
-        _local_source_path: Option<&str>,
+        local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
         if total_size == 0 {
             return Err(ProviderError::Other(
@@ -2925,6 +2954,8 @@ impl StorageProvider for OneDriveProvider {
             url: upload_url,
             total: total_size,
             part: onedrive_runner_part_size(total_size),
+            modified: local_source_path.and_then(super::local_modified_rfc3339),
+            destination: Some(resolved_path),
         };
         Ok(MultipartHandle {
             upload_id: meta.encode(),
@@ -3019,6 +3050,9 @@ impl StorageProvider for OneDriveProvider {
                 parts.len()
             )));
         }
+        if let (Some(date), Some(path)) = (&meta.modified, &meta.destination) {
+            self.keep_local_date(path, date).await;
+        }
         Ok(())
     }
 
@@ -3075,6 +3109,23 @@ fn rmdir_condition(item: &serde_json::Value) -> Option<&str> {
             .and_then(|v| v.as_str())
             .filter(|v| !v.is_empty())
     })
+}
+
+/// Save a drive hint where it is read, for the accounts that hold the profile: an
+/// imported or moved profile has a partition row, and readers prefer it. The next
+/// connection captures the hint again.
+fn keep_drive_hint(
+    store: &crate::credential_store::CredentialStore,
+    prefix: &str,
+    profile_id: &str,
+    value: &str,
+) {
+    let key = format!("{prefix}_{profile_id}");
+    if let Err(e) =
+        crate::user_partitions::store_profile_credential(store, profile_id, &key, None, value)
+    {
+        tracing::warn!("OneDrive drive hint not saved: {e}");
+    }
 }
 
 #[cfg(test)]
@@ -3739,6 +3790,95 @@ mod tests {
         server.abort();
     }
 
+    /// A name OneDrive cannot hold is a path that is not there, with no request:
+    /// Graph would answer it with a 400, and `rm -f` would fail on it.
+    #[tokio::test]
+    async fn a_name_onedrive_cannot_hold_is_not_found() {
+        let mut p = OneDriveProvider::new(OneDriveConfig {
+            client_id: "fixture".into(),
+            client_secret: "fixture".into(),
+        });
+        p.api_origin_override = Some("http://127.0.0.1:9".into());
+        p.test_access_token = Some("fixture".into());
+        assert!(matches!(
+            p.stat("/folder/a:b.txt").await,
+            Err(ProviderError::NotFound(_))
+        ));
+    }
+
+    /// Requested 114: a file rewritten while its chunks go up is not published
+    /// as a mixture of two versions. The last chunk, which commits, never leaves,
+    /// and the session is released.
+    #[tokio::test]
+    async fn a_file_rewritten_during_a_session_upload_is_not_published() {
+        use axum::{response::IntoResponse, routing::any, Json, Router};
+        use std::sync::{Arc, Mutex};
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("big.bin");
+        std::fs::write(&local, vec![b'a'; 11 * 1024 * 1024]).unwrap();
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let origin: Arc<Mutex<String>> = Arc::default();
+        let (requests, rewrite, session_origin) = (seen.clone(), local.clone(), origin.clone());
+        let app = Router::new().fallback(any(move |req: axum::extract::Request| {
+            let (requests, rewrite, origin) =
+                (requests.clone(), rewrite.clone(), session_origin.clone());
+            async move {
+                let path = req.uri().path().to_string();
+                requests
+                    .lock()
+                    .unwrap()
+                    .push(format!("{} {path}", req.method()));
+                if path.ends_with(":/createUploadSession") {
+                    let url = format!("{}/session", origin.lock().unwrap());
+                    return Json(serde_json::json!({"uploadUrl": url})).into_response();
+                }
+                if path == "/session" && req.method() == axum::http::Method::PUT {
+                    // An answer before the body is read resets the connection
+                    // on Windows.
+                    axum::body::to_bytes(req.into_body(), usize::MAX)
+                        .await
+                        .unwrap();
+                    std::fs::write(&rewrite, vec![b'b'; 11 * 1024 * 1024 + 1]).unwrap();
+                    return (
+                        axum::http::StatusCode::ACCEPTED,
+                        Json(serde_json::json!({"nextExpectedRanges": []})),
+                    )
+                        .into_response();
+                }
+                axum::http::StatusCode::NO_CONTENT.into_response()
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        *origin.lock().unwrap() = format!("http://{addr}");
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = OneDriveProvider::new(OneDriveConfig {
+            client_id: "fixture".into(),
+            client_secret: "fixture".into(),
+        });
+        p.api_origin_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("fixture".into());
+
+        let outcome = p
+            .resume_upload(local.to_str().unwrap(), "/big.bin", 0, None)
+            .await;
+        server.abort();
+        assert!(outcome.is_err(), "a file that changed is not published");
+        let requests = seen.lock().unwrap();
+        assert_eq!(
+            requests
+                .iter()
+                .filter(|r| r.as_str() == "PUT /session")
+                .count(),
+            1,
+            "{requests:?}"
+        );
+        assert!(
+            requests.iter().any(|r| r == "DELETE /session"),
+            "{requests:?}"
+        );
+    }
+
     /// #368 (Ehud): a folder reached through a shortcut ("Add shortcut to My
     /// files", or a shared folder) lives in another drive. Graph answers
     /// `itemNotFound` to a create or a listing addressed to the shortcut's own
@@ -3940,6 +4080,75 @@ mod tests {
     /// Learning the shortcuts costs one lookup per folder per session: a
     /// folder already known as a plain one costs no request more.
     #[tokio::test]
+    async fn an_upload_sends_the_date_its_bytes_had() {
+        use axum::{response::IntoResponse, routing::any, Json, Router};
+        use std::sync::{Arc, Mutex};
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("f");
+        std::fs::write(&local, b"f").unwrap();
+        let dated = |secs: u64| std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs);
+        let set_date = |path: &std::path::Path, secs: u64| {
+            std::fs::File::options()
+                .write(true)
+                .open(path)
+                .unwrap()
+                .set_modified(dated(secs))
+                .unwrap();
+        };
+        // 2021-03-04T05:06:07Z
+        set_date(&local, 1_614_834_367);
+        let patches: Arc<Mutex<Vec<serde_json::Value>>> = Arc::default();
+        let (seen, rewrite) = (patches.clone(), local.clone());
+        let app = Router::new().fallback(any(move |req: axum::extract::Request| {
+            let (seen, rewrite) = (seen.clone(), rewrite.clone());
+            async move {
+                let method = req.method().clone();
+                let body = axum::body::to_bytes(req.into_body(), usize::MAX)
+                    .await
+                    .unwrap();
+                if method == axum::http::Method::PATCH {
+                    seen.lock()
+                        .unwrap()
+                        .push(serde_json::from_slice(&body).unwrap());
+                } else if method == axum::http::Method::PUT {
+                    // A rewrite after the bytes left.
+                    std::fs::File::options()
+                        .write(true)
+                        .open(&rewrite)
+                        .unwrap()
+                        .set_modified(
+                            std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000),
+                        )
+                        .unwrap();
+                }
+                Json(serde_json::json!({"id": "F", "name": "f", "size": 1, "file": {}}))
+                    .into_response()
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = OneDriveProvider::new(OneDriveConfig {
+            client_id: "fixture".into(),
+            client_secret: "fixture".into(),
+        });
+        p.api_origin_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("fixture".into());
+
+        p.upload(local.to_str().unwrap(), "/f", None)
+            .await
+            .expect("upload");
+        server.abort();
+
+        let patches = patches.lock().unwrap();
+        assert_eq!(patches.len(), 1, "{patches:?}");
+        assert_eq!(
+            patches[0]["fileSystemInfo"]["lastModifiedDateTime"],
+            "2021-03-04T05:06:07Z"
+        );
+    }
+
+    #[tokio::test]
     async fn a_known_plain_folder_costs_no_extra_lookup_before_an_upload() {
         use axum::http::{Method, StatusCode};
         let (mut p, requests, server) = graph_fixture(|method, path| match (method, path) {
@@ -3971,7 +4180,9 @@ mod tests {
             [
                 "GET /v1.0/me/drive/root:/Docs",
                 "PUT /v1.0/me/drive/root:/Docs/a.txt:/content",
+                "PATCH /v1.0/me/drive/root:/Docs/a.txt",
                 "PUT /v1.0/me/drive/root:/Docs/b.txt:/content",
+                "PATCH /v1.0/me/drive/root:/Docs/b.txt",
             ]
         );
     }
@@ -4589,6 +4800,7 @@ mod tests {
             *requests.lock().unwrap(),
             [
                 "PUT /v1.0/me/drive/root:/a.txt:/content",
+                "PATCH /v1.0/me/drive/root:/a.txt",
                 "GET /v1.0/me/drive/root:/a.txt",
                 "GET /v1.0/me/drive/items/NEW/versions",
             ]
@@ -4843,6 +5055,8 @@ mod tests {
             url: "https://api.onedrive.com/rup?guid=XYZ".to_string(),
             total: 524_288_000,
             part: 10_485_760,
+            modified: None,
+            destination: None,
         };
         let encoded = meta.encode();
         let decoded = OneDriveMultipartMeta::decode(&encoded).expect("decode");

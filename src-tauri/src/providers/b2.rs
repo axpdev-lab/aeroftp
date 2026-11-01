@@ -672,6 +672,8 @@ pub struct B2Provider {
     /// Number of concurrent Range streams for multi-thread download
     /// (`1` = disabled). Set via `set_multi_thread_download`.
     multi_thread_streams: usize,
+    /// What the last `download` read, see `DownloadTime`.
+    download_time: super::multi_thread::DownloadTime,
     /// Files at/above this size use multi-thread download when
     /// `multi_thread_streams >= 2`.
     multi_thread_cutoff: u64,
@@ -704,6 +706,7 @@ impl B2Provider {
             },
             current_path: "/".to_string(),
             connected: false,
+            download_time: Default::default(),
             multi_thread_streams: 1,
             multi_thread_cutoff: MULTI_THREAD_CUTOFF_DEFAULT,
             authorize_url: AUTHORIZE_URL.to_string(),
@@ -1290,6 +1293,8 @@ impl B2Provider {
             run_concurrent_part_upload, ConcurrentPartUploadConfig,
         };
 
+        let source = super::upload_source::UploadSource::observe(local_path).await?;
+        source.ensure_size(size, "B2 large file upload")?;
         let start = match self.start_large_file(key).await {
             Err(e) if is_b2_token_failure(&e) => {
                 if !self.maybe_reauth(&e).await {
@@ -1333,6 +1338,8 @@ impl B2Provider {
             )
             .await?;
             let part_sha1s: Vec<String> = parts.into_iter().map(|(_, sha1)| sha1).collect();
+            // The finish publishes the file: refuse a mixture of two versions.
+            source.ensure_unchanged("B2 large file upload").await?;
             match self.finish_large_file(&file_id, part_sha1s.clone()).await {
                 Err(e) if is_b2_token_failure(&e) => {
                     if !self.maybe_reauth(&e).await {
@@ -1913,6 +1920,14 @@ impl B2Provider {
             .await
             .map_err(|e| ProviderError::Other(format!("create temp: {}", e)))?;
         let mut downloaded: u64 = 0;
+        // The header of the same number the listing reports as this file's time.
+        let read_time = resp
+            .headers()
+            .get("x-bz-upload-timestamp")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<i64>().ok())
+            .and_then(chrono::DateTime::from_timestamp_millis)
+            .map(|time| time.to_rfc3339());
         let mut stream = resp.bytes_stream();
         use futures_util::StreamExt;
         while let Some(chunk) = stream.next().await {
@@ -1934,6 +1949,7 @@ impl B2Provider {
         file.commit()
             .await
             .map_err(|e| ProviderError::Other(format!("atomic rename: {}", e)))?;
+        self.download_time.read(read_time);
         Ok(())
     }
 
@@ -3017,6 +3033,18 @@ impl StorageProvider for B2Provider {
         Ok(())
     }
 
+    fn download_was_refused(&self) -> bool {
+        self.download_time.is_refused()
+    }
+
+    fn take_download_time(&mut self, source_refused: bool) -> Option<String> {
+        self.download_time.take(source_refused)
+    }
+
+    fn expect_moved_source(&mut self) {
+        self.download_time.expect_moved();
+    }
+
     async fn download(
         &mut self,
         remote_path: &str,
@@ -3037,6 +3065,7 @@ impl StorageProvider for B2Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        self.download_time.begin();
         let abs = self.resolved_path(remote_path);
         let key = self.b2_key(&abs);
         let local_pb = std::path::PathBuf::from(local_path);
@@ -3052,6 +3081,7 @@ impl StorageProvider for B2Provider {
         // moved under the windows, takes the single-stream path below instead,
         // which reads one consistent view.
         let progress = if self.multi_thread_streams >= 2
+            && !self.download_time.is_refused()
             && !super::multi_thread::size_hint_rules_out_ranges(size_hint, self.multi_thread_cutoff)
         {
             match self.size(remote_path).await {
@@ -3077,7 +3107,10 @@ impl StorageProvider for B2Provider {
                             Ok(true) => return Ok(()),
                             // Refused, not failed: the single-stream path below
                             // keeps reporting through the half that stayed here.
-                            Ok(false) => fallback_progress,
+                            Ok(false) => {
+                                self.download_time.refused();
+                                fallback_progress
+                            }
                             Err(e) => return Err(e),
                         }
                     }
@@ -6221,6 +6254,81 @@ mod tests {
         provider.multi_thread_streams = 4;
         provider.multi_thread_cutoff = 1024 * 1024;
         provider
+    }
+
+    /// After a refusal the windows are not tried again: no size probe, one stream
+    /// on the download host, and its time goes to the local file.
+    #[tokio::test]
+    async fn a_download_after_a_refusal_reads_one_stream() {
+        const MILLIS: i64 = 1_792_000_000_000;
+        let app = axum::Router::new().fallback(axum::routing::any(|| async {
+            axum::response::Response::builder()
+                .header("x-bz-upload-timestamp", MILLIS.to_string())
+                .body(axum::body::Body::from(vec![7u8; 16]))
+                .unwrap()
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = empty_provider();
+        provider.download_url = format!("http://{addr}");
+        provider.auth_token = SecretString::new("token".to_string().into());
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("x.bin");
+        let _ = super::super::take_warnings();
+        provider.expect_moved_source();
+        provider
+            .download("/x.bin", out.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert!(
+            super::super::take_warnings().is_empty(),
+            "no probe, no notice"
+        );
+        let time = provider.take_download_time(false).expect("the upload time");
+        assert_eq!(crate::parse_remote_mtime(&time), Some(MILLIS / 1000));
+    }
+
+    /// The download carries the same number the listing reports as the time.
+    #[tokio::test]
+    async fn a_download_keeps_the_upload_time_for_a_caller_that_saw_a_refusal() {
+        const MILLIS: i64 = 1_792_000_000_000;
+        let app = axum::Router::new().fallback(axum::routing::any(|| async {
+            axum::response::Response::builder()
+                .header("x-bz-upload-timestamp", MILLIS.to_string())
+                .body(axum::body::Body::from(vec![7u8; 16]))
+                .unwrap()
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = empty_provider();
+        provider.download_url = format!("http://{addr}");
+        provider.auth_token = SecretString::new("token".to_string().into());
+        provider.connected = true;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("x.bin");
+        provider
+            .download("/x.bin", out.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!(provider.take_download_time(false), None, "a plain download");
+        let time = provider.take_download_time(true).expect("the upload time");
+        assert_eq!(
+            crate::parse_remote_mtime(&time),
+            Some(MILLIS / 1000),
+            "{time}"
+        );
     }
 
     /// Round 2 of the 4.2.1 review: `rmdir` hid the `.bzEmpty` placeholder
