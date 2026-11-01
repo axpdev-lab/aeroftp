@@ -32153,18 +32153,13 @@ async fn connect_with_base_path(
     // The URL named something inside the folder the session entered (see
     // `url_to_provider_config`). A folder becomes the base, so `rm URL -r`
     // and `rm URL name` stay inside it; a file, or a name not there yet, is
-    // what a command given no path acts on. A folder an object store cannot
-    // stat (a prefix with no marker) still lists its contents. Any other
-    // failure leaves the name's kind unknown, and guessing it would send a
-    // path given beside the URL to the wrong folder.
+    // what a command given no path acts on. A failure leaves the name's kind
+    // unknown, and guessing it would send a path given beside the URL to the
+    // wrong folder.
     let (path, url_target) = match url_target {
-        Some(target) => match provider.stat(&target).await {
-            Ok(entry) if entry.is_dir => (target, None),
-            Ok(_) => (path, Some(target)),
-            Err(e) if is_not_found_error(&e) => match provider.list(&target).await {
-                Ok(entries) if !entries.is_empty() => (target, None),
-                _ => (path, Some(target)),
-            },
+        Some(target) => match url_target_is_folder(provider.as_mut(), &target).await {
+            Ok(true) => (target, None),
+            Ok(false) => (path, Some(target)),
             Err(e) => {
                 let code = provider_error_to_exit_code(&e);
                 print_error(
@@ -32184,6 +32179,28 @@ async fn connect_with_base_path(
     };
 
     Ok((provider, path, url_target, metadata))
+}
+
+/// Whether the name a URL ends with is a folder. A folder of an object store
+/// can be invisible to `stat`: a prefix with no marker still lists its
+/// contents, and an empty one is only its `name/` marker, which a `stat` of
+/// the name without the slash does not find. `Err` when the kind cannot be
+/// told.
+async fn url_target_is_folder(
+    provider: &mut dyn StorageProvider,
+    target: &str,
+) -> Result<bool, ProviderError> {
+    match provider.stat(target).await {
+        Ok(entry) => Ok(entry.is_dir),
+        Err(e) if is_not_found_error(&e) => {
+            if matches!(provider.list(target).await, Ok(entries) if !entries.is_empty()) {
+                return Ok(true);
+            }
+            let marker = format!("{}/", target.trim_end_matches('/'));
+            Ok(matches!(provider.stat(&marker).await, Ok(entry) if entry.is_dir))
+        }
+        Err(e) => Err(e),
+    }
 }
 
 // ── Command Handlers ───────────────────────────────────────────────
@@ -83813,6 +83830,7 @@ mod tests {
     /// below (D8) are tested against each kind of answer, a timeout included.
     struct StatAnswerProvider {
         answer: fn(&str) -> Result<RemoteEntry, ProviderError>,
+        listing: fn(&str) -> Result<Vec<RemoteEntry>, ProviderError>,
     }
 
     #[async_trait::async_trait]
@@ -83836,7 +83854,7 @@ mod tests {
             true
         }
         async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-            Err(ProviderError::NotSupported(format!("list {path}")))
+            (self.listing)(path)
         }
         async fn pwd(&mut self) -> Result<String, ProviderError> {
             Ok("/".to_string())
@@ -83911,6 +83929,75 @@ mod tests {
         Err(ProviderError::NotFound(path.to_string()))
     }
 
+    fn no_listing(path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        Err(ProviderError::NotSupported(format!("list {path}")))
+    }
+
+    /// An object store's keys: a folder is a `name/` marker or the prefix of
+    /// other keys, and a listing never shows the marker it lists.
+    const STORE_KEYS: &[&str] = &[
+        "c/empty/",
+        "c/marked/a.txt",
+        "c/marked/",
+        "c/bare/a.txt",
+        "c/f.txt",
+    ];
+
+    fn store_stat(path: &str) -> Result<RemoteEntry, ProviderError> {
+        let key = path.trim_start_matches('/');
+        if !STORE_KEYS.contains(&key) {
+            return not_found(path);
+        }
+        let name = key.trim_end_matches('/').rsplit('/').next().unwrap_or(key);
+        Ok(if key.ends_with('/') {
+            RemoteEntry::directory(name.to_string(), path.to_string())
+        } else {
+            RemoteEntry::file(name.to_string(), path.to_string(), 10)
+        })
+    }
+
+    fn store_list(path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        let prefix = format!("{}/", path.trim_matches('/'));
+        Ok(STORE_KEYS
+            .iter()
+            .filter(|key| key.starts_with(&prefix) && **key != prefix)
+            .map(|key| RemoteEntry::file(key.to_string(), format!("/{key}"), 10))
+            .collect())
+    }
+
+    /// A URL that names a folder of an object store without the trailing
+    /// slash: an empty one is only its marker, which a `stat` of the bare
+    /// name misses, and a listing of it is empty. It must still be read as a
+    /// folder, or `serve` refuses it and `put` writes a file beside it.
+    #[tokio::test]
+    async fn a_url_names_a_folder_an_object_store_shows_only_by_its_marker() {
+        let mut store = StatAnswerProvider {
+            answer: store_stat,
+            listing: store_list,
+        };
+        for (target, folder) in [
+            ("/c/empty", true),
+            ("/c/marked", true),
+            ("/c/bare", true),
+            ("/c/f.txt", false),
+            ("/c/new", false),
+        ] {
+            assert_eq!(
+                url_target_is_folder(&mut store, target).await.ok(),
+                Some(folder),
+                "{target}"
+            );
+        }
+        let mut silent = StatAnswerProvider {
+            answer: timed_out,
+            listing: no_listing,
+        };
+        assert!(matches!(
+            url_target_is_folder(&mut silent, "/c/x").await,
+            Err(ProviderError::Timeout)
+        ));
+    }
+
     fn timed_out(_path: &str) -> Result<RemoteEntry, ProviderError> {
         Err(ProviderError::Timeout)
     }
@@ -83923,17 +84010,24 @@ mod tests {
     async fn only_a_not_found_reads_as_a_missing_target() {
         let mut there = StatAnswerProvider {
             answer: a_file_of_10_bytes,
+            listing: no_listing,
         };
         assert!(matches!(
             remote_target_exists(&mut there, "/f").await,
             Ok(true)
         ));
-        let mut missing = StatAnswerProvider { answer: not_found };
+        let mut missing = StatAnswerProvider {
+            answer: not_found,
+            listing: no_listing,
+        };
         assert!(matches!(
             remote_target_exists(&mut missing, "/f").await,
             Ok(false)
         ));
-        let mut silent = StatAnswerProvider { answer: timed_out };
+        let mut silent = StatAnswerProvider {
+            answer: timed_out,
+            listing: no_listing,
+        };
         assert!(matches!(
             remote_target_exists(&mut silent, "/f").await,
             Err(ProviderError::Timeout)
@@ -83949,7 +84043,10 @@ mod tests {
         let mut cli = test_cli();
         cli.immutable = true;
 
-        let mut silent = StatAnswerProvider { answer: timed_out };
+        let mut silent = StatAnswerProvider {
+            answer: timed_out,
+            listing: no_listing,
+        };
         let sweep = no_traverse_stat_sweep(&mut silent, &cli, "/r", vec!["a.txt"], |_| 10).await;
         assert!(sweep.survivors.is_empty(), "{:?}", sweep.survivors);
         assert_eq!(sweep.refusals.len(), 1, "{:?}", sweep.refusals);
@@ -83961,13 +84058,17 @@ mod tests {
 
         let mut other_size = StatAnswerProvider {
             answer: a_file_of_10_bytes,
+            listing: no_listing,
         };
         let sweep =
             no_traverse_stat_sweep(&mut other_size, &cli, "/r", vec!["a.txt"], |_| 99).await;
         assert!(sweep.survivors.is_empty(), "{:?}", sweep.survivors);
         assert_eq!(sweep.refusals.len(), 1, "{:?}", sweep.refusals);
 
-        let mut missing = StatAnswerProvider { answer: not_found };
+        let mut missing = StatAnswerProvider {
+            answer: not_found,
+            listing: no_listing,
+        };
         let sweep = no_traverse_stat_sweep(&mut missing, &cli, "/r", vec!["a.txt"], |_| 10).await;
         assert_eq!(sweep.survivors, vec!["a.txt"]);
         assert!(sweep.refusals.is_empty());
@@ -83980,12 +84081,16 @@ mod tests {
         let cli = test_cli();
         let mut same = StatAnswerProvider {
             answer: a_file_of_10_bytes,
+            listing: no_listing,
         };
         let sweep = no_traverse_stat_sweep(&mut same, &cli, "/r", vec!["a.txt"], |_| 10).await;
         assert!(sweep.survivors.is_empty());
         assert_eq!(sweep.skipped_by_stat, 1);
 
-        let mut silent = StatAnswerProvider { answer: timed_out };
+        let mut silent = StatAnswerProvider {
+            answer: timed_out,
+            listing: no_listing,
+        };
         let sweep = no_traverse_stat_sweep(&mut silent, &cli, "/r", vec!["a.txt"], |_| 10).await;
         assert_eq!(sweep.survivors, vec!["a.txt"]);
         assert!(sweep.refusals.is_empty());
