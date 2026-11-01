@@ -29,6 +29,9 @@ pub enum Sftp {
     EndAtOnce,
     /// The smallest SFTP v3 a connection needs: INIT and REALPATH.
     Serve,
+    /// End the whole connection instead of answering, as a server that drops
+    /// it while the client waits for the subsystem.
+    DropConnection,
 }
 
 pub struct Options {
@@ -43,6 +46,9 @@ pub struct Options {
     /// Every exec is answered with this on stderr and exit status 1, as an
     /// rssh or scponly account answers a command it does not allow.
     pub restricted: Option<String>,
+    /// The SFTP answer for every connection after the first, when it differs:
+    /// a server whose subsystem goes away between a session and its workers.
+    pub sftp_after_first: Option<Sftp>,
 }
 
 /// What reached the server.
@@ -51,8 +57,12 @@ pub struct Seen {
     pub execs: AtomicUsize,
     pub subsystems: AtomicUsize,
     pub connections: AtomicUsize,
-    /// Channels the client closed.
+    /// Channels the client closed while their command still ran here: a
+    /// channel the server ended first does not count, whatever the order the
+    /// two closes cross in.
     pub closes: AtomicUsize,
+    /// The running sessions, for [`Seen::drop_connections`].
+    sessions: std::sync::Mutex<Vec<russh::server::Handle>>,
 }
 
 #[allow(dead_code)]
@@ -72,12 +82,31 @@ impl Seen {
     pub fn closes(&self) -> usize {
         self.closes.load(Ordering::SeqCst)
     }
+
+    /// End every connection from the server's side, as a server that drops
+    /// an idle session does.
+    pub async fn drop_connections(&self) {
+        let sessions = std::mem::take(&mut *self.sessions.lock().unwrap());
+        for session in sessions {
+            let _ = session
+                .disconnect(
+                    russh::Disconnect::ByApplication,
+                    "dropped".to_string(),
+                    String::new(),
+                )
+                .await;
+        }
+    }
 }
 
 struct Conn {
+    /// Connections accepted before this one.
+    nth: usize,
     opts: Arc<Options>,
     seen: Arc<Seen>,
     stdins: Arc<Mutex<HashMap<ChannelId, ChildStdin>>>,
+    /// Channels this side has ended (exit status sent, or refused).
+    ended: Arc<std::sync::Mutex<HashSet<ChannelId>>>,
     sftp_channels: HashSet<ChannelId>,
     sftp_buf: Vec<u8>,
 }
@@ -172,12 +201,17 @@ impl Handler for Conn {
         session: &mut Session,
     ) -> Result<(), Self::Error> {
         self.seen.subsystems.fetch_add(1, Ordering::SeqCst);
-        match (name, self.opts.sftp) {
+        let sftp = match self.opts.sftp_after_first {
+            Some(later) if self.nth > 0 => later,
+            _ => self.opts.sftp,
+        };
+        match (name, sftp) {
             ("sftp", Sftp::Serve) => {
                 self.sftp_channels.insert(channel);
                 let _ = session.channel_success(channel);
             }
             ("sftp", Sftp::EndAtOnce) => {
+                self.ended.lock().unwrap().insert(channel);
                 let _ = session.channel_success(channel);
                 let _ = session.extended_data(
                     channel,
@@ -187,6 +221,9 @@ impl Handler for Conn {
                 let _ = session.exit_status_request(channel, 127);
                 let _ = session.eof(channel);
                 let _ = session.close(channel);
+            }
+            ("sftp", Sftp::DropConnection) => {
+                let _ = session.disconnect(russh::Disconnect::ByApplication, "going away", "");
             }
             _ => {
                 let _ = session.channel_failure(channel);
@@ -204,6 +241,7 @@ impl Handler for Conn {
         self.seen.execs.fetch_add(1, Ordering::SeqCst);
         let _ = session.channel_success(channel);
         if let Some(message) = &self.opts.restricted {
+            self.ended.lock().unwrap().insert(channel);
             let _ = session.extended_data(channel, 1, format!("{message}\n").into_bytes());
             let _ = session.exit_status_request(channel, 1);
             let _ = session.eof(channel);
@@ -226,6 +264,7 @@ impl Handler for Conn {
             .await
             .insert(channel, child.stdin.take().unwrap());
         let handle = session.handle();
+        let ended = self.ended.clone();
         let mut stdout = child.stdout.take().unwrap();
         let mut stderr = child.stderr.take().unwrap();
         tokio::spawn(async move {
@@ -252,6 +291,7 @@ impl Handler for Conn {
                 .await
                 .map(|s| s.code().unwrap_or(255))
                 .unwrap_or(255);
+            ended.lock().unwrap().insert(channel);
             let _ = handle.exit_status_request(channel, status as u32).await;
             let _ = handle.eof(channel).await;
             let _ = handle.close(channel).await;
@@ -302,7 +342,9 @@ impl Handler for Conn {
         channel: ChannelId,
         _session: &mut Session,
     ) -> Result<(), Self::Error> {
-        self.seen.closes.fetch_add(1, Ordering::SeqCst);
+        if !self.ended.lock().unwrap().contains(&channel) {
+            self.seen.closes.fetch_add(1, Ordering::SeqCst);
+        }
         self.stdins.lock().await.remove(&channel);
         Ok(())
     }
@@ -324,17 +366,23 @@ pub async fn start(opts: Options) -> (u16, Arc<Seen>) {
     let seen_out = seen.clone();
     tokio::spawn(async move {
         while let Ok((stream, _)) = listener.accept().await {
-            seen.connections.fetch_add(1, Ordering::SeqCst);
+            let nth = seen.connections.fetch_add(1, Ordering::SeqCst);
             let handler = Conn {
+                nth,
                 opts: opts.clone(),
                 seen: seen.clone(),
                 stdins: Arc::default(),
+                ended: Arc::default(),
                 sftp_channels: HashSet::new(),
                 sftp_buf: Vec::new(),
             };
             let cfg = config.clone();
+            let seen = seen.clone();
             tokio::spawn(async move {
-                let _ = russh::server::run_stream(cfg, stream, handler).await;
+                if let Ok(running) = russh::server::run_stream(cfg, stream, handler).await {
+                    seen.sessions.lock().unwrap().push(running.handle());
+                    let _ = running.await;
+                }
             });
         }
     });

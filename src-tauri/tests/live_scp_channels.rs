@@ -77,7 +77,12 @@ async fn more_workers_than_the_connection_allows_all_read_their_bytes() {
         .collect();
     let local = std::env::temp_dir().join(format!("aeroftp-live-scp-{}", uuid::Uuid::new_v4()));
     std::fs::write(&local, &body).unwrap();
-    let remote = format!("{dir}/aeroftp-live-scp-channels-{}.bin", std::process::id());
+    // Per run, not per process: two machines or containers can share a PID
+    // and the remote folder.
+    let remote = format!(
+        "{dir}/aeroftp-live-scp-channels-{}.bin",
+        uuid::Uuid::new_v4()
+    );
     p.upload(&local.to_string_lossy(), &remote, None)
         .await
         .expect("upload");

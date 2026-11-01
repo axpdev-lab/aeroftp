@@ -3,7 +3,8 @@
 
 import { describe, it, expect } from 'vitest';
 import type { ProviderOptions } from '../types';
-import { connectionProtocolLabel, scpFallbackAllowed, scpFallbackConnectParam, withScpFallback } from './scpFallback';
+import { connectionProtocolLabel, scpFallbackAllowed, scpFallbackConnectParam, wentOnOverScpAfter, withScpFallback } from './scpFallback';
+import app from '../App.tsx?raw';
 
 describe('SFTP with SCP fallback', () => {
     it('is on for a profile that never touched the option', () => {
@@ -49,5 +50,24 @@ describe('SFTP with SCP fallback', () => {
             expect(connectionProtocolLabel(protocol, true)).toBe(protocol);
         }
         expect(connectionProtocolLabel(undefined, true)).toBeUndefined();
+    });
+});
+
+describe('the SCP label across a silent reconnect', () => {
+    it('follows a reconnect that lands on SCP, and one that lands back on SFTP', () => {
+        expect(wentOnOverScpAfter('ssh-transport', 'scp', false)).toBe(true);
+        expect(wentOnOverScpAfter('ssh-transport', 'sftp', true)).toBe(false);
+        expect(wentOnOverScpAfter('scp-mode', 'router.lan', false)).toBe(true);
+    });
+
+    it('keeps what it was for every other session event', () => {
+        for (const kind of ['lost', 'reconnecting', 'reconnected', 'reconnect-failed', undefined]) {
+            expect(wentOnOverScpAfter(kind, '', true), String(kind)).toBe(true);
+            expect(wentOnOverScpAfter(kind, '', false), String(kind)).toBe(false);
+        }
+    });
+
+    it('is what the App session listener applies to every event', () => {
+        expect(app).toContain('wentOnOverScpRef.current = wentOnOverScpAfter(kind, event.payload?.detail, wentOnOverScpRef.current);');
     });
 });

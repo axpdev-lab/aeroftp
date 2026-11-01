@@ -21,7 +21,7 @@ use super::session::ScpSession;
 use crate::providers::sftp::{
     format_permissions, resolve_remote_path, ssh_login, SharedSshHandle, SshHandler,
 };
-use crate::providers::shell_quote::{shell_quote, shell_quote_bytes};
+use crate::providers::shell_quote::shell_quote;
 use crate::providers::{
     checksum_matrix, ChecksumCapability, ProviderError, ProviderTransferExecutorKind, ProviderType,
     RemoteEntry, SftpConfig, StorageProvider,
@@ -164,29 +164,22 @@ impl ScpProvider {
         self.session.as_ref().is_some_and(|s| s.probe().has(tool))
     }
 
-    /// The names among `names` (entries of `dir`) that are directories once
-    /// their symlink is followed, in batches of [`SYMLINK_BATCH`].
-    async fn directories_among(
+    /// What each of the symlinks `names` in `dir` points to, read through
+    /// the link in batches of [`SYMLINK_BATCH`]. A link whose target cannot
+    /// be read (dangling, looping, out of the user's reach) is absent.
+    async fn link_targets(
         &self,
         dir: &str,
         names: &[&[u8]],
-    ) -> Result<std::collections::HashSet<Vec<u8>>, ProviderError> {
+    ) -> Result<std::collections::HashMap<Vec<u8>, Meta>, ProviderError> {
         let session = self.session()?;
-        let mut found = std::collections::HashSet::new();
+        let mut found = std::collections::HashMap::new();
         for batch in names.chunks(SYMLINK_BATCH) {
-            let mut script = format!("cd -- {} || exit; for n in", shell_quote(dir)?).into_bytes();
-            for name in batch {
-                script.push(b' ');
-                script.extend_from_slice(&shell_quote_bytes(name)?);
-            }
-            script.extend_from_slice(b"; do [ -d \"$n\" ] && printf '%s\\0' \"$n\"; done; :");
-            let out = session.run(&script).await?;
-            found.extend(
-                out.stdout
-                    .split(|&b| b == 0)
-                    .filter(|n| !n.is_empty())
-                    .map(<[u8]>::to_vec),
-            );
+            let batch: Vec<Vec<u8>> = batch.iter().map(|n| n.to_vec()).collect();
+            let resolved = session
+                .resolve("list", dir, dir.as_bytes(), &batch, true)
+                .await?;
+            found.extend(resolved.into_iter().map(|e| (e.name, e.meta)));
         }
         Ok(found)
     }
@@ -456,18 +449,25 @@ impl StorageProvider for ScpProvider {
             .filter(|e| e.meta.kind == Kind::Symlink)
             .map(|e| e.name.as_slice())
             .collect();
-        let link_dirs = if links.is_empty() {
+        let targets = if links.is_empty() {
             Default::default()
         } else {
-            self.directories_among(&dir, &links).await?
+            self.link_targets(&dir, &links).await?
         };
         Ok(entries
             .iter()
             .map(|e| {
                 let name = entry_name(e);
-                let is_dir = e.meta.kind == Kind::Dir
-                    || (e.meta.kind == Kind::Symlink && link_dirs.contains(&e.name));
+                // A symlink lists as what it points to, as SFTP lists it: a
+                // folder, or a file of the target's size, so a size compared
+                // with a local file is the size of what a read would get.
+                let target = targets.get(&e.name);
+                let is_dir =
+                    e.meta.kind == Kind::Dir || target.is_some_and(|t| t.kind == Kind::Dir);
                 let mut entry = remote_entry(name.clone(), join(&dir, &name), &e.meta, is_dir);
+                if let Some(target) = target {
+                    entry.size = target.size;
+                }
                 entry.link_target = e
                     .link_target
                     .as_ref()
@@ -812,17 +812,13 @@ impl StorageProvider for ScpProvider {
     }
 
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
-        let out = self.session()?.run(b":").await.map_err(|e| match e {
+        self.session()?.keep_alive().await.map_err(|e| match e {
             ProviderError::NotConnected => e,
+            ProviderError::ConnectionLost(why) => {
+                ProviderError::ConnectionLost(format!("SCP keepalive failed: {why}"))
+            }
             other => ProviderError::ConnectionLost(format!("SCP keepalive failed: {other}")),
-        })?;
-        if out.status != 0 {
-            return Err(ProviderError::ConnectionLost(format!(
-                "SCP keepalive failed: exit status {}",
-                out.status
-            )));
-        }
-        Ok(())
+        })
     }
 
     async fn server_info(&mut self) -> Result<String, ProviderError> {

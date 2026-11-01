@@ -441,6 +441,30 @@ async fn a_stalled_download_holds_the_server_back() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// A keepalive on a connection whose channels are all carrying commands
+/// does not wait for one of them to end.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_keepalive_does_not_queue_behind_busy_channels() {
+    use ftp_client_gui_lib::providers::scp::session::CHANNELS_PER_CONNECTION;
+    let root = temp_dir("keepalive-busy");
+    let scp = ScpSession::open(connect(&root, &system_path()).await, IO)
+        .await
+        .expect("probe");
+    scp.keep_alive().await.expect("an idle connection answers");
+    let busy =
+        futures_util::future::join_all((0..CHANNELS_PER_CONNECTION).map(|_| scp.run(b"sleep 3")));
+    let tick = async {
+        // Let every command take its channel first.
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::timeout(Duration::from_secs(1), scp.keep_alive()).await
+    };
+    let (ran, tick) = tokio::join!(busy, tick);
+    assert!(ran.iter().all(|r| r.as_ref().is_ok_and(|o| o.status == 0)));
+    tick.expect("the keepalive waited for a channel")
+        .expect("a busy connection is alive");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// A server without `scp` is refused at the probe, by name.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_server_without_scp_is_refused_naming_it() {

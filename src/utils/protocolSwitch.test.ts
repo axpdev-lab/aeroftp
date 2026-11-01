@@ -3,7 +3,8 @@
 
 import { describe, it, expect } from 'vitest';
 import { scpFallbackAllowed } from './scpFallback';
-import { optionsAcrossSshSwitch, presetFitsProtocol } from './protocolSwitch';
+import { optionsAcrossSshSwitch, presetFitsProtocol, storedPresetForSave } from './protocolSwitch';
+import { getProviderById } from '../providers';
 
 describe('protocol switch of a saved profile', () => {
     it('keeps an SFTP-only choice across SFTP to SCP and back', () => {
@@ -22,5 +23,26 @@ describe('protocol switch of a saved profile', () => {
         expect(presetFitsProtocol('sftp', 'ftp')).toBe(false);
         expect(presetFitsProtocol('sftp', 'sftp')).toBe(true);
         expect(presetFitsProtocol(undefined, 'scp')).toBe(true);
+    });
+});
+
+describe('saving an edited profile after a protocol switch', () => {
+    const presetProtocolOf = (id: string) => getProviderById(id)?.protocol;
+
+    it('does not take back a stored preset of another protocol', () => {
+        // SourceForge is an SFTP preset: saved as SCP it would reopen as SFTP.
+        expect(presetProtocolOf('sourceforge')).toBe('sftp');
+        expect(storedPresetForSave('sourceforge', 'scp', presetProtocolOf)).toBeUndefined();
+        expect(storedPresetForSave('sourceforge', 'ftp', presetProtocolOf)).toBeUndefined();
+        expect(storedPresetForSave('sourceforge', 'sftp', presetProtocolOf)).toBe('sourceforge');
+    });
+
+    it('keeps a stored id outside the switch, or one the registry does not know', () => {
+        // A native Koofr profile stores the id of the Koofr WebDAV preset.
+        expect(presetProtocolOf('koofr')).toBe('webdav');
+        expect(storedPresetForSave('koofr', 'koofr', presetProtocolOf)).toBe('koofr');
+        expect(storedPresetForSave('mtp-portable', 'mtp', presetProtocolOf)).toBe('mtp-portable');
+        expect(storedPresetForSave('not-in-registry', 'scp', presetProtocolOf)).toBe('not-in-registry');
+        expect(storedPresetForSave(undefined, 'scp', presetProtocolOf)).toBeUndefined();
     });
 });

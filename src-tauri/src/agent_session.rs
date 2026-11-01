@@ -68,10 +68,16 @@ fn flatten_options(options: Option<&Value>) -> HashMap<String, String> {
 /// Stamp the saved record id last so an options-borne `profile_id` cannot
 /// win (CWE-639). `or_insert` would leave a value already present in
 /// `extras`, the opposite of `apply_profile_options`.
-fn extras_for_connect(profile: &ProfileSummary) -> HashMap<String, String> {
+///
+/// `--no-scp-fallback` holds for this connection as for any other the CLI
+/// opens: it turns the fallback off whatever the profile says.
+fn extras_for_connect(profile: &ProfileSummary, no_scp_fallback: bool) -> HashMap<String, String> {
     let mut extra = profile.extras.clone();
     if !profile.id.is_empty() {
         extra.insert("profile_id".to_string(), profile.id.clone());
+    }
+    if no_scp_fallback {
+        extra.insert("allow_scp_fallback".to_string(), "false".to_string());
     }
     extra
 }
@@ -936,7 +942,7 @@ enum ConnectOutcome {
 
 /// Attempt to instantiate + connect a provider for the given profile.
 /// Reads the per-profile credential blob from the open vault.
-async fn connect_provider(profile: &ProfileSummary) -> ConnectOutcome {
+async fn connect_provider(profile: &ProfileSummary, no_scp_fallback: bool) -> ConnectOutcome {
     let Some(store) = CredentialStore::from_cache() else {
         return ConnectOutcome::Err("Vault not open".to_string());
     };
@@ -954,7 +960,7 @@ async fn connect_provider(profile: &ProfileSummary) -> ConnectOutcome {
         return ConnectOutcome::Unsupported;
     };
 
-    let mut extra = extras_for_connect(profile);
+    let mut extra = extras_for_connect(profile, no_scp_fallback);
 
     // Azure stores its container under `options.bucket` in the desktop
     // schema (the UI shares the bucket field across S3/Azure), but the
@@ -1008,6 +1014,11 @@ async fn connect_provider(profile: &ProfileSummary) -> ConnectOutcome {
 /// per-block status. Always returns a payload: failures surface as
 /// `status: error` / `unavailable` on the offending block.
 pub async fn build_agent_connect_payload(query: &str) -> Value {
+    build_agent_connect_payload_with(query, false).await
+}
+
+/// [`build_agent_connect_payload`], with the CLI's `--no-scp-fallback`.
+pub async fn build_agent_connect_payload_with(query: &str, no_scp_fallback: bool) -> Value {
     let profile = match lookup_profile(query) {
         Ok(p) => p,
         Err(e) => return lookup_error_payload(query, &e),
@@ -1017,7 +1028,7 @@ pub async fn build_agent_connect_payload(query: &str) -> Value {
     let mut capabilities = capabilities_block(&profile.protocol);
 
     let connect_started = Instant::now();
-    let connect_result = connect_provider(&profile).await;
+    let connect_result = connect_provider(&profile, no_scp_fallback).await;
     let elapsed_ms = connect_started.elapsed().as_millis();
 
     let (connect, quota) = match connect_result {
@@ -1569,10 +1580,37 @@ mod tests {
             initial_path: "/".to_string(),
             extras: HashMap::from([("profile_id".to_string(), "srv_attacker".to_string())]),
         };
-        let extra = extras_for_connect(&profile);
+        let extra = extras_for_connect(&profile, false);
         assert_eq!(
             extra.get("profile_id").map(String::as_str),
             Some("srv_real")
+        );
+    }
+
+    #[test]
+    fn no_scp_fallback_turns_the_fallback_off_for_agent_connect() {
+        let profile = ProfileSummary {
+            id: "srv_1".to_string(),
+            name: "router".to_string(),
+            protocol: "sftp".to_string(),
+            host: "192.0.2.1".to_string(),
+            username: "root".to_string(),
+            port: None,
+            initial_path: "/".to_string(),
+            extras: HashMap::from([("allow_scp_fallback".to_string(), "true".to_string())]),
+        };
+        assert_eq!(
+            extras_for_connect(&profile, true)
+                .get("allow_scp_fallback")
+                .map(String::as_str),
+            Some("false")
+        );
+        assert_eq!(
+            extras_for_connect(&profile, false)
+                .get("allow_scp_fallback")
+                .map(String::as_str),
+            Some("true"),
+            "without the flag the profile's own choice stands"
         );
     }
 

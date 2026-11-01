@@ -263,9 +263,26 @@ fn claim<'a>(owners: &mut HashMap<&'a [u8], Option<usize>>, name: &'a [u8], i: u
 }
 
 /// One shell command that runs `ls -land --full-time` on each of `names`
-/// in `dir` and ends every output with a NUL, which no `ls` output holds, so
+/// in `dir` (`ls -lanLd` with `follow`, which reads what a symlink points
+/// to) and ends every output with a NUL, which no `ls` output holds, so
 /// [`parse_resolved`] can tell the outputs apart whatever the names contain.
-pub fn resolve_script(dir: &[u8], names: &[Vec<u8>]) -> Result<Vec<u8>, ProviderError> {
+///
+/// A name that is not there (gone in between) gives an empty output. Any
+/// other `ls` failure ends the command with status 3 and its message on
+/// stderr: a name the server could not read is an error, never a name that
+/// silently went away. GNU and BusyBox both end the message for a missing
+/// name with ": No such file or directory" under `LC_ALL=C`, and no other
+/// failure does.
+///
+/// With `follow` every failure gives an empty output instead: the link
+/// itself is already listed, and a target that is gone, loops or sits where
+/// the user cannot look only means the link keeps its own metadata, as SFTP
+/// lists such a link.
+pub fn resolve_script(
+    dir: &[u8],
+    names: &[Vec<u8>],
+    follow: bool,
+) -> Result<Vec<u8>, ProviderError> {
     let mut script = b"for f in".to_vec();
     for name in names {
         let mut path = dir.to_vec();
@@ -276,7 +293,18 @@ pub fn resolve_script(dir: &[u8], names: &[Vec<u8>]) -> Result<Vec<u8>, Provider
         script.push(b' ');
         script.extend_from_slice(&shell_quote_bytes(&path)?);
     }
-    script.extend_from_slice(b"; do LC_ALL=C ls -land --full-time -- \"$f\"; printf '\\0'; done");
+    if follow {
+        script.extend_from_slice(
+            b"; do LC_ALL=C ls -lanLd --full-time -- \"$f\" 2>/dev/null; printf '\\0'; done",
+        );
+    } else {
+        script.extend_from_slice(
+            b"; do if e=$(LC_ALL=C ls -land --full-time -- \"$f\" 2>&1 >&3); then :; \
+              else case $e in *': No such file or directory') ;; \
+              *) printf '%s\\n' \"$e\" >&2; exit 3;; esac; fi; \
+              printf '\\0'; done 3>&1",
+        );
+    }
     Ok(script)
 }
 
@@ -553,16 +581,17 @@ mod tests {
 
     #[test]
     fn the_resolve_script_quotes_every_path() {
-        let script = resolve_script(DIR, &[b"it's".to_vec(), b"new\nline".to_vec()]).unwrap();
-        assert_eq!(
-            script,
-            b"for f in '/tmp/scpfx/it'\\''s' '/tmp/scpfx/new\nline'; do LC_ALL=C ls -land --full-time -- \"$f\"; printf '\\0'; done"
-                .to_vec()
-        );
-        assert!(resolve_script(b"/", &[b"a\0b".to_vec()]).is_err());
-        assert!(resolve_script(b"/", &[b"a".to_vec()])
+        let script =
+            resolve_script(DIR, &[b"it's".to_vec(), b"new\nline".to_vec()], false).unwrap();
+        assert!(script.starts_with(
+            b"for f in '/tmp/scpfx/it'\\''s' '/tmp/scpfx/new\nline'; do if e=$(LC_ALL=C ls -land "
+        ));
+        assert!(resolve_script(b"/", &[b"a\0b".to_vec()], false).is_err());
+        assert!(resolve_script(b"/", &[b"a".to_vec()], false)
             .unwrap()
             .starts_with(b"for f in '/a';"));
+        let followed = resolve_script(b"/", &[b"a".to_vec()], true).unwrap();
+        assert!(followed.windows(13).any(|w| w == b"ls -lanLd --f"));
     }
 
     /// The two listing commands and the resolve script on this machine's own
@@ -614,7 +643,7 @@ mod tests {
         find_cmd.extend_from_slice(b" -mindepth 1 -maxdepth 1 -print0");
         let find = sh(&find_cmd);
         let mut merged = merge(&find.stdout, &ls.stdout);
-        let script = resolve_script(&dir_b, &merged.unresolved).unwrap();
+        let script = resolve_script(&dir_b, &merged.unresolved, false).unwrap();
         let resolved = sh(&script);
         merged
             .entries

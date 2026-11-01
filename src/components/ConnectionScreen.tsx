@@ -49,7 +49,7 @@ import { loadFourSharedCredentials } from '../utils/fourSharedCredentials';
 import { OAuthConnect } from './OAuthConnect';
 import { AlertDialog } from './Dialogs';
 import { IconPickerDialog } from './IconPickerDialog';
-import { optionsAcrossSshSwitch, presetFitsProtocol } from '../utils/protocolSwitch';
+import { optionsAcrossSshSwitch, presetFitsProtocol, storedPresetForSave, SWITCHABLE_PROTOCOLS } from '../utils/protocolSwitch';
 import { getProviderById, resolveS3Endpoint, resolveProfileS3Location, presetDefaultS3Region, parseS3EndpointParams, ProviderConfig } from '../providers';
 import { isBlompAuthUrl, swiftOptionsForAuthUrl } from './swiftAuthUrl';
 import { getProviderDocsUrl, PROVIDER_DOCS_INDEX } from '../providers/docsLinks';
@@ -67,9 +67,6 @@ import { FILEN_BRIDGE_MAX_LENGTH, FILEN_BRIDGE_REJECTED_CHARACTERS, filenBridgeC
 import { isFilenDesktopBridge as isFilenDesktopBridgeProvider } from '../utils/filenDesktopBridge';
 import { isProtonNative, useProtonNativeAvailable } from '../utils/protonNative';
 import { useProtonSignIn } from '../hooks/useProtonSignIn';
-
-// Protocols that can be switched between when editing a saved connection
-const SWITCHABLE_PROTOCOLS: ProviderType[] = ['ftp', 'ftps', 'sftp', 'scp'];
 
 const PROTOCOL_COLORS: Record<string, string> = {
     ftp: 'from-blue-500 to-cyan-400',
@@ -1458,7 +1455,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         providerId: protocol === 'swift'
                             ? (isBlompAuthUrl(connectionParams.server) ? 'blomp' : undefined)
                             : (selectedProviderId
-                                || s.providerId
+                                || storedPresetForSave(s.providerId, protocol, (id) => getProviderById(id)?.protocol)
                                 || (protocol === 'mtp' ? (connectionParams.providerId || 'mtp-portable')
                                     : protocol === 'mega' ? 'mega'
                                     : undefined)),

@@ -269,6 +269,16 @@ pub fn resolve_profile(
             return Err(format!("Connection option '{key}' must be a boolean"));
         }
     }
+    // The SCP fallback switch, under whichever spelling it was saved: the
+    // connect side reads only a literal `false`, so a `"False"` or a `0` would
+    // leave the fallback on without a word.
+    if let Some(key) = merged.iter().find_map(|(key, value)| {
+        (crate::profile_loader::canonicalize_profile_option_key(key) == "allow_scp_fallback"
+            && !value.is_boolean())
+        .then_some(key)
+    }) {
+        return Err(format!("Connection option '{key}' must be a boolean"));
+    }
     let port = port
         .or_else(|| {
             defaults?
@@ -409,6 +419,28 @@ mod tests {
             &json!({"tlsMode":"auto"}),
         )
         .is_err());
+    }
+
+    #[test]
+    fn the_scp_fallback_switch_must_be_a_boolean_under_either_spelling() {
+        let add = |options: serde_json::Value| {
+            super::resolve_profile(
+                "sftp",
+                None,
+                Some("synthetic.test"),
+                None,
+                Some("root"),
+                None,
+                &options,
+            )
+        };
+        for key in ["allowScpFallback", "allow_scp_fallback"] {
+            for bad in [json!("False"), json!("0"), json!(0)] {
+                let err = add(json!({ key: bad })).unwrap_err();
+                assert!(err.contains("must be a boolean"), "{key}={bad}: {err}");
+            }
+            assert!(add(json!({ key: false })).is_ok(), "{key}");
+        }
     }
 
     #[test]
