@@ -157,10 +157,12 @@ pub struct LocalTargetProblem {
     pub reason: String,
 }
 
+/// `files` are the entries of `paths` that are files; the others are folders.
 fn target_problems(
     rules: DestinationRules,
     windows: bool,
     paths: &[String],
+    files: &[String],
 ) -> Vec<LocalTargetProblem> {
     let guard = LocalTargetGuard::with_rules(rules);
     // Every folder on the way counts: `Foo/a.txt` and `foo/b.txt` would share one
@@ -178,12 +180,42 @@ fn target_problems(
             }
         }
     }
+    // A store can hold a file `foo` beside `foo/bar.txt`; a disk cannot.
+    let file_keys: HashMap<String, &String> = files
+        .iter()
+        .map(|file| (guard.key(Path::new(file)), file))
+        .collect();
+    let mut under_a_file: HashMap<&String, String> = HashMap::new();
+    let known_files: std::collections::HashSet<&String> = files.iter().collect();
+    for path in paths {
+        let parts = prefixes(path);
+        let inside = if known_files.contains(path) {
+            &parts[..parts.len() - 1]
+        } else {
+            &parts[..]
+        };
+        if let Some(file) = inside
+            .iter()
+            .find_map(|prefix| file_keys.get(&guard.key(Path::new(prefix))))
+        {
+            let reason = format!("{file} is a file, and {path} would go inside it");
+            under_a_file.insert(path, reason.clone());
+            under_a_file.insert(file, reason);
+        }
+    }
     let mut problems = Vec::new();
     for path in paths {
         if let Some(reason) = unwritable_on(path, windows) {
             problems.push(LocalTargetProblem {
                 path: path.clone(),
                 reason,
+            });
+            continue;
+        }
+        if let Some(reason) = under_a_file.get(path) {
+            problems.push(LocalTargetProblem {
+                path: path.clone(),
+                reason: reason.clone(),
             });
             continue;
         }
@@ -203,11 +235,66 @@ fn target_problems(
     problems
 }
 
+/// A file a run would write where the disk already holds the same name spelled
+/// differently: it would replace that entry, `foo.txt` over `Foo.txt`. The same
+/// spelling is an ordinary update. A folder spelled differently only takes the
+/// files in, so it is not read here.
+fn existing_spelling_problems(
+    rules: DestinationRules,
+    destination: &Path,
+    files: &[String],
+) -> Vec<LocalTargetProblem> {
+    let guard = LocalTargetGuard::with_rules(rules);
+    let mut listed: HashMap<String, HashMap<String, Vec<String>>> = HashMap::new();
+    let mut problems = Vec::new();
+    for file in files {
+        let (parent, name) = file.rsplit_once('/').unwrap_or(("", file));
+        let entries = listed.entry(parent.to_string()).or_insert_with(|| {
+            let mut entries: HashMap<String, Vec<String>> = HashMap::new();
+            // A folder not there yet holds nothing to replace.
+            for entry in std::fs::read_dir(destination.join(parent))
+                .into_iter()
+                .flatten()
+                .flatten()
+            {
+                let found = entry.file_name().to_string_lossy().into_owned();
+                entries
+                    .entry(guard.key(Path::new(&found)))
+                    .or_default()
+                    .push(found);
+            }
+            entries
+        });
+        let held = entries.get(&guard.key(Path::new(name)));
+        let other = held
+            .filter(|names| !names.iter().any(|found| found == name))
+            .and_then(|names| names.first());
+        if let Some(other) = other {
+            problems.push(LocalTargetProblem {
+                path: file.clone(),
+                reason: format!("This disk already holds {other}, which {name} would replace"),
+            });
+        }
+    }
+    problems
+}
+
 /// The paths a run would download that `destination` cannot hold apart, or at
 /// all. Both sides of a collision are named: which one should win is not ours
 /// to choose, and the loser's contents would be gone.
-pub fn local_target_problems(destination: &Path, paths: &[String]) -> Vec<LocalTargetProblem> {
-    target_problems(destination_rules(destination), cfg!(windows), paths)
+pub fn local_target_problems(
+    destination: &Path,
+    paths: &[String],
+    files: &[String],
+) -> Vec<LocalTargetProblem> {
+    let rules = destination_rules(destination);
+    let mut problems = target_problems(rules, cfg!(windows), paths, files);
+    for problem in existing_spelling_problems(rules, destination, files) {
+        if !problems.iter().any(|known| known.path == problem.path) {
+            problems.push(problem);
+        }
+    }
+    problems
 }
 
 /// Case key for a case-insensitive volume: map every character to its full
@@ -345,6 +432,73 @@ mod tests {
         }
     }
 
+    /// A store can hold a file beside a key under its name, and a disk cannot:
+    /// both are refused, and the rest goes on.
+    #[test]
+    fn a_file_with_another_path_under_it_is_refused_with_that_path() {
+        let keeps = DestinationRules {
+            fold_case: false,
+            fold_normalization: false,
+        };
+        let files = [
+            "foo".to_string(),
+            "foo/bar.txt".to_string(),
+            "ok/a.txt".to_string(),
+        ];
+        let problems = target_problems(keeps, false, &files, &files);
+        assert_eq!(
+            problems.iter().map(|p| p.path.as_str()).collect::<Vec<_>>(),
+            ["foo", "foo/bar.txt"]
+        );
+        assert!(problems[0].reason.contains("foo is a file"));
+        // A planned folder with the name of a planned file is the same conflict.
+        let paths = ["foo".to_string(), "foo/a".to_string()];
+        let folder_only = ["foo/a".to_string()];
+        assert!(target_problems(keeps, false, &paths, &[]).is_empty());
+        assert_eq!(target_problems(keeps, false, &paths, &folder_only).len(), 0);
+        let same_name = ["foo".to_string(), "foo".to_string()];
+        let one_file = ["foo".to_string()];
+        assert!(target_problems(keeps, false, &same_name[..1], &one_file).is_empty());
+    }
+
+    /// Where the disk folds case a planned `foo.txt` would replace `Foo.txt`; the
+    /// same spelling is an ordinary update, and a disk that keeps case holds both.
+    #[test]
+    fn a_file_is_refused_where_the_disk_holds_its_name_spelled_differently() {
+        let dest = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dest.path().join("docs")).unwrap();
+        std::fs::write(dest.path().join("docs/Foo.txt"), "mine").unwrap();
+        std::fs::write(dest.path().join("same.txt"), "mine").unwrap();
+        let folds = DestinationRules {
+            fold_case: true,
+            fold_normalization: true,
+        };
+        let files = [
+            "docs/foo.txt".to_string(),
+            "same.txt".to_string(),
+            "new/absent.txt".to_string(),
+        ];
+        let problems = existing_spelling_problems(folds, dest.path(), &files);
+        assert_eq!(
+            problems.iter().map(|p| p.path.as_str()).collect::<Vec<_>>(),
+            ["docs/foo.txt"]
+        );
+        assert!(problems[0].reason.contains("Foo.txt"), "{}", problems[0].reason);
+        let keeps = DestinationRules {
+            fold_case: false,
+            fold_normalization: false,
+        };
+        assert!(existing_spelling_problems(keeps, dest.path(), &files).is_empty());
+    }
+
+    #[test]
+    fn superscript_digits_are_reserved_on_windows_too() {
+        for name in ["COM¹", "com².txt", "LPT³"] {
+            assert!(windows_name_problem(name).is_some(), "{name}");
+        }
+        assert!(windows_name_problem("COM¹x").is_none());
+    }
+
     #[test]
     fn names_that_differ_only_by_case_are_both_refused_where_the_disk_folds_case() {
         let paths = [
@@ -356,7 +510,7 @@ mod tests {
             fold_case: true,
             fold_normalization: true,
         };
-        let problems = target_problems(folds, false, &paths);
+        let problems = target_problems(folds, false, &paths, &paths);
         assert_eq!(
             problems.iter().map(|p| p.path.as_str()).collect::<Vec<_>>(),
             ["a/File.txt", "a/file.txt"]
@@ -367,7 +521,7 @@ mod tests {
             "foo/b.txt".to_string(),
             "bar/c.txt".to_string(),
         ];
-        let problems = target_problems(folds, false, &folders);
+        let problems = target_problems(folds, false, &folders, &folders);
         assert_eq!(
             problems.iter().map(|p| p.path.as_str()).collect::<Vec<_>>(),
             ["Foo/a.txt", "foo/b.txt"]
@@ -376,7 +530,7 @@ mod tests {
             fold_case: false,
             fold_normalization: false,
         };
-        assert!(target_problems(keeps, false, &paths).is_empty());
+        assert!(target_problems(keeps, false, &paths, &paths).is_empty());
     }
 
     use super::*;

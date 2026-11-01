@@ -143,7 +143,35 @@ describe('remoteSyncRunner — copy legs', () => {
             'bad/colon:name.txt', 'docs/File.txt', 'docs/file.txt',
         ]);
         expect(report.errors[0].message).toContain('This disk cannot tell it');
-        expect(JSON.stringify(calls)).not.toContain('"bad"');
+        expect(calls.some((c) => c.cmd === 'create_local_folder'
+            && String((c.args as { path?: string })?.path).endsWith('/bad'))).toBe(false);
+        const asked = calls.find((c) => c.cmd === 'local_target_problems');
+        expect(asked?.args).toMatchObject({
+            destination: baseConfig().localBase,
+            files: ['docs/File.txt', 'docs/file.txt', 'bad/colon:name.txt', 'docs/ok.txt'],
+        });
+    });
+
+    it('checks the names of a local pair\'s uploads against the folder they go to', async () => {
+        const { invoke, calls } = makeInvoke({
+            local_target_problems: async () => [
+                { path: 'Foo.txt', reason: 'This disk cannot tell it from foo.txt' },
+                { path: 'foo.txt', reason: 'This disk cannot tell it from Foo.txt' },
+            ],
+        });
+        const report = await runRemoteSync(
+            [file('Foo.txt', 'upload'), file('foo.txt', 'upload'), file('ok.txt', 'upload')],
+            { remote: [], local: [] },
+            baseConfig({ isLocalLocal: true }),
+            {},
+            noWaitDeps(invoke),
+        );
+        const copied = calls.filter((c) => c.cmd === 'copy_local_file');
+        expect(copied).toHaveLength(1);
+        expect(JSON.stringify(copied[0].args)).toContain('ok.txt');
+        expect(report.errors.map((e) => e.file_path).sort()).toEqual(['Foo.txt', 'foo.txt']);
+        expect(calls.find((c) => c.cmd === 'local_target_problems')?.args)
+            .toMatchObject({ destination: baseConfig().remoteBase, files: ['Foo.txt', 'foo.txt', 'ok.txt'] });
     });
 
     it('downloads nothing when the local names could not be checked', async () => {

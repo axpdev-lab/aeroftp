@@ -12753,9 +12753,10 @@ fn classify_walked_pair(
 async fn local_target_problems(
     destination: String,
     paths: Vec<String>,
+    files: Vec<String>,
 ) -> Result<Vec<local_download_target::LocalTargetProblem>, String> {
     tokio::task::spawn_blocking(move || {
-        local_download_target::local_target_problems(Path::new(&destination), &paths)
+        local_download_target::local_target_problems(Path::new(&destination), &paths, &files)
     })
     .await
     .map_err(|error| error.to_string())

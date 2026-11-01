@@ -757,6 +757,7 @@ const runSync = async (
             const problems = await invoke<{ path: string; reason: string }[]>('local_target_problems', {
                 destination: localBase,
                 paths: localTargets,
+                files: downloads,
             });
             if (Array.isArray(problems)) {
                 problems.forEach((problem) => localNameProblems.set(problem.path, problem.reason));
@@ -764,6 +765,24 @@ const runSync = async (
         } catch (error) {
             // Not knowing is not a pass: writing could lose a file.
             localTargets.forEach((path) => localNameProblems.set(path, `Could not check the local name: ${String(error)}`));
+        }
+    }
+    // On a local pair an upload writes to a disk too, with the same limits.
+    const localPairUploads = config.isLocalLocal
+        ? files.filter((f) => f.action === 'upload' && !f.isDir).map((f) => f.relativePath)
+        : [];
+    if (localPairUploads.length > 0) {
+        try {
+            const problems = await invoke<{ path: string; reason: string }[]>('local_target_problems', {
+                destination: remoteBase,
+                paths: localPairUploads,
+                files: localPairUploads,
+            });
+            if (Array.isArray(problems)) {
+                problems.forEach((problem) => localNameProblems.set(problem.path, problem.reason));
+            }
+        } catch (error) {
+            localPairUploads.forEach((path) => localNameProblems.set(path, `Could not check the local name: ${String(error)}`));
         }
     }
     const bulkEligible = (f: SyncRunFile): boolean =>
@@ -990,7 +1009,9 @@ const runSync = async (
             continue;
         }
 
-        const nameProblem = item.action === 'download' ? localNameProblems.get(item.relativePath) : undefined;
+        const nameProblem = item.action === 'download' || (item.action === 'upload' && config.isLocalLocal)
+            ? localNameProblems.get(item.relativePath)
+            : undefined;
         if (nameProblem) {
             failBackup(item, journalEntry, new Error(nameProblem));
             completed++;
