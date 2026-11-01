@@ -39272,6 +39272,18 @@ fn publish_extracted(
             ));
         }
     }
+    // A rename cannot replace a folder, and would stop with files already moved.
+    if let Some(file) = files.iter().find(|file| {
+        dest.join(file)
+            .symlink_metadata()
+            .is_ok_and(|meta| meta.is_dir())
+    }) {
+        return Err(format!(
+            "{} is a folder in {}, and the vault holds a file there. Nothing was replaced",
+            file.display(),
+            dest.display()
+        ));
+    }
     for folder in &folders {
         std::fs::create_dir_all(dest.join(folder)).map_err(|e| e.to_string())?;
     }
@@ -39301,23 +39313,30 @@ fn move_without_replacing(from: &std::path::Path, to: &std::path::Path) -> std::
     match std::fs::hard_link(from, to) {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => return Err(e),
-        Err(_) => {
-            let mut target = std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(to)?;
-            // Created here, so it is ours to remove: a partial file would read
-            // as an extract, and refuse the retry.
-            if let Err(e) = std::fs::File::open(from)
-                .and_then(|mut source| std::io::copy(&mut source, &mut target))
-            {
-                drop(target);
-                let _ = std::fs::remove_file(to);
-                return Err(e);
-            }
-        }
+        Err(_) => copy_without_replacing(from, to)?,
     }
     std::fs::remove_file(from)
+}
+
+/// An exclusive create with the mode of `from`: a v3 extract is 0600, and the
+/// default mode would open it to others.
+fn copy_without_replacing(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    let mut target = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(to)?;
+    // Created here, so it is ours to remove: a partial file would read as an
+    // extract, and refuse the retry.
+    let copied = std::fs::File::open(from).and_then(|mut source| {
+        target.set_permissions(source.metadata()?.permissions())?;
+        std::io::copy(&mut source, &mut target)
+    });
+    if let Err(e) = copied {
+        drop(target);
+        let _ = std::fs::remove_file(to);
+        return Err(e);
+    }
+    Ok(())
 }
 
 fn is_not_found_error(e: &ProviderError) -> bool {
@@ -78947,6 +78966,7 @@ async fn main() {
                     } else {
                         resolve_ver(vault_version)
                     };
+                    let dest_was_there = std::path::Path::new(dest.as_str()).exists();
                     // Every format extracts into a staging folder first: v2 refused
                     // an existing file halfway through, and v3 replaced it.
                     let staging = if ver == "v3" || ver == "v2" {
@@ -78987,6 +79007,11 @@ async fn main() {
                             })
                         }
                     };
+                    // A wrong password leaves no empty folder behind. Fails, as
+                    // it should, on a folder that holds something by now.
+                    if res.is_err() && !dest_was_there {
+                        let _ = std::fs::remove_dir(dest.as_str());
+                    }
                     match res {
                         Ok(n) => {
                             match format {
@@ -98129,6 +98154,40 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
     /// looping listing, and searched the account root through a folder
     /// listed as `/`. It reports each path under the root once, and names
     /// each folder it did not search.
+    /// `--overwrite` cannot put a file where a folder stands: it says so before
+    /// the first file moves.
+    #[test]
+    fn extracted_files_refuse_a_folder_in_the_way_before_any_moves() {
+        let root = tempfile::tempdir().unwrap();
+        let (staging, dest) = (root.path().join("staging"), root.path().join("dest"));
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(staging.join("first.txt"), "vault").unwrap();
+        std::fs::write(staging.join("taken"), "vault").unwrap();
+        std::fs::create_dir_all(dest.join("taken")).unwrap();
+        let refused = publish_extracted(&staging, &dest, true).unwrap_err();
+        assert!(refused.contains("is a folder"), "{refused}");
+        assert!(!dest.join("first.txt").exists());
+    }
+
+    /// With no hard links the copy keeps the staged mode: a v3 extract is 0600.
+    #[cfg(unix)]
+    #[test]
+    fn the_copy_fallback_keeps_the_mode_of_the_staged_file() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let (from, to) = (root.path().join("from"), root.path().join("to"));
+        std::fs::write(&from, "vault").unwrap();
+        std::fs::set_permissions(&from, std::fs::Permissions::from_mode(0o600)).unwrap();
+        copy_without_replacing(&from, &to).unwrap();
+        assert_eq!(std::fs::read_to_string(&to).unwrap(), "vault");
+        assert_eq!(
+            std::fs::metadata(&to).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert!(copy_without_replacing(&from, &to).is_err());
+        assert_eq!(std::fs::read_to_string(&to).unwrap(), "vault");
+    }
+
     #[test]
     fn extracted_files_replace_nothing_without_overwrite() {
         let root = tempfile::tempdir().unwrap();
