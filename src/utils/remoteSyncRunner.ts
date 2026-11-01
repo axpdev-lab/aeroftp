@@ -820,7 +820,9 @@ export const runRemoteSync = async (
                 bulk = null;
             }
         }
+        const bulkEnded = new Date().toISOString();
         send.forEach((f, k) => {
+            if (action === 'upload' && results?.[k]?.status === 'completed') uploadsEnded.set(f.relativePath, bulkEnded);
             bulkPrepared.set(f.relativePath, results?.[k] ?? { status: 'not_attempted' });
         });
     };
@@ -1031,7 +1033,7 @@ export const runRemoteSync = async (
             if (result.success) {
                 didTransfer = true;
                 uploaded++;
-                uploadsEnded.set(item.relativePath, new Date().toISOString());
+                if (!sentByBulk) uploadsEnded.set(item.relativePath, new Date().toISOString());
                 totalBytes += item.size;
                 if (journalEntry) {
                     journalEntry.status = 'completed';

@@ -364,15 +364,16 @@ impl CloudService {
                     size: None,
                     modified,
                 },
+                Utc::now(),
             );
         }
     }
 
     /// Note what a transfer left as the caller established it, without
-    /// reading the disk again.
-    fn note_landed_as(&self, relative_path: &str, what: Landed) {
+    /// reading the disk again, and when it `ended`.
+    fn note_landed_as(&self, relative_path: &str, what: Landed, ended: DateTime<Utc>) {
         if let Ok(mut landed) = self.landed.lock() {
-            landed.insert(relative_path.to_string(), (what, Utc::now()));
+            landed.insert(relative_path.to_string(), (what, ended));
         }
     }
 
@@ -1895,6 +1896,7 @@ impl CloudService {
         sent: LocalFileState,
         uploaded: Option<&ProviderRemoteEntry>,
         exact_sizes: Option<ProviderType>,
+        ended: DateTime<Utc>,
     ) {
         if let Some(provider_type) = exact_sizes {
             if uploaded
@@ -1921,6 +1923,7 @@ impl CloudService {
                             size: Some(sent.len),
                             modified,
                         },
+                        ended,
                     );
                 }
                 return;
@@ -1950,6 +1953,7 @@ impl CloudService {
                     size: Some(sent.len),
                     modified,
                 },
+                ended,
             );
         }
     }
@@ -2041,6 +2045,7 @@ impl CloudService {
                             .upload(&local_info.path, &remote_path, None)
                             .await
                             .map_err(|e| format!("Upload failed: {}", e))?;
+                        let ended = Utc::now();
 
                         // After upload, stat the remote file to get the server-assigned mtime,
                         // then apply it to the local file so both sides match.
@@ -2078,6 +2083,7 @@ impl CloudService {
                                     size: None,
                                     modified: UNSETTLED_BASELINE,
                                 },
+                                Utc::now(),
                             );
                             if let Ok(mut unsettled) = self.unsettled.lock() {
                                 unsettled.push(comparison.relative_path.clone());
@@ -2092,6 +2098,7 @@ impl CloudService {
                             provider
                                 .reports_exact_size()
                                 .then(|| provider.provider_type()),
+                            ended,
                         );
                         break;
                     }
