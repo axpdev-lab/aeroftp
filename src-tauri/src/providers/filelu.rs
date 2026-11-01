@@ -1610,6 +1610,14 @@ impl FileLuProvider {
         let file_code = self.resolve_file_code(&norm).await?;
 
         let source_name = norm.rsplit('/').next().unwrap_or("file").to_string();
+        // The clone is renamed to `<name>_copy` by FileLu's file rename, which
+        // would store some characters of the name changed: refused before the
+        // clone exists.
+        if let Some(refusal) =
+            filelu_name_refusal(&Self::build_clone_name(&source_name, 1), NameOp::FileRename)
+        {
+            return Err(ProviderError::InvalidPath(refusal));
+        }
         let source_parent = match norm.rfind('/') {
             Some(0) => "/".to_string(),
             Some(idx) => norm[..idx].to_string(),
@@ -2299,6 +2307,11 @@ impl StorageProvider for FileLuProvider {
         let entry = self.resolve_path_entry(&norm).await?;
         self.remove_entry(&entry).await?;
         if !entry.is_dir && !entry.file_code.is_empty() {
+            // Bounded like the path cache. Losing the record only makes a
+            // later purge fall back to a name only one trashed file carries.
+            if self.trashed_codes.len() >= PATH_CACHE_MAX {
+                self.trashed_codes.clear();
+            }
             self.trashed_codes
                 .insert(norm.clone(), entry.file_code.clone());
         }
@@ -2345,8 +2358,13 @@ impl StorageProvider for FileLuProvider {
         }
         let deleted = self.list_deleted_files().await?;
         let in_trash = |code: &str| deleted.iter().any(|e| e.file_code.as_deref() == Some(code));
-        let code = match self.trashed_codes.get(&norm) {
-            Some(code) => in_trash(code).then(|| code.clone()),
+        let code = match self.trashed_codes.get(&norm).cloned() {
+            Some(code) if in_trash(&code) => Some(code),
+            Some(_) => {
+                // Restored, or purged elsewhere: the record names nothing now.
+                self.trashed_codes.remove(&norm);
+                None
+            }
             None => {
                 let mut named = deleted
                     .iter()
@@ -2704,8 +2722,23 @@ impl StorageProvider for FileLuProvider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        // Step 1: Clone the file (creates copy in same folder)
         let norm_from = self.resolve_path(from);
+        let norm_to = self.resolve_path(to);
+        let (dest_dir, dest_name) = match norm_to.rfind('/') {
+            Some(0) => ("/".to_string(), norm_to[1..].to_string()),
+            Some(idx) => (norm_to[..idx].to_string(), norm_to[idx + 1..].to_string()),
+            None => ("/".to_string(), norm_to.clone()),
+        };
+        // A copy under another name is renamed by FileLu's file rename, which
+        // would store some characters changed: refused before the clone exists.
+        let src_name = norm_from.rsplit('/').next().unwrap_or("");
+        if !dest_name.is_empty() && dest_name != src_name {
+            if let Some(refusal) = filelu_name_refusal(&dest_name, NameOp::FileRename) {
+                return Err(ProviderError::InvalidPath(refusal));
+            }
+        }
+
+        // Step 1: Clone the file (creates copy in same folder)
         let file_code = self.resolve_file_code(&norm_from).await?;
         let clone_url = self.api_url_with("file/clone", &[("file_code", &file_code)]);
         let resp = self.get_with_retry(&clone_url).await?;
@@ -2714,12 +2747,6 @@ impl StorageProvider for FileLuProvider {
         })?;
 
         // Step 2: Move the clone to the destination folder if needed
-        let norm_to = self.resolve_path(to);
-        let (dest_dir, dest_name) = match norm_to.rfind('/') {
-            Some(0) => ("/".to_string(), norm_to[1..].to_string()),
-            Some(idx) => (norm_to[..idx].to_string(), norm_to[idx + 1..].to_string()),
-            None => ("/".to_string(), norm_to.clone()),
-        };
 
         // Extract cloned file code from response (array format)
         if let Some(arr) = body.get("result").and_then(|r| r.as_array()) {
@@ -2739,7 +2766,6 @@ impl StorageProvider for FileLuProvider {
                 Self::ensure_api_ok(move_resp).await?;
 
                 // Rename if destination filename differs from source
-                let src_name = norm_from.rsplit('/').next().unwrap_or("");
                 if !dest_name.is_empty() && dest_name != src_name {
                     let rename_url = self.api_url_with(
                         "file/rename",
@@ -4420,5 +4446,44 @@ mod tests {
             "{:?}",
             calls.lock().unwrap()
         );
+    }
+
+    /// Both copies rename the clone with FileLu's file rename, so a name it
+    /// would change is refused before the clone exists.
+    #[tokio::test]
+    async fn a_copy_to_a_name_filelu_would_encode_clones_nothing() {
+        let (mut provider, calls) =
+            provider_with_cached_tree(&[("/d", "7"), ("/d/a.txt", "AAA")]).await;
+        let outcome = provider.server_side_copy("/d/a.txt", "/d/a(1).txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::InvalidPath(ref m)) if m.contains("HTML entities")),
+            "{outcome:?}"
+        );
+        let (mut provider, clone_calls) =
+            provider_with_cached_tree(&[("/d", "7"), ("/d/it's.txt", "BBB")]).await;
+        let outcome = provider.clone_file("/d/it's.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::InvalidPath(ref m)) if m.contains("it's_copy.txt")),
+            "{outcome:?}"
+        );
+        for calls in [calls, clone_calls] {
+            assert!(
+                calls.lock().unwrap().is_empty(),
+                "{:?}",
+                calls.lock().unwrap()
+            );
+        }
+    }
+
+    /// The trash record of a path that left the trash is dropped, not kept
+    /// for the rest of the session.
+    #[tokio::test]
+    async fn a_trash_record_gone_from_the_trash_is_dropped() {
+        let (mut provider, _) = provider_with_trash(&[("a.txt", "SOMEONE")]).await;
+        provider
+            .trashed_codes
+            .insert("/d/a.txt".to_string(), "MINE".to_string());
+        assert!(!provider.delete_permanent("/d/a.txt").await.unwrap());
+        assert!(!provider.trashed_codes.contains_key("/d/a.txt"));
     }
 }
