@@ -1746,7 +1746,9 @@
             "transferComplete": "{count} fil(er) kopierade",
             "permissionsSessionChanged": "Anslutningen har ändrats sedan den här dialogrutan öppnades, så ingenting ändrades. Öppna Behörigheter igen på den aktuella anslutningen.",
             "createFailed": "Skapandet misslyckades",
-            "unknownServer": "Okänd"
+            "unknownServer": "Okänd",
+            "scpModeTitle": "Ansluten med SCP",
+            "scpModeBody": "{host} saknar SFTP, så AeroFTP använder SCP på samma anslutning."
         },
         "about": {
             "tagline": "Mer än FTP. En komplett utvecklarverktygslåda.",
@@ -2347,7 +2349,13 @@
             "imagekitDesc": "Medie-CDN + lagring (20 GB gratis)",
             "uploadcareDesc": "EU-medie-CDN (3 GB gratis)",
             "cloudinaryDesc": "Medie-CDN (25 krediter/månad gratis)",
-            "backblazeDesc": "Inbyggt Backblaze B2-API v4"
+            "backblazeDesc": "Inbyggt Backblaze B2-API v4",
+            "scpDesc": "Filkopiering via SSH",
+            "scpTooltip": "SCP via SSH, för servrar utan SFTP.",
+            "scpOnlyNote": "Använd SCP endast för servrar utan SFTP, till exempel OpenWrt-routrar.",
+            "allowScpFallback": "Tillåt SCP som reserv",
+            "allowScpFallbackHint": "Om servern saknar SFTP fortsätter anslutningen via SCP, som WinSCP gör.",
+            "discoverScp": "Filkopiering via SSH för servrar utan SFTP"
         },
         "shortcuts": {
             "title": "Kortkommandon",
@@ -4316,7 +4324,8 @@
                 "koofr-proprietary": "Koofrs egen hash. Den går bara att jämföra med en annan Koofr-hash.",
                 "github-blob-sha": "git-blobbens SHA-1, beräknad över ett git-huvud plus innehållet, så den stämmer inte med en vanlig SHA-1 av samma fil.",
                 "immich-asset-checksum": "Kontrollsumman för objektet som Immich registrerar vid uppladdning.",
-                "crypt-overlay-ciphertext": "Kontrollsumman täcker de krypterade bytena som lagras på servern."
+                "crypt-overlay-ciphertext": "Kontrollsumman täcker de krypterade bytena som lagras på servern.",
+                "scp-shell-digests": "Beräknas av fjärrvärden med sha256sum eller md5sum över en SSH-kanal: bytena läses på servern och skickas aldrig till dig. Varje kontrollsumma erbjuds bara om värden har motsvarande verktyg."
             },
             "readOnlyIsLinkTarget": "Det här är en symbolisk länk: behörigheterna tillhör filen som den pekar på. Öppna egenskaperna för den filen för att ändra dem.",
             "exactBytes": "({bytes} byte)"
@@ -5328,7 +5337,7 @@
             "runAgain": "Kör igen",
             "copyResult": "Kopiera resultat",
             "copied": "Kopierat",
-            "unsupportedProvider": "Speed Test är tillgängligt för FTP, FTPS, SFTP, S3 och WebDAV i den här utgåvan.",
+            "unsupportedProvider": "Speed Test är tillgängligt för FTP, FTPS, SFTP, SCP, S3 och WebDAV i den här utgåvan.",
             "noSupportedServers": "Ingen sparad server stöder Speed Test ännu",
             "errorReadOnly": "Servern tillåter inte skrivningar",
             "errorNotSupported": "Speed Test är inte tillgängligt för den här leverantörstypen",
@@ -5766,7 +5775,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Företag"
+                "parentCompany": "Företag",
+                "customScp": "SCP"
             },
             "healthCheck": "Tillgänglighetskontroll",
             "storageVersioning": "Filversioner: {size}",

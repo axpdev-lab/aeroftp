@@ -1746,7 +1746,9 @@
             "transferComplete": "Faili {count} zimenakiliwa",
             "permissionsSessionChanged": "Muunganisho umebadilika tangu kisanduku hiki cha mazungumzo kifunguliwe, kwa hivyo hakuna kilichobadilishwa. Fungua Ruhusa tena kwenye muunganisho wa sasa.",
             "createFailed": "Kuunda kumeshindwa",
-            "unknownServer": "Haijulikani"
+            "unknownServer": "Haijulikani",
+            "scpModeTitle": "Imeunganishwa kwa SCP",
+            "scpModeBody": "{host} haina SFTP, kwa hivyo AeroFTP inatumia SCP kwenye muunganisho uleule."
         },
         "about": {
             "tagline": "Zaidi ya FTP. Zana kamili za msanidi.",
@@ -2347,7 +2349,13 @@
             "imagekitDesc": "CDN ya media + hifadhi (20 GB bure)",
             "uploadcareDesc": "CDN ya media ya EU (3 GB bure)",
             "cloudinaryDesc": "CDN ya media (mikopo 25 kwa mwezi bure)",
-            "backblazeDesc": "API asili ya Backblaze B2 v4"
+            "backblazeDesc": "API asili ya Backblaze B2 v4",
+            "scpDesc": "Kunakili faili kupitia SSH",
+            "scpTooltip": "SCP kupitia SSH, kwa seva zisizo na SFTP.",
+            "scpOnlyNote": "Tumia SCP kwa seva zisizo na SFTP pekee, kwa mfano ruta za OpenWrt.",
+            "allowScpFallback": "Ruhusu SCP kama mbadala",
+            "allowScpFallbackHint": "Ikiwa seva haina SFTP, muunganisho unaendelea kupitia SCP, kama WinSCP inavyofanya.",
+            "discoverScp": "Kunakili faili kupitia SSH kwa seva zisizo na SFTP"
         },
         "shortcuts": {
             "title": "Njia za Mkato",
@@ -4316,7 +4324,8 @@
                 "koofr-proprietary": "Hash ya Koofr yenyewe. Hulinganishwa tu na hash nyingine ya Koofr.",
                 "github-blob-sha": "SHA-1 ya blob ya git, iliyokokotolewa kutokana na kichwa cha git pamoja na maudhui, hivyo hailingani na SHA-1 ya kawaida ya faili hiyo hiyo.",
                 "immich-asset-checksum": "Checksum ya rasilimali ambayo Immich huirekodi wakati wa kupakia.",
-                "crypt-overlay-ciphertext": "Muhtasari unahusu baiti zilizosimbwa zilizohifadhiwa kwenye seva."
+                "crypt-overlay-ciphertext": "Muhtasari unahusu baiti zilizosimbwa zilizohifadhiwa kwenye seva.",
+                "scp-shell-digests": "Huhesabiwa na mwenyeji wa mbali kwa sha256sum au md5sum kupitia njia ya SSH: baiti husomwa kwenye seva na hazitumwi kwako kamwe. Kila muhtasari hutolewa tu iwapo mwenyeji ana zana husika."
             },
             "readOnlyIsLinkTarget": "Hiki ni kiungo ishara: ruhusa ni za faili ambalo kinaelekeza kwake. Fungua sifa za faili hilo ili kuzibadilisha.",
             "exactBytes": "(baiti {bytes})"
@@ -5328,7 +5337,7 @@
             "runAgain": "Endesha tena",
             "copyResult": "Nakili matokeo",
             "copied": "Imenakiliwa",
-            "unsupportedProvider": "Speed Test inapatikana kwa FTP, FTPS, SFTP, S3 na WebDAV katika toleo hili.",
+            "unsupportedProvider": "Speed Test inapatikana kwa FTP, FTPS, SFTP, SCP, S3 na WebDAV katika toleo hili.",
             "noSupportedServers": "Hakuna seva iliyohifadhiwa inayotumia Speed Test bado",
             "errorReadOnly": "Seva hairuhusu kuandika",
             "errorNotSupported": "Speed Test haipatikani kwa aina hii ya mtoa huduma",
@@ -5766,7 +5775,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Kampuni"
+                "parentCompany": "Kampuni",
+                "customScp": "SCP"
             },
             "healthCheck": "Ukaguzi wa afya",
             "storageVersioning": "Matoleo ya faili: {size}",

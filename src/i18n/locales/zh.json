@@ -1746,7 +1746,9 @@
             "transferComplete": "已复制 {count} 个文件",
             "permissionsSessionChanged": "自打开此对话框以来连接已发生变化，因此未做任何更改。请在当前连接上重新打开“权限”。",
             "createFailed": "创建失败",
-            "unknownServer": "未知服务器"
+            "unknownServer": "未知服务器",
+            "scpModeTitle": "已通过 SCP 连接",
+            "scpModeBody": "{host} 没有 SFTP，因此 AeroFTP 正在同一连接上使用 SCP。"
         },
         "about": {
             "tagline": "不仅仅是 FTP。完整的开发者工具包。",
@@ -2347,7 +2349,13 @@
             "imagekitDesc": "媒体 CDN + 存储（免费 20 GB）",
             "uploadcareDesc": "欧盟媒体 CDN（免费 3 GB）",
             "cloudinaryDesc": "媒体 CDN（每月免费 25 积分）",
-            "backblazeDesc": "Backblaze B2 原生 API v4"
+            "backblazeDesc": "Backblaze B2 原生 API v4",
+            "scpDesc": "通过 SSH 复制文件",
+            "scpTooltip": "基于 SSH 的 SCP，适用于没有 SFTP 的服务器。",
+            "scpOnlyNote": "仅在服务器没有 SFTP 时使用 SCP，例如 OpenWrt 路由器。",
+            "allowScpFallback": "允许回退到 SCP",
+            "allowScpFallbackHint": "如果服务器没有 SFTP，则像 WinSCP 一样在同一连接上改用 SCP 继续。",
+            "discoverScp": "为没有 SFTP 的服务器通过 SSH 复制文件"
         },
         "shortcuts": {
             "title": "键盘快捷键",
@@ -4316,7 +4324,8 @@
                 "koofr-proprietary": "Koofr 自有的哈希。只能与另一个 Koofr 哈希比对。",
                 "github-blob-sha": "git blob 的 SHA-1，基于 git 头部加内容计算，因此与同一文件的普通 SHA-1 并不相同。",
                 "immich-asset-checksum": "Immich 在上传时记录的资源校验和。",
-                "crypt-overlay-ciphertext": "摘要覆盖的是存储在服务器上的加密字节。"
+                "crypt-overlay-ciphertext": "摘要覆盖的是存储在服务器上的加密字节。",
+                "scp-shell-digests": "由远程主机通过 SSH 通道用 sha256sum 或 md5sum 计算：字节在服务器上读取，绝不会发送给您。仅当主机具有相应工具时，才会提供对应的摘要。"
             },
             "readOnlyIsLinkTarget": "这是一个符号链接：权限属于它指向的文件。请打开该文件的属性进行更改。",
             "exactBytes": "({bytes} 字节)"
@@ -5328,7 +5337,7 @@
             "runAgain": "再次运行",
             "copyResult": "复制结果",
             "copied": "已复制",
-            "unsupportedProvider": "本版本的 Speed Test 支持 FTP、FTPS、SFTP、S3 和 WebDAV。",
+            "unsupportedProvider": "本版本的 Speed Test 支持 FTP、FTPS、SFTP、SCP、S3 和 WebDAV。",
             "noSupportedServers": "尚无已保存的服务器支持 Speed Test",
             "errorReadOnly": "服务器不允许写入",
             "errorNotSupported": "此提供商类型不支持 Speed Test",
@@ -5766,7 +5775,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "公司"
+                "parentCompany": "公司",
+                "customScp": "SCP"
             },
             "healthCheck": "健康检查",
             "storageVersioning": "文件版本：{size}",

@@ -1746,7 +1746,9 @@
             "transferComplete": "{count} fil(er) kopiert",
             "permissionsSessionChanged": "Tilkoblingen er endret siden denne dialogen ble åpnet, så ingenting ble endret. Åpne Tillatelser på nytt på den gjeldende tilkoblingen.",
             "createFailed": "Oppretting mislyktes",
-            "unknownServer": "Ukjent"
+            "unknownServer": "Ukjent",
+            "scpModeTitle": "Koblet til med SCP",
+            "scpModeBody": "{host} har ikke SFTP, så AeroFTP bruker SCP på samme tilkobling."
         },
         "about": {
             "tagline": "Mer enn FTP. Et komplett utviklerverktøy.",
@@ -2347,7 +2349,13 @@
             "imagekitDesc": "Medie-CDN + lagring (20 GB gratis)",
             "uploadcareDesc": "EU-medie-CDN (3 GB gratis)",
             "cloudinaryDesc": "Medie-CDN (25 kreditter/måned gratis)",
-            "backblazeDesc": "Innebygd Backblaze B2-API v4"
+            "backblazeDesc": "Innebygd Backblaze B2-API v4",
+            "scpDesc": "Filkopiering via SSH",
+            "scpTooltip": "SCP via SSH, for servere uten SFTP.",
+            "scpOnlyNote": "Bruk SCP bare for servere uten SFTP, for eksempel OpenWrt-rutere.",
+            "allowScpFallback": "Tillat SCP som reserve",
+            "allowScpFallbackHint": "Hvis serveren ikke har SFTP, fortsetter tilkoblingen via SCP, slik WinSCP gjør.",
+            "discoverScp": "Filkopiering via SSH for servere uten SFTP"
         },
         "shortcuts": {
             "title": "Tastatursnarveier",
@@ -4316,7 +4324,8 @@
                 "koofr-proprietary": "Koofrs egen hash. Den kan bare sammenlignes med en annen Koofr-hash.",
                 "github-blob-sha": "SHA-1 for git-bloben, beregnet over et git-hode pluss innholdet, så den stemmer ikke med en vanlig SHA-1 av samme fil.",
                 "immich-asset-checksum": "Kontrollsummen for elementet som Immich registrerer ved opplasting.",
-                "crypt-overlay-ciphertext": "Kontrollsummen dekker de krypterte bytene som ligger på serveren."
+                "crypt-overlay-ciphertext": "Kontrollsummen dekker de krypterte bytene som ligger på serveren.",
+                "scp-shell-digests": "Beregnes av fjernverten med sha256sum eller md5sum over en SSH-kanal: bytene leses på serveren og sendes aldri til deg. Hver kontrollsum tilbys bare hvis verten har det tilhørende verktøyet."
             },
             "readOnlyIsLinkTarget": "Dette er en symbolsk lenke: rettighetene tilhører filen den peker til. Åpne egenskapene til den filen for å endre dem.",
             "exactBytes": "({bytes} byte)"
@@ -5347,7 +5356,7 @@
             "runAgain": "Kjør igjen",
             "copyResult": "Kopier resultat",
             "copied": "Kopiert",
-            "unsupportedProvider": "Speed Test er tilgjengelig for FTP, FTPS, SFTP, S3 og WebDAV i denne utgivelsen.",
+            "unsupportedProvider": "Speed Test er tilgjengelig for FTP, FTPS, SFTP, SCP, S3 og WebDAV i denne utgivelsen.",
             "noSupportedServers": "Ingen lagrede servere støtter Speed Test ennå",
             "errorReadOnly": "Serveren tillater ikke skriving",
             "errorNotSupported": "Speed Test er ikke tilgjengelig for denne leverandørtypen",
@@ -5785,7 +5794,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Selskap"
+                "parentCompany": "Selskap",
+                "customScp": "SCP"
             },
             "healthCheck": "Tilgjengelighetssjekk",
             "storageVersioning": "Filversjoner: {size}",

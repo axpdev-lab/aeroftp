@@ -1746,7 +1746,9 @@
             "transferComplete": "Nokopēti faili: {count}",
             "permissionsSessionChanged": "Savienojums ir mainījies kopš šī dialoga atvēršanas, tāpēc nekas netika mainīts. Atveriet Atļaujas vēlreiz pašreizējā savienojumā.",
             "createFailed": "Izveide neizdevās",
-            "unknownServer": "nezināmu serveri"
+            "unknownServer": "nezināmu serveri",
+            "scpModeTitle": "Savienots ar SCP",
+            "scpModeBody": "Serverim {host} nav SFTP, tāpēc AeroFTP izmanto SCP tajā pašā savienojumā."
         },
         "about": {
             "tagline": "Vairāk nekā FTP. Pilns izstrādātāja rīku komplekts.",
@@ -2347,7 +2349,13 @@
             "imagekitDesc": "Multivides CDN + krātuve (20 GB bez maksas)",
             "uploadcareDesc": "ES multivides CDN (3 GB bez maksas)",
             "cloudinaryDesc": "Multivides CDN (25 kredīti mēnesī bez maksas)",
-            "backblazeDesc": "Backblaze B2 vietējā API v4"
+            "backblazeDesc": "Backblaze B2 vietējā API v4",
+            "scpDesc": "Failu kopēšana caur SSH",
+            "scpTooltip": "SCP caur SSH serveriem bez SFTP.",
+            "scpOnlyNote": "Izmantojiet SCP tikai serveriem bez SFTP, piemēram, OpenWrt maršrutētājiem.",
+            "allowScpFallback": "Atļaut SCP rezerves režīmu",
+            "allowScpFallbackHint": "Ja serverim nav SFTP, savienojums turpinās ar SCP, kā to dara WinSCP.",
+            "discoverScp": "Failu kopēšana caur SSH serveriem bez SFTP"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",
@@ -4316,7 +4324,8 @@
                 "koofr-proprietary": "Koofr paša jaucējsumma. To var salīdzināt tikai ar citu Koofr jaucējsummu.",
                 "github-blob-sha": "git bloba SHA-1, kas aprēķināta no git galvenes un satura, tāpēc tā nesakrīt ar tā paša faila parasto SHA-1.",
                 "immich-asset-checksum": "Vienuma kontrolsumma, ko Immich reģistrē augšupielādes brīdī.",
-                "crypt-overlay-ciphertext": "Jaucējsumma aptver serverī glabātos šifrētos baitus."
+                "crypt-overlay-ciphertext": "Jaucējsumma aptver serverī glabātos šifrētos baitus.",
+                "scp-shell-digests": "To aprēķina attālinātais resursdators ar sha256sum vai md5sum pa SSH kanālu: baiti tiek lasīti serverī un nekad netiek sūtīti jums. Katra kontrolsumma tiek piedāvāta tikai tad, ja resursdatoram ir attiecīgais rīks."
             },
             "readOnlyIsLinkTarget": "Šī ir simboliskā saite: atļaujas pieder failam, uz kuru tā norāda. Lai tās mainītu, atveriet šī faila īpašības.",
             "exactBytes": "(baiti: {bytes})"
@@ -5328,7 +5337,7 @@
             "runAgain": "Palaist vēlreiz",
             "copyResult": "Kopēt rezultātu",
             "copied": "Kopēts",
-            "unsupportedProvider": "Šajā versijā Speed Test ir pieejams FTP, FTPS, SFTP, S3 un WebDAV.",
+            "unsupportedProvider": "Šajā versijā Speed Test ir pieejams FTP, FTPS, SFTP, SCP, S3 un WebDAV.",
             "noSupportedServers": "Neviens saglabātais serveris vēl neatbalsta Speed Test",
             "errorReadOnly": "Serveris neļauj rakstīt",
             "errorNotSupported": "Speed Test šī veida pakalpojumu sniedzējam nav pieejams",
@@ -5766,7 +5775,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Uzņēmums"
+                "parentCompany": "Uzņēmums",
+                "customScp": "SCP"
             },
             "healthCheck": "Pieejamības pārbaude",
             "storageVersioning": "Failu versijas: {size}",

@@ -1746,7 +1746,9 @@
             "transferComplete": "Skopiowane pliki: {count}",
             "permissionsSessionChanged": "Połączenie zmieniło się od otwarcia tego okna, więc nic nie zostało zmienione. Otwórz Uprawnienia ponownie na bieżącym połączeniu.",
             "createFailed": "Tworzenie nie powiodło się",
-            "unknownServer": "nieznanym serwerem"
+            "unknownServer": "nieznanym serwerem",
+            "scpModeTitle": "Połączono przez SCP",
+            "scpModeBody": "{host} nie ma SFTP, więc AeroFTP używa SCP w tym samym połączeniu."
         },
         "about": {
             "tagline": "Więcej niż FTP. Kompletny zestaw narzędzi dla deweloperów.",
@@ -2347,7 +2349,13 @@
             "imagekitDesc": "CDN multimediów + przestrzeń (20 GB za darmo)",
             "uploadcareDesc": "CDN multimediów w UE (3 GB za darmo)",
             "cloudinaryDesc": "CDN multimediów (25 kredytów/miesiąc za darmo)",
-            "backblazeDesc": "Natywne API Backblaze B2 v4"
+            "backblazeDesc": "Natywne API Backblaze B2 v4",
+            "scpDesc": "Kopiowanie plików przez SSH",
+            "scpTooltip": "SCP przez SSH, dla serwerów bez SFTP.",
+            "scpOnlyNote": "Używaj SCP tylko dla serwerów bez SFTP, na przykład routerów z OpenWrt.",
+            "allowScpFallback": "Zezwalaj na awaryjne użycie SCP",
+            "allowScpFallbackHint": "Jeśli serwer nie ma SFTP, połączenie jest kontynuowane przez SCP, tak jak robi to WinSCP.",
+            "discoverScp": "Kopiowanie plików przez SSH dla serwerów bez SFTP"
         },
         "shortcuts": {
             "title": "Skróty klawiszowe",
@@ -4316,7 +4324,8 @@
                 "koofr-proprietary": "Własny skrót Koofra. Można go porównywać tylko z innym skrótem Koofra.",
                 "github-blob-sha": "SHA-1 blobu git, obliczany z nagłówka git i zawartości, więc nie zgadza się ze zwykłym SHA-1 tego samego pliku.",
                 "immich-asset-checksum": "Suma kontrolna zasobu zapisywana przez Immich w chwili wysłania.",
-                "crypt-overlay-ciphertext": "Skrót obejmuje zaszyfrowane bajty przechowywane na serwerze."
+                "crypt-overlay-ciphertext": "Skrót obejmuje zaszyfrowane bajty przechowywane na serwerze.",
+                "scp-shell-digests": "Wyliczany przez zdalny host poleceniem sha256sum lub md5sum przez kanał SSH: bajty są czytane na serwerze i nigdy nie są wysyłane do Ciebie. Każda suma kontrolna jest oferowana tylko wtedy, gdy host ma odpowiednie narzędzie."
             },
             "readOnlyIsLinkTarget": "To jest dowiązanie symboliczne: uprawnienia należą do pliku, na który wskazuje. Aby je zmienić, otwórz właściwości tego pliku.",
             "exactBytes": "({bytes} B)"
@@ -5328,7 +5337,7 @@
             "runAgain": "Uruchom ponownie",
             "copyResult": "Kopiuj wynik",
             "copied": "Skopiowano",
-            "unsupportedProvider": "Speed Test jest dostępny dla FTP, FTPS, SFTP, S3 i WebDAV w tym wydaniu.",
+            "unsupportedProvider": "Speed Test jest dostępny dla FTP, FTPS, SFTP, SCP, S3 i WebDAV w tym wydaniu.",
             "noSupportedServers": "Żaden zapisany serwer nie obsługuje jeszcze Speed Test",
             "errorReadOnly": "Serwer nie zezwala na zapis",
             "errorNotSupported": "Speed Test nie jest dostępny dla tego typu dostawcy",
@@ -5766,7 +5775,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Firma"
+                "parentCompany": "Firma",
+                "customScp": "SCP"
             },
             "healthCheck": "Sprawdzanie dostępności",
             "storageVersioning": "Wersje plików: {size}",

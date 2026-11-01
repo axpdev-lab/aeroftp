@@ -1746,7 +1746,9 @@
             "transferComplete": "{count} fitxategi kopiatu dira",
             "permissionsSessionChanged": "Elkarrizketa-koadroa ireki zenetik konexioa aldatu da, beraz, ez da ezer aldatu. Ireki Baimenak berriro uneko konexioan.",
             "createFailed": "Sorrerak huts egin du",
-            "unknownServer": "Ezezaguna"
+            "unknownServer": "Ezezaguna",
+            "scpModeTitle": "SCP bidez konektatuta",
+            "scpModeBody": "{host} zerbitzariak ez du SFTPrik, beraz AeroFTP SCP erabiltzen ari da konexio berean."
         },
         "about": {
             "tagline": "FTP baino gehiago. Garatzaileentzako tresna-sorta osoa.",
@@ -2347,7 +2349,13 @@
             "imagekitDesc": "Multimedia CDN + biltegia (20 GB doan)",
             "uploadcareDesc": "EBko multimedia CDN (3 GB doan)",
             "cloudinaryDesc": "Multimedia CDN (25 kreditu hilean doan)",
-            "backblazeDesc": "Backblaze B2 API natiboa v4"
+            "backblazeDesc": "Backblaze B2 API natiboa v4",
+            "scpDesc": "Fitxategiak kopiatzea SSH bidez",
+            "scpTooltip": "SCP SSH bidez, SFTPrik ez duten zerbitzarientzat.",
+            "scpOnlyNote": "Erabili SCP SFTPrik gabeko zerbitzarietarako soilik, adibidez OpenWrt bideratzaileetarako.",
+            "allowScpFallback": "Baimendu SCP ordezko gisa",
+            "allowScpFallbackHint": "Zerbitzariak SFTPrik ez badu, SCP bidez jarraitzen du konexio berean, WinSCPk egiten duen bezala.",
+            "discoverScp": "Fitxategiak kopiatzea SSH bidez SFTPrik gabeko zerbitzarietarako"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",
@@ -4316,7 +4324,8 @@
                 "koofr-proprietary": "Koofren hash propioa. Koofren beste hash batekin soilik alderatzen da.",
                 "github-blob-sha": "git bloben SHA-1a, git goiburu bat eta edukia hartuta kalkulatua, beraz ez dator bat fitxategi beraren SHA-1 soilarekin.",
                 "immich-asset-checksum": "Immichek igotzean erregistratzen duen elementuaren kontrol-batura.",
-                "crypt-overlay-ciphertext": "Laburpenak zerbitzarian gordetako byte zifratuak hartzen ditu."
+                "crypt-overlay-ciphertext": "Laburpenak zerbitzarian gordetako byte zifratuak hartzen ditu.",
+                "scp-shell-digests": "Urruneko ostalariak sha256sum edo md5sum erabiliz kalkulatzen du, SSH kanal baten bidez: byteak zerbitzarian irakurtzen dira eta ez zaizkizu inoiz bidaltzen. Laburpen bakoitza ostalariak dagokion tresna duenean soilik eskaintzen da."
             },
             "readOnlyIsLinkTarget": "Hau esteka sinbolikoa da: baimenak seinalatzen duen fitxategiarenak dira. Aldatzeko, ireki fitxategi horren propietateak.",
             "exactBytes": "({bytes} byte)"
@@ -5347,7 +5356,7 @@
             "runAgain": "Exekutatu berriro",
             "copyResult": "Kopiatu emaitza",
             "copied": "Kopiatuta",
-            "unsupportedProvider": "Bertsio honetan Speed Test eskuragarri dago FTP, FTPS, SFTP, S3 eta WebDAV-rako.",
+            "unsupportedProvider": "Bertsio honetan Speed Test eskuragarri dago FTP, FTPS, SFTP, SCP, S3 eta WebDAV-rako.",
             "noSupportedServers": "Gordetako zerbitzaririk ez du oraindik Speed Test onartzen",
             "errorReadOnly": "Zerbitzariak ez du idazketa onartzen",
             "errorNotSupported": "Speed Test ez dago eskuragarri hornitzaile mota honentzat",
@@ -5785,7 +5794,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Enpresa"
+                "parentCompany": "Enpresa",
+                "customScp": "SCP"
             },
             "healthCheck": "Erabilgarritasun-egiaztapena",
             "storageVersioning": "Fitxategi-bertsioak: {size}",

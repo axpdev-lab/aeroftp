@@ -1746,7 +1746,9 @@
             "transferComplete": "Fișiere copiate: {count}",
             "permissionsSessionChanged": "Conexiunea s-a schimbat de când a fost deschis acest dialog, așa că nu s-a modificat nimic. Deschideți din nou Permisiuni pe conexiunea curentă.",
             "createFailed": "Crearea a eșuat",
-            "unknownServer": "Necunoscut"
+            "unknownServer": "Necunoscut",
+            "scpModeTitle": "Conectat cu SCP",
+            "scpModeBody": "{host} nu are SFTP, așa că AeroFTP folosește SCP pe aceeași conexiune."
         },
         "about": {
             "tagline": "Mai mult decât FTP. Un set complet de instrumente pentru dezvoltatori.",
@@ -2347,7 +2349,13 @@
             "imagekitDesc": "CDN media + stocare (20 GB gratuit)",
             "uploadcareDesc": "CDN media în UE (3 GB gratuit)",
             "cloudinaryDesc": "CDN media (25 de credite/lună gratuit)",
-            "backblazeDesc": "API nativ Backblaze B2 v4"
+            "backblazeDesc": "API nativ Backblaze B2 v4",
+            "scpDesc": "Copiere de fișiere prin SSH",
+            "scpTooltip": "SCP prin SSH, pentru servere fără SFTP.",
+            "scpOnlyNote": "Folosiți SCP doar pentru servere fără SFTP, de exemplu routere OpenWrt.",
+            "allowScpFallback": "Permite revenirea la SCP",
+            "allowScpFallbackHint": "Dacă serverul nu are SFTP, conexiunea continuă prin SCP, așa cum face WinSCP.",
+            "discoverScp": "Copiere de fișiere prin SSH pentru servere fără SFTP"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",
@@ -4316,7 +4324,8 @@
                 "koofr-proprietary": "Hashul propriu al Koofr. Se compară doar cu un alt hash Koofr.",
                 "github-blob-sha": "SHA-1-ul blobului git, calculat asupra unui antet git împreună cu conținutul, deci nu se potrivește cu un SHA-1 simplu al aceluiași fișier.",
                 "immich-asset-checksum": "Suma de control a elementului pe care Immich o înregistrează la încărcare.",
-                "crypt-overlay-ciphertext": "Hash-ul acoperă octeții criptați stocați pe server."
+                "crypt-overlay-ciphertext": "Hash-ul acoperă octeții criptați stocați pe server.",
+                "scp-shell-digests": "Calculat de gazda la distanță cu sha256sum sau md5sum printr-un canal SSH: octeții sunt citiți pe server și nu îți sunt trimiși niciodată. Fiecare rezumat este oferit doar dacă gazda are instrumentul corespunzător."
             },
             "readOnlyIsLinkTarget": "Aceasta este o legătură simbolică: permisiunile aparțin fișierului către care indică. Deschideți proprietățile acelui fișier pentru a le modifica.",
             "exactBytes": "(octeți: {bytes})"
@@ -5328,7 +5337,7 @@
             "runAgain": "Rulează din nou",
             "copyResult": "Copiază rezultatul",
             "copied": "Copiat",
-            "unsupportedProvider": "Speed Test este disponibil pentru FTP, FTPS, SFTP, S3 și WebDAV în această versiune.",
+            "unsupportedProvider": "Speed Test este disponibil pentru FTP, FTPS, SFTP, SCP, S3 și WebDAV în această versiune.",
             "noSupportedServers": "Niciun server salvat nu acceptă încă Speed Test",
             "errorReadOnly": "Serverul nu permite scrieri",
             "errorNotSupported": "Speed Test nu este disponibil pentru acest tip de furnizor",
@@ -5766,7 +5775,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Companie"
+                "parentCompany": "Companie",
+                "customScp": "SCP"
             },
             "healthCheck": "Verificarea disponibilității",
             "storageVersioning": "Versiuni fișier: {size}",

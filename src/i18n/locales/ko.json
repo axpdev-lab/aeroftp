@@ -1746,7 +1746,9 @@
             "transferComplete": "{count}개 파일을 복사했습니다",
             "permissionsSessionChanged": "이 대화상자를 연 이후 연결이 변경되어 아무것도 변경되지 않았습니다. 현재 연결에서 권한을 다시 여세요.",
             "createFailed": "생성 실패",
-            "unknownServer": "알 수 없는 서버"
+            "unknownServer": "알 수 없는 서버",
+            "scpModeTitle": "SCP로 연결됨",
+            "scpModeBody": "{host}에 SFTP가 없어 AeroFTP가 같은 연결에서 SCP를 사용합니다."
         },
         "about": {
             "tagline": "FTP 그 이상. 완벽한 개발자 툴킷.",
@@ -2347,7 +2349,13 @@
             "imagekitDesc": "미디어 CDN + 스토리지 (20 GB 무료)",
             "uploadcareDesc": "EU 미디어 CDN (3 GB 무료)",
             "cloudinaryDesc": "미디어 CDN (월 25 크레딧 무료)",
-            "backblazeDesc": "Backblaze B2 네이티브 API v4"
+            "backblazeDesc": "Backblaze B2 네이티브 API v4",
+            "scpDesc": "SSH를 통한 파일 복사",
+            "scpTooltip": "SSH를 통한 SCP, SFTP가 없는 서버용입니다.",
+            "scpOnlyNote": "SCP는 SFTP가 없는 서버(예: OpenWrt 라우터)에만 사용하세요.",
+            "allowScpFallback": "SCP 대체 허용",
+            "allowScpFallbackHint": "서버에 SFTP가 없으면 WinSCP처럼 같은 연결에서 SCP로 계속합니다.",
+            "discoverScp": "SFTP가 없는 서버를 위한 SSH 파일 복사"
         },
         "shortcuts": {
             "title": "단축키",
@@ -4316,7 +4324,8 @@
                 "koofr-proprietary": "Koofr 자체 해시입니다. 다른 Koofr 해시와만 비교할 수 있습니다.",
                 "github-blob-sha": "git blob의 SHA-1로, git 헤더와 내용을 대상으로 계산되므로 같은 파일의 단순 SHA-1과는 일치하지 않습니다.",
                 "immich-asset-checksum": "Immich가 업로드 시점에 기록하는 자산 체크섬입니다.",
-                "crypt-overlay-ciphertext": "다이제스트는 서버에 저장된 암호화된 바이트를 대상으로 합니다."
+                "crypt-overlay-ciphertext": "다이제스트는 서버에 저장된 암호화된 바이트를 대상으로 합니다.",
+                "scp-shell-digests": "원격 호스트가 SSH 채널을 통해 sha256sum 또는 md5sum으로 계산합니다. 바이트는 서버에서 읽히며 사용자에게 전송되지 않습니다. 각 다이제스트는 호스트에 해당 도구가 있을 때만 제공됩니다."
             },
             "readOnlyIsLinkTarget": "이 항목은 심볼릭 링크입니다: 권한은 링크가 가리키는 파일에 속합니다. 권한을 변경하려면 해당 파일의 속성을 여세요.",
             "exactBytes": "({bytes}바이트)"
@@ -5328,7 +5337,7 @@
             "runAgain": "다시 실행",
             "copyResult": "결과 복사",
             "copied": "복사됨",
-            "unsupportedProvider": "이 릴리스에서 Speed Test는 FTP, FTPS, SFTP, S3 및 WebDAV에 대해 사용할 수 있습니다.",
+            "unsupportedProvider": "이 릴리스에서 Speed Test는 FTP, FTPS, SFTP, SCP, S3 및 WebDAV에 대해 사용할 수 있습니다.",
             "noSupportedServers": "Speed Test를 지원하는 저장된 서버가 아직 없습니다",
             "errorReadOnly": "서버가 쓰기를 허용하지 않습니다",
             "errorNotSupported": "이 공급자 유형에는 Speed Test를 사용할 수 없습니다",
@@ -5766,7 +5775,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "회사"
+                "parentCompany": "회사",
+                "customScp": "SCP"
             },
             "healthCheck": "상태 확인",
             "storageVersioning": "파일 버전: {size}",

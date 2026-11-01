@@ -1746,7 +1746,9 @@
             "transferComplete": "{count} fájl másolva",
             "permissionsSessionChanged": "A kapcsolat megváltozott a párbeszédablak megnyitása óta, ezért semmi sem változott. Nyissa meg újra a Jogosultságokat az aktuális kapcsolaton.",
             "createFailed": "A létrehozás sikertelen",
-            "unknownServer": "Ismeretlen"
+            "unknownServer": "Ismeretlen",
+            "scpModeTitle": "Csatlakozva SCP-vel",
+            "scpModeBody": "A(z) {host} szerveren nincs SFTP, ezért az AeroFTP SCP-t használ ugyanazon a kapcsolaton."
         },
         "about": {
             "tagline": "Több mint FTP. Teljes fejlesztői eszközkészlet.",
@@ -2347,7 +2349,13 @@
             "imagekitDesc": "Média-CDN + tárhely (20 GB ingyen)",
             "uploadcareDesc": "EU-s média-CDN (3 GB ingyen)",
             "cloudinaryDesc": "Média-CDN (havi 25 kredit ingyen)",
-            "backblazeDesc": "Backblaze B2 natív API v4"
+            "backblazeDesc": "Backblaze B2 natív API v4",
+            "scpDesc": "Fájlmásolás SSH-n keresztül",
+            "scpTooltip": "SCP SSH-n keresztül, SFTP nélküli szerverekhez.",
+            "scpOnlyNote": "Az SCP-t csak SFTP nélküli szerverekhez használja, például OpenWrt routerekhez.",
+            "allowScpFallback": "SCP tartalék engedélyezése",
+            "allowScpFallbackHint": "Ha a szerveren nincs SFTP, a kapcsolat SCP-n folytatódik, ahogy a WinSCP is teszi.",
+            "discoverScp": "Fájlmásolás SSH-n keresztül SFTP nélküli szerverekhez"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",
@@ -4316,7 +4324,8 @@
                 "koofr-proprietary": "A Koofr saját hashe. Csak egy másik Koofr hashsel vethető össze.",
                 "github-blob-sha": "A git blob SHA-1 értéke, amelyet egy git fejlécre és a tartalomra számítanak, ezért nem egyezik ugyanannak a fájlnak az egyszerű SHA-1 értékével.",
                 "immich-asset-checksum": "Az elem ellenőrzőösszege, amelyet az Immich a feltöltéskor rögzít.",
-                "crypt-overlay-ciphertext": "A lenyomat a kiszolgálón tárolt titkosított bájtokra vonatkozik."
+                "crypt-overlay-ciphertext": "A lenyomat a kiszolgálón tárolt titkosított bájtokra vonatkozik.",
+                "scp-shell-digests": "A távoli gép számítja ki sha256sum vagy md5sum paranccsal egy SSH-csatornán: a bájtokat a kiszolgáló olvassa be, és soha nem küldi el Önnek. Minden ellenőrzőösszeg csak akkor érhető el, ha a gépen megvan a hozzá tartozó eszköz."
             },
             "readOnlyIsLinkTarget": "Ez egy szimbolikus link: a jogosultságok ahhoz a fájlhoz tartoznak, amelyre mutat. A módosításhoz nyissa meg az adott fájl tulajdonságait.",
             "exactBytes": "({bytes} bájt)"
@@ -5328,7 +5337,7 @@
             "runAgain": "Futtatás újra",
             "copyResult": "Eredmény másolása",
             "copied": "Másolva",
-            "unsupportedProvider": "A Speed Test ebben a kiadásban FTP, FTPS, SFTP, S3 és WebDAV esetén érhető el.",
+            "unsupportedProvider": "A Speed Test ebben a kiadásban FTP, FTPS, SFTP, SCP, S3 és WebDAV esetén érhető el.",
             "noSupportedServers": "Még egyetlen mentett kiszolgáló sem támogatja a Speed Testet",
             "errorReadOnly": "A kiszolgáló nem engedélyezi az írást",
             "errorNotSupported": "A Speed Test nem érhető el ehhez a szolgáltatótípushoz",
@@ -5766,7 +5775,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Anyavállalat"
+                "parentCompany": "Anyavállalat",
+                "customScp": "SCP"
             },
             "healthCheck": "Elérhetőség-ellenőrzés",
             "storageVersioning": "Fájlverziók: {size}",

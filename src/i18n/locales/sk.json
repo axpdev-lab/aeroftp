@@ -1746,7 +1746,9 @@
             "transferComplete": "Skopírované súbory: {count}",
             "permissionsSessionChanged": "Pripojenie sa od otvorenia tohto dialógu zmenilo, preto sa nič nezmenilo. Otvorte Oprávnenia znova na aktuálnom pripojení.",
             "createFailed": "Vytvorenie zlyhalo",
-            "unknownServer": "neznámemu serveru"
+            "unknownServer": "neznámemu serveru",
+            "scpModeTitle": "Pripojené cez SCP",
+            "scpModeBody": "{host} nemá SFTP, preto AeroFTP používa SCP na rovnakom pripojení."
         },
         "about": {
             "tagline": "Viac ako FTP. Kompletná sada nástrojov pre vývojárov.",
@@ -2347,7 +2349,13 @@
             "imagekitDesc": "Mediálna CDN + úložisko (20 GB zadarmo)",
             "uploadcareDesc": "Mediálna CDN v EÚ (3 GB zadarmo)",
             "cloudinaryDesc": "Mediálna CDN (25 kreditov/mesiac zadarmo)",
-            "backblazeDesc": "Natívne API Backblaze B2 v4"
+            "backblazeDesc": "Natívne API Backblaze B2 v4",
+            "scpDesc": "Kopírovanie súborov cez SSH",
+            "scpTooltip": "SCP cez SSH pre servery bez SFTP.",
+            "scpOnlyNote": "SCP používajte len pre servery bez SFTP, napríklad routery s OpenWrt.",
+            "allowScpFallback": "Povoliť záložné SCP",
+            "allowScpFallbackHint": "Ak server nemá SFTP, pripojenie pokračuje cez SCP, ako to robí WinSCP.",
+            "discoverScp": "Kopírovanie súborov cez SSH pre servery bez SFTP"
         },
         "shortcuts": {
             "title": "Klávesové skratky",
@@ -4316,7 +4324,8 @@
                 "koofr-proprietary": "Vlastný hash služby Koofr. Porovnáva sa len s iným hashom služby Koofr.",
                 "github-blob-sha": "SHA-1 objektu git blob, vypočítaná z hlavičky objektu a z jeho obsahu, takže sa nezhoduje s obyčajnou SHA-1 toho istého súboru.",
                 "immich-asset-checksum": "Kontrolný súčet položky, ktorý si Immich zaznamená pri nahraní.",
-                "crypt-overlay-ciphertext": "Odtlačok pokrýva zašifrované bajty uložené na serveri."
+                "crypt-overlay-ciphertext": "Odtlačok pokrýva zašifrované bajty uložené na serveri.",
+                "scp-shell-digests": "Vypočíta vzdialený hostiteľ pomocou sha256sum alebo md5sum cez SSH kanál: bajty sa čítajú na serveri a nikdy sa vám neposielajú. Každý odtlačok sa ponúka len vtedy, ak hostiteľ má príslušný nástroj."
             },
             "readOnlyIsLinkTarget": "Toto je symbolický odkaz: oprávnenia patria súboru, na ktorý ukazuje. Ak ich chcete zmeniť, otvorte vlastnosti daného súboru.",
             "exactBytes": "({bytes} B)"
@@ -5328,7 +5337,7 @@
             "runAgain": "Spustiť znova",
             "copyResult": "Kopírovať výsledok",
             "copied": "Skopírované",
-            "unsupportedProvider": "Speed Test je v tejto verzii dostupný pre FTP, FTPS, SFTP, S3 a WebDAV.",
+            "unsupportedProvider": "Speed Test je v tejto verzii dostupný pre FTP, FTPS, SFTP, SCP, S3 a WebDAV.",
             "noSupportedServers": "Žiadny uložený server zatiaľ nepodporuje Speed Test",
             "errorReadOnly": "Server nepovoľuje zápis",
             "errorNotSupported": "Speed Test nie je pre tento typ poskytovateľa dostupný",
@@ -5766,7 +5775,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Spoločnosť"
+                "parentCompany": "Spoločnosť",
+                "customScp": "SCP"
             },
             "healthCheck": "Kontrola dostupnosti",
             "storageVersioning": "Verzie súborov: {size}",

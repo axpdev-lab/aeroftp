@@ -1746,7 +1746,9 @@
             "transferComplete": "{count} skrár afritaðar",
             "permissionsSessionChanged": "Tengingin breyttist eftir að þessi gluggi var opnaður, þannig að engu var breytt. Opnaðu Heimildir aftur á núverandi tengingu.",
             "createFailed": "Stofnun mistókst",
-            "unknownServer": "Óþekkt"
+            "unknownServer": "Óþekkt",
+            "scpModeTitle": "Tengt með SCP",
+            "scpModeBody": "{host} hefur ekki SFTP, svo AeroFTP notar SCP á sömu tengingu."
         },
         "about": {
             "tagline": "Meira en FTP. Heildarverkfærapakki fyrir þróunaraðila.",
@@ -2347,7 +2349,13 @@
             "imagekitDesc": "Miðlunar-CDN + geymsla (20 GB ókeypis)",
             "uploadcareDesc": "Miðlunar-CDN í ESB (3 GB ókeypis)",
             "cloudinaryDesc": "Miðlunar-CDN (25 inneignir á mánuði ókeypis)",
-            "backblazeDesc": "Innbyggt API Backblaze B2 v4"
+            "backblazeDesc": "Innbyggt API Backblaze B2 v4",
+            "scpDesc": "Afritun skráa um SSH",
+            "scpTooltip": "SCP um SSH, fyrir netþjóna án SFTP.",
+            "scpOnlyNote": "Notaðu SCP aðeins fyrir netþjóna án SFTP, til dæmis OpenWrt-beina.",
+            "allowScpFallback": "Leyfa SCP til vara",
+            "allowScpFallbackHint": "Ef netþjónninn hefur ekki SFTP er haldið áfram um SCP á sömu tengingu, eins og WinSCP gerir.",
+            "discoverScp": "Afritun skráa um SSH fyrir netþjóna án SFTP"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -4316,7 +4324,8 @@
                 "koofr-proprietary": "Eigið tætigildi Koofr. Það er aðeins hægt að bera það saman við annað Koofr-tætigildi.",
                 "github-blob-sha": "SHA-1 git-blobsins, reiknað yfir git-haus og innihaldið, svo það passar ekki við venjulegt SHA-1 sömu skráar.",
                 "immich-asset-checksum": "Tékksumma efnisins sem Immich skráir við upphleðslu.",
-                "crypt-overlay-ciphertext": "Tætigildið nær yfir dulkóðuðu bætin sem geymd eru á þjóninum."
+                "crypt-overlay-ciphertext": "Tætigildið nær yfir dulkóðuðu bætin sem geymd eru á þjóninum.",
+                "scp-shell-digests": "Reiknað af fjarvélinni með sha256sum eða md5sum um SSH-rás: bætin eru lesin á þjóninum og eru aldrei send til þín. Hvert tætigildi er aðeins í boði þegar vélin hefur samsvarandi verkfæri."
             },
             "readOnlyIsLinkTarget": "Þetta er tákntengill: heimildirnar tilheyra skránni sem hann vísar á. Opnaðu eiginleika þeirrar skráar til að breyta þeim.",
             "exactBytes": "({bytes} bæti)"
@@ -5347,7 +5356,7 @@
             "runAgain": "Keyra aftur",
             "copyResult": "Afrita niðurstöðu",
             "copied": "Afritað",
-            "unsupportedProvider": "Speed Test er í þessari útgáfu í boði fyrir FTP, FTPS, SFTP, S3 og WebDAV.",
+            "unsupportedProvider": "Speed Test er í þessari útgáfu í boði fyrir FTP, FTPS, SFTP, SCP, S3 og WebDAV.",
             "noSupportedServers": "Enginn vistaður þjónn styður Speed Test enn",
             "errorReadOnly": "Þjónninn leyfir ekki skriftir",
             "errorNotSupported": "Speed Test er ekki í boði fyrir þessa tegund þjónustuveitanda",
@@ -5785,7 +5794,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Fyrirtæki"
+                "parentCompany": "Fyrirtæki",
+                "customScp": "SCP"
             },
             "healthCheck": "Aðgengisathugun",
             "storageVersioning": "Skráarútgáfur: {size}",

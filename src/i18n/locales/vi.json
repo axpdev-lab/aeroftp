@@ -1746,7 +1746,9 @@
             "transferComplete": "Đã sao chép {count} tệp",
             "permissionsSessionChanged": "Kết nối đã thay đổi kể từ khi hộp thoại này được mở, nên không có gì được thay đổi. Hãy mở lại Quyền trên kết nối hiện tại.",
             "createFailed": "Tạo thất bại",
-            "unknownServer": "Không xác định"
+            "unknownServer": "Không xác định",
+            "scpModeTitle": "Đã kết nối bằng SCP",
+            "scpModeBody": "{host} không có SFTP, nên AeroFTP đang dùng SCP trên cùng kết nối."
         },
         "about": {
             "tagline": "Hơn cả FTP. Bộ công cụ hoàn chỉnh cho nhà phát triển.",
@@ -2347,7 +2349,13 @@
             "imagekitDesc": "CDN đa phương tiện + lưu trữ (miễn phí 20 GB)",
             "uploadcareDesc": "CDN đa phương tiện tại EU (miễn phí 3 GB)",
             "cloudinaryDesc": "CDN đa phương tiện (miễn phí 25 tín dụng/tháng)",
-            "backblazeDesc": "API gốc Backblaze B2 v4"
+            "backblazeDesc": "API gốc Backblaze B2 v4",
+            "scpDesc": "Sao chép tệp qua SSH",
+            "scpTooltip": "SCP qua SSH, dành cho máy chủ không có SFTP.",
+            "scpOnlyNote": "Chỉ dùng SCP cho máy chủ không có SFTP, ví dụ bộ định tuyến OpenWrt.",
+            "allowScpFallback": "Cho phép dự phòng bằng SCP",
+            "allowScpFallbackHint": "Nếu máy chủ không có SFTP, kết nối sẽ tiếp tục qua SCP, như WinSCP vẫn làm.",
+            "discoverScp": "Sao chép tệp qua SSH cho máy chủ không có SFTP"
         },
         "shortcuts": {
             "title": "Phím tắt",
@@ -4316,7 +4324,8 @@
                 "koofr-proprietary": "Mã băm riêng của Koofr. Nó chỉ so sánh được với một mã băm Koofr khác.",
                 "github-blob-sha": "SHA-1 của git blob, tính trên phần đầu git cộng với nội dung, nên nó không khớp với SHA-1 thông thường của cùng tệp đó.",
                 "immich-asset-checksum": "Tổng kiểm tra của tài nguyên mà Immich ghi lại lúc tải lên.",
-                "crypt-overlay-ciphertext": "Mã băm bao trùm các byte đã mã hoá được lưu trên máy chủ."
+                "crypt-overlay-ciphertext": "Mã băm bao trùm các byte đã mã hoá được lưu trên máy chủ.",
+                "scp-shell-digests": "Do máy chủ từ xa tính bằng sha256sum hoặc md5sum qua một kênh SSH: các byte được đọc trên máy chủ và không bao giờ gửi tới bạn. Mỗi giá trị băm chỉ được cung cấp khi máy chủ có công cụ tương ứng."
             },
             "readOnlyIsLinkTarget": "Đây là liên kết tượng trưng: quyền thuộc về tệp mà nó trỏ tới. Mở thuộc tính của tệp đó để thay đổi.",
             "exactBytes": "({bytes} byte)"
@@ -5328,7 +5337,7 @@
             "runAgain": "Chạy lại",
             "copyResult": "Sao chép kết quả",
             "copied": "Đã sao chép",
-            "unsupportedProvider": "Speed Test có sẵn cho FTP, FTPS, SFTP, S3 và WebDAV trong bản phát hành này.",
+            "unsupportedProvider": "Speed Test có sẵn cho FTP, FTPS, SFTP, SCP, S3 và WebDAV trong bản phát hành này.",
             "noSupportedServers": "Chưa có máy chủ đã lưu nào hỗ trợ Speed Test",
             "errorReadOnly": "Máy chủ không cho phép ghi",
             "errorNotSupported": "Speed Test không khả dụng cho loại nhà cung cấp này",
@@ -5766,7 +5775,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Công ty"
+                "parentCompany": "Công ty",
+                "customScp": "SCP"
             },
             "healthCheck": "Kiểm tra tình trạng",
             "storageVersioning": "Phiên bản tệp: {size}",

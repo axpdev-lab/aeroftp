@@ -1746,7 +1746,9 @@
             "transferComplete": "คัดลอกไฟล์แล้ว {count} ไฟล์",
             "permissionsSessionChanged": "การเชื่อมต่อเปลี่ยนไปนับตั้งแต่เปิดกล่องโต้ตอบนี้ จึงไม่มีสิ่งใดถูกเปลี่ยนแปลง โปรดเปิดสิทธิ์อีกครั้งบนการเชื่อมต่อปัจจุบัน",
             "createFailed": "สร้างไม่สำเร็จ",
-            "unknownServer": "ไม่ทราบ"
+            "unknownServer": "ไม่ทราบ",
+            "scpModeTitle": "เชื่อมต่อด้วย SCP แล้ว",
+            "scpModeBody": "{host} ไม่มี SFTP ดังนั้น AeroFTP จึงใช้ SCP บนการเชื่อมต่อเดิม"
         },
         "about": {
             "tagline": "มากกว่า FTP ชุดเครื่องมือครบวงจรสำหรับนักพัฒนา",
@@ -2347,7 +2349,13 @@
             "imagekitDesc": "CDN สื่อ + พื้นที่เก็บข้อมูล (ฟรี 20 GB)",
             "uploadcareDesc": "CDN สื่อในสหภาพยุโรป (ฟรี 3 GB)",
             "cloudinaryDesc": "CDN สื่อ (ฟรี 25 เครดิต/เดือน)",
-            "backblazeDesc": "API ดั้งเดิมของ Backblaze B2 v4"
+            "backblazeDesc": "API ดั้งเดิมของ Backblaze B2 v4",
+            "scpDesc": "คัดลอกไฟล์ผ่าน SSH",
+            "scpTooltip": "SCP ผ่าน SSH สำหรับเซิร์ฟเวอร์ที่ไม่มี SFTP",
+            "scpOnlyNote": "ใช้ SCP เฉพาะกับเซิร์ฟเวอร์ที่ไม่มี SFTP เท่านั้น เช่น เราเตอร์ OpenWrt",
+            "allowScpFallback": "อนุญาตให้สลับไปใช้ SCP",
+            "allowScpFallbackHint": "หากเซิร์ฟเวอร์ไม่มี SFTP จะใช้ SCP ต่อบนการเชื่อมต่อเดิม เหมือนที่ WinSCP ทำ",
+            "discoverScp": "คัดลอกไฟล์ผ่าน SSH สำหรับเซิร์ฟเวอร์ที่ไม่มี SFTP"
         },
         "shortcuts": {
             "title": "แป้นพิมพ์ลัด",
@@ -4316,7 +4324,8 @@
                 "koofr-proprietary": "แฮชเฉพาะของ Koofr เทียบได้กับแฮช Koofr อีกค่าหนึ่งเท่านั้น",
                 "github-blob-sha": "SHA-1 ของ git blob ซึ่งคำนวณจากส่วนหัวของ git รวมกับเนื้อหา จึงไม่ตรงกับ SHA-1 ธรรมดาของไฟล์เดียวกัน",
                 "immich-asset-checksum": "ค่าตรวจสอบของสินทรัพย์ที่ Immich บันทึกไว้ตอนอัปโหลด",
-                "crypt-overlay-ciphertext": "แฮชครอบคลุมไบต์ที่เข้ารหัสซึ่งเก็บอยู่บนเซิร์ฟเวอร์"
+                "crypt-overlay-ciphertext": "แฮชครอบคลุมไบต์ที่เข้ารหัสซึ่งเก็บอยู่บนเซิร์ฟเวอร์",
+                "scp-shell-digests": "คำนวณโดยโฮสต์ปลายทางด้วย sha256sum หรือ md5sum ผ่านช่องทาง SSH ไบต์ถูกอ่านบนเซิร์ฟเวอร์และไม่เคยถูกส่งมาหาคุณ ค่าไดเจสต์แต่ละค่าจะแสดงให้เฉพาะเมื่อโฮสต์มีเครื่องมือนั้น"
             },
             "readOnlyIsLinkTarget": "นี่คือลิงก์สัญลักษณ์: สิทธิ์เป็นของไฟล์ที่ลิงก์นี้ชี้ไป เปิดคุณสมบัติของไฟล์นั้นเพื่อเปลี่ยนสิทธิ์",
             "exactBytes": "({bytes} ไบต์)"
@@ -5328,7 +5337,7 @@
             "runAgain": "เรียกใช้อีกครั้ง",
             "copyResult": "คัดลอกผลลัพธ์",
             "copied": "คัดลอกแล้ว",
-            "unsupportedProvider": "Speed Test ใช้ได้กับ FTP, FTPS, SFTP, S3 และ WebDAV ในเวอร์ชันนี้",
+            "unsupportedProvider": "Speed Test ใช้ได้กับ FTP, FTPS, SFTP, SCP, S3 และ WebDAV ในเวอร์ชันนี้",
             "noSupportedServers": "ยังไม่มีเซิร์ฟเวอร์ที่บันทึกไว้รองรับ Speed Test",
             "errorReadOnly": "เซิร์ฟเวอร์ไม่อนุญาตให้เขียน",
             "errorNotSupported": "Speed Test ไม่พร้อมใช้งานสำหรับผู้ให้บริการประเภทนี้",
@@ -5766,7 +5775,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "บริษัท"
+                "parentCompany": "บริษัท",
+                "customScp": "SCP"
             },
             "healthCheck": "การตรวจสอบสถานะ",
             "storageVersioning": "เวอร์ชันไฟล์: {size}",

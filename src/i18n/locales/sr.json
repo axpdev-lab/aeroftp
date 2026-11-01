@@ -1746,7 +1746,9 @@
             "transferComplete": "Копиране датотеке: {count}",
             "permissionsSessionChanged": "Веза се променила откако је овај дијалог отворен, па ништа није промењено. Поново отворите Дозволе на тренутној вези.",
             "createFailed": "Креирање није успело",
-            "unknownServer": "непознати сервер"
+            "unknownServer": "непознати сервер",
+            "scpModeTitle": "Повезано преко SCP-а",
+            "scpModeBody": "{host} нема SFTP, па AeroFTP користи SCP на истој вези."
         },
         "about": {
             "tagline": "Више од FTP-а. Комплетан развојни алат.",
@@ -2347,7 +2349,13 @@
             "imagekitDesc": "Медијски CDN + складиште (20 GB бесплатно)",
             "uploadcareDesc": "Медијски CDN у ЕУ (3 GB бесплатно)",
             "cloudinaryDesc": "Медијски CDN (25 кредита месечно бесплатно)",
-            "backblazeDesc": "Изворни Backblaze B2 API v4"
+            "backblazeDesc": "Изворни Backblaze B2 API v4",
+            "scpDesc": "Копирање датотека преко SSH-а",
+            "scpTooltip": "SCP преко SSH-а, за сервере без SFTP-а.",
+            "scpOnlyNote": "Користите SCP само за сервере без SFTP-а, на пример OpenWrt рутере.",
+            "allowScpFallback": "Дозволи SCP као резерву",
+            "allowScpFallbackHint": "Ако сервер нема SFTP, веза се наставља преко SCP-а, као што то ради WinSCP.",
+            "discoverScp": "Копирање датотека преко SSH-а за сервере без SFTP-а"
         },
         "shortcuts": {
             "title": "Пречице на тастатури",
@@ -4316,7 +4324,8 @@
                 "koofr-proprietary": "Сопствени хеш сервиса Koofr. Пореди се само са другим Koofr хешем.",
                 "github-blob-sha": "SHA-1 git блоба, израчунат над git заглављем и садржајем, па се не поклапа са обичним SHA-1 исте датотеке.",
                 "immich-asset-checksum": "Контролна сума ставке коју Immich бележи приликом отпремања.",
-                "crypt-overlay-ciphertext": "Хеш покрива шифроване бајтове сачуване на серверу."
+                "crypt-overlay-ciphertext": "Хеш покрива шифроване бајтове сачуване на серверу.",
+                "scp-shell-digests": "Рачуна га удаљени хост помоћу sha256sum или md5sum преко SSH канала: бајтови се читају на серверу и никада вам се не шаљу. Свака контролна сума нуди се само ако хост има одговарајући алат."
             },
             "readOnlyIsLinkTarget": "Ово је симболичка веза: дозволе припадају датотеци на коју показује. Да бисте их променили, отворите својства те датотеке.",
             "exactBytes": "({bytes} B)"
@@ -5328,7 +5337,7 @@
             "runAgain": "Покрени поново",
             "copyResult": "Копирај резултат",
             "copied": "Копирано",
-            "unsupportedProvider": "Speed Test је у овом издању доступан за FTP, FTPS, SFTP, S3 и WebDAV.",
+            "unsupportedProvider": "Speed Test је у овом издању доступан за FTP, FTPS, SFTP, SCP, S3 и WebDAV.",
             "noSupportedServers": "Ниједан сачувани сервер још не подржава Speed Test",
             "errorReadOnly": "Сервер не дозвољава уписивање",
             "errorNotSupported": "Speed Test није доступан за овај тип провајдера",
@@ -5766,7 +5775,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Компанија"
+                "parentCompany": "Компанија",
+                "customScp": "SCP"
             },
             "healthCheck": "Провера доступности",
             "storageVersioning": "Верзије датотека: {size}",

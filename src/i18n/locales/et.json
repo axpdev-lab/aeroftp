@@ -1746,7 +1746,9 @@
             "transferComplete": "Kopeeriti {count} faili",
             "permissionsSessionChanged": "Ühendus muutus pärast selle dialoogi avamist, seega midagi ei muudetud. Ava Õigused uuesti praeguse ühenduse jaoks.",
             "createFailed": "Loomine ebaõnnestus",
-            "unknownServer": "Tundmatu"
+            "unknownServer": "Tundmatu",
+            "scpModeTitle": "Ühendatud SCP-ga",
+            "scpModeBody": "Serveril {host} pole SFTP-d, seega kasutab AeroFTP sama ühenduse kaudu SCP-d."
         },
         "about": {
             "tagline": "Rohkem kui FTP. Täielik arendustööriistade komplekt.",
@@ -2347,7 +2349,13 @@
             "imagekitDesc": "Meedia-CDN + salvestusruum (20 GB tasuta)",
             "uploadcareDesc": "EL-i meedia-CDN (3 GB tasuta)",
             "cloudinaryDesc": "Meedia-CDN (25 krediiti kuus tasuta)",
-            "backblazeDesc": "Backblaze B2 algupärane API v4"
+            "backblazeDesc": "Backblaze B2 algupärane API v4",
+            "scpDesc": "Failide kopeerimine SSH kaudu",
+            "scpTooltip": "SCP üle SSH serveritele, millel pole SFTP-d.",
+            "scpOnlyNote": "Kasuta SCP-d ainult serverite puhul, millel pole SFTP-d, näiteks OpenWrt ruuterid.",
+            "allowScpFallback": "Luba SCP varulahendusena",
+            "allowScpFallbackHint": "Kui serveril pole SFTP-d, jätkatakse SCP kaudu sama ühendusega, nagu teeb WinSCP.",
+            "discoverScp": "Failide kopeerimine SSH kaudu serveritele, millel pole SFTP-d"
         },
         "shortcuts": {
             "title": "Kiirklahvid",
@@ -4316,7 +4324,8 @@
                 "koofr-proprietary": "Koofri enda räsi. Seda saab võrrelda ainult teise Koofri räsiga.",
                 "github-blob-sha": "git-blobi SHA-1, arvutatud git-päise ja sisu põhjal, seega ei klapi see sama faili tavalise SHA-1-ga.",
                 "immich-asset-checksum": "Üksuse kontrollsumma, mille Immich üleslaadimisel kirja paneb.",
-                "crypt-overlay-ciphertext": "Räsi katab serveris hoitavaid krüpteeritud baite."
+                "crypt-overlay-ciphertext": "Räsi katab serveris hoitavaid krüpteeritud baite.",
+                "scp-shell-digests": "Arvutab kaugmasin käsuga sha256sum või md5sum üle SSH-kanali: baite loetakse serveris ja neid ei saadeta kunagi teile. Iga räsi pakutakse ainult siis, kui masinal on vastav tööriist."
             },
             "readOnlyIsLinkTarget": "See on sümbolviit: õigused kuuluvad failile, millele see osutab. Nende muutmiseks ava selle faili omadused.",
             "exactBytes": "({bytes} baiti)"
@@ -5328,7 +5337,7 @@
             "runAgain": "Käivita uuesti",
             "copyResult": "Kopeeri tulemus",
             "copied": "Kopeeritud",
-            "unsupportedProvider": "Selles versioonis on Speed Test saadaval FTP, FTPS, SFTP, S3 ja WebDAV jaoks.",
+            "unsupportedProvider": "Selles versioonis on Speed Test saadaval FTP, FTPS, SFTP, SCP, S3 ja WebDAV jaoks.",
             "noSupportedServers": "Ükski salvestatud server ei toeta veel Speed Testi",
             "errorReadOnly": "Server ei luba kirjutamist",
             "errorNotSupported": "Speed Test pole selle teenusetüübi jaoks saadaval",
@@ -5766,7 +5775,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Ettevõte"
+                "parentCompany": "Ettevõte",
+                "customScp": "SCP"
             },
             "healthCheck": "Saadavuse kontroll",
             "storageVersioning": "Faili versioonid: {size}",

@@ -1746,7 +1746,9 @@
             "transferComplete": "{count} fail disalin",
             "permissionsSessionChanged": "Sambungan telah berubah sejak dialog ini dibuka, jadi tiada apa yang diubah. Buka Kebenaran semula pada sambungan semasa.",
             "createFailed": "Gagal mencipta",
-            "unknownServer": "Tidak diketahui"
+            "unknownServer": "Tidak diketahui",
+            "scpModeTitle": "Disambungkan dengan SCP",
+            "scpModeBody": "{host} tiada SFTP, jadi AeroFTP menggunakan SCP pada sambungan yang sama."
         },
         "about": {
             "tagline": "Lebih daripada FTP. Kit alat lengkap untuk pembangun.",
@@ -2347,7 +2349,13 @@
             "imagekitDesc": "CDN media + storan (20 GB percuma)",
             "uploadcareDesc": "CDN media EU (3 GB percuma)",
             "cloudinaryDesc": "CDN media (25 kredit/bulan percuma)",
-            "backblazeDesc": "API asli Backblaze B2 v4"
+            "backblazeDesc": "API asli Backblaze B2 v4",
+            "scpDesc": "Salinan fail melalui SSH",
+            "scpTooltip": "SCP melalui SSH, untuk pelayan tanpa SFTP.",
+            "scpOnlyNote": "Gunakan SCP hanya untuk pelayan tanpa SFTP, contohnya penghala OpenWrt.",
+            "allowScpFallback": "Benarkan SCP sebagai sandaran",
+            "allowScpFallbackHint": "Jika pelayan tiada SFTP, sambungan diteruskan melalui SCP, seperti yang dilakukan WinSCP.",
+            "discoverScp": "Salinan fail melalui SSH untuk pelayan tanpa SFTP"
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",
@@ -4316,7 +4324,8 @@
                 "koofr-proprietary": "Hash milik Koofr sendiri. Ia hanya boleh dibandingkan dengan hash Koofr yang lain.",
                 "github-blob-sha": "SHA-1 blob git, dikira ke atas pengepala git serta kandungannya, jadi ia tidak sepadan dengan SHA-1 biasa bagi fail yang sama.",
                 "immich-asset-checksum": "Checksum aset yang direkodkan Immich semasa muat naik.",
-                "crypt-overlay-ciphertext": "Hash meliputi bait disulitkan yang disimpan pada pelayan."
+                "crypt-overlay-ciphertext": "Hash meliputi bait disulitkan yang disimpan pada pelayan.",
+                "scp-shell-digests": "Dikira oleh hos jauh dengan sha256sum atau md5sum melalui saluran SSH: bait dibaca di pelayan dan tidak pernah dihantar kepada anda. Setiap digest hanya ditawarkan jika hos mempunyai alat yang berkaitan."
             },
             "readOnlyIsLinkTarget": "Ini ialah pautan simbolik: kebenaran milik fail yang ditudingnya. Buka sifat fail itu untuk mengubahnya.",
             "exactBytes": "({bytes} bait)"
@@ -5328,7 +5337,7 @@
             "runAgain": "Jalankan semula",
             "copyResult": "Salin hasil",
             "copied": "Disalin",
-            "unsupportedProvider": "Speed Test tersedia untuk FTP, FTPS, SFTP, S3 dan WebDAV dalam keluaran ini.",
+            "unsupportedProvider": "Speed Test tersedia untuk FTP, FTPS, SFTP, SCP, S3 dan WebDAV dalam keluaran ini.",
             "noSupportedServers": "Belum ada pelayan tersimpan yang menyokong Speed Test",
             "errorReadOnly": "Pelayan tidak membenarkan tulisan",
             "errorNotSupported": "Speed Test tidak tersedia untuk jenis penyedia ini",
@@ -5766,7 +5775,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Syarikat induk"
+                "parentCompany": "Syarikat induk",
+                "customScp": "SCP"
             },
             "healthCheck": "Pemeriksaan kesihatan",
             "storageVersioning": "Versi fail: {size}",

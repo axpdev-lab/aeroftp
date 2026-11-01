@@ -1746,7 +1746,9 @@
             "transferComplete": "{count} (na) file ang nakopya",
             "permissionsSessionChanged": "Nagbago ang koneksyon mula nang buksan ang dialog na ito, kaya walang binago. Buksan muli ang Mga Pahintulot sa kasalukuyang koneksyon.",
             "createFailed": "Nabigo ang paglikha",
-            "unknownServer": "Hindi kilala"
+            "unknownServer": "Hindi kilala",
+            "scpModeTitle": "Nakakonekta gamit ang SCP",
+            "scpModeBody": "Walang SFTP ang {host}, kaya gumagamit ang AeroFTP ng SCP sa parehong koneksyon."
         },
         "about": {
             "tagline": "Higit pa sa FTP. Isang kumpletong developer toolkit.",
@@ -2347,7 +2349,13 @@
             "imagekitDesc": "Media CDN + imbakan (20 GB libre)",
             "uploadcareDesc": "Media CDN sa EU (3 GB libre)",
             "cloudinaryDesc": "Media CDN (25 kredito bawat buwan libre)",
-            "backblazeDesc": "Katutubong API ng Backblaze B2 v4"
+            "backblazeDesc": "Katutubong API ng Backblaze B2 v4",
+            "scpDesc": "Pagkopya ng file sa pamamagitan ng SSH",
+            "scpTooltip": "SCP sa SSH, para sa mga server na walang SFTP.",
+            "scpOnlyNote": "Gamitin lang ang SCP para sa mga server na walang SFTP, halimbawa ang mga OpenWrt router.",
+            "allowScpFallback": "Payagan ang SCP bilang kapalit",
+            "allowScpFallbackHint": "Kung walang SFTP ang server, magpapatuloy ang koneksyon sa SCP, gaya ng ginagawa ng WinSCP.",
+            "discoverScp": "Pagkopya ng file sa SSH para sa mga server na walang SFTP"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -4316,7 +4324,8 @@
                 "koofr-proprietary": "Sariling hash ng Koofr. Maihahambing lang ito sa ibang hash ng Koofr.",
                 "github-blob-sha": "Ito ang SHA-1 ng git blob, na kinakalkula mula sa isang git header kasama ang nilalaman, kaya hindi ito tumutugma sa payak na SHA-1 ng parehong file.",
                 "immich-asset-checksum": "Ang checksum ng asset na itinatala ng Immich sa oras ng pag-upload.",
-                "crypt-overlay-ciphertext": "Sumasaklaw ang digest sa mga naka-encrypt na byte na nakaimbak sa server."
+                "crypt-overlay-ciphertext": "Sumasaklaw ang digest sa mga naka-encrypt na byte na nakaimbak sa server.",
+                "scp-shell-digests": "Kinakalkula ng malayong host gamit ang sha256sum o md5sum sa isang SSH channel: binabasa ang mga byte sa server at hindi kailanman ipinapadala sa iyo. Iniaalok lang ang bawat digest kung nasa host ang kaukulang tool."
             },
             "readOnlyIsLinkTarget": "Ito ay isang symbolic link: ang mga pahintulot ay pagmamay-ari ng file na itinuturo nito. Buksan ang mga katangian ng file na iyon upang baguhin ang mga ito.",
             "exactBytes": "({bytes} byte)"
@@ -5347,7 +5356,7 @@
             "runAgain": "Patakbuhin muli",
             "copyResult": "Kopyahin ang resulta",
             "copied": "Nakopya",
-            "unsupportedProvider": "Available ang Speed Test para sa FTP, FTPS, SFTP, S3, at WebDAV sa release na ito.",
+            "unsupportedProvider": "Available ang Speed Test para sa FTP, FTPS, SFTP, SCP, S3, at WebDAV sa release na ito.",
             "noSupportedServers": "Wala pang naka-save na server na sumusuporta sa Speed Test",
             "errorReadOnly": "Hindi pinapayagan ng server ang pagsusulat",
             "errorNotSupported": "Hindi available ang Speed Test para sa uri ng provider na ito",
@@ -5785,7 +5794,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Kumpanya"
+                "parentCompany": "Kumpanya",
+                "customScp": "SCP"
             },
             "healthCheck": "Health check",
             "storageVersioning": "Mga bersyon ng file: {size}",
