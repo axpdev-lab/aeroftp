@@ -1150,10 +1150,12 @@ pub(super) fn scratch_dir_error(
     start_folder: &str,
     error: &ProviderError,
 ) -> String {
-    let start = if start_folder.trim().is_empty() {
+    // As given: a start folder `team ` is not `team`. Only an empty one is
+    // the root the session starts in.
+    let start = if start_folder.is_empty() {
         "/"
     } else {
-        start_folder.trim()
+        start_folder
     };
     let place = if test_root.starts_with('/') {
         String::new()
