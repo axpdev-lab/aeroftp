@@ -1515,7 +1515,14 @@ impl FileLuProvider {
             }
         }
         if let Some(old) = replaced_code.filter(|old| old != uploaded_code) {
-            if listed(&old).is_some() {
+            if listed(uploaded_code).is_none() {
+                // The new file is not where it was sent: the old one is then
+                // the only copy under this name, and it stays.
+                warn_user(format!(
+                    "FileLu: {target} was uploaded, but the new file is not in the folder \
+                     listing; the file it replaces was not removed"
+                ));
+            } else if listed(&old).is_some() {
                 let url = self.api_url_with("file/remove", &[("file_code", &old), ("remove", "1")]);
                 let removed = match self.get_with_retry(&url).await {
                     Ok(resp) => Self::ensure_api_ok(resp).await,
@@ -1780,6 +1787,22 @@ impl FileLuProvider {
     }
 
     /// List all deleted files (trash).
+    /// Purge the trashed file with `code`, only if the trash lists it under
+    /// the name of `norm`. Ok(false) when it is not there (restored, purged
+    /// elsewhere, or another file).
+    async fn purge_trashed(&mut self, norm: &str, code: &str) -> Result<bool, ProviderError> {
+        let basename = norm.trim_end_matches('/').rsplit('/').next().unwrap_or("");
+        let deleted = self.list_deleted_files().await?;
+        let listed = deleted
+            .iter()
+            .any(|e| e.file_code.as_deref() == Some(code) && e.name.as_deref() == Some(basename));
+        if !listed {
+            return Ok(false);
+        }
+        self.permanent_delete_file(code).await?;
+        Ok(true)
+    }
+
     pub async fn list_deleted_files(&mut self) -> Result<Vec<DeletedFileEntry>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -2315,8 +2338,8 @@ impl StorageProvider for FileLuProvider {
         let entry = self.resolve_path_entry(&norm).await?;
         self.remove_entry(&entry).await?;
         if !entry.is_dir && !entry.file_code.is_empty() {
-            // Bounded like the path cache. Losing the record only makes a
-            // later purge fall back to a name only one trashed file carries.
+            // Bounded like the path cache. A lost record only means a later
+            // purge of that path purges nothing.
             if self.trashed_codes.len() >= PATH_CACHE_MAX {
                 self.trashed_codes.clear();
             }
@@ -2354,51 +2377,57 @@ impl StorageProvider for FileLuProvider {
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
         // FileLu: `files/deleted` lists trashed FILES by name and file code
-        // only, with no folder, so two trashed `a.txt` cannot be told apart
-        // by name. The file code recorded when this session trashed the path
-        // names the right one; without it, a name only one trashed file
-        // carries is used, and a name several carry is left alone. Folders
-        // fall back to Ok(false): the API has no `folder/permanent_delete`.
+        // only, with no folder, so a name never says which trashed file it is:
+        // the only `a.txt` in the trash can come from another folder. Only the
+        // file code recorded when this session trashed the path is purged;
+        // without one nothing is. Folders fall back to Ok(false): the API has
+        // no `folder/permanent_delete`.
         let norm = self.resolve_path(path);
-        let basename = norm.trim_end_matches('/').rsplit('/').next().unwrap_or("");
-        if basename.is_empty() {
+        let Some(code) = self.trashed_codes.get(&norm).cloned() else {
             return Ok(false);
-        }
-        let deleted = self.list_deleted_files().await?;
-        let in_trash = |code: &str| deleted.iter().any(|e| e.file_code.as_deref() == Some(code));
-        let code = match self.trashed_codes.get(&norm).cloned() {
-            Some(code) if in_trash(&code) => Some(code),
-            Some(_) => {
-                // Restored, or purged elsewhere: the record names nothing now.
-                self.trashed_codes.remove(&norm);
-                None
-            }
-            None => {
-                let mut named = deleted
-                    .iter()
-                    .filter(|e| e.name.as_deref() == Some(basename))
-                    .filter_map(|e| e.file_code.clone());
-                match (named.next(), named.next()) {
-                    (Some(only), None) => Some(only),
-                    (Some(_), Some(_)) => {
-                        warn_user(format!(
-                            "FileLu: the trash holds several files named '{basename}' and does not \
-                             say which folder each came from; {norm} was not purged"
-                        ));
-                        None
-                    }
-                    _ => None,
-                }
-            }
         };
-        match code {
-            Some(c) => {
-                self.permanent_delete_file(&c).await?;
-                self.trashed_codes.remove(&norm);
-                Ok(true)
-            }
-            None => Ok(false),
+        let purged = self.purge_trashed(&norm, &code).await?;
+        // Purged, or no longer in the trash (restored, or purged elsewhere):
+        // either way the record names nothing now.
+        self.trashed_codes.remove(&norm);
+        Ok(purged)
+    }
+
+    /// The file code of each live file, taken before it is deleted, so that
+    /// the purge afterwards can name exactly that trashed file. A folder or a
+    /// path that is not there has none.
+    async fn capture_trash_identities(
+        &mut self,
+        paths: &[String],
+    ) -> Vec<Result<Option<String>, ProviderError>> {
+        let mut out = Vec::with_capacity(paths.len());
+        for path in paths {
+            let norm = self.resolve_path(path);
+            out.push(match self.resolve_path_entry(&norm).await {
+                Ok(entry) if !entry.is_dir && !entry.file_code.is_empty() => {
+                    Ok(Some(entry.file_code))
+                }
+                Ok(_) | Err(ProviderError::NotFound(_)) => Ok(None),
+                Err(e) => Err(e),
+            });
         }
+        out
+    }
+
+    /// With an identity, purges the trashed file with that code and the
+    /// path's name, and nothing else.
+    async fn delete_permanent_with_identity(
+        &mut self,
+        path: &str,
+        identity: Option<&str>,
+    ) -> Result<bool, ProviderError> {
+        let Some(code) = identity else {
+            return self.delete_permanent(path).await;
+        };
+        let norm = self.resolve_path(path);
+        let purged = self.purge_trashed(&norm, code).await?;
+        self.trashed_codes.remove(&norm);
+        Ok(purged)
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
@@ -4141,6 +4170,32 @@ mod tests {
         assert!(removes[0].1.contains("file_code=OLD"), "{calls:?}");
     }
 
+    /// A new file missing from the folder after the upload leaves the old one
+    /// as the only copy under the name: it is kept, and the call warns.
+    #[tokio::test]
+    async fn a_replaced_file_is_kept_when_the_new_one_is_not_listed() {
+        let warnings = super::super::CallWarnings::default();
+        let (outcome, calls) = warnings
+            .scope(upload_into_d(
+                "f.txt",
+                &[("f.txt", "OLD")],
+                &[("f.txt", "OLD")],
+            ))
+            .await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert!(
+            !calls.iter().any(|c| c.contains("file/remove")),
+            "{calls:?}"
+        );
+        let reported = warnings.take();
+        assert!(
+            reported
+                .iter()
+                .any(|w| w.contains("/d/f.txt") && w.contains("not in the folder listing")),
+            "{reported:?}"
+        );
+    }
+
     /// A name the upload stored differently could never be found again under
     /// the one asked for, and every later run uploaded it once more. The
     /// copy goes to the trash and the upload fails, naming both.
@@ -4322,22 +4377,62 @@ mod tests {
         assert!(!provider.trashed_codes.contains_key("/d/a.txt"));
     }
 
-    /// Without a recorded code a name only one trashed file carries is
-    /// purged, and a name several carry is left alone: picking one of them
-    /// could destroy another folder's file for good.
+    /// The trash names no folder, so without a recorded code nothing is
+    /// purged, not even the only trashed file with the name: it can come
+    /// from another folder.
     #[tokio::test]
-    async fn delete_permanent_by_name_only_when_the_name_is_unique() {
-        let (mut provider, calls) = provider_with_trash(&[("a.txt", "ONLY")]).await;
-        assert!(provider.delete_permanent("/d/a.txt").await.unwrap());
+    async fn delete_permanent_never_purges_by_name_alone() {
+        let unique: &'static [(&str, &str)] = &[("a.txt", "ONLY")];
+        let shared: &'static [(&str, &str)] = &[("a.txt", "ONE"), ("a.txt", "TWO")];
+        for trash in [unique, shared] {
+            let (mut provider, calls) = provider_with_trash(trash).await;
+            assert!(!provider.delete_permanent("/d/a.txt").await.unwrap());
+            assert!(purged(&calls).is_empty(), "{:?}", calls.lock().unwrap());
+        }
+    }
+
+    /// The identity taken before the delete is the file code; the purge after
+    /// it removes the trashed file with that code and that name, and only it.
+    #[tokio::test]
+    async fn the_identity_captured_before_a_delete_names_the_purge() {
+        let (mut provider, calls) =
+            provider_with_trash(&[("a.txt", "OTHER"), ("a.txt", "MINE"), ("b.txt", "B")]).await;
+        provider.path_cache.insert(
+            "/d/a.txt".to_string(),
+            CacheEntry {
+                is_dir: false,
+                fld_id: 7,
+                fld_token: None,
+                file_code: "MINE".to_string(),
+                size: 1,
+                modified: None,
+                hash: None,
+            },
+        );
+        let identities = provider
+            .capture_trash_identities(&["/d/a.txt".to_string(), "/d".to_string()])
+            .await;
+        assert!(
+            matches!(identities[0], Ok(Some(ref c)) if c == "MINE"),
+            "{identities:?}"
+        );
+        assert!(matches!(identities[1], Ok(None)), "{identities:?}");
+
+        assert!(provider
+            .delete_permanent_with_identity("/d/a.txt", Some("MINE"))
+            .await
+            .unwrap());
         assert_eq!(
             purged(&calls),
-            ["/api/file/permanent_delete?file_code=ONLY"]
+            ["/api/file/permanent_delete?file_code=MINE"]
         );
 
-        let (mut provider, calls) =
-            provider_with_trash(&[("a.txt", "ONE"), ("a.txt", "TWO")]).await;
-        assert!(!provider.delete_permanent("/d/a.txt").await.unwrap());
-        assert!(purged(&calls).is_empty(), "{:?}", calls.lock().unwrap());
+        // A code the trash lists under another name is not this path's file.
+        assert!(!provider
+            .delete_permanent_with_identity("/d/a.txt", Some("B"))
+            .await
+            .unwrap());
+        assert_eq!(purged(&calls).len(), 1, "{:?}", calls.lock().unwrap());
     }
 
     /// A recorded code no longer in the trash (restored, or purged on the
