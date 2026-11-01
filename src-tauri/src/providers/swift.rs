@@ -1331,7 +1331,7 @@ impl StorageProvider for SwiftProvider {
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         // `.` is the folder `cd` reached; `normalize_path` alone reads it as the
         // container root, so every folder entered in the GUI showed the root.
-        let prefix = if path.is_empty() || path == "." {
+        let prefix = if path.is_empty() || path == "." || path == "./" {
             Self::normalize_path(&self.current_path)
         } else {
             Self::normalize_path(path)
@@ -2892,6 +2892,8 @@ mod tests {
         p.cd("/d").await.expect("the folder");
         let inside = p.list(".").await.expect("the folder");
         assert_eq!(inside[0].path, "/d/a.txt");
+        let again = p.list("./").await.expect("the folder");
+        assert_eq!(again[0].path, "/d/a.txt");
         p.cd("/").await.expect("the root");
         let top = p.list(".").await.expect("the root");
         assert_eq!(top[0].path, "/top.txt");

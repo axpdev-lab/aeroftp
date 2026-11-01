@@ -581,7 +581,7 @@ impl S3Provider {
         }
         let xml = String::from_utf8(bytes)
             .map_err(|_| ProviderError::ParseError("Worker S3 list is not UTF-8".into()))?;
-        let (entries, next) = self.parse_list_response(&xml, false)?;
+        let (entries, next) = self.parse_listing_of(&xml, false, &prefix)?;
         if entries.iter().any(|entry| {
             !entry
                 .path
@@ -10763,6 +10763,35 @@ mod tests {
                 .any(|entry| entry.is_dir && entry.path.contains("d1/d2")),
             "the only thing this bucket holds is the marker, and the listing dropped it: {entries:?}"
         );
+    }
+
+    /// A worker listing leaves out only the listed folder too: an object named
+    /// like the current folder is an entry of the folder above it.
+    #[tokio::test]
+    async fn a_worker_listing_above_the_current_folder_keeps_an_object_named_like_it() {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |_req: axum::extract::Request| async move {
+                axum::http::Response::new(axum::body::Body::from(
+                    "<ListBucketResult><Contents><Key>top/sub</Key><Size>1</Size></Contents></ListBucketResult>",
+                ))
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.config.prefix = Some("top".to_string());
+        provider.current_prefix = "top/sub".to_string();
+        let (entries, _) = provider
+            .list_worker_capped("/", 10)
+            .await
+            .expect("the listing answers");
+        server.abort();
+        assert_eq!(entries.len(), 1, "{entries:?}");
+        assert_eq!(entries[0].path, "/top/sub");
     }
 
     /// The marker left out is the listed folder's. After a `cd`, a listing of
