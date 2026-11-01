@@ -92,6 +92,15 @@ plugs:
     target: $SNAP/graphics
     default-provider: mesa-core22
 
+# tauri-plugin-single-instance asks for this name on the session bus. Without the slot
+# AppArmor denies it, every launch is a new instance and a second launch stays
+# running with no window because the UI port is taken.
+slots:
+  single-instance:
+    interface: dbus
+    bus: session
+    name: app.aeroftp.AeroFTP.SingleInstance
+
 layout:
   /usr/share/libdrm:
     bind: $SNAP/graphics/libdrm
