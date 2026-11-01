@@ -598,7 +598,8 @@
             "setAsPublic": "设为公开",
             "makeAllPrivate": "全部设为私有",
             "dropboxRestoreLimit": "AeroFTP 可以还原可恢复的文件版本。请在 dropbox.com 的“已删除文件”中还原文件夹。问号表示 Dropbox 未能识别项目类型。",
-            "openWithDefaultApp": "使用默认应用打开"
+            "openWithDefaultApp": "使用默认应用打开",
+            "extractHereUncheckedConfirm": "在解压之前无法读取 {name} 中的文件名，所以 AeroFTP 无法检查“解压到此处”会覆盖此文件夹中的哪些文件。“解压到文件夹”从不会覆盖任何文件。"
         },
         "transfer": {
             "transferring": "传输中...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud 已启用",
             "selectPairLocalFolder": "为配对选择本地文件夹",
             "secondsAgo": "{count}秒前",
-            "conflictsCount": "{count} 个冲突需要处理"
+            "conflictsCount": "{count} 个冲突需要处理",
+            "updateOnlyHint": "单向更新会保留目标端较新的文件。关闭追加备份后，仅删除未更改、仅存在于目标端且具有已验证的 AeroCloud 传输凭证的文件。其他文件将留待在 AeroSync 中审核。冲突策略将被忽略；日期未知的项目将保持未解决状态。",
+            "untrackedDestinationFiles": "已保留 {count} 个目标文件以供审核：其传输历史尚未验证，或文件在上次 AeroCloud 传输后发生了更改。请先在 AeroSync 中审核，再决定是否删除。"
         },
         "statusBar": {
             "connected": "已连接",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "正在扫描子树...",
             "flattenTruncated": "已截断",
             "flattenTruncatedHint": "已达到 5,000 条目上限；请优化筛选条件或进入子文件夹。",
-            "local_placeholder_flatten": "筛选本地文件...（递归请用 *）"
+            "local_placeholder_flatten": "筛选本地文件...（递归请用 *）",
+            "flattenNameClash": "{names}：在多个文件夹中被选中。放到同一位置会互相覆盖；请每次只对每个名称中的一个进行操作。",
+            "flattenNameClashTitle": "多个文件夹中存在同名项"
         },
         "versions": {
             "title": "文件版本",
@@ -6344,7 +6349,10 @@
             "progressCopy": "[复制]",
             "deleteCount": "{count} 个待删除",
             "overwriteCount": "{count} 个待覆盖",
-            "conflictCount": "{count} 个冲突"
+            "conflictCount": "{count} 个冲突",
+            "updateOnly": "跳过目标中较新的文件（单向更新）",
+            "updateOnlyHint": "复制缺失或已更改的源文件，保留目标位置中较新的文件，并删除仅存在于目标位置的条目。没有可比日期的文件将按大小进行比较；大小差异将留待检查。",
+            "rescanNeeded": "导出更新脚本前，请使用当前设置重新运行比较。"
         },
         "accountLock": {
             "title": "选择一个账户",

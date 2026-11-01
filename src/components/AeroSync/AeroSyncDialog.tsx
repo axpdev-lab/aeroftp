@@ -375,7 +375,9 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                             <div key={`${context.activeProfileId}:${localPath}:${remotePath}:${tool}`} hidden={activeTab !== tool}>
                                 {tool === 'templates' && <SyncTemplateDialog embedded isOpen onClose={() => selectTab('plan')}
                                     localPath={localPath} remotePath={remotePath} serverProfileName={serverProfileName}
-                                    excludePatterns={excludePatterns} pairKind={context.pairKind} onApplyImport={applyImportedSettings} />}
+                                    excludePatterns={excludePatterns} pairKind={context.pairKind} compareResult={context.compareResult}
+                                    compareLoading={context.compareLoading} compareExcludes={context.compareExcludes} compareBackupDir={context.compareBackupDir}
+                                    onApplyImport={applyImportedSettings} />}
                                 {tool === 'multiPath' && <MultiPathEditor embedded isOpen onClose={() => selectTab('plan')}
                                     localPath={localPath} remotePath={remotePath} />}
                                 {tool === 'rollback' && <RollbackDialog embedded isOpen onClose={() => selectTab('plan')}

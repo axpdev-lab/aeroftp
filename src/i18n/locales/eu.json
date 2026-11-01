@@ -598,7 +598,8 @@
             "setAsPublic": "Ezarri publiko gisa",
             "makeAllPrivate": "Egin denak pribatu",
             "dropboxRestoreLimit": "AeroFTP-k fitxategien bertsio berreskuragarriak lehenera ditzake. Berreskuratu karpetak dropbox.com-eko Ezabatutako fitxategiak ataletik. Galdera-markak esan nahi du Dropbox-ek ez duela elementu mota identifikatu.",
-            "openWithDefaultApp": "Ireki aplikazio lehenetsiarekin"
+            "openWithDefaultApp": "Ireki aplikazio lehenetsiarekin",
+            "extractHereUncheckedConfirm": "{name} barruko izenak ezin dira erauzi aurretik irakurri, beraz AeroFTP-k ezin du egiaztatu «Erauzi hemen» aukerak karpeta honetan zer gainidatziko lukeen. «Erauzi karpetara» aukerak ez du inoiz ezer gainidatziko."
         },
         "transfer": {
             "transferring": "Transferitzen...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud gaituta",
             "selectPairLocalFolder": "Hautatu bikoterako karpeta lokala",
             "secondsAgo": "{count}s duela",
-            "conflictsCount": "Arreta behar duten gatazkak: {count}"
+            "conflictsCount": "Arreta behar duten gatazkak: {count}",
+            "updateOnlyHint": "Noranzko bakarreko eguneratzeak helmugako fitxategi berriagoak mantentzen ditu. Babeskopia gehigarria desaktibatuta dagoenean, helmugan soilik dauden aldatu gabeko fitxategiak bakarrik ezabatzen dira, egiaztatutako AeroCloud transferentzia-agiria badute. Beste fitxategiak AeroSync-en berrikusteko geratzen dira. Gatazka-politika ez da kontuan hartzen; data ezezagunak ebatzi gabe geratzen dira.",
+            "untrackedDestinationFiles": "Helmugako {count} fitxategi berrikusteko mantendu dira: haien transferentzia-historia ez dago egiaztatuta edo azken AeroCloud transferentziaren ondoren aldatu dira. Berrikusi AeroSync-en, ezabatzea erabaki aurretik."
         },
         "statusBar": {
             "connected": "Konektatuta",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Azpizuhaitza eskaneatzen...",
             "flattenTruncated": "moztua",
             "flattenTruncatedHint": "5.000 sarrerako muga iritsi da; iragazkia findu edo azpikarpeta batera jaitsi.",
-            "local_placeholder_flatten": "Iragazi fitxategi lokalak... (* errekurtsiborako)"
+            "local_placeholder_flatten": "Iragazi fitxategi lokalak... (* errekurtsiborako)",
+            "flattenNameClash": "{names}: karpeta bat baino gehiagotan hautatuta. Toki bakarrean jarriz gero, elkarren ordezkatuko lukete; jardun izen bakoitzeko bat aldiko.",
+            "flattenNameClashTitle": "Izen bera karpeta bat baino gehiagotan"
         },
         "versions": {
             "title": "Fitxategi bertsioak",
@@ -6363,7 +6368,10 @@
             "progressCopy": "[kopia]",
             "deleteCount": "Ezabatzeko: {count}",
             "overwriteCount": "Gainidazteko: {count}",
-            "conflictCount": "{count} gatazka"
+            "conflictCount": "{count} gatazka",
+            "updateOnly": "Saltatu helmugako fitxategi berriagoak (noranzko bakarreko eguneratzea)",
+            "updateOnlyHint": "Kopiatzen ditu iturburuko falta diren edo aldatutako fitxategiak, helmugako fitxategi berriagoak mantentzen ditu eta helmugan soilik dauden sarrerak ezabatzen ditu. Data alderagarririk ez duten fitxategiak tamainaren arabera alderatzen dira; tamaina-desberdintasunak berrikusteko uzten dira.",
+            "rescanNeeded": "Exekutatu beste konparazio bat uneko ezarpenekin eguneratze-script bat esportatu aurretik."
         },
         "accountLock": {
             "title": "Aukeratu kontu bat",

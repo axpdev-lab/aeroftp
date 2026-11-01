@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
@@ -62,7 +62,7 @@ export const Toast: React.FC<ToastProps> = ({
 }: ToastProps) => {
     const [isExiting, setIsExiting] = useState(false);
     const onCloseRef = useRef(onClose);
-    onCloseRef.current = onClose;
+    useLayoutEffect(() => { onCloseRef.current = onClose; }, [onClose]);
 
     useEffect(() => {
         if (duration > 0) {

@@ -210,7 +210,7 @@ const MountProfileCarousel: React.FC<MountProfileCarouselProps> = ({ title, prof
                                         </span>
                                     </div>
                                     <div className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">
-                                        {profile.initialPath?.trim() || profile.host || '/'}
+                                        {profile.initialPath || profile.host || '/'}
                                     </div>
                                 </div>
                             </div>
@@ -251,7 +251,7 @@ export function MountManagerDialog({ onClose, initialProfileId, initialRemotePat
         if (profile) {
             next.name = profile.name;
             next.profile = profile.name;
-            next.remote_path = remotePath?.trim() || profile.initialPath?.trim() || '/';
+            next.remote_path = remotePath || profile.initialPath || '/';
             try {
                 next.mountpoint = await invoke<string>('mount_suggest_path', { profile: profile.name });
             } catch {
@@ -408,7 +408,7 @@ export function MountManagerDialog({ onClose, initialProfileId, initialRemotePat
         const updates: Partial<MountConfig> = {
             profile: profileName,
             name: profileName,
-            remote_path: selectedProfile?.initialPath?.trim() || '/',
+            remote_path: selectedProfile?.initialPath || '/',
         };
 
         try {

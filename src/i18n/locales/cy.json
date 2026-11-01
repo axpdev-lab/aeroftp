@@ -598,7 +598,8 @@
             "setAsPublic": "Gosod fel Cyhoeddus",
             "makeAllPrivate": "Gwneud pob un yn breifat",
             "dropboxRestoreLimit": "Gall AeroFTP adfer fersiynau o ffeiliau y gellir eu hadfer. Adferwch ffolderi o Ffeiliau wedi'u dileu ar dropbox.com. Mae marc cwestiwn yn golygu nad yw Dropbox wedi adnabod math yr eitem.",
-            "openWithDefaultApp": "Agor gyda'r ap rhagosodedig"
+            "openWithDefaultApp": "Agor gyda'r ap rhagosodedig",
+            "extractHereUncheckedConfirm": "Ni ellir darllen yr enwau y tu mewn i {name} cyn echdynnu, felly ni all AeroFTP wirio beth fyddai “Echdynnu Yma” yn ei drosysgrifennu yn y ffolder hon. Nid yw “Echdynnu i Ffolder” byth yn trosysgrifennu."
         },
         "transfer": {
             "transferring": "Yn trosglwyddo...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud wedi'i alluogi",
             "selectPairLocalFolder": "Dewiswch ffolder lleol ar gyfer y pâr",
             "secondsAgo": "{count}e yn ôl",
-            "conflictsCount": "{count} gwrthdaro angen sylw"
+            "conflictsCount": "{count} gwrthdaro angen sylw",
+            "updateOnlyHint": "Mae diweddaru unffordd yn cadw ffeiliau mwy newydd yn y gyrchfan. Pan fydd copïo wrth gefn ychwanegol wedi’i ddiffodd, dim ond ffeiliau sydd yn y gyrchfan yn unig, sydd heb newid ac sydd â derbynneb trosglwyddo AeroCloud wedi’i dilysu sy’n cael eu dileu. Mae ffeiliau eraill yn aros i’w hadolygu yn AeroSync. Anwybyddir y polisi gwrthdaro; mae dyddiadau anhysbys yn aros heb eu datrys.",
+            "untrackedDestinationFiles": "Cadwyd {count} o ffeiliau yn y gyrchfan i’w hadolygu: nid yw eu hanes trosglwyddo wedi’i ddilysu neu maent wedi newid ers y trosglwyddiad AeroCloud diwethaf. Adolygwch nhw yn AeroSync cyn penderfynu a ddylid eu dileu."
         },
         "statusBar": {
             "connected": "Wedi cysylltu",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Yn sganio is-goeden...",
             "flattenTruncated": "wedi'i docio",
             "flattenTruncatedHint": "Wedi cyrraedd y terfyn o 5,000 cofnod; mireinio'ch hidlydd neu ewch i is-ffolder.",
-            "local_placeholder_flatten": "Hidlo ffeiliau lleol... (* ar gyfer ailadrodd)"
+            "local_placeholder_flatten": "Hidlo ffeiliau lleol... (* ar gyfer ailadrodd)",
+            "flattenNameClash": "{names}: wedi'u dewis mewn mwy nag un ffolder. Os cânt eu rhoi mewn un lle, byddent yn disodli ei gilydd; gweithredwch ar un o bob un ar y tro.",
+            "flattenNameClashTitle": "Yr un enw mewn mwy nag un ffolder"
         },
         "versions": {
             "title": "Fersiynau Ffeiliau",
@@ -6363,7 +6368,10 @@
             "progressCopy": "[copi]",
             "deleteCount": "I'w dileu: {count}",
             "overwriteCount": "I'w trosysgrifo: {count}",
-            "conflictCount": "{count} gwrthdaro"
+            "conflictCount": "{count} gwrthdaro",
+            "updateOnly": "Hepgor ffeiliau mwy newydd yn y gyrchfan (diweddaru unffordd)",
+            "updateOnlyHint": "Copïwch ffeiliau ffynhonnell sydd ar goll neu wedi newid, cadwch ffeiliau diweddarach yn y cyrchfan, a dilëwch gofnodion sydd yn y cyrchfan yn unig. Cymharir ffeiliau heb ddyddiadau cymaradwy yn ôl maint; gadewir gwahaniaethau maint i’w hadolygu.",
+            "rescanNeeded": "Rhedwch gymhariaeth newydd gyda’r gosodiadau cyfredol cyn allforio sgript ddiweddaru."
         },
         "accountLock": {
             "title": "Dewiswch gyfrif",

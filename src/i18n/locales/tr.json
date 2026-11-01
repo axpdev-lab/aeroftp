@@ -598,7 +598,8 @@
             "setAsPublic": "Herkese Açık Olarak Ayarla",
             "makeAllPrivate": "Tümünü özel yap",
             "dropboxRestoreLimit": "AeroFTP, kurtarılabilir dosya sürümlerini geri yükleyebilir. Klasörleri dropbox.com üzerindeki Silinen dosyalar bölümünden geri yükleyin. Soru işareti, Dropbox'ın öğe türünü belirleyemediği anlamına gelir.",
-            "openWithDefaultApp": "Varsayılan uygulamayla aç"
+            "openWithDefaultApp": "Varsayılan uygulamayla aç",
+            "extractHereUncheckedConfirm": "{name} içindeki adlar çıkarmadan önce okunamaz, bu yüzden AeroFTP “Buraya Çıkar” seçeneğinin bu klasörde neyin üzerine yazacağını denetleyemez. “Klasöre Çıkar” hiçbir zaman üzerine yazmaz."
         },
         "transfer": {
             "transferring": "Aktarılıyor...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud etkin",
             "selectPairLocalFolder": "Çift için yerel klasör seçin",
             "secondsAgo": "{count}sn önce",
-            "conflictsCount": "{count} çakışma müdahale gerektiriyor"
+            "conflictsCount": "{count} çakışma müdahale gerektiriyor",
+            "updateOnlyHint": "Tek Yönlü Güncelleme daha yeni hedef dosyaları korur. Eklemeli yedekleme kapalıyken yalnızca hedefte bulunan, değişmemiş ve doğrulanmış bir AeroCloud aktarım makbuzu olan dosyalar silinir. Diğer dosyalar AeroSync içinde incelenmek üzere kalır. Çakışma ilkesi yok sayılır; bilinmeyen tarihler çözümsüz kalır.",
+            "untrackedDestinationFiles": "{count} hedef dosya inceleme için korundu: aktarım geçmişleri doğrulanmamış veya son AeroCloud aktarımından sonra değişmişler. Silmeye karar vermeden önce bunları AeroSync içinde inceleyin."
         },
         "statusBar": {
             "connected": "Bağlı",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Alt ağaç taranıyor...",
             "flattenTruncated": "kısaltıldı",
             "flattenTruncatedHint": "5.000 giriş sınırına ulaşıldı; filtrenizi daraltın veya bir alt klasöre inin.",
-            "local_placeholder_flatten": "Yerel dosyaları filtrele... (özyinelemeli için *)"
+            "local_placeholder_flatten": "Yerel dosyaları filtrele... (özyinelemeli için *)",
+            "flattenNameClash": "{names}: birden fazla klasörde seçildi. Tek bir yere konursa birbirinin üzerine yazılır; her addan yalnızca birini seçip işlem yapın.",
+            "flattenNameClashTitle": "Birden fazla klasörde aynı ad"
         },
         "versions": {
             "title": "Dosya Sürümleri",
@@ -6344,7 +6349,10 @@
             "progressCopy": "[kopya]",
             "deleteCount": "Silinecek: {count}",
             "overwriteCount": "Üzerine yazılacak: {count}",
-            "conflictCount": "{count} çakışma"
+            "conflictCount": "{count} çakışma",
+            "updateOnly": "Daha yeni hedef dosyaları atla (Tek Yönlü Güncelleme)",
+            "updateOnlyHint": "Eksik veya değiştirilmiş kaynak dosyaları kopyalar, hedefteki daha yeni dosyaları korur ve yalnızca hedefte bulunan girdileri siler. Karşılaştırılabilir tarihleri olmayan dosyalar boyuta göre karşılaştırılır; boyut farklılıkları incelemeye bırakılır.",
+            "rescanNeeded": "Güncelleme betiğini dışa aktarmadan önce mevcut ayarlarla yeni bir karşılaştırma çalıştırın."
         },
         "accountLock": {
             "title": "Bir hesap seçin",

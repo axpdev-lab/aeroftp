@@ -598,7 +598,8 @@
             "setAsPublic": "Définir comme public",
             "makeAllPrivate": "Tout rendre privé",
             "dropboxRestoreLimit": "AeroFTP peut restaurer les versions récupérables des fichiers. Restaurez les dossiers depuis Fichiers supprimés sur dropbox.com. Un point d’interrogation signifie que Dropbox n’a pas identifié le type d’élément.",
-            "openWithDefaultApp": "Ouvrir avec l'application par défaut"
+            "openWithDefaultApp": "Ouvrir avec l'application par défaut",
+            "extractHereUncheckedConfirm": "Les noms à l'intérieur de {name} ne peuvent pas être lus avant l'extraction, donc AeroFTP ne peut pas vérifier ce que « Extraire ici » écraserait dans ce dossier. « Extraire dans un dossier » n'écrase jamais rien."
         },
         "transfer": {
             "transferring": "Transfert en cours...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud activé",
             "selectPairLocalFolder": "Sélectionner le dossier local de la paire",
             "secondsAgo": "Il y a {count}s",
-            "conflictsCount": "Conflits à traiter : {count}"
+            "conflictsCount": "Conflits à traiter : {count}",
+            "updateOnlyHint": "La mise à jour unidirectionnelle conserve les fichiers de destination plus récents. Lorsque la sauvegarde additive est désactivée, seuls les fichiers inchangés, présents uniquement à destination et disposant d’un reçu de transfert AeroCloud vérifié sont supprimés. Les autres fichiers restent à examiner dans AeroSync. La politique de conflit est ignorée ; les dates inconnues restent non résolues.",
+            "untrackedDestinationFiles": "{count} fichiers de destination ont été conservés pour examen : leur historique de transfert n’est pas vérifié ou ils ont été modifiés depuis le dernier transfert AeroCloud. Examinez-les dans AeroSync avant de décider de leur suppression."
         },
         "statusBar": {
             "connected": "Connecté",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Analyse du sous-arbre...",
             "flattenTruncated": "tronqué",
             "flattenTruncatedHint": "Limite de 5 000 entrées atteinte ; affinez votre filtre ou descendez dans un sous-dossier.",
-            "local_placeholder_flatten": "Filtrer les fichiers locaux... (* pour récursif)"
+            "local_placeholder_flatten": "Filtrer les fichiers locaux... (* pour récursif)",
+            "flattenNameClash": "{names} : sélectionnés dans plusieurs dossiers. Placés au même endroit, ils se remplaceraient mutuellement ; agissez sur un seul de chaque nom à la fois.",
+            "flattenNameClashTitle": "Même nom dans plusieurs dossiers"
         },
         "versions": {
             "title": "Versions du fichier",
@@ -6344,7 +6349,10 @@
             "progressCopy": "[copie]",
             "deleteCount": "{count} à supprimer",
             "overwriteCount": "{count} à écraser",
-            "conflictCount": "Conflits : {count}"
+            "conflictCount": "Conflits : {count}",
+            "updateOnly": "Ignorer les fichiers de destination plus récents (mise à jour unidirectionnelle)",
+            "updateOnlyHint": "Copie les fichiers source manquants ou modifiés, conserve les fichiers plus récents de la destination et supprime les entrées présentes uniquement dans la destination. Les fichiers sans dates comparables sont comparés par taille ; les différences de taille restent à vérifier.",
+            "rescanNeeded": "Lancez une nouvelle comparaison avec les paramètres actuels avant d’exporter un script de mise à jour."
         },
         "accountLock": {
             "title": "Choisissez un compte",

@@ -598,7 +598,8 @@
             "setAsPublic": "Angiv som offentlig",
             "makeAllPrivate": "Gør alle private",
             "dropboxRestoreLimit": "AeroFTP kan gendanne filversioner, der kan gendannes. Gendan mapper fra Slettede filer på dropbox.com. Et spørgsmålstegn betyder, at Dropbox ikke har identificeret elementtypen.",
-            "openWithDefaultApp": "Åbn med standardapp"
+            "openWithDefaultApp": "Åbn med standardapp",
+            "extractHereUncheckedConfirm": "Navnene i {name} kan ikke læses før udpakning, så AeroFTP kan ikke kontrollere, hvad „Udpak her“ ville overskrive i denne mappe. „Udpak til mappe“ overskriver aldrig noget."
         },
         "transfer": {
             "transferring": "Overfører...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud aktiveret",
             "selectPairLocalFolder": "Vælg lokal mappe til parret",
             "secondsAgo": "{count}s siden",
-            "conflictsCount": "Konflikter, der kræver opmærksomhed: {count}"
+            "conflictsCount": "Konflikter, der kræver opmærksomhed: {count}",
+            "updateOnlyHint": "Envejsopdatering beholder nyere destinationsfiler. Når additiv sikkerhedskopiering er slået fra, slettes kun uændrede filer, der kun findes på destinationen og har en verificeret kvittering for en AeroCloud-overførsel. Andre filer bliver liggende til gennemgang i AeroSync. Konfliktpolitikken ignoreres; ukendte datoer forbliver uafklarede.",
+            "untrackedDestinationFiles": "{count} destinationsfiler blev bevaret til gennemgang: Deres overførselshistorik er ubekræftet, eller de er ændret siden den seneste AeroCloud-overførsel. Gennemgå dem i AeroSync, før du beslutter, om de skal slettes."
         },
         "statusBar": {
             "connected": "Forbundet",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Scanner undertræ...",
             "flattenTruncated": "forkortet",
             "flattenTruncatedHint": "Nåede grænsen på 5.000 poster; finjuster filteret eller gå ind i en undermappe.",
-            "local_placeholder_flatten": "Filtrer lokale filer... (* for rekursiv)"
+            "local_placeholder_flatten": "Filtrer lokale filer... (* for rekursiv)",
+            "flattenNameClash": "{names}: markeret i mere end én mappe. Placeret ét sted ville de erstatte hinanden; arbejd med én af hver ad gangen.",
+            "flattenNameClashTitle": "Samme navn i mere end én mappe"
         },
         "versions": {
             "title": "Filversioner",
@@ -6344,7 +6349,10 @@
             "progressCopy": "[kopi]",
             "deleteCount": "Til sletning: {count}",
             "overwriteCount": "Til overskrivning: {count}",
-            "conflictCount": "Konflikter: {count}"
+            "conflictCount": "Konflikter: {count}",
+            "updateOnly": "Spring nyere destinationsfiler over (envejsopdatering)",
+            "updateOnlyHint": "Kopierer manglende eller ændrede kildefiler, beholder nyere destinationsfiler og sletter poster, der kun findes på destinationen. Filer uden sammenlignelige datoer sammenlignes efter størrelse; størrelsesforskelle overlades til gennemgang.",
+            "rescanNeeded": "Kør en ny sammenligning med de aktuelle indstillinger, før du eksporterer et opdateringsscript."
         },
         "accountLock": {
             "title": "Vælg en konto",

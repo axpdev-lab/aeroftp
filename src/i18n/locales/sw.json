@@ -598,7 +598,8 @@
             "setAsPublic": "Weka kama Umma",
             "makeAllPrivate": "Fanya zote za faragha",
             "dropboxRestoreLimit": "AeroFTP inaweza kurejesha matoleo ya faili yanayoweza kurejeshwa. Rejesha folda kutoka sehemu ya Faili zilizofutwa kwenye dropbox.com. Alama ya kuuliza inamaanisha kuwa Dropbox haikutambua aina ya kipengee.",
-            "openWithDefaultApp": "Fungua kwa programu chaguomsingi"
+            "openWithDefaultApp": "Fungua kwa programu chaguomsingi",
+            "extractHereUncheckedConfirm": "Majina ndani ya {name} hayawezi kusomwa kabla ya kufungua, kwa hivyo AeroFTP haiwezi kukagua kama “Fungua Hapa” itaandika juu ya faili zilizopo katika folda hii. “Fungua kwenye Folda” haiandiki juu ya faili zilizopo kamwe."
         },
         "transfer": {
             "transferring": "Inahamisha...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud imewashwa",
             "selectPairLocalFolder": "Chagua folda ya ndani kwa jozi",
             "secondsAgo": "sekunde {count} zilizopita",
-            "conflictsCount": "Migogoro inayohitaji umakini: {count}"
+            "conflictsCount": "Migogoro inayohitaji umakini: {count}",
+            "updateOnlyHint": "Usasishaji wa upande mmoja huhifadhi faili mpya zaidi za lengwa. Hifadhi rudufu ya kuongeza ikiwa imezimwa, ni faili zisizobadilika, zilizopo kwenye lengwa pekee na zenye risiti ya uhamishaji wa AeroCloud iliyothibitishwa tu zinazofutwa. Faili nyingine hubaki kwa ukaguzi katika AeroSync. Sera ya migongano hupuuzwa; tarehe zisizojulikana hubaki bila kutatuliwa.",
+            "untrackedDestinationFiles": "Faili {count} za lengwa zimehifadhiwa kwa ukaguzi: historia yake ya uhamishaji haijathibitishwa au zimebadilika baada ya uhamishaji wa mwisho wa AeroCloud. Zikague katika AeroSync kabla ya kuamua kuzifuta."
         },
         "statusBar": {
             "connected": "Imeunganishwa",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Kuchanganua mti mdogo...",
             "flattenTruncated": "kupunguzwa",
             "flattenTruncatedHint": "Imefikia kikomo cha maingizo 5,000; boresha kichujio chako au shuka kwenye folda ndogo.",
-            "local_placeholder_flatten": "Chuja faili za ndani... (* kwa rekursivu)"
+            "local_placeholder_flatten": "Chuja faili za ndani... (* kwa rekursivu)",
+            "flattenNameClash": "{names}: vimechaguliwa katika folda zaidi ya moja. Vikiwekwa mahali pamoja, kimoja kitachukua nafasi ya kingine; shughulikia kimoja kwa kila jina kwa wakati mmoja.",
+            "flattenNameClashTitle": "Jina lile lile katika folda zaidi ya moja"
         },
         "versions": {
             "title": "Matoleo ya Faili",
@@ -6344,7 +6349,10 @@
             "progressCopy": "[nakala]",
             "deleteCount": "Za kufutwa: {count}",
             "overwriteCount": "Za kuandikwa upya: {count}",
-            "conflictCount": "Migogoro: {count}"
+            "conflictCount": "Migogoro: {count}",
+            "updateOnly": "Ruka faili mpya zaidi za lengwa (usasishaji wa upande mmoja)",
+            "updateOnlyHint": "Hunakili faili chanzo zilizokosekana au zilizobadilishwa, huhifadhi faili mpya zaidi za lengo na hufuta vipengee vilivyo kwenye lengo pekee. Faili zisizo na tarehe zinazolinganishwa hulinganishwa kwa ukubwa; tofauti za ukubwa huachwa kwa ajili ya uhakiki.",
+            "rescanNeeded": "Linganisha upya kwa mipangilio ya sasa kabla ya kuhamisha hati ya usasishaji."
         },
         "accountLock": {
             "title": "Chagua akaunti",

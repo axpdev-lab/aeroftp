@@ -598,7 +598,8 @@
             "setAsPublic": "Establecer como público",
             "makeAllPrivate": "Facer todo privado",
             "dropboxRestoreLimit": "AeroFTP pode restaurar versións recuperables de ficheiros. Restaura os cartafoles desde Ficheiros eliminados en dropbox.com. Un signo de interrogación indica que Dropbox non identificou o tipo de elemento.",
-            "openWithDefaultApp": "Abrir coa aplicación predeterminada"
+            "openWithDefaultApp": "Abrir coa aplicación predeterminada",
+            "extractHereUncheckedConfirm": "Os nomes dentro de {name} non se poden ler antes de extraer, así que AeroFTP non pode comprobar o que sobrescribiría «Extraer aquí» neste cartafol. «Extraer nun cartafol» nunca sobrescribe."
         },
         "transfer": {
             "transferring": "Transferindo...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud activado",
             "selectPairLocalFolder": "Seleccionar cartafol local para o par",
             "secondsAgo": "hai {count}s",
-            "conflictsCount": "Conflitos por revisar: {count}"
+            "conflictsCount": "Conflitos por revisar: {count}",
+            "updateOnlyHint": "A actualización unidireccional conserva os ficheiros de destino máis recentes. Coa copia de seguranza aditiva desactivada, só se eliminan os ficheiros exclusivos do destino que non cambiaron e teñen un comprobante de transferencia de AeroCloud verificado. Os demais ficheiros quedan para revisalos en AeroSync. Ignórase a política de conflitos; as datas descoñecidas quedan sen resolver.",
+            "untrackedDestinationFiles": "Conserváronse {count} ficheiros de destino para revisalos: o seu historial de transferencias non está verificado ou cambiaron desde a última transferencia de AeroCloud. Revísanos en AeroSync antes de decidir se os queres eliminar."
         },
         "statusBar": {
             "connected": "Conectado",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Escaneando subárbore...",
             "flattenTruncated": "truncado",
             "flattenTruncatedHint": "Acadouse o límite de 5.000 entradas; refina o filtro ou entra nunha subcarpeta.",
-            "local_placeholder_flatten": "Filtrar ficheiros locais... (* para recursivo)"
+            "local_placeholder_flatten": "Filtrar ficheiros locais... (* para recursivo)",
+            "flattenNameClash": "{names}: seleccionados en máis dun cartafol. Postos nun só lugar, substituiríanse entre si; actúa sobre un de cada nome á vez.",
+            "flattenNameClashTitle": "O mesmo nome en máis dun cartafol"
         },
         "versions": {
             "title": "Versións de ficheiro",
@@ -6363,7 +6368,10 @@
             "progressCopy": "[copia]",
             "deleteCount": "{count} para eliminar",
             "overwriteCount": "{count} para sobrescribir",
-            "conflictCount": "Conflitos: {count}"
+            "conflictCount": "Conflitos: {count}",
+            "updateOnly": "Omitir ficheiros de destino máis recentes (actualización unidireccional)",
+            "updateOnlyHint": "Copia os ficheiros de orixe ausentes ou modificados, conserva os ficheiros máis recentes do destino e elimina as entradas que só existen no destino. Os ficheiros sen datas comparables compáranse por tamaño; as diferenzas de tamaño quedan pendentes de revisión.",
+            "rescanNeeded": "Executa unha nova comparación coa configuración actual antes de exportar un script de actualización."
         },
         "accountLock": {
             "title": "Escolla unha conta",

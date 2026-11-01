@@ -13,8 +13,11 @@
 //!   so that an active SFTP session can spin up additional exec channels without
 //!   re-authenticating.
 //! - The channel is split into read/write halves. A detached reader task drains
-//!   `ChannelMsg::Data` into an mpsc for stdout and `ChannelMsg::ExtendedData { ext: 1 }`
-//!   into an mpsc for stderr. Exit status is delivered over a oneshot.
+//!   `ChannelMsg::Data` into a bounded mpsc for stdout and `ChannelMsg::ExtendedData { ext: 1 }`
+//!   into a bounded mpsc for stderr. Exit status is delivered over a oneshot. A full
+//!   stdout queue stops the reader, which stops russh reading the socket, so the server
+//!   waits for a slow consumer instead of the client buffering the stream; stderr past
+//!   its queue is dropped, never waited on.
 //! - stdin is a `'static` `AsyncWrite` obtained from the write half (russh clones the
 //!   underlying mpsc sender, so detached use is safe).
 //! - When [`ExecSession`] is dropped the reader task is aborted; remote process receives
@@ -41,8 +44,8 @@ use tokio::sync::{mpsc, oneshot, Mutex as TokioMutex};
 /// which (combined with EOF propagation) will typically signal the remote process to exit.
 pub struct ExecSession {
     pub stdin: Box<dyn AsyncWrite + Send + Unpin>,
-    pub stdout_rx: mpsc::UnboundedReceiver<Vec<u8>>,
-    pub stderr_rx: mpsc::UnboundedReceiver<Vec<u8>>,
+    pub stdout_rx: mpsc::Receiver<Vec<u8>>,
+    pub stderr_rx: mpsc::Receiver<Vec<u8>>,
     pub exit_rx: oneshot::Receiver<u32>,
     _reader: ReaderGuard,
 }
@@ -121,7 +124,18 @@ impl ExitTracker {
     }
 }
 
+/// Stdout chunks held for a consumer that is behind: about 2 MiB at the
+/// 32 KiB packets SSH servers send. The queue, not the size of the stream,
+/// bounds what a download into a slow sink holds in memory.
+const STDOUT_QUEUE: usize = 64;
+
+/// Stderr chunks held before further stderr is dropped.
+const STDERR_QUEUE: usize = 64;
+
 /// Open a remote exec channel on `handle_shared` and run `command`.
+///
+/// `command` is bytes, not text: the remote shell takes any byte but NUL, and
+/// a path read back from the server need not be UTF-8.
 ///
 /// Returns immediately after the exec request has been acknowledged; caller pumps I/O
 /// by reading `stdout_rx` / `stderr_rx` and writing to `stdin`. Remote exit status is
@@ -132,7 +146,7 @@ impl ExitTracker {
 /// measurably impacted.
 pub async fn ssh_exec<H>(
     handle_shared: Arc<TokioMutex<Handle<H>>>,
-    command: &str,
+    command: impl AsRef<[u8]>,
 ) -> Result<ExecSession, String>
 where
     H: Handler<Error = russh::Error> + Send + Sync + 'static,
@@ -146,15 +160,15 @@ where
     };
 
     channel
-        .exec(true, command.as_bytes())
+        .exec(true, command.as_ref())
         .await
         .map_err(|e| format!("ssh exec: request: {}", e))?;
 
     let (mut read_half, write_half) = channel.split();
     let stdin: Box<dyn AsyncWrite + Send + Unpin> = Box::new(write_half.make_writer());
 
-    let (stdout_tx, stdout_rx) = mpsc::unbounded_channel();
-    let (stderr_tx, stderr_rx) = mpsc::unbounded_channel();
+    let (stdout_tx, stdout_rx) = mpsc::channel(STDOUT_QUEUE);
+    let (stderr_tx, stderr_rx) = mpsc::channel(STDERR_QUEUE);
     let (exit_tx, exit_rx) = oneshot::channel::<u32>();
 
     let reader_task = tokio::spawn(async move {
@@ -183,20 +197,23 @@ where
                 }
             };
             // Forward payload before interpreting control so the server's
-            // stdout/stderr ordering is preserved. The send happens in the
-            // guard; a closed consumer (send error) tears the reader down.
-            match &msg {
-                ChannelMsg::Data { data } if stdout_tx.send(data.to_vec()).is_err() => {
-                    break 'outer;
-                }
-                // SSH_EXTENDED_DATA_STDERR = 1 per RFC 4254 §5.2.
-                // Other ext streams are silently discarded.
-                ChannelMsg::ExtendedData { data, ext: 1 }
-                    if stderr_tx.send(data.to_vec()).is_err() =>
-                {
-                    break 'outer;
-                }
-                _ => {}
+            // stdout/stderr ordering is preserved. A closed consumer (send
+            // error) tears the reader down.
+            let forwarded = match &msg {
+                // Waits while the consumer is behind: the backpressure.
+                ChannelMsg::Data { data } => stdout_tx.send(data.to_vec()).await.is_ok(),
+                // SSH_EXTENDED_DATA_STDERR = 1 per RFC 4254 §5.2. Never
+                // waited on: a consumer reading only stdout must not stall
+                // on diagnostics, so a full queue drops them. Other ext
+                // streams are silently discarded.
+                ChannelMsg::ExtendedData { data, ext: 1 } => !matches!(
+                    stderr_tx.try_send(data.to_vec()),
+                    Err(mpsc::error::TrySendError::Closed(_))
+                ),
+                _ => true,
+            };
+            if !forwarded {
+                break 'outer;
             }
             match tracker.observe(&msg) {
                 ReaderControl::Continue => {}
@@ -231,7 +248,7 @@ where
 /// is unnecessary. Returns `(stdout_bytes, exit_code)`. Stderr is captured separately.
 pub async fn ssh_exec_collect<H>(
     handle_shared: Arc<TokioMutex<Handle<H>>>,
-    command: &str,
+    command: impl AsRef<[u8]>,
     max_output_bytes: usize,
 ) -> Result<(Vec<u8>, Vec<u8>, u32), String>
 where

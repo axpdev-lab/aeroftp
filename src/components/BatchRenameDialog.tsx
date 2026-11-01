@@ -27,15 +27,63 @@ export interface BatchRenameFile {
   name: string;
   path: string;
   isDir: boolean;
+  /** The folder the file is in, relative to the panel's, when a batch spans
+   *  several (the nested rows of a local flattened search). Absent: the
+   *  panel's own folder. Two files may take the same new name in two folders. */
+  folder?: string;
 }
+
+/** An entry already in a folder of the batch: a bare name is in the panel's own folder. */
+export type BatchRenameSibling = string | { folder: string; name: string };
+
+/** One name in one folder: what two renames, or a rename and a sibling, collide on. */
+const slot = (folder: string | undefined, name: string): string => `${folder ?? ''}\0${name}`;
+
+/** New names given to two files of the same folder. */
+export const batchRenameConflicts = (files: readonly BatchRenameFile[], renames: ReadonlyMap<string, string>): Set<string> => {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const file of files) {
+    const newName = renames.get(file.path);
+    if (!newName) continue;
+    const key = slot(file.folder, newName);
+    if (seen.has(key)) duplicates.add(key);
+    seen.add(key);
+  }
+  return duplicates;
+};
+
+/**
+ * C-F02: new names that would land on an entry already in the file's folder
+ * and NOT part of this batch. Two sources occupy a name: a pre-existing
+ * sibling, or a batch row whose own name does not change (so it is absent
+ * from `renames` and still holds its old name).
+ */
+export const batchRenameExternalCollisions = (
+  files: readonly BatchRenameFile[],
+  renames: ReadonlyMap<string, string>,
+  siblings: readonly BatchRenameSibling[],
+): Set<string> => {
+  const occupied = new Set(siblings.map(s => (typeof s === 'string' ? slot('', s) : slot(s.folder, s.name))));
+  for (const file of files) {
+    if (!renames.has(file.path)) occupied.add(slot(file.folder, file.name));
+  }
+  const collisions = new Set<string>();
+  for (const file of files) {
+    const newName = renames.get(file.path);
+    if (newName && occupied.has(slot(file.folder, newName))) collisions.add(slot(file.folder, newName));
+  }
+  return collisions;
+};
 
 export interface BatchRenameDialogProps {
   isOpen: boolean;
   files: BatchRenameFile[];
   isRemote: boolean;
-  /** C-F02: names already present in the listing that are NOT part of this batch,
-   *  used to pre-flag a rename target that would collide with an existing file. */
-  existingSiblings?: string[];
+  /** C-F02: entries already present in the folders of this batch that are NOT
+   *  part of it, used to pre-flag a rename target that would collide with an
+   *  existing file. */
+  existingSiblings?: readonly BatchRenameSibling[];
   onConfirm: (renames: Map<string, string>) => Promise<void>;
   onClose: () => void;
 }
@@ -172,38 +220,16 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
     return invalid;
   }, [files, mode, findText, replaceText, prefix, suffix, baseName, startNumber, padding, caseSensitive]);
 
-  // Detect naming conflicts
-  const conflicts = useMemo(() => {
-    const newNames = Array.from(renames.values());
-    const duplicates = new Set<string>();
-    const seen = new Set<string>();
+  // Detect naming conflicts: two files of one folder given the same new name.
+  const conflicts = useMemo(() => batchRenameConflicts(files, renames), [files, renames]);
 
-    newNames.forEach(name => {
-      if (seen.has(name)) {
-        duplicates.add(name);
-      }
-      seen.add(name);
-    });
-
-    return duplicates;
-  }, [renames]);
-
-  // C-F02: detect rename targets that collide with a file already in the folder
-  // but NOT part of this batch. Two sources occupy a name: a pre-existing sibling,
-  // or a batch row whose own name does not change (so it is absent from `renames`
-  // and still holds its old name). Non-blocking: the backend safe-fails with
-  // overwrite:false, so we warn (amber) and keep Apply enabled rather than block.
-  const externalCollisions = useMemo(() => {
-    const occupied = new Set(existingSiblings);
-    files.forEach(file => {
-      if (!renames.has(file.path)) occupied.add(file.name);
-    });
-    const collisions = new Set<string>();
-    renames.forEach(newName => {
-      if (occupied.has(newName)) collisions.add(newName);
-    });
-    return collisions;
-  }, [files, renames, existingSiblings]);
+  // C-F02: a rename target that collides with an entry already in its folder.
+  // Non-blocking: the backend safe-fails with overwrite:false, so we warn
+  // (amber) and keep Apply enabled rather than block.
+  const externalCollisions = useMemo(
+    () => batchRenameExternalCollisions(files, renames, existingSiblings),
+    [files, renames, existingSiblings],
+  );
 
   const hasConflicts = conflicts.size > 0;
   const hasInvalidNames = invalidNames.size > 0;
@@ -417,11 +443,11 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
                   {files.map(file => {
                     const newName = renames.get(file.path);
                     const invalidName = invalidNames.get(file.path);
-                    const isConflict = !!newName && conflicts.has(newName);
+                    const isConflict = !!newName && conflicts.has(slot(file.folder, newName));
                     const isInvalid = !!invalidName;
                     // C-F02: amber (non-blocking) only when the target is otherwise
                     // valid and unique within the batch but hits an existing sibling.
-                    const isExternalCollision = !!newName && !isConflict && !isInvalid && externalCollisions.has(newName);
+                    const isExternalCollision = !!newName && !isConflict && !isInvalid && externalCollisions.has(slot(file.folder, newName));
                     const hasChange = !!newName;
 
                     return (
@@ -435,7 +461,8 @@ export const BatchRenameDialog: React.FC<BatchRenameDialogProps> = ({
                               : ''
                         }`}
                       >
-                        <td className="px-2 py-1 text-gray-700 dark:text-gray-300 truncate max-w-[200px]" title={file.name}>
+                        <td className="px-2 py-1 text-gray-700 dark:text-gray-300 truncate max-w-[200px]" title={file.folder ? `${file.folder}/${file.name}` : file.name}>
+                          {file.folder && <span className="text-gray-400 dark:text-gray-500">{file.folder}/</span>}
                           {file.name}
                         </td>
                         <td className={`px-2 py-1 truncate max-w-[200px] ${

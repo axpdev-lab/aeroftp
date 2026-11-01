@@ -598,7 +598,8 @@
             "setAsPublic": "Määra avalikuks",
             "makeAllPrivate": "Muuda kõik privaatseks",
             "dropboxRestoreLimit": "AeroFTP saab taastada taastatavaid failiversioone. Taasta kaustad lehel dropbox.com jaotises Kustutatud failid. Küsimärk tähendab, et Dropbox ei tuvastanud üksuse tüüpi.",
-            "openWithDefaultApp": "Ava vaikerakendusega"
+            "openWithDefaultApp": "Ava vaikerakendusega",
+            "extractHereUncheckedConfirm": "Arhiivi {name} sees olevaid nimesid ei saa enne lahtipakkimist lugeda, seega ei saa AeroFTP kontrollida, mida „Paki siia lahti“ selles kaustas üle kirjutaks. „Paki kausta lahti“ ei kirjuta kunagi midagi üle."
         },
         "transfer": {
             "transferring": "Ülekanne...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud lubatud",
             "selectPairLocalFolder": "Vali paari jaoks kohalik kaust",
             "secondsAgo": "{count}s tagasi",
-            "conflictsCount": "Tähelepanu vajavad konfliktid: {count}"
+            "conflictsCount": "Tähelepanu vajavad konfliktid: {count}",
+            "updateOnlyHint": "Ühesuunaline uuendamine säilitab uuemad sihtfailid. Kui lisav varundamine on välja lülitatud, kustutatakse ainult muutmata failid, mis asuvad üksnes sihtkohas ja millel on kinnitatud AeroCloudi edastuskviitung. Muud failid jäävad AeroSyncis ülevaatamiseks. Konfliktireeglit eiratakse; tundmatud kuupäevad jäävad lahendamata.",
+            "untrackedDestinationFiles": "{count} sihtfaili säilitati ülevaatamiseks: nende edastusajalugu on kinnitamata või on neid pärast viimast AeroCloudi edastust muudetud. Vaata need AeroSyncis üle, enne kui otsustad kustutamise üle."
         },
         "statusBar": {
             "connected": "Ühendatud",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Alampuu skannimine...",
             "flattenTruncated": "lühendatud",
             "flattenTruncatedHint": "Saavutati 5000 kirje piirang; täpsustage filtrit või laskuge alamkausta.",
-            "local_placeholder_flatten": "Filtreeri kohalikke faile... (* rekursiivseks)"
+            "local_placeholder_flatten": "Filtreeri kohalikke faile... (* rekursiivseks)",
+            "flattenNameClash": "{names}: valitud rohkem kui ühes kaustas. Ühte kohta pandult asendaksid nad teineteist; tegutse korraga ühega igast nimest.",
+            "flattenNameClashTitle": "Sama nimi mitmes kaustas"
         },
         "versions": {
             "title": "Failiversioonid",
@@ -6344,7 +6349,10 @@
             "progressCopy": "[koopia]",
             "deleteCount": "{count} kustutamiseks",
             "overwriteCount": "{count} ülekirjutamiseks",
-            "conflictCount": "Konfliktid: {count}"
+            "conflictCount": "Konfliktid: {count}",
+            "updateOnly": "Jäta uuemad sihtfailid vahele (ühesuunaline uuendamine)",
+            "updateOnlyHint": "Kopeerib puuduvad või muudetud lähtefailid, säilitab sihtkoha uuemad failid ja kustutab ainult sihtkohas olevad kirjed. Faile, millel puuduvad võrreldavad kuupäevad, võrreldakse suuruse järgi; suuruse erinevused jäetakse läbivaatamiseks.",
+            "rescanNeeded": "Enne uuendamisskripti eksportimist käivita uus võrdlus praeguste sätetega."
         },
         "accountLock": {
             "title": "Vali konto",

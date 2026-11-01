@@ -45,8 +45,9 @@ describe('a folder\'s size shows where it is asked for (#1441)', () => {
         expect(rowItem).toMatch(/action: \(\) => openLocalProperties\(selectedEntries\(\)\)/);
         expect(rowItem).not.toMatch(/disabled/);
         // The selection is read from the rows shown: a nested row of a flattened
-        // search is not in the listing.
-        expect(row).toMatch(/const selectedEntries = \(\) => selectedLocalRows\(ctxPanel\.sortedFiles, localFiles, selection\)/);
+        // search is not in the listing. A selected folder counts with what is
+        // below it, so an entry below it is not counted a second time.
+        expect(row).toMatch(/const selectedEntries = \(\) => selectedLocalTrees\(ctxPanel\.sortedFiles, localFiles, selection\)/);
         // The actions every folder menu shares carry no Properties of their own,
         // or a folder row would show two.
         const shared = body('directoryActionItems');
@@ -75,7 +76,7 @@ describe('a folder\'s size shows where it is asked for (#1441)', () => {
     it('opens local Properties one way, from the menus and from Alt+Enter', () => {
         const altEnter = appRaw.slice(appRaw.indexOf("'Alt+Enter': () => {"), appRaw.indexOf("'Alt+Enter': () => {") + 900);
         expect(altEnter).toMatch(/openLocalProperties\(/);
-        expect(altEnter).toMatch(/selectedLocalRows\(panel\.sortedFiles, panel\.files, panel\.selection\)/);
+        expect(altEnter).toMatch(/selectedLocalTrees\(panel\.sortedFiles, panel\.files, panel\.selection\)/);
         expect(altEnter).not.toMatch(/setPropertiesDialog\(|setMultiPropertiesDialog\(/);
         const menuItem = body('showLocalContextMenu');
         const properties = menuItem.slice(menuItem.indexOf("label: t('contextMenu.properties')"));

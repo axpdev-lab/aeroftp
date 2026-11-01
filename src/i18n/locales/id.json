@@ -598,7 +598,8 @@
             "setAsPublic": "Jadikan Publik",
             "makeAllPrivate": "Jadikan semua privat",
             "dropboxRestoreLimit": "AeroFTP dapat memulihkan revisi file yang masih dapat dipulihkan. Pulihkan folder dari File yang dihapus di dropbox.com. Tanda tanya berarti Dropbox tidak mengidentifikasi jenis item.",
-            "openWithDefaultApp": "Buka dengan aplikasi default"
+            "openWithDefaultApp": "Buka dengan aplikasi default",
+            "extractHereUncheckedConfirm": "Nama di dalam {name} tidak dapat dibaca sebelum diekstrak, sehingga AeroFTP tidak dapat memeriksa apa yang akan ditimpa oleh “Ekstrak Di Sini” di folder ini. “Ekstrak ke Folder” tidak pernah menimpa apa pun."
         },
         "transfer": {
             "transferring": "Mentransfer...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud diaktifkan",
             "selectPairLocalFolder": "Pilih folder lokal untuk pasangan",
             "secondsAgo": "{count}d lalu",
-            "conflictsCount": "{count} konflik perlu perhatian"
+            "conflictsCount": "{count} konflik perlu perhatian",
+            "updateOnlyHint": "Pembaruan Satu Arah mempertahankan file tujuan yang lebih baru. Saat pencadangan aditif dimatikan, hanya file yang tidak berubah, ada di tujuan saja, dan memiliki bukti transfer AeroCloud terverifikasi yang dihapus. File lain tetap tersedia untuk ditinjau di AeroSync. Kebijakan konflik diabaikan; tanggal yang tidak diketahui tetap belum terselesaikan.",
+            "untrackedDestinationFiles": "{count} file tujuan dipertahankan untuk ditinjau: riwayat transfernya belum terverifikasi atau file telah berubah sejak transfer AeroCloud terakhir. Tinjau file tersebut di AeroSync sebelum memutuskan untuk menghapusnya."
         },
         "statusBar": {
             "connected": "Terhubung",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Memindai subpohon...",
             "flattenTruncated": "dipotong",
             "flattenTruncatedHint": "Mencapai batas 5.000 entri; perbaiki filter Anda atau masuk ke subfolder.",
-            "local_placeholder_flatten": "Filter file lokal... (* untuk rekursif)"
+            "local_placeholder_flatten": "Filter file lokal... (* untuk rekursif)",
+            "flattenNameClash": "{names}: dipilih di lebih dari satu folder. Jika diletakkan di satu tempat, file-file itu akan saling menimpa; proses satu dari tiap nama dalam satu waktu.",
+            "flattenNameClashTitle": "Nama sama di lebih dari satu folder"
         },
         "versions": {
             "title": "Versi File",
@@ -6344,7 +6349,10 @@
             "progressCopy": "[salinan]",
             "deleteCount": "Akan dihapus: {count}",
             "overwriteCount": "Akan ditimpa: {count}",
-            "conflictCount": "{count} konflik"
+            "conflictCount": "{count} konflik",
+            "updateOnly": "Lewati file tujuan yang lebih baru (Pembaruan Satu Arah)",
+            "updateOnlyHint": "Menyalin file sumber yang belum ada atau telah berubah, mempertahankan file tujuan yang lebih baru, dan menghapus entri yang hanya ada di tujuan. File tanpa tanggal yang dapat dibandingkan akan dibandingkan berdasarkan ukuran; perbedaan ukuran dibiarkan untuk ditinjau.",
+            "rescanNeeded": "Jalankan perbandingan baru dengan pengaturan saat ini sebelum mengekspor skrip pembaruan."
         },
         "accountLock": {
             "title": "Pilih akun",

@@ -598,7 +598,8 @@
             "setAsPublic": "Nastavi kot javno",
             "makeAllPrivate": "Nastavi vse kot zasebno",
             "dropboxRestoreLimit": "AeroFTP lahko obnovi obnovljive različice datotek. Mape obnovite v razdelku Izbrisane datoteke na dropbox.com. Vprašaj pomeni, da Dropbox ni prepoznal vrste elementa.",
-            "openWithDefaultApp": "Odpri s privzeto aplikacijo"
+            "openWithDefaultApp": "Odpri s privzeto aplikacijo",
+            "extractHereUncheckedConfirm": "Imen znotraj {name} ni mogoče prebrati pred razširjanjem, zato AeroFTP ne more preveriti, kaj bi „Razširi sem“ prepisalo v tej mapi. „Razširi v mapo“ nikoli ničesar ne prepiše."
         },
         "transfer": {
             "transferring": "Prenašanje...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud omogočen",
             "selectPairLocalFolder": "Izberite lokalno mapo za par",
             "secondsAgo": "pred {count}s",
-            "conflictsCount": "Spori, ki zahtevajo pozornost: {count}"
+            "conflictsCount": "Spori, ki zahtevajo pozornost: {count}",
+            "updateOnlyHint": "Enosmerno posodabljanje ohrani novejše ciljne datoteke. Ko je dodajalno varnostno kopiranje izklopljeno, se izbrišejo le nespremenjene datoteke, ki obstajajo izključno na cilju in imajo preverjeno potrdilo o prenosu prek AeroCloud. Druge datoteke ostanejo za pregled v AeroSync. Pravilnik o sporih se prezre; neznani datumi ostanejo nerazrešeni.",
+            "untrackedDestinationFiles": "{count} ciljnih datotek je bilo ohranjenih za pregled: njihova zgodovina prenosov ni preverjena ali pa so bile spremenjene po zadnjem prenosu prek AeroCloud. Pred odločitvijo o izbrisu jih preglejte v AeroSync."
         },
         "statusBar": {
             "connected": "Povezano",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Pregledovanje poddrevesa...",
             "flattenTruncated": "skrajšano",
             "flattenTruncatedHint": "Dosežena omejitev 5.000 vnosov; izboljšajte filter ali se spustite v podmapo.",
-            "local_placeholder_flatten": "Filtriraj lokalne datoteke... (* za rekurzivno)"
+            "local_placeholder_flatten": "Filtriraj lokalne datoteke... (* za rekurzivno)",
+            "flattenNameClash": "{names}: izbrano v več kot eni mapi. Če bi jih dali na isto mesto, bi se prepisali; delajte z enim od vsakega naenkrat.",
+            "flattenNameClashTitle": "Isto ime v več mapah"
         },
         "versions": {
             "title": "Različice datotek",
@@ -6344,7 +6349,10 @@
             "progressCopy": "[kopija]",
             "deleteCount": "Za brisanje: {count}",
             "overwriteCount": "Za prepis: {count}",
-            "conflictCount": "Spori: {count}"
+            "conflictCount": "Spori: {count}",
+            "updateOnly": "Preskoči novejše ciljne datoteke (enosmerno posodabljanje)",
+            "updateOnlyHint": "Kopira manjkajoče ali spremenjene izvorne datoteke, ohrani novejše ciljne datoteke in izbriše vnose, ki so samo na cilju. Datoteke brez primerljivih datumov se primerjajo po velikosti; razlike v velikosti ostanejo za pregled.",
+            "rescanNeeded": "Pred izvozom skripta za posodabljanje zaženite novo primerjavo s trenutnimi nastavitvami."
         },
         "accountLock": {
             "title": "Izberite račun",

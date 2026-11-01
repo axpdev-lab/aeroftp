@@ -598,7 +598,8 @@
             "setAsPublic": "Setați ca public",
             "makeAllPrivate": "Fă totul privat",
             "dropboxRestoreLimit": "AeroFTP poate restaura versiunile recuperabile ale fișierelor. Restaurați dosarele din Fișiere șterse pe dropbox.com. Un semn de întrebare înseamnă că Dropbox nu a identificat tipul elementului.",
-            "openWithDefaultApp": "Deschide cu aplicația implicită"
+            "openWithDefaultApp": "Deschide cu aplicația implicită",
+            "extractHereUncheckedConfirm": "Numele din {name} nu pot fi citite înainte de extragere, deci AeroFTP nu poate verifica ce ar suprascrie opțiunea „Extrage aici” în acest dosar. Opțiunea „Extrage în dosar” nu suprascrie niciodată nimic."
         },
         "transfer": {
             "transferring": "Se transferă...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud activat",
             "selectPairLocalFolder": "Selectați folderul local pentru pereche",
             "secondsAgo": "acum {count}s",
-            "conflictsCount": "Conflicte care necesită atenție: {count}"
+            "conflictsCount": "Conflicte care necesită atenție: {count}",
+            "updateOnlyHint": "Actualizarea unidirecțională păstrează fișierele mai noi de la destinație. Când backupul aditiv este dezactivat, sunt șterse doar fișierele nemodificate care există exclusiv la destinație și au o confirmare verificată a transferului AeroCloud. Celelalte fișiere rămân pentru verificare în AeroSync. Politica de conflicte este ignorată; datele necunoscute rămân nerezolvate.",
+            "untrackedDestinationFiles": "{count} fișiere de la destinație au fost păstrate pentru verificare: istoricul transferurilor nu este verificat sau au fost modificate după ultimul transfer AeroCloud. Verificați-le în AeroSync înainte de a decide dacă le ștergeți."
         },
         "statusBar": {
             "connected": "Conectat",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Se scanează subarborele...",
             "flattenTruncated": "trunchiat",
             "flattenTruncatedHint": "A fost atinsă limita de 5.000 de intrări; rafinați filtrul sau coborâți într-un subfolder.",
-            "local_placeholder_flatten": "Filtrează fișiere locale... (* pentru recursiv)"
+            "local_placeholder_flatten": "Filtrează fișiere locale... (* pentru recursiv)",
+            "flattenNameClash": "{names}: selectate în mai multe dosare. Puse într-un singur loc, s-ar înlocui reciproc; acționați asupra unuia din fiecare, pe rând.",
+            "flattenNameClashTitle": "Același nume în mai multe dosare"
         },
         "versions": {
             "title": "Versiuni fișier",
@@ -6344,7 +6349,10 @@
             "progressCopy": "[copie]",
             "deleteCount": "De șters: {count}",
             "overwriteCount": "De suprascris: {count}",
-            "conflictCount": "Conflicte: {count}"
+            "conflictCount": "Conflicte: {count}",
+            "updateOnly": "Omite fișierele mai noi de la destinație (actualizare unidirecțională)",
+            "updateOnlyHint": "Copiază fișierele sursă lipsă sau modificate, păstrează fișierele mai noi din destinație și șterge intrările care există doar în destinație. Fișierele fără date calendaristice comparabile sunt comparate după dimensiune; diferențele de dimensiune rămân pentru verificare.",
+            "rescanNeeded": "Rulează o nouă comparație cu setările actuale înainte de a exporta un script de actualizare."
         },
         "accountLock": {
             "title": "Alegeți un cont",

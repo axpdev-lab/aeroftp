@@ -598,7 +598,8 @@
             "setAsPublic": "Als öffentlich festlegen",
             "makeAllPrivate": "Alle auf privat setzen",
             "dropboxRestoreLimit": "AeroFTP kann wiederherstellbare Dateiversionen wiederherstellen. Stellen Sie Ordner unter „Gelöschte Dateien“ auf dropbox.com wieder her. Ein Fragezeichen bedeutet, dass Dropbox den Elementtyp nicht erkannt hat.",
-            "openWithDefaultApp": "Mit Standard-App öffnen"
+            "openWithDefaultApp": "Mit Standard-App öffnen",
+            "extractHereUncheckedConfirm": "Die Namen in {name} können vor dem Entpacken nicht gelesen werden, daher kann AeroFTP nicht prüfen, was „Hier entpacken“ in diesem Ordner überschreiben würde. „In Ordner entpacken“ überschreibt nie etwas."
         },
         "transfer": {
             "transferring": "Übertragung...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud aktiviert",
             "selectPairLocalFolder": "Lokalen Ordner für Paar auswählen",
             "secondsAgo": "vor {count}s",
-            "conflictsCount": "Zu prüfende Konflikte: {count}"
+            "conflictsCount": "Zu prüfende Konflikte: {count}",
+            "updateOnlyHint": "Die Einweg-Aktualisierung behält neuere Zieldateien bei. Bei deaktivierter additiver Sicherung werden nur unveränderte Dateien gelöscht, die ausschließlich im Ziel vorhanden sind und einen verifizierten AeroCloud-Übertragungsbeleg haben. Andere Dateien bleiben zur Prüfung in AeroSync erhalten. Die Konfliktrichtlinie wird ignoriert; unbekannte Datumsangaben bleiben ungeklärt.",
+            "untrackedDestinationFiles": "{count} Zieldateien wurden zur Prüfung beibehalten: Ihr Übertragungsverlauf ist unbestätigt oder sie wurden seit der letzten AeroCloud-Übertragung geändert. Prüfen Sie sie in AeroSync, bevor Sie über eine Löschung entscheiden."
         },
         "statusBar": {
             "connected": "Verbunden",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Unterbaum wird gescannt...",
             "flattenTruncated": "gekürzt",
             "flattenTruncatedHint": "Limit von 5.000 Einträgen erreicht; verfeinern Sie den Filter oder steigen Sie in einen Unterordner ab.",
-            "local_placeholder_flatten": "Lokale Dateien filtern... (* für rekursiv)"
+            "local_placeholder_flatten": "Lokale Dateien filtern... (* für rekursiv)",
+            "flattenNameClash": "{names}: in mehr als einem Ordner ausgewählt. An einem Ort abgelegt, würden sie sich gegenseitig ersetzen; bearbeiten Sie jeweils nur eine Datei pro Name.",
+            "flattenNameClashTitle": "Gleicher Name in mehr als einem Ordner"
         },
         "versions": {
             "title": "Dateiversionen",
@@ -6344,7 +6349,10 @@
             "progressCopy": "[Kopie]",
             "deleteCount": "{count} zu löschen",
             "overwriteCount": "{count} zu überschreiben",
-            "conflictCount": "Konflikte: {count}"
+            "conflictCount": "Konflikte: {count}",
+            "updateOnly": "Neuere Zieldateien überspringen (Einweg-Aktualisierung)",
+            "updateOnlyHint": "Kopiert fehlende oder geänderte Quelldateien, behält neuere Dateien am Ziel und löscht Einträge, die nur am Ziel vorhanden sind. Dateien ohne vergleichbare Datumsangaben werden nach Größe verglichen; Größenunterschiede bleiben zur Überprüfung bestehen.",
+            "rescanNeeded": "Führe einen neuen Vergleich mit den aktuellen Einstellungen durch, bevor du ein Aktualisierungsskript exportierst."
         },
         "accountLock": {
             "title": "Konto auswählen",

@@ -598,7 +598,8 @@
             "setAsPublic": "Tetapkan sebagai Awam",
             "makeAllPrivate": "Jadikan semua peribadi",
             "dropboxRestoreLimit": "AeroFTP boleh memulihkan versi fail yang masih boleh dipulihkan. Pulihkan folder daripada Fail dipadam di dropbox.com. Tanda soal bermaksud Dropbox tidak mengenal pasti jenis item.",
-            "openWithDefaultApp": "Buka dengan apl lalai"
+            "openWithDefaultApp": "Buka dengan apl lalai",
+            "extractHereUncheckedConfirm": "Nama di dalam {name} tidak boleh dibaca sebelum pengekstrakan, jadi AeroFTP tidak dapat menyemak apa yang akan ditulis ganti oleh “Ekstrak Di Sini” dalam folder ini. “Ekstrak ke Folder” tidak pernah menulis ganti apa-apa."
         },
         "transfer": {
             "transferring": "Memindahkan...",
@@ -1588,7 +1589,9 @@
             "aerocloudEnabled": "AeroCloud didayakan",
             "selectPairLocalFolder": "Pilih folder setempat untuk pasangan",
             "secondsAgo": "{count}s lalu",
-            "conflictsCount": "{count} konflik memerlukan perhatian"
+            "conflictsCount": "{count} konflik memerlukan perhatian",
+            "updateOnlyHint": "Kemas Kini Sehala mengekalkan fail destinasi yang lebih baharu. Apabila sandaran aditif dimatikan, hanya fail yang tidak berubah, ada di destinasi sahaja dan mempunyai resit pemindahan AeroCloud yang disahkan akan dipadam. Fail lain kekal untuk semakan dalam AeroSync. Dasar konflik diabaikan; tarikh yang tidak diketahui kekal belum diselesaikan.",
+            "untrackedDestinationFiles": "{count} fail destinasi dikekalkan untuk semakan: sejarah pemindahannya belum disahkan atau fail telah berubah selepas pemindahan AeroCloud terakhir. Semak fail tersebut dalam AeroSync sebelum memutuskan untuk memadamnya."
         },
         "statusBar": {
             "connected": "Disambung",
@@ -2469,7 +2472,9 @@
             "flattenScanning": "Mengimbas subpokok...",
             "flattenTruncated": "dipotong",
             "flattenTruncatedHint": "Mencapai had 5,000 entri; perhalusi penapis anda atau masuk ke subfolder.",
-            "local_placeholder_flatten": "Tapis fail tempatan... (* untuk rekursif)"
+            "local_placeholder_flatten": "Tapis fail tempatan... (* untuk rekursif)",
+            "flattenNameClash": "{names}: dipilih dalam lebih daripada satu folder. Jika diletakkan di satu tempat, fail-fail itu akan menggantikan satu sama lain; bertindak pada satu bagi setiap nama pada satu masa.",
+            "flattenNameClashTitle": "Nama sama dalam lebih daripada satu folder"
         },
         "versions": {
             "title": "Versi Fail",
@@ -6344,7 +6349,10 @@
             "progressCopy": "[salinan]",
             "deleteCount": "Untuk dipadam: {count}",
             "overwriteCount": "Untuk ditulis ganti: {count}",
-            "conflictCount": "{count} konflik"
+            "conflictCount": "{count} konflik",
+            "updateOnly": "Langkau fail destinasi yang lebih baharu (Kemas Kini Sehala)",
+            "updateOnlyHint": "Menyalin fail sumber yang belum ada atau telah berubah, mengekalkan fail destinasi yang lebih baharu dan memadam entri yang hanya ada di destinasi. Fail tanpa tarikh yang boleh dibandingkan dibandingkan mengikut saiz; perbezaan saiz dibiarkan untuk semakan.",
+            "rescanNeeded": "Jalankan perbandingan baharu dengan tetapan semasa sebelum mengeksport skrip kemas kini."
         },
         "accountLock": {
             "title": "Pilih akaun",

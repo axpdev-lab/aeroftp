@@ -1622,7 +1622,9 @@
             "aerocloudEnabled": "AeroCloud enabled",
             "selectPairLocalFolder": "Select local folder for pair",
             "secondsAgo": "{count}s ago",
-            "conflictsCount": "Conflicts needing attention: {count}"
+            "conflictsCount": "Conflicts needing attention: {count}",
+            "updateOnlyHint": "One-way Update keeps newer destination files. With additive backup off, only unchanged destination-only files with a verified AeroCloud transfer receipt are deleted. Other files stay for review in AeroSync. The conflict policy is ignored; unknown dates stay unresolved.",
+            "untrackedDestinationFiles": "{count} destination files were kept for review: their transfer history is unverified or they changed after the last AeroCloud transfer. Review them in AeroSync before deciding on deletion."
         },
         "common": {
             "about": "About",
@@ -2130,6 +2132,7 @@
             "extract": "Extract",
             "extract7zHere": "Extract 7z Here",
             "extractHere": "Extract Here",
+            "extractHereUncheckedConfirm": "The names inside {name} cannot be read before extracting, so AeroFTP cannot check what Extract Here would overwrite in this folder. Extract to Folder never overwrites.",
             "extracting": "Extracting...",
             "extractionFailed": "Extraction failed",
             "extractOverwriteConfirm": "Extracting here will overwrite {count} existing item(s): {names}. Continue?",
@@ -3795,6 +3798,8 @@
         },
         "search": {
             "clear": "Clear search",
+            "flattenNameClash": "{names}: selected in more than one folder. Put in one place, they would replace each other; act on one of each at a time.",
+            "flattenNameClashTitle": "Same name in more than one folder",
             "flattenRecursive": "Recursive",
             "flattenScanning": "Scanning subtree...",
             "flattenTruncated": "truncated",
@@ -6632,7 +6637,10 @@
             "progressCopy": "[copy]",
             "deleteCount": "{count} to delete",
             "overwriteCount": "{count} to overwrite",
-            "conflictCount": "Conflicts: {count}"
+            "conflictCount": "Conflicts: {count}",
+            "updateOnly": "Skip newer destination files (One-way Update)",
+            "updateOnlyHint": "Copy missing or changed source files, keep newer destination files, and delete destination-only entries. Files without comparable dates are compared by size; size differences are left for review.",
+            "rescanNeeded": "Run a new comparison with the current settings before exporting an Update script."
         },
         "aerocryptProfile": {
             "overlaysSection": "Wrappers / Overlays",

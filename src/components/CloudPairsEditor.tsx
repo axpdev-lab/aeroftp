@@ -133,6 +133,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
             connection_params: base.connection_params || {},
             sync_direction: (base.sync_direction as CloudSyncDirection) || 'bidirectional',
             preserve_remote_deletes: base.preserve_remote_deletes !== false,
+            update_only: base.update_only === true,
             compress_enabled: base.compress_enabled === true,
             compress_level: normalizeCompressLevel(base.compress_level ?? 3),
             conflict_strategy: base.conflict_strategy || 'ask_user',
@@ -245,6 +246,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
             connection_params: legacyConfig.connection_params || {},
             sync_direction: (legacyConfig.sync_direction as CloudSyncDirection) || 'bidirectional',
             preserve_remote_deletes: legacyConfig.preserve_remote_deletes !== false,
+            update_only: legacyConfig.update_only === true,
             compress_enabled: legacyConfig.compress_enabled === true,
             compress_level: normalizeCompressLevel(legacyConfig.compress_level ?? 3),
             conflict_strategy: legacyConfig.conflict_strategy || 'ask_user',
@@ -445,12 +447,24 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
                                         </label>
                                     </div>
 
+                                    {pair.sync_direction !== 'bidirectional' && (
+                                        <div className="mb-2">
+                                            <label className="flex items-center gap-2 text-xs">
+                                                <input type="checkbox" checked={pair.update_only === true}
+                                                    onChange={event => updatePairField(pair.id, 'update_only', event.target.checked)} />
+                                                {t('aerosync.updateOnly')}
+                                            </label>
+                                            <p className="mt-1 text-[10px] text-gray-500 dark:text-gray-400">{t('cloud.updateOnlyHint')}</p>
+                                        </div>
+                                    )}
+
                                     {/* Advanced: conflict + versioning + excludes */}
                                     <div className="pt-2 border-t border-gray-200 dark:border-gray-700 grid grid-cols-1 md:grid-cols-2 gap-2">
                                         <div>
                                             <label className="block text-[10px] text-gray-500 mb-0.5">{t('cloud.conflictStrategy') || 'Conflicts'}</label>
                                             <select
                                                 value={pair.conflict_strategy || 'ask_user'}
+                                                disabled={pair.update_only === true && pair.sync_direction !== 'bidirectional'}
                                                 onChange={e => updatePairField(pair.id, 'conflict_strategy', e.target.value)}
                                                 className="w-full text-xs bg-gray-100 dark:bg-gray-700 rounded px-2 py-1"
                                             >
