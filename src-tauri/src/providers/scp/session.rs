@@ -489,9 +489,10 @@ where
     }
 
     /// The metadata of each of `names` in `dir`, symlinks followed with
-    /// `follow`, from one [`listing::resolve_script`]. A name not there is
-    /// left out; one the server could not read fails the whole call, except
-    /// with `follow`, where a target that cannot be read is left out too.
+    /// `follow`, from [`listing::resolve_script`] in batches of
+    /// [`listing::resolve_batches`]. A name not there is left out; one the
+    /// server could not read fails the whole call, except with `follow`,
+    /// where a target that cannot be read is left out too.
     pub async fn resolve(
         &self,
         what: &str,
@@ -500,9 +501,14 @@ where
         names: &[Vec<u8>],
         follow: bool,
     ) -> Result<Vec<Entry>, ProviderError> {
-        let script = listing::resolve_script(dir, names, follow)?;
-        let out = self.run_ok(what, shown, &script).await?;
-        Ok(listing::parse_resolved(names, &out.stdout))
+        let mut entries = Vec::with_capacity(names.len());
+        for run in listing::resolve_batches(dir, names, listing::RESOLVE_BUDGET)? {
+            let batch = &names[run];
+            let script = listing::resolve_script(dir, batch, follow)?;
+            let out = self.run_ok(what, shown, &script).await?;
+            entries.extend(listing::parse_resolved(batch, &out.stdout));
+        }
+        Ok(entries)
     }
 
     /// The metadata of `path` itself (a symlink is not followed).
@@ -759,34 +765,23 @@ where
     }
 
     /// The metadata of each of the absolute `paths` (symlinks not
-    /// followed), in batches
-    /// that keep one command well under the 128 KiB a single argument may
-    /// take: the shell gets the whole script as one. A path gone in the
-    /// meantime is left out; one the server could not read is an error, so a
-    /// search never comes back short without saying so.
+    /// followed), in the batches of [`listing::resolve_batches`]. A path
+    /// gone in the meantime is left out; one the server could not read is
+    /// an error, so a search never comes back short without saying so.
     pub async fn stat_many(&self, paths: &[Vec<u8>]) -> Result<Vec<Entry>, ProviderError> {
-        const BUDGET: usize = 64 * 1024;
+        // `resolve_script` joins a folder and a name: the root and each
+        // absolute path without its first `/`.
+        let relative: Vec<Vec<u8>> = paths
+            .iter()
+            .map(|p| p.strip_prefix(b"/").unwrap_or(p).to_vec())
+            .collect();
         let mut entries = Vec::with_capacity(paths.len());
-        let mut start = 0;
-        while start < paths.len() {
-            let mut end = start;
-            let mut bytes = 0;
-            while end < paths.len() && (end == start || bytes + paths[end].len() + 3 <= BUDGET) {
-                bytes += paths[end].len() + 3;
-                end += 1;
-            }
-            let batch = &paths[start..end];
-            // `resolve_script` joins a folder and a name: the root and each
-            // absolute path without its first `/`.
-            let relative: Vec<Vec<u8>> = batch
-                .iter()
-                .map(|p| p.strip_prefix(b"/").unwrap_or(p).to_vec())
-                .collect();
-            let script = listing::resolve_script(b"/", &relative, false)?;
+        for run in listing::resolve_batches(b"/", &relative, listing::RESOLVE_BUDGET)? {
+            let script = listing::resolve_script(b"/", &relative[run.clone()], false)?;
+            let batch = &paths[run];
             let shown = String::from_utf8_lossy(&batch[0]).into_owned();
             let out = self.run_ok("stat", &shown, &script).await?;
             entries.extend(listing::parse_resolved(batch, &out.stdout));
-            start = end;
         }
         Ok(entries)
     }
@@ -971,12 +966,23 @@ where
     /// follow symlinks, so a link back up the tree is never walked; a folder
     /// it cannot read is skipped, as SFTP's search skips one. Reading stops
     /// at `limit`, and dropping the channel ends `find`.
+    ///
+    /// `root` itself fails as [`Self::list`] of it fails, as over SFTP: a
+    /// folder that is not there or cannot be read is an error, not a search
+    /// with no matches.
     pub async fn find_paths(
         &self,
         root: &str,
         keep: &mut (dyn FnMut(&[u8]) -> bool + Send),
         limit: usize,
     ) -> Result<Vec<Vec<u8>>, ProviderError> {
+        let folder = shell_quote(&format!("{}/.", root.trim_end_matches('/')))?;
+        self.run_ok(
+            "list",
+            root,
+            format!("ls -lan -- {folder} >/dev/null").as_bytes(),
+        )
+        .await?;
         let cmd = format!(
             "LC_ALL=C; export LC_ALL; find {} -mindepth 1 -print0 2>/dev/null; :",
             shell_quote(root)?

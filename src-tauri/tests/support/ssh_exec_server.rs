@@ -32,6 +32,9 @@ pub enum Sftp {
     /// End the whole connection instead of answering, as a server that drops
     /// it while the client waits for the subsystem.
     DropConnection,
+    /// Accept the subsystem, then end the whole connection before the SFTP
+    /// VERSION, as a server that drops it during the handshake.
+    DropAfterAccept,
 }
 
 pub struct Options {
@@ -223,6 +226,10 @@ impl Handler for Conn {
                 let _ = session.close(channel);
             }
             ("sftp", Sftp::DropConnection) => {
+                let _ = session.disconnect(russh::Disconnect::ByApplication, "going away", "");
+            }
+            ("sftp", Sftp::DropAfterAccept) => {
+                let _ = session.channel_success(channel);
                 let _ = session.disconnect(russh::Disconnect::ByApplication, "going away", "");
             }
             _ => {

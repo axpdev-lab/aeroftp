@@ -2758,13 +2758,6 @@ impl StorageProvider for SftpProvider {
         let wait = std::time::Duration::from_secs(self.config.timeout_secs.max(1));
         let opened = match request_sftp_subsystem(&mut channel, wait).await? {
             Ok(()) => SftpChannel::open(channel.into_stream()).await,
-            // The channel ended because the whole connection did: that is a
-            // dropped connection, not a server without SFTP.
-            Err(NoSftp::Ended) if handle.is_closed() => {
-                return Err(ProviderError::ConnectionLost(
-                    "the SSH connection ended while the server was asked for SFTP".to_string(),
-                ));
-            }
             Err(no_sftp) => {
                 // A refused channel stays open on the server until it is
                 // closed, and a server with one session per connection
@@ -2775,6 +2768,14 @@ impl StorageProvider for SftpProvider {
                 Err(SftpOpenError::NoSftp(no_sftp))
             }
         };
+        // A channel that ended because the whole connection did, while SFTP
+        // was asked for or before the server's VERSION, is a dropped
+        // connection, not a server without SFTP.
+        if matches!(opened, Err(SftpOpenError::NoSftp(NoSftp::Ended))) && handle.is_closed() {
+            return Err(ProviderError::ConnectionLost(
+                "the SSH connection ended while SFTP was being started".to_string(),
+            ));
+        }
         let handle = Arc::new(TokioMutex::new(handle));
         match opened {
             Ok(sftp) => {

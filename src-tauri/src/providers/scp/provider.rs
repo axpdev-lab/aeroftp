@@ -27,9 +27,6 @@ use crate::providers::{
     RemoteEntry, SftpConfig, StorageProvider,
 };
 
-/// Names per `[ -d ]` batch when a listing resolves its symlinks.
-const SYMLINK_BATCH: usize = 256;
-
 /// The most entries a search returns, as over SFTP.
 const FIND_LIMIT: usize = 500;
 
@@ -165,23 +162,19 @@ impl ScpProvider {
     }
 
     /// What each of the symlinks `names` in `dir` points to, read through
-    /// the link in batches of [`SYMLINK_BATCH`]. A link whose target cannot
-    /// be read (dangling, looping, out of the user's reach) is absent.
+    /// the link. A link whose target cannot be read (dangling, looping, out
+    /// of the user's reach) is absent.
     async fn link_targets(
         &self,
         dir: &str,
         names: &[&[u8]],
     ) -> Result<std::collections::HashMap<Vec<u8>, Meta>, ProviderError> {
-        let session = self.session()?;
-        let mut found = std::collections::HashMap::new();
-        for batch in names.chunks(SYMLINK_BATCH) {
-            let batch: Vec<Vec<u8>> = batch.iter().map(|n| n.to_vec()).collect();
-            let resolved = session
-                .resolve("list", dir, dir.as_bytes(), &batch, true)
-                .await?;
-            found.extend(resolved.into_iter().map(|e| (e.name, e.meta)));
-        }
-        Ok(found)
+        let names: Vec<Vec<u8>> = names.iter().map(|n| n.to_vec()).collect();
+        let resolved = self
+            .session()?
+            .resolve("list", dir, dir.as_bytes(), &names, true)
+            .await?;
+        Ok(resolved.into_iter().map(|e| (e.name, e.meta)).collect())
     }
 
     /// Whether `path` is a directory once a symlink is followed.
@@ -190,9 +183,16 @@ impl ScpProvider {
         Ok(self.session()?.run(cmd.as_bytes()).await?.status == 0)
     }
 
-    /// Whether the server has what going on from an offset takes.
+    /// Whether the server has what going on from an offset takes: `dd` to
+    /// skip to it and `cat` for the rest, or `cat >>` to append.
     fn can_resume(&self) -> bool {
-        ["dd", "cat", "head"].iter().all(|t| self.has(t))
+        ["dd", "cat"].iter().all(|t| self.has(t))
+    }
+
+    /// Whether the server has what a bounded range read takes: what resume
+    /// takes, and `head` to stop at the range's end.
+    fn can_read_range(&self) -> bool {
+        self.can_resume() && self.has("head")
     }
 
     /// A download into the partial SFTP keeps too (`.aerotmp`, or the file
@@ -248,7 +248,7 @@ impl ScpProvider {
         // After a refusal the object is moving: one stream reads one view of
         // it, with the time that goes with it.
         let moving = self.download_time.is_refused();
-        let segments = if offset == 0 && !explicit_resume && !moving && self.can_resume() {
+        let segments = if offset == 0 && !explicit_resume && !moving && self.can_read_range() {
             self.planned_download_segments(total)
         } else {
             0
@@ -598,7 +598,8 @@ impl StorageProvider for ScpProvider {
     /// with `cat >>`. The tail starts where the remote file ends, never at
     /// the caller's offset: appending to a remote shorter than that offset
     /// would leave a hole of the wrong bytes. A remote that is not a part of
-    /// the local file by its size (missing, empty, longer) is sent whole.
+    /// the local file by its size (missing, empty, longer than the caller's
+    /// offset, as when another writer grew it since) is sent whole.
     async fn resume_upload(
         &mut self,
         local_path: &str,
@@ -619,7 +620,11 @@ impl StorageProvider for ScpProvider {
             Err(e) => return Err(e),
         };
         let from = match remote {
-            Some(size) if offset > 0 && size > 0 && size <= total && self.can_resume() => size,
+            Some(size)
+                if offset > 0 && size > 0 && size <= offset.min(total) && self.can_resume() =>
+            {
+                size
+            }
             _ => return self.upload(local_path, remote_path, on_progress).await,
         };
         tracing::info!("SCP: Appending {} from byte {} of {}", full, from, total);
@@ -895,7 +900,7 @@ impl StorageProvider for ScpProvider {
     /// need `dd`, `cat` and `head` on the server; without them the job runs
     /// one transfer at a time on the session itself.
     fn transfer_executor_kind(&self) -> ProviderTransferExecutorKind {
-        if self.session.is_some() && self.can_resume() {
+        if self.session.is_some() && self.can_read_range() {
             ProviderTransferExecutorKind::SftpConnectionPool
         } else {
             ProviderTransferExecutorKind::LockedSingle
@@ -978,7 +983,7 @@ impl StorageProvider for ScpProvider {
                 "Read range size {len} exceeds maximum {MAX_READ_RANGE} bytes"
             )));
         }
-        if !self.can_resume() {
+        if !self.can_read_range() {
             return Err(ProviderError::NotSupported(format!(
                 "{} has no dd, cat and head, which a ranged read over SCP needs",
                 self.config.host
@@ -999,7 +1004,7 @@ impl StorageProvider for ScpProvider {
             // Resume goes through `supports_resume` and its methods, as SFTP.
             supports_resume_download: false,
             supports_resume_upload: false,
-            supports_range_download: self.can_resume(),
+            supports_range_download: self.can_read_range(),
             supports_compression: false,
             supports_delta_sync: false,
             ..Default::default()

@@ -154,6 +154,9 @@ fn saved_option_key(key: &str, protocol: &str) -> String {
         "account_id" => "accountId".into(),
         "private_key_path" => "privateKeyPath".into(),
         "allow_cleartext_endpoint" => "allowCleartextEndpoint".into(),
+        // The app reads only `allowScpFallback`: saved as `allow_scp_fallback`,
+        // an SFTP-only profile would fall back to SCP from the app.
+        "allow_scp_fallback" => "allowScpFallback".into(),
         "allow_cleartext_storage_endpoint" => "allowCleartextStorage".into(),
         "container" if protocol == "azure" => "bucket".into(),
         "cloud_name" if protocol == "cloudinary" => "bucket".into(),
@@ -439,7 +442,16 @@ mod tests {
                 let err = add(json!({ key: bad })).unwrap_err();
                 assert!(err.contains("must be a boolean"), "{key}={bad}: {err}");
             }
-            assert!(add(json!({ key: false })).is_ok(), "{key}");
+            let saved = add(json!({ key: false })).expect(key);
+            assert_eq!(
+                saved["options"]["allowScpFallback"],
+                json!(false),
+                "{key}: {saved}"
+            );
+            assert!(
+                saved["options"].get("allow_scp_fallback").is_none(),
+                "{key}"
+            );
         }
     }
 

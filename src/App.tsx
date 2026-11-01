@@ -231,6 +231,7 @@ import {
 } from './utils/sftpDownloadPresets';
 import { connectionProtocolLabel, scpFallbackConnectParam, wentOnOverScpAfter } from './utils/scpFallback';
 import { remoteCopyUrl } from './utils/copyUrl';
+import { serverHost } from './utils/serverHost';
 import {
   TRANSFER_SPEED_PRESETS,
   deriveTransferSpeedPreset,
@@ -1884,8 +1885,8 @@ const App: React.FC = () => {
 
     // Extract server name without 'ftp.' prefix and port
     // e.g., "ftp.example.com:21" -> "example"
-    const serverHost = liveConnectionParams.server.split(':')[0]; // Remove port
-    const serverName = serverHost.replace(/^ftp\./, '').replace(/^www\./, ''); // Remove ftp./www.
+    const liveHost = serverHost(liveConnectionParams.server);
+    const serverName = liveHost.replace(/^ftp\./, '').replace(/^www\./, ''); // Remove ftp./www.
     const serverBase = serverName.split('.')[0]; // Get first part (e.g., "example" from "example.com")
 
     // Check if local path contains a reference to a different server
@@ -3382,12 +3383,12 @@ const App: React.FC = () => {
     const liveProto = cp.protocol || 'ftp';
     const liveUser = cp.username;
     const liveHostRaw = cp.server || '';
-    const liveHost = liveHostRaw.split('/')[0].split(':')[0];
+    const liveHost = serverHost(liveHostRaw.split('/')[0]);
     const matchesLive = (s: ServerProfile): boolean =>
       (s.protocol || 'ftp') === liveProto
       && s.username === liveUser
       && (s.host === liveHostRaw
-        || (s.host || '').split('/')[0].split(':')[0] === liveHost);
+        || serverHost((s.host || '').split('/')[0]) === liveHost);
     const matches = all.filter(matchesLive);
     return matches.length === 1 ? matches[0] : undefined;
   };
@@ -8244,7 +8245,7 @@ const App: React.FC = () => {
                         ? (effectiveParams.providerId === 'pixelunion' ? 'PixelUnion' : effectiveParams.server.replace(/^https?:\/\//, ''))
                         : protocol === 'twake'
                           ? effectiveParams.server.replace(/^https?:\/\//, '')
-                          : effectiveParams.server.split(':')[0]);
+                          : serverHost(effectiveParams.server));
       const protocolLabel = connectionViaLabel(effectiveParams);
       // SEC: mask credentials in log-only provider name to prevent data leakage
       const maskedProviderName = effectiveParams.username && providerName.includes(effectiveParams.username)
@@ -18921,7 +18922,7 @@ const App: React.FC = () => {
                             ? (normalizedParams.providerId === 'pixelunion' ? 'PixelUnion' : normalizedParams.server.replace(/^https?:\/\//, ''))
                             : normalizedParams.protocol === 'twake'
                               ? normalizedParams.server.replace(/^https?:\/\//, '')
-                              : normalizedParams.server.split(':')[0]);
+                              : serverHost(normalizedParams.server));
                   const protocolLabel = connectionViaLabel(normalizedParams);
                   // SEC: mask credentials in log-only provider name to prevent data leakage
                   const maskedProviderName = normalizedParams.username && providerName.includes(normalizedParams.username)
@@ -19146,7 +19147,7 @@ const App: React.FC = () => {
                     resolvedLocalPath3 = await connectScope.step(() => safeChangeLocalDirectory(localInitialPath));
                   }
                   // Use displayName if provided, otherwise extract from server
-                  const sessionName = params.displayName || params.server.split(':')[0];
+                  const sessionName = params.displayName || serverHost(params.server);
                   await connectScope.step(() => createSession(
                     sessionName,
                     params,
@@ -20836,7 +20837,7 @@ const App: React.FC = () => {
           activeFilePanel={activePanel}
           isCloudConnection={isCloudActive}
           sshConnection={isConnected && isSshProtocol(liveConnectionParams.protocol) ? {
-            host: liveConnectionParams.server.split(':')[0],
+            host: serverHost(liveConnectionParams.server),
             port: liveConnectionParams.port || 22,
             username: liveConnectionParams.username,
             password: liveConnectionParams.password || undefined,

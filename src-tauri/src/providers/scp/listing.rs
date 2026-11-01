@@ -285,13 +285,8 @@ pub fn resolve_script(
 ) -> Result<Vec<u8>, ProviderError> {
     let mut script = b"for f in".to_vec();
     for name in names {
-        let mut path = dir.to_vec();
-        if !path.ends_with(b"/") {
-            path.push(b'/');
-        }
-        path.extend_from_slice(name);
         script.push(b' ');
-        script.extend_from_slice(&shell_quote_bytes(&path)?);
+        script.extend_from_slice(&shell_quote_bytes(&joined(dir, name))?);
     }
     if follow {
         script.extend_from_slice(
@@ -306,6 +301,46 @@ pub fn resolve_script(
         );
     }
     Ok(script)
+}
+
+/// The bytes one [`resolve_script`] command may give its names: well under
+/// the 128 KiB Linux lets a single argument take (the shell gets the whole
+/// script as one), with room for the loop around them.
+pub const RESOLVE_BUDGET: usize = 64 * 1024;
+
+/// `dir` joined with `name`, as [`resolve_script`] names it.
+fn joined(dir: &[u8], name: &[u8]) -> Vec<u8> {
+    let mut path = dir.to_vec();
+    if !path.ends_with(b"/") {
+        path.push(b'/');
+    }
+    path.extend_from_slice(name);
+    path
+}
+
+/// `names` in `dir` cut into runs whose paths, quoted as [`resolve_script`]
+/// writes them, take at most `budget` bytes. A quote in a name takes four
+/// bytes there, so the raw length is not the measure. Every run takes at
+/// least one name, so a single long name still goes.
+pub fn resolve_batches(
+    dir: &[u8],
+    names: &[Vec<u8>],
+    budget: usize,
+) -> Result<Vec<std::ops::Range<usize>>, ProviderError> {
+    let mut runs = Vec::new();
+    let (mut start, mut bytes) = (0, 0);
+    for (i, name) in names.iter().enumerate() {
+        let cost = shell_quote_bytes(&joined(dir, name))?.len() + 1;
+        if i > start && bytes + cost > budget {
+            runs.push(start..i);
+            (start, bytes) = (i, 0);
+        }
+        bytes += cost;
+    }
+    if start < names.len() {
+        runs.push(start..names.len());
+    }
+    Ok(runs)
 }
 
 /// The entries from the output of [`resolve_script`] for the same `names`,
@@ -592,6 +627,31 @@ mod tests {
             .starts_with(b"for f in '/a';"));
         let followed = resolve_script(b"/", &[b"a".to_vec()], true).unwrap();
         assert!(followed.windows(13).any(|w| w == b"ls -lanLd --f"));
+    }
+
+    #[test]
+    fn resolve_batches_measure_the_quoted_paths() {
+        // 100 names of 200 quotes: 200 bytes raw, 800 quoted.
+        let names: Vec<Vec<u8>> = (0..100).map(|_| vec![b'\''; 200]).collect();
+        let budget = 16 * 1024;
+        let runs = resolve_batches(DIR, &names, budget).unwrap();
+        assert!(runs.len() > 1, "one batch of {} quoted bytes", 100 * 800);
+        let mut next = 0;
+        for run in &runs {
+            assert_eq!(run.start, next, "names skipped or repeated");
+            next = run.end;
+            let script = resolve_script(DIR, &names[run.clone()], false).unwrap();
+            let loop_part = resolve_script(DIR, &[], false).unwrap().len();
+            assert!(script.len() - loop_part <= budget, "{} bytes", script.len());
+        }
+        assert_eq!(next, names.len());
+        // A name longer than the budget still goes, alone.
+        let long = vec![vec![b'a'; 100], vec![b'b'; budget * 2], vec![b'c'; 100]];
+        assert_eq!(
+            resolve_batches(DIR, &long, budget).unwrap(),
+            [0..1, 1..2, 2..3]
+        );
+        assert!(resolve_batches(DIR, &[], budget).unwrap().is_empty());
     }
 
     /// The two listing commands and the resolve script on this machine's own

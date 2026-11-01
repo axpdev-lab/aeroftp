@@ -208,16 +208,26 @@ async fn the_refused_sftp_channel_is_closed_before_scp_starts() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_connection_dropped_while_asking_for_sftp_is_not_a_server_without_it() {
-    let fx = Fixture::new("fallback-dropped-asking");
-    let (port, seen) = start(fx.options(Sftp::DropConnection)).await;
-    let mut p = SftpProvider::new(config(port, &fx.remote()));
-    let err = timed_connect(&mut p)
-        .await
-        .0
-        .expect_err("the connection went away");
-    assert!(matches!(err, ProviderError::ConnectionLost(_)), "{err:?}");
-    assert!(!p.in_scp_mode());
-    assert_eq!(seen.execs(), 0, "SCP was tried: {err}");
+    // While the subsystem is asked for, and after it is accepted but before
+    // the server's VERSION.
+    for (sftp, case) in [
+        (Sftp::DropConnection, "asking"),
+        (Sftp::DropAfterAccept, "handshake"),
+    ] {
+        let fx = Fixture::new(&format!("fallback-dropped-{case}"));
+        let (port, seen) = start(fx.options(sftp)).await;
+        let mut p = SftpProvider::new(config(port, &fx.remote()));
+        let err = timed_connect(&mut p)
+            .await
+            .0
+            .expect_err("the connection went away");
+        assert!(
+            matches!(err, ProviderError::ConnectionLost(_)),
+            "{case}: {err:?}"
+        );
+        assert!(!p.in_scp_mode(), "{case}");
+        assert_eq!(seen.execs(), 0, "{case}: SCP was tried: {err}");
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -727,12 +737,24 @@ async fn a_search_that_cannot_read_a_match_says_so() {
     std::fs::create_dir(r.join("locked")).unwrap();
     std::fs::write(r.join("locked/match.log"), b"m").unwrap();
     std::fs::write(r.join("open.log"), b"o").unwrap();
-    // Readable but not searchable: `find` names the file, `ls` cannot stat it.
+    // Readable but not searchable: `find` names the file, `ls` cannot stat
+    // it. Root reads it all the same, so there only the search below runs.
     std::fs::set_permissions(r.join("locked"), std::fs::Permissions::from_mode(0o444)).unwrap();
+    let searchable = std::fs::metadata(r.join("locked/match.log")).is_ok();
     let found = p.find(".", "*.log").await;
     std::fs::set_permissions(r.join("locked"), std::fs::Permissions::from_mode(0o755)).unwrap();
-    let err = found.expect_err("a short result with no sign of the missing match");
-    assert!(err.to_string().contains("match.log"), "{err}");
+    if !searchable {
+        let err = found.expect_err("a short result with no sign of the missing match");
+        assert!(err.to_string().contains("match.log"), "{err}");
+    }
+
+    // The folder searched itself fails as its listing does, as over SFTP:
+    // not an empty result.
+    let missing = p.find("not here", "*.log").await;
+    assert!(
+        matches!(&missing, Err(ProviderError::NotFound(_))),
+        "{missing:?}"
+    );
 
     // Readable again, both matches come back.
     let mut names: Vec<String> = p
@@ -866,6 +888,49 @@ async fn free_space_digests_and_search_come_from_the_server() {
     assert!(!r.join("pwned").exists() && !r.join("x").exists());
 }
 
+/// A server without `head` still goes on from an offset: a resumed download
+/// skips with `dd` and reads the rest with `cat`, an upload appends with
+/// `cat >>`. Only a bounded range read needs `head`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_server_without_head_still_resumes_but_reads_no_ranges() {
+    let fx = Fixture::new("scp-no-head");
+    let bin = fx.root.join("bin");
+    std::fs::create_dir(&bin).unwrap();
+    let system = std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".to_string());
+    for dir in system.split(':') {
+        for tool in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+            let name = tool.file_name();
+            if name != "head" && !bin.join(&name).exists() {
+                let _ = std::os::unix::fs::symlink(tool.path(), bin.join(&name));
+            }
+        }
+    }
+    let mut options = fx.options(Sftp::Serve);
+    options.path = s(&bin);
+    let (port, _) = start(options).await;
+    let mut profile = scp_profile(port, &fx.remote(), &[]);
+    profile.password = Some(PASSWORD.to_string());
+    let mut p = ProviderFactory::create(&profile).expect("factory");
+    timed_connect(p.as_mut()).await.0.expect("connect");
+
+    assert!(p.supports_resume() && p.supports_resume_upload_append());
+    let body = pattern(200_000);
+    let local = fx.local("up.bin");
+    std::fs::write(&local, &body).unwrap();
+    std::fs::write(fx.remote().join("up.bin"), &body[..80_000]).unwrap();
+    p.resume_upload(&s(&local), "up.bin", 80_000, None)
+        .await
+        .expect("append without head");
+    assert_eq!(std::fs::read(fx.remote().join("up.bin")).unwrap(), body);
+
+    assert!(!p.transfer_optimization_hints().supports_range_download);
+    let ranged = p.read_range("up.bin", 10, 10).await;
+    assert!(
+        matches!(&ranged, Err(ProviderError::NotSupported(m)) if m.contains("head")),
+        "{ranged:?}"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_interrupted_download_goes_on_from_its_partial_and_the_limit_paces_it() {
     use ftp_client_gui_lib::providers::atomic_write::resumable_part_len;
@@ -992,6 +1057,17 @@ async fn an_interrupted_upload_goes_on_by_appending_and_the_limit_paces_it() {
     p.resume_upload(&s(&local), "up it's.bin", 200_000, None)
         .await
         .expect("append from the remote's end");
+    assert_eq!(std::fs::read(r.join("up it's.bin")).unwrap(), body);
+
+    // A remote grown past the caller's offset since it was measured (another
+    // writer appended) is no part of the local file either: sent whole, the
+    // foreign bytes gone.
+    let mut grown = body[..100_000].to_vec();
+    grown.extend_from_slice(&[b'X'; 50_000]);
+    std::fs::write(r.join("up it's.bin"), &grown).unwrap();
+    p.resume_upload(&s(&local), "up it's.bin", 100_000, None)
+        .await
+        .expect("whole after a foreign append");
     assert_eq!(std::fs::read(r.join("up it's.bin")).unwrap(), body);
 
     // A remote longer than the local file is no part of it: sent whole.

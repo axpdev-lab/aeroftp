@@ -18,6 +18,11 @@ describe('protocol switch of a saved profile', () => {
         expect(scpFallbackAllowed(optionsAcrossSshSwitch(optionsAcrossSshSwitch({ timeout: 5 })))).toBe(true);
     });
 
+    it('keeps the quota settings of the server across the switch', () => {
+        const quota = { timeout: 5, manualTotalBytes: 8_000_000_000, autoScanUsedOnConnect: true };
+        expect(optionsAcrossSshSwitch(optionsAcrossSshSwitch(quota))).toEqual(quota);
+    });
+
     it('drops a preset only when it speaks another protocol', () => {
         expect(presetFitsProtocol('sftp', 'scp')).toBe(false);
         expect(presetFitsProtocol('sftp', 'ftp')).toBe(false);

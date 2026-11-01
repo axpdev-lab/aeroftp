@@ -6,7 +6,9 @@ import type { ProviderOptions, ProviderType } from '../types';
 /**
  * The options a saved profile keeps when it is switched between SFTP and SCP.
  * Both reach the same SSH server, so the key, its passphrase and the timeout
- * carry over. So does an SFTP-only choice (`allowScpFallback: false`): SCP
+ * carry over, and so do the quota settings of that server (a manual total and
+ * the used-space scan on connect), which the quota path reads from the saved
+ * profile. So does an SFTP-only choice (`allowScpFallback: false`): SCP
  * ignores it, but dropping it would turn an SFTP-only profile switched to SCP
  * and back into one that falls back, since an absent value means allowed.
  */
@@ -15,6 +17,8 @@ export const optionsAcrossSshSwitch = (options?: ProviderOptions | null): Provid
         private_key_path: options?.private_key_path,
         key_passphrase: options?.key_passphrase,
         timeout: options?.timeout,
+        manualTotalBytes: options?.manualTotalBytes,
+        autoScanUsedOnConnect: options?.autoScanUsedOnConnect,
     };
     return options?.allowScpFallback === false ? { ...kept, allowScpFallback: false } : kept;
 };
