@@ -1612,6 +1612,19 @@ mod tests {
             Some("true"),
             "without the flag the profile's own choice stands"
         );
+
+        // A profile that never set the option, the default, gets it too.
+        let default = ProfileSummary {
+            extras: HashMap::new(),
+            ..profile
+        };
+        assert_eq!(
+            extras_for_connect(&default, true)
+                .get("allow_scp_fallback")
+                .map(String::as_str),
+            Some("false")
+        );
+        assert!(!extras_for_connect(&default, false).contains_key("allow_scp_fallback"));
     }
 
     #[test]
