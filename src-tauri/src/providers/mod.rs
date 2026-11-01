@@ -217,9 +217,10 @@ fn search_root(start: &str, path: &str) -> String {
     format!("/{}", segments.join("/"))
 }
 
-/// Whether a failed listing speaks about that folder alone. Anything else, a
-/// lost connection or expired sign-in above all, would fail the folders after
-/// it too, and a partial result would read as a complete one.
+/// Whether a failed listing speaks about that folder alone. Anything else would
+/// fail the folders after it too, and a partial result would read as a complete
+/// one: a lost connection or expired sign-in, and a server or generic error, the
+/// variants several providers give to a 401 or a 429.
 fn listing_failure_is_the_folders(error: &ProviderError) -> bool {
     matches!(
         error,
@@ -227,8 +228,6 @@ fn listing_failure_is_the_folders(error: &ProviderError) -> bool {
             | ProviderError::PermissionDenied(_)
             | ProviderError::InvalidPath(_)
             | ProviderError::ParseError(_)
-            | ProviderError::ServerError(_)
-            | ProviderError::Other(_)
     )
 }
 
@@ -245,6 +244,11 @@ pub(crate) async fn find_by_walk<P>(
 where
     P: StorageProvider + ?Sized,
 {
+    // A listing may answer from what it kept: without a session that would read
+    // as a search that found nothing.
+    if !provider.is_connected() {
+        return Err(ProviderError::NotConnected);
+    }
     // Some providers move their current folder as they list: a search must not
     // leave a later relative upload or delete in the last folder it walked.
     let start = provider.pwd().await?;
@@ -306,7 +310,8 @@ where
     Ok(results)
 }
 
-/// The provider's own search, or a walk where it has none.
+/// The provider's own search, or a walk where it has none, never more than
+/// [`FIND_RESULT_LIMIT`]: a caller reads that many as a search cut short.
 pub(crate) async fn find_or_walk<P>(
     provider: &mut P,
     path: &str,
@@ -315,10 +320,12 @@ pub(crate) async fn find_or_walk<P>(
 where
     P: StorageProvider + ?Sized,
 {
-    match provider.find(path, pattern).await {
+    let mut found = match provider.find(path, pattern).await {
         Err(ProviderError::NotSupported(_)) => find_by_walk(provider, path, pattern).await,
         found => found,
-    }
+    }?;
+    found.truncate(FIND_RESULT_LIMIT);
+    Ok(found)
 }
 
 /// A local file's modification time in whole seconds, for a provider to keep on

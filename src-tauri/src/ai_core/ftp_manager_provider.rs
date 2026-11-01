@@ -133,9 +133,16 @@ impl StorageProvider for FtpManagerProvider {
                 // stat uses list_probe directly, so this does not recurse
                 // into list. Only an independent exact parent lookup can
                 // turn an ambiguous refused CWD into a missing directory.
-                match self.stat(path).await {
-                    Err(ProviderError::NotFound(_)) => Err(ProviderError::NotFound(path.into())),
-                    _ => Err(error),
+                match (self.stat(path).await, error) {
+                    (Err(ProviderError::NotFound(_)), _) => {
+                        Err(ProviderError::NotFound(path.into()))
+                    }
+                    // The folder is there and the session still answers: what
+                    // failed is this folder, and a search goes on without it.
+                    (Ok(_), ProviderError::ServerError(message)) => {
+                        Err(ProviderError::PermissionDenied(message))
+                    }
+                    (_, error) => Err(error),
                 }
             }
         }
@@ -329,6 +336,24 @@ mod probe_contract_tests {
         manager.connect(&addr).await.unwrap();
         manager.login("u", "p").await.unwrap();
         assert!(FtpManagerProvider(manager).size("/a.txt").await.is_err());
+    }
+
+    /// A session on the legacy FTP manager searches as a provider does, and a
+    /// folder the server refuses leaves the rest of the search.
+    #[tokio::test]
+    async fn the_ftp_manager_adapter_answers_a_search_by_its_listings() {
+        let addr = crate::ftp::exists_tests::vsftpd_like().await;
+        let mut manager = FtpManager::new();
+        manager.connect(&addr).await.unwrap();
+        manager.login("u", "p").await.unwrap();
+        let mut provider = FtpManagerProvider(manager);
+        let found = crate::providers::find_or_walk(&mut provider, "/", "a.txt")
+            .await
+            .unwrap();
+        assert_eq!(
+            found.iter().map(|e| e.path.as_str()).collect::<Vec<_>>(),
+            ["/a.txt"]
+        );
     }
 
     #[tokio::test]

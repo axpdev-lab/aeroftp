@@ -1874,8 +1874,8 @@ impl StorageProvider for GitHubProvider {
         }
 
         // The tree covers the whole repository: keep what is under the folder.
-        let under = match path.trim_matches('/') {
-            "" | "." => String::new(),
+        let under = match self.resolve_path(path) {
+            folder if folder.is_empty() => String::new(),
             folder => format!("{folder}/"),
         };
         let entries = response
@@ -1981,6 +1981,52 @@ mod tests {
         assert!(!provider.stat("/file").await.unwrap().is_dir);
         assert!(!provider.exists("/missing").await.unwrap());
         assert!(provider.exists("/denied").await.is_err());
+        server.abort();
+    }
+
+    /// The folder of a search reads as `list` reads it: a relative one from the
+    /// current folder and `..` resolved, whether or not the tree came whole.
+    #[tokio::test]
+    async fn a_search_reads_its_folder_as_a_listing_does() {
+        let app = axum::Router::new().fallback(axum::routing::get(|| async {
+            let tree: Vec<_> = ["a.txt", "docs/a.txt", "src/a.txt", "src/docs/a.txt"]
+                .iter()
+                .map(
+                    |path| serde_json::json!({"path": path, "type": "blob", "sha": "s", "size": 1}),
+                )
+                .collect();
+            axum::Json(serde_json::json!({"tree": tree, "truncated": false}))
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = GitHubProvider::new(
+            GitHubConfig::from_provider_config(&provider_config("o/r", None, Some("/src")))
+                .unwrap(),
+        )
+        .unwrap();
+        provider.connected = true;
+        provider.client.api_origin_override = Some(format!("http://{addr}"));
+        for (folder, expected) in [
+            (".", &["/src/a.txt", "/src/docs/a.txt"][..]),
+            ("docs", &["/src/docs/a.txt"][..]),
+            ("docs/../docs", &["/src/docs/a.txt"][..]),
+            ("/docs", &["/docs/a.txt"][..]),
+            (
+                "/",
+                &["/a.txt", "/docs/a.txt", "/src/a.txt", "/src/docs/a.txt"][..],
+            ),
+        ] {
+            let mut found: Vec<String> = provider
+                .find(folder, "a.txt")
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|entry| entry.path)
+                .collect();
+            found.sort();
+            assert_eq!(found, expected, "{folder}");
+        }
         server.abort();
     }
 

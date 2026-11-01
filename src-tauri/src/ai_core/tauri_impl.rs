@@ -283,6 +283,17 @@ async fn legacy_ftp_list(
     lease.provider.list(path).await.map_err(|e| e.to_string())
 }
 
+async fn legacy_ftp_search(
+    manager: &mut crate::ftp::FtpManager,
+    path: &str,
+    pattern: &str,
+) -> Result<Vec<RemoteEntry>, String> {
+    let mut lease = super::ftp_manager_provider::FtpManagerProvider::borrow(manager);
+    crate::providers::find_or_walk(&mut lease.provider, path, pattern)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 async fn legacy_ftp_stat(
     manager: &mut crate::ftp::FtpManager,
     path: &str,
@@ -763,7 +774,9 @@ impl RemoteBackend for TauriRemoteBackend {
                         .await
                         .map_err(|e| e.to_string());
                 }
-                Err("search not supported on FTP fallback".to_string())
+                let app_state = app.state::<AppState>();
+                let mut manager = app_state.ftp_manager.lock().await;
+                legacy_ftp_search(&mut manager, path, pattern).await
             }
             TauriRemoteBackend::Temp { provider } => {
                 let mut provider = provider.lock().await;
@@ -1042,7 +1055,7 @@ mod ftp_probe_tests {
         ));
         assert!(matches!(
             legacy_ftp_list(&mut manager, "/denied").await,
-            Err(ref error) if error.starts_with("Server error:")
+            Err(ref error) if error.starts_with("Permission denied:")
         ));
         assert!(manager.is_connected());
         assert_eq!(manager.current_path(), "/");

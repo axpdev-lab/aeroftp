@@ -19063,6 +19063,12 @@ mod folder_download_live_tests {
         held: Option<String>,
         served_at_held: Option<usize>,
         failing: std::collections::HashSet<String>,
+        /// A listing of this folder is refused, which speaks of that folder alone.
+        refused: std::collections::HashSet<String>,
+        /// The session is gone, while `list` would still answer.
+        disconnected: bool,
+        /// `find` answers with this many hits: the provider has its own search.
+        native_hits: Option<usize>,
         /// A listing moves the current folder, as on kDrive.
         list_moves_cwd: bool,
         /// `cd` fails.
@@ -19151,7 +19157,19 @@ mod folder_download_live_tests {
             Ok(())
         }
         fn is_connected(&self) -> bool {
-            true
+            !self.state.lock().unwrap().disconnected
+        }
+        async fn find(
+            &mut self,
+            _path: &str,
+            _pattern: &str,
+        ) -> Result<Vec<RemoteEntry>, ProviderError> {
+            match self.state.lock().unwrap().native_hits {
+                Some(hits) => Ok((0..hits)
+                    .map(|i| RemoteEntry::file(format!("{i}.txt"), format!("/r/{i}.txt"), 4))
+                    .collect()),
+                None => Err(ProviderError::NotSupported("find".to_string())),
+            }
         }
         async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
             let path = if path == "." {
@@ -19175,6 +19193,11 @@ mod folder_download_live_tests {
             st.listed.push(path.clone());
             if st.failing.contains(&path) {
                 return Err(ProviderError::Other(format!("cannot list {path}")));
+            }
+            if st.refused.contains(&path) {
+                return Err(ProviderError::PermissionDenied(format!(
+                    "cannot read {path}"
+                )));
             }
             let (files, folders) = st.dirs.get(&path).cloned().unwrap_or_default();
             let canonical = st.canonical.clone();
@@ -19457,19 +19480,55 @@ mod folder_download_live_tests {
     }
 
     /// The folder searched that cannot be read is an error, not an empty
-    /// result; a subfolder that cannot be read leaves the rest of the search.
+    /// result; a subfolder refused leaves the rest of the search.
     #[tokio::test]
     async fn a_walked_search_fails_only_on_its_own_folder() {
         let (mut tree, state) = FolderTree::new(&["a.txt", "sub/a.txt", "lost/a.txt"]);
-        state.lock().unwrap().failing.insert("/r/lost".to_string());
+        state.lock().unwrap().refused.insert("/r/lost".to_string());
         let found = crate::providers::find_by_walk(&mut tree, "/r", "a.txt")
             .await
             .unwrap();
         assert_eq!(found.len(), 2);
-        state.lock().unwrap().failing.insert("/r".to_string());
+        state.lock().unwrap().refused.insert("/r".to_string());
         assert!(crate::providers::find_by_walk(&mut tree, "/r", "a.txt")
             .await
             .is_err());
+    }
+
+    /// Box and Dropbox give a 401 or a 429 the generic variants: a subfolder
+    /// failing that way fails the search, or a partial result reads as complete.
+    #[tokio::test]
+    async fn a_walked_search_fails_on_a_failure_that_may_not_be_the_folders() {
+        let (mut tree, state) = FolderTree::new(&["a.txt", "sub/a.txt"]);
+        state.lock().unwrap().failing.insert("/r/sub".to_string());
+        assert!(crate::providers::find_by_walk(&mut tree, "/r", "a.txt")
+            .await
+            .is_err());
+    }
+
+    /// A listing that answers from what it kept does not read as nothing found
+    /// once the session is gone.
+    #[tokio::test]
+    async fn a_walked_search_needs_a_session() {
+        let (mut tree, state) = FolderTree::new(&["a.txt"]);
+        state.lock().unwrap().disconnected = true;
+        assert!(matches!(
+            crate::providers::find_by_walk(&mut tree, "/r", "a.txt").await,
+            Err(ProviderError::NotConnected)
+        ));
+    }
+
+    /// A provider's own search with more hits than the limit returns as many
+    /// as the walk does: its callers read that many as a search cut short, and
+    /// they say "the first 500" of what they show.
+    #[tokio::test]
+    async fn a_native_search_keeps_the_limit_of_a_walk() {
+        let (mut tree, state) = FolderTree::new(&[]);
+        state.lock().unwrap().native_hits = Some(crate::providers::FIND_RESULT_LIMIT + 7);
+        let found = crate::providers::find_or_walk(&mut tree, "/r", "a.txt")
+            .await
+            .unwrap();
+        assert_eq!(found.len(), crate::providers::FIND_RESULT_LIMIT);
     }
 
     /// The first Stop while the scan runs ends the scan too: no further
