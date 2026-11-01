@@ -545,7 +545,7 @@ impl S3Provider {
                 "Bounded worker S3 listing".into(),
             ));
         }
-        let prefix = path.trim_matches('/');
+        let prefix = self.prefix_of(path);
         let prefix_with_slash = if prefix.is_empty() {
             String::new()
         } else {
@@ -1324,21 +1324,28 @@ impl S3Provider {
         self.s3_request(Method::GET, "", Some(params), None).await
     }
 
-    /// The prefix a listing of `path` reads. `.` is the current folder. `/` is
-    /// the top of this profile, whatever folder it has navigated to: its
-    /// configured prefix if it has one, so a run over `/` keeps to that scope,
-    /// else the bucket.
-    fn listing_prefix(&self, path: &str) -> String {
-        match path {
-            "" | "." => self.current_prefix.clone(),
-            "/" => self
-                .config
+    /// The prefix an absolute `path` names. `/` is the top of this profile,
+    /// whatever folder it has navigated to: its configured prefix if it has one,
+    /// as a remote with a path has that path for its root, else the bucket.
+    fn prefix_of(&self, path: &str) -> String {
+        if path == "/" {
+            self.config
                 .prefix
                 .as_deref()
                 .unwrap_or("")
                 .trim_matches('/')
-                .to_string(),
-            _ => path.trim_matches('/').to_string(),
+                .to_string()
+        } else {
+            path.trim_matches('/').to_string()
+        }
+    }
+
+    /// The prefix a listing of `path` reads: [`Self::prefix_of`], where `.` is
+    /// the current folder.
+    fn listing_prefix(&self, path: &str) -> String {
+        match path {
+            "" | "." => self.current_prefix.clone(),
+            _ => self.prefix_of(path),
         }
     }
 
@@ -5118,7 +5125,9 @@ impl StorageProvider for S3Provider {
             return Err(ProviderError::NotConnected);
         }
 
-        let new_prefix = if path == "/" || path.is_empty() {
+        let new_prefix = if path == "/" {
+            self.prefix_of(path)
+        } else if path.is_empty() {
             String::new()
         } else if path == ".." {
             // Go up one level
@@ -6151,7 +6160,7 @@ impl StorageProvider for S3Provider {
             return Err(ProviderError::NotConnected);
         }
 
-        let prefix = path.trim_matches('/');
+        let prefix = self.prefix_of(path);
         let prefix_with_slash = if prefix.is_empty() {
             String::new()
         } else {
@@ -8542,11 +8551,19 @@ mod tests {
         p.list(".").await.expect("the folder");
         p.config.prefix = Some("/top/".to_string());
         p.list("/").await.expect("the configured prefix");
+        p.find("/", "*").await.expect("a search of the prefix");
+        p.list_worker_capped("/", 10)
+            .await
+            .expect("a worker listing");
+        p.cd("/").await.expect("the top of the profile");
         server.abort();
+        assert_eq!(p.current_prefix, "top");
         let queries = queries.lock().unwrap();
         assert!(!queries[0].contains("a/b"), "{queries:?}");
         assert!(queries[1].contains("prefix=a/b/"), "{queries:?}");
-        assert!(queries[2].contains("prefix=top/"), "{queries:?}");
+        for query in &queries[2..] {
+            assert!(query.contains("prefix=top/"), "{query}");
+        }
     }
 
     /// A folder change on the Filen gateway probes with what that gateway

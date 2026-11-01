@@ -2493,7 +2493,7 @@ mod tests {
 
         assert_eq!(provider.current_path, "/");
         let asked = asked.lock().unwrap();
-        assert!(!asked[0].contains("/a/b"), "{asked:?}");
+        assert_eq!(asked[0], "path=disk:/");
     }
 
     #[test]
