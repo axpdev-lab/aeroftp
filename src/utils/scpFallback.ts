@@ -29,3 +29,12 @@ export const scpFallbackConnectParam = (
     options?: Pick<ProviderOptions, 'allowScpFallback'> | null,
 ): { allow_scp_fallback?: false } =>
     protocol === 'sftp' && !scpFallbackAllowed(options) ? { allow_scp_fallback: false } : {};
+
+/**
+ * The protocol a surface names for the live connection. An SFTP profile that
+ * went on over SCP is named SCP, since what it can do there (the hashes the
+ * server computes, resume through the shell) is what SCP can do. For display
+ * only: everything that decides keeps the profile's protocol.
+ */
+export const connectionProtocolLabel = (protocol: string | undefined, wentOnOverScp: boolean): string | undefined =>
+    protocol === 'sftp' && wentOnOverScp ? 'scp' : protocol;

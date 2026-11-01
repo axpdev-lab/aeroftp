@@ -229,7 +229,7 @@ import {
   getSftpDownloadPresetDefinition,
   nextSftpDownloadPreset,
 } from './utils/sftpDownloadPresets';
-import { scpFallbackConnectParam } from './utils/scpFallback';
+import { connectionProtocolLabel, scpFallbackConnectParam } from './utils/scpFallback';
 import {
   TRANSFER_SPEED_PRESETS,
   deriveTransferSpeedPreset,
@@ -2535,17 +2535,23 @@ const App: React.FC = () => {
     }
   }, [beginConnectAttempt, cancelActiveConnect, endConnectAttempt, notify, t]);
 
+  // Whether the live connection is an SFTP profile that went on over SCP:
+  // cleared by every connect, set by the `scp-mode` session event that
+  // connect emits. Names the protocol in the UI only.
+  const wentOnOverScpRef = useRef(false);
+
   // Thin wrapper for the common single-invoke connect (`provider_connect` /
   // `connect_ftp`): runs it under a cancel token via `cancellableConnect`.
   const runConnect = useCallback(<T,>(
     command: 'provider_connect' | 'connect_ftp',
     params: Record<string, unknown>,
     scope?: ConnectScope,
-  ): Promise<T> => cancellableConnect<T>((token) =>
-    scope ? scope.cancellable(() => invoke<void>('cancel_connection', { token }),
+  ): Promise<T> => cancellableConnect<T>((token) => {
+    wentOnOverScpRef.current = false;
+    return scope ? scope.cancellable(() => invoke<void>('cancel_connection', { token }),
       () => invoke<T>(command, { params: { ...params, connectToken: token } })) :
-      invoke<T>(command, { params: { ...params, connectToken: token } })
-  ), [cancellableConnect]);
+      invoke<T>(command, { params: { ...params, connectToken: token } });
+  }), [cancellableConnect]);
 
   // Esc aborts an in-progress connection. Always-mounted listener that only
   // acts while a token is live, so it never competes with other Esc handlers
@@ -5878,6 +5884,7 @@ const App: React.FC = () => {
             notify.error(t('reconnect.toastTitle'), t('reconnect.reconnectFailed'));
           } else if (kind === 'scp-mode') {
             // An SFTP connection whose server has no SFTP went on over SCP.
+            wentOnOverScpRef.current = true;
             notify.info(t('toast.scpModeTitle'), t('toast.scpModeBody', { host: event.payload?.detail || '' }));
           }
           // 'lost' is intentionally silent: showing it would briefly flash
@@ -14683,6 +14690,7 @@ const App: React.FC = () => {
     // The live connection's facts (for context menu operations)
     const activeSession = sessions.find(s => s.id === activeSessionId);
     const currentProtocol = liveConnectionParams.protocol;
+    const shownProtocol = connectionProtocolLabel(currentProtocol, wentOnOverScpRef.current);
     const currentServer = liveConnectionParams.server;
     const currentUsername = liveConnectionParams.username;
     const filePrivacy = (file.permissions || '').toLowerCase();
@@ -14699,13 +14707,13 @@ const App: React.FC = () => {
       if (count > 1) {
         const selectedRemote = remoteFiles.filter(f => selection.has(f.name)).map(f => ({
           name: f.name, path: f.path, size: f.size, is_dir: f.is_dir, modified: f.modified,
-          permissions: f.permissions, isRemote: true, protocol: currentProtocol,
+          permissions: f.permissions, isRemote: true, protocol: shownProtocol,
         } as FileProperties));
-        setMultiPropertiesDialog({ files: selectedRemote, isRemote: true, protocol: currentProtocol });
+        setMultiPropertiesDialog({ files: selectedRemote, isRemote: true, protocol: shownProtocol });
       } else {
         setPropertiesDialog({
           name: file.name, path: file.path, size: file.size, is_dir: file.is_dir,
-          modified: file.modified, permissions: file.permissions, isRemote: true, protocol: currentProtocol,
+          modified: file.modified, permissions: file.permissions, isRemote: true, protocol: shownProtocol,
         });
       }
     };
