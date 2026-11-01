@@ -2199,13 +2199,20 @@ impl ZohoWorkdriveProvider {
             // the start path. Accept only roots this account's discovery
             // actually returned, after giving a real folder name precedence.
             // Never treat an arbitrary opaque-looking path as an API id.
-            let id = match self.find_by_name(first, root_id).await? {
-                Some(file) => file.id,
-                None if self.is_discovered_root_id(first) => {
-                    legacy_root = true;
-                    first.to_string()
+            let id = if self.privatespace_id.is_none() && self.is_discovered_root_id(first) {
+                // A team-only account has a synthetic root of discovered team
+                // folders, not a listable /files/{team_id}/files directory.
+                legacy_root = true;
+                first.to_string()
+            } else {
+                match self.find_by_name(first, root_id).await? {
+                    Some(file) => file.id,
+                    None if self.is_discovered_root_id(first) => {
+                        legacy_root = true;
+                        first.to_string()
+                    }
+                    None => return Err(ProviderError::NotFound(current_path.clone())),
                 }
-                None => return Err(ProviderError::NotFound(current_path.clone())),
             };
             // An alias is valid only while no real child has this name.
             // Caching it (or descendants) would hide a child created later.
@@ -2897,6 +2904,27 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path_str)
         };
 
+        if self.privatespace_id.is_none()
+            && parent_path.is_empty()
+            && (path_str_is_absolute || self.current_path == "/")
+        {
+            // Match actual names first, as resolve_path does; only then may
+            // a discovered ID stand for a legacy imported root.
+            let root = self
+                .team_folders
+                .iter()
+                .find(|(_, name)| name == file_name)
+                .or_else(|| self.team_folders.iter().find(|(id, _)| id == file_name))
+                .map(|(id, _)| id.clone());
+            if let Some(id) = root {
+                self.list_folder(&id).await?;
+                return Ok(RemoteEntry::directory(
+                    file_name.to_string(),
+                    format!("/{file_name}"),
+                ));
+            }
+        }
+
         let parent_id = self
             .parent_folder_id(path_str_is_absolute, parent_path)
             .await?;
@@ -2918,7 +2946,14 @@ impl StorageProvider for ZohoWorkdriveProvider {
             None => return Err(ProviderError::NotFound(path_str.to_string())),
         };
 
-        Ok(self.to_remote_entry(&file, parent_path))
+        let absolute_parent = if path_str_is_absolute {
+            format!("/{parent_path}")
+        } else if parent_path.is_empty() {
+            self.current_path.clone()
+        } else {
+            format!("{}/{parent_path}", self.current_path.trim_end_matches('/'))
+        };
+        Ok(self.to_remote_entry(&file, &absolute_parent))
     }
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
@@ -3660,6 +3695,68 @@ mod tests {
             .unwrap()
             .iter()
             .any(|path| path == "/workdrive/api/v1/files/WS/files"));
+        server.abort();
+    }
+
+    /// Team-only discovery yields a synthetic root: never list the team ID
+    /// as a folder, and keep absolute metadata paths after changing cwd.
+    #[tokio::test]
+    async fn team_only_legacy_roots_and_child_metadata_use_discovered_folders() {
+        use std::sync::{Arc, Mutex};
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let seen = calls.clone();
+        let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
+            seen.lock().unwrap().push(uri.path().to_string());
+            async move {
+                let body = match uri.path() {
+                    "/workdrive/api/v1/files/WS/files" => {
+                        r#"{"data":[{"id":"DOCS","attributes":{"name":"docs","type":"folder"}}]}"#
+                    }
+                    "/workdrive/api/v1/files/DOCS/files" => {
+                        r#"{"data":[{"id":"FILE","attributes":{"name":"keep.txt","type":"file"}}]}"#
+                    }
+                    "/workdrive/api/v1/files/REAL/files" => r#"{"data":[]}"#,
+                    _ => return (axum::http::StatusCode::NOT_FOUND, "team id is not a folder"),
+                };
+                (axum::http::StatusCode::OK, body)
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        p.endpoint_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("test-token".into());
+        p.connected = true;
+        p.current_folder_id = "TEAM".into();
+        p.folder_cache.insert("/".into(), "TEAM".into());
+        p.team_folders.push(("WS".into(), "Team".into()));
+        assert_eq!(p.resolve_path("/WS/docs").await.unwrap(), "DOCS");
+        for path in ["/WS", "/Team", "/WS/docs"] {
+            let entry = p.stat(path).await.unwrap();
+            assert!(entry.is_dir);
+            assert_eq!(entry.path, path);
+        }
+        p.cd("/WS/docs").await.unwrap();
+        assert_eq!(p.stat("keep.txt").await.unwrap().path, "/WS/docs/keep.txt");
+        assert_eq!(
+            p.stat("/WS/docs/keep.txt").await.unwrap().path,
+            "/WS/docs/keep.txt"
+        );
+        p.cd("/").await.unwrap();
+        p.team_folders.push(("REAL".into(), "WS".into()));
+        assert_eq!(p.resolve_path("/WS").await.unwrap(), "REAL");
+        p.stat("/WS").await.unwrap();
+        assert!(!calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|path| path.contains("/files/TEAM/files")));
+        assert!(calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|path| path.contains("/files/REAL/files")));
         server.abort();
     }
 
