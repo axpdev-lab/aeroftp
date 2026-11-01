@@ -58,6 +58,8 @@ fn spawn(
 enum Proto {
     Ftp,
     WebDav,
+    // Unix only, see `PROTOS`.
+    #[cfg_attr(not(unix), allow(dead_code))]
     Sftp,
 }
 
