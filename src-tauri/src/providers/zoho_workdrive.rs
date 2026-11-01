@@ -2139,8 +2139,13 @@ impl ZohoWorkdriveProvider {
         self.resolve_path(&joined).await
     }
 
-    /// Resolve a path like "/docs/file.txt" to a folder/file ID.
-    /// First path component is checked against team folder names, then privatespace.
+    /// Accept only root identifiers returned by this account's discovery.
+    fn is_discovered_root_id(&self, id: &str) -> bool {
+        self.privatespace_id.as_deref() == Some(id)
+            || self.team_folders.iter().any(|(root, _)| root == id)
+    }
+
+    /// Resolve names first, with discovered root IDs as a legacy-profile fallback.
     async fn resolve_path(&mut self, path: &str) -> Result<String, ProviderError> {
         let path = path.trim_matches('/');
         if path.is_empty() {
@@ -2184,11 +2189,7 @@ impl ZohoWorkdriveProvider {
             // Never treat an arbitrary opaque-looking path as an API id.
             let id = match self.find_by_name(first, root_id).await? {
                 Some(file) => file.id,
-                None if self.privatespace_id.as_deref() == Some(first)
-                    || self.team_folders.iter().any(|(id, _)| id == first) =>
-                {
-                    first.to_string()
-                }
+                None if self.is_discovered_root_id(first) => first.to_string(),
                 None => return Err(ProviderError::NotFound(current_path.clone())),
             };
             self.folder_cache.insert(current_path.clone(), id.clone());
@@ -2875,10 +2876,22 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .parent_folder_id(path_str_is_absolute, parent_path)
             .await?;
 
-        let file = self
-            .find_by_name(file_name, &parent_id)
-            .await?
-            .ok_or_else(|| ProviderError::NotFound(path_str.to_string()))?;
+        let file = match self.find_by_name(file_name, &parent_id).await? {
+            Some(file) => file,
+            None if parent_path.is_empty()
+                && (path_str_is_absolute || self.current_path == "/")
+                && self.is_discovered_root_id(file_name) =>
+            {
+                // As for the virtual root, verify it is readable. A legacy
+                // imported root is not a child named after its own API id.
+                self.list_folder(file_name).await?;
+                return Ok(RemoteEntry::directory(
+                    file_name.to_string(),
+                    format!("/{file_name}"),
+                ));
+            }
+            None => return Err(ProviderError::NotFound(path_str.to_string())),
+        };
 
         Ok(self.to_remote_entry(&file, parent_path))
     }
@@ -3648,6 +3661,12 @@ mod tests {
         p.team_folders.push(("WS".into(), "Team".into()));
 
         for root in ["PS", "WS"] {
+            let meta = p
+                .stat(&format!("/{root}"))
+                .await
+                .expect("legacy root metadata");
+            assert!(meta.is_dir);
+            assert_eq!(meta.path, format!("/{root}"));
             p.cd(root).await.expect("legacy start folder opens");
             assert_eq!(p.pwd().await.unwrap(), format!("/{root}"));
             let files = p.list(&format!("/{root}/docs")).await.unwrap();
