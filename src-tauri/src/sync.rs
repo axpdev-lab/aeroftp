@@ -4941,6 +4941,9 @@ pub struct SyncJournalEntry {
     pub local_size: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub local_modified: Option<String>,
+    /// When an upload ended, for the same reason: the index dates it with this.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uploaded_at: Option<String>,
 }
 
 /// Persistent transfer journal for checkpoint/resume
@@ -8099,6 +8102,7 @@ mod tests {
             ec_status: None,
             local_size: None,
             local_modified: None,
+            uploaded_at: None,
         });
         assert!(journal.has_resumable_entries());
         let old_wire = serde_json::to_string(&journal).unwrap();
@@ -8145,6 +8149,7 @@ mod tests {
             ec_status: None,
             local_size: None,
             local_modified: None,
+            uploaded_at: None,
         });
         journal.entries.push(SyncJournalEntry {
             baseline_key: None,
@@ -8159,6 +8164,7 @@ mod tests {
             ec_status: None,
             local_size: None,
             local_modified: None,
+            uploaded_at: None,
         });
         assert_eq!(journal.count_by_status(&JournalEntryStatus::Completed), 1);
         assert_eq!(journal.count_by_status(&JournalEntryStatus::Failed), 1);

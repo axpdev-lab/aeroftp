@@ -684,7 +684,8 @@ export const runRemoteSync = async (
     const landedStates = new Map<string, { size: number | null; modified: string | null }>();
     // When each upload ended. The index reads a remote date up to this moment as
     // the stamp of our own upload, so a remote edit made later in the run stays
-    // an edit. A resumed run did not see the upload and records none.
+    // an edit. A bulk reports its files together, so they share the end of its
+    // call. The journal keeps it for a resumed run, which sees no such upload.
     const uploadsEnded = new Map<string, string>();
     const readLocalState = async (path: string) => {
         const props = await invoke<{ size?: number; modified: string | null } | undefined>(
@@ -705,6 +706,8 @@ export const runRemoteSync = async (
         const landed = landedStates.get(item.relativePath);
         entry.local_size = landed?.size ?? item.size;
         entry.local_modified = landed ? landed.modified : item.mtime;
+        const ended = uploadsEnded.get(item.relativePath);
+        if (ended) entry.uploaded_at = ended;
     };
     journal.entries.forEach((entry, idx) => journalEntryMap.set(entry.relative_path, idx));
 
@@ -931,8 +934,10 @@ export const runRemoteSync = async (
         // status, so treating skipped like completed would drop the files
         // Resume is supposed to transfer.
         if (deps.resumeJournal && journalEntry?.status === 'completed') {
-            if (journalEntry.action === 'upload') uploaded++;
-            else if (journalEntry.action === 'download') downloaded++;
+            if (journalEntry.action === 'upload') {
+                uploaded++;
+                if (journalEntry.uploaded_at) uploadsEnded.set(item.relativePath, journalEntry.uploaded_at);
+            } else if (journalEntry.action === 'download') downloaded++;
             else deleted++;
             totalBytes += journalEntry.bytes_transferred;
             completed++;

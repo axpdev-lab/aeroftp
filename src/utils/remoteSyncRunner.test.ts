@@ -1411,6 +1411,35 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
         expect(files['done.txt']).toMatchObject({ size: 5, modified: '2026-09-26T09:04:00Z' });
     });
 
+    it('keeps the end of an upload across a resumed run', async () => {
+        let savedIndex: { files: Record<string, { uploaded_at?: string }> } | undefined;
+        const journals: SyncJournal[] = [];
+        const { invoke } = makeInvoke({
+            save_sync_index_cmd: (args) => {
+                savedIndex = args?.index as typeof savedIndex;
+            },
+            save_sync_journal_cmd: (args) => {
+                journals.push(JSON.parse(JSON.stringify(args?.journal)) as SyncJournal);
+            },
+        });
+        await runRemoteSync(
+            [file('done.txt', 'upload', { size: 5 }), file('next.txt', 'upload', { size: 7 })],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke, {
+                writeIndex: true,
+                resumeJournal: resumeOf([
+                    { relative_path: 'done.txt', action: 'upload', status: 'completed', attempts: 1, last_error: null, verified: true, bytes_transferred: 5, uploaded_at: '2026-09-26T09:05:00.000Z' },
+                    { relative_path: 'next.txt', action: 'upload', status: 'pending', attempts: 0, last_error: null, verified: null, bytes_transferred: 0 },
+                ]),
+            }),
+        );
+        expect(savedIndex?.files['done.txt'].uploaded_at).toBe('2026-09-26T09:05:00.000Z');
+        const next = journals[journals.length - 1]?.entries.find((e) => e.relative_path === 'next.txt');
+        expect(next?.uploaded_at).toBe(savedIndex?.files['next.txt'].uploaded_at);
+    });
+
     // Minor 4 (verification of the fifth round): a completed transfer keeps
     // in its journal entry what the index records for it, so a later resume
     // has it even when this run saves no index (it crashes).
