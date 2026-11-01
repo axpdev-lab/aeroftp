@@ -598,7 +598,8 @@
             "setAsPublic": "Beállítás nyilvánosra",
             "makeAllPrivate": "Összes priváttá tétele",
             "dropboxRestoreLimit": "Az AeroFTP vissza tudja állítani a helyreállítható fájlverziókat. A mappákat a dropbox.com Törölt fájlok részéből állíthatja vissza. A kérdőjel azt jelenti, hogy a Dropbox nem azonosította az elem típusát.",
-            "openWithDefaultApp": "Megnyitás az alapértelmezett alkalmazással"
+            "openWithDefaultApp": "Megnyitás az alapértelmezett alkalmazással",
+            "extractHereUncheckedConfirm": "A(z) {name} belsejében lévő nevek kibontás előtt nem olvashatók, ezért az AeroFTP nem tudja ellenőrizni, mit írna felül a „Kibontás ide” művelet ebben a mappában. A „Kibontás mappába” művelet soha nem ír felül semmit."
         },
         "transfer": {
             "transferring": "Átvitel...",
@@ -2470,7 +2471,9 @@
             "flattenScanning": "Részfa beolvasása...",
             "flattenTruncated": "csonkítva",
             "flattenTruncatedHint": "Elérte az 5 000 bejegyzéses korlátot; finomítsa a szűrőt, vagy lépjen be egy almappába.",
-            "local_placeholder_flatten": "Helyi fájlok szűrése... (* rekurzívhoz)"
+            "local_placeholder_flatten": "Helyi fájlok szűrése... (* rekurzívhoz)",
+            "flattenNameClash": "{names}: több mappában is kijelölve. Egy helyre téve felülírnák egymást; egyszerre mindegyikből csak egyen végezzen műveletet.",
+            "flattenNameClashTitle": "Azonos név több mappában"
         },
         "versions": {
             "title": "Fájlverziók",

@@ -598,7 +598,8 @@
             "setAsPublic": "Establecer como público",
             "makeAllPrivate": "Hacer todo privado",
             "dropboxRestoreLimit": "AeroFTP puede restaurar versiones recuperables de archivos. Restaura las carpetas desde Archivos eliminados en dropbox.com. Un signo de interrogación indica que Dropbox no ha identificado el tipo de elemento.",
-            "openWithDefaultApp": "Abrir con la aplicación predeterminada"
+            "openWithDefaultApp": "Abrir con la aplicación predeterminada",
+            "extractHereUncheckedConfirm": "Los nombres dentro de {name} no se pueden leer antes de extraer, así que AeroFTP no puede comprobar qué sobrescribiría «Extraer aquí» en esta carpeta. «Extraer a carpeta» nunca sobrescribe."
         },
         "transfer": {
             "transferring": "Transfiriendo...",
@@ -2470,7 +2471,9 @@
             "flattenScanning": "Escaneando subárbol...",
             "flattenTruncated": "truncado",
             "flattenTruncatedHint": "Alcanzado el límite de 5.000 entradas; refina el filtro o entra en una subcarpeta.",
-            "local_placeholder_flatten": "Filtrar archivos locales... (* para recursivo)"
+            "local_placeholder_flatten": "Filtrar archivos locales... (* para recursivo)",
+            "flattenNameClash": "{names}: seleccionados en más de una carpeta. Colocados en un solo lugar, se sustituirían entre sí; trabaja con uno de cada nombre a la vez.",
+            "flattenNameClashTitle": "El mismo nombre en más de una carpeta"
         },
         "versions": {
             "title": "Versiones de archivo",

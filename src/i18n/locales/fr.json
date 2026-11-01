@@ -598,7 +598,8 @@
             "setAsPublic": "Définir comme public",
             "makeAllPrivate": "Tout rendre privé",
             "dropboxRestoreLimit": "AeroFTP peut restaurer les versions récupérables des fichiers. Restaurez les dossiers depuis Fichiers supprimés sur dropbox.com. Un point d’interrogation signifie que Dropbox n’a pas identifié le type d’élément.",
-            "openWithDefaultApp": "Ouvrir avec l'application par défaut"
+            "openWithDefaultApp": "Ouvrir avec l'application par défaut",
+            "extractHereUncheckedConfirm": "Les noms à l'intérieur de {name} ne peuvent pas être lus avant l'extraction, donc AeroFTP ne peut pas vérifier ce que « Extraire ici » écraserait dans ce dossier. « Extraire dans un dossier » n'écrase jamais rien."
         },
         "transfer": {
             "transferring": "Transfert en cours...",
@@ -2470,7 +2471,9 @@
             "flattenScanning": "Analyse du sous-arbre...",
             "flattenTruncated": "tronqué",
             "flattenTruncatedHint": "Limite de 5 000 entrées atteinte ; affinez votre filtre ou descendez dans un sous-dossier.",
-            "local_placeholder_flatten": "Filtrer les fichiers locaux... (* pour récursif)"
+            "local_placeholder_flatten": "Filtrer les fichiers locaux... (* pour récursif)",
+            "flattenNameClash": "{names} : sélectionnés dans plusieurs dossiers. Placés au même endroit, ils se remplaceraient mutuellement ; agissez sur un seul de chaque nom à la fois.",
+            "flattenNameClashTitle": "Même nom dans plusieurs dossiers"
         },
         "versions": {
             "title": "Versions du fichier",

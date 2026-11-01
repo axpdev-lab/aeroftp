@@ -598,7 +598,8 @@
             "setAsPublic": "Gosod fel Cyhoeddus",
             "makeAllPrivate": "Gwneud pob un yn breifat",
             "dropboxRestoreLimit": "Gall AeroFTP adfer fersiynau o ffeiliau y gellir eu hadfer. Adferwch ffolderi o Ffeiliau wedi'u dileu ar dropbox.com. Mae marc cwestiwn yn golygu nad yw Dropbox wedi adnabod math yr eitem.",
-            "openWithDefaultApp": "Agor gyda'r ap rhagosodedig"
+            "openWithDefaultApp": "Agor gyda'r ap rhagosodedig",
+            "extractHereUncheckedConfirm": "Ni ellir darllen yr enwau y tu mewn i {name} cyn echdynnu, felly ni all AeroFTP wirio beth fyddai “Echdynnu Yma” yn ei drosysgrifennu yn y ffolder hon. Nid yw “Echdynnu i Ffolder” byth yn trosysgrifennu."
         },
         "transfer": {
             "transferring": "Yn trosglwyddo...",
@@ -2470,7 +2471,9 @@
             "flattenScanning": "Yn sganio is-goeden...",
             "flattenTruncated": "wedi'i docio",
             "flattenTruncatedHint": "Wedi cyrraedd y terfyn o 5,000 cofnod; mireinio'ch hidlydd neu ewch i is-ffolder.",
-            "local_placeholder_flatten": "Hidlo ffeiliau lleol... (* ar gyfer ailadrodd)"
+            "local_placeholder_flatten": "Hidlo ffeiliau lleol... (* ar gyfer ailadrodd)",
+            "flattenNameClash": "{names}: wedi'u dewis mewn mwy nag un ffolder. Os cânt eu rhoi mewn un lle, byddent yn disodli ei gilydd; gweithredwch ar un o bob un ar y tro.",
+            "flattenNameClashTitle": "Yr un enw mewn mwy nag un ffolder"
         },
         "versions": {
             "title": "Fersiynau Ffeiliau",

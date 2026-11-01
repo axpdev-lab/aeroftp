@@ -598,7 +598,8 @@
             "setAsPublic": "Stilla sem opinbert",
             "makeAllPrivate": "Gera allt einkamál",
             "dropboxRestoreLimit": "AeroFTP getur endurheimt endurheimtanlegar útgáfur skráa. Endurheimtu möppur úr Eyddum skrám á dropbox.com. Spurningarmerki þýðir að Dropbox hefur ekki greint gerð atriðisins.",
-            "openWithDefaultApp": "Opna með sjálfgefnu forriti"
+            "openWithDefaultApp": "Opna með sjálfgefnu forriti",
+            "extractHereUncheckedConfirm": "Ekki er hægt að lesa nöfnin í {name} áður en afþjappað er, svo AeroFTP getur ekki athugað hverju „Afþjappa hér“ myndi skrifa yfir í þessari möppu. „Afþjappa í möppu“ skrifar aldrei yfir neitt."
         },
         "transfer": {
             "transferring": "Flytur...",
@@ -2470,7 +2471,9 @@
             "flattenScanning": "Skanna undirtré...",
             "flattenTruncated": "stytt",
             "flattenTruncatedHint": "Náði hámarki 5.000 færslur; betrumbættu síuna eða farðu í undirmöppu.",
-            "local_placeholder_flatten": "Sía staðbundnar skrár... (* fyrir endurkvæmt)"
+            "local_placeholder_flatten": "Sía staðbundnar skrár... (* fyrir endurkvæmt)",
+            "flattenNameClash": "{names}: valið í fleiri en einni möppu. Ef þau væru sett á einn stað myndu þau skipta hvert annað út; framkvæmdu aðgerð á einu af hverju í einu.",
+            "flattenNameClashTitle": "Sama nafn í fleiri en einni möppu"
         },
         "versions": {
             "title": "Skráarútgáfur",

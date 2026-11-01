@@ -598,7 +598,8 @@
             "setAsPublic": "设为公开",
             "makeAllPrivate": "全部设为私有",
             "dropboxRestoreLimit": "AeroFTP 可以还原可恢复的文件版本。请在 dropbox.com 的“已删除文件”中还原文件夹。问号表示 Dropbox 未能识别项目类型。",
-            "openWithDefaultApp": "使用默认应用打开"
+            "openWithDefaultApp": "使用默认应用打开",
+            "extractHereUncheckedConfirm": "在解压之前无法读取 {name} 中的文件名，所以 AeroFTP 无法检查“解压到此处”会覆盖此文件夹中的哪些文件。“解压到文件夹”从不会覆盖任何文件。"
         },
         "transfer": {
             "transferring": "传输中...",
@@ -2470,7 +2471,9 @@
             "flattenScanning": "正在扫描子树...",
             "flattenTruncated": "已截断",
             "flattenTruncatedHint": "已达到 5,000 条目上限；请优化筛选条件或进入子文件夹。",
-            "local_placeholder_flatten": "筛选本地文件...（递归请用 *）"
+            "local_placeholder_flatten": "筛选本地文件...（递归请用 *）",
+            "flattenNameClash": "{names}：在多个文件夹中被选中。放到同一位置会互相覆盖；请每次只对每个名称中的一个进行操作。",
+            "flattenNameClashTitle": "多个文件夹中存在同名项"
         },
         "versions": {
             "title": "文件版本",

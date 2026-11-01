@@ -1180,15 +1180,15 @@ pub fn inject_rclone_onedrive_export_options(
 
 /// A Zoho folder/workspace id stored as `initialPath`. AeroFTP persists
 /// those with a leading slash (`/fmip…`); rclone's `root_folder_id` does
-/// not. One leading slash is stripped, then any remaining `/` means this
-/// is a real path, not an id.
+/// not. One leading slash is stripped, then any remaining `/`, or a space,
+/// means this is a real path, not an id: `/fmip… ` is a folder of that name.
 fn zoho_folder_id_from_initial_path(initial_path: Option<&str>) -> Option<String> {
-    let s = initial_path?.trim();
+    let s = initial_path?;
     if s.is_empty() || s == "/" {
         return None;
     }
     let s = s.strip_prefix('/').unwrap_or(s);
-    if s.is_empty() || s.contains('/') {
+    if s.is_empty() || s.contains('/') || s.contains(char::is_whitespace) {
         None
     } else {
         Some(s.to_string())
@@ -1222,10 +1222,7 @@ pub fn inject_rclone_path_export_options(
     if !matches!(protocol, "sftp" | "ftp" | "ftps" | "webdav") {
         return;
     }
-    let Some(path) = initial_path
-        .map(str::trim)
-        .filter(|p| !p.is_empty() && *p != "/")
-    else {
+    let Some(path) = initial_path.filter(|p| !p.is_empty() && *p != "/") else {
         return;
     };
     if !matches!(options, Some(Value::Object(_))) {
@@ -2347,6 +2344,11 @@ mod tests {
         );
         assert_eq!(
             zoho_folder_id_from_initial_path(Some("My Folders/docs")),
+            None
+        );
+        // A folder whose name ends in a space, not an id.
+        assert_eq!(
+            zoho_folder_id_from_initial_path(Some("/fmip966f979e195e64ec78e6846976861eed5 ")),
             None
         );
     }

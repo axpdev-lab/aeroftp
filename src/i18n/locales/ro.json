@@ -598,7 +598,8 @@
             "setAsPublic": "Setați ca public",
             "makeAllPrivate": "Fă totul privat",
             "dropboxRestoreLimit": "AeroFTP poate restaura versiunile recuperabile ale fișierelor. Restaurați dosarele din Fișiere șterse pe dropbox.com. Un semn de întrebare înseamnă că Dropbox nu a identificat tipul elementului.",
-            "openWithDefaultApp": "Deschide cu aplicația implicită"
+            "openWithDefaultApp": "Deschide cu aplicația implicită",
+            "extractHereUncheckedConfirm": "Numele din {name} nu pot fi citite înainte de extragere, deci AeroFTP nu poate verifica ce ar suprascrie opțiunea „Extrage aici” în acest dosar. Opțiunea „Extrage în dosar” nu suprascrie niciodată nimic."
         },
         "transfer": {
             "transferring": "Se transferă...",
@@ -2470,7 +2471,9 @@
             "flattenScanning": "Se scanează subarborele...",
             "flattenTruncated": "trunchiat",
             "flattenTruncatedHint": "A fost atinsă limita de 5.000 de intrări; rafinați filtrul sau coborâți într-un subfolder.",
-            "local_placeholder_flatten": "Filtrează fișiere locale... (* pentru recursiv)"
+            "local_placeholder_flatten": "Filtrează fișiere locale... (* pentru recursiv)",
+            "flattenNameClash": "{names}: selectate în mai multe dosare. Puse într-un singur loc, s-ar înlocui reciproc; acționați asupra unuia din fiecare, pe rând.",
+            "flattenNameClashTitle": "Același nume în mai multe dosare"
         },
         "versions": {
             "title": "Versiuni fișier",

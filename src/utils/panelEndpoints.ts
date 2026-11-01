@@ -53,11 +53,12 @@ const SERVER_SIDE_COPY_PROTOCOLS = new Set<ProviderType>([
     'koofr',
 ]);
 
-export const normalizePanelPath = (path: string | undefined | null, fallback = '/'): string => {
-    const trimmed = (path ?? '').trim();
-    if (!trimmed) return fallback;
-    return trimmed;
-};
+/**
+ * A panel's path as given: `/reports ` is its own folder, and a transfer
+ * planned on `/reports` would reach another one. Only a missing or empty path
+ * takes the fallback.
+ */
+export const normalizePanelPath = (path: string | undefined | null, fallback = '/'): string => path || fallback;
 
 export const createLocalEndpoint = (
     panelId: AeroFileLocalPanelId,
