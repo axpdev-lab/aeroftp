@@ -53,8 +53,8 @@ function shadows(fn: Node): boolean {
 
 interface Read { line: number; context: string[] }
 
-function formStateReads(): Read[] {
-    const program = parseAst(APP, { lang: 'tsx' }, 'App.tsx') as unknown as Node;
+function formStateReads(source: string = APP): Read[] {
+    const program = parseAst(source, { lang: 'tsx' }, 'App.tsx') as unknown as Node;
     const reads: Read[] = [];
     const visit = (node: Node, parent: Node | null, key: string | null, context: string[]) => {
         if (/Function/.test(node.type) && shadows(node)) return;
@@ -64,8 +64,9 @@ function formStateReads(): Read[] {
             const isProperty = parent?.type === 'MemberExpression' && key === 'property' && !parent.computed;
             const isKey = parent?.type === 'Property' && key === 'key' && !parent.shorthand;
             const isDeclaration = parent?.type === 'ArrayPattern';
-            const isType = !!parent?.type.startsWith('TS');
-            if (!isProperty && !isKey && !isDeclaration && !isType) reads.push({ line: lineOf(node.start), context: next });
+            // `x as T`, `x!`, `x satisfies T` and `x<T>` still read x.
+            const isType = !!parent?.type.startsWith('TS') && !(key === 'expression' && /^TS(AsExpression|NonNullExpression|SatisfiesExpression|InstantiationExpression)$/.test(parent.type));
+            if (!isProperty && !isKey && !isDeclaration && !isType) reads.push({ line: source.slice(0, node.start).split('\n').length, context: next });
         }
         for (const [childKey, value] of Object.entries(node)) {
             if (Array.isArray(value)) value.filter(isNode).forEach(child => visit(child, node, childKey, next));
@@ -84,6 +85,11 @@ describe('in-session readers use the live connection, not the connection form', 
             .filter(read => !read.context.some(name => FORM_CONTEXTS.has(name)))
             .map(read => `App.tsx:${read.line} in ${read.context.filter(n => n !== 'App').slice(-2).join(' > ') || 'App'}`);
         expect(outside).toEqual([]);
+    });
+
+    it('counts a read behind `as` or `!`, and not the name in a type', () => {
+        const sample = 'function App() { const a = connectionParams as Params; const b = connectionParams!.server; type T = typeof connectionParams; }';
+        expect(formStateReads(sample)).toHaveLength(2);
     });
 
     it('derives the live params from the active session through the shared helper', () => {

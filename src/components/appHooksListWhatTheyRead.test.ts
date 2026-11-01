@@ -128,7 +128,7 @@ function freeNames(fn: Node): Set<string> {
         if (n.type === 'Identifier') {
             const property = parent && ((parent.type === 'MemberExpression' && key === 'property' && !parent.computed)
                 || (parent.type === 'Property' && key === 'key' && !parent.computed && !parent.shorthand)
-                || parent.type === 'JSXAttribute' || parent.type.startsWith('TS'));
+                || parent.type === 'JSXAttribute');
             if (!property && !scopes.some(scope => scope.has(n.name as string))) found.add(n.name as string);
             return;
         }
@@ -185,6 +185,12 @@ describe('every hook of App lists the values of App it reads', () => {
         expect(hooks.length).toBeGreaterThan(150);
         expect(kinds.get('notify')).toBe('value');
         expect(kinds.get('loadRemoteFiles')).toBe('stable');
+    });
+
+    it('counts a read behind `as`, `!` or `satisfies`, and no name of a type', () => {
+        const sample = parseAst('const f = (a: Shape): Mode => (shown as boolean) || hidden! || (mode satisfies Mode) || (list as Shape[])[a.n];', { lang: 'ts' }) as unknown as Node;
+        const fn = (((sample.body as Node[])[0].declarations as Node[])[0].init) as Node;
+        expect([...freeNames(fn)].sort()).toEqual(['hidden', 'list', 'mode', 'shown']);
     });
 
     it('lists each value it reads, or says that it runs on some of them only', () => {
