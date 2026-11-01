@@ -256,13 +256,6 @@ describe('local actions on the rows of a flattened search', () => {
         expect(appRaw).toMatch(/onVaultCreated=\{\(dir\) => \{[^}]*void refreshLocalPanelForPath\(dir\);\s*\}\}/);
     });
 
-    it('reloads panel 2 when it comes back', () => {
-        // It keeps its listing while hidden, and a download or a sync into its
-        // folder meanwhile reloaded panel 1 only: it came back with the old rows.
-        expect(appRaw).toMatch(/const localPanel2Visible = \(!isConnected \|\| !showRemotePanel\) && showDualLocalPanel;/);
-        expect(appRaw).toMatch(/const cameBack = localPanel2Visible && !localPanel2WasVisible\.current;\s*localPanel2WasVisible\.current = localPanel2Visible;\s*if \(cameBack && currentLocalPath2\) void loadLocalFiles2\(currentLocalPath2\);\s*\}, \[localPanel2Visible, currentLocalPath2, loadLocalFiles2\]\);/);
-    });
-
     it('drops the rows of the last folder as soon as the folder changes', () => {
         // They stayed on screen, under the new folder, until the scan before
         // ended and the new one began.

@@ -5695,18 +5695,6 @@ const App: React.FC = () => {
     void loadLocalFiles2(seedPath);
   }, [showDualLocalPanel, currentLocalPath2, currentLocalPath, defaultLocalPath, loadLocalFiles2]);
 
-  // Panel 2 keeps its listing while it is hidden (a server connected with the
-  // remote panel shown, or dual mode off), and what was written to its folder
-  // meanwhile did not reach it: a download or a sync reloads panel 1 only.
-  // Reload it when it comes back.
-  const localPanel2Visible = (!isConnected || !showRemotePanel) && showDualLocalPanel;
-  const localPanel2WasVisible = useRef(localPanel2Visible);
-  useEffect(() => {
-    const cameBack = localPanel2Visible && !localPanel2WasVisible.current;
-    localPanel2WasVisible.current = localPanel2Visible;
-    if (cameBack && currentLocalPath2) void loadLocalFiles2(currentLocalPath2);
-  }, [localPanel2Visible, currentLocalPath2, loadLocalFiles2]);
-
   useEffect(() => {
     if (!showDualLocalPanel || !currentLocalPath2 || localTabs2.length > 0) return;
     const id = `tab2-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -5734,20 +5722,40 @@ const App: React.FC = () => {
       ? localFlattenedFiles.filter(f => f.is_dir).map(f => f.path)
       : [],
   ), [flattenSearchParse.active, localFlattenedFiles]);
+  // A panel's requests reach the backend in the order they were sent, each
+  // once the one before resolved: the commands run concurrently, and a stop
+  // that ran after the watch sent next would end it. A watch resolves once it
+  // is the panel's latest request, before its folder is stat'ed, so a hung
+  // mount holds nothing back.
+  const localWatchQueue = useRef<Record<'local' | 'local2', Promise<void>>>({ local: Promise.resolve(), local2: Promise.resolve() });
+  const requestLocalWatch = useCallback((panel: 'local' | 'local2', watch: { path: string; dirs?: string[] } | null) => {
+    const queue = localWatchQueue.current;
+    queue[panel] = queue[panel]
+      .then(() => watch ? invoke('local_panel_watch', { ...watch, panel }) : invoke('local_panel_watch_stop', { panel }))
+      .then(() => undefined, () => { /* best-effort: the panel still has Refresh */ });
+  }, []);
+  // Panel 1 keeps its watch behind the connection screen: the screen clears
+  // its selection when it opens, and not every way back lists its folder
+  // again (the command palette's does not).
   useEffect(() => {
     if (!currentLocalPath) return;
     const dirs = JSON.parse(localWatchDirs) as string[];
-    void invoke('local_panel_watch', { path: currentLocalPath, panel: 'local', dirs }).catch(() => { /* dir gone or not yet ready */ });
-  }, [currentLocalPath, localWatchDirs]);
+    requestLocalWatch('local', { path: currentLocalPath, dirs });
+  }, [currentLocalPath, localWatchDirs, requestLocalWatch]);
 
-  // Panel 2 while it is on screen; a hidden panel 2 is reloaded when it comes back.
+  // Panel 2 while it is on screen. Hidden (a server connected with the remote
+  // panel shown, the connection screen, dual mode off), it keeps its listing
+  // and nothing watches its folder: it reloads when it comes back.
+  const localPanel2Visible = !showConnectionScreen && (!isConnected || !showRemotePanel) && showDualLocalPanel;
+  const localPanel2WasVisible = useRef(localPanel2Visible);
   useEffect(() => {
-    if (localPanel2Visible && currentLocalPath2) {
-      void invoke('local_panel_watch', { path: currentLocalPath2, panel: 'local2' }).catch(() => { /* dir gone or not yet ready */ });
-    } else {
-      void invoke('local_panel_watch_stop', { panel: 'local2' }).catch(() => { /* ignore */ });
-    }
-  }, [localPanel2Visible, currentLocalPath2]);
+    const cameBack = localPanel2Visible && !localPanel2WasVisible.current;
+    localPanel2WasVisible.current = localPanel2Visible;
+    if (cameBack && currentLocalPath2) void loadLocalFiles2(currentLocalPath2);
+  }, [localPanel2Visible, currentLocalPath2, loadLocalFiles2]);
+  useEffect(() => {
+    requestLocalWatch('local2', localPanel2Visible && currentLocalPath2 ? { path: currentLocalPath2 } : null);
+  }, [localPanel2Visible, currentLocalPath2, requestLocalWatch]);
 
   const currentLocalPath2Ref = useRef(currentLocalPath2);
   useEffect(() => { currentLocalPath2Ref.current = currentLocalPath2; }, [currentLocalPath2]);
@@ -5773,7 +5781,9 @@ const App: React.FC = () => {
           if (waiting !== null) window.clearTimeout(waiting);
           pending[panel] = window.setTimeout(() => {
             pending[panel] = null;
-            localLoadersRef.current[panel](pathRef.current).catch(() => { /* swallowed by loader */ });
+            // The panel moved on meanwhile, and its new folder was just listed.
+            if (pathRef.current !== expected) return;
+            localLoadersRef.current[panel](expected).catch(() => { /* swallowed by loader */ });
           }, 350);
         });
         if (cancelled) fn();
