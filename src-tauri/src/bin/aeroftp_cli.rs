@@ -31998,7 +31998,7 @@ async fn connect_with_base_path(
             .is_some_and(|sftp| sftp.in_scp_mode())
     {
         eprintln!(
-            "Note: {} has no SFTP; connected with SCP on the same connection (transfers cannot resume).",
+            "Note: {} has no SFTP; connected with SCP on the same connection.",
             provider.display_name()
         );
     }

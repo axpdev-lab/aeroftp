@@ -58,6 +58,7 @@ pub fn caveat_text(token: &str) -> &str {
         S3_ETAG => "The ETag is the object MD5 only for single-part plaintext or SSE-S3 objects. The checksum query uses HEAD: multipart ETags do not yield an MD5; stat metadata still retains the raw ETag. Response headers identifying SSE-KMS (including DSSE) or SSE-C suppress MD5 even when the ETag has 32 hex characters.",
         B2_UNVERIFIED => "Large files and uploads B2 recorded as `unverified:` carry no usable `contentSha1`; those are omitted.",
         SFTP_SHA256SUM => "Computed by the remote host with `sha256sum` over an SSH exec channel: the bytes are read on the server, never sent to us. Omitted if the host has no `sha256sum`.",
+        SCP_SHELL_DIGESTS => "Computed by the remote host with `sha256sum` or `md5sum` over the SSH connection: the bytes are read on the server, never sent to us. Each digest is offered only when the host has its tool.",
         FTP_NEGOTIATED => "Depends on what the server advertises in FEAT: `HASH` (algorithm selected per request with `OPTS HASH`, from the list the server gives), or the older `XMD5` / `XSHA1` / `XCRC`. A server advertising none offers no digest.",
         WEBDAV_OC => "Only ownCloud and Nextcloud publish the `oc:checksums` property, and only for files uploaded by a client that sent one. Every other WebDAV server omits it.",
         DRIVE_WORKSPACE => "Native Google Workspace documents have no byte stream and therefore no digest.",
@@ -74,6 +75,7 @@ pub fn caveat_text(token: &str) -> &str {
 pub const S3_ETAG: &str = "s3-etag";
 pub const B2_UNVERIFIED: &str = "b2-unverified";
 pub const SFTP_SHA256SUM: &str = "sftp-sha256sum";
+pub const SCP_SHELL_DIGESTS: &str = "scp-shell-digests";
 pub const FTP_NEGOTIATED: &str = "ftp-negotiated";
 pub const WEBDAV_OC: &str = "webdav-oc-checksums";
 pub const DRIVE_WORKSPACE: &str = "drive-workspace-docs";
@@ -112,8 +114,10 @@ pub fn capability(kind: ProviderType) -> ChecksumCapability {
             &["md5", "sha1", "sha256", "sha512", "crc32"],
             FTP_NEGOTIATED,
         ),
-        // `sha256sum` over an exec channel, the same command for both.
-        ProviderType::Sftp | ProviderType::Scp => cap(&["sha256"], Some(SFTP_SHA256SUM)),
+        // `sha256sum` over an exec channel; SCP also runs `md5sum`. Each is
+        // offered only when the server has the tool (see the providers).
+        ProviderType::Sftp => cap(&["sha256"], Some(SFTP_SHA256SUM)),
+        ProviderType::Scp => cap(&["sha256", "md5"], Some(SCP_SHELL_DIGESTS)),
         ProviderType::WebDav => negotiated(&["sha1", "md5", "adler32"], WEBDAV_OC),
         ProviderType::S3 => cap(&["md5"], Some(S3_ETAG)),
 

@@ -205,8 +205,10 @@ async fn an_sftp_profile_reaches_a_server_without_sftp_over_scp() {
         assert_eq!(p.provider_type(), ProviderType::Sftp);
         assert!(p.server_info().await.unwrap().starts_with("SCP over SSH"));
         assert_eq!(p.pwd().await.unwrap(), s(&fx.remote()));
-        // SCP mode offers nothing it cannot do.
-        assert!(!p.supports_resume());
+        // SCP mode offers what its delegate does, and nothing it cannot
+        // do: it goes on with transfers, it has no delta sync and no ranges
+        // the transfer planner could split a file into.
+        assert!(p.supports_resume() && p.supports_resume_upload_append());
         assert!(!p.transfer_optimization_hints().supports_range_download);
         assert!(!p.supports_delta_sync());
         exercise(&mut p, &fx).await;
@@ -411,17 +413,45 @@ impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for Capture {
     }
 }
 
-/// Current-thread runtime: the subscriber is this thread's, and every task
-/// of the provider and of the server runs on it.
-#[tokio::test]
-async fn no_secret_reaches_the_log() {
+const LOG_CHILD: &str = "AEROFTP_SCP_LOG_CAPTURE_CHILD";
+
+/// tracing caches each call site's interest for the whole process. While a
+/// thread-local subscriber is the only one registered, a call site first
+/// reached by another test's thread is cached as "never" from that thread's
+/// empty default, and this thread then loses its lines too: the capture came
+/// back empty once in four runs of the whole file. So the test runs alone in
+/// a child process, with the capture as the process-wide subscriber.
+#[test]
+fn no_secret_reaches_the_log() {
+    if std::env::var_os(LOG_CHILD).is_some() {
+        return logged_session();
+    }
+    let out = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "no_secret_reaches_the_log", "--nocapture"])
+        .env(LOG_CHILD, "1")
+        .output()
+        .expect("run the test alone");
+    let report = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(out.status.success(), "{report}");
+    assert!(
+        report.contains("1 passed"),
+        "the child ran no test: {report}"
+    );
+}
+
+#[tokio::main(flavor = "current_thread")]
+async fn logged_session() {
     let capture = Capture::default();
     let subscriber = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::TRACE)
         .with_ansi(false)
         .with_writer(capture.clone())
         .finish();
-    let _guard = tracing::subscriber::set_default(subscriber);
+    tracing::subscriber::set_global_default(subscriber).expect("first subscriber");
 
     let fx = Fixture::new("logs");
     let (port, _) = start(fx.options(Sftp::EndAtOnce)).await;
@@ -454,4 +484,265 @@ async fn no_secret_reaches_the_log() {
     assert!(log.contains("SCP"), "the capture saw the provider: {log}");
     assert!(!log.contains(PASSWORD), "password in the log");
     assert!(!log.contains(PASSPHRASE), "passphrase in the log");
+}
+
+/// Bytes that are not text and do not repeat within a chunk.
+fn pattern(len: usize) -> Vec<u8> {
+    (0..len).map(|i| (i * 7 + i / 251) as u8).collect()
+}
+
+/// An SCP session on a server with a password, connected.
+async fn scp_session(fx: &Fixture) -> Box<dyn StorageProvider> {
+    let (port, _) = start(fx.options(Sftp::Serve)).await;
+    let mut profile = scp_profile(port, &fx.remote(), &[]);
+    profile.password = Some(PASSWORD.to_string());
+    let mut p = ProviderFactory::create(&profile).expect("factory");
+    timed_connect(p.as_mut()).await.0.expect("connect");
+    p
+}
+
+/// A progress callback and what it was called with.
+fn recorder() -> (
+    Option<Box<dyn Fn(u64, u64) + Send>>,
+    Arc<Mutex<Vec<(u64, u64)>>>,
+) {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let seen = calls.clone();
+    (
+        Some(Box::new(move |done, total| {
+            seen.lock().unwrap().push((done, total))
+        })),
+        calls,
+    )
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_replace_puts_a_file_in_place_and_refuses_across_kinds() {
+    let fx = Fixture::new("scp-replace");
+    let mut p = scp_session(&fx).await;
+    let r = fx.remote();
+    assert!(p.supports_atomic_replace().await.unwrap());
+
+    std::fs::write(r.join("target it's.txt"), b"old").unwrap();
+    std::fs::write(r.join("staged $(x).tmp"), b"new").unwrap();
+    p.replace("staged $(x).tmp", "target it's.txt")
+        .await
+        .expect("a file in place of a file");
+    assert_eq!(std::fs::read(r.join("target it's.txt")).unwrap(), b"new");
+    assert!(!r.join("staged $(x).tmp").exists());
+
+    // A file in place of a folder: refused, and nothing changed.
+    std::fs::create_dir(r.join("a folder")).unwrap();
+    std::fs::write(r.join("a folder/keep"), b"k").unwrap();
+    std::fs::write(r.join("f.tmp"), b"f").unwrap();
+    let err = p.replace("f.tmp", "a folder").await.unwrap_err();
+    assert!(matches!(err, ProviderError::AlreadyExists(_)), "{err}");
+    assert!(r.join("a folder/keep").is_file() && r.join("f.tmp").is_file());
+
+    // A folder replaces an empty folder only, as rename(2) does.
+    std::fs::create_dir(r.join("new folder")).unwrap();
+    std::fs::write(r.join("new folder/n"), b"n").unwrap();
+    assert!(p.replace("new folder", "a folder").await.is_err());
+    assert!(r.join("a folder/keep").is_file() && r.join("new folder/n").is_file());
+    std::fs::remove_file(r.join("a folder/keep")).unwrap();
+    p.replace("new folder", "a folder")
+        .await
+        .expect("a folder in place of an empty one");
+    assert!(r.join("a folder/n").is_file() && !r.join("new folder").exists());
+
+    // A symlink is replaced itself; what it pointed to is left alone.
+    std::fs::write(r.join("real.txt"), b"real").unwrap();
+    std::os::unix::fs::symlink(r.join("real.txt"), r.join("link.txt")).unwrap();
+    std::fs::write(r.join("l.tmp"), b"via link").unwrap();
+    p.replace("l.tmp", "link.txt")
+        .await
+        .expect("over a symlink");
+    let link = std::fs::symlink_metadata(r.join("link.txt")).unwrap();
+    assert!(!link.file_type().is_symlink());
+    assert_eq!(std::fs::read(r.join("link.txt")).unwrap(), b"via link");
+    assert_eq!(std::fs::read(r.join("real.txt")).unwrap(), b"real");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn free_space_digests_and_search_come_from_the_server() {
+    use md5::Md5;
+    use sha2::{Digest, Sha256};
+
+    let fx = Fixture::new("scp-df-sum-find");
+    let mut p = scp_session(&fx).await;
+    let r = fx.remote();
+
+    let space = p.storage_info().await.expect("df");
+    assert!(space.total > 0 && space.free <= space.total && space.used <= space.total);
+
+    let body = pattern(100_000);
+    std::fs::write(r.join("sum me it's.bin"), &body).unwrap();
+    assert_eq!(
+        p.checksum_capability("sum me it's.bin").algorithms,
+        ["sha256", "md5"]
+    );
+    let sums = p.checksum("sum me it's.bin").await.unwrap();
+    assert_eq!(sums["sha256"], hex::encode(Sha256::digest(&body)));
+    assert_eq!(sums["md5"], hex::encode(Md5::digest(&body)));
+
+    std::fs::create_dir_all(r.join("logs/deep $(x)")).unwrap();
+    std::fs::write(r.join("logs/a.log"), b"a").unwrap();
+    std::fs::write(r.join("logs/deep $(x)/b it's.log"), b"bb").unwrap();
+    std::fs::write(r.join("logs/c.txt"), b"c").unwrap();
+    std::fs::write(r.join("outside.log"), b"o").unwrap();
+    assert!(p.supports_find());
+    let mut found: Vec<(String, String, u64, bool)> = p
+        .find("logs", "*.log")
+        .await
+        .expect("find")
+        .into_iter()
+        .map(|e| (e.name, e.path, e.size, e.is_dir))
+        .collect();
+    found.sort();
+    let at = |rel: &str| s(&r.join(rel));
+    assert_eq!(
+        found,
+        [
+            ("a.log".to_string(), at("logs/a.log"), 1, false),
+            (
+                "b it's.log".to_string(),
+                at("logs/deep $(x)/b it's.log"),
+                2,
+                false
+            ),
+        ]
+    );
+    assert!(!r.join("pwned").exists() && !r.join("x").exists());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_interrupted_download_goes_on_from_its_partial_and_the_limit_paces_it() {
+    use ftp_client_gui_lib::providers::atomic_write::resumable_part_len;
+
+    let fx = Fixture::new("scp-resume-down");
+    let mut p = scp_session(&fx).await;
+    let body = pattern(2 * 1024 * 1024);
+    std::fs::write(fx.remote().join("big it's.bin"), &body).unwrap();
+    let local = fx.local("big it's.bin");
+    assert!(p.supports_resume());
+
+    // Slow enough (4 s for the whole file) to be stopped part way, once the
+    // partial holds 256 KiB.
+    p.set_speed_limit(0, 512).await.unwrap();
+    assert_eq!(p.get_speed_limit().await.unwrap(), (0, 512));
+    let started = Instant::now();
+    {
+        let local_path = s(&local);
+        let download = p.download("big it's.bin", &local_path, None);
+        tokio::pin!(download);
+        loop {
+            tokio::select! {
+                done = &mut download => panic!("finished before it was stopped: {done:?}"),
+                _ = tokio::time::sleep(Duration::from_millis(20)) => {
+                    let temp = local.with_file_name("big it's.bin.aerotmp");
+                    if std::fs::metadata(&temp).map(|m| m.len()).unwrap_or(0) >= 256 * 1024 {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    // 256 KiB at 512 KiB/s: half a second at the least.
+    assert!(started.elapsed() >= Duration::from_millis(400), "not paced");
+    let part = resumable_part_len(&local).await;
+    assert!(
+        part >= 256 * 1024 && part < body.len() as u64,
+        "part {part}"
+    );
+
+    p.set_speed_limit(0, 0).await.unwrap();
+    let (progress, calls) = recorder();
+    p.download("big it's.bin", &s(&local), progress)
+        .await
+        .expect("go on");
+    assert_eq!(std::fs::read(&local).unwrap(), body);
+    let calls = calls.lock().unwrap();
+    // The first bytes reported are after the partial, not from zero.
+    assert!(calls[0].0 > part, "{:?} after a part of {part}", calls[0]);
+    assert_eq!(
+        *calls.last().unwrap(),
+        (body.len() as u64, body.len() as u64)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_interrupted_upload_goes_on_by_appending_and_the_limit_paces_it() {
+    let fx = Fixture::new("scp-resume-up");
+    let mut p = scp_session(&fx).await;
+    let r = fx.remote();
+    let body = pattern(300_000);
+    let local = fx.local("up.bin");
+    std::fs::write(&local, &body).unwrap();
+    assert!(p.supports_resume_upload_append());
+
+    std::fs::write(r.join("up it's.bin"), &body[..100_000]).unwrap();
+    let (progress, calls) = recorder();
+    p.resume_upload(&s(&local), "up it's.bin", 100_000, progress)
+        .await
+        .expect("append");
+    assert_eq!(std::fs::read(r.join("up it's.bin")).unwrap(), body);
+    assert!(calls.lock().unwrap()[0].0 > 100_000);
+
+    // An offset past the remote's end: the tail starts where the remote
+    // ends, never past it.
+    std::fs::write(r.join("up it's.bin"), &body[..50_000]).unwrap();
+    p.resume_upload(&s(&local), "up it's.bin", 200_000, None)
+        .await
+        .expect("append from the remote's end");
+    assert_eq!(std::fs::read(r.join("up it's.bin")).unwrap(), body);
+
+    // A remote longer than the local file is no part of it: sent whole.
+    std::fs::write(r.join("up it's.bin"), pattern(400_000)).unwrap();
+    p.resume_upload(&s(&local), "up it's.bin", 400_000, None)
+        .await
+        .expect("whole");
+    assert_eq!(std::fs::read(r.join("up it's.bin")).unwrap(), body);
+
+    // 512 KiB at 256 KiB/s: two seconds, 1.5 at the least.
+    let big = fx.local("paced.bin");
+    std::fs::write(&big, pattern(512 * 1024)).unwrap();
+    p.set_speed_limit(256, 0).await.unwrap();
+    let started = Instant::now();
+    p.upload(&s(&big), "paced.bin", None).await.expect("upload");
+    assert!(
+        started.elapsed() >= Duration::from_millis(1500),
+        "not paced"
+    );
+    assert_eq!(
+        std::fs::read(r.join("paced.bin")).unwrap().len(),
+        512 * 1024
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn sftp_in_scp_mode_keeps_its_speed_limit_and_offers_the_same_operations() {
+    let fx = Fixture::new("fallback-ops");
+    let (port, _) = start(fx.options(Sftp::Refuse)).await;
+    let mut p = SftpProvider::new(config(port, &fx.remote()));
+    // Set before connecting, as the GUI does from a saved profile.
+    p.set_speed_limit(256, 0).await.unwrap();
+    timed_connect(&mut p).await.0.expect("connect");
+    assert!(p.in_scp_mode());
+    assert!(p.storage_info().await.is_ok());
+    assert!(p.supports_atomic_replace().await.unwrap() && p.supports_find());
+
+    let big = fx.local("paced.bin");
+    std::fs::write(&big, pattern(512 * 1024)).unwrap();
+    let started = Instant::now();
+    p.upload(&s(&big), "paced.tmp", None).await.expect("upload");
+    assert!(
+        started.elapsed() >= Duration::from_millis(1500),
+        "not paced"
+    );
+    std::fs::write(fx.remote().join("paced.bin"), b"old").unwrap();
+    p.replace("paced.tmp", "paced.bin").await.expect("replace");
+    assert_eq!(
+        std::fs::read(fx.remote().join("paced.bin")).unwrap().len(),
+        512 * 1024
+    );
 }

@@ -3537,7 +3537,7 @@ const App: React.FC = () => {
         const autoScan = !!(prof?.options?.autoScanUsedOnConnect || opts?.autoScanUsedOnConnect);
         const hasScanBaseline = !!prof?.lastQuota && (prof.lastQuota.usedSource === 'scan' || prof.lastQuota.used > 0);
         const scanEligibleProtocol =
-          ['ftp', 'ftps', 'sftp', 's3', 'webdav'].includes(protocol) ||
+          ['ftp', 'ftps', 'sftp', 'scp', 's3', 'webdav'].includes(protocol) ||
           isMegaCmdQuotaProfile(liveCp, prof);
         if (autoScan && scanEligibleProtocol && !hasScanBaseline) {
           void scanUsedStorage({

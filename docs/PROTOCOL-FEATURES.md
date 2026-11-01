@@ -95,13 +95,18 @@ Some SSH servers have no SFTP: a stock OpenWrt router runs Dropbear without `sft
 | | SCP |
 |---|---|
 | List, stat, mkdir, delete, rename, chmod | Yes, as POSIX shell commands with every path single-quoted (`ls --full-time` and `find -print0` for listings) |
-| Upload and download with progress | Yes; an upload keeps the file's time |
-| Resume, ranged reads, segmented downloads, delta sync | No: SCP moves whole files |
+| Upload and download with progress | Yes; an upload keeps the file's time, and the speed limit applies both ways |
+| Resume | Yes: a download goes on from its partial file (the server seeks with `dd`), an upload goes on by appending to the remote file; the final size is checked |
+| Ranged reads, segmented downloads, delta sync | No |
 | Parallel transfers | No: one transfer at a time on the connection |
-| Server-side SHA-256 | When the server has `sha256sum` |
+| Replace an existing file | Yes, with `mv -f`; a folder is never replaced by a file, nor a file by a folder |
+| Free space | From `df -Pk` |
+| Search | With `find` on the server |
+| Server-side digests | SHA-256 with `sha256sum` and MD5 with `md5sum`, each when the server has the tool |
+| Speed test | Yes |
 | Rename onto an existing name | Refused, as over SFTP |
 
-The server needs a POSIX shell with `scp`, an `ls` that takes `--full-time` and a `find` with `-print0` (BusyBox, GNU and uutils all qualify); a restricted account (rssh, scponly, a forced command) is refused with the reason. WinSCP sessions map as WinSCP defines them: 0 is SCP, 1 is SFTP with the fallback on, 2 is SFTP with it off, and export writes them back the same way.
+The server needs a POSIX shell with `scp`, an `ls` that takes `--full-time` and a `find` with `-print0` (BusyBox, GNU and uutils all qualify); resume also needs `dd`, `cat` and `head`, which the same three provide; a restricted account (rssh, scponly, a forced command) is refused with the reason. WinSCP sessions map as WinSCP defines them: 0 is SCP, 1 is SFTP with the fallback on, 2 is SFTP with it off, and export writes them back the same way.
 
 ## Protocol Security Matrix
 
@@ -286,7 +291,7 @@ A backend's own scheme keeps its own name. Dropbox's `content_hash` is a SHA-256
 | FTP | MD5, SHA-1, SHA-256, SHA-512, CRC32 (negotiated) | Depends on what the server advertises in FEAT: `HASH` (algorithm selected per request with `OPTS HASH`, from the list the server gives), or the older `XMD5` / `XSHA1` / `XCRC`. A server advertising none offers no digest. |
 | FTPS | MD5, SHA-1, SHA-256, SHA-512, CRC32 (negotiated) | Depends on what the server advertises in FEAT: `HASH` (algorithm selected per request with `OPTS HASH`, from the list the server gives), or the older `XMD5` / `XSHA1` / `XCRC`. A server advertising none offers no digest. |
 | SFTP | SHA-256 | Computed by the remote host with `sha256sum` over an SSH exec channel: the bytes are read on the server, never sent to us. Omitted if the host has no `sha256sum`. |
-| SCP | SHA-256 | Computed by the remote host with `sha256sum` over an SSH exec channel: the bytes are read on the server, never sent to us. Omitted if the host has no `sha256sum`. |
+| SCP | SHA-256, MD5 | Computed by the remote host with `sha256sum` or `md5sum` over the SSH connection: the bytes are read on the server, never sent to us. Each digest is offered only when the host has its tool. |
 | WebDAV | SHA-1, MD5, Adler-32 (negotiated) | Only ownCloud and Nextcloud publish the `oc:checksums` property, and only for files uploaded by a client that sent one. Every other WebDAV server omits it. |
 | S3 | MD5 | The ETag is the object MD5 only for single-part plaintext or SSE-S3 objects. The checksum query uses HEAD: multipart ETags do not yield an MD5; stat metadata still retains the raw ETag. Response headers identifying SSE-KMS (including DSSE) or SSE-C suppress MD5 even when the ETag has 32 hex characters. |
 | Azure Blob | - |  |

@@ -312,12 +312,31 @@ impl SftpChannel {
         };
         tokio::select! {
             biased;
-            session = SftpSession::new(stream) => {
-                Ok(Self { session: session.map_err(SftpOpenError::Sftp)?, ended })
-            }
+            session = SftpSession::new(stream) => match session {
+                Ok(session) => Ok(Self { session, ended }),
+                // INIT could not be sent or its answer never came because
+                // the channel closed: the same end, seen by the writer or
+                // the reader before the stream's own watch saw it.
+                Err(e) if ended.is_cancelled() || handshake_lost_its_channel(&e) => {
+                    Err(SftpOpenError::NoSftp(NoSftp::Ended))
+                }
+                Err(e) => Err(SftpOpenError::Sftp(e)),
+            },
             () = ended.cancelled() => Err(SftpOpenError::NoSftp(NoSftp::Ended)),
         }
     }
+}
+
+/// Whether russh-sftp failed its handshake because the channel under it
+/// closed: its writer's queue (`SendError`) or the reply it waited on
+/// (`RecvError`) went with the channel. Any other failure (a timeout, a
+/// status, a malformed VERSION) came from a server that did answer.
+fn handshake_lost_its_channel(e: &russh_sftp::client::error::Error) -> bool {
+    matches!(
+        e,
+        russh_sftp::client::error::Error::UnexpectedBehavior(m)
+            if m.starts_with("SendError: ") || m.starts_with("RecvError: ")
+    )
 }
 
 /// Why the server gave this connection no SFTP session.
@@ -1499,10 +1518,13 @@ impl SftpProvider {
             ..self.config.clone()
         };
         match ScpProvider::on_connection(config, handle.clone()).await {
-            Ok(scp) => {
+            Ok(mut scp) => {
                 tracing::warn!("SFTP: {host} {why}; connected with SCP on the same connection");
                 self.home_dir = scp.home_dir().to_string();
                 self.current_dir = scp.current_dir().to_string();
+                // Limits set before connecting apply to SCP's transfers too.
+                scp.set_speed_limit(self.upload_limit_bps / 1024, self.download_limit_bps / 1024)
+                    .await?;
                 self.ssh_handle = Some(handle);
                 self.scp = Some(Box::new(scp));
                 Ok(())
@@ -4649,6 +4671,10 @@ impl StorageProvider for SftpProvider {
     ) -> Result<(), ProviderError> {
         self.upload_limit_bps = upload_kb * 1024;
         self.download_limit_bps = download_kb * 1024;
+        // SCP mode transfers on its own session; it paces them the same way.
+        if let Some(scp) = self.scp.as_mut() {
+            scp.set_speed_limit(upload_kb, download_kb).await?;
+        }
         tracing::info!(
             "SFTP: Speed limits set: download={}KB/s upload={}KB/s",
             download_kb,
@@ -6613,6 +6639,24 @@ async fn sftp_read_one_range(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_handshake_whose_channel_closed_is_a_server_without_sftp() {
+        use russh_sftp::client::error::Error;
+        for closed in [
+            Error::UnexpectedBehavior("SendError: channel closed".into()),
+            Error::UnexpectedBehavior("RecvError: channel closed".into()),
+        ] {
+            assert!(super::handshake_lost_its_channel(&closed), "{closed}");
+        }
+        for answered in [
+            Error::Timeout,
+            Error::UnexpectedPacket,
+            Error::UnexpectedBehavior("Unsupported version 2".into()),
+        ] {
+            assert!(!super::handshake_lost_its_channel(&answered), "{answered}");
+        }
+    }
+
     use super::*;
     use tokio::io::AsyncWriteExt;
 

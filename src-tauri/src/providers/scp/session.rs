@@ -12,8 +12,9 @@
 //! operations need, so a missing tool is reported by name instead of as a
 //! shell error halfway through an operation.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use russh::client::{Handle, Handler};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -63,6 +64,9 @@ const PROBED_TOOLS: &[&str] = &[
     "sha256sum",
     "md5sum",
     "df",
+    "dd",
+    "head",
+    "cat",
 ];
 
 /// The output of one command.
@@ -85,6 +89,9 @@ pub struct ScpSession<H: Handler> {
     probe: Probe,
     /// The longest wait for the next bytes from the server.
     io_timeout: Duration,
+    /// Transfer rates in bytes per second, 0 for no limit.
+    upload_limit_bps: AtomicU64,
+    download_limit_bps: AtomicU64,
 }
 
 /// Bytes from a channel's stdout, read a byte, a line or a length at a time.
@@ -135,14 +142,16 @@ impl Incoming {
     }
 
     /// Exactly `n` bytes into `sink`, calling `progress` with the bytes so far
-    /// and `n`.
+    /// and `n`, at no more than `limit_bps` (0 for no limit).
     async fn copy_to<W: AsyncWrite + Unpin>(
         &mut self,
         n: u64,
         sink: &mut W,
         progress: &mut (dyn FnMut(u64, u64) + Send),
+        limit_bps: u64,
     ) -> Result<(), ProviderError> {
         let mut done = 0u64;
+        let start = Instant::now();
         while done < n {
             self.fill().await?;
             let avail = (self.buf.len() - self.pos) as u64;
@@ -153,6 +162,7 @@ impl Incoming {
             self.pos += take;
             done += take as u64;
             progress(done, n);
+            crate::throttle_transfer(done, start.elapsed(), limit_bps).await;
         }
         Ok(())
     }
@@ -249,6 +259,8 @@ where
             handle,
             probe: Probe::default(),
             io_timeout,
+            upload_limit_bps: AtomicU64::new(0),
+            download_limit_bps: AtomicU64::new(0),
         };
         let mut script = String::from(
             "printf 'system=%s\\0' \"$(uname -s)\"; printf 'home=%s\\0' \"$(pwd)\"; for t in",
@@ -321,7 +333,12 @@ where
     pub async fn run(&self, command: &[u8]) -> Result<Output, ProviderError> {
         let mut full = b"LC_ALL=C; export LC_ALL; ".to_vec();
         full.extend_from_slice(command);
-        let mut exec = self.exec(&full).await?;
+        let exec = self.exec(&full).await?;
+        self.collect(exec).await
+    }
+
+    /// What a started command prints, and its exit status.
+    async fn collect(&self, mut exec: ExecSession) -> Result<Output, ProviderError> {
         let mut out = Output::default();
         let mut stderr_open = true;
         loop {
@@ -530,6 +547,8 @@ where
         reply_ok(incoming.reply().await?, path)?;
         let mut buf = vec![0u8; UPLOAD_CHUNK];
         let mut sent = 0u64;
+        let start = Instant::now();
+        let limit_bps = self.upload_limit_bps.load(Ordering::Relaxed);
         while sent < size {
             let want = (size - sent).min(UPLOAD_CHUNK as u64) as usize;
             let n = src.read(&mut buf[..want]).await.map_err(io)?;
@@ -543,6 +562,7 @@ where
             exec.stdin.write_all(&buf[..n]).await.map_err(io)?;
             sent += n as u64;
             progress(sent, size);
+            crate::throttle_transfer(sent, start.elapsed(), limit_bps).await;
         }
         exec.stdin.write_all(&[0]).await.map_err(io)?;
         reply_ok(incoming.reply().await?, path)?;
@@ -605,7 +625,8 @@ where
             exec.stdin.write_all(&[0]).await.map_err(io)?;
         };
         exec.stdin.write_all(&[0]).await.map_err(io)?;
-        incoming.copy_to(size, sink, progress).await?;
+        let limit_bps = self.download_limit_bps.load(Ordering::Relaxed);
+        incoming.copy_to(size, sink, progress, limit_bps).await?;
         reply_ok(incoming.reply().await?, path)?;
         exec.stdin.write_all(&[0]).await.map_err(io)?;
         sink.flush().await.map_err(io)?;
@@ -618,4 +639,302 @@ where
         }
         Ok((size, mtime))
     }
+
+    /// Pace the transfers that follow to these rates, in bytes per second
+    /// (0 for no limit).
+    pub fn set_speed_limits(&self, upload_bps: u64, download_bps: u64) {
+        self.upload_limit_bps.store(upload_bps, Ordering::Relaxed);
+        self.download_limit_bps
+            .store(download_bps, Ordering::Relaxed);
+    }
+
+    /// The metadata of what `path` names, a symlink followed.
+    pub async fn stat_followed(&self, path: &str) -> Result<listing::Meta, ProviderError> {
+        let name = path.as_bytes().to_vec();
+        let mut script = b"ls -lanLd --full-time -- ".to_vec();
+        script.extend_from_slice(&shell_quote_bytes(&name)?);
+        let out = self.run_ok("stat", path, &script).await?;
+        let mut chunk = out.stdout;
+        chunk.push(0);
+        listing::parse_resolved(&[name], &chunk)
+            .pop()
+            .map(|e| e.meta)
+            .ok_or_else(|| ProviderError::ParseError(format!("stat {path}: unreadable ls line")))
+    }
+
+    /// The metadata of each of the absolute `paths` (symlinks not
+    /// followed), in batches
+    /// that keep one command well under the 128 KiB a single argument may
+    /// take: the shell gets the whole script as one. A path gone in the
+    /// meantime is left out.
+    pub async fn stat_many(&self, paths: &[Vec<u8>]) -> Result<Vec<Entry>, ProviderError> {
+        const BUDGET: usize = 64 * 1024;
+        let mut entries = Vec::with_capacity(paths.len());
+        let mut start = 0;
+        while start < paths.len() {
+            let mut end = start;
+            let mut bytes = 0;
+            while end < paths.len() && (end == start || bytes + paths[end].len() + 3 <= BUDGET) {
+                bytes += paths[end].len() + 3;
+                end += 1;
+            }
+            let batch = &paths[start..end];
+            // `resolve_script` joins a folder and a name: the root and each
+            // absolute path without its first `/`.
+            let relative: Vec<Vec<u8>> = batch
+                .iter()
+                .map(|p| p.strip_prefix(b"/").unwrap_or(p).to_vec())
+                .collect();
+            let script = listing::resolve_script(b"/", &relative)?;
+            let out = self.run(&script).await?;
+            entries.extend(listing::parse_resolved(batch, &out.stdout));
+            start = end;
+        }
+        Ok(entries)
+    }
+
+    /// Put `from` in place of `to`. For a file that is `mv -f`, one
+    /// `rename(2)` when the two are in one file system (callers stage the
+    /// file in the target's own folder): there is no moment without a file
+    /// at `to`. A folder replaces only an empty folder, as `rename(2)` does,
+    /// and a file only a file or a symlink ([`refuse_replace_across_types`]).
+    /// A symlink at `to` is replaced itself, never followed, so it is
+    /// removed first: the one case with a moment in which `to` is empty.
+    ///
+    /// [`refuse_replace_across_types`]: crate::providers::refuse_replace_across_types
+    pub async fn replace(&self, from: &str, to: &str) -> Result<(), ProviderError> {
+        let (f, t) = (shell_quote(from)?, shell_quote(to)?);
+        let cmd = format!(
+            "if [ -d {f} ] && [ ! -L {f} ]; then fd=1; else fd=0; fi; \
+             if [ -e {t} ] || [ -L {t} ]; then \
+               if [ -d {t} ] && [ ! -L {t} ]; then td=1; else td=0; fi; \
+               if [ \"$fd\" != \"$td\" ]; then printf '{ACROSS} %s %s\\n' \"$fd\" \"$td\" >&2; exit 3; fi; \
+               if [ \"$td\" = 1 ]; then rmdir -- {t} || exit; \
+               elif [ -L {t} ]; then rm -f -- {t} || exit; fi; \
+             fi; \
+             mv -f -- {f} {t}"
+        );
+        let out = self.run(cmd.as_bytes()).await?;
+        if out.status == 0 {
+            return Ok(());
+        }
+        let said = out.stderr_text();
+        if let Some(kinds) = said.strip_prefix(ACROSS) {
+            let mut kinds = kinds.split_whitespace();
+            let source_is_dir = kinds.next() == Some("1");
+            let occupant_is_dir = kinds.next() == Some("1");
+            crate::providers::refuse_replace_across_types(to, source_is_dir, occupant_is_dir)?;
+        }
+        Err(command_error("replace", from, &out))
+    }
+
+    /// The space of the file system holding `path`: total, used and
+    /// available bytes, from `df -Pk` (POSIX format: one line per file
+    /// system, 1024-byte blocks).
+    pub async fn disk_space(&self, path: &str) -> Result<(u64, u64, u64), ProviderError> {
+        let cmd = format!("df -Pk -- {}", shell_quote(path)?);
+        let out = self.run_ok("df", path, cmd.as_bytes()).await?;
+        parse_df(&out.stdout)
+            .ok_or_else(|| ProviderError::ParseError(format!("df {path}: unreadable output")))
+    }
+
+    /// The bytes of the file `path` from `offset` into `sink`: `len` of
+    /// them, or all to its end when `len` is `None`. Returns how many came.
+    /// `dd` with `count=0` only moves the descriptor the group shares, by
+    /// `lseek` on a regular file, and `head` or `cat` reads on from there, so
+    /// no byte before `offset` is read (measured on BusyBox 1.36.1 and GNU).
+    /// `progress` gets the bytes so far.
+    pub async fn read_at<W: AsyncWrite + Unpin>(
+        &self,
+        path: &str,
+        offset: u64,
+        len: Option<u64>,
+        sink: &mut W,
+        progress: &mut (dyn FnMut(u64) + Send),
+    ) -> Result<u64, ProviderError> {
+        let rest = match len {
+            Some(n) => format!("head -c {n}"),
+            None => "cat".to_string(),
+        };
+        let cmd = format!(
+            "LC_ALL=C; export LC_ALL; {{ dd bs=1 skip={offset} count=0 2>/dev/null; {rest}; }} < {}",
+            shell_quote(path)?
+        );
+        let mut exec = self.exec(cmd.as_bytes()).await?;
+        let io = |e: std::io::Error| ProviderError::TransferFailed(format!("{path}: {e}"));
+        let limit_bps = self.download_limit_bps.load(Ordering::Relaxed);
+        let start = Instant::now();
+        let mut done = 0u64;
+        let mut stderr = Vec::new();
+        let mut stderr_open = true;
+        loop {
+            let next = tokio::time::timeout(self.io_timeout, async {
+                tokio::select! {
+                    chunk = exec.stdout_rx.recv() => (true, chunk),
+                    chunk = exec.stderr_rx.recv(), if stderr_open => (false, chunk),
+                }
+            })
+            .await
+            .map_err(|_| ProviderError::Timeout)?;
+            match next {
+                (true, Some(chunk)) => {
+                    sink.write_all(&chunk).await.map_err(io)?;
+                    done += chunk.len() as u64;
+                    progress(done);
+                    crate::throttle_transfer(done, start.elapsed(), limit_bps).await;
+                }
+                (true, None) => break,
+                (false, Some(chunk)) => {
+                    if stderr.len() < codec::MAX_LINE {
+                        stderr.extend_from_slice(&chunk);
+                    }
+                }
+                (false, None) => stderr_open = false,
+            }
+        }
+        sink.flush().await.map_err(io)?;
+        while let Ok(chunk) = exec.stderr_rx.try_recv() {
+            if stderr.len() < codec::MAX_LINE {
+                stderr.extend_from_slice(&chunk);
+            }
+        }
+        let status = tokio::time::timeout(self.io_timeout, &mut exec.exit_rx)
+            .await
+            .map_err(|_| ProviderError::Timeout)?
+            .unwrap_or(crate::ssh_exec::EXIT_ABNORMAL);
+        if status != 0 {
+            let out = Output {
+                stdout: Vec::new(),
+                stderr,
+                status,
+            };
+            return Err(command_error("read", path, &out));
+        }
+        Ok(done)
+    }
+
+    /// Append `len` bytes from `src` to the existing file `path` with
+    /// `cat >>`; `progress` gets the bytes sent so far and `len`.
+    pub async fn append<R: AsyncRead + Unpin>(
+        &self,
+        path: &str,
+        src: &mut R,
+        len: u64,
+        progress: &mut (dyn FnMut(u64, u64) + Send),
+    ) -> Result<(), ProviderError> {
+        let p = shell_quote(path)?;
+        let cmd = format!(
+            "LC_ALL=C; export LC_ALL; \
+             [ -f {p} ] || {{ echo 'append: No such file or directory' >&2; exit 1; }}; \
+             cat >> {p}"
+        );
+        let mut exec = self.exec(cmd.as_bytes()).await?;
+        let io = |e: std::io::Error| ProviderError::TransferFailed(format!("{path}: {e}"));
+        let limit_bps = self.upload_limit_bps.load(Ordering::Relaxed);
+        let start = Instant::now();
+        let mut buf = vec![0u8; UPLOAD_CHUNK];
+        let mut sent = 0u64;
+        while sent < len {
+            let want = (len - sent).min(UPLOAD_CHUNK as u64) as usize;
+            let n = src.read(&mut buf[..want]).await.map_err(io)?;
+            if n == 0 {
+                return Err(ProviderError::TransferFailed(format!(
+                    "{path}: the source ended after {sent} of {len} bytes"
+                )));
+            }
+            // A `cat` that has already exited (the file was missing) closes
+            // its stdin: its own message, below, says why.
+            if exec.stdin.write_all(&buf[..n]).await.is_err() {
+                break;
+            }
+            sent += n as u64;
+            progress(sent, len);
+            crate::throttle_transfer(sent, start.elapsed(), limit_bps).await;
+        }
+        let _ = exec.stdin.shutdown().await;
+        let out = self.collect(exec).await?;
+        if out.status != 0 {
+            return Err(command_error("append", path, &out));
+        }
+        if sent < len {
+            return Err(ProviderError::TransferFailed(format!(
+                "{path}: the server stopped reading after {sent} of {len} bytes"
+            )));
+        }
+        Ok(())
+    }
+
+    /// The paths below the folder `root` whose last component `keep`
+    /// accepts, in `find` order, at most `limit` of them. `find` does not
+    /// follow symlinks, so a link back up the tree is never walked; a folder
+    /// it cannot read is skipped, as SFTP's search skips one. Reading stops
+    /// at `limit`, and dropping the channel ends `find`.
+    pub async fn find_paths(
+        &self,
+        root: &str,
+        keep: &mut (dyn FnMut(&[u8]) -> bool + Send),
+        limit: usize,
+    ) -> Result<Vec<Vec<u8>>, ProviderError> {
+        let cmd = format!(
+            "LC_ALL=C; export LC_ALL; find {} -mindepth 1 -print0 2>/dev/null; :",
+            shell_quote(root)?
+        );
+        let mut exec = self.exec(cmd.as_bytes()).await?;
+        let mut found = Vec::new();
+        let mut pending: Vec<u8> = Vec::new();
+        while let Some(chunk) = tokio::time::timeout(self.io_timeout, exec.stdout_rx.recv())
+            .await
+            .map_err(|_| ProviderError::Timeout)?
+        {
+            pending.extend_from_slice(&chunk);
+            let mut consumed = 0;
+            while let Some(at) = pending[consumed..].iter().position(|&b| b == 0) {
+                let path = &pending[consumed..consumed + at];
+                let name = path.rsplit(|&b| b == b'/').next().unwrap_or(path);
+                if keep(name) {
+                    found.push(path.to_vec());
+                    if found.len() >= limit {
+                        return Ok(found);
+                    }
+                }
+                consumed += at + 1;
+            }
+            pending.drain(..consumed);
+            if pending.len() > MAX_PATH_BYTES {
+                return Err(ProviderError::ParseError(format!(
+                    "find {root}: a path longer than {MAX_PATH_BYTES} bytes"
+                )));
+            }
+        }
+        Ok(found)
+    }
+}
+
+/// The marker the replace script prints when `from` and `to` are of two
+/// kinds, followed by `1` or `0` for "is a folder" of each.
+const ACROSS: &str = "aeroftp-replace-across";
+
+/// Longer than any path a Linux kernel accepts (PATH_MAX is 4096).
+const MAX_PATH_BYTES: usize = 64 * 1024;
+
+/// Total, used and available bytes from `df -Pk` output. The numbers are
+/// the three fields before the first one ending in `%`, which keeps a file
+/// system or a mount point with a space in its name readable.
+fn parse_df(stdout: &[u8]) -> Option<(u64, u64, u64)> {
+    let text = String::from_utf8_lossy(stdout);
+    let line = text.lines().rev().find(|l| !l.trim().is_empty())?;
+    let fields: Vec<&str> = line.split_whitespace().collect();
+    let at = fields
+        .iter()
+        .enumerate()
+        .skip(3)
+        .find(|(_, f)| f.ends_with('%'))
+        .map(|(i, _)| i)?;
+    let num = |i: usize| {
+        fields[i]
+            .parse::<u64>()
+            .ok()
+            .map(|k| k.saturating_mul(1024))
+    };
+    Some((num(at - 3)?, num(at - 2)?, num(at - 1)?))
 }
