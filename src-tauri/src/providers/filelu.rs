@@ -471,7 +471,8 @@ impl FileLuProvider {
     }
 
     fn normalize_path(path: &str) -> String {
-        let normalized = path.trim().replace('\\', "/");
+        // Spaces are part of a name: ` a` and `a ` are not `a`.
+        let normalized = path.replace('\\', "/");
         if normalized.is_empty() {
             return "/".to_string();
         }
@@ -495,7 +496,8 @@ impl FileLuProvider {
     }
 
     fn resolve_path(&self, path: &str) -> String {
-        if path.starts_with('/') {
+        // `normalize_path` takes `\` for a separator: a leading one is the root too.
+        if path.starts_with(['/', '\\']) {
             Self::normalize_path(path)
         } else {
             let base = self.current_path.trim_end_matches('/').to_string();
@@ -2593,6 +2595,25 @@ mod tests {
         );
         provider.connected = false;
         assert!(provider.account_email().is_none());
+    }
+
+    #[test]
+    fn a_name_keeps_its_leading_and_trailing_spaces() {
+        // A name with a leading or trailing space is a name of its own, and a
+        // name of spaces only is not the current folder.
+        assert_eq!(super::FileLuProvider::normalize_path("/ a"), "/ a");
+        assert_eq!(super::FileLuProvider::normalize_path("/a /b "), "/a /b ");
+        let mut p = super::FileLuProvider::new(super::FileLuConfig {
+            api_key: secrecy::SecretString::from("k".to_string()),
+            initial_path: None,
+        });
+        p.current_path = "/Cloud".to_string();
+        assert_eq!(p.resolve_path("   "), "/Cloud/   ");
+        assert_eq!(p.resolve_path(" a"), "/Cloud/ a");
+        assert_eq!(p.resolve_path("/a "), "/a ");
+        // A leading backslash is the root, as normalize_path reads it.
+        assert_eq!(p.resolve_path("\\docs\\a "), "/docs/a ");
+        assert_eq!(p.resolve_path("sub\\a"), "/Cloud/sub/a");
     }
 
     struct CapFixture {

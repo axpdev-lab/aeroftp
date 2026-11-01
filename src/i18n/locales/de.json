@@ -6348,7 +6348,8 @@
             "overwriteCount": "{count} zu überschreiben",
             "conflictCount": "Konflikte: {count}",
             "updateOnly": "Neuere Zieldateien überspringen (Einweg-Aktualisierung)",
-            "updateOnlyHint": "Kopiert fehlende oder geänderte Quelldateien, behält neuere Dateien am Ziel und löscht Einträge, die nur am Ziel vorhanden sind. Dateien ohne vergleichbare Datumsangaben werden nach Größe verglichen; Größenunterschiede bleiben zur Überprüfung bestehen."
+            "updateOnlyHint": "Kopiert fehlende oder geänderte Quelldateien, behält neuere Dateien am Ziel und löscht Einträge, die nur am Ziel vorhanden sind. Dateien ohne vergleichbare Datumsangaben werden nach Größe verglichen; Größenunterschiede bleiben zur Überprüfung bestehen.",
+            "rescanNeeded": "Führe einen neuen Vergleich mit den aktuellen Einstellungen durch, bevor du ein Aktualisierungsskript exportierst."
         },
         "accountLock": {
             "title": "Konto auswählen",

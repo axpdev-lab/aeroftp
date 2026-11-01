@@ -6367,7 +6367,8 @@
             "overwriteCount": "Gainidazteko: {count}",
             "conflictCount": "{count} gatazka",
             "updateOnly": "Saltatu helmugako fitxategi berriagoak (noranzko bakarreko eguneratzea)",
-            "updateOnlyHint": "Kopiatzen ditu iturburuko falta diren edo aldatutako fitxategiak, helmugako fitxategi berriagoak mantentzen ditu eta helmugan soilik dauden sarrerak ezabatzen ditu. Data alderagarririk ez duten fitxategiak tamainaren arabera alderatzen dira; tamaina-desberdintasunak berrikusteko uzten dira."
+            "updateOnlyHint": "Kopiatzen ditu iturburuko falta diren edo aldatutako fitxategiak, helmugako fitxategi berriagoak mantentzen ditu eta helmugan soilik dauden sarrerak ezabatzen ditu. Data alderagarririk ez duten fitxategiak tamainaren arabera alderatzen dira; tamaina-desberdintasunak berrikusteko uzten dira.",
+            "rescanNeeded": "Exekutatu beste konparazio bat uneko ezarpenekin eguneratze-script bat esportatu aurretik."
         },
         "accountLock": {
             "title": "Aukeratu kontu bat",

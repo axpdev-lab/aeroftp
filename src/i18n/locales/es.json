@@ -6348,7 +6348,8 @@
             "overwriteCount": "{count} por sobrescribir",
             "conflictCount": "Conflictos: {count}",
             "updateOnly": "Omitir archivos de destino más recientes (actualización unidireccional)",
-            "updateOnlyHint": "Copia los archivos de origen ausentes o modificados, conserva los archivos más recientes del destino y elimina las entradas que solo existen en el destino. Los archivos sin fechas comparables se comparan por tamaño; las diferencias de tamaño quedan pendientes de revisión."
+            "updateOnlyHint": "Copia los archivos de origen ausentes o modificados, conserva los archivos más recientes del destino y elimina las entradas que solo existen en el destino. Los archivos sin fechas comparables se comparan por tamaño; las diferencias de tamaño quedan pendientes de revisión.",
+            "rescanNeeded": "Ejecuta una nueva comparación con la configuración actual antes de exportar un script de actualización."
         },
         "accountLock": {
             "title": "Elige una cuenta",

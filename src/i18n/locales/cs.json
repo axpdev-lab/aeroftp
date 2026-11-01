@@ -6348,7 +6348,8 @@
             "overwriteCount": "K přepsání: {count}",
             "conflictCount": "Konflikty: {count}",
             "updateOnly": "Přeskočit novější soubory v cíli (jednosměrná aktualizace)",
-            "updateOnlyHint": "Zkopíruje chybějící nebo změněné zdrojové soubory, zachová novější soubory v cíli a odstraní položky, které jsou pouze v cíli. Soubory bez porovnatelných dat se porovnají podle velikosti; rozdíly ve velikosti zůstanou k posouzení."
+            "updateOnlyHint": "Zkopíruje chybějící nebo změněné zdrojové soubory, zachová novější soubory v cíli a odstraní položky, které jsou pouze v cíli. Soubory bez porovnatelných dat se porovnají podle velikosti; rozdíly ve velikosti zůstanou k posouzení.",
+            "rescanNeeded": "Před exportem aktualizačního skriptu spusťte nové porovnání s aktuálním nastavením."
         },
         "accountLock": {
             "title": "Vyberte účet",

@@ -6348,7 +6348,8 @@
             "overwriteCount": "De suprascris: {count}",
             "conflictCount": "Conflicte: {count}",
             "updateOnly": "Omite fișierele mai noi de la destinație (actualizare unidirecțională)",
-            "updateOnlyHint": "Copiază fișierele sursă lipsă sau modificate, păstrează fișierele mai noi din destinație și șterge intrările care există doar în destinație. Fișierele fără date calendaristice comparabile sunt comparate după dimensiune; diferențele de dimensiune rămân pentru verificare."
+            "updateOnlyHint": "Copiază fișierele sursă lipsă sau modificate, păstrează fișierele mai noi din destinație și șterge intrările care există doar în destinație. Fișierele fără date calendaristice comparabile sunt comparate după dimensiune; diferențele de dimensiune rămân pentru verificare.",
+            "rescanNeeded": "Rulează o nouă comparație cu setările actuale înainte de a exporta un script de actualizare."
         },
         "accountLock": {
             "title": "Alegeți un cont",

@@ -6348,7 +6348,8 @@
             "overwriteCount": "{count} ülekirjutamiseks",
             "conflictCount": "Konfliktid: {count}",
             "updateOnly": "Jäta uuemad sihtfailid vahele (ühesuunaline uuendamine)",
-            "updateOnlyHint": "Kopeerib puuduvad või muudetud lähtefailid, säilitab sihtkoha uuemad failid ja kustutab ainult sihtkohas olevad kirjed. Faile, millel puuduvad võrreldavad kuupäevad, võrreldakse suuruse järgi; suuruse erinevused jäetakse läbivaatamiseks."
+            "updateOnlyHint": "Kopeerib puuduvad või muudetud lähtefailid, säilitab sihtkoha uuemad failid ja kustutab ainult sihtkohas olevad kirjed. Faile, millel puuduvad võrreldavad kuupäevad, võrreldakse suuruse järgi; suuruse erinevused jäetakse läbivaatamiseks.",
+            "rescanNeeded": "Enne uuendamisskripti eksportimist käivita uus võrdlus praeguste sätetega."
         },
         "accountLock": {
             "title": "Vali konto",

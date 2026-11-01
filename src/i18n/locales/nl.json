@@ -6348,7 +6348,8 @@
             "overwriteCount": "{count} te overschrijven",
             "conflictCount": "Conflicten: {count}",
             "updateOnly": "Nieuwere doelbestanden overslaan (eenrichtingsupdate)",
-            "updateOnlyHint": "Kopieert ontbrekende of gewijzigde bronbestanden, behoudt nieuwere bestemmingsbestanden en verwijdert items die alleen op de bestemming aanwezig zijn. Bestanden zonder vergelijkbare datums worden op grootte vergeleken; grootteverschillen blijven ter controle staan."
+            "updateOnlyHint": "Kopieert ontbrekende of gewijzigde bronbestanden, behoudt nieuwere bestemmingsbestanden en verwijdert items die alleen op de bestemming aanwezig zijn. Bestanden zonder vergelijkbare datums worden op grootte vergeleken; grootteverschillen blijven ter controle staan.",
+            "rescanNeeded": "Voer een nieuwe vergelijking uit met de huidige instellingen voordat je een updatescript exporteert."
         },
         "accountLock": {
             "title": "Kies een account",

@@ -6348,7 +6348,8 @@
             "overwriteCount": "Za prepisivanje: {count}",
             "conflictCount": "Sukobi: {count}",
             "updateOnly": "Preskoči novije datoteke na odredištu (jednosmjerno ažuriranje)",
-            "updateOnlyHint": "Kopira nedostajuće ili izmijenjene izvorne datoteke, zadržava novije odredišne datoteke i briše stavke koje postoje samo na odredištu. Datoteke bez usporedivih datuma uspoređuju se prema veličini; razlike u veličini ostavljaju se za pregled."
+            "updateOnlyHint": "Kopira nedostajuće ili izmijenjene izvorne datoteke, zadržava novije odredišne datoteke i briše stavke koje postoje samo na odredištu. Datoteke bez usporedivih datuma uspoređuju se prema veličini; razlike u veličini ostavljaju se za pregled.",
+            "rescanNeeded": "Pokrenite novu usporedbu s trenutačnim postavkama prije izvoza skripte za ažuriranje."
         },
         "accountLock": {
             "title": "Odaberite račun",

@@ -6348,7 +6348,8 @@
             "overwriteCount": "Do nadpisania: {count}",
             "conflictCount": "Konflikty: {count}",
             "updateOnly": "Pomiń nowsze pliki docelowe (aktualizacja jednokierunkowa)",
-            "updateOnlyHint": "Kopiuje brakujące lub zmienione pliki źródłowe, zachowuje nowsze pliki docelowe i usuwa wpisy istniejące tylko w miejscu docelowym. Pliki bez porównywalnych dat są porównywane według rozmiaru; różnice rozmiaru pozostają do przejrzenia."
+            "updateOnlyHint": "Kopiuje brakujące lub zmienione pliki źródłowe, zachowuje nowsze pliki docelowe i usuwa wpisy istniejące tylko w miejscu docelowym. Pliki bez porównywalnych dat są porównywane według rozmiaru; różnice rozmiaru pozostają do przejrzenia.",
+            "rescanNeeded": "Przed wyeksportowaniem skryptu aktualizacji uruchom nowe porównanie z bieżącymi ustawieniami."
         },
         "accountLock": {
             "title": "Wybierz konto",

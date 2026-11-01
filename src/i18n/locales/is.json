@@ -6367,7 +6367,8 @@
             "overwriteCount": "Til yfirskriftar: {count}",
             "conflictCount": "Árekstrar: {count}",
             "updateOnly": "Sleppa nýrri skrám á áfangastað (einstefnuuppfærsla)",
-            "updateOnlyHint": "Afritar upprunaskrár sem vantar eða hafa breyst, heldur nýrri skrám á áfangastað og eyðir færslum sem eru aðeins á áfangastað. Skrár án samanburðarhæfra dagsetninga eru bornar saman eftir stærð; stærðarmismunur er skilinn eftir til yfirferðar."
+            "updateOnlyHint": "Afritar upprunaskrár sem vantar eða hafa breyst, heldur nýrri skrám á áfangastað og eyðir færslum sem eru aðeins á áfangastað. Skrár án samanburðarhæfra dagsetninga eru bornar saman eftir stærð; stærðarmismunur er skilinn eftir til yfirferðar.",
+            "rescanNeeded": "Keyrðu nýjan samanburð með núverandi stillingum áður en þú flytur út uppfærsluskriftu."
         },
         "accountLock": {
             "title": "Veldu reikning",

@@ -6348,7 +6348,8 @@
             "overwriteCount": "Untuk ditulis ganti: {count}",
             "conflictCount": "{count} konflik",
             "updateOnly": "Langkau fail destinasi yang lebih baharu (Kemas Kini Sehala)",
-            "updateOnlyHint": "Menyalin fail sumber yang belum ada atau telah berubah, mengekalkan fail destinasi yang lebih baharu dan memadam entri yang hanya ada di destinasi. Fail tanpa tarikh yang boleh dibandingkan dibandingkan mengikut saiz; perbezaan saiz dibiarkan untuk semakan."
+            "updateOnlyHint": "Menyalin fail sumber yang belum ada atau telah berubah, mengekalkan fail destinasi yang lebih baharu dan memadam entri yang hanya ada di destinasi. Fail tanpa tarikh yang boleh dibandingkan dibandingkan mengikut saiz; perbezaan saiz dibiarkan untuk semakan.",
+            "rescanNeeded": "Jalankan perbandingan baharu dengan tetapan semasa sebelum mengeksport skrip kemas kini."
         },
         "accountLock": {
             "title": "Pilih akaun",

@@ -6348,7 +6348,8 @@
             "overwriteCount": "{count} para substituir",
             "conflictCount": "Conflitos: {count}",
             "updateOnly": "Ignorar ficheiros de destino mais recentes (atualização unidirecional)",
-            "updateOnlyHint": "Copia os ficheiros de origem em falta ou alterados, mantém os ficheiros de destino mais recentes e elimina as entradas que existem apenas no destino. Os ficheiros sem datas comparáveis são comparados pelo tamanho; as diferenças de tamanho ficam para revisão."
+            "updateOnlyHint": "Copia os ficheiros de origem em falta ou alterados, mantém os ficheiros de destino mais recentes e elimina as entradas que existem apenas no destino. Os ficheiros sem datas comparáveis são comparados pelo tamanho; as diferenças de tamanho ficam para revisão.",
+            "rescanNeeded": "Executa uma nova comparação com as definições atuais antes de exportar um script de atualização."
         },
         "accountLock": {
             "title": "Escolha uma conta",

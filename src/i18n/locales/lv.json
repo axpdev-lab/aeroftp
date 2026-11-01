@@ -6348,7 +6348,8 @@
             "overwriteCount": "Pārrakstāmie: {count}",
             "conflictCount": "Konflikti: {count}",
             "updateOnly": "Izlaist jaunākus mērķa failus (vienvirziena atjaunināšana)",
-            "updateOnlyHint": "Kopē trūkstošos vai izmainītos avota failus, saglabā jaunākos galamērķa failus un dzēš ierakstus, kas ir tikai galamērķī. Failus bez salīdzināmiem datumiem salīdzina pēc lieluma; lieluma atšķirības atstāj pārskatīšanai."
+            "updateOnlyHint": "Kopē trūkstošos vai izmainītos avota failus, saglabā jaunākos galamērķa failus un dzēš ierakstus, kas ir tikai galamērķī. Failus bez salīdzināmiem datumiem salīdzina pēc lieluma; lieluma atšķirības atstāj pārskatīšanai.",
+            "rescanNeeded": "Pirms atjaunināšanas skripta eksportēšanas veiciet jaunu salīdzināšanu ar pašreizējiem iestatījumiem."
         },
         "accountLock": {
             "title": "Izvēlieties kontu",

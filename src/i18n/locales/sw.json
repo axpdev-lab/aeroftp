@@ -6348,7 +6348,8 @@
             "overwriteCount": "Za kuandikwa upya: {count}",
             "conflictCount": "Migogoro: {count}",
             "updateOnly": "Ruka faili mpya zaidi za lengwa (usasishaji wa upande mmoja)",
-            "updateOnlyHint": "Hunakili faili chanzo zilizokosekana au zilizobadilishwa, huhifadhi faili mpya zaidi za lengo na hufuta vipengee vilivyo kwenye lengo pekee. Faili zisizo na tarehe zinazolinganishwa hulinganishwa kwa ukubwa; tofauti za ukubwa huachwa kwa ajili ya uhakiki."
+            "updateOnlyHint": "Hunakili faili chanzo zilizokosekana au zilizobadilishwa, huhifadhi faili mpya zaidi za lengo na hufuta vipengee vilivyo kwenye lengo pekee. Faili zisizo na tarehe zinazolinganishwa hulinganishwa kwa ukubwa; tofauti za ukubwa huachwa kwa ajili ya uhakiki.",
+            "rescanNeeded": "Linganisha upya kwa mipangilio ya sasa kabla ya kuhamisha hati ya usasishaji."
         },
         "accountLock": {
             "title": "Chagua akaunti",

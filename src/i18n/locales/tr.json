@@ -6348,7 +6348,8 @@
             "overwriteCount": "Üzerine yazılacak: {count}",
             "conflictCount": "{count} çakışma",
             "updateOnly": "Daha yeni hedef dosyaları atla (Tek Yönlü Güncelleme)",
-            "updateOnlyHint": "Eksik veya değiştirilmiş kaynak dosyaları kopyalar, hedefteki daha yeni dosyaları korur ve yalnızca hedefte bulunan girdileri siler. Karşılaştırılabilir tarihleri olmayan dosyalar boyuta göre karşılaştırılır; boyut farklılıkları incelemeye bırakılır."
+            "updateOnlyHint": "Eksik veya değiştirilmiş kaynak dosyaları kopyalar, hedefteki daha yeni dosyaları korur ve yalnızca hedefte bulunan girdileri siler. Karşılaştırılabilir tarihleri olmayan dosyalar boyuta göre karşılaştırılır; boyut farklılıkları incelemeye bırakılır.",
+            "rescanNeeded": "Güncelleme betiğini dışa aktarmadan önce mevcut ayarlarla yeni bir karşılaştırma çalıştırın."
         },
         "accountLock": {
             "title": "Bir hesap seçin",

@@ -6348,7 +6348,8 @@
             "overwriteCount": "Korvattavat: {count}",
             "conflictCount": "Ristiriidat: {count}",
             "updateOnly": "Ohita uudemmat kohdetiedostot (yksisuuntainen päivitys)",
-            "updateOnlyHint": "Kopioi puuttuvat tai muuttuneet lähdetiedostot, säilyttää kohteen uudemmat tiedostot ja poistaa vain kohteessa olevat merkinnät. Tiedostoja, joilla ei ole vertailukelpoisia päivämääriä, verrataan koon perusteella; kokoerot jätetään tarkistettavaksi."
+            "updateOnlyHint": "Kopioi puuttuvat tai muuttuneet lähdetiedostot, säilyttää kohteen uudemmat tiedostot ja poistaa vain kohteessa olevat merkinnät. Tiedostoja, joilla ei ole vertailukelpoisia päivämääriä, verrataan koon perusteella; kokoerot jätetään tarkistettavaksi.",
+            "rescanNeeded": "Suorita uusi vertailu nykyisillä asetuksilla ennen päivitysskriptin vientiä."
         },
         "accountLock": {
             "title": "Valitse tili",

@@ -203,7 +203,7 @@ import { usedScanBoundKey } from './utils/usedScanBound';
 import type { UpdateVerificationInfo } from './utils/updateVerification';
 import { UpdateVerificationPanel } from './components/UpdateVerificationPanel';
 import { safePickerStartDir } from './utils/safePickerDir';
-import { normCryptScope, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
+import { normCryptScope, normLandingPath, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
@@ -3669,11 +3669,11 @@ const App: React.FC = () => {
       if (prof) {
         quotaProfile = prof;
         profileId = prof.id;
-        if (prof.initialPath?.trim()) {
-          const resolved = resolveUsernameTemplate(prof.initialPath.trim(), cp.username);
+        if (prof.initialPath) {
+          const resolved = resolveUsernameTemplate(prof.initialPath, cp.username);
           scanRoot = usedScanRoot({
             ...scanRootArgs,
-            profileRoot: stripLegacyNextcloudWebdavRoot(resolved, prof.providerId, cp.username) || resolved || prof.initialPath.trim(),
+            profileRoot: stripLegacyNextcloudWebdavRoot(resolved, prof.providerId, cp.username) || resolved || prof.initialPath,
           });
         }
         const m = prof.options?.manualTotalBytes;
@@ -4912,7 +4912,7 @@ const App: React.FC = () => {
       // List storage roots (or profile default remote path) through provider fabric.
       let files: RemoteFile[] = [];
       let remotePath = '/';
-      const wantedRemote = profile?.initialPath?.trim();
+      const wantedRemote = profile?.initialPath;
       try {
         if (wantedRemote && wantedRemote !== '/' && wantedRemote !== '.') {
           try {
@@ -4968,7 +4968,7 @@ const App: React.FC = () => {
       // because this callback sits above loadLocalFiles in the App body.
       let resolvedLocalPath = currentLocalPath;
       let resolvedLocalFiles = localFiles;
-      const wantedLocal = profile?.localInitialPath?.trim();
+      const wantedLocal = profile?.localInitialPath;
       if (wantedLocal) {
         try {
           const listed: LocalFile[] = await connectScope.step(() => invoke('get_local_files', {
@@ -6009,13 +6009,16 @@ const App: React.FC = () => {
     // leaves it at "/"). Callers only pass a landing path for non-empty scopes;
     // empty scope (whole-remote overlay) never reaches here and lands as today.
     if (opts && opts.initialLandingPath !== undefined) {
-      const landing = opts.initialLandingPath;
-      if (normCryptScope(landing) === '') {
+      // The Remote Path as given: not through the anchor's normCryptScope,
+      // whose trim would land `/docs ` on `/docs`.
+      const landing = normLandingPath(opts.initialLandingPath);
+      if (landing === '') {
         // Remote Path is the on-wire root.
         await invoke('provider_change_dir', { path: '/', ...(ownership ? { expectedGeneration: ownership.generation } : {}) }).catch((error) => { if (ownership && String(error).startsWith('CONNECTION_CHANGED')) throw error; });
         assertOverlayActivationCurrent(ownership);
       } else {
-        await positionWrappedProviderAtScope(landing, ownership);
+        await invoke('provider_change_dir', { path: landing, ...(ownership ? { expectedGeneration: ownership.generation } : {}) });
+        assertOverlayActivationCurrent(ownership);
       }
       return;
     }
@@ -6432,7 +6435,7 @@ const App: React.FC = () => {
     const activeSess = sessions.find((s) => s.id === activeSessionId);
     const reloadScope = activeSess?.cryptOverlay?.remoteScope || null;
     const scopeNonEmpty = normCryptScope(reloadScope) !== '';
-    const remotePath = activeSess?.serverInitialPath?.trim() || '';
+    const remotePath = activeSess?.serverInitialPath || '';
     const initialLandingOpts = scopeNonEmpty
       ? { initialLandingPath: remotePath }
       : undefined;
@@ -10061,7 +10064,7 @@ const App: React.FC = () => {
     // "Copy to other panel" header chip, and drag-and-drop.
     setActivePanel('local');
     setActiveLocalPanelId(panelId);
-    const selectedEndpoint = createRemoteEndpoint(profile, profile.initialPath?.trim() || '/');
+    const selectedEndpoint = createRemoteEndpoint(profile, profile.initialPath || '/');
 
     // Z.3.5: when the active connection is a saved profile and the user
     // already has files selected on the remote panel, route the request

@@ -6367,7 +6367,8 @@
             "overwriteCount": "Til overskriving: {count}",
             "conflictCount": "Konflikter: {count}",
             "updateOnly": "Hopp over nyere målfiler (enveisoppdatering)",
-            "updateOnlyHint": "Kopierer manglende eller endrede kildefiler, beholder nyere målfiler og sletter oppføringer som bare finnes på målet. Filer uten sammenlignbare datoer sammenlignes etter størrelse; størrelsesforskjeller blir liggende til gjennomgang."
+            "updateOnlyHint": "Kopierer manglende eller endrede kildefiler, beholder nyere målfiler og sletter oppføringer som bare finnes på målet. Filer uten sammenlignbare datoer sammenlignes etter størrelse; størrelsesforskjeller blir liggende til gjennomgang.",
+            "rescanNeeded": "Kjør en ny sammenligning med gjeldende innstillinger før du eksporterer et oppdateringsskript."
         },
         "accountLock": {
             "title": "Velg en konto",

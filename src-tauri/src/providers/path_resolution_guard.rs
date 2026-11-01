@@ -15,6 +15,10 @@
 //! `.resolve_path(` (rustfmt breaks a long call as `self\n    .resolve_path(`),
 //! `current_folder_id` in any form (`&self.current_folder_id` borrows it
 //! without `.clone()`), and `"root"` in any form (`"root".into()`).
+//!
+//! Two guards read every provider: a listing does not move the current
+//! folder, and the initial folder of a profile is taken as given, spaces
+//! included.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
@@ -436,4 +440,444 @@ async fn live_cd_then_one_segment_paths_resolve_like_every_provider() {
         ran += 1;
     }
     assert!(ran > 0, "set at least one AEROFTP_LIVE_CD_*_PROFILE_ID");
+}
+
+/// Every provider source but this guard (which names the patterns), as
+/// `(file name, source)`.
+fn provider_sources() -> Vec<(String, String)> {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/providers");
+    let mut sources: Vec<(String, String)> = std::fs::read_dir(&dir)
+        .expect("the providers folder")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "rs"))
+        .filter(|path| !path.ends_with("path_resolution_guard.rs"))
+        .map(|path| {
+            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            (
+                name,
+                std::fs::read_to_string(&path).expect("a provider source"),
+            )
+        })
+        .collect();
+    sources.sort();
+    assert!(sources.len() > 40, "{} sources", sources.len());
+    sources
+}
+
+/// Every Rust source of the backend, the CLI and the TUI, by its path under
+/// `src`, this guard excepted.
+fn backend_sources() -> Vec<(String, String)> {
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut pending = vec![src.clone()];
+    let mut sources = Vec::new();
+    while let Some(dir) = pending.pop() {
+        for path in std::fs::read_dir(&dir)
+            .expect("a source folder")
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+        {
+            if path.is_dir() {
+                pending.push(path);
+            } else if path.extension().is_some_and(|ext| ext == "rs")
+                && !path.ends_with("path_resolution_guard.rs")
+            {
+                let name = path
+                    .strip_prefix(&src)
+                    .expect("under src")
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                sources.push((name, std::fs::read_to_string(&path).expect("a source")));
+            }
+        }
+    }
+    sources.sort();
+    assert!(
+        sources.iter().any(|(name, _)| name == "bin/aeroftp_cli.rs")
+            && sources.iter().any(|(name, _)| name == "cli_tui/app.rs")
+            && sources
+                .iter()
+                .any(|(name, _)| name == "providers/webdav.rs")
+            && sources.len() > 300,
+        "{} sources",
+        sources.len()
+    );
+    sources
+}
+
+/// [`production`] for a source that may have no test module.
+fn production_part(source: &str) -> &str {
+    [
+        "\n#[cfg(test)]\nmod tests {",
+        "\r\n#[cfg(test)]\r\nmod tests {",
+    ]
+    .iter()
+    .find_map(|marker| source.find(marker))
+    .map_or(source, |at| &source[..at])
+}
+
+/// A listing does not move the current folder: `cd` does. Koofr, kDrive and
+/// 4shared moved it in `list`, so a relative path listed twice (the CLI's
+/// sync doctor lists the root it was given, then walks it) reached
+/// `docs/docs`, and a listing of another folder (the overwrite check's
+/// destination) left the session there.
+#[test]
+fn no_provider_listing_moves_the_current_folder() {
+    let moves = |line: &str| {
+        [
+            "self.current_path =",
+            "self.current_dir =",
+            "self.current_folder_id =",
+            "self.current_file_id =",
+            "self.current_fld_id =",
+        ]
+        .iter()
+        .any(|needle| line.contains(needle))
+    };
+    let (mut in_cd, mut in_list) = (0, Vec::new());
+    for (file, source) in provider_sources() {
+        for (line, function) in sites_where(production_part(&source), moves) {
+            match function {
+                "cd" => in_cd += 1,
+                "list" => in_list.push(format!("{file}:{line}")),
+                _ => {}
+            }
+        }
+    }
+    // The guard sees the current folder moved where it belongs.
+    assert!(in_cd > 10, "{in_cd} moves in cd");
+    assert!(
+        in_list.is_empty(),
+        "a listing moves the current folder: {in_list:?}"
+    );
+}
+
+/// A whitespace trim: `.trim()`, `.trim_start()`, `.trim_end()`, or the
+/// function itself handed to a `map` (`str::trim`). `trim_matches` and the
+/// other trims that take a pattern are not one: `trim_end_matches('/')` keeps
+/// the spaces.
+fn trims_whitespace(text: &str) -> bool {
+    ["trim", "trim_start", "trim_end"].iter().any(|name| {
+        text.match_indices(name).any(|(at, _)| {
+            let rest = &text[at + name.len()..];
+            match text[..at].chars().next_back() {
+                Some('.') => rest.starts_with("()"),
+                Some(':') => !rest
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_alphanumeric() || c == '_'),
+                _ => false,
+            }
+        })
+    })
+}
+
+/// The statements of a source, each with the line it starts on. A chain
+/// written over several lines (`.initial_path` / `.as_deref()` /
+/// `.map(str::trim)`) is one statement, which a check line by line misses,
+/// and so is a call whose arguments run over several lines (`pick(initial,` /
+/// `other).trim()`): a comma ends a statement only outside brackets, where it
+/// ends a field or an argument of its own. Comments are not part of a
+/// statement (a `.trim()` named in one trims nothing), and a literal is read
+/// whole: a bracket inside one (`")"`, `')'`) counts for nothing, and `//`
+/// inside one (a URL) is not a comment.
+fn statements(source: &str) -> Vec<(usize, String)> {
+    let mut found = Vec::new();
+    let mut open: Option<(usize, String)> = None;
+    let mut depth = 0usize;
+    let mut scan = Scan::Code;
+    for (index, line) in source.lines().enumerate() {
+        let code = code_of(line, &mut scan, &mut depth);
+        let code = code.trim();
+        if code.is_empty() {
+            continue;
+        }
+        let (_, text) = open.get_or_insert_with(|| (index + 1, String::new()));
+        text.push_str(code);
+        text.push(' ');
+        // A line that ends inside a literal or a comment ends no statement.
+        let ends = code.ends_with([';', '{', '}']) || (code.ends_with(',') && depth == 0);
+        if scan == Scan::Code && ends {
+            found.extend(open.take());
+            depth = 0;
+        }
+    }
+    found.extend(open);
+    found
+}
+
+/// Where the end of a line leaves the scan: in code, or inside a string, a
+/// raw string (with its `#`s) or a block comment (with its depth) that runs
+/// on to the next line.
+#[derive(Clone, Copy, PartialEq)]
+enum Scan {
+    Code,
+    Str,
+    RawStr(usize),
+    Comment(usize),
+}
+
+/// The code of one line: its comments taken out, its string and char
+/// literals kept whole. Only a bracket outside a literal changes `depth`.
+fn code_of(line: &str, scan: &mut Scan, depth: &mut usize) -> String {
+    let chars: Vec<char> = line.chars().collect();
+    let starts_word =
+        |at: usize| at == 0 || !(chars[at - 1].is_alphanumeric() || chars[at - 1] == '_');
+    let mut code = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        let (c, next) = (chars[i], chars.get(i + 1).copied());
+        match *scan {
+            Scan::Comment(open) => {
+                if (c, next) == ('*', Some('/')) {
+                    *scan = if open == 1 {
+                        Scan::Code
+                    } else {
+                        Scan::Comment(open - 1)
+                    };
+                    i += 2;
+                } else if (c, next) == ('/', Some('*')) {
+                    *scan = Scan::Comment(open + 1);
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+                continue;
+            }
+            Scan::Str => {
+                code.push(c);
+                if c == '\\' {
+                    code.extend(next);
+                    i += 2;
+                    continue;
+                }
+                if c == '"' {
+                    *scan = Scan::Code;
+                }
+                i += 1;
+                continue;
+            }
+            Scan::RawStr(hashes) => {
+                code.push(c);
+                i += 1;
+                let closing = chars[i..].iter().take(hashes).filter(|&&h| h == '#');
+                if c == '"' && closing.count() == hashes {
+                    code.extend(&chars[i..i + hashes]);
+                    i += hashes;
+                    *scan = Scan::Code;
+                }
+                continue;
+            }
+            Scan::Code => {}
+        }
+        match (c, next) {
+            ('/', Some('/')) => break,
+            ('/', Some('*')) => {
+                *scan = Scan::Comment(1);
+                i += 2;
+                continue;
+            }
+            ('"', _) => *scan = Scan::Str,
+            // `r"..."`, `r#"..."#`, `br"..."`; not a raw identifier (`r#type`).
+            ('r', _)
+                if starts_word(i)
+                    || (i > 0 && matches!(chars[i - 1], 'b' | 'c') && starts_word(i - 1)) =>
+            {
+                let hashes = chars[i + 1..].iter().take_while(|&&h| h == '#').count();
+                if chars.get(i + 1 + hashes) == Some(&'"') {
+                    code.extend(&chars[i..i + 2 + hashes]);
+                    i += 2 + hashes;
+                    *scan = Scan::RawStr(hashes);
+                    continue;
+                }
+            }
+            // A char literal (`')'`, `'\''`, `'\u{29}'`); a lifetime (`'a`) is
+            // not one and is code.
+            ('\'', _) => {
+                let end = if next == Some('\\') {
+                    chars
+                        .get(i + 3..)
+                        .and_then(|rest| rest.iter().position(|&q| q == '\''))
+                        .map(|at| i + 3 + at)
+                } else if chars.get(i + 2) == Some(&'\'') {
+                    Some(i + 2)
+                } else {
+                    None
+                };
+                if let Some(end) = end {
+                    code.extend(&chars[i..=end]);
+                    i = end + 1;
+                    continue;
+                }
+            }
+            ('(' | '[', _) => *depth += 1,
+            (')' | ']', _) => *depth = depth.saturating_sub(1),
+            _ => {}
+        }
+        code.push(c);
+        i += 1;
+    }
+    code
+}
+
+#[test]
+fn a_call_over_several_lines_is_one_statement() {
+    let source = "let a = pick(initial_path,\n    other)\n    .trim();\n\
+                  let b = Form {\n    x: one(a,\n        b),\n    y: 2,\n};\n";
+    let found: Vec<(usize, String)> = statements(source);
+    let texts: Vec<&str> = found.iter().map(|(_, text)| text.as_str()).collect();
+    assert_eq!(
+        texts,
+        [
+            "let a = pick(initial_path, other) .trim(); ",
+            "let b = Form { ",
+            "x: one(a, b), ",
+            "y: 2, ",
+            "}; ",
+        ]
+    );
+    assert_eq!(
+        found.iter().map(|(line, _)| *line).collect::<Vec<_>>(),
+        [1, 4, 5, 7, 8]
+    );
+}
+
+/// A comment is not code: `.trim()` named in a trailing comment trimmed
+/// nothing and failed the check, and a statement whose line ended in a
+/// comment ran on into the next one. `//` in a string (a URL) is not a
+/// comment, and a bracket in a literal does not end an argument list early.
+#[test]
+fn comments_are_left_out_and_literals_read_whole() {
+    let texts = |source: &str| -> Vec<String> {
+        statements(source)
+            .into_iter()
+            .map(|(_, text)| text)
+            .collect()
+    };
+    assert_eq!(
+        texts("let base = initial_path.trim_end_matches('/'); // was .trim()\nlet b = 2;\n"),
+        [
+            "let base = initial_path.trim_end_matches('/'); ",
+            "let b = 2; "
+        ]
+    );
+    assert_eq!(
+        texts("let u = format!(\"https://h/{initial}\"); // .trim()\n"),
+        ["let u = format!(\"https://h/{initial}\"); "]
+    );
+    assert_eq!(
+        texts("let a = /* .trim() */ initial;\n/* one\n.trim() */\nlet b = 2;\n"),
+        ["let a =  initial; ", "let b = 2; "]
+    );
+    for (open, literal) in [
+        ("pick(", "\")\","),
+        ("pick(", "')',"),
+        ("pick(", "\"\\\")\","),
+        ("pick(", "'\\'',"),
+        ("pick(", "r#\"a \")\" b\"#,"),
+        ("pick(", "b')',"),
+    ] {
+        let source = format!("let a = {open}{literal}\n    initial)\n    .trim();\n");
+        assert_eq!(
+            texts(&source),
+            [format!("let a = {open}{literal} initial) .trim(); ")],
+            "{literal}"
+        );
+    }
+    // A lifetime is not a char literal; the argument list still closes.
+    assert_eq!(
+        texts("fn f<'a>(x: &'a str,\n    y: u8) {\nlet z = 1;\n"),
+        ["fn f<'a>(x: &'a str, y: u8) { ", "let z = 1; "]
+    );
+    // A raw string ends at its first quote: its backslash escapes nothing.
+    assert_eq!(
+        texts("let a = pick(r\"C:\\\",\n    initial);\nlet b = 2;\n"),
+        ["let a = pick(r\"C:\\\", initial); ", "let b = 2; "]
+    );
+    // A string over several lines ends no statement inside it.
+    assert_eq!(
+        texts("let s = \"a;\nb {\";\nlet t = 1;\n"),
+        ["let s = \"a; b {\"; ", "let t = 1; "]
+    );
+}
+
+/// A path is the name as typed, spaces included, and so is the initial
+/// folder of a profile: `/reports ` and `/reports` are two folders. kDrive,
+/// Drime, Internxt, Jottacloud and Twake trimmed it on connect, and the
+/// session started in the other one; WebDAV did on the root it found under
+/// Nextcloud, in a chain over several lines; the CLI did on the profile
+/// base, and the TUI on its folder and on the profile it saves. The rclone
+/// export, the Zoho folder id, the benchmark's scratch folder and the AI
+/// worker's S3 root read it trimmed too.
+///
+/// Three statements read a trimmed value on purpose, each named here with the
+/// text that finds it: an import reads another application's file by that
+/// file's rules, and the AeroCrypt anchor trims on both sides (`norm_anchor`
+/// here, `normCryptScope` in the app), so it changes on both sides together.
+const TRIMS_ON_PURPOSE: [(&str, &str); 3] = [
+    // Dreamweaver's `remoteroot` attribute, read from its site file.
+    ("dreamweaver_import.rs", "remoteroot"),
+    // rclone's own `remote = base:subpath`, read from its config: the name
+    // of the remote, beside the folder it returns.
+    (
+        "rclone_import.rs",
+        "(base.trim().to_string(), initial_path)",
+    ),
+    // The AeroCrypt anchor a binding without a folder takes from the profile.
+    (
+        "crypt_overlay_provider.rs",
+        ".replace(\"{username}\", &username)",
+    ),
+];
+
+#[test]
+fn nothing_trims_the_initial_folder() {
+    let trims = |statement: &str| statement.contains("initial") && trims_whitespace(statement);
+    for statement in [
+        "let initial = initial.trim().to_string();",
+        r#"if !initial.trim().is_empty() && initial.trim() != "/" {"#,
+        "let user_initial = self .config .initial_path .as_deref() .map(str::trim) .filter(|p| !p.is_empty());",
+        "initial_path: form.initial_path.trim_start().to_string(),",
+    ] {
+        assert!(trims(statement), "{statement}");
+    }
+    for statement in [
+        "let base = initial_path.trim_end_matches('/');",
+        "let shown = label.trim();",
+        "let initial = initial.to_string();",
+    ] {
+        assert!(!trims(statement), "{statement}");
+    }
+    let on_purpose = |file: &str, statement: &str| {
+        TRIMS_ON_PURPOSE
+            .iter()
+            .any(|(name, text)| file.ends_with(name) && statement.contains(text))
+    };
+    let mut excused = Vec::new();
+    let mut found = Vec::new();
+    for (file, source) in backend_sources() {
+        // A test module of its own: what it trims is a fixture.
+        if file.ends_with("tests.rs") {
+            continue;
+        }
+        for (line, statement) in statements(production_part(&source)) {
+            if !trims(&statement) {
+                continue;
+            }
+            if on_purpose(&file, &statement) {
+                excused.push(file.clone());
+            } else {
+                found.push(format!("{file}:{line}"));
+            }
+        }
+    }
+    assert!(found.is_empty(), "the initial folder is trimmed: {found:?}");
+    // Each exception still finds its statement, and only that one.
+    excused.sort();
+    let mut expected: Vec<String> = TRIMS_ON_PURPOSE
+        .iter()
+        .map(|(name, _)| name.to_string())
+        .collect();
+    expected.sort();
+    assert_eq!(excused, expected);
 }

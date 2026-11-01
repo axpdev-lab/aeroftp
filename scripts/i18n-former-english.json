@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "7593bfe52bdfc909520cd520a2901e92d56d57b21c3d425e1fe5d4ddd6aeb645",
+    "enHash": "81ea7e7318ee5506afb9b60970315c33fa115cea330fe8b4fe2a9f29bedc4a20",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -132,6 +132,9 @@
         "aerosync.preset.update.tagline": [
             "Copy missing and newer files. Never delete, never overwrite a newer destination copy. Resolve conflicts with the selected policy.",
             "Copy missing and newer files. Skip conflicts so you can resolve them manually."
+        ],
+        "aerosync.rescanNeeded": [
+            "The comparison was made with other exclusions or another backup folder. Rescan before running."
         ],
         "aerosync.speedModeHint": [
             "Parallel streams + compression preset applied to the run."

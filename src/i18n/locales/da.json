@@ -6348,7 +6348,8 @@
             "overwriteCount": "Til overskrivning: {count}",
             "conflictCount": "Konflikter: {count}",
             "updateOnly": "Spring nyere destinationsfiler over (envejsopdatering)",
-            "updateOnlyHint": "Kopierer manglende eller ændrede kildefiler, beholder nyere destinationsfiler og sletter poster, der kun findes på destinationen. Filer uden sammenlignelige datoer sammenlignes efter størrelse; størrelsesforskelle overlades til gennemgang."
+            "updateOnlyHint": "Kopierer manglende eller ændrede kildefiler, beholder nyere destinationsfiler og sletter poster, der kun findes på destinationen. Filer uden sammenlignelige datoer sammenlignes efter størrelse; størrelsesforskelle overlades til gennemgang.",
+            "rescanNeeded": "Kør en ny sammenligning med de aktuelle indstillinger, før du eksporterer et opdateringsscript."
         },
         "accountLock": {
             "title": "Vælg en konto",
