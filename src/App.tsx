@@ -437,6 +437,7 @@ import {
   PROFILES_CHANGED_EVENT,
 } from './utils/serverProfileStore';
 import { appendImportedProfiles } from './components/bridge/bridgeImportCommit';
+import { needsRemovableMediaPlug } from './components/volumesUnavailable';
 import { announceStoredServerProfiles, reloadRestoredServerProfiles, readSavedServerProfilesForWrite, withFreshSavedProfiles } from './utils/serverProfileStore';
 import { maskCredential } from './utils/maskCredential';
 import { getOpenWithDefaultRoute } from './utils/openWithDefault';
@@ -5546,10 +5547,19 @@ const App: React.FC = () => {
           return false;
         }
       }
-      notify.error(t('common.error'), `Failed to list local files: ${error}`);
+      // A click on a mounted volume that only opens the Activity Log looks like nothing
+      // happened, and the plug is something the user can fix: it must surface.
+      if (needsRemovableMediaPlug(error)) {
+        activityLog.log('INFO', `Failed to list local files: ${error}`, 'error');
+        window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+          detail: { type: 'error', title: t('common.error'), message: String(error), important: true },
+        }));
+      } else {
+        notify.error(t('common.error'), `Failed to list local files: ${error}`);
+      }
       return false;
     }
-  }, [showHiddenFiles, notify, t]);
+  }, [showHiddenFiles, notify, t, activityLog]);
 
   const loadLocalFiles2 = useCallback(async (path: string): Promise<boolean> => {
     if (!path) return false; // defence in depth: see loadLocalFiles above
@@ -5576,10 +5586,19 @@ const App: React.FC = () => {
         setSelectedLocalFiles2(new Set());
       }, setLocalListLoading2);
     } catch (error) {
-      notify.error(t('common.error'), `Failed to list local files: ${error}`);
+      // A click on a mounted volume that only opens the Activity Log looks like nothing
+      // happened, and the plug is something the user can fix: it must surface.
+      if (needsRemovableMediaPlug(error)) {
+        activityLog.log('INFO', `Failed to list local files: ${error}`, 'error');
+        window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+          detail: { type: 'error', title: t('common.error'), message: String(error), important: true },
+        }));
+      } else {
+        notify.error(t('common.error'), `Failed to list local files: ${error}`);
+      }
       return false;
     }
-  }, [showHiddenFiles, notify, t, setLocalFiles2, setCurrentLocalPath2, setSelectedLocalFiles2]);
+  }, [showHiddenFiles, notify, t, activityLog, setLocalFiles2, setCurrentLocalPath2, setSelectedLocalFiles2]);
 
   // Command palette items (below the loaders it lists)
   const commandPaletteItems: CommandItem[] = useMemo(() => [

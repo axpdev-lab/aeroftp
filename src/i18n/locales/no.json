@@ -4185,7 +4185,10 @@
             "drivesLeftPanel": "Stasjoner i venstre panel",
             "drivesRightPanel": "Stasjoner i høyre panel",
             "modeGroupLabel": "Sidepanelmodus",
-            "placesSidebarLabel": "Sidepanel for steder"
+            "placesSidebarLabel": "Sidepanel for steder",
+            "mountFailed": "Montering mislyktes",
+            "partitions_need_udisks2": "I snap vises umonterte partisjoner, og de kan monteres og løses ut, når tillatelsen udisks2 er koblet til. Kjør dette i en terminal, og gå deretter tilbake til AeroFTP:",
+            "volume_action_needs_udisks2": "I snap krever montering og utløsing tillatelsen udisks2. Kjør dette i en terminal, og prøv deretter igjen: {command}"
         },
         "viewMode": {
             "list": "Liste",

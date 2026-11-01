@@ -179,6 +179,7 @@ const DEPENDENCY_CATEGORIES: &[(&str, &[&str])] = &[
             "whisper-rs",
             "windows",
             "winreg",
+            "zbus",
         ],
     ),
     (

@@ -4185,7 +4185,10 @@
             "drivesLeftPanel": "ড্রাইভ, বাম প্যানেল",
             "drivesRightPanel": "ড্রাইভ, ডান প্যানেল",
             "modeGroupLabel": "সাইডবার মোড",
-            "placesSidebarLabel": "স্থানের সাইডবার"
+            "placesSidebarLabel": "স্থানের সাইডবার",
+            "mountFailed": "মাউন্ট ব্যর্থ হয়েছে",
+            "partitions_need_udisks2": "snap-এ আনমাউন্ট করা পার্টিশনগুলো udisks2 অনুমতি সংযুক্ত হওয়ার পরই দেখা যায়, এবং সেগুলো মাউন্ট ও ইজেক্ট করা যায়। এটি একটি টার্মিনালে চালান, তারপর AeroFTP-এ ফিরে আসুন:",
+            "volume_action_needs_udisks2": "snap-এ মাউন্ট ও ইজেক্ট করতে udisks2 অনুমতি লাগে। এটি একটি টার্মিনালে চালান, তারপর আবার চেষ্টা করুন: {command}"
         },
         "viewMode": {
             "list": "তালিকা",

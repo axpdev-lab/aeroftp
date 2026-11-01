@@ -194,6 +194,7 @@ dependencies = [
  "winreg 0.56.0",
  "xxhash-rust",
  "xz2",
+ "zbus 5.19.0",
  "zeroize",
  "zip",
  "zstd",

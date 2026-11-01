@@ -4185,7 +4185,10 @@
             "drivesLeftPanel": "Dyski lewego panelu",
             "drivesRightPanel": "Dyski prawego panelu",
             "modeGroupLabel": "Tryb paska bocznego",
-            "placesSidebarLabel": "Pasek boczny miejsc"
+            "placesSidebarLabel": "Pasek boczny miejsc",
+            "mountFailed": "Montowanie nie powiodło się",
+            "partitions_need_udisks2": "W snapie niezamontowane partycje pojawiają się i można je zamontować oraz wysunąć po połączeniu uprawnienia udisks2. Uruchom to w terminalu, a następnie wróć do AeroFTP:",
+            "volume_action_needs_udisks2": "W snapie montowanie i wysuwanie wymagają uprawnienia udisks2. Uruchom to w terminalu, a następnie spróbuj ponownie: {command}"
         },
         "viewMode": {
             "list": "Lista",

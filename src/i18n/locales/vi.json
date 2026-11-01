@@ -4185,7 +4185,10 @@
             "drivesLeftPanel": "Ổ đĩa bảng trái",
             "drivesRightPanel": "Ổ đĩa bảng phải",
             "modeGroupLabel": "Chế độ thanh bên",
-            "placesSidebarLabel": "Thanh bên vị trí"
+            "placesSidebarLabel": "Thanh bên vị trí",
+            "mountFailed": "Gắn thất bại",
+            "partitions_need_udisks2": "Trong snap, các phân vùng chưa gắn sẽ xuất hiện, và có thể gắn hoặc tháo, sau khi kết nối quyền udisks2. Chạy lệnh này trong terminal, rồi quay lại AeroFTP:",
+            "volume_action_needs_udisks2": "Trong snap, việc gắn và tháo cần quyền udisks2. Chạy lệnh này trong terminal, rồi thử lại: {command}"
         },
         "viewMode": {
             "list": "Danh sách",
