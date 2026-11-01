@@ -275,6 +275,7 @@ impl CloudService {
                 return;
             }
         };
+        let ended = chrono::Utc::now();
         // One listing of the folder instead of one `stat` per file.
         let listed: HashMap<String, RemoteEntry> = provider
             .list(&parent)
@@ -364,6 +365,7 @@ impl CloudService {
             } else {
                 None
             };
+            self.note_upload_ended(&comparison.relative_path, ended);
             self.settle_upload(
                 &comparison.relative_path,
                 &upload.local_path,

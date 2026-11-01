@@ -3218,6 +3218,7 @@ mod tests {
                 ec_status: None,
                 local_size: None,
                 local_modified: None,
+                uploaded_at: None,
             });
         }
         journal

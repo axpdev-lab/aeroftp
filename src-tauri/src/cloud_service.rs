@@ -398,6 +398,8 @@ pub struct CloudService {
     /// What each transfer of the running cycle left (relative path), for the
     /// baseline.
     landed: Arc<std::sync::Mutex<HashMap<String, Landed>>>,
+    /// When each upload of the cycle ended, for the baseline's `uploaded_at`.
+    uploads_ended: Arc<std::sync::Mutex<HashMap<String, DateTime<Utc>>>>,
     /// Runtime protections must not become successful transfers in the baseline.
     withheld_updates: Arc<std::sync::Mutex<HashMap<String, (String, bool)>>>,
     cloud_receipts: Arc<std::sync::Mutex<HashMap<String, CloudTransferReceipt>>>,
@@ -495,6 +497,7 @@ impl CloudService {
             task_tx: None,
             app_handle: None,
             landed: Arc::default(),
+            uploads_ended: Arc::default(),
             withheld_updates: Arc::default(),
             cloud_receipts: Arc::default(),
             connection_identity: None,
@@ -539,6 +542,14 @@ impl CloudService {
     fn note_landed_as(&self, relative_path: &str, what: Landed) {
         if let Ok(mut landed) = self.landed.lock() {
             landed.insert(relative_path.to_string(), what);
+        }
+    }
+
+    /// Note when an upload ended, read as it returned: the steps after it
+    /// (a stat, a listing) must not widen what reads as our own stamp.
+    fn note_upload_ended(&self, relative_path: &str, ended: DateTime<Utc>) {
+        if let Ok(mut uploads) = self.uploads_ended.lock() {
+            uploads.insert(relative_path.to_string(), ended);
         }
     }
 
@@ -631,6 +642,9 @@ impl CloudService {
         }
         if let Ok(mut landed) = self.landed.lock() {
             landed.clear();
+        }
+        if let Ok(mut uploads) = self.uploads_ended.lock() {
+            uploads.clear();
         }
         if let Ok(mut withheld) = self.withheld_updates.lock() {
             withheld.clear();
@@ -1119,6 +1133,7 @@ impl CloudService {
                             size,
                             modified: done.remote_modified,
                             is_dir: false,
+                            uploaded_at: None,
                         },
                     )
                 }
@@ -1132,6 +1147,7 @@ impl CloudService {
                             size,
                             modified: Some(done.modified),
                             is_dir: false,
+                            uploaded_at: None,
                         },
                     )
                 }
@@ -1468,6 +1484,7 @@ impl CloudService {
                     size,
                     modified: Some(UNSETTLED_BASELINE),
                     is_dir: false,
+                    uploaded_at: None,
                 },
             );
         }
@@ -1508,6 +1525,7 @@ impl CloudService {
                         size,
                         modified: Some(done.modified),
                         is_dir: false,
+                        uploaded_at: None,
                     },
                 );
                 transferred.push(row.clone());
@@ -1663,6 +1681,15 @@ impl CloudService {
                             entry.size = size;
                         }
                     }
+                    // When this upload ended, not now: a remote edit made later
+                    // in the cycle must stay an edit.
+                    if matches!(action, SyncAction::Upload) {
+                        entry.uploaded_at = self
+                            .uploads_ended
+                            .lock()
+                            .ok()
+                            .and_then(|uploads| uploads.get(&c.relative_path).copied());
+                    }
                 }
                 index_files.insert(c.relative_path.clone(), entry);
             }
@@ -1724,6 +1751,7 @@ impl CloudService {
                 size: fi.size,
                 modified: fi.modified,
                 is_dir,
+                uploaded_at: None,
             }),
             // A kept directory carries no size/mtime but must stay tracked so it
             // is not treated as new (and re-created) every cycle.
@@ -1731,6 +1759,7 @@ impl CloudService {
                 size: 0,
                 modified: None,
                 is_dir: true,
+                uploaded_at: None,
             }),
             None => None,
         }
@@ -1963,6 +1992,7 @@ impl CloudService {
                                             size: local.size,
                                             modified: local.modified,
                                             is_dir: local.is_dir,
+                                            uploaded_at: None,
                                         },
                                     },
                                 );
@@ -3235,6 +3265,7 @@ impl CloudService {
                             .upload(&local_info.path, &remote_path, None)
                             .await
                             .map_err(|e| format!("Upload failed: {}", e))?;
+                        self.note_upload_ended(&comparison.relative_path, Utc::now());
 
                         // After upload, stat the remote file to get the server-assigned mtime,
                         // then apply it to the local file so both sides match.
@@ -3854,6 +3885,7 @@ mod baseline_tests {
                     size: 7,
                     modified: fi(7, 1000).modified,
                     is_dir: false,
+                    uploaded_at: None,
                 },
             },
         );
@@ -3885,6 +3917,7 @@ mod baseline_tests {
                 size: 7,
                 modified: fi(7, 1000).modified,
                 is_dir: false,
+                uploaded_at: None,
             },
         };
         svc.cloud_receipts.lock().unwrap().extend([
@@ -3922,6 +3955,7 @@ mod baseline_tests {
                 size: 5,
                 modified: fi(5, 1000).modified,
                 is_dir: false,
+                uploaded_at: None,
             },
         );
         index.unverified_keys.insert("f.txt".into());
@@ -3954,6 +3988,7 @@ mod baseline_tests {
                 size: 9,
                 modified: fi(9, 900).modified,
                 is_dir: false,
+                uploaded_at: None,
             },
         );
         index.unverified_keys.insert("f.txt".into());
@@ -4004,6 +4039,7 @@ mod baseline_tests {
                 size: 5,
                 modified: None,
                 is_dir: false,
+                uploaded_at: None,
             },
         );
         index
@@ -4096,6 +4132,7 @@ mod baseline_tests {
                             size: destination.size,
                             modified: destination.modified,
                             is_dir: false,
+                            uploaded_at: None,
                         },
                     },
                 );
@@ -4299,6 +4336,7 @@ mod baseline_tests {
             size,
             modified: None,
             is_dir: false,
+            uploaded_at: None,
         };
         let mut prior = SyncIndex::new("/l".to_string(), "/r".to_string());
         prior.files.insert("synced.txt".to_string(), entry(1));
@@ -4391,6 +4429,7 @@ mod baseline_tests {
                 size: 1,
                 modified: None,
                 is_dir: false,
+                uploaded_at: None,
             },
         );
         prior.files.insert(
@@ -4399,6 +4438,7 @@ mod baseline_tests {
                 size: 4,
                 modified: None,
                 is_dir: false,
+                uploaded_at: None,
             },
         );
         let kept = svc.post_sync_baseline(
@@ -4469,6 +4509,7 @@ mod baseline_tests {
                 size: 8,
                 modified: None,
                 is_dir: false,
+                uploaded_at: None,
             },
         );
         prior.remote_spellings.insert(local.into(), remote.into());
@@ -4522,6 +4563,7 @@ mod baseline_tests {
                         size: info.size,
                         modified: info.modified,
                         is_dir: false,
+                        uploaded_at: None,
                     },
                 )
             })
@@ -4577,6 +4619,7 @@ mod baseline_tests {
                 size: 8,
                 modified: None,
                 is_dir: false,
+                uploaded_at: None,
             },
         );
         let report = crate::sync::classify_with_summary(
@@ -4714,6 +4757,7 @@ mod baseline_tests {
                 size: 8,
                 modified: Some(DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap()),
                 is_dir: false,
+                uploaded_at: None,
             },
         );
         prior
@@ -4861,11 +4905,20 @@ mod baseline_tests {
         );
         config.local_folder = root.path().to_path_buf();
         let svc = CloudService::new();
+        let before = Utc::now();
+        svc.note_upload_ended("f.txt", Utc::now());
+        let after = Utc::now();
         svc.note_landed(&config, "f.txt");
         stamp(&file, 1_850_000_000);
+        std::thread::sleep(std::time::Duration::from_millis(5));
         let files = svc.post_sync_baseline(&[uploaded], &config, None, UpdatePolicy::default());
         let entry = files.get("f.txt").expect("the upload is recorded");
         assert_eq!(entry.size, 7);
+        let ended = entry.uploaded_at.expect("an upload is dated");
+        assert!(
+            before <= ended && ended <= after,
+            "dated when the upload ended, not when the index is written"
+        );
         assert_eq!(
             entry.modified,
             DateTime::<Utc>::from_timestamp(1_800_000_000, 0),
@@ -5485,6 +5538,7 @@ mod baseline_tests {
                 size,
                 modified: None,
                 is_dir: false,
+                uploaded_at: None,
             };
             let prior = SyncIndex {
                 profile_id: None,
@@ -6584,6 +6638,7 @@ mod baseline_tests {
                         size: 9,
                         modified: DateTime::<Utc>::from_timestamp(1_700_000_000, 0),
                         is_dir: false,
+                        uploaded_at: None,
                     },
                 );
                 let raw = serde_json::to_string(&legacy).unwrap();
@@ -7182,6 +7237,7 @@ mod baseline_tests {
                         size: 7,
                         modified: Some(DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap()),
                         is_dir: false,
+                        uploaded_at: None,
                     },
                 );
                 prior
@@ -7357,6 +7413,7 @@ mod baseline_tests {
                     size: 4,
                     modified: Some(DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap()),
                     is_dir: false,
+                    uploaded_at: None,
                 };
                 index.files.insert(key.clone(), state.clone());
                 index.cloud_receipts.insert(
@@ -8356,6 +8413,7 @@ mod baseline_tests {
                         size: 1,
                         modified: None,
                         is_dir: *is_dir,
+                        uploaded_at: None,
                     };
                     (key.to_string(), entry)
                 })
@@ -8800,6 +8858,7 @@ mod secval_b_tests {
                                     size: 7,
                                     modified: Some(DateTime::<Utc>::UNIX_EPOCH),
                                     is_dir: false,
+                                    uploaded_at: None,
                                 },
                             )]),
                             remote_spellings: Default::default(),
