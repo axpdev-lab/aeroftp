@@ -3504,6 +3504,7 @@ mod tests {
         upload_calls: usize,
         carried_time: Option<String>,
         stat_reading: StatReading,
+        moved_source_expected: bool,
     }
 
     /// What the fake's `stat` does when it has no scripted ranges.
@@ -3527,6 +3528,7 @@ mod tests {
                 upload_calls: 0,
                 carried_time: None,
                 stat_reading: StatReading::default(),
+                moved_source_expected: false,
             }
         }
 
@@ -3563,6 +3565,9 @@ mod tests {
         }
         fn take_download_time(&mut self, source_refused: bool) -> Option<String> {
             self.carried_time.take().filter(|_| source_refused)
+        }
+        fn expect_moved_source(&mut self) {
+            self.moved_source_expected = true;
         }
         fn transfer_executor_kind(&self) -> ProviderTransferExecutorKind {
             if self.ranges.is_some() {
@@ -4457,6 +4462,7 @@ mod tests {
         assert!(source_refused);
         assert_eq!(entry.modified.as_deref(), Some(CARRIED));
         assert_eq!(std::fs::read(&entry.local_path).unwrap(), b"ok");
+        assert!(provider.moved_source_expected);
     }
 
     /// The reading after a refusal takes what it can use and leaves the rest as

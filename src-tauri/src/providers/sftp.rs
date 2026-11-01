@@ -2875,8 +2875,8 @@ impl StorageProvider for SftpProvider {
                 );
             }
         };
-        // SFTP answers no time with the data: this reading, next to the open, is
-        // the closest to it. After a refusal the time comes from the handle.
+        // SFTP answers no time with the data: the reading of the open handle
+        // below is the closest to it, and this one stands in when it has none.
         let mut read_time =
             Self::metadata_to_entry(String::new(), String::new(), &metadata).modified;
         let mut total_size = metadata.size.unwrap_or(0);
@@ -3146,14 +3146,33 @@ impl StorageProvider for SftpProvider {
                 })?,
         };
 
-        if source_is_moving {
-            // A failed reading says nothing: the first one is of the object that moved.
-            read_time = until_sftp_ends(&sftp.ended, remote_file.metadata())
-                .await
-                .ok()
-                .and_then(|attributes| {
-                    Self::metadata_to_entry(String::new(), String::new(), &attributes).modified
-                });
+        // The handle is the object the bytes come from, and the STAT above can
+        // be of the one before it: read to the STAT's size, a replacement
+        // between the two is published cut to a length that was never its own.
+        // A server that does not answer leaves the STAT's values, except for the
+        // time after a refusal: that reading is of the object that moved.
+        match until_sftp_ends(&sftp.ended, remote_file.metadata()).await {
+            Ok(attributes) => {
+                let handle = Self::metadata_to_entry(String::new(), full_path.clone(), &attributes);
+                let size_differs = attributes.size.is_some_and(|size| size != total_size);
+                if size_differs {
+                    tracing::warn!(
+                        "SFTP: {} is {} bytes on its handle and was {}, the download uses the size of the handle",
+                        full_path,
+                        handle.size,
+                        total_size
+                    );
+                    total_size = handle.size;
+                }
+                if size_differs || (attributes.size.is_some() && handle.modified.is_some()) {
+                    source = RangeSourceFingerprint::of(&handle);
+                }
+                if source_is_moving || handle.modified.is_some() {
+                    read_time = handle.modified;
+                }
+            }
+            Err(_) if source_is_moving => read_time = None,
+            Err(_) => {}
         }
 
         // Everything that can fail once the handle is open runs inside this
@@ -7567,6 +7586,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_replacement_between_the_stat_and_the_open_is_read_at_its_own_size() {
+        let bytes = pattern(400);
+        // Longer than the STAT found: cut to the old length without the handle's
+        // size. Shorter: refused as a short read of the old length.
+        for (stat_size, size_hint) in [(100, None), (100, Some(100)), (900, None), (900, Some(900))]
+        {
+            let mut server = ReadCappingServer::new(&bytes, 100, false);
+            server.stat_size = Some(stat_size);
+            server.mtime = Some(1_600_000_000);
+            server.handle_mtime = Some(1_700_000_000);
+            let mut provider = server.serve().await;
+            let dir = tempfile::tempdir().unwrap();
+            let out = dir.path().join("target");
+            provider
+                .download_with_size_hint("/down.bin", out.to_str().unwrap(), size_hint, None)
+                .await
+                .unwrap();
+            assert_eq!(std::fs::read(&out).unwrap(), bytes);
+            assert_eq!(
+                provider.take_download_time(true).as_deref(),
+                Some("2023-11-14 22:13:20Z")
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn a_refused_sftp_parallel_plan_reports_a_safe_terminal_notice() {
         let provider =
             provider_on_a_server_that_goes_away(GoAwayAt::Write(usize::MAX), vec![7u8; 3]).await;
@@ -8492,6 +8537,8 @@ mod tests {
         data: Arc<Vec<u8>>,
         cap: usize,
         announce: bool,
+        /// The size STAT reports when it is of an object the handle is not.
+        stat_size: Option<u64>,
         /// The modification time STAT reports, when it reports one.
         mtime: Option<u32>,
         /// The modification time FSTAT reports on an open handle.
@@ -8516,6 +8563,7 @@ mod tests {
                 data: Arc::new(data.to_vec()),
                 cap,
                 announce,
+                stat_size: None,
                 mtime: None,
                 handle_mtime: None,
                 first_cap: None,
@@ -8655,7 +8703,7 @@ mod tests {
             Ok(russh_sftp::protocol::Attrs {
                 id,
                 attrs: russh_sftp::protocol::FileAttributes {
-                    size: Some(self.data.len() as u64),
+                    size: Some(self.stat_size.unwrap_or(self.data.len() as u64)),
                     permissions: Some(0o100644),
                     atime: self.mtime,
                     mtime: self.mtime,
