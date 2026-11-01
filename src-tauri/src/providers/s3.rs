@@ -1235,6 +1235,23 @@ impl S3Provider {
         }
     }
 
+    /// The bucket as URL path data, for path-style URLs and
+    /// `x-amz-copy-source`. S3-compatible gateways accept names AWS refuses
+    /// (#1461: "KDE's Kate Settings"), and there a raw `#` would cut the path,
+    /// a `?` would start the query and a `%` would read as an escape. Encoded
+    /// like a key, so a `/` stays a separator: path-style accepts
+    /// `legacy/bucket`.
+    fn bucket_path(&self) -> String {
+        encode_s3_key_path(&self.config.bucket)
+    }
+
+    /// `x-amz-copy-source` for `key` in this bucket, `/<bucket>/<key>` with
+    /// both parts encoded as [`Self::build_url`] encodes them: the header
+    /// names the same object the URL would.
+    fn copy_source(&self, key: &str) -> String {
+        format!("/{}/{}", self.bucket_path(), encode_s3_key_path(key))
+    }
+
     /// Build URL for S3 operations
     fn build_url(&self, key: &str) -> String {
         let endpoint = self.endpoint();
@@ -1247,10 +1264,11 @@ impl S3Provider {
             // when the bucket-only URL is sent without a trailing slash. AWS, MinIO,
             // Wasabi all accept both forms, so adding the trailing slash for
             // bucket-only requests is universally safe.
+            let bucket = self.bucket_path();
             if encoded_key.is_empty() {
-                format!("{}/{}/", endpoint, self.config.bucket)
+                format!("{}/{}/", endpoint, bucket)
             } else {
-                format!("{}/{}/{}", endpoint, self.config.bucket, encoded_key)
+                format!("{}/{}/{}", endpoint, bucket, encoded_key)
             }
         } else {
             // Virtual-hosted style: https://bucket.endpoint/key
@@ -2298,28 +2316,44 @@ impl S3Provider {
 
     fn parse_bucket_names(xml: &str) -> Result<Vec<String>, ProviderError> {
         let mut reader = Reader::from_str(xml);
-        reader.config_mut().trim_text(true);
+        // A name with an entity in it arrives in pieces: `KDE&apos;s Kate
+        // Settings` is Text("KDE") + GeneralRef("apos") + Text("s Kate
+        // Settings"). Each piece used to become a bucket of its own (#1461),
+        // so the pieces are joined until `</Name>`. No trim_text either: it
+        // trims every piece, and `a &amp; b` would lose its spaces.
+        reader.config_mut().trim_text(false);
         let mut buf = Vec::new();
         let mut in_bucket = false;
-        let mut in_name = false;
+        let mut name: Option<String> = None;
         let mut buckets = Vec::new();
 
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(event)) => match event.name().as_ref() {
                     "Bucket" => in_bucket = true,
-                    "Name" if in_bucket => in_name = true,
+                    "Name" if in_bucket => name = Some(String::new()),
                     _ => {}
                 },
                 Ok(Event::End(event)) => match event.name().as_ref() {
-                    "Name" => in_name = false,
+                    "Name" => {
+                        if let Some(value) = name.take().filter(|value| !value.is_empty()) {
+                            buckets.push(value);
+                        }
+                    }
                     "Bucket" => in_bucket = false,
                     _ => {}
                 },
-                Ok(Event::Text(text)) if in_bucket && in_name => {
-                    let value = text.as_ref().trim().to_string();
-                    if !value.is_empty() {
-                        buckets.push(value);
+                Ok(Event::Text(text)) => {
+                    if let Some(value) = name.as_mut() {
+                        value.push_str(text.as_ref());
+                    }
+                }
+                Ok(Event::GeneralRef(reference)) => {
+                    if let (Some(value), Some(expanded)) = (
+                        name.as_mut(),
+                        super::xml_text::xml_entity_to_str(reference.as_ref()),
+                    ) {
+                        value.push_str(&expanded);
                     }
                 }
                 Ok(Event::Eof) => break,
@@ -3410,7 +3444,7 @@ impl S3Provider {
         to_key: &str,
     ) -> Result<(), ProviderError> {
         self.ensure_fresh_credentials().await?;
-        let copy_source = format!("/{}/{}", self.config.bucket, encode_s3_key_path(from_key));
+        let copy_source = self.copy_source(from_key);
 
         let url = self.build_url(to_key);
 
@@ -3506,7 +3540,7 @@ impl S3Provider {
         content_type: Option<&str>,
         source_mtime: Option<String>,
     ) -> Result<(), ProviderError> {
-        let copy_source = format!("/{}/{}", self.config.bucket, encode_s3_key_path(from_key));
+        let copy_source = self.copy_source(from_key);
 
         let part_size = Self::COPY_MULTIPART_PART_SIZE;
         let planned = plan_copy_parts(source_size, part_size)?;
@@ -3755,7 +3789,7 @@ impl S3Provider {
         // CompleteMultipartUpload (see `UploadProgress`).
         let progress = super::upload_progress::UploadProgress::new(on_progress, total_wire);
 
-        let copy_source = format!("/{}/{}", self.config.bucket, encode_s3_key_path(key));
+        let copy_source = self.copy_source(key);
 
         // This create is the first request after the baseline traffic that
         // produced the match list, and a pooled keep-alive connection the
@@ -7109,9 +7143,8 @@ impl StorageProvider for S3Provider {
         // canonicalisation that strict S3 bridges (Filen Desktop local
         // bridge, in particular) perform during SigV4 verification.
         let copy_source = format!(
-            "/{}/{}?versionId={}",
-            self.config.bucket,
-            encode_s3_key_path(key),
+            "{}?versionId={}",
+            self.copy_source(key),
             urlencoding::encode(version_id)
         );
 
@@ -7446,7 +7479,7 @@ impl S3Provider {
         let key = path.trim_start_matches('/');
         // Slashes preserved via encode_s3_key_path; see server_copy /
         // restore_version for the same rationale.
-        let copy_source = format!("/{}/{}", self.config.bucket, encode_s3_key_path(key));
+        let copy_source = self.copy_source(key);
         let url = self.build_url(key);
 
         use sha2::{Digest, Sha256};
@@ -8833,6 +8866,85 @@ mod tests {
         );
     }
 
+    /// #1461: quick-xml hands a name with an entity in it over in pieces, so
+    /// `KDE&apos;s Kate Settings` arrives as Text("KDE"), GeneralRef("apos")
+    /// and Text("s Kate Settings"). Each piece used to become a bucket of its
+    /// own, and the apostrophe was lost: the picker showed "KDE" and
+    /// "s Kate Settings", neither of which exists.
+    #[test]
+    fn list_buckets_parser_keeps_a_name_split_by_an_entity_whole() {
+        for (escaped, expected) in [
+            ("KDE&apos;s Kate Settings", "KDE's Kate Settings"),
+            // Storj's gateway writes the apostrophe as a numeric reference.
+            ("KDE&#39;s Kate Settings", "KDE's Kate Settings"),
+            ("KDE&#x27;s Kate Settings", "KDE's Kate Settings"),
+            // The spaces next to an entity belong to the name.
+            ("a &amp; b", "a & b"),
+            ("&lt;x&gt; &quot;y&quot;", "<x> \"y\""),
+            ("&amp;&amp;", "&&"),
+        ] {
+            let xml = format!(
+                "<ListAllMyBucketsResult><Buckets>\
+                 <Bucket><Name>{escaped}</Name><CreationDate>2026-01-01T00:00:00Z</CreationDate></Bucket>\
+                 </Buckets></ListAllMyBucketsResult>"
+            );
+            assert_eq!(
+                S3Provider::parse_bucket_names(&xml).unwrap(),
+                vec![expected.to_string()],
+                "{escaped}"
+            );
+        }
+    }
+
+    #[test]
+    fn list_buckets_parser_lists_entity_names_beside_plain_ones() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+            <ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+              <Owner><ID>abc</ID><DisplayName>O&apos;Brien</DisplayName></Owner>
+              <Buckets>
+                <Bucket><Name>photos</Name><CreationDate>2026-01-01T00:00:00Z</CreationDate></Bucket>
+                <Bucket><Name>KDE&#39;s Kate Settings</Name><CreationDate>2026-01-02T00:00:00Z</CreationDate></Bucket>
+                <Bucket><Name>KDE</Name><CreationDate>2026-01-03T00:00:00Z</CreationDate></Bucket>
+              </Buckets>
+            </ListAllMyBucketsResult>"#;
+        assert_eq!(
+            S3Provider::parse_bucket_names(xml).unwrap(),
+            vec!["KDE", "KDE's Kate Settings", "photos"]
+        );
+    }
+
+    /// The ListBuckets body `rclone serve s3` (GoFakeS3) sent for three
+    /// folders, captured on the wire: Go's encoder writes the apostrophe as
+    /// `&#39;`, like the Storj gateway, and indents every element.
+    #[test]
+    fn list_buckets_parser_reads_a_captured_gateway_response() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Owner>
+    <ID>fe7272ea58be830e56fe1663b10fafef</ID>
+    <DisplayName>GoFakeS3</DisplayName>
+  </Owner>
+  <Buckets>
+    <Bucket>
+      <Name>KDE&#39;s Kate Settings</Name>
+      <CreationDate>2026-10-31T21:46:03.56Z</CreationDate>
+    </Bucket>
+    <Bucket>
+      <Name>a &amp; b</Name>
+      <CreationDate>2026-10-31T21:46:03.56Z</CreationDate>
+    </Bucket>
+    <Bucket>
+      <Name>photos</Name>
+      <CreationDate>2026-10-31T21:46:03.56Z</CreationDate>
+    </Bucket>
+  </Buckets>
+</ListAllMyBucketsResult>"#;
+        assert_eq!(
+            S3Provider::parse_bucket_names(xml).unwrap(),
+            vec!["KDE's Kate Settings", "a & b", "photos"]
+        );
+    }
+
     #[test]
     fn is_s3_directory_content_type_matches_dir_marker_conventions() {
         // Written by mkdir and the alternate davfs convention count as folders.
@@ -9455,6 +9567,41 @@ mod tests {
             provider.build_url("path/to/file.txt"),
             "http://localhost:9000/test-bucket/path/to/file.txt"
         );
+    }
+
+    /// Path-style URLs and `x-amz-copy-source` carry the bucket as path data.
+    /// A gateway bucket named with `#`, `?` or `%` (the #1461 class: names AWS
+    /// refuses and S3-compatible servers accept) must neither cut the path nor
+    /// start a query, and must read back as exactly itself.
+    #[test]
+    fn path_style_bucket_names_reach_the_wire_whole() {
+        for bucket in [
+            "KDE's Kate Settings",
+            "a & b",
+            "notes #1",
+            "what?",
+            "100%",
+            "%41 is not A",
+            "legacy/bucket",
+        ] {
+            let mut provider = cleartext_test_provider("http://localhost:9000", false, None);
+            provider.config.bucket = bucket.to_string();
+            for key in ["", "dir/a b.txt"] {
+                let url = url::Url::parse(&provider.build_url(key)).expect("valid URL");
+                assert_eq!(
+                    (url.query(), url.fragment()),
+                    (None, None),
+                    "{bucket:?} {key:?}"
+                );
+                let path = urlencoding::decode(url.path()).expect("UTF-8 path");
+                assert_eq!(path, format!("/{bucket}/{key}"), "{bucket:?} {key:?}");
+            }
+            let source = provider.copy_source("dir/a b.txt");
+            assert_eq!(
+                urlencoding::decode(&source).expect("UTF-8 copy source"),
+                format!("/{bucket}/dir/a b.txt")
+            );
+        }
     }
 
     #[test]

@@ -1356,17 +1356,34 @@ impl WebDavProvider {
                         _ => {}
                     }
                 }
+                // Every piece goes in, whitespace included: an ETag arrives as
+                // `&quot;abc&quot;` from SabreDAV (Nextcloud, ownCloud), so it
+                // is Text pieces around GeneralRef ones, and a space between
+                // two references is part of the value. Scalars are trimmed
+                // once below.
                 Ok(Event::Text(ref t)) => {
                     if let Some(tag) = current_tag.as_deref() {
-                        let text = t.as_ref().to_string();
-                        if !text.trim().is_empty() {
-                            match tag {
-                                "getcontentlength" => size_text.push_str(&text),
-                                "getlastmodified" => modified_text.push_str(&text),
-                                "getcontenttype" => content_type_text.push_str(&text),
-                                "getetag" => etag_text.push_str(&text),
-                                _ => {}
-                            }
+                        let text = t.as_ref();
+                        match tag {
+                            "getcontentlength" => size_text.push_str(text),
+                            "getlastmodified" => modified_text.push_str(text),
+                            "getcontenttype" => content_type_text.push_str(text),
+                            "getetag" => etag_text.push_str(text),
+                            _ => {}
+                        }
+                    }
+                }
+                Ok(Event::GeneralRef(ref reference)) => {
+                    if let (Some(tag), Some(expanded)) = (
+                        current_tag.as_deref(),
+                        super::xml_text::xml_entity_to_str(reference.as_ref()),
+                    ) {
+                        match tag {
+                            "getcontentlength" => size_text.push_str(&expanded),
+                            "getlastmodified" => modified_text.push_str(&expanded),
+                            "getcontenttype" => content_type_text.push_str(&expanded),
+                            "getetag" => etag_text.push_str(&expanded),
+                            _ => {}
                         }
                     }
                 }
@@ -8582,6 +8599,40 @@ mod tests {
         let entry = WebDavProvider::extract_single_file_entry(xml, "/AbCd/my%20file.txt").unwrap();
         assert_eq!(entry.name, "my file.txt");
         assert_eq!(entry.path, "/my file.txt");
+    }
+
+    /// SabreDAV (Nextcloud, ownCloud) writes the quotes of an ETag as
+    /// `&quot;`. Without the reference arm the quotes were dropped, and a
+    /// single-file entry carried no quotes where the listing carries them.
+    /// The raw space between two references arrives as a whitespace-only
+    /// piece and belongs to the value as much as `&#32;` does.
+    #[test]
+    fn extract_single_file_entry_keeps_entities_in_the_props() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+            <d:multistatus xmlns:d="DAV:">
+                <d:response>
+                    <d:href>/s/AbCd</d:href>
+                    <d:propstat>
+                        <d:prop>
+                            <d:resourcetype/>
+                            <d:getcontentlength>10</d:getcontentlength>
+                            <d:getcontenttype>text/plain; charset=&quot;utf-8&quot;</d:getcontenttype>
+                            <d:getetag>&quot;a&amp; &amp;b&#32;1&quot;</d:getetag>
+                        </d:prop>
+                        <d:status>HTTP/1.1 200 OK</d:status>
+                    </d:propstat>
+                </d:response>
+            </d:multistatus>"#;
+
+        let entry = WebDavProvider::extract_single_file_entry(xml, "/s/AbCd/notes.txt").unwrap();
+        assert_eq!(
+            entry.metadata.get("etag").map(String::as_str),
+            Some("\"a& &b 1\"")
+        );
+        assert_eq!(
+            entry.mime_type.as_deref(),
+            Some("text/plain; charset=\"utf-8\"")
+        );
     }
 
     /// Issue #264 — when single-file mode is active, `build_url` must return
