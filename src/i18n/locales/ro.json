@@ -1371,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud își reînnoiește autentificarea la fiecare conectare, iar {names} împarte acum una cu altă copie: copia care se conectează prima o deconectează pe cealaltă (dispozitivul de la care provine fișierul sau profilul din care a fost duplicată). Autentificați din nou cealaltă copie cu un nou Personal Login Token.",
             "importOauthAppKept": "{names} au venit cu o aplicație OAuth personalizată diferită de cea pe care acest dispozitiv o are pentru furnizorul respectiv. Aplicația stocată a fost păstrată, așa că autentificați-vă din nou dacă aceste profiluri nu se mai conectează.",
             "importTargetChanged": "{names} nu au fost suprascrise: fișierul le îndreaptă către alt server, iar parolele și token-urile lor salvate nu trebuie să ajungă acolo. Importați cu Duplică pentru a adăuga copia din fișier sau ștergeți mai întâi profilul.",
-            "importSharedSecretsFailed": "{names} au fost importate, dar un secret partajat sau o sesiune din fișier nu a putut fi stocat. Autentificați-vă din nou în aceste profiluri dacă nu se conectează."
+            "importSharedSecretsFailed": "{names} au fost importate, dar un secret partajat sau o sesiune din fișier nu a putut fi stocat. Autentificați-vă din nou în aceste profiluri dacă nu se conectează.",
+            "keystoreDatabasesFailed": "Importul s-a încheiat, dar aceste baze de date nu au putut fi restaurate și păstrează ce conțineau: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4861,7 +4862,8 @@
             "relocateSuccessMove": "„{name}” mutat în {user}",
             "relocateAlreadyPresent": "„{name}” este deja salvat în {user}",
             "relocateError": "Serverul nu a putut fi transferat: {error}",
-            "relocateWrongPassword": "Parolă greșită pentru {user}."
+            "relocateWrongPassword": "Parolă greșită pentru {user}.",
+            "relocateSecretsNotCopied": "„{name}” a ajuns la {user}, dar parola sau tokenul salvate nu, așa că le va cere din nou acolo."
         },
         "cyberTools": {
             "title": "Instrumente de Securitate",
@@ -6596,7 +6598,8 @@
             "keyslotsSetAsideRevocation": "Markerul anterior încă deschide seiful cu factorul pe care îl eliminați sau îl înlocuiți. Fiecare copie rămasă în folderul seifului este ștearsă după modificare, iar o copie care nu poate fi ștearsă este raportată ca eroare. O copie din coșul de gunoi sau din versiunile de fișiere ale spațiului de stocare nu este atinsă: golirea lor elimină acele copii, dar nu una păstrată de altcineva, deci nu finalizează revocarea.",
             "keyslotsSetAsideConsent": "Am înțeles: înlocuiește markerul pe acest server redenumind cel vechi și punându-l deoparte",
             "keyslotsSetAsideConsentRequired": "Acest server poate înlocui markerul seifului doar redenumind cel vechi și punându-l deoparte: confirmați în caseta de mai sus pentru a continua.",
-            "keyslotsMarkerReplaceUnsupported": "Acest server nu poate înlocui markerul seifului, deci modificările de sloturi sunt refuzate aici. Deschideți același spațiu de stocare printr-un server care înlocuiește un fișier într-un singur pas (de exemplu SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Acest server nu poate înlocui markerul seifului, deci modificările de sloturi sunt refuzate aici. Deschideți același spațiu de stocare printr-un server care înlocuiește un fișier într-un singur pas (de exemplu SFTP).",
+            "overlayMetadataNotSaved": "Migrarea a reușit, dar kitul de recuperare offline nu este încă salvat în cache. Va fi salvat la următoarea deblocare."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Criptare)",

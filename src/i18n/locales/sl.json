@@ -1371,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud ob vsaki povezavi obnovi prijavo, {names} pa zdaj deli eno z drugo kopijo: kopija, ki se poveže prva, odjavi drugo (napravo, od koder izvira datoteka, ali profil, iz katerega je bila podvojena). Drugo znova prijavite z novim Personal Login Token.",
             "importOauthAppKept": "{names} so prišli z drugačno aplikacijo OAuth po meri, kot jo ima ta naprava za tega ponudnika. Shranjena aplikacija je bila ohranjena, zato se znova prijavite, če se ti profili prenehajo povezovati.",
             "importTargetChanged": "{names} niso bili prepisani: datoteka jih usmerja na drug strežnik, njihova shranjena gesla in žetoni pa tja ne smejo. Uvozite z Podvoji, da dodate kopijo iz datoteke, ali pa najprej izbrišite profil.",
-            "importSharedSecretsFailed": "{names} so bili uvoženi, vendar skupne skrivnosti ali seje iz datoteke ni bilo mogoče shraniti. Če se ti profili ne povežejo, se vanje znova prijavite."
+            "importSharedSecretsFailed": "{names} so bili uvoženi, vendar skupne skrivnosti ali seje iz datoteke ni bilo mogoče shraniti. Če se ti profili ne povežejo, se vanje znova prijavite.",
+            "keystoreDatabasesFailed": "Uvoz je končan, vendar teh podatkovnih zbirk ni bilo mogoče obnoviti in ohranjajo prejšnjo vsebino: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4861,7 +4862,8 @@
             "relocateSuccessMove": "»{name}« premaknjen v {user}",
             "relocateAlreadyPresent": "»{name}« je že shranjen v {user}",
             "relocateError": "Strežnika ni bilo mogoče prenesti: {error}",
-            "relocateWrongPassword": "Napačno geslo za {user}."
+            "relocateWrongPassword": "Napačno geslo za {user}.",
+            "relocateSecretsNotCopied": "»{name}« je prispel v {user}, vendar shranjeno geslo ali žeton nista, zato bo tam znova zahteval vnos."
         },
         "cyberTools": {
             "title": "Varnostna orodja",
@@ -6596,7 +6598,8 @@
             "keyslotsSetAsideRevocation": "Prejšnja oznaka še vedno odpre trezor s faktorjem, ki ga odstranjujete ali zamenjujete. Vsaka kopija, ki ostane v mapi trezorja, se po spremembi izbriše, kopija, ki je ni mogoče izbrisati, pa se prijavi kot napaka. Kopija v košu shrambe ali v različicah datotek ni dosegljiva: njuno praznjenje odstrani te kopije, ne pa kopije, ki jo je obdržal nekdo drug, zato preklica ne dokonča.",
             "keyslotsSetAsideConsent": "Razumem: zamenjaj oznako na tem strežniku s preimenovanjem stare na stran",
             "keyslotsSetAsideConsentRequired": "Ta strežnik lahko zamenja oznako trezorja samo s preimenovanjem stare na stran: za nadaljevanje potrdite v polju zgoraj.",
-            "keyslotsMarkerReplaceUnsupported": "Ta strežnik ne more zamenjati oznake trezorja, zato so spremembe rež tukaj zavrnjene. Odprite isto shrambo prek strežnika, ki zamenja datoteko v enem koraku (na primer SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Ta strežnik ne more zamenjati oznake trezorja, zato so spremembe rež tukaj zavrnjene. Odprite isto shrambo prek strežnika, ki zamenja datoteko v enem koraku (na primer SFTP).",
+            "overlayMetadataNotSaved": "Selitev je uspela, vendar komplet za obnovitev brez povezave še ni shranjen v predpomnilnik. To se bo zgodilo ob naslednjem odklepu."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifriranje)",

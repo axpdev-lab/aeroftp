@@ -1371,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud endurnýjar innskráningu sína við hverja tengingu og {names} deilir nú einni með öðru afriti: afritið sem tengist fyrst skráir hitt út (tækið sem skráin kom frá, eða prófílinn sem það var afritað úr). Skráðu hitt inn aftur með nýju Personal Login Token.",
             "importOauthAppKept": "{names} komu með annað sérsniðið OAuth-forrit en það sem þetta tæki hefur fyrir þann þjónustuaðila. Vistaða forritið var varðveitt, svo skráðu þig inn aftur ef þessi snið hætta að tengjast.",
             "importTargetChanged": "{names} voru ekki skrifuð yfir: skráin beinir þeim á annan netþjón og vistuð lykilorð þeirra og tókenar mega ekki fara þangað. Fluttu inn með Afrita til að bæta við afritinu úr skránni, eða eyddu sniðinu fyrst.",
-            "importSharedSecretsFailed": "{names} voru flutt inn, en ekki tókst að vista sameiginlegt leyndarmál eða lotu úr skránni. Skráðu þig aftur inn á þessi snið ef þau tengjast ekki."
+            "importSharedSecretsFailed": "{names} voru flutt inn, en ekki tókst að vista sameiginlegt leyndarmál eða lotu úr skránni. Skráðu þig aftur inn á þessi snið ef þau tengjast ekki.",
+            "keystoreDatabasesFailed": "Innflutningi er lokið, en ekki tókst að endurheimta þessa gagnagrunna og þeir halda því sem þeir höfðu að geyma: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4861,7 +4862,8 @@
             "relocateSuccessMove": "„{name}“ fært á {user}",
             "relocateAlreadyPresent": "„{name}“ er þegar vistað á {user}",
             "relocateError": "Ekki tókst að flytja þjóninn: {error}",
-            "relocateWrongPassword": "Rangt lykilorð fyrir {user}."
+            "relocateWrongPassword": "Rangt lykilorð fyrir {user}.",
+            "relocateSecretsNotCopied": "„{name}“ komst á {user}, en vistað lykilorð eða token fylgdu ekki með, svo beðið verður um þau aftur þar."
         },
         "cyberTools": {
             "title": "Öryggistæki",
@@ -6615,7 +6617,8 @@
             "keyslotsSetAsideRevocation": "Fyrri merkisskráin opnar enn hvelfinguna með þættinum sem þú ert að fjarlægja eða skipta út. Öllum afritum sem eru eftir í möppu hvelfingarinnar er eytt eftir breytinguna og afrit sem ekki er hægt að eyða er tilkynnt sem villa. Afrit í rusli geymslunnar eða skráarútgáfum næst ekki: að tæma þau fjarlægir þessi afrit en ekki afrit sem einhver annar geymdi, svo það lýkur ekki afturkölluninni.",
             "keyslotsSetAsideConsent": "Ég skil: skipta um merkisskrá á þessum þjóni með því að leggja þá gömlu til hliðar",
             "keyslotsSetAsideConsentRequired": "Þessi þjónn getur aðeins skipt um merkisskrá hvelfingarinnar með því að leggja þá gömlu til hliðar: staðfestu í reitnum hér að ofan til að halda áfram.",
-            "keyslotsMarkerReplaceUnsupported": "Þessi þjónn getur ekki skipt um merkisskrá hvelfingarinnar, svo breytingum á raufum er hafnað hér. Opnaðu sömu geymslu í gegnum þjón sem skiptir um skrá í einu skrefi (til dæmis SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Þessi þjónn getur ekki skipt um merkisskrá hvelfingarinnar, svo breytingum á raufum er hafnað hér. Opnaðu sömu geymslu í gegnum þjón sem skiptir um skrá í einu skrefi (til dæmis SFTP).",
+            "overlayMetadataNotSaved": "Flutningurinn tókst, en endurheimtarsettið án nettengingar er ekki enn í skyndiminni. Það verður vistað við næstu opnun."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Dulkóðun)",

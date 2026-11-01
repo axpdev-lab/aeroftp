@@ -1846,7 +1846,8 @@
             "importJottaChainWarning": "Jottacloud rinnova l'accesso a ogni connessione, e {names} ora ne condivide uno con un'altra copia: la copia che si connette per prima disconnette l'altra (il dispositivo da cui proviene il file, o il profilo da cui è stata duplicata). Accedi di nuovo all'altra con un nuovo Personal Login Token.",
             "importOauthAppKept": "{names} sono arrivati con un'app OAuth personalizzata diversa da quella che questo dispositivo ha per quel provider. L'app memorizzata è stata mantenuta: accedi di nuovo se questi profili smettono di connettersi.",
             "importTargetChanged": "{names} non sono stati sovrascritti: il file li fa puntare a un altro server, e le password e i token memorizzati non devono arrivarci. Importa con Duplica per aggiungere la copia dal file, oppure elimina prima il profilo.",
-            "importSharedSecretsFailed": "{names} sono stati importati, ma non è stato possibile salvare un segreto condiviso o una sessione del file. Accedi di nuovo a questi profili se non si connettono."
+            "importSharedSecretsFailed": "{names} sono stati importati, ma non è stato possibile salvare un segreto condiviso o una sessione del file. Accedi di nuovo a questi profili se non si connettono.",
+            "keystoreDatabasesFailed": "L'importazione è terminata, ma questi database non sono stati ripristinati e mantengono il loro contenuto: {names}."
         },
         "appearance": {
             "patternCross": "Croce",
@@ -4476,7 +4477,8 @@
             "keyslotsSetAsideRevocation": "Il marker precedente apre ancora il vault con il fattore che stai rimuovendo o sostituendo. Dopo la modifica ogni copia rimasta nella cartella del vault viene eliminata, e una copia che non si riesce a eliminare viene segnalata come errore. Le copie nel cestino o nelle versioni dei file dello storage restano: svuotarli elimina quelle copie, non una che qualcun altro ha conservato, quindi non completa la revoca.",
             "keyslotsSetAsideConsent": "Ho capito: su questo server sostituisci il marker mettendo da parte quello attuale",
             "keyslotsSetAsideConsentRequired": "Su questo server il marker del vault si può sostituire solo mettendo da parte quello attuale: conferma nella casella qui sopra per continuare.",
-            "keyslotsMarkerReplaceUnsupported": "Questo server non può sostituire il marker del vault, quindi qui le modifiche agli slot vengono rifiutate. Apri lo stesso storage tramite un server che sostituisce un file in un solo passaggio (per esempio SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Questo server non può sostituire il marker del vault, quindi qui le modifiche agli slot vengono rifiutate. Apri lo stesso storage tramite un server che sostituisce un file in un solo passaggio (per esempio SFTP).",
+            "overlayMetadataNotSaved": "La migrazione è riuscita, ma il kit di ripristino offline non è ancora in cache. Lo sarà al prossimo sblocco."
         },
         "cryptomator": {
             "confirmPassword": "Conferma Password",
@@ -5363,7 +5365,8 @@
             "relocateSuccessMove": "\"{name}\" spostato in {user}",
             "relocateAlreadyPresent": "\"{name}\" è già salvato in {user}",
             "relocateError": "Impossibile trasferire il server: {error}",
-            "relocateWrongPassword": "Password errata per {user}."
+            "relocateWrongPassword": "Password errata per {user}.",
+            "relocateSecretsNotCopied": "\"{name}\" è arrivato in {user}, ma la password o il token salvati no, quindi li chiederà di nuovo lì."
         },
         "dialog": {
             "deleteFile": "Eliminare \"{name}\"?",

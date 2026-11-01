@@ -864,17 +864,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'] as const;
             for (const p of providers) {
                 const creds = oauthSettings[p];
-                if (creds.clientId) {
-                    await invoke('store_credential', {
-                        account: `oauth_${p}_client_id`,
-                        password: creds.clientId,
-                    }).catch(console.error);
-                }
-                if (creds.clientSecret) {
-                    await invoke('store_credential', {
-                        account: `oauth_${p}_client_secret`,
-                        password: creds.clientSecret,
-                    }).catch(console.error);
+                // A field the user emptied is stored empty, which readers take as no
+                // value; one that was always empty stays out of the vault.
+                const edited = oauthEdits.current[p];
+                const clientId = creds.clientId || edited?.clientId ? creds.clientId : null;
+                const clientSecret = creds.clientSecret || edited?.clientSecret ? creds.clientSecret : null;
+                if (clientId !== null || clientSecret !== null) {
+                    // A failure reaches the save's own handler: the panel stays open
+                    // with the edit, and Save tries again.
+                    await invoke('store_oauth_app', { provider: p, clientId, clientSecret });
                 }
             }
             // Remove legacy OAuth settings from localStorage
@@ -914,7 +912,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         } catch (e) {
             logger.warn('Settings save failed:', e);
             window.dispatchEvent(new CustomEvent('aeroftp-toast', {
-                detail: { type: 'error', title: t('toast.saveFailed'), message: String(e) },
+                detail: { type: 'error', title: t('toast.saveFailed'), message: String(e), important: true },
             }));
             setSaveState('idle');
         }
@@ -3745,6 +3743,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             profilesAfterDecisions?: number;
                                                                             // #347: the import succeeded, the decisions did not.
                                                                             profileDecisionsError?: string;
+                                                                            sqliteDbsFailed?: string[];
                                                                         }>('import_keystore', {
                                                                             password: keystoreImportPassword,
                                                                             filePath: keystoreImportFilePath,
@@ -3810,9 +3809,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             !!result.requiresRestart ||
                                                                             (result.userPartitionsUnreadable ?? 0) > 0 ||
                                                                             (result.userPartitionsRekeyed ?? 0) > 0 ||
-                                                                            !!result.userPartitionsBackupPath
+                                                                            !!result.userPartitionsBackupPath ||
+                                                                            !!result.sqliteDbsFailed?.length
                                                                         ) {
                                                                             setKeystoreImportResult({
+                                                                                sqliteDbsFailed: result.sqliteDbsFailed,
                                                                                 imported: result.imported,
                                                                                 skipped: result.skipped,
                                                                                 requiresRestart: result.requiresRestart,
@@ -3850,7 +3851,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             onServersChanged?.();
                                                                         } catch (err) {
                                                                             logger.warn('Imported server profiles could not be read', err);
-                                                                            setKeystoreImportResult(null);
+                                                                            // The databases that failed stay listed: this error is about something else.
+                                                                            if (!result.sqliteDbsFailed?.length) setKeystoreImportResult(null);
                                                                             setKeystoreMessage({ type: 'error', text: String(err) });
                                                                             return;
                                                                         }

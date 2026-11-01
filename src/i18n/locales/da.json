@@ -1371,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud fornyer sin login ved hver forbindelse, og {names} deler nu en med en anden kopi: den kopi, der forbinder først, logger den anden ud (enheden, filen kom fra, eller den profil, den blev duplikeret fra). Log den anden ind igen med et nyt Personal Login Token.",
             "importOauthAppKept": "{names} kom med en anden brugerdefineret OAuth-app end den, som denne enhed har til den udbyder. Den gemte app blev beholdt, så log ind igen, hvis disse profiler holder op med at oprette forbindelse.",
             "importTargetChanged": "{names} blev ikke overskrevet: filen peger dem på en anden server, og deres gemte adgangskoder og tokens må ikke sendes dertil. Importér med Dupliker for at tilføje kopien fra filen, eller slet profilen først.",
-            "importSharedSecretsFailed": "{names} blev importeret, men en delt hemmelighed eller session fra filen kunne ikke gemmes. Log ind på disse profiler igen, hvis de ikke forbinder."
+            "importSharedSecretsFailed": "{names} blev importeret, men en delt hemmelighed eller session fra filen kunne ikke gemmes. Log ind på disse profiler igen, hvis de ikke forbinder.",
+            "keystoreDatabasesFailed": "Importen er færdig, men disse databaser kunne ikke gendannes og beholder det, de indeholdt: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4861,7 +4862,8 @@
             "relocateSuccessMove": "\"{name}\" flyttet til {user}",
             "relocateAlreadyPresent": "\"{name}\" er allerede gemt i {user}",
             "relocateError": "Serveren kunne ikke overføres: {error}",
-            "relocateWrongPassword": "Forkert adgangskode til {user}."
+            "relocateWrongPassword": "Forkert adgangskode til {user}.",
+            "relocateSecretsNotCopied": "\"{name}\" nåede frem til {user}, men den gemte adgangskode eller det gemte token kom ikke med, så der bliver spurgt efter dem igen dér."
         },
         "cyberTools": {
             "title": "Sikkerhedsværktøjer",
@@ -6596,7 +6598,8 @@
             "keyslotsSetAsideRevocation": "Den tidligere markør åbner stadig boksen med den faktor, du fjerner eller erstatter. Hver kopi, der ligger tilbage i boksens mappe, slettes efter ændringen, og en kopi, der ikke kan slettes, rapporteres som en fejl. En kopi i lagerets papirkurv eller filversioner nås ikke: at tømme dem fjerner disse kopier, men ikke en kopi, som en anden har gemt, så det fuldfører ikke tilbagekaldelsen.",
             "keyslotsSetAsideConsent": "Jeg forstår: erstat markøren på denne server ved at sætte den gamle til side",
             "keyslotsSetAsideConsentRequired": "Denne server kan kun erstatte boksens markør ved at sætte den gamle til side: bekræft det i feltet ovenfor for at fortsætte.",
-            "keyslotsMarkerReplaceUnsupported": "Denne server kan ikke erstatte boksens markør, så ændringer af slots afvises her. Åbn det samme lager via en server, der erstatter en fil i ét trin (f.eks. SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Denne server kan ikke erstatte boksens markør, så ændringer af slots afvises her. Åbn det samme lager via en server, der erstatter en fil i ét trin (f.eks. SFTP).",
+            "overlayMetadataNotSaved": "Migreringen lykkedes, men gendannelsessættet til offline brug er endnu ikke cachet. Det sker ved næste oplåsning."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",

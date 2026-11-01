@@ -691,6 +691,11 @@ const runSync = async (
     // this run knows no time of (a remote that lists none, a run resumed from
     // its journal): read when a download completed, and before an upload.
     const landedStates = new Map<string, { size: number | null; modified: string | null }>();
+    // When each upload ended. The index reads a remote date up to this moment as
+    // the stamp of our own upload, so a remote edit made later in the run stays
+    // an edit. A bulk reports its files together, so they share the end of its
+    // call. The journal keeps it for a resumed run, which sees no such upload.
+    const uploadsEnded = new Map<string, string>();
     const readLocalState = async (path: string) => {
         const props = await invoke<{ size?: number; modified: string | null } | undefined>(
             'get_file_properties',
@@ -710,6 +715,8 @@ const runSync = async (
         const landed = landedStates.get(item.relativePath);
         entry.local_size = landed?.size ?? item.size;
         entry.local_modified = landed ? landed.modified : item.mtime;
+        const ended = uploadsEnded.get(item.relativePath);
+        if (ended) entry.uploaded_at = ended;
     };
     journal.entries.forEach((entry, idx) => journalEntryMap.set(entry.relative_path, idx));
 
@@ -822,7 +829,9 @@ const runSync = async (
                 bulk = null;
             }
         }
+        const bulkEnded = new Date().toISOString();
         send.forEach((f, k) => {
+            if (action === 'upload' && results?.[k]?.status === 'completed') uploadsEnded.set(f.relativePath, bulkEnded);
             bulkPrepared.set(f.relativePath, results?.[k] ?? { status: 'not_attempted' });
         });
     };
@@ -936,8 +945,10 @@ const runSync = async (
         // status, so treating skipped like completed would drop the files
         // Resume is supposed to transfer.
         if (deps.resumeJournal && journalEntry?.status === 'completed') {
-            if (journalEntry.action === 'upload') uploaded++;
-            else if (journalEntry.action === 'download') downloaded++;
+            if (journalEntry.action === 'upload') {
+                uploaded++;
+                if (journalEntry.uploaded_at) uploadsEnded.set(item.relativePath, journalEntry.uploaded_at);
+            } else if (journalEntry.action === 'download') downloaded++;
             else deleted++;
             totalBytes += journalEntry.bytes_transferred;
             completed++;
@@ -1031,6 +1042,7 @@ const runSync = async (
             if (result.success) {
                 didTransfer = true;
                 uploaded++;
+                if (!sentByBulk) uploadsEnded.set(item.relativePath, new Date().toISOString());
                 totalBytes += item.size;
                 if (journalEntry) {
                     journalEntry.status = 'completed';
@@ -1426,6 +1438,7 @@ const runSync = async (
                         size,
                         modified,
                         is_dir: false,
+                        ...(uploadsEnded.has(f.relativePath) ? { uploaded_at: uploadsEnded.get(f.relativePath) } : {}),
                     };
                     // Upload: relativePath is the remote spelling. Download:
                     // sourcePath is. Keep-both fails the NFC test above, so

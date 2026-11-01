@@ -384,6 +384,7 @@ fn synced(index: &mut SyncIndex, remote: &MemRemote, root: &Path, key: &str, byt
             size: bytes.len() as u64,
             modified: DateTime::<Utc>::from_timestamp(SYNCED_AT, 0),
             is_dir: false,
+            uploaded_at: None,
         },
     );
     // This fixture models a real prior Cloud send, not arbitrary comparator bookkeeping.
@@ -481,6 +482,7 @@ async fn failed_watcher_mutations_retire_only_the_touched_metadata_observation()
                     size: 3,
                     modified: DateTime::<Utc>::from_timestamp(SYNCED_AT, 0),
                     is_dir: false,
+                    uploaded_at: None,
                 },
             );
             let file = FileInfo {
@@ -739,6 +741,7 @@ async fn an_edited_local_spelling_updates_the_remote_object() {
             size: 2,
             modified: chrono::DateTime::<chrono::Utc>::from_timestamp(SYNCED_AT, 0),
             is_dir: false,
+            uploaded_at: None,
         },
     );
     index
@@ -796,6 +799,7 @@ async fn a_legacy_remote_key_still_points_the_watcher_at_the_remote_object() {
             size: 2,
             modified: chrono::DateTime::<chrono::Utc>::from_timestamp(SYNCED_AT, 0),
             is_dir: false,
+            uploaded_at: None,
         },
     );
     remote.put(&format!("/remote/{remote_key}"), b"v1", SYNCED_AT);
@@ -826,6 +830,7 @@ async fn a_new_local_child_is_uploaded_under_the_remote_parent_spelling() {
             size: 0,
             modified: None,
             is_dir: true,
+            uploaded_at: None,
         },
     );
     index
@@ -879,6 +884,7 @@ async fn an_exact_parent_spelling_wins_among_tracked_twins() {
                 size: 0,
                 modified: None,
                 is_dir: true,
+                uploaded_at: None,
             },
         );
         remote.state().dirs.insert(format!("/remote/{key}"));
@@ -1186,6 +1192,7 @@ fn remember_transferred_fixture(svc: &CloudService, config: &CloudConfig, row: &
                 size: destination.size,
                 modified: destination.modified,
                 is_dir: false,
+                uploaded_at: None,
             },
         },
     );
@@ -2042,6 +2049,7 @@ fn a_path_under_a_link_is_left_alone() {
             size: 1,
             modified: DateTime::<Utc>::from_timestamp(SYNCED_AT, 0),
             is_dir: false,
+            uploaded_at: None,
         },
     );
     assert!(settled(&prep(
@@ -2146,6 +2154,7 @@ async fn a_rename_moves_the_remote_copy_instead_of_sending_it_again() {
             size: 0,
             modified: None,
             is_dir: true,
+            uploaded_at: None,
         },
     );
     std::fs::rename(
@@ -2315,6 +2324,7 @@ async fn a_refused_rename_past_the_limit_hands_over_to_a_full_scan() {
             size: 0,
             modified: None,
             is_dir: true,
+            uploaded_at: None,
         },
     );
     std::fs::rename(root.path().join("d"), root.path().join("e")).unwrap();

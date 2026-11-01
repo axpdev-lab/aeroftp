@@ -1371,7 +1371,8 @@
             "importJottaChainWarning": "A Jottacloud minden csatlakozáskor megújítja a bejelentkezését, és a(z) {names} most egyet megoszt egy másik másolattal: amelyik másolat előbb csatlakozik, kijelentkezteti a másikat (az eszközt, ahonnan a fájl származik, vagy a profilt, amelyből duplikálták). Jelentkeztesse be újra a másikat egy új Personal Login Tokennel.",
             "importOauthAppKept": "{names} a szolgáltatóhoz ezen az eszközön megadottól eltérő egyéni OAuth-alkalmazással érkezett. A tárolt alkalmazás megmaradt, ezért jelentkezzen be újra, ha ezek a profilok nem tudnak csatlakozni.",
             "importTargetChanged": "{names} nem lettek felülírva: a fájl egy másik szerverre irányítja őket, és a mentett jelszavaik és tokenjeik nem kerülhetnek oda. Importáljon a Duplikálás opcióval a fájlból származó másolat hozzáadásához, vagy előbb törölje a profilt.",
-            "importSharedSecretsFailed": "A(z) {names} importálva lett, de a fájlból egy megosztott titkot vagy munkamenetet nem sikerült tárolni. Jelentkezzen be újra ezekbe a profilokba, ha nem csatlakoznak."
+            "importSharedSecretsFailed": "A(z) {names} importálva lett, de a fájlból egy megosztott titkot vagy munkamenetet nem sikerült tárolni. Jelentkezzen be újra ezekbe a profilokba, ha nem csatlakoznak.",
+            "keystoreDatabasesFailed": "Az importálás befejeződött, de ezeket az adatbázisokat nem sikerült visszaállítani, így megtartják a korábbi tartalmukat: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4861,7 +4862,8 @@
             "relocateSuccessMove": "A(z) „{name}” áthelyezve ide: {user}",
             "relocateAlreadyPresent": "A(z) „{name}” már mentve van itt: {user}",
             "relocateError": "A kiszolgálót nem sikerült átvinni: {error}",
-            "relocateWrongPassword": "Helytelen jelszó a következőhöz: {user}."
+            "relocateWrongPassword": "Helytelen jelszó a következőhöz: {user}.",
+            "relocateSecretsNotCopied": "A(z) „{name}” megérkezett ide: {user}, de a mentett jelszava vagy tokenje nem, ezért ott újra kérni fogja őket."
         },
         "cyberTools": {
             "title": "Biztonsági eszközök",
@@ -6596,7 +6598,8 @@
             "keyslotsSetAsideRevocation": "A korábbi jelölőfájl még mindig megnyitja a széfet azzal a tényezővel, amelyet eltávolít vagy lecserél. A széf mappájában maradt minden másolat törlődik a módosítás után, és a nem törölhető másolatot hibaként jelzi a program. A tárhely kukájában vagy fájlverzióiban lévő másolatot nem éri el: kiürítésük eltávolítja ezeket a másolatokat, de nem azt, amelyet valaki más megőrzött, ezért nem fejezi be a visszavonást.",
             "keyslotsSetAsideConsent": "Megértettem: a jelölőfájl cseréje ezen a szerveren a régi átnevezéssel történő félretételével",
             "keyslotsSetAsideConsentRequired": "Ez a szerver a széf jelölőfájlját csak a régi átnevezéssel történő félretételével tudja lecserélni: a folytatáshoz erősítse meg a fenti jelölőnégyzetben.",
-            "keyslotsMarkerReplaceUnsupported": "Ez a szerver nem tudja lecserélni a széf jelölőfájlját, ezért a slotmódosításokat itt elutasítja. Nyissa meg ugyanazt a tárhelyet olyan szerveren keresztül, amely egy lépésben cserél fájlt (például SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Ez a szerver nem tudja lecserélni a széf jelölőfájlját, ezért a slotmódosításokat itt elutasítja. Nyissa meg ugyanazt a tárhelyet olyan szerveren keresztül, amely egy lépésben cserél fájlt (például SFTP).",
+            "overlayMetadataNotSaved": "Az áttelepítés sikerült, de az offline helyreállítási készlet még nincs gyorsítótárazva. A következő feloldáskor meg fog történni."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Titkosítás)",

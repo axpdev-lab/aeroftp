@@ -1028,6 +1028,8 @@ export interface SyncIndexEntry {
   size: number;
   modified: string | null;
   is_dir: boolean;
+  /** When this run uploaded the file: the remote date up to here is our stamp. */
+  uploaded_at?: string;
 }
 
 export interface SyncIndex {
@@ -1438,6 +1440,8 @@ export interface SyncJournalEntry {
   /** The local file as the sync index records it once the transfer completed (size, and the time a download left or an upload sent). A resumed run takes these for the transfers it skips. */
   local_size?: number | null;
   local_modified?: string | null;
+  /** When an upload ended, for the same reason: the index dates it with this. */
+  uploaded_at?: string | null;
 }
 
 export interface SyncJournal {
