@@ -37,7 +37,7 @@ export const DeltaEligibilityDialog: React.FC<DeltaEligibilityDialogProps> = ({
     // The latest `skipFuture` value is read through a ref so the handler
     // stays stable without re-binding the listener on every keystroke.
     const skipFutureRef = React.useRef(skipFuture);
-    skipFutureRef.current = skipFuture;
+    React.useLayoutEffect(() => { skipFutureRef.current = skipFuture; }, [skipFuture]);
     React.useEffect(() => {
         if (!isOpen) return;
         const handler = (e: KeyboardEvent) => {

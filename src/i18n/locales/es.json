@@ -1371,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud renueva su inicio de sesión en cada conexión, y {names} ahora comparte uno con otra copia: la copia que se conecta primero cierra la sesión de la otra (el dispositivo del que viene el archivo, o el perfil del que se duplicó). Vuelve a iniciar sesión en la otra con un nuevo Personal Login Token.",
             "importOauthAppKept": "{names} llegaron con una app OAuth personalizada distinta de la que este dispositivo tiene para ese proveedor. Se conservó la app almacenada, así que inicia sesión de nuevo si estos perfiles dejan de conectarse.",
             "importTargetChanged": "{names} no se sobrescribieron: el archivo los apunta a otro servidor, y sus contraseñas y tokens guardados no deben ir allí. Importa con Duplicar para añadir la copia del archivo, o elimina primero el perfil.",
-            "importSharedSecretsFailed": "Se importó {names}, pero no se pudo guardar un secreto compartido o una sesión del archivo. Vuelve a iniciar sesión en estos perfiles si no se conectan."
+            "importSharedSecretsFailed": "Se importó {names}, pero no se pudo guardar un secreto compartido o una sesión del archivo. Vuelve a iniciar sesión en estos perfiles si no se conectan.",
+            "keystoreDatabasesFailed": "La importación terminó, pero no se pudieron restaurar estas bases de datos y conservan lo que contenían: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1589,7 +1590,9 @@
             "aerocloudEnabled": "AeroCloud activado",
             "selectPairLocalFolder": "Seleccionar carpeta local para el par",
             "secondsAgo": "Hace {count}s",
-            "conflictsCount": "Conflictos por revisar: {count}"
+            "conflictsCount": "Conflictos por revisar: {count}",
+            "updateOnlyHint": "La actualización unidireccional conserva los archivos de destino más recientes. Con la copia de seguridad aditiva desactivada, solo se eliminan los archivos exclusivos del destino que no han cambiado y tienen un comprobante de transferencia de AeroCloud verificado. Los demás archivos quedan para revisarlos en AeroSync. Se ignora la política de conflictos; las fechas desconocidas quedan sin resolver.",
+            "untrackedDestinationFiles": "Se han conservado {count} archivos de destino para revisarlos: su historial de transferencias no está verificado o han cambiado desde la última transferencia de AeroCloud. Revísalos en AeroSync antes de decidir si quieres eliminarlos."
         },
         "statusBar": {
             "connected": "Conectado",
@@ -4856,7 +4859,8 @@
             "relocateSuccessMove": "«{name}» movido a {user}",
             "relocateAlreadyPresent": "«{name}» ya está guardado en {user}",
             "relocateError": "No se pudo transferir el servidor: {error}",
-            "relocateWrongPassword": "Contraseña incorrecta para {user}."
+            "relocateWrongPassword": "Contraseña incorrecta para {user}.",
+            "relocateSecretsNotCopied": "«{name}» llegó a {user}, pero su contraseña o token guardados no, así que los volverá a pedir allí."
         },
         "cyberTools": {
             "title": "Herramientas de seguridad",
@@ -6344,7 +6348,10 @@
             "progressCopy": "[copia]",
             "deleteCount": "{count} por eliminar",
             "overwriteCount": "{count} por sobrescribir",
-            "conflictCount": "Conflictos: {count}"
+            "conflictCount": "Conflictos: {count}",
+            "updateOnly": "Omitir archivos de destino más recientes (actualización unidireccional)",
+            "updateOnlyHint": "Copia los archivos de origen ausentes o modificados, conserva los archivos más recientes del destino y elimina las entradas que solo existen en el destino. Los archivos sin fechas comparables se comparan por tamaño; las diferencias de tamaño quedan pendientes de revisión.",
+            "rescanNeeded": "Ejecuta una nueva comparación con la configuración actual antes de exportar un script de actualización."
         },
         "accountLock": {
             "title": "Elige una cuenta",
@@ -6588,7 +6595,8 @@
             "keyslotsSetAsideRevocation": "El marcador anterior sigue abriendo la bóveda con el factor que está quitando o reemplazando. Cada copia que quede en la carpeta de la bóveda se elimina tras el cambio, y una copia que no se pueda eliminar se notifica como error. No se llega a una copia en la papelera o en las versiones de archivos del almacenamiento: vaciarlas elimina esas copias, pero no una que haya conservado otra persona, así que no completa la revocación.",
             "keyslotsSetAsideConsent": "Lo entiendo: reemplazar el marcador en este servidor renombrando el anterior aparte",
             "keyslotsSetAsideConsentRequired": "Este servidor solo puede reemplazar el marcador de la bóveda renombrando el anterior aparte: confírmelo en la casilla de arriba para continuar.",
-            "keyslotsMarkerReplaceUnsupported": "Este servidor no puede reemplazar el marcador de la bóveda, por lo que aquí se rechazan los cambios de ranuras. Abra el mismo almacenamiento a través de un servidor que reemplace un archivo en un solo paso (SFTP, por ejemplo)."
+            "keyslotsMarkerReplaceUnsupported": "Este servidor no puede reemplazar el marcador de la bóveda, por lo que aquí se rechazan los cambios de ranuras. Abra el mismo almacenamiento a través de un servidor que reemplace un archivo en un solo paso (SFTP, por ejemplo).",
+            "overlayMetadataNotSaved": "La migración se completó, pero el kit de recuperación sin conexión aún no está en caché. Se guardará en el próximo desbloqueo."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Cifrado)",

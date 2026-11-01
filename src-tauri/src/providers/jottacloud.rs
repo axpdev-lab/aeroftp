@@ -498,13 +498,16 @@ impl JottacloudProvider {
                     continue;
                 }
                 // MUV-4: mirror into the active user's partition (per-profile only).
-                if account != "jottacloud_refresh" {
-                    crate::user_partitions::mirror_active_credential(
+                if account != "jottacloud_refresh"
+                    && crate::user_partitions::mirror_active_credential(
                         store,
                         account,
                         "jottacloud_refresh",
                         &json,
-                    );
+                    )
+                    .is_err()
+                {
+                    ok = false;
                 }
             }
             ok
@@ -518,13 +521,19 @@ impl JottacloudProvider {
                 return;
             }
         }
-        // Try auto-init vault
+        // Try auto-init vault. Also a second attempt after a failed write: Jotta has
+        // already rotated the chain, and the old one in the vault is of no use.
         if crate::credential_store::CredentialStore::init().is_ok() {
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                let _ = write_all(&store);
-                jotta_log("Refresh token persisted to auto-initialized vault");
+                if write_all(&store) {
+                    jotta_log("Refresh token persisted to auto-initialized vault");
+                    return;
+                }
             }
         }
+        // Readers prefer the partition row: a stale one holds a rotated chain, so this
+        // must not read as a success.
+        jotta_log("Refresh token NOT fully persisted: the vault or the partition refused it");
     }
 
     /// Read one refresh chain: the active user's partition, falling back to the
@@ -2080,6 +2089,13 @@ impl StorageProvider for JottacloudProvider {
         Ok(())
     }
 
+    fn sync_namespace_identity(&self) -> Option<String> {
+        (self.connected && !self.username.trim().is_empty()).then(|| {
+            serde_json::json!([self.username, self.config.device, self.config.mountpoint])
+                .to_string()
+        })
+    }
+
     async fn server_info(&mut self) -> Result<String, ProviderError> {
         Ok(format!(
             "Jottacloud: User: {}, Device: {}, Mountpoint: {}",
@@ -3410,6 +3426,22 @@ fn refresh_or_login_token(refresh: Result<bool, ProviderError>) -> Result<bool, 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sync_namespace_identity_tracks_authenticated_account_and_discovered_mount() {
+        let mut provider = test_provider();
+        assert!(provider.sync_namespace_identity().is_none());
+        provider.connected = true;
+        let initial = provider.sync_namespace_identity().unwrap();
+        provider.config.mountpoint = "Other".into();
+        assert_ne!(provider.sync_namespace_identity().unwrap(), initial);
+        provider.config.mountpoint = "Archive".into();
+        provider.config.device = "OtherDevice".into();
+        assert_ne!(provider.sync_namespace_identity().unwrap(), initial);
+        provider.config.device = "Jotta".into();
+        provider.username = "other-user".into();
+        assert_ne!(provider.sync_namespace_identity().unwrap(), initial);
+    }
+
     #[tokio::test]
     async fn probe_contract_jotta_does_not_report_a_failed_find_as_empty() {
         let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));

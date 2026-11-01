@@ -1371,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud renova l'inici de sessió a cada connexió, i {names} ara en comparteix un amb una altra còpia: la còpia que es connecta primer tanca la sessió de l'altra (el dispositiu d'on ve el fitxer, o el perfil del qual es va duplicar). Torneu a iniciar sessió a l'altra amb un Personal Login Token nou.",
             "importOauthAppKept": "{names} han arribat amb una aplicació OAuth personalitzada diferent de la que aquest dispositiu té per a aquest proveïdor. S'ha mantingut l'aplicació emmagatzemada: torneu a iniciar la sessió si aquests perfils deixen de connectar-se.",
             "importTargetChanged": "{names} no s'han sobreescrit: el fitxer els fa apuntar a un altre servidor, i les contrasenyes i els tokens desats no hi han d'anar. Importeu amb Duplica per afegir la còpia del fitxer, o elimineu primer el perfil.",
-            "importSharedSecretsFailed": "S'ha importat {names}, però no s'ha pogut desar un secret compartit o una sessió del fitxer. Torneu a iniciar la sessió en aquests perfils si no es connecten."
+            "importSharedSecretsFailed": "S'ha importat {names}, però no s'ha pogut desar un secret compartit o una sessió del fitxer. Torneu a iniciar la sessió en aquests perfils si no es connecten.",
+            "keystoreDatabasesFailed": "La importació ha acabat, però no s'han pogut restaurar aquestes bases de dades i conserven el que contenien: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1589,7 +1590,9 @@
             "aerocloudEnabled": "AeroCloud activat",
             "selectPairLocalFolder": "Selecciona la carpeta local per a la parella",
             "secondsAgo": "fa {count}s",
-            "conflictsCount": "Conflictes per revisar: {count}"
+            "conflictsCount": "Conflictes per revisar: {count}",
+            "updateOnlyHint": "L’actualització unidireccional conserva els fitxers de destinació més nous. Amb la còpia de seguretat additiva desactivada, només se suprimeixen els fitxers exclusius de la destinació que no han canviat i tenen un comprovant de transferència d’AeroCloud verificat. Els altres fitxers queden per revisar a AeroSync. S’ignora la política de conflictes; les dates desconegudes queden sense resoldre.",
+            "untrackedDestinationFiles": "S’han conservat {count} fitxers de destinació per revisar-los: el seu historial de transferències no està verificat o han canviat després de l’última transferència d’AeroCloud. Revisa’ls a AeroSync abans de decidir si els vols suprimir."
         },
         "statusBar": {
             "connected": "Connectat",
@@ -4856,7 +4859,8 @@
             "relocateSuccessMove": "«{name}» s'ha mogut a {user}",
             "relocateAlreadyPresent": "«{name}» ja està desat a {user}",
             "relocateError": "No s'ha pogut transferir el servidor: {error}",
-            "relocateWrongPassword": "Contrasenya incorrecta per a {user}."
+            "relocateWrongPassword": "Contrasenya incorrecta per a {user}.",
+            "relocateSecretsNotCopied": "«{name}» ha arribat a {user}, però la contrasenya o el token desats no, així que els tornarà a demanar allà."
         },
         "cyberTools": {
             "title": "Eines de seguretat",
@@ -6363,7 +6367,10 @@
             "progressCopy": "[còpia]",
             "deleteCount": "{count} per eliminar",
             "overwriteCount": "{count} per sobreescriure",
-            "conflictCount": "Conflictes: {count}"
+            "conflictCount": "Conflictes: {count}",
+            "updateOnly": "Omet els fitxers de destinació més nous (actualització unidireccional)",
+            "updateOnlyHint": "Copia els fitxers d’origen que falten o han canviat, conserva els fitxers més nous de la destinació i suprimeix les entrades que només hi ha a la destinació. Els fitxers sense dates comparables es comparen per mida; les diferències de mida queden pendents de revisió.",
+            "rescanNeeded": "Executa una nova comparació amb la configuració actual abans d’exportar un script d’actualització."
         },
         "accountLock": {
             "title": "Trieu un compte",
@@ -6607,7 +6614,8 @@
             "keyslotsSetAsideRevocation": "El marcador anterior encara obre el cofre amb el factor que elimineu o substituïu. Totes les còpies que quedin a la carpeta del cofre se suprimeixen després del canvi, i una còpia que no es pugui suprimir s'informa com a error. No s'arriba a una còpia a la paperera o a les versions de fitxers de l'emmagatzematge: buidar-les elimina aquestes còpies, però no una que algú altre hagi conservat, de manera que no completa la revocació.",
             "keyslotsSetAsideConsent": "Ho entenc: substitueix el marcador en aquest servidor reanomenant l'anterior a part",
             "keyslotsSetAsideConsentRequired": "Aquest servidor només pot substituir el marcador del cofre reanomenant l'anterior a part: confirmeu-ho a la casella de dalt per continuar.",
-            "keyslotsMarkerReplaceUnsupported": "Aquest servidor no pot substituir el marcador del cofre, per això aquí es rebutgen els canvis de ranures. Obriu el mateix emmagatzematge mitjançant un servidor que substitueixi un fitxer en un sol pas (SFTP, per exemple)."
+            "keyslotsMarkerReplaceUnsupported": "Aquest servidor no pot substituir el marcador del cofre, per això aquí es rebutgen els canvis de ranures. Obriu el mateix emmagatzematge mitjançant un servidor que substitueixi un fitxer en un sol pas (SFTP, per exemple).",
+            "overlayMetadataNotSaved": "La migració s'ha completat, però el kit de recuperació fora de línia encara no s'ha desat a la memòria cau. Es farà en el pròxim desbloqueig."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Xifratge)",

@@ -1371,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud uuendab oma sisselogimist igal ühendumisel ja {names} jagab nüüd ühte teise koopiaga: koopia, mis ühendub esimesena, logib teise välja (seade, kust fail pärineb, või profiil, millest see dubleeriti). Logige teine uuesti sisse uue Personal Login Tokeniga.",
             "importOauthAppKept": "{names} tulid teistsuguse kohandatud OAuth-rakendusega kui see, mis sellel seadmel selle pakkuja jaoks on. Salvestatud rakendus jäeti alles, nii et logige uuesti sisse, kui need profiilid enam ühendust ei loo.",
             "importTargetChanged": "{names} ei kirjutatud üle: fail suunab need teisele serverile ja nende salvestatud paroole ja tokeneid ei tohi sinna saata. Importige valikuga Dubleeri, et lisada faili koopia, või kustutage esmalt profiil.",
-            "importSharedSecretsFailed": "{names} imporditi, kuid failist ei õnnestunud salvestada jagatud saladust ega seanssi. Logige nendesse profiilidesse uuesti sisse, kui need ei ühendu."
+            "importSharedSecretsFailed": "{names} imporditi, kuid failist ei õnnestunud salvestada jagatud saladust ega seanssi. Logige nendesse profiilidesse uuesti sisse, kui need ei ühendu.",
+            "keystoreDatabasesFailed": "Import lõppes, kuid neid andmebaase ei õnnestunud taastada ja need säilitavad oma senise sisu: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1589,7 +1590,9 @@
             "aerocloudEnabled": "AeroCloud lubatud",
             "selectPairLocalFolder": "Vali paari jaoks kohalik kaust",
             "secondsAgo": "{count}s tagasi",
-            "conflictsCount": "Tähelepanu vajavad konfliktid: {count}"
+            "conflictsCount": "Tähelepanu vajavad konfliktid: {count}",
+            "updateOnlyHint": "Ühesuunaline uuendamine säilitab uuemad sihtfailid. Kui lisav varundamine on välja lülitatud, kustutatakse ainult muutmata failid, mis asuvad üksnes sihtkohas ja millel on kinnitatud AeroCloudi edastuskviitung. Muud failid jäävad AeroSyncis ülevaatamiseks. Konfliktireeglit eiratakse; tundmatud kuupäevad jäävad lahendamata.",
+            "untrackedDestinationFiles": "{count} sihtfaili säilitati ülevaatamiseks: nende edastusajalugu on kinnitamata või on neid pärast viimast AeroCloudi edastust muudetud. Vaata need AeroSyncis üle, enne kui otsustad kustutamise üle."
         },
         "statusBar": {
             "connected": "Ühendatud",
@@ -4856,7 +4859,8 @@
             "relocateSuccessMove": "„{name}“ teisaldati kontole {user}",
             "relocateAlreadyPresent": "„{name}“ on juba salvestatud kontole {user}",
             "relocateError": "Serverit ei õnnestunud üle kanda: {error}",
-            "relocateWrongPassword": "Vale parool kontole {user}."
+            "relocateWrongPassword": "Vale parool kontole {user}.",
+            "relocateSecretsNotCopied": "„{name}“ jõudis kontole {user}, aga salvestatud parool või token mitte, seega küsib see neid seal uuesti."
         },
         "cyberTools": {
             "title": "Turvalisuse tööriistad",
@@ -6344,7 +6348,10 @@
             "progressCopy": "[koopia]",
             "deleteCount": "{count} kustutamiseks",
             "overwriteCount": "{count} ülekirjutamiseks",
-            "conflictCount": "Konfliktid: {count}"
+            "conflictCount": "Konfliktid: {count}",
+            "updateOnly": "Jäta uuemad sihtfailid vahele (ühesuunaline uuendamine)",
+            "updateOnlyHint": "Kopeerib puuduvad või muudetud lähtefailid, säilitab sihtkoha uuemad failid ja kustutab ainult sihtkohas olevad kirjed. Faile, millel puuduvad võrreldavad kuupäevad, võrreldakse suuruse järgi; suuruse erinevused jäetakse läbivaatamiseks.",
+            "rescanNeeded": "Enne uuendamisskripti eksportimist käivita uus võrdlus praeguste sätetega."
         },
         "accountLock": {
             "title": "Vali konto",
@@ -6588,7 +6595,8 @@
             "keyslotsSetAsideRevocation": "Eelmine marker avab hoidla endiselt teguriga, mille eemaldate või asendate. Iga hoidla kausta jäänud koopia kustutatakse pärast muudatust ja koopia, mida ei saa kustutada, esitatakse veana. Salvestusruumi prügikasti või failiversioonide koopiani ei jõuta: nende tühjendamine eemaldab need koopiad, kuid mitte koopiat, mille keegi teine on alles hoidnud, seega ei vii see tühistamist lõpule.",
             "keyslotsSetAsideConsent": "Saan aru: asenda marker sellel serveril, nimetades vana kõrvale ümber",
             "keyslotsSetAsideConsentRequired": "See server saab hoidla markeri asendada ainult vana kõrvale ümber nimetades: jätkamiseks kinnitage see ülalolevas ruudus.",
-            "keyslotsMarkerReplaceUnsupported": "See server ei saa hoidla markerit asendada, seega lükatakse pesamuudatused siin tagasi. Avage sama salvestusruum serveri kaudu, mis asendab faili ühe sammuga (näiteks SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "See server ei saa hoidla markerit asendada, seega lükatakse pesamuudatused siin tagasi. Avage sama salvestusruum serveri kaudu, mis asendab faili ühe sammuga (näiteks SFTP).",
+            "overlayMetadataNotSaved": "Migreerimine õnnestus, kuid võrguühenduseta taastekomplekt pole veel vahemällu salvestatud. See tehakse järgmisel avamisel."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Krüptimine)",

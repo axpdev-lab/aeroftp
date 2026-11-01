@@ -4434,6 +4434,8 @@ const App: React.FC = () => {
                     );
                     return;
                   }
+                  // The account this migration runs under: a switch during it must not put the metadata elsewhere.
+                  const accountRead = await readSavedServerProfilesForWrite().catch(() => null);
                   const result = await invoke<{
                     changed: boolean;
                     legacyDeleted: boolean;
@@ -4458,19 +4460,16 @@ const App: React.FC = () => {
                         let saltB64 = '';
                         const saltLine = configJson.split('\n').find((l) => l.startsWith('salt\t'));
                         if (saltLine) saltB64 = saltLine.split('\t')[1]?.trim() || '';
-                        await invoke('store_credential', {
-                          account: `aerocrypt_overlay_config_${profileId}`,
-                          password: configJson,
-                        });
-                        if (saltB64) {
-                          await invoke('store_credential', {
-                            account: `aerocrypt_overlay_salt_${profileId}`,
-                            password: saltB64,
-                          });
+                        // A failed read gives no account to bind this to, so it is not saved here.
+                        if (accountRead) {
+                          await invoke('store_overlay_metadata', { profileId, configJson, salt: saltB64 || null, expectedUserId: accountRead.userId ?? null });
+                        } else {
+                          notify.warning(t('aerocryptNative.legacyMarkerConnectBanner'), t('aerocryptNative.overlayMetadataNotSaved'));
                         }
                       }
-                    } catch {
-                      /* kit warms on next connect */
+                    } catch (err) {
+                      // The remote marker did migrate: this only leaves the recovery kit behind.
+                      notify.warning(t('toast.saveFailed'), String(err));
                     }
                     humanLog.updateEntry(logId, {
                       status: 'success',
@@ -5695,18 +5694,6 @@ const App: React.FC = () => {
     void loadLocalFiles2(seedPath);
   }, [showDualLocalPanel, currentLocalPath2, currentLocalPath, defaultLocalPath, loadLocalFiles2]);
 
-  // Panel 2 keeps its listing while it is hidden (a server connected with the
-  // remote panel shown, or dual mode off), and what was written to its folder
-  // meanwhile did not reach it: a download or a sync reloads panel 1 only.
-  // Reload it when it comes back.
-  const localPanel2Visible = (!isConnected || !showRemotePanel) && showDualLocalPanel;
-  const localPanel2WasVisible = useRef(localPanel2Visible);
-  useEffect(() => {
-    const cameBack = localPanel2Visible && !localPanel2WasVisible.current;
-    localPanel2WasVisible.current = localPanel2Visible;
-    if (cameBack && currentLocalPath2) void loadLocalFiles2(currentLocalPath2);
-  }, [localPanel2Visible, currentLocalPath2, loadLocalFiles2]);
-
   useEffect(() => {
     if (!showDualLocalPanel || !currentLocalPath2 || localTabs2.length > 0) return;
     const id = `tab2-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -5724,27 +5711,78 @@ const App: React.FC = () => {
     ));
   }, [showDualLocalPanel, activeLocalTabId2, currentLocalPath2, setLocalTabs2]);
 
-  // AeroFile auto-refresh: watch the active local directory and reload its
-  // listing when something changes underneath. Removes the need to hit Refresh
-  // after creating/renaming/deleting files outside AeroFTP (wishlist #133).
+  // AeroFile auto-refresh: watch the folder each local panel shows and reload
+  // its listing when something changes underneath. Removes the need to hit
+  // Refresh after creating/renaming/deleting files outside AeroFTP (wishlist
+  // #133). A flattened search lists the folders below panel 1's as well: each
+  // is watched too, and a change in one reloads the listing, which rescans.
+  const localWatchDirs = useMemo(() => JSON.stringify(
+    flattenSearchParse.active && localFlattenedFiles
+      ? localFlattenedFiles.filter(f => f.is_dir).map(f => f.path)
+      : [],
+  ), [flattenSearchParse.active, localFlattenedFiles]);
+  // A panel's requests reach the backend in the order they were sent, each
+  // once the one before resolved: the commands run concurrently, and a stop
+  // that ran after the watch sent next would end it. A watch resolves once it
+  // is the panel's latest request, before its folder is stat'ed, so a hung
+  // mount holds nothing back.
+  const localWatchQueue = useRef<Record<'local' | 'local2', Promise<void>>>({ local: Promise.resolve(), local2: Promise.resolve() });
+  const requestLocalWatch = useCallback((panel: 'local' | 'local2', watch: { path: string; dirs?: string[] } | null) => {
+    const queue = localWatchQueue.current;
+    queue[panel] = queue[panel]
+      .then(() => watch ? invoke('local_panel_watch', { ...watch, panel }) : invoke('local_panel_watch_stop', { panel }))
+      .then(() => undefined, () => { /* best-effort: the panel still has Refresh */ });
+  }, []);
+  // Panel 1 keeps its watch behind the connection screen: the screen clears
+  // its selection when it opens, and not every way back lists its folder
+  // again (the command palette's does not).
   useEffect(() => {
     if (!currentLocalPath) return;
-    void invoke('local_panel_watch', { path: currentLocalPath }).catch(() => { /* dir gone or not yet ready */ });
-  }, [currentLocalPath]);
+    const dirs = JSON.parse(localWatchDirs) as string[];
+    requestLocalWatch('local', { path: currentLocalPath, dirs });
+  }, [currentLocalPath, localWatchDirs, requestLocalWatch]);
+
+  // Panel 2 while it is on screen. Hidden (a server connected with the remote
+  // panel shown, the connection screen, dual mode off), it keeps its listing
+  // and nothing watches its folder: it reloads when it comes back.
+  const localPanel2Visible = !showConnectionScreen && (!isConnected || !showRemotePanel) && showDualLocalPanel;
+  const localPanel2WasVisible = useRef(localPanel2Visible);
+  useEffect(() => {
+    const cameBack = localPanel2Visible && !localPanel2WasVisible.current;
+    localPanel2WasVisible.current = localPanel2Visible;
+    if (cameBack && currentLocalPath2) void loadLocalFiles2(currentLocalPath2);
+  }, [localPanel2Visible, currentLocalPath2, loadLocalFiles2]);
+  useEffect(() => {
+    requestLocalWatch('local2', localPanel2Visible && currentLocalPath2 ? { path: currentLocalPath2 } : null);
+  }, [localPanel2Visible, currentLocalPath2, requestLocalWatch]);
+
+  const currentLocalPath2Ref = useRef(currentLocalPath2);
+  useEffect(() => { currentLocalPath2Ref.current = currentLocalPath2; }, [currentLocalPath2]);
+  // The loaders follow `notify`, which App builds again on every render: a
+  // listener that depended on them subscribed again each time, its cleanup
+  // stopped the watch, and a reload waiting to run went with it. The
+  // listener subscribes once and reads them here.
+  const localLoadersRef = useRef({ local: loadLocalFiles, local2: loadLocalFiles2 });
+  useLayoutEffect(() => { localLoadersRef.current = { local: loadLocalFiles, local2: loadLocalFiles2 }; });
 
   useEffect(() => {
-    let pending: number | null = null;
+    const pending: Record<'local' | 'local2', number | null> = { local: null, local2: null };
     let unlistenFn: (() => void) | null = null;
     let cancelled = false;
     (async () => {
       try {
-        const fn = await listen<{ path: string }>('local-fs-changed', (event) => {
-          const expected = currentLocalPathRef.current;
+        const fn = await listen<{ panel?: 'local' | 'local2'; path: string }>('local-fs-changed', (event) => {
+          const panel = event.payload.panel === 'local2' ? 'local2' : 'local';
+          const pathRef = panel === 'local2' ? currentLocalPath2Ref : currentLocalPathRef;
+          const expected = pathRef.current;
           if (!expected || event.payload.path !== expected) return;
-          if (pending !== null) window.clearTimeout(pending);
-          pending = window.setTimeout(() => {
-            pending = null;
-            loadLocalFiles(currentLocalPathRef.current).catch(() => { /* swallowed by loader */ });
+          const waiting = pending[panel];
+          if (waiting !== null) window.clearTimeout(waiting);
+          pending[panel] = window.setTimeout(() => {
+            pending[panel] = null;
+            // The panel moved on meanwhile, and its new folder was just listed.
+            if (pathRef.current !== expected) return;
+            localLoadersRef.current[panel](expected).catch(() => { /* swallowed by loader */ });
           }, 350);
         });
         if (cancelled) fn();
@@ -5753,11 +5791,10 @@ const App: React.FC = () => {
     })();
     return () => {
       cancelled = true;
-      if (pending !== null) window.clearTimeout(pending);
+      for (const waiting of Object.values(pending)) if (waiting !== null) window.clearTimeout(waiting);
       if (unlistenFn) unlistenFn();
-      void invoke('local_panel_watch_stop').catch(() => { /* ignore */ });
     };
-  }, [loadLocalFiles]);
+  }, []);
 
   // Ehud #2: OS file/folder drag&drop from the system File Explorer onto the
   // AeroFile local panel imports the dropped items into the current local
@@ -11680,7 +11717,7 @@ const App: React.FC = () => {
               progressId: scanProgressId,
             });
             // Both sides are local: local_info = left, remote_info = right.
-            resolved = adaptFileComparisons(report.differences, true, report.summary);
+            resolved = adaptFileComparisons(report.differences, true, report.summary, report.modify_window);
           } catch (err) {
             // Stopped from the dialog, which already shows it as stopped.
             if (isCompareCancelled(err)) return;
@@ -11802,7 +11839,7 @@ const App: React.FC = () => {
             isProviderConn ? 'provider_compare_directories' : 'compare_directories',
             compareArgs,
           );
-          resolved = adaptFileComparisons(report.differences, leftLocal, report.summary);
+          resolved = adaptFileComparisons(report.differences, leftLocal, report.summary, report.modify_window);
         } catch (err) {
           // Stopped from the dialog, which already shows it as stopped.
           if (isCompareCancelled(err)) return;
@@ -15502,6 +15539,7 @@ const App: React.FC = () => {
             userPartitionsRekeyed?: number;
             userPartitionsUnreadable?: number;
             userPartitionsBackupPath?: string;
+            sqliteDbsFailed?: string[];
           }>('import_keystore', {
             password,
             filePath,
@@ -15535,7 +15573,8 @@ const App: React.FC = () => {
             !!result.requiresRestart ||
             (result.userPartitionsUnreadable ?? 0) > 0 ||
             (result.userPartitionsRekeyed ?? 0) > 0 ||
-            !!result.userPartitionsBackupPath;
+            !!result.userPartitionsBackupPath ||
+            !!result.sqliteDbsFailed?.length;
           if (needsModal) {
             setKeystoreImportResult({
               imported: result.imported,
@@ -15544,6 +15583,7 @@ const App: React.FC = () => {
               userPartitionsRekeyed: result.userPartitionsRekeyed,
               userPartitionsUnreadable: result.userPartitionsUnreadable,
               userPartitionsBackupPath: result.userPartitionsBackupPath,
+              sqliteDbsFailed: result.sqliteDbsFailed,
             });
           } else {
             notify.success(

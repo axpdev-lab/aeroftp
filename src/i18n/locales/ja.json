@@ -1371,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud は接続のたびにサインインを更新します。{names} は現在、別のコピーとサインインを共有しており、先に接続したコピーがもう一方をサインアウトさせます (ファイルの元のデバイス、または複製元のプロファイル)。もう一方は新しい Personal Login Token で再度サインインしてください。",
             "importOauthAppKept": "{names} は、このデバイスにあるそのプロバイダー用のものとは異なるカスタム OAuth アプリと共にインポートされました。保存済みのアプリは維持されたため、これらのプロファイルが接続できなくなった場合は再度サインインしてください。",
             "importTargetChanged": "{names} は上書きされませんでした。ファイルがこれらを別のサーバーに向けており、保存されているパスワードとトークンをそこへ送ってはならないためです。ファイルのコピーを追加するには「複製」でインポートするか、先にプロファイルを削除してください。",
-            "importSharedSecretsFailed": "{names} をインポートしましたが、ファイル内の共有シークレットまたはセッションを保存できませんでした。接続できない場合は、これらのプロファイルに再度サインインしてください。"
+            "importSharedSecretsFailed": "{names} をインポートしましたが、ファイル内の共有シークレットまたはセッションを保存できませんでした。接続できない場合は、これらのプロファイルに再度サインインしてください。",
+            "keystoreDatabasesFailed": "インポートは完了しましたが、次のデータベースは復元できず、元の内容のままです: {names}。"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1589,7 +1590,9 @@
             "aerocloudEnabled": "AeroCloud 有効",
             "selectPairLocalFolder": "ペアのローカルフォルダーを選択",
             "secondsAgo": "{count}秒前",
-            "conflictsCount": "{count} 件の競合に対応が必要"
+            "conflictsCount": "{count} 件の競合に対応が必要",
+            "updateOnlyHint": "一方向更新ではコピー先の新しいファイルを保持します。追加バックアップがオフの場合、コピー先にのみ存在し、変更されておらず、検証済みのAeroCloud転送証明があるファイルだけを削除します。その他のファイルはAeroSyncで確認できるよう保持します。競合ポリシーは無視され、日時が不明な場合は未解決のままになります。",
+            "untrackedDestinationFiles": "コピー先の{count}個のファイルを確認用に保持しました。転送履歴が未確認か、最後のAeroCloud転送後に変更されています。削除を決める前に、AeroSyncで確認してください。"
         },
         "statusBar": {
             "connected": "接続済み",
@@ -4820,7 +4823,8 @@
             "relocateSuccessMove": "「{name}」を {user} に移動しました",
             "relocateAlreadyPresent": "「{name}」はすでに {user} に保存されています",
             "relocateError": "サーバーを転送できませんでした: {error}",
-            "relocateWrongPassword": "{user} のパスワードが違います。"
+            "relocateWrongPassword": "{user} のパスワードが違います。",
+            "relocateSecretsNotCopied": "「{name}」は {user} に反映されましたが、保存済みのパスワードまたはトークンは引き継がれなかったため、そちらで再度入力を求められます。"
         },
         "cyberTools": {
             "title": "セキュリティツール",
@@ -6344,7 +6348,10 @@
             "progressCopy": "[コピー]",
             "deleteCount": "{count} 件を削除予定",
             "overwriteCount": "{count} 件を上書き予定",
-            "conflictCount": "{count} 件の競合"
+            "conflictCount": "{count} 件の競合",
+            "updateOnly": "コピー先の新しいファイルをスキップ（一方向更新）",
+            "updateOnlyHint": "不足しているまたは変更されたソースファイルをコピーし、宛先のより新しいファイルを保持して、宛先にのみ存在するエントリを削除します。日付を比較できないファイルはサイズで比較し、サイズの差異はレビュー用に残します。",
+            "rescanNeeded": "更新スクリプトをエクスポートする前に、現在の設定で新しい比較を実行してください。"
         },
         "accountLock": {
             "title": "アカウントを選択",
@@ -6588,7 +6595,8 @@
             "keyslotsSetAsideRevocation": "以前のマーカーは、削除または置き換える要素でも引き続きボールトを開けます。ボールトのフォルダーに残っているコピーはすべて変更後に削除され、削除できないコピーはエラーとして報告されます。ストレージのゴミ箱やファイルのバージョンにあるコピーには手が届きません。それらを空にすると、そのコピーは削除されますが、他の人が保管しているコピーは削除されないため、失効は完了しません。",
             "keyslotsSetAsideConsent": "理解しました。このサーバーでは、古いマーカーを退避(別名に変更)してマーカーを置き換えます",
             "keyslotsSetAsideConsentRequired": "このサーバーは、古いマーカーを退避する方法でのみボールトのマーカーを置き換えられます。続行するには、上のボックスで確認してください。",
-            "keyslotsMarkerReplaceUnsupported": "このサーバーはボールトのマーカーを置き換えられないため、ここではスロットの変更は拒否されます。ファイルを1ステップで置き換えられるサーバー(たとえば SFTP)経由で同じストレージを開いてください。"
+            "keyslotsMarkerReplaceUnsupported": "このサーバーはボールトのマーカーを置き換えられないため、ここではスロットの変更は拒否されます。ファイルを1ステップで置き換えられるサーバー(たとえば SFTP)経由で同じストレージを開いてください。",
+            "overlayMetadataNotSaved": "移行は成功しましたが、オフライン用のリカバリキットはまだキャッシュされていません。次回のロック解除時にキャッシュされます。"
         },
         "aerocryptProfile": {
             "enable": "Crypt (暗号化)",

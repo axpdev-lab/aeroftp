@@ -78,6 +78,49 @@ const mirrorUpload: CliCommandInput = {
 };
 
 describe('aeroftp-cli sync line for the Plan tab', () => {
+    it('does not offer a command that could overwrite a pair left open by a size-only compare', () => {
+        expect(buildCliSyncCommand({ ...mirrorUpload, updateOnly: true, timestampsComparable: false }))
+            .toEqual({ kind: 'none', reason: 'overwrites-newer' });
+    });
+    it('omits the modify window when timestamps are not comparable', () => {
+        const built = buildCliSyncCommand({ ...mirrorUpload, modifyWindowMs: 0, timestampsComparable: false });
+        expect(built.kind).toBe('command');
+        if (built.kind !== 'command') return;
+        expect(built.argv).not.toContain('--modify-window');
+    });
+    it('keeps an explicit zero modify window when timestamps are comparable', () => {
+        const built = buildCliSyncCommand({ ...mirrorUpload, modifyWindowMs: 0, timestampsComparable: true });
+        expect(built.kind).toBe('command');
+        if (built.kind !== 'command') return;
+        expect(built.argv.slice(built.argv.indexOf('--modify-window'), built.argv.indexOf('--modify-window') + 2))
+            .toEqual(['--modify-window', '0']);
+    });
+    it('refuses Update when either timestamp safety input is missing', () => {
+        const update = { ...mirrorUpload, updateOnly: true };
+        expect(buildCliSyncCommand({ ...update, updateTimestampPrecisionSafe: true }))
+            .toEqual({ kind: 'none', reason: 'overwrites-newer' });
+        expect(buildCliSyncCommand({ ...update, timestampsComparable: true }))
+            .toEqual({ kind: 'none', reason: 'overwrites-newer' });
+    });
+    it('offers Mirror Update with deletes and the compare time window in both directions', () => {
+        for (const direction of ['left-to-right', 'right-to-left'] as const) {
+            const built = buildCliSyncCommand({
+                ...mirrorUpload,
+                direction,
+                updateOnly: true,
+                modifyWindowMs: 2000,
+                timestampsComparable: true,
+                updateTimestampPrecisionSafe: true,
+            });
+            expect(built.kind).toBe('command');
+            if (built.kind !== 'command') return;
+            expect(built.argv).toContain('--delete');
+            expect(built.argv).toContain('--update');
+            expect(built.argv.slice(built.argv.indexOf('--modify-window'), built.argv.indexOf('--modify-window') + 2))
+                .toEqual(['--modify-window', '2']);
+            expect(built.argv[built.argv.indexOf('--direction') + 1]).toBe(direction === 'left-to-right' ? 'upload' : 'download');
+        }
+    });
     it('reads a non-empty fixture shared with the Rust clap test', () => {
         expect(cases.length).toBeGreaterThanOrEqual(2);
     });

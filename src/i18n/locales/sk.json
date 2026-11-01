@@ -1371,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud obnovuje prihlásenie pri každom pripojení a {names} teraz zdieľa jedno s inou kópiou: kópia, ktorá sa pripojí prvá, odhlási druhú (zariadenie, z ktorého súbor pochádza, alebo profil, z ktorého bola duplikovaná). Druhú prihláste znova pomocou nového Personal Login Token.",
             "importOauthAppKept": "{names} prišli s inou vlastnou aplikáciou OAuth, než akú má toto zariadenie pre daného poskytovateľa. Uložená aplikácia sa zachovala, takže sa prihláste znova, ak sa tieto profily prestanú pripájať.",
             "importTargetChanged": "{names} neboli prepísané: súbor ich smeruje na iný server a ich uložené heslá a tokeny tam nesmú ísť. Importujte s možnosťou Duplikovať, aby ste pridali kópiu zo súboru, alebo najprv odstráňte profil.",
-            "importSharedSecretsFailed": "{names} boli importované, ale zdieľané tajomstvo alebo reláciu zo súboru sa nepodarilo uložiť. Ak sa tieto profily nepripoja, prihláste sa do nich znova."
+            "importSharedSecretsFailed": "{names} boli importované, ale zdieľané tajomstvo alebo reláciu zo súboru sa nepodarilo uložiť. Ak sa tieto profily nepripoja, prihláste sa do nich znova.",
+            "keystoreDatabasesFailed": "Import sa skončil, ale tieto databázy sa nepodarilo obnoviť a ponechávajú si pôvodný obsah: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1589,7 +1590,9 @@
             "aerocloudEnabled": "AeroCloud povolené",
             "selectPairLocalFolder": "Vyberte miestny priečinok pre pár",
             "secondsAgo": "pred {count}s",
-            "conflictsCount": "Konflikty vyžadujúce pozornosť: {count}"
+            "conflictsCount": "Konflikty vyžadujúce pozornosť: {count}",
+            "updateOnlyHint": "Jednosmerná aktualizácia zachováva novšie cieľové súbory. Keď je prídavné zálohovanie vypnuté, odstránia sa iba nezmenené súbory, ktoré existujú výlučne v cieli a majú overený doklad o prenose cez AeroCloud. Ostatné súbory zostávajú na kontrolu v AeroSync. Zásady konfliktov sa ignorujú; neznáme dátumy zostávajú nevyriešené.",
+            "untrackedDestinationFiles": "{count} cieľových súborov bolo zachovaných na kontrolu: ich história prenosov nie je overená alebo sa zmenili od posledného prenosu cez AeroCloud. Pred rozhodnutím o odstránení ich skontrolujte v AeroSync."
         },
         "statusBar": {
             "connected": "Pripojený",
@@ -4856,7 +4859,8 @@
             "relocateSuccessMove": "„{name}“ presunuté do {user}",
             "relocateAlreadyPresent": "„{name}“ je už uložené v {user}",
             "relocateError": "Server sa nepodarilo preniesť: {error}",
-            "relocateWrongPassword": "Nesprávne heslo pre {user}."
+            "relocateWrongPassword": "Nesprávne heslo pre {user}.",
+            "relocateSecretsNotCopied": "„{name}“ sa dostalo do {user}, ale uložené heslo alebo token nie, preto si ich tam vypýta znova."
         },
         "cyberTools": {
             "title": "Bezpečnostné nástroje",
@@ -6344,7 +6348,10 @@
             "progressCopy": "[kópia]",
             "deleteCount": "Na odstránenie: {count}",
             "overwriteCount": "Na prepísanie: {count}",
-            "conflictCount": "Konflikty: {count}"
+            "conflictCount": "Konflikty: {count}",
+            "updateOnly": "Preskočiť novšie cieľové súbory (jednosmerná aktualizácia)",
+            "updateOnlyHint": "Skopíruje chýbajúce alebo zmenené zdrojové súbory, zachová novšie súbory v cieli a odstráni položky, ktoré sú iba v cieli. Súbory bez porovnateľných dátumov sa porovnajú podľa veľkosti; rozdiely vo veľkosti zostanú na posúdenie.",
+            "rescanNeeded": "Pred exportom aktualizačného skriptu spustite nové porovnanie s aktuálnymi nastaveniami."
         },
         "accountLock": {
             "title": "Vyberte účet",
@@ -6588,7 +6595,8 @@
             "keyslotsSetAsideRevocation": "Predchádzajúca značka stále otvára trezor faktorom, ktorý odstraňujete alebo nahrádzate. Každá kópia ponechaná v priečinku trezora sa po zmene odstráni a kópia, ktorú nemožno odstrániť, sa nahlási ako chyba. Kópia v koši úložiska alebo vo verziách súborov sa nezasiahne: ich vyprázdnenie odstráni tieto kópie, ale nie kópiu, ktorú si ponechal niekto iný, takže odvolanie nedokončí.",
             "keyslotsSetAsideConsent": "Rozumiem: nahradiť značku na tomto serveri premenovaním starej nabok",
             "keyslotsSetAsideConsentRequired": "Tento server môže nahradiť značku trezora iba premenovaním starej nabok: na pokračovanie to potvrďte v poli vyššie.",
-            "keyslotsMarkerReplaceUnsupported": "Tento server nemôže nahradiť značku trezora, preto sa zmeny slotov tu odmietajú. Otvorte rovnaké úložisko cez server, ktorý nahrádza súbor jedným krokom (napríklad SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Tento server nemôže nahradiť značku trezora, preto sa zmeny slotov tu odmietajú. Otvorte rovnaké úložisko cez server, ktorý nahrádza súbor jedným krokom (napríklad SFTP).",
+            "overlayMetadataNotSaved": "Migrácia prebehla úspešne, ale súprava na obnovenie offline ešte nie je uložená vo vyrovnávacej pamäti. Stane sa tak pri ďalšom odomknutí."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifrovanie)",

@@ -16,6 +16,7 @@ export interface KeystoreImportOutcome {
     /** The backup's account partition was left out: unreadable here (review of #980). */
     profilePartitionSkipped?: boolean;
     profileDecisionsError?: string;
+    sqliteDbsFailed?: string[];
 }
 
 /** What the caller knows about the import that the result does not carry. */
@@ -77,6 +78,9 @@ export function keystoreImportSummary(
         const key = context.reviewed ? 'settings.keystoreDecisionsFailed' : 'settings.keystoreListMergeFailed';
         extraNotes.push(t(key, { error: asSentence(result.profileDecisionsError) }));
     }
+    if (result.sqliteDbsFailed?.length) {
+        extraNotes.push(t('settings.keystoreDatabasesFailed', { names: result.sqliteDbsFailed.join(', ') }));
+    }
     if (preferencesError) {
         extraNotes.push(t('settings.keystorePreferencesFailed', { error: asSentence(preferencesError) }));
     }
@@ -87,6 +91,7 @@ export function keystoreImportSummary(
         || !!result.profilePartitionSkipped
         || !!result.requiresRestart
         || !!result.profileDecisionsError
+        || !!result.sqliteDbsFailed?.length
         || !!preferencesError;
     return {
         type: hadWarning ? 'info' : 'success',

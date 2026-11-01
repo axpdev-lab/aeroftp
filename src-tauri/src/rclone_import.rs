@@ -1932,22 +1932,29 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
                 // rclone stores in plain in the remote section, so a fresh
                 // device can refresh the imported token (rclone refreshes an
                 // AeroFTP-minted token only with the same OAuth app).
+                // An app with no token yet still belongs to the vault: a later sign-in
+                // on this device needs it.
+                let pick = |k: &str| {
+                    remote
+                        .get(k)
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string)
+                };
+                let (oauth_client_id, oauth_client_secret) = if mapped.oauth_token.is_some()
+                    || crate::bridge_commands::rclone_oauth_client_cred_key(&mapped.protocol)
+                        .is_some()
+                {
+                    (pick("client_id"), pick("client_secret"))
+                } else {
+                    (None, None)
+                };
                 if mapped.oauth_token.is_some()
                     || mapped.jotta_refresh.is_some()
                     || mapped.proton_session.is_some()
+                    || oauth_client_id.is_some()
+                    || oauth_client_secret.is_some()
                 {
-                    let (oauth_client_id, oauth_client_secret) = if mapped.oauth_token.is_some() {
-                        let pick = |k: &str| {
-                            remote
-                                .get(k)
-                                .map(|s| s.trim())
-                                .filter(|s| !s.is_empty())
-                                .map(str::to_string)
-                        };
-                        (pick("client_id"), pick("client_secret"))
-                    } else {
-                        (None, None)
-                    };
                     provider_secrets.insert(
                         id.clone(),
                         crate::profile_export::ProviderSecrets {
@@ -3629,6 +3636,32 @@ pub fn export_rclone(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An app with no token yet is still kept: a later sign-in on this device needs it.
+    #[test]
+    fn an_oauth_remote_without_a_token_keeps_its_app() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        std::fs::write(
+            &path,
+            "[app-only]\ntype = drive\nclient_id = my-app\nclient_secret = my-secret\n\n\
+             [plain]\ntype = sftp\nhost = h.example.invalid\nuser = u\nclient_id = not-oauth\n",
+        )
+        .unwrap();
+        let result = import_rclone(&path).unwrap();
+        let id = result_app(&result, "app-only");
+        let secrets = result.provider_secrets.get(&id).expect("the app");
+        assert_eq!(secrets.oauth_client_id.as_deref(), Some("my-app"));
+        assert_eq!(secrets.oauth_client_secret.as_deref(), Some("my-secret"));
+        assert!(secrets.oauth.is_none());
+        let plain = result_app(&result, "plain");
+        assert!(!result.provider_secrets.contains_key(&plain));
+    }
+
+    fn result_app(result: &RcloneImportResult, name: &str) -> String {
+        let server = result.servers.iter().find(|s| s.name == name).expect(name);
+        server.id.clone()
+    }
 
     #[test]
     fn swift_import_keeps_the_auth_url_consumed_by_the_provider() {

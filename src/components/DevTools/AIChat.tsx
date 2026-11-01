@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react';
 import { Send, Bot, Sparkles, Mic, MicOff, ChevronDown, Trash2, MessageSquare, ImageIcon, X, ShieldAlert, AlertTriangle, FolderOpen, FileCode, Search, Archive, Terminal, Shield, RefreshCw, Brain, Eye, Key, Settings, Upload, Download, Square } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { createTauriListener, useTauriListener } from '../../hooks/useTauriListener';
@@ -990,7 +990,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
     const toolRegistry = useMemo(() => buildToolRegistry(pluginManifests, macros, mcpServers), [pluginManifests, macros, mcpServers]);
     const toolRegistryRef = useRef(toolRegistry);
-    toolRegistryRef.current = toolRegistry;
+    useLayoutEffect(() => { toolRegistryRef.current = toolRegistry; }, [toolRegistry]);
     const allTools = toolRegistry.map(entry => entry.tool);
 
     const isLoadedTool = (name: string) => toolExposureRef.current?.permits(activeTurnRef.current, name, toolRegistryRef.current) === true;
@@ -2046,7 +2046,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     // comparator deliberately ignores callback identity, so these read the latest
     // hook closures via a ref to stay current without changing identity.
     const rowHandlersRef = useRef({ forkConversation, executeTransferPlan });
-    rowHandlersRef.current = { forkConversation, executeTransferPlan };
+    useLayoutEffect(() => { rowHandlersRef.current = { forkConversation, executeTransferPlan }; }, [forkConversation, executeTransferPlan]);
     const handleToggleExpand = useCallback((id: string, expand: boolean) => {
         setExpandedMessages(prev => {
             const s = new Set(prev);

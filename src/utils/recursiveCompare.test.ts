@@ -3,6 +3,9 @@
 
 import { describe, expect, it } from 'vitest';
 import { adaptFileComparisons } from './recursiveCompare';
+import { derivePresetPlan } from './syncPresets';
+import { compareEntries } from './compareEndpoints';
+import { buildCliSyncCommand, cliPreservesUpdateDestinations, type CliCommandInput } from './aeroSyncCliCommand';
 import type { CompareSummary, FileComparison, FileInfo, SyncStatus } from '../types';
 
 const info = (over: Partial<FileInfo> = {}): FileInfo => ({
@@ -266,4 +269,55 @@ describe('adaptFileComparisons: backend summary', () => {
         expect(result.totals.count).toBe(3);
         expect(result.stats.same.count).toBe(3);
     });
+});
+
+
+describe('recursive effective modify window flows into Update plan and CLI', () => {
+    const input:CliCommandInput={pairKind:'local-remote',preset:'mirror',direction:'left-to-right',
+        updateOnly:true,profileName:'saved',localPath:'/local',remotePath:'/remote',excludes:[],
+        canary:false,transferBudgetBytes:0,errorCorrectionPct:null,versionedBackup:false,shell:'posix'};
+    const rows=[fc('file','size_mismatch',{local_info:info({size:3,modified:new Date(100000).toISOString()}),
+        remote_info:info({size:7,modified:new Date(160001).toISOString()})})];
+    it.each([undefined,null,{kind:'size_only',reason:'ftp_list_dates'}, {kind:'seconds',secs:NaN} ] as const)
+        ('fails closed for unavailable or size-only timing: %j',window=>{
+            const result=adaptFileComparisons(rows,true,undefined,window);
+            expect(result.appliedOptions.policy).toBe('size-only');
+            const plan=derivePresetPlan(result,{preset:'mirror',direction:'left-to-right',updateOnly:true});
+            expect(plan.bucketPlans.flatMap(bucket=>bucket.entryActions)).toEqual(['conflict-skip']);
+            expect(buildCliSyncCommand({...input,timestampsComparable:result.appliedOptions.policy!=='size-only',
+                modifyWindowMs:result.appliedOptions.mtimeToleranceMs})).toEqual({kind:'none',reason:'overwrites-newer'});
+        });
+    it('uses an effective 60-second provider window through the planner and CLI',()=>{
+        const result=adaptFileComparisons(rows,true,undefined,{kind:'seconds',secs:60});
+        expect(result.appliedOptions.mtimeToleranceMs).toBe(60000);
+        expect(derivePresetPlan(result,{preset:'mirror',direction:'left-to-right',updateOnly:true})
+            .bucketPlans.flatMap(bucket=>bucket.entryActions)).toEqual(['skip']);
+        // Raw-ms preservation is stricter than the native CLI at fractional boundaries.
+        expect(cliPreservesUpdateDestinations(result,'left-to-right')).toBe(false);
+        const safeRows=[fc('file','local_newer',{local_info:info({size:3,modified:new Date(200000).toISOString()}),
+            remote_info:info({size:7,modified:new Date(100000).toISOString()})})];
+        const safe=adaptFileComparisons(safeRows,true,undefined,{kind:'seconds',secs:60});
+        const cli=buildCliSyncCommand({...input,timestampsComparable:true,modifyWindowMs:safe.appliedOptions.mtimeToleranceMs,
+            updateTimestampPrecisionSafe:cliPreservesUpdateDestinations(safe,'left-to-right')});
+        expect(cli.kind).toBe('command');if(cli.kind==='command')expect(cli.argv.slice(-2)).toEqual(['--modify-window','60']);
+    });
+    it.each(['left-to-right','right-to-left'] as const)('refuses a native fractional-time overwrite: %s',direction=>{
+        const result=adaptFileComparisons([fc('file','size_mismatch',{
+            local_info:info({size:3,modified:new Date(direction==='left-to-right'?100000:102500).toISOString()}),
+            remote_info:info({size:7,modified:new Date(direction==='left-to-right'?102500:100000).toISOString()})})],true,undefined,{kind:'seconds',secs:2});
+        const safe=cliPreservesUpdateDestinations(result,direction);expect(safe).toBe(false);
+        expect(buildCliSyncCommand({...input,direction,timestampsComparable:true,modifyWindowMs:2000,
+            updateTimestampPrecisionSafe:safe})).toEqual({kind:'none',reason:'overwrites-newer'});
+    });
+});
+
+
+it.each([102500,undefined])('paired flat files with unknown sizes do not bypass CLI safety (%s)',destination=>{
+    const result=compareEntries([{name:'paired',size:null,isDir:false,mtimeMs:100000}],
+        [{name:'paired',size:null,isDir:false,mtimeMs:destination}]);
+    const safe=cliPreservesUpdateDestinations(result,'left-to-right');expect(safe).toBe(false);
+    expect(buildCliSyncCommand({pairKind:'local-remote',preset:'mirror',direction:'left-to-right',updateOnly:true,
+        profileName:'saved',localPath:'/local',remotePath:'/remote',excludes:[],canary:false,transferBudgetBytes:0,
+        errorCorrectionPct:null,versionedBackup:false,shell:'posix',timestampsComparable:true,modifyWindowMs:2000,
+        updateTimestampPrecisionSafe:safe})).toEqual({kind:'none',reason:'overwrites-newer'});
 });

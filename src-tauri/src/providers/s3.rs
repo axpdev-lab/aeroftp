@@ -547,7 +547,7 @@ impl S3Provider {
                 "Bounded worker S3 listing".into(),
             ));
         }
-        let prefix = path.trim_matches('/');
+        let prefix = self.prefix_of(path);
         let prefix_with_slash = if prefix.is_empty() {
             String::new()
         } else {
@@ -583,7 +583,7 @@ impl S3Provider {
         }
         let xml = String::from_utf8(bytes)
             .map_err(|_| ProviderError::ParseError("Worker S3 list is not UTF-8".into()))?;
-        let (entries, next) = self.parse_list_response(&xml, false)?;
+        let (entries, next) = self.parse_listing_of(&xml, false, &prefix)?;
         if entries.iter().any(|entry| {
             !entry
                 .path
@@ -1325,6 +1325,31 @@ impl S3Provider {
             &[("prefix", "")]
         };
         self.s3_request(Method::GET, "", Some(params), None).await
+    }
+
+    /// The prefix an absolute `path` names. `/` is the top of this profile,
+    /// whatever folder it has navigated to: its configured prefix if it has one,
+    /// as a remote with a path has that path for its root, else the bucket.
+    fn prefix_of(&self, path: &str) -> String {
+        if path == "/" {
+            self.config
+                .prefix
+                .as_deref()
+                .unwrap_or("")
+                .trim_matches('/')
+                .to_string()
+        } else {
+            path.trim_matches('/').to_string()
+        }
+    }
+
+    /// The prefix a listing of `path` reads: [`Self::prefix_of`], where `.` is
+    /// the current folder.
+    fn listing_prefix(&self, path: &str) -> String {
+        match path {
+            "" | "." => self.current_prefix.clone(),
+            _ => self.prefix_of(path),
+        }
     }
 
     fn is_filen_s3_endpoint(&self) -> bool {
@@ -2322,10 +2347,23 @@ impl S3Provider {
     /// all, so a directory that exists only as a marker would vanish, and a walk
     /// that stops at it under a depth limit would name a directory the flat
     /// listing cannot.
+    #[cfg(test)]
     fn parse_list_response(
         &self,
         xml_str: &str,
         keep_markers: bool,
+    ) -> Result<(Vec<RemoteEntry>, Option<String>), ProviderError> {
+        self.parse_listing_of(xml_str, keep_markers, &self.current_prefix)
+    }
+
+    /// [`Self::parse_list_response`] for a listing of `listed_prefix`, the only
+    /// folder whose own marker the listing leaves out. Another folder's marker
+    /// is an entry, the current folder's among them.
+    fn parse_listing_of(
+        &self,
+        xml_str: &str,
+        keep_markers: bool,
+        listed_prefix: &str,
     ) -> Result<(Vec<RemoteEntry>, Option<String>), ProviderError> {
         let mut entries = Vec::new();
 
@@ -2531,9 +2569,9 @@ impl S3Provider {
                                 // whether this listing has a use for it.
                                 if !key.ends_with('/') {
                                     // Skip if key equals current prefix
-                                    let dominated = key == self.current_prefix
+                                    let dominated = key == listed_prefix
                                         || key.trim_start_matches('/')
-                                            == self.current_prefix.trim_start_matches('/');
+                                            == listed_prefix.trim_start_matches('/');
                                     if !dominated {
                                         let name =
                                             key.rsplit('/').next().unwrap_or(key).to_string();
@@ -2590,7 +2628,7 @@ impl S3Provider {
                                     // consumer counts the same components the
                                     // walk would.
                                     let trimmed = key.trim_end_matches('/');
-                                    let prefix = self.current_prefix.trim_end_matches('/');
+                                    let prefix = listed_prefix.trim_end_matches('/');
                                     let dominated = trimmed == prefix
                                         || trimmed.trim_start_matches('/')
                                             == prefix.trim_start_matches('/');
@@ -4886,11 +4924,7 @@ impl StorageProvider for S3Provider {
             return Err(ProviderError::NotConnected);
         }
 
-        let prefix = if path.is_empty() || path == "/" || path == "." {
-            self.current_prefix.clone()
-        } else {
-            path.trim_matches('/').to_string()
-        };
+        let prefix = self.listing_prefix(path);
 
         let prefix_with_slash = if prefix.is_empty() {
             String::new()
@@ -4956,7 +4990,7 @@ impl StorageProvider for S3Provider {
                         return Err(error);
                     }
 
-                    let (entries, next_token) = self.parse_list_response(&xml, false)?;
+                    let (entries, next_token) = self.parse_listing_of(&xml, false, &prefix)?;
                     info!("S3 LIST parsed {} entries from response", entries.len());
                     all_entries.extend(entries);
 
@@ -5104,7 +5138,9 @@ impl StorageProvider for S3Provider {
             return Err(ProviderError::NotConnected);
         }
 
-        let new_prefix = if path == "/" || path.is_empty() {
+        let new_prefix = if path == "/" {
+            self.prefix_of(path)
+        } else if path.is_empty() {
             String::new()
         } else if path == ".." {
             // Go up one level
@@ -5127,18 +5163,17 @@ impl StorageProvider for S3Provider {
             format!("{}/", new_prefix)
         };
 
-        let response = self
-            .s3_request(
-                Method::GET,
-                "",
-                Some(&[
-                    ("list-type", "2"),
-                    ("prefix", &prefix_check),
-                    ("max-keys", "1"),
-                ]),
-                None,
-            )
-            .await?;
+        // Filen takes `prefix` and `delimiter` only, as in `list`.
+        let probe: &[(&str, &str)] = if self.is_filen_s3_endpoint() {
+            &[("delimiter", "/"), ("prefix", &prefix_check)]
+        } else {
+            &[
+                ("list-type", "2"),
+                ("prefix", &prefix_check),
+                ("max-keys", "1"),
+            ]
+        };
+        let response = self.s3_request(Method::GET, "", Some(probe), None).await?;
 
         if response.status() == StatusCode::OK {
             self.current_prefix = new_prefix;
@@ -6144,7 +6179,7 @@ impl StorageProvider for S3Provider {
             return Err(ProviderError::NotConnected);
         }
 
-        let prefix = path.trim_matches('/');
+        let prefix = self.prefix_of(path);
         let prefix_with_slash = if prefix.is_empty() {
             String::new()
         } else {
@@ -7821,11 +7856,7 @@ impl S3Provider {
             return Err(ProviderError::NotConnected);
         }
 
-        let prefix = if path.is_empty() || path == "/" || path == "." {
-            self.current_prefix.clone()
-        } else {
-            path.trim_matches('/').to_string()
-        };
+        let prefix = self.listing_prefix(path);
 
         let prefix_with_slash = if prefix.is_empty() {
             String::new()
@@ -7866,7 +7897,7 @@ impl S3Provider {
                         return Err(error);
                     }
 
-                    let (entries, next_token) = self.parse_list_response(&xml, true)?;
+                    let (entries, next_token) = self.parse_listing_of(&xml, true, &prefix)?;
 
                     // Bound memory on a huge or hostile bucket: keep at most the
                     // cap and stop paginating once it is reached. A page can
@@ -8501,6 +8532,80 @@ fn parse_object_versions_page(xml_str: &str) -> Result<VersionsPage, ProviderErr
 
 #[cfg(test)]
 mod tests {
+    /// A double that answers every request with an empty listing and records
+    /// each decoded query.
+    async fn s3_recording_queries() -> (
+        std::net::SocketAddr,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        let queries: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
+        let seen = queries.clone();
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = seen.clone();
+                async move {
+                    let query = urlencoding::decode(req.uri().query().unwrap_or(""))
+                        .unwrap()
+                        .to_string();
+                    seen.lock().unwrap().push(query);
+                    "<ListBucketResult></ListBucketResult>"
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (addr, queries, server)
+    }
+
+    /// #1457: a listing of `/` is the top of the profile from any folder. The
+    /// subfolder menu of the root button listed the current folder instead.
+    #[tokio::test]
+    async fn a_listing_of_the_root_leaves_the_folder_and_keeps_the_configured_prefix() {
+        let (addr, queries, server) = s3_recording_queries().await;
+        let mut p = make_provider(Some(&format!("http://{addr}")));
+        p.connected = true;
+        p.current_prefix = "a/b".to_string();
+        p.list("/").await.expect("the bucket");
+        p.list(".").await.expect("the folder");
+        p.config.prefix = Some("/top/".to_string());
+        p.list("/").await.expect("the configured prefix");
+        p.find("/", "*").await.expect("a search of the prefix");
+        p.list_worker_capped("/", 10)
+            .await
+            .expect("a worker listing");
+        p.cd("/").await.expect("the top of the profile");
+        server.abort();
+        assert_eq!(p.current_prefix, "top");
+        let queries = queries.lock().unwrap();
+        assert!(!queries[0].contains("a/b"), "{queries:?}");
+        assert!(queries[1].contains("prefix=a/b/"), "{queries:?}");
+        for query in &queries[2..] {
+            assert!(query.contains("prefix=top/"), "{query}");
+        }
+    }
+
+    /// A folder change on the Filen gateway probes with what that gateway
+    /// accepts: it rejects `list-type` and `max-keys`.
+    #[tokio::test]
+    async fn a_folder_change_on_filen_probes_with_the_parameters_it_accepts() {
+        let (addr, queries, server) = s3_recording_queries().await;
+        let mut p = make_provider(Some(&format!("http://{addr}")));
+        p.config.region = "filen".to_string();
+        p.connected = true;
+        assert!(p.is_filen_s3_endpoint());
+        p.cd("/d").await.expect("the folder");
+        p.cd("/").await.expect("the root");
+        server.abort();
+        assert_eq!(p.current_prefix, "");
+        for query in queries.lock().unwrap().iter() {
+            assert!(
+                !query.contains("list-type") && !query.contains("max-keys"),
+                "{query}"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn probe_contract_s3_requires_an_explicit_missing_answer() {
         for status in [403, 404] {
@@ -10677,6 +10782,64 @@ mod tests {
                 .any(|entry| entry.is_dir && entry.path.contains("d1/d2")),
             "the only thing this bucket holds is the marker, and the listing dropped it: {entries:?}"
         );
+    }
+
+    /// A worker listing leaves out only the listed folder too: an object named
+    /// like the current folder is an entry of the folder above it.
+    #[tokio::test]
+    async fn a_worker_listing_above_the_current_folder_keeps_an_object_named_like_it() {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |_req: axum::extract::Request| async move {
+                axum::http::Response::new(axum::body::Body::from(
+                    "<ListBucketResult><Contents><Key>top/sub</Key><Size>1</Size></Contents></ListBucketResult>",
+                ))
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.config.prefix = Some("top".to_string());
+        provider.current_prefix = "top/sub".to_string();
+        let (entries, _) = provider
+            .list_worker_capped("/", 10)
+            .await
+            .expect("the listing answers");
+        server.abort();
+        assert_eq!(entries.len(), 1, "{entries:?}");
+        assert_eq!(entries[0].path, "/top/sub");
+    }
+
+    /// The marker left out is the listed folder's. After a `cd`, a listing of
+    /// the top of the profile keeps the current folder, which is an entry there.
+    #[tokio::test]
+    async fn a_listing_above_the_current_folder_keeps_its_marker() {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |_req: axum::extract::Request| async move {
+                axum::http::Response::new(axum::body::Body::from(
+                    "<ListBucketResult><Contents><Key>top/</Key><Size>0</Size></Contents><Contents><Key>top/sub/</Key><Size>0</Size></Contents></ListBucketResult>",
+                ))
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.config.prefix = Some("top".to_string());
+        provider.current_prefix = "top/sub".to_string();
+        let (entries, _) = provider
+            .list_recursive("/")
+            .await
+            .expect("the listing answers");
+        server.abort();
+        let paths: Vec<&str> = entries.iter().map(|entry| entry.path.as_str()).collect();
+        assert_eq!(paths, ["/top/sub"], "{entries:?}");
     }
 
     #[tokio::test]

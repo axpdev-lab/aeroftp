@@ -23,6 +23,12 @@ describe('keystoreImportSummary', () => {
         });
     });
 
+    it('reports the databases that could not be restored, by name', () => {
+        const summary = keystoreImportSummary({ imported: 12, skipped: 0, sqliteDbsFailed: ['ai_chat.db', 'file_tags.db'] }, null, t);
+        expect(summary.type).toBe('info');
+        expect(summary.text).toContain('settings.keystoreDatabasesFailed(names=ai_chat.db, file_tags.db)');
+    });
+
     it('reports preferences that could not be restored, with the error', () => {
         const summary = keystoreImportSummary({ imported: 12, skipped: 0 }, 'QuotaExceededError', t);
         expect(summary.type).toBe('info');

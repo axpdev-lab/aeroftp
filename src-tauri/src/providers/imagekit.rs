@@ -1037,6 +1037,21 @@ impl ImageKitProvider {
 
 #[async_trait]
 impl StorageProvider for ImageKitProvider {
+    fn sync_namespace_identity(&self) -> Option<String> {
+        use sha2::Digest;
+        let key = self.config.private_key.expose_secret();
+        if !self.connected || key.is_empty() {
+            return None;
+        }
+        // ImageKit's URL id is not verified by API authentication. Bind to the
+        // high-entropy API credential actually used instead; rotation revokes
+        // old sync authority. Neither raw key nor a user password is persisted.
+        let mut digest = sha2::Sha256::new();
+        digest.update(b"aeroftp/imagekit/sync-credential/v1\0");
+        digest.update(key.as_bytes());
+        Some(format!("{:x}", digest.finalize()))
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
@@ -1781,6 +1796,22 @@ fn validate_download_url(url: &str) -> Result<(), ProviderError> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sync_namespace_identity_binds_the_authenticated_api_key_not_display_url() {
+        let mut provider = empty_provider();
+        assert!(provider.sync_namespace_identity().is_none());
+        provider.connected = true;
+        let initial = provider.sync_namespace_identity().unwrap();
+        assert_eq!(initial.len(), 64);
+        provider.config.imagekit_id = "other-display-url".into();
+        assert_eq!(provider.sync_namespace_identity().unwrap(), initial);
+        provider.config.private_key =
+            SecretString::from("rotated-high-entropy-api-key".to_string());
+        assert_ne!(provider.sync_namespace_identity().unwrap(), initial);
+        provider.config.private_key = SecretString::from(String::new());
+        assert!(provider.sync_namespace_identity().is_none());
+    }
+
     #[test]
     fn a_name_keeps_its_leading_and_trailing_spaces() {
         // A name with a leading or trailing space is a name of its own, and a

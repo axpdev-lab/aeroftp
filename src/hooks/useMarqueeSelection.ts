@@ -20,7 +20,7 @@
  * existing click selection model.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useLayoutEffect } from 'react';
 
 /** A simple axis-aligned rectangle (content-space pixels). */
 export interface MarqueeRectEdges {
@@ -151,7 +151,7 @@ export function useMarqueeSelection(
   // Keep the latest selection in a ref so the mousedown snapshot is current
   // without making onMouseDown depend on (and re-create with) every change.
   const selectedRef = useRef(opts.selected);
-  selectedRef.current = opts.selected;
+  useLayoutEffect(() => { selectedRef.current = opts.selected; }, [opts.selected]);
 
   // Stable trampolines so add/removeEventListener always match, even if the
   // concrete handlers are re-created across renders mid-drag.
@@ -299,8 +299,8 @@ export function useMarqueeSelection(
   }, [onWindowMove, onWindowUp, stopAutoScroll, onBlankClick]);
 
   // Refresh the trampoline targets every render.
-  moveHandlerRef.current = handleMove;
-  upHandlerRef.current = handleUp;
+  useLayoutEffect(() => { moveHandlerRef.current = handleMove; }, [handleMove]);
+  useLayoutEffect(() => { upHandlerRef.current = handleUp; }, [handleUp]);
 
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {

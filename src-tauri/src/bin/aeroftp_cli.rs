@@ -15376,10 +15376,12 @@ fn aerocloud_print_sync_result(
             // each carries the reason the comparison already computed.
             "skippedFolders": r.skipped_details.iter().filter(|e| e.is_dir).count(),
             "skippedFiles": r.skipped_details.iter().filter(|e| !e.is_dir).count(),
+            "reviewRequiredFiles": r.skipped_details.iter().filter(|e| e.needs_review).count(),
             "skippedDetails": r.skipped_details.iter().map(|e| serde_json::json!({
                 "path": e.path,
                 "reason": e.reason,
                 "isDir": e.is_dir,
+                "needsReview": e.needs_review,
             })).collect::<Vec<_>>(),
             "conflicts": r.conflicts,
             "errors": r.errors,
@@ -15400,9 +15402,22 @@ fn aerocloud_print_sync_result(
         // list goes to stderr so the summary on stdout keeps its shape for
         // whoever parses it, and it is capped because a large exclude rule
         // should not turn a summary into a listing.
+        let review_required = r
+            .skipped_details
+            .iter()
+            .filter(|entry| entry.needs_review)
+            .count();
+        if review_required > 0 {
+            println!("  review required: {review_required} destination files kept for review");
+        }
         if !r.skipped_details.is_empty() && !quiet {
             const SHOWN: usize = 10;
-            for entry in r.skipped_details.iter().take(SHOWN) {
+            let entries = r
+                .skipped_details
+                .iter()
+                .filter(|entry| entry.needs_review)
+                .chain(r.skipped_details.iter().filter(|entry| !entry.needs_review));
+            for entry in entries.take(SHOWN) {
                 eprintln!(
                     "  skipped: {}{} ({})",
                     entry.path,
@@ -27736,6 +27751,13 @@ fn cmd_profile_relocate_user(
 
     if let Some(p) = target_passphrase.as_mut() {
         p.zeroize();
+    }
+
+    if !relocation.secrets_not_copied.is_empty() {
+        eprintln!(
+            "Warning: {} of this profile's secrets did not reach the target account, so it will ask for them again there",
+            relocation.secrets_not_copied.len()
+        );
     }
 
     if relocation.moved {
@@ -41292,6 +41314,7 @@ fn rclone_import_json(
             "jottaRefreshStored": summary.jotta_refresh_stored,
             "profilesAppended": summary.profiles_appended,
             "profilesRenamed": summary.profiles_renamed,
+            "oauthAppWarnings": summary.oauth_app_warnings,
         });
     }
     redacted
@@ -41423,6 +41446,8 @@ struct RcloneApplySummary {
     /// Profiles the write stored under another name, each with the name it
     /// got (`renamed_by_write`).
     profiles_renamed: Vec<ftp_client_gui_lib::util::profile_name::RenamedProfile>,
+    /// One line per profile whose OAuth app was not kept.
+    oauth_app_warnings: Vec<String>,
 }
 
 /// Map a saved-server protocol identifier to the `OAuthProvider` slug used
@@ -41512,6 +41537,7 @@ async fn apply_rclone_import_to_vault(
                 jotta_refresh_stored: 0,
                 profiles_appended: 0,
                 profiles_renamed: Vec::new(),
+                oauth_app_warnings: Vec::new(),
             };
             // Ids are minted per parse, so one is held only if the list took it since.
             // It then keeps its secrets, as a skipped `.aeroftp` profile does.
@@ -41587,10 +41613,37 @@ async fn apply_rclone_import_to_vault(
             })
         })
         .map_err(|e| format!("vault write failed: {e}"))?;
+    // The app a token refreshes with, as the GUI import keeps it: a fresh device
+    // has nothing else to refresh with. After the write, which holds the lock.
+    let mut oauth_app_warnings = Vec::new();
+    for (profile_id, secrets) in &result.provider_secrets {
+        let slug = protocol_of(profile_id).and_then(|protocol| {
+            ftp_client_gui_lib::bridge_commands::rclone_oauth_client_cred_key(&protocol)
+        });
+        if let Some(slug) = slug {
+            match ftp_client_gui_lib::fill_oauth_app(
+                &store,
+                slug,
+                secrets.oauth_client_id.as_deref(),
+                secrets.oauth_client_secret.as_deref(),
+            ) {
+                Ok(false) => {}
+                Ok(true) => oauth_app_warnings.push(format!(
+                    "another OAuth app of this provider stays stored, so '{profile_id}' may need a new sign-in"
+                )),
+                Err(e) => oauth_app_warnings
+                    .push(format!("the OAuth app of '{profile_id}' was not stored: {e}")),
+            }
+        }
+    }
     // Read from the list stored: only the write knows which profile had a
     // name first (an older list may hold two of one name).
+    for warning in &oauth_app_warnings {
+        eprintln!("Warning: {}", sanitize_filename(warning));
+    }
     Ok(RcloneApplySummary {
         profiles_renamed: renamed_by_write(&profiles, &stored),
+        oauth_app_warnings,
         ..summary
     })
 }
@@ -43451,6 +43504,7 @@ async fn cmd_keystore_import(
             "user_partitions_unreadable": outcome.user_partitions_unreadable,
             "profile_partition_skipped": outcome.profile_partition_skipped,
             "profile_list_error": outcome.profile_decisions_error,
+            "sqlite_dbs_failed": outcome.sqlite_dbs_failed,
         });
         println!("{}", summary);
     } else {
@@ -43485,6 +43539,17 @@ async fn cmd_keystore_import(
         }
         if let Some(e) = &outcome.profile_decisions_error {
             eprintln!("Warning: the server list could not be merged: {e}");
+        }
+        if !outcome.sqlite_dbs_failed.is_empty() {
+            eprintln!(
+                "Warning: these databases could not be restored and keep what they held: {}",
+                outcome
+                    .sqlite_dbs_failed
+                    .iter()
+                    .map(|name| sanitize_filename(name))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
         }
         if outcome.requires_restart {
             eprintln!(
@@ -73036,6 +73101,7 @@ DISCONNECT\n";
                 skip_matching: false,
                 resync: false,
                 watch: false,
+                modify_window: None,
                 backup_dir: None,
             };
             let script = generate_script(&profile, "test");
@@ -73309,6 +73375,7 @@ DISCONNECT\n";
                 skip_matching: false,
                 resync: false,
                 watch: false,
+                modify_window: None,
                 backup_dir: None,
             });
             out.push(AerosyncScriptProfile {
@@ -73325,9 +73392,20 @@ DISCONNECT\n";
                 skip_matching: true,
                 resync: true,
                 watch: true,
+                modify_window: None,
                 backup_dir: None,
             });
         }
+        let updates: Vec<_> = out
+            .iter()
+            .filter(|script| script.profile.direction != CompareDirection::Bidirectional)
+            .cloned()
+            .map(|mut script| {
+                script.profile.update_only = true;
+                script
+            })
+            .collect();
+        out.extend(updates);
         out
     }
 
@@ -73352,6 +73430,7 @@ DISCONNECT\n";
                     skip_matching: want_skip,
                     resync: want_resync,
                     watch: want_watch,
+                    modify_window: _,
                     backup_dir: _,
                 } = exported.clone();
                 let SyncProfile {
@@ -73367,6 +73446,7 @@ DISCONNECT\n";
                     verify_policy: _,
                     exclude_patterns: want_exclude,
                     delete_orphans: want_delete,
+                    update_only: want_update,
                     // Not preset settings: the runner never applied them and the
                     // GUI is dropping the controls, so the script does not name them.
                     parallel_streams: _,
@@ -73393,6 +73473,7 @@ DISCONNECT\n";
                     direction,
                     dry_run,
                     delete,
+                    update,
                     exclude,
                     track_renames,
                     conflict_mode,
@@ -73414,6 +73495,7 @@ DISCONNECT\n";
                 };
                 assert_eq!(direction, want_direction, "{}", profile.id);
                 assert_eq!(delete, want_delete, "{}", profile.id);
+                assert_eq!(update, want_update, "{}", profile.id);
                 // An unattended --delete needs a cap or sync refuses it.
                 assert_eq!(
                     max_delete.as_deref(),
@@ -96588,6 +96670,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 skip_matching: false,
                 resync: false,
                 watch: false,
+                modify_window: None,
                 backup_dir: None,
             },
             "test",
@@ -99572,6 +99655,53 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             "--update leaves the newer remote copy"
         );
         assert_ne!(run(None), 0, "without --update the upload is attempted");
+    }
+
+    #[test]
+    fn mirror_update_delete_preserves_newer_destination_through_dispatch() {
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("keep.txt", 3);
+        let local = fixture.local();
+        let mut remote = MemTreeProvider::root_files(&[("keep.txt", 9), ("orphan.txt", 7)]);
+        remote.mutable = true;
+        for entry in remote.dirs.get_mut("/root").unwrap() {
+            entry.modified = Some("2030-01-01T00:00:00".to_string());
+        }
+        let deletes = Arc::clone(&remote.delete_attempts);
+        let code = run_against_remote(remote, move || async move {
+            let parsed = Cli::try_parse_from([
+                "aeroftp-cli",
+                "sync",
+                "memory://",
+                &local,
+                "/root",
+                "--direction",
+                "upload",
+                "--update",
+                "--delete",
+                "--max-delete",
+                "100%",
+            ])
+            .unwrap();
+            dispatch_sync(
+                &parsed.command,
+                &Cli {
+                    quiet: true,
+                    ..test_cli()
+                },
+                OutputFormat::Json,
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await
+        });
+        assert_eq!(
+            code, 0,
+            "no upload of the newer destination should be attempted"
+        );
+        assert_eq!(
+            *deletes.lock().unwrap(),
+            vec!["/root/orphan.txt".to_string()]
+        );
     }
 
     /// M1 (review of #949): with no comparable time (FTP without MLSD,

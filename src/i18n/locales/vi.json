@@ -1371,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud gia hạn đăng nhập ở mỗi lần kết nối, và {names} hiện dùng chung một phiên với bản sao khác: bản sao kết nối trước sẽ đăng xuất bản còn lại (thiết bị chứa tệp gốc, hoặc hồ sơ mà nó được nhân bản từ đó). Hãy đăng nhập lại bản còn lại bằng Personal Login Token mới.",
             "importOauthAppKept": "{names} đi kèm một ứng dụng OAuth tùy chỉnh khác với ứng dụng mà thiết bị này có cho nhà cung cấp đó. Ứng dụng đã lưu được giữ lại, vì vậy hãy đăng nhập lại nếu các hồ sơ này không còn kết nối được.",
             "importTargetChanged": "{names} không bị ghi đè: tệp trỏ chúng tới một máy chủ khác, và mật khẩu cùng token đã lưu của chúng không được gửi tới đó. Hãy nhập bằng Nhân bản để thêm bản sao từ tệp, hoặc xóa hồ sơ trước.",
-            "importSharedSecretsFailed": "{names} đã được nhập, nhưng không thể lưu một bí mật dùng chung hoặc phiên từ tệp. Hãy đăng nhập lại các hồ sơ này nếu chúng không kết nối được."
+            "importSharedSecretsFailed": "{names} đã được nhập, nhưng không thể lưu một bí mật dùng chung hoặc phiên từ tệp. Hãy đăng nhập lại các hồ sơ này nếu chúng không kết nối được.",
+            "keystoreDatabasesFailed": "Quá trình nhập đã xong, nhưng không khôi phục được các cơ sở dữ liệu này và chúng giữ nguyên nội dung cũ: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1589,7 +1590,9 @@
             "aerocloudEnabled": "Đã bật AeroCloud",
             "selectPairLocalFolder": "Chọn thư mục cục bộ cho cặp",
             "secondsAgo": "{count} giây trước",
-            "conflictsCount": "{count} xung đột cần xử lý"
+            "conflictsCount": "{count} xung đột cần xử lý",
+            "updateOnlyHint": "Cập nhật một chiều giữ lại các tệp đích mới hơn. Khi tắt sao lưu bổ sung, chỉ những tệp không thay đổi, chỉ có ở đích và có biên nhận truyền AeroCloud đã được xác minh mới bị xóa. Các tệp khác được giữ lại để xem xét trong AeroSync. Chính sách xung đột bị bỏ qua; các ngày không xác định vẫn chưa được giải quyết.",
+            "untrackedDestinationFiles": "{count} tệp đích đã được giữ lại để xem xét: lịch sử truyền của chúng chưa được xác minh hoặc chúng đã thay đổi sau lần truyền AeroCloud gần nhất. Hãy xem xét chúng trong AeroSync trước khi quyết định xóa."
         },
         "statusBar": {
             "connected": "Đã kết nối",
@@ -4856,7 +4859,8 @@
             "relocateSuccessMove": "Đã chuyển \"{name}\" sang {user}",
             "relocateAlreadyPresent": "\"{name}\" đã được lưu trong {user}",
             "relocateError": "Không thể chuyển máy chủ: {error}",
-            "relocateWrongPassword": "Sai mật khẩu cho {user}."
+            "relocateWrongPassword": "Sai mật khẩu cho {user}.",
+            "relocateSecretsNotCopied": "\"{name}\" đã sang tới {user}, nhưng mật khẩu hoặc token đã lưu thì không, nên sẽ yêu cầu nhập lại ở đó."
         },
         "cyberTools": {
             "title": "Công cụ bảo mật",
@@ -6344,7 +6348,10 @@
             "progressCopy": "[bản sao]",
             "deleteCount": "Sẽ bị xóa: {count}",
             "overwriteCount": "Sẽ bị ghi đè: {count}",
-            "conflictCount": "{count} xung đột"
+            "conflictCount": "{count} xung đột",
+            "updateOnly": "Bỏ qua tệp đích mới hơn (cập nhật một chiều)",
+            "updateOnlyHint": "Sao chép các tệp nguồn bị thiếu hoặc đã thay đổi, giữ lại các tệp mới hơn ở đích và xóa các mục chỉ có ở đích. Các tệp không có ngày so sánh được sẽ được so sánh theo kích thước; những chênh lệch kích thước sẽ được giữ lại để xem xét.",
+            "rescanNeeded": "Chạy phép so sánh mới với cài đặt hiện tại trước khi xuất tập lệnh cập nhật."
         },
         "accountLock": {
             "title": "Chọn tài khoản",
@@ -6588,7 +6595,8 @@
             "keyslotsSetAsideRevocation": "Tệp đánh dấu trước đó vẫn mở được kho an toàn bằng yếu tố mà bạn đang gỡ bỏ hoặc thay thế. Mọi bản sao còn lại trong thư mục kho an toàn đều bị xóa sau thay đổi, và bản sao không xóa được sẽ được báo là lỗi. Bản sao trong thùng rác hoặc phiên bản tệp của bộ nhớ không được xử lý: làm trống chúng sẽ xóa các bản sao đó, nhưng không xóa bản sao do người khác giữ, nên không hoàn tất việc thu hồi.",
             "keyslotsSetAsideConsent": "Tôi hiểu: thay tệp đánh dấu trên máy chủ này bằng cách đổi tên tệp cũ và để sang một bên",
             "keyslotsSetAsideConsentRequired": "Máy chủ này chỉ có thể thay tệp đánh dấu của kho an toàn bằng cách đổi tên tệp cũ và để sang một bên: hãy xác nhận ở ô phía trên để tiếp tục.",
-            "keyslotsMarkerReplaceUnsupported": "Máy chủ này không thể thay tệp đánh dấu của kho an toàn, nên các thay đổi khe ở đây bị từ chối. Hãy mở cùng bộ nhớ đó qua một máy chủ thay thế tệp trong một bước (ví dụ SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Máy chủ này không thể thay tệp đánh dấu của kho an toàn, nên các thay đổi khe ở đây bị từ chối. Hãy mở cùng bộ nhớ đó qua một máy chủ thay thế tệp trong một bước (ví dụ SFTP).",
+            "overlayMetadataNotSaved": "Di chuyển thành công, nhưng bộ khôi phục ngoại tuyến chưa được lưu vào bộ nhớ đệm. Bộ này sẽ được lưu ở lần mở khóa tiếp theo."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Mã hóa)",

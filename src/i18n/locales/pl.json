@@ -1371,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud odnawia logowanie przy każdym połączeniu, a {names} współdzieli teraz jedno z inną kopią: kopia, która połączy się pierwsza, wylogowuje drugą (urządzenie, z którego pochodzi plik, lub profil, z którego go zduplikowano). Zaloguj drugą ponownie za pomocą nowego Personal Login Token.",
             "importOauthAppKept": "{names} przyszły z inną niestandardową aplikacją OAuth niż ta, którą to urządzenie ma dla tego dostawcy. Zapisana aplikacja została zachowana, więc zaloguj się ponownie, jeśli te profile przestaną się łączyć.",
             "importTargetChanged": "{names} nie zostały nadpisane: plik kieruje je na inny serwer, a ich zapisane hasła i tokeny nie mogą tam trafić. Zaimportuj z opcją Duplikuj, aby dodać kopię z pliku, lub najpierw usuń profil.",
-            "importSharedSecretsFailed": "Zaimportowano {names}, ale nie udało się zapisać współdzielonego sekretu ani sesji z pliku. Zaloguj się ponownie do tych profili, jeśli się nie łączą."
+            "importSharedSecretsFailed": "Zaimportowano {names}, ale nie udało się zapisać współdzielonego sekretu ani sesji z pliku. Zaloguj się ponownie do tych profili, jeśli się nie łączą.",
+            "keystoreDatabasesFailed": "Import zakończył się, ale nie udało się przywrócić tych baz danych i zachowują one dotychczasową zawartość: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1589,7 +1590,9 @@
             "aerocloudEnabled": "AeroCloud włączony",
             "selectPairLocalFolder": "Wybierz folder lokalny dla pary",
             "secondsAgo": "{count}s temu",
-            "conflictsCount": "Konflikty wymagające uwagi: {count}"
+            "conflictsCount": "Konflikty wymagające uwagi: {count}",
+            "updateOnlyHint": "Aktualizacja jednokierunkowa zachowuje nowsze pliki docelowe. Gdy kopia zapasowa z dodawaniem jest wyłączona, usuwane są tylko niezmienione pliki istniejące wyłącznie w miejscu docelowym ze zweryfikowanym potwierdzeniem transferu AeroCloud. Pozostałe pliki pozostają do sprawdzenia w AeroSync. Zasady konfliktów są ignorowane; nieznane daty pozostają nierozstrzygnięte.",
+            "untrackedDestinationFiles": "{count} plików docelowych zachowano do sprawdzenia: ich historia transferów nie została zweryfikowana lub zmieniły się od ostatniego transferu AeroCloud. Sprawdź je w AeroSync przed podjęciem decyzji o usunięciu."
         },
         "statusBar": {
             "connected": "Połączono",
@@ -4856,7 +4859,8 @@
             "relocateSuccessMove": "Przeniesiono „{name}” do {user}",
             "relocateAlreadyPresent": "„{name}” jest już zapisane w {user}",
             "relocateError": "Nie udało się przenieść serwera: {error}",
-            "relocateWrongPassword": "Nieprawidłowe hasło do {user}."
+            "relocateWrongPassword": "Nieprawidłowe hasło do {user}.",
+            "relocateSecretsNotCopied": "„{name}” dotarł do {user}, ale zapisane hasło lub token nie dotarły, więc poprosi o nie tam ponownie."
         },
         "cyberTools": {
             "title": "Narzędzia bezpieczeństwa",
@@ -6344,7 +6348,10 @@
             "progressCopy": "[kopia]",
             "deleteCount": "Do usunięcia: {count}",
             "overwriteCount": "Do nadpisania: {count}",
-            "conflictCount": "Konflikty: {count}"
+            "conflictCount": "Konflikty: {count}",
+            "updateOnly": "Pomiń nowsze pliki docelowe (aktualizacja jednokierunkowa)",
+            "updateOnlyHint": "Kopiuje brakujące lub zmienione pliki źródłowe, zachowuje nowsze pliki docelowe i usuwa wpisy istniejące tylko w miejscu docelowym. Pliki bez porównywalnych dat są porównywane według rozmiaru; różnice rozmiaru pozostają do przejrzenia.",
+            "rescanNeeded": "Przed wyeksportowaniem skryptu aktualizacji uruchom nowe porównanie z bieżącymi ustawieniami."
         },
         "accountLock": {
             "title": "Wybierz konto",
@@ -6588,7 +6595,8 @@
             "keyslotsSetAsideRevocation": "Poprzedni znacznik nadal otwiera sejf za pomocą czynnika, który usuwasz lub zastępujesz. Każda kopia pozostawiona w folderze sejfu jest usuwana po zmianie, a kopia, której nie można usunąć, jest zgłaszana jako błąd. Kopia w koszu magazynu lub w wersjach plików nie jest osiągana: opróżnienie ich usuwa te kopie, ale nie kopię zachowaną przez kogoś innego, więc nie kończy unieważnienia.",
             "keyslotsSetAsideConsent": "Rozumiem: zastąp znacznik na tym serwerze, odkładając stary na bok przez zmianę nazwy",
             "keyslotsSetAsideConsentRequired": "Ten serwer może zastąpić znacznik sejfu tylko przez odłożenie starego na bok zmianą nazwy: potwierdź w polu powyżej, aby kontynuować.",
-            "keyslotsMarkerReplaceUnsupported": "Ten serwer nie może zastąpić znacznika sejfu, dlatego zmiany slotów są tu odrzucane. Otwórz ten sam magazyn przez serwer, który zastępuje plik w jednym kroku (na przykład SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Ten serwer nie może zastąpić znacznika sejfu, dlatego zmiany slotów są tu odrzucane. Otwórz ten sam magazyn przez serwer, który zastępuje plik w jednym kroku (na przykład SFTP).",
+            "overlayMetadataNotSaved": "Migracja się powiodła, ale zestaw odzyskiwania offline nie jest jeszcze zapisany w pamięci podręcznej. Nastąpi to przy następnym odblokowaniu."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Szyfrowanie)",

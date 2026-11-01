@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { guardedUnlisten } from '../hooks/useTauriListener';
 import { listen } from '@tauri-apps/api/event';
@@ -508,9 +508,9 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   // portable devices detected" and hammered the phone with ~110 bus scans in a
   // few seconds.
   const activePortableDeviceIdRef = useRef(activePortableDeviceId);
-  activePortableDeviceIdRef.current = activePortableDeviceId;
+  useLayoutEffect(() => { activePortableDeviceIdRef.current = activePortableDeviceId; }, [activePortableDeviceId]);
   const onPortableDeviceClosedRef = useRef(onPortableDeviceClosed);
-  onPortableDeviceClosedRef.current = onPortableDeviceClosed;
+  useLayoutEffect(() => { onPortableDeviceClosedRef.current = onPortableDeviceClosed; }, [onPortableDeviceClosed]);
 
   const fetchPortableDevices = useCallback(async () => {
     try {

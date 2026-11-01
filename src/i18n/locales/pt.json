@@ -1371,7 +1371,8 @@
             "importJottaChainWarning": "O Jottacloud renova o seu início de sessão em cada ligação, e {names} partilha agora um com outra cópia: a cópia que se liga primeiro termina a sessão da outra (o dispositivo de onde veio o ficheiro, ou o perfil de que foi duplicada). Inicie sessão novamente na outra com um novo Personal Login Token.",
             "importOauthAppKept": "{names} vieram com uma aplicação OAuth personalizada diferente da que este dispositivo tem para esse fornecedor. A aplicação guardada foi mantida, por isso inicie sessão novamente se estes perfis deixarem de se ligar.",
             "importTargetChanged": "{names} não foram substituídos: o ficheiro aponta-os para outro servidor, e as palavras-passe e os tokens guardados não devem ir para lá. Importe com Duplicar para adicionar a cópia do ficheiro, ou elimine primeiro o perfil.",
-            "importSharedSecretsFailed": "{names} foram importados, mas um segredo partilhado ou uma sessão do ficheiro não pôde ser guardado. Inicie sessão novamente nestes perfis se não se ligarem."
+            "importSharedSecretsFailed": "{names} foram importados, mas um segredo partilhado ou uma sessão do ficheiro não pôde ser guardado. Inicie sessão novamente nestes perfis se não se ligarem.",
+            "keystoreDatabasesFailed": "A importação terminou, mas estes bancos de dados não puderam ser restaurados e mantêm o que continham: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1589,7 +1590,9 @@
             "aerocloudEnabled": "AeroCloud ativado",
             "selectPairLocalFolder": "Selecionar pasta local para o par",
             "secondsAgo": "há {count}s",
-            "conflictsCount": "Conflitos que exigem atenção: {count}"
+            "conflictsCount": "Conflitos que exigem atenção: {count}",
+            "updateOnlyHint": "A atualização unidirecional mantém os ficheiros de destino mais recentes. Com a cópia de segurança aditiva desativada, só são eliminados os ficheiros inalterados que existem apenas no destino e têm um comprovativo de transferência do AeroCloud verificado. Os outros ficheiros ficam para revisão no AeroSync. A política de conflitos é ignorada; as datas desconhecidas ficam por resolver.",
+            "untrackedDestinationFiles": "Foram mantidos {count} ficheiros de destino para revisão: o histórico de transferências não está verificado ou foram alterados após a última transferência do AeroCloud. Reveja-os no AeroSync antes de decidir se devem ser eliminados."
         },
         "statusBar": {
             "connected": "Conectado",
@@ -4856,7 +4859,8 @@
             "relocateSuccessMove": "«{name}» movido para {user}",
             "relocateAlreadyPresent": "«{name}» já está guardado em {user}",
             "relocateError": "Não foi possível transferir o servidor: {error}",
-            "relocateWrongPassword": "Palavra-passe incorreta para {user}."
+            "relocateWrongPassword": "Palavra-passe incorreta para {user}.",
+            "relocateSecretsNotCopied": "«{name}» chegou a {user}, mas a palavra-passe ou o token guardados não, pelo que voltará a pedi-los lá."
         },
         "cyberTools": {
             "title": "Ferramentas de segurança",
@@ -6344,7 +6348,10 @@
             "progressCopy": "[cópia]",
             "deleteCount": "{count} para excluir",
             "overwriteCount": "{count} para substituir",
-            "conflictCount": "Conflitos: {count}"
+            "conflictCount": "Conflitos: {count}",
+            "updateOnly": "Ignorar ficheiros de destino mais recentes (atualização unidirecional)",
+            "updateOnlyHint": "Copia os ficheiros de origem em falta ou alterados, mantém os ficheiros de destino mais recentes e elimina as entradas que existem apenas no destino. Os ficheiros sem datas comparáveis são comparados pelo tamanho; as diferenças de tamanho ficam para revisão.",
+            "rescanNeeded": "Executa uma nova comparação com as definições atuais antes de exportar um script de atualização."
         },
         "accountLock": {
             "title": "Escolha uma conta",
@@ -6588,7 +6595,8 @@
             "keyslotsSetAsideRevocation": "O marcador anterior ainda abre o cofre com o fator que você está removendo ou substituindo. Toda cópia que sobrar na pasta do cofre é excluída após a alteração, e uma cópia que não puder ser excluída é informada como erro. Uma cópia na lixeira ou nas versões de arquivos do armazenamento não é alcançada: esvaziá-las remove essas cópias, mas não uma que outra pessoa tenha guardado, portanto não conclui a revogação.",
             "keyslotsSetAsideConsent": "Entendi: substituir o marcador neste servidor renomeando o antigo e pondo-o de lado",
             "keyslotsSetAsideConsentRequired": "Este servidor só pode substituir o marcador do cofre renomeando o antigo e pondo-o de lado: confirme na caixa acima para continuar.",
-            "keyslotsMarkerReplaceUnsupported": "Este servidor não pode substituir o marcador do cofre, por isso as alterações de slots são recusadas aqui. Abra o mesmo armazenamento por um servidor que substitua um arquivo em uma única etapa (SFTP, por exemplo)."
+            "keyslotsMarkerReplaceUnsupported": "Este servidor não pode substituir o marcador do cofre, por isso as alterações de slots são recusadas aqui. Abra o mesmo armazenamento por um servidor que substitua um arquivo em uma única etapa (SFTP, por exemplo).",
+            "overlayMetadataNotSaved": "A migração foi concluída, mas o kit de recuperação offline ainda não está em cache. Ficará no próximo desbloqueio."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Encriptação)",

@@ -1371,7 +1371,8 @@
             "importJottaChainWarning": "Jottacloud förnyar sin inloggning vid varje anslutning, och {names} delar nu en med en annan kopia: kopian som ansluter först loggar ut den andra (enheten filen kom från, eller profilen den duplicerades från). Logga in den andra igen med en ny Personal Login Token.",
             "importOauthAppKept": "{names} kom med en annan anpassad OAuth-app än den som den här enheten har för den leverantören. Den lagrade appen behölls, så logga in igen om dessa profiler slutar ansluta.",
             "importTargetChanged": "{names} skrevs inte över: filen pekar dem mot en annan server, och deras sparade lösenord och token får inte skickas dit. Importera med Duplicera för att lägga till kopian från filen, eller ta bort profilen först.",
-            "importSharedSecretsFailed": "{names} importerades, men en delad hemlighet eller session från filen kunde inte sparas. Logga in på dessa profiler igen om de inte ansluter."
+            "importSharedSecretsFailed": "{names} importerades, men en delad hemlighet eller session från filen kunde inte sparas. Logga in på dessa profiler igen om de inte ansluter.",
+            "keystoreDatabasesFailed": "Importen är klar, men dessa databaser kunde inte återställas och behåller sitt innehåll: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1589,7 +1590,9 @@
             "aerocloudEnabled": "AeroCloud aktiverat",
             "selectPairLocalFolder": "Välj lokal mapp för paret",
             "secondsAgo": "{count}s sedan",
-            "conflictsCount": "Konflikter som kräver åtgärd: {count}"
+            "conflictsCount": "Konflikter som kräver åtgärd: {count}",
+            "updateOnlyHint": "Envägsuppdatering behåller nyare målfiler. När additiv säkerhetskopiering är avstängd tas bara oförändrade filer som enbart finns på målet och har ett verifierat AeroCloud-överföringskvitto bort. Andra filer ligger kvar för granskning i AeroSync. Konfliktpolicyn ignoreras; okända datum förblir olösta.",
+            "untrackedDestinationFiles": "{count} målfiler behölls för granskning: deras överföringshistorik är inte verifierad eller så har de ändrats sedan den senaste AeroCloud-överföringen. Granska dem i AeroSync innan du beslutar om borttagning."
         },
         "statusBar": {
             "connected": "Ansluten",
@@ -4856,7 +4859,8 @@
             "relocateSuccessMove": "”{name}” flyttades till {user}",
             "relocateAlreadyPresent": "”{name}” är redan sparat i {user}",
             "relocateError": "Det gick inte att överföra servern: {error}",
-            "relocateWrongPassword": "Fel lösenord för {user}."
+            "relocateWrongPassword": "Fel lösenord för {user}.",
+            "relocateSecretsNotCopied": "”{name}” kom fram till {user}, men det sparade lösenordet eller tokenet följde inte med, så de efterfrågas på nytt där."
         },
         "cyberTools": {
             "title": "Säkerhetsverktyg",
@@ -6344,7 +6348,10 @@
             "progressCopy": "[kopia]",
             "deleteCount": "{count} att radera",
             "overwriteCount": "{count} att skriva över",
-            "conflictCount": "Konflikter: {count}"
+            "conflictCount": "Konflikter: {count}",
+            "updateOnly": "Hoppa över nyare målfiler (envägsuppdatering)",
+            "updateOnlyHint": "Kopierar saknade eller ändrade källfiler, behåller nyare målfiler och tar bort poster som endast finns på målet. Filer utan jämförbara datum jämförs efter storlek; storleksskillnader lämnas för granskning.",
+            "rescanNeeded": "Kör en ny jämförelse med de aktuella inställningarna innan du exporterar ett uppdateringsskript."
         },
         "accountLock": {
             "title": "Välj ett konto",
@@ -6588,7 +6595,8 @@
             "keyslotsSetAsideRevocation": "Den tidigare markören öppnar fortfarande valvet med den faktor du tar bort eller ersätter. Varje kopia som blir kvar i valvets mapp raderas efter ändringen, och en kopia som inte kan raderas rapporteras som ett fel. En kopia i lagringens papperskorg eller filversioner nås inte: att tömma dem tar bort dessa kopior, men inte en kopia som någon annan har behållit, så det slutför inte återkallelsen.",
             "keyslotsSetAsideConsent": "Jag förstår: ersätt markören på den här servern genom att lägga den gamla åt sidan",
             "keyslotsSetAsideConsentRequired": "Den här servern kan bara ersätta valvets markör genom att lägga den gamla åt sidan: bekräfta i rutan ovan för att fortsätta.",
-            "keyslotsMarkerReplaceUnsupported": "Den här servern kan inte ersätta valvets markör, så ändringar av platser avvisas här. Öppna samma lagring via en server som ersätter en fil i ett enda steg (till exempel SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Den här servern kan inte ersätta valvets markör, så ändringar av platser avvisas här. Öppna samma lagring via en server som ersätter en fil i ett enda steg (till exempel SFTP).",
+            "overlayMetadataNotSaved": "Migreringen lyckades, men återställningskitet för offline-bruk är inte cachat ännu. Det sker vid nästa upplåsning."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",
