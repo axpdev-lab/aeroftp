@@ -4284,7 +4284,7 @@ impl StorageProvider for SftpProvider {
         let root = self.normalize_path(path);
         let mut results = Vec::new();
         let mut walk = crate::sync_core::FindWalk::new(&root);
-        let mut dirs_to_scan = vec![root];
+        let mut dirs_to_scan = vec![root.clone()];
 
         while let Some(dir) = dirs_to_scan.pop() {
             let entries = match until_sftp_ends(&sftp.ended, sftp.read_dir(&dir)).await {
@@ -4292,8 +4292,23 @@ impl StorageProvider for SftpProvider {
                 // A folder that cannot be read is skipped; a connection that
                 // ended is not a folder, and the rest of the walk could not
                 // be read either.
-                Err(e) => match classify_russh_err(e, ProviderError::ServerError) {
-                    lost @ ProviderError::ConnectionLost(_) => return Err(lost),
+                Err(e) => match classify_sftp_list_err(e) {
+                    SftpListFailure::Decided(
+                        lost @ (ProviderError::ConnectionLost(_)
+                        | ProviderError::NotConnected
+                        | ProviderError::Timeout),
+                    ) => return Err(lost),
+                    // The folder searched itself is not an empty result, and
+                    // it fails as `list` of that folder fails.
+                    SftpListFailure::Decided(error) if dir == root => return Err(error),
+                    SftpListFailure::Ambiguous(message) if dir == root => {
+                        return Err(resolve_ambiguous_list_failure(
+                            message,
+                            map_sftp_try_exists(
+                                until_sftp_ends(&sftp.ended, sftp.try_exists(&dir)).await,
+                            ),
+                        ))
+                    }
                     _ => continue,
                 },
             };
@@ -8460,6 +8475,21 @@ mod tests {
                 "{listings:?}: {removed:?}"
             );
         }
+    }
+
+    /// The folder searched fails as a listing of it fails. A folder under it
+    /// that is gone leaves the rest of the search.
+    #[tokio::test]
+    async fn a_find_fails_as_a_listing_of_its_own_folder() {
+        const LISTINGS: Listings = &[("/x", &["a.txt", "gone/"])];
+        let (mut provider, _) = provider_on_a_tree_server(LISTINGS).await;
+        let outcome = provider.find("/missing", "*.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+        let found = provider.find("/x", "*.txt").await.unwrap();
+        assert_eq!(found.len(), 1, "{found:?}");
     }
 
     /// A search follows only folders inside the one searched, once each.

@@ -1556,38 +1556,11 @@ impl WebDavProvider {
             }
         };
 
-        // Host-specific User-Agent workaround for FileLu WebDAV.
-        //
-        // FileLu's WebDAV frontend (`webdav.filelu.com`, fronted by
-        // Cloudflare) returns `500 Internal Server Error` on GET
-        // requests whose User-Agent does not match a small allow-list.
-        // Empirically (2026-05-26, FileLu PRO account, AeroFTP v4.0.0):
-        //
-        //   `AeroFTP/4`                                   → 500 ISE
-        //   `WebDAV-Client/4.0 (compatible; AeroFTP)`     → 500 ISE
-        //   `curl/8.0.0`                                  → 500 ISE
-        //   `rclone/v1.74.0`                              → 200 OK
-        //
-        // PROPFIND/PUT/DELETE/MKCOL accept every UA on that list; only
-        // GET enforces the filter, so the issue is invisible until the
-        // first download attempt against `webdav.filelu.com`. The
-        // discriminator is not a simple keyword block (`curl` also
-        // fails); the most plausible cause is a Cloudflare WAF rule
-        // whitelisting a small set of known WebDAV clients on that
-        // hostname. We send `rclone/v1.74.0` here as a per-host
-        // workaround so FileLu downloads work for our users today;
-        // FileLu engineering has been briefed and asked to whitelist
-        // the real `AeroFTP/<n>` UA on their WAF. The override is
-        // host-scoped (`filelu.com`) so the standard AeroFTP UA stays
-        // in place for every other WebDAV server — notably pCloud,
-        // which relies on the major-version-pinned UA for honest
-        // device tracking.
-        let host_lower = self.config.url.to_ascii_lowercase();
-        let user_agent_override: Option<&'static str> = if host_lower.contains("filelu.com") {
-            Some("rclone/v1.74.0")
-        } else {
-            None
-        };
+        // FileLu's WebDAV frontend used to refuse GET with a 500 to every
+        // User-Agent but a few known clients, and this call sent rclone's for
+        // `filelu.com`. FileLu now accepts AeroFTP's own (checked 2026-11-01:
+        // GET 200, ranges 206, PUT, MOVE, COPY, DELETE), and rclone's is
+        // answered 206 on a plain GET. Every server gets the AeroFTP agent.
 
         // A rotated Digest nonce is replayed at most once per call, tracked
         // here rather than by attempt number: the 425 loop may already have
@@ -1611,9 +1584,6 @@ impl WebDavProvider {
             let mut req = self.request(method.clone(), path);
             if let Some(ref r) = referer {
                 req = req.header("Referer", r);
-            }
-            if let Some(ua) = user_agent_override {
-                req = req.header("User-Agent", ua);
             }
             let response = req.send().await.map_err(send_error)?;
 
@@ -4325,6 +4295,7 @@ impl StorageProvider for WebDavProvider {
                     "Session expired".to_string(),
                 ))
             }
+            StatusCode::FORBIDDEN => Err(ProviderError::PermissionDenied(list_path)),
             status => {
                 tracing::error!("[WebDAV] Server error: {}", status);
                 Err(ProviderError::ServerError(format!(
@@ -5350,6 +5321,11 @@ impl StorageProvider for WebDavProvider {
         while let Some(dir) = dirs_to_scan.pop() {
             let entries = match self.list(&dir).await {
                 Ok(e) => e,
+                // A folder searched that cannot be read is not an empty result,
+                // and a failure that is not about one folder fails the search.
+                Err(e) if dir == path || !super::listing_failure_is_the_folders(&e) => {
+                    return Err(e)
+                }
                 Err(_) => continue,
             };
 
@@ -9921,6 +9897,18 @@ mod walk_scope_tests {
                 let path = urlencoding::decode(req.uri().path())
                     .map(|p| crate::sync_core::walk_path_key(&p))
                     .unwrap_or_default();
+                if path.ends_with("/signed-out") {
+                    return axum::response::Response::builder()
+                        .status(401)
+                        .body(axum::body::Body::empty())
+                        .unwrap();
+                }
+                if path.ends_with("/refused") {
+                    return axum::response::Response::builder()
+                        .status(403)
+                        .body(axum::body::Body::empty())
+                        .unwrap();
+                }
                 let Some((_, names)) = listings.iter().find(|(folder, _)| *folder == path) else {
                     return axum::response::Response::builder()
                         .status(404)
@@ -9999,6 +9987,22 @@ mod walk_scope_tests {
             ("/y", &["y.txt"]),
         ],
     ];
+
+    /// A collection under the one searched that is gone or refused leaves the rest of the
+    /// search. A sign-in that ended under it fails the search: the folders
+    /// after it could not be read either.
+    #[tokio::test]
+    async fn a_find_skips_a_gone_collection_and_fails_on_an_ended_session() {
+        const GONE: Listings = &[("/x", &["a.txt", "gone/", "refused/"])];
+        let mut provider = provider_on_listings(GONE).await;
+        let found = provider.find("/x", "*.txt").await.unwrap();
+        assert_eq!(found.len(), 1, "{found:?}");
+
+        const SIGNED_OUT: Listings = &[("/x", &["a.txt", "signed-out/"])];
+        let mut provider = provider_on_listings(SIGNED_OUT).await;
+        let outcome = provider.find("/x", "*.txt").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+    }
 
     /// A search follows only collections inside the one searched, once each.
     #[tokio::test]

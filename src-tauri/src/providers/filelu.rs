@@ -64,6 +64,14 @@ fn filelu_log(msg: &str) {
     info!("[FILELU] {}", msg);
 }
 
+/// A warning a successful call cannot return: to the log, which is what the
+/// GUI shows, and to the pending warnings the CLI and MCP render
+/// ([`super::take_warnings`]). Either alone misses one of them.
+fn warn_user(message: String) {
+    tracing::warn!("{message}");
+    super::report_warning(message);
+}
+
 /// Redact the FileLu API key from any text that may embed it. The key travels
 /// as a `key=` query parameter, and `reqwest::Error`'s `Display` appends
 /// `for url (...)` including the full query string, so the value must be
@@ -331,6 +339,87 @@ struct CacheEntry {
     hash: Option<String>,
 }
 
+/// The MD5 of a file's content, taken from the `hash` FileLu returns for it.
+///
+/// FileLu does not document the field. Measured on 2026-11-01 from 0 B to
+/// 200 MiB: it is the 32 hex characters of the content MD5 followed by a
+/// number, the folder id in a folder listing and the size in `file/info`
+/// (the suffix changes when the file moves, not when it is renamed). The
+/// digest is accepted only when the suffix is one of the numbers the caller
+/// knows for this file, so a change of format on FileLu's side reads as "no
+/// checksum" instead of a wrong one.
+fn md5_from_filelu_hash(hash: &str, expected_suffixes: &[u64]) -> Option<String> {
+    let (digest, suffix) = (hash.get(..32)?, hash.get(32..)?);
+    if !digest.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let suffix: u64 = suffix.parse().ok()?;
+    expected_suffixes
+        .contains(&suffix)
+        .then(|| digest.to_ascii_lowercase())
+}
+
+/// The FileLu operation a name is about to go through.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NameOp {
+    Upload,
+    FileRename,
+    FolderCreate,
+}
+
+/// Why FileLu would store `name` as something else through `op`, or `None`
+/// when it keeps it. Measured on 2026-11-01 over every ASCII punctuation
+/// mark, a tab, edge spaces and non-ASCII letters (WebDAV kept all of them,
+/// so the storage can hold them and only the API changes them). Refusing up
+/// front is the only way to keep a file findable under the name it was
+/// given: after the call the item exists under the other name. A backslash,
+/// which FileLu also mangles, never reaches here: a path reads it as a
+/// separator. Folder rename is not listed because it was not measured;
+/// `settle_upload` still checks the name an upload produced, for a change
+/// not listed here.
+fn filelu_name_refusal(name: &str, op: NameOp) -> Option<String> {
+    let mut reasons: Vec<&str> = Vec::new();
+    if name.chars().any(|c| c > '\u{FFFF}') {
+        reasons.push("it stores characters such as emoji as '?'");
+    }
+    match op {
+        NameOp::Upload => {
+            if name.contains(['\'', '`', '<', '>', '\t']) {
+                reasons.push("its upload removes ', `, <, > and tabs");
+            }
+            if name.starts_with(' ') || name.ends_with(' ') {
+                reasons.push("its upload removes leading and trailing spaces");
+            }
+        }
+        NameOp::FileRename => {
+            if name.contains(['\'', '"', '(', ')', '<', '>']) {
+                reasons.push("its rename stores ', \", (, ), < and > as HTML entities");
+            }
+        }
+        NameOp::FolderCreate => {}
+    }
+    (!reasons.is_empty()).then(|| {
+        format!(
+            "FileLu cannot store the name '{}': {}. Choose a name without those characters.",
+            name,
+            reasons.join("; ")
+        )
+    })
+}
+
+/// FileLu's answer to a path-based (`/apiv2`) call on a file that is not
+/// there, "No file found in specified folder", names neither the file nor
+/// the folder. It becomes `NotFound` with the path asked for, which is what
+/// the caller and the user need; any other error passes through unchanged.
+fn name_missing_path(err: ProviderError, path: &str) -> ProviderError {
+    match err {
+        ProviderError::ServerError(msg) if msg.trim() == "No file found in specified folder" => {
+            ProviderError::NotFound(path.to_string())
+        }
+        other => other,
+    }
+}
+
 // ─── Provider ────────────────────────────────────────────────────────────
 
 pub struct FileLuProvider {
@@ -347,6 +436,10 @@ pub struct FileLuProvider {
     current_fld_id: u64,
     /// Cache: virtual path → entry metadata
     path_cache: HashMap<String, CacheEntry>,
+    /// The file code of each file this session moved to the trash, by path.
+    /// The trash lists a deleted file by name and code only, with no folder,
+    /// so the code is the one way to name the right file there again.
+    trashed_codes: HashMap<String, String>,
     /// Replaces the scheme and host of both API bases in tests.
     #[cfg(test)]
     api_origin_override: Option<String>,
@@ -375,6 +468,7 @@ impl FileLuProvider {
             current_path: "/".to_string(),
             current_fld_id: 0,
             path_cache: HashMap::new(),
+            trashed_codes: HashMap::new(),
             #[cfg(test)]
             api_origin_override: None,
         }
@@ -1320,14 +1414,17 @@ impl FileLuProvider {
             )
         };
         let resp = self.get_with_retry(&url).await?;
-        Self::ensure_api_ok(resp).await
+        Self::ensure_api_ok(resp)
+            .await
+            .map_err(|e| name_missing_path(e, current_path))
     }
 
     /// Rename `entry`, now at `current_path`, to `new_name` in the folder it
     /// is in. A file is renamed by its file code (v1 `file/rename`), which
-    /// cannot pick another item; a folder by path (v2 `folder/rename`), which
-    /// the caller has made unambiguous by checking that no other item has
-    /// that path.
+    /// cannot pick another item; a folder by its id (v1 `folder/rename`). The
+    /// v2 `folder/rename` by path looks the parent up among the top-level
+    /// folders only, so below the second level it answered "Folder '<parent>'
+    /// not found" for every folder.
     async fn rename_entry(
         &mut self,
         entry: &CacheEntry,
@@ -1335,9 +1432,9 @@ impl FileLuProvider {
         new_name: &str,
     ) -> Result<(), ProviderError> {
         let url = if entry.is_dir {
-            self.api_v2_url(
+            self.api_url_with(
                 "folder/rename",
-                &[("folder_path", current_path), ("name", new_name)],
+                &[("fld_id", &entry.fld_id.to_string()), ("name", new_name)],
             )
         } else if !entry.file_code.is_empty() {
             self.api_url_with(
@@ -1351,7 +1448,96 @@ impl FileLuProvider {
             )
         };
         let resp = self.get_with_retry(&url).await?;
-        Self::ensure_api_ok(resp).await
+        Self::ensure_api_ok(resp)
+            .await
+            .map_err(|e| name_missing_path(e, current_path))
+    }
+
+    /// Read the folder back once after an upload and settle what it shows.
+    ///
+    /// - FileLu's upload changes some names (it drops `'`, a backtick, `<`,
+    ///   `>`, a tab and edge spaces, and stores emoji as `?`). Under another
+    ///   name the file cannot be found by the one asked for, so every later
+    ///   run uploaded it again: the copy is moved to the trash and the upload
+    ///   fails, saying so.
+    /// - The replaced file is still listed only where the folder keeps no
+    ///   versions, and then it is a duplicate name: it is removed now that the
+    ///   new copy is in place. Where versions are kept it is gone from the
+    ///   listing and kept as a version, and nothing is removed.
+    async fn settle_upload(
+        &mut self,
+        dest_dir: &str,
+        filename: &str,
+        uploaded_code: &str,
+        replaced_code: Option<String>,
+    ) -> Result<(), ProviderError> {
+        let target = format!("{}/{}", dest_dir.trim_end_matches('/'), filename);
+        let listing = match self.list_folder_v2(dest_dir).await {
+            Ok(listing) => listing,
+            Err(e) => {
+                warn_user(format!(
+                    "FileLu: {target} was uploaded, but its folder could not be read back to check \
+                     the stored name{}: {e}",
+                    if replaced_code.is_some() {
+                        " or remove the file it replaces"
+                    } else {
+                        ""
+                    }
+                ));
+                return Ok(());
+            }
+        };
+        let listed = |code: &str| {
+            listing
+                .files
+                .iter()
+                .find(|f| f.file_code.as_deref() == Some(code))
+        };
+        if let Some(stored) = listed(uploaded_code).and_then(|f| f.name.clone()) {
+            if stored != filename {
+                let url = self.api_url_with(
+                    "file/remove",
+                    &[("file_code", uploaded_code), ("remove", "1")],
+                );
+                let trashed = match self.get_with_retry(&url).await {
+                    Ok(resp) => Self::ensure_api_ok(resp).await.is_ok(),
+                    Err(_) => false,
+                };
+                self.invalidate_cache_under(dest_dir);
+                return Err(ProviderError::InvalidPath(format!(
+                    "FileLu cannot store the name of {target}: it saved the file as '{stored}'. {}",
+                    if trashed {
+                        "That copy was moved to the FileLu trash."
+                    } else {
+                        "That copy is still in the folder."
+                    }
+                )));
+            }
+        }
+        if let Some(old) = replaced_code.filter(|old| old != uploaded_code) {
+            if listed(uploaded_code).is_none() {
+                // The new file is not where it was sent: the old one is then
+                // the only copy under this name, and it stays.
+                warn_user(format!(
+                    "FileLu: {target} was uploaded, but the new file is not in the folder \
+                     listing; the file it replaces was not removed"
+                ));
+            } else if listed(&old).is_some() {
+                let url = self.api_url_with("file/remove", &[("file_code", &old), ("remove", "1")]);
+                let removed = match self.get_with_retry(&url).await {
+                    Ok(resp) => Self::ensure_api_ok(resp).await,
+                    Err(e) => Err(e),
+                };
+                if let Err(e) = removed {
+                    warn_user(format!(
+                        "FileLu: {target} was uploaded, but the file it replaces is still there \
+                         under the same name: {e}"
+                    ));
+                }
+                self.invalidate_cache_under(dest_dir);
+            }
+        }
+        Ok(())
     }
 
     fn invalidate_cache_under(&mut self, parent: &str) {
@@ -1369,7 +1555,9 @@ impl FileLuProvider {
     async fn get_direct_url_v2(&self, file_path: &str) -> Result<String, ProviderError> {
         let url = self.api_v2_url("file/direct_link", &[("file_path", file_path)]);
         let resp = self.get_with_retry(&url).await?;
-        let result = Self::parse_api::<DirectLinkResult>(resp).await?;
+        let result = Self::parse_api::<DirectLinkResult>(resp)
+            .await
+            .map_err(|e| name_missing_path(e, file_path))?;
         result
             .url
             .ok_or_else(|| ProviderError::TransferFailed("No download URL returned".to_string()))
@@ -1437,6 +1625,14 @@ impl FileLuProvider {
         let file_code = self.resolve_file_code(&norm).await?;
 
         let source_name = norm.rsplit('/').next().unwrap_or("file").to_string();
+        // The clone is renamed to `<name>_copy` by FileLu's file rename, which
+        // would store some characters of the name changed: refused before the
+        // clone exists.
+        if let Some(refusal) =
+            filelu_name_refusal(&Self::build_clone_name(&source_name, 1), NameOp::FileRename)
+        {
+            return Err(ProviderError::InvalidPath(refusal));
+        }
         let source_parent = match norm.rfind('/') {
             Some(0) => "/".to_string(),
             Some(idx) => norm[..idx].to_string(),
@@ -1591,6 +1787,22 @@ impl FileLuProvider {
     }
 
     /// List all deleted files (trash).
+    /// Purge the trashed file with `code`, only if the trash lists it under
+    /// the name of `norm`. Ok(false) when it is not there (restored, purged
+    /// elsewhere, or another file).
+    async fn purge_trashed(&mut self, norm: &str, code: &str) -> Result<bool, ProviderError> {
+        let basename = norm.trim_end_matches('/').rsplit('/').next().unwrap_or("");
+        let deleted = self.list_deleted_files().await?;
+        let listed = deleted
+            .iter()
+            .any(|e| e.file_code.as_deref() == Some(code) && e.name.as_deref() == Some(basename));
+        if !listed {
+            return Ok(false);
+        }
+        self.permanent_delete_file(code).await?;
+        Ok(true)
+    }
+
     pub async fn list_deleted_files(&mut self) -> Result<Vec<DeletedFileEntry>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -1902,28 +2114,26 @@ impl StorageProvider for FileLuProvider {
                 "Upload path must include filename".to_string(),
             ));
         }
+        if let Some(refusal) = filelu_name_refusal(&filename, NameOp::Upload) {
+            return Err(ProviderError::InvalidPath(refusal));
+        }
 
         let fld_id = self.resolve_fld_id(&dest_dir).await?;
 
-        // Delete existing file with same name to prevent duplicates
-        // (FileLu creates a new file_code on every upload, never overwrites).
-        // A lookup that fails for any reason but NotFound stops the upload:
-        // going on would leave a second file with the same name.
-        let existing = match self.resolve_path_entry_mode(&norm, true).await {
-            Ok(existing) => Some(existing),
-            Err(ProviderError::NotFound(_)) => None,
+        // The file this upload replaces, if any. A folder that keeps versions
+        // (the default since 2026) turns a same-name upload into a new version
+        // of that file, so it is not removed first: removing it sent the old
+        // content to the trash instead of the versions, and left the name
+        // empty while the upload ran. Whether it is still listed afterwards
+        // decides (see below). A lookup that fails for any reason but NotFound
+        // stops the upload: going on could leave a second file with the name.
+        let replaced_code = match self.resolve_path_entry_mode(&norm, true).await {
+            Ok(existing) if !existing.is_dir && !existing.file_code.is_empty() => {
+                Some(existing.file_code)
+            }
+            Ok(_) | Err(ProviderError::NotFound(_)) => None,
             Err(e) => return Err(e),
         };
-        if let Some(existing) = existing {
-            if !existing.is_dir && !existing.file_code.is_empty() {
-                let del_url = self.api_url_with(
-                    "file/remove",
-                    &[("file_code", &existing.file_code), ("remove", "1")],
-                );
-                let _ = self.get_with_retry(&del_url).await;
-                self.invalidate_cache_under(&dest_dir);
-            }
-        }
 
         // Step 1: Get upload server
         // FileLu response: { status, sess_id, result: "<upload_url>", msg }
@@ -1991,10 +2201,14 @@ impl StorageProvider for FileLuProvider {
                 .file_name(filename.clone())
                 .mime_str("application/octet-stream")
                 .expect("a constant, valid MIME type");
+                // `to_folder` places the file. The upload server does not read
+                // `fld_id`: a file sent with it landed in the root and was
+                // moved afterwards, and in the root it became a new version of
+                // a same-name file there, which then left the root with it.
                 let form = multipart::Form::new()
                     .text("sess_id", sess_id.clone())
                     .text("utype", "prem")
-                    .text("fld_id", fld_id.to_string())
+                    .text("to_folder", fld_id.to_string())
                     .part("file_0", part);
                 self.client.post(&upload_url).multipart(form)
             },
@@ -2048,21 +2262,11 @@ impl StorageProvider for FileLuProvider {
                 )
             })?;
 
-        // FileLu upload endpoint may place files in root depending on account/API behavior.
-        // Force destination folder explicitly when target is not root.
-        if fld_id != 0 {
-            let fld_id_str = fld_id.to_string();
-            let set_folder_url = self.api_url_with(
-                "file/set_folder",
-                &[("file_code", &uploaded_file_code), ("fld_id", &fld_id_str)],
-            );
-            let set_folder_resp = self.get_with_retry(&set_folder_url).await?;
-            Self::ensure_api_ok(set_folder_resp).await?;
-        }
+        self.invalidate_cache_under(&dest_dir);
+        self.settle_upload(&dest_dir, &filename, &uploaded_file_code, replaced_code)
+            .await?;
 
         progress.complete();
-
-        self.invalidate_cache_under(&dest_dir);
         filelu_log(&format!("Uploaded: {}", filename));
         Ok(())
     }
@@ -2091,6 +2295,9 @@ impl StorageProvider for FileLuProvider {
             return Err(ProviderError::InvalidPath(
                 "Folder name cannot be empty".to_string(),
             ));
+        }
+        if let Some(refusal) = filelu_name_refusal(&folder_name, NameOp::FolderCreate) {
+            return Err(ProviderError::InvalidPath(refusal));
         }
 
         let parent_fld_id = self.resolve_fld_id(&parent_path).await?;
@@ -2130,6 +2337,15 @@ impl StorageProvider for FileLuProvider {
         let norm = self.resolve_path(path);
         let entry = self.resolve_path_entry(&norm).await?;
         self.remove_entry(&entry).await?;
+        if !entry.is_dir && !entry.file_code.is_empty() {
+            // Bounded like the path cache. A lost record only means a later
+            // purge of that path purges nothing.
+            if self.trashed_codes.len() >= PATH_CACHE_MAX {
+                self.trashed_codes.clear();
+            }
+            self.trashed_codes
+                .insert(norm.clone(), entry.file_code.clone());
+        }
 
         let parent = norm
             .rfind('/')
@@ -2160,33 +2376,58 @@ impl StorageProvider for FileLuProvider {
     }
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
-        // FileLu: `files/deleted` returns trashed FILES with file_code +
-        // basename. Folders don't appear directly: only their contained
-        // files do. So this resolves single-file paths by basename and
-        // calls `permanent_delete_file`. Folder paths fall back to Ok(false)
-        // (the API has no `folder/permanent_delete` endpoint and there is
-        // no parent-id field on deleted file entries to safely associate
-        // them with the dropped folder).
-        let basename = path
-            .trim_end_matches('/')
-            .rsplit('/')
-            .next()
-            .unwrap_or(path);
-        if basename.is_empty() {
+        // FileLu: `files/deleted` lists trashed FILES by name and file code
+        // only, with no folder, so a name never says which trashed file it is:
+        // the only `a.txt` in the trash can come from another folder. Only the
+        // file code recorded when this session trashed the path is purged;
+        // without one nothing is. Folders fall back to Ok(false): the API has
+        // no `folder/permanent_delete`.
+        let norm = self.resolve_path(path);
+        let Some(code) = self.trashed_codes.get(&norm).cloned() else {
             return Ok(false);
+        };
+        let purged = self.purge_trashed(&norm, &code).await?;
+        // Purged, or no longer in the trash (restored, or purged elsewhere):
+        // either way the record names nothing now.
+        self.trashed_codes.remove(&norm);
+        Ok(purged)
+    }
+
+    /// The file code of each live file, taken before it is deleted, so that
+    /// the purge afterwards can name exactly that trashed file. A folder or a
+    /// path that is not there has none.
+    async fn capture_trash_identities(
+        &mut self,
+        paths: &[String],
+    ) -> Vec<Result<Option<String>, ProviderError>> {
+        let mut out = Vec::with_capacity(paths.len());
+        for path in paths {
+            let norm = self.resolve_path(path);
+            out.push(match self.resolve_path_entry(&norm).await {
+                Ok(entry) if !entry.is_dir && !entry.file_code.is_empty() => {
+                    Ok(Some(entry.file_code))
+                }
+                Ok(_) | Err(ProviderError::NotFound(_)) => Ok(None),
+                Err(e) => Err(e),
+            });
         }
-        let deleted = self.list_deleted_files().await?;
-        let code = deleted
-            .iter()
-            .find(|e| e.name.as_deref() == Some(basename))
-            .and_then(|e| e.file_code.clone());
-        match code {
-            Some(c) => {
-                self.permanent_delete_file(&c).await?;
-                Ok(true)
-            }
-            None => Ok(false),
-        }
+        out
+    }
+
+    /// With an identity, purges the trashed file with that code and the
+    /// path's name, and nothing else.
+    async fn delete_permanent_with_identity(
+        &mut self,
+        path: &str,
+        identity: Option<&str>,
+    ) -> Result<bool, ProviderError> {
+        let Some(code) = identity else {
+            return self.delete_permanent(path).await;
+        };
+        let norm = self.resolve_path(path);
+        let purged = self.purge_trashed(&norm, code).await?;
+        self.trashed_codes.remove(&norm);
+        Ok(purged)
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
@@ -2224,6 +2465,13 @@ impl StorageProvider for FileLuProvider {
             .unwrap_or_else(|| "/".to_string());
 
         let entry = self.resolve_path_entry(&norm_from).await?;
+        let renames_a_file =
+            !entry.is_dir && norm_from.rsplit('/').next() != Some(new_name.as_str());
+        if renames_a_file {
+            if let Some(refusal) = filelu_name_refusal(&new_name, NameOp::FileRename) {
+                return Err(ProviderError::InvalidPath(refusal));
+            }
+        }
 
         // The trait promises no overwrite, and FileLu puts a second item with
         // the same name next to the first (found live on 2026-09-25: a file
@@ -2273,6 +2521,16 @@ impl StorageProvider for FileLuProvider {
             Some((parent, name)) => (parent.to_string(), name.to_string()),
             None => ("/".to_string(), norm_to.clone()),
         };
+        // A file occupant is renamed by FileLu's file rename twice, aside under
+        // a name that embeds `to_name` and back to `to_name` if the move fails,
+        // so a name that rename would change is refused before either step:
+        // checked only inside `rename`, it left the occupant under the changed
+        // name.
+        if !occupant.is_dir {
+            if let Some(refusal) = filelu_name_refusal(&to_name, NameOp::FileRename) {
+                return Err(ProviderError::InvalidPath(refusal));
+            }
+        }
         let aside = super::set_aside_name(&to_name);
         let aside_path = format!("{}/{aside}", to_parent.trim_end_matches('/'));
 
@@ -2363,6 +2621,38 @@ impl StorageProvider for FileLuProvider {
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
         Ok(self.stat(path).await?.size)
+    }
+
+    /// MD5 from the `hash` FileLu publishes for every file: no download.
+    fn supports_checksum(&self) -> bool {
+        true
+    }
+
+    /// `md5` read out of the listed `hash` (see [`md5_from_filelu_hash`]).
+    /// A hash in any other shape yields an empty map rather than a guess, so
+    /// a comparison falls back to size and time instead of failing on a
+    /// digest that is not one.
+    async fn checksum(&mut self, path: &str) -> Result<HashMap<String, String>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let norm = self.resolve_path(path);
+        let entry = self.resolve_path_entry(&norm).await?;
+        if entry.is_dir {
+            return Err(ProviderError::InvalidPath(format!(
+                "{} is a folder and has no checksum",
+                norm
+            )));
+        }
+        let mut out = HashMap::new();
+        if let Some(md5) = entry
+            .hash
+            .as_deref()
+            .and_then(|h| md5_from_filelu_hash(h, &[entry.fld_id, entry.size]))
+        {
+            out.insert("md5".to_string(), md5);
+        }
+        Ok(out)
     }
 
     async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
@@ -2469,8 +2759,23 @@ impl StorageProvider for FileLuProvider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        // Step 1: Clone the file (creates copy in same folder)
         let norm_from = self.resolve_path(from);
+        let norm_to = self.resolve_path(to);
+        let (dest_dir, dest_name) = match norm_to.rfind('/') {
+            Some(0) => ("/".to_string(), norm_to[1..].to_string()),
+            Some(idx) => (norm_to[..idx].to_string(), norm_to[idx + 1..].to_string()),
+            None => ("/".to_string(), norm_to.clone()),
+        };
+        // A copy under another name is renamed by FileLu's file rename, which
+        // would store some characters changed: refused before the clone exists.
+        let src_name = norm_from.rsplit('/').next().unwrap_or("");
+        if !dest_name.is_empty() && dest_name != src_name {
+            if let Some(refusal) = filelu_name_refusal(&dest_name, NameOp::FileRename) {
+                return Err(ProviderError::InvalidPath(refusal));
+            }
+        }
+
+        // Step 1: Clone the file (creates copy in same folder)
         let file_code = self.resolve_file_code(&norm_from).await?;
         let clone_url = self.api_url_with("file/clone", &[("file_code", &file_code)]);
         let resp = self.get_with_retry(&clone_url).await?;
@@ -2479,12 +2784,6 @@ impl StorageProvider for FileLuProvider {
         })?;
 
         // Step 2: Move the clone to the destination folder if needed
-        let norm_to = self.resolve_path(to);
-        let (dest_dir, dest_name) = match norm_to.rfind('/') {
-            Some(0) => ("/".to_string(), norm_to[1..].to_string()),
-            Some(idx) => (norm_to[..idx].to_string(), norm_to[idx + 1..].to_string()),
-            None => ("/".to_string(), norm_to.clone()),
-        };
 
         // Extract cloned file code from response (array format)
         if let Some(arr) = body.get("result").and_then(|r| r.as_array()) {
@@ -2504,7 +2803,6 @@ impl StorageProvider for FileLuProvider {
                 Self::ensure_api_ok(move_resp).await?;
 
                 // Rename if destination filename differs from source
-                let src_name = norm_from.rsplit('/').next().unwrap_or("");
                 if !dest_name.is_empty() && dest_name != src_name {
                     let rename_url = self.api_url_with(
                         "file/rename",
@@ -3218,8 +3516,8 @@ mod tests {
         );
     }
 
-    /// FileLu never overwrites, so upload removes a same-name file first. A
-    /// lookup that fails cannot rule one out: uploading anyway left two files
+    /// The same-name lookup decides what the upload replaces. A lookup that
+    /// fails cannot rule a file out: uploading anyway could leave two files
     /// with one name.
     #[tokio::test]
     async fn upload_sends_nothing_when_the_same_name_lookup_fails() {
@@ -3301,7 +3599,7 @@ mod tests {
         assert_eq!(
             *calls.lock().unwrap(),
             [
-                "/apiv2/folder/rename?folder_path=/src/sub&name=new",
+                "/api/folder/rename?fld_id=33&name=new",
                 "/api/folder/move?fld_id=33&dest_fld_id=22",
             ]
         );
@@ -3694,5 +3992,652 @@ mod tests {
         assert_eq!(mime_from_ext("pdf"), "application/pdf");
         assert_eq!(mime_from_ext("MP3"), "audio/mpeg");
         assert_eq!(mime_from_ext("unknown_ext"), "application/octet-stream");
+    }
+
+    /// A connected provider against a double where `respond(origin, path,
+    /// query)` answers every call. Returns it and, in arrival order, every
+    /// call that is not a listing as `path?query` (the key left out), with a
+    /// POST body after a space.
+    async fn provider_against(
+        respond: impl Fn(&str, &str, &HashMap<String, String>) -> String + Send + Sync + 'static,
+    ) -> (
+        FileLuProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let base = origin.clone();
+        let respond = Arc::new(respond);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |uri: axum::http::Uri, body: axum::body::Bytes| {
+                let url = reqwest::Url::parse(&format!("http://fixture{uri}")).unwrap();
+                let query: HashMap<String, String> = url
+                    .query_pairs()
+                    .into_owned()
+                    .filter(|(key, _)| key != "key")
+                    .collect();
+                if !uri.path().ends_with("/list") {
+                    let shown: Vec<String> = url
+                        .query_pairs()
+                        .filter(|(key, _)| key != "key")
+                        .map(|(k, v)| format!("{k}={v}"))
+                        .collect();
+                    let mut line = format!("{}?{}", uri.path(), shown.join("&"));
+                    if !body.is_empty() {
+                        line.push(' ');
+                        line.push_str(&String::from_utf8_lossy(&body));
+                    }
+                    seen.lock().unwrap().push(line);
+                }
+                let text = respond(&base, uri.path(), &query);
+                async move {
+                    (
+                        [(axum::http::header::CONTENT_TYPE, "application/json")],
+                        text,
+                    )
+                }
+            },
+        ));
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = FileLuProvider::new(FileLuConfig {
+            api_key: secrecy::SecretString::from("k".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.api_origin_override = Some(origin);
+        (provider, calls)
+    }
+
+    /// An upload into `/d` (fld_id 7) against a double that lists `before`
+    /// in `/d` until the file arrives and `after` from then on, each as
+    /// `(name, file_code)`, and gives the upload the code `NEW`. Returns the
+    /// outcome and the calls, as [`provider_against`] records them.
+    async fn upload_into_d(
+        name: &str,
+        before: &'static [(&'static str, &'static str)],
+        after: &'static [(&'static str, &'static str)],
+    ) -> (Result<(), ProviderError>, Vec<String>) {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let arrived = std::sync::Arc::new(AtomicBool::new(false));
+        let (mut provider, calls) = provider_against(move |origin, path, query| {
+            let files = |entries: &[(&str, &str)]| {
+                entries
+                    .iter()
+                    .map(|(n, c)| serde_json::json!({"name": n, "file_code": c, "size": 1}))
+                    .collect::<Vec<_>>()
+            };
+            let page_one = query.get("page").is_none_or(|p| p == "1");
+            match path {
+                "/apiv2/folder/list" if !page_one => {
+                    r#"{"status":200,"result":{"files":[],"folders":[]}}"#.to_string()
+                }
+                "/apiv2/folder/list"
+                    if query.get("folder_path").map(String::as_str) == Some("/") =>
+                {
+                    r#"{"status":200,"result":{"files":[],"folders":[{"name":"d","fld_id":7}]}}"#
+                        .to_string()
+                }
+                "/apiv2/folder/list" => {
+                    let listed = if arrived.load(Ordering::SeqCst) {
+                        after
+                    } else {
+                        before
+                    };
+                    serde_json::json!({"status":200,"result":{"files":files(listed),"folders":[]}})
+                        .to_string()
+                }
+                "/api/upload/server" => {
+                    format!(r#"{{"status":200,"sess_id":"s1","result":"{origin}/up"}}"#)
+                }
+                "/up" => {
+                    arrived.store(true, Ordering::SeqCst);
+                    r#"[{"file_code":"NEW","file_status":"OK"}]"#.to_string()
+                }
+                _ => r#"{"status":200,"msg":"OK"}"#.to_string(),
+            }
+        })
+        .await;
+        let local = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(local.path(), b"x").unwrap();
+        let outcome = provider
+            .upload(&local.path().to_string_lossy(), &format!("/d/{name}"), None)
+            .await;
+        let calls = calls.lock().unwrap().clone();
+        (outcome, calls)
+    }
+
+    /// The upload server ignores `fld_id` and puts the file in the root;
+    /// moving it from there with `set_folder` made a root file with the same
+    /// name a version of the new one, which then followed it away. The
+    /// folder now goes in `to_folder` and nothing moves the file afterwards.
+    #[tokio::test]
+    async fn upload_names_its_folder_in_to_folder_and_moves_nothing() {
+        let (outcome, calls) = upload_into_d("f.txt", &[], &[("f.txt", "NEW")]).await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        let upload = calls
+            .iter()
+            .find(|c| c.starts_with("/up?"))
+            .expect("upload");
+        assert!(
+            upload.contains("name=\"to_folder\"\r\n\r\n7\r\n"),
+            "{upload}"
+        );
+        assert!(!upload.contains("name=\"fld_id\""), "{upload}");
+        assert!(
+            calls
+                .iter()
+                .all(|c| !c.contains("set_folder") && !c.contains("file/remove")),
+            "{calls:?}"
+        );
+    }
+
+    /// Where the folder keeps versions the replaced file leaves the listing
+    /// on its own and is kept as a version: nothing may remove it, before
+    /// the upload (that sent it to the trash) or after.
+    #[tokio::test]
+    async fn a_replaced_file_kept_as_a_version_is_left_alone() {
+        let (outcome, calls) =
+            upload_into_d("f.txt", &[("f.txt", "OLD")], &[("f.txt", "NEW")]).await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert!(
+            calls.iter().all(|c| !c.contains("file/remove")),
+            "{calls:?}"
+        );
+    }
+
+    /// Where the folder keeps no versions the replaced file is still listed
+    /// next to the new one: it is removed, and only once the new one is in.
+    #[tokio::test]
+    async fn a_replaced_file_still_listed_is_removed_after_the_upload() {
+        let (outcome, calls) = upload_into_d(
+            "f.txt",
+            &[("f.txt", "OLD")],
+            &[("f.txt", "OLD"), ("f.txt", "NEW")],
+        )
+        .await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        let upload = calls.iter().position(|c| c.starts_with("/up?")).unwrap();
+        let removes: Vec<(usize, &String)> = calls
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.contains("file/remove"))
+            .collect();
+        assert_eq!(removes.len(), 1, "{calls:?}");
+        assert!(removes[0].0 > upload, "{calls:?}");
+        assert!(removes[0].1.contains("file_code=OLD"), "{calls:?}");
+    }
+
+    /// A new file missing from the folder after the upload leaves the old one
+    /// as the only copy under the name: it is kept, and the call warns.
+    #[tokio::test]
+    async fn a_replaced_file_is_kept_when_the_new_one_is_not_listed() {
+        let warnings = super::super::CallWarnings::default();
+        let (outcome, calls) = warnings
+            .scope(upload_into_d(
+                "f.txt",
+                &[("f.txt", "OLD")],
+                &[("f.txt", "OLD")],
+            ))
+            .await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert!(
+            !calls.iter().any(|c| c.contains("file/remove")),
+            "{calls:?}"
+        );
+        let reported = warnings.take();
+        assert!(
+            reported
+                .iter()
+                .any(|w| w.contains("/d/f.txt") && w.contains("not in the folder listing")),
+            "{reported:?}"
+        );
+    }
+
+    /// A name the upload stored differently could never be found again under
+    /// the one asked for, and every later run uploaded it once more. The
+    /// copy goes to the trash and the upload fails, naming both.
+    #[tokio::test]
+    async fn an_upload_stored_under_another_name_is_trashed_and_fails() {
+        let (outcome, calls) = upload_into_d("f.txt", &[], &[("g.txt", "NEW")]).await;
+        let Err(ProviderError::InvalidPath(msg)) = outcome else {
+            panic!("{outcome:?}");
+        };
+        assert!(msg.contains("/d/f.txt") && msg.contains("'g.txt'"), "{msg}");
+        assert!(msg.contains("moved to the FileLu trash"), "{msg}");
+        assert!(
+            calls
+                .iter()
+                .any(|c| c.contains("file/remove") && c.contains("file_code=NEW")),
+            "{calls:?}"
+        );
+    }
+
+    /// A name FileLu is known to change is refused before anything is sent.
+    #[tokio::test]
+    async fn a_name_the_upload_would_change_sends_nothing() {
+        let (outcome, calls) = upload_into_d("it's.txt", &[], &[]).await;
+        assert!(
+            matches!(outcome, Err(ProviderError::InvalidPath(ref m)) if m.contains("it's.txt")),
+            "{outcome:?}"
+        );
+        assert!(calls.is_empty(), "{calls:?}");
+    }
+
+    #[tokio::test]
+    async fn a_file_rename_to_a_name_filelu_would_encode_sends_nothing() {
+        let (mut provider, calls) =
+            provider_with_cached_tree(&[("/d", "7"), ("/d/a.txt", "AAA")]).await;
+        let outcome = provider.rename("/d/a.txt", "/d/a(1).txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::InvalidPath(ref m)) if m.contains("HTML entities")),
+            "{outcome:?}"
+        );
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+        // Moving it into another folder under the same name renames nothing.
+        let (mut provider, _) =
+            provider_with_cached_tree(&[("/d", "7"), ("/e", "8"), ("/d/it's.txt", "AAA")]).await;
+        provider
+            .rename("/d/it's.txt", "/e/it's.txt")
+            .await
+            .expect("a move keeps the name it already has");
+    }
+
+    /// Measured on 2026-11-01: each operation changes its own characters.
+    #[test]
+    fn name_refusal_follows_what_each_operation_changes() {
+        use super::NameOp::{FileRename, FolderCreate, Upload};
+        for (name, op, refused) in [
+            ("it's.txt", Upload, true),
+            ("a`b", Upload, true),
+            ("a<b>", Upload, true),
+            ("a\tb", Upload, true),
+            (" lead", Upload, true),
+            ("trail ", Upload, true),
+            ("a(1).txt", Upload, false),
+            ("a\"b", Upload, false),
+            ("a(1).txt", FileRename, true),
+            ("a\"b", FileRename, true),
+            ("it's.txt", FileRename, true),
+            ("a`b", FileRename, false),
+            (" lead", FileRename, false),
+            ("smile\u{1F600}", Upload, true),
+            ("smile\u{1F600}", FileRename, true),
+            ("smile\u{1F600}", FolderCreate, true),
+            ("it's (1)", FolderCreate, false),
+            ("a&b!#$%+,;=@[]^{}~|:*?é漢.txt", Upload, false),
+            ("a&b!#$%+,;=@[]^{}~|:*?é漢.txt", FileRename, false),
+        ] {
+            assert_eq!(
+                filelu_name_refusal(name, op).is_some(),
+                refused,
+                "{name:?} through {op:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn mkdir_refuses_a_name_filelu_would_change() {
+        let (mut provider, calls) = provider_with_cached_tree(&[("/d", "7")]).await;
+        let outcome = provider.mkdir("/d/x\u{1F600}").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::InvalidPath(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|c| !c.contains("folder/create")),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+    }
+
+    /// The v2 `folder/rename` looks the parent up among the top-level folders
+    /// only, so below the second level it failed for every folder. A folder
+    /// is renamed by its id at any depth.
+    #[tokio::test]
+    async fn a_deep_folder_is_renamed_by_its_id() {
+        let (mut provider, calls) =
+            provider_with_cached_tree(&[("/a", "5"), ("/a/b", "6"), ("/a/b/c", "7")]).await;
+        provider.rename("/a/b/c", "/a/b/z").await.expect("rename");
+        assert_eq!(
+            *calls.lock().unwrap(),
+            ["/api/folder/rename?fld_id=7&name=z"]
+        );
+    }
+
+    /// A provider whose trash (`files/deleted`) holds `trash` as
+    /// `(name, file_code)`, with the folder `/d` (fld 7) cached.
+    async fn provider_with_trash(
+        trash: &'static [(&'static str, &'static str)],
+    ) -> (
+        FileLuProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        let (mut provider, calls) = provider_against(move |_, path, _| match path {
+            "/api/files/deleted" => serde_json::json!({
+                "status": 200,
+                "result": trash
+                    .iter()
+                    .map(|(n, c)| serde_json::json!({"name": n, "file_code": c, "deleted_ago_hours": "0"}))
+                    .collect::<Vec<_>>()
+            })
+            .to_string(),
+            _ => r#"{"status":200,"msg":"OK"}"#.to_string(),
+        })
+        .await;
+        provider.path_cache.insert(
+            "/d".to_string(),
+            CacheEntry {
+                is_dir: true,
+                fld_id: 7,
+                fld_token: None,
+                file_code: String::new(),
+                size: 0,
+                modified: None,
+                hash: None,
+            },
+        );
+        (provider, calls)
+    }
+
+    fn purged(calls: &std::sync::Mutex<Vec<String>>) -> Vec<String> {
+        calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.contains("permanent_delete"))
+            .cloned()
+            .collect()
+    }
+
+    /// The trash lists files by name only, with no folder. The code this
+    /// session trashed the path under names the right `a.txt`.
+    #[tokio::test]
+    async fn delete_permanent_purges_the_code_this_session_trashed() {
+        let (mut provider, calls) =
+            provider_with_trash(&[("a.txt", "OTHER"), ("a.txt", "MINE")]).await;
+        provider
+            .trashed_codes
+            .insert("/d/a.txt".to_string(), "MINE".to_string());
+        assert!(provider.delete_permanent("/d/a.txt").await.unwrap());
+        assert_eq!(
+            purged(&calls),
+            ["/api/file/permanent_delete?file_code=MINE"]
+        );
+        assert!(!provider.trashed_codes.contains_key("/d/a.txt"));
+    }
+
+    /// The trash names no folder, so without a recorded code nothing is
+    /// purged, not even the only trashed file with the name: it can come
+    /// from another folder.
+    #[tokio::test]
+    async fn delete_permanent_never_purges_by_name_alone() {
+        let unique: &'static [(&str, &str)] = &[("a.txt", "ONLY")];
+        let shared: &'static [(&str, &str)] = &[("a.txt", "ONE"), ("a.txt", "TWO")];
+        for trash in [unique, shared] {
+            let (mut provider, calls) = provider_with_trash(trash).await;
+            assert!(!provider.delete_permanent("/d/a.txt").await.unwrap());
+            assert!(purged(&calls).is_empty(), "{:?}", calls.lock().unwrap());
+        }
+    }
+
+    /// The identity taken before the delete is the file code; the purge after
+    /// it removes the trashed file with that code and that name, and only it.
+    #[tokio::test]
+    async fn the_identity_captured_before_a_delete_names_the_purge() {
+        let (mut provider, calls) =
+            provider_with_trash(&[("a.txt", "OTHER"), ("a.txt", "MINE"), ("b.txt", "B")]).await;
+        provider.path_cache.insert(
+            "/d/a.txt".to_string(),
+            CacheEntry {
+                is_dir: false,
+                fld_id: 7,
+                fld_token: None,
+                file_code: "MINE".to_string(),
+                size: 1,
+                modified: None,
+                hash: None,
+            },
+        );
+        let identities = provider
+            .capture_trash_identities(&["/d/a.txt".to_string(), "/d".to_string()])
+            .await;
+        assert!(
+            matches!(identities[0], Ok(Some(ref c)) if c == "MINE"),
+            "{identities:?}"
+        );
+        assert!(matches!(identities[1], Ok(None)), "{identities:?}");
+
+        assert!(provider
+            .delete_permanent_with_identity("/d/a.txt", Some("MINE"))
+            .await
+            .unwrap());
+        assert_eq!(
+            purged(&calls),
+            ["/api/file/permanent_delete?file_code=MINE"]
+        );
+
+        // A code the trash lists under another name is not this path's file.
+        assert!(!provider
+            .delete_permanent_with_identity("/d/a.txt", Some("B"))
+            .await
+            .unwrap());
+        assert_eq!(purged(&calls).len(), 1, "{:?}", calls.lock().unwrap());
+    }
+
+    /// A recorded code no longer in the trash (restored, or purged on the
+    /// site) purges nothing, not another file with the same name.
+    #[tokio::test]
+    async fn delete_permanent_ignores_a_recorded_code_gone_from_the_trash() {
+        let (mut provider, calls) = provider_with_trash(&[("a.txt", "SOMEONE")]).await;
+        provider
+            .trashed_codes
+            .insert("/d/a.txt".to_string(), "MINE".to_string());
+        assert!(!provider.delete_permanent("/d/a.txt").await.unwrap());
+        assert!(purged(&calls).is_empty(), "{:?}", calls.lock().unwrap());
+    }
+
+    #[test]
+    fn md5_is_read_from_the_hash_only_with_a_known_suffix() {
+        let md5 = "73b6231c2379602a2266fbb0b94e9f30";
+        let hash = format!("{md5}2629426");
+        assert_eq!(
+            md5_from_filelu_hash(&hash, &[2629426, 10]).as_deref(),
+            Some(md5)
+        );
+        assert_eq!(
+            md5_from_filelu_hash(&hash, &[10, 2629426]).as_deref(),
+            Some(md5)
+        );
+        assert_eq!(
+            md5_from_filelu_hash(&format!("{}0", md5.to_uppercase()), &[0]).as_deref(),
+            Some(md5),
+            "a digest is reported in lowercase"
+        );
+        for (hash, suffixes) in [
+            (hash.as_str(), &[1u64][..]),   // a suffix nobody expects
+            (md5, &[0][..]),                // no suffix at all
+            ("73b6231c2379602a", &[0][..]), // too short
+            ("z3b6231c2379602a2266fbb0b94e9f302629426", &[2629426][..]),
+            ("73b6231c2379602a2266fbb0b94e9f30-2629426", &[2629426][..]),
+        ] {
+            assert_eq!(md5_from_filelu_hash(hash, suffixes), None, "{hash}");
+        }
+    }
+
+    /// `checksum` answers from the listed hash, guarded by the folder id the
+    /// listing put after it, and with nothing rather than a guess otherwise.
+    #[tokio::test]
+    async fn checksum_reports_the_md5_of_a_listed_file() {
+        let (mut provider, _) = provider_with_cached_tree(&[("/d", "7")]).await;
+        for (hash, expected) in [
+            (
+                "73b6231c2379602a2266fbb0b94e9f307",
+                Some("73b6231c2379602a2266fbb0b94e9f30"),
+            ),
+            ("73b6231c2379602a2266fbb0b94e9f3099", None),
+        ] {
+            provider.path_cache.insert(
+                "/d/f.bin".to_string(),
+                CacheEntry {
+                    is_dir: false,
+                    fld_id: 7,
+                    fld_token: None,
+                    file_code: "F".to_string(),
+                    size: 3,
+                    modified: None,
+                    hash: Some(hash.to_string()),
+                },
+            );
+            let sums = provider.checksum("/d/f.bin").await.unwrap();
+            assert_eq!(sums.get("md5").map(String::as_str), expected, "{hash}");
+        }
+        assert!(provider.supports_checksum());
+    }
+
+    /// FileLu answers a path-based call on a missing file with "No file found
+    /// in specified folder", which names nothing. The error now carries the
+    /// path and says NotFound.
+    #[tokio::test]
+    async fn a_missing_file_is_not_found_with_its_path() {
+        let (provider, _) = provider_against(|_, path, _| match path {
+            "/apiv2/file/direct_link" => {
+                r#"{"status":404,"msg":"No file found in specified folder"}"#.to_string()
+            }
+            _ => r#"{"status":200,"msg":"OK"}"#.to_string(),
+        })
+        .await;
+        let outcome = provider.get_direct_url_v2("/d/missing.bin").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(ref p)) if p == "/d/missing.bin"),
+            "{outcome:?}"
+        );
+        assert!(matches!(
+            name_missing_path(ProviderError::ServerError("denied".into()), "/x"),
+            ProviderError::ServerError(_)
+        ));
+    }
+
+    /// A replace renames the file at the destination aside, under a name that
+    /// embeds the destination's, before it moves the source in. A destination
+    /// name FileLu's rename would change is refused before that first step.
+    #[tokio::test]
+    async fn a_replace_onto_a_name_filelu_would_encode_changes_nothing() {
+        let (mut provider, calls) = provider_with_cached_tree(&[
+            ("/d", "7"),
+            ("/d/new.txt", "NEW"),
+            ("/d/a(1).txt", "OLD"),
+        ])
+        .await;
+        let outcome = provider.replace("/d/new.txt", "/d/a(1).txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::InvalidPath(ref m)) if m.contains("HTML entities")),
+            "{outcome:?}"
+        );
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+    }
+
+    /// Both copies rename the clone with FileLu's file rename, so a name it
+    /// would change is refused before the clone exists.
+    #[tokio::test]
+    async fn a_copy_to_a_name_filelu_would_encode_clones_nothing() {
+        let (mut provider, calls) =
+            provider_with_cached_tree(&[("/d", "7"), ("/d/a.txt", "AAA")]).await;
+        let outcome = provider.server_side_copy("/d/a.txt", "/d/a(1).txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::InvalidPath(ref m)) if m.contains("HTML entities")),
+            "{outcome:?}"
+        );
+        let (mut provider, clone_calls) =
+            provider_with_cached_tree(&[("/d", "7"), ("/d/it's.txt", "BBB")]).await;
+        let outcome = provider.clone_file("/d/it's.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::InvalidPath(ref m)) if m.contains("it's_copy.txt")),
+            "{outcome:?}"
+        );
+        for calls in [calls, clone_calls] {
+            assert!(
+                calls.lock().unwrap().is_empty(),
+                "{:?}",
+                calls.lock().unwrap()
+            );
+        }
+    }
+
+    /// The trash record of a path that left the trash is dropped, not kept
+    /// for the rest of the session.
+    #[tokio::test]
+    async fn a_trash_record_gone_from_the_trash_is_dropped() {
+        let (mut provider, _) = provider_with_trash(&[("a.txt", "SOMEONE")]).await;
+        provider
+            .trashed_codes
+            .insert("/d/a.txt".to_string(), "MINE".to_string());
+        assert!(!provider.delete_permanent("/d/a.txt").await.unwrap());
+        assert!(!provider.trashed_codes.contains_key("/d/a.txt"));
+    }
+
+    /// An upload whose folder cannot be read back afterwards succeeded: the
+    /// file is stored, and an error would make a retry upload it again. What
+    /// is left unchecked reaches the call's warnings, which the CLI and MCP
+    /// show. The log line `warn_user` also writes, for the GUI, is not
+    /// asserted: a subscriber captured in this parallel suite missed the line
+    /// in 9 of 40 runs, while the call's warnings had it every time.
+    #[tokio::test]
+    async fn an_upload_whose_folder_cannot_be_read_back_still_succeeds_and_warns() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let arrived = std::sync::Arc::new(AtomicBool::new(false));
+        let (mut provider, _) = provider_against(move |origin, path, query| {
+            let root = query.get("folder_path").map(String::as_str) == Some("/");
+            match path {
+                "/apiv2/folder/list" if root => {
+                    r#"{"status":200,"result":{"files":[],"folders":[{"name":"d","fld_id":7}]}}"#
+                        .to_string()
+                }
+                "/apiv2/folder/list" if arrived.load(Ordering::SeqCst) => {
+                    r#"{"status":500,"msg":"denied"}"#.to_string()
+                }
+                "/apiv2/folder/list" => {
+                    r#"{"status":200,"result":{"files":[{"name":"f.txt","file_code":"OLD"}],"folders":[]}}"#
+                        .to_string()
+                }
+                "/api/upload/server" => {
+                    format!(r#"{{"status":200,"sess_id":"s1","result":"{origin}/up"}}"#)
+                }
+                "/up" => {
+                    arrived.store(true, Ordering::SeqCst);
+                    r#"[{"file_code":"NEW","file_status":"OK"}]"#.to_string()
+                }
+                _ => r#"{"status":200,"msg":"OK"}"#.to_string(),
+            }
+        })
+        .await;
+        let local = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(local.path(), b"x").unwrap();
+        let warnings = super::super::CallWarnings::default();
+        let outcome = warnings
+            .scope(provider.upload(&local.path().to_string_lossy(), "/d/f.txt", None))
+            .await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        let reported = warnings.take();
+        assert!(
+            reported
+                .iter()
+                .any(|w| w.contains("/d/f.txt") && w.contains("could not be read back")),
+            "{reported:?}"
+        );
     }
 }
