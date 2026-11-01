@@ -4376,12 +4376,13 @@ impl FtpProvider {
         total_size: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        // First: a stream that fails leaves it for the retry of this entry.
+        self.download_time.refused();
         let time_before = self.time_reading(remote_path).await;
         // A reading that ran out gave up the session.
         self.ensure_connected().await?;
         self.download_single_reconnecting(remote_path, local_path, total_size, on_progress)
             .await?;
-        self.download_time.refused();
         if time_before.is_some() {
             let time_after = self.time_reading(remote_path).await;
             if time_after == time_before {
@@ -5349,6 +5350,21 @@ mod restart_contract_tests {
             initial_path: None,
         };
         (config, log, server)
+    }
+
+    /// The executor asks after a failed attempt, to tell the retry of this entry.
+    #[tokio::test]
+    async fn a_refusal_stands_when_the_stream_after_it_fails() {
+        let (config, _log, server) = no_restart_server(Arc::new(vec![7u8; 64])).await;
+        let mut provider = FtpProvider::new(config);
+        let directory = tempfile::tempdir().unwrap();
+        let out = directory.path().join("f.bin");
+        assert!(provider
+            .download_after_refusal("/f.bin", out.to_str().unwrap(), 64, None)
+            .await
+            .is_err());
+        assert!(provider.download_was_refused());
+        server.abort();
     }
 
     /// RETR carries no time: after a refusal two readings around the transfer
