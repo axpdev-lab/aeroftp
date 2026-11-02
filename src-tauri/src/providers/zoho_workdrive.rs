@@ -2579,6 +2579,18 @@ impl ZohoWorkdriveProvider {
         parent: &str,
         name: &str,
     ) -> Result<(String, Option<FileResource>), ProviderError> {
+        // A team-only root is a discovery listing, not a listable team ID.
+        // Unknown top-level names cannot be children of the current folder.
+        if absolute
+            && parent.is_empty()
+            && self.privatespace_id.is_none()
+            && !self
+                .team_folders
+                .iter()
+                .any(|(id, folder)| id == name || folder == name)
+        {
+            return Err(ProviderError::NotFound(format!("/{name}")));
+        }
         let resolved = self.parent_folder_with_listing(absolute, parent).await?;
         let entry = match resolved.listing {
             Some(files) => files.into_iter().find(|f| f.attributes.name == name),
@@ -5380,6 +5392,8 @@ mod tests {
         provider.endpoint_override = Some(format!("http://{addr}"));
         provider.test_access_token = Some("test-token".into());
         provider.connected = true;
+        // This fixture models a real private root, not a synthetic team root.
+        provider.privatespace_id = Some("ROOT".into());
         provider.folder_cache.insert("/".into(), "ROOT".into());
         (provider, accepted, server)
     }
@@ -5801,7 +5815,7 @@ mod tests {
         use crate::providers::upload_progress::fixture::{serve, Route};
         let listing = r#"{"data":[{"id":"A","attributes":{"name":"a","type":"folder"}}]}"#;
         let (base, _server) = serve(vec![
-            Route::get("/workdrive/api/v1/files/ROOT/files", 200, listing),
+            Route::get("/workdrive/api/v1/privatespace/ROOT/files", 200, listing),
             Route::get("/workdrive/api/v1/files/A/files", 200, r#"{"data":[]}"#),
             Route {
                 method: axum::http::Method::PATCH,
@@ -5816,6 +5830,8 @@ mod tests {
         provider.endpoint_override = Some(base);
         provider.test_access_token = Some("test-token".into());
         provider.connected = true;
+        // This fixture models a real private root, not a synthetic team root.
+        provider.privatespace_id = Some("ROOT".into());
         for (path, id) in [("/", "ROOT"), ("/a", "A"), ("/a/sub", "SUB"), ("/ab", "AB")] {
             provider
                 .folder_cache
@@ -5835,7 +5851,7 @@ mod tests {
         let listing = r#"{"data":[{"id":"A","attributes":{"name":"taken","type":"folder"}}]}"#;
         let app = axum::Router::new()
             .route(
-                "/workdrive/api/v1/files/ROOT/files",
+                "/workdrive/api/v1/privatespace/ROOT/files",
                 axum::routing::get(move || async move { listing }),
             )
             .route(
@@ -5855,6 +5871,8 @@ mod tests {
         provider.endpoint_override = Some(format!("http://{addr}"));
         provider.test_access_token = Some("test-token".into());
         provider.connected = true;
+        // This fixture models a real private root, not a synthetic team root.
+        provider.privatespace_id = Some("ROOT".into());
         provider
             .folder_cache
             .insert("/".to_string(), "ROOT".to_string());
@@ -5887,7 +5905,7 @@ mod tests {
         let (listed, created) = (listings.clone(), creates.clone());
         let app = axum::Router::new()
             .route(
-                "/workdrive/api/v1/files/ROOT/files",
+                "/workdrive/api/v1/privatespace/ROOT/files",
                 axum::routing::get(move || {
                     let nth = listed.fetch_add(1, Ordering::SeqCst);
                     async move { listing(nth) }
@@ -5910,6 +5928,8 @@ mod tests {
         provider.endpoint_override = Some(format!("http://{addr}"));
         provider.test_access_token = Some("test-token".into());
         provider.connected = true;
+        // This fixture models a real private root, not a synthetic team root.
+        provider.privatespace_id = Some("ROOT".into());
         provider.folder_cache.insert("/".into(), "ROOT".into());
         provider.current_folder_id = "ROOT".into();
         provider.retry = HttpRetryConfig {
@@ -6061,7 +6081,7 @@ mod tests {
         use crate::providers::upload_progress::fixture::{serve_logged, Route};
         let listing = r#"{"data":[{"id":"A","attributes":{"name":"a","type":"folder"}},{"id":"B","attributes":{"name":"b.txt","type":"file"}}]}"#;
         let (base, _server, received) = serve_logged(vec![
-            Route::get("/workdrive/api/v1/files/ROOT/files", 200, listing),
+            Route::get("/workdrive/api/v1/privatespace/ROOT/files", 200, listing),
             Route {
                 method: axum::http::Method::PATCH,
                 path: "/workdrive/api/v1/files/A",
@@ -6075,6 +6095,8 @@ mod tests {
         p.endpoint_override = Some(base);
         p.test_access_token = Some("test-token".into());
         p.connected = true;
+        // This fixture models a real private root, not a synthetic team root.
+        p.privatespace_id = Some("ROOT".into());
         p.folder_cache.insert("/".to_string(), "ROOT".to_string());
         p.current_folder_id = "ROOT".to_string();
         let outcome = p.rename("/a", "/b.txt").await;
