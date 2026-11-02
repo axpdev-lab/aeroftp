@@ -266,8 +266,15 @@ fn existing_spelling_problems(
             entries
         });
         let held = entries.get(&guard.key(Path::new(name)));
+        // Two Unicode spellings of one name are one file on a disk that folds them:
+        // an update, not a replacement. Only the disk's listing shows which it keeps.
+        let wanted: String = name.nfc().collect();
         let other = held
-            .filter(|names| !names.iter().any(|found| found == name))
+            .filter(|names| {
+                !names
+                    .iter()
+                    .any(|found| found == name || found.nfc().collect::<String>() == wanted)
+            })
             .and_then(|names| names.first());
         if let Some(other) = other {
             problems.push(LocalTargetProblem {
@@ -287,6 +294,17 @@ pub fn local_target_problems(
     paths: &[String],
     files: &[String],
 ) -> Vec<LocalTargetProblem> {
+    // Learning the disk's rules writes to it. With the strictest rules nothing to
+    // refuse, the answer cannot change anything: a dry run and a watch stay quiet.
+    let strictest = DestinationRules {
+        fold_case: true,
+        fold_normalization: true,
+    };
+    if target_problems(strictest, cfg!(windows), paths, files).is_empty()
+        && existing_spelling_problems(strictest, destination, files).is_empty()
+    {
+        return Vec::new();
+    }
     let rules = destination_rules(destination);
     let mut problems = target_problems(rules, cfg!(windows), paths, files);
     for problem in existing_spelling_problems(rules, destination, files) {
@@ -493,6 +511,11 @@ mod tests {
             fold_normalization: false,
         };
         assert!(existing_spelling_problems(keeps, dest.path(), &files).is_empty());
+
+        // Two Unicode spellings of one name are that file, not another one.
+        std::fs::write(dest.path().join("cafe\u{301}.txt"), "mine").unwrap();
+        let composed = ["caf\u{e9}.txt".to_string()];
+        assert!(existing_spelling_problems(folds, dest.path(), &composed).is_empty());
     }
 
     #[test]
