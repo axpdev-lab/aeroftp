@@ -451,6 +451,35 @@ impl PCloudProvider {
         self.config.api_base()
     }
 
+    /// URL on a content host that a pCloud file link names. Tests that point
+    /// the API at a local fixture get plain http, so the fixture can serve
+    /// the content too.
+    fn content_url(&self, host: &str, path: &str) -> String {
+        #[cfg(test)]
+        if self
+            .api_base_override
+            .as_deref()
+            .is_some_and(|base| base.starts_with("http://"))
+        {
+            return format!("http://{host}{path}");
+        }
+        format!("https://{host}{path}")
+    }
+
+    /// A content host answering with an error status serves an error page,
+    /// not the file, and reqwest returns it like any other response.
+    async fn content_response(resp: reqwest::Response) -> Result<reqwest::Response, ProviderError> {
+        let status = resp.status();
+        if status.is_success() {
+            return Ok(resp);
+        }
+        let excerpt = super::error_body_excerpt(resp, 200).await;
+        Err(ProviderError::TransferFailed(format!(
+            "pCloud content host answered HTTP {status}: {}",
+            sanitize_api_error(&excerpt)
+        )))
+    }
+
     /// Get Authorization header with Bearer token (token never exposed in URL)
     async fn auth_header(&self) -> Result<String, ProviderError> {
         Ok(format!("Bearer {}", self.access_token().await?))
@@ -971,7 +1000,7 @@ impl StorageProvider for PCloudProvider {
             .path
             .ok_or_else(|| ProviderError::TransferFailed("No download path".to_string()))?;
 
-        let download_url = format!("https://{}{}", host, path);
+        let download_url = self.content_url(&host, &path);
 
         // Step 2: Streaming download (no retry for data stream: only the link request is retried)
         let resp = self
@@ -980,6 +1009,7 @@ impl StorageProvider for PCloudProvider {
             .send()
             .await
             .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp = Self::content_response(resp).await?;
 
         use futures_util::StreamExt;
 
@@ -1052,7 +1082,7 @@ impl StorageProvider for PCloudProvider {
             .path
             .ok_or_else(|| ProviderError::TransferFailed("No download path".to_string()))?;
 
-        let download_url = format!("https://{}{}", host, path);
+        let download_url = self.content_url(&host, &path);
 
         // Step 2: Resumable download (pCloud CDN URLs don't need auth)
         super::http_resumable_download(
@@ -1112,7 +1142,7 @@ impl StorageProvider for PCloudProvider {
             .path
             .ok_or_else(|| ProviderError::TransferFailed("No download path".to_string()))?;
 
-        let download_url = format!("https://{}{}", host, path);
+        let download_url = self.content_url(&host, &path);
 
         // Step 2: Download
         let resp = self
@@ -1121,6 +1151,7 @@ impl StorageProvider for PCloudProvider {
             .send()
             .await
             .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp = Self::content_response(resp).await?;
 
         // H2: Size-limited download to prevent OOM on large files
         super::response_bytes_with_limit(resp, super::MAX_DOWNLOAD_TO_BYTES).await
@@ -1771,13 +1802,15 @@ impl StorageProvider for PCloudProvider {
             .ok_or_else(|| ProviderError::Other("No thumbnail path".to_string()))?;
 
         // Fetch thumbnail bytes and encode as base64 data URI
-        let thumb_url = format!("https://{}{}", host, thumb_path);
-        let bytes = self
+        let thumb_url = self.content_url(&host, &thumb_path);
+        let resp = self
             .client
             .get(&thumb_url)
             .send()
             .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let bytes = Self::content_response(resp)
+            .await?
             .bytes()
             .await
             .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
@@ -1866,13 +1899,15 @@ impl StorageProvider for PCloudProvider {
             .path
             .ok_or_else(|| ProviderError::TransferFailed("No download path".to_string()))?;
 
-        let download_url = format!("https://{}{}", host, dl_path);
-        let bytes = self
+        let download_url = self.content_url(&host, &dl_path);
+        let resp = self
             .client
             .get(&download_url)
             .send()
             .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let bytes = Self::content_response(resp)
+            .await?
             .bytes()
             .await
             .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
@@ -2853,6 +2888,95 @@ mod tests {
         let mut p = PCloudProvider::connected_for_test(demo_cfg());
         p.test_access_token = Some("fixture-token".to_string());
         p
+    }
+
+    /// A provider whose file and thumbnail links name a content host on the
+    /// same local fixture, which answers the content with `status`.
+    async fn provider_with_content(status: u16) -> PCloudProvider {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let link = format!(r#"{{"result":0,"hosts":["{addr}"],"path":"/content"}}"#);
+        let app = axum::Router::new()
+            .route(
+                "/getfilelink",
+                axum::routing::get({
+                    let link = link.clone();
+                    move || async move { link }
+                }),
+            )
+            .route(
+                "/getthumblink",
+                axum::routing::get(move || async move { link }),
+            )
+            .route(
+                "/content",
+                axum::routing::get(move || async move {
+                    let status = axum::http::StatusCode::from_u16(status).unwrap();
+                    let body = if status.is_success() {
+                        "DATA"
+                    } else {
+                        "error page"
+                    };
+                    (status, body)
+                }),
+            );
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        provider
+    }
+
+    fn refused_with_404<T: std::fmt::Debug>(outcome: &Result<T, ProviderError>) -> bool {
+        matches!(outcome, Err(ProviderError::TransferFailed(m)) if m.contains("404"))
+    }
+
+    /// The content host serves what pCloud's file link names; a success still
+    /// arrives whole through the plain-http fixture.
+    #[tokio::test]
+    async fn a_download_from_the_content_host_arrives() {
+        let mut provider = provider_with_content(200).await;
+        assert_eq!(provider.download_to_bytes("/f.txt").await.unwrap(), b"DATA");
+    }
+
+    /// A content host answering 404 serves an error page, not the file: the
+    /// download fails and writes nothing.
+    #[tokio::test]
+    async fn a_download_answered_with_an_http_error_fails_and_writes_nothing() {
+        let mut provider = provider_with_content(404).await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("f.txt");
+        let outcome = provider
+            .download("/f.txt", out.to_str().unwrap(), None)
+            .await;
+        assert!(refused_with_404(&outcome), "{outcome:?}");
+        assert!(!out.exists());
+    }
+
+    #[tokio::test]
+    async fn an_in_memory_download_answered_with_an_http_error_fails() {
+        let mut provider = provider_with_content(404).await;
+        let outcome = provider.download_to_bytes("/f.txt").await;
+        assert!(refused_with_404(&outcome), "{outcome:?}");
+    }
+
+    #[tokio::test]
+    async fn a_version_download_answered_with_an_http_error_fails_and_writes_nothing() {
+        let mut provider = provider_with_content(404).await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("v.txt");
+        let outcome = provider
+            .download_version("/f.txt", "7", out.to_str().unwrap())
+            .await;
+        assert!(refused_with_404(&outcome), "{outcome:?}");
+        assert!(!out.exists());
+    }
+
+    /// An error page is not a thumbnail: it would be shown as a broken image.
+    #[tokio::test]
+    async fn a_thumbnail_answered_with_an_http_error_fails() {
+        let mut provider = provider_with_content(404).await;
+        let outcome = provider.get_thumbnail("/f.jpg").await;
+        assert!(refused_with_404(&outcome), "{outcome:?}");
     }
 
     #[tokio::test]
