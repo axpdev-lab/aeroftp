@@ -1360,6 +1360,8 @@
             "aiKeysCount": "AI võtmed: {count}",
             "oauthTokensCount": "OAuth-märgid: {count}",
             "configEntriesCount": "Konfiguratsioonikirjed: {count}",
+            "verifyDownloadHash": "Kontrolli allalaadimisi serveri räsi vastu",
+            "verifyDownloadHashHelp": "Pärast allalaadimist võrreldakse faili serveri avaldatud räsiga ning kui need erinevad, faili ei säilitata. Kus räsi ei kasutata, nagu FTP puhul, seda kontrolli ei tehta.",
             "importExistingLabel": "Kui profiil on juba olemas",
             "importExistingSkip": "Jäta vahele",
             "importExistingOverwrite": "Kirjuta üle",

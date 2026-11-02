@@ -1360,6 +1360,8 @@
             "aiKeysCount": "AI-sleutels: {count}",
             "oauthTokensCount": "OAuth-tokens: {count}",
             "configEntriesCount": "Configuratie-items: {count}",
+            "verifyDownloadHash": "Downloads controleren met de hash van de server",
+            "verifyDownloadHashHelp": "Na een download wordt het bestand vergeleken met de hash die de server publiceert, en niet bewaard als ze verschillen. Waar geen hash wordt gebruikt, zoals bij FTP, wordt deze controle niet uitgevoerd.",
             "importExistingLabel": "Als een profiel al bestaat",
             "importExistingSkip": "Overslaan",
             "importExistingOverwrite": "Overschrijven",

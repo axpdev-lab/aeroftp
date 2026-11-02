@@ -810,7 +810,7 @@ pub async fn dispatch_gui_tool(
                         None => return Err("No active provider connection".into()),
                     };
                     provider
-                        .download(remote_path, &local_path, None)
+                        .download_checked(remote_path, &local_path, None, None)
                         .await
                         .map_err(|e| e.to_string())
                 } else if has_ftp(&app_state).await {

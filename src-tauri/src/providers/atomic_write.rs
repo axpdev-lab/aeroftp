@@ -1662,6 +1662,13 @@ impl AtomicFile {
         self.file.sync_all().await?;
         self.file.shutdown().await?;
 
+        let written = if self.inplace {
+            &self.final_path
+        } else {
+            &self.temp_path
+        };
+        super::content_check::before_publish(written, &self.final_path).await?;
+
         if !self.inplace {
             fs::rename(&self.temp_path, &self.final_path).await?;
         }
@@ -2103,6 +2110,17 @@ impl ResumableFile {
     /// dropping its await lets it finish; a retry waits before taking the name.
     pub async fn commit(mut self) -> Result<(), std::io::Error> {
         self.flush_for_resume().await?;
+        let written = if self.inplace {
+            self.final_path.clone()
+        } else {
+            self.temp_path.clone()
+        };
+        let final_path = self.final_path.clone();
+        if let Err(differs) = super::content_check::before_publish(&written, &final_path).await {
+            // Bytes that do not match are not worth resuming from.
+            let _ = self.discard().await;
+            return Err(differs);
+        }
         let key = self.settlement_key.clone();
         part_settlement::finish(key, async move {
             self.file.sync_all().await?;

@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "5c2e2467784b615b10140a83330d862f83c6b65a4d5be7251b911093806f2ddc",
+    "enHash": "a36d8abc75750026a6d396ba5d8b6e9911c9ff28010dea0a91ec56c13567647a",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -772,6 +772,10 @@
         ],
         "settings.updateCheckFailedAlert": [
             "Update check failed\n\n{{error}}"
+        ],
+        "settings.verifyDownloadHashHelp": [
+            "After a download, compare the file with the hash the server publishes, and do not keep it if they differ. Files on servers with no hash are checked by size only.",
+            "After a download, compare the file with the hash the server publishes, and do not keep it if they differ. Where no hash is used, as on FTP, files are checked by size only."
         ],
         "settings.yandexDiskDesc": [
             "OAuth 2.0 — 5 GB free storage"

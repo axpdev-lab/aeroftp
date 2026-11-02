@@ -1360,6 +1360,8 @@
             "aiKeysCount": "Kľúče AI: {count}",
             "oauthTokensCount": "Tokeny OAuth: {count}",
             "configEntriesCount": "Položky konfigurácie: {count}",
+            "verifyDownloadHash": "Overovať stiahnuté súbory podľa hashu servera",
+            "verifyDownloadHashHelp": "Po stiahnutí sa súbor porovná s hashom, ktorý server zverejňuje, a ak sa líšia, neponechá sa. Tam, kde sa hash nepoužíva, napríklad pri FTP, táto kontrola nebeží.",
             "importExistingLabel": "Ak profil už existuje",
             "importExistingSkip": "Preskočiť",
             "importExistingOverwrite": "Prepísať",
