@@ -1082,6 +1082,30 @@ async fn readahead_writer_error_closes_reader_handles() {
     h.shutdown().await;
 }
 
+/// The staged copy is compared before it takes the name: a read-ahead that
+/// differs from the published hash leaves the old file where it was.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn readahead_that_differs_from_the_hash_keeps_the_old_file() {
+    use ftp_client_gui_lib::providers::content_check::{ContentCheck, ContentDigest};
+    let mut h = readahead_close_harness("differs").await;
+    let local = h.home.join("out-readahead-differs.bin");
+    std::fs::write(&local, b"the old file").unwrap();
+    let local_text = local.to_str().unwrap();
+    let wrong = ContentDigest::strongest(&HashMap::from([("md5".to_string(), "0".repeat(32))]));
+    let check = ContentCheck::expecting(wrong, local_text);
+    let outcome = check
+        .scope(
+            h.provider
+                .download_with_size_hint("/large.bin", local_text, Some(524288), None),
+        )
+        .await;
+    let err = outcome.expect_err("what differs is not kept");
+    assert!(err.to_string().contains("not kept"), "{err}");
+    assert!(check.differs());
+    assert_eq!(std::fs::read(&local).unwrap(), b"the old file");
+    h.shutdown().await;
+}
+
 /// One READ that gets no answer for longer than russh-sftp waits (10 s) used
 /// to fail a whole segmented download, and the temporary went with it: a
 /// 25 GB download from a NAS failed twice that way, from zero (#658 re-test,
