@@ -1159,6 +1159,18 @@ impl FileLuProvider {
         path: &str,
         strict_leaf: bool,
     ) -> Result<CacheEntry, ProviderError> {
+        self.resolve_path_entry_with(path, strict_leaf, !strict_leaf)
+            .await
+    }
+
+    /// [`resolve_path_entry_mode`](Self::resolve_path_entry_mode), answering
+    /// from the cache only when `cached`.
+    async fn resolve_path_entry_with(
+        &mut self,
+        path: &str,
+        strict_leaf: bool,
+        cached: bool,
+    ) -> Result<CacheEntry, ProviderError> {
         let norm = Self::normalize_path(path);
 
         if norm == "/" {
@@ -1175,7 +1187,7 @@ impl FileLuProvider {
 
         // Display and positive lookups may cache entries from a capped prefix.
         // A protected destination needs a fresh, complete parent listing.
-        if !strict_leaf {
+        if cached {
             if let Some(entry) = self.path_cache.get(&norm) {
                 return Ok(entry.clone());
             }
@@ -1204,11 +1216,13 @@ impl FileLuProvider {
                 strict_leaf && i == segments.len() - 1,
             )
             .await?;
-            let entry = self
-                .path_cache
-                .get(&child_virtual)
-                .cloned()
-                .ok_or_else(|| ProviderError::NotFound(child_virtual.clone()))?;
+            let Some(entry) = self.path_cache.get(&child_virtual).cloned() else {
+                // The listing succeeded without it (an incomplete one errors
+                // above), so nothing cached below it exists either.
+                let below = format!("{child_virtual}/");
+                self.path_cache.retain(|path, _| !path.starts_with(&below));
+                return Err(ProviderError::NotFound(child_virtual));
+            };
 
             if entry.is_dir {
                 current_fld_id = entry.fld_id;
@@ -1568,14 +1582,21 @@ impl FileLuProvider {
             .ok_or_else(|| ProviderError::TransferFailed("No download URL returned".to_string()))
     }
 
-    /// A direct link answered with an error status serves an error page, not
-    /// the file, and reqwest returns it like any other response.
+    /// A direct link answered with anything but 200 does not serve the whole
+    /// file, and reqwest returns it like any other response.
     async fn download_response(
         resp: reqwest::Response,
     ) -> Result<reqwest::Response, ProviderError> {
         let status = resp.status();
-        if status.is_success() {
+        // A whole file comes with 200: a 204 has no body and a 206 only part.
+        if status == reqwest::StatusCode::OK {
             return Ok(resp);
+        }
+        // Any other success carries file bytes, not an error page.
+        if status.is_success() {
+            return Err(ProviderError::TransferFailed(format!(
+                "Download HTTP {status}: not the whole file"
+            )));
         }
         let excerpt = super::error_body_excerpt(resp, 200).await;
         Err(ProviderError::TransferFailed(format!(
@@ -1646,9 +1667,9 @@ impl FileLuProvider {
         let norm = self.resolve_path(path);
         // The file's code is read afresh (a replace or a restore changes it),
         // from a listing that only has to contain it: a parent folder too
-        // large to list whole does not stop the lookup.
-        self.path_cache.remove(&norm);
-        let entry = self.resolve_path_entry_mode(&norm, false).await?;
+        // large to list whole does not stop the lookup. The cached entry is
+        // left in place, so a failed listing does not lose it.
+        let entry = self.resolve_path_entry_with(&norm, false, false).await?;
         if entry.is_dir || entry.file_code.is_empty() {
             return Err(ProviderError::InvalidPath(format!(
                 "{norm} is not a file: only files have versions"
@@ -4944,6 +4965,104 @@ mod tests {
         assert!(
             matches!(outcome, Err(ProviderError::TransferFailed(ref m)) if m.contains("404") && m.contains("gone")),
             "{outcome:?}"
+        );
+    }
+
+    /// A direct link answered with a success that is not the whole file
+    /// (204 has no body, 206 only part) fails like an error.
+    #[tokio::test]
+    async fn a_download_answered_with_less_than_the_whole_file_fails() {
+        for (status, body) in [("204", ""), ("206", "PIECE")] {
+            let reply = format!("!{status} {body}");
+            let (mut provider, _) = provider_against(move |origin, path, _| match path {
+                "/apiv2/file/direct_link" => {
+                    format!(r#"{{"status":200,"result":{{"url":"{origin}/blob"}}}}"#)
+                }
+                "/blob" => reply.clone(),
+                _ => r#"{"status":200,"msg":"OK"}"#.to_string(),
+            })
+            .await;
+            let dir = tempfile::tempdir().unwrap();
+            let out = dir.path().join("f.txt");
+            let outcome = provider
+                .download("/f.txt", out.to_str().unwrap(), None)
+                .await;
+            assert!(
+                matches!(outcome, Err(ProviderError::TransferFailed(ref m)) if m.contains(status) && !m.contains("PIECE")),
+                "{status}: {outcome:?}"
+            );
+            assert!(!out.exists(), "{status}");
+        }
+    }
+
+    /// A refreshed lookup that finds a folder gone drops what was cached
+    /// below it.
+    #[tokio::test]
+    async fn a_lookup_that_finds_the_folder_gone_drops_its_cached_files() {
+        let (mut provider, _) = provider_against(move |_, path, _| match path {
+            "/apiv2/folder/list" => {
+                r#"{"status":200,"result":{"files":[],"folders":[]}}"#.to_string()
+            }
+            _ => r#"{"status":200,"msg":"OK"}"#.to_string(),
+        })
+        .await;
+        let cached = CacheEntry {
+            is_dir: false,
+            fld_id: 7,
+            fld_token: None,
+            file_code: "OLD".to_string(),
+            size: 9,
+            modified: None,
+            hash: None,
+        };
+        provider
+            .path_cache
+            .insert("/d/f.txt".to_string(), cached.clone());
+        provider.path_cache.insert("/dd/g.txt".to_string(), cached);
+        let outcome = provider.list_versions("/d/f.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(ref p)) if p == "/d"),
+            "{outcome:?}"
+        );
+        assert!(!provider.path_cache.contains_key("/d/f.txt"));
+        assert!(provider.path_cache.contains_key("/dd/g.txt"));
+    }
+
+    /// A versions lookup whose listing fails leaves the file's cached entry
+    /// in place for the next lookup.
+    #[tokio::test]
+    async fn a_failed_versions_lookup_keeps_the_cached_entry() {
+        let (mut provider, _) = provider_against(move |_, path, query| {
+            let root = query.get("folder_path").map(String::as_str) == Some("/");
+            match path {
+                "/apiv2/folder/list" if root => {
+                    r#"{"status":200,"result":{"files":[],"folders":[{"name":"d","fld_id":7}]}}"#
+                        .to_string()
+                }
+                "/apiv2/folder/list" => "!403 denied".to_string(),
+                _ => r#"{"status":200,"msg":"OK"}"#.to_string(),
+            }
+        })
+        .await;
+        let cached = CacheEntry {
+            is_dir: false,
+            fld_id: 7,
+            fld_token: None,
+            file_code: "CUR".to_string(),
+            size: 9,
+            modified: None,
+            hash: None,
+        };
+        provider
+            .path_cache
+            .insert("/d/f.txt".to_string(), cached.clone());
+        assert!(provider.list_versions("/d/f.txt").await.is_err());
+        assert_eq!(
+            provider
+                .path_cache
+                .get("/d/f.txt")
+                .map(|e| e.file_code.as_str()),
+            Some("CUR")
         );
     }
 
