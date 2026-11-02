@@ -2646,10 +2646,6 @@ impl ZohoWorkdriveProvider {
             id
         } else {
             // Try privatespace listing
-            let root_id = self
-                .privatespace_id
-                .as_deref()
-                .unwrap_or(&self.current_folder_id);
             // Older rclone imports saved their workspace/privatespace id as
             // the start path. Accept only roots this account's discovery
             // actually returned, after giving a real folder name precedence.
@@ -2663,6 +2659,11 @@ impl ZohoWorkdriveProvider {
                 legacy_root = true;
                 first.to_string()
             } else {
+                // A team-only root contains only discovered team folders.
+                // The current folder is never a substitute for that root.
+                let Some(root_id) = self.privatespace_id.as_deref() else {
+                    return Err(ProviderError::NotFound(current_path.clone()));
+                };
                 let root_files = self.list_folder(root_id).await?;
                 match root_files.iter().find(|file| file.attributes.name == first) {
                     Some(file) => file.id.clone(),
@@ -4586,6 +4587,52 @@ mod tests {
         p.folder_cache.insert("/".into(), "TEAM".into());
         p.team_folders.push(("WS".into(), "Team".into()));
         assert!(!p.exists("/NOPE").await.unwrap());
+        server.abort();
+    }
+
+    /// An absolute name absent from a team-only synthetic root cannot refer
+    /// to a same-named child of cwd, nor seed a wrong absolute cache entry.
+    #[tokio::test]
+    async fn team_only_absolute_names_never_use_children_of_the_current_folder() {
+        let (mut provider, requests, server) = listing_fixture(|id, _, _| {
+            let entries = match id {
+                "WS" => vec![("DOCS", "docs", true)],
+                "DOCS" => vec![("SUB", "sub", true)],
+                "SUB" => vec![("FILE", "x", false)],
+                _ => panic!("unexpected listing {id}"),
+            };
+            (200, vec![], listing_json(&entries, Some((false, None))))
+        })
+        .await;
+        provider.current_folder_id = "TEAM".into();
+        provider.folder_cache.insert("/".into(), "TEAM".into());
+        provider.team_folders.push(("WS".into(), "Team".into()));
+        provider.cd("/Team/docs").await.unwrap();
+        assert_eq!(provider.current_folder_id, "DOCS");
+        let before = requests.lock().unwrap().len();
+        assert!(matches!(
+            provider.resolve_path("/sub").await,
+            Err(ProviderError::NotFound(_))
+        ));
+        assert!(matches!(
+            provider.delete("/sub/x").await,
+            Err(ProviderError::NotFound(_))
+        ));
+        assert!(matches!(
+            provider.mkdir("/sub/y").await,
+            Err(ProviderError::NotFound(_))
+        ));
+        assert!(matches!(
+            provider.rename("/sub", "/renamed").await,
+            Err(ProviderError::NotFound(_))
+        ));
+        assert_eq!(
+            requests.lock().unwrap().len(),
+            before,
+            "no reads or writes below cwd for absolute /sub"
+        );
+        assert!(!provider.folder_cache.contains_key("/sub"));
+        assert_eq!(provider.current_path, "/Team/docs");
         server.abort();
     }
 
